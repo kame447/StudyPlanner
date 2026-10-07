@@ -351,3 +351,70 @@ describe('a recurring weekday set restated during a date-representation repair (
     expect(isRepresentationOnlySemanticRepairV5(['document.planningWindow:absolute-range'], 'legacy_v5')).toBe(true);
   });
 });
+
+describe('restatement guard edges (adversarial review of 8aae7738)', () => {
+  const REJECTED = ['semantic-repair-preservation:representation-only repair changed unrelated semantic facts'];
+  const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].map((day) => `weekday:${day}`);
+  type TemporalFact = WeeklyPlanningSemanticDocumentV5['tasks'][number]['temporalConstraints'][number];
+  const evening = (overrides: Partial<TemporalFact> = {}): TemporalFact => ({
+    localId: 'temporal-1', targetLocalId: 't1', kind: 'preferred_window', constraintLevel: 'soft',
+    dateExpression: '平日', namedTimePeriod: null, startTime: '20:00', endTime: null,
+    precision: 'exact', sourceText: '平日は20時以降がいい', ...overrides,
+  });
+  const withFacts = (facts: TemporalFact[]) => {
+    const value = document({ canonicalWindow: true });
+    value.tasks[0].temporalConstraints = facts;
+    return value;
+  };
+  const dateError = (index: number) => `document.tasks[0].temporalConstraints[${index}].dateExpression:canonical-expression`;
+  const check = (before: WeeklyPlanningSemanticDocumentV5, after: WeeklyPlanningSemanticDocumentV5, initialErrors: string[]) =>
+    validateWeeklyPlanningSemanticRepairPreservationV5({ initialDocument: before, repairedDocument: after, initialErrors });
+  const split = (fact: TemporalFact, days = WEEKDAYS, prefix = 'split') =>
+    days.map((dateExpression, index) => ({ ...fact, localId: `${prefix}-${index}`, dateExpression }));
+
+  it('keeps an availability declaration typed recurrence and days; only an empty scope may move', () => {
+    const errors = ['document.availabilityDeclarations[0].dateExpression:canonical-expression'];
+    const before = document({ canonicalWindow: true });
+    Object.assign(before.availabilityDeclarations[0], { dateExpression: '火曜日', recurrenceKind: 'weekly', days: ['weekday:tuesday'] });
+    const dateOnly = structuredClone(before);
+    dateOnly.availabilityDeclarations[0].dateExpression = null;
+    expect(check(before, dateOnly, errors)).toEqual([]);
+    // Moving a typed busy Tuesday to Friday, or widening it to every day, would open a blocked slot.
+    for (const scope of [{ days: ['weekday:friday'] }, { recurrenceKind: 'daily' as const, days: [] }]) {
+      const moved = structuredClone(dateOnly);
+      Object.assign(moved.availabilityDeclarations[0], scope);
+      expect(check(before, moved, errors), JSON.stringify(scope)).toEqual(REJECTED);
+    }
+  });
+
+  it('accepts a split that also fixes a flagged clock, and only when the clock was flagged', () => {
+    const before = withFacts([evening({ namedTimePeriod: 'custom:20時以降', startTime: null })]);
+    const after = withFacts(split(evening()));
+    expect(check(before, after, [dateError(0), 'temporalConstraints[temporal-1]: explicit clock text must use startTime/endTime'])).toEqual([]);
+    // A clock change the validator did not address stays an unrelated change.
+    expect(check(before, after, [dateError(0)])).toEqual(REJECTED);
+  });
+
+  it('compares flagged facts that differ only by date as one group', () => {
+    const before = withFacts([evening({ localId: 'one' }), evening({ localId: 'two', dateExpression: '週末' })]);
+    const errors = [dateError(0), dateError(1)];
+    const both = withFacts([...split(evening(), WEEKDAYS, 'weekdays'), ...split(evening(), ['weekday:saturday', 'weekday:sunday'], 'weekend')]);
+    expect(check(before, both, errors)).toEqual([]);
+    const oneToOne = withFacts([evening({ localId: 'one', dateExpression: 'weekday:monday' }), evening({ localId: 'two', dateExpression: 'weekday:saturday' })]);
+    expect(check(before, oneToOne, errors)).toEqual([]);
+    const merged = withFacts([evening({ localId: 'one', dateExpression: 'weekday:monday' })]);
+    expect(check(before, merged, errors)).toEqual(REJECTED);
+    const duplicated = withFacts([...both.tasks[0].temporalConstraints, { ...both.tasks[0].temporalConstraints[0], localId: 'duplicate' }]);
+    expect(check(before, duplicated, errors)).toEqual(REJECTED);
+  });
+
+  it('keeps unflagged facts exact, even when a split repeats one of their dates', () => {
+    const monday = evening({ localId: 'existing', dateExpression: 'weekday:monday' });
+    const before = withFacts([evening(), monday]);
+    expect(check(before, withFacts([...split(evening()), monday]), [dateError(0)])).toEqual([]);
+    expect(check(before, withFacts(split(evening())), [dateError(0)])).toEqual(REJECTED);
+    const saturday = evening({ localId: 'sat', dateExpression: 'weekday:saturday', startTime: '09:00' });
+    const changed = { ...saturday, startTime: '10:00' };
+    expect(check(withFacts([evening(), saturday]), withFacts([...split(evening()), changed]), [dateError(0)])).toEqual(REJECTED);
+  });
+});

@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
+import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningSemanticNormalizerResultV5 } from './weeklyPlanningSemanticNormalizerContractsV5';
 import { tryWeeklyPlanningSemanticNoOpCompletenessRetryV5 } from './weeklyPlanningSemanticNoOpCompletenessRetryV5';
@@ -71,9 +72,17 @@ export async function runGenericSemanticRepairRouteV5(params: {
   );
   params.run.addAlgorithmicRepairs(repairedValidation.algorithmicRepairs);
   params.run.recordRejectedPlanningConversationActs('repair', repairedValidation);
+  // Interaction compares what the provider wrote in both responses: post-parse
+  // canonicalization and projections (for example a bookshelf id) are not repair changes.
+  const providerComparison = conversationArchitecturePolicy(params.run.input.conversationArchitecture)
+    .semanticConversationActs;
   const preservationErrors = validateWeeklyPlanningSemanticRepairPreservationV5({
-    initialDocument: params.initialValidation.parsedDocument,
-    repairedDocument: repairedValidation.document,
+    initialDocument: providerComparison
+      ? params.initialValidation.providerDocument ?? null
+      : params.initialValidation.parsedDocument,
+    repairedDocument: providerComparison && repairedValidation.document
+      ? repairedValidation.providerDocument ?? null
+      : repairedValidation.document,
     initialErrors: params.initialValidation.errors,
     conversationArchitecture: params.run.input.conversationArchitecture,
   });

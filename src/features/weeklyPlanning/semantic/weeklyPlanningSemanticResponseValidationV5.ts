@@ -25,6 +25,7 @@ import {
 } from './weeklyPlanningRecurrenceConsistencyV5';
 import {
   readWeeklyPlanningRepresentationRepairBaselineV5,
+  readWeeklyPlanningSemanticProviderDocumentV5,
 } from './weeklyPlanningSemanticRepairPreservationV5';
 import {
   validateWeeklyPlanningWorkBreakdownResponseContractV5,
@@ -75,6 +76,12 @@ export interface WeeklyPlanningSemanticValidationAttemptV5 {
   /** The validated planning delta (with its valid conversation acts), or null. */
   document: WeeklyPlanningSemanticDocumentV5 | null;
   parsedDocument: WeeklyPlanningSemanticDocumentV5 | null;
+  /**
+   * Interaction architecture only: the document as the provider wrote it (after pre-parse
+   * normalization), before canonicalization and projections. Repair preservation compares
+   * these so deterministic post-parse projections never count as a repair change.
+   */
+  providerDocument?: WeeklyPlanningSemanticDocumentV5 | null;
   /** Planning-delta validation errors only; conversation acts never add one. */
   errors: string[];
   algorithmicRepairs: string[];
@@ -137,6 +144,9 @@ export function validateWeeklyPlanningSemanticResponseV5(
         planningContentPresent: parsed.planningContentPresent ?? false,
       }
     : {};
+  const providerDocument = semanticConversationActs
+    ? { providerDocument: readWeeklyPlanningSemanticProviderDocumentV5(preParseNormalization.rawResponse) }
+    : {};
   if (!parsed.document) {
     const errors = uniqueErrors([
       ...parsed.errors,
@@ -151,6 +161,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
       }),
       errors,
       algorithmicRepairs: preParseNormalization.repairs,
+      ...providerDocument,
       ...conversationActEvidence,
     };
   }
@@ -220,6 +231,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
     parsedDocument: document,
     errors,
     algorithmicRepairs,
+    ...providerDocument,
     ...conversationActEvidence,
   };
 }

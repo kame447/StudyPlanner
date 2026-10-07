@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StudyMaterial } from '../../types/domain';
 import fixture from './testUtils/weeklyPlanningLiveLatencyFixture.json';
-import { createScriptedConversation, installScriptedWeeklyPlanningProvider, resetScriptedConversationRuntime, type ScriptedProviderCall, type ScriptedProviderReply } from './testUtils/weeklyPlanningScriptedConversationHarness';
+import { createScriptedConversation, installScriptedWeeklyPlanningProvider, resetScriptedConversationRuntime, scriptedRendererReply, type ScriptedProviderCall, type ScriptedProviderReply } from './testUtils/weeklyPlanningScriptedConversationHarness';
 
 import { validateWeeklyPlanningSemanticResponseV5 } from './semantic/weeklyPlanningSemanticResponseValidationV5';
 import { createAiWeeklyPlanningStableV5DialogueRenderer, type WeeklyPlanningStableV5DialogueRenderInput } from './dialogue/weeklyPlanningStableV5AiDialogueRenderer';
@@ -291,5 +291,75 @@ describe('live latency repair trace persistence gate', () => {
       resetWeeklyPlanningStableV5TraceRuntimeForTest();
       restore();
     }
+  });
+});
+
+
+describe('final live A: bookshelf ids and a weekday-set date repair in one turn (2f9ae953, 916e547f)', () => {
+  const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+  const evening = { localId: 'temporal-1', targetLocalId: 'task-1', kind: 'preferred_window', constraintLevel: 'soft',
+    dateExpression: '来週の平日', namedTimePeriod: null, startTime: '20:00', endTime: null, precision: 'exact',
+    sourceText: '平日は20時以降がいい' };
+  // The provider wrote the weekday set into one task date field; the single repair restates it per weekday.
+  function weekdaySetDocument(stage: 'initial' | 'repair', bind: 'component' | 'task'): string {
+    const document = JSON.parse(fixture.semanticResponse);
+    document.availabilityDeclarations = [];
+    const task = document.tasks[0];
+    if (bind === 'task') {
+      // Live 916e547f run 1: the bookshelf id on the task itself, titled with the material name.
+      task.existingPublicId = fixture.registeredMaterial.materialId;
+      task.title = fixture.registeredMaterial.name;
+      task.study.components = [];
+    }
+    task.temporalConstraints = stage === 'initial' ? [evening]
+      : WEEKDAYS.map((day, index) => ({ ...evening, localId: `temporal-${day}-${index}`, dateExpression: `weekday:${day}` }));
+    return JSON.stringify(document);
+  }
+
+  it.each(['component', 'task'] as const)('repairs the date once and keeps the %s bookshelf reference as provider context', async (bind) => {
+    let semantic = 0;
+    script = call => call.kind === 'renderer'
+      ? scriptedRendererReply(call, '候補を確認し「この内容で仮予定にする」を選んでください。')
+      : weekdaySetDocument(semantic++ === 0 ? 'initial' : 'repair', bind);
+    const current = conversation();
+    const turn = await current.submit(fixture.userText);
+    expect(turn.result?.failure, JSON.stringify(turn.debugTrace.filter(event => event.stage === 'semantic_validation_result'))).toBeUndefined();
+    expect(turn.calls.map(call => call.kind)).toEqual(['semantic_generic', 'semantic_generic', 'renderer']);
+    const candidates = current.getState().previewCandidates ?? [];
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(candidates.every(entry => entry.date >= '2026-10-12' && entry.date <= '2026-10-16' && entry.startTime >= '20:00')).toBe(true);
+    expect(JSON.stringify(turn.debugTrace)).toContain(`registered-material-${bind}-reference-projected`);
+  });
+
+  it('accepts a first-turn task bound to the exact bookshelf id without a provider repair', async () => {
+    const document = JSON.parse(fixture.semanticResponse);
+    document.tasks[0].existingPublicId = fixture.registeredMaterial.materialId;
+    document.tasks[0].title = fixture.registeredMaterial.name;
+    script = call => call.kind === 'renderer'
+      ? scriptedRendererReply(call, '候補を確認し「この内容で仮予定にする」を選んでください。')
+      : JSON.stringify(document);
+    const current = conversation();
+    const turn = await current.submit(fixture.userText);
+    expect(turn.result?.failure).toBeUndefined();
+    expect(turn.calls.map(call => call.kind)).toEqual(['semantic_generic', 'renderer']);
+    expect(current.graph()!.tasks).toHaveLength(1);
+  });
+
+  it.each(['accepted_task', 'other_title', 'legacy'] as const)('keeps the ordinary binding error for a task reference (%s)', (variant) => {
+    const document = JSON.parse(fixture.semanticResponse);
+    document.tasks[0].existingPublicId = fixture.registeredMaterial.materialId;
+    document.tasks[0].title = variant === 'other_title' ? '別の作業' : fixture.registeredMaterial.name;
+    if (variant === 'legacy') delete document.conversationActs;
+    const result = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(document), {
+      currentUserText: fixture.userText,
+      conversationArchitecture: variant === 'legacy' ? 'legacy_v5' : 'interaction_v1',
+      publicStateSummary: {
+        tasks: variant === 'accepted_task' ? [{ publicId: 'active-task', title: fixture.registeredMaterial.name, category: 'study' }] : [],
+        components: [], registeredMaterials: [fixture.registeredMaterial],
+      },
+    });
+    expect(result.document).toBeNull();
+    expect(result.errors.some(error => error.includes('unknown-active-task'))).toBe(true);
+    expect(result.algorithmicRepairs.some(repair => repair.startsWith('registered-material-task-reference-projected'))).toBe(false);
   });
 });

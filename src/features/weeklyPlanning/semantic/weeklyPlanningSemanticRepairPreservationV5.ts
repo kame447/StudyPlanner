@@ -101,26 +101,48 @@ function redactUserContextDateRepresentation(
   }
 }
 
-/** Only validator-addressed date scope may change; this never interprets its text. */
+/**
+ * Only validator-addressed date scope may change; this never interprets its text. A weekday
+ * set may move into recurrenceKind/days only when the declaration had no typed recurrence or
+ * days yet: an existing recurrence/day scope is accepted meaning and must stay unchanged.
+ */
 function redactAvailabilityDateRepresentations(
-  document: MutableRecord,
+  initial: MutableRecord,
+  repaired: MutableRecord,
   errors: readonly string[],
 ): void {
-  if (!Array.isArray(document.availabilityDeclarations)) return;
   for (const error of errors) {
     const match = AVAILABILITY_DATE_REPRESENTATION_ERROR.exec(error);
-    const fact = match ? document.availabilityDeclarations[Number(match[1])] : undefined;
-    if (!isRecord(fact)) continue;
-    // A weekday set belongs in recurrenceKind/days of the same declaration.
-    fact.dateExpression = REPAIRABLE_CANONICAL_DATE;
-    fact.recurrenceKind = '__REPAIRABLE_RECURRENCE_KIND__';
-    fact.days = ['__REPAIRABLE_WEEKDAY_TOKENS__'];
+    if (!match) continue;
+    const index = Number(match[1]);
+    const before = Array.isArray(initial.availabilityDeclarations)
+      ? initial.availabilityDeclarations[index] : undefined;
+    if (!isRecord(before)) continue;
+    const scopeMayMove = (before.recurrenceKind ?? null) === null
+      && (!Array.isArray(before.days) || before.days.length === 0);
+    const after = Array.isArray(repaired.availabilityDeclarations)
+      ? repaired.availabilityDeclarations[index] : undefined;
+    for (const fact of [before, after]) {
+      if (!isRecord(fact)) continue;
+      fact.dateExpression = REPAIRABLE_CANONICAL_DATE;
+      if (scopeMayMove) {
+        fact.recurrenceKind = '__REPAIRABLE_RECURRENCE_KIND__';
+        fact.days = ['__REPAIRABLE_WEEKDAY_TOKENS__'];
+      }
+    }
   }
 }
 
-function withoutDateIdentity(fact: Record<string, unknown>): string {
+const REPAIRABLE_CLOCK = {
+  namedTimePeriod: '__REPAIRABLE_NAMED_TIME_PERIOD__',
+  startTime: '__REPAIRABLE_START_TIME__',
+  endTime: '__REPAIRABLE_END_TIME__',
+} as const;
+
+/** Every field except identity and date (and clock, when the validator flagged it too). */
+function restatementKey(fact: Record<string, unknown>, clockRepairable: boolean): string {
   const { localId: _localId, dateExpression: _dateExpression, ...rest } = fact;
-  return stableSerialize(rest);
+  return stableSerialize(clockRepairable ? { ...rest, ...REPAIRABLE_CLOCK } : rest);
 }
 
 function bySerialization(facts: readonly unknown[]): unknown[] {
@@ -131,15 +153,18 @@ function bySerialization(facts: readonly unknown[]): unknown[] {
 }
 
 /**
- * Only validator-addressed task date facts may change their date. A splittable fact may be
- * restated as several facts that differ from it only by localId and distinct dateExpression
- * (a recurring weekday set has no single dateExpression). Structure is compared; the date
- * text is never interpreted, and dropping the fact or changing any other field still fails.
+ * Only validator-addressed task date facts may change their date (and their clock when that
+ * is flagged too). Flagged facts that differ only by date cannot be told apart without
+ * reading their text, so they are compared as one group: the repair restates the group as
+ * the same number of facts, or - for kinds that compose as a union - as more facts with
+ * distinct dates (a recurring weekday set has no single dateExpression). Dropping a flagged
+ * fact, duplicating a date, or changing any other field or fact still fails.
  */
 function normalizeTaskDateRepresentations(
   initial: MutableRecord,
   repaired: MutableRecord,
   errors: readonly string[],
+  clockRepairableIds: ReadonlySet<string>,
 ): number[] {
   const flaggedByTask = new Map<number, Set<number>>();
   for (const error of errors) {
@@ -153,40 +178,50 @@ function normalizeTaskDateRepresentations(
     const initialTask = Array.isArray(initial.tasks) ? initial.tasks[taskIndex] : undefined;
     if (!isRecord(initialTask) || !Array.isArray(initialTask.temporalConstraints)) continue;
     const repairedTask = Array.isArray(repaired.tasks) ? repaired.tasks[taskIndex] : undefined;
-    const initialFacts: unknown[] = [...initialTask.temporalConstraints];
-    const repairedFacts: unknown[] | null = isRecord(repairedTask)
+    const initialFacts: unknown[] = initialTask.temporalConstraints;
+    let repairedFacts: unknown[] | null = isRecord(repairedTask)
       && Array.isArray(repairedTask.temporalConstraints)
       ? [...repairedTask.temporalConstraints]
       : null;
     const unflagged = new Set(initialFacts
       .filter((_, index) => !flagged.has(index))
       .map(stableSerialize));
+    const groups = new Map<string, { facts: MutableRecord[]; clockRepairable: boolean }>();
     for (const index of [...flagged].sort((left, right) => left - right)) {
       const fact = initialFacts[index];
       if (!isRecord(fact)) continue;
-      const placeholder = { ...fact, dateExpression: REPAIRABLE_CANONICAL_DATE };
-      initialFacts[index] = placeholder;
+      const clockRepairable = typeof fact.localId === 'string' && clockRepairableIds.has(fact.localId);
+      const key = `${clockRepairable}:${restatementKey(fact, clockRepairable)}`;
+      const group = groups.get(key) ?? { facts: [], clockRepairable };
+      group.facts.push(fact);
+      groups.set(key, group);
+    }
+    const restatedInitial: unknown[] = initialFacts
+      .filter((fact, index) => !flagged.has(index) || !isRecord(fact));
+    for (const { facts, clockRepairable } of groups.values()) {
+      const placeholder: MutableRecord = {
+        ...facts[0],
+        localId: '__REPAIRABLE_RESTATED_LOCAL_ID__',
+        dateExpression: REPAIRABLE_CANONICAL_DATE,
+        ...(clockRepairable ? REPAIRABLE_CLOCK : {}),
+        restatedFactCount: facts.length,
+      };
+      restatedInitial.push(placeholder);
       if (!repairedFacts) continue;
-      const signature = withoutDateIdentity(fact);
-      const restated = repairedFacts.filter((candidate): candidate is MutableRecord =>
+      const key = restatementKey(facts[0], clockRepairable);
+      const members = repairedFacts.filter((candidate): candidate is MutableRecord =>
         isRecord(candidate)
         && !unflagged.has(stableSerialize(candidate))
-        && withoutDateIdentity(candidate) === signature);
-      if (restated.length === 1) {
-        const at = repairedFacts.indexOf(restated[0]);
-        repairedFacts[at] = { ...restated[0], dateExpression: REPAIRABLE_CANONICAL_DATE };
-      } else if (
-        restated.length > 1
-        && SPLITTABLE_TASK_DATE_KINDS.has(String(fact.kind))
-        && new Set(restated.map((member) => member.dateExpression)).size === restated.length
-      ) {
-        repairedFacts.splice(repairedFacts.indexOf(restated[0]), 1, placeholder);
-        for (const member of restated.slice(1)) {
-          repairedFacts.splice(repairedFacts.indexOf(member), 1);
-        }
+        && restatementKey(candidate, clockRepairable) === key);
+      const distinctDates = new Set(members.map((member) => member.dateExpression)).size === members.length;
+      const restated = members.length > 0 && distinctDates && (
+        members.length === facts.length
+        || (members.length > facts.length && SPLITTABLE_TASK_DATE_KINDS.has(String(facts[0].kind))));
+      if (restated) {
+        repairedFacts = [...repairedFacts.filter((fact) => !members.includes(fact as MutableRecord)), placeholder];
       }
     }
-    initialTask.temporalConstraints = initialFacts;
+    initialTask.temporalConstraints = restatedInitial;
     if (repairedFacts && isRecord(repairedTask)) repairedTask.temporalConstraints = repairedFacts;
   }
   return [...flaggedByTask.keys()];
@@ -288,17 +323,12 @@ export function isRepresentationOnlySemanticRepairV5(
     && errors.every((error) => patterns.some((pattern) => pattern.test(error)));
 }
 
-export function readWeeklyPlanningRepresentationRepairBaselineV5(params: {
-  rawResponse: string;
-  validationErrors: readonly string[];
-  conversationArchitecture?: WeeklyPlanningConversationArchitecture;
-}): WeeklyPlanningSemanticDocumentV5 | null {
-  if (!isRepresentationOnlySemanticRepairV5(
-    params.validationErrors,
-    params.conversationArchitecture,
-  )) return null;
+/** The provider's document as written (after pre-parse normalization), before validation. */
+export function readWeeklyPlanningSemanticProviderDocumentV5(
+  rawResponse: string,
+): WeeklyPlanningSemanticDocumentV5 | null {
   try {
-    const value = JSON.parse(params.rawResponse) as unknown;
+    const value = JSON.parse(rawResponse) as unknown;
     if (!isRecord(value)) return null;
     if (value.schemaVersion !== WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5) return null;
     if (typeof value.planningIntent !== 'string') return null;
@@ -308,6 +338,18 @@ export function readWeeklyPlanningRepresentationRepairBaselineV5(params: {
   } catch {
     return null;
   }
+}
+
+export function readWeeklyPlanningRepresentationRepairBaselineV5(params: {
+  rawResponse: string;
+  validationErrors: readonly string[];
+  conversationArchitecture?: WeeklyPlanningConversationArchitecture;
+}): WeeklyPlanningSemanticDocumentV5 | null {
+  if (!isRepresentationOnlySemanticRepairV5(
+    params.validationErrors,
+    params.conversationArchitecture,
+  )) return null;
+  return readWeeklyPlanningSemanticProviderDocumentV5(params.rawResponse);
 }
 
 export function validateWeeklyPlanningSemanticRepairPreservationV5(params: {
@@ -338,9 +380,7 @@ export function validateWeeklyPlanningSemanticRepairPreservationV5(params: {
   );
   redactUserContextDateRepresentation(initial, userContextDateIndexes);
   redactUserContextDateRepresentation(repaired, userContextDateIndexes);
-  redactAvailabilityDateRepresentations(initial, params.initialErrors);
-  redactAvailabilityDateRepresentations(repaired, params.initialErrors);
-  const taskDateIndexes = normalizeTaskDateRepresentations(initial, repaired, params.initialErrors);
+  redactAvailabilityDateRepresentations(initial, repaired, params.initialErrors);
 
   const availabilityClockIds = idsMatching(
     params.initialErrors,
@@ -356,6 +396,12 @@ export function validateWeeklyPlanningSemanticRepairPreservationV5(params: {
   const temporalClockIds = idsMatching(
     params.initialErrors,
     /^temporalConstraints\[([^\]]+)\]: (?:namedTimePeriod must be null|explicit clock text must use startTime\/endTime)/,
+  );
+  const taskDateIndexes = normalizeTaskDateRepresentations(
+    initial,
+    repaired,
+    params.initialErrors,
+    temporalClockIds,
   );
   const recurrenceWeekdayIds = idsMatching(
     params.initialErrors,
