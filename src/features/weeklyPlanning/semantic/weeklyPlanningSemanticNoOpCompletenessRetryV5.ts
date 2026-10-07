@@ -37,7 +37,7 @@ function completenessRetryInstruction(params: {
       'The prior response is schema-valid but contains no new semantic content although a plan has already been accepted.',
       `The exact current userText to interpret is ${exactUserText}.`,
       'Re-read that exact current userText independently and return the complete semantic document again.',
-      'An existing-entity shell and its sourceText are context/binding only, not semantic content; encode each supported current-turn change to the accepted plan in its typed field (sessions, splits, timing preferences, workload, effort, a named material as that task\'s material component, corrections).',
+      'An existing-entity shell and its sourceText are context/binding only, not semantic content; encode each supported current-turn change to the accepted plan in its typed field (sessions, splits, timing preferences, workload, effort, corrections).',
       'If the exact current userText is only conversation (thanks, an aside, or a question about the plan), return the no-op meaning with the matching conversation act. Do not invent facts.',
     ].join(' ');
   }
