@@ -7,7 +7,7 @@ import { PlanEditorPanel } from '../components/PlanEditorPanel';
 import { TodoView } from '../components/TodoView';
 import { ScheduleToolbar } from '../components/ScheduleToolbar';
 
-const repo = vi.hoisted(() => ({ upsertPlan: vi.fn(), scheduleTodoPlan: vi.fn(), upsertMonthEvent: vi.fn() }));
+const repo = vi.hoisted(() => ({ upsertPlan: vi.fn(), scheduleTodoPlan: vi.fn(), upsertMonthEvent: vi.fn(), applyRecurringPlanMutation: vi.fn() }));
 vi.mock('../repositories', () => ({ plannerRepository: repo }));
 const PREVIOUS = '2026-09-15'; const SAVE = '2026-10-15'; const LATEST = '2026-11-15'; const AFTER = '2026-12-15';
 const todo: TodoTask = { id: 'todo-a', userId: 'owner', title: 'Todo A', subject: '', type: 'study', estimatedMinutes: 30,
@@ -64,6 +64,54 @@ async function finish(operation: Awaited<ReturnType<typeof begin>>, success: boo
 function selection() { return { date: state.selectedDate, month: state.monthDate, view: state.viewMode }; }
 beforeEach(() => { for (const persist of Object.values(repo)) persist.mockReset().mockResolvedValue(undefined); });
 afterEach(unmount);
+
+it.each([true, false])('keeps a newer plan editor draft after an older save settles, success=%s', async success => {
+  await mount('plan');
+  const gate = deferred();
+  repo.upsertPlan.mockReturnValueOnce(gate.promise);
+  await act(async () => { state.setEditorDraft(draft(SAVE)); });
+  let submit!: Promise<void>;
+  await act(async () => {
+    submit = renderer!.root.findAllByType('button').find(button => button.children.join('') === 'Save')!.props.onClick();
+  });
+  expect(state.editorDraft).toBeNull();
+  await act(async () => { state.openEditPlan(state.plans[0]); });
+  const newerId = state.editingPlanId;
+  await act(async () => { state.setEditorDraft({ ...state.editorDraft!, title: 'New unsaved edit' }); });
+  await act(async () => {
+    if (success) gate.resolve(); else gate.reject(new Error('offline'));
+    await submit;
+  });
+  expect(state.editorDraft?.title).toBe('New unsaved edit');
+  expect(state.editingPlanId).toBe(newerId);
+  expect(renderer!.root.findAllByProps({ role: 'dialog' })).toHaveLength(1);
+});
+
+it.each(['cancel', 'confirm'] as const)('hands a recurring editor to scope selection and preserves %s behavior', async action => {
+  await mount('plan');
+  await act(async () => { await state.savePlanDraft({ ...draft(SAVE), repeat: 'daily', repeatUntil: LATEST }); });
+  const plan = state.plans[0];
+  repo.upsertPlan.mockClear();
+  await act(async () => { state.openEditPlan(plan); });
+  await act(async () => { state.setEditorDraft({ ...state.editorDraft!, title: 'Recurring edited title' }); });
+  await act(async () => {
+    await renderer!.root.findAllByType('button').find(button => button.children.join('') === 'Save')!.props.onClick();
+  });
+  expect(state.editorDraft).toBeNull();
+  expect(state.pendingRecurringPlanAction).toMatchObject({ kind: 'edit', plan: { id: plan.id } });
+  expect(repo.upsertPlan).not.toHaveBeenCalled();
+  expect(repo.applyRecurringPlanMutation).not.toHaveBeenCalled();
+  await act(async () => {
+    if (action === 'cancel') state.cancelRecurringPlanScope();
+    else await state.confirmRecurringPlanScope('all');
+  });
+  if (action === 'confirm') {
+    expect(repo.applyRecurringPlanMutation).toHaveBeenCalledOnce();
+    expect(repo.applyRecurringPlanMutation.mock.calls[0][1].planUpserts[0].title).toBe('Recurring edited title');
+  } else expect(repo.applyRecurringPlanMutation).not.toHaveBeenCalled();
+  expect(state.pendingRecurringPlanAction).toBeNull();
+  expect(state.editorDraft).toBeNull();
+});
 
 it.each(['plan', 'todo', 'month'] as const)('%s failure respects explicit navigation, including equal values', async family => {
   for (const intent of ['selectDate', 'changeMonth', 'openDay', 'openWeek', 'same-date', 'same-month', 'none'] as const) {

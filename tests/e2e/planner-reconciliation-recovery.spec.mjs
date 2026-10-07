@@ -1497,3 +1497,41 @@ for (const viewport of cases.filter(item => item.theme === 'light' && ['desktop'
     expect((await durable(page)).materials.some(item => item.name === '保持する手入力' || item.catalogEntryId === 'cancelled')).toBe(false);
   });
 }
+
+for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
+  test(`Plan editor keeps a reopened draft after the previous save completes ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, cases.find(item => item.label === viewport && item.theme === theme));
+    const seeded = await page.evaluate(async date => {
+      const userId = window.__plannerRecoveryHook.snapshot().ownerId;
+      const seeded = await window.__plannerRecoveryRepository.seedPlanUndo({ userId, date, withActual: false });
+      await window.__plannerRecoveryHook.refresh();
+      return seeded;
+    }, E2E_TODAY);
+    await navigate(page, '予定');
+    await page.getByRole('tab', { name: '日', exact: true }).click();
+    const openEditor = async title => {
+      await page.locator('.timeline-plan-block').filter({ hasText: title }).click();
+      await page.getByRole('dialog', { name: `${title}の操作`, exact: true })
+        .getByRole('button', { name: '予定を編集 時間や内容を変更', exact: true }).click();
+      return page.getByRole('dialog', { name: '学習予定を編集', exact: true });
+    };
+    let editor = await openEditor(seeded.plan.title);
+    const returnedBefore = (await repoSnapshot(page)).calls.filter(call => call.method === 'upsertPlan' && call.phase === 'returned').length;
+    await editor.getByRole('textbox', { name: '予定名', exact: true }).fill('先に保存した予定');
+    await page.evaluate(() => window.__plannerRecoveryRepository.holdNextPlanWrite());
+    await editor.getByRole('button', { name: '学習予定を更新', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    await expect.poll(async () => (await repoSnapshot(page)).pendingPlanWrites).toBe(1);
+    editor = await openEditor('先に保存した予定');
+    await editor.getByRole('textbox', { name: '予定名', exact: true }).fill('後から入力した未保存の予定');
+    expect(await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanWrite())).toBe(true);
+    await expect.poll(async () => (await repoSnapshot(page)).calls.filter(call => call.method === 'upsertPlan' && call.phase === 'returned').length).toBe(returnedBefore + 1);
+    await expect(page.getByText('学習予定を更新しました。', { exact: true })).toBeVisible();
+    await expect(editor).toBeVisible();
+    await expect(editor.getByRole('textbox', { name: '予定名', exact: true })).toHaveValue('後から入力した未保存の予定');
+    await editor.getByRole('button', { name: '学習予定を更新', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]').map(event => event.title)))
+      .toEqual(['後から入力した未保存の予定']);
+  });
+}
