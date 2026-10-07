@@ -43,6 +43,7 @@ import {
 } from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';
 import {
   createWeeklyPlanningSelfRepairNoticeV5,
+  weeklyPlanningTurnRemovalsV5,
   type WeeklyPlanningSelfRepairNoticeV5,
 } from '../semantic/weeklyPlanningSelfRepairV5';
 import {
@@ -281,8 +282,8 @@ function createRenderInput(params: {
           userText: params.input.userText,
         }),
         groundingRecords: groundingRecords(params.result),
-        // Interaction: the correction as typed data, for the renderer to acknowledge in its own
-        // words. Legacy: the pre-#488 prewritten acknowledgement sentence.
+        // Interaction: the correction (and anything removed in this turn) as typed data, for the
+        // renderer to acknowledge in its own words. Legacy: the pre-#488 prewritten sentence.
         ...(interaction
           ? {
               selfRepair: params.selfRepair
@@ -292,6 +293,10 @@ function createRenderInput(params: {
                     after: params.selfRepair.after,
                   }
                 : null,
+              removedThisTurn: weeklyPlanningTurnRemovalsV5({
+                graph: params.result.stableV5Graph,
+                currentTurnId: params.input.traceRequestId,
+              }),
             }
           : { selfRepairNotice: params.notice }),
       }

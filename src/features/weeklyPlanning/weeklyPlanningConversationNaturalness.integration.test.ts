@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './application/weeklyPlanningStableV5RuntimeSession';
 import { resolveWeeklyPlanningQuestionPresentationFreshness } from './intake/weeklyPlanningQuestionPresentation';
+import { typedStableV5RuntimeQuestionText } from './application/weeklyPlanningStableV5RuntimeQuestions';
 import {
   createScriptedConversation,
   installScriptedWeeklyPlanningProvider,
@@ -413,7 +414,13 @@ describe('Issue #488 naturalness: the measured explanation turn is a normal succ
     expect(why.result?.dialogueRendererTrace).toMatchObject({ response: { reason: 'missing_question' } });
     expect(why.result?.questionPresentationContent).toMatchObject({ responseSource: 'deterministic_fallback' });
     expect(lastMessage(conversation)).not.toContain('空き時間に収めるためです。');
-    expect(lastMessage(conversation)).toContain('数学の問題集');
+    // The emergency question is exactly the application-typed question text, nothing else.
+    const typedQuestion = typedStableV5RuntimeQuestionText(conversation.graph()!, {
+      domain: 'work_item', code: 'semantic_uncertainty', factId: pendingTarget(conversation).topicId ?? null,
+      details: {}, effortMeasurement: null,
+    } as Parameters<typeof typedStableV5RuntimeQuestionText>[1]);
+    expect(typedQuestion).toBeTruthy();
+    expect(lastMessage(conversation).endsWith(typedQuestion!)).toBe(true);
     expect(freshness(conversation)).toBe('fresh');
   });
 
@@ -507,6 +514,52 @@ describe('Issue #488 naturalness: mixed, stale and foreign references', () => {
     await plain.submit('あと英語の長文も10ページやりたい');
     expect(pendingTarget(plain).targetSlot).toBe(pending.targetSlot);
     expect(pendingTarget(plain).topicId).not.toBe(pending.topicId);
+  });
+
+  it('hands a removal made in the same turn to the renderer while the asked-about question is explained', async () => {
+    const SETUP_WITH_TUESDAY = '来週、数学の問題集を20問進めたい。火曜日の18時から20時は勉強できない';
+    setupDocument = {
+      ...effortSetupDocument(),
+      availabilityDeclarations: [{
+        localId: 'a1', kind: 'unavailable', dateExpression: 'weekday:tuesday', namedTimePeriod: null,
+        startTime: '18:00', endTime: '20:00', recurrenceKind: null, days: [], constraintLevel: 'hard',
+        capacityMinutes: null, sourceText: '火曜日の18時から20時は勉強できない',
+      }],
+    };
+    const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1' });
+    script = (call) => (call.kind === 'semantic_generic' && basePayload(call).userText === SETUP_WITH_TUESDAY
+      ? JSON.stringify(setupDocument)
+      : undefined);
+    await conversation.submit(SETUP_WITH_TUESDAY);
+    const pending = pendingTarget(conversation);
+    const MIXED = '火曜の予定はやっぱりなしで。なんで時間が必要なの？';
+    script = (call) => {
+      if (call.kind !== 'semantic_generic') return undefined;
+      const availability = (summaryOf(call).availabilityDeclarations as Json[])[0];
+      return JSON.stringify(emptyDocument({
+        planningIntent: 'update_plan',
+        corrections: [{
+          localId: 'c1',
+          target: { kind: 'availability_declaration', publicId: availability.publicId, localId: null, mention: '火曜の予定' },
+          operation: 'remove', replacementLocalId: null, sourceText: '火曜の予定はやっぱりなしで',
+        }],
+        conversationActs: [act('ask_about_pending_question')],
+      }));
+    };
+    const turn = await conversation.submit(MIXED);
+
+    expect(turn.result?.failure).toBeUndefined();
+    expect(turn.result?.interactionOutcome).toMatchObject({ kind: 'explain_pending_question' });
+    const renderer = turn.calls.find((call) => call.kind === 'renderer');
+    expect(rendererDecision(renderer)).toMatchObject({ communication: { goal: 'explain_question' } });
+    // The removal itself is typed plan data the reply must acknowledge first.
+    const summary = renderer?.payload?.planningStateSummary as Json;
+    expect((summary.acceptedFacts as Json).removedThisTurn).toEqual([
+      expect.objectContaining({ kind: 'availability_declaration', label: '火曜の予定' }),
+    ]);
+    expect(String(renderer?.payload?.request)).toContain('removedThisTurn');
+    expect(pendingTarget(conversation)).toEqual(pending);
+    expect(freshness(conversation)).toBe('fresh');
   });
 
   it('does not bind an explanation act to a question that is no longer on screen', async () => {

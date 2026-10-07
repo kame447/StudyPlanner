@@ -161,6 +161,31 @@ describe('Stable V5 dialogue prompt', () => {
     }
   });
 
+  it('asks the renderer to acknowledge what this turn removed only when something was removed', () => {
+    const communication = {
+      goal: 'explain_question' as const,
+      questionPurposes: ['tell_plan_amount_from_remaining_total' as const],
+      askQuestion: true,
+      laterNeeds: [],
+      statusReason: null,
+      planningDetailsNotApplied: false,
+      consultationDeferred: false,
+      previewDisclosure: null,
+    };
+    const withRemoval = createWeeklyPlanningStableV5DialoguePrompt({
+      ...input(),
+      communication,
+      planningInformation: { ...input().planningInformation, removedThisTurn: [{ kind: 'task', taskLabel: '英語', label: '英語' }] },
+    });
+    const without = createWeeklyPlanningStableV5DialoguePrompt({
+      ...input(),
+      communication,
+      planningInformation: { ...input().planningInformation, removedThisTurn: [] },
+    });
+    expect((JSON.parse(withRemoval.userPrompt) as { request: string }).request).toContain('removedThisTurn');
+    expect((JSON.parse(without.userPrompt) as { request: string }).request).not.toContain('removedThisTurn');
+  });
+
   it('lets the acknowledgement of this turn\'s new details come before an explanation (mixed turn)', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt({
       ...input(),

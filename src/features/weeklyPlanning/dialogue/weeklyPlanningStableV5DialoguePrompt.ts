@@ -172,17 +172,18 @@ const INTERACTION_GOAL_INSTRUCTION = 'communication.goalはアプリが決めた
 /** Only the instruction of the typed goal of this reply is sent (selected by the goal code). */
 const INTERACTION_GOAL_INSTRUCTIONS: Readonly<Record<WeeklyPlanningStableV5CommunicationGoal, string>> = {
   ask_question: 'goal=ask_question: questionIntentの質問を一つ聞く。このturnで受け取った情報があれば先に短く受け止める。',
-  report_status: 'goal=report_status: statusReason=ready_to_create_preview→予定を作るのに必要なことはそろい、頼めば仮予定を作れると伝える（「この条件で予定を作って」のように頼めると添えてよい）。preview_unchanged→今の仮予定の候補はそのままで、直したい点を言うかpreviewPromotionControlLabelの操作で進められると伝える。',
-  present_preview: 'goal=present_preview: previewCount件の候補ができたことと、previewPromotionControlLabelの操作を案内する。',
+  report_status: 'goal=report_status: このturnで受け取った情報があれば先に短く受け止める。statusReason=ready_to_create_preview→予定を作るのに必要なことはそろい、頼めば仮予定を作れると伝える。preview_unchanged→今の仮予定の候補はそのままで、直したい点を言うかpreviewPromotionControlLabelの操作で進められると伝える。',
+  present_preview: 'goal=present_preview: このturnで受け取った情報があれば先に短く受け止める。previewCount件の候補ができたことと、previewPromotionControlLabelの操作を案内する。',
   explain_question: 'goal=explain_question: ユーザーは直前の質問の理由や意味を尋ねている。最初に（required_before_resumeならACKのすぐ後に）、なぜその情報が必要かをquestionPurposes（意味はpurposeMeanings）と分かっている内容（relevantLabels・量・期間など）に沿って具体的に答える。ユーザーの思う質問の中身が実際と違えば、いま確かめたいことを穏やかに伝える。laterNeedsは疑問への答えに役立つときだけ触れてよい。そのあとaskQuestion=trueなら、同じ質問をrequestedInformationを落とさず、直前と同じ文面にせず一度だけ聞く。',
   acknowledge_aside: 'goal=acknowledge_aside: ユーザーが移った別の話題に自然に応じる。止まっている質問は聞かず、保留や未変更の説明もしない。',
   resume_question: 'goal=resume_question: その話題に自然に戻り、その質問を一つ聞く。',
-  clarify_turn: 'goal=clarify_turn: このメッセージはいまの形では予定に使えず、予定には何も加わっていない。理由やアプリの事情は言わず、うまく受け取れなかったことを短く自然に伝え、askQuestion=trueならその質問を、falseなら何を予定に入れたいかを聞く。同じ文面の再送は頼まない。',
+  clarify_turn: 'goal=clarify_turn: このメッセージは予定づくりに使えなかった。そのことの報告や理由、アプリの事情は書かず、うまく受け取れなかったことを短く自然に伝える（聞き返す形でもよい）。askQuestion=trueならその質問を、falseなら何を予定に入れたいかを聞く。同じ文面の再送は頼まない。',
 };
 
 function interactionCommunicationInstructions(
   communication: WeeklyPlanningStableV5CommunicationContext | null,
   hasSelfRepair: boolean,
+  hasRemovals: boolean,
 ): string[] {
   if (!communication) return [INTERACTION_GOAL_INSTRUCTION];
   return [
@@ -192,14 +193,17 @@ function interactionCommunicationInstructions(
     ...(hasSelfRepair
       ? ['acceptedFacts.selfRepairはユーザーがこのturnで訂正した内容（before→after）。最初に短く自然に受け止めてから続ける。']
       : []),
+    ...(hasRemovals
+      ? ['acceptedFacts.removedThisTurnはユーザーがこのturnで取り消した内容。最初に短く自然に受け止めてから続ける（取り消したものを予定に残っているようには言わない）。']
+      : []),
     ...(communication.previewDisclosure
       ? ['previewDisclosure: 入りきらなかった作業（omittedWork）はアプリが返答のあとに一文で伝える。返答ではextent=allの作業名を出さず、作業が入った・入らないにも触れず、候補ができたことと操作の案内を書く。']
       : []),
     ...(communication.planningDetailsNotApplied
-      ? ['planningDetailsNotApplied=true: このメッセージにあった予定の内容は取り込めていない。理由は言わず、変えたいことがあればもう一度教えてほしいと一文添える。']
+      ? ['planningDetailsNotApplied=true: このメッセージの予定の詳細はまだ受け取れていない。受け取れた・受け取れないの報告や理由は書かず、変えたいことがあれば改めて教えてほしいと自然に一言添える。']
       : []),
     ...(communication.consultationDeferred
-      ? ['consultationDeferred=true: 助言・相談への回答は今回は行っていないと一文で伝え、助言内容や数値判断を発明しない。']
+      ? ['consultationDeferred=true: その相談にはここではまだ答えられないと、人として自然に一言だけ伝える。助言の内容や数値の判断は書かない。']
       : []),
   ];
 }
@@ -239,6 +243,9 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
         ? interactionCommunicationInstructions(
             communication,
             isRecord(input.planningInformation) && isRecord(input.planningInformation.selfRepair),
+            isRecord(input.planningInformation)
+              && Array.isArray(input.planningInformation.removedThisTurn)
+              && input.planningInformation.removedThisTurn.length > 0,
           )
         : [LEGACY_EXPLANATION_INSTRUCTION]),
       ...(interactionOutcome

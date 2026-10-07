@@ -82,7 +82,9 @@ describe('interaction emergency wording', () => {
     expect(compose(context('clarify_turn'))).not.toMatch(/送って|送り直|言い換え/u);
     expect(compose(context('clarify_turn', { askQuestion: false, questionPurposes: [] }))).not.toMatch(/送って|送り直|言い換え/u);
     expect(weeklyPlanningInteractionProviderUnavailableText(null)).toMatch(/もう一度送って/u);
+    // With the retained question, the question is the one request of the reply.
     expect(weeklyPlanningInteractionProviderUnavailableText(QUESTION)).toContain(QUESTION);
+    expect(weeklyPlanningInteractionProviderUnavailableText(QUESTION)).not.toMatch(/送って/u);
   });
 
   it('discloses every omitted work label and the preview control', () => {

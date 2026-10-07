@@ -448,7 +448,7 @@ describe('Issue #488 C/D: failures become conversational recovery', () => {
     expect(effortMinutesFor(conversation, pending.topicId)).toEqual([4]);
   });
 
-  it('gives resend guidance without inventing a content clarification on provider failure', async () => {
+  it('re-asks the retained question (one request) without inventing a content clarification on provider failure', async () => {
     const conversation = createScriptedConversation({ provider });
     await conversation.submit(MATH_SETUP);
     const pending = pendingTarget(conversation);
@@ -459,10 +459,12 @@ describe('Issue #488 C/D: failures become conversational recovery', () => {
 
     expect(failed.result?.failure?.code).toBe('stable_v5_provider_failure');
     expect(failed.result?.interactionOutcome).toMatchObject({ kind: 'recover', failure: 'provider' });
-    // The provider just failed: no renderer call; short emergency wording asks for a resend.
+    // The provider just failed: no renderer call; the short emergency wording asks only the
+    // retained question again (one request, no separate resend request).
     expect(failed.calls.some((call) => call.kind === 'renderer')).toBe(false);
     const message = latestAssistant(conversation).content;
-    expect(message).toContain('もう一度送って');
+    expect(message).toContain('1問あたり');
+    expect(message).not.toMatch(/送って/u);
     expect(message).not.toContain('いつの予定を作るか');
     expect(message).not.toMatch(INTERNAL_PROCESS_WORDING);
     expect(conversation.graph()).toEqual(graphBefore);

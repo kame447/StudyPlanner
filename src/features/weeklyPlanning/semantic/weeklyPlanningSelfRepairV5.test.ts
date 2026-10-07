@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyWeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
-import { createWeeklyPlanningSelfRepairNoticeV5 } from './weeklyPlanningSelfRepairV5';
+import { createWeeklyPlanningSelfRepairNoticeV5, weeklyPlanningTurnRemovalsV5 } from './weeklyPlanningSelfRepairV5';
 
 const source = (turnId: string, localId: string, text: string) => ({
   conversationId: 'conversation-1', turnId, semanticLocalId: localId, sourceText: text, origin: 'user' as const,
@@ -74,5 +74,29 @@ describe('Stable V5 self repair notice', () => {
       source: source('turn-2', 'correction', 'それはなし'), createdRevision: 2,
     }];
     expect(createWeeklyPlanningSelfRepairNoticeV5({ graph, currentTurnId: 'turn-2' })).toBeNull();
+  });
+});
+
+describe('Stable V5 removals of the current turn (Issue #488)', () => {
+  it('lists only what this turn removed, as plan data for the renderer', () => {
+    const graph = createEmptyWeeklyPlanningFactGraphV5();
+    graph.revision = 3;
+    graph.tasks = [
+      { id: 'task-english', category: 'study', title: '英語', source: source('turn-1', 'english', '英語'), createdRevision: 1 },
+      { id: 'task-math', category: 'study', title: '数学', source: source('turn-1', 'math', '数学'), createdRevision: 1 },
+    ];
+    graph.correctionIntents = [
+      {
+        id: 'remove-english', target: { kind: 'task', publicId: 'task-english', factId: 'task-english', mention: '英語' },
+        operation: 'remove', replacementFactId: null, source: source('turn-3', 'remove', '英語はやめる'), createdRevision: 3,
+      },
+      {
+        id: 'remove-old', target: { kind: 'task', publicId: 'task-math', factId: 'task-math', mention: '数学' },
+        operation: 'remove', replacementFactId: null, source: source('turn-2', 'old', '数学はなし'), createdRevision: 2,
+      },
+    ];
+    expect(weeklyPlanningTurnRemovalsV5({ graph, currentTurnId: 'turn-3' }))
+      .toEqual([{ kind: 'task', taskLabel: '英語', label: '英語' }]);
+    expect(weeklyPlanningTurnRemovalsV5({ graph, currentTurnId: 'turn-4' })).toEqual([]);
   });
 });

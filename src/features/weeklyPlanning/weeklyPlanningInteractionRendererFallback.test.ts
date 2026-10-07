@@ -83,7 +83,7 @@ describe('interaction emergency wording replaces routing sentences when the rend
     });
     expect(result.responseSource).toBe('deterministic_fallback');
     expect(result.message).not.toContain('条件を整理できました');
-    expect(result.message).toContain('この条件で予定を作って');
+    expect(result.message).toContain('仮予定を作って');
     expect(result.message).not.toMatch(INTERNAL_PROCESS_WORDING);
     expect(rendererMock).toHaveBeenCalledWith(expect.objectContaining({
       communication: expect.objectContaining({ goal: 'report_status', statusReason: 'ready_to_create_preview' }),

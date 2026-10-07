@@ -64,6 +64,37 @@ function factLabel(
   return reference.mention;
 }
 
+/**
+ * Something the user removed in this turn (Issue #488), as typed data for the interaction
+ * renderer to acknowledge in its own words. A replacement is covered by the self-repair notice;
+ * a pure removal leaves no fact accepted in the turn, so without this the reply could neither
+ * acknowledge it nor avoid contradicting it. Values are plan data, never prose.
+ */
+export interface WeeklyPlanningTurnRemovalV5 {
+  kind: CanonicalSemanticReferenceV5['kind'];
+  /** The task the removed fact belonged to, when known. */
+  taskLabel: string | null;
+  /** The removed item: its title/label/value, or the user's own words for it. */
+  label: string;
+}
+
+export function weeklyPlanningTurnRemovalsV5(params: {
+  graph: WeeklyPlanningFactGraphV5;
+  currentTurnId: string;
+}): WeeklyPlanningTurnRemovalV5[] {
+  return params.graph.correctionIntents
+    .filter((item) => item.source.turnId === params.currentTurnId
+      && item.operation === 'remove'
+      && Boolean(item.target.factId))
+    .flatMap((item) => {
+      const factId = item.target.factId as string;
+      const label = factLabel(params.graph, item.target, factId)?.trim();
+      return label
+        ? [{ kind: item.target.kind, taskLabel: taskLabelForFact(params.graph, factId), label }]
+        : [];
+    });
+}
+
 export function createWeeklyPlanningSelfRepairNoticeV5(params: {
   graph: WeeklyPlanningFactGraphV5;
   currentTurnId: string;

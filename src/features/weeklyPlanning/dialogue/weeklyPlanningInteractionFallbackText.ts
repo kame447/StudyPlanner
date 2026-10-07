@@ -20,13 +20,15 @@ import { weeklyPlanningPreviewOmissionDisclosureText } from './weeklyPlanningPre
  */
 
 const PROVIDER_UNAVAILABLE = 'すみません、通信がうまくいかなかったようです。お手数ですが、もう一度送ってもらえますか？';
-const MESSAGE_NOT_UNDERSTOOD = 'すみません、いまのところをうまく受け取れませんでした。';
+/** Before the retained question: the question itself is the one request of the reply. */
+const PROVIDER_UNAVAILABLE_BEFORE_QUESTION = 'すみません、うまく届かなかったようです。';
+const MESSAGE_NOT_UNDERSTOOD = 'すみません、いまのメッセージをうまく受け取れませんでした。';
 const CONTINUE_INVITATION = 'どんな勉強の予定を立てたいか、続けて教えてください。';
 const EXPLANATION_BRIDGE = '予定を無理なく組むのに必要なので、確認させてください。';
 const ASIDE_ACKNOWLEDGEMENT = 'わかりました。どうぞ続けてください。';
 const CONSULTATION_NOT_ANSWERED = 'そのご相談には、ここではまだお答えできません。';
 const DETAILS_INVITATION = '予定について変えたいことがあれば、もう一度教えてください。';
-const READY_TO_CREATE_PREVIEW = '必要なことはそろいました。仮予定を作るときは「この条件で予定を作って」と送ってください。';
+const READY_TO_CREATE_PREVIEW = '必要なことはそろいました。仮予定を作ってよければ、そう伝えてください。';
 const CAPACITY_SHORTFALL = '今の期間と空き時間では、全部は入りきりませんでした。期間を延ばすか、量を減らすか、使える時間を増やせるかを教えてください。';
 const GENERIC_CONTINUE = '続けて、予定の希望を教えてください。';
 
@@ -53,9 +55,12 @@ export function weeklyPlanningInteractionClarifyText(questionText: string | null
     : `${MESSAGE_NOT_UNDERSTOOD}${CONTINUE_INVITATION}`;
 }
 
-/** Provider failure: the renderer is not called (the same provider just failed). */
+/**
+ * Provider failure: the renderer is not called (the same provider just failed). With a retained
+ * question the reply asks only that question (one request); otherwise it asks for a resend.
+ */
 export function weeklyPlanningInteractionProviderUnavailableText(questionText: string | null): string {
-  return questionText ? `${PROVIDER_UNAVAILABLE}\n\n${questionText}` : PROVIDER_UNAVAILABLE;
+  return questionText ? `${PROVIDER_UNAVAILABLE_BEFORE_QUESTION}\n\n${questionText}` : PROVIDER_UNAVAILABLE;
 }
 
 export function composeWeeklyPlanningInteractionFallbackText(params: {
@@ -104,8 +109,8 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
       main = question || GENERIC_CONTINUE;
   }
   return [
-    communication.consultationDeferred ? CONSULTATION_NOT_ANSWERED : '',
     main,
+    communication.consultationDeferred ? CONSULTATION_NOT_ANSWERED : '',
     communication.planningDetailsNotApplied ? DETAILS_INVITATION : '',
   ].join('');
 }
