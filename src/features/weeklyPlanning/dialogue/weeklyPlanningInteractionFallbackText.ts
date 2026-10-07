@@ -19,7 +19,7 @@ import { WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL } from './weeklyPlannin
 const PROVIDER_UNAVAILABLE = 'すみません、通信がうまくいかなかったようです。お手数ですが、もう一度送ってもらえますか？';
 const MESSAGE_NOT_UNDERSTOOD = 'すみません、いまのところをうまく受け取れませんでした。';
 const CONTINUE_INVITATION = 'どんな勉強の予定を立てたいか、続けて教えてください。';
-const EXPLANATION_BRIDGE = '予定を無理なく組むために、ここを教えてください。';
+const EXPLANATION_BRIDGE = '予定を無理なく組むのに必要なので、確認させてください。';
 const ASIDE_ACKNOWLEDGEMENT = 'わかりました。どうぞ続けてください。';
 const CONSULTATION_NOT_ANSWERED = 'そのご相談には、ここではまだお答えできません。';
 const DETAILS_INVITATION = '予定について変えたいことがあれば、もう一度教えてください。';
