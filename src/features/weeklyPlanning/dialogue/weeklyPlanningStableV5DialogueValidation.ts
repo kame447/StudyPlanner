@@ -277,7 +277,14 @@ function claimsUnexecutedAction(
   text: string,
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): boolean {
-  const narrative = safetyNarrative(text, input);
+  const rawNarrative = safetyNarrative(text, input);
+  // Candidate creation is evidenced by this turn's preview, unlike creating a
+  // saved plan. Match only the direct candidate object, never arbitrary words
+  // between it and the predicate; later mutations in the same sentence stay checked.
+  const narrative = conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome
+    && input.actionKind === 'preview_ready' && input.previewCount >= 1
+    ? rawNarrative.replace(/(^|[。！？!?\n])(\s*候補(?:\s*\d+\s*件(?:を)?|を(?:\s*\d+\s*件)?)?\s*)作成しました/gu, '$1$2〈候補提示〉')
+    : rawNarrative;
   // A question only exempts the action predicate it directly follows. A later
   // question in the same sentence cannot excuse an earlier completion claim.
   const sentences = narrative.match(/[^。！？!?\n]+[。！？!?\n]?/g) ?? [];
