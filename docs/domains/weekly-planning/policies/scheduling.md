@@ -127,6 +127,18 @@ preferred time、observed profile、learning-specific scoreは、hard availabili
 - personalization unavailable/failed時はsafe deterministic baselineへ戻る
 - preferenceはfree timeを新設しない
 
+plan-wideの希望時間帯（例: 平日は20時以降）もtask/componentの希望時間帯も、解決済みの日付・時刻から配置用のpreferenceへ渡す。plan-wideの希望は各work targetへ適用し、task/component固有の希望を先に評価する。希望時間に安全な空きがない場合、soft preferenceをhard constraintへ昇格させず、既存の安全な候補へ戻る。
+
+## Estimated effort and allocated time
+
+作業量とペースから求めた見積もり時間と、実際に確保する予定枠は区別する。current allocation policyは、適用されるペース補正のあとに10%の余裕を加え、基準見積もりが60分以下なら5分単位、60分を超えるなら15分単位で切り上げる。
+
+- 20ページ×3分、12ページ×5分はいずれも基準60分 → 余裕込み66分 → 確保70分
+- 基準120分の見積もりは132分 → 確保135分（固定で10分を加える仕様ではない）
+- 「2時間進める」のような時間そのものを作業量とする`intrinsic_duration`には10%の見積もり余裕を加えない
+
+プレビューの時刻・合計は確保した時間を表示する。会話で予定枠の長さを説明するときも、作業量×ペースをそのまま予定枠と断言せず、実際の候補時間を根拠にする。余裕と切り上げは`semantic/weeklyPlanningEffortAllocation.ts`が所有し、既存予定の前後に置く衝突回避bufferとは別である。
+
 ## Change rule
 
 scheduler policyを変更するときは、少なくとも次を確認する。
