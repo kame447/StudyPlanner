@@ -17,7 +17,6 @@ import type {
   WeeklyPlanningReasoningKey,
 } from './types';
 import { createInitialPlanningState } from './weeklyPlanningReducer';
-import { isWeeklyPlanningAllocationBreakdown } from './semantic/weeklyPlanningAllocationBreakdown';
 import {
   hydratedConversationArchitecture,
   isWeeklyPlanningConversationArchitecture,
@@ -241,7 +240,7 @@ function isDraftBlock(value: unknown): value is WeeklyPlanDraftBlock {
     || !hasOnlyKeys(value, [
       'id', 'userId', 'date', 'startTime', 'endTime', 'title', 'subject', 'type', 'label',
       'materialId', 'materialName', 'memo', 'source', 'status', 'userEdited',
-      'behaviorMetadata', 'createdAt', 'updatedAt', 'allocationBreakdown',
+      'behaviorMetadata', 'createdAt', 'updatedAt',
     ])) {
     return false;
   }
@@ -260,7 +259,6 @@ function isDraftBlock(value: unknown): value is WeeklyPlanDraftBlock {
     && value.source === 'ai'
     && value.status === 'draft'
     && typeof value.userEdited === 'boolean'
-    && (value.allocationBreakdown === undefined || isWeeklyPlanningAllocationBreakdown(value.allocationBreakdown))
     && (value.behaviorMetadata === undefined || isBehaviorMetadata(value.behaviorMetadata))
     && isTimestamp(value.createdAt)
     && isTimestamp(value.updatedAt);
@@ -270,7 +268,7 @@ function isPreviewCandidate(value: unknown): value is WeeklyDraftCandidate {
   if (!isRecord(value)
     || !hasOnlyKeys(value, [
       'stableKey', 'date', 'startTime', 'endTime', 'durationMinutes', 'title', 'field',
-      'year', 'estimatedMinutes', 'source', 'approvalStatus', 'workItemKey', 'behaviorMetadata', 'allocationBreakdown',
+      'year', 'estimatedMinutes', 'source', 'approvalStatus', 'workItemKey', 'behaviorMetadata',
     ])) {
     return false;
   }
@@ -286,7 +284,6 @@ function isPreviewCandidate(value: unknown): value is WeeklyDraftCandidate {
     && value.source === 'weekly_exam_prep'
     && value.approvalStatus === 'unapproved'
     && typeof value.workItemKey === 'string'
-    && (value.allocationBreakdown === undefined || isWeeklyPlanningAllocationBreakdown(value.allocationBreakdown))
     && (value.behaviorMetadata === undefined
       || isBehaviorAwarePreviewMetadata(value.behaviorMetadata));
 }

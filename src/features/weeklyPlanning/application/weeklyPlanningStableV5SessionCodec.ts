@@ -7,7 +7,6 @@ import {
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { parseWeeklyPlanningFactGraphV5, validateWeeklyPlanningFactGraphValueV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
 import { validC5SessionRecords } from './c5LocalSelection/basis';
-import { isWeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
 
 export const WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION =
   'studyplanner-weekly-planning-stable-v5-session-v1' as const;
@@ -92,7 +91,6 @@ function isDraftBlock(value: unknown, ownerId: string, conversationId: string): 
     || typeof value.userEdited !== 'boolean'
     || !isTimestamp(value.createdAt)
     || !isTimestamp(value.updatedAt)
-    || (value.allocationBreakdown !== undefined && !isWeeklyPlanningAllocationBreakdown(value.allocationBreakdown))
   ) {
     return false;
   }
@@ -143,7 +141,6 @@ function isPreviewCandidate(value: unknown, graphRevision: number): boolean {
     && value.source === 'weekly_exam_prep'
     && value.approvalStatus === 'unapproved'
     && isNonEmptyString(value.workItemKey)
-    && (value.allocationBreakdown === undefined || isWeeklyPlanningAllocationBreakdown(value.allocationBreakdown))
     && isStableV5Metadata(value.stableV5Metadata, graphRevision);
 }
 
