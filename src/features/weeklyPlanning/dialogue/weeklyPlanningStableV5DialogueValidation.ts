@@ -1,6 +1,7 @@
 import {
   groundedDateExpressionsFromPlanningInformation,
 } from './weeklyPlanningDialogueDateGrounding';
+import { claimsUnverifiedWeeklyPlanningPreviewConstraints } from './weeklyPlanningPreviewConstraintClaims';
 import type {
   WeeklyPlanningStableV5DialogueFallbackReason,
   WeeklyPlanningStableV5DialogueRenderInput,
@@ -19,6 +20,7 @@ const PREVIEW_COUNT_EXPRESSION = /(\d+)\s*件/g;
 // Interaction architecture: the renderer's own claim that candidates were made or changed.
 // Only checked on replies that come with no new preview; naming the existing preview is fine.
 const NEW_CANDIDATES_CLAIM = /(?:候補|仮予定|案)(?:を|が|は|も)?[^。！？!?\n]{0,12}?(?:できました|作りました|作成しました|用意しました|出しました|分けました|変えました|直しました|組みました)/u;
+const APPLIED_PLACEMENT_CLAIM = /(?:希望(?:どおり|通り)に(?:調整|変更|分割)しました|(?:朝|昼|夜|午前|午後|夕方)に(?:分けました|まとめました|組みました|配置しました))/u;
 // An unchanged-preview claim requires that exact application-owned status. A
 // clarification or recovery must not present a stale/rejected correction as final.
 const UNCHANGED_CANDIDATES_CLAIM = /(?:候補|仮予定|案)(?:を|が|は|も)?[^。！？!?\n]{0,12}?(?:そのままです|変わりません|変わっていません|変更していません|変更はありません)/u;
@@ -371,7 +373,10 @@ function validateRenderedText(
     return 'unsafe_text';
   }
 
-  if (missesPreviewPromotionControl(text, input) || mentionsFullyOmittedWork(text, input)) {
+  if (missesPreviewPromotionControl(text, input) || mentionsFullyOmittedWork(text, input)
+    || (input.communication && claimsUnverifiedWeeklyPlanningPreviewConstraints(
+      text, input.communication.previewConstraintSatisfaction,
+    ))) {
     return 'action_contract_mismatch';
   }
 
@@ -383,7 +388,8 @@ function validateRenderedText(
 
   // No new preview in this reply (status, question, …): it may not claim new or changed
   // candidates, e.g. "both evening" when the preview stayed as it was.
-  if (input.communication && input.actionKind !== 'preview_ready' && NEW_CANDIDATES_CLAIM.test(text)) {
+  if (input.communication && input.actionKind !== 'preview_ready'
+    && (NEW_CANDIDATES_CLAIM.test(text) || APPLIED_PLACEMENT_CLAIM.test(text))) {
     return 'preview_claim_without_preview';
   }
   if (input.communication && input.communication.statusReason !== 'preview_unchanged'

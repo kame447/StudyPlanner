@@ -13,6 +13,7 @@ import { setWeeklyPlanningTraceRepositoryForTests } from './trace/weeklyPlanning
 import { listWeeklyPlanningTraceOutboxItems } from './trace/weeklyPlanningTraceOutbox';
 import { recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5TraceRuntimeForTest, resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest } from './trace/weeklyPlanningStableV5TraceRuntime';
 import type { WeeklyPlanningTraceEntry, WeeklyPlanningTraceRepository, WeeklyPlanningTraceSession } from './trace/weeklyPlanningTraceTypes';
+import type { WeeklyPlanningStableV5PreviewProvenance } from './weeklyPlanningPreviewProvenance';
 import { measureWeeklyPlanningTraceJsonBytes, WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS } from '../../../shared/weeklyPlanningTraceContract';
 import { prepareWeeklyPlanningTraceServerWrite } from '../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
 
@@ -260,6 +261,10 @@ describe('real E2E Scenario C correction through production controller', () => {
     } });
     expect(conversation.getState().previewCandidates).not.toEqual(preview);
     expect(conversation.getState().previewCandidates?.length).toBeGreaterThan(0);
+    expect(conversation.getState().previewCandidates?.every(candidate =>
+      (candidate as typeof candidate & { stableV5Metadata?: WeeklyPlanningStableV5PreviewProvenance })
+        .stableV5Metadata?.sourceFactRefs.includes(replacement.id))).toBe(true);
+    expect(conversation.getState().previewCandidates?.some(candidate => candidate.title.includes('30ページ'))).toBe(false);
     expect(conversation.getState().intakeState?.questions).toEqual([]);
     expect(conversation.getState().previewCandidates?.every(candidate => candidate.date <= '2026-10-16')).toBe(true);
     expect(classifyWeeklyPlanningApprovalAvailability({ blocks: oldBlocks, userId: conversation.ownerId })).toMatchObject({ kind: 'recompute_required' });
@@ -272,6 +277,8 @@ describe('real E2E Scenario C correction through production controller', () => {
     const finalActive = new Set(finalGraph.factLifecycles.filter(entry => entry.status === 'active').map(entry => entry.factId));
     expect(finalGraph.workloads.filter(entry => finalActive.has(entry.id)).map(entry => entry.amount)).toEqual([20]);
     expect(finalGraph.temporalConstraints.filter(entry => finalActive.has(entry.id))).toMatchObject([{ dateExpression: '2026-10-16' }]);
+    expect(finalGraph.temporalConstraints.filter(entry => finalActive.has(entry.id)).map(entry => entry.taskId))
+      .toEqual(finalGraph.tasks.filter(entry => finalActive.has(entry.id)).map(entry => entry.id));
   });
 
   it('preserves the legacy rejection and unchanged preview byte for byte', async () => {

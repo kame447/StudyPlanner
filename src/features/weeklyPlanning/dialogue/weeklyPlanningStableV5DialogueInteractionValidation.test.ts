@@ -152,6 +152,12 @@ describe('interaction renderer output: no claimed candidates without a new previ
       .toMatchObject({ status: 'fallback', reason: 'preview_claim_without_preview' });
   });
 
+  it.each(['どちらも夜に分けました。', '希望どおりに調整しました。'])('rejects a placement claim without naming a candidate: %s', (text) => {
+    expect(render(unchangedStatus(), text)).toMatchObject({ status: 'fallback', reason: 'preview_claim_without_preview' });
+    const legacy = input({ ...unchangedStatus(), conversationArchitecture: 'legacy_v5', communication: undefined });
+    expect(render(legacy, text)).not.toMatchObject({ reason: 'preview_claim_without_preview' });
+  });
+
   it('accepts naming the existing preview as unchanged', () => {
     expect(render(unchangedStatus(), '今の2件の候補はそのままです。直したいところがあれば教えてください。よければ「この内容で仮予定にする」を押してください。'))
       .toMatchObject({ status: 'rendered' });
@@ -216,6 +222,32 @@ describe('interaction renderer output: preview disclosure', () => {
       planningInformation: { tasks: [{ title: '英語', category: 'study' }, { title: '英語の長文', category: 'study' }] },
     });
     expect(render(withLongerTask, '英語の長文で2件の候補を作りました。よければ「この内容で仮予定にする」を押してください。'))
+      .toMatchObject({ status: 'rendered' });
+  });
+});
+
+describe('interaction renderer output: actual preview constraints', () => {
+  it.each(['not_satisfied', 'not_evaluated'] as const)('rejects a new-preview placement claim with %s evidence', (status) => {
+    const renderInput = input({
+      actionId: 'stable-v5:request-1:preview_ready', actionKind: 'preview_ready', questionCode: null, previewCount: 3,
+      previewPromotionControlLabel: 'この内容で仮予定にする', requiredLabels: ['この内容で仮予定にする'],
+      communication: communication({
+        goal: 'present_preview', askQuestion: false, questionPurposes: [],
+        previewConstraintSatisfaction: [{
+          sourceFactId: 'night', taskId: 'research', taskLabel: '研究', kind: 'preferred_window', status,
+        }],
+      }),
+    });
+    const claim = 'どちらも夜の候補を3件用意しました。「この内容で仮予定にする」を押してください。';
+    expect(render(renderInput, claim)).toMatchObject({ status: 'fallback', reason: 'action_contract_mismatch' });
+    expect(render({
+      ...renderInput, communication: {
+        ...renderInput.communication!,
+        previewConstraintSatisfaction: renderInput.communication!.previewConstraintSatisfaction!
+          .map(fact => ({ ...fact, status: 'satisfied' })),
+      },
+    }, claim)).toMatchObject({ status: 'rendered' });
+    expect(render({ ...renderInput, conversationArchitecture: 'legacy_v5', communication: undefined }, claim))
       .toMatchObject({ status: 'rendered' });
   });
 });
