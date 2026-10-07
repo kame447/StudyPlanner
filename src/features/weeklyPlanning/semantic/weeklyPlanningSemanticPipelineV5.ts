@@ -296,6 +296,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
             turnId: input.turnId,
             expectedRevision: input.expectedRevision,
             userText: input.userText,
+            conversationArchitecture: input.conversationArchitecture,
           })
         : null;
       recordWeeklyPlanningStableV5DebugTrace({
@@ -332,6 +333,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
         contextualAnswer: Boolean(contextualAnswer),
         questionCode: pendingQuestion?.questionCode ?? null,
         operationKeyPrefix: `${input.conversationId}:${input.turnId}`,
+        conversationArchitecture: input.conversationArchitecture,
       });
       const {
         entityBindingApplication,

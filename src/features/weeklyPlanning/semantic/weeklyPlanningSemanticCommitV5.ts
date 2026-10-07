@@ -1,4 +1,6 @@
 import { enforceSingleActivePlanningWindowV5 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
+import { conversationArchitecturePolicy, type WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
+import { hasWeeklyPlanningSemanticUncertaintyResolutionV5 } from './weeklyPlanningSemanticUncertaintyResolutionV5';
 import {
   applyWeeklyPlanningCanonicalCorrectionsExtendedV5 as applyWeeklyPlanningCanonicalCorrectionsV5,
 } from './weeklyPlanningCanonicalCorrectionApplicationExtendedV5';
@@ -54,11 +56,12 @@ function uniqueDiffEntries(
   });
 }
 
-function removeResolvedWorkBreakdownUncertaintiesV5(params: {
+function removeResolvedSemanticUncertaintiesV5(params: {
   originalGraph: WeeklyPlanningFactGraphV5;
   document: WeeklyPlanningSemanticDocumentV5;
   canonicalization: WeeklyPlanningSemanticCanonicalizationResultV5;
   operationKeyPrefix: string;
+  conversationArchitecture?: WeeklyPlanningConversationArchitecture;
 }): WeeklyPlanningSemanticCanonicalizationResultV5 {
   const { canonicalization } = params;
   if (canonicalization.status !== 'applied' || !canonicalization.diff) {
@@ -74,7 +77,8 @@ function removeResolvedWorkBreakdownUncertaintiesV5(params: {
         && (task.study?.components.length ?? 0) > 0)
       .map((task) => task.existingPublicId as string),
   );
-  if (resolvedTargetIds.size === 0) return canonicalization;
+  const requireCompatibleResolution = conversationArchitecturePolicy(params.conversationArchitecture).freshPendingQuestionBinding;
+  if (!requireCompatibleResolution && resolvedTargetIds.size === 0) return canonicalization;
 
   let graph = canonicalization.graph;
   const removed: WeeklyPlanningFactDiffEntryV5[] = [];
@@ -85,9 +89,14 @@ function removeResolvedWorkBreakdownUncertaintiesV5(params: {
   );
   const uncertaintyIds = graph.uncertainties
     .filter((uncertainty) =>
-      uncertainty.field === 'work_breakdown'
-      && typeof uncertainty.targetFactId === 'string'
-      && resolvedTargetIds.has(uncertainty.targetFactId))
+      requireCompatibleResolution
+        ? params.originalGraph.uncertainties.some((original) => original.id === uncertainty.id)
+          && hasWeeklyPlanningSemanticUncertaintyResolutionV5({
+          graph: params.originalGraph, document: params.document, uncertainty,
+          })
+        : uncertainty.field === 'work_breakdown'
+          && typeof uncertainty.targetFactId === 'string'
+          && resolvedTargetIds.has(uncertainty.targetFactId))
     .map((uncertainty) => uncertainty.id)
     .sort();
 
@@ -213,6 +222,7 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
   contextualAnswer: boolean;
   questionCode: string | null;
   operationKeyPrefix: string;
+  conversationArchitecture?: WeeklyPlanningConversationArchitecture;
 }) {
   const entityBindingApplication = shouldApplyWeeklyPlanningExistingEntityBindingsV5({
     contextualAnswer: params.contextualAnswer,
@@ -251,15 +261,16 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
     canonicalization: percentageProjectedCanonicalization,
     operationKeyPrefix: params.operationKeyPrefix,
   });
-  const workBreakdownCleanedCanonicalization = removeResolvedWorkBreakdownUncertaintiesV5({
+  const uncertaintyReconciledCanonicalization = removeResolvedSemanticUncertaintiesV5({
     originalGraph: params.originalGraph,
     document: params.document,
     canonicalization: boundedProjectedCanonicalization,
     operationKeyPrefix: params.operationKeyPrefix,
+    conversationArchitecture: params.conversationArchitecture,
   });
   const canonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
     originalGraph: params.originalGraph,
-    canonicalization: workBreakdownCleanedCanonicalization,
+    canonicalization: uncertaintyReconciledCanonicalization,
   });
   return {
     entityBindingApplication,

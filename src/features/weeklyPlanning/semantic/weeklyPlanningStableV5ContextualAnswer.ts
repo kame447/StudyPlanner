@@ -25,6 +25,8 @@ import {
 import {
   canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5,
 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
+import { conversationArchitecturePolicy, type WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
+import { hasWeeklyPlanningSemanticUncertaintyResolutionV5 } from './weeklyPlanningSemanticUncertaintyResolutionV5';
 import type {
   WeeklyPlanningSemanticCanonicalizationResultV5,
 } from './weeklyPlanningSemanticCanonicalizerV5';
@@ -54,6 +56,7 @@ export interface WeeklyPlanningStableV5ContextualAnswerInput {
   turnId: string;
   expectedRevision: number;
   userText: string;
+  conversationArchitecture?: WeeklyPlanningConversationArchitecture;
 }
 
 export type WeeklyPlanningStableV5ContextualAnswerEvaluationStatus =
@@ -582,6 +585,20 @@ export function evaluateWeeklyPlanningStableV5ContextualAnswer(
         result: null,
       };
     }
+    if (conversationArchitecturePolicy(input.conversationArchitecture).freshPendingQuestionBinding
+      && (retainsPendingSemanticUncertainty(input, target)
+        || !hasWeeklyPlanningSemanticUncertaintyResolutionV5({
+          graph: input.graph, document: input.document, uncertainty: target,
+        }))) {
+      // Keep the open need, but admit independently valid details through the
+      // ordinary canonicalization path instead of swallowing them as a no-op.
+      return {
+        ...base,
+        status: 'incompatible',
+        reason: 'uncertainty_not_resolved',
+        result: null,
+      };
+    }
     if (
       retainsPendingSemanticUncertainty(input, target)
       || !containsResolvedSemanticDelta(input.document)
@@ -691,6 +708,11 @@ export function applyWeeklyPlanningStableV5ContextualAnswer(
   if (evaluation.status !== 'incompatible') return null;
   if (evaluation.reason === 'target_unavailable') {
     return rejectUnavailableTarget(input);
+  }
+  if (evaluation.reason === 'uncertainty_not_resolved'
+    && conversationArchitecturePolicy(input.conversationArchitecture).freshPendingQuestionBinding
+    && (containsResolvedSemanticDelta(input.document) || (input.document.userContextFacts?.length ?? 0) > 0)) {
+    return null;
   }
   if (
     evaluation.reason === 'duration_not_grounded_in_user_text'
