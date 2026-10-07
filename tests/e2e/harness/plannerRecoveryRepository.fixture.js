@@ -7,7 +7,17 @@ import { createLocalAuthStorageGateway } from '../../../src/repositories/localSt
 import { createLocalPlannerRepository } from '../../../src/repositories/createLocalPlannerRepository';
 
 const real = createLocalPlannerRepository();
-export const authRepository = createAuthRepository(createLocalAuthStorageGateway());
+const authStorage = createLocalAuthStorageGateway();
+let failProfileWrite = false;
+const writeUsers = authStorage.writeUsers;
+authStorage.writeUsers = async users => {
+  if (failProfileWrite) {
+    failProfileWrite = false;
+    throw new Error('プロフィールの保存に失敗しました（検証用）。');
+  }
+  return writeUsers(users);
+};
+export const authRepository = createAuthRepository(authStorage);
 const calls = [];
 let holdActualDispatch = false;
 let heldActualDispatch = null;
@@ -72,6 +82,7 @@ export const plannerRepository = Object.fromEntries(Object.entries(real).map(([m
 
 window.__plannerRecoveryRepository = {
   snapshot,
+  failNextProfileWrite() { failProfileWrite = true; },
   async seedRecurringEditorPlans({ userId, date }) {
     const now = new Date().toISOString();
     const plans = ['A', 'B'].map((suffix, index) => ({
