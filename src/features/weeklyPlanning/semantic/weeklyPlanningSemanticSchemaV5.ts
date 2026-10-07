@@ -1,3 +1,4 @@
+import { weeklyPlanningConsultationAlternativeSchemaV5 } from './weeklyPlanningConsultationAlternativeV5';
 import { WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5 } from './weeklyPlanningConversationActsV5';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
 import { USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1 } from '../../userPlanningContext/userPlanningContextTypes';
@@ -354,9 +355,10 @@ const userContextFactSchema = objectSchema(
 // Discourse metadata of the current turn: no quoted evidence (the turn identity is known)
 // and no planning payload. Validated apart from the planning delta (see conversation acts).
 const conversationActSchema = objectSchema(
-  ['kind', 'targetPublicId'],
+  ['kind', 'targetPublicId', 'placementAlternative'],
   {
     kind: enumSchema(WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5),
+    placementAlternative: weeklyPlanningConsultationAlternativeSchemaV5,
     targetPublicId: nullableStringSchema,
   },
 );

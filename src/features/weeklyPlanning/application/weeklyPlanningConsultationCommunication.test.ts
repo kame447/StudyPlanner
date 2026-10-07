@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { consultationCommunicationForPlanning } from './weeklyPlanningConsultationCommunication';
+import { consultationCommunicationForPlanning, evaluatedWeeklyPlanningConsultationDates } from './weeklyPlanningConsultationCommunication';
 import type { GenericSchedulerInputCompilationResult } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import { WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
 
@@ -59,4 +59,28 @@ describe('consultation evidence boundaries', () => {
       missingQuestionCodes: ['missing_effort_estimate'], nextAction: 'clarify_planning_details',
     });
   });
+});
+
+describe('hypothetical evidence is distinct from the retained real preview', () => {
+  it.each(['fits', 'does_not_fit'] as const)('projects %s from the trial scheduler even when the original preview is kept', status => {
+    const context = consultationCommunicationForPlanning({ compilation: ready, preserveExistingPreview: true,
+      alternativeEvidence: { alternative: { scope: 'task', taskIds: ['task'], taskLabels: ['研究メモ'], dates: ['2026-10-17'] },
+        feasibility: { status, basis: 'alternative_scheduler' } },
+    });
+    expect(context.assessmentScope).toBe('proposed_days');
+    expect(context.feasibility).toEqual({ status, basis: 'alternative_scheduler' });
+    expect(context.nextAction).toBe(status === 'fits' ? 'offer_alternative_adoption' : 'offer_preference_change');
+    expect(context.alternative?.dates).toEqual(['2026-10-17']);
+  });
+});
+
+it('grounds only dates actually evaluated for this alternative, never the old preview or missing details', () => {
+  const accepted = consultationCommunicationForPlanning({ compilation: ready, preview: evaluated('ready'), preserveExistingPreview: false });
+  expect(evaluatedWeeklyPlanningConsultationDates({ ...accepted, alternative: { scope: 'plan', taskIds: [], taskLabels: [], dates: ['2026-10-17'] } })).toEqual([]);
+  const evidence = { alternative: { scope: 'task' as const, taskIds: ['task'], taskLabels: ['研究メモ'], dates: ['2026-10-17'] },
+    feasibility: { status: 'fits' as const, basis: 'alternative_scheduler' as const } };
+  const tested = consultationCommunicationForPlanning({ compilation: ready, preserveExistingPreview: true, alternativeEvidence: evidence });
+  expect(evaluatedWeeklyPlanningConsultationDates(tested)).toEqual(['2026-10-17']);
+  expect(evaluatedWeeklyPlanningConsultationDates({ ...tested, feasibility: { status: 'not_evaluated', reason: 'planning_details_missing' } })).toEqual([]);
+  expect(evaluatedWeeklyPlanningConsultationDates(null)).toEqual([]);
 });

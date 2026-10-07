@@ -230,17 +230,28 @@ function consultationInstructions(consultation: NonNullable<WeeklyPlanningStable
         preview_required: 'A draft must check other commitments.',
         existing_preview_not_rechecked: 'The alternative has not been checked.',
         no_schedulable_work: 'Work to schedule still needs defining.',
+        invalid_alternative: 'Clarify the proposed days before assessing them.',
+        ambiguous_alternative: 'Clarify which alternative to test.',
+        alternative_not_grounded: 'The proposed days still need clarification.',
+        alternative_target_unavailable: 'Clarify which work the alternative concerns.',
+        alternative_outside_horizon: 'The proposed days fall outside the planning period checked.',
+        fixed_work_not_movable: 'The work includes fixed commitments; moving those has not been checked.',
       }[consultation.feasibility.reason]
-    : 'Report feasibility for accepted conditions; draft contents need review.';
+    : consultation.assessmentScope === 'proposed_days'
+      ? 'Report whether the scheduler could place the work on alternative.dates with current commitments and hard limits; this is a trial, not a changed preview.'
+      : 'Report feasibility for accepted conditions; draft contents need review.';
   const next = {
     clarify_planning_details: 'Offer to clarify before drafting.',
     offer_preview: 'Offer a draft once preferences are chosen.',
     offer_preference_change: 'Invite changed conditions.',
     review_preview: 'Invite review of the draft.',
+    offer_alternative_adoption: 'Offer to use these days next if the user chooses them.',
   }[consultation.nextAction];
   return [
     'consultation: Answer the side question first after ACK; never adopt/change/approve/save.',
-    'feasibility never proves an unaccepted alternative. workEstimates=needed minutes; dailyLimits=limits, NOT free time. No invented placement.',
+    consultation.assessmentScope === 'proposed_days'
+      ? 'Only alternative.taskLabels/dates were tested. Explain fits as a feasible trial; does_not_fit as unable to place under current constraints, not universal impossibility. Do not invent times or imply adoption.'
+      : 'feasibility never proves an unaccepted alternative. workEstimates=needed minutes; dailyLimits=limits, NOT free time. No invented placement.',
     'feasibilityClaim must match text: none or evidenced fits/does_not_fit. Untested: none; no 可能/大丈夫/できます. Explain uncertainty; offer a trial draft; no blanket refusal.',
     uncertainty, next,
     'askQuestion=false: no question; true: answer then ask it.',

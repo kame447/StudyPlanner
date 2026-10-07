@@ -1,3 +1,4 @@
+import { evaluatedWeeklyPlanningConsultationDates } from '../application/weeklyPlanningConsultationCommunication';
 import {
   groundedDateExpressionsFromPlanningInformation,
 } from './weeklyPlanningDialogueDateGrounding';
@@ -423,6 +424,11 @@ function validateRenderedText(
   const groundedDateExpressions = groundedDateExpressionsFromPlanningInformation(
     input.planningInformation,
   );
+  if (conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome) {
+    groundedDateExpressions.push(...groundedDateExpressionsFromPlanningInformation({
+      planningWindows: evaluatedWeeklyPlanningConsultationDates(input.communication?.consultation).map(value => ({ value })),
+    }));
+  }
   if (
     addsUnsupportedExpression(text, groundingInformation, CLOCK_EXPRESSION)
     || addsUnsupportedExpression(

@@ -1,3 +1,4 @@
+import { evaluateWeeklyPlanningConsultationAlternative, type WeeklyPlanningConsultationAlternativeEvidence } from './weeklyPlanningConsultationAlternativeEvaluation';
 import {
   withWeeklyPlanningProvisionalTimeboxStateV5,
 } from '../intake/weeklyPlanningProvisionalTimeboxStateV5';
@@ -74,6 +75,7 @@ function communicationFacts(params: {
   planningDetailsNotApplied: boolean;
   omittedWork: WeeklyPlanningPreviewOmittedWork[] | null;
   consultationRequested: boolean;
+  alternativeEvidence?: WeeklyPlanningConsultationAlternativeEvidence | null;
   preview?: ReturnType<typeof executeWeeklyPlanningStableV5Preview>;
   schedulerInput?: GenericSchedulerInput;
 }): WeeklyPlanningTurnCommunicationFacts {
@@ -91,6 +93,7 @@ function communicationFacts(params: {
     consultation: params.consultationRequested
       ? consultationCommunicationForPlanning({
           compilation: params.evaluation.compilation,
+          alternativeEvidence: params.alternativeEvidence,
           preview: params.preview,
           preserveExistingPreview: params.output.preserveExistingPreview === true,
         })
@@ -143,6 +146,11 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
           : null,
       })
     : null;
+  const alternativeEvidence = interactionPlan?.acts.consultation
+    ? evaluateWeeklyPlanningConsultationAlternative({
+        acts: semantic.normalization.document?.conversationActs, compilation: evaluation.compilation,
+        graph: createWeeklyPlanningPlacementGraphViewV5(evaluation.activeGraph), input, requestContext,
+      }) : null;
   const routingEvaluation = interactionPlan?.dialogueQuestionOverride
     ? {
         ...evaluation,
@@ -182,6 +190,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
               planningDetailsNotApplied,
               omittedWork: null,
               consultationRequested: interactionPlan.acts.consultation,
+              alternativeEvidence,
             }),
           }
         : {}),
@@ -228,6 +237,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
             planningDetailsNotApplied,
             omittedWork: provisionalCapacity ? provisionalCapacity.omittedWork : null,
             consultationRequested: interactionPlan!.acts.consultation,
+            alternativeEvidence,
             preview,
             schedulerInput: responseRoute.schedulerInput,
           }),

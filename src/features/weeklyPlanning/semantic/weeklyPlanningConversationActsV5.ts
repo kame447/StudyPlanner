@@ -1,16 +1,18 @@
+import { parseWeeklyPlanningConsultationAlternativeV5, type WeeklyPlanningConsultationAlternativeMeaningV5 } from './weeklyPlanningConsultationAlternativeV5';
+
 /**
  * Typed conversational acts: non-mutating conversation meaning the semantic model
  * reports next to the planning delta. They are additive and never exclusive, so a
  * mixed turn ("数学は45分にして。英語はこの量で間に合う？") keeps its planning
  * contribution and its conversation meaning at the same time.
  *
- * An act carries no planning payload and no authority. It names, at most, an existing
+ * An act carries no authoritative planning payload. A consultation may carry a read-only hypothesis. It names, at most, an existing
  * public task/component id the conversation is about; deterministic application code
  * decides what (if anything) to do with it. An ordinary planning turn has no act.
  *
  * Acts are validated independently of the planning delta in the same response
- * (Issue #488): they are discourse metadata of the current turn, so they need no quoted
- * evidence (the application already knows which turn they belong to), a malformed entry
+ * (Issue #488): they are discourse metadata of the current turn, so ordinary acts need no quoted
+ * evidence (the application already knows their turn); hypothetical days require a current-turn quote, a malformed entry
  * is dropped on its own (fail closed) instead of rejecting the planning delta, and an
  * unknown topic reference degrades to "no topic". Nothing here can grant authorization,
  * readiness, preview, approval or save.
@@ -37,6 +39,7 @@ export interface SemanticConversationActV5 {
   kind: WeeklyPlanningConversationActKindV5;
   /** Existing public task/component id the act is about, or null. Never a new fact. */
   targetPublicId: string | null;
+  placementAlternative?: WeeklyPlanningConsultationAlternativeMeaningV5;
 }
 
 /** Acts that are valid conversation meaning on their own, without any planning delta. */
@@ -86,7 +89,7 @@ export function sanitizeWeeklyPlanningConversationActsV5(
       diagnostics.push(`${path}:dropped-not-object`);
       return;
     }
-    if (Object.keys(entry).some((key) => key !== 'kind' && key !== 'targetPublicId')) {
+    if (Object.keys(entry).some((key) => key !== 'kind' && key !== 'targetPublicId' && key !== 'placementAlternative')) {
       diagnostics.push(`${path}:dropped-unknown-key`);
       return;
     }
@@ -99,9 +102,17 @@ export function sanitizeWeeklyPlanningConversationActsV5(
       diagnostics.push(`${path}:dropped-malformed-target`);
       return;
     }
+    const alternative = entry.kind === 'consultation_request'
+      ? parseWeeklyPlanningConsultationAlternativeV5(entry.placementAlternative) : null;
+    if (entry.placementAlternative != null && !alternative) {
+      diagnostics.push(`${path}.placementAlternative:dropped-invalid-hypothesis`);
+    }
     acts.push({
       kind: entry.kind as WeeklyPlanningConversationActKindV5,
       targetPublicId: typeof target === 'string' ? target : null,
+      ...(alternative ? { placementAlternative: alternative }
+        : entry.kind === 'consultation_request' && entry.placementAlternative != null
+          ? { placementAlternative: { unavailable: 'malformed' as const } } : {}),
     });
   });
   return { acts, diagnostics };
@@ -129,7 +140,13 @@ export function resolveWeeklyPlanningConversationActTargetsV5(params: {
   const acts = params.acts.map((act, index) => {
     if (act.targetPublicId === null || known.has(act.targetPublicId)) return act;
     diagnostics.push(`conversationActs[${index}].targetPublicId:degraded-unknown-topic`);
-    return { ...act, targetPublicId: null };
+    // An unresolved topic must never turn a task hypothesis into a plan-wide test.
+    return { ...act, targetPublicId: null,
+      ...(act.placementAlternative ? { placementAlternative: { unavailable: 'unknown_target' as const } } : {}),
+    };
   });
   return { acts, diagnostics };
 }
+
+/** Interaction-only semantic instruction; legacy policy never includes this rule. */
+export const WEEKLY_PLANNING_CONVERSATION_ACT_INSTRUCTION_V5 = 'conversationActs add non-mutating meaning: ask_about_pending_question (why/what; no fact), topic_shift, resume_topic, consultation_request (advice), answer_pending_question (with delta). targetPublicId=existing task/component or null; plain planning=[]. Keep independent facts. Consultation-only placementAlternative={scope:task|plan,dateExpressions:canonical days,sourceText:current quote}, else null; weekdays use accepted horizon. Hypothetical days are not planning facts.';

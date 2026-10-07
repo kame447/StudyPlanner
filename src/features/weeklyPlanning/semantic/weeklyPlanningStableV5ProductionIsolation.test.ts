@@ -41,6 +41,8 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/weeklyPlanningInteractionDecision.ts',
   // Interaction layer: read-only consultation evidence from the actual preview result (type-only).
   'application/weeklyPlanningConsultationCommunication.ts',
+  // Interaction layer: read-only hypothetical placement using the canonical scheduler.
+  'application/weeklyPlanningConsultationAlternativeEvaluation.ts',
   // Test-only: bind a pending question to its presenting message as the controller does.
   'testUtils/weeklyPlanningFreshPresentationTestUtils.ts',
   // Test-only: scripted-provider full-turn harness over the real controller/runtime.

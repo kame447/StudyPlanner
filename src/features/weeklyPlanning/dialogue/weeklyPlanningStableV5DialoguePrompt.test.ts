@@ -302,3 +302,26 @@ describe('Stable V5 dialogue prompt', () => {
     expect(explanation.slice(0, explanation.indexOf('なぜその情報が必要か'))).toContain('required_before_resume');
   });
 });
+
+describe('hypothetical placement renderer contract', () => {
+  it.each(['fits', 'does_not_fit'] as const)('renders the %s result only for the tested task and days without adopting it', status => {
+    const consultation = {
+      mode: 'advisory_only' as const, assessmentScope: 'proposed_days' as const,
+      feasibility: { status, basis: 'alternative_scheduler' as const },
+      alternative: { scope: 'task' as const, taskIds: ['task'], taskLabels: ['研究メモ'], dates: ['2026-10-17', '2026-10-18'] },
+      missingQuestionCodes: [], workEstimates: [{ taskId: 'task', minutes: 180 }], dailyLimits: [], nextAction: 'offer_alternative_adoption' as const,
+    };
+    const prompt = createWeeklyPlanningStableV5DialoguePrompt({ ...input(), actionKind: 'status',
+      communication: { goal: 'report_status', questionPurposes: [], askQuestion: false, laterNeeds: [], statusReason: null,
+        planningDetailsNotApplied: false, consultationDeferred: true, previewDisclosure: null, consultation },
+    });
+    const payload = JSON.parse(prompt.userPrompt);
+    expect(payload.applicationDecision.communication.consultation).toEqual(consultation);
+    expect(payload.request).toContain('Only alternative.taskLabels/dates were tested');
+    expect(payload.request).toContain('not a changed preview');
+    expect(payload.request).toContain('never adopt/change/approve/save');
+    expect(payload.request).toContain('feasibilityClaim must match text');
+    expect(bytes(payload.request)).toBeLessThanOrEqual(4000);
+    expect(bytes(prompt.systemPrompt)).toBeLessThanOrEqual(900);
+  });
+});
