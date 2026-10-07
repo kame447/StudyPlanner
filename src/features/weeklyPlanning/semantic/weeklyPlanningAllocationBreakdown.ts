@@ -15,6 +15,19 @@ export interface WeeklyPlanningAllocationBreakdown {
 const EPSILON = 1e-7;
 const clean = (minutes: number) => Math.round(minutes * 1e9) / 1e9;
 
+/** The same closed display-evidence envelope is accepted from placement and saved state. */
+export function isWeeklyPlanningAllocationBreakdown(value: unknown): value is WeeklyPlanningAllocationBreakdown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const numbers = ['estimatedMinutes', 'calibratedMinutes', 'bufferedMinutes', 'allocatedMinutes', 'marginMinutes'];
+  return Object.keys(record).every((key) => [...numbers, 'reasons'].includes(key))
+    && numbers.every((key) => typeof record[key] === 'number' && Number.isFinite(record[key]) && (record[key] as number) >= 0)
+    && Array.isArray(record.reasons)
+    && record.reasons.every((reason) => ['calibration', 'estimate_margin', 'rounding'].includes(reason))
+    && Math.abs((record.marginMinutes as number) - Math.max(0,
+      (record.allocatedMinutes as number) - (record.estimatedMinutes as number))) <= EPSILON;
+}
+
 /** Project an already allocated work target into its placed slice, without allocating again. */
 export function allocationBreakdownForWeeklyPlanningWorkItem(
   item: GenericPlanningWorkItem,
@@ -66,11 +79,8 @@ export function summarizeWeeklyPlanningAllocationBreakdown(
   };
   for (const candidate of candidates) {
     const value = candidate.allocationBreakdown;
-    if (!value || !Number.isFinite(candidate.durationMinutes) || candidate.durationMinutes <= 0
-      || !Array.isArray(value.reasons)
-      || value.reasons.some((reason) => !['calibration', 'estimate_margin', 'rounding'].includes(reason))
-      || ![value.estimatedMinutes, value.calibratedMinutes, value.bufferedMinutes,
-      value.allocatedMinutes, value.marginMinutes].every((minutes) => Number.isFinite(minutes) && minutes >= 0)
+    if (!isWeeklyPlanningAllocationBreakdown(value)
+      || !Number.isFinite(candidate.durationMinutes) || candidate.durationMinutes <= 0
       || Math.abs(value.allocatedMinutes - candidate.durationMinutes) > EPSILON) return null;
     summary.estimatedMinutes += value.estimatedMinutes;
     summary.calibratedMinutes += value.calibratedMinutes;
