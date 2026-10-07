@@ -49,6 +49,8 @@ productionのFirebase repository bundleはlegacy repositoryをmigration inputと
 
 localStorage fallbackも同じcanonical/legacy分離を使うが、これはdevelopment / localhost用である。複数端末cutoverのtransaction保証はFirestore migration boundaryが所有する。
 
+local/browser回帰では、legacy `studyplanner.plans` をmigration入力としてseedしても、cutover後の保存結果はcanonical `studyplanner.scheduleEvents.v1` の `ScheduleEvent`、または実repository facadeから再取得した `Plan` で検証する。凍結されたlegacy配列に新規書込が反映されないことを保存失敗と誤認せず、保存先の実schemaとowner/IDを確認し、reload後も対象の予定や教材への参照が保持されることを確かめる。
+
 ## Identity
 
 canonical persistence IDはlegacy source kindを含める。

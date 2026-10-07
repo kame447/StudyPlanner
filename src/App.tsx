@@ -100,7 +100,8 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   }, [state.booting, markRootStartupReady, onReady]);
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const settingsNavigation = useSettingsNavigation();
-  const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
+  const [quickEntry, setQuickEntry] = useState<{ ownerId: string; id: number; materialId?: string } | null>(null);
+  const quickEntrySequence = useRef(0);
   const [homeEntry, setHomeEntry] = useState<{ ownerId: string; id: number } | null>(null);
   const homeEntrySequence = useRef(0);
   const [monthCreateRequestId, setMonthCreateRequestId] = useState(0);
@@ -260,6 +261,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   }, [user?.id]);
 
   useEffect(() => { setHomeEntry(null); }, [user?.id, primarySurface]);
+  useEffect(() => { setQuickEntry(null); }, [user?.id]);
 
   useEffect(() => {
     if (!pendingMonthCreate || !isScheduleSurface || viewMode !== 'month') {
@@ -304,6 +306,11 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         onSendPasswordReset={sendPasswordReset}
       />
     );
+  }
+
+  function openQuickEntry(materialId?: string) {
+    if (!user) return;
+    setQuickEntry({ ownerId: user.id, id: ++quickEntrySequence.current, materialId });
   }
 
   function openAiPlanningSurface() {
@@ -627,7 +634,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
                 onCaptureMaterialBaseline={captureStudyMaterialBaseline}
                 onSaveMaterial={saveStudyMaterial}
                 onDeleteMaterial={deleteStudyMaterial}
-                onAddMaterialToPlan={() => setIsQuickEntryOpen(true)}
+                onAddMaterialToPlan={(material) => openQuickEntry(material.id)}
               />
             ) : null}
           </Suspense>
@@ -637,7 +644,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
       {isScheduleSurface ? (
         <QuickAddMenu
           onAddSchedule={openMonthEventCreate}
-          onAddStudy={() => setIsQuickEntryOpen(true)}
+          onAddStudy={() => openQuickEntry()}
           onOpenAiPlanning={openAiPlanningSurface}
         />
       ) : null}
@@ -683,16 +690,19 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         </Suspense>
       ) : null}
 
-      {isQuickEntryOpen ? (
+      {quickEntry?.ownerId === user.id ? (
         <Suspense fallback={null}>
           <QuickEntryModal
+            key={quickEntry.id}
+            initialMaterialId={quickEntry.materialId}
+            initialMode={quickEntry.materialId ? 'scheduled' : 'later'}
             userId={user.id}
             selectedDate={selectedDate}
             plans={plans}
             actuals={actuals}
             materials={studyMaterials}
             subjects={studySubjects}
-            onClose={() => setIsQuickEntryOpen(false)}
+            onClose={() => setQuickEntry((current) => current === quickEntry ? null : current)}
             onSaveTodo={saveTodo}
             onSavePlan={savePlanDraft}
             onSaveStandaloneActual={saveStandaloneActual}
