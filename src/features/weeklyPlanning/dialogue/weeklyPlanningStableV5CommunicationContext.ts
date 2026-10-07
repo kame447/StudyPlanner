@@ -176,7 +176,13 @@ export function communicationContextForStableV5Dialogue(params: {
     questionPurposes,
     askQuestion,
     laterNeeds,
-    statusReason: goal === 'report_status' ? params.facts?.statusReason ?? null : null,
+    // A consultation answered with typed evidence is the subject of the reply. Reporting the
+    // unchanged preview as well turned the answer into 「今の候補のままです」 (live E on 65f178e0).
+    statusReason: goal === 'report_status'
+      && !(params.outcome?.consultationDeferred === true && params.facts?.consultation
+        && params.facts.statusReason === 'preview_unchanged')
+      ? params.facts?.statusReason ?? null
+      : null,
     planningDetailsNotApplied: params.facts?.planningDetailsNotApplied === true,
     consultationDeferred: params.outcome?.consultationDeferred === true,
     ...(params.outcome?.consultationDeferred === true

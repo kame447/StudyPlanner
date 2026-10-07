@@ -112,7 +112,11 @@ describe('real E2E A–G: full application turns with scripted provider wire res
     await submit(conversation, CAMPAIGN.E[0], normal);
     const old = structuredClone(candidates(conversation));
     const graph = structuredClone(conversation.graph());
-    await submit(conversation, CAMPAIGN.E[1], normal);
+    const consultation = await submit(conversation, CAMPAIGN.E[1], normal);
+    // The evidenced consultation is the reply's subject, not an "unchanged preview" report (live E on 65f178e0).
+    const communication = (rendererDecision(consultation) as { communication?: Record<string, unknown> } | undefined)?.communication;
+    expect(communication).toMatchObject({ goal: 'report_status', statusReason: null, consultationDeferred: true });
+    expect(communication?.consultation).toBeTruthy();
     expect(candidates(conversation)).toEqual(old);
     expect(conversation.graph()).toEqual({ ...graph, appliedTurnKeys: conversation.graph()!.appliedTurnKeys });
     await submit(conversation, CAMPAIGN.E[2], normal);
