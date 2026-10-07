@@ -228,6 +228,24 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
     expect(legacy).not.toContain('communication');
   });
 
+  it('falls back instead of rejecting when the repair dispatch itself fails, in both architectures', async () => {
+    const renderInput = input({
+      currentTurnGrounding: {
+        mode: 'required_before_resume',
+        acceptedFacts: [{ factId: 'effort-30', kind: 'effort_estimate', sourceText: '30分くらい', data: { minutes: 30 } }],
+      },
+    });
+    for (const architecture of ['interaction_v1', 'legacy_v5'] as const) {
+      const createChatCompletion = vi.fn()
+        .mockResolvedValueOnce(response(renderInput, '英単語は1回分にどれくらいかかりますか？'))
+        .mockRejectedValueOnce(new TypeError('fetch failed'));
+      await expect(createAiWeeklyPlanningStableV5DialogueRenderer(config, { createChatCompletion })
+        .render({ ...renderInput, conversationArchitecture: architecture }))
+        .resolves.toEqual({ status: 'fallback', reason: 'provider_error', rawResponse: null });
+      expect(createChatCompletion).toHaveBeenCalledTimes(2);
+    }
+  });
+
   it('falls back if the one repair attempt still repeats the same assistant question', async () => {
     const previousQuestion = 'この範囲は今回進めたい量ですか？';
     const renderInput = input({

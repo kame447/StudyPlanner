@@ -360,6 +360,41 @@ describe('Issue #488 naturalness: the measured explanation turn is a normal succ
     });
   });
 
+  it('does not call the renderer after the repair dispatch hit a provider outage; the rescued turn still answers', async () => {
+    const conversation = await measuredSetup();
+    const pending = pendingTarget(conversation);
+    const graphBefore = withoutTurnLedger(conversation);
+    let generic = 0;
+    script = (call) => {
+      if (call.kind !== 'semantic_generic') return undefined;
+      generic += 1;
+      if (generic > 1) return { failure: 'network' };
+      return JSON.stringify(emptyDocument({
+        planningIntent: 'update_plan',
+        relations: [{ localId: 'r', kind: 'before', fromLocalId: 'x', toLocalId: 'y', sourceText: WHY }],
+        conversationActs: [act('ask_about_pending_question')],
+      }));
+    };
+    const why = await conversation.submit(WHY);
+
+    // The same provider just failed: no futile renderer dispatch, the emergency explanation instead.
+    expect(why.calls.map((call) => call.kind)).toEqual(['semantic_generic', 'semantic_generic']);
+    expect(why.result?.failure).toBeUndefined();
+    expect(why.result?.interactionOutcome).toMatchObject({ kind: 'explain_pending_question' });
+    expect(why.result?.responseSource).toBe('deterministic_fallback');
+    expect(why.result?.dialogueRendererTrace).toMatchObject({
+      response: { status: 'fallback', reason: 'dispatch_refused' },
+      decision: { branch: 'deterministic_fallback' },
+    });
+    const message = lastMessage(conversation);
+    expect(message.length).toBeGreaterThan(0);
+    expect(message).not.toMatch(INTERNAL_PROCESS_WORDING);
+    // Nothing from the rejected planning part was applied; the question stays presented and fresh.
+    expect(withoutTurnLedger(conversation)).toEqual(graphBefore);
+    expect(pendingTarget(conversation)).toEqual(pending);
+    expect(freshness(conversation)).toBe('fresh');
+  });
+
   it('fails closed on a malformed act: it is dropped and the turn is handled as an ordinary reply', async () => {
     const conversation = await measuredSetup();
     script = (call) => (call.kind === 'semantic_generic'

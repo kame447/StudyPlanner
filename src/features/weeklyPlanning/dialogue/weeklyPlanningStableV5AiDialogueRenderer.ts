@@ -1,4 +1,5 @@
 import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
+import { isWeeklyPlanningTurnDispatchRefusal } from '../application/weeklyPlanningTurnDispatchBudget';
 import { getAiConfig, type AiConfig } from '../../../lib/aiConfig';
 import {
   createOpenAiCompatibleClient,
@@ -140,7 +141,9 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
               ? INTERNAL_PROCESS_REPAIR_INSTRUCTION
               : null;
         if (!repairInstruction) return initial;
-        return requestDialogueRender({
+        // Awaited inside the try: a failed repair dispatch (provider error, exhausted pool or
+        // an outage-gated renderer) must end in the deterministic fallback, never reject.
+        return await requestDialogueRender({
           client,
           input,
           messages: [
@@ -148,8 +151,12 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
             { role: 'user', content: repairInstruction },
           ],
         });
-      } catch {
-        return { status: 'fallback', reason: 'provider_error', rawResponse: null };
+      } catch (error) {
+        return {
+          status: 'fallback',
+          reason: isWeeklyPlanningTurnDispatchRefusal(error) ? 'dispatch_refused' : 'provider_error',
+          rawResponse: null,
+        };
       }
     },
   };

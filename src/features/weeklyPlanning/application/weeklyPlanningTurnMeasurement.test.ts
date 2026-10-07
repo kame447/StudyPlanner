@@ -13,6 +13,9 @@ import {
   WEEKLY_PLANNING_TURN_AI_DISPATCH_LIMIT,
   WEEKLY_PLANNING_TURN_AI_RENDERER_RESERVE,
   WeeklyPlanningTurnDispatchBudgetExceededError,
+  WeeklyPlanningTurnProviderOutageError,
+  isWeeklyPlanningTurnDispatchRefusal,
+  withWeeklyPlanningTurnDispatchBudget,
 } from './weeklyPlanningTurnDispatchBudget';
 
 afterEach(() => resetWeeklyPlanningTurnMeasurementsForTest());
@@ -52,6 +55,30 @@ describe('turn dispatch counting is independent of enforcement', () => {
     expect(() => budget.consume('semantic')).toThrow(WeeklyPlanningTurnDispatchBudgetExceededError);
     expect(budget.usage()).toMatchObject({ total: ceiling, enforced: true, refused: 1 });
     expect(getWeeklyPlanningTurnDispatchBudget('interaction-turn')).toBe(budget);
+  });
+
+  it('does not dispatch the renderer while the latest provider dispatch has failed (interaction only)', async () => {
+    const failing = { createChatCompletion: vi.fn().mockRejectedValue(new TypeError('fetch failed')) };
+    const working = { createChatCompletion: vi.fn().mockResolvedValue('{}') };
+    const budget = beginWeeklyPlanningTurnDispatchBudget('outage-turn', { enforce: true });
+    await expect(withWeeklyPlanningTurnDispatchBudget(failing as never, budget, 'semantic')
+      .createChatCompletion({} as never)).rejects.toThrow('fetch failed');
+    const renderer = withWeeklyPlanningTurnDispatchBudget(working as never, budget, 'renderer');
+    const refusal = await renderer.createChatCompletion({} as never).catch((error: unknown) => error);
+    expect(refusal).toBeInstanceOf(WeeklyPlanningTurnProviderOutageError);
+    expect(isWeeklyPlanningTurnDispatchRefusal(refusal)).toBe(true);
+    expect(working.createChatCompletion).not.toHaveBeenCalled();
+    expect(budget.usage()).toMatchObject({ total: 1, semantic: 1, renderer: 0, refused: 1 });
+    // Semantic stages are never gated, and a later successful dispatch reopens the renderer.
+    await withWeeklyPlanningTurnDispatchBudget(working as never, budget, 'semantic').createChatCompletion({} as never);
+    await renderer.createChatCompletion({} as never);
+    expect(budget.usage()).toMatchObject({ total: 3, semantic: 2, renderer: 1, refused: 1 });
+
+    const legacy = beginWeeklyPlanningTurnDispatchBudget('outage-legacy-turn', { enforce: false });
+    await withWeeklyPlanningTurnDispatchBudget(failing as never, legacy, 'semantic')
+      .createChatCompletion({} as never).catch(() => undefined);
+    await withWeeklyPlanningTurnDispatchBudget(working as never, legacy, 'renderer').createChatCompletion({} as never);
+    expect(legacy.usage()).toMatchObject({ total: 2, renderer: 1, refused: 0 });
   });
 });
 

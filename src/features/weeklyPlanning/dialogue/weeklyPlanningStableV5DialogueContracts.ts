@@ -296,7 +296,9 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   | 'ungrounded_text'
   | 'repeated_question_text'
   /** Interaction architecture: the text exposes internal system/process vocabulary. */
-  | 'internal_process_text';
+  | 'internal_process_text'
+  /** The turn's dispatch pool refused the call (exhausted, or the provider just failed). */
+  | 'dispatch_refused';
 
 export type WeeklyPlanningStableV5DialogueRenderResult =
   | {

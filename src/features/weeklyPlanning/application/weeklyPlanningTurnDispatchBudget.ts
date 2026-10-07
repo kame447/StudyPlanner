@@ -23,6 +23,11 @@ import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatib
  * The renderer keeps a reserve so a turn whose semantic stages used the pool can still be
  * verbalized. Renderer exhaustion is harmless (deterministic fallback text exists); semantic
  * exhaustion fails the stage without changing authoritative state.
+ *
+ * Outage gate (enforced pool only): when the turn's latest provider dispatch failed, the
+ * renderer is not dispatched; the same provider has just failed, so the deterministic
+ * emergency wording is used instead of waiting on another failing call. A later successful
+ * dispatch in the same turn reopens it. Semantic stages are never gated by it.
  */
 export const WEEKLY_PLANNING_TURN_AI_DISPATCH_LIMIT = 8;
 export const WEEKLY_PLANNING_TURN_AI_RENDERER_RESERVE = 1;
@@ -38,6 +43,20 @@ export class WeeklyPlanningTurnDispatchBudgetExceededError extends Error {
 
 export function isWeeklyPlanningTurnDispatchBudgetExceeded(error: unknown): boolean {
   return error instanceof WeeklyPlanningTurnDispatchBudgetExceededError;
+}
+
+/** The renderer was not dispatched because the turn's latest provider dispatch failed. */
+export class WeeklyPlanningTurnProviderOutageError extends Error {
+  constructor() {
+    super('Weekly planning turn: the latest provider dispatch failed; the renderer is not dispatched.');
+    this.name = 'WeeklyPlanningTurnProviderOutageError';
+  }
+}
+
+/** The pool refused the dispatch (exhausted, or renderer gated by an outage): nothing was sent. */
+export function isWeeklyPlanningTurnDispatchRefusal(error: unknown): boolean {
+  return error instanceof WeeklyPlanningTurnDispatchBudgetExceededError
+    || error instanceof WeeklyPlanningTurnProviderOutageError;
 }
 
 /** What one turn actually dispatched to the AI provider; identical for every architecture. */
@@ -58,10 +77,13 @@ export interface WeeklyPlanningTurnDispatchBudget {
   readonly enforced: boolean;
   /**
    * Counts one dispatch for the stage; called immediately before the request. When the pool
-   * is enforced it throws instead once the stage's ceiling is reached. Counting is
-   * independent of enforcement so both architectures are measured the same way.
+   * is enforced it throws instead once the stage's ceiling is reached, or (renderer only)
+   * while the turn's latest provider dispatch has failed. Counting is independent of
+   * enforcement so both architectures are measured the same way.
    */
   consume(stage: WeeklyPlanningTurnDispatchStage): void;
+  /** How the latest dispatched request ended (failed = the provider call threw). */
+  settle(outcome: 'succeeded' | 'failed'): void;
   usage(): WeeklyPlanningTurnDispatchUsage;
 }
 
@@ -72,6 +94,7 @@ export function createWeeklyPlanningTurnDispatchBudget(
   const enforced = options.enforce ?? true;
   let used = 0;
   let refused = 0;
+  let latestDispatchFailed = false;
   const byStage: Record<WeeklyPlanningTurnDispatchStage, number> = { semantic: 0, renderer: 0 };
   return {
     limit,
@@ -83,8 +106,15 @@ export function createWeeklyPlanningTurnDispatchBudget(
         refused += 1;
         throw new WeeklyPlanningTurnDispatchBudgetExceededError(stage, limit);
       }
+      if (enforced && stage === 'renderer' && latestDispatchFailed) {
+        refused += 1;
+        throw new WeeklyPlanningTurnProviderOutageError();
+      }
       used += 1;
       byStage[stage] += 1;
+    },
+    settle(outcome) {
+      latestDispatchFailed = outcome === 'failed';
     },
     usage() {
       return { total: used, ...byStage, limit, enforced, refused };
@@ -153,7 +183,14 @@ export function withWeeklyPlanningTurnDispatchBudget(
     ...client,
     async createChatCompletion(input) {
       budget.consume(stage);
-      return client.createChatCompletion(input);
+      try {
+        const response = await client.createChatCompletion(input);
+        budget.settle('succeeded');
+        return response;
+      } catch (error) {
+        budget.settle('failed');
+        throw error;
+      }
     },
   };
 }
