@@ -15,6 +15,7 @@ export default defineConfig({
     '**/cross-browser-smoke.spec.mjs',
     '**/quality-gates.spec.mjs',
     '**/visual-regression.spec.mjs',
+    '**/weekly-real-scenarios.spec.mjs',
   ],
   fullyParallel: false,
   forbidOnly: isCi,

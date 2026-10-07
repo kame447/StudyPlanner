@@ -1,0 +1,160 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getLatestWeeklyPlanningTurnMeasurement } from './application/weeklyPlanningTurnMeasurement';
+import { createScriptedConversation, installScriptedWeeklyPlanningProvider, resetScriptedConversationRuntime,
+  type ScriptedConversation, type ScriptedConversationTurn, type ScriptedProviderCall } from './testUtils/weeklyPlanningScriptedConversationHarness';
+import { CAMPAIGN, CAMPAIGN_MATERIALS, campaignProviderReply, type CampaignRequest, type CampaignScenario } from './testUtils/weeklyPlanningRealE2ECampaignFixture';
+
+vi.setConfig({ testTimeout: 30_000 });
+let provider: ReturnType<typeof installScriptedWeeklyPlanningProvider>;
+let scenario: CampaignScenario;
+let clock: number;
+let override: (call: ScriptedProviderCall) => string | undefined;
+beforeEach(() => {
+  resetScriptedConversationRuntime();
+  clock = 0;
+  override = () => undefined;
+  provider = installScriptedWeeklyPlanningProvider(call => {
+    clock += call.kind === 'renderer' ? 2_000 : 5_000;
+    return override(call) ?? campaignProviderReply(scenario, call.request as unknown as CampaignRequest);
+  });
+});
+afterEach(() => { provider.restore(); resetScriptedConversationRuntime(); });
+
+async function submit(conversation: ScriptedConversation, text: string, expected: string[]) {
+  const turn = await conversation.submit(text);
+  expect(turn.result?.failure, JSON.stringify(turn.debugTrace.filter(event => event.stage === 'semantic_validation_result'))).toBeUndefined();
+  expect(turn.calls.map(call => call.kind)).toEqual(expected);
+  expect(turn.result?.responseSource, JSON.stringify(turn.result?.dialogueRendererTrace)).toBe('ai');
+  const semantic = expected.filter(kind => kind !== 'renderer').length;
+  const renderer = expected.length - semantic;
+  expect(getLatestWeeklyPlanningTurnMeasurement()).toMatchObject({
+    architecture: 'interaction_v1', status: 'committed', failureCode: null,
+    elapsedMs: semantic * 5_000 + renderer * 2_000,
+    aiDispatches: { total: expected.length, semantic, renderer, enforced: true, refused: 0 },
+  });
+  expect(conversation.getState().pendingApproval).toBeUndefined();
+  return turn;
+}
+function start(value: CampaignScenario) {
+  scenario = value;
+  return createScriptedConversation({ provider, architecture: 'interaction_v1', measurementClock: () => clock, studyMaterials: CAMPAIGN_MATERIALS });
+}
+const normal = ['semantic_generic', 'renderer'];
+function candidates(conversation: ScriptedConversation) { return conversation.getState().previewCandidates ?? []; }
+function expectNextWeek(conversation: ScriptedConversation, end = '2026-10-18') {
+  expect(candidates(conversation).length).toBeGreaterThan(0);
+  expect(candidates(conversation).every(entry => entry.date >= '2026-10-12' && entry.date <= end)).toBe(true);
+}
+function activeWorkloads(conversation: ScriptedConversation) {
+  const graph = conversation.graph()!;
+  const active = new Set(graph.factLifecycles.filter(entry => entry.status === 'active').map(entry => entry.factId));
+  return graph.workloads.filter(entry => active.has(entry.id));
+}
+function rendererDecision(turn: ScriptedConversationTurn) { return turn.calls.find(call => call.kind === 'renderer')?.payload?.applicationDecision; }
+
+describe('real E2E A–G: full application turns with scripted provider wire responses', () => {
+  it('A: a complete request needs one semantic and one renderer call, preserving next week and after 20:00', async () => {
+    const conversation = start('A');
+    await submit(conversation, CAMPAIGN.A[0], normal);
+    expectNextWeek(conversation, '2026-10-16');
+    expect(candidates(conversation).every(entry => entry.startTime >= '20:00')).toBe(true);
+    expect(activeWorkloads(conversation).map(entry => entry.amount)).toEqual([20]);
+  });
+
+  it('C: correction with an echoed committed rate avoids repair and replaces 30 pages with 20 through date confirmation', async () => {
+    const conversation = start('C');
+    await submit(conversation, CAMPAIGN.C[0], normal);
+    const old = structuredClone(candidates(conversation));
+    await submit(conversation, CAMPAIGN.C[1], normal);
+    expect(candidates(conversation)).not.toEqual(old);
+    expect(activeWorkloads(conversation).map(entry => entry.amount)).toEqual([20]);
+    await submit(conversation, CAMPAIGN.C[2], normal);
+    expectNextWeek(conversation, '2026-10-16');
+    expect(activeWorkloads(conversation).map(entry => entry.amount)).toEqual([20]);
+    expect(conversation.getState().intakeState?.questions).toEqual([]);
+  });
+
+  it('D: a focused pace answer followed by split/evening changes updates both real preview and renderer decision', async () => {
+    const conversation = start('D');
+    await submit(conversation, CAMPAIGN.D[0], normal);
+    await submit(conversation, CAMPAIGN.D[1], ['semantic_focused_contextual', 'renderer']);
+    const old = structuredClone(candidates(conversation));
+    const final = await submit(conversation, CAMPAIGN.D[2], normal);
+    expect(candidates(conversation)).not.toEqual(old);
+    expectNextWeek(conversation);
+    expect(candidates(conversation).filter(entry => entry.title.includes('卒業研究ノート')).map(entry => entry.durationMinutes)).toEqual([60, 60]);
+    expect(candidates(conversation).every(entry => entry.startTime >= '18:00')).toBe(true);
+    expect(rendererDecision(final)).toMatchObject({ actionKind: 'preview_ready', previewCount: 3 });
+  });
+
+  it('F: all measured incremental turns reach a two-hour preview without repeating scope questions', async () => {
+    const conversation = start('F');
+    for (const [index, text] of CAMPAIGN.F.entries()) {
+      await submit(conversation, text, normal);
+      if (index === 0) continue;
+      expectNextWeek(conversation);
+      expect(conversation.getState().intakeState?.questions).toEqual([]);
+      expect(candidates(conversation).reduce((sum, entry) => sum + entry.durationMinutes, 0)).toBe(120);
+      expect(candidates(conversation).every(entry => entry.startTime >= '18:00')).toBe(true);
+    }
+    expect(candidates(conversation).map(entry => entry.durationMinutes)).toEqual([60, 60]);
+  });
+
+  it('E: consultation keeps accepted facts/preview unchanged; adopting weekend sessions rebuilds it', async () => {
+    const conversation = start('E');
+    await submit(conversation, CAMPAIGN.E[0], normal);
+    const old = structuredClone(candidates(conversation));
+    const graph = structuredClone(conversation.graph());
+    await submit(conversation, CAMPAIGN.E[1], normal);
+    expect(candidates(conversation)).toEqual(old);
+    expect(conversation.graph()).toEqual({ ...graph, appliedTurnKeys: conversation.graph()!.appliedTurnKeys });
+    await submit(conversation, CAMPAIGN.E[2], normal);
+    expect(candidates(conversation).map(entry => entry.durationMinutes)).toEqual([90, 90]);
+    expect(candidates(conversation).every(entry => ['2026-10-17', '2026-10-18'].includes(entry.date))).toBe(true);
+  });
+
+  it('G: a complete deadline/exclusion request has a two-call fast path, with no repair/audit', async () => {
+    const conversation = start('G');
+    await submit(conversation, CAMPAIGN.G[0], normal);
+    expect(candidates(conversation).length).toBeGreaterThan(0);
+    expect(candidates(conversation).every(entry => entry.date <= '2026-10-16')).toBe(true);
+    expect(conversation.graph()?.availabilityDeclarations).toMatchObject([{ kind: 'unavailable', dateExpression: 'weekday:tuesday', startTime: '20:00', endTime: '22:00' }]);
+  });
+
+  it('B: explanation preserves the required question and has no semantic retry', async () => {
+    const conversation = start('B');
+    await submit(conversation, CAMPAIGN.B[0], normal);
+    const graph = structuredClone(conversation.graph());
+    const why = await submit(conversation, CAMPAIGN.B[1], normal);
+    expect(why.result?.interactionOutcome?.kind).toBe('explain_pending_question');
+    expect(conversation.graph()).toEqual({ ...graph, appliedTurnKeys: conversation.graph()!.appliedTurnKeys });
+    expect(candidates(conversation)).toEqual([]);
+    expect(rendererDecision(why)).toMatchObject({ communication: { goal: 'explain_question', askQuestion: true } });
+  });
+});
+
+
+describe('dispatch attribution: repairs are counted, not hidden in the two-call successful path', () => {
+  it.each([false, true])('G uses exactly one semantic repair, plus renderer repair only when its output violates the contract (%s)', async (repairRenderer) => {
+    const conversation = start('G');
+    let semantic = 0;
+    let renderer = 0;
+    override = call => {
+      if (call.kind === 'semantic_generic' && semantic++ === 0) return 'invalid fixture JSON';
+      if (call.kind === 'renderer' && renderer++ === 0 && repairRenderer) {
+        const reply = JSON.parse(campaignProviderReply(scenario, call.request as unknown as CampaignRequest));
+        // Keep the ACK metadata but omit its required leading text: one renderer repair.
+        reply.text = '候補を確認して「この内容で仮予定にする」を押してください。';
+        return JSON.stringify(reply);
+      }
+      return undefined;
+    };
+    const expected = ['semantic_generic', 'semantic_generic', 'renderer', ...(repairRenderer ? ['renderer'] : [])];
+    const turn = await submit(conversation, CAMPAIGN.G[0], expected);
+    expect(turn.debugTrace.find(event => event.stage === 'semantic_repair_prepared')).toBeDefined();
+    if (repairRenderer) {
+      expect(turn.calls.at(-1)?.messages.at(-1)?.content).toContain('ACK契約');
+    }
+    expect(candidates(conversation).length).toBeGreaterThan(0);
+  });
+});
