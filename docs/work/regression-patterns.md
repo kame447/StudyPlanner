@@ -1,7 +1,7 @@
 # Repository regression patterns
 
 Status: current repository-wide regression knowledge
-Updated: 2026-09-01
+Updated: 2026-10-07
 
 この文書は、StudyPlanner で過去に発生したバグや回帰を、個別症状の一覧ではなく、再発する原因クラス、責任境界、守るべき不変条件、検証方法として形式知化するための正本です。
 
@@ -81,6 +81,10 @@ semantic repair も局所的でなければなりません。無効な correctio
 
 検証は double submit、retry、reload、repository/runtime recreation、cancel 後の遅延結果、stale expected revision、archive 中の追加 entry、same request ID を含む sequence test で行います。単発 unit test より、ordering を変えた stateful test が有効なパターンです。
 
+保存中の入力を許すかは、editor の再送信と保存済み target identity の契約まで含めて決めます。[Issue #437](https://github.com/kame447/StudyPlanner/issues/437) の時間割修正では、[#475](https://github.com/kame447/StudyPlanner/pull/475) が close/reopen 後の別 session を保護していても、送信元 session で保存中に変えた入力は古い成功で失われました。新規授業のように保存結果から canonical ID を受け取れない editor では、draft revision を増やして閉じなくするだけでは次の保存が別の create になる危険があります。save/delete が pending の間、その送信 session の入力を DOM と draft 更新 callback の両方で lock し、失敗後は保持した入力を再編集・再試行できます。Close/backdrop は維持し、同じ授業や別の授業を開き直した session は編集可能にします。元の write が終わるまで重複 mutation の入場は別に制限し、古い完了で新しい session を閉じません。この UI 境界は永続化順序の保証を追加しません。
+
+複数行を順番に保存する import では、batch の入場、表示 session の完了通知、owner/date context の継続可否を分けます。[Issue #437](https://github.com/kame447/StudyPlanner/issues/437) の時間割反映では、close/reopen が表示上の pending を解除すると、元の batch と新しい送信が同じ授業を二重作成できました。component が維持された同一 owner/date の close/reopen で入場制限を解除せず、既に選択された batch の二重開始を防ぎます。古い完了は新しい dialog を閉じません。owner/date 変更や unmount 後は未送信の行を新たに送らず、送信済みの write は完了を待ちます。部分失敗は同じ context に残し、optimistic な反映中も選択意図を失わず、rollback した行を再試行可能にします。成功応答から parent projection 反映までの間は確認済みの行を再送せず、反映後は通常の削除・再取り込みを妨げません。この component 内の保護は server 側や複数タブ間の一意性保証を追加しません。
+
 ## R6. Persistence / schema / restore / trace の end-to-end contract 欠落
 
 重要度: Critical。再発性: 非常に高い。
@@ -92,6 +96,8 @@ semantic repair も局所的でなければなりません。無効な correctio
 不変条件は、write schema、storage key/document ID、transaction、outbox/retry、read/query、redaction、restore、projection/export までを一つの contract chain として考えることです。複数 entity が一つのユーザー操作として変わる場合は、その aggregate mutation 全体を一つの persistence contract とし、Firestore では batch/transaction、local storage では snapshot + compensating rollback などで途中成功を外へ見せません。会話状態と authoritative graph / user context のように保存先が分かれる場合も、ユーザーへ success を公開する commit point は authoritative preparation/commit が成立した後に置きます。構造 ID と user content の redaction 責任を分け、server/path が authority の ID は client payload より path を正本にします。新 field は request producer の unit test だけでなく、persistent outbox や server preparation を通って read/export 側まで残ることを確認します。
 
 検証では、実際の repository boundary を含む integration test を優先します。初回 append failure→reload→retry、large entry pagination、legacy/current mixed data、malformed schema、ownership mismatch、duplicate sequence、reload after save を通し、partial success や transport error を正常な empty state として扱わないことを固定します。
+
+保存前の入力検証もこの chain の一部です。[Issue #516](https://github.com/kame447/StudyPlanner/issues/516) の教材 quick entry では、native date/time control があるだけでは空の日付を防げず、保存成功後も日表示から見えない実績を作成できました。共有の date/time validator を送信境界でも適用し、無効な入力は保存 callback・成功通知・dialog close より前に拒否して draft を保持します。disabled button や browser の native validation だけに依存せず、直接 submit、実在しない日付、不正時刻、修正後の正常保存を予定と実績の両経路で検証します。有効な閏日と既存の日跨ぎ挙動も維持します。
 
 ## R7. Mobile viewport / overlay / scroll / gesture / focus ownership
 

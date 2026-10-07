@@ -10,7 +10,9 @@ const reportPath = path.join(reportDir, 'bundle-budget.json');
 
 const budgets = {
   javascript: {
-    totalRaw: 2_200_000,
+    // #437 import admission/session/retry guards add ~1.5 KiB to the 2.2 MB baseline.
+    // Recalibrate only raw total; compressed and per-chunk guards remain unchanged.
+    totalRaw: 2_205_000,
     totalGzip: 600_000,
     largestRaw: 950_000,
     largestGzip: 260_000,
