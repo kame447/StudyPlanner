@@ -16,6 +16,9 @@ const SENSITIVE_VALUE = /(?:パスワード|暗証番号|秘密情報|APIキー|
 const CLOCK_EXPRESSION = /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:午前|午後)?\s*(?:[01]?\d|2[0-3])\s*時(?:\s*(?:[0-5]?\d\s*分|半))?/g;
 const DATE_EXPRESSION = /(?:今日|明日|明後日|今週|来週|週末)|\d{1,2}\s*月\s*\d{1,2}\s*日/g;
 const PREVIEW_COUNT_EXPRESSION = /(\d+)\s*件/g;
+// Interaction architecture: the renderer's own claim that candidates were made or changed.
+// Only checked on replies that come with no new preview; naming the existing preview is fine.
+const NEW_CANDIDATES_CLAIM = /(?:候補|仮予定|案)(?:を|が|は|も)?[^。！？!?\n]{0,12}?(?:できました|作りました|作成しました|用意しました|出しました|分けました|変えました|直しました|組みました)/u;
 const EXECUTION_VERB = '(?:作ります|作成します|追加します|登録します|保存します|組みます|反映します|入れます|入れました|入れておきます)';
 const EXECUTION_CLAIM_EXPRESSION = new RegExp(
   `(?:(?:予定|仮予定|計画).{0,20}${EXECUTION_VERB}|${EXECUTION_VERB}.{0,20}(?:予定|仮予定|計画))`,
@@ -373,6 +376,12 @@ function validateRenderedText(
   // question (a structural check on the renderer's own text, not an interpretation of it).
   if (input.communication?.askQuestion === true && !/[?？]/u.test(text)) {
     return 'missing_question';
+  }
+
+  // No new preview in this reply (status, question, …): it may not claim new or changed
+  // candidates, e.g. "both evening" when the preview stayed as it was.
+  if (input.communication && input.actionKind !== 'preview_ready' && NEW_CANDIDATES_CLAIM.test(text)) {
+    return 'preview_claim_without_preview';
   }
 
   if (repeatsMostRecentAssistantQuestion(text, input)) {

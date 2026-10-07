@@ -312,7 +312,12 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
    * Interaction architecture: the reply had to ask the question (askQuestion=true) but
    * contains no question, so the question would be recorded as presented without being asked.
    */
-  | 'missing_question';
+  | 'missing_question'
+  /**
+   * Interaction architecture: a reply that comes with no new preview claims that candidates
+   * were made or changed (the renderer never sees the existing preview's contents).
+   */
+  | 'preview_claim_without_preview';
 
 export type WeeklyPlanningStableV5DialogueRenderResult =
   | {

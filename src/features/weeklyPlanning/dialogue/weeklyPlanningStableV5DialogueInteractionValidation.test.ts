@@ -135,6 +135,35 @@ describe('interaction renderer output: the question that must be asked', () => {
   });
 });
 
+describe('interaction renderer output: no claimed candidates without a new preview', () => {
+  const unchangedStatus = () => input({
+    actionId: 'stable-v5:request-1:status',
+    actionKind: 'status',
+    questionCode: null,
+    previewPromotionControlLabel: 'この内容で仮予定にする',
+    requiredLabels: ['この内容で仮予定にする'],
+    communication: communication({
+      goal: 'report_status', askQuestion: false, questionPurposes: [], statusReason: 'preview_unchanged',
+    }),
+  });
+
+  it('rejects the measured false claim on an unchanged preview (real E2E, scenario D)', () => {
+    expect(render(unchangedStatus(), '1回1時間くらいですね。2回とも夜に分ける候補が2件できました。よければ「この内容で仮予定にする」を押してください。'))
+      .toMatchObject({ status: 'fallback', reason: 'preview_claim_without_preview' });
+  });
+
+  it('accepts naming the existing preview as unchanged', () => {
+    expect(render(unchangedStatus(), '今の2件の候補はそのままです。直したいところがあれば教えてください。よければ「この内容で仮予定にする」を押してください。'))
+      .toMatchObject({ status: 'rendered' });
+  });
+
+  it('keeps legacy inputs out of this interaction check', () => {
+    const legacy = input({ ...unchangedStatus(), conversationArchitecture: 'legacy_v5', communication: undefined });
+    expect(render(legacy, '2回とも夜に分ける候補が2件できました。よければ「この内容で仮予定にする」を押してください。'))
+      .not.toMatchObject({ reason: 'preview_claim_without_preview' });
+  });
+});
+
 describe('interaction renderer output: preview disclosure', () => {
   const preview = (omittedWork: Array<{ label: string; extent: 'all' | 'part' }>) => input({
     actionId: 'stable-v5:request-1:preview_ready',

@@ -178,7 +178,7 @@ const INTERACTION_GOAL_INSTRUCTION = 'communication.goalはアプリが決めた
 /** Only the instruction of the typed goal of this reply is sent (selected by the goal code). */
 const INTERACTION_GOAL_INSTRUCTIONS: Readonly<Record<WeeklyPlanningStableV5CommunicationGoal, string>> = {
   ask_question: 'goal=ask_question: questionIntentの質問を一つ聞く。このturnで受け取った情報があれば先に短く受け止める。',
-  report_status: 'goal=report_status: このturnで受け取った情報があれば先に短く受け止める。statusReason=ready_to_create_preview→予定を作るのに必要なことはそろい、頼めば仮予定を作れると伝える。preview_unchanged→今の仮予定の候補はそのままで、直したい点を言うかpreviewPromotionControlLabelの操作で進められると伝える。',
+  report_status: 'goal=report_status: このturnで受け取った情報があれば先に短く受け止める。statusReason=ready_to_create_preview→予定を作るのに必要なことはそろい、頼めば仮予定を作れると伝える。preview_unchanged→今の仮予定の候補はそのままで、直したい点を言うかpreviewPromotionControlLabelの操作で進められると伝える。新しい候補ができた・候補が変わったとは書かず、候補の中身も書かない。',
   present_preview: 'goal=present_preview: このturnで受け取った情報があれば先に短く受け止める。previewCount件の候補ができたことと、previewPromotionControlLabelの操作を案内する。候補の日時・回数・時間帯など中身は書かず、候補が条件どおりになったとも言わない（中身はプレビューで見てもらう）。',
   explain_question: 'goal=explain_question: ユーザーは直前の質問の理由や意味を尋ねている。最初に（required_before_resumeならACKのすぐ後に）、なぜその情報が必要かをquestionPurposes（意味はpurposeMeanings）と分かっている内容（relevantLabels・量・期間など）に沿って具体的に答える。ユーザーの思う質問の中身が実際と違えば、いま確かめたいことを穏やかに伝える。laterNeedsは疑問への答えに役立つときだけ触れてよい。そのあとaskQuestion=trueなら、同じ質問をrequestedInformationを落とさず、直前と同じ文面にせず一度だけ聞く。',
   acknowledge_aside: 'goal=acknowledge_aside: ユーザーが移った別の話題に自然に応じる。止まっている質問は聞かず、保留や未変更の説明もしない。',

@@ -54,6 +54,12 @@ const MISSING_QUESTION_REPAIR_INSTRUCTION = [
   'goalの内容は保ったまま、questionIntentの質問を「？」で終わる形で一度だけ入れてください。',
 ].join('');
 
+/** Interaction architecture: the candidate claimed new candidates although none were made. */
+const PREVIEW_CLAIM_REPAIR_INSTRUCTION = [
+  '前回候補は、このturnでは新しい仮予定の候補ができていないのに、できた・変わったと書いていました。',
+  'applicationDecisionの内容は保ったまま、候補ができた・変わったとは書かず、候補の中身にも触れずに書き直してください。',
+].join('');
+
 /** Interaction architecture: the candidate talked about the app's internals. */
 const INTERNAL_PROCESS_REPAIR_INSTRUCTION = [
   '前回候補には、アプリ内部の仕組みや処理を表す言葉が含まれていました。',
@@ -147,7 +153,9 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
               ? INTERNAL_PROCESS_REPAIR_INSTRUCTION
               : initial.reason === 'missing_question'
                 ? MISSING_QUESTION_REPAIR_INSTRUCTION
-                : null;
+                : initial.reason === 'preview_claim_without_preview'
+                  ? PREVIEW_CLAIM_REPAIR_INSTRUCTION
+                  : null;
         if (!repairInstruction) return initial;
         // Awaited inside the try: a failed repair dispatch (provider error, exhausted pool or
         // an outage-gated renderer) must end in the deterministic fallback, never reject.
