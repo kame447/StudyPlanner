@@ -4,6 +4,7 @@ import { campaignRendererReply } from './weeklyPlanningRealE2ECampaignFixture';
 type Json = Record<string, unknown>;
 export const MATERIAL_SETUP_TEXT = '来週、数学の問題集を20問進めたい';
 export const MATERIAL_RATE_TEXT = '1問3分くらい';
+export const MATERIAL_EXPLANATION_TEXT = 'なんで時間が必要なの？';
 export const NAMED_MATERIAL = '青チャート 数学III';
 const document = (overrides: Json = {}): Json => ({ schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'update_plan', planningWindow: null,
   tasks: [], relations: [], availabilityDeclarations: [], constraintSourceRequests: [], userContextFacts: [], uncertainties: [], corrections: [], decisions: [], conversationActs: [], ...overrides });
@@ -33,6 +34,9 @@ export function materialIdentityConversationFixture(params: {
       planningIntent: 'create_plan', planningWindow: { localId: 'window', kind: 'relative_week', value: 'next_week', start: null, end: null, sourceText: '来週' },
       tasks: [task(null, '数学の問題集を20問進めたい', [component(null, '数学の問題集', '数学の問題集', [workload('work', '20問')])])],
       uncertainties: [{ localId: 'identity', targetLocalId: 'material', field: 'material_identity', reason: '対象教材が未確定', sourceText: '数学の問題集' }],
+    });
+    else if (text === MATERIAL_EXPLANATION_TEXT) result = document({ planningIntent: 'discuss',
+      conversationActs: [{ kind: 'ask_about_pending_question', targetPublicId: null }],
     });
     else {
       const graph = conversation.graph()!;

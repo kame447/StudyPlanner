@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './semantic/weeklyPlanningActiveSchedulerGraphViewV5';
-import { materialIdentityConversationFixture, MATERIAL_SETUP_TEXT, MATERIAL_RATE_TEXT, NAMED_MATERIAL } from './testUtils/weeklyPlanningMaterialIdentityAnswerFixture';
+import { materialIdentityConversationFixture, MATERIAL_SETUP_TEXT, MATERIAL_RATE_TEXT, MATERIAL_EXPLANATION_TEXT, NAMED_MATERIAL } from './testUtils/weeklyPlanningMaterialIdentityAnswerFixture';
 import { resetScriptedConversationRuntime } from './testUtils/weeklyPlanningScriptedConversationHarness';
 
 let fixture: ReturnType<typeof materialIdentityConversationFixture>;
@@ -13,6 +13,13 @@ describe('existing material identity answer through the production controller', 
     expect(initial.result?.failure).toBeUndefined();
     const old = structuredClone(conversation.graph()!);
     const oldMaterial = old.components[0];
+    const explanation = await conversation.submit(MATERIAL_EXPLANATION_TEXT);
+    expect(explanation.result?.failure).toBeUndefined();
+    expect(conversation.graph()).toEqual({ ...old,
+      appliedTurnKeys: [...old.appliedTurnKeys, `${conversation.conversationId}:${explanation.requestId}`],
+    });
+    expect(explanation.result?.draftCandidates).toHaveLength(0);
+    expect(explanation.calls.filter((call) => call.kind === 'semantic_generic')).toHaveLength(1);
     const rate = await conversation.submit(MATERIAL_RATE_TEXT);
     expect(rate.result?.failure).toBeUndefined();
     expect(rate.calls.filter((call) => call.kind === 'semantic_generic')).toHaveLength(1);

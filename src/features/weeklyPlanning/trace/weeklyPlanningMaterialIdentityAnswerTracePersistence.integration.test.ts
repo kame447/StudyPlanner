@@ -2,7 +2,7 @@ import { afterEach, expect, it } from 'vitest';
 import { measureWeeklyPlanningTraceJsonBytes, WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS } from '../../../../shared/weeklyPlanningTraceContract';
 import { prepareWeeklyPlanningTraceServerWrite } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
 import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
-import { materialIdentityConversationFixture, MATERIAL_SETUP_TEXT, MATERIAL_RATE_TEXT, NAMED_MATERIAL } from '../testUtils/weeklyPlanningMaterialIdentityAnswerFixture';
+import { materialIdentityConversationFixture, MATERIAL_SETUP_TEXT, MATERIAL_RATE_TEXT, MATERIAL_EXPLANATION_TEXT, NAMED_MATERIAL } from '../testUtils/weeklyPlanningMaterialIdentityAnswerFixture';
 import { resetScriptedConversationRuntime } from '../testUtils/weeklyPlanningScriptedConversationHarness';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import { recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5TraceRuntimeForTest, resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest } from './weeklyPlanningStableV5TraceRuntime';
@@ -31,6 +31,10 @@ it('persists the rate and identity transaction through checkpoint, outbox retry,
   const { conversation } = fixture;
   await conversation.submit(MATERIAL_SETUP_TEXT);
   const old = structuredClone(conversation.graph()!);
+  const explanation = await conversation.submit(MATERIAL_EXPLANATION_TEXT);
+  expect(conversation.graph()).toEqual({ ...old,
+    appliedTurnKeys: [...old.appliedTurnKeys, `${conversation.conversationId}:${explanation.requestId}`],
+  });
   const rate = await conversation.submit(MATERIAL_RATE_TEXT);
   const answer = await conversation.submit(fixture.answerText);
   const checkpointParams = {
