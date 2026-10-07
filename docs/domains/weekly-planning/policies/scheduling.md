@@ -139,7 +139,7 @@ plan-wideのnon-recurringなcanonical weekdayのsoft preferenceがrequest clock�
 
 ## Estimated effort and allocated time
 
-作業量とペースから求めた見積もり時間と、実際に確保する予定枠は区別する。current allocation policyは、適用されるペース補正のあとに10%の余裕を加え、基準見積もりが60分以下なら5分単位、60分を超えるなら15分単位で切り上げる。
+作業量とペースから求めた見積もり時間と、実際に確保する予定枠は区別する。明示session capがない場合のcurrent allocation policyは、適用されるペース補正のあとに10%の余裕を加え、基準見積もりが60分以下なら5分単位、60分を超えるなら15分単位で切り上げる。
 
 - 20ページ×3分、12ページ×5分はいずれも基準60分 → 余裕込み66分 → 確保70分
 - 基準120分の見積もりは132分 → 確保135分（固定で10分を加える仕様ではない）
@@ -158,6 +158,8 @@ preview card/sheetは余裕があるとき「見積もり1時間＋余裕10分�
 - 40ページ×3分、上限60分 → 20ページずつの60分×2
 - 20ページ×3分、上限60分 → 60分×1。通常の70分allocationより明示上限が先で、実余裕は0分
 - 1単位の補正後コスト自体が上限より長い場合は、その単位を端数化せず実コストを保ち、達成状況を`not_satisfied`として表示する。atomic work・分数custom・生成chunk数上限によって分割できない経路でもsession factの出典を保ち、実際のblock長から達成/未達を判定する。計算可能な超過を`not_evaluated`にしない
+
+内訳の`bufferedMinutes`は明示上限適用前のpolicy計算値であり、`allocatedMinutes`は実際の確保時間、`marginMinutes`は確保時間と基準見積もりとの差分としての実余裕を表す。例えば20ページ×3分・上限60分なら、基準60分・policy-buffered66分・allocated60分・実余裕0分となる。上限が無い場合は従来どおり60→66→70となる。この中間計算値を表示枠の長さとして扱わない。
 
 各sliceの所要時間はその内容のコストを下回らず、条件が許す別日分散を保つ。固定日のworkはその日を保つ。これらはshared scheduler policyであり、同じaccepted factsなら両conversation architectureへ適用する。
 

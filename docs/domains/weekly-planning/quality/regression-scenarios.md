@@ -312,7 +312,7 @@ Evidence owners:
 
 ### PREVIEW-008: reply claims follow actual preview evidence
 
-希望時間帯や1回の長さを受理したことと、表示候補がそれを満たすことを区別する。soft availableを含む各taskに適用される希望時間帯のunionで実候補を評価する。未達/未検証条件はapplicationが通常/緊急応答の横へ表示し、rendererの時間帯達成claimは文単位のexact task label scopeで検査する。未達taskがあっても満たした別taskの文や値を繰り返さないneutral accepted-fact ACKは許可し、未検証claimは専用理由で一度repairしてからfallbackする。新しいpreviewが無いときの配置claimを拒否し、変更なしclaimはpreview_unchangedに限定する。task固有の希望・量・session訂正は別作業へ漏れない。
+希望時間帯や1回の長さを受理したことと、表示候補がそれを満たすことを区別する。soft availableを含む各taskに適用される希望時間帯のunionで実候補を評価する。未達/未検証条件はapplicationが通常/緊急応答の横へ表示し、未達/未検証が一つでもあれば、満たしたtaskの名称を含む文でも時間帯/条件claimを拒否する。exact task labelは名称内の時刻語を誤認しないために除去するだけで、aliasや「も」の指示対象を限定する証拠にしない。値を繰り返さないneutral accepted-fact ACKは許可し、未検証claimは専用理由で一度repairしてからfallbackする。新しいpreviewが無いときの配置claimを拒否し、変更なしclaimはpreview_unchangedに限定する。task固有の希望・量・session訂正は別作業へ漏れない。
 
 Evidence owners:
 - `src/features/weeklyPlanning/weeklyPlanningMultiTaskLaterConstraints.integration.test.ts`
@@ -385,7 +385,7 @@ This section remains visible so the principle is not lost merely because its his
 
 | Scenario | Contract to assert |
 | --- | --- |
-| A 完全入力と希望時刻 | 来週のhorizonと20時以降のtyped希望を保持し、時刻表/busy枠を避ける。解決不能な希望は質問する |
+| A 完全入力と希望時刻 | 来週のhorizonと20時以降のtyped希望を保持し、時刻表/busy枠を避ける。解決不能な希望は質問する。曜日集合を一つの日付欄に書いた初回応答は一度のrepairで曜日ごとの事実（availabilityなら`recurrenceKind`/`days`）へ言い直せ、繰り返しを発明したrepairは拒否する |
 | B 質問理由と努力量の回答 | 説明でgraphを変えず、努力量の回答は対象へbindする。未解決の必須教材質問を解消済みとして扱わない（DIALOGUE-016） |
 | C 数量訂正と期限 | 30→20、既存速度、具体日付を同じ作業へ伝播し、旧候補・誤った変更なしclaimを残さない |
 | D 複数作業と後続条件 | 作業を保ち、plan-wide/task-onlyの希望とsession変更をそのscopeへ適用する。容量不足時の旧案は失効する |
