@@ -127,7 +127,7 @@ referentが一意でない状態で、特定task/sourceへ勝手にhard bindし�
 
 ### DIALOGUE-007: explanation is non-mutating and re-presents the same question
 
-pending questionの意味・理由を尋ねるturnはFact Graph/stateを変えず、同じquestionを明示的に再提示し（bindingも新しいmessageへ）、次の短い回答はそのquestionへbindする。無駄なcompleteness retryを起こさない。rendererには`explain_question`のgoalとquestion purpose code（必要なら後で必要になるlaterNeeds）が渡り、まず理由に答えてから同じ質問を一度だけ聞く。work-breakdown質問の下でも、planning contentを持たない説明はtarget taskの再記述を求められずに成功する（2026-10-07の実測失敗の回帰）。新しい詳細と説明要求が同じmessageにあるmixed turnでは、詳細は通常どおり取り込まれてcurrent-turn groundingとして先にACKされ、その詳細で別の質問が先になる場合でも、説明対象の質問がまだ開いていて（未回答・未defer）freshなら提示し続けて説明する。stale/未提示の質問への説明要求は通常turnとして扱い、その質問を説明済みにはしない。
+pending questionの意味・理由を尋ねるturnはFact Graph/stateを変えず、同じquestionを明示的に再提示し（bindingも新しいmessageへ）、次の短い回答はそのquestionへbindする。無駄なcompleteness retryを起こさない。rendererには`explain_question`のgoalとquestion purpose code（必要なら後で必要になるlaterNeeds）が渡り、まず理由に答えてから同じ質問を一度だけ聞く。work-breakdown質問の下でも、planning contentを持たない説明はtarget taskの再記述を求められずに成功する（2026-10-07の実測失敗の回帰）。新しい詳細と説明要求が同じmessageにあるmixed turnでは、詳細は通常どおり取り込まれてcurrent-turn groundingとして先にACKされ、その詳細で別の質問が先になる場合でも、説明対象の質問がまだ開いていて（未回答・未defer）freshなら提示し続けて説明する。stale/未提示の質問への説明要求は通常turnとして扱い、その質問を説明済みにはしない。同じturnで取り消した内容は`removedThisTurn`として渡り、先に受け止められる。質問を出すべき返答（askQuestion）に質問が無ければ採用せず（1回repair後fallback）、質問を提示済みとしてbindしない。短い回答の専用経路は、相談・質問の理由・話題転換を含む発話を一般解釈へ回し、actを落とさない。
 
 Current example owners:
 - `src/features/weeklyPlanning/weeklyPlanningConversationInteraction.integration.test.ts`
@@ -145,7 +145,7 @@ Current example owners:
 
 ### DIALOGUE-009: a failed turn retains state and re-presents only the same fresh typed question
 
-semantic/provider failureはaccepted graph・preview・machine stateを変えない。直前のquestionがfreshでapplicationが型付きtextを持つ場合だけ同じquestionを再提示して再bindし、そうでなければ何も提示・bindしない（fail closed）。raw validator/provider payloadをuserへ出さない。semantic failureはtyped `clarify_turn`としてrendererが書き、provider failureはrendererを呼ばず短いemergency文言で再送を頼む。どちらもアプリ内部の処理を説明しない。
+semantic/provider failureはaccepted graph・preview・machine stateを変えない。provider failureで質問を再提示するときは、その質問だけを一つの依頼として聞く（再送依頼と並べない）。turn中で直近のprovider dispatchが失敗した後はrendererを呼ばず（outage gate）、rendererの1回repairが失敗してもturnは失敗せずfallbackで終わる。直前のquestionがfreshでapplicationが型付きtextを持つ場合だけ同じquestionを再提示して再bindし、そうでなければ何も提示・bindしない（fail closed）。raw validator/provider payloadをuserへ出さない。semantic failureはtyped `clarify_turn`としてrendererが書き、provider failureはrendererを呼ばず短いemergency文言で再送を頼む。どちらもアプリ内部の処理を説明しない。
 
 Current example owners:
 - `src/features/weeklyPlanning/weeklyPlanningConversationInteraction.integration.test.ts`
@@ -189,7 +189,7 @@ Current example owners:
 
 ### DIALOGUE-014: ordinary replies are renderer-written and never describe the app's internals
 
-interaction architectureの通常turn（質問・説明・寄り道・再開・status・preview・semantic failureのrecovery）はrendererがtyped communication contextから書く。deterministic codeは何を伝えるか（goal・purpose code・status reason・disclosure）だけを持ち、説明の文章templateを持たない。renderer出力がユーザー発話・計画データに無い内部の仕組みの語彙を含む、またはapplication所有のpreview disclosureを落とすと拒否され（1回repair後fallback）、表示されるのは内部語彙の無い短いemergency文言だけ。emergency文言はrouting/applicationの文を入力に取らない（statusはtyped reasonから言う）。週間計画の本番fileにある日本語literalはsource scanで分類済みでなければならず、表示されうる固定文はrenderer出力の検査と同じ内部語彙listでも検査する。
+interaction architectureの通常turn（質問・説明・寄り道・再開・status・preview・semantic failureのrecovery）はrendererがtyped communication contextから書く。deterministic codeは何を伝えるか（goal・purpose code・status reason・disclosure）だけを持ち、説明の文章templateを持たない。renderer出力がユーザー発話・計画データに無い内部の仕組みの語彙を含む、またはapplication所有のpreview disclosureを落とすと拒否され（1回repair後fallback）、表示されるのは内部語彙の無い短いemergency文言だけ。emergency文言はrouting/applicationの文を入力に取らない（statusはtyped reasonから言う）。仮予定候補に入りきらなかった作業はapplicationが返答の横に自分の一文で伝え、返答側が全体を外された作業名を出すと拒否する（「含めた」と偽れない）。内部語彙の例外はユーザーの発話と計画の表示ラベルだけで、データのkey・enum値は例外にならず、snake_caseのコードは常に内部語彙。週間計画の本番fileにある日本語literalはsource scanで分類済みでなければならず、表示されうる固定文はrenderer出力の検査と同じ内部語彙listでも検査する。
 
 Current example owners:
 - `src/features/weeklyPlanning/weeklyPlanningAssistantProse.contract.test.ts`

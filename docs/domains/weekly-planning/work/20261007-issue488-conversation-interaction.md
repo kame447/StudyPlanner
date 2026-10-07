@@ -36,6 +36,18 @@ Measured in the real UI: 「なんで時間が必要なの？」 under a pending
 - Presentation: deterministic code hands the renderer a typed communication context (goal, question purpose codes, later needs, status reason, disclosure, flags; corrections as typed before/after). The renderer writes every interaction reply, including semantic-failure recovery; provider failures are not rendered. Internal vocabulary in renderer output is rejected (one repair). `weeklyPlanningInteractionFallbackText.ts` is the only fixed conversational Japanese of the interaction architecture (emergency only). A source scan classifies every Japanese literal of production weekly-planning code.
 - Legacy: byte-identical oracle hashes; all changes are interaction-gated.
 - Independent read-only audits (verification, fixed-prose, semantic safety) found no blocker. Follow-ups taken in: mixed turns (new detail + "why?") keep the asked-about fresh question presented while it is still open, and the explanation instruction/repair let the required acknowledgement of the new detail come first instead of competing with it (a compliant reply was otherwise rejected); the emergency composer no longer accepts routing prose; fixed emergency wording is checked against the renderer validator's vocabulary list too; regression tests for stale-question explanation acts, foreign/removed topic ids, an adversarial rejected response next to a valid act, and the rescued turn under a pending unclear-detail question.
+- Second independent review round (dispatch/performance, semantic security, legacy/trace/tests, conversation surface, architecture, adversarial dialogue): no P0/blocker. Fixed:
+  - renderer repair rejection escaping the fallback (shared adapter fix, both architectures);
+  - renderer dispatched right after a provider outage (interaction outage gate);
+  - omitted-work disclosure contradictable (now an application sentence);
+  - internal-word exemption fooled by machine keys/snake_case (values-only exemption, wider list);
+  - a question bound without being asked (askQuestion requires a question);
+  - focused short-answer route dropping a second act (interaction fallback instruction);
+  - pure removals invisible to the reply (`removedThisTurn`);
+  - purposes missing for many question codes (compiler-checked map);
+  - two requests in one provider-failure bubble, and wording issues.
+
+  Tests contributed by the parallel test agents (semantic safety; request fingerprints and gate-off UI) were reviewed and integrated.
 - Contract: [current-contract-v5.md](../architecture/current-contract-v5.md#conversation-interaction-three-responsibilities-issue-488); scenarios DIALOGUE-007, 009, 013, 014.
 
 ## Deferred
@@ -48,3 +60,5 @@ Measured in the real UI: 「なんで時間が必要なの？」 under a pending
 - Issue #246 consultation runtime (`consultation_request` is only a marker; the user is told it was not answered).
 - Recent-turn window change mentioned in the Issue body.
 - Real-model accuracy of act emission (needs the real-API gate; not run here).
+- Product decisions left open by the second review: an explanation or aside next to a kept preview is answered as an ordinary preview/status turn; an unknown named topic and no topic both resume the current question; several acts in one turn follow a fixed precedence (resume > explain > untargeted aside) rather than temporal/retraction meaning.
+- Not done: making `conversationArchitecture` required at every turn boundary (absent = interaction default), and a measured fallback rate per goal for the real-model gate.

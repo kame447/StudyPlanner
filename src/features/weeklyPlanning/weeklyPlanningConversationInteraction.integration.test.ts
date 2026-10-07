@@ -448,6 +448,35 @@ describe('Issue #488 C/D: failures become conversational recovery', () => {
     expect(effortMinutesFor(conversation, pending.topicId)).toEqual([4]);
   });
 
+  it('commits a successfully rendered recovery as an AI reply and still binds the next short answer', async () => {
+    const conversation = createScriptedConversation({ provider });
+    await conversation.submit(MATH_SETUP);
+    const pending = pendingTarget(conversation);
+    const graphBefore = structuredClone(conversation.graph());
+    const RECOVERY_MARKER = 'ごめんなさい、うまくつかめませんでした。数学は1問あたり何分くらいかかりそうですか？';
+    script = (call) => {
+      if (call.kind === 'semantic_generic') return 'not a semantic document';
+      if (call.kind === 'renderer') return scriptedRendererReply(call, RECOVERY_MARKER);
+      return undefined;
+    };
+    const failed = await conversation.submit('えっと、それは');
+
+    expect(failed.result?.failure?.code).toBe('stable_v5_normalization_rejected');
+    expect(failed.result?.interactionOutcome).toMatchObject({ kind: 'recover', failure: 'semantic', representedQuestion: true });
+    expect(failed.result?.responseSource).toBe('ai');
+    // The committed reply is the rendered recovery, and it is what the failure carries.
+    expect(latestAssistant(conversation).content).toBe(RECOVERY_MARKER);
+    expect(failed.result?.failure?.userMessage).toBe(RECOVERY_MARKER);
+    expect(failed.result?.questionPresentationContent).toMatchObject({ responseSource: 'ai' });
+    expect(conversation.graph()).toEqual(graphBefore);
+    expect(pendingTarget(conversation)).toEqual(pending);
+    expect(freshness(conversation).status).toBe('fresh');
+
+    script = (call) => (call.kind === 'semantic_focused_contextual' ? focusedEffort(4) : undefined);
+    await conversation.submit('1問4分');
+    expect(effortMinutesFor(conversation, pending.topicId)).toEqual([4]);
+  });
+
   it('re-asks the retained question (one request) without inventing a content clarification on provider failure', async () => {
     const conversation = createScriptedConversation({ provider });
     await conversation.submit(MATH_SETUP);
