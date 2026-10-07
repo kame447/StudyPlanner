@@ -76,6 +76,8 @@ const PROSE_REGISTRY: Readonly<Record<string, ProseCategory>> = {
   'dialogue/weeklyPlanningStableV5DialoguePrompt.ts': 'renderer_instruction',
   'dialogue/weeklyPlanningStableV5AiDialogueRenderer.ts': 'renderer_instruction',
   'dialogue/weeklyPlanningStableV5DialogueValidation.ts': 'output_validation',
+  // Interaction semantic meaning rule quotes collective user words (どっちも/両方/全部) as examples.
+  'semantic/weeklyPlanningSemanticMeaningPolicyV5.ts': 'model_context_marker',
   'application/weeklyPlanningApprovalApplication.ts': 'authoritative_status',
   'application/useWeeklyPlanningApplication.ts': 'ui_copy',
   'application/weeklyPlanningApprovalAvailability.ts': 'ui_copy',

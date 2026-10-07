@@ -20,6 +20,12 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     instruction: 'Interpret user meaning and conversational context yourself. Deterministic code validates representation and state and handles safety, scheduling, and persistence; it does not recover semantic meaning that you omit or replace with a guess.',
   },
   {
+    id: 'session_split_and_shared_preference',
+    retentionBasis: 'contextual_reference_resolution',
+    retentionReason: 'Session size/count modifies how accepted work is divided, not its total; collective preference references must retain every intended task.',
+    instruction: 'Splitting existing work keeps its total unless explicitly changed: emit session_duration for per-session length and recurrence.count when stated; never replace total workload with session size. Preferences for both/all (どっちも/両方/全部) apply to every referenced task.',
+  },
+  {
     id: 'current_turn_scope',
     retentionBasis: 'semantic_scope_boundary',
     retentionReason: 'Schema and validators can reject malformed output, but cannot decide which supported meanings belong to the current utterance rather than copied context.',
@@ -110,10 +116,11 @@ export type WeeklyPlanningSemanticMeaningRuleIdV5 =
 export function createWeeklyPlanningSemanticMeaningPolicyV5(
   architecture?: WeeklyPlanningConversationArchitecture,
 ): string {
-  // Legacy architecture: the pre-#488 rule set, without the conversation-acts rule.
+  // Legacy architecture retains the pre-#488 rule set byte-for-byte.
   const includeConversationActs = conversationArchitecturePolicy(architecture).semanticConversationActs;
   return WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5
-    .filter((rule) => includeConversationActs || rule.id !== 'conversation_acts')
+    .filter((rule) => includeConversationActs
+      || (rule.id !== 'conversation_acts' && rule.id !== 'session_split_and_shared_preference'))
     .map((rule) => rule.instruction)
     .join('\n');
 }

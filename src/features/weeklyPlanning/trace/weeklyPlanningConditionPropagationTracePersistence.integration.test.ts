@@ -101,6 +101,8 @@ describe('session-size propagation trace persistence gate', () => {
     const requestEvent = turn.debugTrace.find((event) => event.stage === 'semantic_provider_request')!;
     const actualRequest = requestEvent.data as { request: { messages: unknown }; requestBytes: number };
     expect(actualRequest.request.messages).toEqual(semantic.messages);
+    expect(semantic.messages.find(message => message.role === 'system')?.content)
+      .toContain('Splitting existing work keeps its total unless explicitly changed');
     const sessionId = conversation.graph()!.effortEstimates.find((estimate) => estimate.kind === 'session_duration')!.id;
     const scheduler = turn.debugTrace.find((event) => event.stage === 'runtime_preview_scheduler_evaluated')!;
     const data = scheduler.data as Record<string, unknown>;
@@ -186,6 +188,8 @@ describe('session-size propagation trace persistence gate', () => {
             const diagnostic = persisted as WeeklyPlanningTraceTurnDiagnosticEntry;
             const request = diagnostic.aiInterpreter.input.requests[0];
             expect(request.requestBytes).toBe(actualRequest.requestBytes);
+            expect(request.messages.find(message => message.role === 'system')?.content)
+              .toContain('Splitting existing work keeps its total unless explicitly changed');
             expect(request.messages.find((message) => message.role === 'user')?.content).toContain(CONDITION_FOLLOWUP);
             // Durable requests intentionally bound each message at 1500 bytes; prove the
             // actual request was recorded above, and require explicit metadata for the cut.

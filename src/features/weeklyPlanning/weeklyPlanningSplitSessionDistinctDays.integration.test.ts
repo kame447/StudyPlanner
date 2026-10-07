@@ -37,6 +37,13 @@ describe.each(['interaction_v1', 'legacy_v5'] as const)('split-session full turn
     const old = structuredClone(conversation.getState().previewCandidates);
     const turn = await conversation.submit(CAMPAIGN.D[2]);
     expect(turn.result?.failure).toBeUndefined();
+    const semantic = turn.calls.find(call => call.kind === 'semantic_generic')!;
+    const system = semantic.messages.find(message => message.role === 'system')!.content;
+    if (architecture === 'interaction_v1') {
+      expect(system).toContain('Splitting existing work keeps its total unless explicitly changed');
+      expect(system).toContain('session_duration for per-session length and recurrence.count when stated');
+      expect(system).toContain('どっちも/両方/全部');
+    } else expect(system).not.toContain('Splitting existing work keeps its total');
     expect(turn.result?.preserveExistingPreview).not.toBe(true);
     const candidates = conversation.getState().previewCandidates!;
     expect(candidates).not.toEqual(old);
@@ -47,6 +54,9 @@ describe.each(['interaction_v1', 'legacy_v5'] as const)('split-session full turn
     expect(candidates.every(candidate => candidate.startTime >= '21:00' && candidate.endTime <= '24:00')).toBe(true);
     expect(candidates.every(candidate => candidate.date >= '2026-10-12' && candidate.date <= '2026-10-18')).toBe(true);
     expect(conversation.graph()!.tasks).toHaveLength(2);
+    const researchTask = conversation.graph()!.tasks.find(task => task.title === '卒業研究ノート')!;
+    expect(conversation.graph()!.workloads.filter(work => work.taskId === researchTask.id))
+      .toMatchObject([{ amount: 2, unitCode: 'hour' }]);
     if (architecture === 'interaction_v1') {
       expect(turn.result?.communicationFacts?.previewConstraintSatisfaction?.every(fact => fact.status === 'satisfied')).toBe(true);
     }

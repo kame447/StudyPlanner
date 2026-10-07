@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import type {
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
@@ -43,6 +44,10 @@ const GENERIC_MAX_COMPLETION_TOKENS = 3200;
 const GENERIC_MEANING_POLICY_MAX_BYTES = 5_150;
 const GENERIC_SYSTEM_PROMPT_MAX_BYTES = 8_600;
 const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 3_450;
+// Live D split misread (2026-10-08): the interaction-only split/collective-reference
+// rule adds meaning absent from legacy.
+// Bound that addition separately; keep the pre-existing policy/system ceilings intact.
+const INTERACTION_SESSION_RULE_MAX_BYTES = 350;
 const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 1_800;
 // The focused response schema now carries target and measurement as separate
 // typed axes. Keep enough room for that contract while still requiring this
@@ -186,10 +191,22 @@ function representativeGenericRequestBytes(): number {
 }
 
 describe('Stable V5 semantic prompt budget', () => {
+  it('adds one bounded interaction-only rule while preserving the legacy policy bytes', () => {
+    const rule = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(rule => rule.id === 'session_split_and_shared_preference')!;
+    const interaction = createWeeklyPlanningSemanticMeaningPolicyV5('interaction_v1');
+    const legacy = createWeeklyPlanningSemanticMeaningPolicyV5('legacy_v5');
+    expect(byteLength(`${rule.instruction}\n`)).toBeLessThanOrEqual(INTERACTION_SESSION_RULE_MAX_BYTES);
+    expect(interaction.split(rule.instruction)).toHaveLength(2);
+    expect(legacy).not.toContain(rule.instruction);
+    expect(createHash('sha256').update(legacy).digest('hex'))
+      .toBe('c6e2d94e52fb9665f53fcb8e1e62edfddb485f36b4998df9644cd2ea224577cb');
+    expect(byteLength(interaction.replace(`${rule.instruction}\n`, ''))).toBeLessThanOrEqual(GENERIC_MEANING_POLICY_MAX_BYTES);
+  });
+
   it('keeps the always-on meaning policy compact', () => {
     const policy = createWeeklyPlanningSemanticMeaningPolicyV5();
     expect(byteLength(policy)).toBeLessThanOrEqual(
-      GENERIC_MEANING_POLICY_MAX_BYTES,
+      GENERIC_MEANING_POLICY_MAX_BYTES + INTERACTION_SESSION_RULE_MAX_BYTES,
     );
     expect(
       WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.some(
@@ -230,7 +247,7 @@ describe('Stable V5 semantic prompt budget', () => {
     const systemPrompt = representativeGenericMessages()[0]?.content ?? '';
 
     expect(byteLength(systemPrompt)).toBeLessThanOrEqual(
-      GENERIC_SYSTEM_PROMPT_MAX_BYTES,
+      GENERIC_SYSTEM_PROMPT_MAX_BYTES + INTERACTION_SESSION_RULE_MAX_BYTES,
     );
   });
 
