@@ -1264,8 +1264,15 @@ for (const options of [cases.find(item => item.label === 'desktop' && item.theme
     await page.evaluate(() => window.__plannerRecoveryRepository.holdNextTemplateWrite());
     await editor.getByRole('button', { name: '保存', exact: true }).click();
     await expect.poll(async () => (await repoSnapshot(page)).pendingPlanWrites).toBe(1);
+    for (const control of await editor.locator('input, select, textarea, .segment').all()) {
+      await expect(control).toBeDisabled();
+    }
+    await expect(editor.getByRole('button', { name: '閉じる', exact: true })).toBeEnabled();
     await editor.getByRole('button', { name: '閉じる', exact: true }).click();
     await page.getByRole('button', { name: '火曜 1限 授業Bを編集', exact: true }).click();
+    for (const control of await editor.locator('input, select, textarea, .segment').all()) {
+      await expect(control).toBeEnabled();
+    }
     await editor.getByLabel('授業名', { exact: true }).fill('未保存の授業B');
     await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanWrite());
     await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
@@ -1276,6 +1283,33 @@ for (const options of [cases.find(item => item.label === 'desktop' && item.theme
     await editor.getByRole('button', { name: '保存', exact: true }).click();
     await expect(editor).toHaveCount(0);
     await expect(page.getByRole('button', { name: '火曜 1限 未保存の授業Bを編集', exact: true })).toBeVisible();
+  });
+
+  test(`new timetable class stays locked until one create completes ${options.label}-${options.theme}`, async ({ page }, testInfo) => {
+    await boot(page, options);
+    await navigate(page, '時間割');
+    await page.getByRole('button', { name: '水曜 1限 授業を追加', exact: true }).press('Enter');
+    const editor = page.locator('.timetable-editor-modal');
+    await editor.getByLabel('授業名', { exact: true }).fill('新しく保存する授業');
+    const before = writeMethods(await repoSnapshot(page));
+    await page.evaluate(() => window.__plannerRecoveryRepository.holdNextTemplateWrite());
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect.poll(async () => (await repoSnapshot(page)).pendingPlanWrites).toBe(1);
+    for (const control of await editor.locator('input, select, textarea, .segment').all()) {
+      await expect(control).toBeDisabled();
+    }
+    await expect(editor.getByRole('button', { name: '閉じる', exact: true })).toBeEnabled();
+    await expect(editor.getByLabel('授業名', { exact: true })).toHaveValue('新しく保存する授業');
+    // Native form submission cannot dispatch another create while the first is pending.
+    await editor.evaluate(form => { form.requestSubmit(); form.requestSubmit(); });
+    expect(writeMethods(await repoSnapshot(page)).slice(before.length)).toEqual(['upsertScheduleTemplate']);
+    await page.screenshot({ path: testInfo.outputPath(`timetable-pending-create-${options.label}-${options.theme}.png`), fullPage: true });
+    await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanWrite());
+    await expect(editor).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '水曜 1限 新しく保存する授業を編集', exact: true })).toBeVisible();
+    expect(writeMethods(await repoSnapshot(page)).slice(before.length)).toEqual(['upsertScheduleTemplate']);
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleTemplates.v1') ?? '[]'));
+    expect(saved).toEqual([expect.objectContaining({ title: '新しく保存する授業' })]);
   });
 }
 
