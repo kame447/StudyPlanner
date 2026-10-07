@@ -39,6 +39,7 @@ interface QuickEntryModalProps {
   userId: string;
   selectedDate: string;
   initialMode?: QuickEntryMode;
+  initialMaterialId?: string;
   plans: Plan[];
   actuals: Actual[];
   materials: StudyMaterial[];
@@ -96,6 +97,7 @@ function QuickEntryEditor({
   userId,
   selectedDate,
   initialMode = 'later',
+  initialMaterialId,
   plans,
   actuals,
   materials,
@@ -106,13 +108,15 @@ function QuickEntryEditor({
   onSaveStandaloneActual,
   onSaveLinkedActual,
 }: QuickEntryModalProps) {
+  const initialMaterial = materials.find((material) =>
+    material.id === initialMaterialId && material.userId === userId && material.status !== 'archived');
   const [entryKind, setEntryKind] = useState<QuickEntryKind>('plan');
   const [mode, setMode] = useState<QuickEntryMode>(initialMode);
-  const [title, setTitle] = useState('');
-  const [subject, setSubject] = useState('');
-  const [subjectSource, setSubjectSource] = useState<SubjectSource>('none');
-  const [selectedMaterialId, setSelectedMaterialId] = useState('');
-  const [materialSource, setMaterialSource] = useState<MaterialSource>('none');
+  const [title, setTitle] = useState(initialMaterial?.name ?? '');
+  const [subject, setSubject] = useState(initialMaterial?.subjectName ?? '');
+  const [subjectSource, setSubjectSource] = useState<SubjectSource>(initialMaterial ? 'material' : 'none');
+  const [selectedMaterialId, setSelectedMaterialId] = useState(initialMaterialId ?? '');
+  const [materialSource, setMaterialSource] = useState<MaterialSource>(initialMaterialId ? 'user' : 'none');
   const [type, setType] = useState<PlanType>('study');
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [dueDate, setDueDate] = useState<string>('');
@@ -155,6 +159,7 @@ function QuickEntryEditor({
   );
   const selectedMaterial =
     availableMaterials.find((material) => material.id === selectedMaterialId) ?? null;
+  const hasUnavailableMaterial = selectedMaterialId !== '' && !selectedMaterial;
   const candidateActual =
     actualEndTime && title.trim()
       ? {
@@ -171,6 +176,7 @@ function QuickEntryEditor({
   const canSave =
     title.trim().length > 0 &&
     !isSubmitting &&
+    (!hasUnavailableMaterial || (entryKind === 'plan' && mode === 'later')) &&
     (entryKind === 'actual'
       ? estimatedMinutes !== null && actualEndTime !== null
       : mode === 'later' ||
@@ -361,7 +367,7 @@ function QuickEntryEditor({
   }
 
   function renderMaterialSelect() {
-    if (availableMaterials.length === 0) {
+    if (availableMaterials.length === 0 && !hasUnavailableMaterial) {
       return null;
     }
 
@@ -372,6 +378,7 @@ function QuickEntryEditor({
           value={selectedMaterialId}
           onChange={(event) => selectMaterial(event.target.value)}
         >
+          {hasUnavailableMaterial ? <option value={selectedMaterialId} disabled>選択した教材は利用できません</option> : null}
           <option value="">教材なし</option>
           {availableMaterials.map((material) => (
             <option key={material.id} value={material.id}>
@@ -379,12 +386,13 @@ function QuickEntryEditor({
             </option>
           ))}
         </select>
+        {hasUnavailableMaterial ? <span role="alert">教材を選び直してください。</span> : null}
       </label>
     );
   }
 
   async function handleSaveLinkedActual(plan: Plan) {
-    if (!mountedRef.current || submissionInFlightRef.current || !actualEndTime || !title.trim()) {
+    if (!mountedRef.current || submissionInFlightRef.current || hasUnavailableMaterial || !actualEndTime || !title.trim()) {
       return;
     }
 
@@ -887,7 +895,7 @@ function QuickEntryEditor({
                           </div>
                           <button
                             className="mini-button"
-                            disabled={candidate.isRecorded || isSubmitting}
+                            disabled={candidate.isRecorded || isSubmitting || hasUnavailableMaterial}
                             onClick={() => void handleSaveLinkedActual(candidate.plan)}
                             type="button"
                           >
