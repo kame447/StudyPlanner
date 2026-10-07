@@ -99,7 +99,7 @@ describe('interaction emergency wording', () => {
 
   it('says that advice is not answered and invites restating unapplied details', () => {
     const text = compose(context('explain_question', { consultationDeferred: true, planningDetailsNotApplied: true }));
-    expect(text).toContain('ご相談');
+    expect(text).toContain('希望があれば');
     expect(text).toContain('もう一度教えて');
   });
 

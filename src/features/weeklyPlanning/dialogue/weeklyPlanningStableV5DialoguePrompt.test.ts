@@ -161,6 +161,33 @@ describe('Stable V5 dialogue prompt', () => {
     }
   });
 
+  it('keeps preview, recovery and consultation instructions truthful (real-E2E follow-ups)', () => {
+    const requestFor = (goal: 'present_preview' | 'clarify_turn', overrides: Record<string, unknown> = {}) => {
+      const prompt = createWeeklyPlanningStableV5DialoguePrompt({
+        ...input(),
+        communication: {
+          goal,
+          questionPurposes: [],
+          askQuestion: false,
+          laterNeeds: [],
+          statusReason: null,
+          planningDetailsNotApplied: false,
+          consultationDeferred: false,
+          previewDisclosure: null,
+          ...overrides,
+        },
+      });
+      return (JSON.parse(prompt.userPrompt) as { request: string }).request;
+    };
+    // The renderer never sees the candidates' contents, so it must not describe them.
+    expect(requestFor('present_preview')).toContain('候補の日時・回数・時間帯など中身は書かず');
+    // A failed message is not answered by re-asking what the user already said.
+    expect(requestFor('clarify_turn')).not.toContain('何を予定に入れたいかを聞く');
+    expect(requestFor('clarify_turn')).toContain('聞き直す質問はせず');
+    // An unanswered consultation is not refused with "cannot judge" wording.
+    expect(requestFor('clarify_turn', { consultationDeferred: true })).toContain('「判断できない」「相談」などの断り方はせず');
+  });
+
   it('asks the renderer to acknowledge what this turn removed only when something was removed', () => {
     const communication = {
       goal: 'explain_question' as const,

@@ -427,7 +427,7 @@ describe('C. semantic failure under a pending question', () => {
         },
         {
           "kind": "renderer",
-          "sha256": "93a9b02585c66a5bb7616515cee06d0c377c431fc9042c0f38498c73e25d4838",
+          "sha256": "151ef1ad6c13376f4c2f69079a88ae009cc8e6f61593cf5e29b2717ec393eaff",
         },
       ]
     `);

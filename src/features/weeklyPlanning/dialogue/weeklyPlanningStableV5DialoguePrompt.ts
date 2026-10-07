@@ -179,11 +179,11 @@ const INTERACTION_GOAL_INSTRUCTION = 'communication.goalはアプリが決めた
 const INTERACTION_GOAL_INSTRUCTIONS: Readonly<Record<WeeklyPlanningStableV5CommunicationGoal, string>> = {
   ask_question: 'goal=ask_question: questionIntentの質問を一つ聞く。このturnで受け取った情報があれば先に短く受け止める。',
   report_status: 'goal=report_status: このturnで受け取った情報があれば先に短く受け止める。statusReason=ready_to_create_preview→予定を作るのに必要なことはそろい、頼めば仮予定を作れると伝える。preview_unchanged→今の仮予定の候補はそのままで、直したい点を言うかpreviewPromotionControlLabelの操作で進められると伝える。',
-  present_preview: 'goal=present_preview: このturnで受け取った情報があれば先に短く受け止める。previewCount件の候補ができたことと、previewPromotionControlLabelの操作を案内する。',
+  present_preview: 'goal=present_preview: このturnで受け取った情報があれば先に短く受け止める。previewCount件の候補ができたことと、previewPromotionControlLabelの操作を案内する。候補の日時・回数・時間帯など中身は書かず、候補が条件どおりになったとも言わない（中身はプレビューで見てもらう）。',
   explain_question: 'goal=explain_question: ユーザーは直前の質問の理由や意味を尋ねている。最初に（required_before_resumeならACKのすぐ後に）、なぜその情報が必要かをquestionPurposes（意味はpurposeMeanings）と分かっている内容（relevantLabels・量・期間など）に沿って具体的に答える。ユーザーの思う質問の中身が実際と違えば、いま確かめたいことを穏やかに伝える。laterNeedsは疑問への答えに役立つときだけ触れてよい。そのあとaskQuestion=trueなら、同じ質問をrequestedInformationを落とさず、直前と同じ文面にせず一度だけ聞く。',
   acknowledge_aside: 'goal=acknowledge_aside: ユーザーが移った別の話題に自然に応じる。止まっている質問は聞かず、保留や未変更の説明もしない。',
   resume_question: 'goal=resume_question: その話題に自然に戻り、その質問を一つ聞く。',
-  clarify_turn: 'goal=clarify_turn: このメッセージは予定づくりに使えなかった。そのことの報告や理由、アプリの事情は書かず、うまく受け取れなかったことを短く自然に伝える（聞き返す形でもよい）。askQuestion=trueならその質問を、falseなら何を予定に入れたいかを聞く。同じ文面の再送は頼まない。',
+  clarify_turn: 'goal=clarify_turn: このメッセージは予定づくりに使えなかった。そのことの報告や理由、アプリの事情は書かず、うまく受け取れなかったことを短く自然に伝える（聞き返す形でもよい）。askQuestion=trueならその質問を聞く。falseなら、ユーザーがすでに言った教材・量・期間などを聞き直す質問はせず、伝えたいことを少しずつ分けて教えてほしいと頼む。同じ文面の再送は頼まない。',
 };
 
 function interactionCommunicationInstructions(
@@ -209,7 +209,7 @@ function interactionCommunicationInstructions(
       ? ['planningDetailsNotApplied=true: このメッセージの予定の詳細はまだ受け取れていない。受け取れた・受け取れないの報告や理由は書かず、変えたいことがあれば改めて教えてほしいと自然に一言添える。']
       : []),
     ...(communication.consultationDeferred
-      ? ['consultationDeferred=true: その相談にはここではまだ答えられないと、人として自然に一言だけ伝える。助言の内容や数値の判断は書かない。']
+      ? ['consultationDeferred=true: その問いかけには結論を出さない（助言・可否・数値の判断は書かない）。「判断できない」「相談」などの断り方はせず、そうしたい希望や条件があればそのまま伝えてもらえれば予定に入れて考えられる、と自然に一言添える。']
       : []),
   ];
 }

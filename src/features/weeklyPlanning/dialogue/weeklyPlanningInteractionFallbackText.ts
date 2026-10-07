@@ -23,10 +23,10 @@ const PROVIDER_UNAVAILABLE = 'すみません、通信がうまくいかなか�
 /** Before the retained question: the question itself is the one request of the reply. */
 const PROVIDER_UNAVAILABLE_BEFORE_QUESTION = 'すみません、うまく届かなかったようです。';
 const MESSAGE_NOT_UNDERSTOOD = 'すみません、いまのメッセージをうまく受け取れませんでした。';
-const CONTINUE_INVITATION = 'どんな勉強の予定を立てたいか、続けて教えてください。';
+const CONTINUE_INVITATION = 'お手数ですが、伝えたいことを少しずつ分けて教えてもらえますか？';
 const EXPLANATION_BRIDGE = '予定を無理なく組むのに必要なので、確認させてください。';
 const ASIDE_ACKNOWLEDGEMENT = 'わかりました。どうぞ続けてください。';
-const CONSULTATION_NOT_ANSWERED = 'そのご相談には、ここではまだお答えできません。';
+const CONSULTATION_NOT_ANSWERED = 'その点はここでは決めきれないので、希望があればそのまま条件として教えてください。';
 const DETAILS_INVITATION = '予定について変えたいことがあれば、もう一度教えてください。';
 const READY_TO_CREATE_PREVIEW = '必要なことはそろいました。仮予定を作ってよければ、そう伝えてください。';
 const CAPACITY_SHORTFALL = '今の期間と空き時間では、全部は入りきりませんでした。期間を延ばすか、量を減らすか、使える時間を増やせるかを教えてください。';
