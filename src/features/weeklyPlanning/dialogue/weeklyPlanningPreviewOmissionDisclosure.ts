@@ -31,7 +31,7 @@ export function weeklyPlanningPreviewConstraintDisclosureText(
     if (fact.status === 'satisfied') return [];
     const condition = fact.kind === 'preferred_window' ? '希望した時間帯' : '希望した1回の長さ';
     return [fact.status === 'not_satisfied'
-      ? `${fact.taskLabel}は、${condition}に合わない候補があります。候補の日時を確認してください。`
-      : `${fact.taskLabel}は、${condition}を満たしているか確認できていません。候補の日時を確認してください。`];
+      ? `「${fact.taskLabel}」は、${condition}に合わない候補があります。候補の日時を確認してください。`
+      : `「${fact.taskLabel}」が${condition}に合っているか、候補の日時で確かめてください。`];
   }))].join('\n');
 }
