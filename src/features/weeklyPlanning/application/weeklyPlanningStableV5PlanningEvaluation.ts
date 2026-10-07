@@ -10,6 +10,9 @@ import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import {
+  projectWeeklyPlanningStatedTimeBudgetGraphV5,
+} from '../semantic/weeklyPlanningStatedTimeBudgetProjectionV5';
+import {
   applyAcceptedMemorySessionProjectionV5,
 } from '../semantic/weeklyPlanningAcceptedMemorySessionProjectionV5';
 import {
@@ -149,7 +152,9 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
   const { input, semanticTurn } = params;
   const { requestContext, runtimeSession, semantic } = semanticTurn;
   const semanticDiff = semantic.canonicalization?.diff ?? undefined;
-  const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
+  const activeGraph = projectWeeklyPlanningStatedTimeBudgetGraphV5(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph),
+  );
   const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
     graph: activeGraph,
     currentDate: requestContext.currentDate,

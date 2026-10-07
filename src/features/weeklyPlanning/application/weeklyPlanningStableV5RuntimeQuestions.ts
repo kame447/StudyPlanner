@@ -1,6 +1,7 @@
 import type { GenericSchedulerInputCompilationResult } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import type { WeeklyPlanningFactGraphV5, WorkloadFactV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
+import { projectWeeklyPlanningStatedTimeBudgetGraphV5 } from '../semantic/weeklyPlanningStatedTimeBudgetProjectionV5';
 import type { WeeklyPlanningStableQuestionV5 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
 
 const QUESTION_SOURCE_EXCERPT_LIMIT = 80;
@@ -117,7 +118,9 @@ export function stableV5MissingSchedulableWorkQuestion(
   targetFactId: string | null;
   intent: WeeklyPlanningStableV5MissingWorkIntent;
 } {
-  const active = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
+  const active = projectWeeklyPlanningStatedTimeBudgetGraphV5(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(graph),
+  );
   const taskTitles = active.tasks.map((task) => task.title.trim()).filter(Boolean);
   const lifecycleByFactId = new Map(
     graph.factLifecycles.map((entry) => [entry.factId, entry] as const),

@@ -93,6 +93,7 @@ Important consequences:
 - corrections to total/completed/target must invalidate stale derived progress consistently.
 - input order must not change the converged bounded-progress truth.
 - open-ended work must not receive an invented total merely to make arithmetic or scheduling easier.
+- a user-stated total time for a task with no content quantity (no workload of any role on the task or its components) is that task's time budget, whether the semantic layer typed it as a minute/hour `target` workload or as the task's own `total_duration` estimate. The scheduler-facing graph (planning evaluation and the missing-work question) projects one exactly-sized minute `target` from a single positive task-level `total_duration` (identical restatements count once; contradictory totals and hard fixed intervals are not projected). It is not persisted, carries the estimate's evidence, and disappears as soon as any content quantity is accepted, after which the same estimate is that quantity's cost. Shared by both conversation architectures (real-UI scenario F, 2026-10-07: without it the registered-material scope question re-armed indefinitely).
 
 For consultation questions containing calculable quantities, deterministic calculation remains the numeric authority. An answer model may explain a computed result but must not silently replace application-owned arithmetic with its own value.
 
