@@ -1639,3 +1639,24 @@ for (const [viewport, theme, replacement] of [['desktop', 'light', 'editor'], ['
     expect(events.map(event => event.title).sort()).toEqual(['保存する繰り返し予定A', '繰り返し予定B'].sort());
   });
 }
+
+for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
+  test(`Profile save reports storage failure honestly and permits retry ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, cases.find(item => item.label === viewport && item.theme === theme));
+    const readProfile = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.users')).find(user => user.id === 'planner-recovery-owner'));
+    const before = await readProfile();
+    await page.getByRole('button', { name: 'マイページを開く', exact: true }).click();
+    const editor = page.locator('.my-page-modal');
+    await editor.getByRole('textbox', { name: 'ユーザーネーム', exact: true }).fill('保存を再試行する名前');
+    await page.evaluate(() => window.__plannerRecoveryRepository.failNextProfileWrite());
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect(editor.getByRole('status')).toHaveText('プロフィールの保存に失敗しました（検証用）。');
+    await expect(editor).not.toContainText('保存しました。');
+    await expect(editor.getByRole('textbox', { name: 'ユーザーネーム', exact: true })).toHaveValue('保存を再試行する名前');
+    expect(await readProfile()).toEqual(before);
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect.poll(async () => (await readProfile()).username).toBe('保存を再試行する名前');
+    await expect(page.getByText('プロフィールを更新しました。', { exact: true })).toBeVisible();
+    await expect(editor).not.toContainText('プロフィールの保存に失敗しました（検証用）。');
+  });
+}

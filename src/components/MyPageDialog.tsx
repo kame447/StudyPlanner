@@ -63,10 +63,14 @@ export function MyPageDialog({
     const owner = session.current;
     const choice = selection.current;
     if (!owner || pendingPhoto.current) return;
-    await onSaveProfile({
-      username,
-      avatar,
-    });
+    try {
+      await onSaveProfile({ username, avatar });
+    } catch (error) {
+      if (session.current !== owner || selection.current !== choice) return;
+      setStatus(error instanceof Error ? error.message : 'プロフィールを更新できませんでした。');
+      setStatusTone('error');
+      return;
+    }
     if (session.current !== owner || selection.current !== choice) return;
     setStatus('保存しました。');
     setStatusTone('info');

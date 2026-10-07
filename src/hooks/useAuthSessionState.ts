@@ -192,7 +192,7 @@ export function useAuthSessionState({
   const saveUserProfile = useCallback(
     async (draft: UserProfileDraft) => {
       if (!user) {
-        return;
+        throw new Error('ログイン状態を確認できませんでした。');
       }
 
       try {
@@ -206,6 +206,7 @@ export function useAuthSessionState({
             : 'プロフィールを更新できませんでした。',
           'error',
         );
+        throw error;
       }
     },
     [showNotice, user],
