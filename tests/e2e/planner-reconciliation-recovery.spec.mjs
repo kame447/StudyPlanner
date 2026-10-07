@@ -1660,3 +1660,31 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     await expect(editor).not.toContainText('プロフィールの保存に失敗しました（検証用）。');
   });
 }
+
+for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
+  test(`Profile save cannot restore the signed-out UI under StrictMode ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, { ...cases.find(item => item.label === viewport && item.theme === theme), strict: true });
+    expect((await hookSnapshot(page)).mounts).toBeGreaterThanOrEqual(2);
+    await page.getByRole('button', { name: 'マイページを開く', exact: true }).click();
+    const editor = page.locator('.my-page-modal');
+    await editor.getByRole('textbox', { name: 'ユーザーネーム', exact: true }).fill('応答を待つプロフィール');
+    await page.evaluate(() => window.__plannerRecoveryRepository.holdNextProfileResponse());
+    const responseState = () => page.evaluate(() => window.__plannerRecoveryRepository.profileResponseState());
+    const before = await responseState();
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect.poll(async () => (await responseState()).pending).toBe(true);
+    const storedProfile = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.users')).find(user => user.id === 'planner-recovery-owner'));
+    await expect.poll(async () => (await storedProfile()).username).toBe('応答を待つプロフィール');
+    await editor.getByRole('button', { name: 'ログアウト', exact: true }).click();
+    await expect(page.locator('.auth-shell')).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.session'))).toBeNull();
+    expect(await page.evaluate(() => window.__plannerRecoveryRepository.releaseProfileResponse())).toBe(true);
+    await expect.poll(async () => (await responseState()).returned).toBe(before.returned + 1);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(page.locator('.auth-shell')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'マイページを開く', exact: true })).toHaveCount(0);
+    await expect(page.getByText('プロフィールを更新しました。', { exact: true })).toHaveCount(0);
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.session'))).toBeNull();
+    expect((await storedProfile()).username).toBe('応答を待つプロフィール');
+  });
+}

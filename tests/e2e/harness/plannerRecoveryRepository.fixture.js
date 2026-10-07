@@ -9,13 +9,21 @@ import { createLocalPlannerRepository } from '../../../src/repositories/createLo
 const real = createLocalPlannerRepository();
 const authStorage = createLocalAuthStorageGateway();
 let failProfileWrite = false;
+let holdProfileResponse = false;
+let heldProfileResponse = null;
+let profileResponsesReturned = 0;
 const writeUsers = authStorage.writeUsers;
 authStorage.writeUsers = async users => {
   if (failProfileWrite) {
     failProfileWrite = false;
     throw new Error('プロフィールの保存に失敗しました（検証用）。');
   }
-  return writeUsers(users);
+  await writeUsers(users);
+  if (holdProfileResponse) {
+    holdProfileResponse = false;
+    await new Promise(resolve => { heldProfileResponse = resolve; });
+  }
+  profileResponsesReturned += 1;
 };
 export const authRepository = createAuthRepository(authStorage);
 const calls = [];
@@ -83,6 +91,15 @@ export const plannerRepository = Object.fromEntries(Object.entries(real).map(([m
 window.__plannerRecoveryRepository = {
   snapshot,
   failNextProfileWrite() { failProfileWrite = true; },
+  holdNextProfileResponse() { holdProfileResponse = true; },
+  profileResponseState() { return { pending: Boolean(heldProfileResponse), returned: profileResponsesReturned }; },
+  releaseProfileResponse() {
+    const release = heldProfileResponse;
+    if (!release) return false;
+    heldProfileResponse = null;
+    release();
+    return true;
+  },
   async seedRecurringEditorPlans({ userId, date }) {
     const now = new Date().toISOString();
     const plans = ['A', 'B'].map((suffix, index) => ({
