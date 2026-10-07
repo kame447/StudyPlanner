@@ -96,9 +96,12 @@ export function PixelCompanionScene({ kind, companion, atmosphere }: {
     <path d="M0 168h320v32H0z" fill="var(--scene-floor)" />
     <path d="M80 188h88v4H80zM208 192h80v4h-80z" fill="var(--scene-wood)" opacity=".2" />
     <CompanionBackdrop kind={kind} atmosphere={atmosphere} />
-    <path d="M284 100h4v28h-4zM276 108h8v4h-8zM288 100h8v4h-8zM292 96h4v4h-4z" fill="var(--scene-leaf)" />
-    <path d="M276 124h20v4h-4v12h-12v-12h-4z" fill="var(--scene-clay)" />
-    <path d="M272 140h28v4h-28z" fill="var(--scene-wood)" />
+    {/* Keep the wall shelf beside the furniture, outside either pet's motion area. */}
+    <g data-scene-prop="planter" transform="translate(72 80)">
+      <path d="M12 4h4v28h-4zM4 12h8v4h-8zM16 4h8v4h-8zM20 0h4v4h-4z" fill="var(--scene-leaf)" />
+      <path d="M4 28h20v4h-4v12h-12v-12h-4z" fill="var(--scene-clay)" />
+      <path d="M0 44h28v4H0z" fill="var(--scene-wood)" />
+    </g>
     {companion === 'cat' ? <PixelCat /> : <PixelTurtle />}
   </g>;
 }
