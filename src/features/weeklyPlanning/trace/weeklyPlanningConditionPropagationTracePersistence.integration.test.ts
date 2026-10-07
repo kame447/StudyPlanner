@@ -33,6 +33,7 @@ let morningOnly = false;
 let softAvailable = false;
 let alternateWindows = false;
 let contentCap = false;
+let contentLesson = false;
 
 beforeEach(() => {
   restoreStorage = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
@@ -42,14 +43,24 @@ beforeEach(() => {
   softAvailable = false;
   alternateWindows = false;
   contentCap = false;
+  contentLesson = false;
   provider = installScriptedWeeklyPlanningProvider((call) => {
     if (call.kind === 'renderer') return 'renderer unavailable in fixture';
     if (call.kind === 'semantic_focused_contextual') return JSON.stringify({
       decision: 'effort_answer', effortTarget: 'question_target', effortMeasurement: 'duration_per_unit',
       minutes: 3, precision: 'approximate', quantityRole: null,
     });
-    const document: Json = String(call.payload?.userText) === CONDITION_SETUP ? conditionSetupDocument()
+    const isSetup = String(call.payload?.userText) === (contentLesson ? CONDITION_SETUP.replace('20ページ', '20課') : CONDITION_SETUP);
+    const document: Json = isSetup ? conditionSetupDocument()
       : contentCap ? liveDSplitSessionDocument(conversation.graph()!) : conditionFollowupDocument(conversation.graph()!);
+    if (isSetup && contentLesson) {
+      const task = (document.tasks as Json[])[0];
+      const workload = (task.workloads as Json[])[0];
+      workload.unitCode = 'lesson';
+      workload.unitLabel = '課';
+      workload.sourceText = String(workload.sourceText).replace('20ページ', '20課');
+      task.sourceText = String(task.sourceText).replace('20ページ', '20課');
+    }
     if (morningOnly) document.availabilityDeclarations = [declaration({
       kind: 'available', startTime: '09:00', endTime: '12:00', recurrenceKind: 'daily',
       constraintLevel: 'hard', sourceText: '使えるのは毎日9時から12時だけ',
@@ -91,13 +102,14 @@ function traceInput(turn: ScriptedConversationTurn) {
 }
 
 describe('session-size propagation trace persistence gate', () => {
-  it.each([[false, false, false, false], [true, false, false, false], [true, true, false, false], [false, false, true, false], [false, false, false, true]])('persists actual request, preview and constraint truth through outbox/Worker/size limits (morning: %s, soft available: %s, alternatives: %s, content cap: %s)', async (limited, available, alternatives, capped) => {
-    await conversation.submit(CONDITION_SETUP);
-    await conversation.submit(CONDITION_PACE);
+  it.each<[boolean, boolean, boolean, boolean | 'lesson']>([[false, false, false, false], [true, false, false, false], [true, true, false, false], [false, false, true, false], [false, false, false, true], [false, false, false, 'lesson']])('persists actual request, preview and constraint truth through outbox/Worker/size limits (morning: %s, soft available: %s, alternatives: %s, content cap: %s)', async (limited, available, alternatives, capped) => {
+    contentLesson = capped === 'lesson';
+    await conversation.submit(contentLesson ? CONDITION_SETUP.replace('20ページ', '20課') : CONDITION_SETUP);
+    await conversation.submit(contentLesson ? CONDITION_PACE.replace('ページ', '課') : CONDITION_PACE);
     morningOnly = limited;
     softAvailable = available;
     alternateWindows = alternatives;
-    contentCap = capped;
+    contentCap = Boolean(capped);
     const turn = await conversation.submit(`${CONDITION_FOLLOWUP}${limited ? '。使えるのは毎日9時から12時だけ' : ''}`);
     expect(turn.result?.failure).toBeUndefined();
     expect(turn.result?.draftCandidates).toHaveLength(3);

@@ -246,7 +246,12 @@ function executionPolicySlices(params: {
     || !Number.isFinite(total)
     || total <= 0
   ) {
-    return [params.item];
+    // A cap remains observable even when atomic work or a bounded fallback cannot
+    // split it. Carry the selected fact so actual durations can prove a violation.
+    return [{
+      ...params.item,
+      sourceFactRefs: [...new Set([...params.item.sourceFactRefs, ...session.sourceFactIds])],
+    }];
   }
   const profile = inferWeeklyPlanningExecutionProfileV5({
     graph: params.graph,
@@ -317,7 +322,10 @@ function explicitContentSessionSlices(params: {
   estimates: readonly EffortEstimateFact[];
 }): GenericPlanningWorkItem[] | null {
   const { item } = params;
-  if (item.quantity.unitCode !== 'page' && item.quantity.unitCode !== 'problem') return null;
+  // All positive integer content counts share this policy, including custom units.
+  // Time/session quantities have their own splitter; mock exams remain atomic.
+  if (['minute', 'hour', 'session', 'mock_exam'].includes(item.quantity.unitCode)
+    || !Number.isInteger(item.quantity.amount) || item.quantity.amount <= 0) return null;
   const session = resolveWeeklyPlanningWorkItemSessionDurationV5({ item, estimates: params.estimates });
   if (session.minutes === null || item.estimatedMinutes === null || item.baseEstimatedMinutes == null) return null;
   const cap = Math.max(1, Math.floor(session.minutes));
