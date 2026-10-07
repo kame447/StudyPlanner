@@ -247,7 +247,7 @@ export function TimetableView({
   const [draft, setDraft] = useState<ScheduleTemplateDraft | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<ScheduleTemplate | null>(null);
   const editorRevision = useRef(0);
-  const editorWritePending = useRef(false);
+  const pendingEditorRevision = useRef<number | null>(null);
   const [savingTemplateId, setSavingTemplateId] = useState<string | null>(null);
   const [savingPeriods, setSavingPeriods] = useState(false);
   const [periodActionError, setPeriodActionError] = useState<string | null>(null);
@@ -355,10 +355,14 @@ export function TimetableView({
   const isTermActionBusy =
     isSavingTerm || isClearingTermData || deletingTermId !== null;
 
+  // A reopened editor stays editable while the previous session's write is pending.
+  const isEditorDraftLocked = pendingEditorRevision.current === editorRevision.current;
+
   function updateDraft<K extends keyof ScheduleTemplateDraft>(
     key: K,
     value: ScheduleTemplateDraft[K],
   ) {
+    if (pendingEditorRevision.current === editorRevision.current) return;
     setDraft((current) => current ? { ...current, [key]: value } : current);
   }
 
@@ -691,7 +695,7 @@ export function TimetableView({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (editorWritePending.current || !draft || !draft.title.trim()) {
+    if (pendingEditorRevision.current !== null || !draft || !draft.title.trim()) {
       return;
     }
 
@@ -701,7 +705,7 @@ export function TimetableView({
     }
 
     const submittedRevision = editorRevision.current;
-    editorWritePending.current = true;
+    pendingEditorRevision.current = submittedRevision;
     setSavingTemplateId(editingTemplate?.id ?? 'new');
     try {
       await onSaveScheduleTemplate(
@@ -719,24 +723,24 @@ export function TimetableView({
       );
       if (editorRevision.current === submittedRevision) closeEditor();
     } finally {
-      editorWritePending.current = false;
+      pendingEditorRevision.current = null;
       setSavingTemplateId(null);
     }
   }
 
   async function deleteTemplate() {
-    if (editorWritePending.current || !editingTemplate) {
+    if (pendingEditorRevision.current !== null || !editingTemplate) {
       return;
     }
 
     const submittedRevision = editorRevision.current;
-    editorWritePending.current = true;
+    pendingEditorRevision.current = submittedRevision;
     setSavingTemplateId(editingTemplate.id);
     try {
       await onDeleteScheduleTemplate(editingTemplate);
       if (editorRevision.current === submittedRevision) closeEditor();
     } finally {
-      editorWritePending.current = false;
+      pendingEditorRevision.current = null;
       setSavingTemplateId(null);
     }
   }
@@ -1245,6 +1249,7 @@ export function TimetableView({
                 <label className="field">
                   <span>授業名</span>
                   <input
+                    disabled={isEditorDraftLocked}
                     autoComplete="off"
                     value={draft.title}
                     onChange={(event) => updateDraft('title', event.target.value)}
@@ -1253,6 +1258,7 @@ export function TimetableView({
                 <label className="field">
                   <span>教科</span>
                   <input
+                    disabled={isEditorDraftLocked}
                     autoComplete="off"
                     value={draft.subject}
                     onChange={(event) => updateDraft('subject', event.target.value)}
@@ -1268,6 +1274,7 @@ export function TimetableView({
                   <label className="field">
                     <span>曜日</span>
                     <select
+                      disabled={isEditorDraftLocked}
                       value={draft.weekday}
                       onChange={(event) =>
                         updateDraft('weekday', event.target.value as RecurrenceWeekday)
@@ -1283,6 +1290,7 @@ export function TimetableView({
                   <label className="field">
                     <span>時限</span>
                     <select
+                      disabled={isEditorDraftLocked}
                       value={draft.periodNumber ?? ''}
                       onChange={(event) => {
                         const periodNumber = Number(event.target.value);
@@ -1322,6 +1330,7 @@ export function TimetableView({
                             ? 'segment active'
                             : 'segment'
                         }
+                        disabled={isEditorDraftLocked}
                         key={value}
                         onClick={() => updateDraft('alternatingWeek', value)}
                         type="button"
@@ -1345,6 +1354,7 @@ export function TimetableView({
                   ] as Array<[ScheduleTemplateWeekInterval, string]>).map(([value, label]) => (
                     <button
                       className={(draft.weekInterval ?? 1) === value ? 'segment active' : 'segment'}
+                      disabled={isEditorDraftLocked}
                       key={value}
                       onClick={() => {
                         updateDraft('weekInterval', value);
@@ -1367,6 +1377,7 @@ export function TimetableView({
                   <label className="field timetable-anchor-field">
                     <span>この授業がある週の基準日</span>
                     <input
+                      disabled={isEditorDraftLocked}
                       type="date"
                       value={draft.weekIntervalAnchorDate ?? ''}
                       onChange={(event) =>
@@ -1383,6 +1394,7 @@ export function TimetableView({
                   <label className="field">
                     <span>教室</span>
                     <input
+                      disabled={isEditorDraftLocked}
                       autoComplete="off"
                       value={draft.classroom ?? ''}
                       onChange={(event) => updateDraft('classroom', event.target.value)}
@@ -1391,6 +1403,7 @@ export function TimetableView({
                   <label className="field">
                     <span>メモ</span>
                     <textarea
+                      disabled={isEditorDraftLocked}
                       rows={3}
                       value={draft.memo}
                       onChange={(event) => updateDraft('memo', event.target.value)}

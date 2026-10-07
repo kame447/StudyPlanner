@@ -81,6 +81,8 @@ semantic repair も局所的でなければなりません。無効な correctio
 
 検証は double submit、retry、reload、repository/runtime recreation、cancel 後の遅延結果、stale expected revision、archive 中の追加 entry、same request ID を含む sequence test で行います。単発 unit test より、ordering を変えた stateful test が有効なパターンです。
 
+保存中の入力を許すかは、editor の再送信と保存済み target identity の契約まで含めて決めます。[Issue #437](https://github.com/kame447/StudyPlanner/issues/437) の時間割修正では、[#475](https://github.com/kame447/StudyPlanner/pull/475) が close/reopen 後の別 session を保護していても、送信元 session で保存中に変えた入力は古い成功で失われました。新規授業のように保存結果から canonical ID を受け取れない editor では、draft revision を増やして閉じなくするだけでは次の保存が別の create になる危険があります。save/delete が pending の間、その送信 session の入力を DOM と draft 更新 callback の両方で lock し、失敗後は保持した入力を再編集・再試行できます。Close/backdrop は維持し、同じ授業や別の授業を開き直した session は編集可能にします。元の write が終わるまで重複 mutation の入場は別に制限し、古い完了で新しい session を閉じません。この UI 境界は永続化順序の保証を追加しません。
+
 ## R6. Persistence / schema / restore / trace の end-to-end contract 欠落
 
 重要度: Critical。再発性: 非常に高い。
