@@ -155,3 +155,66 @@ describe('legacy keeps its application text on renderer failure', () => {
     expect(rendererMock).toHaveBeenCalledWith(expect.not.objectContaining({ communication: expect.anything() }));
   });
 });
+
+describe('interaction failure turns', () => {
+  const recorded = (status: 'normalization_rejected' | 'provider_failure') => ({
+    status,
+    attemptCount: 2,
+    repairAttempted: status !== 'provider_failure',
+    validationErrorCategories: [],
+    canonicalizationErrorCategories: [],
+    canonicalizationErrors: [],
+    providerErrorCategory: status === 'provider_failure' ? 'provider_error' as const : null,
+    traceCode: `fixture-${status}`,
+  });
+
+  beforeEach(() => {
+    runtimeMock.mockReset(); rendererMock.mockReset(); failureMock.mockReset();
+  });
+
+  it('renders a semantic failure from its typed recovery goal', async () => {
+    failureMock.mockReturnValue(recorded('normalization_rejected'));
+    rendererMock.mockResolvedValue({ status: 'fallback', reason: 'invalid_json', rawResponse: 'x' });
+    const result = await run({
+      message: '',
+      interactionOutcome: { kind: 'recover', failure: 'semantic', representedQuestion: false },
+      communicationFacts: facts,
+    });
+    expect(rendererMock).toHaveBeenCalledWith(expect.objectContaining({
+      communication: expect.objectContaining({ goal: 'clarify_turn', askQuestion: false }),
+    }));
+    expect(result.failure?.code).toBe('stable_v5_normalization_rejected');
+    expect(result.message.length).toBeGreaterThan(0);
+    expect(result.failure?.userMessage).toBe(result.message);
+    expect(result.message).not.toMatch(INTERNAL_PROCESS_WORDING);
+    expect(result.message).not.toMatch(/送って|送り直|言い換え/u);
+  });
+
+  it('never shows an empty or technical reply when rendering the recovery itself breaks', async () => {
+    failureMock.mockReturnValue(recorded('normalization_rejected'));
+    rendererMock.mockRejectedValue(new Error('renderer exploded'));
+    const result = await run({
+      message: '',
+      interactionOutcome: { kind: 'recover', failure: 'semantic', representedQuestion: false },
+      communicationFacts: facts,
+    });
+    expect(result.failure?.code).toBe('stable_v5_normalization_rejected');
+    expect(result.message.length).toBeGreaterThan(0);
+    expect(result.message).not.toContain('exploded');
+    expect(result.message).not.toMatch(INTERNAL_PROCESS_WORDING);
+  });
+
+  it('does not call the renderer after a provider failure', async () => {
+    failureMock.mockReturnValue(recorded('provider_failure'));
+    const message = 'すみません、通信がうまくいかなかったようです。お手数ですが、もう一度送ってもらえますか？';
+    const result = await run({
+      message,
+      interactionOutcome: { kind: 'recover', failure: 'provider', representedQuestion: false },
+      communicationFacts: facts,
+    });
+    expect(rendererMock).not.toHaveBeenCalled();
+    expect(result.failure?.code).toBe('stable_v5_provider_failure');
+    expect(result.message).toBe(message);
+    expect(result.responseSource).toBe('system');
+  });
+});

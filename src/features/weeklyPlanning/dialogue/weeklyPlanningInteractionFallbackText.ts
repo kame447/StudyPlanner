@@ -50,6 +50,13 @@ function omittedWorkText(labels: readonly string[]): string {
     : SOME_WORK_OMITTED;
 }
 
+/** A message that could not be used as it is: the retained question, or an invitation. */
+export function weeklyPlanningInteractionClarifyText(questionText: string | null): string {
+  return questionText
+    ? `${MESSAGE_NOT_UNDERSTOOD}\n\n${questionText}`
+    : `${MESSAGE_NOT_UNDERSTOOD}${CONTINUE_INVITATION}`;
+}
+
 /** Provider failure: the renderer is not called (the same provider just failed). */
 export function weeklyPlanningInteractionProviderUnavailableText(questionText: string | null): string {
   return questionText ? `${PROVIDER_UNAVAILABLE}\n\n${questionText}` : PROVIDER_UNAVAILABLE;
@@ -86,9 +93,7 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
       main = ASIDE_ACKNOWLEDGEMENT;
       break;
     case 'clarify_turn':
-      main = question
-        ? `${MESSAGE_NOT_UNDERSTOOD}\n\n${question}`
-        : `${MESSAGE_NOT_UNDERSTOOD}${CONTINUE_INVITATION}`;
+      main = weeklyPlanningInteractionClarifyText(question || null);
       break;
     case 'present_preview':
       main = `${params.groundingNote}${previewReadyText(params.previewCount, controlLabel)}${

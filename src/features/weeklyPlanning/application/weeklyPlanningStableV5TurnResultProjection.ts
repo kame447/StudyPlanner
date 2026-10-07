@@ -16,6 +16,7 @@ import {
   conversationArchitecturePolicy,
   type WeeklyPlanningConversationArchitecture,
 } from '../weeklyPlanningConversationArchitecture';
+import { weeklyPlanningInteractionClarifyText } from '../dialogue/weeklyPlanningInteractionFallbackText';
 import {
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
@@ -85,10 +86,22 @@ async function presentRecoveryTurn(params: {
   const outcome = params.result.interactionOutcome;
   if (params.recordedFailure.status === 'provider_failure') return null;
   if (outcome?.kind !== 'recover' || outcome.failure !== 'semantic') return null;
-  return renderWeeklyPlanningStableV5AssistantMessage({
-    input: params.input,
-    result: params.result,
-  });
+  try {
+    return await renderWeeklyPlanningStableV5AssistantMessage({
+      input: params.input,
+      result: params.result,
+    });
+  } catch {
+    // Rendering itself broke: the retained state stays as it is and the short emergency
+    // wording carries the same typed recovery decision (never an empty message).
+    const message = weeklyPlanningInteractionClarifyText(params.result.message || null);
+    return {
+      ...params.result,
+      message,
+      responseSource: 'deterministic_fallback',
+      dialogueRendererTrace: createWeeklyPlanningSystemDialogueRendererTrace(message),
+    };
+  }
 }
 
 async function projectFailedTurn(params: {
