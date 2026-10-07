@@ -153,3 +153,19 @@ describe('Stable V5 semantic repair prompt', () => {
     expect(directive).toContain('Preserve unrelated supported current-turn facts');
   });
 });
+
+
+it('current repair teaches the resolver range syntax while the historical comparison prompt stays unchanged', () => {
+  const create = (conversationArchitecture: 'interaction_v1' | 'legacy_v5') => repairPayload(createWeeklyPlanningSemanticRepairMessagesV5({
+    baseMessages: [{ role: 'system', content: 'normalize' }], invalidResponse: '{}',
+    validationErrors: ['document.tasks[0].temporalConstraints[0].dateExpression:canonical-expression'],
+    conversationArchitecture,
+  }));
+  const current = create('interaction_v1');
+  const legacy = create('legacy_v5');
+  expect(current.requiredChanges?.[0]).toContain('YYYY-MM-DD/YYYY-MM-DD');
+  expect(current.requiredChanges?.[0]).not.toContain('YYYY-MM-DD..YYYY-MM-DD');
+  expect(legacy.requiredChanges?.[0]).toContain('YYYY-MM-DD..YYYY-MM-DD');
+  expect(current.requiredChanges?.[0].replace('YYYY-MM-DD/YYYY-MM-DD', 'YYYY-MM-DD..YYYY-MM-DD'))
+    .toBe(legacy.requiredChanges?.[0]);
+});
