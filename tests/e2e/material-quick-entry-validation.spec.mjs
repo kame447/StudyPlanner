@@ -23,7 +23,8 @@ for (const width of [390, 1280]) for (const kind of ['予定', '記録']) {
     const date = editor.getByLabel('日付', { exact: true });
     const time = editor.getByLabel('開始時間', { exact: true });
     const submit = editor.getByRole('button', { name: '登録する', exact: true });
-    const counts = () => page.evaluate(() => ['studyplanner.plans', 'studyplanner.actuals'].map(key => JSON.parse(localStorage.getItem(key) || '[]').length));
+    // Plans persist through the canonical ScheduleEvent authority, not the legacy plans key.
+    const counts = () => page.evaluate(() => ['studyplanner.scheduleEvents.v1', 'studyplanner.actuals'].map(key => JSON.parse(localStorage.getItem(key) || '[]').length));
     await date.fill('');
     await expect(submit).toBeDisabled();
     await date.press('Enter');
@@ -39,7 +40,7 @@ for (const width of [390, 1280]) for (const kind of ['予定', '記録']) {
     await submit.click();
     await expect(editor).toHaveCount(0);
     await expect.poll(counts).toEqual(kind === '予定' ? [1, 0] : [0, 1]);
-    const record = await page.evaluate(kind => JSON.parse(localStorage.getItem(kind === '予定' ? 'studyplanner.plans' : 'studyplanner.actuals'))[0], kind);
+    const record = await page.evaluate(kind => JSON.parse(localStorage.getItem(kind === '予定' ? 'studyplanner.scheduleEvents.v1' : 'studyplanner.actuals'))[0], kind);
     expect(kind === '予定' ? record.date : record.occurrenceDate).toBe(E2E_TODAY);
     expect(kind === '予定' ? record.startTime : record.actualStartTime).toBe('19:45');
     expect(kind === '予定' ? record.endTime : record.actualEndTime).toBe('20:15');
