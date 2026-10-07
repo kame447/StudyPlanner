@@ -1,3 +1,4 @@
+import { CANONICAL_WEEKDAY_DATE_EXPRESSIONS } from './weeklyPlanningCalendarResolver';
 import type {
   PlanningWindowFact,
   TaskRelationFact,
@@ -657,13 +658,17 @@ export function compileGenericSchedulerInput(params: {
     externalSources: params.externalSources,
     resolvedDateExpressions,
   });
-  issues.push(...availability.issues.map((issue): GenericSchedulerInputIssue => ({
-    domain: 'availability',
-    code: issue.code,
-    blocking: issue.blocking,
-    factId: issue.sourceFactId,
-    details: issue.details,
-  })));
+  issues.push(...availability.issues.map((issue): GenericSchedulerInputIssue => {
+    const declaration = params.graph.availabilityDeclarations.find((fact) => fact.id === issue.sourceFactId);
+    const needsWeekdayScope = issue.code === 'availability_outside_planning_window'
+      && params.graph.planningWindows.length === 1 && declaration?.recurrenceKind === null
+      && (declaration.kind === 'preferred' || (declaration.kind === 'available' && declaration.constraintLevel === 'soft'))
+      && (CANONICAL_WEEKDAY_DATE_EXPRESSIONS as readonly string[]).includes(declaration.dateExpression ?? '');
+    return {
+      domain: 'availability', code: issue.code, blocking: issue.blocking || needsWeekdayScope,
+      factId: issue.sourceFactId, details: issue.details,
+    };
+  }));
 
   const dailyCapacity = resolveWeeklyPlanningDailyCapacitiesV5({
     availabilityDeclarations: params.graph.availabilityDeclarations,

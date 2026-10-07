@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { A, type Json } from './testUtils/weeklyPlanningSchedulingConstraintsFixture';
+import { typedStableV5RuntimeQuestionText } from './application/weeklyPlanningStableV5RuntimeQuestions';
 import { liveATemporalDocument, taskTemporalPreferenceDocument, LIVE_A_BOOK } from './testUtils/weeklyPlanningLiveTemporalFixture';
 import { createScriptedConversation, installScriptedWeeklyPlanningProvider, resetScriptedConversationRuntime, scriptedRendererReply } from './testUtils/weeklyPlanningScriptedConversationHarness';
 
@@ -31,6 +32,106 @@ function preference(scope: 'task' | 'plan', overrides: Json): Json {
 }
 
 describe('A temporal preference representation matrix', () => {
+  it.each(['interaction_v1', 'legacy_v5'] as const)('asks about out-of-period single weekdays without inventing recurrence in %s', async (architecture) => {
+    response = taskTemporalPreferenceDocument();
+    const task = (response.tasks as Json[])[0];
+    response.availabilityDeclarations = (task.temporalConstraints as Json[]).map((constraint) => ({
+      localId: constraint.localId, kind: 'preferred', dateExpression: constraint.dateExpression,
+      namedTimePeriod: null, startTime: '20:00', endTime: null, recurrenceKind: null, days: [],
+      constraintLevel: 'soft', capacityMinutes: null, sourceText: '平日は20時以降がいい',
+    }));
+    task.temporalConstraints = [];
+    const conversation = createScriptedConversation({ provider, architecture });
+    const turn = await conversation.submit(A);
+    expect(turn.result?.failure).toBeUndefined();
+    expect(turn.result?.draftCandidates).toEqual([]);
+    expect(conversation.getState().intakeState?.lastQuestionContext?.targetSlot).toBe('stable_v5:availability_outside_planning_window');
+    expect(conversation.graph()?.availabilityDeclarations.every((fact) => fact.recurrenceKind === null && fact.days.length === 0)).toBe(true);
+  });
+
+  it.each(['interaction_v1', 'legacy_v5'] as const)('one answer places an out-of-period Friday inside next week in %s', async (architecture) => {
+    response = preference('plan', { dateExpression: 'weekday:friday', recurrenceKind: null, days: [] });
+    const conversation = createScriptedConversation({ provider, architecture });
+    const first = await conversation.submit(A);
+    expect(first.result?.failure).toBeUndefined();
+    expect(conversation.getState().intakeState?.lastQuestionContext?.targetSlot).toBe('stable_v5:availability_outside_planning_window');
+    const question = first.calls.find((call) => call.kind === 'renderer')?.payload?.applicationDecision as Json;
+    expect(question.questionIntent).toMatchObject({
+      resolutionKind: 'availability_date_scope', requestedInformation: ['availability_date_scope'],
+    });
+    const old = conversation.graph()!.availabilityDeclarations[0];
+    expect(typedStableV5RuntimeQuestionText(conversation.graph()!, {
+      domain: 'availability', code: 'availability_outside_planning_window', factId: old.id, details: {},
+    })).toBeTruthy();
+    if (architecture === 'interaction_v1') {
+      expect((question.communication as Json).questionPurposes).toContain('use_dates_the_plan_can_read');
+    }
+    const answer = '来週の金曜';
+    const replacement = { ...(response.availabilityDeclarations as Json[])[0], localId: 'next-friday', dateExpression: '2026-10-16', sourceText: answer };
+    response = {
+      ...response, planningIntent: 'update_plan', planningWindow: null, tasks: [],
+      availabilityDeclarations: [replacement],
+      corrections: [{
+        localId: 'fix-friday', target: { kind: 'availability_declaration', publicId: old.id, localId: null, mention: null },
+        operation: 'replace', replacementLocalId: 'next-friday', sourceText: answer,
+      }],
+    };
+    const second = await conversation.submit(answer);
+    expect(second.result?.failure).toBeUndefined();
+    expect(conversation.getState().intakeState?.lastQuestionContext).toBeFalsy();
+    expect(second.result?.draftCandidates).toEqual([
+      expect.objectContaining({ date: '2026-10-16', startTime: '20:00', durationMinutes: 70 }),
+    ]);
+  });
+
+  it('an in-period same-week Wednesday reaches placement without another question', async () => {
+    response = preference('plan', { dateExpression: 'weekday:wednesday', recurrenceKind: null, days: [], sourceText: '水曜日は20時以降がいい' });
+    Object.assign(response.planningWindow as Json, { value: 'this_week', sourceText: '今週' });
+    (response.tasks as Json[])[0].sourceText = 'アルゴリズムイントロダクションを20ページ読みたい';
+    const conversation = createScriptedConversation({ provider, weekStartDate: '2026-10-12', now: () => '2026-10-12T00:00:00.000Z' });
+    const turn = await conversation.submit('今週、アルゴリズムイントロダクションを20ページ読みたい。1ページ3分くらいで、水曜日は20時以降がいい');
+    expect(turn.result?.failure).toBeUndefined();
+    expect(conversation.getState().intakeState?.lastQuestionContext).toBeFalsy();
+    expect(turn.result?.draftCandidates).toEqual([
+      expect.objectContaining({ date: '2026-10-14', startTime: '20:00', durationMinutes: 70 }),
+    ]);
+  });
+
+  it.each(['interaction_v1', 'legacy_v5'] as const)('one collective date answer resolves all five weekday scopes in %s', async (architecture) => {
+    response = taskTemporalPreferenceDocument();
+    const task = (response.tasks as Json[])[0];
+    response.availabilityDeclarations = (task.temporalConstraints as Json[]).map((constraint) => ({
+      localId: constraint.localId, kind: 'preferred', dateExpression: constraint.dateExpression,
+      namedTimePeriod: null, startTime: '20:00', endTime: null, recurrenceKind: null, days: [],
+      constraintLevel: 'soft', capacityMinutes: null, sourceText: '平日は20時以降がいい',
+    }));
+    task.temporalConstraints = [];
+    const conversation = createScriptedConversation({ provider, architecture });
+    const first = await conversation.submit(A);
+    expect(first.result?.failure).toBeUndefined();
+    expect(first.result?.draftCandidates).toEqual([]);
+    const previous = conversation.graph()!.availabilityDeclarations;
+    const answer = '全部来週の平日、20時以降です';
+    const declarations = previous.map((_fact, index) => ({
+      ...(response.availabilityDeclarations as Json[])[index], localId: `next-week-${index}`,
+      dateExpression: `2026-10-${12 + index}`, sourceText: answer,
+    }));
+    response = {
+      ...response, planningIntent: 'update_plan', planningWindow: null, tasks: [],
+      availabilityDeclarations: declarations,
+      corrections: previous.map((fact, index) => ({
+        localId: `fix-weekday-${index}`, target: { kind: 'availability_declaration', publicId: fact.id, localId: null, mention: null },
+        operation: 'replace', replacementLocalId: declarations[index].localId, sourceText: answer,
+      })),
+    };
+    const second = await conversation.submit(answer);
+    expect(second.result?.failure).toBeUndefined();
+    expect(conversation.getState().intakeState?.lastQuestionContext).toBeFalsy();
+    expect(second.result?.draftCandidates).toEqual([
+      expect.objectContaining({ date: '2026-10-12', startTime: '20:00', durationMinutes: 70 }),
+    ]);
+  });
+
 
   for (const architecture of ['interaction_v1', 'legacy_v5'] as const) {
     it(`asks for work rather than treating known night as unresolved without a workload in ${architecture}`, async () => {
