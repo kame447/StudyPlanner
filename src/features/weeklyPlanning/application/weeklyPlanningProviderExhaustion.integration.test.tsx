@@ -191,17 +191,27 @@ it('crosses both focused provider failures into real generic semantics, preview 
   expect(database.metrics.planWrites).toBe(candidates.length);
 });
 
-it.each(['unavailable', 'repair-exhausted'] as const)('preserves accepted state after both focused failures and generic %s, then admits a healthy retry', async outcome => {
+it.each([
+  ['legacy_v5', 'unavailable'], ['legacy_v5', 'repair-exhausted'],
+  ['interaction_v1', 'unavailable'], ['interaction_v1', 'repair-exhausted'],
+] as const)('%s preserves accepted state after both focused failures and generic %s, then admits a healthy retry', async (architecture, outcome) => {
+  // Existing conversations hydrate as legacy_v5, so both pinned architectures stay covered.
+  vi.stubEnv('VITE_WEEKLY_PLANNING_CONVERSATION_ARCHITECTURE_DEFAULT', architecture);
   const spy = gateway(); const { ref, database, submit, unsaved, graph } = await mount();
+  expect(ref.current!.state.conversationArchitecture).toBe(architecture);
   const intake = structuredClone(ref.current!.state.intakeState);
   const preview = structuredClone(ref.current!.state.previewCandidates);
   genericOutcome = outcome;
   const result = await submit(AUTHORIZE_TEXT);
   expectFocusedCorrelation(spy.mock.calls[1][0].pending.requestId, graph.revision);
   expect(result.accepted).toBe(true); expect(result.draftCandidates).toEqual([]);
-  // Issue #488 interaction (the default for new conversations): a rejected semantic turn is
-  // answered by the renderer from typed recovery context; a provider outage stays deterministic.
-  expect(providerOrder).toEqual(outcome === 'unavailable' ? ['jev', 'focused-luna', 'generic'] : ['jev', 'focused-luna', 'generic', 'generic', 'dialogue']);
+  // Issue #488: interaction_v1 answers a rejected semantic turn through the renderer from typed
+  // recovery context; legacy_v5 keeps its fixed recovery text. A provider outage stays
+  // deterministic in both architectures.
+  const recoveryRendered = architecture === 'interaction_v1' && outcome === 'repair-exhausted';
+  expect(providerOrder).toEqual(outcome === 'unavailable'
+    ? ['jev', 'focused-luna', 'generic']
+    : ['jev', 'focused-luna', 'generic', 'generic', ...(recoveryRendered ? ['dialogue'] : [])]);
   expect((await spy.mock.results[1].value).failure).toMatchObject({
     code: outcome === 'unavailable' ? 'stable_v5_provider_failure' : 'stable_v5_normalization_rejected',
     diagnostics: { attemptCount: outcome === 'unavailable' ? 1 : 2, repairAttempted: outcome !== 'unavailable' },
