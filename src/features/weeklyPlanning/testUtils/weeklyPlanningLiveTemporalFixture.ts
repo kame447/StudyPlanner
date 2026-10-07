@@ -99,7 +99,7 @@ const LIVE_A_DOCUMENT: Json = {
   "decisions": []
 };
 
-export const LIVE_A_MATERIAL_ID = 'study-material-dd552e12-8fd1-4845-af63-35a8f91fc76e';
+export const LIVE_A_MATERIAL_ID = 'study-material-00000000-0000-4000-8000-000000000488';
 
 export function liveATemporalDocument(initialBindingError = false): Json {
   const document = structuredClone(LIVE_A_DOCUMENT);

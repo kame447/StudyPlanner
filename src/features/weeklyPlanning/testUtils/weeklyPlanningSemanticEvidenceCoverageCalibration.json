@@ -28,7 +28,7 @@
             "components": [
               {
                 "localId": "component-1",
-                "existingPublicId": "study-material-dd552e12-8fd1-4845-af63-35a8f91fc76e",
+                "existingPublicId": "study-material-00000000-0000-4000-8000-000000000488",
                 "parentLocalId": null,
                 "role": "material",
                 "label": "アルゴリズムイントロダクション",
@@ -99,7 +99,7 @@
             "components": [
               {
                 "localId": "component-1",
-                "existingPublicId": "study-material-dd552e12-8fd1-4845-af63-35a8f91fc76e",
+                "existingPublicId": "study-material-00000000-0000-4000-8000-000000000488",
                 "parentLocalId": null,
                 "role": "material",
                 "label": "アルゴリズムイントロダクション",
