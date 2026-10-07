@@ -30,10 +30,13 @@ export function useDialogFocus<T extends HTMLElement>(open: boolean, onClose: ()
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusFrame = window.requestAnimationFrame(() => {
       const target = initialFocusRef.current ?? dialogRef.current;
-      target?.focus();
+      if (target && isVisible(target)) target.focus();
     });
 
     function handleKeyDown(event: KeyboardEvent) {
+      const dialog = dialogRef.current;
+      // A retained screen may be hidden while another full-screen surface is open.
+      if (!dialog || !isVisible(dialog)) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         onCloseRef.current();
@@ -41,8 +44,6 @@ export function useDialogFocus<T extends HTMLElement>(open: boolean, onClose: ()
       }
 
       if (event.key !== 'Tab') return;
-      const dialog = dialogRef.current;
-      if (!dialog) return;
 
       const focusable = Array.from(
         dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
@@ -73,7 +74,7 @@ export function useDialogFocus<T extends HTMLElement>(open: boolean, onClose: ()
       window.removeEventListener('keydown', handleKeyDown);
       const previousFocus = previousFocusRef.current;
       window.requestAnimationFrame(() => {
-        if (previousFocus?.isConnected) previousFocus.focus();
+        if (previousFocus?.isConnected && isVisible(previousFocus)) previousFocus.focus();
       });
     };
   }, [open]);

@@ -9,7 +9,7 @@ import { FaqView } from './FaqView';
 
 export function AppSettingsSupportPanel() {
   return (
-    <div className="section-stack" role="tabpanel">
+    <div className="section-stack">
       <FaqView />
 
       <section className="assistant-settings-card support-section">

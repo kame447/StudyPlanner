@@ -91,6 +91,21 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     'src/components/MonthView.tsx',
     'src/components/QuickAddMenu.tsx',
   ]);
+  // Settings may focus its heading, keyboard tabs and the user-activated return
+  // target. Keep these statement-specific so a new input focus in the same file
+  // still fails this guard. Browser tests assert the actual heading/tab/origin.
+  const allowedSettingsFocus = new Map([
+    ['src/components/AppSettingsDialog.tsx', new Set([
+      'titleRef.current?.focus({ preventScroll: true });',
+      'tabRefs.current[TABS[next].id]?.focus();',
+    ])],
+    ['src/components/HomeTopbar.tsx', new Set([
+      'event.currentTarget.focus({ preventScroll: true });',
+    ])],
+    ['src/hooks/useSettingsNavigation.ts', new Set([
+      'if (returnFocus.current?.isConnected) returnFocus.current.focus({ preventScroll: true });',
+    ])],
+  ]);
 
   for (const file of files) {
     const source = fs.readFileSync(file, 'utf8');
@@ -100,7 +115,8 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     if (/contentEditable\s*=/.test(source)) contentEditableInputs.push(fileName);
 
     source.split('\n').forEach((line, index) => {
-      if (line.includes('.focus(') && !allowedFocusFiles.has(fileName)) {
+      if (line.includes('.focus(') && !allowedFocusFiles.has(fileName)
+        && !allowedSettingsFocus.get(fileName)?.has(line.trim())) {
         unexpectedFocus.push(`${fileName}:${index + 1}:${line.trim()}`);
       }
     });

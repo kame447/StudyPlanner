@@ -1,37 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  Brain,
-  CalendarDays,
-  Palette,
-  Pencil,
-  Plus,
-  RotateCcw,
-  Sparkles,
-  SunMoon,
-  Trash2,
-} from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { ArrowLeft, Brain, CircleHelp, Pencil, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { useOptionalUserPlanningContextV1 } from '../features/userPlanningContext/UserPlanningContextContext';
 import { userPlanningContextDisplayTextV1 } from '../features/userPlanningContext/userPlanningContextSpace';
 import type { UserPlanningContextRecordV1 } from '../features/userPlanningContext/userPlanningContextTypes';
-import { useWeeklyPlanningPersonalization } from '../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext';
-import {
-  THEME_PALETTE_OPTIONS,
-  type ThemeMode,
-  type ThemePalette,
-} from '../lib/themePalette';
 import { AppSettingsSupportPanel } from './AppSettingsSupportPanel';
+import { AppSettingsGeneral, type AppSettingsGeneralProps } from './AppSettingsGeneral';
+import '../styles/app-settings-page.css';
 
 type AppSettingsTab = 'settings' | 'memory' | 'support';
+const TABS = [
+  { id: 'settings', label: '設定', Icon: SlidersHorizontal },
+  { id: 'memory', label: 'AIの記憶', Icon: Brain },
+  { id: 'support', label: 'サポート', Icon: CircleHelp },
+] as const;
 
-interface AppSettingsDialogProps {
+interface AppSettingsDialogProps extends AppSettingsGeneralProps {
   open: boolean;
-  showMonthTimetable?: boolean;
-  onChangeMonthTimetable?: (value: boolean) => void;
-  monthTimetableError?: string | null;
-  themeMode: ThemeMode;
-  themePalette: ThemePalette;
-  onChangeTheme: (nextThemeMode: ThemeMode) => void;
-  onChangeThemePalette: (nextThemePalette: ThemePalette) => void;
   onClose: () => void;
 }
 
@@ -42,288 +26,78 @@ function memoryOriginLabel(record: UserPlanningContextRecordV1): string {
   return '会話から記憶';
 }
 
-export function AppSettingsDialog({
-  open,
-  showMonthTimetable = true,
-  onChangeMonthTimetable,
-  monthTimetableError,
-  themeMode,
-  themePalette,
-  onChangeTheme,
-  onChangeThemePalette,
-  onClose,
-}: AppSettingsDialogProps) {
+// The entry point is retained; settings is now a standalone page, not a modal.
+export function AppSettingsDialog({ open, onClose, ...generalProps }: AppSettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<AppSettingsTab>('settings');
-  const [isThemePaletteSectionOpen, setIsThemePaletteSectionOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
   const [editorText, setEditorText] = useState('');
   const [editorError, setEditorError] = useState<string | null>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const tabRefs = useRef<Partial<Record<AppSettingsTab, HTMLButtonElement | null>>>({});
   const memory = useOptionalUserPlanningContextV1();
-  const {
-    weekStartsOn,
-    setWeekStartsOn,
-    resetProfile: resetWeeklyPlanningPersonalization,
-  } = useWeeklyPlanningPersonalization();
-  const selectedThemePalette =
-    THEME_PALETTE_OPTIONS.find((palette) => palette.id === themePalette) ??
-    THEME_PALETTE_OPTIONS[0];
-
   const memoryRecords = useMemo(
     () => memory?.records.slice().sort((left, right) => right.recordedAt.localeCompare(left.recordedAt)) ?? [],
     [memory?.records],
   );
-
   const resetEditor = () => {
     setEditorOpen(false);
     setEditingRecordId(null);
     setEditorText('');
     setEditorError(null);
   };
-
-  const openNewMemory = () => {
-    resetEditor();
-    setEditorOpen(true);
-  };
-
+  const openNewMemory = () => { resetEditor(); setEditorOpen(true); };
   const openExistingMemory = (record: UserPlanningContextRecordV1) => {
     setEditorOpen(true);
     setEditingRecordId(record.id);
     setEditorText(userPlanningContextDisplayTextV1(record));
     setEditorError(null);
   };
-
   useEffect(() => {
     if (!open) return;
     setActiveTab('settings');
-    setIsThemePaletteSectionOpen(false);
     resetEditor();
+    titleRef.current?.focus({ preventScroll: true });
   }, [open]);
+  useEffect(() => { if (panelRef.current) panelRef.current.scrollTop = 0; }, [activeTab, open]);
+
+  function handleTabKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    let next: number;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (index + 1) % TABS.length;
+    else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (index + TABS.length - 1) % TABS.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = TABS.length - 1;
+    else return;
+    event.preventDefault();
+    setActiveTab(TABS[next].id);
+    tabRefs.current[TABS[next].id]?.focus();
+  }
 
   if (!open) return null;
-
-  return (
-    <div className="overlay modal-overlay app-settings-overlay" onClick={onClose}>
-      <div
-        className="modal-card app-settings-modal"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="section-stack">
-          <div className="section-header">
-            <div>
-              <h2>アプリ設定</h2>
-              <p>表示、AIが覚えていること、サポート情報を管理できます。</p>
-            </div>
-            <button className="ghost-button" onClick={onClose} type="button">
-              閉じる
-            </button>
-          </div>
-
-          <div className="app-settings-tabs" role="tablist" aria-label="アプリ設定">
-            <button
-              className={activeTab === 'settings' ? 'segment active' : 'segment'}
-              onClick={() => setActiveTab('settings')}
-              role="tab"
-              aria-selected={activeTab === 'settings'}
-              type="button"
-            >
-              設定
-            </button>
-            <button
-              className={activeTab === 'memory' ? 'segment active' : 'segment'}
-              onClick={() => setActiveTab('memory')}
-              role="tab"
-              aria-selected={activeTab === 'memory'}
-              type="button"
-            >
-              AIの記憶
-            </button>
-            <button
-              className={activeTab === 'support' ? 'segment active' : 'segment'}
-              onClick={() => setActiveTab('support')}
-              role="tab"
-              aria-selected={activeTab === 'support'}
-              type="button"
-            >
-              サポート
-            </button>
-          </div>
-
-          {activeTab === 'settings' ? (
-            <div className="section-stack" role="tabpanel">
-              <section className="assistant-settings-card">
-                <div className="field">
-                  <span className="settings-field-label">
-                    <SunMoon aria-hidden="true" size={20} strokeWidth={1.9} />
-                    表示モード
-                  </span>
-                  <div className="segmented-control">
-                    <button
-                      className={themeMode === 'light' ? 'segment active' : 'segment'}
-                      onClick={() => onChangeTheme('light')}
-                      type="button"
-                    >
-                      ライト
-                    </button>
-                    <button
-                      className={themeMode === 'dark' ? 'segment active' : 'segment'}
-                      onClick={() => onChangeTheme('dark')}
-                      type="button"
-                    >
-                      ダーク
-                    </button>
-                  </div>
-                </div>
-
-                <div className="field collapsible-field">
-                  <button
-                    className="collapsible-toggle"
-                    onClick={() => setIsThemePaletteSectionOpen((current) => !current)}
-                    type="button"
-                  >
-                    <span className="collapsible-toggle-copy">
-                      <span className="settings-field-label">
-                        <Palette aria-hidden="true" size={20} strokeWidth={1.9} />
-                        配色
-                      </span>
-                      <strong>{selectedThemePalette.label}</strong>
-                    </span>
-                    <span className="collapsible-toggle-summary" aria-hidden="true">
-                      {isThemePaletteSectionOpen ? '閉じる' : '変更'}
-                    </span>
-                  </button>
-
-                  {isThemePaletteSectionOpen ? (
-                    <div className="collapsible-panel">
-                      <div className="theme-palette-grid">
-                        {THEME_PALETTE_OPTIONS.map((palette) => (
-                          <button
-                            key={palette.id}
-                            className={
-                              themePalette === palette.id
-                                ? 'theme-palette-button active'
-                                : 'theme-palette-button'
-                            }
-                            onClick={() => onChangeThemePalette(palette.id)}
-                            type="button"
-                          >
-                            <span className="theme-palette-swatches" aria-hidden="true">
-                              {palette.swatches.map((swatchColor) => (
-                                <span
-                                  key={swatchColor}
-                                  className="theme-palette-swatch"
-                                  style={{ backgroundColor: swatchColor }}
-                                />
-                              ))}
-                            </span>
-                            <span className="theme-palette-copy">
-                              <strong>{palette.label}</strong>
-                              <span>{palette.description}</span>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                      <p className="detail-note">
-                        配色はこの端末ですぐ反映されます。
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
-              </section>
-
-              {onChangeMonthTimetable ? (
-                <section className="assistant-settings-card">
-                  <div className="field">
-                    <span className="settings-field-label" id="month-timetable-label">
-                      <CalendarDays aria-hidden="true" size={20} strokeWidth={1.9} />
-                      月カレンダーに時間割を表示
-                    </span>
-                    <div className="segmented-control" role="group"
-                      aria-labelledby="month-timetable-label" aria-describedby="month-timetable-description">
-                      <button type="button" className={showMonthTimetable ? 'segment active' : 'segment'}
-                        aria-pressed={showMonthTimetable} onClick={() => onChangeMonthTimetable(true)}>
-                        表示する
-                      </button>
-                      <button type="button" className={!showMonthTimetable ? 'segment active' : 'segment'}
-                        aria-pressed={!showMonthTimetable} onClick={() => onChangeMonthTimetable(false)}>
-                        表示しない
-                      </button>
-                    </div>
-                  </div>
-                  <p className="detail-note" id="month-timetable-description">
-                    時間割から自動表示する授業を、月カレンダーと日付を開いた一覧に表示します。
-                    オフにしても、予定として保存した授業は残ります。週・日表示やAIの空き時間判定は変わりません。
-                    このブラウザに、ユーザーごとに保存されます。
-                  </p>
-                  {monthTimetableError ? <p className="settings-inline-error" role="alert">{monthTimetableError}</p> : null}
-                </section>
-              ) : null}
-
-              <section className="assistant-settings-card">
-                <div className="field">
-                  <span className="settings-field-label">
-                    <CalendarDays aria-hidden="true" size={20} strokeWidth={1.9} />
-                    週の始まり
-                  </span>
-                  <div className="segmented-control">
-                    <button
-                      className={weekStartsOn === 'monday' ? 'segment active' : 'segment'}
-                      onClick={() => void setWeekStartsOn('monday')}
-                      type="button"
-                    >
-                      月曜日
-                    </button>
-                    <button
-                      className={weekStartsOn === 'sunday' ? 'segment active' : 'segment'}
-                      onClick={() => void setWeekStartsOn('sunday')}
-                      type="button"
-                    >
-                      日曜日
-                    </button>
-                  </div>
-                  <p className="detail-note">
-                    「今週」「来週」の解釈と週間計画の保存単位に反映されます。
-                  </p>
-                </div>
-                <button
-                  className="ghost-button"
-                  onClick={() => {
-                    if (window.confirm('学習設定を初期化しますか？')) {
-                      void resetWeeklyPlanningPersonalization();
-                    }
-                  }}
-                  type="button"
-                >
-                  <RotateCcw aria-hidden="true" size={18} strokeWidth={1.9} />
-                  学習設定を初期化
-                </button>
-              </section>
-
-              <section className="assistant-settings-card">
-                <div className="field">
-                  <span className="settings-field-label">
-                    <Sparkles aria-hidden="true" size={20} strokeWidth={1.9} />
-                    週間計画AI
-                  </span>
-                  <div className="label-row">
-                    <strong>Stable V5</strong>
-                    <span className="confidence-badge">固定</span>
-                  </div>
-                  <p className="detail-note">
-                    週間計画はStable V5経路だけを使用します。
-                  </p>
-                </div>
-              </section>
-
-              <section className="assistant-settings-card app-settings-placeholder">
-                <strong>その他</strong>
-                <p className="detail-note">
-                  通知やカレンダー連携など、今後の設定項目をここに追加できます。
-                </p>
-              </section>
-            </div>
-          ) : activeTab === 'memory' ? (
-            <div className="section-stack memory-settings-panel" role="tabpanel">
+  return <main className="app-settings-page" aria-labelledby="app-settings-title">
+    <header className="app-settings-header">
+      <div className="app-settings-header-inner">
+        <button className="settings-back-button" onClick={onClose} type="button">
+          <ArrowLeft aria-hidden="true" size={22} /><span>戻る</span>
+        </button>
+        <h1 id="app-settings-title" tabIndex={-1} ref={titleRef}>アプリ設定</h1>
+      </div>
+    </header>
+    <div className="app-settings-layout">
+      <div className="app-settings-tabs" role="tablist" aria-label="アプリ設定">
+        {TABS.map(({ id, label, Icon }, index) => <button key={id} type="button" role="tab"
+          className="settings-tab" id={`app-settings-tab-${id}`} aria-controls="app-settings-panel"
+          aria-selected={activeTab === id} tabIndex={activeTab === id ? 0 : -1}
+          ref={node => { tabRefs.current[id] = node; }}
+          onClick={() => setActiveTab(id)} onKeyDown={event => handleTabKey(event, index)}>
+          <Icon aria-hidden="true" size={20} /><span>{label}</span>
+        </button>)}
+      </div>
+      <div ref={panelRef} className="app-settings-content" role="tabpanel" tabIndex={0}
+        id="app-settings-panel" aria-labelledby={`app-settings-tab-${activeTab}`}>
+        {activeTab === 'settings' ? <AppSettingsGeneral {...generalProps} /> : activeTab === 'memory' ? (
+            <div className="section-stack memory-settings-panel">
               <section className="assistant-settings-card memory-settings-intro">
                 <div>
                   <span className="settings-field-label">
@@ -340,7 +114,7 @@ export function AppSettingsDialog({
                   </span>
                   {memory?.syncing ? <span className="detail-note">整理・同期中…</span> : null}
                 </div>
-                {memory?.error ? <p className="settings-inline-error">{memory.error}</p> : null}
+                {memory?.error ? <p className="settings-inline-error" role="alert">{memory.error}</p> : null}
               </section>
 
               {memory ? (
@@ -368,7 +142,7 @@ export function AppSettingsDialog({
                       <p className="detail-note">
                         種類を選ぶ必要はありません。AIが意味を整理し、保存先はStudyPlanner側で判断します。
                       </p>
-                      {editorError ? <p className="settings-inline-error">{editorError}</p> : null}
+                      {editorError ? <p className="settings-inline-error" role="alert">{editorError}</p> : null}
                       <div className="memory-editor-actions">
                         <button className="ghost-button" onClick={resetEditor} type="button" disabled={memory.syncing}>
                           キャンセル
@@ -453,11 +227,8 @@ export function AppSettingsDialog({
                 </section>
               )}
             </div>
-          ) : (
-            <AppSettingsSupportPanel />
-          )}
-        </div>
+          ) : <AppSettingsSupportPanel />}
       </div>
     </div>
-  );
+  </main>;
 }
