@@ -127,10 +127,11 @@ referentが一意でない状態で、特定task/sourceへ勝手にhard bindし�
 
 ### DIALOGUE-007: explanation is non-mutating and re-presents the same question
 
-pending questionの意味・理由を尋ねるturnはFact Graph/stateを変えず、同じquestionを明示的に再提示し（bindingも新しいmessageへ）、次の短い回答はそのquestionへbindする。無駄なcompleteness retryを起こさない。
+pending questionの意味・理由を尋ねるturnはFact Graph/stateを変えず、同じquestionを明示的に再提示し（bindingも新しいmessageへ）、次の短い回答はそのquestionへbindする。無駄なcompleteness retryを起こさない。rendererには`explain_question`のgoalとquestion purpose code（必要なら後で必要になるlaterNeeds）が渡り、まず理由に答えてから同じ質問を一度だけ聞く。work-breakdown質問の下でも、planning contentを持たない説明はtarget taskの再記述を求められずに成功する（2026-10-07の実測失敗の回帰）。
 
-Current example owner:
+Current example owners:
 - `src/features/weeklyPlanning/weeklyPlanningConversationInteraction.integration.test.ts`
+- `src/features/weeklyPlanning/weeklyPlanningConversationNaturalness.integration.test.ts`
 
 ### DIALOGUE-008: aside never re-arms the old question; resume re-presents first
 
@@ -143,7 +144,7 @@ Current example owners:
 
 ### DIALOGUE-009: a failed turn retains state and re-presents only the same fresh typed question
 
-semantic/provider failureはaccepted graph・preview・machine stateを変えない。直前のquestionがfreshでapplicationが型付きtextを持つ場合だけ同じquestionを再提示して再bindし、そうでなければ何も提示・bindしない（fail closed）。raw validator/provider payloadをuserへ出さない。
+semantic/provider failureはaccepted graph・preview・machine stateを変えない。直前のquestionがfreshでapplicationが型付きtextを持つ場合だけ同じquestionを再提示して再bindし、そうでなければ何も提示・bindしない（fail closed）。raw validator/provider payloadをuserへ出さない。semantic failureはtyped `clarify_turn`としてrendererが書き、provider failureはrendererを呼ばず短いemergency文言で再送を頼む。どちらもアプリ内部の処理を説明しない。
 
 Current example owners:
 - `src/features/weeklyPlanning/weeklyPlanningConversationInteraction.integration.test.ts`
@@ -175,6 +176,26 @@ Current example owners:
 Current example owners:
 - `src/features/weeklyPlanning/application/weeklyPlanningTurnMeasurement.test.ts`
 - `src/features/weeklyPlanning/weeklyPlanningConversationArchitectureSwitch.integration.test.ts`
+
+### DIALOGUE-013: a valid conversation act survives an unusable planning delta, never the reverse
+
+同じresponseのplanning deltaとconversation actは独立に検証する。act側の問題（未知kind・余分なkey・未知topic）はplanning errorにならず、そのactだけdrop（fail closed）またはtopic無しへ劣化する。planning deltaが1回のrepair後も使えない場合、有効なself-sufficient act（説明・寄り道・再開・相談）だけでturnを空deltaのnon-mutating turnとして続け、却下されたplanning内容は一切適用しない（含まれていた場合はrendererへ取り込めなかった旨のflagを渡す）。`answer_pending_question`だけでは続けない。actはauthorization・preview・approval・saveを与えない。2回目のsemantic model呼び出しはしない。legacyではactは未知keyのまま。
+
+Current example owners:
+- `src/features/weeklyPlanning/semantic/weeklyPlanningSemanticConversationOnlyTurnV5.test.ts`
+- `src/features/weeklyPlanning/semantic/weeklyPlanningConversationActsV5.test.ts`
+- `src/features/weeklyPlanning/weeklyPlanningConversationNaturalness.integration.test.ts`
+
+### DIALOGUE-014: ordinary replies are renderer-written and never describe the app's internals
+
+interaction architectureの通常turn（質問・説明・寄り道・再開・status・preview・semantic failureのrecovery）はrendererがtyped communication contextから書く。deterministic codeは何を伝えるか（goal・purpose code・status reason・disclosure）だけを持ち、説明の文章templateを持たない。renderer出力がユーザー発話・計画データに無い内部の仕組みの語彙を含む、またはapplication所有のpreview disclosureを落とすと拒否され（1回repair後fallback）、表示されるのは内部語彙の無い短いemergency文言だけ。週間計画の本番fileにある日本語literalはsource scanで分類済みでなければならない。
+
+Current example owners:
+- `src/features/weeklyPlanning/weeklyPlanningAssistantProse.contract.test.ts`
+- `src/features/weeklyPlanning/dialogue/weeklyPlanningStableV5DialogueInteractionValidation.test.ts`
+- `src/features/weeklyPlanning/dialogue/weeklyPlanningInteractionFallbackText.test.ts`
+- `src/features/weeklyPlanning/weeklyPlanningInteractionRendererFallback.test.ts`
+- `tests/e2e/weekly-conversation-interaction.spec.mjs`
 
 ## 4. Preview / approval
 

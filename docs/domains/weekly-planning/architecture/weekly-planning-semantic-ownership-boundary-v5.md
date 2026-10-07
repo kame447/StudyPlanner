@@ -42,7 +42,7 @@ This does not require one flat `intent` enum to carry every mixed-turn contribut
 - Schema and evidence validation.
 - Public/internal fact IDs, graph revision, lifecycle, correction transactions, dependency safety, and stale-revision rejection.
 - Missing-information/readiness decisions, question target, proposal state, authorization, scheduler input, feasibility, preview, approval, and save.
-- The turn outcome derived from typed conversation acts and machine state (apply / explain / aside / resume / recover), question re-presentation and rebinding, and conversational recovery after failures. These decisions never mutate the Fact Graph and never grant approval, save or authorization.
+- The turn outcome derived from typed conversation acts and machine state (apply / explain / aside / resume / recover), question re-presentation and rebinding, conversational recovery after failures, and the typed communication context of the reply (goal, question purpose codes, status reason, disclosure). These decisions never mutate the Fact Graph and never grant approval, save or authorization. Deterministic code owns WHAT a reply communicates, never its wording: it holds no explanation templates, and its only fixed reply text is the short emergency wording used when the renderer cannot run or fails.
 
 For planned Issue #246, deterministic application also owns:
 

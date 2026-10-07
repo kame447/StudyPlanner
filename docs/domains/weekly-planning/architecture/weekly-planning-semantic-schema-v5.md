@@ -1,7 +1,7 @@
 # weeklyPlanning semantic schema v5
 
 Status: supporting semantic schema reference
-Updated: 2026-10-04
+Updated: 2026-10-07
 
 Parent contract: [current-contract-v5.md](current-contract-v5.md)
 Canonical semantic ownership: [weekly-planning-semantic-ownership-boundary-v5.md](weekly-planning-semantic-ownership-boundary-v5.md)
@@ -31,7 +31,7 @@ SemanticDocument is not database state, a full conversation snapshot, or a sched
 - temporal constraints/recurrence/user availability
 - corrections/decisions/contextual references
 - durable-context candidates and linguistic scope
-- non-mutating conversation meaning as additive typed `conversationActs` (answer / ask about the pending question / topic shift / resume / consultation marker), with no planning payload and no authority
+- non-mutating conversation meaning as additive typed `conversationActs` (answer / ask about the pending question / topic shift / resume / consultation marker), with no planning payload, no quoted evidence and no authority; acts are validated apart from the planning delta of the same response (a malformed act is dropped, an unknown topic reference degrades to none), so a valid act can carry a non-mutating turn whose planning part is unusable
 
 Fields that require understanding what the user meant belong to AI semantic interpretation. Formal IDs, revisions, lifecycle operations, arithmetic, readiness and placement do not.
 

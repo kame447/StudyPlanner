@@ -27,8 +27,21 @@ Added so the parent can measure the old and new conversation architectures in th
 - Measurement: shared, in-memory, observation only (no persistence, no external telemetry). Debug trace carries `conversationArchitecture` + `aiDispatchUsage`; not durable fields (persisted requests stay attributable through their schema).
 - Not done here: live Computer Use measurement (parent), paid real-model evaluation, any claim about which architecture is better.
 
+## Natural conversation repair (2026-10-07, interaction_v1 only)
+
+Measured in the real UI: 「なんで時間が必要なの？」 under a pending question became `stable_v5_normalization_rejected` (2 semantic calls, 0 renderer) and showed an application paragraph about internal processing instead of an answer.
+
+- Root cause (deterministic replay of the measured state): the pending question was a work-breakdown clarification, and the work-breakdown response contract required every response to restate the target task. A perfect explanation document (act only, no planning content) was therefore rejected on both attempts (`document:work-breakdown-target-task-required`); the act shared the document's all-or-nothing validation; the failure path bypassed the renderer. Fact-style constraints on the act itself (topic id restricted to tasks/components while the prompt showed the pending uncertainty id; mandatory quoted evidence) also reproduce the same signature.
+- Decision (compared with keeping all-or-nothing validation and with a second classifier call): one response, two independently validated parts. Acts lose quoted evidence and fact-style rejection (malformed entries dropped, unknown topic degraded); a valid self-sufficient act carries a turn whose planning delta stays unusable after the single repair, with an empty delta; a response without planning content is exempt from the work-breakdown target requirement. No second semantic owner or model call.
+- Presentation: deterministic code hands the renderer a typed communication context (goal, question purpose codes, later needs, status reason, disclosure, flags; corrections as typed before/after). The renderer writes every interaction reply, including semantic-failure recovery; provider failures are not rendered. Internal vocabulary in renderer output is rejected (one repair). `weeklyPlanningInteractionFallbackText.ts` is the only fixed conversational Japanese of the interaction architecture (emergency only). A source scan classifies every Japanese literal of production weekly-planning code.
+- Legacy: byte-identical oracle hashes; all changes are interaction-gated.
+- Contract: [current-contract-v5.md](../architecture/current-contract-v5.md#conversation-interaction-three-responsibilities-issue-488); scenarios DIALOGUE-007, 009, 013, 014.
+
 ## Deferred
 
+- Real-model and Gemini/human evaluation of the new renderer wording and of act emission accuracy (deterministic tests prove contracts only).
+- The application-typed question texts reused as the interaction emergency question (shared with legacy, e.g. 「…の意味を一つに決められませんでした」) are emergency-only in interaction but still mechanical; changing them requires an interaction-only copy to keep legacy fidelity.
+- The composer's error banner shows the raw message of an unexpected (non-controlled) exception; provider/semantic failures never reach it. UI-scope follow-up.
 - Generic evidence references; replay of a failed utterance (relative dates would need the original request clock); edit/resend remains the fallback.
 - Durable freshness reason in the persisted turn diagnostic (only presence of the offered `pendingQuestion` is persisted; `interactionOutcome` and the freshness status stay in the in-memory debug trace by design).
 - Issue #246 consultation runtime (`consultation_request` is only a marker; the user is told it was not answered).

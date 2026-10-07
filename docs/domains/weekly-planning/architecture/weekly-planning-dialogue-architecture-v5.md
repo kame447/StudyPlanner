@@ -33,7 +33,7 @@ Deterministic application owns schema/evidence/reference validation, canonical I
 
 ## Interaction layer (Issue #488)
 
-Between the semantic result and the typed dialogue decision sits a deterministic interaction decision. It consumes typed `conversationActs` plus machine state and presentation freshness and chooses apply / explain / aside / resume / recover; the renderer only verbalizes that typed outcome. The three responsibilities (semantic interpretation, interaction control, deterministic planner/persistence) are boundaries inside the existing turn, not separate AI systems. Details and invariants: [current-contract-v5.md](current-contract-v5.md#conversation-interaction-three-responsibilities-issue-488).
+Between the semantic result and the typed dialogue decision sits a deterministic interaction decision. It consumes typed `conversationActs` plus machine state and presentation freshness and chooses apply / explain / aside / resume / recover, and hands the renderer a typed communication context (the goal of the reply, machine-owned purpose codes for the question, status reason, disclosure and flags). Deterministic code decides WHAT is communicated; the renderer decides HOW and writes every reply of the interaction architecture, recoveries included. Fixed wording exists only as the short emergency text used when the renderer cannot run or its output fails validation. The three responsibilities (semantic interpretation, interaction control, deterministic planner/persistence) are boundaries inside the existing turn, not separate AI systems. Details and invariants: [current-contract-v5.md](current-contract-v5.md#conversation-interaction-three-responsibilities-issue-488).
 
 ## Non-negotiable invariants
 
@@ -42,6 +42,7 @@ Between the semantic result and the typed dialogue decision sits a deterministic
 - provider/validation/repair failure does not fall back to a legacy semantic runtime.
 - AI does not issue formal IDs, mutate lifecycle, decide readiness, place schedule blocks, approve, or save.
 - renderer text is presentation; machine state is not reconstructed from rendered Japanese, and the renderer does not decide the conversational turn kind from the user message.
+- ordinary replies never describe the app's internals (data processing, validation, states, providers, retries); deterministic prose does not stand in for a conversational reply.
 - unresolved or rejected turns do not silently mutate accepted state.
 - preview is unsaved and bound to current owner/conversation/revision/source facts.
 
