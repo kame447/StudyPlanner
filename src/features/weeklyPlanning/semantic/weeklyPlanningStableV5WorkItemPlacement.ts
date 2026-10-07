@@ -6,6 +6,7 @@ import {
   hardDateBoundForTargetV5,
 } from './weeklyPlanningResolvedTemporalConstraintsV5';
 import {
+  partitionWeeklyPlanningDatesV5,
   preferredTaskDistributedDateV5,
 } from './weeklyPlanningStableV5DistributionPolicy';
 import { isHeavyWeeklyPlanningWorkItemV5 } from './weeklyPlanningStableV5ExecutionPolicy';
@@ -105,6 +106,26 @@ function datesWithinDailyCapacity(params: {
   });
 }
 
+/** Preserve ordinary reserve capacity; an explicit narrower day scope may use its last day. */
+function distinctSessionDateGroups(params: {
+  dates: string[];
+  scopeDates: readonly string[];
+  allDates: readonly string[];
+  usedDates: ReadonlySet<string>;
+}): string[][] {
+  if (params.usedDates.size === 0) return [params.dates];
+  const scoped = new Set(params.scopeDates);
+  const { reserveDates } = partitionWeeklyPlanningDatesV5(params.allDates);
+  const reserve = new Set(reserveDates);
+  const pools = params.allDates.every(date => scoped.has(date))
+    ? [params.dates.filter(date => !reserve.has(date)), params.dates.filter(date => reserve.has(date))]
+    : [params.dates];
+  return pools.flatMap(dates => [
+    dates.filter(date => !params.usedDates.has(date)),
+    dates.filter(date => params.usedDates.has(date)),
+  ]).filter(dates => dates.length > 0);
+}
+
 function findWorkItemSlot(params: {
   context: WeeklyPlanningPlacementRuntimeContextV5;
   item: GenericPlanningWorkItem;
@@ -112,6 +133,7 @@ function findWorkItemSlot(params: {
   duration: number;
   notBefore?: WeeklyPlanningPlacementNotBeforeV5;
   preferLongSegment: boolean;
+  usedSessionDates: ReadonlySet<string>;
 }): MinuteInterval | null {
   const capacitySafeDates = datesWithinDailyCapacity({
     context: params.context,
@@ -125,9 +147,25 @@ function findWorkItemSlot(params: {
     item: params.item,
     dates: capacitySafeDates,
   });
-  const preferredSlot = explicitPreferences.length > 0
-    ? findPreferredPlacementSlot({
-        placements: explicitPreferences,
+  const preferredScope = preferredPlacementsForWorkItem({
+    placements: params.context.input.preferredPlacements ?? [],
+    item: params.item,
+    dates: params.dates,
+  }).flatMap(placement => placement.dates);
+  // An explicit time/day preference stays ahead of unconstrained free time. Within that
+  // preference, try dates not yet used by this workload before placing sessions together.
+  for (const dates of distinctSessionDateGroups({
+    dates: capacitySafeDates,
+    scopeDates: preferredScope,
+    allDates: params.context.dates,
+    usedDates: params.usedSessionDates,
+  })) {
+    const allowed = new Set(dates);
+    const preferredSlot = explicitPreferences.length > 0
+      ? findPreferredPlacementSlot({
+        placements: explicitPreferences.map(placement => ({
+          ...placement, dates: placement.dates.filter(date => allowed.has(date)),
+        })),
         duration: params.duration,
         windowsByDate: params.context.windowsByDate,
         hardAvailableByDate: params.context.hardAvailableByDate,
@@ -137,16 +175,27 @@ function findWorkItemSlot(params: {
         preferLongSegment: params.preferLongSegment,
         restrictToBaseWindows: false,
       })
-    : null;
-  return preferredSlot ?? findPlacementSlot({
+      : null;
+    if (preferredSlot) return preferredSlot;
+  }
+  for (const dates of distinctSessionDateGroups({
     dates: capacitySafeDates,
-    duration: params.duration,
-    windowsByDate: params.context.windowsByDate,
-    busy: params.context.busy,
-    breakMinutes: params.context.breakMinutes,
-    notBefore: params.notBefore,
-    preferLongSegment: params.preferLongSegment,
-  });
+    scopeDates: params.dates,
+    allDates: params.context.dates,
+    usedDates: params.usedSessionDates,
+  })) {
+    const slot = findPlacementSlot({
+      dates,
+      duration: params.duration,
+      windowsByDate: params.context.windowsByDate,
+      busy: params.context.busy,
+      breakMinutes: params.context.breakMinutes,
+      notBefore: params.notBefore,
+      preferLongSegment: params.preferLongSegment,
+    });
+    if (slot) return slot;
+  }
+  return null;
 }
 
 function orderedDates(params: {
@@ -194,6 +243,12 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
     item: params.item,
   });
   const itemCandidates: WeeklyDraftCandidate[] = [];
+  const siblingWorkItemIds = new Set(params.context.input.movableWorkItems.filter(item =>
+    item.taskId === params.item.taskId && item.componentId === params.item.componentId
+    && item.workloadFactId === params.item.workloadFactId).map(item => item.id));
+  const usedSessionDates = new Set(params.globalCandidates
+    .filter(candidate => siblingWorkItemIds.has(candidate.workItemKey))
+    .map(candidate => candidate.date));
 
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
     const duration = chunks[chunkIndex];
@@ -218,6 +273,7 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
       duration,
       notBefore: effectiveNotBefore,
       preferLongSegment,
+      usedSessionDates,
     });
     if (!slot) return { candidates: itemCandidates, failedWorkItemId: params.item.id };
 
@@ -230,6 +286,7 @@ export function scheduleWeeklyPlanningWorkItemV5(params: {
       chunkIndex,
     }));
     addPlacedSlot({ slot, busy: params.context.busy, dayLoads: params.context.dayLoads });
+    usedSessionDates.add(slot.date);
   }
 
   return { candidates: itemCandidates, failedWorkItemId: null };

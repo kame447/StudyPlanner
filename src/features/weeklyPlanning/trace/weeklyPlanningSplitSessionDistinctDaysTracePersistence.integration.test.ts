@@ -7,9 +7,9 @@ import {
   type ScriptedConversation, type ScriptedConversationTurn,
 } from '../testUtils/weeklyPlanningScriptedConversationHarness';
 import {
-  CONDITION_SETUP, CONDITION_PACE, CONDITION_FOLLOWUP, conditionSetupDocument, conditionFollowupDocument,
-} from '../testUtils/weeklyPlanningConditionPropagationFixture';
-import { declaration, type Json } from '../testUtils/weeklyPlanningSchedulingConstraintsFixture';
+  CAMPAIGN, campaignProviderReply, type CampaignRequest,
+} from '../testUtils/weeklyPlanningRealE2ECampaignFixture';
+import type { Json } from '../testUtils/weeklyPlanningSchedulingConstraintsFixture';
 import {
   recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5TraceRuntimeForTest,
   resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest,
@@ -22,50 +22,25 @@ import type {
 } from './weeklyPlanningTraceTypes';
 import { boundWeeklyPlanningDialogueRendererTraceForTransport } from './weeklyPlanningDialogueRendererTrace';
 
-const USER = 'session-propagation-trace-owner';
-const CONVERSATION = 'weekly-conversation-623e4567-e89b-42d3-a456-426614174001';
-const SENTINEL = 'future-session-propagation-488';
+const USER = 'split-session-days-trace-owner';
+const CONVERSATION = 'weekly-conversation-723e4567-e89b-42d3-a456-426614174001';
+const SENTINEL = 'future-split-session-days-488';
 let restoreStorage: () => void;
 let provider: ReturnType<typeof installScriptedWeeklyPlanningProvider>;
 let conversation: ScriptedConversation;
-let morningOnly = false;
-let softAvailable = false;
-let alternateWindows = false;
 
 beforeEach(() => {
   restoreStorage = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
   resetScriptedConversationRuntime();
   resetWeeklyPlanningStableV5TraceRuntimeForTest();
-  morningOnly = false;
-  softAvailable = false;
-  alternateWindows = false;
-  provider = installScriptedWeeklyPlanningProvider((call) => {
-    if (call.kind === 'renderer') return 'renderer unavailable in fixture';
-    if (call.kind === 'semantic_focused_contextual') return JSON.stringify({
-      decision: 'effort_answer', effortTarget: 'question_target', effortMeasurement: 'duration_per_unit',
-      minutes: 3, precision: 'approximate', quantityRole: null,
-    });
-    const document: Json = String(call.payload?.userText) === CONDITION_SETUP ? conditionSetupDocument()
-      : conditionFollowupDocument(conversation.graph()!);
-    if (morningOnly) document.availabilityDeclarations = [declaration({
-      kind: 'available', startTime: '09:00', endTime: '12:00', recurrenceKind: 'daily',
-      constraintLevel: 'hard', sourceText: '使えるのは毎日9時から12時だけ',
-    })];
-    if (softAvailable) {
-      for (const task of document.tasks as Json[]) task.temporalConstraints = [];
-      (document.availabilityDeclarations as Json[]).push(declaration({
-        localId: 'soft-night', kind: 'available', startTime: null, endTime: null, namedTimePeriod: 'night',
-        recurrenceKind: 'daily', constraintLevel: 'soft', sourceText: 'どっちも夜がいい',
-      }));
-    }
-    if (alternateWindows) {
-      for (const task of document.tasks as Json[]) {
-        const original = (task.temporalConstraints as Json[])[0];
-        task.temporalConstraints = ['monday', 'tuesday'].map(day => ({
-          ...original, localId: `${String(original.localId)}-${day}`, dateExpression: `weekday:${day}`,
-        }));
-      }
-    }
+  provider = installScriptedWeeklyPlanningProvider(call => {
+    const reply = campaignProviderReply('E', call.request as unknown as CampaignRequest);
+    if (call.kind !== 'semantic_generic' || call.payload?.userText !== CAMPAIGN.E[2]) return reply;
+    const document = JSON.parse(reply) as Json;
+    const task = (document.tasks as Json[])[0];
+    task.temporalConstraints = [];
+    task.recurrence = [{ localId: 'weekend-sessions', targetLocalId: String(task.localId), kind: 'weekends',
+      count: null, days: ['weekday:saturday', 'weekday:sunday'], sourceText: '土日にまとめたい' }];
     return JSON.stringify(document);
   });
   conversation = createScriptedConversation({ provider, ownerId: USER, conversationId: CONVERSATION, architecture: 'interaction_v1' });
@@ -80,23 +55,21 @@ afterEach(() => {
 
 function traceInput(turn: ScriptedConversationTurn) {
   return {
-    userId: USER, conversationId: CONVERSATION, requestId: turn.requestId!, userText: CONDITION_FOLLOWUP,
+    userId: USER, conversationId: CONVERSATION, requestId: turn.requestId!, userText: CAMPAIGN.E[2],
     assistantMessage: turn.result!.message, responseSource: turn.result!.responseSource,
     dialogueRendererTrace: boundWeeklyPlanningDialogueRendererTraceForTransport(turn.result!.dialogueRendererTrace!),
-    outcome: 'preview', previewCount: 3, debugTraceEvents: turn.debugTrace,
+    outcome: 'preview', previewCount: 2, debugTraceEvents: turn.debugTrace,
   };
 }
 
-describe('session-size propagation trace persistence gate', () => {
-  it.each([[false, false, false], [true, false, false], [true, true, false], [false, false, true]])('persists actual request, preview and constraint truth through outbox/Worker/size limits (morning: %s, soft available: %s, alternatives: %s)', async (limited, available, alternatives) => {
-    await conversation.submit(CONDITION_SETUP);
-    await conversation.submit(CONDITION_PACE);
-    morningOnly = limited;
-    softAvailable = available;
-    alternateWindows = alternatives;
-    const turn = await conversation.submit(`${CONDITION_FOLLOWUP}${limited ? '。使えるのは毎日9時から12時だけ' : ''}`);
+describe('split-session distinct-day trace persistence gate', () => {
+  it('preserves actual separate-day candidates through outbox retry, Worker and explicit size truncation', async () => {
+    await conversation.submit(CAMPAIGN.E[0]);
+    const turn = await conversation.submit(CAMPAIGN.E[2]);
     expect(turn.result?.failure).toBeUndefined();
-    expect(turn.result?.draftCandidates).toHaveLength(3);
+    expect(turn.calls.map(call => call.kind)).toEqual(['semantic_generic', 'renderer']);
+    expect(turn.result?.draftCandidates?.map(candidate => [candidate.date, candidate.durationMinutes]))
+      .toEqual([['2026-10-17', 90], ['2026-10-18', 90]]);
     const semantic = turn.calls.find((call) => call.kind === 'semantic_generic')!;
     const requestEvent = turn.debugTrace.find((event) => event.stage === 'semantic_provider_request')!;
     const actualRequest = requestEvent.data as { request: { messages: unknown }; requestBytes: number };
@@ -104,35 +77,18 @@ describe('session-size propagation trace persistence gate', () => {
     const sessionId = conversation.graph()!.effortEstimates.find((estimate) => estimate.kind === 'session_duration')!.id;
     const scheduler = turn.debugTrace.find((event) => event.stage === 'runtime_preview_scheduler_evaluated')!;
     const data = scheduler.data as Record<string, unknown>;
-    expect(data.candidateCount).toBe(3);
+    expect(data.candidateCount).toBe(2);
     const candidates = data.candidates as Record<string, unknown>[];
     expect(candidates.filter((item) => String(item.title).includes('卒業研究ノート'))).toHaveLength(2);
     expect(JSON.stringify(candidates)).toContain(sessionId);
 
+    expect(candidates.map(candidate => [candidate.date, candidate.durationMinutes]))
+      .toEqual([['2026-10-17', 90], ['2026-10-18', 90]]);
     const renderer = turn.calls.find(call => call.kind === 'renderer')!;
-    const communication = (renderer.payload!.applicationDecision as Record<string, unknown>).communication as Record<string, unknown>;
-    const satisfaction = communication.previewConstraintSatisfaction as Array<Record<string, unknown>>;
-    const preferenceCount = alternatives ? 4 : 2;
-    expect(satisfaction).toHaveLength(preferenceCount + 1);
-    expect(satisfaction.filter(fact => fact.kind === 'preferred_window').map(fact => fact.status))
-      .toEqual(Array.from({ length: preferenceCount }, () => limited ? 'not_satisfied' : 'satisfied'));
-
     const input = traceInput(turn);
     const context = input.dialogueRendererTrace.request!.promptContext as Record<string, unknown>;
-    expect(JSON.stringify(context)).toContain('previewConstraintSatisfaction');
     expect(context.messages).toEqual(renderer.messages);
-    const contextMessages = context.messages as Array<{ role: string; content: string }>;
-    const actualPayload = JSON.parse(contextMessages.find(message => message.role === 'user')!.content) as Record<string, unknown>;
-    const actualCommunication = ((actualPayload.applicationDecision as Record<string, unknown>).communication as Record<string, unknown>);
-    expect(actualCommunication.previewConstraintSatisfaction).toEqual(satisfaction);
     const kept = structuredClone(input);
-    const keptContext = kept.dialogueRendererTrace.request!.promptContext as Record<string, unknown>;
-    const keptMessages = keptContext.messages as Array<{ role: string; content: string }>;
-    const keptUserMessage = keptMessages.find(message => message.role === 'user')!;
-    const keptPayload = JSON.parse(keptUserMessage.content) as Record<string, unknown>;
-    const keptCommunication = (keptPayload.applicationDecision as Record<string, unknown>).communication as Record<string, unknown>;
-    (keptCommunication.previewConstraintSatisfaction as Array<Record<string, unknown>>)[0].futureConstraintTruth = 'future-constraint-truth-field';
-    keptUserMessage.content = JSON.stringify(keptPayload);
     const keptScheduler = kept.debugTraceEvents.find((event) => event.stage === 'runtime_preview_scheduler_evaluated')!;
     const keptCandidates = (keptScheduler.data as Record<string, unknown>).candidates as Record<string, unknown>[];
     keptCandidates[1].futureSessionField = SENTINEL;
@@ -165,7 +121,7 @@ describe('session-size propagation trace persistence gate', () => {
       const prepared = prepareWeeklyPlanningTraceServerWrite({
         session: write.session as unknown as Record<string, unknown>, entries: write.entries as unknown as Record<string, unknown>[],
       }, { token: `wpt_${'f'.repeat(43)}`, epoch: '105' }, {
-        sessionId: 'weekly-trace-623e4567-e89b-42d3-a456-426614174001', logicalConversationId: CONVERSATION,
+        sessionId: 'weekly-trace-723e4567-e89b-42d3-a456-426614174001', logicalConversationId: CONVERSATION,
       }, '2026-10-07T00:00:00.000Z');
       for (const entry of write.entries) {
         const workerEntry = prepared.entries.find((candidate) => candidate.requestId === entry.requestId)!;
@@ -175,18 +131,18 @@ describe('session-size propagation trace persistence gate', () => {
         for (const persisted of [entry, workerEntry]) {
           const text = JSON.stringify(persisted);
           expect(text).toContain('session_duration');
-          expect(text).toContain('night');
+          expect(text).toContain('weekends');
+          expect(text).toContain('2026-10-17');
+          expect(text).toContain('2026-10-18');
           expect(text).toContain('卒業研究ノート');
           expect(text).toContain(sessionId);
           expect(text).toContain(SENTINEL);
           expect(text).toContain('previewConstraintSatisfaction');
-          expect(text).toContain('future-constraint-truth-field');
-          if (limited) expect(text).toContain('not_satisfied');
           if (entry.requestId === kept.requestId) {
             const diagnostic = persisted as WeeklyPlanningTraceTurnDiagnosticEntry;
             const request = diagnostic.aiInterpreter.input.requests[0];
             expect(request.requestBytes).toBe(actualRequest.requestBytes);
-            expect(request.messages.find((message) => message.role === 'user')?.content).toContain(CONDITION_FOLLOWUP);
+            expect(request.messages.find((message) => message.role === 'user')?.content).toContain(CAMPAIGN.E[2]);
             // Durable requests intentionally bound each message at 1500 bytes; prove the
             // actual request was recorded above, and require explicit metadata for the cut.
             expect(diagnostic.diagnostics.truncation?.fields.some((field) => field.includes('input.requests[0].messages'))).toBe(true);

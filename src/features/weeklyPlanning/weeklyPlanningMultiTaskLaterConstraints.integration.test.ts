@@ -7,7 +7,8 @@ import {
   CONDITION_SETUP, CONDITION_PACE, CONDITION_FOLLOWUP, conditionSetupDocument,
   conditionFollowupDocument, conditionDocument,
 } from './testUtils/weeklyPlanningConditionPropagationFixture';
-import { declaration, type Json } from './testUtils/weeklyPlanningSchedulingConstraintsFixture';
+import { A, declaration, type Json } from './testUtils/weeklyPlanningSchedulingConstraintsFixture';
+import { taskTemporalPreferenceDocument } from './testUtils/weeklyPlanningLiveTemporalFixture';
 import { weeklyPlanningPreviewConstraintDisclosureText } from './dialogue/weeklyPlanningPreviewOmissionDisclosure';
 
 let provider: ReturnType<typeof installScriptedWeeklyPlanningProvider>;
@@ -47,6 +48,26 @@ function activeIds() {
 }
 
 describe('Scenario D: later constraint scopes and corrections through complete turns', () => {
+  it.each(['task', 'preferred', 'available', 'mixed'] as const)('accepts equivalent weekday alternatives without falsely warning about unused days (%s)', async scope => {
+    delta = taskTemporalPreferenceDocument();
+    if (scope !== 'task') {
+      const task = (delta.tasks as Json[])[0];
+      const windows = task.temporalConstraints as Json[];
+      delta.availabilityDeclarations = windows.slice(scope === 'mixed' ? 1 : 0).map(fact => declaration({
+        localId: fact.localId, kind: scope === 'mixed' ? 'available' : scope, dateExpression: null,
+        recurrenceKind: 'weekly', days: [fact.dateExpression], sourceText: fact.sourceText,
+      }));
+      task.temporalConstraints = scope === 'mixed' ? windows.slice(0, 1) : [];
+    }
+    const turn = await conversation.submit(A);
+    expect(turn.result?.failure).toBeUndefined();
+    expect(turn.calls.map(call => call.kind)).toEqual(['semantic_generic', 'renderer']);
+    expect(turn.result?.draftCandidates).toMatchObject([{ date: '2026-10-12', startTime: '20:00', durationMinutes: 70 }]);
+    expect(turn.result?.communicationFacts?.previewConstraintSatisfaction?.map(fact => fact.status))
+      .toEqual(['satisfied', 'satisfied', 'satisfied', 'satisfied', 'satisfied']);
+    expect(turn.result?.message).not.toContain('合わない候補');
+  });
+
   it.each(['interaction_v1', 'legacy_v5'] as const)('applies a plan-wide evening preference to both tasks without extending the research-only session length (%s)', async architecture => {
     conversation = createScriptedConversation({ provider, architecture });
     await setup();
@@ -146,13 +167,22 @@ describe('Scenario D: later constraint scopes and corrections through complete t
     expect(conversation.getState().previewCandidates!.every(candidate => candidate.startTime >= '18:00')).toBe(true);
   });
 
-  it.each(['false-claim', 'neutral'] as const)('discloses an infeasible evening preference with a %s renderer response', async response => {
+  it.each([
+    ['false-claim', 'task'], ['neutral', 'task'], ['false-claim', 'preferred'], ['false-claim', 'available'],
+  ] as const)('discloses an infeasible evening preference with a %s renderer response (%s)', async (response, scope) => {
     await setup();
     delta = conditionFollowupDocument(conversation.graph()!);
     delta.availabilityDeclarations = [declaration({
       kind: 'available', startTime: '09:00', endTime: '12:00', recurrenceKind: 'daily',
       constraintLevel: 'hard', sourceText: '使えるのは毎日9時から12時だけ',
     })];
+    if (scope !== 'task') {
+      for (const task of delta.tasks as Json[]) task.temporalConstraints = [];
+      (delta.availabilityDeclarations as Json[]).push(declaration({
+        localId: 'soft-night', kind: scope, startTime: null, endTime: null, namedTimePeriod: 'night',
+        recurrenceKind: 'daily', constraintLevel: 'soft', sourceText: 'どっちも夜がいい',
+      }));
+    }
     rendererText = response === 'false-claim'
       ? 'どちらも夜の候補を3件用意しました。「この内容で仮予定にする」を押してください。'
       : '候補が3件できました。「この内容で仮予定にする」を押してください。';

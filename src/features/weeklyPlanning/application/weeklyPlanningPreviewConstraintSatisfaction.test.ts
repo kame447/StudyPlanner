@@ -67,6 +67,37 @@ describe('read-only actual preview constraint evidence', () => {
     expect(project(state)[0].status).toBe('not_satisfied');
   });
 
+  it('evaluates alternative dates as a union and still rejects a session outside that union', () => {
+    const state = fixture();
+    const first = state.graph.temporalConstraints[0];
+    state.graph.temporalConstraints.push({ ...first, id: 'other-night' });
+    const placement = state.schedulerInput.preferredPlacements[0];
+    placement.dates = ['2026-10-12'];
+    state.schedulerInput.preferredPlacements.push({ ...placement, sourceFactId: 'other-night', dates: ['2026-10-13'] });
+    expect(project(state).filter(fact => fact.kind === 'preferred_window').map(fact => fact.status))
+      .toEqual(['satisfied', 'satisfied']);
+    state.candidates.find(candidate => candidate.title.includes('research'))!.date = '2026-10-14';
+    expect(project(state).filter(fact => fact.kind === 'preferred_window').map(fact => fact.status))
+      .toEqual(['not_satisfied', 'not_satisfied']);
+  });
+
+  it('does not silently discard an alternative whose compiled placement is missing', () => {
+    const state = fixture();
+    state.graph.temporalConstraints.push({ ...state.graph.temporalConstraints[0], id: 'uncompiled-night' });
+    expect(project(state).filter(fact => fact.kind === 'preferred_window').map(fact => fact.status))
+      .toEqual(['not_evaluated', 'not_evaluated']);
+  });
+
+  it('does not satisfy a task with another task’s windows', () => {
+    const state = fixture();
+    state.graph.temporalConstraints.push({ ...state.graph.temporalConstraints[0], id: 'book-night', taskId: 'book', targetFactId: 'book' });
+    state.schedulerInput.preferredPlacements.push({ ...state.schedulerInput.preferredPlacements[0],
+      sourceFactId: 'book-night', taskId: 'book', targetFactId: 'book' });
+    expect(project(state).filter(fact => fact.kind === 'preferred_window')).toMatchObject([
+      { taskId: 'research', status: 'satisfied' }, { taskId: 'book', status: 'not_satisfied' },
+    ]);
+  });
+
   it('does not count unrelated task placement as failure or success for this task', () => {
     const state = fixture();
     const bookId = state.schedulerInput.movableWorkItems.find(item => item.taskId === 'book')!.id;

@@ -39,14 +39,18 @@ export function projectWeeklyPlanningPreviewConstraintSatisfaction(params: {
       && metadata(candidate)?.taskId === item.taskId
       && metadata(candidate)?.graphRevision === schedulerInput.graphRevision));
 
-  function windowSatisfaction(fact: {
+  function windowSatisfaction(facts: readonly {
     id: string; startTime: string | null; endTime: string | null; namedTimePeriod: string | null;
-  }, taskId: string, items: readonly GenericPlanningWorkItem[]) {
+  }[], taskId: string, items: readonly GenericPlanningWorkItem[]) {
+    const sourceIds = new Set(facts.map(fact => fact.id));
     const placements = schedulerInput.preferredPlacements.filter(placement =>
-      placement.sourceFactId === fact.id && placement.taskId === taskId);
+      sourceIds.has(placement.sourceFactId) && placement.taskId === taskId);
     const scheduled = candidatesFor(items);
-    const needsClockWindow = Boolean(fact.startTime || fact.endTime || fact.namedTimePeriod);
-    const usable = placements.length > 0 && (!needsClockWindow || placements.every(placement => placement.window !== null));
+    const usable = facts.every(fact => {
+      const compiled = placements.filter(placement => placement.sourceFactId === fact.id);
+      const needsClockWindow = Boolean(fact.startTime || fact.endTime || fact.namedTimePeriod);
+      return compiled.length > 0 && (!needsClockWindow || compiled.every(placement => placement.window !== null));
+    });
     const status = !usable || items.length === 0 || scheduled.length === 0 ? 'not_evaluated'
       : scheduled.every(candidate => {
         const item = items.find(entry => entry.id === candidate.workItemKey)!;
@@ -57,18 +61,24 @@ export function projectWeeklyPlanningPreviewConstraintSatisfaction(params: {
             && minutes(candidate.endTime) <= placement.window.endMinute)));
       }) && items.every(item => scheduled.some(candidate => candidate.workItemKey === item.id))
         ? 'satisfied' : 'not_satisfied';
-    result.push({ sourceFactId: fact.id, taskId, taskLabel: taskLabel(taskId), kind: 'preferred_window', status });
+    for (const fact of facts) {
+      result.push({ sourceFactId: fact.id, taskId, taskLabel: taskLabel(taskId), kind: 'preferred_window', status });
+    }
   }
 
-  for (const fact of graph.temporalConstraints.filter(fact => fact.kind === 'preferred_window')) {
-    const items = schedulerInput.movableWorkItems.filter(item => item.taskId === fact.taskId
-      && (fact.targetFactId === item.taskId || fact.targetFactId === item.componentId));
-    windowSatisfaction(fact, fact.taskId, items);
-  }
-  for (const fact of graph.availabilityDeclarations.filter(fact => fact.kind === 'preferred')) {
-    for (const taskId of new Set(schedulerInput.movableWorkItems.map(item => item.taskId))) {
-      windowSatisfaction(fact, taskId, schedulerInput.movableWorkItems.filter(item => item.taskId === taskId));
-    }
+  // Applicable windows are alternatives, as in placement search. A Monday candidate need
+  // not also occupy each other weekday. Target matching above keeps components independent.
+  const taskPreferences = graph.temporalConstraints.filter(fact => fact.kind === 'preferred_window');
+  const planPreferences = graph.availabilityDeclarations.filter(fact => fact.kind === 'preferred'
+    || (fact.kind === 'available' && fact.constraintLevel === 'soft'));
+  const taskIds = new Set([...taskPreferences.map(fact => fact.taskId), ...schedulerInput.movableWorkItems.map(item => item.taskId)]);
+  for (const taskId of taskIds) {
+    const scoped = taskPreferences.filter(fact => fact.taskId === taskId);
+    const alternatives = [...scoped, ...planPreferences];
+    if (alternatives.length === 0) continue;
+    const items = schedulerInput.movableWorkItems.filter(item => item.taskId === taskId
+      && (planPreferences.length > 0 || scoped.some(fact => fact.targetFactId === item.taskId || fact.targetFactId === item.componentId)));
+    windowSatisfaction(alternatives, taskId, items);
   }
   for (const fact of graph.effortEstimates.filter(fact => fact.kind === 'session_duration')) {
     // Use the same typed specificity policy as compilation. An overridden task preference
