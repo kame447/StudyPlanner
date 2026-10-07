@@ -16,13 +16,8 @@ for (const width of [390, 1280]) for (const kind of ['予定', '記録']) {
       for (const key of ['studyplanner.plans', 'studyplanner.actuals', 'studyplanner.monthEvents.v1', 'studyplanner.todos.v1']) localStorage.setItem(key, '[]');
       localStorage.setItem('material-validation-seeded', '1');
     });
-    await page.goto('/');
-    async function openDay() {
-      await page.locator('.primary-bottom-nav button').filter({ hasText: '予定' }).click();
-      await page.getByRole('tab', { name: '日', exact: true }).click();
-    }
-    await openDay();
-    await page.locator('.daily-material-card').filter({ hasText: '日付検証問題集' }).click();
+    await page.goto('http://127.0.0.1:4174/material-quick-entry.html');
+    await page.getByRole('button', { name: '教材入力を開く', exact: true }).click();
     const editor = page.locator('.material-quick-modal');
     await editor.getByRole('tab', { name: kind, exact: true }).click();
     const date = editor.getByLabel('日付', { exact: true });
@@ -39,16 +34,17 @@ for (const width of [390, 1280]) for (const kind of ['予定', '記録']) {
     await expect(submit).toBeDisabled();
     await time.press('Enter');
     expect(await counts()).toEqual([0, 0]);
-    await time.fill('19:00');
+    await time.fill('19:45');
     await expect(submit).toBeEnabled();
     await submit.click();
     await expect(editor).toHaveCount(0);
     await expect.poll(counts).toEqual(kind === '予定' ? [1, 0] : [0, 1]);
     const record = await page.evaluate(kind => JSON.parse(localStorage.getItem(kind === '予定' ? 'studyplanner.plans' : 'studyplanner.actuals'))[0], kind);
     expect(kind === '予定' ? record.date : record.occurrenceDate).toBe(E2E_TODAY);
+    expect(kind === '予定' ? record.startTime : record.actualStartTime).toBe('19:45');
+    expect(kind === '予定' ? record.endTime : record.actualEndTime).toBe('20:15');
     await page.reload();
-    await openDay();
-    await expect(page.locator('.timeline-canvas')).toContainText('日付検証問題集');
+    await expect(page.locator('.saved-records')).toContainText('日付検証問題集');
     expect(await counts()).toEqual(kind === '予定' ? [1, 0] : [0, 1]);
   });
 }
