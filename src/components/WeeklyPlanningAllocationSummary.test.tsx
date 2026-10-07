@@ -2,7 +2,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createWeeklyPlanningTestDraftBlock } from '../features/weeklyPlanning/testUtils/weeklyPlanningApplicationTestHarness';
 import type { WeeklyPlanningAllocationBreakdown } from '../features/weeklyPlanning/semantic/weeklyPlanningAllocationBreakdown';
-import { WeeklyPlanningAllocationSummary } from './WeeklyPlanningAllocationSummary';
+import { formatWeeklyPlanningAllocationMinutes, WeeklyPlanningAllocationSummary } from './WeeklyPlanningAllocationSummary';
 
 let renderer: ReactTestRenderer | undefined;
 afterEach(() => { act(() => renderer?.unmount()); });
@@ -13,6 +13,11 @@ const breakdown: WeeklyPlanningAllocationBreakdown = {
 };
 
 describe('preview allocation summary', () => {
+  it.each([[10, '10分'], [70, '1時間10分'], [135, '2時間15分'], [120, '2時間']] as const)(
+    'formats %i allocated minutes as %s', (minutes, label) => {
+      expect(formatWeeklyPlanningAllocationMinutes(minutes)).toBe(label);
+    },
+  );
   it('shows the estimate and margin amounts next to the allocated total', () => {
     const block = createWeeklyPlanningTestDraftBlock({ id: 'allocated', overrides: {
       startTime: '09:00', endTime: '10:10', allocationBreakdown: breakdown,
