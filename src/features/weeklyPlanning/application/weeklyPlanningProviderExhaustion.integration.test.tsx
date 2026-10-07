@@ -1,11 +1,11 @@
 import { createRef, forwardRef, useImperativeHandle } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
+import { createDeferred, createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import { useWeeklyPlanningApplication, type WeeklyPlanningApplication, type UseWeeklyPlanningApplicationInput } from './useWeeklyPlanningApplication';
 import { createWeeklyPlanningApprovalMemoryState, createMemoryWeeklyPlanningApprovalPlanRepository } from './weeklyPlanningApprovalMemoryRepository';
-import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './weeklyPlanningStableV5RuntimeSession';
+import { getWeeklyPlanningStableV5RuntimeSession, hasWeeklyPlanningStableV5StagedGraphForTest, resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './weeklyPlanningStableV5RuntimeSession';
 import { weeklyPlanningTurnRuntimeGateway } from './weeklyPlanningTurnRuntimeGateway';
 import { clearWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
 import { resetUserPlanningContextRuntimeForTestV1 } from '../../userPlanningContext/userPlanningContextSpace';
@@ -19,6 +19,10 @@ import * as aiConfig from '../../../lib/aiConfig';
 import * as firebaseClient from '../../../lib/firebaseClient';
 import type { FocusedAuthorizationDecisionContext } from '../../../../shared/focusedAuthorizationDecision';
 import type { WeeklyPlanningTurnSubmissionResult } from '../weeklyPlanningTurnExecutionTypes';
+import { parseWeeklyPlanningPlanSourceId } from '../planning/weeklyPlanningPlanProvenance';
+import type { PlanDraft } from '../../../types/domain';
+import * as turnApplication from './weeklyPlanningTurnApplication';
+import * as planningReducer from '../weeklyPlanningReducer';
 
 // Configuration only: every application, HTTP client, Worker, normalizer,
 // scheduler and approval boundary remains the production implementation.
@@ -66,6 +70,12 @@ let jevRequests: Array<{ state: FocusedAuthorizationDecisionContext['state'] }>;
 let providerOrder: string[];
 let genericRequests: RequestBody[];
 let unexpectedRequests: string[];
+let deferredGeneric: { started: ReturnType<typeof createDeferred<void>>; response: ReturnType<typeof createDeferred<Response>> } | undefined;
+function deferNextGeneric() {
+  const deferred = { started: createDeferred<void>(), response: createDeferred<Response>() };
+  deferredGeneric = deferred;
+  return deferred;
+}
 const gateway = () => vi.spyOn(weeklyPlanningTurnRuntimeGateway, 'execute');
 function resetRuntime() {
   resetWeeklyPlanningStableV5RuntimeSessionsForTest(); clearWeeklyPlanningSessionRuntime();
@@ -80,7 +90,7 @@ beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] }); vi.setSystemTime('2026-08-16T00:00:00Z');
   vi.stubEnv('VITE_AI_PROVIDER', 'openai'); vi.stubEnv('VITE_AI_BASE_URL', 'https://provider.fixture.test/v1');
   vi.stubEnv('VITE_AI_MODEL', 'fixture'); vi.stubEnv('VITE_AI_API_KEY', 'fixture-key'); vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'false');
-  resetRuntime(); clearRequests(); genericOutcome = 'valid'; responseDocument = initialSemantic();
+  resetRuntime(); clearRequests(); genericOutcome = 'valid'; responseDocument = initialSemantic(); deferredGeneric = undefined;
   vi.spyOn(aiConfig, 'usesCloudflareOpenAiProxy').mockReturnValue(true);
   vi.spyOn(aiConfig, 'getCloudflareAiProxyUrl').mockReturnValue(PROXY_URL);
   vi.spyOn(firebaseClient, 'getFirebaseAuth').mockReturnValue({ currentUser: { getIdToken: async () => 'fixture-session' } } as ReturnType<typeof firebaseClient.getFirebaseAuth>);
@@ -117,6 +127,8 @@ beforeEach(async () => {
       }
       if (schema === GENERIC_SCHEMA) {
         providerOrder.push('generic'); genericRequests.push(body);
+        const deferred = deferredGeneric;
+        if (deferred) { deferredGeneric = undefined; deferred.started.resolve(); return deferred.response.promise; }
         if (genericOutcome === 'unavailable') return Response.json({ error: 'fixture generic unavailable' }, { status: 503 });
         return completion(genericOutcome === 'repair-exhausted' ? (genericRequests.length === 1 ? 'not-json' : '{}') : JSON.stringify(responseDocument));
       }
@@ -138,13 +150,29 @@ afterEach(() => {
   act(() => renderer?.unmount()); renderer = undefined; restoreStorage?.(); restoreStorage = undefined;
   resetRuntime(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers();
 });
-async function mount() {
+type SaveFailure = 'before-commit' | 'response-lost';
+async function mount(saveFailure?: SaveFailure) {
   const storage = createMemoryStorageHarness(); restoreStorage = installWeeklyPlanningTestStorage(storage.storage);
   const database = createWeeklyPlanningApprovalMemoryState(); const repository = createMemoryWeeklyPlanningApprovalPlanRepository(database);
+  const saveRequests: PlanDraft[] = [];
+  const saveApprovedPlan = async (draft: PlanDraft) => {
+    saveRequests.push(structuredClone(draft));
+    if (saveFailure && saveRequests.length === 1) {
+      if (saveFailure === 'response-lost') await repository.saveApprovedPlan(draft);
+      throw new Error(saveFailure);
+    }
+    return repository.saveApprovedPlan(draft);
+  };
   const ref = createRef<WeeklyPlanningApplication>();
-  await act(async () => { renderer = create(<Harness ref={ref} userId={OWNER} selectedDate={WEEK} plans={[]} scheduleTemplates={[]}
+  const render = async () => { await act(async () => { renderer = create(<Harness ref={ref} userId={OWNER} selectedDate={WEEK} plans={[]} scheduleTemplates={[]}
     isPlannerDataSnapshotCurrent={() => true} plannerDataAvailability={createReadyPlannerDataAvailability(OWNER)}
-    saveWeeklyApprovedPlan={repository.saveApprovedPlan} completeWeeklyApprovalOperation={repository.completeOperation} />); });
+    saveWeeklyApprovedPlan={saveApprovedPlan} completeWeeklyApprovalOperation={repository.completeOperation} />); }); };
+  await render();
+  const remount = async () => {
+    act(() => renderer?.unmount()); renderer = undefined;
+    resetRuntime();
+    await render();
+  };
   const submit = async (text: string) => { let result!: WeeklyPlanningTurnSubmissionResult; await act(async () => { result = await ref.current!.submitTurn(text); }); return result; };
   const unsaved = () => {
     expect(database.metrics).toEqual({ planWrites: 0, itemWrites: 0, operationWrites: 0 });
@@ -157,7 +185,7 @@ async function mount() {
   const graph = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
   expect(graph.tasks).toHaveLength(1); expect(graph.workloads[0].amount).toBe(20); expect(graph.effortEstimates[0].minutes).toBe(2);
   clearRequests(); responseDocument = authorizationSemantic();
-  return { ref, database, submit, unsaved, graph };
+  return { ref, database, submit, unsaved, graph, saveRequests, remount, storage };
 }
 function expectFocusedCorrelation(requestId: string, inputRevision: number) {
   expect(unexpectedRequests).toEqual([]);
@@ -169,8 +197,8 @@ function expectFocusedCorrelation(requestId: string, inputRevision: number) {
   expect(jevRequests).toHaveLength(1); expect(jevRequests[0].state.currentUserText).toBe(AUTHORIZE_TEXT);
 }
 
-it('crosses both focused provider failures into real generic semantics, preview and explicit approval', async () => {
-  const spy = gateway(); const { ref, database, submit, unsaved, graph } = await mount();
+it.each(['before-commit', 'response-lost'] as const)('recovers a provider-created preview after %s without duplicate approved plans', async saveFailure => {
+  const spy = gateway(); const { ref, database, submit, unsaved, graph, saveRequests, remount } = await mount(saveFailure);
   expect((await submit(AUTHORIZE_TEXT)).accepted).toBe(true);
   expectFocusedCorrelation(spy.mock.calls[1][0].pending.requestId, graph.revision);
   expect(providerOrder).toEqual(['jev', 'focused-luna', 'generic', 'dialogue']);
@@ -181,14 +209,49 @@ it('crosses both focused provider failures into real generic semantics, preview 
   const candidates = ref.current!.state.previewCandidates!;
   expect(candidates.map(candidate => candidate.title)).toEqual(['数学 20問']);
   expect(candidates.reduce((minutes, candidate) => minutes + candidate.durationMinutes, 0)).toBe(45); unsaved();
+  const previewSnapshot = ref.current!.exportConversationSnapshot()!;
+  const previewIdentity = { previewId: `stable-v5-preview:${previewSnapshot.conversationId}:${previewSnapshot.graph.revision}`,
+    conversationId: previewSnapshot.conversationId, stateRevision: previewSnapshot.graph.revision, authorizedUserId: OWNER };
   const blocks = createWeeklyDraftBlocksFromPreviewCandidates({ candidates, userId: OWNER, createdAt: new Date().toISOString() });
+  for (const block of blocks) expect(block.behaviorMetadata?.previewMetadata).toMatchObject(previewIdentity);
   await act(async () => { ref.current!.createDraftBlocks(blocks); }); unsaved();
   expect(ref.current!.approvalAvailability.kind).toBe('eligible');
+  await act(async () => { await expect(ref.current!.approveDraftBlocks()).rejects.toThrow('一部の仮予定'); });
+  expect(saveRequests).toHaveLength(1);
+  const identity = parseWeeklyPlanningPlanSourceId(saveRequests[0].sourceId)!;
+  expect(identity.sourceDraftBlockId).toBe(blocks[0].id);
+  expect(ref.current!.state.pendingApproval).toBeUndefined();
+  expect(ref.current!.state.draftBlocks).toHaveLength(candidates.length);
+  const recoveryIdentity = { approvalOperationId: identity.approvalOperationId, userId: OWNER, status: 'failed',
+    previewId: previewIdentity.previewId, conversationId: previewIdentity.conversationId, previewStateRevision: previewIdentity.stateRevision };
+  expect(ref.current!.state.approvalRecovery?.operation).toMatchObject(recoveryIdentity);
+  expect(database.metrics.planWrites).toBe(saveFailure === 'response-lost' ? candidates.length : 0);
+  const committedPlans = structuredClone([...database.plans.values()]);
+  if (saveFailure === 'response-lost') {
+    expect(database.plans.size).toBe(candidates.length);
+    expect([...database.items.values()]).toEqual([expect.objectContaining({ savedPlanId: committedPlans[0].id, sourceDraftBlockId: blocks[0].id, status: 'saved' })]);
+    expect([...database.operations.values()]).toEqual([expect.objectContaining({ approvalOperationId: identity.approvalOperationId, status: 'active', savedItemCount: candidates.length })]);
+  } else unsaved();
+  const previewGraph = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
+  const requestCountBeforeRetry = proxyRequests.length;
+  // Drop all in-memory sessions and the hook's ledger; recover through real local storage.
+  await remount();
+  expect(ref.current!.exportConversationSnapshot()!.graph).toEqual(previewGraph);
+  expect(ref.current!.state.approvalRecovery?.operation).toMatchObject(recoveryIdentity);
+  for (const block of ref.current!.state.draftBlocks) expect(block.behaviorMetadata?.previewMetadata).toMatchObject(previewIdentity);
   await act(async () => { await ref.current!.approveDraftBlocks(); });
+  expect(saveRequests).toHaveLength(2);
+  expect(saveRequests[1]).toEqual(saveRequests[0]);
   expect(database.metrics.planWrites).toBe(candidates.length); expect(database.plans.size).toBe(candidates.length);
+  if (saveFailure === 'response-lost') expect([...database.plans.values()]).toEqual(committedPlans);
+  expect([...database.operations.values()]).toEqual([expect.objectContaining({ approvalOperationId: identity.approvalOperationId, status: 'completed' })]);
+  expect(database.items.size).toBe(candidates.length);
+  expect(ref.current!.state.pendingApproval).toBeUndefined();
+  expect(ref.current!.state.draftBlocks).toEqual([]); expect(ref.current!.state.approvalRecovery).toBeUndefined();
+  expect(proxyRequests).toHaveLength(requestCountBeforeRetry);
   for (const plan of database.plans.values()) expect(candidates).toContainEqual(expect.objectContaining({ title: plan.title, date: plan.date, startTime: plan.startTime, endTime: plan.endTime }));
   await act(async () => { await ref.current!.approveDraftBlocks(); });
-  expect(database.metrics.planWrites).toBe(candidates.length);
+  expect(database.metrics.planWrites).toBe(candidates.length); expect(saveRequests).toHaveLength(2);
 });
 
 it.each(['unavailable', 'repair-exhausted'] as const)('preserves accepted state after both focused failures and generic %s, then admits a healthy retry', async outcome => {
@@ -221,4 +284,92 @@ it.each(['unavailable', 'repair-exhausted'] as const)('preserves accepted state 
   expect(ref.current!.state.pendingTurn).toBeUndefined();
   expect(ref.current!.state.previewCandidates!.length).toBeGreaterThan(0); unsaved();
   expect(database.metrics.planWrites).toBe(0);
+});
+
+it.each(['cancel', 'reset'] as const)('rejects stale and duplicate provider-result commits after %s while a newer preview and turn remain owned', async interruption => {
+  // Both spies call through: capture the actual live dispatch and provider-created commit,
+  // then replay downstream of the gateway rather than synthesizing a semantic result.
+  const applicationSpy = vi.spyOn(turnApplication, 'submitWeeklyPlanningApplicationTurn');
+  const reducerSpy = vi.spyOn(planningReducer, 'weeklyPlanningReducer');
+  const spy = gateway(); const { ref, submit, unsaved, storage, graph } = await mount();
+  const delayed = deferNextGeneric();
+  let oldSubmission!: Promise<WeeklyPlanningTurnSubmissionResult>;
+  await act(async () => { oldSubmission = ref.current!.submitTurn(AUTHORIZE_TEXT); await delayed.started.promise; });
+  const oldPending = structuredClone(ref.current!.state.pendingTurn!);
+  expectFocusedCorrelation(oldPending.requestId, graph.revision);
+  const oldRequestCount = proxyRequests.length;
+  expect((await submit(AUTHORIZE_TEXT)).accepted).toBe(false);
+  expect(proxyRequests).toHaveLength(oldRequestCount);
+  expect(ref.current!.state.pendingTurn).toEqual(oldPending);
+  act(() => {
+    if (interruption === 'cancel') expect(ref.current!.cancelTurn()).toBe(true);
+    else ref.current!.resetSession();
+  });
+  expect(ref.current!.state.pendingTurn).toBeUndefined(); unsaved();
+  responseDocument = initialSemantic(); responseDocument.planningIntent = 'create_plan';
+  responseDocument.tasks[0] = { ...responseDocument.tasks[0], title: '英語',
+    study: { purpose: 'self_study', contextLabel: '英語', components: [] }, sourceText: '英語20問を1問2分',
+    workloads: [{ ...responseDocument.tasks[0].workloads[0], sourceText: '英語20問' }] };
+  expect((await submit('8月17日から23日で英語20問を1問2分で計画してください')).accepted).toBe(true);
+  expect((await spy.mock.results[2].value).failure).toBeUndefined();
+  const newer = ref.current!.exportConversationSnapshot()!;
+  expect(newer.graph.tasks.some(task => task.title === '英語')).toBe(true);
+  expect(newer.planningState.previewCandidates!.some(candidate => candidate.title.includes('英語'))).toBe(true);
+  expect(newer.conversationId === oldPending.conversationId).toBe(interruption === 'cancel');
+  const committedPending = spy.mock.calls[2][0].pending;
+  const actualCommit = reducerSpy.mock.calls.find(([, action]) => action.type === 'commit_turn'
+    && action.pending.requestId === committedPending.requestId)![1];
+  expect(actualCommit).toMatchObject({ type: 'commit_turn', pending: committedPending, draftCandidates: newer.planningState.previewCandidates });
+  const liveDispatch = applicationSpy.mock.calls[2][0].dispatch;
+  const redeliverActualCommit = () => {
+    const stateBefore = ref.current!.state;
+    const snapshotBefore = structuredClone(stateBefore);
+    const storageBefore = [...storage.values.entries()];
+    const callsBefore = reducerSpy.mock.calls.length;
+    act(() => { liveDispatch(actualCommit); liveDispatch(actualCommit); });
+    const replayed = reducerSpy.mock.calls.slice(callsBefore);
+    expect(replayed).toHaveLength(2);
+    for (const [state, action] of replayed) { expect(state).toBe(stateBefore); expect(action).toBe(actualCommit); }
+    expect(ref.current!.state).toBe(stateBefore); expect(ref.current!.state).toEqual(snapshotBefore);
+    expect(getWeeklyPlanningStableV5RuntimeSession(newer.conversationId)!.graph).toEqual(newer.graph);
+    expect([...storage.values.entries()]).toEqual(storageBefore); unsaved();
+  };
+  redeliverActualCommit();
+  const next = deferNextGeneric();
+  let nextSubmission!: Promise<WeeklyPlanningTurnSubmissionResult>;
+  await act(async () => { nextSubmission = ref.current!.submitTurn('ありがとう'); await next.started.promise; });
+  const currentState = structuredClone(ref.current!.state);
+  const storedState = [...storage.values.entries()];
+  expect(currentState.pendingTurn!.requestId).not.toBe(oldPending.requestId);
+  redeliverActualCommit();
+  let discarded!: WeeklyPlanningTurnSubmissionResult;
+  await act(async () => { delayed.response.resolve(completion(JSON.stringify(authorizationSemantic()))); discarded = await oldSubmission; });
+  expect((await spy.mock.results[1].value).failure).toBeUndefined();
+  expect(discarded).toEqual({ accepted: false, draftCandidates: [] });
+  expect(ref.current!.state).toEqual(currentState);
+  expect(getWeeklyPlanningStableV5RuntimeSession(newer.conversationId)!.graph).toEqual(newer.graph);
+  expect([...storage.values.entries()]).toEqual(storedState);
+  expect(hasWeeklyPlanningStableV5StagedGraphForTest({ conversationId: oldPending.conversationId, requestId: oldPending.requestId })).toBe(false);
+  unsaved();
+  let healthy!: WeeklyPlanningTurnSubmissionResult;
+  await act(async () => {
+    next.response.resolve(completion(JSON.stringify({ ...initialSemantic(), planningIntent: 'discuss', planningWindow: null, tasks: [] })));
+    healthy = await nextSubmission;
+  });
+  expect(healthy.accepted).toBe(true);
+  expect((await spy.mock.results[3].value).failure).toBeUndefined();
+  expect(ref.current!.state.pendingTurn).toBeUndefined();
+  expect(ref.current!.exportConversationSnapshot()!.graph.tasks.some(task => task.title === '英語')).toBe(true);
+  expect(ref.current!.state.previewCandidates).toEqual(newer.planningState.previewCandidates);
+  // Replay the actual committed request identity; a new user submission would have a new ID.
+  const stateBeforeReplay = structuredClone(ref.current!.state);
+  const graphBeforeReplay = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
+  const requestsBeforeReplay = proxyRequests.length;
+  const replay = await weeklyPlanningTurnRuntimeGateway.execute(spy.mock.calls[2][0]);
+  expect(replay.failure).toBeUndefined(); expect(replay.responseSource).toBe('system'); expect(replay.draftCandidates).toEqual([]);
+  expect(proxyRequests).toHaveLength(requestsBeforeReplay);
+  expect(ref.current!.state).toEqual(stateBeforeReplay);
+  expect(ref.current!.exportConversationSnapshot()!.graph).toEqual(graphBeforeReplay);
+  expect(hasWeeklyPlanningStableV5StagedGraphForTest({ conversationId: newer.conversationId, requestId: spy.mock.calls[2][0].pending.requestId })).toBe(false);
+  expect(unexpectedRequests).toEqual([]); unsaved();
 });
