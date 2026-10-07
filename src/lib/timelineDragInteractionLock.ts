@@ -1,3 +1,5 @@
+import '../styles/timeline-drag-interaction-lock.css';
+
 const TIMELINE_DRAG_LOCK_CLASS = 'is-timeline-drag-interaction-locked';
 
 let activeLockCount = 0;
@@ -19,30 +21,25 @@ export function acquireTimelineDragInteractionLock(): () => void {
 
   if (activeLockCount === 1) {
     const root = document.documentElement;
-    const body = document.body;
-    const previousRootOverscrollBehavior = root.style.overscrollBehavior;
-    const previousBodyOverscrollBehavior = body.style.overscrollBehavior;
-    const previousBodyOverflow = body.style.overflow;
 
-    const preventBackgroundTouchMove = (event: TouchEvent) => {
+    const preventBackgroundScroll = (event: TouchEvent | WheelEvent) => {
       if (event.cancelable) event.preventDefault();
     };
 
     root.classList.add(TIMELINE_DRAG_LOCK_CLASS);
-    root.style.overscrollBehavior = 'none';
-    body.style.overscrollBehavior = 'none';
-    body.style.overflow = 'hidden';
-    window.addEventListener('touchmove', preventBackgroundTouchMove, {
+    window.addEventListener('touchmove', preventBackgroundScroll, {
+      capture: true,
+      passive: false,
+    });
+    window.addEventListener('wheel', preventBackgroundScroll, {
       capture: true,
       passive: false,
     });
 
     releaseGlobalLock = () => {
-      window.removeEventListener('touchmove', preventBackgroundTouchMove, true);
+      window.removeEventListener('touchmove', preventBackgroundScroll, true);
+      window.removeEventListener('wheel', preventBackgroundScroll, true);
       root.classList.remove(TIMELINE_DRAG_LOCK_CLASS);
-      root.style.overscrollBehavior = previousRootOverscrollBehavior;
-      body.style.overscrollBehavior = previousBodyOverscrollBehavior;
-      body.style.overflow = previousBodyOverflow;
     };
   }
 
