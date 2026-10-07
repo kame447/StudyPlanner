@@ -43,6 +43,8 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'testUtils/weeklyPlanningFreshPresentationTestUtils.ts',
   // Test-only: scripted-provider full-turn harness over the real controller/runtime.
   'testUtils/weeklyPlanningScriptedConversationHarness.ts',
+  // Test-only: real-E2E scenario D follow-up document over the graph's public ids (type import).
+  'testUtils/weeklyPlanningConditionPropagationFixture.ts',
   'application/weeklyPlanningApprovalRuntimeLookup.ts',
   'application/weeklyPlanningSessionLifecycle.ts',
   'application/weeklyPlanningStableV5GraphStaging.ts',

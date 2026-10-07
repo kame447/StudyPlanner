@@ -1,4 +1,5 @@
 import type {
+  EffortEstimateFact,
   PlanningTaskFact,
   RecurrenceFact,
   StudyComponentFact,
@@ -27,6 +28,7 @@ import {
   inferWeeklyPlanningExecutionProfileV5,
   splitWeeklyPlanningSessionMinutesV5,
 } from './weeklyPlanningStableV5ExecutionPolicy';
+import { WEEKLY_PLANNING_MAX_GENERATED_SESSION_CHUNKS_V5 } from './weeklyPlanningNumericSafetyV5';
 import {
   orderGenericSchedulerWorkItemsByRelationsV5,
 } from './weeklyPlanningSchedulerRelationOrderingV5';
@@ -45,6 +47,29 @@ export interface WeeklyPlanningSchedulerDistributionGraphViewV5 {
   >>;
   readonly recurrences: ReadonlyArray<RecurrenceFact>;
   readonly relations?: ReadonlyArray<TaskRelationFact>;
+}
+
+/** Scoped accepted session size, separate from the effort needed for the whole workload. */
+export function resolveWeeklyPlanningWorkItemSessionDurationV5(params: {
+  item: GenericPlanningWorkItem;
+  estimates: readonly EffortEstimateFact[];
+}): { minutes: number | null; sourceFactIds: string[]; ambiguous: boolean } {
+  const matching = params.estimates.filter((estimate) =>
+    estimate.kind === 'session_duration'
+    && estimate.taskId === params.item.taskId
+    && (estimate.targetFactId === params.item.workloadFactId
+      || estimate.targetFactId === params.item.componentId
+      || estimate.targetFactId === params.item.taskId));
+  // A workload/component detail takes precedence over an inherited task-level preference.
+  const targets = [params.item.workloadFactId, params.item.componentId, params.item.taskId];
+  const scoped = targets.map((target) => matching.filter((estimate) => estimate.targetFactId === target))
+    .find((estimates) => estimates.length > 0) ?? [];
+  const valid = scoped.length === 1 && Number.isFinite(scoped[0].minutes) && scoped[0].minutes > 0;
+  return {
+    minutes: valid ? scoped[0].minutes : null,
+    sourceFactIds: scoped.map((estimate) => estimate.id),
+    ambiguous: scoped.length > 0 && !valid,
+  };
 }
 
 function recurringPerOccurrenceSlices(params: {
@@ -205,10 +230,17 @@ function executionPolicySlices(params: {
   graph: WeeklyPlanningSchedulerDistributionGraphViewV5;
   item: GenericPlanningWorkItem;
   preferredSessionMinutes?: number | null;
+  sessionDurationEstimates?: readonly EffortEstimateFact[];
 }): GenericPlanningWorkItem[] {
   const total = params.item.estimatedMinutes;
+  const session = resolveWeeklyPlanningWorkItemSessionDurationV5({
+    item: params.item,
+    estimates: params.sessionDurationEstimates ?? [],
+  });
+  const explicitSessionMinutes = session.minutes;
+  const countedSessions = params.item.quantity.unitCode === 'session' && explicitSessionMinutes !== null;
   if (
-    params.item.splitPolicy !== 'splittable'
+    (params.item.splitPolicy !== 'splittable' && !countedSessions)
     || total === null
     || !Number.isFinite(total)
     || total <= 0
@@ -223,12 +255,17 @@ function executionPolicySlices(params: {
     profile,
     preferredSessionMinutes: params.preferredSessionMinutes,
   });
-  const chunks = splitWeeklyPlanningSessionMinutesV5({
-    totalMinutes: total,
-    policy,
-    profile,
-  });
-  if (chunks.length <= 1) return [params.item];
+  // User-specified session length owns the boundary. Neither the default maximum nor
+  // generic balancing may silently keep longer blocks or replace full requested sessions.
+  const sessionMinutes = explicitSessionMinutes === null ? null : Math.max(1, Math.round(explicitSessionMinutes));
+  const sessionCount = sessionMinutes === null ? 0 : Math.ceil(total / sessionMinutes);
+  const chunks = sessionMinutes !== null && sessionCount <= WEEKLY_PLANNING_MAX_GENERATED_SESSION_CHUNKS_V5
+    ? Array.from({ length: sessionCount }, (_, index) => Math.min(sessionMinutes, total - index * sessionMinutes))
+    : splitWeeklyPlanningSessionMinutesV5({ totalMinutes: total, policy, profile });
+  if (chunks.length <= 1) return [{
+    ...params.item,
+    sourceFactRefs: [...new Set([...params.item.sourceFactRefs, ...session.sourceFactIds])],
+  }];
 
   const label = displayTargetLabel(params.graph, params.item);
   const totalQuantity = params.item.quantity.amount;
@@ -243,11 +280,9 @@ function executionPolicySlices(params: {
           .reduce((sum, chunk) => sum + totalQuantity * (chunk / total), 0))
       : totalQuantity * ratio;
     consumedMinutes += effectiveDuration;
-    const displayQuantity = params.item.quantity.unitCode === 'minute'
-      ? durationMinutes
-      : params.item.quantity.unitCode === 'hour'
-        ? durationMinutes / 60
-        : quantityAmount;
+    // Allocated time can include rounding/calibration. It must not increase the
+    // requested workload quantity when the slices are expressed in minutes/hours.
+    const displayQuantity = quantityAmount;
     const quantityLabel = Number.isInteger(displayQuantity)
       ? String(displayQuantity)
       : String(Math.round(displayQuantity * 100) / 100);
@@ -269,6 +304,7 @@ function executionPolicySlices(params: {
       baseEstimatedMinutes,
       plannedSessions: undefined,
       splitPolicy: 'atomic',
+      sourceFactRefs: [...new Set([...params.item.sourceFactRefs, ...session.sourceFactIds])],
     };
   });
 }
@@ -280,6 +316,7 @@ export function distributeGenericSchedulerWorkItemsV5(params: {
   endDate: string;
   hardDateBounds?: readonly WeeklyPlanningSchedulerHardDateBoundV5[];
   preferredSessionMinutes?: number | null;
+  sessionDurationEstimates?: readonly EffortEstimateFact[];
 }): GenericPlanningWorkItem[] {
   const dates = listCalendarDatesInclusive(params.startDate, params.endDate) ?? [];
   const recurrenceDistributed = dates.length === 0
@@ -303,6 +340,7 @@ export function distributeGenericSchedulerWorkItemsV5(params: {
       graph: params.graph,
       item,
       preferredSessionMinutes: params.preferredSessionMinutes,
+      sessionDurationEstimates: params.sessionDurationEstimates,
     }));
   return orderGenericSchedulerWorkItemsByRelationsV5({
     items: sessionDistributed,

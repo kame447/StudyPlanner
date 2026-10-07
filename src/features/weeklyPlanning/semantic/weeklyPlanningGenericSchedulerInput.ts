@@ -70,7 +70,9 @@ import {
 } from './weeklyPlanningResolvedTemporalConstraintsV5';
 import {
   distributeGenericSchedulerWorkItemsV5,
+  resolveWeeklyPlanningWorkItemSessionDurationV5,
 } from './weeklyPlanningSchedulerWorkDistributionV5';
+import { WEEKLY_PLANNING_MAX_GENERATED_SESSION_CHUNKS_V5 } from './weeklyPlanningNumericSafetyV5';
 import {
   detectWeeklyPlanningRelationCycleV5,
 } from './weeklyPlanningRelationCycleV5';
@@ -576,6 +578,28 @@ export function compileGenericSchedulerInput(params: {
     overrides: params.observedEstimateOverrides ?? [],
   });
 
+  for (const item of observedEstimateApplication.items) {
+    const session = resolveWeeklyPlanningWorkItemSessionDurationV5({ item, estimates: params.graph.effortEstimates });
+    if (session.ambiguous) {
+      issues.push({
+        domain: 'work_item', code: 'ambiguous_effort_estimate', blocking: true, factId: item.workloadFactId,
+        details: { matchingEstimateCount: session.sourceFactIds.length },
+      });
+    }
+    if (session.minutes !== null && item.estimatedMinutes !== null
+      && Math.ceil(item.estimatedMinutes / session.minutes) > WEEKLY_PLANNING_MAX_GENERATED_SESSION_CHUNKS_V5) {
+      issues.push({
+        domain: 'semantic_uncertainty', code: 'semantic_uncertainty', blocking: true,
+        factId: session.sourceFactIds[0], details: {
+          targetFactId: item.workloadFactId,
+          field: 'session_duration',
+          reason: 'session_count_limit',
+          sourceText: params.graph.effortEstimates.find((estimate) => estimate.id === session.sourceFactIds[0])!.source.sourceText,
+        },
+      });
+    }
+  }
+
   for (const issue of work.issues) {
     const issueItem = work.items.find((item) => item.workloadFactId === issue.workloadFactId);
     if (issueItem && isWorkItemFixedByTemporalScope({ graph: params.graph, item: issueItem })) {
@@ -677,6 +701,7 @@ export function compileGenericSchedulerInput(params: {
     startDate: params.context.planningStartDate,
     endDate: params.context.planningEndDate,
     hardDateBounds,
+    sessionDurationEstimates: params.graph.effortEstimates,
   });
 
   if (movableWorkItems.length === 0 && commitments.reservations.length === 0) {
