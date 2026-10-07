@@ -194,6 +194,7 @@ export interface WeeklyPlanningTraceTurnDiagnosticEntry extends WeeklyPlanningTr
       userText: string;
       conversationContext: Array<{ role: string; content: string }>;
       planningStateSummary: unknown;
+      evidenceCoverageAudit?: unknown;
       requests: WeeklyPlanningTraceAiRequest[];
     };
     rawResponses: WeeklyPlanningTraceAiRawResponse[];

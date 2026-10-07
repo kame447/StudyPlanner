@@ -429,6 +429,9 @@ function branchBasisProjection(value: unknown): Record<string, unknown> {
 function projectStageData(stage: string, value: unknown): unknown {
   const data = record(value);
   switch (stage) {
+    case 'semantic_evidence_coverage_eligibility':
+    case 'semantic_evidence_coverage_abstained':
+      return compactUnknown(data);
     case 'runtime_turn_input':
       return {
         runtime: stringValue(data.runtime),

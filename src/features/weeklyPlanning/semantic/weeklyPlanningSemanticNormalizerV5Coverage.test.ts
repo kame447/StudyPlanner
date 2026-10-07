@@ -67,6 +67,9 @@ describe('Stable V5 semantic normalizer evidence ownership', () => {
     const client: OpenAiCompatibleClient = {
       async createChatCompletion(input) {
         calls.push(input as unknown as Record<string, unknown>);
+        // Meaning stays AI-owned: this unit scripts both interpretation and
+        // the independent auditor as complete, without a lexical override.
+        if (input.responseFormat?.json_schema.name === 'weekly_planning_dense_turn_completeness_audit_v5') return JSON.stringify({ decision: 'complete', missingFacts: [] });
         return JSON.stringify(response);
       },
     };
@@ -83,6 +86,9 @@ describe('Stable V5 semantic normalizer evidence ownership', () => {
       repairAttempted: false,
       validationErrors: [],
     });
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
+    expect(calls.map((call) => (call.responseFormat as { json_schema: { name: string } }).json_schema.name)).toEqual([
+      'weekly_planning_semantic_document_v5', 'weekly_planning_dense_turn_completeness_audit_v5',
+    ]);
   });
 });

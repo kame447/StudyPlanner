@@ -86,6 +86,7 @@ function lastUserPayload(messages: Array<{ role: string; content: string }>): Re
 
 export function installScriptedWeeklyPlanningProvider(
   respond: (call: ScriptedProviderCall) => ScriptedProviderReply | Promise<ScriptedProviderReply>,
+  options: { completenessAudit?: 'complete' | 'scripted' } = {},
 ): { calls: ScriptedProviderCall[]; restore(): void } {
   const calls: ScriptedProviderCall[] = [];
   vi.stubEnv('VITE_AI_PROVIDER', 'openai');
@@ -109,7 +110,13 @@ export function installScriptedWeeklyPlanningProvider(
       payload: lastUserPayload(messages),
     };
     calls.push(call);
-    const reply = await respond(call);
+    // Most scenarios specify interpretation/renderer behavior, not auditor
+    // quality. Answer this independent schema explicitly; it remains a real,
+    // counted transport dispatch. Audit scenarios opt into their own script.
+    const reply = call.schemaName === 'weekly_planning_dense_turn_completeness_audit_v5'
+      && options.completenessAudit !== 'scripted'
+      ? JSON.stringify({ decision: 'complete', missingFacts: [] })
+      : await respond(call);
     if (typeof reply !== 'string') {
       if (reply.failure === 'network') throw new TypeError('fetch failed: issue488 fixture network outage');
       return new Response(JSON.stringify({ error: { message: 'fixture outage' } }), {

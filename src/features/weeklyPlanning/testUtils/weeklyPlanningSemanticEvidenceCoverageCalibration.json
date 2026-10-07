@@ -1,0 +1,657 @@
+[
+  {
+    "capture": "A-omission-tip7a50d2df-capture.json",
+    "responseIndex": 5,
+    "userText": "来週、アルゴリズムイントロダクションを20ページ読みたい。1ページ3分くらいで、平日は20時以降がいい",
+    "document": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "create_plan",
+      "planningWindow": {
+        "localId": "planning-window-1",
+        "kind": "relative_week",
+        "value": "next_week",
+        "start": null,
+        "end": null,
+        "sourceText": "来週"
+      },
+      "tasks": [
+        {
+          "localId": "task-1",
+          "existingPublicId": null,
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "アルゴリズムイントロダクションを読む",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "reading",
+            "contextLabel": null,
+            "components": [
+              {
+                "localId": "component-1",
+                "existingPublicId": "study-material-dd552e12-8fd1-4845-af63-35a8f91fc76e",
+                "parentLocalId": null,
+                "role": "material",
+                "label": "アルゴリズムイントロダクション",
+                "workloads": [
+                  {
+                    "localId": "workload-1",
+                    "quantityRole": "target",
+                    "amount": 20,
+                    "unitCode": "page",
+                    "unitLabel": "ページ",
+                    "rangeStart": null,
+                    "rangeEnd": null,
+                    "perOccurrence": false,
+                    "periodExpression": null,
+                    "sourceText": "20ページ"
+                  }
+                ],
+                "durableContextSignals": [],
+                "sourceText": "アルゴリズムイントロダクション"
+              }
+            ]
+          },
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "来週、アルゴリズムイントロダクションを20ページ読みたい。"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "expectedEligible": true
+  },
+  {
+    "capture": "A-T1-e34b3c02-capture.json",
+    "responseIndex": 2,
+    "userText": "来週、アルゴリズムイントロダクションを20ページ読みたい。1ページ3分くらいで、平日は20時以降がいい",
+    "document": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "create_plan",
+      "planningWindow": {
+        "localId": "planning-window-1",
+        "kind": "relative_week",
+        "value": "next_week",
+        "start": null,
+        "end": null,
+        "sourceText": "来週"
+      },
+      "tasks": [
+        {
+          "localId": "task-1",
+          "existingPublicId": null,
+          "decompositionStatus": "decomposed",
+          "category": "study",
+          "title": "アルゴリズムイントロダクションを読む",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "reading",
+            "contextLabel": "アルゴリズムイントロダクション",
+            "components": [
+              {
+                "localId": "component-1",
+                "existingPublicId": "study-material-dd552e12-8fd1-4845-af63-35a8f91fc76e",
+                "parentLocalId": null,
+                "role": "material",
+                "label": "アルゴリズムイントロダクション",
+                "workloads": [],
+                "durableContextSignals": [],
+                "sourceText": "アルゴリズムイントロダクション"
+              }
+            ]
+          },
+          "workloads": [
+            {
+              "localId": "workload-1",
+              "quantityRole": "target",
+              "amount": 20,
+              "unitCode": "page",
+              "unitLabel": "ページ",
+              "rangeStart": null,
+              "rangeEnd": null,
+              "perOccurrence": false,
+              "periodExpression": "来週",
+              "sourceText": "20ページ"
+            }
+          ],
+          "effortEstimates": [
+            {
+              "localId": "effort-1",
+              "targetLocalId": "workload-1",
+              "kind": "duration_per_unit",
+              "minutes": 3,
+              "unitCode": "page",
+              "precision": "approximate",
+              "sourceText": "1ページ3分くらい"
+            }
+          ],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "来週、アルゴリズムイントロダクションを20ページ読みたい。"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [
+        {
+          "localId": "availability-1",
+          "kind": "preferred",
+          "dateExpression": null,
+          "namedTimePeriod": null,
+          "startTime": "20:00",
+          "endTime": null,
+          "recurrenceKind": "weekdays",
+          "days": [
+            "weekday:monday",
+            "weekday:tuesday",
+            "weekday:wednesday",
+            "weekday:thursday",
+            "weekday:friday"
+          ],
+          "constraintLevel": "soft",
+          "capacityMinutes": null,
+          "sourceText": "平日は20時以降がいい"
+        }
+      ],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "expectedEligible": false
+  },
+  {
+    "capture": "A-T1-e34b3c02-capture.json",
+    "responseIndex": 3,
+    "userText": "来週、アルゴリズムイントロダクションを20ページ読みたい。1ページ3分くらいで、平日は20時以降がいい",
+    "document": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "create_plan",
+      "planningWindow": {
+        "localId": "planning-window-1",
+        "kind": "relative_week",
+        "value": "next_week",
+        "start": null,
+        "end": null,
+        "sourceText": "来週"
+      },
+      "tasks": [
+        {
+          "localId": "task-1",
+          "existingPublicId": null,
+          "decompositionStatus": "decomposed",
+          "category": "study",
+          "title": "アルゴリズムイントロダクションを読む",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "reading",
+            "contextLabel": "アルゴリズムイントロダクション",
+            "components": [
+              {
+                "localId": "component-1",
+                "existingPublicId": null,
+                "parentLocalId": null,
+                "role": "material",
+                "label": "アルゴリズムイントロダクション",
+                "workloads": [],
+                "durableContextSignals": [],
+                "sourceText": "アルゴリズムイントロダクション"
+              }
+            ]
+          },
+          "workloads": [
+            {
+              "localId": "workload-1",
+              "quantityRole": "target",
+              "amount": 20,
+              "unitCode": "page",
+              "unitLabel": "ページ",
+              "rangeStart": null,
+              "rangeEnd": null,
+              "perOccurrence": false,
+              "periodExpression": "来週",
+              "sourceText": "20ページ"
+            }
+          ],
+          "effortEstimates": [
+            {
+              "localId": "effort-1",
+              "targetLocalId": "workload-1",
+              "kind": "duration_per_unit",
+              "minutes": 3,
+              "unitCode": "page",
+              "precision": "approximate",
+              "sourceText": "1ページ3分くらい"
+            }
+          ],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "来週、アルゴリズムイントロダクションを20ページ読みたい。"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [
+        {
+          "localId": "availability-1",
+          "kind": "preferred",
+          "dateExpression": null,
+          "namedTimePeriod": null,
+          "startTime": "20:00",
+          "endTime": null,
+          "recurrenceKind": "weekdays",
+          "days": [
+            "weekday:monday",
+            "weekday:tuesday",
+            "weekday:wednesday",
+            "weekday:thursday",
+            "weekday:friday"
+          ],
+          "constraintLevel": "soft",
+          "capacityMinutes": null,
+          "sourceText": "平日は20時以降がいい"
+        }
+      ],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "expectedEligible": false
+  },
+  {
+    "capture": "B-tip3f0b706c-capture.json",
+    "responseIndex": 2,
+    "userText": "来週、数学の問題集を20問進めたい",
+    "document": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "create_plan",
+      "planningWindow": {
+        "localId": "window-1",
+        "kind": "relative_week",
+        "value": "next_week",
+        "start": null,
+        "end": null,
+        "sourceText": "来週"
+      },
+      "tasks": [
+        {
+          "localId": "task-1",
+          "existingPublicId": null,
+          "decompositionStatus": "needs_breakdown",
+          "category": "study",
+          "title": "数学の問題集",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "problem_solving",
+            "contextLabel": "数学",
+            "components": []
+          },
+          "workloads": [
+            {
+              "localId": "workload-1",
+              "quantityRole": "target",
+              "amount": 20,
+              "unitCode": "problem",
+              "unitLabel": "問",
+              "rangeStart": null,
+              "rangeEnd": null,
+              "perOccurrence": false,
+              "periodExpression": null,
+              "sourceText": "20問"
+            }
+          ],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "数学の問題集を20問進めたい"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [
+        {
+          "localId": "uncertainty-1",
+          "targetLocalId": "task-1",
+          "field": "material",
+          "reason": "数学の問題集に該当する登録教材が複数あり、対象教材を一意に特定できない",
+          "sourceText": "数学の問題集"
+        }
+      ],
+      "corrections": [],
+      "decisions": []
+    },
+    "expectedEligible": false
+  },
+  {
+    "capture": "B-tip3f0b706c-capture.json",
+    "responseIndex": 5,
+    "userText": "なんで時間が必要なの？",
+    "document": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "discuss",
+      "planningWindow": null,
+      "tasks": [],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [
+        {
+          "kind": "ask_about_pending_question",
+          "targetPublicId": "wpf_task_1fk96b11n5n475"
+        }
+      ],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "expectedEligible": false
+  },
+  {
+    "capture": "B-tip3f0b706c-capture.json",
+    "responseIndex": 8,
+    "userText": "1問3分くらい",
+    "document": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "update_plan",
+      "planningWindow": null,
+      "tasks": [],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "expectedEligible": false
+  },
+  {
+    "capture": "B-tip3f0b706c-capture.json",
+    "responseIndex": 9,
+    "userText": "1問3分くらい",
+    "document": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "update_plan",
+      "planningWindow": null,
+      "tasks": [
+        {
+          "localId": "task_existing_wpf_task_1fk96b11n5n475",
+          "existingPublicId": "wpf_task_1fk96b11n5n475",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "数学の問題集",
+          "study": null,
+          "workloads": [],
+          "effortEstimates": [
+            {
+              "localId": "effort_1problem_3minutes",
+              "targetLocalId": "task_existing_wpf_task_1fk96b11n5n475",
+              "kind": "duration_per_unit",
+              "minutes": 3,
+              "unitCode": "problem",
+              "precision": "approximate",
+              "sourceText": "1問3分くらい"
+            }
+          ],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "1問3分くらい"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "expectedEligible": false
+  },
+  {
+    "capture": "B-tip3f0b706c-capture.json",
+    "responseIndex": 12,
+    "userText": "青チャートのこと",
+    "document": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "update_plan",
+      "planningWindow": null,
+      "tasks": [
+        {
+          "localId": "task_existing_1fk96b11n5n475",
+          "existingPublicId": "wpf_task_1fk96b11n5n475",
+          "decompositionStatus": "decomposed",
+          "category": "study",
+          "title": "数学の問題集",
+          "study": {
+            "purpose": "practice",
+            "activityKind": "problem_solving",
+            "contextLabel": null,
+            "components": [
+              {
+                "localId": "component_aocchart_math3",
+                "existingPublicId": null,
+                "parentLocalId": "task_existing_1fk96b11n5n475",
+                "role": "material",
+                "label": "青チャート 数学III",
+                "workloads": [],
+                "durableContextSignals": [],
+                "sourceText": "青チャートのこと"
+              }
+            ]
+          },
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "青チャートのこと"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [
+        {
+          "kind": "answer_pending_question",
+          "targetPublicId": "wpf_task_1fk96b11n5n475"
+        }
+      ],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "expectedEligible": false
+  },
+  {
+    "capture": "E-tipc3ac539d-capture.json",
+    "responseIndex": 2,
+    "userText": "来週、卒業研究ノートを3時間進めたい",
+    "document": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "create_plan",
+      "planningWindow": {
+        "localId": "window-1",
+        "kind": "relative_week",
+        "value": "next_week",
+        "start": null,
+        "end": null,
+        "sourceText": "来週"
+      },
+      "tasks": [
+        {
+          "localId": "task-1",
+          "existingPublicId": null,
+          "decompositionStatus": "decomposed",
+          "category": "study",
+          "title": "卒業研究ノートを進める",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "mixed",
+            "contextLabel": "卒業研究ノート",
+            "components": [
+              {
+                "localId": "component-1",
+                "existingPublicId": null,
+                "parentLocalId": null,
+                "role": "material",
+                "label": "卒業研究ノート",
+                "workloads": [
+                  {
+                    "localId": "workload-1",
+                    "quantityRole": "target",
+                    "amount": 3,
+                    "unitCode": "hour",
+                    "unitLabel": "時間",
+                    "rangeStart": null,
+                    "rangeEnd": null,
+                    "perOccurrence": false,
+                    "periodExpression": null,
+                    "sourceText": "3時間進めたい"
+                  }
+                ],
+                "durableContextSignals": [],
+                "sourceText": "卒業研究ノート"
+              }
+            ]
+          },
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "卒業研究ノートを3時間進めたい"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "expectedEligible": false
+  },
+  {
+    "capture": "E-tipc3ac539d-capture.json",
+    "responseIndex": 6,
+    "userText": "その前に、土日にまとめてやる感じでも大丈夫？",
+    "document": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "update_plan",
+      "planningWindow": null,
+      "tasks": [
+        {
+          "localId": "task_existing_1",
+          "existingPublicId": "wpf_task_113u44t19knpsx",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "卒業研究ノートを進める",
+          "study": null,
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "土日にまとめてやる感じでも大丈夫？"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [
+        {
+          "kind": "consultation_request",
+          "targetPublicId": "wpf_task_113u44t19knpsx"
+        }
+      ],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "expectedEligible": false
+  },
+  {
+    "capture": "E-tipc3ac539d-capture.json",
+    "responseIndex": 9,
+    "userText": "じゃあ土日にまとめたい。1回1時間半くらいで",
+    "document": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "update_plan",
+      "planningWindow": null,
+      "tasks": [
+        {
+          "localId": "wpf_task_113u44t19knpsx",
+          "existingPublicId": "wpf_task_113u44t19knpsx",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "卒業研究ノートを進める",
+          "study": null,
+          "workloads": [],
+          "effortEstimates": [
+            {
+              "localId": "effort_session_90min",
+              "targetLocalId": "wpf_task_113u44t19knpsx",
+              "kind": "session_duration",
+              "minutes": 90,
+              "unitCode": "session",
+              "precision": "approximate",
+              "sourceText": "1回1時間半くらいで"
+            }
+          ],
+          "temporalConstraints": [],
+          "recurrence": [
+            {
+              "localId": "recurrence_weekends",
+              "targetLocalId": "wpf_task_113u44t19knpsx",
+              "kind": "weekends",
+              "count": null,
+              "days": [
+                "weekday:saturday",
+                "weekday:sunday"
+              ],
+              "sourceText": "土日にまとめたい"
+            }
+          ],
+          "durableContextSignals": [],
+          "sourceText": "土日にまとめたい。1回1時間半くらいで"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "expectedEligible": false
+  }
+]

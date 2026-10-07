@@ -1,4 +1,10 @@
 import { isWeeklyPlanningTurnDispatchBudgetExceeded } from '../application/weeklyPlanningTurnDispatchBudget';
+import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
+import {
+  measureWeeklyPlanningSemanticEvidenceCoverageV5,
+  type WeeklyPlanningSemanticEvidenceCoverageV5,
+} from './weeklyPlanningSemanticEvidenceCoverageV5';
+import { hasWeeklyPlanningEvidenceCoverageMissingEffortV5 } from './weeklyPlanningSemanticEvidenceCoverageNeedV5';
 import type {
   ChatMessage,
   JsonSchemaResponseFormat,
@@ -71,12 +77,14 @@ export function denseTurnCompletenessAuditEligibleV5(userText: string): boolean 
 export function createDenseTurnCompletenessAuditMessagesV5(params: {
   userText: string;
   candidateDocument: WeeklyPlanningSemanticDocumentV5;
+  evidenceCoverageEligibility?: WeeklyPlanningSemanticEvidenceCoverageV5;
 }): ChatMessage[] {
   return [
     { role: 'system', content: AUDIT_SYSTEM_PROMPT },
     {
       role: 'user',
       content: JSON.stringify({
+        ...(params.evidenceCoverageEligibility ? { evidenceCoverageEligibility: params.evidenceCoverageEligibility } : {}),
         currentUserText: params.userText,
         candidateDocument: params.candidateDocument,
       }),
@@ -159,11 +167,38 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
   initialResponse: string;
   initialDocument: WeeklyPlanningSemanticDocumentV5;
 }): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
-  if (!denseTurnCompletenessAuditEligibleV5(params.run.input.userText)) return null;
+  const dense = denseTurnCompletenessAuditEligibleV5(params.run.input.userText);
+  let evidenceCoverageEligibility = !dense
+    && conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs
+    ? measureWeeklyPlanningSemanticEvidenceCoverageV5({
+        userText: params.run.input.userText, document: params.initialDocument,
+      })
+    : undefined;
+  if (evidenceCoverageEligibility?.eligible) evidenceCoverageEligibility = {
+    ...evidenceCoverageEligibility,
+    eligible: hasWeeklyPlanningEvidenceCoverageMissingEffortV5({
+      document: params.initialDocument, committedGraph: params.run.input.committedGraph,
+    }),
+  };
+  if (evidenceCoverageEligibility) recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.run.input.traceRequestId,
+    stage: 'semantic_evidence_coverage_eligibility',
+    data: evidenceCoverageEligibility,
+  });
+  if (!dense && !evidenceCoverageEligibility?.eligible) return null;
+  const abstain = (reason: 'provider_failure' | 'malformed_audit_response' | 'dispatch_budget_exhausted', step: 'audit' | 'retry') => {
+    if (!evidenceCoverageEligibility) return;
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: params.run.input.traceRequestId,
+      stage: 'semantic_evidence_coverage_abstained',
+      data: { route: evidenceCoverageEligibility.route, reason, step },
+    });
+  };
 
   const auditMessages = createDenseTurnCompletenessAuditMessagesV5({
     userText: params.run.input.userText,
     candidateDocument: params.initialDocument,
+    evidenceCoverageEligibility,
   });
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.run.input.traceRequestId,
@@ -190,7 +225,14 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
   } catch (error) {
     // The turn's shared dispatch budget ran out: keep the valid initial document; budget
     // exhaustion is never reported as a connectivity failure.
-    if (isWeeklyPlanningTurnDispatchBudgetExceeded(error)) return null;
+    if (isWeeklyPlanningTurnDispatchBudgetExceeded(error)) {
+      abstain('dispatch_budget_exhausted', 'audit');
+      return null;
+    }
+    if (evidenceCoverageEligibility) {
+      abstain('provider_failure', 'audit');
+      return null;
+    }
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: params.run.input.traceRequestId,
       stage: 'semantic_dense_turn_completeness_audit_result',
@@ -219,6 +261,10 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     },
   });
   if (!audit) {
+    if (evidenceCoverageEligibility) {
+      abstain('malformed_audit_response', 'audit');
+      return null;
+    }
     return completenessAuditFailureResult({
       run: params.run,
       providerError: 'Dense semantic completeness audit returned an invalid structured response.',
@@ -247,7 +293,14 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
   try {
     retryResponse = await params.run.callGeneric(retryMessages, 'dense_completeness_retry');
   } catch (error) {
-    if (isWeeklyPlanningTurnDispatchBudgetExceeded(error)) return null;
+    if (isWeeklyPlanningTurnDispatchBudgetExceeded(error)) {
+      abstain('dispatch_budget_exhausted', 'retry');
+      return null;
+    }
+    if (evidenceCoverageEligibility) {
+      abstain('provider_failure', 'retry');
+      return null;
+    }
     const result: WeeklyPlanningSemanticNormalizerResultV5 = {
       status: 'provider_failure',
       document: null,

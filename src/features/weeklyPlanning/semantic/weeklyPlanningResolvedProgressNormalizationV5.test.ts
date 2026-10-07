@@ -101,14 +101,15 @@ describe('Stable V5 resolved progress normalization', () => {
     expect(normalizeResolvedProgressWorkloadsV5(incomplete)).toEqual({ rawResponse: incomplete, repairs: [] });
   });
 
-  it('accepts fully resolved progress without a second provider request', async () => {
+  it('accepts fully resolved progress without interpretation repair, after an independent coverage audit', async () => {
     const providerResponse = response([
       workload('total', 'declared', 80, '全部で80ページ'),
       workload('done', 'completed', 30, '30ページまで終わっています'),
       workload('left', 'remaining', 50, '残り50ページ'),
     ]);
     const client: OpenAiCompatibleClient = {
-      createChatCompletion: vi.fn(async () => providerResponse),
+      createChatCompletion: vi.fn(async (request) => request.responseFormat?.json_schema.name === 'weekly_planning_dense_turn_completeness_audit_v5'
+        ? JSON.stringify({ decision: 'complete', missingFacts: [] }) : providerResponse),
     };
 
     const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
@@ -125,6 +126,9 @@ describe('Stable V5 resolved progress normalization', () => {
         'resolved-progress-declared-total-removed:component-1:total',
       ],
     });
-    expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(client.createChatCompletion).mock.calls.map(([request]) => request.responseFormat?.json_schema.name)).toEqual([
+      'weekly_planning_semantic_document_v5', 'weekly_planning_dense_turn_completeness_audit_v5',
+    ]);
   });
 });

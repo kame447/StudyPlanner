@@ -1075,6 +1075,15 @@ export function createWeeklyPlanningTurnDiagnosticV2(
           'aiInterpreter.input.planningStateSummary',
         ),
         requests: aiRequests(events, tracker),
+        ...(hasEvent(events, 'semantic_evidence_coverage_eligibility')
+          ? {
+              evidenceCoverageAudit: boundedUnknown({
+                eligibility: latestEventData(events, 'semantic_evidence_coverage_eligibility'),
+                abstention: hasEvent(events, 'semantic_evidence_coverage_abstained')
+                  ? latestEventData(events, 'semantic_evidence_coverage_abstained') : null,
+              }, 1_000, tracker, 'aiInterpreter.input.evidenceCoverageAudit'),
+            }
+          : {}),
       },
       rawResponses: rawResponses(events, tracker),
       structuredResults: validations,
