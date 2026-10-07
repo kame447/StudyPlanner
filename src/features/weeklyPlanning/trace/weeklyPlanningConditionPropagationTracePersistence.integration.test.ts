@@ -10,6 +10,7 @@ import {
   CONDITION_SETUP, CONDITION_PACE, CONDITION_FOLLOWUP, conditionSetupDocument, conditionFollowupDocument,
 } from '../testUtils/weeklyPlanningConditionPropagationFixture';
 import { declaration, type Json } from '../testUtils/weeklyPlanningSchedulingConstraintsFixture';
+import { liveDSplitSessionDocument } from '../testUtils/weeklyPlanningLiveSessionCapFixture';
 import {
   recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5TraceRuntimeForTest,
   resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest,
@@ -31,6 +32,7 @@ let conversation: ScriptedConversation;
 let morningOnly = false;
 let softAvailable = false;
 let alternateWindows = false;
+let contentCap = false;
 
 beforeEach(() => {
   restoreStorage = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
@@ -39,6 +41,7 @@ beforeEach(() => {
   morningOnly = false;
   softAvailable = false;
   alternateWindows = false;
+  contentCap = false;
   provider = installScriptedWeeklyPlanningProvider((call) => {
     if (call.kind === 'renderer') return 'renderer unavailable in fixture';
     if (call.kind === 'semantic_focused_contextual') return JSON.stringify({
@@ -46,7 +49,7 @@ beforeEach(() => {
       minutes: 3, precision: 'approximate', quantityRole: null,
     });
     const document: Json = String(call.payload?.userText) === CONDITION_SETUP ? conditionSetupDocument()
-      : conditionFollowupDocument(conversation.graph()!);
+      : contentCap ? liveDSplitSessionDocument(conversation.graph()!) : conditionFollowupDocument(conversation.graph()!);
     if (morningOnly) document.availabilityDeclarations = [declaration({
       kind: 'available', startTime: '09:00', endTime: '12:00', recurrenceKind: 'daily',
       constraintLevel: 'hard', sourceText: '使えるのは毎日9時から12時だけ',
@@ -88,12 +91,13 @@ function traceInput(turn: ScriptedConversationTurn) {
 }
 
 describe('session-size propagation trace persistence gate', () => {
-  it.each([[false, false, false], [true, false, false], [true, true, false], [false, false, true]])('persists actual request, preview and constraint truth through outbox/Worker/size limits (morning: %s, soft available: %s, alternatives: %s)', async (limited, available, alternatives) => {
+  it.each([[false, false, false, false], [true, false, false, false], [true, true, false, false], [false, false, true, false], [false, false, false, true]])('persists actual request, preview and constraint truth through outbox/Worker/size limits (morning: %s, soft available: %s, alternatives: %s, content cap: %s)', async (limited, available, alternatives, capped) => {
     await conversation.submit(CONDITION_SETUP);
     await conversation.submit(CONDITION_PACE);
     morningOnly = limited;
     softAvailable = available;
     alternateWindows = alternatives;
+    contentCap = capped;
     const turn = await conversation.submit(`${CONDITION_FOLLOWUP}${limited ? '。使えるのは毎日9時から12時だけ' : ''}`);
     expect(turn.result?.failure).toBeUndefined();
     expect(turn.result?.draftCandidates).toHaveLength(3);
@@ -108,6 +112,7 @@ describe('session-size propagation trace persistence gate', () => {
     const data = scheduler.data as Record<string, unknown>;
     expect(data.candidateCount).toBe(3);
     const candidates = data.candidates as Record<string, unknown>[];
+    if (capped) expect(candidates.map(candidate => candidate.durationMinutes)).toEqual([60, 60, 60]);
     expect(candidates.filter((item) => String(item.title).includes('卒業研究ノート'))).toHaveLength(2);
     expect(JSON.stringify(candidates)).toContain(sessionId);
 
@@ -115,7 +120,8 @@ describe('session-size propagation trace persistence gate', () => {
     const communication = (renderer.payload!.applicationDecision as Record<string, unknown>).communication as Record<string, unknown>;
     const satisfaction = communication.previewConstraintSatisfaction as Array<Record<string, unknown>>;
     const preferenceCount = alternatives ? 4 : 2;
-    expect(satisfaction).toHaveLength(preferenceCount + 1);
+    expect(satisfaction).toHaveLength(preferenceCount + (capped ? 2 : 1));
+    if (capped) expect(satisfaction.filter(fact => fact.kind === 'session_duration').map(fact => fact.status)).toEqual(['satisfied', 'satisfied']);
     expect(satisfaction.filter(fact => fact.kind === 'preferred_window').map(fact => fact.status))
       .toEqual(Array.from({ length: preferenceCount }, () => limited ? 'not_satisfied' : 'satisfied'));
 

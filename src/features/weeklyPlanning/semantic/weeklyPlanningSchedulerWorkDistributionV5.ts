@@ -162,15 +162,16 @@ function distributedSlices(params: {
   graph: WeeklyPlanningSchedulerDistributionGraphViewV5;
   item: GenericPlanningWorkItem;
   dates: readonly string[];
+  sessionDurations?: readonly number[];
 }): GenericPlanningWorkItem[] {
-  const sessionCount = resolveWeeklySpreadSessionCountV5({
+  const sessionCount = params.sessionDurations?.length ?? resolveWeeklySpreadSessionCountV5({
     totalMinutes: params.item.estimatedMinutes ?? 0,
     dates: params.dates,
     maximumSessions: params.item.quantity.amount,
   });
   if (sessionCount <= 1) return [params.item];
 
-  const durations = distributeMinutesAcrossWeeklyBucketsV5(
+  const durations = params.sessionDurations ?? distributeMinutesAcrossWeeklyBucketsV5(
     params.item.estimatedMinutes ?? 0,
     sessionCount,
   );
@@ -210,7 +211,7 @@ function distributedSlices(params: {
 
     return {
       ...params.item,
-      id: `${params.item.id}:daily:${index + 1}`,
+      id: `${params.item.id}:${params.sessionDurations ? 'session' : 'daily'}:${index + 1}`,
       label: `${label} ${quantity}${params.item.quantity.unitLabel}（${rangeLabel}）`,
       quantity: {
         ...params.item.quantity,
@@ -309,6 +310,61 @@ function executionPolicySlices(params: {
   });
 }
 
+function explicitContentSessionSlices(params: {
+  graph: WeeklyPlanningSchedulerDistributionGraphViewV5;
+  item: GenericPlanningWorkItem;
+  dates: readonly string[];
+  estimates: readonly EffortEstimateFact[];
+}): GenericPlanningWorkItem[] | null {
+  const { item } = params;
+  if (item.quantity.unitCode !== 'page' && item.quantity.unitCode !== 'problem') return null;
+  const session = resolveWeeklyPlanningWorkItemSessionDurationV5({ item, estimates: params.estimates });
+  if (session.minutes === null || item.estimatedMinutes === null || item.baseEstimatedMinutes == null) return null;
+  const cap = Math.max(1, Math.floor(session.minutes));
+  const base = item.baseEstimatedMinutes * (item.calibrationMultiplier ?? 1);
+  const minutesPerUnit = base / item.quantity.amount;
+  const unitsPerSession = Math.floor(cap / minutesPerUnit);
+  // Keep content units whole. If even one unit exceeds the cap, retain its effort
+  // in one session with the cap's source ref, so preview truth reports not_satisfied.
+  const count = Math.ceil(item.quantity.amount / Math.max(1, unitsPerSession));
+  if (count <= 0 || count > WEEKLY_PLANNING_MAX_GENERATED_SESSION_CHUNKS_V5) return null;
+  const quantities = distributeDiscreteQuantityAcrossWeeklyBucketsV5(item.quantity.amount, count);
+  if (quantities.length !== count) return null;
+  // Allocate each slice's real content cost first, then spread the remaining margin
+  // evenly within each cap. Never balance durations below their own content cost or
+  // add a margin-only tail; a short slice must follow from the content/cap arithmetic.
+  const durations = quantities.map(quantity => Math.ceil(quantity * minutesPerUnit));
+  const floorTotal = durations.reduce((sum, duration) => sum + duration, 0);
+  const allocated = Math.max(floorTotal, unitsPerSession === 0 ? item.estimatedMinutes : Math.min(item.estimatedMinutes, count * cap));
+  const margin = Math.floor(allocated - floorTotal);
+  const headroom = durations.map(duration => unitsPerSession === 0 ? margin : Math.max(0, cap - duration));
+  // Find a common margin without a loop per minute (estimates can be large).
+  let low = 0;
+  let high = margin;
+  while (low < high) {
+    const level = low + Math.ceil((high - low) / 2);
+    const total = headroom.reduce((sum, room) => sum + Math.min(room, level), 0);
+    if (total <= margin) low = level;
+    else high = level - 1;
+  }
+  let remainder = margin;
+  durations.forEach((duration, index) => {
+    const added = Math.min(headroom[index], low);
+    durations[index] = duration + added;
+    remainder -= added;
+  });
+  durations.forEach((_, index) => {
+    if (headroom[index] > low && remainder > 0) { durations[index] += 1; remainder -= 1; }
+  });
+  const cappedItem: GenericPlanningWorkItem = {
+    ...item, estimatedMinutes: allocated, splitPolicy: 'atomic',
+    sourceFactRefs: [...new Set([...item.sourceFactRefs, ...session.sourceFactIds])],
+  };
+  if (count === 1) return [cappedItem];
+  return distributedSlices({ graph: params.graph, item: cappedItem, dates: params.dates, sessionDurations: durations })
+    .map(slice => ({ ...slice, baseEstimatedMinutes: item.baseEstimatedMinutes! * slice.quantity.amount / item.quantity.amount }));
+}
+
 export function distributeGenericSchedulerWorkItemsV5(params: {
   graph: WeeklyPlanningSchedulerDistributionGraphViewV5;
   items: readonly GenericPlanningWorkItem[];
@@ -330,6 +386,10 @@ export function distributeGenericSchedulerWorkItemsV5(params: {
   const dayDistributed = dates.length === 0
     ? recurrenceDistributed
     : recurrenceDistributed.flatMap((item) => {
+        const explicit = explicitContentSessionSlices({
+          graph: params.graph, item, dates, estimates: params.sessionDurationEstimates ?? [],
+        });
+        if (explicit) return explicit;
         if (item.requiredDate) return [item];
         return isDistributableDiscreteItem(item)
           ? distributedSlices({ graph: params.graph, item, dates })

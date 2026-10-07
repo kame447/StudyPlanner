@@ -6,14 +6,22 @@ import {
   CAMPAIGN, campaignProviderReply, type CampaignRequest,
 } from './testUtils/weeklyPlanningRealE2ECampaignFixture';
 import type { Json } from './testUtils/weeklyPlanningSchedulingConstraintsFixture';
+import { liveDSplitSessionDocument } from './testUtils/weeklyPlanningLiveSessionCapFixture';
 
 let provider: ReturnType<typeof installScriptedWeeklyPlanningProvider>;
 let scenario: 'D' | 'E';
 let weekendShape: 'recurrence' | 'preferred';
+let liveDelta: Json | null;
 beforeEach(() => {
   resetScriptedConversationRuntime();
   weekendShape = 'recurrence';
+  liveDelta = null;
   provider = installScriptedWeeklyPlanningProvider(call => {
+    if (liveDelta && call.kind === 'semantic_generic') {
+      const document = structuredClone(liveDelta);
+      if (!call.schemaProperties.includes('conversationActs')) delete document.conversationActs;
+      return JSON.stringify(document);
+    }
     const reply = campaignProviderReply(scenario, call.request as unknown as CampaignRequest);
     if (scenario !== 'E' || weekendShape !== 'recurrence' || call.kind !== 'semantic_generic'
       || call.payload?.userText !== CAMPAIGN.E[2]) return reply;
@@ -29,6 +37,31 @@ beforeEach(() => {
 afterEach(() => { provider.restore(); resetScriptedConversationRuntime(); });
 
 describe.each(['interaction_v1', 'legacy_v5'] as const)('split-session full turns (%s)', architecture => {
+  it('live D: caps both page-based book work and research without changing either total', async () => {
+    scenario = 'D';
+    const conversation = createScriptedConversation({ provider, architecture });
+    await conversation.submit(CAMPAIGN.D[0]);
+    await conversation.submit(CAMPAIGN.D[1]);
+    liveDelta = liveDSplitSessionDocument(conversation.graph()!);
+    const turn = await conversation.submit(CAMPAIGN.D[2]);
+    expect(turn.result?.failure).toBeUndefined();
+    expect(turn.calls.map(call => call.kind)).toEqual(['semantic_generic', 'renderer']);
+    const candidates = turn.result!.draftCandidates!;
+    expect(candidates.map(candidate => candidate.durationMinutes)).toEqual([60, 60, 60]);
+    expect(candidates.every(candidate => candidate.startTime >= '21:00')).toBe(true);
+    const research = candidates.filter(candidate => candidate.title.includes('卒業研究ノート'));
+    expect(new Set(research.map(candidate => candidate.date)).size).toBe(2);
+    expect(conversation.graph()!.workloads.map(work => [work.amount, work.unitCode])).toEqual([[20, 'page'], [2, 'hour']]);
+    expect(conversation.graph()!.recurrences.map(recurrence => recurrence.count)).toEqual([2, 2]);
+    if (architecture === 'interaction_v1') {
+      expect(turn.result?.communicationFacts?.previewConstraintSatisfaction?.map(fact => fact.status))
+        .toEqual(['satisfied', 'satisfied', 'satisfied', 'satisfied']);
+      expect(turn.result?.communicationFacts?.allocationBreakdown).toMatchObject({
+        estimatedMinutes: 180, allocatedMinutes: 180, marginMinutes: 0,
+      });
+    }
+  });
+
   it('D: keeps the book and places two one-hour research sessions on separate nights', async () => {
     scenario = 'D';
     const conversation = createScriptedConversation({ provider, architecture });
