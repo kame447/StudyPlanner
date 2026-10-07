@@ -66,6 +66,11 @@ function repairDirectivesForErrors(errors: string[], architecture?: WeeklyPlanni
   if (errors.some((error) => error.includes('.replacementLocalId:kind-mismatch:'))) {
     directives.push('A correction replaces a fact with a new fact of the same kind. To add a material or other component to an accepted task, emit the new component without any correction; change a task only with a replacement task. Keep the new fact.');
   }
+  if (conversationArchitecturePolicy(architecture).semanticConversationActs
+    && errors.some((error) => error.includes('.replacementLocalId:forbidden'))) {
+    // Live B on b2fbd121: the repair cleared the replacement but kept a remove of the task.
+    directives.push('A remove correction has no replacementLocalId. To replace an accepted fact use operation replace with a same-kind replacement; to name, add or answer something for an accepted task (for example which material), keep the task and add the fact without any correction. Remove only what the user retracts.');
+  }
   if (errors.some((error) => error.includes('.replacementLocalId:unsupported-kind:'))) {
     directives.push('A task, component or relation is never replaced by a correction. To name or rename an accepted material, return that component with its existingPublicId and the new label and no correction; add other new work as a new component without a correction.');
   }

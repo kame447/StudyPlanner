@@ -34,6 +34,22 @@ export function normalizeWeeklyPlanningEvidenceTextV5(value: string): string {
   return normalizedEvidenceText(value);
 }
 
+/**
+ * A label adopted in this turn shares a contiguous fragment (three characters, or the whole
+ * label when shorter) with its own current-turn sourceText. A literal overlap check, not
+ * intent inference: a bookshelf name adopted while quoting 「ありがとう」 has no such fragment.
+ */
+export function weeklyPlanningLabelEvidencedBySourceV5(label: string, sourceText: string): boolean {
+  const characters = Array.from(normalizedEvidenceText(label));
+  const source = normalizedEvidenceText(sourceText);
+  const width = Math.min(3, characters.length);
+  if (width === 0) return false;
+  for (let index = 0; index + width <= characters.length; index += 1) {
+    if (source.includes(characters.slice(index, index + width).join(''))) return true;
+  }
+  return false;
+}
+
 const MAX_SOURCE_FRAGMENTS_V5 = 3;
 const MIN_FRAGMENT_LENGTH_V5 = 2;
 // The turn controller limits the combined user and supplemental text to 4,000

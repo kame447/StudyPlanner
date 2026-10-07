@@ -156,9 +156,25 @@ describe('identity refinement without an open material question (live B on 64436
     ['re-raises the material question', (document: WeeklyPlanningSemanticDocumentV5) => {
       document.uncertainties = [{ localId: 'again', targetLocalId: 'material', field: 'material_identity', reason: '未確定', sourceText: '青チャート' }];
     }],
+    // Review of b2fbd121 (SturdyEdison): a bookshelf name adopted after 「ありがとう」.
+    ['adopts a label its own current-turn source does not evidence', (document: WeeklyPlanningSemanticDocumentV5) => {
+      document.tasks[0].sourceText = 'ありがとう';
+      document.tasks[0].study!.components[0].sourceText = 'ありがとう';
+    }],
+    ['comes with the material question re-raised on the task', (document: WeeklyPlanningSemanticDocumentV5) => {
+      document.uncertainties = [{ localId: 'unsure', targetLocalId: 'task', field: 'material_identity', reason: '教材をまだ決めていない', sourceText: '青チャート' }];
+    }],
+    ['comes with any other uncertainty about the task or plan', (document: WeeklyPlanningSemanticDocumentV5) => {
+      document.uncertainties = [{ localId: 'other', targetLocalId: 'document', field: 'material', reason: '確認', sourceText: '青チャート' }];
+    }],
   ])('keeps the binding-only shell when the relabel %s', (_name, mutate) => {
     const document = answer(); mutate(document);
     expect(weeklyPlanningMaterialIdentityAnswersV5(withoutNeed(), document)).toEqual([]);
+  });
+  it('does not answer an open question while the same response re-raises it on the task', () => {
+    const document = answer();
+    document.uncertainties = [{ localId: 'unsure', targetLocalId: 'task', field: 'material_identity', reason: '教材をまだ決めていない', sourceText: '青チャート' }];
+    expect(weeklyPlanningMaterialIdentityAnswersV5(state(), document)).toEqual([]);
   });
   it('keeps legacy binding-only without an open question', () => {
     const graph = withoutNeed(); const document = answer();

@@ -3,7 +3,7 @@ import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticD
 import type { WeeklyPlanningSemanticCanonicalizationResultV5 } from './weeklyPlanningSemanticCanonicalizerV5';
 import { isWeeklyPlanningFactActiveV5 } from './weeklyPlanningFactLifecycleV5';
 import { applyWeeklyPlanningFactLifecycleOperationV5 } from './weeklyPlanningFactLifecycleEngineV5';
-import { normalizeWeeklyPlanningEvidenceTextV5 } from './weeklyPlanningCurrentTurnProvenanceV5';
+import { normalizeWeeklyPlanningEvidenceTextV5, weeklyPlanningLabelEvidencedBySourceV5 } from './weeklyPlanningCurrentTurnProvenanceV5';
 
 // Every graph collection is classified, including task-only edges and history.
 // A new collection must explicitly declare whether it can reference a component.
@@ -26,14 +26,20 @@ export function weeklyPlanningMaterialIdentityAnswersV5(graph: WeeklyPlanningFac
     if (!target || component.role !== 'material' || component.label.trim() === target.label.trim()) continue;
     const needs = graph.uncertainties.filter((need) => need.targetFactId === target.id
       && need.field === 'material_identity' && isWeeklyPlanningFactActiveV5(graph, need.id));
-    if (document.uncertainties.some((need) => need.field === 'material_identity'
-      && (need.targetLocalId === component.localId || need.targetLocalId === null))) continue;
+    // 'document' is the plan-level uncertainty target; null is kept for untyped input.
+    const aboutThisMaterial = (need: WeeklyPlanningSemanticDocumentV5['uncertainties'][number]) =>
+      [component.localId, task.localId, 'document', null].includes(need.targetLocalId);
+    if (document.uncertainties.some((need) => need.field === 'material_identity' && aboutThisMaterial(need))) continue;
     // Without an open material question the relabel still names that material (live B on
     // 64436073: 「青チャートのこと」 after the preview was dropped as a binding-only shell).
-    // Validation already requires current-turn evidence for a changed label; only a pure
-    // identity statement qualifies, so dependents move to the new version, never duplicate.
+    // Only a pure identity statement qualifies, so dependents move to the new version, never
+    // duplicate. Its new label must be evidenced by its own current-turn source (a bookshelf
+    // name adopted after 「ありがとう」 is not), and the same response may not still be unsure
+    // about this material or task (review of b2fbd121).
     if (!needs.length && (component.workloads.length > 0 || (component.durableContextSignals?.length ?? 0) > 0
-      || normalizeWeeklyPlanningEvidenceTextV5(component.label) === normalizeWeeklyPlanningEvidenceTextV5(target.label))) continue;
+      || normalizeWeeklyPlanningEvidenceTextV5(component.label) === normalizeWeeklyPlanningEvidenceTextV5(target.label)
+      || !weeklyPlanningLabelEvidencedBySourceV5(component.label, component.sourceText)
+      || document.uncertainties.some(aboutThisMaterial))) continue;
     answers.push({ targetId: target.id, localId: component.localId, uncertaintyIds: needs.map((need) => need.id) });
   }
   return answers.filter((answer) => answers.filter((other) => other.targetId === answer.targetId).length === 1);

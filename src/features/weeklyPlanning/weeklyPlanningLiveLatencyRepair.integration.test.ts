@@ -4,6 +4,7 @@ import fixture from './testUtils/weeklyPlanningLiveLatencyFixture.json';
 import { createScriptedConversation, installScriptedWeeklyPlanningProvider, resetScriptedConversationRuntime, scriptedRendererReply, type ScriptedProviderCall, type ScriptedProviderReply } from './testUtils/weeklyPlanningScriptedConversationHarness';
 
 import { validateWeeklyPlanningSemanticResponseV5 } from './semantic/weeklyPlanningSemanticResponseValidationV5';
+import { projectWeeklyPlanningRegisteredMaterialReferencesV5 } from './semantic/weeklyPlanningRegisteredMaterialReferenceProjectionV5';
 import { createAiWeeklyPlanningStableV5DialogueRenderer, type WeeklyPlanningStableV5DialogueRenderInput } from './dialogue/weeklyPlanningStableV5AiDialogueRenderer';
 
 import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from './testUtils/weeklyPlanningApplicationTestHarness';
@@ -108,24 +109,55 @@ describe('registered material reference projection keeps identity and evidence g
     });
   }
 
-  it.each(['unknown_id', 'wrong_label', 'wrong_role', 'existing_task', 'duplicate_registry', 'duplicate_component', 'ungrounded_source', 'unrelated_invalid_quantity'] as const)('does not admit %s through the projection', invalid => {
+  it.each(['unknown_id', 'wrong_label', 'wrong_role', 'existing_task_with_material', 'unknown_task', 'duplicate_registry', 'duplicate_component', 'ungrounded_source', 'unrelated_invalid_quantity'] as const)('does not admit %s through the projection', invalid => {
     const document = JSON.parse(fixture.semanticResponse);
     const task = document.tasks[0];
     const component = task.study.components[0];
     if (invalid === 'unknown_id') component.existingPublicId = 'foreign-material';
     if (invalid === 'wrong_label') component.label = '別の教材';
     if (invalid === 'wrong_role') component.role = 'section';
-    if (invalid === 'existing_task') task.existingPublicId = 'active-task';
+    if (invalid === 'existing_task_with_material' || invalid === 'unknown_task') task.existingPublicId = 'active-task';
     if (invalid === 'ungrounded_source') component.sourceText = '登録されていない引用';
     if (invalid === 'unrelated_invalid_quantity') task.workloads[0].amount = -5;
     // Two components citing one bookshelf id would otherwise both become new materials.
     if (invalid === 'duplicate_component') task.study.components.push({ ...component, localId: `${String(component.localId)}-twin` });
     const result = validate({ document,
       materials: invalid === 'duplicate_registry' ? [fixture.registeredMaterial, fixture.registeredMaterial] : undefined,
-      tasks: invalid === 'existing_task' ? [{ publicId: 'active-task', title: task.title, category: task.category }] : undefined,
+      tasks: invalid === 'existing_task_with_material' ? [{ publicId: 'active-task', title: task.title, category: task.category }] : undefined,
+      // An accepted task that already has a material: relabel versus addition stays ambiguous.
+      components: invalid === 'existing_task_with_material'
+        ? [{ publicId: 'accepted-material', taskPublicId: 'active-task', role: 'material', label: '数学の問題集' }] : undefined,
     });
     expect(result.document).toBeNull();
     expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  // Live B on b2fbd121: 「青チャートのこと」 answered the material question with the bookshelf
+  // id on a new material component of the accepted task, which had no material yet.
+  it('projects a bookshelf citation on a new material of an accepted task that has none', () => {
+    const document = JSON.parse(fixture.semanticResponse);
+    document.tasks[0].existingPublicId = 'active-task';
+    const result = validate({ document, tasks: [{ publicId: 'active-task', title: document.tasks[0].title, category: 'study' }] });
+    expect(result.errors).toEqual([]);
+    expect(result.document!.tasks[0].existingPublicId).toBe('active-task');
+    expect(result.document!.tasks[0].study!.components[0].existingPublicId).toBeNull();
+    expect(result.algorithmicRepairs).toEqual(expect.arrayContaining([expect.stringContaining('registered-material-component-reference-projected')]));
+  });
+
+  // Review of b2fbd121 (SturdyEdison): a bookshelf name adopted while quoting an unrelated
+  // acknowledgement is not the user naming that material.
+  it.each([['青チャートのこと', true], ['ありがとう', false]] as const)('projects an accepted-task citation only when its source evidences the name (%s)', (quote, projected) => {
+    const document = JSON.parse(fixture.semanticResponse);
+    const task = document.tasks[0];
+    task.existingPublicId = 'active-task';
+    task.sourceText = quote;
+    task.study.components[0] = { ...task.study.components[0], label: '青チャート 数学III', sourceText: quote };
+    const result = projectWeeklyPlanningRegisteredMaterialReferencesV5({ document, publicStateSummary: {
+      tasks: [{ publicId: 'active-task', title: task.title, category: 'study' }], components: [],
+      registeredMaterials: [{ ...fixture.registeredMaterial, materialId: task.study.components[0].existingPublicId, name: '青チャート 数学III', aliases: [] }],
+    } });
+    expect(result.repairs).toHaveLength(projected ? 1 : 0);
+    expect(result.document.tasks[0].study!.components[0].existingPublicId).toBe(projected ? null : task.study.components[0].existingPublicId);
   });
 
   it('does not bypass canonical correction-target validation after projecting a known material reference', async () => {

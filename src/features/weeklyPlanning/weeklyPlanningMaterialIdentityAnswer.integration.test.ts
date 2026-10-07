@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import { materialIdentityConversationFixture, MATERIAL_SETUP_TEXT, MATERIAL_RATE_TEXT, MATERIAL_EXPLANATION_TEXT, NAMED_MATERIAL, LATER_MATERIAL_WORK_TEXT } from './testUtils/weeklyPlanningMaterialIdentityAnswerFixture';
 import { resolveGenericWorkItemEstimate } from './semantic/weeklyPlanningGenericWorkEstimation';
-import { resetScriptedConversationRuntime } from './testUtils/weeklyPlanningScriptedConversationHarness';
+import { createScriptedConversation, installScriptedWeeklyPlanningProvider, resetScriptedConversationRuntime, type ScriptedConversation } from './testUtils/weeklyPlanningScriptedConversationHarness';
+import { campaignRendererReply } from './testUtils/weeklyPlanningRealE2ECampaignFixture';
 
 let fixture: ReturnType<typeof materialIdentityConversationFixture>;
 afterEach(() => { fixture?.provider.restore(); resetScriptedConversationRuntime(); });
@@ -98,6 +99,12 @@ describe('a material named after the preview, with no open material question (li
     expect(graph.factLifecycles).toContainEqual(expect.objectContaining({ factId: old.components[0].id, status: 'superseded', supersededByFactId: active.components[0].id }));
     expect(graph.components.find((fact) => fact.id === old.components[0].id)).toEqual(old.components[0]);
     expect(slots(answer.result!.draftCandidates)).toEqual(preview);
+    // The recomputed preview is promoted from the new graph revision, never from the superseded material.
+    for (const candidate of answer.result!.draftCandidates) {
+      const metadata = (candidate as { stableV5Metadata?: { graphRevision: number; sourceFactRefs: string[] } }).stableV5Metadata!;
+      expect(metadata.graphRevision).toBe(graph.revision);
+      expect(metadata.sourceFactRefs).not.toContain(old.components[0].id);
+    }
   });
 
   it('legacy keeps its binding-only shell: the accepted material is unchanged', async () => {
@@ -110,5 +117,79 @@ describe('a material named after the preview, with no open material question (li
     const answer = await conversation.submit(fixture.answerText);
     expect(answer.result?.failure).toBeUndefined();
     expect(conversation.graph()!.components).toEqual(old.components);
+  });
+});
+
+describe('a bookshelf material named for an accepted task that has none yet (live B on b2fbd121)', () => {
+  type Json = Record<string, unknown>;
+  const NAME_TEXT = '青チャートのこと';
+  // Verbatim live shapes (ids substituted): T1 raises a free-form material question on the task.
+  const base = (overrides: Json): Json => ({ schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'update_plan', planningWindow: null,
+    tasks: [], relations: [], availabilityDeclarations: [], constraintSourceRequests: [], userContextFacts: [], conversationActs: [],
+    uncertainties: [], corrections: [], decisions: [], ...overrides });
+  const work = { localId: 'workload-1', quantityRole: 'target', amount: 20, unitCode: 'problem', unitLabel: '問', rangeStart: null,
+    rangeEnd: null, perOccurrence: false, periodExpression: null, sourceText: '20問' };
+  const task = (existingPublicId: string | null, overrides: Json = {}): Json => ({ localId: 'task-1', existingPublicId, decompositionStatus: 'atomic',
+    category: 'study', title: '数学の問題集を進める', study: { purpose: 'self_study', activityKind: 'problem_solving', contextLabel: null, components: [] },
+    workloads: [], effortEstimates: [], temporalConstraints: [], recurrence: [], durableContextSignals: [], sourceText: '数学の問題集を20問進めたい', ...overrides });
+  let provider: ReturnType<typeof installScriptedWeeklyPlanningProvider> | undefined;
+  afterEach(() => { provider?.restore(); provider = undefined; });
+
+  it.each(['clean', 'contradictory_remove'] as const)('records the named material and retires the question (%s first document)', async (shape) => {
+    resetScriptedConversationRuntime();
+    let conversation: ScriptedConversation;
+    const repairInstructions: string[] = [];
+    provider = installScriptedWeeklyPlanningProvider((call) => {
+      if (call.kind === 'renderer') return campaignRendererReply(call.payload ?? {});
+      if (call.kind === 'semantic_focused_contextual') return JSON.stringify({ decision: 'fallback', effortTarget: null,
+        effortMeasurement: null, minutes: null, precision: null, quantityRole: null });
+      const payload = call.messages.map((message) => { try { return JSON.parse(message.content) as Json; } catch { return {}; } })
+        .find((value) => typeof value.userText === 'string')!;
+      const repair = call.messages[call.messages.length - 1].content.includes('"validationErrors"');
+      if (repair) repairInstructions.push(call.messages[call.messages.length - 1].content);
+      let document: Json;
+      if (payload.userText === MATERIAL_SETUP_TEXT) document = base({ planningIntent: 'create_plan',
+        planningWindow: { localId: 'window-1', kind: 'relative_week', value: 'next_week', start: null, end: null, sourceText: '来週' },
+        tasks: [task(null, { workloads: [work] })],
+        uncertainties: [{ localId: 'uncertainty-1', targetLocalId: 'task-1', field: 'material',
+          reason: '「数学の問題集」に該当する登録教材を一意に特定できない', sourceText: '数学の問題集' }] });
+      else {
+        const taskId = conversation.graph()!.tasks[0].id;
+        if (payload.userText === MATERIAL_RATE_TEXT) document = base({ tasks: [task(taskId, { workloads: [work],
+          effortEstimates: [{ localId: 'rate', targetLocalId: 'workload-1', kind: 'duration_per_unit', minutes: 3, unitCode: 'problem',
+            precision: 'approximate', sourceText: MATERIAL_RATE_TEXT }] })],
+          conversationActs: [{ kind: 'answer_pending_question', targetPublicId: taskId }] });
+        else {
+          const component = { localId: 'component-blue', existingPublicId: 'book-blue', parentLocalId: null, role: 'material',
+            label: NAMED_MATERIAL, workloads: [], durableContextSignals: [], sourceText: NAME_TEXT };
+          document = base({ tasks: [task(taskId, { sourceText: NAME_TEXT,
+            study: { purpose: 'self_study', activityKind: 'problem_solving', contextLabel: null, components: [component] } })],
+            corrections: shape === 'contradictory_remove' && !repair ? [{ localId: 'remove', target: { kind: 'task', publicId: taskId,
+              localId: null, mention: '数学の問題集' }, operation: 'remove', replacementLocalId: 'component-blue', sourceText: NAME_TEXT }] : [],
+            conversationActs: [{ kind: 'answer_pending_question', targetPublicId: taskId }] });
+        }
+      }
+      if (!call.schemaProperties.includes('conversationActs')) delete document.conversationActs;
+      return JSON.stringify(document);
+    });
+    conversation = createScriptedConversation({ provider, architecture: 'interaction_v1', studyMaterials: [{
+      id: 'book-blue', userId: 'issue488-owner', name: NAMED_MATERIAL, subjectId: 'math', subjectName: '数学', paceEnabled: false,
+      progressUnit: 'problem', totalUnits: 100, currentUnit: 0, createdAt: '2026-09-01T00:00:00Z', updatedAt: '2026-09-01T00:00:00Z',
+    }] });
+    expect((await conversation.submit(MATERIAL_SETUP_TEXT)).result?.failure).toBeUndefined();
+    const rate = await conversation.submit(MATERIAL_RATE_TEXT);
+    expect(rate.result?.failure).toBeUndefined();
+    expect(rate.result?.draftCandidates).toHaveLength(0);
+    const answer = await conversation.submit(NAME_TEXT);
+    expect(answer.result?.failure).toBeUndefined();
+    expect(answer.calls.filter((call) => call.kind === 'semantic_generic')).toHaveLength(shape === 'clean' ? 1 : 2);
+    if (shape === 'contradictory_remove') expect(repairInstructions.join('\n')).toContain('A remove correction has no replacementLocalId');
+    const active = createWeeklyPlanningActiveSchedulerGraphViewV5(conversation.graph()!);
+    expect(active.tasks).toHaveLength(1);
+    expect(active.components).toEqual([expect.objectContaining({ label: NAMED_MATERIAL, role: 'material', taskId: active.tasks[0].id })]);
+    expect(active.uncertainties).toHaveLength(0);
+    expect(active.effortEstimates).toContainEqual(expect.objectContaining({ minutes: 3, kind: 'duration_per_unit' }));
+    expect(answer.result!.draftCandidates.length).toBeGreaterThan(0);
+    for (const candidate of answer.result!.draftCandidates) expect(candidate.date >= '2026-10-12' && candidate.date <= '2026-10-18').toBe(true);
   });
 });
