@@ -662,7 +662,8 @@ it.each(['constraint', 'consultation'] as const)('persists the real %s repair th
   const expectedContext = {
     messages: rendererCalls[0].messages,
     requestBytes: new TextEncoder().encode(JSON.stringify(rendererCalls[0].messages)).byteLength,
-    ...(kind === 'consultation' ? { responseFormat: rendererCalls[0].request.response_format } : {}),
+    responseFormat: rendererCalls[0].request.response_format,
+    actionBinding: { token: 'a1', actionId: input.dialogueRendererTrace!.actionId },
     repair: { reason, instruction: rendererCalls[1].messages[2].content },
   };
   // The full live D request legitimately exceeds the 12 KiB prompt-context limit.
@@ -684,6 +685,7 @@ it.each(['constraint', 'consultation'] as const)('persists the real %s repair th
   for (const entry of [kept.entry, kept.preparedEntry]) {
     const serialized = JSON.stringify(entry);
     expect(serialized).toContain(reason);
+    expect(serialized).toContain(input.dialogueRendererTrace!.actionId!);
     expect(serialized).toContain(FUTURE_FIELD_SENTINEL);
     expect(serialized).toContain('weekly_planning_renderer');
     if (kind === 'consultation') expect(serialized).toContain('feasibilityClaim');

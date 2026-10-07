@@ -1161,10 +1161,10 @@ export async function runIssue152RendererFixture(params: {
   };
   let providerCallCount = 0;
   const client: OpenAiCompatibleClient = {
-    async createChatCompletion() {
+    async createChatCompletion(request) {
       providerCallCount += 1;
       return JSON.stringify({
-        actionId: input.actionId,
+        actionId: JSON.parse(request.messages[1].content).actionId,
         actionKind: input.actionKind,
         questionCode: null,
         groundingAcknowledgement: null,

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { OpenAiCompatibleClient } from '../../services/ai/openAiCompatibleClient';
 import type { StudyMaterial } from '../../types/domain';
 import fixture from './testUtils/weeklyPlanningLiveLatencyFixture.json';
 import { createScriptedConversation, installScriptedWeeklyPlanningProvider, resetScriptedConversationRuntime, scriptedRendererReply, type ScriptedProviderCall, type ScriptedProviderReply } from './testUtils/weeklyPlanningScriptedConversationHarness';
@@ -17,6 +18,9 @@ import { measureWeeklyPlanningTraceJsonBytes, WEEKLY_PLANNING_TRACE_TRANSPORT_LI
 import { prepareWeeklyPlanningTraceServerWrite } from '../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
 
 const OWNER = 'latency-owner';
+function rendererFixtureResponse(actionId: unknown): string {
+  return JSON.stringify({ ...JSON.parse(fixture.rendererResponse), actionId });
+}
 function material(overrides: Partial<StudyMaterial> = {}): StudyMaterial {
   const source = fixture.registeredMaterial;
   return { id: source.materialId, userId: OWNER, name: source.name, subjectId: 'information-science', subjectName: source.subjectName,
@@ -32,7 +36,7 @@ beforeEach(() => {
   provider = installScriptedWeeklyPlanningProvider(call => {
     const value = script(call);
     if (value !== undefined) return value;
-    if (call.kind === 'renderer') return fixture.rendererResponse;
+    if (call.kind === 'renderer') return rendererFixtureResponse(call.payload?.actionId);
     return call.payload?.validationErrors ? fixture.semanticRepairResponse : fixture.semanticResponse;
   });
 });
@@ -68,7 +72,7 @@ describe('live latency A T1: remove representational provider round trips', () =
     expect(turn.result?.responseSource).toBe('ai');
     expect(turn.calls.filter(call => call.kind === 'renderer')).toHaveLength(1);
     expect(turn.result?.message).toBe(`${response.groundingAcknowledgement.text}\n\n${response.text}`);
-    expect(JSON.stringify(turn.result?.dialogueRendererTrace)).toContain(JSON.stringify(fixture.rendererResponse).slice(1, -1));
+    expect(JSON.stringify(turn.result?.dialogueRendererTrace)).toContain(JSON.stringify(rendererFixtureResponse(turn.calls.find(call => call.kind === 'renderer')!.payload?.actionId)).slice(1, -1));
   });
 
   it.each(['interaction_v1', 'legacy_v5'] as const)('handles a provider that repeats the registered ID on every semantic response (%s)', async architecture => {
@@ -212,9 +216,12 @@ describe('ACK composition is presentation only and still validates the complete 
   }
   async function render(params: { text: string; acknowledgement?: string; factIds?: string[]; architecture?: 'interaction_v1' | 'legacy_v5' }) {
     const input = renderInput(params.architecture);
-    const raw = JSON.stringify({ actionId: input.actionId, actionKind: input.actionKind, questionCode: input.questionCode,
-      groundingAcknowledgement: { factIds: params.factIds ?? ['effort'], text: params.acknowledgement ?? ACK }, text: params.text });
-    const createChatCompletion = vi.fn().mockResolvedValue(raw);
+    let raw = '';
+    const createChatCompletion = vi.fn<OpenAiCompatibleClient['createChatCompletion']>(async request => {
+      raw = JSON.stringify({ actionId: JSON.parse(request.messages[1].content).actionId, actionKind: input.actionKind, questionCode: input.questionCode,
+        groundingAcknowledgement: { factIds: params.factIds ?? ['effort'], text: params.acknowledgement ?? ACK }, text: params.text });
+      return raw;
+    });
     const result = await createAiWeeklyPlanningStableV5DialogueRenderer({ provider: 'openai', baseUrl: 'https://fixture.test/v1', model: 'fixture', apiKey: 'fixture' }, { createChatCompletion }).render(input);
     expect(result.rawResponse).toBe(raw);
     return { result, calls: createChatCompletion.mock.calls.length };
@@ -268,7 +275,7 @@ describe('live latency repair trace persistence gate', () => {
     validation.parsedDocument.tasks[0].study.components[0].futureMaterialReferenceSentinel = 'latency-future-reference-sentinel';
     if (oversized) validation.parsedDocument.futureLargeReferenceValue = 'x'.repeat(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes * 2);
     const rendererTrace = boundWeeklyPlanningDialogueRendererTraceForTransport(turn.result!.dialogueRendererTrace!);
-    expect(rendererTrace.response.rawResponse).toBe(fixture.rendererResponse);
+    expect(rendererTrace.response.rawResponse).toBe(rendererFixtureResponse(turn.calls.find(call => call.kind === 'renderer')!.payload?.actionId));
     expect(rendererTrace.response.renderedText).toBe(turn.result!.message);
     expect((rendererTrace.request!.promptContext as Record<string, unknown>).messages).toEqual(turn.calls[1].messages);
     const storage = createMemoryStorageHarness();
@@ -315,7 +322,7 @@ describe('live latency repair trace persistence gate', () => {
       else {
         expect(text).toContain('latency-future-reference-sentinel');
         expect(text).toContain(fixture.registeredMaterial.materialId);
-        expect(text).toContain(JSON.stringify(fixture.rendererResponse).slice(1, -1));
+        expect(text).toContain(JSON.stringify(rendererFixtureResponse(turn.calls.find(call => call.kind === 'renderer')!.payload?.actionId)).slice(1, -1));
         expect(text).toContain(JSON.stringify(turn.result!.message).slice(1, -1));
       }
       expect(current.graph()).toEqual(graph);

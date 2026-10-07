@@ -42,7 +42,7 @@ function response(
   groundingAcknowledgement: GroundingAcknowledgement = null,
 ): string {
   return JSON.stringify({
-    actionId: renderInput.actionId,
+    actionId: renderInput.conversationArchitecture === 'legacy_v5' ? renderInput.actionId : 'a1',
     actionKind: renderInput.actionKind,
     questionCode: renderInput.questionCode,
     groundingAcknowledgement,
@@ -68,7 +68,19 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
     expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
     expect(client.createChatCompletion).toHaveBeenCalledWith(expect.objectContaining({
       temperature: 0.4,
-      responseFormat: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
+      responseFormat: {
+        ...WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
+        json_schema: {
+          ...WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT.json_schema,
+          schema: {
+            ...WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT.json_schema.schema,
+            properties: {
+              ...(WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT.json_schema.schema.properties as Record<string, unknown>),
+              actionId: { type: 'string', enum: ['a1'] },
+            },
+          },
+        },
+      },
       purpose: 'weekly_planning_renderer',
     }));
   });
@@ -212,7 +224,7 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
       },
     });
     const repairOf = async (architecture: 'interaction_v1' | 'legacy_v5') => {
-      const createChatCompletion = vi.fn().mockResolvedValue(response(renderInput, '英単語は1回分にどれくらいかかりますか？'));
+      const createChatCompletion = vi.fn().mockResolvedValue(response({ ...renderInput, conversationArchitecture: architecture }, '英単語は1回分にどれくらいかかりますか？'));
       await createAiWeeklyPlanningStableV5DialogueRenderer(config, { createChatCompletion })
         .render({ ...renderInput, conversationArchitecture: architecture });
       expect(createChatCompletion).toHaveBeenCalledTimes(2);
@@ -237,7 +249,7 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
     });
     for (const architecture of ['interaction_v1', 'legacy_v5'] as const) {
       const createChatCompletion = vi.fn()
-        .mockResolvedValueOnce(response(renderInput, '英単語は1回分にどれくらいかかりますか？'))
+        .mockResolvedValueOnce(response({ ...renderInput, conversationArchitecture: architecture }, '英単語は1回分にどれくらいかかりますか？'))
         .mockRejectedValueOnce(new TypeError('fetch failed'));
       await expect(createAiWeeklyPlanningStableV5DialogueRenderer(config, { createChatCompletion })
         .render({ ...renderInput, conversationArchitecture: architecture }))

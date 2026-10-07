@@ -44,8 +44,8 @@ function clientReturning(
   text: string,
 ): OpenAiCompatibleClient {
   return {
-    createChatCompletion: vi.fn(async () => JSON.stringify({
-      actionId: renderInput.actionId,
+    createChatCompletion: vi.fn(async request => JSON.stringify({
+      actionId: JSON.parse(request.messages[1].content).actionId,
       actionKind: renderInput.actionKind,
       questionCode: renderInput.questionCode,
       text,

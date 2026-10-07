@@ -5,6 +5,7 @@ import {
   createOpenAiCompatibleClient,
   type ChatMessage,
   type OpenAiCompatibleClient,
+  type JsonSchemaResponseFormat,
 } from '../../../services/ai/openAiCompatibleClient';
 import {
   rememberWeeklyPlanningDialogueRendererPromptContext,
@@ -38,6 +39,8 @@ export {
   createWeeklyPlanningStableV5DialoguePrompt,
   createWeeklyPlanningStableV5DialogueStateSummary,
 } from './weeklyPlanningStableV5DialoguePrompt';
+
+import { bindWeeklyPlanningDialogueActionToken } from './weeklyPlanningDialogueActionToken';
 
 import { hasUnverifiedWeeklyPlanningPreviewConstraints } from './weeklyPlanningPreviewConstraintClaims';
 
@@ -125,14 +128,12 @@ async function requestDialogueRender(params: {
   client: OpenAiCompatibleClient;
   input: WeeklyPlanningStableV5DialogueRenderInput;
   messages: ChatMessage[];
+  responseFormat: JsonSchemaResponseFormat;
 }): Promise<WeeklyPlanningStableV5DialogueRenderResult> {
   const rawResponse = await params.client.createChatCompletion({
     messages: params.messages,
     temperature: 0.4,
-    responseFormat: conversationArchitecturePolicy(params.input.conversationArchitecture).interactionOutcome
-      && params.input.communication?.consultation
-      ? WEEKLY_PLANNING_CONSULTATION_DIALOGUE_RESPONSE_FORMAT
-      : WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
+    responseFormat: params.responseFormat,
     purpose: 'weekly_planning_renderer',
   });
   return parseWeeklyPlanningDialogueWithAcknowledgement(rawResponse, params.input);
@@ -145,21 +146,27 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
   return {
     async render(input) {
       try {
-        const prompt = createWeeklyPlanningStableV5DialoguePrompt(input);
+        const interaction = conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome;
+        const responseFormat = interaction && input.communication?.consultation
+          ? WEEKLY_PLANNING_CONSULTATION_DIALOGUE_RESPONSE_FORMAT
+          : WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT;
+        const bound = interaction ? bindWeeklyPlanningDialogueActionToken(input, responseFormat)
+          : { input, responseFormat, actionBinding: null };
+        const prompt = createWeeklyPlanningStableV5DialoguePrompt(bound.input);
         const promptContext = rendererPromptTraceContext(prompt);
-        if (conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome && input.communication?.consultation) {
-          promptContext.responseFormat = WEEKLY_PLANNING_CONSULTATION_DIALOGUE_RESPONSE_FORMAT;
+        if (interaction) {
+          promptContext.responseFormat = bound.responseFormat;
+          promptContext.actionBinding = bound.actionBinding;
         }
         rememberWeeklyPlanningDialogueRendererPromptContext(input.actionId, promptContext);
         const baseMessages: ChatMessage[] = [
           { role: 'system', content: prompt.systemPrompt },
           { role: 'user', content: prompt.userPrompt },
         ];
-        const initial = await requestDialogueRender({ client, input, messages: baseMessages });
+        const initial = await requestDialogueRender({ client, input: bound.input, responseFormat: bound.responseFormat, messages: baseMessages });
         if (initial.status !== 'fallback') {
           return initial;
         }
-        const interaction = conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome;
         const neutralConstraintRepair = interaction
           && hasUnverifiedWeeklyPlanningPreviewConstraints(input.communication?.previewConstraintSatisfaction);
         const repairInstruction = interaction && initial.reason === 'unchecked_consultation_feasibility'
@@ -193,7 +200,8 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
         // an outage-gated renderer) must end in the deterministic fallback, never reject.
         return await requestDialogueRender({
           client,
-          input,
+          input: bound.input,
+          responseFormat: bound.responseFormat,
           messages: [
             ...baseMessages,
             { role: 'user', content: repairInstruction },
