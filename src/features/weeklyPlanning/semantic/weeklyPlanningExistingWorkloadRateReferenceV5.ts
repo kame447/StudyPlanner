@@ -5,11 +5,13 @@ import type { WeeklyPlanningSemanticCanonicalizationResultV5 } from './weeklyPla
 
 const record = (value: unknown): Record<string, unknown> | null => typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
 const records = (value: unknown) => Array.isArray(value) ? value.map(record).filter((item): item is Record<string, unknown> => item !== null) : [];
+const isDurationEstimate = (estimate: Record<string, unknown>) =>
+  estimate.kind === 'session_duration' || estimate.kind === 'total_duration';
 const bindingSignature = (task: Record<string, unknown>, estimate: Record<string, unknown>, workloadId: string) =>
-  `active-workload-rate-reference-projected:${JSON.stringify([task.localId, task.existingPublicId, estimate.localId,
+  `${isDurationEstimate(estimate) ? 'active-workload-duration-reference-projected' : 'active-workload-rate-reference-projected'}:${JSON.stringify([task.localId, task.existingPublicId, estimate.localId,
     estimate.kind, estimate.minutes, estimate.unitCode, estimate.precision, estimate.sourceText, workloadId])}`;
 
-/** Resolve a validated machine-id rate scope, without importing an old quantity as new language. */
+/** Bridge an exact accepted-workload ID for effort without importing old quantity as new language. */
 export function projectWeeklyPlanningExistingWorkloadRateReferenceV5(params: {
   rawResponse: string; graph?: WeeklyPlanningFactGraphV5;
 }): { rawResponse: string; repairs: string[] } {
@@ -19,20 +21,29 @@ export function projectWeeklyPlanningExistingWorkloadRateReferenceV5(params: {
   if (!document) return { rawResponse: params.rawResponse, repairs: [] };
   const graph = createWeeklyPlanningActiveSchedulerGraphViewV5(params.graph);
   const repairs: string[] = [];
+  const allEstimates = records(document.tasks).flatMap(task => records(task.effortEstimates));
   for (const task of records(document.tasks)) {
     if (!graph.tasks.some((fact) => fact.id === task.existingPublicId) || typeof task.localId !== 'string') continue;
     const components = records(record(task.study)?.components);
     const containers = [task, ...components];
     const workloads = containers.flatMap((container) => records(container.workloads));
     for (const estimate of records(task.effortEstimates)) {
-      if (estimate.kind !== 'duration_per_unit') continue;
+      const duration = isDurationEstimate(estimate);
+      if (estimate.kind !== 'duration_per_unit' && !duration) continue;
       const target = graph.workloads.find((fact) => fact.id === estimate.targetLocalId
-        && fact.taskId === task.existingPublicId && fact.unitCode === estimate.unitCode);
+        && fact.taskId === task.existingPublicId && (duration || fact.unitCode === estimate.unitCode));
       if (!target) continue;
-      // A task-bound rate is equivalent only with one compatible accepted
-      // scope, and no new same-unit scope in this delta. Never broaden a rate.
-      if (graph.workloads.filter((fact) => fact.taskId === target.taskId && fact.unitCode === target.unitCode).length !== 1
-        || workloads.some((fact) => fact.localId !== target.id && fact.unitCode === target.unitCode)) continue;
+      if (duration) {
+        // One exact citation owns the scope. Another estimate or new quantity must
+        // go through normal semantic validation; never guess which one was meant.
+        if (allEstimates.filter(fact => fact.targetLocalId === target.id).length !== 1
+          || workloads.some(fact => fact.localId !== target.id)
+          || workloads.filter(fact => fact.localId === target.id).length > 1) continue;
+      } else {
+        // Preserve the existing rate projection's single compatible-unit boundary.
+        if (graph.workloads.filter(fact => fact.taskId === target.taskId && fact.unitCode === target.unitCode).length !== 1
+          || workloads.some(fact => fact.localId !== target.id && fact.unitCode === target.unitCode)) continue;
+      }
       const replay = workloads.find((fact) => fact.localId === target.id);
       const replayContainer = containers.find((container) => records(container.workloads).includes(replay!));
       if (replay && (replayContainer === task ? target.componentId !== null
@@ -60,9 +71,10 @@ export function bindWeeklyPlanningExistingWorkloadRatesV5(params: {
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(params.originalGraph);
   const targets = new Map<string, string>();
   for (const task of params.document.tasks) for (const estimate of task.effortEstimates) {
-    if (estimate.kind !== 'duration_per_unit' || estimate.targetLocalId !== task.localId) continue;
+    const duration = isDurationEstimate({ ...estimate });
+    if ((estimate.kind !== 'duration_per_unit' && !duration) || estimate.targetLocalId !== task.localId) continue;
     const matches = active.workloads.filter((workload) => workload.taskId === task.existingPublicId
-      && workload.unitCode === estimate.unitCode
+      && (duration || workload.unitCode === estimate.unitCode)
       && params.algorithmicRepairs!.includes(bindingSignature({ ...task }, { ...estimate }, workload.id)));
     const estimateId = base.localToFactId[estimate.localId];
     if (matches.length !== 1 || !base.diff.added.some((entry) => entry.kind === 'effort_estimate' && entry.id === estimateId)) continue;

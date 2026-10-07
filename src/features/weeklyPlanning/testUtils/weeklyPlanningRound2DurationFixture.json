@@ -1,0 +1,495 @@
+{
+  "publicDuration": {
+    "capture": "063355-v91e-D1-fetch.json",
+    "setupUserText": "来週、テスト読書教材を20ページ読むのと、テスト研究メモを2時間進めたい",
+    "followupUserText": "1回1時間くらいで2回に分けたい。どっちも夜がいい",
+    "setupDocument": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "create_plan",
+      "planningWindow": {
+        "localId": "window-1",
+        "kind": "relative_week",
+        "value": "next_week",
+        "start": null,
+        "end": null,
+        "sourceText": "来週"
+      },
+      "tasks": [
+        {
+          "localId": "task-1",
+          "existingPublicId": "study-material-00000000-0000-4000-8000-000000000601",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "テスト読書教材",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "reading",
+            "contextLabel": "情報科学",
+            "components": []
+          },
+          "workloads": [
+            {
+              "localId": "workload-1",
+              "quantityRole": "target",
+              "amount": 20,
+              "unitCode": "page",
+              "unitLabel": "ページ",
+              "rangeStart": null,
+              "rangeEnd": null,
+              "perOccurrence": false,
+              "periodExpression": null,
+              "sourceText": "テスト読書教材を20ページ読む"
+            }
+          ],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "テスト読書教材を20ページ読む"
+        },
+        {
+          "localId": "task-2",
+          "existingPublicId": "study-material-00000000-0000-4000-8000-000000000600",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "テスト研究メモ",
+          "study": {
+            "purpose": "research",
+            "activityKind": "mixed",
+            "contextLabel": "研究",
+            "components": []
+          },
+          "workloads": [
+            {
+              "localId": "workload-2",
+              "quantityRole": "target",
+              "amount": 2,
+              "unitCode": "hour",
+              "unitLabel": "時間",
+              "rangeStart": null,
+              "rangeEnd": null,
+              "perOccurrence": false,
+              "periodExpression": null,
+              "sourceText": "テスト研究メモを2時間進めたい"
+            }
+          ],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "テスト研究メモを2時間進めたい"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "firstDocument": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "update_plan",
+      "planningWindow": null,
+      "tasks": [
+        {
+          "localId": "$accepted-task-0",
+          "existingPublicId": "$accepted-task-0",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "テスト読書教材",
+          "study": null,
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "1回1時間くらいで2回に分けたい。どっちも夜がいい"
+        },
+        {
+          "localId": "$accepted-task-1",
+          "existingPublicId": "$accepted-task-1",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "テスト研究メモ",
+          "study": null,
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "1回1時間くらいで2回に分けたい。どっちも夜がいい"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "materials": [
+      {
+        "id": "study-material-00000000-0000-4000-8000-000000000601",
+        "userId": "duration-capture-owner",
+        "name": "テスト読書教材",
+        "subjectId": "test-subject",
+        "subjectName": "テスト科目",
+        "status": "active",
+        "paceEnabled": true,
+        "aliases": [],
+        "progressUnit": "page",
+        "totalUnits": 650,
+        "currentUnit": 120,
+        "targetDate": "2026-11-22",
+        "estimatedMinutesPerUnit": 8,
+        "maxUnitsPerDay": 12,
+        "createdAt": "2026-10-01T00:00:00.000Z",
+        "updatedAt": "2026-10-08T00:00:00.000Z"
+      },
+      {
+        "id": "study-material-00000000-0000-4000-8000-000000000600",
+        "userId": "duration-capture-owner",
+        "name": "テスト研究メモ",
+        "subjectId": "test-subject",
+        "subjectName": "テスト科目",
+        "status": "active",
+        "paceEnabled": true,
+        "aliases": [],
+        "progressUnit": "section",
+        "totalUnits": 12,
+        "currentUnit": 5,
+        "targetDate": "2026-10-03",
+        "estimatedMinutesPerUnit": 60,
+        "maxUnitsPerDay": 1,
+        "createdAt": "2026-10-01T00:00:00.000Z",
+        "updatedAt": "2026-10-08T00:00:00.000Z"
+      }
+    ],
+    "rereadDocument": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "update_plan",
+      "planningWindow": null,
+      "tasks": [
+        {
+          "localId": "$accepted-task-0",
+          "existingPublicId": "$accepted-task-0",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "テスト読書教材",
+          "study": null,
+          "workloads": [],
+          "effortEstimates": [
+            {
+              "localId": "effort_algorithm_session",
+              "targetLocalId": "$accepted-workload-0",
+              "kind": "session_duration",
+              "minutes": 60,
+              "unitCode": null,
+              "precision": "approximate",
+              "sourceText": "1回1時間くらいで2回に分けたい。どっちも夜がいい"
+            }
+          ],
+          "temporalConstraints": [
+            {
+              "localId": "window_algorithm_night",
+              "targetLocalId": "$accepted-task-0",
+              "kind": "preferred_window",
+              "constraintLevel": "soft",
+              "dateExpression": null,
+              "namedTimePeriod": "night",
+              "startTime": null,
+              "endTime": null,
+              "precision": "unspecified",
+              "sourceText": "1回1時間くらいで2回に分けたい。どっちも夜がいい"
+            }
+          ],
+          "recurrence": [
+            {
+              "localId": "recurrence_algorithm_split",
+              "targetLocalId": "$accepted-task-0",
+              "kind": "custom",
+              "count": 2,
+              "days": [],
+              "sourceText": "1回1時間くらいで2回に分けたい。どっちも夜がいい"
+            }
+          ],
+          "durableContextSignals": [],
+          "sourceText": "1回1時間くらいで2回に分けたい。どっちも夜がいい"
+        },
+        {
+          "localId": "$accepted-task-1",
+          "existingPublicId": "$accepted-task-1",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "テスト研究メモ",
+          "study": null,
+          "workloads": [],
+          "effortEstimates": [
+            {
+              "localId": "effort_research_session",
+              "targetLocalId": "$accepted-workload-1",
+              "kind": "session_duration",
+              "minutes": 60,
+              "unitCode": null,
+              "precision": "approximate",
+              "sourceText": "1回1時間くらいで2回に分けたい。どっちも夜がいい"
+            }
+          ],
+          "temporalConstraints": [
+            {
+              "localId": "window_research_night",
+              "targetLocalId": "$accepted-task-1",
+              "kind": "preferred_window",
+              "constraintLevel": "soft",
+              "dateExpression": null,
+              "namedTimePeriod": "night",
+              "startTime": null,
+              "endTime": null,
+              "precision": "unspecified",
+              "sourceText": "1回1時間くらいで2回に分けたい。どっちも夜がいい"
+            }
+          ],
+          "recurrence": [
+            {
+              "localId": "recurrence_research_split",
+              "targetLocalId": "$accepted-task-1",
+              "kind": "custom",
+              "count": 2,
+              "days": [],
+              "sourceText": "1回1時間くらいで2回に分けたい。どっちも夜がいい"
+            }
+          ],
+          "durableContextSignals": [],
+          "sourceText": "1回1時間くらいで2回に分けたい。どっちも夜がいい"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    }
+  },
+  "omittedNight": {
+    "capture": "064318-vfin-D1-fetch.json",
+    "setupUserText": "来週、テスト読書教材を20ページ読むのと、テスト研究メモを2時間進めたい",
+    "followupUserText": "1回1時間くらいで2回に分けたい。どっちも夜がいい",
+    "setupDocument": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "create_plan",
+      "planningWindow": {
+        "localId": "window-1",
+        "kind": "relative_week",
+        "value": "next_week",
+        "start": null,
+        "end": null,
+        "sourceText": "来週"
+      },
+      "tasks": [
+        {
+          "localId": "task-1",
+          "existingPublicId": null,
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "テスト読書教材",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "reading",
+            "contextLabel": null,
+            "components": [
+              {
+                "localId": "component-1",
+                "existingPublicId": "study-material-00000000-0000-4000-8000-000000000601",
+                "parentLocalId": null,
+                "role": "material",
+                "label": "テスト読書教材",
+                "workloads": [
+                  {
+                    "localId": "workload-1",
+                    "quantityRole": "target",
+                    "amount": 20,
+                    "unitCode": "page",
+                    "unitLabel": "ページ",
+                    "rangeStart": null,
+                    "rangeEnd": null,
+                    "perOccurrence": false,
+                    "periodExpression": null,
+                    "sourceText": "テスト読書教材を20ページ読む"
+                  }
+                ],
+                "durableContextSignals": [],
+                "sourceText": "テスト読書教材を20ページ読む"
+              }
+            ]
+          },
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "テスト読書教材を20ページ読む"
+        },
+        {
+          "localId": "task-2",
+          "existingPublicId": null,
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "テスト研究メモ",
+          "study": {
+            "purpose": "research",
+            "activityKind": "writing",
+            "contextLabel": null,
+            "components": [
+              {
+                "localId": "component-2",
+                "existingPublicId": "study-material-00000000-0000-4000-8000-000000000600",
+                "parentLocalId": null,
+                "role": "material",
+                "label": "テスト研究メモ",
+                "workloads": [
+                  {
+                    "localId": "workload-2",
+                    "quantityRole": "target",
+                    "amount": 2,
+                    "unitCode": "hour",
+                    "unitLabel": "時間",
+                    "rangeStart": null,
+                    "rangeEnd": null,
+                    "perOccurrence": false,
+                    "periodExpression": null,
+                    "sourceText": "テスト研究メモを2時間進めたい"
+                  }
+                ],
+                "durableContextSignals": [],
+                "sourceText": "テスト研究メモを2時間進めたい"
+              }
+            ]
+          },
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "テスト研究メモを2時間進めたい"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "firstDocument": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "update_plan",
+      "planningWindow": null,
+      "tasks": [
+        {
+          "localId": "task_algorithm",
+          "existingPublicId": "$accepted-task-0",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "テスト読書教材",
+          "study": null,
+          "workloads": [],
+          "effortEstimates": [
+            {
+              "localId": "effort_algorithm_session",
+              "targetLocalId": "task_algorithm",
+              "kind": "session_duration",
+              "minutes": 60,
+              "unitCode": "minute",
+              "precision": "approximate",
+              "sourceText": "1回1時間くらいで2回に分けたい"
+            }
+          ],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "どっちも夜がいい"
+        },
+        {
+          "localId": "task_research",
+          "existingPublicId": "$accepted-task-1",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "テスト研究メモ",
+          "study": null,
+          "workloads": [],
+          "effortEstimates": [
+            {
+              "localId": "effort_research_session",
+              "targetLocalId": "task_research",
+              "kind": "session_duration",
+              "minutes": 60,
+              "unitCode": "minute",
+              "precision": "approximate",
+              "sourceText": "1回1時間くらいで2回に分けたい"
+            }
+          ],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "どっちも夜がいい"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "materials": [
+      {
+        "id": "study-material-00000000-0000-4000-8000-000000000601",
+        "userId": "duration-capture-owner",
+        "name": "テスト読書教材",
+        "subjectId": "test-subject",
+        "subjectName": "テスト科目",
+        "status": "active",
+        "paceEnabled": true,
+        "aliases": [],
+        "progressUnit": "page",
+        "totalUnits": 650,
+        "currentUnit": 120,
+        "targetDate": "2026-11-22",
+        "estimatedMinutesPerUnit": 8,
+        "maxUnitsPerDay": 12,
+        "createdAt": "2026-10-01T00:00:00.000Z",
+        "updatedAt": "2026-10-08T00:00:00.000Z"
+      },
+      {
+        "id": "study-material-00000000-0000-4000-8000-000000000600",
+        "userId": "duration-capture-owner",
+        "name": "テスト研究メモ",
+        "subjectId": "test-subject",
+        "subjectName": "テスト科目",
+        "status": "active",
+        "paceEnabled": true,
+        "aliases": [],
+        "progressUnit": "section",
+        "totalUnits": 12,
+        "currentUnit": 5,
+        "targetDate": "2026-10-03",
+        "estimatedMinutesPerUnit": 60,
+        "maxUnitsPerDay": 1,
+        "createdAt": "2026-10-01T00:00:00.000Z",
+        "updatedAt": "2026-10-08T00:00:00.000Z"
+      }
+    ]
+  }
+}
