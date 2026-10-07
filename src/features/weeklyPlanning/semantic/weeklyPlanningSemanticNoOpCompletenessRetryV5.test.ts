@@ -191,6 +191,20 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     expect(focusedPrompt).toContain(userText);
   });
 
+  // Live B T4 on 05761dc0: 「青チャートのこと」 after the preview came back as task shells twice.
+  it('names a material component among the typed fields of the follow-up re-read (interaction)', async () => {
+    const fake = fakeClient([JSON.stringify(existingTaskShell()), JSON.stringify(existingTaskShell())]);
+    const result = await createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
+      userText,
+      publicStateSummary: { ...publicStateSummary(), pendingQuestion: null },
+      conversationArchitecture: 'interaction_v1',
+    });
+    expect(result.status).toBe('accepted');
+    expect(fake.calls).toHaveLength(2);
+    const retryMessages = fake.calls[1].messages;
+    expect(retryMessages[retryMessages.length - 1]?.content ?? '').toContain('a named material as that task\'s material component');
+  });
+
   it('falls through to the generic completeness retry when focused temporal meaning is absent', async () => {
     const fake = fakeClient([
       JSON.stringify(existingTaskShell()),
