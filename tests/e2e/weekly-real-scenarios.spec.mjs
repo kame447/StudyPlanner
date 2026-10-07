@@ -39,7 +39,11 @@ async function checkPreview(page, candidates, testInfo) {
   expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize().width + 1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   expect(await page.evaluate(() => window.__weeklyCampaign.saved)).toEqual([]);
-  await page.screenshot({ path: testInfo.outputPath('preview.png'), fullPage: true });
+  const firstBlock = preview.locator('.ai-planning-draft-block').first();
+  await firstBlock.scrollIntoViewIfNeeded();
+  await expect(firstBlock).toBeInViewport();
+  // Finish finite sheet-entry animations so artifacts show the settled preview.
+  await page.screenshot({ path: testInfo.outputPath('preview.png'), fullPage: true, animations: 'disabled' });
 }
 for (const scenario of ['A', 'C', 'D', 'F']) {
   test(`${scenario}: corrected real-runtime preview and measured dispatches`, async ({ page }, testInfo) => {
@@ -58,6 +62,7 @@ for (const scenario of ['A', 'C', 'D', 'F']) {
       expect(candidates).not.toEqual(beforeCorrection);
       expect(candidates.every(entry => entry.date <= '2026-10-16')).toBe(true);
       expect(candidates.map(entry => entry.title).join(' ')).not.toContain('30ページ');
+      expect(candidates.map(entry => entry.title).join(' ')).toContain('20ページ');
     }
     if (scenario === 'D') {
       expect(candidates).toHaveLength(3);
