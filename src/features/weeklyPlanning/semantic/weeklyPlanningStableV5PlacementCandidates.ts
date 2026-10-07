@@ -4,6 +4,7 @@ import type {
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningStableV5PreviewProvenance } from '../weeklyPlanningPreviewProvenance';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
+import { allocationBreakdownForWeeklyPlanningWorkItem } from './weeklyPlanningAllocationBreakdown';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
 import type { WeeklyPlanningPlacementGraphViewV5 } from './weeklyPlanningPlacementGraphViewV5';
 import {
@@ -104,7 +105,9 @@ export function createPlacementCandidate(params: {
       : {}),
   };
   const workItemKey = params.workItemKey ?? params.item.id;
+  const allocationBreakdown = allocationBreakdownForWeeklyPlanningWorkItem(params.item, params.duration);
   return {
+    ...(allocationBreakdown ? { allocationBreakdown } : {}),
     stableKey: `stable-v5:${params.input.graphRevision}:${workItemKey}:${params.chunkIndex}`,
     date: params.slot.date,
     startTime: placementTimeFromMinutes(params.slot.start),

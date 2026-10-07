@@ -55,6 +55,7 @@ import { plannerRepository } from '../repositories';
 import type { Plan, StudyMaterial, TodoTask } from '../types/domain';
 import { AiPlanningArchitectureEvaluationPanel } from './AiPlanningArchitectureEvaluationPanel';
 import { AiPlanningChatSidebar } from './AiPlanningChatSidebar';
+import { WeeklyPlanningAllocationSummary } from './WeeklyPlanningAllocationSummary';
 import {
   buildAiPlanningPreviewDatePages,
   clampAiPlanningPreviewPageIndex,
@@ -955,6 +956,7 @@ export function AiPlanningView({
                   <BookOpen size={16} aria-hidden="true" />合計{' '}
                   {formatMinutes(totalMinutes)}
                 </span>
+                <WeeklyPlanningAllocationSummary blocks={allPreviewBlocks} />
               </div>
               <button
                 className="ai-planning-preview-button"

@@ -23,6 +23,7 @@ type WeeklyDraftCandidateWithRuntimeMetadata = WeeklyDraftCandidate & {
 };
 
 export interface WeeklyPlanningPreviewBlock {
+  allocationBreakdown?: WeeklyDraftCandidate['allocationBreakdown'];
   id: string;
   stableKey: string;
   date: string;
@@ -158,6 +159,7 @@ export function createWeeklyPlanningPreviewBlocks(
     const stableV5Metadata = stableV5MetadataFromCandidate(candidate);
     return {
       id: candidate.stableKey,
+      ...(candidate.allocationBreakdown ? { allocationBreakdown: structuredClone(candidate.allocationBreakdown) } : {}),
       stableKey: candidate.stableKey,
       date: candidate.date,
       startTime: candidate.startTime,
@@ -250,6 +252,7 @@ export function createWeeklyPlanningPreviewDisplayBlock(
 
   return {
     id: block.id,
+    ...(block.allocationBreakdown ? { allocationBreakdown: structuredClone(block.allocationBreakdown) } : {}),
     userId,
     date: block.date,
     startTime: block.startTime,
@@ -297,6 +300,7 @@ export function createWeeklyDraftBlocksFromPreviewCandidates({
         ].join(' / ');
     return {
       id: candidate.stableKey,
+      ...(candidate.allocationBreakdown ? { allocationBreakdown: structuredClone(candidate.allocationBreakdown) } : {}),
       userId,
       date: candidate.date,
       startTime: candidate.startTime,

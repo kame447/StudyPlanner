@@ -350,6 +350,7 @@
 
 .ai-planning-preview-total {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 12px;
   min-height: 30px;
@@ -360,6 +361,12 @@
   background: #f8fbff;
   font-size: 0.68rem;
   font-weight: 800;
+}
+
+.ai-planning-allocation-summary {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .ai-planning-preview-error {

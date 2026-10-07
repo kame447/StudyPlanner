@@ -49,6 +49,7 @@ export interface WeeklyPlanningBehaviorMetadata {
 }
 
 export interface WeeklyPlanDraftBlock {
+  allocationBreakdown?: import('./semantic/weeklyPlanningAllocationBreakdown').WeeklyPlanningAllocationBreakdown;
   id: string;
   userId: string;
   date: string;
