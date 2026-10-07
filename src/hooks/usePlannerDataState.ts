@@ -648,6 +648,7 @@ export function usePlannerDataState({
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     let releaseAdmission: ReturnType<typeof admitActualMutation> | undefined;
     let needsRefresh = false;
+    let selectionOperation: ReturnType<typeof selectionState.begin> | undefined;
     const occurrenceDate = occurrencePlan.occurrenceDate ?? occurrencePlan.date;
 
     try {
@@ -682,6 +683,9 @@ export function usePlannerDataState({
         ...[...mutation.actualUpserts, ...mutation.actualDeletes].flatMap(actual => actual.planId ? [actual.planId] : []),
       ])];
       releaseAdmission = admitActualMutation([...mutation.actualUpserts, ...mutation.actualDeletes], affectedPlanIds);
+      if (pendingRecurringPlanAction.kind === 'edit') {
+        selectionOperation = selectionState.begin(() => selectionAt(occurrenceDate));
+      }
       await plannerRepository.applyRecurringPlanMutation(userId, mutation);
       const deletedPlanIds = new Set(
         mutation.planDeletes.map((plan) => plan.id),
@@ -709,17 +713,16 @@ export function usePlannerDataState({
         );
       }
 
-      if (pendingRecurringPlanAction.kind === 'edit') {
-        selectionState.set(selectionAt(occurrenceDate));
-      }
-      setPendingRecurringPlanAction(null);
-      closePlanEditor();
+      if (selectionOperation) selectionState.commit(selectionOperation);
+      // A dismissed/replaced scope no longer owns the visible editor or dialog.
+      setPendingRecurringPlanAction(current => current === pendingRecurringPlanAction ? null : current);
       if (pendingRecurringPlanAction.kind === 'edit') {
         showNotice('繰り返し予定を更新しました。', 'success');
       } else {
         showNotice('繰り返し予定を削除しました。');
       }
     } catch (error) {
+      if (selectionOperation) selectionState.reject(selectionOperation);
       if (!mutationScope.isCurrent() || error instanceof ActualMutationAdmissionError) throw error;
       console.error('[RecurringPlanScope] failed', {
         action: pendingRecurringPlanAction.kind,
