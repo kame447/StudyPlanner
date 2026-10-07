@@ -6,6 +6,7 @@ export const MATERIAL_SETUP_TEXT = '来週、数学の問題集を20問進めた
 export const MATERIAL_RATE_TEXT = '1問3分くらい';
 export const MATERIAL_EXPLANATION_TEXT = 'なんで時間が必要なの？';
 export const NAMED_MATERIAL = '青チャート 数学III';
+export const LATER_MATERIAL_WORK_TEXT = '同じ数学の計画にプリントも10問追加したい';
 const document = (overrides: Json = {}): Json => ({ schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'update_plan', planningWindow: null,
   tasks: [], relations: [], availabilityDeclarations: [], constraintSourceRequests: [], userContextFacts: [], uncertainties: [], corrections: [], decisions: [], conversationActs: [], ...overrides });
 const workload = (localId: string, sourceText: string): Json => ({ localId, quantityRole: 'target', amount: 20, unitCode: 'problem', unitLabel: '問', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null, sourceText });
@@ -43,7 +44,10 @@ export function materialIdentityConversationFixture(params: {
       const parent = graph.tasks[0];
       const material = graph.components.find((fact) => fact.role === 'material')!;
       const work = graph.workloads[0];
-      if (text === MATERIAL_RATE_TEXT) result = document({ tasks: [task(parent.id, text,
+      if (text === LATER_MATERIAL_WORK_TEXT) result = document({ tasks: [task(parent.id, text,
+        [component(null, 'プリント', 'プリント', [{ ...workload('later-work', '10問'), amount: 10 }])])],
+      });
+      else if (text === MATERIAL_RATE_TEXT) result = document({ tasks: [task(parent.id, text,
         params.rateShape === 'public_reference' ? [] : [component(material.id, material.label, text, [workload(work.id, '数学の問題集を20問進めたい')])],
         [{ localId: 'rate', targetLocalId: work.id, kind: 'duration_per_unit', minutes: 3, unitCode: 'problem', precision: 'approximate', sourceText: text }])],
       });

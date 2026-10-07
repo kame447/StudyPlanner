@@ -4,6 +4,18 @@ import type { WeeklyPlanningSemanticCanonicalizationResultV5 } from './weeklyPla
 import { isWeeklyPlanningFactActiveV5 } from './weeklyPlanningFactLifecycleV5';
 import { applyWeeklyPlanningFactLifecycleOperationV5 } from './weeklyPlanningFactLifecycleEngineV5';
 
+// Every graph collection is classified, including task-only edges and history.
+// A new collection must explicitly declare whether it can reference a component.
+export const WEEKLY_PLANNING_COMPONENT_REFERENCE_FIELDS_V5 = {
+  version: [], revision: [], appliedTurnKeys: [], appliedLifecycleOperationKeys: [], factLifecycles: [],
+  planningWindows: [], tasks: [], studyContexts: [],
+  components: ['parentComponentId'], workloads: ['componentId'],
+  effortEstimates: ['targetFactId'], temporalConstraints: ['targetFactId'], taskDateRules: ['targetFactId'],
+  recurrences: ['targetFactId'], relations: [], uncertainties: ['targetFactId'],
+  correctionIntents: ['target.publicId', 'target.factId', 'replacementFactId'],
+  decisionIntents: ['target.publicId', 'target.factId'], availabilityDeclarations: [], constraintSourceRequests: [],
+} satisfies Record<keyof WeeklyPlanningFactGraphV5, readonly string[]>;
+
 /** Validated identity answers bound to one unresolved, active material component. */
 export function weeklyPlanningMaterialIdentityAnswersV5(graph: WeeklyPlanningFactGraphV5, document: WeeklyPlanningSemanticDocumentV5) {
   const answers: Array<{ targetId: string; localId: string; uncertaintyIds: string[] }> = [];
@@ -59,8 +71,12 @@ export function applyWeeklyPlanningMaterialIdentityAnswersV5(params: {
       temporalConstraints: graph.temporalConstraints.map((fact) => active(fact.id) ? { ...fact, targetFactId: ref(fact.targetFactId)! } : fact),
       taskDateRules: graph.taskDateRules.map((fact) => active(fact.id) ? { ...fact, targetFactId: ref(fact.targetFactId)! } : fact),
       recurrences: graph.recurrences.map((fact) => active(fact.id) ? { ...fact, targetFactId: ref(fact.targetFactId)! } : fact),
-      relations: graph.relations.map((fact) => active(fact.id) ? { ...fact, fromTaskId: ref(fact.fromTaskId)!, toTaskId: ref(fact.toTaskId)! } : fact),
       uncertainties: graph.uncertainties.map((fact) => active(fact.id) && !answer.uncertaintyIds.includes(fact.id) ? { ...fact, targetFactId: ref(fact.targetFactId) } : fact),
+      correctionIntents: graph.correctionIntents.map((fact) => active(fact.id) && !base.diff!.added.some((entry) => entry.id === fact.id)
+        ? { ...fact, target: { ...fact.target, publicId: ref(fact.target.publicId), factId: ref(fact.target.factId) }, replacementFactId: ref(fact.replacementFactId) }
+        : fact),
+      decisionIntents: graph.decisionIntents.map((fact) => active(fact.id)
+        ? { ...fact, target: { ...fact.target, publicId: ref(fact.target.publicId), factId: ref(fact.target.factId) } } : fact),
     };
     for (const id of answer.uncertaintyIds) {
       if (!active(id)) continue;

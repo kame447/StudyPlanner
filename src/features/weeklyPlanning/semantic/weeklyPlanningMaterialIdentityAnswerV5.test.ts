@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyWeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
-import { weeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
+import { WEEKLY_PLANNING_COMPONENT_REFERENCE_FIELDS_V5, weeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 import { canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
 import { finalizeWeeklyPlanningSemanticCanonicalizationV5 } from './weeklyPlanningSemanticCommitV5';
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
 import { projectWeeklyPlanningExistingWorkloadRateReferenceV5 } from './weeklyPlanningExistingWorkloadRateReferenceV5';
+import { reconcileWeeklyPlanningGroundingRecordsV5 } from './weeklyPlanningGroundingV5';
+import { parseWeeklyPlanningFactGraphV5, serializeWeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphValidatorV5';
 
 const source = { conversationId: 'c', turnId: 'initial', semanticLocalId: 'm', sourceText: '数学の問題集を20問', origin: 'user' as const };
 function state() {
@@ -26,13 +28,20 @@ function answer(): WeeklyPlanningSemanticDocumentV5 {
 describe('exact component identity transaction safety', () => {
   it('preserves work provenance and unrelated needs, retaining historical component source', () => {
     const graph = state();
+    graph.revision = 2;
     graph.components.push({ ...graph.components[0], id: 'child', role: 'chapter', parentComponentId: 'm', label: '演習' });
     graph.effortEstimates.push({ id: 'pace', taskId: 't', targetFactId: 'm', kind: 'duration_per_unit', minutes: 3,
       unitCode: 'problem', precision: 'approximate', source, createdRevision: 1 });
-    for (const factId of ['child', 'pace']) graph.factLifecycles.push({ factId, status: 'active', createdRevision: 1,
+    graph.correctionIntents.push({ id: 'earlier-correction', target: { kind: 'component', publicId: 'm', factId: 'm', mention: null },
+      operation: 'modify', replacementFactId: 'm', source, createdRevision: 1 });
+    graph.decisionIntents.push({ id: 'earlier-decision', target: { kind: 'component', publicId: 'm', factId: 'm', mention: null },
+      decision: 'accept', source, createdRevision: 1 });
+    graph.correctionIntents.push({ ...graph.correctionIntents[0], id: 'historical-correction' });
+    graph.factLifecycles.push({ factId: 'historical-correction', status: 'removed', createdRevision: 1, terminalRevision: 2, supersededByFactId: null });
+    for (const factId of ['child', 'pace', 'earlier-correction', 'earlier-decision']) graph.factLifecycles.push({ factId, status: 'active', createdRevision: 1,
       terminalRevision: null, supersededByFactId: null });
     const before = structuredClone(graph); const document = answer();
-    const base = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({ graph, document, context: { conversationId: 'c', turnId: 'answer', expectedRevision: 1 } });
+    const base = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({ graph, document, context: { conversationId: 'c', turnId: 'answer', expectedRevision: graph.revision } });
     const result = finalizeWeeklyPlanningSemanticCanonicalizationV5({ originalGraph: graph, document, baseCanonicalization: base,
       contextualAnswer: false, questionCode: 'semantic_uncertainty', operationKeyPrefix: 'c:answer', conversationArchitecture: 'interaction_v1' }).canonicalization;
     expect(result.status).toBe('applied');
@@ -41,10 +50,29 @@ describe('exact component identity transaction safety', () => {
     expect(result.graph.components.find((fact) => fact.id === 'm')).toEqual(before.components[0]);
     expect(result.graph.components.find((fact) => fact.id === 'child')).toEqual({ ...before.components[1], parentComponentId: replacementId });
     expect(result.graph.effortEstimates).toEqual([{ ...before.effortEstimates[0], targetFactId: replacementId }]);
+    expect(result.graph.correctionIntents[0]).toEqual({ ...before.correctionIntents[0],
+      target: { ...before.correctionIntents[0].target, publicId: replacementId, factId: replacementId }, replacementFactId: replacementId });
+    expect(result.graph.correctionIntents[1]).toEqual(before.correctionIntents[1]);
+    expect(result.graph.decisionIntents[0].target).toMatchObject({ publicId: replacementId, factId: replacementId });
     expect(result.graph.uncertainties.find((fact) => fact.id === 'other')?.targetFactId).toBe(replacementId);
     expect(result.graph.factLifecycles).toContainEqual(expect.objectContaining({ factId: 'other', status: 'active' }));
     expect(result.graph.factLifecycles).toContainEqual(expect.objectContaining({ factId: 'u', status: 'removed' }));
     expect(graph).toEqual(before);
+    const priorGrounding = [{ id: 'old-grounding', targetFactId: 'm', interpretationKind: 'relative_date_resolution' as const,
+      status: 'contested' as const, sourceExpression: 'next_week', startDate: '2026-10-12', endDate: '2026-10-18', proposedAtTurnId: 'initial', acceptedAtTurnId: null }];
+    expect(reconcileWeeklyPlanningGroundingRecordsV5({ previousRecords: priorGrounding, previousGraph: before,
+      nextGraph: result.graph, resolvedHorizon: null, currentTurnId: 'answer', continuationAccepted: false })).toEqual([{ ...priorGrounding[0], status: 'rejected' }]);
+    expect(priorGrounding[0].status).toBe('contested');
+    const decoded = parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph));
+    expect(decoded.errors).toEqual([]);
+    expect(decoded.graph).toEqual(result.graph);
+  });
+  it('classifies every graph collection that could acquire a component reference', () => {
+    expect(Object.keys(WEEKLY_PLANNING_COMPONENT_REFERENCE_FIELDS_V5).sort()).toEqual(Object.keys(createEmptyWeeklyPlanningFactGraphV5()).sort());
+    expect(Object.entries(WEEKLY_PLANNING_COMPONENT_REFERENCE_FIELDS_V5).filter(([, fields]) => fields.length).map(([name]) => name)).toEqual([
+      'components', 'workloads', 'effortEstimates', 'temporalConstraints', 'taskDateRules', 'recurrences', 'uncertainties', 'correctionIntents', 'decisionIntents',
+    ]);
+    expect(WEEKLY_PLANNING_COMPONENT_REFERENCE_FIELDS_V5.relations).toEqual([]);
   });
   it('does not treat a rate, unchanged label or foreign task binding as identity resolution', () => {
     const graph = state(); const unchanged = answer(); unchanged.tasks[0].study!.components[0].label = '数学の問題集';

@@ -153,7 +153,7 @@ describe('Issue #152 committed workload restatement provenance', () => {
     expect(result.graph.workloads.filter((fact) => fact.taskId === mathTaskId)).toHaveLength(1);
     expect(result.graph.workloads.find((fact) => fact.id === mathWorkloadId)?.amount).toBe(30);
     expect(result.graph.workloads.find((fact) => fact.id === mathWorkloadId)?.source).toEqual(committedGraph().workloads[0].source);
-    expect(result.graph.effortEstimates.some((fact) => fact.targetFactId === (conversationArchitecture === 'legacy_v5' ? mathWorkloadId : mathTaskId)
+    expect(result.graph.effortEstimates.some((fact) => fact.targetFactId === mathWorkloadId
       && fact.minutes === 10)).toBe(true);
     expect(result.graph.workloads.some((fact) => fact.amount === 200 && fact.unitCode === 'word')).toBe(true);
     expect(scripted.calls).toHaveLength(conversationArchitecture === 'legacy_v5' ? 2 : 1);

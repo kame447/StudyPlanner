@@ -2,6 +2,7 @@ import { enforceSingleActivePlanningWindowV5 } from './weeklyPlanningSemanticCan
 import { conversationArchitecturePolicy, type WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import { hasWeeklyPlanningSemanticUncertaintyResolutionV5 } from './weeklyPlanningSemanticUncertaintyResolutionV5';
 import { weeklyPlanningMaterialIdentityAnswersV5, applyWeeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
+import { bindWeeklyPlanningExistingWorkloadRatesV5 } from './weeklyPlanningExistingWorkloadRateReferenceV5';
 import {
   applyWeeklyPlanningCanonicalCorrectionsExtendedV5 as applyWeeklyPlanningCanonicalCorrectionsV5,
 } from './weeklyPlanningCanonicalCorrectionApplicationExtendedV5';
@@ -224,6 +225,7 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
   questionCode: string | null;
   operationKeyPrefix: string;
   conversationArchitecture?: WeeklyPlanningConversationArchitecture;
+  algorithmicRepairs?: readonly string[];
 }) {
   const materialIdentityAnswers = conversationArchitecturePolicy(params.conversationArchitecture).freshPendingQuestionBinding
     ? weeklyPlanningMaterialIdentityAnswersV5(params.originalGraph, params.document) : [];
@@ -244,9 +246,12 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
         canonicalization: params.baseCanonicalization,
         errors: [],
       };
-  const boundCanonicalization = materialIdentityAnswers.length
-    ? applyWeeklyPlanningMaterialIdentityAnswersV5({ ...params, canonicalization: entityBindingApplication.canonicalization })
+  const rateBoundCanonicalization = conversationArchitecturePolicy(params.conversationArchitecture).semanticConversationActs
+    ? bindWeeklyPlanningExistingWorkloadRatesV5({ ...params, canonicalization: entityBindingApplication.canonicalization })
     : entityBindingApplication.canonicalization;
+  const boundCanonicalization = materialIdentityAnswers.length
+    ? applyWeeklyPlanningMaterialIdentityAnswersV5({ ...params, canonicalization: rateBoundCanonicalization })
+    : rateBoundCanonicalization;
   const correctionResult = applyCanonicalCorrectionResult({
     originalGraph: params.originalGraph,
     canonicalization: boundCanonicalization,

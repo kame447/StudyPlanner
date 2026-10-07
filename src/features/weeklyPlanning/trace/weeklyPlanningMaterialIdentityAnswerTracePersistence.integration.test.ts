@@ -56,7 +56,7 @@ it('persists the rate and identity transaction through checkpoint, outbox retry,
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(restored!.graph);
   expect(active.components).toEqual([expect.objectContaining({ label: NAMED_MATERIAL })]);
   expect(active.workloads).toEqual([expect.objectContaining({ id: old.workloads[0].id, amount: 20, source: old.workloads[0].source })]);
-  expect(active.effortEstimates).toContainEqual(expect.objectContaining({ minutes: 3 }));
+  expect(active.effortEstimates).toContainEqual(expect.objectContaining({ minutes: 3, targetFactId: old.workloads[0].id }));
   expect(active.uncertainties).toEqual([]);
   expect(restored!.graph.factLifecycles).toContainEqual(expect.objectContaining({ factId: old.components[0].id, status: 'superseded' }));
   expect((restored!.planningState.previewCandidates ?? []).length).toBeGreaterThan(0);

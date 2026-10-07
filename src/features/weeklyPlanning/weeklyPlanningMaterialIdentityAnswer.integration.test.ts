@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './semantic/weeklyPlanningActiveSchedulerGraphViewV5';
-import { materialIdentityConversationFixture, MATERIAL_SETUP_TEXT, MATERIAL_RATE_TEXT, MATERIAL_EXPLANATION_TEXT, NAMED_MATERIAL } from './testUtils/weeklyPlanningMaterialIdentityAnswerFixture';
+import { materialIdentityConversationFixture, MATERIAL_SETUP_TEXT, MATERIAL_RATE_TEXT, MATERIAL_EXPLANATION_TEXT, NAMED_MATERIAL, LATER_MATERIAL_WORK_TEXT } from './testUtils/weeklyPlanningMaterialIdentityAnswerFixture';
+import { resolveGenericWorkItemEstimate } from './semantic/weeklyPlanningGenericWorkEstimation';
 import { resetScriptedConversationRuntime } from './testUtils/weeklyPlanningScriptedConversationHarness';
 
 let fixture: ReturnType<typeof materialIdentityConversationFixture>;
@@ -34,7 +35,7 @@ describe('existing material identity answer through the production controller', 
     expect(active.components).toEqual([expect.objectContaining({ label: NAMED_MATERIAL, role: 'material' })]);
     expect(active.uncertainties).toHaveLength(0);
     expect(active.workloads).toEqual([expect.objectContaining({ id: old.workloads[0].id, amount: 20, componentId: active.components[0].id, source: old.workloads[0].source })]);
-    expect(active.effortEstimates).toContainEqual(expect.objectContaining({ minutes: 3, kind: 'duration_per_unit' }));
+    expect(active.effortEstimates).toContainEqual(expect.objectContaining({ minutes: 3, kind: 'duration_per_unit', targetFactId: old.workloads[0].id }));
     expect(graph.factLifecycles).toContainEqual(expect.objectContaining({ factId: oldMaterial.id, status: 'superseded', supersededByFactId: active.components[0].id }));
     expect(graph.components.find((fact) => fact.id === oldMaterial.id)).toEqual(oldMaterial);
     expect(answer.result!.draftCandidates.length).toBeGreaterThan(0);
@@ -50,5 +51,24 @@ describe('existing material identity answer through the production controller', 
     expect(rate.calls.filter((call) => call.kind === 'semantic_generic')).toHaveLength(1);
     expect(fixture.conversation.graph()?.effortEstimates).toContainEqual(expect.objectContaining({ minutes: 3 }));
     expect(rate.result?.draftCandidates).toHaveLength(0);
+  });
+  it('keeps a workload-specific rate from estimating later same-unit work in a sibling material', async () => {
+    fixture = materialIdentityConversationFixture({ rateShape: 'public_reference' });
+    const { conversation } = fixture;
+    await conversation.submit(MATERIAL_SETUP_TEXT);
+    await conversation.submit(MATERIAL_RATE_TEXT);
+    await conversation.submit(fixture.answerText);
+    const originalWorkId = conversation.graph()!.workloads[0].id;
+    const later = await conversation.submit(LATER_MATERIAL_WORK_TEXT);
+    expect(later.result?.failure).toBeUndefined();
+    const active = createWeeklyPlanningActiveSchedulerGraphViewV5(conversation.graph()!);
+    const workloads = conversation.graph()!.workloads.filter((fact): fact is typeof fact & { quantityRole: 'target' } =>
+      fact.quantityRole === 'target' && active.workloads.some((item) => item.id === fact.id));
+    const added = workloads.find((fact) => fact.id !== originalWorkId)!;
+    expect(added.amount).toBe(10);
+    expect(active.effortEstimates[0].targetFactId).toBe(originalWorkId);
+    expect(resolveGenericWorkItemEstimate({ workload: added, workloads, estimates: active.effortEstimates }).estimatedMinutes).toBeNull();
+    expect(conversation.getState().intakeState?.lastQuestionContext?.targetSlot).toBe('stable_v5:missing_effort_estimate');
+    expect(later.result!.draftCandidates.some((candidate) => candidate.title.includes('プリント'))).toBe(false);
   });
 });

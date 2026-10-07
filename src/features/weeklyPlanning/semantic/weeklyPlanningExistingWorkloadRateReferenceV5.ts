@@ -1,8 +1,13 @@
 import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './weeklyPlanningActiveSchedulerGraphViewV5';
+import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
+import type { WeeklyPlanningSemanticCanonicalizationResultV5 } from './weeklyPlanningSemanticCanonicalizerV5';
 
 const record = (value: unknown): Record<string, unknown> | null => typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
 const records = (value: unknown) => Array.isArray(value) ? value.map(record).filter((item): item is Record<string, unknown> => item !== null) : [];
+const bindingSignature = (task: Record<string, unknown>, estimate: Record<string, unknown>, workloadId: string) =>
+  `active-workload-rate-reference-projected:${JSON.stringify([task.localId, task.existingPublicId, estimate.localId,
+    estimate.kind, estimate.minutes, estimate.unitCode, estimate.precision, estimate.sourceText, workloadId])}`;
 
 /** Resolve a validated machine-id rate scope, without importing an old quantity as new language. */
 export function projectWeeklyPlanningExistingWorkloadRateReferenceV5(params: {
@@ -38,9 +43,32 @@ export function projectWeeklyPlanningExistingWorkloadRateReferenceV5(params: {
       for (const container of containers) if (Array.isArray(container.workloads)) {
         container.workloads = container.workloads.filter((fact) => fact !== replay);
       }
+      repairs.push(bindingSignature(task, estimate, target.id));
       estimate.targetLocalId = task.localId;
-      repairs.push(`active-workload-rate-reference-projected:${estimate.localId}:${target.id}`);
     }
   }
   return { rawResponse: repairs.length ? JSON.stringify(document) : params.rawResponse, repairs };
+}
+
+/** The task-local bridge is representation only: retain the validated workload's scope. */
+export function bindWeeklyPlanningExistingWorkloadRatesV5(params: {
+  originalGraph: WeeklyPlanningFactGraphV5; document: WeeklyPlanningSemanticDocumentV5;
+  canonicalization: WeeklyPlanningSemanticCanonicalizationResultV5; algorithmicRepairs?: readonly string[];
+}): WeeklyPlanningSemanticCanonicalizationResultV5 {
+  const base = params.canonicalization;
+  if (base.status !== 'applied' || !base.diff || !params.algorithmicRepairs?.length) return base;
+  const active = createWeeklyPlanningActiveSchedulerGraphViewV5(params.originalGraph);
+  const targets = new Map<string, string>();
+  for (const task of params.document.tasks) for (const estimate of task.effortEstimates) {
+    if (estimate.kind !== 'duration_per_unit' || estimate.targetLocalId !== task.localId) continue;
+    const matches = active.workloads.filter((workload) => workload.taskId === task.existingPublicId
+      && workload.unitCode === estimate.unitCode
+      && params.algorithmicRepairs!.includes(bindingSignature({ ...task }, { ...estimate }, workload.id)));
+    const estimateId = base.localToFactId[estimate.localId];
+    if (matches.length !== 1 || !base.diff.added.some((entry) => entry.kind === 'effort_estimate' && entry.id === estimateId)) continue;
+    targets.set(estimateId, matches[0].id);
+  }
+  if (!targets.size) return base;
+  return { ...base, graph: { ...base.graph, effortEstimates: base.graph.effortEstimates.map((fact) =>
+    targets.has(fact.id) ? { ...fact, targetFactId: targets.get(fact.id)! } : fact) } };
 }

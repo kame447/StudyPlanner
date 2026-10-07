@@ -330,6 +330,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
         originalGraph: graph,
         document: normalization.document,
         baseCanonicalization,
+        algorithmicRepairs: normalization.diagnostics.algorithmicRepairs,
         contextualAnswer: Boolean(contextualAnswer),
         questionCode: pendingQuestion?.questionCode ?? null,
         operationKeyPrefix: `${input.conversationId}:${input.turnId}`,
