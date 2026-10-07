@@ -108,6 +108,7 @@ function researchTask(params: {
   components?: Json[];
   workloads?: Json[];
   effortEstimates?: Json[];
+  temporalConstraints?: Json[];
 }): Json {
   return {
     localId: 't-research',
@@ -118,7 +119,7 @@ function researchTask(params: {
     study: { purpose: 'self_study', activityKind: 'other', contextLabel: null, components: params.components ?? [] },
     workloads: params.workloads ?? [],
     effortEstimates: params.effortEstimates ?? [],
-    temporalConstraints: [],
+    temporalConstraints: params.temporalConstraints ?? [],
     recurrence: [],
     durableContextSignals: [],
     sourceText: params.sourceText,
@@ -129,7 +130,15 @@ function firstTurnDocument(): Json {
   return emptyDocument({
     planningIntent: 'create_plan',
     planningWindow: { localId: 'w', kind: 'relative_week', value: 'next_week', start: null, end: null, sourceText: '来週' },
-    tasks: [researchTask({ existingPublicId: null, sourceText: '卒研を進めたい' })],
+    tasks: [researchTask({
+      existingPublicId: null,
+      sourceText: '卒研を進めたい',
+      temporalConstraints: [{
+        localId: 'night', targetLocalId: 't-research', kind: 'preferred_window', constraintLevel: 'soft',
+        dateExpression: null, namedTimePeriod: 'night', startTime: null, endTime: null,
+        precision: 'unspecified', sourceText: 'できれば夜',
+      }],
+    })],
   });
 }
 
@@ -212,9 +221,14 @@ describe('scenario F: a stated time budget is schedulable work (shared fix, both
       // From the stated budget on, the plan exists and no turn re-asks for a quantity.
       expect(statuses.slice(1)).toEqual(Array(5).fill('draft_ready'));
       expect(slots.slice(1)).toEqual(Array(5).fill(null));
-      // Exactly the user's 2 hours. Nothing invented. (How 「1回1時間」 splits the block is
-      // the separate shared session-size propagation fix, not asserted here.)
-      expect(blockMinutes(conversation).reduce((sum, value) => sum + value, 0)).toBe(120);
+      expect(blockMinutes(conversation)).toEqual([60, 60]);
+      expect(conversation.graph()?.temporalConstraints).toEqual([expect.objectContaining({
+        kind: 'preferred_window', namedTimePeriod: 'night', constraintLevel: 'soft',
+      })]);
+      for (const candidate of conversation.getState().previewCandidates ?? []) {
+        expect(candidate.date >= '2026-10-12' && candidate.date <= '2026-10-18').toBe(true);
+        expect(candidate.startTime >= '21:00' && candidate.endTime <= '24:00').toBe(true);
+      }
     },
   );
 
@@ -254,6 +268,85 @@ describe('scenario F: a stated time budget is schedulable work (shared fix, both
     expect(blockMinutes(conversation).reduce((sum, value) => sum + value, 0)).toBeLessThan(240);
   });
 
+  it.each(['interaction_v1', 'legacy_v5'] as const)(
+    '%s: existing needs_breakdown shells cannot recreate a satisfied question on declining turns',
+    async (architecture) => {
+      semantic = (userText, taskId) => {
+        const document = measuredSemantic(userText, taskId);
+        if (taskId !== null) {
+          for (const task of document.tasks as Json[]) task.decompositionStatus = 'needs_breakdown';
+        }
+        return document;
+      };
+      const { conversation, slots, statuses } = await run([...MEASURED, 'お任せします', 'お任せします'], architecture);
+      expect(statuses.slice(1)).toEqual(Array(7).fill('draft_ready'));
+      expect(slots.slice(1)).toEqual(Array(7).fill(null));
+      expect(blockMinutes(conversation)).toEqual([60, 60]);
+      const graph = conversation.graph()!;
+      const activeIds = new Set(graph.factLifecycles.filter((entry) => entry.status === 'active').map((entry) => entry.factId));
+      expect(graph.uncertainties.filter((entry) => activeIds.has(entry.id))).toEqual([]);
+    },
+  );
+
+  it.each(['interaction_v1', 'legacy_v5'] as const)(
+    '%s: a target workload budget also converges without section counts or extra cost',
+    async (architecture) => {
+      semantic = (userText, taskId) => userText === T2 && taskId !== null
+        ? restate(taskId, T2, {
+            workloads: [{
+              localId: 'time-target', quantityRole: 'target', amount: 2, unitCode: 'hour', unitLabel: '時間',
+              rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null, sourceText: T2,
+            }],
+          })
+        : measuredSemantic(userText, taskId);
+      const { conversation, slots, statuses } = await run(MEASURED, architecture);
+      expect(statuses.slice(1)).toEqual(Array(5).fill('draft_ready'));
+      expect(slots.slice(1)).toEqual(Array(5).fill(null));
+      expect(blockMinutes(conversation)).toEqual([60, 60]);
+      expect(conversation.graph()?.workloads).toEqual([expect.objectContaining({
+        amount: 2, unitCode: 'hour', quantityRole: 'target',
+      })]);
+    },
+  );
+
+  it(
+    'interaction_v1: an unanswered identity uncertainty still blocks a complete time budget until identified',
+    async () => {
+      const architecture = 'interaction_v1';
+      semantic = (userText, taskId) => {
+        const document = measuredSemantic(userText, taskId);
+        // This variant isolates identity from structural decomposition: the activity is
+        // understood, but its material has not been identified by the user yet.
+        if (taskId === null) (document.tasks as Json[])[0].decompositionStatus = 'atomic';
+        return taskId !== null ? document : {
+          ...document,
+          uncertainties: [{
+            localId: 'identity', targetLocalId: 't-research', field: 'material_identity',
+            reason: 'the study target must be identified', sourceText: (document.tasks as Json[])[0].sourceText,
+          }],
+        };
+      };
+      documentArchitecture = architecture;
+      const conversation = createScriptedConversation({ provider, architecture, studyMaterials: [NOTE] });
+      for (const text of [T1, T2, T4, T6]) {
+        const turn = await conversation.submit(text);
+        expect(turn.result?.failure, JSON.stringify({ text, trace: turn.debugTrace })).toBeUndefined();
+        expect(askedSlot(conversation)).toBe('stable_v5:semantic_uncertainty');
+        expect(conversation.getState().previewCandidates ?? []).toEqual([]);
+        const graph = conversation.graph()!;
+        const activeIds = new Set(graph.factLifecycles.filter((entry) => entry.status === 'active').map((entry) => entry.factId));
+        expect(graph.uncertainties.filter((entry) => activeIds.has(entry.id))).toEqual([
+          expect.objectContaining({ field: 'material_identity' }),
+        ]);
+      }
+      const turn = await conversation.submit(T3);
+      expect(turn.result?.failure).toBeUndefined();
+      expect(conversation.getState().intakeState?.status).toBe('draft_ready');
+      expect(askedSlot(conversation)).toBeNull();
+      expect(blockMinutes(conversation)).toEqual([60, 60]);
+    },
+  );
+
   it('property: after a single positive time budget, no turn re-presents a quantity question', async () => {
     await fc.assert(fc.asyncProperty(
       fc.record({
@@ -287,6 +380,10 @@ describe('scenario F: a stated time budget is schedulable work (shared fix, both
         expect(slots.slice(budgetIndex)).toEqual(Array(texts.length - budgetIndex).fill(null));
         expect(statuses.slice(budgetIndex).every((status) => status === 'draft_ready')).toBe(true);
         expect(blockMinutes(conversation).reduce((sum, value) => sum + value, 0)).toBe(budgetMinutes);
+        if (sessionMinutes !== null) {
+          expect(blockMinutes(conversation)).toHaveLength(Math.ceil(budgetMinutes / sessionMinutes));
+          expect(blockMinutes(conversation).every((minutes) => minutes > 0 && minutes <= sessionMinutes)).toBe(true);
+        }
       },
     ), { numRuns: 25 });
   });
