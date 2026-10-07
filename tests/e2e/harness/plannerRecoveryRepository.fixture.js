@@ -72,6 +72,18 @@ export const plannerRepository = Object.fromEntries(Object.entries(real).map(([m
 
 window.__plannerRecoveryRepository = {
   snapshot,
+  async seedRecurringEditorPlans({ userId, date }) {
+    const now = new Date().toISOString();
+    const plans = ['A', 'B'].map((suffix, index) => ({
+      id: `recurring-editor-${suffix}`, seriesId: `recurring-editor-${suffix}`, userId,
+      title: `繰り返し予定${suffix}`, subject: '数学', date,
+      startTime: `${9 + index * 2}:00`.padStart(5, '0'), endTime: `${10 + index * 2}:00`,
+      repeat: 'daily', repeatUntil: '2026-12-31', excludedDates: [], recurrenceRules: [],
+      type: 'study', memo: '', createdAt: now, updatedAt: now,
+    }));
+    for (const plan of plans) await plannerRepository.upsertPlan(plan);
+    return plans;
+  },
   async seedOpenTodo(userId) {
     const now = new Date().toISOString();
     await plannerRepository.upsertTodo({ id: 'read-repair-todo', userId, title: '予定化するTodo',
@@ -152,6 +164,7 @@ window.__plannerRecoveryRepository = {
   },
   holdNextTemplateWrite() { holdPlanWrite = 'upsertScheduleTemplate'; },
   holdNextPlanWrite() { holdPlanWrite = 'upsertPlan'; },
+  holdNextRecurringWrite() { holdPlanWrite = 'applyRecurringPlanMutation'; },
   holdNextTodoSchedule() { holdPlanWrite = 'scheduleTodoPlan'; },
   releasePlanWrite() {
     const release = heldPlanWrite;

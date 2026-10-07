@@ -1595,3 +1595,47 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     await expect.poll(storedAvatar).toBe(selected);
   });
 }
+
+for (const [viewport, theme, replacement] of [['desktop', 'light', 'editor'], ['mobile', 'dark', 'scope']]) {
+  test(`Recurring confirmation preserves a newer ${replacement} ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, cases.find(item => item.label === viewport && item.theme === theme));
+    await page.evaluate(async date => {
+      await window.__plannerRecoveryRepository.seedRecurringEditorPlans({ userId: window.__plannerRecoveryHook.snapshot().ownerId, date });
+      await window.__plannerRecoveryHook.refresh();
+    }, E2E_TODAY);
+    await navigate(page, '予定');
+    await page.getByRole('tab', { name: '日', exact: true }).click();
+    const openEditor = async title => {
+      await page.locator('.timeline-plan-block').filter({ hasText: title }).click();
+      await page.getByRole('dialog', { name: `${title}の操作`, exact: true })
+        .getByRole('button', { name: '予定を編集 時間や内容を変更', exact: true }).click();
+      return page.getByRole('dialog', { name: '学習予定を編集', exact: true });
+    };
+    const scope = () => page.locator('.modal-card').filter({ has: page.getByRole('heading', { name: '繰り返し予定の更新範囲', exact: true }) });
+    let editor = await openEditor('繰り返し予定A');
+    await editor.getByRole('textbox', { name: '予定名', exact: true }).fill('保存する繰り返し予定A');
+    await editor.getByRole('button', { name: '学習予定を更新', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    await page.evaluate(() => window.__plannerRecoveryRepository.holdNextRecurringWrite());
+    await scope().getByRole('button', { name: /^すべての予定/ }).click();
+    await expect.poll(async () => (await repoSnapshot(page)).pendingPlanWrites).toBe(1);
+    await scope().getByRole('button', { name: '閉じる', exact: true }).click();
+    editor = await openEditor('繰り返し予定B');
+    await editor.getByRole('textbox', { name: '予定名', exact: true }).fill('未保存の繰り返し予定B');
+    if (replacement === 'scope') await editor.getByRole('button', { name: '学習予定を更新', exact: true }).click();
+    const before = (await repoSnapshot(page)).calls.filter(call => call.method === 'applyRecurringPlanMutation' && call.phase === 'returned').length;
+    expect(await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanWrite())).toBe(true);
+    await expect.poll(async () => (await repoSnapshot(page)).calls.filter(call => call.method === 'applyRecurringPlanMutation' && call.phase === 'returned').length).toBe(before + 1);
+    await expect(page.getByText('繰り返し予定を更新しました。', { exact: true })).toBeVisible();
+    if (replacement === 'scope') {
+      await expect(scope()).toBeVisible();
+      await expect(scope()).toContainText('繰り返し予定B');
+      await scope().getByRole('button', { name: '閉じる', exact: true }).click();
+    } else {
+      await expect(editor.getByRole('textbox', { name: '予定名', exact: true })).toHaveValue('未保存の繰り返し予定B');
+      await editor.getByRole('button', { name: '閉じる', exact: true }).click();
+    }
+    const events = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1')));
+    expect(events.map(event => event.title).sort()).toEqual(['保存する繰り返し予定A', '繰り返し予定B'].sort());
+  });
+}
