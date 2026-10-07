@@ -199,7 +199,9 @@ it.each(['unavailable', 'repair-exhausted'] as const)('preserves accepted state 
   const result = await submit(AUTHORIZE_TEXT);
   expectFocusedCorrelation(spy.mock.calls[1][0].pending.requestId, graph.revision);
   expect(result.accepted).toBe(true); expect(result.draftCandidates).toEqual([]);
-  expect(providerOrder).toEqual(outcome === 'unavailable' ? ['jev', 'focused-luna', 'generic'] : ['jev', 'focused-luna', 'generic', 'generic']);
+  // Issue #488 interaction (the default for new conversations): a rejected semantic turn is
+  // answered by the renderer from typed recovery context; a provider outage stays deterministic.
+  expect(providerOrder).toEqual(outcome === 'unavailable' ? ['jev', 'focused-luna', 'generic'] : ['jev', 'focused-luna', 'generic', 'generic', 'dialogue']);
   expect((await spy.mock.results[1].value).failure).toMatchObject({
     code: outcome === 'unavailable' ? 'stable_v5_provider_failure' : 'stable_v5_normalization_rejected',
     diagnostics: { attemptCount: outcome === 'unavailable' ? 1 : 2, repairAttempted: outcome !== 'unavailable' },
