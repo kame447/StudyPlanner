@@ -49,12 +49,12 @@ for (const [device, viewport] of [
     await expect(dialog.getByRole('tab', { name: '予定', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(dialog.getByLabel('日付', { exact: true })).toHaveValue(E2E_TODAY);
     await expect(dialog.getByPlaceholder('例: 英語課題 / 面接準備')).toHaveValue('独自教材 A');
-    await expect(dialog.getByLabel('教材', { exact: true })).toHaveValue('bookshelf-handoff-a');
+    await expect(dialog.getByRole('combobox', { name: '教材', exact: true })).toHaveValue('bookshelf-handoff-a');
     await expect(dialog.getByLabel('教科', { exact: true })).toHaveValue('情報科学');
     await testInfo.attach(`bookshelf-prefilled-${device}`, { body: await page.screenshot(), contentType: 'image/png' });
     // Editing the title to another registered material must not replace the explicit choice.
     await dialog.getByPlaceholder('例: 英語課題 / 面接準備').fill('独自教材 B');
-    await expect(dialog.getByLabel('教材', { exact: true })).toHaveValue('bookshelf-handoff-a');
+    await expect(dialog.getByRole('combobox', { name: '教材', exact: true })).toHaveValue('bookshelf-handoff-a');
     await dialog.getByRole('button', { name: '30分', exact: true }).click();
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
     await expect(dialog).toHaveCount(0);
@@ -82,7 +82,7 @@ for (const [device, viewport] of [
     await page.getByRole('button', { name: '教材メニューを開く', exact: true }).click();
     await page.getByRole('button', { name: '予定に追加', exact: true }).click();
     await expect(dialog.getByPlaceholder('例: 英語課題 / 面接準備')).toHaveValue('独自教材 B');
-    await expect(dialog.getByLabel('教材', { exact: true })).toHaveValue('bookshelf-handoff-b');
+    await expect(dialog.getByRole('combobox', { name: '教材', exact: true })).toHaveValue('bookshelf-handoff-b');
     await expect(dialog.getByLabel('教科', { exact: true })).toHaveValue('数学');
     await dialog.getByRole('button', { name: '45分', exact: true }).click();
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
