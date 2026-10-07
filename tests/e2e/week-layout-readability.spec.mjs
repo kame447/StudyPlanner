@@ -8,6 +8,29 @@ async function elementWidth(locator) {
   return box.width;
 }
 
+for (const width of [390, 1280]) {
+  test(`week date headings fit day and weekday at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(HARNESS_URL);
+
+    const headers = page.locator('.schedule-week-view .weekly-draft-preview-date');
+    const labels = ['24（月）', '25（火）', '26（水）', '27（木）', '28（金）', '29（土）', '30（日）'];
+    await expect(headers).toHaveText(labels);
+    for (const [index, weekday] of ['月', '火', '水', '木', '金', '土', '日'].entries()) {
+      await expect(headers.nth(index)).toHaveAccessibleName(`2026年8月${24 + index}日（${weekday}）`);
+      const labelFits = await headers.nth(index).locator('strong').evaluate((element) => (
+        element.scrollWidth <= element.clientWidth
+      ));
+      expect(labelFits).toBe(true);
+    }
+
+    await page.getByRole('button', { name: '記録', exact: true }).click();
+    await expect(headers).toHaveText(labels);
+    await expect(page.getByRole('group', { name: '2026年8月30日（日）の記録', exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('week-date-labels.png'), fullPage: true });
+  });
+}
+
 test('week width splitting is local to real overlap clusters', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(HARNESS_URL);
