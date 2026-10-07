@@ -8,6 +8,7 @@ import {
 } from './weeklyPlanningCurrentTurnProvenanceV5';
 import { projectWeeklyPlanningCorrectionContextV5 } from './weeklyPlanningCorrectionContextProjectionV5';
 import { projectWeeklyPlanningRegisteredMaterialReferencesV5 } from './weeklyPlanningRegisteredMaterialReferenceProjectionV5';
+import { validateWeeklyPlanningDuplicateFactsV5 } from './weeklyPlanningDuplicateFactValidationV5';
 import { validateWeeklyPlanningMaterialIdentityAnswerV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 import { projectWeeklyPlanningExistingWorkloadRateReferenceV5 } from './weeklyPlanningExistingWorkloadRateReferenceV5';
 import {
@@ -208,6 +209,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
       input.publicStateSummary,
     ),
     ...(semanticConversationActs ? validateWeeklyPlanningCorrectionReplacementKindsV5(document) : []),
+    ...(semanticConversationActs ? validateWeeklyPlanningDuplicateFactsV5(document) : []),
     ...validateWeeklyPlanningDecisionTargetReferencesV5(
       document,
       input.publicStateSummary,

@@ -25,7 +25,16 @@ beforeEach(() => {
 afterEach(() => { provider.restore(); resetScriptedConversationRuntime(); });
 
 function preference(scope: 'task' | 'plan', overrides: Json): Json {
-  if (scope === 'task') return taskTemporalPreferenceDocument(overrides);
+  if (scope === 'task') {
+    const document = taskTemporalPreferenceDocument(overrides);
+    // Overriding the date makes the five per-weekday windows identical; interaction validation
+    // rejects such duplicates (live A on e9b62a50), so the scope cases keep one window.
+    if ('dateExpression' in overrides) {
+      const task = (document.tasks as Json[])[0];
+      task.temporalConstraints = (task.temporalConstraints as Json[]).slice(0, 1);
+    }
+    return document;
+  }
   const document = liveATemporalDocument();
   Object.assign((document.availabilityDeclarations as Json[])[0], overrides);
   return document;
@@ -139,6 +148,8 @@ describe('A temporal preference representation matrix', () => {
         dateExpression: null, startTime: null, namedTimePeriod: 'night', sourceText: 'できれば夜',
       });
       const task = (response.tasks as Json[])[0];
+      // One undated window: five identical copies are rejected as duplicates in interaction.
+      task.temporalConstraints = (task.temporalConstraints as Json[]).slice(0, 1);
       Object.assign(task, { workloads: [], effortEstimates: [], decompositionStatus: 'atomic', sourceText: 'アルゴリズムイントロダクションを読みたい' });
       const conversation = createScriptedConversation({ provider, architecture, studyMaterials: [LIVE_A_BOOK] });
       const first = await conversation.submit('来週、アルゴリズムイントロダクションを読みたい。できれば夜');

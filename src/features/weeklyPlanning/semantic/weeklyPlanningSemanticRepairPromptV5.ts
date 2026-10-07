@@ -60,6 +60,9 @@ function repairDirectivesForErrors(errors: string[], architecture?: WeeklyPlanni
   if (errors.some((error) => error.includes('.replacementLocalId:unknown:'))) {
     directives.push('Declare missing replacement facts in a schema-valid task/component; keep valid fields. Set correction.replacementLocalId to each fresh localId. Use exact existingPublicIds for accepted parent identity.');
   }
+  if (errors.some((error) => error.includes(':duplicate-of:'))) {
+    directives.push('Facts that differ only by localId are duplicates. For a recurring weekday set give each copy its own dateExpression weekday:<english-weekday>; otherwise keep one copy.');
+  }
   if (errors.some((error) => error.includes('.replacementLocalId:kind-mismatch:'))) {
     directives.push('A correction replaces a fact with a new fact of the same kind. To add a material or other component to an accepted task, emit the new component without any correction; change a task only with a replacement task. Keep the new fact.');
   }
