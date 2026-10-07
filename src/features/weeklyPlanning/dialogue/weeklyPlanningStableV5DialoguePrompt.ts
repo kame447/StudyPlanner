@@ -180,7 +180,7 @@ const INTERACTION_GOAL_INSTRUCTION = 'communication.goalはアプリが決めた
 const INTERACTION_GOAL_INSTRUCTIONS: Readonly<Record<WeeklyPlanningStableV5CommunicationGoal, string>> = {
   ask_question: 'goal=ask_question: questionIntentの質問を一つ聞く。このturnで受け取った情報があれば先に短く受け止める。',
   report_status: 'goal=report_status: このturnで受け取った情報があれば先に短く受け止める。statusReason=ready_to_create_preview→予定を作るのに必要なことはそろい、頼めば仮予定を作れると伝える。preview_unchanged→今の仮予定の候補はそのままで、直したい点を言うかpreviewPromotionControlLabelの操作で進められると伝える。新しい候補ができた・候補が変わったとは書かず、候補の中身も書かない。',
-  present_preview: 'goal=present_preview: ACK received details, announce previewCount and previewPromotionControlLabel. 候補の日時・回数・時間帯など中身は書かず、条件どおりとも言わない。中身はプレビューで見てもらう。',
+  present_preview: 'goal=present_preview: ACK details. previewCount counts blocks in ONE preview: say 候補N件, never N個/つのプレビュー or N案. Announce previewPromotionControlLabel. 候補の日時・回数・時間帯など中身は書かず、条件どおりとも言わない。',
   explain_question: 'goal=explain_question: 直前の質問の理由・意味に、questionPurposes/purposeMeaningsと既知の量・期間・relevantLabelsに沿ってまず具体的に答える（required_before_resumeならACKの後）。質問の誤解は穏やかに正す。laterNeedsは説明に役立つときだけ使う。askQuestion=trueならrequestedInformationを落とさず、直前と同じ文面を避けて同じ質問を一度聞く。',
   acknowledge_aside: 'goal=acknowledge_aside: ユーザーが移った別の話題に自然に応じる。止まっている質問は聞かず、保留や未変更の説明もしない。',
   resume_question: 'goal=resume_question: その話題に自然に戻り、その質問を一つ聞く。',
@@ -210,7 +210,7 @@ function interactionCommunicationInstructions(
       ? ['previewConstraintSatisfaction: Unmet/unverified overrides timing ACK/advice. Announce count/control only; timing/session/fulfillment belongs to app disclosure. Neutral ACK is allowed.']
       : []),
     ...(communication.allocationBreakdown
-      ? ['allocationBreakdown: App discloses estimates/margins. Do not invent reasons, recalculate or call allocatedMinutes the requested amount.']
+      ? ['allocationBreakdown: App shows estimates/margins. Never mention either in this reply, even zero margin.']
       : []),
     ...(communication.planningDetailsNotApplied
       ? ['planningDetailsNotApplied=true: Details were not accepted. Do not report acceptance, rejection or its cause; simply invite the intended change again.']

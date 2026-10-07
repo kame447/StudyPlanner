@@ -228,6 +228,31 @@ describe('Stable V5 dialogue prompt', () => {
     expect(adviceRequest).not.toContain('助言・可否・数値の判断は書かない');
   });
 
+  it('counts blocks in one preview and leaves all allocation commentary to the app', () => {
+    const context: WeeklyPlanningStableV5DialogueRenderInput = {
+      ...input(), actionKind: 'preview_ready', questionCode: null, questionIntent: null, previewCount: 2,
+      communication: {
+        goal: 'present_preview', questionPurposes: [], askQuestion: false, laterNeeds: [],
+        statusReason: null, planningDetailsNotApplied: false, consultationDeferred: false, previewDisclosure: null,
+        allocationBreakdown: { estimatedMinutes: 180, calibratedMinutes: 180, bufferedMinutes: 180,
+          allocatedMinutes: 180, marginMinutes: 0, reasons: [] },
+      },
+    };
+    const payload = JSON.parse(createWeeklyPlanningStableV5DialoguePrompt(context).userPrompt);
+    expect(payload.applicationDecision.previewCount).toBe(2);
+    expect(payload.request).toContain('previewCount counts blocks in ONE preview');
+    expect(payload.request).toContain('候補N件, never N個/つのプレビュー or N案');
+    expect(payload.request).toContain('Never mention either in this reply, even zero margin');
+    expect(payload.applicationDecision.communication.allocationBreakdown.marginMinutes).toBe(0);
+    const absent = JSON.parse(createWeeklyPlanningStableV5DialoguePrompt({ ...context,
+      communication: { ...context.communication!, allocationBreakdown: null },
+    }).userPrompt);
+    expect(absent.request).not.toContain('Never mention either in this reply');
+    const legacy = JSON.parse(createWeeklyPlanningStableV5DialoguePrompt({ ...context, conversationArchitecture: 'legacy_v5' }).userPrompt);
+    expect(legacy.request).not.toContain('blocks in ONE preview');
+    expect(legacy.request).not.toContain('Never mention either in this reply');
+  });
+
   it('asks the renderer to acknowledge what this turn removed only when something was removed', () => {
     const communication = {
       goal: 'explain_question' as const,
