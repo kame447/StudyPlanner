@@ -50,8 +50,12 @@ for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 844 }); await seed(page); await page.goto('/');
     await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: '予定', exact: true }).click();
     const schedule = page.getByRole('grid', { name: '月間カレンダー' });
-    await expect(schedule).toContainText('設定後も残る予定');
+    await expect(schedule).toBeVisible();
     const selectedDay = page.locator('.month-cell[aria-selected="true"]');
+    await expect(selectedDay).toHaveCount(1);
+    // Study plans contribute a duration, not an event-title pill, in the month grid.
+    await expect(selectedDay).toContainText('目標 1h');
+    const savedPlans = await page.evaluate(() => localStorage.getItem('studyplanner.plans'));
     const selectedDayText = await selectedDay.textContent();
     const menu = page.getByRole('button', { name: 'メニューを開く', exact: true });
     await page.evaluate(() => {
@@ -68,6 +72,7 @@ for (const width of [1280, 390, 320]) {
     await expect(settings).toBeVisible(); await expect(schedule).toBeHidden();
     await expect(page.getByRole('navigation', { name: '主要ナビゲーション' })).toHaveCount(0);
     await expect(settings.getByRole('heading', { name: 'アプリ設定' })).toBeFocused();
+    await expect(page.locator('input:focus, textarea:focus, select:focus')).toHaveCount(0);
     await page.keyboard.press('ArrowRight');
     await expect(selectedDay).toHaveText(selectedDayText);
     for (const theme of ['dark', 'light']) {
@@ -87,9 +92,11 @@ for (const width of [1280, 390, 320]) {
     await expect(panel).toHaveAttribute('aria-labelledby', 'app-settings-tab-memory');
     await page.keyboard.press('End');
     await expect(settings.getByRole('tab', { name: 'サポート', exact: true })).toBeFocused();
+    await expect(page.locator('input:focus, textarea:focus, select:focus')).toHaveCount(0);
     await expect(settings.getByRole('link', { name: 'お問い合わせ' })).toHaveAttribute('href', '/contact');
     await page.goBack(); await expect(settings).toHaveCount(0); await expect(schedule).toBeVisible();
-    await expect(menu).toBeFocused(); await expect(schedule).toContainText('設定後も残る予定');
+    await expect(menu).toBeFocused(); await expect(selectedDay).toHaveText(selectedDayText);
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.plans'))).toBe(savedPlans);
     await page.goForward(); await expect(settings).toBeVisible(); await expect(schedule).toBeHidden();
     await settings.getByRole('button', { name: '戻る', exact: true }).click();
     await expect(settings).toHaveCount(0); await expect(schedule).toBeVisible();
@@ -109,6 +116,7 @@ for (const width of [1280, 390, 320]) {
     await expect(quickAdd).toHaveAttribute('aria-expanded', 'false');
     // Browser Forward can reopen settings while an existing body-portal dialog is open.
     await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: 'ホーム', exact: true }).click();
+    await expect(page.locator('.home-today-panel')).toContainText('設定後も残る予定');
     await page.getByRole('button', { name: '今日の予定に追加', exact: true }).click();
     const addDialog = page.getByRole('dialog', { name: '今日の予定に追加', exact: true });
     await expect(addDialog).toBeVisible();
@@ -124,5 +132,7 @@ for (const width of [1280, 390, 320]) {
     await page.getByRole('button', { name: '戻る', exact: true }).click();
     await expect(page.getByRole('main', { name: 'アプリ設定' })).toHaveCount(0);
     await expect(page.getByRole('navigation', { name: '主要ナビゲーション' })).toBeVisible();
+    await expect(page.locator('.home-today-panel')).toContainText('設定後も残る予定');
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.plans'))).toBe(savedPlans);
   });
 }
