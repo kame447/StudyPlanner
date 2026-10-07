@@ -39,6 +39,31 @@ function renderModal({
 }
 
 describe('MaterialQuickCreateModal', () => {
+  for (const kind of ['予定', '記録']) {
+    it.each([
+      ['date', ''], ['date', '2026-02-30'], ['date', '2026-13-01'], ['date', 'invalid'],
+      ['time', ''], ['time', '25:00'], ['time', '19:90'], ['time', '7:00'],
+    ])(`rejects invalid %s=%s for ${kind} and allows correction`, async (type, value) => {
+      const { renderer, onSavePlan, onSaveStandaloneActual, onClose } = renderModal();
+      const root = renderer.root;
+      act(() => root.findAllByType('button').find(button => button.props.role === 'tab' && button.props.children === kind)!.props.onClick());
+      const input = () => root.findAllByType('input').find(input => input.props.type === type)!;
+      act(() => input().props.onChange({ target: { value } }));
+      expect(root.findByProps({ type: 'submit' }).props.disabled).toBe(true);
+      await act(async () => { await root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); });
+      expect(onSavePlan).not.toHaveBeenCalled();
+      expect(onSaveStandaloneActual).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(input().props.value).toBe(value);
+      act(() => input().props.onChange({ target: { value: type === 'date' ? '2028-02-29' : '19:00' } }));
+      expect(root.findByProps({ type: 'submit' }).props.disabled).toBe(false);
+      await act(async () => { await root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); });
+      expect(kind === '予定' ? onSavePlan : onSaveStandaloneActual).toHaveBeenCalledOnce();
+      expect(onClose).toHaveBeenCalledOnce();
+      act(() => renderer.unmount());
+    });
+  }
+
   it('keeps the default material quick-create path as a standalone actual', async () => {
     const { renderer, onSaveStandaloneActual, onClose } = renderModal();
 
