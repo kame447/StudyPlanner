@@ -34,7 +34,10 @@ export function projectWeeklyPlanningRegisteredMaterialReferencesV5(params: {
   const tasks = document.tasks.map(original => {
     let task = original;
     const taskReference = task.existingPublicId;
-    if (taskReference && noAcceptedTask) {
+    // The reference must name one task in this response: two tasks citing the same
+    // bookshelf id are an ambiguity for the provider repair, not two new tasks.
+    if (taskReference && noAcceptedTask
+      && document.tasks.filter(entry => entry.existingPublicId === taskReference).length === 1) {
       const matches = materials.filter(entry => entry.materialId === taskReference);
       if (matches.length === 1 && materialLabels(matches[0]).some(label => label === task.title)) {
         repairs.push(`registered-material-task-reference-projected:${task.localId}:${taskReference}`);

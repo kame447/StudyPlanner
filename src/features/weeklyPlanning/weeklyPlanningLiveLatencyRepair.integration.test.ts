@@ -345,11 +345,20 @@ describe('final live A: bookshelf ids and a weekday-set date repair in one turn 
     expect(current.graph()!.tasks).toHaveLength(1);
   });
 
-  it.each(['accepted_task', 'other_title', 'legacy'] as const)('keeps the ordinary binding error for a task reference (%s)', (variant) => {
+  it.each(['accepted_task', 'other_title', 'legacy', 'two_tasks'] as const)('keeps the ordinary binding error for a task reference (%s)', (variant) => {
     const document = JSON.parse(fixture.semanticResponse);
     document.tasks[0].existingPublicId = fixture.registeredMaterial.materialId;
     document.tasks[0].title = variant === 'other_title' ? '別の作業' : fixture.registeredMaterial.name;
     if (variant === 'legacy') delete document.conversationActs;
+    if (variant === 'two_tasks') {
+      // Two tasks citing one bookshelf id would otherwise become 20 + 20 pages from one request.
+      const twin = structuredClone(document.tasks[0]);
+      twin.localId = 'task-2';
+      twin.workloads = twin.workloads.map((entry: Record<string, unknown>) => ({ ...entry, localId: `${String(entry.localId)}-twin` }));
+      twin.effortEstimates = twin.effortEstimates.map((entry: Record<string, unknown>) => ({ ...entry, localId: `${String(entry.localId)}-twin`, targetLocalId: `${String(entry.targetLocalId)}-twin` }));
+      twin.study.components = twin.study.components.map((entry: Record<string, unknown>) => ({ ...entry, localId: `${String(entry.localId)}-twin` }));
+      document.tasks.push(twin);
+    }
     const result = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(document), {
       currentUserText: fixture.userText,
       conversationArchitecture: variant === 'legacy' ? 'legacy_v5' : 'interaction_v1',
