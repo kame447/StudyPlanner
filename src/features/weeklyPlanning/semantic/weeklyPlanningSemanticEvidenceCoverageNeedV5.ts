@@ -30,7 +30,14 @@ export function hasWeeklyPlanningEvidenceCoverageMissingEffortV5(params: {
   if (result.status !== 'applied') return false;
   const graph = projectWeeklyPlanningStatedTimeBudgetGraphV5(createWeeklyPlanningActiveSchedulerGraphViewV5(result.graph));
   const compiled = compileGenericPlanningWorkItems(graph);
-  return compiled.issues.some((issue) => issue.code === 'missing_effort_estimate'
+  const missingEffort = compiled.issues.some((issue) => issue.code === 'missing_effort_estimate'
     && compiled.items.some((item) => item.workloadFactId === issue.workloadFactId
       && (item.quantityRole === 'target' || item.quantityRole === 'remaining')));
+  // Live C on 8c4ef790: the first document kept only the task, so the app would ask for the
+  // work the user had just stated. A task created by this document with no schedulable item is
+  // the same predicted re-ask as a missing effort.
+  const existingTaskIds = new Set(createWeeklyPlanningActiveSchedulerGraphViewV5(originalGraph).tasks.map((task) => task.id));
+  const missingWork = graph.tasks.some((task) => !existingTaskIds.has(task.id)
+    && !compiled.items.some((item) => item.taskId === task.id));
+  return missingEffort || missingWork;
 }

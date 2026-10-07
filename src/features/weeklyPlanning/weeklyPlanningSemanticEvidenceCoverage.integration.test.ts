@@ -15,10 +15,11 @@ let variant: 'A' | 'C';
 let firstDocumentOverride: WeeklyPlanningSemanticDocumentV5 | null;
 let auditReply: ScriptedProviderReply | null;
 let failRetry: boolean;
+let taskOnlyFirst: boolean;
 
 beforeEach(() => {
   resetScriptedConversationRuntime();
-  auditDecision = 'incomplete'; initiallyComplete = false; genericCalls = 0; variant = 'A'; firstDocumentOverride = null; auditReply = null; failRetry = false;
+  auditDecision = 'incomplete'; initiallyComplete = false; genericCalls = 0; variant = 'A'; firstDocumentOverride = null; auditReply = null; failRetry = false; taskOnlyFirst = false;
   provider = installScriptedWeeklyPlanningProvider((call) => {
     if (call.kind === 'renderer') return coverageRendererReply(call);
     if (call.schemaName === 'weekly_planning_dense_turn_completeness_audit_v5') return auditReply ?? JSON.stringify({
@@ -27,6 +28,17 @@ beforeEach(() => {
     });
     if (call.kind === 'semantic_generic') {
       if (failRetry && genericCalls > 0) return { failure: 'http', status: 503 };
+      if (taskOnlyFirst && genericCalls === 0) {
+        genericCalls += 1;
+        // Live C on 8c4ef790: the first document kept only the window and the task.
+        const taskOnly = coverageDocument(false, variant);
+        taskOnly.tasks = taskOnly.tasks.map((task) => ({
+          ...task, workloads: [], effortEstimates: [],
+          study: task.study ? { ...task.study, components: task.study.components.map((component) => ({ ...component, workloads: [] })) } : task.study,
+        }));
+        if (!call.schemaProperties.includes('conversationActs')) delete taskOnly.conversationActs;
+        return JSON.stringify(taskOnly);
+      }
       const document = firstDocumentOverride ? structuredClone(firstDocumentOverride) : coverageDocument(initiallyComplete || genericCalls++ > 0, variant);
       if (!call.schemaProperties.includes('conversationActs')) delete document.conversationActs;
       return JSON.stringify(document);
@@ -58,6 +70,18 @@ describe('partial omission uses the existing AI audit in the production turn', (
     const turn = await createScriptedConversation({ provider, architecture: 'interaction_v1' }).submit(COVERAGE_USER_TEXT);
     expect(turn.result?.failure).toBeUndefined();
     expect(turn.calls.map((call) => call.kind)).toEqual(['semantic_generic', 'renderer']);
+  });
+
+  it('audits a first document that kept only the task instead of asking for the stated pages (live C on 8c4ef790)', async () => {
+    variant = 'C';
+    taskOnlyFirst = true;
+    const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1' });
+    const turn = await conversation.submit(COVERAGE_C_USER_TEXT);
+    expect(turn.result?.failure).toBeUndefined();
+    expect(turn.calls.map((call) => call.kind)).toEqual(['semantic_generic', 'semantic_other', 'semantic_generic', 'renderer']);
+    expect(conversation.graph()?.workloads).toContainEqual(expect.objectContaining({ amount: 30, unitCode: 'page' }));
+    expect(conversation.graph()?.effortEstimates).toContainEqual(expect.objectContaining({ kind: 'duration_per_unit', minutes: 4 }));
+    expect(turn.result!.draftCandidates.length).toBeGreaterThan(0);
   });
 
   it('catches the short C rate-only tail through audit and normal interpretation', async () => {

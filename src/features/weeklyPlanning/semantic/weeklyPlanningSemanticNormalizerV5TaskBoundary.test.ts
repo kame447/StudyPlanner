@@ -87,6 +87,10 @@ describe('Stable V5 semantic normalizer task ownership', () => {
     expect(result.diagnostics.algorithmicRepairs ?? []).not.toContain(
       'task-container-split-by-independent-roots:task-grouped',
     );
-    expect(calls).toHaveLength(1);
+    // The fixture omits the stated 2/3 hours, so the interaction coverage audit asks once
+    // (live C on 8c4ef790); its unusable reply leaves the AI-selected structure as returned.
+    expect(calls).toHaveLength(2);
+    expect(JSON.stringify(calls[1].responseFormat ?? calls[1].response_format))
+      .toContain('weekly_planning_dense_turn_completeness_audit_v5');
   });
 });
