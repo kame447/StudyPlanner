@@ -166,7 +166,6 @@ export function ActualTrackingTools({
       <div className="section-header">
         <div>
           <h2>計測補助</h2>
-          <p>学習中にストップウォッチやタイマーを使って、そのまま記録時刻へ反映できます。</p>
         </div>
       </div>
 

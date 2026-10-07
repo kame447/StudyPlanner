@@ -254,7 +254,6 @@ export function ReportView({
           </div>
           <div>
             <h2>この期間にはまだ学習記録がありません</h2>
-            <p>期間や教材を切り替えると、別の学習記録を確認できます。</p>
           </div>
         </section>
       ) : (

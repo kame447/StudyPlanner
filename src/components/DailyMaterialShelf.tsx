@@ -102,7 +102,6 @@ export function DailyMaterialShelf({
       <div className="daily-material-head">
         <div>
           <strong>教材から追加</strong>
-          <p className="empty-copy">教材を選んで、タイトル入力なしで予定・記録にできます。</p>
         </div>
         <div className="row-actions">
           <button className="ghost-button" onClick={onOpenBookshelf} type="button">

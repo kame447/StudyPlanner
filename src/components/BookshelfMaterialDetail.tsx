@@ -376,7 +376,6 @@ export function BookshelfMaterialDetail({
               />
             ) : (
               <div className="bookshelf-detail-empty">
-                <p>章・節・単元などを自由に追加できます。</p>
                 <button type="button" onClick={onEditStructure}>最初の項目を追加</button>
               </div>
             )}

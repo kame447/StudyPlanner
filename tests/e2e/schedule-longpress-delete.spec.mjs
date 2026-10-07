@@ -188,7 +188,7 @@ test('day action-menu deletion failure keeps the target available for retry with
   const plan = page.locator('.timeline-plan-block').filter({ hasText: '長押し削除確認' });
   await plan.click();
   const menu = page.getByRole('dialog', { name: '長押し削除確認の操作', exact: true });
-  const remove = menu.getByRole('button', { name: '削除 この予定を削除', exact: true });
+  const remove = menu.getByRole('button', { name: '削除', exact: true });
   await remove.click();
   await expect(menu.getByRole('alert')).toContainText('もう一度');
   await expect(remove).toBeEnabled();
