@@ -817,6 +817,7 @@ export function usePlannerDataState({
         plan: editingPlan,
         draft,
       });
+      closePlanEditor();
       return;
     }
 
