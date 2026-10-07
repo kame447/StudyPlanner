@@ -189,3 +189,14 @@ it('current repair teaches the resolver range syntax while the historical compar
     expect(legacyDirective).not.toContain(token);
   }
 });
+
+it('keeps a stated time of day when a date rule must drop its period (live H on b3204cdd)', () => {
+  const create = (conversationArchitecture: 'interaction_v1' | 'legacy_v5') => repairPayload(createWeeklyPlanningSemanticRepairMessagesV5({
+    baseMessages: [{ role: 'system', content: 'normalize' }], invalidResponse: '{}',
+    validationErrors: ['document.tasks[0].temporalConstraints[0].namedTimePeriod:must-be-null-for-date-rule'],
+    conversationArchitecture,
+  })).requiredChanges?.join('\n') ?? '';
+  expect(create('interaction_v1')).toContain('Never drop the stated time of day');
+  expect(create('interaction_v1')).toContain('separate preferred_window');
+  expect(create('legacy_v5')).not.toContain('Never drop the stated time of day');
+});

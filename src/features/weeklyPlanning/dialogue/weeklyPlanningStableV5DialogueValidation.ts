@@ -2,6 +2,7 @@ import {
   groundedDateExpressionsFromPlanningInformation,
 } from './weeklyPlanningDialogueDateGrounding';
 import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
+import { WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL } from './weeklyPlanningStableV5DialogueContext';
 import { claimsUnverifiedWeeklyPlanningPreviewConstraints, hasUnverifiedWeeklyPlanningPreviewConstraints } from './weeklyPlanningPreviewConstraintClaims';
 import type {
   WeeklyPlanningStableV5DialogueFallbackReason,
@@ -398,6 +399,12 @@ function validateRenderedText(
   }
   if (input.communication && input.communication.statusReason !== 'preview_unchanged'
     && UNCHANGED_CANDIDATES_CLAIM.test(text)) {
+    return 'preview_claim_without_preview';
+  }
+  // A message the application could not use changed nothing; its reply may not invite promoting
+  // the previous preview as if it answered that message (review of fa6347e6).
+  if (input.communication?.goal === 'clarify_turn'
+    && text.includes(WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL)) {
     return 'preview_claim_without_preview';
   }
 

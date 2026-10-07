@@ -38,6 +38,11 @@ function repairDirectivesForErrors(errors: string[], architecture?: WeeklyPlanni
       : '';
     directives.push(`Encode dateExpression in Stable V5 canonical syntax while preserving the exact user meaning: use ISO YYYY-MM-DD or ${range}, symbolic today/tomorrow/day_after_tomorrow/yesterday/this_week/next_week, weekday:sunday through weekday:saturday, or custom:<text> only when no canonical form applies. For weekday-only meaning use weekday:<english-weekday>; never emit a bare localized weekday and never invent an absolute date.${weekdaySet}`);
   }
+  if (conversationArchitecturePolicy(architecture).semanticConversationActs
+    && errors.some((error) => error.includes('must-be-null-for-date-rule') || error.includes('date-rule-cannot-have-clock'))) {
+    // Live H on b3204cdd: 「水曜の夜にまとめて」 lost 「夜」 when the repair cleared the date rule's period.
+    directives.push('A date rule (allowed_date/excluded_date) has no time of day: keep it with null namedTimePeriod/startTime/endTime, and keep the stated time of day as a separate preferred_window (avoid_window when it excludes) on the same task, date and sourceText. Never drop the stated time of day.');
+  }
   if (errors.includes('document.planningWindow:absolute-year-outside-reference-horizon')) {
     directives.push('The absolute planningWindow year is more than ten years from publicStateSummary.calendarContext.currentDate. Reinterpret only that window from current userText and calendar context; choose an in-range year only when supported, and do not invent a date or change unrelated facts.');
   }

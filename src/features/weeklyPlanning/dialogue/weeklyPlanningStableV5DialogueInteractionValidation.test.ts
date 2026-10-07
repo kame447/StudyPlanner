@@ -280,3 +280,28 @@ describe('typed consultation feasibility claims', () => {
     }
   });
 });
+
+describe('an unusable turn may not invite promoting the previous preview (review of fa6347e6)', () => {
+  const recovery = () => input({
+    actionId: 'stable-v5:request-2:status', actionKind: 'status', questionCode: null, requiredLabels: [],
+    currentUserMessage: 'やっぱり10ページにして', previewCount: 0,
+    communication: communication({ goal: 'clarify_turn', askQuestion: false, questionPurposes: [] }),
+  });
+  it('sends a reply that offers the promotion control for an unusable message to one repair, then the fallback', () => {
+    const text = 'アルゴリズムイントロダクションの候補を確認し「この内容で仮予定にする」を選んでください。';
+    expect(render(recovery(), text)).toMatchObject({ status: 'fallback', reason: 'preview_claim_without_preview' });
+    expect(render(recovery(), 'うまく受け取れませんでした。伝えたいことを少しずつ分けて教えてください。'))
+      .toMatchObject({ status: 'rendered' });
+  });
+  it('keeps the control in a reply for an unchanged preview and in the historical comparison', () => {
+    const text = '今の仮予定の候補はそのままです。直したい点があれば伝えるか、「この内容で仮予定にする」から進めてください。';
+    const unchanged = input({
+      actionId: 'stable-v5:request-2:status', actionKind: 'status', questionCode: null, requiredLabels: ['この内容で仮予定にする'],
+      previewPromotionControlLabel: 'この内容で仮予定にする',
+      communication: communication({ goal: 'report_status', askQuestion: false, questionPurposes: [], statusReason: 'preview_unchanged' }),
+    });
+    expect(render(unchanged, text)).toMatchObject({ status: 'rendered' });
+    expect(render({ ...recovery(), conversationArchitecture: 'legacy_v5', communication: undefined }, text))
+      .not.toMatchObject({ reason: 'preview_claim_without_preview' });
+  });
+});
