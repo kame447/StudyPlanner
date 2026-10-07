@@ -70,13 +70,15 @@ describe('Stable V5 self-repair rendering integration', () => {
     });
 
     // Interaction (default): the correction reaches the renderer as typed data to acknowledge
-    // in its own words; the prewritten sentence is only the emergency fallback.
+    // in its own words; the prewritten sentence only opens the emergency fallback, which never
+    // repeats the application's own (reason-less) message.
     expect(rendererMock).toHaveBeenCalledWith(expect.objectContaining({
-      fallbackText: '英単語は80ページではなく80語ですね。修正しました。 次の条件を確認します。',
+      fallbackText: expect.stringMatching(/^英単語は80ページではなく80語ですね。修正しました。 \S/u),
       planningInformation: expect.objectContaining({
         selfRepair: { taskLabel: '英単語', before: '80ページ', after: '80語' },
       }),
     }));
+    expect(rendererMock.mock.calls[0][0].fallbackText).not.toContain('次の条件を確認します。');
     expect(rendererMock.mock.calls[0][0].planningInformation).not.toHaveProperty('selfRepairNotice');
     expect(result.message).toBe('英単語を80語に修正し、次の条件を確認します。');
     expect(result.message).not.toContain('修正しました。 英単語');
@@ -117,9 +119,8 @@ describe('Stable V5 self-repair rendering integration', () => {
       plans: [], scheduleTemplates: [], conversationId: 'conversation-1', traceRequestId: 'request-2',
     });
 
-    expect(result.message).toBe(
-      '英単語は80ページではなく80語ですね。修正しました。 次の条件を確認します。',
-    );
+    expect(result.message).toMatch(/^英単語は80ページではなく80語ですね。修正しました。 \S/u);
+    expect(result.message).not.toContain('次の条件を確認します。');
     expect(result.responseSource).toBe('deterministic_fallback');
   });
 });
