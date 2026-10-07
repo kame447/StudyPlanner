@@ -95,7 +95,9 @@ describe('real E2E A–G: full application turns with scripted provider wire res
   it('F: all measured incremental turns reach a two-hour preview without repeating scope questions', async () => {
     const conversation = start('F');
     for (const [index, text] of CAMPAIGN.F.entries()) {
-      await submit(conversation, text, normal);
+      // Turns 5-6 add no new fact to the accepted plan; an act-less empty delta after a plan
+      // is re-read once (live D on fa6347e6) and then accepted as unchanged.
+      await submit(conversation, text, index >= 4 ? ['semantic_generic', 'semantic_generic', 'renderer'] : normal);
       if (index === 0) continue;
       expectNextWeek(conversation);
       expect(conversation.getState().intakeState?.questions).toEqual([]);
@@ -140,6 +142,30 @@ describe('real E2E A–G: full application turns with scripted provider wire res
 
 
 describe('dispatch attribution: repairs are counted, not hidden in the two-call successful path', () => {
+  it('D: a follow-up that comes back as accepted-task shells only is re-read once (live D on fa6347e6)', async () => {
+    const conversation = start('D');
+    await submit(conversation, CAMPAIGN.D[0], normal);
+    await submit(conversation, CAMPAIGN.D[1], ['semantic_focused_contextual', 'renderer']);
+    const old = structuredClone(candidates(conversation));
+    let shellsOnly = true;
+    override = call => {
+      if (call.kind !== 'semantic_generic' || !shellsOnly) return undefined;
+      shellsOnly = false;
+      const reply = JSON.parse(campaignProviderReply(scenario, call.request as unknown as CampaignRequest));
+      // The live first response kept only the accepted-task shells: no session, split or evening fact.
+      reply.tasks = (reply.tasks as Json[]).map(task => ({ ...task, study: null, workloads: [], effortEstimates: [], temporalConstraints: [], recurrence: [] }));
+      reply.availabilityDeclarations = [];
+      reply.corrections = [];
+      reply.relations = [];
+      reply.uncertainties = [];
+      return JSON.stringify(reply);
+    };
+    const final = await submit(conversation, CAMPAIGN.D[2], ['semantic_generic', 'semantic_generic', 'renderer']);
+    expect(candidates(conversation)).not.toEqual(old);
+    expect(candidates(conversation).filter(entry => entry.title.includes('卒業研究ノート')).map(entry => entry.durationMinutes)).toEqual([60, 60]);
+    expect(rendererDecision(final)).toMatchObject({ actionKind: 'preview_ready' });
+  });
+
   it('C: a correction the application could not use does not present the old preview as its result (live C on d7b85616)', async () => {
     const conversation = start('C');
     await submit(conversation, CAMPAIGN.C[0], normal);

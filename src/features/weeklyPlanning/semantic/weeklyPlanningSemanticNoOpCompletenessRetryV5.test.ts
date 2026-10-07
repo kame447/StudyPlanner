@@ -139,13 +139,22 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     })).toBe(false);
   });
 
-  it('does not retry without a machine pending question', () => {
+  it('without a pending question, re-reads only an act-less shell response after an accepted plan (interaction)', () => {
+    const summary = { ...publicStateSummary(), pendingQuestion: null };
+    // Historical comparison: no pending question, no retry.
     expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
-      document: existingTaskShell(),
-      publicStateSummary: {
-        ...publicStateSummary(),
-        pendingQuestion: null,
-      },
+      document: existingTaskShell(), publicStateSummary: summary, conversationArchitecture: 'legacy_v5',
+    })).toBe(false);
+    // Live D on fa6347e6: task shells only for a split/evening request after the preview.
+    expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
+      document: existingTaskShell(), publicStateSummary: summary, conversationArchitecture: 'interaction_v1',
+    })).toBe(true);
+    // A bare empty reply (「うん」) or one before any accepted task stays a valid no-op.
+    expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
+      document: { ...existingTaskShell(), tasks: [] }, publicStateSummary: summary, conversationArchitecture: 'interaction_v1',
+    })).toBe(false);
+    expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
+      document: existingTaskShell(), publicStateSummary: { ...summary, tasks: [] }, conversationArchitecture: 'interaction_v1',
     })).toBe(false);
   });
 

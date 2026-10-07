@@ -50,6 +50,10 @@ export function projectWeeklyPlanningRegisteredMaterialReferencesV5(params: {
       const reference = component.existingPublicId;
       if (!reference || component.role !== 'material'
         || activeComponents.some(entry => entry.publicId === reference)) return component;
+      // As for tasks: two components citing one bookshelf id are an ambiguity for the
+      // provider repair, not two new materials with duplicated work.
+      if (document.tasks.flatMap(entry => entry.study?.components ?? [])
+        .filter(entry => entry.existingPublicId === reference).length !== 1) return component;
       const matches = materials.filter(entry => entry.materialId === reference);
       if (matches.length !== 1) return component;
       if (!materialLabels(matches[0]).some(label => typeof label === 'string' && label === component.label)) {

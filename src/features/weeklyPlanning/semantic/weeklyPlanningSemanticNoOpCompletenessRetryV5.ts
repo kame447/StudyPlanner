@@ -28,8 +28,18 @@ import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemant
 function completenessRetryInstruction(params: {
   userText: string;
   final: boolean;
+  pendingQuestion: boolean;
 }): string {
   const exactUserText = JSON.stringify(params.userText);
+  if (!params.pendingQuestion) {
+    return [
+      'The prior response is schema-valid but contains no new semantic content although a plan has already been accepted.',
+      `The exact current userText to interpret is ${exactUserText}.`,
+      'Re-read that exact current userText independently and return the complete semantic document again.',
+      'An existing-entity shell and its sourceText are context/binding only, not semantic content; encode each supported current-turn change to the accepted plan in its typed field (sessions, splits, timing preferences, workload, effort, corrections).',
+      'If the exact current userText is only conversation (thanks, an aside, or a question about the plan), return the no-op meaning with the matching conversation act. Do not invent facts.',
+    ].join(' ');
+  }
   if (!params.final) {
     return [
       'The prior response is schema-valid but contains no new semantic content while a machine pending question exists.',
@@ -61,6 +71,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function hasMachinePendingQuestion(summary: Record<string, unknown> | undefined): boolean {
   if (!summary || !isRecord(summary.pendingQuestion)) return false;
   return typeof summary.pendingQuestion.questionCode === 'string';
+}
+
+function hasAcceptedTask(summary: Record<string, unknown> | undefined): boolean {
+  return Array.isArray(summary?.tasks) && summary.tasks.length > 0;
 }
 
 function hasTaskSemanticPayload(document: WeeklyPlanningSemanticDocumentV5): boolean {
@@ -133,16 +147,20 @@ export function isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5(params: 
   publicStateSummary?: Record<string, unknown>;
   conversationArchitecture?: WeeklyPlanningConversationArchitecture;
 }): boolean {
-  if (!hasMachinePendingQuestion(params.publicStateSummary)) return false;
+  const actAware = conversationArchitecturePolicy(params.conversationArchitecture).actAwareNoOpRetry;
+  // Interaction: once a plan is accepted, an empty delta without any conversational act is as
+  // suspicious as one under a pending question (live D on fa6347e6 returned only task shells
+  // for 「1回1時間くらいで2回に分けたい。どっちも夜がいい」 and reported the preview unchanged).
   const document = params.document;
+  // Without a pending question only a response that names accepted tasks yet carries nothing
+  // for them is re-read; a bare empty reply (「うん」, thanks) stays a valid no-op.
+  if (!hasMachinePendingQuestion(params.publicStateSummary)
+    && !(actAware && hasAcceptedTask(params.publicStateSummary) && document.tasks.length > 0)) return false;
   // A typed non-mutating conversational act (explain / aside / resume / consultation) is a
   // valid complete result with an empty planning delta. Re-asking the model for "missing"
   // content would only waste dispatches; only a bare answer act without any delta is a
   // contradiction worth a bounded retry.
-  if (
-    conversationArchitecturePolicy(params.conversationArchitecture).actAwareNoOpRetry
-    && hasSelfSufficientConversationActV5(document.conversationActs)
-  ) return false;
+  if (actAware && hasSelfSufficientConversationActV5(document.conversationActs)) return false;
   if (
     document.planningWindow
     || document.relations.length > 0
@@ -304,12 +322,16 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
 
   const focusedAttemptOffset = focusedTemporal.attempted ? 1 : 0;
   let previousResponse = params.initialResponse;
+  // A follow-up to an accepted plan (no pending question) gets one bounded re-read only.
+  const pendingQuestion = hasMachinePendingQuestion(params.run.input.publicStateSummary);
+  const retryLimit = pendingQuestion ? 2 : 1;
 
-  for (let retryIndex = 0; retryIndex < 2; retryIndex += 1) {
+  for (let retryIndex = 0; retryIndex < retryLimit; retryIndex += 1) {
     const isFinalRetry = retryIndex === 1;
     const instruction = completenessRetryInstruction({
       userText: params.run.input.userText,
       final: isFinalRetry,
+      pendingQuestion,
     });
     const attempt = isFinalRetry
       ? 'completeness_retry_final'
@@ -405,7 +427,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
           conversationArchitecture: params.run.input.conversationArchitecture,
         })
       : false;
-    const shouldRetryAgain = retryIndex === 0 && (!validation.document || stillNoOp);
+    const shouldRetryAgain = retryIndex + 1 < retryLimit && (!validation.document || stillNoOp);
 
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: params.run.input.traceRequestId,
@@ -418,7 +440,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
         errors: validation.errors,
         parsedDocument: validation.parsedDocument,
         retryAgain: shouldRetryAgain,
-        fallback: retryIndex === 1 && (!validation.document || stillNoOp)
+        fallback: retryIndex + 1 === retryLimit && (!validation.document || stillNoOp)
           ? 'initial_schema_valid_document'
           : null,
       },
@@ -458,7 +480,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
   return acceptedPriorNoOpResult({
     run: params.run,
     document: params.initialDocument,
-    attemptCount: attemptCountBeforeRetry + focusedAttemptOffset + 2,
+    attemptCount: attemptCountBeforeRetry + focusedAttemptOffset + retryLimit,
     repairAttempted,
     validationErrors,
   });

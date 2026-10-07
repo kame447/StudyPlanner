@@ -108,7 +108,7 @@ describe('registered material reference projection keeps identity and evidence g
     });
   }
 
-  it.each(['unknown_id', 'wrong_label', 'wrong_role', 'existing_task', 'duplicate_registry', 'ungrounded_source', 'unrelated_invalid_quantity'] as const)('does not admit %s through the projection', invalid => {
+  it.each(['unknown_id', 'wrong_label', 'wrong_role', 'existing_task', 'duplicate_registry', 'duplicate_component', 'ungrounded_source', 'unrelated_invalid_quantity'] as const)('does not admit %s through the projection', invalid => {
     const document = JSON.parse(fixture.semanticResponse);
     const task = document.tasks[0];
     const component = task.study.components[0];
@@ -118,6 +118,8 @@ describe('registered material reference projection keeps identity and evidence g
     if (invalid === 'existing_task') task.existingPublicId = 'active-task';
     if (invalid === 'ungrounded_source') component.sourceText = '登録されていない引用';
     if (invalid === 'unrelated_invalid_quantity') task.workloads[0].amount = -5;
+    // Two components citing one bookshelf id would otherwise both become new materials.
+    if (invalid === 'duplicate_component') task.study.components.push({ ...component, localId: `${String(component.localId)}-twin` });
     const result = validate({ document,
       materials: invalid === 'duplicate_registry' ? [fixture.registeredMaterial, fixture.registeredMaterial] : undefined,
       tasks: invalid === 'existing_task' ? [{ publicId: 'active-task', title: task.title, category: task.category }] : undefined,
