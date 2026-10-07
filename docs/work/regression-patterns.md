@@ -1,7 +1,7 @@
 # Repository regression patterns
 
 Status: current repository-wide regression knowledge
-Updated: 2026-09-01
+Updated: 2026-10-07
 
 この文書は、StudyPlanner で過去に発生したバグや回帰を、個別症状の一覧ではなく、再発する原因クラス、責任境界、守るべき不変条件、検証方法として形式知化するための正本です。
 
@@ -92,6 +92,8 @@ semantic repair も局所的でなければなりません。無効な correctio
 不変条件は、write schema、storage key/document ID、transaction、outbox/retry、read/query、redaction、restore、projection/export までを一つの contract chain として考えることです。複数 entity が一つのユーザー操作として変わる場合は、その aggregate mutation 全体を一つの persistence contract とし、Firestore では batch/transaction、local storage では snapshot + compensating rollback などで途中成功を外へ見せません。会話状態と authoritative graph / user context のように保存先が分かれる場合も、ユーザーへ success を公開する commit point は authoritative preparation/commit が成立した後に置きます。構造 ID と user content の redaction 責任を分け、server/path が authority の ID は client payload より path を正本にします。新 field は request producer の unit test だけでなく、persistent outbox や server preparation を通って read/export 側まで残ることを確認します。
 
 検証では、実際の repository boundary を含む integration test を優先します。初回 append failure→reload→retry、large entry pagination、legacy/current mixed data、malformed schema、ownership mismatch、duplicate sequence、reload after save を通し、partial success や transport error を正常な empty state として扱わないことを固定します。
+
+保存前の入力検証もこの chain の一部です。[Issue #516](https://github.com/kame447/StudyPlanner/issues/516) の教材 quick entry では、native date/time control があるだけでは空の日付を防げず、保存成功後も日表示から見えない実績を作成できました。共有の date/time validator を送信境界でも適用し、無効な入力は保存 callback・成功通知・dialog close より前に拒否して draft を保持します。disabled button や browser の native validation だけに依存せず、直接 submit、実在しない日付、不正時刻、修正後の正常保存を予定と実績の両経路で検証します。有効な閏日と既存の日跨ぎ挙動も維持します。
 
 ## R7. Mobile viewport / overlay / scroll / gesture / focus ownership
 
