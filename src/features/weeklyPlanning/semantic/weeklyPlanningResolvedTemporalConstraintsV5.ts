@@ -221,9 +221,10 @@ function preferredWindow(params: {
 }): WeeklyPlanningResolvedPreferredWindowV5['window'] | undefined {
   let startTime: string | null = null;
   let endTime: string | null = null;
-  if (params.constraint.startTime && params.constraint.endTime) {
-    startTime = params.constraint.startTime;
-    endTime = params.constraint.endTime;
+  if (params.constraint.startTime || params.constraint.endTime) {
+    // Typed one-sided bounds cover the rest of that day, as availability does.
+    startTime = params.constraint.startTime ?? '00:00';
+    endTime = params.constraint.endTime ?? '24:00';
   } else if (params.constraint.namedTimePeriod) {
     const named = params.namedTimePeriods[params.constraint.namedTimePeriod];
     if (!named) return undefined;

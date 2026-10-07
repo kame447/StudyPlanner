@@ -154,7 +154,9 @@ export type GenericSchedulerInputIssue =
     }
   | {
       domain: 'temporal_constraint';
-      code: 'unresolved_hard_date_expression' | 'contradictory_hard_date_bound';
+      code: 'unresolved_hard_date_expression' | 'contradictory_hard_date_bound'
+        | 'unsupported_date_expression' | 'named_time_period_unresolved'
+        | 'invalid_time_interval' | 'unknown_constraint_level';
       blocking: true;
       factId: string;
       details: Record<string, string | number | boolean | null>;
@@ -452,6 +454,31 @@ function temporalConstraintIssues(params: {
 }): GenericSchedulerInputIssue[] {
   const issues: GenericSchedulerInputIssue[] = [];
   for (const constraint of params.graph.temporalConstraints) {
+    if (constraint.kind === 'preferred_window') {
+      let code: Extract<GenericSchedulerInputIssue, { domain: 'temporal_constraint' }>['code'] | null = null;
+      if (constraint.constraintLevel === 'unknown') {
+        code = 'unknown_constraint_level';
+      } else if (constraint.dateExpression) {
+        const resolved = resolvedWeeklyPlanningDateExpressionForFactV5({
+          resolved: params.resolvedDateExpressions, factId: constraint.id,
+        });
+        if (resolved?.status !== 'resolved' || !resolved.range) code = 'unsupported_date_expression';
+      }
+      if (!code && !params.resolvedTemporalConstraints.preferredWindows.some(
+        (window) => window.sourceFactId === constraint.id,
+      )) {
+        code = constraint.namedTimePeriod ? 'named_time_period_unresolved' : 'invalid_time_interval';
+      }
+      if (code) issues.push({
+        domain: 'temporal_constraint', code, blocking: true, factId: constraint.id,
+        details: {
+          taskId: constraint.taskId, targetFactId: constraint.targetFactId,
+          expression: constraint.dateExpression, namedTimePeriod: constraint.namedTimePeriod,
+          startTime: constraint.startTime, endTime: constraint.endTime,
+        },
+      });
+      continue;
+    }
     if (
       constraint.constraintLevel !== 'hard'
       || !constraint.dateExpression

@@ -184,4 +184,56 @@ describe('Stable V5 targeted semantic repair preservation', () => {
       'repair:semantic-repair-preservation:representation-only repair changed unrelated semantic facts',
     );
   });
+
+  it.each(['availability', 'deadline', 'excluded_date'] as const)(
+    'guards a %s canonical-date repair while allowing only its date expression to change',
+    (kind) => {
+      const initial = document({ canonicalWindow: true });
+      let errors: string[];
+      if (kind === 'availability') {
+        initial.availabilityDeclarations[0].dateExpression = '火曜日';
+        errors = ['document.availabilityDeclarations[0].dateExpression:canonical-expression'];
+      } else {
+        initial.tasks[0].temporalConstraints = [{
+          localId: 'date', targetLocalId: 't1', kind, constraintLevel: 'hard',
+          dateExpression: '火曜日', namedTimePeriod: null, startTime: null, endTime: null,
+          precision: 'exact', sourceText: '火曜日',
+        }];
+        errors = ['document.tasks[0].temporalConstraints[0].dateExpression:canonical-expression'];
+        if (kind === 'excluded_date') errors.push('document.tasks[0].temporalConstraints[0].dateExpression:canonical-expression-required');
+      }
+      const repaired = structuredClone(initial);
+      if (kind === 'availability') repaired.availabilityDeclarations[0].dateExpression = 'weekday:tuesday';
+      else repaired.tasks[0].temporalConstraints[0].dateExpression = 'weekday:tuesday';
+
+      expect(isRepresentationOnlySemanticRepairV5(errors)).toBe(true);
+      expect(validateWeeklyPlanningSemanticRepairPreservationV5({
+        initialDocument: initial, repairedDocument: repaired, initialErrors: errors,
+      })).toEqual([]);
+
+      for (const unrelatedChange of ['drop_task', 'change_amount', 'drop_unavailability', 'change_clock'] as const) {
+        const destructive = structuredClone(repaired);
+        if (unrelatedChange === 'drop_task') destructive.tasks = [];
+        if (unrelatedChange === 'change_amount') destructive.tasks[0].study!.components[0].workloads[0].amount = 20;
+        if (unrelatedChange === 'drop_unavailability') destructive.availabilityDeclarations = [];
+        if (unrelatedChange === 'change_clock') destructive.availabilityDeclarations[0].startTime = '20:00';
+        expect(validateWeeklyPlanningSemanticRepairPreservationV5({
+          initialDocument: initial, repairedDocument: destructive, initialErrors: errors,
+        }), unrelatedChange).toEqual([
+          'semantic-repair-preservation:representation-only repair changed unrelated semantic facts',
+        ]);
+      }
+      expect(initial.availabilityDeclarations[0].startTime).toBe('18:00');
+    },
+  );
+
+  it('does not classify a missing deadline or a mixed invalid quantity as date representation repair', () => {
+    expect(isRepresentationOnlySemanticRepairV5([
+      'document.tasks[0].temporalConstraints[0]:missing-deadline',
+    ])).toBe(false);
+    expect(isRepresentationOnlySemanticRepairV5([
+      'document.availabilityDeclarations[0].dateExpression:canonical-expression',
+      'document.tasks[0].workloads[0].amount',
+    ])).toBe(false);
+  });
 });
