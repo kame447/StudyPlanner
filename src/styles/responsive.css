@@ -302,23 +302,6 @@
     gap: 8px;
   }
 
-  .modal-card .theme-palette-grid {
-    gap: 8px;
-  }
-
-  .modal-card .theme-palette-button {
-    padding: 10px;
-    border-radius: 12px;
-  }
-
-  .modal-card .theme-palette-copy strong {
-    font-size: 0.8rem;
-  }
-
-  .modal-card .theme-palette-copy span {
-    font-size: 0.66rem;
-  }
-
   .modal-card .month-wheel-picker::before,
   .modal-card .month-wheel-picker::after {
     height: 48px;
@@ -1549,30 +1532,6 @@
     min-height: 36px;
     border-radius: 10px;
     font-size: 0.84rem;
-  }
-
-  .modal-card .theme-palette-grid {
-    grid-template-columns: 1fr;
-    gap: 6px;
-  }
-
-  .modal-card .theme-palette-button {
-    gap: 6px;
-    padding: 8px;
-    border-radius: 10px;
-  }
-
-  .modal-card .theme-palette-swatch {
-    width: 14px;
-    height: 14px;
-  }
-
-  .modal-card .theme-palette-copy strong {
-    font-size: 0.72rem;
-  }
-
-  .modal-card .theme-palette-copy span {
-    font-size: 0.58rem;
   }
 
   .modal-card .month-event-chip {

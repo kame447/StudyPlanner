@@ -5,7 +5,6 @@ export type HomeNextPlanSemanticKind = 'study' | 'class' | 'mock-exam' | 'other'
 
 export interface HomeNextPlanVisual {
   kind: HomeNextPlanVisualKind;
-  src: string;
 }
 
 export interface HomeNextPlanPresentation {
@@ -20,15 +19,12 @@ export interface HomeNextPlanPresentation {
 export const HOME_NEXT_PLAN_VISUALS: Record<HomeNextPlanVisualKind, HomeNextPlanVisual> = {
   study: {
     kind: 'study',
-    src: '/assets/home/next-plan-study.webp',
   },
   class: {
     kind: 'class',
-    src: '/assets/home/next-plan-class.webp',
   },
   other: {
     kind: 'other',
-    src: '/assets/home/next-plan-other.webp',
   },
 };
 

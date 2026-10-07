@@ -154,3 +154,12 @@ jobs:
             artifacts/playwright-cross-browser-results.json
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Upload compact cross-browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-cross-browser-images-${{ github.sha }}
+          path: artifacts/playwright-cross-browser-results/**/*.png
+          if-no-files-found: ignore
+          retention-days: 14

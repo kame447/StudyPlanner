@@ -47,7 +47,9 @@ export function QuickAddMenu({
     setIsOpen(false);
     setFocusedIndex(0);
     if (restoreFocus) {
-      window.requestAnimationFrame(() => triggerRef.current?.focus());
+      window.requestAnimationFrame(() => {
+        if (triggerRef.current?.getClientRects().length) triggerRef.current.focus();
+      });
     }
   }
 
@@ -58,10 +60,13 @@ export function QuickAddMenu({
 
     setFocusedIndex(0);
     const focusFrame = window.requestAnimationFrame(() => {
-      actionRefs.current[0]?.focus();
+      const firstAction = actionRefs.current[0];
+      if (firstAction?.getClientRects().length) firstAction.focus();
     });
 
     function handleKeyDown(event: KeyboardEvent) {
+      // Browser Forward can retain this open menu beneath the settings page.
+      if (!triggerRef.current?.getClientRects().length) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         closeMenu();

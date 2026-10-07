@@ -1,3 +1,5 @@
+import { useSettingsNavigation } from './hooks/useSettingsNavigation';
+import { useHomeScenePreference } from './hooks/useHomeScenePreference';
 import { useRootStartupReady } from './components/RootStartupReadyContext';
 import type { PlannerAppSnapshot } from './components/PlannerAppBootstrap';
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
@@ -97,7 +99,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     if (!state.booting) { markRootStartupReady?.(); onReady?.(); }
   }, [state.booting, markRootStartupReady, onReady]);
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
-  const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
+  const settingsNavigation = useSettingsNavigation();
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
   const [homeEntry, setHomeEntry] = useState<{ ownerId: string; id: number } | null>(null);
   const homeEntrySequence = useRef(0);
@@ -184,6 +186,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     setEditorDraft,
   } = state;
   const monthTimetablePreference = useMonthTimetablePreference(user?.id);
+  const homeScenePreference = useHomeScenePreference();
   const {
     term: activeTimetableTerm,
     termId: activeTimetableTermId,
@@ -352,7 +355,9 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   };
 
   return (
+    <>
     <div
+      hidden={settingsNavigation.isOpen}
       className={
         isWorkspaceSurface
           ? isScheduleSurface
@@ -368,7 +373,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         actuals={actuals}
         todos={todos}
         onOpenProfile={() => setIsMyPageOpen(true)}
-        onOpenSettings={() => setIsAppSettingsOpen(true)}
+        onOpenSettings={settingsNavigation.open}
         className={primaryHeaderClassName}
       />
 
@@ -437,6 +442,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         {isHomeSurface ? (
           <StudySessionProvider materials={studyMaterials} onSaveActual={saveActual}>
             <HomeScheduleView
+              homeScenePreferences={homeScenePreference.preferences}
               userId={user.id}
               plans={plans}
               actuals={actuals}
@@ -703,8 +709,13 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         onClose={() => setIsMyPageOpen(false)}
       />
 
+    </div>
       <AppSettingsDialog
-        open={isAppSettingsOpen}
+        homeScenePreferences={homeScenePreference.preferences}
+        onChangeHomeSceneStyle={homeScenePreference.setStyle}
+        onChangeHomeSceneMotion={homeScenePreference.setAnimated}
+        homeSceneError={homeScenePreference.error}
+        open={settingsNavigation.isOpen}
         showMonthTimetable={monthTimetablePreference.showTimetable}
         onChangeMonthTimetable={monthTimetablePreference.setShowTimetable}
         monthTimetableError={monthTimetablePreference.error}
@@ -712,8 +723,8 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         themePalette={themePalette}
         onChangeTheme={setThemeMode}
         onChangeThemePalette={setThemePalette}
-        onClose={() => setIsAppSettingsOpen(false)}
+        onClose={settingsNavigation.close}
       />
-    </div>
+    </>
   );
 }
