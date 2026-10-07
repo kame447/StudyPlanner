@@ -62,6 +62,7 @@ import {
 } from './weeklyPlanningResolvedDateExpressionsV5';
 import {
   materializeWeeklyPlanningSchedulerPreferredPlacementsV5,
+  resolveWeeklyPlanningPreferredTimeWindowV5,
   resolveWeeklyPlanningTemporalConstraintsV5,
   weeklyPlanningTemporalConstraintAppliesToTargetV5,
   type WeeklyPlanningResolvedTemporalConstraintsV5,
@@ -451,6 +452,7 @@ function temporalConstraintIssues(params: {
   graph: WeeklyPlanningGenericSchedulerGraphView;
   resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
   resolvedTemporalConstraints: WeeklyPlanningResolvedTemporalConstraintsV5;
+  namedTimePeriods: GenericSchedulerInputContext['namedTimePeriods'];
 }): GenericSchedulerInputIssue[] {
   const issues: GenericSchedulerInputIssue[] = [];
   for (const constraint of params.graph.temporalConstraints) {
@@ -464,9 +466,9 @@ function temporalConstraintIssues(params: {
         });
         if (resolved?.status !== 'resolved' || !resolved.range) code = 'unsupported_date_expression';
       }
-      if (!code && !params.resolvedTemporalConstraints.preferredWindows.some(
-        (window) => window.sourceFactId === constraint.id,
-      )) {
+      if (!code && resolveWeeklyPlanningPreferredTimeWindowV5({
+        constraint, namedTimePeriods: params.namedTimePeriods,
+      }) === undefined) {
         code = constraint.namedTimePeriod ? 'named_time_period_unresolved' : 'invalid_time_interval';
       }
       if (code) issues.push({
@@ -688,6 +690,7 @@ export function compileGenericSchedulerInput(params: {
     graph: params.graph,
     resolvedDateExpressions,
     resolvedTemporalConstraints,
+    namedTimePeriods: params.context.namedTimePeriods,
   }));
 
   const relations = compileRelations({ graph: params.graph, issues });

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { A, type Json } from './testUtils/weeklyPlanningSchedulingConstraintsFixture';
-import { liveATemporalDocument, taskTemporalPreferenceDocument } from './testUtils/weeklyPlanningLiveTemporalFixture';
+import { liveATemporalDocument, taskTemporalPreferenceDocument, LIVE_A_BOOK } from './testUtils/weeklyPlanningLiveTemporalFixture';
 import { createScriptedConversation, installScriptedWeeklyPlanningProvider, resetScriptedConversationRuntime, scriptedRendererReply } from './testUtils/weeklyPlanningScriptedConversationHarness';
 
 let provider: ReturnType<typeof installScriptedWeeklyPlanningProvider>;
@@ -31,7 +31,22 @@ function preference(scope: 'task' | 'plan', overrides: Json): Json {
 }
 
 describe('A temporal preference representation matrix', () => {
+
   for (const architecture of ['interaction_v1', 'legacy_v5'] as const) {
+    it(`asks for work rather than treating known night as unresolved without a workload in ${architecture}`, async () => {
+      response = taskTemporalPreferenceDocument({
+        dateExpression: null, startTime: null, namedTimePeriod: 'night', sourceText: 'できれば夜',
+      });
+      const task = (response.tasks as Json[])[0];
+      Object.assign(task, { workloads: [], effortEstimates: [], decompositionStatus: 'atomic', sourceText: 'アルゴリズムイントロダクションを読みたい' });
+      const conversation = createScriptedConversation({ provider, architecture, studyMaterials: [LIVE_A_BOOK] });
+      const first = await conversation.submit('来週、アルゴリズムイントロダクションを読みたい。できれば夜');
+      expect(first.result?.failure).toBeUndefined();
+      expect(first.result?.draftCandidates).toEqual([]);
+      expect(conversation.getState().intakeState?.lastQuestionContext?.targetSlot).toBe('stable_v5:missing_schedulable_work');
+      expect(conversation.graph()?.temporalConstraints.every((constraint) => constraint.namedTimePeriod === 'night')).toBe(true);
+    });
+
     it(`keeps task-scoped after-20:00 clock bounds in ${architecture}`, async () => {
       response = taskTemporalPreferenceDocument();
       const conversation = createScriptedConversation({ provider, architecture });
