@@ -1,4 +1,5 @@
 import type { WeeklyPlanningPreviewOmittedWork } from '../application/weeklyPlanningInteractionOutcome';
+import type { WeeklyPlanningPreviewConstraintSatisfaction } from '../application/weeklyPlanningPreviewConstraintSatisfaction';
 
 /**
  * Application-owned disclosure of work the scheduler left out of a preview (Issue #488).
@@ -20,4 +21,17 @@ export function weeklyPlanningPreviewOmissionDisclosureText(
     all.length > 0 ? `${all.join('・')}は空き時間に入りきらなかったので、今回の候補には入れていません。` : '',
     part.length > 0 ? `${part.join('・')}は、空き時間に入りきらなかった分を今回の候補から外しています。` : '',
   ].join('');
+}
+
+/** Placement truth belongs to the application, including in the renderer emergency path. */
+export function weeklyPlanningPreviewConstraintDisclosureText(
+  satisfaction: readonly WeeklyPlanningPreviewConstraintSatisfaction[] | undefined,
+): string {
+  return [...new Set((satisfaction ?? []).flatMap(fact => {
+    if (fact.status === 'satisfied') return [];
+    const condition = fact.kind === 'preferred_window' ? '希望した時間帯' : '希望した1回の長さ';
+    return [fact.status === 'not_satisfied'
+      ? `${fact.taskLabel}は、${condition}に合わない候補があります。候補の日時を確認してください。`
+      : `${fact.taskLabel}は、${condition}を満たしているか確認できていません。候補の日時を確認してください。`];
+  }))].join('\n');
 }

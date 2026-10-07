@@ -1,6 +1,6 @@
 import type { WeeklyPlanningStableV5CommunicationContext } from './weeklyPlanningStableV5DialogueContracts';
 import { WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL } from './weeklyPlanningStableV5DialogueContext';
-import { weeklyPlanningPreviewOmissionDisclosureText } from './weeklyPlanningPreviewOmissionDisclosure';
+import { weeklyPlanningPreviewConstraintDisclosureText, weeklyPlanningPreviewOmissionDisclosureText } from './weeklyPlanningPreviewOmissionDisclosure';
 
 /**
  * Emergency wording of the interaction architecture (Issue #488).
@@ -96,6 +96,10 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
         communication.previewDisclosure
           ? weeklyPlanningPreviewOmissionDisclosureText(communication.previewDisclosure.omittedWork)
           : ''}`;
+      {
+        const constraintDisclosure = weeklyPlanningPreviewConstraintDisclosureText(communication.previewConstraintSatisfaction);
+        if (constraintDisclosure) main += `\n\n${constraintDisclosure}`;
+      }
       break;
     case 'report_status':
       main = `${params.groundingNote}${

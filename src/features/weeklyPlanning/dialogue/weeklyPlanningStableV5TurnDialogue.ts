@@ -14,7 +14,7 @@ import type {
 } from './weeklyPlanningStableV5DialogueContracts';
 import { communicationContextForStableV5Dialogue } from './weeklyPlanningStableV5CommunicationContext';
 import { composeWeeklyPlanningInteractionFallbackText } from './weeklyPlanningInteractionFallbackText';
-import { weeklyPlanningPreviewOmissionDisclosureText } from './weeklyPlanningPreviewOmissionDisclosure';
+import { weeklyPlanningPreviewConstraintDisclosureText, weeklyPlanningPreviewOmissionDisclosureText } from './weeklyPlanningPreviewOmissionDisclosure';
 import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
 import { withStableV5GroundingProposal } from '../application/weeklyPlanningStableV5GroundingFlow';
 import {
@@ -495,9 +495,11 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
 
   // Work the scheduler left out is stated by the application next to the rendered reply.
   const disclosure = renderInput.communication?.previewDisclosure;
-  const finalMessage = disclosure
+  const previewMessage = disclosure
     ? `${rendered.text}\n\n${weeklyPlanningPreviewOmissionDisclosureText(disclosure.omittedWork)}`
     : rendered.text;
+  const constraintDisclosure = weeklyPlanningPreviewConstraintDisclosureText(renderInput.communication?.previewConstraintSatisfaction);
+  const finalMessage = constraintDisclosure ? `${previewMessage}\n\n${constraintDisclosure}` : previewMessage;
   const dialogueRendererTrace = createWeeklyPlanningAiRenderedDialogueTrace({
     actionId: currentActionId,
     actionKind,

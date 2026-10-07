@@ -9,6 +9,7 @@ import {
 import {
   CONDITION_SETUP, CONDITION_PACE, CONDITION_FOLLOWUP, conditionSetupDocument, conditionFollowupDocument,
 } from '../testUtils/weeklyPlanningConditionPropagationFixture';
+import { declaration } from '../testUtils/weeklyPlanningSchedulingConstraintsFixture';
 import {
   recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5TraceRuntimeForTest,
   resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest,
@@ -27,11 +28,13 @@ const SENTINEL = 'future-session-propagation-488';
 let restoreStorage: () => void;
 let provider: ReturnType<typeof installScriptedWeeklyPlanningProvider>;
 let conversation: ScriptedConversation;
+let morningOnly = false;
 
 beforeEach(() => {
   restoreStorage = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
   resetScriptedConversationRuntime();
   resetWeeklyPlanningStableV5TraceRuntimeForTest();
+  morningOnly = false;
   provider = installScriptedWeeklyPlanningProvider((call) => {
     if (call.kind === 'renderer') return 'renderer unavailable in fixture';
     if (call.kind === 'semantic_focused_contextual') return JSON.stringify({
@@ -39,7 +42,10 @@ beforeEach(() => {
       minutes: 3, precision: 'approximate', quantityRole: null,
     });
     return JSON.stringify(String(call.payload?.userText) === CONDITION_SETUP ? conditionSetupDocument()
-      : conditionFollowupDocument(conversation.graph()!));
+      : { ...conditionFollowupDocument(conversation.graph()!), ...(morningOnly ? { availabilityDeclarations: [declaration({
+        kind: 'available', startTime: '09:00', endTime: '12:00', recurrenceKind: 'daily',
+        constraintLevel: 'hard', sourceText: '使えるのは毎日9時から12時だけ',
+      })] } : {}) });
   });
   conversation = createScriptedConversation({ provider, ownerId: USER, conversationId: CONVERSATION, architecture: 'interaction_v1' });
 });
@@ -61,10 +67,11 @@ function traceInput(turn: ScriptedConversationTurn) {
 }
 
 describe('session-size propagation trace persistence gate', () => {
-  it('persists the actual semantic request and recomputed preview through outbox retry, Worker preparation, future fields and large-value truncation', async () => {
+  it.each([false, true])('persists actual request, preview and constraint truth through outbox/Worker/size limits (morning only: %s)', async limited => {
     await conversation.submit(CONDITION_SETUP);
     await conversation.submit(CONDITION_PACE);
-    const turn = await conversation.submit(CONDITION_FOLLOWUP);
+    morningOnly = limited;
+    const turn = await conversation.submit(`${CONDITION_FOLLOWUP}${limited ? '。使えるのは毎日9時から12時だけ' : ''}`);
     expect(turn.result?.failure).toBeUndefined();
     expect(turn.result?.draftCandidates).toHaveLength(3);
     const semantic = turn.calls.find((call) => call.kind === 'semantic_generic')!;
@@ -79,8 +86,29 @@ describe('session-size propagation trace persistence gate', () => {
     expect(candidates.filter((item) => String(item.title).includes('卒業研究ノート'))).toHaveLength(2);
     expect(JSON.stringify(candidates)).toContain(sessionId);
 
+    const renderer = turn.calls.find(call => call.kind === 'renderer')!;
+    const communication = (renderer.payload!.applicationDecision as Record<string, unknown>).communication as Record<string, unknown>;
+    const satisfaction = communication.previewConstraintSatisfaction as Array<Record<string, unknown>>;
+    expect(satisfaction).toHaveLength(3);
+    expect(satisfaction.filter(fact => fact.kind === 'preferred_window').map(fact => fact.status))
+      .toEqual(limited ? ['not_satisfied', 'not_satisfied'] : ['satisfied', 'satisfied']);
+
     const input = traceInput(turn);
+    const context = input.dialogueRendererTrace.request!.promptContext as Record<string, unknown>;
+    expect(JSON.stringify(context)).toContain('previewConstraintSatisfaction');
+    expect(context.messages).toEqual(renderer.messages);
+    const contextMessages = context.messages as Array<{ role: string; content: string }>;
+    const actualPayload = JSON.parse(contextMessages.find(message => message.role === 'user')!.content) as Record<string, unknown>;
+    const actualCommunication = ((actualPayload.applicationDecision as Record<string, unknown>).communication as Record<string, unknown>);
+    expect(actualCommunication.previewConstraintSatisfaction).toEqual(satisfaction);
     const kept = structuredClone(input);
+    const keptContext = kept.dialogueRendererTrace.request!.promptContext as Record<string, unknown>;
+    const keptMessages = keptContext.messages as Array<{ role: string; content: string }>;
+    const keptUserMessage = keptMessages.find(message => message.role === 'user')!;
+    const keptPayload = JSON.parse(keptUserMessage.content) as Record<string, unknown>;
+    const keptCommunication = (keptPayload.applicationDecision as Record<string, unknown>).communication as Record<string, unknown>;
+    (keptCommunication.previewConstraintSatisfaction as Array<Record<string, unknown>>)[0].futureConstraintTruth = 'future-constraint-truth-field';
+    keptUserMessage.content = JSON.stringify(keptPayload);
     const keptScheduler = kept.debugTraceEvents.find((event) => event.stage === 'runtime_preview_scheduler_evaluated')!;
     const keptCandidates = (keptScheduler.data as Record<string, unknown>).candidates as Record<string, unknown>[];
     keptCandidates[1].futureSessionField = SENTINEL;
@@ -127,6 +155,9 @@ describe('session-size propagation trace persistence gate', () => {
           expect(text).toContain('卒業研究ノート');
           expect(text).toContain(sessionId);
           expect(text).toContain(SENTINEL);
+          expect(text).toContain('previewConstraintSatisfaction');
+          expect(text).toContain('future-constraint-truth-field');
+          if (limited) expect(text).toContain('not_satisfied');
           if (entry.requestId === kept.requestId) {
             const diagnostic = persisted as WeeklyPlanningTraceTurnDiagnosticEntry;
             const request = diagnostic.aiInterpreter.input.requests[0];
