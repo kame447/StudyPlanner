@@ -1,6 +1,6 @@
 import {
-  WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5,
-  WEEKLY_PLANNING_CONVERSATION_ACTS_MAX_V5,
+  sanitizeWeeklyPlanningConversationActsV5,
+  type SemanticConversationActV5,
 } from './weeklyPlanningConversationActsV5';
 import { validateWeeklyPlanningAvailabilityCapacityValuesV5, validateWeeklyPlanningAvailabilityAbsenceValuesV5 } from './weeklyPlanningAvailabilityValueValidatorV5';
 import {
@@ -377,34 +377,6 @@ function validateUserContextFacts(
   return errors;
 }
 
-function validateConversationActs(value: unknown): string[] {
-  if (!Array.isArray(value)) return ['document.conversationActs:expected-array'];
-  const errors: string[] = [];
-  if (value.length > WEEKLY_PLANNING_CONVERSATION_ACTS_MAX_V5) {
-    errors.push('document.conversationActs:too-many');
-  }
-  value.forEach((entry, index) => {
-    const path = `document.conversationActs[${index}]`;
-    if (!isRecord(entry)) {
-      errors.push(`${path}:expected-object`);
-      return;
-    }
-    if (!hasOnlyKeys(entry, ['kind', 'targetPublicId', 'sourceText'])) {
-      errors.push(`${path}:unknown-key`);
-    }
-    if (!(WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5 as readonly unknown[]).includes(entry.kind)) {
-      errors.push(`${path}.kind:unsupported-value`);
-    }
-    if (!(entry.targetPublicId === null || (typeof entry.targetPublicId === 'string' && entry.targetPublicId.trim()))) {
-      errors.push(`${path}.targetPublicId:expected-non-empty-string-or-null`);
-    }
-    if (typeof entry.sourceText !== 'string' || !entry.sourceText.trim()) {
-      errors.push(`${path}.sourceText:expected-non-empty-string`);
-    }
-  });
-  return errors;
-}
-
 export interface WeeklyPlanningSemanticValueOptionsV5 {
   /**
    * `false` reproduces the pre-Issue-#488 document contract (legacy architecture):
@@ -413,10 +385,44 @@ export interface WeeklyPlanningSemanticValueOptionsV5 {
   conversationActs?: boolean;
 }
 
+/**
+ * Interaction architecture: the planning delta and the conversation acts of one response
+ * are validated independently. `errors` / `document` describe the planning delta only;
+ * the sanitized acts are reported even when the planning delta is invalid, so the caller
+ * can keep a valid non-mutating act without accepting any invalid planning mutation.
+ */
+export interface WeeklyPlanningSemanticValueValidationResultV5
+  extends WeeklyPlanningSemanticValidationResultV5 {
+  conversationActs?: SemanticConversationActV5[];
+  conversationActDiagnostics?: string[];
+  /** The response carried planning content (any fact/decision/window/create intent). */
+  planningContentPresent?: boolean;
+}
+
+const PLANNING_CONTENT_ARRAY_KEYS = [
+  'tasks',
+  'relations',
+  'availabilityDeclarations',
+  'constraintSourceRequests',
+  'userContextFacts',
+  'uncertainties',
+  'corrections',
+  'decisions',
+] as const;
+
+function responseCarriesPlanningContent(value: Record<string, unknown>): boolean {
+  return value.planningIntent === 'create_plan'
+    || (value.planningWindow !== null && value.planningWindow !== undefined)
+    || PLANNING_CONTENT_ARRAY_KEYS.some((key) => {
+      const entries = value[key];
+      return Array.isArray(entries) ? entries.length > 0 : entries !== undefined;
+    });
+}
+
 export function validateWeeklyPlanningSemanticValueV5(
   value: unknown,
   options: WeeklyPlanningSemanticValueOptionsV5 = {},
-): WeeklyPlanningSemanticValidationResultV5 {
+): WeeklyPlanningSemanticValueValidationResultV5 {
   if (!isRecord(value)) return validateBaseSemanticValueV5(value);
 
   const acceptConversationActs = options.conversationActs ?? true;
@@ -440,9 +446,11 @@ export function validateWeeklyPlanningSemanticValueV5(
     value.userContextFacts ?? [],
     collectLocalIds(weeklyValue),
   );
-  const actErrors = acceptConversationActs
-    ? validateConversationActs(value.conversationActs ?? [])
-    : [];
+  // Only a response that actually carries `conversationActs` is touched: a document without
+  // the key stays exactly as it was ("no act").
+  const actExtraction = acceptConversationActs && 'conversationActs' in value
+    ? sanitizeWeeklyPlanningConversationActsV5(value.conversationActs)
+    : null;
   const structuralErrors = [
     ...baseErrors,
     ...existingPublicIdErrors,
@@ -452,10 +460,11 @@ export function validateWeeklyPlanningSemanticValueV5(
     ...capacityErrors,
     ...absenceErrors,
     ...contextErrors,
-    ...actErrors,
   ];
   const document = structuralErrors.length === 0
-    ? value as unknown as WeeklyPlanningSemanticDocumentV5
+    ? (actExtraction
+        ? { ...value, conversationActs: actExtraction.acts }
+        : value) as unknown as WeeklyPlanningSemanticDocumentV5
     : null;
   const consistencyErrors = document
     ? validateWeeklyPlanningUserContextConsistencyV5(document)
@@ -464,13 +473,20 @@ export function validateWeeklyPlanningSemanticValueV5(
   return {
     document: errors.length === 0 ? document : null,
     errors,
+    ...(actExtraction
+      ? {
+          conversationActs: actExtraction.acts,
+          conversationActDiagnostics: actExtraction.diagnostics,
+          planningContentPresent: responseCarriesPlanningContent(value),
+        }
+      : {}),
   };
 }
 
 export function parseWeeklyPlanningSemanticDocumentV5(
   content: string,
   options: WeeklyPlanningSemanticValueOptionsV5 = {},
-): WeeklyPlanningSemanticValidationResultV5 {
+): WeeklyPlanningSemanticValueValidationResultV5 {
   let value: unknown;
   try {
     value = JSON.parse(content);

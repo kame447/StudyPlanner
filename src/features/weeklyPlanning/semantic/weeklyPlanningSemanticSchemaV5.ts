@@ -351,12 +351,13 @@ const userContextFactSchema = objectSchema(
   },
 );
 
+// Discourse metadata of the current turn: no quoted evidence (the turn identity is known)
+// and no planning payload. Validated apart from the planning delta (see conversation acts).
 const conversationActSchema = objectSchema(
-  ['kind', 'targetPublicId', 'sourceText'],
+  ['kind', 'targetPublicId'],
   {
     kind: enumSchema(WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5),
     targetPublicId: nullableStringSchema,
-    ...sourceTextProperty,
   },
 );
 

@@ -6,6 +6,11 @@ import type {
 export interface WeeklyPlanningSelfRepairNoticeV5 {
   targetFactId: string;
   replacementFactId: string;
+  /** Typed correction data (interaction renderer context): what the user corrected. */
+  taskLabel: string | null;
+  before: string;
+  after: string;
+  /** Deterministic acknowledgement (legacy renderer context and emergency fallback text). */
   message: string;
 }
 
@@ -81,6 +86,9 @@ export function createWeeklyPlanningSelfRepairNoticeV5(params: {
   return {
     targetFactId: correction.target.factId,
     replacementFactId: correction.replacementFactId,
+    taskLabel,
+    before,
+    after,
     message: `${subject}${before}ではなく${after}ですね。修正しました。`,
   };
 }

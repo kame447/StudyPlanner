@@ -116,8 +116,21 @@ for (const device of [
     });
 
     for (const architecture of [
-      { key: 'legacy_v5', label: LEGACY, pattern: /まず、いつの予定を作るか/ },
-      { key: 'interaction_v1', label: INTERACTION, pattern: /確認中の質問は変わりません/ },
+      // Legacy keeps its pre-#488 fixed failure message (an unrelated generic question).
+      {
+        key: 'legacy_v5',
+        label: LEGACY,
+        check: (reply) => expect(reply).toContain('まず、いつの予定を作るか'),
+      },
+      // Interaction re-presents the pending question itself, without a system disclaimer.
+      {
+        key: 'interaction_v1',
+        label: INTERACTION,
+        check: (reply) => {
+          expect(reply).toContain('1問あたりどれくらい時間がかかりますか？');
+          expect(reply).not.toMatch(/予定条件|安全に整理|確認中の質問|いつの予定を作るか/u);
+        },
+      },
     ]) {
       test(`a failed turn is measured as a failure and presented per architecture (${architecture.key})`, async ({ page }) => {
         await page.goto(URL);
@@ -129,7 +142,9 @@ for (const device of [
         const failed = await latestMetrics(page);
         expect(failed.outcome).toContain('失敗 stable_v5_normalization_rejected');
         expect(failed.architecture).toBe(architecture.key);
-        await expect(page.getByText(architecture.pattern)).toHaveCount(1);
+        const bubbles = page.locator('.ai-planning-message-row.assistant .ai-planning-bubble:not(.ai-planning-typing)');
+        await expect(bubbles).toHaveCount(2);
+        architecture.check(await bubbles.nth(1).innerText());
         await expect(page.locator('.ai-planning-composer textarea')).toBeEnabled();
       });
     }

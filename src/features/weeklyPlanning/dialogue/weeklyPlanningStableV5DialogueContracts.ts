@@ -1,5 +1,6 @@
 import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
+import type { WeeklyPlanningTurnStatusReason } from '../application/weeklyPlanningInteractionOutcome';
 
 export type WeeklyPlanningStableV5DialogueActionKind =
   | 'question'
@@ -7,13 +8,78 @@ export type WeeklyPlanningStableV5DialogueActionKind =
   | 'preview_ready';
 
 /**
- * Typed conversational outcome decided by the application. The renderer verbalizes it;
- * it never decides it (and never inspects the raw user message to do so).
+ * What this reply has to accomplish, decided by the application from typed acts, the
+ * interaction outcome and machine state (interaction architecture). The renderer chooses
+ * the words; it never decides the goal and never infers it from the raw user message.
  */
-export type WeeklyPlanningStableV5DialogueConversationOutcome =
-  | 'explain_pending_question'
-  | 'aside'
-  | 'resume_pending_question';
+export type WeeklyPlanningStableV5CommunicationGoal =
+  /** Ordinary turn: ask the typed question (acknowledging what was just taken in). */
+  | 'ask_question'
+  /** Ordinary turn without a question: report the typed status reason. */
+  | 'report_status'
+  /** A new draft schedule is ready for review. */
+  | 'present_preview'
+  /** The user asked why/what about the question just asked: answer that first, then ask it. */
+  | 'explain_question'
+  /** The user moved to another topic: respond to it; the held question is not asked. */
+  | 'acknowledge_aside'
+  /** The user returned to a topic: continue with its question. */
+  | 'resume_question'
+  /** This message could not be used as it is (nothing from it was taken in): clarify. */
+  | 'clarify_turn';
+
+/**
+ * Machine-owned reason codes: WHY the planner needs the information a question asks for.
+ * They carry no prose; the renderer explains the reason in natural words.
+ */
+export const WEEKLY_PLANNING_STABLE_V5_QUESTION_PURPOSES = [
+  'estimate_time_to_fit_available_time',
+  'set_session_length',
+  'skip_already_finished_work',
+  'choose_scope_for_this_plan',
+  'identify_work_to_schedule',
+  'find_more_work_or_constraints',
+  'identify_which_work_and_how_much',
+  'resolve_unclear_detail',
+  'set_planning_period',
+  'choose_one_planning_period',
+  'tell_plan_amount_from_remaining_total',
+  'choose_one_time_estimate',
+  'apply_time_limits_to_right_days',
+  'know_exact_time_range',
+  'place_fixed_commitment',
+  'resolve_conflicting_day_rule',
+  'avoid_existing_commitments',
+  'order_tasks_correctly',
+  'decide_on_study_method_suggestion',
+  'make_the_plan_fit_available_time',
+  'complete_planning_information',
+] as const;
+
+export type WeeklyPlanningStableV5QuestionPurpose =
+  typeof WEEKLY_PLANNING_STABLE_V5_QUESTION_PURPOSES[number];
+
+/**
+ * Typed communication context of one reply (interaction architecture only). Deterministic
+ * code decides WHAT has to be communicated; the renderer decides HOW to say it.
+ */
+export interface WeeklyPlanningStableV5CommunicationContext {
+  goal: WeeklyPlanningStableV5CommunicationGoal;
+  /** Why the planner needs what the asked/explained question requests (empty without one). */
+  questionPurposes: WeeklyPlanningStableV5QuestionPurpose[];
+  /** The reply asks the typed question (once, with its requested information intact). */
+  askQuestion: boolean;
+  /** Purposes of other open questions that come later; context for explanations only. */
+  laterNeeds: WeeklyPlanningStableV5QuestionPurpose[];
+  /** Why a status reply is given (report_status only). */
+  statusReason: WeeklyPlanningTurnStatusReason | null;
+  /** Planning details in this message could not be taken in; nothing from them was applied. */
+  planningDetailsNotApplied: boolean;
+  /** An advice/consultation request was heard but is not answered by this runtime. */
+  consultationDeferred: boolean;
+  /** Work left out of the new draft because the free time ran out (must be disclosed). */
+  previewDisclosure: { omittedWorkLabels: string[] } | null;
+}
 
 export interface WeeklyPlanningStableV5DialogueConversationTurn {
   role: 'user' | 'assistant';
@@ -204,14 +270,14 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   questionTarget?: WeeklyPlanningStableV5DialogueQuestionTarget | null;
   questionIntent?: WeeklyPlanningStableV5DialogueQuestionIntent | null;
   previewPromotionControlLabel?: string | null;
-  /** Application-decided turn kind; null for an ordinary planning turn. */
-  conversationOutcome?: WeeklyPlanningStableV5DialogueConversationOutcome | null;
-  /** A consultation/advice request was heard but is not answered by this runtime. */
-  consultationDeferred?: boolean;
+  /**
+   * Interaction architecture: the typed communication context of this reply. Absent in the
+   * legacy architecture, whose (pre-#488) prompt lets the renderer read the raw user message.
+   */
+  communication?: WeeklyPlanningStableV5CommunicationContext | null;
   /**
    * Conversation architecture of the turn. Legacy (pre-#488) prompts carry neither the typed
-   * outcome fields nor their instructions and let the renderer read the raw user message.
-   * Omitted = current default.
+   * communication context nor its instructions. Omitted = current default.
    */
   conversationArchitecture?: WeeklyPlanningConversationArchitecture;
   requiredLabels: string[];
@@ -228,7 +294,9 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   | 'grounding_contract_mismatch'
   | 'unsafe_text'
   | 'ungrounded_text'
-  | 'repeated_question_text';
+  | 'repeated_question_text'
+  /** Interaction architecture: the text exposes internal system/process vocabulary. */
+  | 'internal_process_text';
 
 export type WeeklyPlanningStableV5DialogueRenderResult =
   | {

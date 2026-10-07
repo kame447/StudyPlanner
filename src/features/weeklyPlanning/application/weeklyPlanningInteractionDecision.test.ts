@@ -97,19 +97,28 @@ describe('interaction outcome classification (typed acts + machine state only)',
 });
 
 describe('renderer boundary', () => {
-  it('receives the typed outcome and does not ask the model to infer it from the user message', () => {
+  it('receives the typed communication context and does not ask the model to infer it from the user message', () => {
     const prompt = createWeeklyPlanningStableV5DialoguePrompt({
       actionId: 'a', currentUserMessage: 'なんで時間が必要？', recentConversation: [], planningInformation: null,
       actionKind: 'question', questionCode: 'missing_effort_estimate', requiredLabels: [], fallbackText: 'f', previewCount: 0,
-      conversationOutcome: 'explain_pending_question', consultationDeferred: true,
+      communication: {
+        goal: 'explain_question',
+        questionPurposes: ['estimate_time_to_fit_available_time'],
+        askQuestion: true,
+        laterNeeds: [],
+        statusReason: null,
+        planningDetailsNotApplied: false,
+        consultationDeferred: true,
+        previewDisclosure: null,
+      },
     });
     const payload = JSON.parse(prompt.userPrompt) as { applicationDecision: Record<string, unknown>; request: string };
     expect(payload.applicationDecision).toMatchObject({
-      conversationOutcome: 'explain_pending_question',
-      consultationDeferred: true,
+      communication: { goal: 'explain_question', consultationDeferred: true, askQuestion: true },
+      purposeMeanings: { estimate_time_to_fit_available_time: expect.any(String) },
     });
     expect(payload.request).not.toContain('currentUserMessageが直前の質問の意味');
-    expect(payload.request).toContain('currentUserMessageからこの扱いを推測し直さない');
+    expect(payload.request).toContain('currentUserMessageから目的を推測し直さないでください');
   });
 
   it('decision modules never read raw user text', () => {

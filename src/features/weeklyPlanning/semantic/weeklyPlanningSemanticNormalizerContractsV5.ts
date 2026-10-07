@@ -36,10 +36,25 @@ export type WeeklyPlanningContextualDirectiveV5 = {
   scope: 'current_missing_effort';
 };
 
+/**
+ * Interaction architecture: the planning delta of every semantic response was unusable, but
+ * the model's typed conversation act (explain / topic shift / resume / consultation) was
+ * valid. The turn proceeds as a non-mutating conversation turn with an empty delta.
+ */
+export interface WeeklyPlanningConversationOnlyTurnV5 {
+  /** Why no planning delta was usable. */
+  planningDelta: 'rejected' | 'provider_failure';
+  /** The rejected response carried planning content, which was not applied. */
+  planningContentPresent: boolean;
+  actSource: 'initial' | 'repair';
+}
+
 export interface WeeklyPlanningSemanticNormalizerResultV5 {
   status: 'accepted' | 'rejected' | 'provider_failure';
   document: WeeklyPlanningSemanticDocumentV5 | null;
   contextualDirective?: WeeklyPlanningContextualDirectiveV5 | null;
+  /** Present only when the accepted document is conversation acts without a planning delta. */
+  conversationOnly?: WeeklyPlanningConversationOnlyTurnV5;
   diagnostics: WeeklyPlanningSemanticNormalizerDiagnosticsV5;
 }
 

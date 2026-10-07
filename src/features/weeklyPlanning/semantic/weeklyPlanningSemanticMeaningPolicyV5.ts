@@ -89,7 +89,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'conversation_acts',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Whether an utterance asks about the pending question, shifts or resumes a topic, or asks for advice is discourse meaning; code only routes the typed result.',
-    instruction: 'conversationActs add non-mutating meaning beside the delta; keep every planning fact. Kinds: ask_about_pending_question (why/what), topic_shift, resume_topic, consultation_request (advice/judgement), answer_pending_question (only with the delta). targetPublicId: existing task/component id or null; sourceText quotes this turn. Plain planning input: [].',
+    instruction: 'conversationActs add non-mutating meaning beside the delta; keep every planning fact. Kinds: ask_about_pending_question (why/what about the asked question; alone it needs no task shell, uncertainty or fact), topic_shift, resume_topic, consultation_request (advice/judgement), answer_pending_question (only with the delta). targetPublicId: existing task/component meant, else null. Plain planning input: [].',
   },
   {
     id: 'independent_clause_decision_correction',

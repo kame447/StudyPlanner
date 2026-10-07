@@ -384,6 +384,23 @@ function outputProjection(value: unknown): Record<string, unknown> {
     failure: compactUnknown(output.failure),
     // Deterministic turn kind (apply/explain/aside/resume/recover): enum-only, no user text.
     interactionOutcome: compactUnknown(output.interactionOutcome),
+    // Typed facts handed to the renderer (interaction architecture): enums, codes and counts
+    // only; omitted work labels are user-authored task titles and are reduced to a count.
+    ...(isRecord(output.communicationFacts)
+      ? { communicationFacts: communicationFactsProjection(output.communicationFacts) }
+      : {}),
+  };
+}
+
+function communicationFactsProjection(value: Record<string, unknown>): Record<string, unknown> {
+  const disclosure = record(value.previewDisclosure);
+  return {
+    statusReason: stringValue(value.statusReason),
+    upcomingQuestionCodes: compactUnknown(value.upcomingQuestionCodes),
+    planningDetailsNotApplied: value.planningDetailsNotApplied === true,
+    omittedWorkCount: Array.isArray(disclosure.omittedWorkLabels)
+      ? disclosure.omittedWorkLabels.length
+      : null,
   };
 }
 
@@ -497,11 +514,26 @@ function projectStageData(stage: string, value: unknown): unknown {
         accepted: data.accepted === true,
         errors: compactUnknown(data.errors),
         parsedDocument: compactUnknown(data.parsedDocument),
+        // Interaction architecture: the response's valid conversation acts (enum + public id)
+        // and why entries were dropped or degraded, even when the planning delta was rejected.
+        ...(Array.isArray(data.conversationActs)
+          ? {
+              conversationActs: compactUnknown(data.conversationActs),
+              conversationActDiagnostics: compactUnknown(data.conversationActDiagnostics),
+            }
+          : {}),
       };
     case 'semantic_normalizer_decision':
       return {
         status: stringValue(data.status),
         diagnostics: compactUnknown(data.diagnostics),
+        ...(stringValue(data.orchestrationRoute)
+          ? { orchestrationRoute: stringValue(data.orchestrationRoute) }
+          : {}),
+        // A turn carried only by its conversation act (no usable planning delta): enum/boolean.
+        ...(isRecord(data.conversationOnly)
+          ? { conversationOnly: compactUnknown(data.conversationOnly) }
+          : {}),
       };
     case 'contextual_question_inference':
     case 'contextual_answer_binding_evaluated':

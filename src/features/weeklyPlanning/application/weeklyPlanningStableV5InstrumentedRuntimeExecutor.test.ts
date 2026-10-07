@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  WEEKLY_PLANNING_INTERACTION_DUPLICATE_SUBMISSION_TEXT,
+} from '../dialogue/weeklyPlanningInteractionFallbackText';
+import {
   createEmptyWeeklyPlanningFactGraphV5,
 } from '../semantic/weeklyPlanningFactGraphV5';
 import {
@@ -102,7 +105,10 @@ describe('Stable V5 instrumented runtime result projection', () => {
     expect(coreExecutorMock).not.toHaveBeenCalled();
     expect(result.draftCandidates).toEqual([]);
     expect(result.state.shouldCreateDraft).toBe(false);
-    expect(result.message).toContain('予定を重複して作成しませんでした');
+    // Interaction (default): short ordinary wording, no processing vocabulary.
+    expect(result.message).toBe(WEEKLY_PLANNING_INTERACTION_DUPLICATE_SUBMISSION_TEXT);
+    expect(result.message).not.toMatch(/処理|構造化|反映/);
+    expect(result.responseSource).toBe('system');
     expect(result.stableV5Graph).toMatchObject({
       revision: 1,
       appliedTurnKeys: ['conversation-1:request-1'],
@@ -122,6 +128,24 @@ describe('Stable V5 instrumented runtime result projection', () => {
         }),
       }),
     ]));
+  });
+
+  it('legacy keeps the pre-#488 duplicate wording', async () => {
+    hydrateWeeklyPlanningStableV5RuntimeSession({
+      ownerId: 'owner-1',
+      weekStartDate: '2026-07-27',
+      conversationId: 'conversation-1',
+      graph: graph(1, ['conversation-1:request-1']),
+    });
+
+    const result = await executeWeeklyPlanningStableV5RuntimeTurn({
+      ...input('request-1'),
+      conversationArchitecture: 'legacy_v5',
+    });
+    takeWeeklyPlanningStableV5DebugTrace('request-1');
+
+    expect(coreExecutorMock).not.toHaveBeenCalled();
+    expect(result.message).toBe('同じ送信はすでに処理済みのため、予定を重複して作成しませんでした。');
   });
 
   it('projects the exact current-turn staged graph before application finalization', async () => {

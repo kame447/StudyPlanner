@@ -29,14 +29,35 @@ export function readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5(
     : null;
 }
 
+function hasNoPlanningContent(document: WeeklyPlanningSemanticDocumentV5): boolean {
+  return document.planningIntent !== 'create_plan'
+    && document.planningWindow === null
+    && document.tasks.length === 0
+    && document.relations.length === 0
+    && document.availabilityDeclarations.length === 0
+    && document.constraintSourceRequests.length === 0
+    && (document.userContextFacts?.length ?? 0) === 0
+    && document.uncertainties.length === 0
+    && document.corrections.length === 0
+    && document.decisions.length === 0;
+}
+
 export function validateWeeklyPlanningWorkBreakdownResponseContractV5(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   publicStateSummary?: Record<string, unknown>;
+  /**
+   * Interaction architecture (Issue #488): a response that carries no planning content at
+   * all (only conversation acts, e.g. "why do you need this?") changes nothing about the
+   * pending breakdown, so it is not required to restate the target task. Any response that
+   * does carry planning content still has to represent the target exactly once.
+   */
+  exemptEmptyPlanningDelta?: boolean;
 }): string[] {
   const targetPublicId = readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5(
     params.publicStateSummary,
   );
   if (!targetPublicId) return [];
+  if (params.exemptEmptyPlanningDelta && hasNoPlanningContent(params.document)) return [];
 
   const errors: string[] = [];
   const targetEntries = params.document.tasks

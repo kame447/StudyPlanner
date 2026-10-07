@@ -69,6 +69,7 @@ export async function runGenericSemanticRepairRouteV5(params: {
     },
   );
   params.run.addAlgorithmicRepairs(repairedValidation.algorithmicRepairs);
+  params.run.recordRejectedPlanningConversationActs('repair', repairedValidation);
   const preservationErrors = validateWeeklyPlanningSemanticRepairPreservationV5({
     initialDocument: params.initialValidation.parsedDocument,
     repairedDocument: repairedValidation.document,
@@ -87,6 +88,12 @@ export async function runGenericSemanticRepairRouteV5(params: {
       algorithmicRepairs: repairedValidation.algorithmicRepairs,
       parsedDocument: repairedValidation.parsedDocument,
       semanticAttemptCount: repairAttemptCount,
+      ...(repairedValidation.conversationActs
+        ? {
+            conversationActs: repairedValidation.conversationActs,
+            conversationActDiagnostics: repairedValidation.conversationActDiagnostics ?? [],
+          }
+        : {}),
     },
   });
 

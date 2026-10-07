@@ -5,6 +5,7 @@ import type {
 import type { SemanticDispatchStage } from '../../../../shared/semanticDispatchLedger';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 } from './weeklyPlanningSemanticTypesV5';
+import type { SemanticConversationActV5 } from './weeklyPlanningConversationActsV5';
 import { semanticProviderResponseFormatV5 } from './weeklyPlanningSemanticProviderResponseFormatV5';
 import {
   WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
@@ -72,11 +73,22 @@ export function focusedRepairCalendarContextV5(
   };
 }
 
+/**
+ * Valid conversation acts of a generic semantic response whose planning delta was rejected.
+ * Kept so a non-mutating act can still carry the turn when no planning delta is usable.
+ */
+export interface WeeklyPlanningConversationActCandidateV5 {
+  source: 'initial' | 'repair';
+  acts: SemanticConversationActV5[];
+  planningContentPresent: boolean;
+}
+
 export class WeeklyPlanningSemanticNormalizerRunV5 {
   readonly startedAt = performance.now();
   readonly requestBytes: number[] = [];
   readonly responseLengths: number[] = [];
   readonly algorithmicRepairs: string[] = [];
+  readonly conversationActCandidates: WeeklyPlanningConversationActCandidateV5[] = [];
 
   constructor(
     readonly client: OpenAiCompatibleClient,
@@ -134,6 +146,23 @@ export class WeeklyPlanningSemanticNormalizerRunV5 {
 
   addAlgorithmicRepairs(values: readonly string[]): void {
     this.algorithmicRepairs.push(...values);
+  }
+
+  /** Records the acts of a generic response whose planning delta was rejected. */
+  recordRejectedPlanningConversationActs(
+    source: WeeklyPlanningConversationActCandidateV5['source'],
+    validation: {
+      document: unknown;
+      conversationActs?: SemanticConversationActV5[];
+      planningContentPresent?: boolean;
+    },
+  ): void {
+    if (validation.document || !validation.conversationActs?.length) return;
+    this.conversationActCandidates.push({
+      source,
+      acts: validation.conversationActs,
+      planningContentPresent: validation.planningContentPresent ?? false,
+    });
   }
 
   diagnostics(params: {

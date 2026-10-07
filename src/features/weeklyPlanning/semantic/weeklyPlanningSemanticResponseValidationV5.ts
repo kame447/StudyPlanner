@@ -9,9 +9,12 @@ import {
   validateWeeklyPlanningDecisionTargetReferencesV5,
 } from './weeklyPlanningDecisionReferenceValidationV5';
 import {
-  validateWeeklyPlanningConversationActTargetsAgainstPublicStateV5,
   validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5,
 } from './weeklyPlanningExistingEntityBindingV5';
+import {
+  resolveWeeklyPlanningConversationActTargetsV5,
+  type SemanticConversationActV5,
+} from './weeklyPlanningConversationActsV5';
 import {
   validateWeeklyPlanningSemanticNumericSafetyV5,
 } from './weeklyPlanningNumericSafetyV5';
@@ -67,10 +70,20 @@ export interface WeeklyPlanningSemanticResponseValidationInputV5 {
 }
 
 export interface WeeklyPlanningSemanticValidationAttemptV5 {
+  /** The validated planning delta (with its valid conversation acts), or null. */
   document: WeeklyPlanningSemanticDocumentV5 | null;
   parsedDocument: WeeklyPlanningSemanticDocumentV5 | null;
+  /** Planning-delta validation errors only; conversation acts never add one. */
   errors: string[];
   algorithmicRepairs: string[];
+  /**
+   * Interaction architecture only: the response's valid conversation acts, reported even
+   * when the planning delta is rejected (non-authoritative discourse metadata).
+   */
+  conversationActs?: SemanticConversationActV5[];
+  conversationActDiagnostics?: string[];
+  /** Interaction architecture only: the response carried planning content. */
+  planningContentPresent?: boolean;
 }
 
 function uniqueErrors(errors: string[]): string[] {
@@ -106,6 +119,22 @@ export function validateWeeklyPlanningSemanticResponseV5(
     preParseNormalization.rawResponse,
     { conversationActs: semanticConversationActs },
   );
+  const actTargets = parsed.conversationActs
+    ? resolveWeeklyPlanningConversationActTargetsV5({
+        acts: parsed.conversationActs,
+        publicStateSummary: input.publicStateSummary,
+      })
+    : null;
+  const conversationActEvidence = actTargets
+    ? {
+        conversationActs: actTargets.acts,
+        conversationActDiagnostics: [
+          ...(parsed.conversationActDiagnostics ?? []),
+          ...actTargets.diagnostics,
+        ],
+        planningContentPresent: parsed.planningContentPresent ?? false,
+      }
+    : {};
   if (!parsed.document) {
     const errors = uniqueErrors([
       ...parsed.errors,
@@ -119,6 +148,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
       }),
       errors,
       algorithmicRepairs: preParseNormalization.repairs,
+      ...conversationActEvidence,
     };
   }
 
@@ -127,7 +157,9 @@ export function validateWeeklyPlanningSemanticResponseV5(
     ...preParseNormalization.repairs,
     ...normalized.repairs,
   ];
-  const document = normalized.document;
+  const document = actTargets
+    ? { ...normalized.document, conversationActs: actTargets.acts }
+    : normalized.document;
   const errors = [
     ...validateWeeklyPlanningSemanticNumericSafetyV5(document),
     ...planningWindowCanonicalValueErrors(
@@ -148,14 +180,13 @@ export function validateWeeklyPlanningSemanticResponseV5(
       document,
       publicStateSummary: input.publicStateSummary,
     }),
-    ...validateWeeklyPlanningConversationActTargetsAgainstPublicStateV5({
-      document,
-      publicStateSummary: input.publicStateSummary,
-    }),
     ...validateWeeklyPlanningRecurrenceConsistencyV5(document),
     ...validateWeeklyPlanningWorkBreakdownResponseContractV5({
       document,
       publicStateSummary: input.publicStateSummary,
+      // Interaction architecture: a response with no planning content (for example an
+      // explanation request) leaves the pending breakdown untouched and need not restate it.
+      exemptEmptyPlanningDelta: semanticConversationActs,
     }),
     ...validateWeeklyPlanningSemanticEvidenceV5({ document }),
     ...validateWeeklyPlanningCurrentTurnProvenanceV5({
@@ -173,5 +204,6 @@ export function validateWeeklyPlanningSemanticResponseV5(
     parsedDocument: document,
     errors,
     algorithmicRepairs,
+    ...conversationActEvidence,
   };
 }

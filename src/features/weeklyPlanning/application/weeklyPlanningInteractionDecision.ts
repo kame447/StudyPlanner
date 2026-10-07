@@ -168,3 +168,23 @@ export function classifyWeeklyPlanningInteraction(params: {
   if (acts.shift) return { kind: 'aside', consultationDeferred };
   return apply;
 }
+
+/**
+ * Codes of the other open blocking questions, in policy order, without the one presented
+ * now and without issues the repair policy deferred this turn. The renderer may use them
+ * to say what will be needed later (e.g. "how long it takes" after "which material");
+ * they never change which question is asked.
+ */
+export function upcomingQuestionCodesForInteraction(params: {
+  evaluation: WeeklyPlanningStableV5PlanningEvaluation;
+  presented: { code: string; factId: string | null } | null;
+}): string[] {
+  const deferred = new Set(params.evaluation.repairDecision.deferredIssueIds);
+  const codes = listWeeklyPlanningStableBlockingQuestionsV5(params.evaluation.compilation)
+    .filter((question) => !(question.factId !== null && deferred.has(question.factId)))
+    .filter((question) => !(params.presented
+      && question.code === params.presented.code
+      && question.factId === params.presented.factId))
+    .map((question) => question.code);
+  return [...new Set(codes)];
+}

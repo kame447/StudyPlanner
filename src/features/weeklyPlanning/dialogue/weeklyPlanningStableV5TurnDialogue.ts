@@ -10,9 +10,12 @@ import {
   type WeeklyPlanningStableV5DialogueRenderInput,
 } from './weeklyPlanningStableV5AiDialogueRenderer';
 import type {
-  WeeklyPlanningStableV5DialogueConversationOutcome,
   WeeklyPlanningStableV5DialogueQuestionIntent,
 } from './weeklyPlanningStableV5DialogueContracts';
+import { communicationContextForStableV5Dialogue } from './weeklyPlanningStableV5CommunicationContext';
+import { composeWeeklyPlanningInteractionFallbackText } from './weeklyPlanningInteractionFallbackText';
+import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
+import { withStableV5GroundingProposal } from '../application/weeklyPlanningStableV5GroundingFlow';
 import {
   decodeWeeklyPlanningStableV5QuestionSlot,
 } from '../intake/weeklyPlanningStableV5QuestionSlot';
@@ -39,6 +42,7 @@ import {
 } from '../personalization/weeklyPlanningRegisteredMaterialRuntimeV5';
 import {
   createWeeklyPlanningSelfRepairNoticeV5,
+  type WeeklyPlanningSelfRepairNoticeV5,
 } from '../semantic/weeklyPlanningSelfRepairV5';
 import {
   createWeeklyPlanningStableV5DialogueProjection,
@@ -64,35 +68,15 @@ function questionCodeFromTargetSlot(targetSlot: string | undefined): string | nu
   return decodeWeeklyPlanningStableV5QuestionSlot(targetSlot);
 }
 
-const EXPLAIN_FALLBACK_LEAD = 'この確認は、予定を無理なく配置するために必要です。';
-const RESUME_FALLBACK_LEAD = '先ほどの確認に戻ります。';
-const ASIDE_FALLBACK_TEXT = 'わかりました。ここまでの内容は変更していません。保留中の確認に戻るときは、そう教えてください。';
-const CONSULTATION_DEFERRED_FALLBACK = 'ご相談の内容への回答は、今回は行っていません。';
-
-type InteractionOutcome = NonNullable<WeeklyPlanningTurnExecutionResult['interactionOutcome']>;
-
-function conversationOutcomeForRenderer(
-  outcome: InteractionOutcome | undefined,
-): WeeklyPlanningStableV5DialogueConversationOutcome | null {
-  return outcome && outcome.kind !== 'apply' && outcome.kind !== 'recover'
-    ? outcome.kind
-    : null;
-}
-
-/** Fallback prose for the typed outcome; the typed question text stays the question. */
-function withInteractionFallback(
-  text: string,
-  outcome: InteractionOutcome | undefined,
-): string {
-  if (!outcome || outcome.kind === 'recover') return text;
-  const lead = outcome.kind === 'explain_pending_question'
-    ? `${EXPLAIN_FALLBACK_LEAD}${text}`
-    : outcome.kind === 'resume_pending_question'
-      ? `${RESUME_FALLBACK_LEAD}${text}`
-      : outcome.kind === 'aside'
-        ? ASIDE_FALLBACK_TEXT
-        : text;
-  return outcome.consultationDeferred ? `${lead}${CONSULTATION_DEFERRED_FALLBACK}` : lead;
+/**
+ * Interaction outcomes that keep the retained machine question but do not present it in
+ * this reply: an aside, and a recovery turn whose question was not fresh. The question is
+ * neither offered to the renderer nor re-bound, so it cannot be mistaken as asked.
+ */
+function holdsQuestionBack(result: WeeklyPlanningTurnExecutionResult): boolean {
+  const outcome = result.interactionOutcome;
+  return outcome?.kind === 'aside'
+    || (outcome?.kind === 'recover' && !outcome.representedQuestion);
 }
 
 function dialogueActionKind(
@@ -112,12 +96,12 @@ export function isWeeklyPlanningStableV5SystemResult(
 function selfRepairNotice(params: {
   input: WeeklyPlanningTurnExecutionInput;
   result: WeeklyPlanningTurnExecutionResult;
-}): string | null {
+}): WeeklyPlanningSelfRepairNoticeV5 | null {
   if (!params.result.stableV5Graph) return null;
   return createWeeklyPlanningSelfRepairNoticeV5({
     graph: params.result.stableV5Graph,
     currentTurnId: params.input.traceRequestId,
-  })?.message ?? null;
+  });
 }
 
 function withSelfRepairNotice(message: string, notice: string | null): string {
@@ -280,10 +264,13 @@ function createRenderInput(params: {
   input: WeeklyPlanningTurnExecutionInput;
   result: WeeklyPlanningTurnExecutionResult;
   notice: string | null;
+  selfRepair: WeeklyPlanningSelfRepairNoticeV5 | null;
   actionKind: WeeklyPlanningStableV5DialogueActionKind;
   questionCode: string | null;
   actionId: string;
 }): WeeklyPlanningStableV5DialogueRenderInput {
+  const interaction = conversationArchitecturePolicy(params.input.conversationArchitecture)
+    .interactionOutcome;
   const planningInformation = params.result.stableV5Graph
     ? {
         ...createWeeklyPlanningStableV5DialogueProjection(params.result.stableV5Graph),
@@ -293,7 +280,19 @@ function createRenderInput(params: {
           userText: params.input.userText,
         }),
         groundingRecords: groundingRecords(params.result),
-        selfRepairNotice: params.notice,
+        // Interaction: the correction as typed data, for the renderer to acknowledge in its own
+        // words. Legacy: the pre-#488 prewritten acknowledgement sentence.
+        ...(interaction
+          ? {
+              selfRepair: params.selfRepair
+                ? {
+                    taskLabel: params.selfRepair.taskLabel,
+                    before: params.selfRepair.before,
+                    after: params.selfRepair.after,
+                  }
+                : null,
+            }
+          : { selfRepairNotice: params.notice }),
       }
     : null;
   const targetFactId = params.result.state.lastQuestionContext?.topicId ?? null;
@@ -315,10 +314,36 @@ function createRenderInput(params: {
   const previewPromotionControlLabel = params.result.state.status === 'draft_ready'
     ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL
     : null;
-  const fallbackText = fallbackTextForStableV5TypedIntent({
+  const typedFallbackText = fallbackTextForStableV5TypedIntent({
     applicationText: params.result.message,
     questionIntent,
   });
+  // Interaction architecture: the application states WHAT to communicate as a typed context;
+  // the renderer writes the words. The emergency text is composed from the same context.
+  const communication = interaction
+    ? communicationContextForStableV5Dialogue({
+        outcome: params.result.interactionOutcome,
+        facts: params.result.communicationFacts,
+        actionKind: params.actionKind,
+        questionCode: params.questionCode,
+        questionIntent,
+      })
+    : null;
+  const fallbackText = communication
+    ? composeWeeklyPlanningInteractionFallbackText({
+        communication,
+        questionText: params.actionKind === 'question' ? typedFallbackText : '',
+        questionCode: params.questionCode,
+        previewCount: params.result.draftCandidates.length,
+        previewPromotionControlLabel,
+        groundingNote: withStableV5GroundingProposal({
+          message: '',
+          records: params.result.state.groundingRecords ?? [],
+          currentTurnId: params.input.traceRequestId,
+        }),
+        applicationText: params.result.message,
+      })
+    : typedFallbackText;
   const previousQuestionCode = questionCodeFromTargetSlot(
     params.input.previousState?.lastQuestionContext?.targetSlot,
   );
@@ -348,12 +373,8 @@ function createRenderInput(params: {
       includePreviewPromotionControl: previewPromotionControlLabel !== null,
     }),
     conversationArchitecture: params.input.conversationArchitecture,
-    conversationOutcome: conversationOutcomeForRenderer(params.result.interactionOutcome),
-    consultationDeferred: params.result.interactionOutcome?.consultationDeferred === true,
-    fallbackText: withSelfRepairNotice(
-      withInteractionFallback(fallbackText, params.result.interactionOutcome),
-      params.notice,
-    ),
+    ...(communication ? { communication } : {}),
+    fallbackText: withSelfRepairNotice(fallbackText, params.notice),
     previewCount: params.result.draftCandidates.length,
   };
 }
@@ -381,10 +402,11 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     return result;
   }
 
-  const notice = selfRepairNotice(params);
-  // An aside is presented as a status: the retained question stays in machine state but
-  // is not offered to (or re-bound for) the renderer, so it cannot be mistaken as asked.
-  const aside = params.result.interactionOutcome?.kind === 'aside';
+  const selfRepair = selfRepairNotice(params);
+  const notice = selfRepair?.message ?? null;
+  // Presented as a status: the retained question stays in machine state but is not offered
+  // to (or re-bound for) the renderer, so it cannot be mistaken as asked.
+  const aside = holdsQuestionBack(params.result);
   const renderResult: WeeklyPlanningTurnExecutionResult = aside
     ? {
         ...params.result,
@@ -402,6 +424,7 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     ...params,
     result: renderResult,
     notice,
+    selfRepair,
     actionKind,
     questionCode: currentQuestionCode,
     actionId: currentActionId,

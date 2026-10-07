@@ -25,6 +25,8 @@ import { cancelWeeklyPlanningControlledTurn } from './weeklyPlanningTurnControll
 const MATH_SETUP = '来週、数学の問題集を20問進めたい';
 const TWO_TASK_SETUP = '来週、英語の長文を10ページと、数学の問題を20問やりたい。数学は1問5分';
 const SENTINEL = 'SENTINEL-488-INVALID-OUTPUT';
+/** Internal system/process vocabulary that must never reach an ordinary assistant reply. */
+const INTERNAL_PROCESS_WORDING = /予定条件|安全に整理|反映していません|確認中の質問|保留中|構造化|正規化|validation|pending|provider|retry|処理結果/u;
 
 type Json = Record<string, unknown>;
 
@@ -118,8 +120,9 @@ function twoTaskSetupDocument(): Json {
   });
 }
 
-function act(kind: string, sourceText: string, targetPublicId: string | null = null): Json {
-  return { kind, targetPublicId, sourceText };
+/** A typed conversation act: discourse metadata of the current turn (no quoted evidence). */
+function act(kind: string, targetPublicId: string | null = null): Json {
+  return { kind, targetPublicId };
 }
 
 function focusedFallback(): string {
@@ -229,7 +232,7 @@ describe('Issue #488 A: explanation of the pending question', () => {
     script = (call) => {
       if (call.kind === 'semantic_generic') {
         return JSON.stringify(emptyDocument({
-          conversationActs: [act('ask_about_pending_question', 'なんで時間が必要？')],
+          conversationActs: [act('ask_about_pending_question')],
         }));
       }
       if (call.kind === 'renderer') {
@@ -257,7 +260,13 @@ describe('Issue #488 A: explanation of the pending question', () => {
     expect(rendererDecision(renderer)).toMatchObject({
       actionKind: 'question',
       questionCode: 'missing_effort_estimate',
-      conversationOutcome: 'explain_pending_question',
+      communication: {
+        goal: 'explain_question',
+        askQuestion: true,
+        questionPurposes: ['estimate_time_to_fit_available_time'],
+        planningDetailsNotApplied: false,
+      },
+      purposeMeanings: { estimate_time_to_fit_available_time: expect.any(String) },
     });
     expect(explanation.result?.interactionOutcome).toMatchObject({ kind: 'explain_pending_question' });
     expect(latestAssistant(conversation).content).toContain('何分くらい');
@@ -281,7 +290,7 @@ describe('Issue #488 A: explanation of the pending question', () => {
       if (call.kind !== 'semantic_generic') return undefined;
       generic += 1;
       return JSON.stringify(emptyDocument({
-        conversationActs: [act('answer_pending_question', 'たぶんそれくらい')],
+        conversationActs: [act('answer_pending_question')],
       }));
     };
     const turn = await conversation.submit('たぶんそれくらい');
@@ -301,7 +310,7 @@ describe('Issue #488 B: aside and resume', () => {
     script = (call) => {
       if (call.kind === 'semantic_generic') {
         return JSON.stringify(emptyDocument({
-          conversationActs: [act('topic_shift', 'ちょっと数学の話をしたい', taskId(call, '数学の問題'))],
+          conversationActs: [act('topic_shift', taskId(call, '数学の問題'))],
         }));
       }
       return undefined;
@@ -312,7 +321,7 @@ describe('Issue #488 B: aside and resume', () => {
     expect(rendererDecision(aside.calls.find((call) => call.kind === 'renderer'))).toMatchObject({
       actionKind: 'status',
       questionCode: null,
-      conversationOutcome: 'aside',
+      communication: { goal: 'acknowledge_aside', askQuestion: false },
     });
     expect(pendingTarget(conversation)).toEqual(english);
     expect(conversation.getState().intakeState?.lastQuestionContext).not.toHaveProperty('presentation');
@@ -329,7 +338,7 @@ describe('Issue #488 B: aside and resume', () => {
     script = (call) => {
       if (call.kind === 'semantic_generic') {
         return JSON.stringify(emptyDocument({
-          conversationActs: [act('resume_topic', '英語に戻ろう', taskId(call, '英語の長文'))],
+          conversationActs: [act('resume_topic', taskId(call, '英語の長文'))],
         }));
       }
       return undefined;
@@ -339,7 +348,7 @@ describe('Issue #488 B: aside and resume', () => {
     expect(rendererDecision(resume.calls.find((call) => call.kind === 'renderer'))).toMatchObject({
       actionKind: 'question',
       questionCode: 'missing_effort_estimate',
-      conversationOutcome: 'resume_pending_question',
+      communication: { goal: 'resume_question', askQuestion: true },
     });
     expect(pendingTarget(conversation)).toEqual(english);
     expect(freshness(conversation).status).toBe('fresh');
@@ -372,7 +381,7 @@ describe('Issue #488 B: aside and resume', () => {
     script = (call) => {
       if (call.kind === 'semantic_generic') {
         return JSON.stringify(emptyDocument({
-          conversationActs: [act('topic_shift', 'そっちの話をしたい', taskId(call, otherTitle))],
+          conversationActs: [act('topic_shift', taskId(call, otherTitle))],
         }));
       }
       return undefined;
@@ -385,7 +394,7 @@ describe('Issue #488 B: aside and resume', () => {
     script = (call) => {
       if (call.kind === 'semantic_generic') {
         return JSON.stringify(emptyDocument({
-          conversationActs: [act('resume_topic', 'さっきのに戻ろう', taskId(call, firstTaskTitle))],
+          conversationActs: [act('resume_topic', taskId(call, firstTaskTitle))],
         }));
       }
       return undefined;
@@ -415,8 +424,17 @@ describe('Issue #488 C/D: failures become conversational recovery', () => {
     expect(conversation.graph()).toEqual(graphBefore);
     expect(conversation.getState().previewCandidates).toEqual(previewBefore);
     expect(pendingTarget(conversation)).toEqual(pending);
+    // The reply is a normal rendered turn: the typed recovery goal and the retained question.
+    const renderer = failed.calls.find((call) => call.kind === 'renderer');
+    expect(rendererDecision(renderer)).toMatchObject({
+      actionKind: 'question',
+      questionCode: 'missing_effort_estimate',
+      communication: { goal: 'clarify_turn', askQuestion: true },
+    });
     const message = latestAssistant(conversation).content;
     expect(message).not.toContain('いつの予定を作るか');
+    expect(message).not.toMatch(INTERNAL_PROCESS_WORDING);
+    // The fixture renderer is unavailable, so the emergency wording carries the same question.
     expect(message).toContain(pendingQuestionText.replace(/^.*?(1問あたり)/, '$1'));
     expect(freshness(conversation).status).toBe('fresh');
     expect(failed.result?.state.lastQuestionContext?.targetSlot).toBe(pending.targetSlot);
@@ -439,9 +457,12 @@ describe('Issue #488 C/D: failures become conversational recovery', () => {
 
     expect(failed.result?.failure?.code).toBe('stable_v5_provider_failure');
     expect(failed.result?.interactionOutcome).toMatchObject({ kind: 'recover', failure: 'provider' });
+    // The provider just failed: no renderer call; short emergency wording asks for a resend.
+    expect(failed.calls.some((call) => call.kind === 'renderer')).toBe(false);
     const message = latestAssistant(conversation).content;
     expect(message).toContain('もう一度送って');
     expect(message).not.toContain('いつの予定を作るか');
+    expect(message).not.toMatch(INTERNAL_PROCESS_WORDING);
     expect(conversation.graph()).toEqual(graphBefore);
     expect(pendingTarget(conversation)).toEqual(pending);
     expect(freshness(conversation).status).toBe('fresh');
@@ -456,8 +477,13 @@ describe('Issue #488 C/D: failures become conversational recovery', () => {
     script = (call) => (call.kind === 'semantic_generic' ? 'not a semantic document' : undefined);
     const failed = await conversation.submit('こんにちは');
     expect(failed.result?.interactionOutcome).toMatchObject({ kind: 'recover', failure: 'semantic', representedQuestion: false });
+    expect(rendererDecision(failed.calls.find((call) => call.kind === 'renderer'))).toMatchObject({
+      actionKind: 'status',
+      communication: { goal: 'clarify_turn', askQuestion: false },
+    });
     const message = latestAssistant(conversation).content;
     expect(message).not.toContain('いつの予定を作るか');
+    expect(message).not.toMatch(INTERNAL_PROCESS_WORDING);
     expect(conversation.getState().intakeState?.lastQuestionContext).toBeUndefined();
   });
 });
@@ -569,7 +595,7 @@ describe('Issue #488 E: reload keeps identity and freshness', () => {
     await conversation.submit(MATH_SETUP);
     const pending = pendingTarget(conversation);
     script = (call) => (call.kind === 'semantic_generic'
-      ? JSON.stringify(emptyDocument({ conversationActs: [act('ask_about_pending_question', 'なんで？')] }))
+      ? JSON.stringify(emptyDocument({ conversationActs: [act('ask_about_pending_question')] }))
       : undefined);
     await conversation.submit('なんで？');
 
@@ -613,7 +639,7 @@ describe('Issue #488 F: stale responses and double submit', () => {
       dispatch: conversation.dispatch,
     })).toBe(true);
     gate.resolve(JSON.stringify(emptyDocument({
-      conversationActs: [act('ask_about_pending_question', 'なんで？')],
+      conversationActs: [act('ask_about_pending_question')],
     })));
     const stale = await running;
 
@@ -662,7 +688,7 @@ describe('Issue #488 G: mixed turns keep independent planning contributions', ()
             startTime: '18:00', endTime: '20:00', recurrenceKind: null, days: [], constraintLevel: 'hard',
             capacityMinutes: null, sourceText: '火曜日の18時から20時は勉強できない',
           }],
-          conversationActs: [act('consultation_request', '英語はこの量で間に合う？', taskId(call, '英語の長文'))],
+          conversationActs: [act('consultation_request', taskId(call, '英語の長文'))],
         }));
       }
       return undefined;
@@ -675,7 +701,7 @@ describe('Issue #488 G: mixed turns keep independent planning contributions', ()
       expect.objectContaining({ kind: 'unavailable', startTime: '18:00', endTime: '20:00' }),
     ]);
     const renderer = turn.calls.find((call) => call.kind === 'renderer');
-    expect(rendererDecision(renderer)).toMatchObject({ consultationDeferred: true });
+    expect(rendererDecision(renderer)).toMatchObject({ communication: { consultationDeferred: true } });
     expect(turn.result?.interactionOutcome).toMatchObject({ consultationDeferred: true });
   });
 });
@@ -727,9 +753,9 @@ describe('Issue #488 I: conversational acts never authorize, approve or save', (
       if (call.kind === 'semantic_generic') {
         return JSON.stringify(emptyDocument({
           conversationActs: [
-            act('answer_pending_question', 'いいよ、それで作って保存して'),
-            act('resume_topic', 'いいよ、それで作って保存して', taskId(call, '数学の問題集')),
-            act('consultation_request', 'いいよ、それで作って保存して'),
+            act('answer_pending_question'),
+            act('resume_topic', taskId(call, '数学の問題集')),
+            act('consultation_request'),
           ],
         }));
       }

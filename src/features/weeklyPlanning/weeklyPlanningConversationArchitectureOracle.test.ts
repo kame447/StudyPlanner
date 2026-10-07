@@ -90,7 +90,7 @@ function documentJson(withActs: boolean): string {
     schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'discuss', planningWindow: null, tasks: [], relations: [],
     availabilityDeclarations: [], constraintSourceRequests: [], userContextFacts: [],
     ...(withActs
-      ? { conversationActs: [{ kind: 'ask_about_pending_question', targetPublicId: null, sourceText: 'なんで' }] }
+      ? { conversationActs: [{ kind: 'ask_about_pending_question', targetPublicId: null }] }
       : {}),
     uncertainties: [], corrections: [], decisions: [],
   });
@@ -143,12 +143,16 @@ describe('legacy_v5 reproduces the pre-#488 boundaries (oracle: ee07697e)', () =
 });
 
 describe('interaction_v1 differs at exactly the boundaries #488 changed', () => {
-  it('requires/prompts conversationActs and uses the typed renderer outcome', () => {
+  it('requires/prompts conversationActs and uses the typed communication context', () => {
     expect(sha(JSON.stringify(semanticProviderResponseFormatV5('interaction_v1')))).not.toBe(ORACLE_EE07697E.providerFormat);
     expect(JSON.stringify(semanticProviderResponseFormatV5('interaction_v1'))).toContain('conversationActs');
     expect(createWeeklyPlanningSemanticMeaningPolicyV5('interaction_v1')).toContain('conversationActs add non-mutating');
-    expect(dialoguePrompt('interaction_v1').userPrompt).toContain('conversationOutcome');
-    expect(sha(dialoguePrompt('interaction_v1').systemPrompt)).toBe(ORACLE_EE07697E.dialogueSystem);
+    const prompt = dialoguePrompt('interaction_v1');
+    expect(prompt.userPrompt).toContain('"communication"');
+    expect(prompt.userPrompt).toContain('purposeMeanings');
+    // The renderer no longer decides "explain" from the raw message in interaction_v1.
+    expect(prompt.userPrompt).not.toContain('currentUserMessageが直前の質問の意味・理由');
+    expect(sha(prompt.systemPrompt)).not.toBe(ORACLE_EE07697E.dialogueSystem);
   });
 
   it('withholds a question that was never presented and accepts typed acts', () => {

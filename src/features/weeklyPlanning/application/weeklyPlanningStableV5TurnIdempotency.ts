@@ -11,6 +11,10 @@ import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlan
 import {
   getWeeklyPlanningStableV5RuntimeSession,
 } from './weeklyPlanningStableV5RuntimeSession';
+import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
+import {
+  WEEKLY_PLANNING_INTERACTION_DUPLICATE_SUBMISSION_TEXT,
+} from '../dialogue/weeklyPlanningInteractionFallbackText';
 
 export type WeeklyPlanningStableV5IdempotencyDecision =
   | { kind: 'proceed' }
@@ -52,7 +56,11 @@ function duplicateTurnResult(
       shouldSavePlan: false,
       draftGenerationIntent: 'not_requested',
     },
-    message: '同じ送信はすでに処理済みのため、予定を重複して作成しませんでした。',
+    // A guard path with no AI call: interaction uses its short emergency wording, legacy
+    // keeps the pre-#488 text.
+    message: conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome
+      ? WEEKLY_PLANNING_INTERACTION_DUPLICATE_SUBMISSION_TEXT
+      : '同じ送信はすでに処理済みのため、予定を重複して作成しませんでした。',
     draftCandidates: [],
     responseSource: 'system',
   };

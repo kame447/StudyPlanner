@@ -499,11 +499,9 @@ export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {
     checkStoredCopy(fact.label, `${factPath}.label`);
     checkStoredCopy(fact.value, `${factPath}.value`);
   });
-  // A conversational act is evidence-bound like every other contribution: it must quote
-  // the current user turn. It carries no value, so there is nothing to copy-check.
-  (params.document.conversationActs ?? []).forEach((act, index) => {
-    check(act.sourceText, `document.conversationActs[${index}]`);
-  });
+  // Conversation acts are not checked here: they are non-mutating discourse metadata of
+  // this very turn (validated apart from the planning delta), carry no value and no quoted
+  // evidence, and can never become a fact, correction, decision or authorization.
   params.document.uncertainties.forEach((uncertainty, index) => {
     const uncertaintyPath = `document.uncertainties[${index}]`;
     // An uncertainty asks for clarification without asserting a new planning

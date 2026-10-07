@@ -8,6 +8,15 @@ import { expect, test } from '@playwright/test';
  */
 const URL = 'http://127.0.0.1:4174/real-weekly.html?interaction=1';
 const QUESTION = '数学のワークは1問あたりどれくらい時間がかかりますか？';
+/** Internal system/process vocabulary that must never reach an assistant reply. */
+const INTERNAL_PROCESS_WORDING = /予定条件|安全に整理|反映していません|確認中の質問|保留中|構造化|正規化|処理/u;
+
+/** Assistant message bubbles (the typing indicator excluded), waiting for the expected count. */
+async function assistantReply(page, count) {
+  const bubbles = page.locator('.ai-planning-message-row.assistant .ai-planning-bubble:not(.ai-planning-typing)');
+  await expect(bubbles).toHaveCount(count);
+  return bubbles.nth(count - 1).innerText();
+}
 
 test.describe.configure({ retries: 0 });
 
@@ -39,12 +48,17 @@ for (const device of [
       await expect(page.getByText(QUESTION, { exact: true })).toHaveCount(1);
 
       await send(page, 'EXPLAIN なんで時間が必要？');
-      await expect(page.getByText(/この確認は、予定を無理なく配置するために必要です。/)).toHaveCount(1);
+      // The explanation keeps the question it explains and talks about no app internals.
+      const explanation = await assistantReply(page, 2);
+      expect(explanation).toContain(QUESTION);
+      expect(explanation).not.toMatch(INTERNAL_PROCESS_WORDING);
 
       await send(page, 'FAIL えっと');
-      const recovery = page.getByText(/予定条件には反映していません。確認中の質問は変わりません。/);
-      await expect(recovery).toHaveCount(1);
-      await expect(recovery).toContainText(QUESTION);
+      // The recovery re-presents the same question without a system disclaimer.
+      const recovery = await assistantReply(page, 3);
+      expect(recovery).toContain(QUESTION);
+      expect(recovery).not.toMatch(INTERNAL_PROCESS_WORDING);
+      expect(recovery).not.toContain('いつの予定を作るか');
       // The composer stays usable after the recovery turn (no dead turn).
       await expect(page.locator('.ai-planning-composer textarea')).toBeEnabled();
 
@@ -68,7 +82,10 @@ for (const device of [
       await expect(page.getByText(QUESTION, { exact: true })).toHaveCount(1);
 
       await send(page, 'ASIDE ちょっと別の話');
-      await expect(page.getByText(/ここまでの内容は変更していません/)).toHaveCount(1);
+      // The aside is acknowledged without asking the held question or describing held state.
+      const aside = await assistantReply(page, 2);
+      expect(aside).not.toContain(QUESTION);
+      expect(aside).not.toMatch(INTERNAL_PROCESS_WORDING);
       await expect(page.locator('.ai-planning-composer textarea')).toBeEnabled();
 
       await send(page, 'ANSWER うん');

@@ -94,29 +94,6 @@ export function validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5
   return errors;
 }
 
-/**
- * A conversational act may name only an existing active task/component of the public
- * state. An unknown id is a normal validation error (reject → repair once), never a
- * silently ignored hint. The id is re-checked against the graph at use time.
- */
-export function validateWeeklyPlanningConversationActTargetsAgainstPublicStateV5(params: {
-  document: WeeklyPlanningSemanticDocumentV5;
-  publicStateSummary?: Record<string, unknown>;
-}): string[] {
-  const state = params.publicStateSummary;
-  const acts = params.document.conversationActs ?? [];
-  if (!state || acts.length === 0) return [];
-  const known = new Set(
-    [...recordArray(state.tasks), ...recordArray(state.components)]
-      .map((entry) => entry.publicId)
-      .filter((id): id is string => typeof id === 'string'),
-  );
-  return acts.flatMap((act, index) =>
-    act.targetPublicId !== null && !known.has(act.targetPublicId)
-      ? [`document.conversationActs[${index}].targetPublicId:unknown-active-target:${act.targetPublicId}`]
-      : []);
-}
-
 export interface WeeklyPlanningExistingEntityGraphBindingsV5 {
   taskFactIdByLocalId: Record<string, string>;
   componentFactIdByLocalId: Record<string, string>;

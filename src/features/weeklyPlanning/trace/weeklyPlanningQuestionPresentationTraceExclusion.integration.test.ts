@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { WEEKLY_PLANNING_INTERACTION_DUPLICATE_SUBMISSION_TEXT } from '../dialogue/weeklyPlanningInteractionFallbackText';
 import {
   WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
   measureWeeklyPlanningTraceJsonBytes,
@@ -277,7 +278,8 @@ describe('question presentation binding trace exclusion gate', () => {
         weekStartsOn: 'monday',
       },
     });
-    expect(result.message).toContain('重複');
+    // The suppressed duplicate path (default interaction wording, no AI call).
+    expect(result.message).toBe(WEEKLY_PLANNING_INTERACTION_DUPLICATE_SUBMISSION_TEXT);
     expect(result.state.lastQuestionContext).toMatchObject({ actionId: 'wpp_memory_trace' });
     expect(result.state.lastQuestionContext).not.toHaveProperty('presentation');
 

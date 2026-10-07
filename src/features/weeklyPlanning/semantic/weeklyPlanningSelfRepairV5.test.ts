@@ -51,6 +51,10 @@ describe('Stable V5 self repair notice', () => {
     expect(notice).toEqual({
       targetFactId: 'work-old',
       replacementFactId: 'work-new',
+      // Typed correction data (interaction renderer context) next to the legacy sentence.
+      taskLabel: '英単語',
+      before: '80ページ',
+      after: '80語',
       message: '英単語は80ページではなく80語ですね。修正しました。',
     });
     expect(notice?.message).not.toContain('数学30ページ');

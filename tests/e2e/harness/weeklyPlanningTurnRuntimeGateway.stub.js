@@ -5,6 +5,7 @@ import {
   getWeeklyPlanningTurnDispatchBudget,
 } from '../../../src/features/weeklyPlanning/application/weeklyPlanningTurnDispatchBudget';
 import { conversationArchitecturePolicy } from '../../../src/features/weeklyPlanning/weeklyPlanningConversationArchitecture';
+import { composeWeeklyPlanningInteractionFallbackText } from '../../../src/features/weeklyPlanning/dialogue/weeklyPlanningInteractionFallbackText';
 import {
   bindWeeklyPlanningStableV5RuntimeSessionScope,
   commitWeeklyPlanningStableV5RuntimeGraph,
@@ -95,7 +96,34 @@ function scriptDispatches(params) {
   const explain = params.userText.startsWith('EXPLAIN');
   const semantic = !policy.interactionOutcome && explain ? 3 : 1;
   for (let index = 0; index < semantic; index += 1) budget.consume('semantic');
-  if (!params.userText.startsWith('FAIL')) budget.consume('renderer');
+  // Interaction renders a semantic-failure turn like any reply; legacy shows a fixed message.
+  if (!params.userText.startsWith('FAIL') || policy.interactionOutcome) budget.consume('renderer');
+}
+
+/*
+ * The stub stands in for the whole runtime, renderer included. For interaction turns it shows
+ * what the user sees when the renderer is unavailable: the production emergency wording
+ * composed from the same typed communication context (no copy of that wording here).
+ */
+function interactionMessage(goal, { askQuestion = true } = {}) {
+  return composeWeeklyPlanningInteractionFallbackText({
+    communication: {
+      goal,
+      questionPurposes: askQuestion ? ['estimate_time_to_fit_available_time'] : [],
+      askQuestion,
+      laterNeeds: [],
+      statusReason: null,
+      planningDetailsNotApplied: false,
+      consultationDeferred: false,
+      previewDisclosure: null,
+    },
+    questionText: askQuestion ? INTERACTION_QUESTION : '',
+    questionCode: askQuestion ? 'missing_effort_estimate' : null,
+    previewCount: 0,
+    previewPromotionControlLabel: null,
+    groundingNote: '',
+    applicationText: '',
+  });
 }
 
 function interactionResult(params, runtimeSession, graphRevision) {
@@ -136,16 +164,17 @@ function interactionResult(params, runtimeSession, graphRevision) {
     };
   }
   if (params.userText.startsWith('FAIL')) {
+    const message = interactionMessage('clarify_turn');
     return {
       state: previousState,
-      message: `こちらの処理で内容を安全に整理できなかったため、予定条件には反映していません。確認中の質問は変わりません。\n\n${INTERACTION_QUESTION}`,
+      message,
       draftCandidates: [],
       interactionOutcome: { kind: 'recover', failure: 'semantic', representedQuestion: true },
       questionPresentationContent: INTERACTION_PRESENTATION_CONTENT,
       questionPresentationGraphRevision: runtimeSession.graph.revision,
       failure: {
         code: 'stable_v5_normalization_rejected',
-        userMessage: `こちらの処理で内容を安全に整理できなかったため、予定条件には反映していません。確認中の質問は変わりません。\n\n${INTERACTION_QUESTION}`,
+        userMessage: message,
         traceCode: 'browser-interaction',
         diagnostics: { attemptCount: 2, repairAttempted: true, validationErrorCategories: [], providerErrorCategory: null },
       },
@@ -155,7 +184,7 @@ function interactionResult(params, runtimeSession, graphRevision) {
     // An aside keeps the machine question but does not re-present it: no presentation content.
     return {
       state: question,
-      message: 'わかりました。ここまでの内容は変更していません。保留中の確認に戻るときは、そう教えてください。',
+      message: interactionMessage('acknowledge_aside', { askQuestion: false }),
       draftCandidates: [],
       interactionOutcome: { kind: 'aside', consultationDeferred: false },
     };
@@ -173,9 +202,7 @@ function interactionResult(params, runtimeSession, graphRevision) {
   const explain = params.userText.startsWith('EXPLAIN');
   return {
     state: question,
-    message: explain
-      ? `この確認は、予定を無理なく配置するために必要です。${INTERACTION_QUESTION}`
-      : INTERACTION_QUESTION,
+    message: explain && interaction ? interactionMessage('explain_question') : INTERACTION_QUESTION,
     draftCandidates: [],
     stableV5Graph: stagedGraph,
     ...(interaction

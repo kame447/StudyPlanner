@@ -20,6 +20,11 @@ const EXECUTION_VERB = '(?:作ります|作成します|追加します|登録�
 const EXECUTION_CLAIM_EXPRESSION = new RegExp(
   `(?:(?:予定|仮予定|計画).{0,20}${EXECUTION_VERB}|${EXECUTION_VERB}.{0,20}(?:予定|仮予定|計画))`,
 );
+// Interaction architecture: vocabulary of the app's own internals (data processing, states,
+// providers, retries). It never belongs in an ordinary reply. Deliberately narrow: only
+// unmistakable implementation words, and a word the user or the plan data itself uses is
+// allowed. This checks the renderer's own output; it never interprets the user's words.
+const INTERNAL_PROCESS_TERMS = /構造化|正規化|バリデーション|スキーマ|プロバイダ|リトライ|再試行|内部処理|システム処理|処理結果|予定条件|安全に整理|ペンディング|ステート|リビジョン|ファクト|確認中の質問|保留中の(?:確認|質問)|\b(?:validation|validator|pending|provider|retry|schema|json|state|revision|graph|authoritative|canonical|semantic|normaliz[a-z]*)\b/giu;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -188,6 +193,34 @@ function hasIncorrectPreviewCount(
   return mentionedCounts.some((count) => count !== input.previewCount);
 }
 
+function missesPreviewDisclosure(
+  text: string,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): boolean {
+  const disclosure = input.communication?.previewDisclosure;
+  if (!disclosure) return false;
+  // Without a label the disclosure cannot be verified in the text: use the fallback.
+  if (disclosure.omittedWorkLabels.length === 0) return true;
+  return disclosure.omittedWorkLabels.some((label) => !text.includes(label));
+}
+
+function exposesInternalProcess(
+  text: string,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): boolean {
+  if (!input.communication) return false;
+  const grounding = normalizeSafetyText(JSON.stringify({
+    currentUserMessage: input.currentUserMessage,
+    userTurns: input.recentConversation
+      .filter((turn) => turn.role === 'user')
+      .map((turn) => turn.content),
+    planningInformation: input.planningInformation,
+    requiredLabels: input.requiredLabels,
+  })).toLowerCase();
+  return [...normalizeSafetyText(text).matchAll(INTERNAL_PROCESS_TERMS)]
+    .some((match) => !grounding.includes(match[0].toLowerCase()));
+}
+
 function missesPreviewPromotionControl(
   text: string,
   input: WeeklyPlanningStableV5DialogueRenderInput,
@@ -301,7 +334,7 @@ function validateRenderedText(
     return 'unsafe_text';
   }
 
-  if (missesPreviewPromotionControl(text, input)) {
+  if (missesPreviewPromotionControl(text, input) || missesPreviewDisclosure(text, input)) {
     return 'action_contract_mismatch';
   }
 
@@ -332,6 +365,10 @@ function validateRenderedText(
     || claimsUnexecutedAction(text, input)
   ) {
     return 'ungrounded_text';
+  }
+
+  if (exposesInternalProcess(text, input)) {
+    return 'internal_process_text';
   }
 
   return null;

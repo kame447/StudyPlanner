@@ -71,16 +71,38 @@ async function projectSuccessfulTurn(params: {
   return projectedResult;
 }
 
-function projectFailedTurn(params: {
+/**
+ * Interaction architecture: a semantic failure is still a normal conversation turn for the
+ * user. The typed recovery outcome is verbalized by the renderer like any other reply (the
+ * emergency wording is used only if rendering fails). A provider failure is not rendered:
+ * the same AI provider just failed, so its short emergency wording stays as it is.
+ */
+async function presentRecoveryTurn(params: {
   input: WeeklyPlanningTurnExecutionInput;
   result: WeeklyPlanningTurnExecutionResult;
   recordedFailure: WeeklyPlanningStableV5RecordedFailure;
-}): WeeklyPlanningTurnExecutionResult {
+}): Promise<WeeklyPlanningTurnExecutionResult | null> {
+  const outcome = params.result.interactionOutcome;
+  if (params.recordedFailure.status === 'provider_failure') return null;
+  if (outcome?.kind !== 'recover' || outcome.failure !== 'semantic') return null;
+  return renderWeeklyPlanningStableV5AssistantMessage({
+    input: params.input,
+    result: params.result,
+  });
+}
+
+async function projectFailedTurn(params: {
+  input: WeeklyPlanningTurnExecutionInput;
+  result: WeeklyPlanningTurnExecutionResult;
+  recordedFailure: WeeklyPlanningStableV5RecordedFailure;
+}): Promise<WeeklyPlanningTurnExecutionResult> {
   const recovery = conversationArchitecturePolicy(
     params.input.conversationArchitecture,
   ).conversationalFailureRecovery;
+  const rendered = recovery ? await presentRecoveryTurn(params) : null;
+  const presented = rendered ?? params.result;
   const projectedResult: WeeklyPlanningTurnExecutionResult = {
-    ...params.result,
+    ...presented,
     // Interaction architecture: a failed turn retains the accepted machine state, questions
     // included (with no previous state the neutral recovery state is reported).
     // Legacy architecture: the pre-#488 projection (questions/draft authorization reported
@@ -98,7 +120,7 @@ function projectFailedTurn(params: {
         },
     failure: {
       code: FAILURE_CODE_BY_STATUS[params.recordedFailure.status],
-      userMessage: params.result.message,
+      userMessage: presented.message,
       traceCode: params.recordedFailure.traceCode,
       diagnostics: {
         attemptCount: params.recordedFailure.attemptCount,
@@ -107,8 +129,12 @@ function projectFailedTurn(params: {
         providerErrorCategory: params.recordedFailure.providerErrorCategory,
       },
     },
-    responseSource: 'system',
-    dialogueRendererTrace: createWeeklyPlanningSystemDialogueRendererTrace(params.result.message),
+    ...(rendered
+      ? {}
+      : {
+          responseSource: 'system' as const,
+          dialogueRendererTrace: createWeeklyPlanningSystemDialogueRendererTrace(params.result.message),
+        }),
     observability: {
       repairUsed: params.recordedFailure.repairAttempted,
       schedulerVersion: params.result.observability?.schedulerVersion ?? null,
@@ -162,7 +188,7 @@ async function projectTurnResultWithinBudget(params: {
     params.input.traceRequestId,
   );
   if (!recordedFailure) return projectSuccessfulTurn(params);
-  return projectFailedTurn({ ...params, recordedFailure });
+  return await projectFailedTurn({ ...params, recordedFailure });
 }
 
 export const weeklyPlanningStableV5TurnResultProjector = {

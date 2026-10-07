@@ -6,7 +6,10 @@ import type {
   StudyMaterial,
   TimetableTerm,
 } from '../../types/domain';
-import type { WeeklyPlanningInteractionOutcome } from './application/weeklyPlanningInteractionOutcome';
+import type {
+  WeeklyPlanningInteractionOutcome,
+  WeeklyPlanningTurnCommunicationFacts,
+} from './application/weeklyPlanningInteractionOutcome';
 import type { WeeklyPlanningTurnRequestContext } from './application/weeklyPlanningTemporalContext';
 import type {
   PlanningIntakeState,
@@ -103,6 +106,11 @@ export interface WeeklyPlanningTurnExecutionResult {
   questionPresentationGraphRevision?: number;
   /** Deterministic decision of what kind of conversational turn this was. */
   interactionOutcome?: WeeklyPlanningInteractionOutcome;
+  /**
+   * Interaction architecture only: typed facts the renderer must communicate (status
+   * reason, later open needs, unapplied details, preview disclosure). Never prose.
+   */
+  communicationFacts?: WeeklyPlanningTurnCommunicationFacts;
 }
 
 export interface WeeklyPlanningTurnSubmissionResult {

@@ -133,18 +133,19 @@ function evaluation(source: 'current_directive' | 'session_state' | null) {
   } as unknown as WeeklyPlanningStableV5PlanningEvaluation;
 }
 
-function runtimeInput() {
+function runtimeInput(conversationArchitecture?: 'legacy_v5' | 'interaction_v1') {
   return {
     userText: '総時間は分からないので、空き時間で数学を優先して暫定配分してください。',
     traceRequestId: 'turn-9',
     previousState: undefined,
+    conversationArchitecture,
   } as unknown as ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
 }
 
 describe('Stable V5 provisional capacity preview policy', () => {
-  it('surfaces a partial draft only when omitted work is explicitly lower priority', () => {
-    const output = projectWeeklyPlanningProvisionalCapacityPreviewV5({
-      input: runtimeInput(),
+  it('legacy: surfaces a partial draft with the fixed application disclosure (renderer bypassed)', () => {
+    const projection = projectWeeklyPlanningProvisionalCapacityPreviewV5({
+      input: runtimeInput('legacy_v5'),
       evaluation: evaluation('current_directive'),
       preview: preview({
         candidateTaskId: 'task-math',
@@ -152,13 +153,31 @@ describe('Stable V5 provisional capacity preview policy', () => {
       }),
     });
 
-    expect(output).not.toBeNull();
+    const output = projection?.output;
+    expect(output).toBeDefined();
     expect(output?.state.status).toBe('draft_ready');
     expect(output?.draftCandidates).toHaveLength(1);
     expect(output?.message).toContain('英語');
     expect(output?.message).toContain('容量不足');
     expect(output?.message).toContain('優先順位');
     expect(output?.responseSource).toBe('system');
+    expect(projection?.omittedWorkLabels).toEqual(['英語']);
+  });
+
+  it('interaction: the omitted work is a typed disclosure for the renderer, not a fixed system message', () => {
+    const projection = projectWeeklyPlanningProvisionalCapacityPreviewV5({
+      input: runtimeInput('interaction_v1'),
+      evaluation: evaluation('current_directive'),
+      preview: preview({
+        candidateTaskId: 'task-math',
+        unscheduledWorkItemId: 'item-english',
+      }),
+    });
+
+    expect(projection?.output.state.status).toBe('draft_ready');
+    expect(projection?.output.draftCandidates).toHaveLength(1);
+    expect(projection?.output.responseSource).toBeUndefined();
+    expect(projection?.omittedWorkLabels).toEqual(['英語']);
   });
 
   it('does not weaken the ordinary all-or-nothing contract without provisional permission', () => {

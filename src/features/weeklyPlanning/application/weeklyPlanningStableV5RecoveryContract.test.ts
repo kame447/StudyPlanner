@@ -116,6 +116,10 @@ describe('Stable V5 ambiguity and recovery architecture contract', () => {
     expect(recoverySource).not.toContain('まず、いつの予定を作るか');
     expect(recoverySource).not.toContain('同じ内容をそのまま');
     expect(recoverySource).not.toContain('言い換えて');
-    expect(recoverySource).toContain('予定条件には反映していません。');
+    // Interaction recovery decides only WHAT happens (a typed `recover` outcome and the retained
+    // question); it assembles no Japanese prose. The renderer writes the reply and the single
+    // interaction emergency module owns the fallback wording.
+    expect(recoverySource).not.toMatch(/[\u3040-\u30ff\u4e00-\u9fff]/u);
+    expect(recoverySource).toContain('weeklyPlanningInteractionProviderUnavailableText');
   });
 });

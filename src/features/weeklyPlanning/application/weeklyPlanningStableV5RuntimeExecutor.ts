@@ -21,7 +21,13 @@ import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArc
 import {
   classifyWeeklyPlanningInteraction,
   planWeeklyPlanningInteraction,
+  upcomingQuestionCodesForInteraction,
 } from './weeklyPlanningInteractionDecision';
+import type {
+  WeeklyPlanningTurnCommunicationFacts,
+  WeeklyPlanningTurnStatusReason,
+} from './weeklyPlanningInteractionOutcome';
+import { decodeWeeklyPlanningStableV5QuestionSlot } from '../intake/weeklyPlanningStableV5QuestionSlot';
 import {
   weeklyPlanningStableV5ResponseRouter,
 } from './weeklyPlanningStableV5ResponseRouting';
@@ -52,6 +58,29 @@ function withProvisionalTimeboxState(params: {
       params.output.state,
       params.evaluation.provisionalTimeboxProjection.state,
     ),
+  };
+}
+
+/** Typed facts for the renderer (interaction architecture only); never prose. */
+function communicationFacts(params: {
+  evaluation: WeeklyPlanningStableV5PlanningEvaluation;
+  output: WeeklyPlanningTurnExecutionResult;
+  statusReason: WeeklyPlanningTurnStatusReason | null;
+  planningDetailsNotApplied: boolean;
+  omittedWorkLabels: string[] | null;
+}): WeeklyPlanningTurnCommunicationFacts {
+  const context = params.output.state.lastQuestionContext;
+  const code = decodeWeeklyPlanningStableV5QuestionSlot(context?.targetSlot);
+  return {
+    statusReason: params.statusReason,
+    upcomingQuestionCodes: upcomingQuestionCodesForInteraction({
+      evaluation: params.evaluation,
+      presented: code ? { code, factId: context?.topicId ?? null } : null,
+    }),
+    planningDetailsNotApplied: params.planningDetailsNotApplied,
+    previewDisclosure: params.omittedWorkLabels
+      ? { omittedWorkLabels: params.omittedWorkLabels }
+      : null,
   };
 }
 
@@ -96,6 +125,9 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         },
       }
     : evaluation;
+  // A turn carried only by its conversation act (no usable planning delta) applied nothing;
+  // the renderer is told when the model saw planning details in it that were not taken in.
+  const planningDetailsNotApplied = semantic.normalization.conversationOnly?.planningContentPresent === true;
   const responseRoute = weeklyPlanningStableV5ResponseRouter.beforePreview({
     input,
     graph: semantic.graph,
@@ -116,6 +148,13 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
               previousQuestion: input.previousState?.lastQuestionContext,
               presentation: semanticTurn.pendingQuestionPresentation,
             }),
+            communicationFacts: communicationFacts({
+              evaluation: routingEvaluation,
+              output,
+              statusReason: responseRoute.statusReason,
+              planningDetailsNotApplied,
+              omittedWorkLabels: null,
+            }),
           }
         : {}),
       observability: semanticObservability,
@@ -133,12 +172,12 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   const applyOutcome = interactionPlan
     ? { kind: 'apply' as const, consultationDeferred: interactionPlan.acts.consultation }
     : undefined;
-  const provisionalCapacityOutput = projectWeeklyPlanningProvisionalCapacityPreviewV5({
+  const provisionalCapacity = projectWeeklyPlanningProvisionalCapacityPreviewV5({
     input,
     evaluation,
     preview,
   });
-  const routedOutput = provisionalCapacityOutput
+  const routedOutput = provisionalCapacity?.output
     ?? weeklyPlanningStableV5ResponseRouter.afterPreview({
       input,
       semanticTurn,
@@ -151,7 +190,18 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
   return {
     ...output,
-    ...(applyOutcome ? { interactionOutcome: applyOutcome } : {}),
+    ...(applyOutcome
+      ? {
+          interactionOutcome: applyOutcome,
+          communicationFacts: communicationFacts({
+            evaluation,
+            output,
+            statusReason: null,
+            planningDetailsNotApplied,
+            omittedWorkLabels: provisionalCapacity ? provisionalCapacity.omittedWorkLabels : null,
+          }),
+        }
+      : {}),
     observability: {
       repairUsed: semantic.normalization.diagnostics.repairAttempted,
       schedulerVersion: preview.schedulerVersion,

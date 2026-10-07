@@ -68,6 +68,10 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/weeklyPlanningTurnSideEffects.ts',
   'application/weeklyPlanningTurnTraceSideEffects.ts',
   'chat/aiPlanningChatStore.ts',
+  // Interaction architecture: typed communication context (goal / purpose codes) for the renderer; no prose.
+  'dialogue/weeklyPlanningStableV5CommunicationContext.ts',
+  // Interaction architecture: the single emergency wording used only when the renderer cannot run or fails.
+  'dialogue/weeklyPlanningInteractionFallbackText.ts',
   'dialogue/weeklyPlanningStableV5AiDialogueRenderer.ts',
   'dialogue/weeklyPlanningStableV5CurrentTurnGrounding.ts',
   'dialogue/weeklyPlanningStableV5DialoguePrompt.ts',

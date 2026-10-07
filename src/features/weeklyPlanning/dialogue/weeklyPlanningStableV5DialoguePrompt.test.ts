@@ -96,7 +96,12 @@ describe('Stable V5 dialogue prompt', () => {
     const payload = JSON.parse(prompt.userPrompt) as Record<string, unknown>;
     const request = String((payload as { request: string }).request);
 
-    expect(prompt.systemPrompt).toContain('継続中の相談');
+    // Interaction (default): a conversation partner who answers the user's act first and
+    // never reports the app's internals. Legacy keeps the pre-#488 wording (asserted below).
+    expect(prompt.systemPrompt).toContain('最初の一文で、ユーザーがいま言ったことに直接応えてください');
+    expect(prompt.systemPrompt).toContain('アプリ内部の仕組みや処理');
+    expect(createWeeklyPlanningStableV5DialoguePrompt({ ...input(), conversationArchitecture: 'legacy_v5' })
+      .systemPrompt).toContain('継続中の相談');
     expect(request).toContain('currentTurnGrounding.acceptedFacts');
     expect(request).toContain('required_before_resume');
     expect(request).toContain('requestedInformation');

@@ -18,26 +18,28 @@ import {
   stableV5MissingSchedulableWorkQuestion,
   typedStableV5RuntimeQuestionText,
 } from './weeklyPlanningStableV5RuntimeQuestions';
+import { emptyWeeklyPlanningTurnCommunicationFacts } from './weeklyPlanningInteractionOutcome';
+import {
+  weeklyPlanningInteractionProviderUnavailableText,
+} from '../dialogue/weeklyPlanningInteractionFallbackText';
 
 /**
- * Conversational recovery for a turn whose semantic step failed. Nothing authoritative
- * changes: the accepted graph, preview and machine state stay as they were. The user
- * sees a system message that says nothing was applied, and - only when a fresh machine
- * question exists - the same question again, so the next reply keeps its target.
+ * Conversational recovery for a turn whose semantic step failed (interaction architecture).
+ * Nothing authoritative changes: the accepted graph, preview and machine state stay as they
+ * were. This module decides only WHAT the reply has to do, as a typed `recover` outcome:
+ * which failure it was and - only when a fresh machine question exists - that the same
+ * question is asked again, so the next reply keeps its target. It writes no explanation.
  *
- * Provider failures (network/HTTP/timeout) and semantic failures (the model answered but
- * the result could not be validated) are different situations: a provider failure asks
- * for a resend and never invents a content question; neither exposes raw validator or
- * provider payloads.
+ * - Semantic failure (the model answered but nothing usable came out): the message is just
+ *   the application-typed question (or empty). The dialogue renderer writes the reply from
+ *   the typed outcome (`clarify_turn`); only if it fails is the emergency wording used.
+ * - Provider failure (network/HTTP/timeout): the renderer is not called, because the same AI
+ *   provider just failed. The short emergency wording asks for a resend and never invents a
+ *   content question.
+ *
+ * Neither path exposes validator or provider payloads or describes the app's internals.
  */
 export type WeeklyPlanningRecoveryFailure = 'provider' | 'semantic';
-
-const PROVIDER_LEAD =
-  'AIに接続できなかったため、入力内容は変更していません。接続を確認してもう一度送ってください。';
-const SEMANTIC_LEAD =
-  'こちらの処理で内容を安全に整理できなかったため、予定条件には反映していません。';
-const SEMANTIC_CONTINUE = '続けて、予定に入れたい内容や条件を教えてください。';
-const RECOVERY_QUESTION_INTRO = '確認中の質問は変わりません。';
 
 const RECOVERY_PRESENTATION_CONTENT: WeeklyPlanningQuestionPresentationContent = {
   responseSource: 'deterministic_fallback',
@@ -107,12 +109,9 @@ export function createWeeklyPlanningConversationRecoveryOutput(params: {
       })
     : null;
 
-  const lead = params.failure === 'provider' ? PROVIDER_LEAD : SEMANTIC_LEAD;
-  const message = questionText
-    ? `${lead}${RECOVERY_QUESTION_INTRO}\n\n${questionText}`
-    : params.failure === 'provider'
-      ? lead
-      : `${lead}${SEMANTIC_CONTINUE}`;
+  const message = params.failure === 'provider'
+    ? weeklyPlanningInteractionProviderUnavailableText(questionText)
+    : questionText ?? '';
 
   // The accepted machine state is retained exactly. Without a previous state there is
   // nothing to retain and the empty compatibility state is reported.
@@ -133,6 +132,7 @@ export function createWeeklyPlanningConversationRecoveryOutput(params: {
       failure: params.failure,
       representedQuestion: questionText !== null,
     },
+    communicationFacts: emptyWeeklyPlanningTurnCommunicationFacts(),
     ...(questionText && pendingQuestionPresentation.status === 'fresh'
       ? {
           questionPresentationContent: { ...RECOVERY_PRESENTATION_CONTENT },

@@ -145,7 +145,10 @@ it.each(['exhausted', 'timeout', 'network'] as const)('preserves accepted previe
   const execution = await spy.mock.results[1].value;
   expect(execution.failure).toMatchObject({ code: providerFailure ? 'stable_v5_provider_failure' : 'stable_v5_normalization_rejected',
     diagnostics: { attemptCount: providerFailure ? 1 : 2, repairAttempted: !providerFailure } });
-  expect(semanticCount).toBe(providerFailure ? 1 : 2); expect(calls.some(call => call.schema.includes('dialogue'))).toBe(false);
+  // A provider failure is never rendered (the provider just failed); a semantic failure is an
+  // ordinary conversational turn whose typed recovery outcome the renderer verbalizes.
+  expect(semanticCount).toBe(providerFailure ? 1 : 2);
+  expect(calls.filter(call => call.schema.includes('dialogue'))).toHaveLength(providerFailure ? 0 : 1);
   expect(ref.current!.state.pendingTurn).toBeUndefined(); expect(ref.current!.state.intakeState).toEqual(intake); expect(ref.current!.state.previewCandidates).toEqual(preview);
   expect(ref.current!.exportConversationSnapshot()!.graph).toEqual(graph); unsaved();
   mode = 'valid'; semanticCount = 0; responseDocument = { ...semantic(), planningIntent: 'discuss', planningWindow: null, tasks: [] };

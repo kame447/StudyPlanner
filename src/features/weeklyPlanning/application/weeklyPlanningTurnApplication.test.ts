@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { WEEKLY_PLANNING_INTERACTION_UNEXPECTED_FAILURE_TEXT } from '../dialogue/weeklyPlanningInteractionFallbackText';
 import type { PlannerDataAvailability } from '../../../domain/plannerDataReadAuthority';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import type { WeeklyPlanningAction } from '../types';
@@ -221,7 +222,7 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
     const messages = store.getState().messages;
     expect(messages[messages.length - 1]).toMatchObject({
       role: 'assistant',
-      content: '週間計画の会話状態を更新できませんでした。',
+      content: WEEKLY_PLANNING_INTERACTION_UNEXPECTED_FAILURE_TEXT,
     });
   });
 
@@ -273,7 +274,7 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
       failedState: store.getState(),
       assistantMessage: expect.objectContaining({
         role: 'assistant',
-        content: '週間計画の会話状態を更新できませんでした。',
+        content: WEEKLY_PLANNING_INTERACTION_UNEXPECTED_FAILURE_TEXT,
       }),
     }));
     expect(store.getState().pendingTurn).toBeUndefined();

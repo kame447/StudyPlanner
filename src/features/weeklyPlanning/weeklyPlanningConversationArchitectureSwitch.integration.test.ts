@@ -112,8 +112,9 @@ function setupDocument(mode: WeeklyPlanningConversationArchitecture, userText: s
   });
 }
 
-function act(kind: string, sourceText: string, targetPublicId: string | null = null): Json {
-  return { kind, targetPublicId, sourceText };
+/** A typed conversation act (interaction_v1): discourse metadata, no quoted evidence. */
+function act(kind: string, targetPublicId: string | null = null): Json {
+  return { kind, targetPublicId };
 }
 
 function focusedFallback(): string {
@@ -224,7 +225,7 @@ describe('A. explanation under a pending effort question', () => {
     script = (call) => {
       if (call.kind === 'semantic_generic') {
         return JSON.stringify(emptyDocument(mode, mode === 'interaction_v1'
-          ? { conversationActs: [act('ask_about_pending_question', 'なんで時間が必要？')] }
+          ? { conversationActs: [act('ask_about_pending_question')] }
           : {}));
       }
       if (call.kind === 'renderer') return scriptedRendererReply(call, '時間が分かると配分できます。1問あたり何分くらいかかりますか？');
@@ -244,6 +245,7 @@ describe('A. explanation under a pending effort question', () => {
     const renderer = turn.calls.find((call) => call.kind === 'renderer');
     const decision = renderer?.payload?.applicationDecision as Json;
     expect(decision).not.toHaveProperty('conversationOutcome');
+    expect(decision).not.toHaveProperty('communication');
     // The renderer receives the raw message and decides "explain" itself (pre-#488).
     expect(renderer?.payload?.currentUserMessage).toBe('なんで時間が必要？');
     expect(String(renderer?.payload?.request)).toContain('currentUserMessageが直前の質問の意味');
@@ -255,7 +257,9 @@ describe('A. explanation under a pending effort question', () => {
     expect(kinds(turn.calls)).toEqual(['semantic_focused_contextual', 'semantic_generic', 'renderer']);
     expect(turn.result?.interactionOutcome).toMatchObject({ kind: 'explain_pending_question' });
     const renderer = turn.calls.find((call) => call.kind === 'renderer');
-    expect(renderer?.payload?.applicationDecision).toMatchObject({ conversationOutcome: 'explain_pending_question' });
+    expect(renderer?.payload?.applicationDecision).toMatchObject({
+      communication: { goal: 'explain_question', askQuestion: true },
+    });
     expect(conversation.graph()!.revision).toBe(graphBefore!.revision);
     expect(freshness(conversation).status).toBe('fresh');
   });
@@ -293,8 +297,12 @@ describe('C. semantic failure under a pending question', () => {
   it('interaction: same pending question re-presented, question fresh, nothing authoritative changed', async () => {
     const { conversation, turn, pending, graphBefore } = await fail('interaction_v1');
     expect(turn.result?.interactionOutcome).toMatchObject({ kind: 'recover', failure: 'semantic', representedQuestion: true });
+    // The recovery is rendered from the typed outcome like any reply (no fixed paragraph).
+    expect(turn.calls.find((call) => call.kind === 'renderer')?.payload?.applicationDecision).toMatchObject({
+      communication: { goal: 'clarify_turn', askQuestion: true },
+    });
     const message = latestAssistant(conversation).content;
-    expect(message).toContain('確認中の質問は変わりません');
+    expect(message).not.toMatch(/予定条件|安全に整理|確認中の質問|反映していません/u);
     expect(message).not.toContain('まず、いつの予定を作るか');
     expect(conversation.graph()).toEqual(graphBefore);
     expect(pendingTarget(conversation)).toEqual(pending);
@@ -310,7 +318,7 @@ describe('B. aside followed by a short reply', () => {
     script = (call) => {
       if (call.kind === 'semantic_generic') {
         return JSON.stringify(emptyDocument(mode, mode === 'interaction_v1'
-          ? { conversationActs: [act('topic_shift', 'ちょっと数学の話をしたい', taskId(call, '数学の問題'))] }
+          ? { conversationActs: [act('topic_shift', taskId(call, '数学の問題'))] }
           : {}));
       }
       return undefined;
@@ -534,7 +542,7 @@ describe.each(MODES)('measurement under %s', (mode) => {
     script = (call) => {
       if (call.kind === 'semantic_generic') {
         return JSON.stringify(emptyDocument(mode, mode === 'interaction_v1'
-          ? { conversationActs: [act('ask_about_pending_question', 'なんで時間が必要？')] }
+          ? { conversationActs: [act('ask_about_pending_question')] }
           : {}));
       }
       return undefined;

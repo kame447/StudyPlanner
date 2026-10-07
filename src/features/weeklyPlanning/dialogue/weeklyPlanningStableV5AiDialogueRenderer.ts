@@ -44,7 +44,13 @@ const REPEATED_QUESTION_REPAIR_PREFIX = [
 
 const REPEATED_QUESTION_REPAIR_INSTRUCTION = [
   REPEATED_QUESTION_REPAIR_PREFIX,
-  'applicationDecision.conversationOutcomeがexplain_pending_questionの場合は、必要な情報の目的を短く説明してから尋ね直してください。',
+  'applicationDecision.communication.goalがexplain_questionの場合は、最初になぜその情報が必要かに答えてから尋ね直してください。',
+].join('');
+
+/** Interaction architecture: the candidate talked about the app's internals. */
+const INTERNAL_PROCESS_REPAIR_INSTRUCTION = [
+  '前回候補には、アプリ内部の仕組みや処理を表す言葉が含まれていました。',
+  'applicationDecisionの意味は変えず、内部の仕組みや処理に触れない、人どうしの会話として自然な日本語で書き直してください。',
 ].join('');
 
 /** Legacy architecture (verbatim pre-#488): the renderer reads the raw message to decide. */
@@ -114,7 +120,9 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
               : LEGACY_REPEATED_QUESTION_REPAIR_INSTRUCTION)
           : initial.reason === 'grounding_contract_mismatch'
             ? GROUNDING_ACK_REPAIR_INSTRUCTION
-            : null;
+            : initial.reason === 'internal_process_text'
+              ? INTERNAL_PROCESS_REPAIR_INSTRUCTION
+              : null;
         if (!repairInstruction) return initial;
         return requestDialogueRender({
           client,

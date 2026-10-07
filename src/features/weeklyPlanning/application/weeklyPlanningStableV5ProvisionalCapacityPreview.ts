@@ -14,6 +14,13 @@ import type {
 import type {
   ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
 } from './weeklyPlanningStableV5RuntimeContracts';
+import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
+
+export interface WeeklyPlanningProvisionalCapacityPreviewProjectionV5 {
+  output: WeeklyPlanningTurnExecutionResult;
+  /** Lower-priority work left out of the preview: an application-owned disclosure. */
+  omittedWorkLabels: string[];
+}
 
 interface ProvisionalCapacityDecisionV5 {
   unscheduledTaskIds: string[];
@@ -95,7 +102,7 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
   evaluation: WeeklyPlanningStableV5PlanningEvaluation;
   preview: WeeklyPlanningStableV5PreviewSchedulerResult;
-}): WeeklyPlanningTurnExecutionResult | null {
+}): WeeklyPlanningProvisionalCapacityPreviewProjectionV5 | null {
   const decision = provisionalCapacityDecision({
     evaluation: params.evaluation,
     preview: params.preview,
@@ -126,12 +133,15 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
     repairAgenda: params.evaluation.repairDecision.agenda,
     learningStrategyProposalRecords: params.evaluation.learningStrategyProposals.records,
   });
-  const output: WeeklyPlanningTurnExecutionResult = {
-    ...compatibilityOutput,
-    // This disclosure is application-owned: omitting lower-priority work is a
-    // deterministic scheduling decision, not wording the dialogue model may hide.
-    responseSource: 'system',
-  };
+  // This disclosure is application-owned: omitting lower-priority work is a deterministic
+  // scheduling decision, not wording the dialogue model may hide. Legacy shows the fixed
+  // system message; the interaction architecture hands the omitted labels to the renderer as
+  // a typed disclosure that its output is validated against (falling back when unverifiable).
+  const output: WeeklyPlanningTurnExecutionResult = conversationArchitecturePolicy(
+    params.input.conversationArchitecture,
+  ).interactionOutcome
+    ? compatibilityOutput
+    : { ...compatibilityOutput, responseSource: 'system' };
 
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.input.traceRequestId,
@@ -151,5 +161,5 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
     },
   });
 
-  return output;
+  return { output, omittedWorkLabels: omittedLabels };
 }

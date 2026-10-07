@@ -44,9 +44,18 @@ import type {
  * events then cross the real outbox and the Worker preparation.
  *
  * PERSISTED (proved below): the semantic request prompt/schema (conversationActs rule),
- * the raw and validated conversationActs, and the renderer input fields
- * conversationOutcome / consultationDeferred (renderer prompt context). Recovery turns
- * persist the recorded failure code.
+ * the raw and validated conversationActs, and the renderer input's typed `communication`
+ * context (goal, purpose codes, laterNeeds, planningDetailsNotApplied, consultationDeferred)
+ * with its purposeMeanings (renderer prompt context). Recovery turns persist the recorded
+ * failure code and, for a semantic failure, the rendered `clarify_turn` request.
+ *
+ * EXCLUDED (in-memory debug trace only), on purpose: the per-act drop/degrade diagnostics
+ * (`conversationActDiagnostics`), the conversation-only marker of a turn carried by its act
+ * (`conversationOnly`) and the renderer's `communicationFacts` projection. They are enum /
+ * boolean / count data derived deterministically from what IS persisted: the raw provider
+ * response (re-running the pure act sanitizer reproduces the diagnostics), the rejected
+ * structured results, and the persisted renderer `communication` context. Making them
+ * durable would need a new Worker/shared schema field.
  *
  * EXCLUDED from the durable turn diagnostic, on purpose: `interactionOutcome` and the
  * `pendingQuestionPresentation` status. They are enum-only machine state that is kept in
@@ -164,8 +173,8 @@ async function realTurns() {
     if (call.kind === 'semantic_generic') {
       return JSON.stringify(emptyDocument({
         conversationActs: [
-          { kind: 'ask_about_pending_question', targetPublicId: null, sourceText: 'なんで時間が必要？' },
-          { kind: 'consultation_request', targetPublicId: null, sourceText: 'なんで時間が必要？' },
+          { kind: 'ask_about_pending_question', targetPublicId: null },
+          { kind: 'consultation_request', targetPublicId: null },
         ],
       }));
     }
@@ -279,13 +288,16 @@ describe('conversation interaction trace persistence gate', () => {
     const serialized = JSON.stringify(explained.entry);
     for (const marker of [
       'conversationActs', 'ask_about_pending_question', 'consultation_request',
-      // Renderer input fields persist through the renderer prompt context.
-      'conversationOutcome', 'explain_pending_question', 'consultationDeferred',
+      // The typed communication context persists through the renderer prompt context.
+      'communication', 'explain_question', 'consultationDeferred', 'purposeMeanings',
+      'estimate_time_to_fit_available_time',
       // Freshness substitute: the typed pending question was offered to the model.
       '"pendingQuestion":{"actionId":null,"questionCode":"missing_effort_estimate"',
     ]) expect(serialized).toContain(marker);
     const recovered = persistedFor(harness, recovery.requestId!);
     expect(JSON.stringify(recovered.entry)).toContain('stable_v5_normalization_rejected');
+    // A semantic failure is rendered from its typed recovery goal; that request persists too.
+    expect(JSON.stringify(recovered.entry)).toContain('clarify_turn');
 
     // Deliberate exclusion: the enum-only machine fields exist in the in-memory debug
     // trace but are not durable-diagnostic fields.
@@ -297,10 +309,11 @@ describe('conversation interaction trace persistence gate', () => {
     }
 
     // Points 4 and 5 for both turns (the Worker keeps the same information).
-    for (const marker of ['conversationActs', 'conversationOutcome', 'consultationDeferred']) {
+    for (const marker of ['conversationActs', 'communication', 'explain_question', 'consultationDeferred']) {
       expect(JSON.stringify(explained.preparedEntry)).toContain(marker);
     }
     expect(JSON.stringify(recovered.preparedEntry)).toContain('stable_v5_normalization_rejected');
+    expect(JSON.stringify(recovered.preparedEntry)).toContain('clarify_turn');
     expectBounded(explained.entry, explained.preparedEntry);
     expectBounded(recovered.entry, recovered.preparedEntry);
   });
@@ -312,7 +325,7 @@ describe('conversation interaction trace persistence gate', () => {
     await conversation.submit(MATH_SETUP);
     script = (call) => (call.kind === 'semantic_generic'
       ? JSON.stringify(emptyDocument({
-          conversationActs: [{ kind: 'topic_shift', targetPublicId: null, sourceText: 'ちょっと別の話' }],
+          conversationActs: [{ kind: 'topic_shift', targetPublicId: null }],
         }))
       : undefined);
     const aside = await conversation.submit('ちょっと別の話');
@@ -360,10 +373,59 @@ describe('conversation interaction trace persistence gate', () => {
 
     const kept = persistedFor(harness, explanation.requestId!);
     const serialized = JSON.stringify(kept.entry);
-    // The turn is still saved with its real outcome, and the cut is explicit.
-    expect(serialized).toContain('explain_pending_question');
+    // The turn is still saved with its real outcome (typed renderer goal), and the cut is explicit.
+    expect(serialized).toContain('explain_question');
     expect(serialized).toMatch(/traceProjectionTruncated|traceTruncatedItems|…\[trace truncated\]/);
     expect(serialized).not.toContain('あ'.repeat(6_000));
+    expectBounded(kept.entry, kept.preparedEntry);
+  });
+});
+
+describe('conversation-only turn trace persistence', () => {
+  it('persists the raw act and the renderer context of a turn carried by its act, and keeps the derived markers in memory', async () => {
+    const conversation = createScriptedConversation({
+      provider, ownerId: USER_ID, conversationId: CONVERSATION_ID, weekStartDate: WEEK,
+    });
+    await conversation.submit(MATH_SETUP);
+    script = (call) => {
+      if (call.kind !== 'semantic_generic') return undefined;
+      // Unusable planning part (ungrounded evidence) next to a valid act and a malformed act.
+      return JSON.stringify(emptyDocument({
+        planningIntent: 'update_plan',
+        relations: [{ localId: 'r', kind: 'before', fromLocalId: 'x', toLocalId: 'y', sourceText: FUTURE_FIELD_SENTINEL }],
+        conversationActs: [
+          { kind: 'ask_about_pending_question', targetPublicId: 'wpf_uncertainty_unknown' },
+          { kind: 'approve_everything', targetPublicId: null },
+        ],
+      }));
+    };
+    const turn = await conversation.submit('なんで時間が必要？');
+    expect(turn.result?.failure).toBeUndefined();
+    expect(turn.result?.interactionOutcome).toMatchObject({ kind: 'explain_pending_question' });
+
+    // In memory: the derived act diagnostics, the conversation-only marker and the facts.
+    const debug = JSON.stringify(turn.debugTrace);
+    expect(debug).toContain('conversationActs[0].targetPublicId:degraded-unknown-topic');
+    expect(debug).toContain('conversationActs[1]:dropped-unsupported-kind');
+    expect(debug).toContain('"conversationOnly":{"planningDelta":"rejected","planningContentPresent":true');
+    expect(debug).toContain('"communicationFacts":{"statusReason":null');
+
+    const harness = await persistThroughOutbox([
+      traceInput(turn, turn.debugTrace),
+      { ...traceInput(turn, []), requestId: `${CONVERSATION_ID}:request:flush` },
+    ]);
+    const kept = persistedFor(harness, turn.requestId!);
+    for (const text of [JSON.stringify(kept.entry), JSON.stringify(kept.preparedEntry)]) {
+      // Durable substitutes: the raw act as the model returned it, and the renderer goal/flags.
+      expect(text).toContain('approve_everything');
+      expect(text).toContain('wpf_uncertainty_unknown');
+      expect(text).toContain('explain_question');
+      expect(text).toContain('planningDetailsNotApplied');
+      // Deliberate exclusion of the derived in-memory markers.
+      expect(text).not.toContain('conversationActDiagnostics');
+      expect(text).not.toContain('conversationOnly');
+      expect(text).not.toContain('communicationFacts');
+    }
     expectBounded(kept.entry, kept.preparedEntry);
   });
 });

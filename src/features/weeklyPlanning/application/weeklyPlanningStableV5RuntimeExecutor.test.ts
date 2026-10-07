@@ -708,7 +708,7 @@ describe('Stable V5 runtime executor', () => {
     expect(result.draftCandidates).toEqual([]);
   });
 
-  it('attributes normalization rejection to internal processing and invites the next step without a resend request', async () => {
+  it('turns a normalization rejection into a typed recovery outcome without any prose of its own', async () => {
     normalizeMock.mockResolvedValueOnce(rejectedResult());
 
     const result = await executeWeeklyPlanningStableV5RuntimeTurn({
@@ -723,13 +723,17 @@ describe('Stable V5 runtime executor', () => {
       traceRequestId: 'request-normalization-rejected',
     });
 
-    expect(result.message).toContain('こちらの処理で内容を安全に整理できなかった');
-    expect(result.message).toContain('予定条件には反映していません');
-    expect(result.message).toContain('続けて、予定に入れたい内容や条件を教えてください');
-    expect(result.message).not.toContain('いつの予定を作るか');
-    expect(result.message).not.toContain('同じ内容をそのまま');
-    expect(result.message).not.toContain('言い換えて');
+    // No question was pending: the runtime hands the renderer a typed `recover` outcome and
+    // no text (the reply is written from that outcome at projection; see the integration
+    // suites). Nothing explains the app's processing and nothing asks for a resend.
+    expect(result.message).toBe('');
     expect(result.interactionOutcome).toEqual({ kind: 'recover', failure: 'semantic', representedQuestion: false });
+    expect(result.communicationFacts).toEqual({
+      statusReason: null,
+      upcomingQuestionCodes: [],
+      planningDetailsNotApplied: false,
+      previewDisclosure: null,
+    });
     expect(result.draftCandidates).toEqual([]);
     expect(takeWeeklyPlanningStableV5DebugTrace('request-normalization-rejected')).toEqual(
       expect.arrayContaining([

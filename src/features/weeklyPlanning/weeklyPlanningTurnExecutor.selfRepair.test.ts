@@ -69,15 +69,38 @@ describe('Stable V5 self-repair rendering integration', () => {
       plans: [], scheduleTemplates: [], conversationId: 'conversation-1', traceRequestId: 'request-2',
     });
 
+    // Interaction (default): the correction reaches the renderer as typed data to acknowledge
+    // in its own words; the prewritten sentence is only the emergency fallback.
     expect(rendererMock).toHaveBeenCalledWith(expect.objectContaining({
       fallbackText: '英単語は80ページではなく80語ですね。修正しました。 次の条件を確認します。',
+      planningInformation: expect.objectContaining({
+        selfRepair: { taskLabel: '英単語', before: '80ページ', after: '80語' },
+      }),
+    }));
+    expect(rendererMock.mock.calls[0][0].planningInformation).not.toHaveProperty('selfRepairNotice');
+    expect(result.message).toBe('英単語を80語に修正し、次の条件を確認します。');
+    expect(result.message).not.toContain('修正しました。 英単語');
+    expect(result.message).not.toContain('数学');
+  });
+
+  it('legacy keeps the pre-#488 acknowledgement sentence in the renderer context', async () => {
+    runtimeMock.mockResolvedValue({
+      state: createInitialPlanningIntakeState(), message: '次の条件を確認します。', draftCandidates: [],
+      stableV5Graph: correctedGraph(),
+    });
+    rendererMock.mockResolvedValue({ status: 'rendered', text: '英単語を80語に修正しました。', rawResponse: '{}' });
+
+    await executeWeeklyPlanningTurn({
+      messages: [], userText: '80語だよ', selectedDate: '2026-08-11', userId: 'user-1',
+      plans: [], scheduleTemplates: [], conversationId: 'conversation-1', traceRequestId: 'request-2',
+      conversationArchitecture: 'legacy_v5',
+    });
+
+    expect(rendererMock).toHaveBeenCalledWith(expect.objectContaining({
       planningInformation: expect.objectContaining({
         selfRepairNotice: '英単語は80ページではなく80語ですね。修正しました。',
       }),
     }));
-    expect(result.message).toBe('英単語を80語に修正し、次の条件を確認します。');
-    expect(result.message).not.toContain('修正しました。 英単語');
-    expect(result.message).not.toContain('数学');
   });
 
   it('keeps the exact correction acknowledgement in the deterministic fallback', async () => {

@@ -28,6 +28,7 @@ import {
   type WeeklyPlanningConversationArchitecture,
 } from './weeklyPlanningConversationArchitecture';
 import { resolveNewConversationArchitecture } from './weeklyPlanningConversationArchitecturePreference';
+import { WEEKLY_PLANNING_INTERACTION_UNEXPECTED_FAILURE_TEXT } from './dialogue/weeklyPlanningInteractionFallbackText';
 
 export interface WeeklyPlanningControllerSession {
   ownerId: string;
@@ -448,9 +449,13 @@ export async function submitWeeklyPlanningControlledTurn(
       return { accepted: false, draftCandidates: [] };
     }
     const controlledFailure = error instanceof WeeklyPlanningControlledSemanticFailure;
+    // An unexpected failure has no reply to show. Interaction keeps it short and ordinary;
+    // legacy keeps its pre-#488 wording.
     const message = controlledFailure
       ? error.userMessage
-      : '週間計画の会話状態を更新できませんでした。';
+      : architecturePolicy.conversationalFailureRecovery
+        ? WEEKLY_PLANNING_INTERACTION_UNEXPECTED_FAILURE_TEXT
+        : '週間計画の会話状態を更新できませんでした。';
     const assistantMessage = createTurnMessage(envelope, 'assistant', message, now());
     // A recovery turn retains the accepted machine state. When it re-presented the fresh
     // machine question, rebind that question to this message so the next short reply

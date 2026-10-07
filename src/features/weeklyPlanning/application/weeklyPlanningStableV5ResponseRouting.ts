@@ -16,6 +16,7 @@ import {
   renderStableV5RuntimeQuestion,
 } from './weeklyPlanningStableV5RuntimeQuestions';
 import type { WeeklyPlanningStableV5SemanticTurnResult } from './weeklyPlanningStableV5SemanticTurn';
+import type { WeeklyPlanningTurnStatusReason } from './weeklyPlanningInteractionOutcome';
 
 type SuccessfulSemanticTurn = Extract<
   WeeklyPlanningStableV5SemanticTurnResult,
@@ -26,6 +27,8 @@ export type WeeklyPlanningStableV5PrePreviewRoute =
   | {
       kind: 'respond';
       output: WeeklyPlanningTurnExecutionResult;
+      /** Typed reason of a status response (null for questions); the output is unchanged. */
+      statusReason: WeeklyPlanningTurnStatusReason | null;
     }
   | {
       kind: 'schedule_preview';
@@ -59,8 +62,11 @@ function groundedMessage(params: {
   return withStableV5GroundingProposal(params);
 }
 
-function respond(output: WeeklyPlanningTurnExecutionResult): WeeklyPlanningStableV5PrePreviewRoute {
-  return { kind: 'respond', output };
+function respond(
+  output: WeeklyPlanningTurnExecutionResult,
+  statusReason: WeeklyPlanningTurnStatusReason | null = null,
+): WeeklyPlanningStableV5PrePreviewRoute {
+  return { kind: 'respond', output, statusReason };
 }
 
 function estimateForWorkloadFactId(
@@ -241,7 +247,7 @@ function routeBeforePreview(params: {
       },
       output,
     });
-    return respond(output);
+    return respond(output, 'preview_unchanged');
   }
 
   if (!authorized) {
@@ -272,7 +278,7 @@ function routeBeforePreview(params: {
       },
       output,
     });
-    return respond(output);
+    return respond(output, 'ready_to_create_preview');
   }
 
   return {

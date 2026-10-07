@@ -7,6 +7,7 @@ import {
   tryWeeklyPlanningDenseTurnCompletenessRetryV5,
 } from './weeklyPlanningSemanticDenseTurnCompletenessV5';
 import { runGenericSemanticRepairRouteV5 } from './weeklyPlanningSemanticGenericRepairRouteV5';
+import { continueWithConversationActsOnlyV5 } from './weeklyPlanningSemanticConversationOnlyTurnV5';
 import {
   tryFocusedAuthorizationRouteV5,
   tryFocusedContextualAnswerRouteV5,
@@ -59,6 +60,12 @@ function recordInitialValidation(params: {
       errors: params.validation.errors,
       algorithmicRepairs: params.validation.algorithmicRepairs,
       parsedDocument: params.validation.parsedDocument,
+      ...(params.validation.conversationActs
+        ? {
+            conversationActs: params.validation.conversationActs,
+            conversationActDiagnostics: params.validation.conversationActDiagnostics ?? [],
+          }
+        : {}),
     },
   });
 }
@@ -116,8 +123,14 @@ export function createWeeklyPlanningSemanticNormalizerV5(
   return {
     async normalize(input) {
       const run = new WeeklyPlanningSemanticNormalizerRunV5(client, input);
+      // A turn whose planning delta is unusable may still be carried by a valid
+      // non-mutating conversation act from the same model response (interaction only:
+      // legacy responses carry no acts, so no candidate is ever recorded there).
       const finish = (result: WeeklyPlanningSemanticNormalizerResultV5) =>
-        enforceFinalCurrentTurnProvenance({ input, run, result });
+        continueWithConversationActsOnlyV5({
+          run,
+          result: enforceFinalCurrentTurnProvenance({ input, run, result }),
+        });
 
       const contextualResult = input.supplementalContext?.trim()
         ? null
@@ -179,6 +192,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         },
       );
       run.addAlgorithmicRepairs(initialValidation.algorithmicRepairs);
+      run.recordRejectedPlanningConversationActs('initial', initialValidation);
       recordInitialValidation({ input, validation: initialValidation });
 
       if (initialValidation.document) {
