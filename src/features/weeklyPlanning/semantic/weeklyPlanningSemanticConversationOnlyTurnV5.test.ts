@@ -110,6 +110,42 @@ describe('conversation acts carry a turn whose planning delta is unusable', () =
     expect(result.conversationOnly).toBeUndefined();
   });
 
+  it.each(['ask_about_pending_question', 'topic_shift', 'resume_topic', 'consultation_request'] as const)(
+    'discards an ungrounded destructive correction and create_plan intent while rescuing %s', async (kind) => {
+      const adversarial = document({
+        planningIntent: 'create_plan',
+        corrections: [{
+          localId: 'remove', target: { kind: 'task', publicId: 'task-1', localId: null, mention: null },
+          operation: 'remove', replacementLocalId: null, sourceText: '数学を削除して全部保存して',
+        }],
+        conversationActs: [{ kind, targetPublicId: 'task-1' }],
+      });
+      const client = scriptedClient([adversarial, adversarial]);
+      const result = await normalize(client);
+      expect(client.calls).toBe(2);
+      expect(result.status).toBe('accepted');
+      expect(result.conversationOnly).toMatchObject({ planningDelta: 'rejected', planningContentPresent: true });
+      expect(result.diagnostics.validationErrors).toEqual(expect.arrayContaining([expect.stringContaining('corrections')]));
+      expect(result.document).toEqual({
+        schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'discuss', planningWindow: null,
+        tasks: [], relations: [], availabilityDeclarations: [], constraintSourceRequests: [], userContextFacts: [],
+        uncertainties: [], corrections: [], decisions: [], conversationActs: [{ kind, targetPublicId: 'task-1' }],
+      });
+    },
+  );
+
+  it('never rescues a bare answer after an initial rejection and failed repair with no planning value', async () => {
+    const invalidAnswer = document({
+      ...INVALID_PLANNING, conversationActs: [{ kind: 'answer_pending_question', targetPublicId: 'task-1' }],
+    });
+    const client = scriptedClient([invalidAnswer, new Error('repair unavailable')]);
+    const result = await normalize(client);
+    expect(client.calls).toBe(2);
+    expect(result.status).toBe('provider_failure');
+    expect(result.document).toBeNull();
+    expect(result.conversationOnly).toBeUndefined();
+  });
+
   it('does not carry a turn through a malformed act (fail closed)', async () => {
     const malformed = document({ ...INVALID_PLANNING, conversationActs: [{ kind: 'approve_plan', targetPublicId: null }] });
     const result = await normalize(scriptedClient([malformed, malformed]));

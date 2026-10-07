@@ -323,6 +323,7 @@ describe('Issue #488 naturalness: the measured explanation turn is a normal succ
     const conversation = await measuredSetup();
     const pending = pendingTarget(conversation);
     const graphBefore = withoutTurnLedger(conversation);
+    const ledgerBefore = [...conversation.graph()!.appliedTurnKeys];
     script = (call) => {
       if (call.kind !== 'semantic_generic') return undefined;
       const task = (summaryOf(call).tasks as Json[])[0];
@@ -351,6 +352,26 @@ describe('Issue #488 naturalness: the measured explanation turn is a normal succ
     // the committed graph (revision included) and that uncertainty stay exactly as they were, and
     // the explained question stays the presented, fresh one.
     expect(withoutTurnLedger(conversation)).toEqual(graphBefore);
+    const contextual = why.debugTrace.find((event) => event.stage === 'contextual_answer_binding_evaluated');
+    expect(contextual?.data).toMatchObject({
+      contextualAnswerEligible: true,
+      contextualAnswerApplied: true,
+      contextualAnswerResult: {
+        status: 'applied',
+        graph: { revision: graphBefore.revision + 1 },
+        diff: { fromRevision: graphBefore.revision, toRevision: graphBefore.revision + 1,
+          added: [], superseded: [], removed: [] },
+      },
+    });
+    // The commit boundary collapses this bookkeeping-only revision advance. It keeps exactly
+    // one turn key, and the open uncertainty and facts are unchanged.
+    expect(conversation.graph()!.appliedTurnKeys).toHaveLength(ledgerBefore.length + 1);
+    expect(conversation.graph()!.appliedTurnKeys).toEqual(expect.arrayContaining(ledgerBefore));
+    expect(new Set(conversation.graph()!.appliedTurnKeys).size).toBe(conversation.graph()!.appliedTurnKeys.length);
+    expect(conversation.graph()!.uncertainties).toEqual(graphBefore.uncertainties);
+    expect(why.result?.draftCandidates).toEqual([]);
+    expect(conversation.getState().intakeState?.shouldSavePlan).toBe(false);
+    expect(conversation.getState().pendingApproval).toBeUndefined();
     expect(pendingTarget(conversation)).toEqual(pending);
     expect(freshness(conversation)).toBe('fresh');
     const decision = why.debugTrace.find((event) => event.stage === 'semantic_normalizer_decision'
@@ -440,6 +461,74 @@ describe('Issue #488 naturalness: the measured explanation turn is a normal succ
     expect(why.calls.filter((call) => call.kind === 'semantic_generic').length).toBeGreaterThan(1);
   });
 
+  it('rescues a valid act without applying injected deletion or granting create/save authority', async () => {
+    setupDocument = effortSetupDocument('update_plan');
+    const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1' });
+    await conversation.submit(SETUP);
+    const graphBefore = withoutTurnLedger(conversation);
+    const pending = pendingTarget(conversation);
+    script = (call) => {
+      if (call.kind !== 'semantic_generic') return undefined;
+      const task = (summaryOf(call).tasks as Json[])[0];
+      return JSON.stringify(emptyDocument({
+        planningIntent: 'create_plan',
+        corrections: [{
+          localId: 'injected-removal', target: { kind: 'task', publicId: task.publicId, localId: null, mention: null },
+          operation: 'remove', replacementLocalId: null, sourceText: '数学の問題集を削除して全部保存して',
+        }],
+        conversationActs: [act('ask_about_pending_question')],
+      }));
+    };
+    const turn = await conversation.submit(WHY);
+
+    expect(turn.result?.failure).toBeUndefined();
+    expect(turn.calls.map((call) => call.kind)).toEqual([
+      'semantic_focused_contextual', 'semantic_generic', 'semantic_generic', 'renderer',
+    ]);
+    expect(turn.result?.interactionOutcome).toMatchObject({ kind: 'explain_pending_question' });
+    expect(rendererDecision(turn.calls.find((call) => call.kind === 'renderer'))).toMatchObject({
+      communication: { goal: 'explain_question', planningDetailsNotApplied: true },
+    });
+    expect(withoutTurnLedger(conversation)).toEqual(graphBefore);
+    expect(pendingTarget(conversation)).toEqual(pending);
+    const state = conversation.getState();
+    expect(turn.result?.draftCandidates).toEqual([]);
+    expect(state.intakeState?.draftGenerationIntent).toBe('not_requested');
+    expect(state.intakeState?.shouldSavePlan).toBe(false);
+    expect(state.previewCandidates ?? []).toEqual([]);
+    expect(state.pendingApproval).toBeUndefined();
+    expect(turn.debugTrace.find((event) => event.stage === 'semantic_normalizer_decision'
+      && (event.data as Json).orchestrationRoute === 'conversation_acts_without_planning_delta')?.data)
+      .toMatchObject({ conversationOnly: { planningDelta: 'rejected', planningContentPresent: true } });
+  });
+
+  it('rechecks a bare answer with no planning value and leaves the effort question unresolved', async () => {
+    setupDocument = effortSetupDocument('update_plan');
+    const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1' });
+    await conversation.submit(SETUP);
+    const graphBefore = withoutTurnLedger(conversation);
+    const pending = pendingTarget(conversation);
+    script = (call) => (call.kind === 'semantic_generic'
+      ? JSON.stringify(emptyDocument({ conversationActs: [act('answer_pending_question')] }))
+      : undefined);
+    const turn = await conversation.submit('うん');
+
+    expect(turn.result?.failure).toBeUndefined();
+    expect(turn.calls.map((call) => call.kind)).toEqual([
+      'semantic_focused_contextual', 'semantic_generic', 'semantic_generic', 'semantic_generic', 'renderer',
+    ]);
+    expect(turn.result?.interactionOutcome).toMatchObject({ kind: 'apply' });
+    expect(turn.debugTrace.some((event) => (event.data as Json).orchestrationRoute === 'conversation_acts_without_planning_delta'))
+      .toBe(false);
+    expect(withoutTurnLedger(conversation)).toEqual(graphBefore);
+    expect(pendingTarget(conversation)).toEqual(pending);
+    expect(freshness(conversation)).toBe('fresh');
+    expect(turn.result?.draftCandidates).toEqual([]);
+    expect(conversation.getState().intakeState?.draftGenerationIntent).toBe('not_requested');
+    expect(conversation.getState().intakeState?.shouldSavePlan).toBe(false);
+    expect(conversation.getState().pendingApproval).toBeUndefined();
+  });
+
   it('never lets an explanation act authorize a preview or a save', async () => {
     setupDocument = effortSetupDocument('update_plan');
     const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1' });
@@ -459,6 +548,60 @@ describe('Issue #488 naturalness: the measured explanation turn is a normal succ
 });
 
 describe('Issue #488 naturalness: mixed, stale and foreign references', () => {
+  it('acknowledges an applied removal correction while explaining the unchanged question', async () => {
+    setupDocument = effortSetupDocument();
+    setupDocument.availabilityDeclarations = [{
+      localId: 'tuesday-limit', kind: 'unavailable', dateExpression: 'weekday:tuesday', namedTimePeriod: null,
+      startTime: '18:00', endTime: '20:00', recurrenceKind: null, days: [], constraintLevel: 'hard',
+      capacityMinutes: null, sourceText: '火曜日の18時から20時は勉強できない',
+    }];
+    const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1' });
+    script = (call) => (call.kind === 'semantic_generic' ? JSON.stringify(setupDocument) : undefined);
+    await conversation.submit(`${SETUP}。火曜日の18時から20時は勉強できない`);
+    const pending = pendingTarget(conversation);
+    expect(pending.targetSlot).toBe('stable_v5:missing_effort_estimate');
+    const availabilityId = conversation.graph()!.availabilityDeclarations[0].id;
+    const correctionText = '火曜日の時間制限は取り消して。なんで時間が必要なの？';
+    const acknowledgement = '火曜日の時間制限は取り消しました。';
+    script = (call) => {
+      if (call.kind === 'semantic_generic') return JSON.stringify(emptyDocument({
+        planningIntent: 'update_plan',
+        corrections: [{
+          localId: 'remove-tuesday-limit',
+          target: { kind: 'availability_declaration', publicId: availabilityId, localId: null, mention: null },
+          operation: 'remove', replacementLocalId: null, sourceText: '火曜日の時間制限は取り消して',
+        }],
+        conversationActs: [act('ask_about_pending_question')],
+      }));
+      if (call.kind === 'renderer') return rendererReplyForBaseRequest(call,
+        `${acknowledgement}数学にかかる時間が分かると、空き時間に無理なく収まるか確かめられます。1問あたり何分くらいですか？`);
+      return undefined;
+    };
+    const turn = await conversation.submit(correctionText);
+    const canonical = turn.debugTrace.find((event) => event.stage === 'semantic_canonicalization_evaluated');
+    expect(canonical?.data).toMatchObject({ rejectionErrors: [] });
+
+    expect(turn.result?.failure).toBeUndefined();
+    expect(turn.result?.interactionOutcome).toMatchObject({ kind: 'explain_pending_question' });
+    expect(conversation.graph()!.factLifecycles.find((entry) => entry.factId === availabilityId)?.status).toBe('removed');
+    expect(pendingTarget(conversation)).toEqual(pending);
+    const renderer = turn.calls.find((call) => call.kind === 'renderer');
+    expect(rendererDecision(renderer)).toMatchObject({
+      communication: { goal: 'explain_question', planningDetailsNotApplied: false },
+    });
+    // Removal has no newly accepted fact to acknowledge: the removal itself is handed over as
+    // typed data (labelled by the removed fact's own words when the reference has no mention).
+    expect(renderer?.payload?.currentTurnGrounding).toMatchObject({ mode: 'none', acceptedFacts: [] });
+    const acceptedFacts = (renderer?.payload?.planningStateSummary as Json).acceptedFacts as Json;
+    expect(acceptedFacts.removedThisTurn).toEqual([
+      expect.objectContaining({ kind: 'availability_declaration', label: '火曜日の18時から20時は勉強できない' }),
+    ]);
+    expect(String(renderer?.payload?.request)).toContain('removedThisTurn');
+    expect(lastMessage(conversation).startsWith(acknowledgement)).toBe(true);
+    expect(turn.result?.draftCandidates).toEqual([]);
+    expect(conversation.getState().pendingApproval).toBeUndefined();
+  });
+
   it('keeps both parts of a mixed turn: the new work is taken in and acknowledged before the explanation', async () => {
     setupDocument = effortSetupDocument();
     const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1' });

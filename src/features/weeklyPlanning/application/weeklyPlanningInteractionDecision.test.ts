@@ -12,6 +12,7 @@ import {
   planWeeklyPlanningInteraction,
   type WeeklyPlanningInteractionPlan,
 } from './weeklyPlanningInteractionDecision';
+import { resolveWeeklyPlanningConversationActTargetsV5 } from '../semantic/weeklyPlanningConversationActsV5';
 import type { WeeklyPlanningStableV5PlanningEvaluation } from './weeklyPlanningStableV5PlanningEvaluation';
 
 const question: WeeklyPlanningQuestionContext = {
@@ -186,6 +187,56 @@ describe('naming a topic cannot override the repair policy', () => {
         expect(result).toMatchObject({ dialogueQuestionOverride: null, targetResolved: false, targetQuestionOpen: false });
       }
     }
+  });
+
+  it.each(['topic_shift', 'resume_topic'] as const)('does not guess a target after %s is degraded to null', (kind) => {
+    const graph = twoTopicGraph();
+    const before = structuredClone(graph);
+    const resolved = resolveWeeklyPlanningConversationActTargetsV5({
+      acts: [{ kind, targetPublicId: 'invented-topic' }],
+      publicStateSummary: { tasks: graph.tasks.map((task) => ({ publicId: task.id })) },
+    });
+    expect(resolved.acts).toEqual([{ kind, targetPublicId: null }]);
+    expect(resolved.diagnostics).toEqual(['conversationActs[0].targetPublicId:degraded-unknown-topic']);
+    expect(planWeeklyPlanningInteraction({ acts: resolved.acts, graph, evaluation: evaluationFor(graph, []) }))
+      .toMatchObject({ dialogueQuestionOverride: null, targetResolved: false, targetQuestionOpen: false });
+    expect(graph).toEqual(before);
+  });
+
+  it.each(['topic_shift', 'resume_topic'] as const)('revalidates a snapshot-valid %s target against the live graph', (kind) => {
+    const graph = twoTopicGraph();
+    const resolved = resolveWeeklyPlanningConversationActTargetsV5({
+      acts: [{ kind, targetPublicId: 'task-b' }],
+      publicStateSummary: { tasks: graph.tasks.map((task) => ({ publicId: task.id })) },
+    });
+    expect(resolved.diagnostics).toEqual([]);
+    expect(resolved.acts[0].targetPublicId).toBe('task-b');
+    // The semantic snapshot was correct, but the target disappeared before interaction planning.
+    graph.factLifecycles = graph.factLifecycles.map((entry) => (entry.factId === 'task-b'
+      ? { ...entry, status: 'removed' as const, terminalRevision: graph.revision }
+      : entry));
+    const before = structuredClone(graph);
+    expect(planWeeklyPlanningInteraction({ acts: resolved.acts, graph, evaluation: evaluationFor(graph, []) }))
+      .toMatchObject({ dialogueQuestionOverride: null, targetResolved: false, targetQuestionOpen: false });
+    expect(graph).toEqual(before);
+  });
+
+  it('cannot route to a topic active only in another conversation, even when the snapshot accepts it', () => {
+    const graph = twoTopicGraph();
+    const foreign = createEmptyWeeklyPlanningFactGraphV5();
+    foreign.revision = 1;
+    foreign.tasks = [{ ...graph.tasks[1], id: 'foreign-task', source: { ...source, conversationId: 'other-chat' } }];
+    foreign.factLifecycles = [{ ...graph.factLifecycles[1], factId: 'foreign-task' }];
+    expect(foreign.factLifecycles).toContainEqual(expect.objectContaining({ factId: 'foreign-task', status: 'active' }));
+    const resolved = resolveWeeklyPlanningConversationActTargetsV5({
+      acts: [{ kind: 'resume_topic', targetPublicId: foreign.tasks[0].id }],
+      publicStateSummary: { tasks: foreign.tasks.map((task) => ({ publicId: task.id })) },
+    });
+    expect(resolved.diagnostics).toEqual([]);
+    const before = structuredClone(graph);
+    expect(planWeeklyPlanningInteraction({ acts: resolved.acts, graph, evaluation: evaluationFor(graph, []) }))
+      .toMatchObject({ dialogueQuestionOverride: null, targetResolved: false, targetQuestionOpen: false });
+    expect(graph).toEqual(before);
   });
 
   const askedAbout = (factId: string): WeeklyPlanningQuestionContext => ({
