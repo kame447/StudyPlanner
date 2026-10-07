@@ -7,7 +7,25 @@ import { createLocalAuthStorageGateway } from '../../../src/repositories/localSt
 import { createLocalPlannerRepository } from '../../../src/repositories/createLocalPlannerRepository';
 
 const real = createLocalPlannerRepository();
-export const authRepository = createAuthRepository(createLocalAuthStorageGateway());
+const authStorage = createLocalAuthStorageGateway();
+let failProfileWrite = false;
+let holdProfileResponse = false;
+let heldProfileResponse = null;
+let profileResponsesReturned = 0;
+const writeUsers = authStorage.writeUsers;
+authStorage.writeUsers = async users => {
+  if (failProfileWrite) {
+    failProfileWrite = false;
+    throw new Error('プロフィールの保存に失敗しました（検証用）。');
+  }
+  await writeUsers(users);
+  if (holdProfileResponse) {
+    holdProfileResponse = false;
+    await new Promise(resolve => { heldProfileResponse = resolve; });
+  }
+  profileResponsesReturned += 1;
+};
+export const authRepository = createAuthRepository(authStorage);
 const calls = [];
 let holdActualDispatch = false;
 let heldActualDispatch = null;
@@ -72,6 +90,28 @@ export const plannerRepository = Object.fromEntries(Object.entries(real).map(([m
 
 window.__plannerRecoveryRepository = {
   snapshot,
+  failNextProfileWrite() { failProfileWrite = true; },
+  holdNextProfileResponse() { holdProfileResponse = true; },
+  profileResponseState() { return { pending: Boolean(heldProfileResponse), returned: profileResponsesReturned }; },
+  releaseProfileResponse() {
+    const release = heldProfileResponse;
+    if (!release) return false;
+    heldProfileResponse = null;
+    release();
+    return true;
+  },
+  async seedRecurringEditorPlans({ userId, date }) {
+    const now = new Date().toISOString();
+    const plans = ['A', 'B'].map((suffix, index) => ({
+      id: `recurring-editor-${suffix}`, seriesId: `recurring-editor-${suffix}`, userId,
+      title: `繰り返し予定${suffix}`, subject: '数学', date,
+      startTime: `${9 + index * 2}:00`.padStart(5, '0'), endTime: `${10 + index * 2}:00`,
+      repeat: 'daily', repeatUntil: '2026-12-31', excludedDates: [], recurrenceRules: [],
+      type: 'study', memo: '', createdAt: now, updatedAt: now,
+    }));
+    for (const plan of plans) await plannerRepository.upsertPlan(plan);
+    return plans;
+  },
   async seedOpenTodo(userId) {
     const now = new Date().toISOString();
     await plannerRepository.upsertTodo({ id: 'read-repair-todo', userId, title: '予定化するTodo',
@@ -152,6 +192,7 @@ window.__plannerRecoveryRepository = {
   },
   holdNextTemplateWrite() { holdPlanWrite = 'upsertScheduleTemplate'; },
   holdNextPlanWrite() { holdPlanWrite = 'upsertPlan'; },
+  holdNextRecurringWrite() { holdPlanWrite = 'applyRecurringPlanMutation'; },
   holdNextTodoSchedule() { holdPlanWrite = 'scheduleTodoPlan'; },
   releasePlanWrite() {
     const release = heldPlanWrite;

@@ -1,7 +1,7 @@
 # Scheduled event authority
 
 Status: canonical architecture contract
-Updated: 2026-10-05
+Updated: 2026-10-07
 Baseline implementation: Issue #278 — completed
 
 ## Product invariant
@@ -247,3 +247,13 @@ Homeの「今日の予定」の＋は、カレンダーへ移動せず「予定�
 入力形式の選択は保存正本を増やさない。既存application callback / repository facadeを経由し、Home独自の保存処理を作らない。保存・取消後もHomeに留まり、再表示は既存の予定projectionを使う。「すべて見る」は日表示への移動として追加操作から分離する。
 
 作成sessionはアカウント・画面・開き直しで分離し、過去の編集対象や遅い完了通知を次の入力へ持ち込まない。選択パネルはモバイルでは下部、PCでは中央に表示し、フォーム内の保存中/下位ダイアログのdismissal契約を上書きしない。
+
+## Plan editor and recurring confirmation lifetime
+
+予定フォームを閉じる責任は保存application側が持つ。通常保存は書込待ちに入る前にフォームを閉じ、繰り返し編集は適用範囲の選択へ渡す時点で閉じる。フォーム側は保存完了後に取消を再実行しない。
+
+繰り返しの範囲確認は書込中も閉じられる。成功時に消してよいのは、その書込を開始した同一の確認だけであり、後から開いた編集フォームや確認を閉じない。失敗時は現在の確認と入力を保持して再試行できる。確認を閉じても、既に開始した書込の取消を意味しない。
+
+繰り返し編集の表示日選択は、書込の入場確認後・通信待ち前に既存の順序付きUI操作へ登録する。成功で確定し、失敗ではその操作だけを除く。後からの日付・月・週移動（同じ値の明示選択を含む）や他の保存による選択を、古い完了で巻き戻さない。この順序管理はUI専用であり、永続化順序や複数client間の競合方針を定義しない。
+
+検証証跡と未解決の隣接範囲は [Issue #437](https://github.com/kame447/StudyPlanner/issues/437) が所有する。

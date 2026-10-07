@@ -10,7 +10,7 @@ vi.mock('../lib/avatarImage', async importOriginal => ({ ...await importOriginal
 vi.mock('../hooks/useAdminStatus', () => ({ useAdminStatus: () => ({ isAdmin: false, status: 'denied' }) }));
 const user: User = { id: 'owner', email: 'owner@example.test', username: 'Owner', avatar: '📚', createdAt: '' };
 let renderer: ReactTestRenderer;
-const save = vi.fn().mockResolvedValue(undefined);
+const save = vi.fn().mockImplementation(async draft => ({ ...user, ...draft }));
 const close = vi.fn();
 function render(open = true, owner = user) {
   return <MyPageDialog open={open} user={owner} onSaveProfile={save} onSignOut={vi.fn()} onClose={close} />;
@@ -106,7 +106,6 @@ it('allows a current conversion error to be retried without losing username edit
 
 it.each(['文字', '写真を外す'] as const)('honors %s while an old conversion is pending', async choice => {
   act(() => renderer.update(render(true, { ...user, avatar: 'data:image/jpeg;base64,initial' })));
-  expand();
   const gate = deferred<string>(); convert.mockReturnValueOnce(gate.promise);
   const pending = photo(); act(() => button(choice).props.onClick());
   expect(button('プロフィールを保存').props.disabled).toBe(false);
@@ -134,12 +133,33 @@ it('keeps the current conversion error when an older photo later succeeds', asyn
 });
 
 it('does not replace current photo-processing feedback with an older save completion', async () => {
-  const saving = deferred<void>(); const gate = deferred<string>();
+  const saving = deferred<User>(); const gate = deferred<string>();
   save.mockReturnValueOnce(saving.promise); convert.mockReturnValueOnce(gate.promise);
   act(() => button('プロフィールを保存').props.onClick());
   const pending = photo();
-  await act(async () => { saving.resolve(); await saving.promise; });
+  await act(async () => { saving.resolve(user); await saving.promise; });
   expect(JSON.stringify(renderer.toJSON())).toContain('画像を処理しています...');
   expect(button('プロフィールを保存').props.disabled).toBe(true);
   await act(async () => { gate.resolve('data:image/jpeg;base64,new'); await pending.done; });
+});
+
+it('keeps a newer photo conversion alive across an older same-owner profile refresh', async () => {
+  const gate = deferred<string>(); convert.mockReturnValueOnce(gate.promise);
+  const pending = photo();
+  act(() => renderer.update(render(true, { ...user, username: 'Older saved name', avatar: '🌱' })));
+  expect(button('プロフィールを保存').props.disabled).toBe(true);
+  await act(async () => { gate.resolve('data:image/jpeg;base64,new'); await pending.done; });
+  expect(avatar()).toBe('data:image/jpeg;base64,new');
+  expect(button('プロフィールを保存').props.disabled).toBe(false);
+});
+
+it('keeps photo processing alive and visible while the username is edited', async () => {
+  const gate = deferred<string>(); convert.mockReturnValueOnce(gate.promise);
+  const pending = photo();
+  act(() => renderer.root.findByProps({ placeholder: '未入力ならメールアドレスを使います' }).props.onChange({ target: { value: 'New name' } }));
+  expect(JSON.stringify(renderer.toJSON())).toContain('画像を処理しています...');
+  expect(button('プロフィールを保存').props.disabled).toBe(true);
+  await act(async () => { gate.resolve('data:image/jpeg;base64,new'); await pending.done; });
+  await act(async () => { button('プロフィールを保存').props.onClick(); });
+  expect(save).toHaveBeenLastCalledWith({ username: 'New name', avatar: 'data:image/jpeg;base64,new' });
 });

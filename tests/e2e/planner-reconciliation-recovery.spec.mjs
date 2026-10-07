@@ -1575,9 +1575,9 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
     const storedAvatar = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.users')).find(user => user.id === 'planner-recovery-owner').avatar);
     await expect.poll(storedAvatar).toBe('🚀');
-    // Profile props reset the expanded section after a successful save.
-    await expect(editor.locator('input[type=file]')).toHaveCount(0);
-    await editor.locator('.collapsible-toggle').click();
+    // A successful save preserves the current editing session and section.
+    await expect(editor.getByRole('status')).toHaveText('保存しました。');
+    await expect(editor.locator('input[type=file]')).toHaveCount(1);
     await editor.locator('input[type=file]').setInputFiles(photo);
     await editor.getByRole('button', { name: '閉じる', exact: true }).click();
     editor = await open();
@@ -1593,5 +1593,131 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     expect(selected).toMatch(/^data:image\/jpeg;base64,/);
     await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
     await expect.poll(storedAvatar).toBe(selected);
+  });
+}
+
+for (const [viewport, theme, replacement] of [['desktop', 'light', 'editor'], ['mobile', 'dark', 'scope']]) {
+  test(`Recurring confirmation preserves a newer ${replacement} ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, cases.find(item => item.label === viewport && item.theme === theme));
+    await page.evaluate(async date => {
+      await window.__plannerRecoveryRepository.seedRecurringEditorPlans({ userId: window.__plannerRecoveryHook.snapshot().ownerId, date });
+      await window.__plannerRecoveryHook.refresh();
+    }, E2E_TODAY);
+    await navigate(page, '予定');
+    await page.getByRole('tab', { name: '日', exact: true }).click();
+    const openEditor = async title => {
+      await page.locator('.timeline-plan-block').filter({ hasText: title }).click();
+      await page.getByRole('dialog', { name: `${title}の操作`, exact: true })
+        .getByRole('button', { name: '予定を編集 時間や内容を変更', exact: true }).click();
+      return page.getByRole('dialog', { name: '学習予定を編集', exact: true });
+    };
+    const scope = () => page.locator('.modal-card').filter({ has: page.getByRole('heading', { name: '繰り返し予定の更新範囲', exact: true }) });
+    let editor = await openEditor('繰り返し予定A');
+    await editor.getByRole('textbox', { name: '予定名', exact: true }).fill('保存する繰り返し予定A');
+    await editor.getByRole('button', { name: '学習予定を更新', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    await page.evaluate(() => window.__plannerRecoveryRepository.holdNextRecurringWrite());
+    await scope().getByRole('button', { name: /^すべての予定/ }).click();
+    await expect.poll(async () => (await repoSnapshot(page)).pendingPlanWrites).toBe(1);
+    await scope().getByRole('button', { name: '閉じる', exact: true }).click();
+    editor = await openEditor('繰り返し予定B');
+    await editor.getByRole('textbox', { name: '予定名', exact: true }).fill('未保存の繰り返し予定B');
+    if (replacement === 'scope') await editor.getByRole('button', { name: '学習予定を更新', exact: true }).click();
+    const before = (await repoSnapshot(page)).calls.filter(call => call.method === 'applyRecurringPlanMutation' && call.phase === 'returned').length;
+    expect(await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanWrite())).toBe(true);
+    await expect.poll(async () => (await repoSnapshot(page)).calls.filter(call => call.method === 'applyRecurringPlanMutation' && call.phase === 'returned').length).toBe(before + 1);
+    await expect(page.getByText('繰り返し予定を更新しました。', { exact: true })).toBeVisible();
+    if (replacement === 'scope') {
+      await expect(scope()).toBeVisible();
+      await expect(scope()).toContainText('繰り返し予定B');
+      await scope().getByRole('button', { name: '閉じる', exact: true }).click();
+    } else {
+      await expect(editor.getByRole('textbox', { name: '予定名', exact: true })).toHaveValue('未保存の繰り返し予定B');
+      await editor.getByRole('button', { name: '閉じる', exact: true }).click();
+    }
+    const events = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1')));
+    expect(events.map(event => event.title).sort()).toEqual(['保存する繰り返し予定A', '繰り返し予定B'].sort());
+  });
+}
+
+for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
+  test(`Profile save reports storage failure honestly and permits retry ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, cases.find(item => item.label === viewport && item.theme === theme));
+    const readProfile = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.users')).find(user => user.id === 'planner-recovery-owner'));
+    const before = await readProfile();
+    await page.getByRole('button', { name: 'マイページを開く', exact: true }).click();
+    const editor = page.locator('.my-page-modal');
+    await editor.getByRole('textbox', { name: 'ユーザーネーム', exact: true }).fill('保存を再試行する名前');
+    await page.evaluate(() => window.__plannerRecoveryRepository.failNextProfileWrite());
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect(editor.getByRole('status')).toHaveText('プロフィールの保存に失敗しました（検証用）。');
+    await expect(editor).not.toContainText('保存しました。');
+    await expect(editor.getByRole('textbox', { name: 'ユーザーネーム', exact: true })).toHaveValue('保存を再試行する名前');
+    expect(await readProfile()).toEqual(before);
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect.poll(async () => (await readProfile()).username).toBe('保存を再試行する名前');
+    await expect(page.getByText('プロフィールを更新しました。', { exact: true })).toBeVisible();
+    await expect(editor).not.toContainText('プロフィールの保存に失敗しました（検証用）。');
+  });
+}
+
+for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
+  test(`Profile save cannot restore the signed-out UI under StrictMode ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, { ...cases.find(item => item.label === viewport && item.theme === theme), strict: true });
+    expect((await hookSnapshot(page)).mounts).toBeGreaterThanOrEqual(2);
+    await page.getByRole('button', { name: 'マイページを開く', exact: true }).click();
+    const editor = page.locator('.my-page-modal');
+    await editor.getByRole('textbox', { name: 'ユーザーネーム', exact: true }).fill('応答を待つプロフィール');
+    await page.evaluate(() => window.__plannerRecoveryRepository.holdNextProfileResponse());
+    const responseState = () => page.evaluate(() => window.__plannerRecoveryRepository.profileResponseState());
+    const before = await responseState();
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect.poll(async () => (await responseState()).pending).toBe(true);
+    const storedProfile = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.users')).find(user => user.id === 'planner-recovery-owner'));
+    await expect.poll(async () => (await storedProfile()).username).toBe('応答を待つプロフィール');
+    await editor.getByRole('button', { name: 'ログアウト', exact: true }).click();
+    await expect(page.locator('.auth-shell')).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.session'))).toBeNull();
+    expect(await page.evaluate(() => window.__plannerRecoveryRepository.releaseProfileResponse())).toBe(true);
+    await expect.poll(async () => (await responseState()).returned).toBe(before.returned + 1);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(page.locator('.auth-shell')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'マイページを開く', exact: true })).toHaveCount(0);
+    await expect(page.getByText('プロフィールを更新しました。', { exact: true })).toHaveCount(0);
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.session'))).toBeNull();
+    expect((await storedProfile()).username).toBe('応答を待つプロフィール');
+  });
+}
+
+
+for (const [viewport, theme, reopen] of [['desktop', 'light', false], ['mobile', 'dark', true]]) {
+  test(`Profile save preserves newer typing under StrictMode ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, { ...cases.find(item => item.label === viewport && item.theme === theme), strict: true });
+    expect((await hookSnapshot(page)).mounts).toBeGreaterThanOrEqual(2);
+    await page.getByRole('button', { name: 'マイページを開く', exact: true }).click();
+    const editor = page.locator('.my-page-modal');
+    const username = editor.getByRole('textbox', { name: 'ユーザーネーム', exact: true });
+    await username.fill('先に保存した名前');
+    await page.evaluate(() => window.__plannerRecoveryRepository.holdNextProfileResponse());
+    const responseState = () => page.evaluate(() => window.__plannerRecoveryRepository.profileResponseState());
+    const before = await responseState();
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect.poll(async () => (await responseState()).pending).toBe(true);
+    const storedName = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.users')).find(user => user.id === 'planner-recovery-owner').username);
+    await expect.poll(storedName).toBe('先に保存した名前');
+    if (reopen) {
+      await editor.getByRole('button', { name: '閉じる', exact: true }).click();
+      await page.getByRole('button', { name: 'マイページを開く', exact: true }).click();
+    }
+    await username.fill('後から入力した未保存の名前');
+    expect(await page.evaluate(() => window.__plannerRecoveryRepository.releaseProfileResponse())).toBe(true);
+    await expect.poll(async () => (await responseState()).returned).toBe(before.returned + 1);
+    await expect(page.getByText('プロフィールを更新しました。', { exact: true })).toBeVisible();
+    await expect(username).toHaveValue('後から入力した未保存の名前');
+    await expect(editor).not.toContainText('保存しました。');
+    expect(await storedName()).toBe('先に保存した名前');
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect(editor.getByRole('status')).toHaveText('保存しました。');
+    await expect.poll(storedName).toBe('後から入力した未保存の名前');
   });
 }
