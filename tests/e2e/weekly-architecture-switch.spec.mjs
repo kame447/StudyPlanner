@@ -59,6 +59,30 @@ for (const device of [
   test.describe(`architecture switch (${device.name})`, () => {
     test.use({ viewport: device.viewport });
 
+    test('production gate hides evaluation controls and ignores an old evaluation preference', async ({ page }) => {
+      await page.addInitScript(() => {
+        localStorage.setItem('studyplanner.weeklyPlanning.conversationArchitecturePreference.v1',
+          JSON.stringify({ version: 1, architecture: 'legacy_v5' }));
+      });
+      await page.goto('http://127.0.0.1:4174/real-weekly.html?interaction=1&settings=1');
+      await page.getByTestId('harness-open-settings').click();
+      await expect(page.getByRole('dialog', { name: '設定', exact: true })).toBeVisible();
+      await expect(page.getByTestId('weekly-planning-architecture-setting')).toHaveCount(0);
+      await page.getByTestId('harness-close-settings').click();
+      await expect(mode(page)).toHaveCount(0);
+      await expect(page.getByTestId('architecture-eval-metrics')).toHaveCount(0);
+
+      await send(page, 'SETUP 数学のワーク');
+      await expect.poll(() => page.evaluate(() => window.__realWeeklyState?.conversationArchitecture))
+        .toBe('interaction_v1');
+      await expect(page.locator('.ai-planning-message-row.assistant .ai-planning-bubble:not(.ai-planning-typing)'))
+        .toHaveCount(1);
+      await expect(mode(page)).toHaveCount(0);
+      await expect(page.getByTestId('architecture-eval-metrics')).toHaveCount(0);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflow).toBeLessThanOrEqual(1);
+    });
+
     test('selector applies to new conversations only; each conversation shows its pinned mode and metrics', async ({ page }) => {
       await page.goto(URL);
 

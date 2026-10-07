@@ -44,6 +44,8 @@ export type ScriptedProviderCallKind =
 
 export interface ScriptedProviderCall {
   index: number;
+  /** Complete JSON transport body, including model/options/schema, for differential replay. */
+  request: Record<string, unknown>;
   kind: ScriptedProviderCallKind;
   schemaName: string;
   /** Top-level property names of the JSON schema the provider was asked to follow. */
@@ -99,6 +101,7 @@ export function installScriptedWeeklyPlanningProvider(
     const schemaName = body.response_format?.json_schema?.name ?? '';
     const call: ScriptedProviderCall = {
       index: calls.length,
+      request: body,
       kind: callKind(schemaName),
       schemaName,
       schemaProperties: Object.keys(body.response_format?.json_schema?.schema?.properties ?? {}),

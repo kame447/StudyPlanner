@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getLatestWeeklyPlanningTurnMeasurement,
@@ -204,6 +205,43 @@ function kinds(calls: ScriptedProviderCall[]): string[] {
   return calls.map((call) => call.kind);
 }
 
+/** Sort object keys only; array order, prose, schema and unknown request fields remain significant. */
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+      .map(([key, entry]) => [key, canonicalJson(entry)]));
+  }
+  return value;
+}
+
+function requestHashes(calls: ScriptedProviderCall[]) {
+  return calls.map((call) => {
+    const request = {
+      ...call.request,
+      messages: call.messages.map((message) => {
+        // JSON user payloads have the same key-order normalization as the outer body.
+        // Free-form system/user text is kept byte-for-byte; nothing is redacted or dropped.
+        try {
+          const parsed: unknown = JSON.parse(message.content);
+          if (parsed !== null && typeof parsed === 'object') {
+            return { ...message, content: JSON.stringify(canonicalJson(parsed)) };
+          }
+        } catch { /* Plain prose is not JSON. */ }
+        return message;
+      }),
+    };
+    return {
+      kind: call.kind,
+      sha256: createHash('sha256').update(JSON.stringify(canonicalJson(request))).digest('hex'),
+    };
+  });
+}
+
+// These full-request fingerprints characterize this scripted fixture on the current branch.
+// They complement (never replace or rebaseline) the independently derived ee07697e oracle.
+// Review the actual request diff before changing a fingerprint; prose quality is not an oracle.
+
 describe.each(MODES)('provider contract under %s', (mode) => {
   it('sends the schema and prompt of its architecture on the first semantic call', async () => {
     const conversation = conversationIn(mode);
@@ -219,6 +257,7 @@ describe.each(MODES)('provider contract under %s', (mode) => {
 
 describe('A. explanation under a pending effort question', () => {
   async function explain(mode: WeeklyPlanningConversationArchitecture) {
+    script = () => undefined;
     const conversation = conversationIn(mode);
     await conversation.submit(MATH_SETUP);
     const graphBefore = structuredClone(conversation.graph());
@@ -237,6 +276,30 @@ describe('A. explanation under a pending effort question', () => {
 
   it('legacy: no typed outcome, the empty delta triggers the historical completeness retries', async () => {
     const { turn, conversation } = await explain('legacy_v5');
+    expect(requestHashes(turn.calls)).toMatchInlineSnapshot(`
+      [
+        {
+          "kind": "semantic_focused_contextual",
+          "sha256": "28eb3d29053228bd5593bc067056740ad09ffd26e5665dfe667d96da9e2f9d4d",
+        },
+        {
+          "kind": "semantic_generic",
+          "sha256": "88ead82c5610affb0877ccf0ae0d23b3db199337ae972c25423c9240b7f7e63f",
+        },
+        {
+          "kind": "semantic_generic",
+          "sha256": "7776baf302f892b418634b06e78ee5492dfe0c0e7965dbcbe3b88803e68e17a0",
+        },
+        {
+          "kind": "semantic_generic",
+          "sha256": "e9933bd772179ef312042957634cf3b67c6a2aa9acc4395ea5bb2010fd97505c",
+        },
+        {
+          "kind": "renderer",
+          "sha256": "e2b0cdd979ebad96fe2bbfd8597d0f9a74ae51b19d0f784a4e09a8ff3f03802b",
+        },
+      ]
+    `);
     // The historical retry contract, identical to ee07697e on this fixture.
     expect(kinds(turn.calls)).toEqual([
       'semantic_focused_contextual', 'semantic_generic', 'semantic_generic', 'semantic_generic', 'renderer',
@@ -254,6 +317,22 @@ describe('A. explanation under a pending effort question', () => {
 
   it('interaction: typed explanation, one semantic call, no retry, same question re-presented', async () => {
     const { turn, conversation, graphBefore } = await explain('interaction_v1');
+    expect(requestHashes(turn.calls)).toMatchInlineSnapshot(`
+      [
+        {
+          "kind": "semantic_focused_contextual",
+          "sha256": "f008ff824889824d4538dd538d58ae9af0c775c3d2abb215b9fdc2078aa1fe28",
+        },
+        {
+          "kind": "semantic_generic",
+          "sha256": "22894f528955eeea60792d0ab46cb1c7e75bca2697a181255b175e75d849bdfc",
+        },
+        {
+          "kind": "renderer",
+          "sha256": "025d7740bd2b03af275593be2c7761e6bf0e0e42ced5553cf1f5f601791bb3c1",
+        },
+      ]
+    `);
     expect(kinds(turn.calls)).toEqual(['semantic_focused_contextual', 'semantic_generic', 'renderer']);
     expect(turn.result?.interactionOutcome).toMatchObject({ kind: 'explain_pending_question' });
     const renderer = turn.calls.find((call) => call.kind === 'renderer');
@@ -269,6 +348,26 @@ describe('A. explanation under a pending effort question', () => {
     resetScriptedConversationRuntime();
     const interaction = await explain('interaction_v1');
     expect(interaction.turn.calls.length).toBeLessThan(legacy.turn.calls.length);
+    const legacyHashes = requestHashes(legacy.turn.calls);
+    const interactionHashes = requestHashes(interaction.turn.calls);
+    // Semantic and renderer contracts are mode-specific. The focused question request differs
+    // only by the interaction-only instruction appended to its system prompt (fall back when
+    // the message also carries a conversation act); everything else in it is shared.
+    for (const kind of ['semantic_focused_contextual', 'semantic_generic', 'renderer']) {
+      expect(interactionHashes.find((entry) => entry.kind === kind)?.sha256)
+        .not.toBe(legacyHashes.find((entry) => entry.kind === kind)?.sha256);
+    }
+    const [legacyFocused] = legacy.turn.calls;
+    const [interactionFocused] = interaction.turn.calls;
+    expect(interactionFocused.messages).toHaveLength(legacyFocused.messages.length);
+    const differing = interactionFocused.messages.filter((message, index) => {
+      const historical = legacyFocused.messages[index];
+      expect(message.role).toBe(historical.role);
+      expect(message.content.startsWith(historical.content)).toBe(true);
+      return message.content !== historical.content;
+    });
+    expect(differing.map((message) => message.role)).toEqual(['system']);
+    expect({ ...interactionFocused.request, messages: null }).toEqual({ ...legacyFocused.request, messages: null });
   });
 });
 
@@ -285,6 +384,22 @@ describe('C. semantic failure under a pending question', () => {
 
   it('legacy: fixed terminal wording asking an unrelated generic question; question not re-presented', async () => {
     const { conversation, turn } = await fail('legacy_v5');
+    expect(requestHashes(turn.calls)).toMatchInlineSnapshot(`
+      [
+        {
+          "kind": "semantic_focused_contextual",
+          "sha256": "0c6a4dc9e611788e1ba76745939e6f6e2a0dc95fe5901f43dda2cf6f5a0f7532",
+        },
+        {
+          "kind": "semantic_generic",
+          "sha256": "508457aa845e4ccd7c6985012c6733d38da5b68e17a8b3baf809fffcfdb0b6ec",
+        },
+        {
+          "kind": "semantic_generic",
+          "sha256": "532b7f0eba3ef48643c01a80b1a3c6dd53dab2850f030212d4c5ed63fde49a39",
+        },
+      ]
+    `);
     expect(turn.result?.interactionOutcome).toBeUndefined();
     expect(turn.result?.failure?.code).toBe('stable_v5_normalization_rejected');
     const message = latestAssistant(conversation).content;
@@ -296,6 +411,26 @@ describe('C. semantic failure under a pending question', () => {
 
   it('interaction: same pending question re-presented, question fresh, nothing authoritative changed', async () => {
     const { conversation, turn, pending, graphBefore } = await fail('interaction_v1');
+    expect(requestHashes(turn.calls)).toMatchInlineSnapshot(`
+      [
+        {
+          "kind": "semantic_focused_contextual",
+          "sha256": "b6104ae675c851319006f6fdf71e9b8efe6f9e6724257bf7b2ac9f53ad9a6a52",
+        },
+        {
+          "kind": "semantic_generic",
+          "sha256": "93d07282ffa28ab0ddebd6408d1e43157945f14be96ee87e7d8ee2a9fc490abe",
+        },
+        {
+          "kind": "semantic_generic",
+          "sha256": "697f83b4b04aed4b92d33f65eb0d1fff33c3eea5a0a74e59cdc1c1a22fd7d6e3",
+        },
+        {
+          "kind": "renderer",
+          "sha256": "93a9b02585c66a5bb7616515cee06d0c377c431fc9042c0f38498c73e25d4838",
+        },
+      ]
+    `);
     expect(turn.result?.interactionOutcome).toMatchObject({ kind: 'recover', failure: 'semantic', representedQuestion: true });
     // The recovery is rendered from the typed outcome like any reply (no fixed paragraph).
     expect(turn.calls.find((call) => call.kind === 'renderer')?.payload?.applicationDecision).toMatchObject({
@@ -332,6 +467,54 @@ describe('B. aside followed by a short reply', () => {
 
   it('legacy: every committed turn rebinds the pending question, so the aside re-arms it for "うん"', async () => {
     const { english, asideTurn, questionAfterAside, shortReply } = await aside('legacy_v5');
+    expect({ aside: requestHashes(asideTurn.calls), shortReply: requestHashes(shortReply.calls) }).toMatchInlineSnapshot(`
+      {
+        "aside": [
+          {
+            "kind": "semantic_focused_contextual",
+            "sha256": "0876e1a7a280a06b853f97822db4f02f2297acd572670605ff0169f4c192e4bf",
+          },
+          {
+            "kind": "semantic_generic",
+            "sha256": "2d8c8aadadf311e813b5b572c950f1801616ee5fccc5156f1cf5cb07b7105d09",
+          },
+          {
+            "kind": "semantic_generic",
+            "sha256": "46bef9338f911a43a376ba385f9d86f5b44e5121cbccf2e1b434a7c5c4e81f33",
+          },
+          {
+            "kind": "semantic_generic",
+            "sha256": "d0888e9435ec5ed084be9de090468926070b5134dbf8c59f99313095fced7f25",
+          },
+          {
+            "kind": "renderer",
+            "sha256": "e9d9b4bf83bfd74057ca98b4ca22fb206caed3ff87a3706f211c3b3cf9a64f91",
+          },
+        ],
+        "shortReply": [
+          {
+            "kind": "semantic_focused_contextual",
+            "sha256": "17e5e08077d7d4a4d2a2b020961f53932b003be5f8b8c4815ccbcdd3abcab809",
+          },
+          {
+            "kind": "semantic_generic",
+            "sha256": "6c9f19b2d6472f673cf0695cecfc62fbf920b0d284bc39331445fe46b261ac4e",
+          },
+          {
+            "kind": "semantic_generic",
+            "sha256": "cb35f1081a3722b9413700952090001178d95454f7009babb7643ad54faa958e",
+          },
+          {
+            "kind": "semantic_generic",
+            "sha256": "af8420d9d8c220f058d700c5be5aa358d9ff9bcc203a259448f1bf40794189c4",
+          },
+          {
+            "kind": "renderer",
+            "sha256": "57bed9d45d116f07ba3c79dfcf50b318e9a6bf24da602a60fdb8b974f9d8b943",
+          },
+        ],
+      }
+    `);
     expect(asideTurn.result?.interactionOutcome).toBeUndefined();
     expect(questionAfterAside?.targetSlot).toBe(english.targetSlot);
     expect(questionAfterAside).toHaveProperty('presentation');
@@ -343,6 +526,34 @@ describe('B. aside followed by a short reply', () => {
 
   it('interaction: the aside does not re-arm the old question; "うん" cannot bind to it', async () => {
     const { asideTurn, questionAfterAside, shortReply } = await aside('interaction_v1');
+    expect({ aside: requestHashes(asideTurn.calls), shortReply: requestHashes(shortReply.calls) }).toMatchInlineSnapshot(`
+      {
+        "aside": [
+          {
+            "kind": "semantic_focused_contextual",
+            "sha256": "3088b47223fc69a6bc7b6103bb9c4b21ecdeef80dd9cc155b9a978654d465d62",
+          },
+          {
+            "kind": "semantic_generic",
+            "sha256": "cec9a9eb3a84deb5e1949539a4f58999a9016f85ba4fb126c8cc1ec145c6be78",
+          },
+          {
+            "kind": "renderer",
+            "sha256": "9c154947a6f44d3bd1e4b289bee75b9b73c8760c0b513ed81f6e675cab62b4c4",
+          },
+        ],
+        "shortReply": [
+          {
+            "kind": "semantic_generic",
+            "sha256": "e13b4dfdc12f84723b315137d6131c51a16efd887e99be124de188bf58c2cd17",
+          },
+          {
+            "kind": "renderer",
+            "sha256": "713cf7cdb5a251552c03f3f21796dc2ec00987b95579ba58ce9230642affb4fc",
+          },
+        ],
+      }
+    `);
     expect(asideTurn.result?.interactionOutcome).toMatchObject({ kind: 'aside' });
     expect(questionAfterAside).not.toHaveProperty('presentation');
     expect(kinds(shortReply.calls)).not.toContain('semantic_focused_contextual');
