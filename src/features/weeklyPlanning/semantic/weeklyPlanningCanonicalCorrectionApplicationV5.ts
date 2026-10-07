@@ -30,7 +30,8 @@ export interface WeeklyPlanningCanonicalCorrectionApplicationResultV5 {
   errors: string[];
 }
 
-const CORRECTABLE_REPLACEMENT_KINDS = new Set<WeeklyPlanningFactKindV5>([
+/** Replacement kinds the generic correction application substitutes. */
+export const WEEKLY_PLANNING_BASE_CORRECTABLE_REPLACEMENT_KINDS_V5: ReadonlySet<WeeklyPlanningFactKindV5> = new Set<WeeklyPlanningFactKindV5>([
   'planning_window',
   'workload',
   'effort_estimate',
@@ -191,7 +192,7 @@ function rebaseReplacement(params: {
       ],
     };
   }
-  if (!CORRECTABLE_REPLACEMENT_KINDS.has(targetKind)) {
+  if (!WEEKLY_PLANNING_BASE_CORRECTABLE_REPLACEMENT_KINDS_V5.has(targetKind)) {
     return {
       graph: params.graph,
       orphanTaskIds: new Set(),

@@ -1,5 +1,6 @@
 import {
   applyWeeklyPlanningCanonicalCorrectionsV5,
+  WEEKLY_PLANNING_BASE_CORRECTABLE_REPLACEMENT_KINDS_V5,
   WEEKLY_PLANNING_CANONICAL_CORRECTION_APPLICATION_VERSION_V5,
   type WeeklyPlanningCanonicalCorrectionApplicationResultV5,
 } from './weeklyPlanningCanonicalCorrectionApplicationV5';
@@ -19,6 +20,12 @@ import type {
 } from './weeklyPlanningSemanticCanonicalizerV5';
 
 const AVAILABILITY_REFERENCE_KIND = 'availability_declaration';
+
+/** Every replacement kind the canonical correction owner can apply; any other kind is rejected. */
+export const WEEKLY_PLANNING_CORRECTABLE_REPLACEMENT_KINDS_V5: ReadonlySet<string> = new Set<string>([
+  ...WEEKLY_PLANNING_BASE_CORRECTABLE_REPLACEMENT_KINDS_V5,
+  AVAILABILITY_REFERENCE_KIND,
+]);
 
 function reject(
   originalGraph: WeeklyPlanningFactGraphV5,

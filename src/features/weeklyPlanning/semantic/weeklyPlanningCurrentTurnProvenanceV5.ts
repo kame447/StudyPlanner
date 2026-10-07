@@ -29,6 +29,11 @@ function normalizedEvidenceText(value: string): string {
     .replace(/^[\p{P}\s]+|[\p{P}\s]+$/gu, '');
 }
 
+/** The normalization behind label/title change detection and source grounding. */
+export function normalizeWeeklyPlanningEvidenceTextV5(value: string): string {
+  return normalizedEvidenceText(value);
+}
+
 const MAX_SOURCE_FRAGMENTS_V5 = 3;
 const MIN_FRAGMENT_LENGTH_V5 = 2;
 // The turn controller limits the combined user and supplemental text to 4,000

@@ -208,7 +208,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
       document,
       input.publicStateSummary,
     ),
-    ...(semanticConversationActs ? validateWeeklyPlanningCorrectionReplacementKindsV5(document) : []),
+    ...(semanticConversationActs ? validateWeeklyPlanningCorrectionReplacementKindsV5(document, input.committedGraph) : []),
     ...(semanticConversationActs ? validateWeeklyPlanningDuplicateFactsV5(document) : []),
     ...validateWeeklyPlanningDecisionTargetReferencesV5(
       document,

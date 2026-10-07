@@ -1,6 +1,9 @@
 import type {
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
+import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
+import { WEEKLY_PLANNING_CORRECTABLE_REPLACEMENT_KINDS_V5 } from './weeklyPlanningCanonicalCorrectionApplicationExtendedV5';
+import { weeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 
 function nonEmpty(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -141,6 +144,7 @@ export function validateWeeklyPlanningRawCorrectionTargetReferencesV5(
  */
 export function validateWeeklyPlanningCorrectionReplacementKindsV5(
   document: WeeklyPlanningSemanticDocumentV5,
+  graph?: WeeklyPlanningFactGraphV5,
 ): string[] {
   const kindByLocalId = new Map<string, string>();
   const register = (kind: string, facts: ReadonlyArray<{ localId: string }>) => {
@@ -160,11 +164,20 @@ export function validateWeeklyPlanningCorrectionReplacementKindsV5(
       register('workload', component.workloads);
     }
   }
+  // A material identity answer consumes its own same-component replace correction.
+  const identityAnswers = graph ? weeklyPlanningMaterialIdentityAnswersV5(graph, document) : [];
   return document.corrections.flatMap((correction, index) => {
     if (!correction.replacementLocalId || correction.target.kind === 'proposal') return [];
     const replacementKind = kindByLocalId.get(correction.replacementLocalId);
-    return replacementKind && replacementKind !== correction.target.kind
-      ? [`document.corrections[${index}].replacementLocalId:kind-mismatch:${correction.target.kind}:${replacementKind}`]
-      : [];
+    if (!replacementKind) return [];
+    if (replacementKind !== correction.target.kind) {
+      return [`document.corrections[${index}].replacementLocalId:kind-mismatch:${correction.target.kind}:${replacementKind}`];
+    }
+    // The canonical owner cannot substitute a task, component or relation; without this the
+    // turn is rejected after validation with no repair left (live B on 64436073).
+    if (WEEKLY_PLANNING_CORRECTABLE_REPLACEMENT_KINDS_V5.has(replacementKind)
+      || identityAnswers.some((answer) => correction.target.kind === 'component'
+        && answer.targetId === correction.target.publicId && answer.localId === correction.replacementLocalId)) return [];
+    return [`document.corrections[${index}].replacementLocalId:unsupported-kind:${replacementKind}`];
   });
 }

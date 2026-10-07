@@ -18,15 +18,21 @@ const task = (existingPublicId: string | null, sourceText: string, components: J
 });
 
 export function materialIdentityConversationFixture(params: {
-  shape?: 'relabel' | 'modify' | 'remove'; rateShape?: 'replay' | 'public_reference'; architecture?: 'interaction_v1' | 'legacy_v5';
+  shape?: 'relabel' | 'modify' | 'remove' | 'replace_component'; rateShape?: 'replay' | 'public_reference'; architecture?: 'interaction_v1' | 'legacy_v5';
   conversationId?: string;
+  /** false: the first document raises no material question (live B on 64436073); the material is named after the preview. */
+  materialQuestion?: boolean;
 } = {}) {
   resetScriptedConversationRuntime();
   let conversation: ScriptedConversation;
   let nameAttempts = 0;
+  const askedMaterial = params.materialQuestion !== false;
   const answerText = params.shape === 'modify' ? 'はい' : params.shape === 'remove' ? `はい、${NAMED_MATERIAL}です` : '青チャートのこと';
   const provider = installScriptedWeeklyPlanningProvider((call) => {
     if (call.kind === 'renderer') return campaignRendererReply(call.payload ?? {});
+    // Without a material question the rate answers the effort question; the generic path reads it.
+    if (call.kind === 'semantic_focused_contextual') return JSON.stringify({ decision: 'fallback', effortTarget: null,
+      effortMeasurement: null, minutes: null, precision: null, quantityRole: null });
     if (call.kind !== 'semantic_generic') throw new Error(`unexpected material fixture ${call.kind}`);
     const payload = call.messages.map((message) => { try { return JSON.parse(message.content) as Json; } catch { return {}; } }).find((value) => typeof value.userText === 'string')!;
     const text = String(payload.userText);
@@ -34,7 +40,7 @@ export function materialIdentityConversationFixture(params: {
     if (text === MATERIAL_SETUP_TEXT) result = document({
       planningIntent: 'create_plan', planningWindow: { localId: 'window', kind: 'relative_week', value: 'next_week', start: null, end: null, sourceText: '来週' },
       tasks: [task(null, '数学の問題集を20問進めたい', [component(null, '数学の問題集', '数学の問題集', [workload('work', '20問')])])],
-      uncertainties: [{ localId: 'identity', targetLocalId: 'material', field: 'material_identity', reason: '対象教材が未確定', sourceText: '数学の問題集' }],
+      uncertainties: askedMaterial ? [{ localId: 'identity', targetLocalId: 'material', field: 'material_identity', reason: '対象教材が未確定', sourceText: '数学の問題集' }] : [],
     });
     else if (text === MATERIAL_EXPLANATION_TEXT) result = document({ planningIntent: 'discuss',
       conversationActs: [{ kind: 'ask_about_pending_question', targetPublicId: null }],
@@ -54,8 +60,15 @@ export function materialIdentityConversationFixture(params: {
       else {
         const correction = params.shape === 'modify' ? { localId: 'modify', target: { kind: 'component', publicId: material.id, localId: null, mention: '数学の問題集' }, operation: 'modify', replacementLocalId: 'material', sourceText: text }
           : params.shape === 'remove' && nameAttempts === 0 ? { localId: 'remove', target: { kind: 'component', publicId: material.id, localId: null, mention: NAMED_MATERIAL }, operation: 'remove', replacementLocalId: null, sourceText: text } : null;
-        result = document({ tasks: [task(parent.id, text, [component(material.id, NAMED_MATERIAL, text)])],
-          corrections: correction ? [correction] : [], conversationActs: [{ kind: 'answer_pending_question', targetPublicId: material.id }] });
+        // Live B T4 on 64436073 (re-read document): the named material as a new component that
+        // replaces the accepted one, which the canonical owner cannot apply.
+        result = params.shape === 'replace_component' && nameAttempts === 0 ? document({
+          tasks: [task(parent.id, text, [{ ...component(null, NAMED_MATERIAL, text), localId: 'replacement' }])],
+          corrections: [{ localId: 'replace', target: { kind: 'component', publicId: material.id, localId: null, mention: '数学の問題集' },
+            operation: 'replace', replacementLocalId: 'replacement', sourceText: text }],
+        }) : document({ tasks: [task(parent.id, text, [component(material.id, NAMED_MATERIAL, text)])],
+          corrections: correction ? [correction] : [],
+          conversationActs: askedMaterial ? [{ kind: 'answer_pending_question', targetPublicId: material.id }] : [] });
         nameAttempts += 1;
       }
     }

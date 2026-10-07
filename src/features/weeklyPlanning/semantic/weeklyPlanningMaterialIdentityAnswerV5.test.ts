@@ -115,3 +115,57 @@ describe('exact component identity transaction safety', () => {
     expect(result.graph.workloads).toEqual(graph.workloads);
   });
 });
+
+describe('identity refinement without an open material question (live B on 64436073)', () => {
+  function withoutNeed() {
+    const graph = state();
+    graph.uncertainties = graph.uncertainties.filter((need) => need.id !== 'u');
+    graph.factLifecycles = graph.factLifecycles.filter((lifecycle) => lifecycle.factId !== 'u');
+    return graph;
+  }
+  it('treats a pure relabel of a bound material as its identification and moves dependents to the new version', () => {
+    const graph = withoutNeed(); const before = structuredClone(graph); const document = answer();
+    expect(weeklyPlanningMaterialIdentityAnswersV5(graph, document)).toEqual([{ targetId: 'm', localId: 'material', uncertaintyIds: [] }]);
+    const base = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({ graph, document, context: { conversationId: 'c', turnId: 'name', expectedRevision: 1 } });
+    const result = finalizeWeeklyPlanningSemanticCanonicalizationV5({ originalGraph: graph, document, baseCanonicalization: base,
+      contextualAnswer: false, questionCode: null, operationKeyPrefix: 'c:name', conversationArchitecture: 'interaction_v1' }).canonicalization;
+    expect(result.status).toBe('applied');
+    const replacementId = result.localToFactId.material;
+    expect(result.graph.components.find((fact) => fact.id === replacementId)).toMatchObject({ label: '青チャート 数学III', taskId: 't', role: 'material' });
+    expect(result.graph.components.find((fact) => fact.id === 'm')).toEqual(before.components[0]);
+    expect(result.graph.factLifecycles).toContainEqual(expect.objectContaining({ factId: 'm', status: 'superseded', supersededByFactId: replacementId }));
+    expect(result.graph.workloads).toEqual([{ ...before.workloads[0], componentId: replacementId }]);
+    expect(result.graph.uncertainties.find((fact) => fact.id === 'other')).toMatchObject({ targetFactId: replacementId });
+    expect(result.graph.factLifecycles).toContainEqual(expect.objectContaining({ factId: 'other', status: 'active' }));
+    expect(graph).toEqual(before);
+  });
+  it.each([
+    ['carries new work', (document: WeeklyPlanningSemanticDocumentV5) => {
+      document.tasks[0].study!.components[0].workloads = [{ localId: 'more', quantityRole: 'target', amount: 5, unitCode: 'problem', unitLabel: '問',
+        rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null, sourceText: '青チャート' }];
+    }],
+    ['carries a durable signal', (document: WeeklyPlanningSemanticDocumentV5) => {
+      document.tasks[0].study!.components[0].durableContextSignals = [{ localId: 'concern', kind: 'concern', value: '難しい', sourceText: '青チャート' }];
+    }],
+    ['differs only by evidence normalization', (document: WeeklyPlanningSemanticDocumentV5) => {
+      document.tasks[0].study!.components[0].label = '「数学の問題集」';
+    }],
+    ['is not a material', (document: WeeklyPlanningSemanticDocumentV5) => {
+      document.tasks[0].study!.components[0].role = 'chapter';
+    }],
+    ['re-raises the material question', (document: WeeklyPlanningSemanticDocumentV5) => {
+      document.uncertainties = [{ localId: 'again', targetLocalId: 'material', field: 'material_identity', reason: '未確定', sourceText: '青チャート' }];
+    }],
+  ])('keeps the binding-only shell when the relabel %s', (_name, mutate) => {
+    const document = answer(); mutate(document);
+    expect(weeklyPlanningMaterialIdentityAnswersV5(withoutNeed(), document)).toEqual([]);
+  });
+  it('keeps legacy binding-only without an open question', () => {
+    const graph = withoutNeed(); const document = answer();
+    const base = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({ graph, document, context: { conversationId: 'c', turnId: 'name', expectedRevision: 1 } });
+    const result = finalizeWeeklyPlanningSemanticCanonicalizationV5({ originalGraph: graph, document, baseCanonicalization: base,
+      contextualAnswer: false, questionCode: null, operationKeyPrefix: 'c:name', conversationArchitecture: 'legacy_v5' }).canonicalization;
+    expect(result.graph.components).toEqual(graph.components);
+    expect(result.graph.workloads).toEqual(graph.workloads);
+  });
+});

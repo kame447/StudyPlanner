@@ -72,3 +72,43 @@ describe('existing material identity answer through the production controller', 
     expect(later.result!.draftCandidates.some((candidate) => candidate.title.includes('プリント'))).toBe(false);
   });
 });
+
+describe('a material named after the preview, with no open material question (live B on 64436073)', () => {
+  const slots = (candidates: ReadonlyArray<{ date: string; startTime: string; endTime: string; durationMinutes: number }>) =>
+    candidates.map(({ date, startTime, endTime, durationMinutes }) => ({ date, startTime, endTime, durationMinutes }));
+  it.each(['relabel', 'replace_component'] as const)('interaction records the named material from the %s shape, keeping work, rate and slots', async (shape) => {
+    fixture = materialIdentityConversationFixture({ shape, materialQuestion: false });
+    const { conversation } = fixture;
+    expect((await conversation.submit(MATERIAL_SETUP_TEXT)).result?.failure).toBeUndefined();
+    const rate = await conversation.submit(MATERIAL_RATE_TEXT);
+    expect(rate.result?.failure).toBeUndefined();
+    const preview = slots(rate.result!.draftCandidates);
+    expect(preview.length).toBeGreaterThan(0);
+    const old = structuredClone(conversation.graph()!);
+    const answer = await conversation.submit(fixture.answerText);
+    expect(answer.result?.failure).toBeUndefined();
+    // The relabel is the identification itself (no no-op re-read); the replace correction the
+    // canonical owner cannot apply gets the one repair instead of a post-validation rejection.
+    expect(answer.calls.filter((call) => call.kind === 'semantic_generic')).toHaveLength(shape === 'relabel' ? 1 : 2);
+    const graph = conversation.graph()!;
+    const active = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
+    expect(active.components).toEqual([expect.objectContaining({ label: NAMED_MATERIAL, role: 'material' })]);
+    expect(active.workloads).toEqual([expect.objectContaining({ id: old.workloads[0].id, amount: 20, componentId: active.components[0].id, source: old.workloads[0].source })]);
+    expect(active.effortEstimates).toContainEqual(expect.objectContaining({ minutes: 3, kind: 'duration_per_unit', targetFactId: old.workloads[0].id }));
+    expect(graph.factLifecycles).toContainEqual(expect.objectContaining({ factId: old.components[0].id, status: 'superseded', supersededByFactId: active.components[0].id }));
+    expect(graph.components.find((fact) => fact.id === old.components[0].id)).toEqual(old.components[0]);
+    expect(slots(answer.result!.draftCandidates)).toEqual(preview);
+  });
+
+  it('legacy keeps its binding-only shell: the accepted material is unchanged', async () => {
+    // (Legacy has no public-id rate binding, so this fixture's rate turn is not accepted there.)
+    fixture = materialIdentityConversationFixture({ materialQuestion: false, architecture: 'legacy_v5' });
+    const { conversation } = fixture;
+    await conversation.submit(MATERIAL_SETUP_TEXT);
+    await conversation.submit(MATERIAL_RATE_TEXT);
+    const old = structuredClone(conversation.graph()!);
+    const answer = await conversation.submit(fixture.answerText);
+    expect(answer.result?.failure).toBeUndefined();
+    expect(conversation.graph()!.components).toEqual(old.components);
+  });
+});
