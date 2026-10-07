@@ -29,6 +29,8 @@ const MAX_REQUEST_BYTES = 128 * 1024;
 const MAX_GENERIC_ARRAY_ITEMS = 40;
 const MAX_GENERIC_OBJECT_KEYS = 50;
 const MAX_GENERIC_DEPTH = 5;
+// Semantic components and their workloads are nested beyond generic event metadata.
+const MAX_SEMANTIC_DOCUMENT_DEPTH = 8;
 const MAX_GENERIC_STRING_BYTES = 2_000;
 const MAX_CONTEXT_MESSAGE_BYTES = 1_500;
 const MAX_PROVIDER_MESSAGE_BYTES = 20_000;
@@ -115,7 +117,7 @@ function projectedRawResponse(value: unknown): Record<string, unknown> {
   };
 }
 
-function compactUnknown(value: unknown, depth = 0): unknown {
+function compactUnknown(value: unknown, depth = 0, maxDepth = MAX_GENERIC_DEPTH): unknown {
   if (value === null || typeof value === 'boolean' || typeof value === 'number') return value;
   if (typeof value === 'string') return truncateUtf8(value, MAX_GENERIC_STRING_BYTES);
   if (typeof value === 'bigint') return value.toString();
@@ -123,10 +125,10 @@ function compactUnknown(value: unknown, depth = 0): unknown {
     return null;
   }
   if (value instanceof Date) return value.toISOString();
-  if (depth >= MAX_GENERIC_DEPTH) return '[trace depth limit]';
+  if (depth >= maxDepth) return '[trace depth limit]';
   if (Array.isArray(value)) {
     const selected = value.slice(0, MAX_GENERIC_ARRAY_ITEMS)
-      .map((item) => compactUnknown(item, depth + 1));
+      .map((item) => compactUnknown(item, depth + 1, maxDepth));
     if (value.length > selected.length) {
       selected.push({ traceTruncatedItems: value.length - selected.length });
     }
@@ -136,7 +138,7 @@ function compactUnknown(value: unknown, depth = 0): unknown {
     const entries = Object.entries(value).slice(0, MAX_GENERIC_OBJECT_KEYS);
     const result: Record<string, unknown> = {};
     entries.forEach(([key, item]) => {
-      result[key] = compactUnknown(item, depth + 1);
+      result[key] = compactUnknown(item, depth + 1, maxDepth);
     });
     if (Object.keys(value).length > entries.length) {
       result.traceTruncatedKeys = Object.keys(value).length - entries.length;
@@ -513,7 +515,10 @@ function projectStageData(stage: string, value: unknown): unknown {
         attempt: stringValue(data.attempt),
         accepted: data.accepted === true,
         errors: compactUnknown(data.errors),
-        parsedDocument: compactUnknown(data.parsedDocument),
+        // Conversation-act evidence exists only in the interaction architecture.
+        // Preserve the legacy diagnostic projection for the comparison oracle.
+        parsedDocument: compactUnknown(data.parsedDocument, 0,
+          Array.isArray(data.conversationActs) ? MAX_SEMANTIC_DOCUMENT_DEPTH : MAX_GENERIC_DEPTH),
         // Interaction architecture: the response's valid conversation acts (enum + public id)
         // and why entries were dropped or degraded, even when the planning delta was rejected.
         ...(Array.isArray(data.conversationActs)

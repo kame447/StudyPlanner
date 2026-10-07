@@ -41,6 +41,10 @@ function start(value: CampaignScenario) {
 }
 const normal = ['semantic_generic', 'renderer'];
 function candidates(conversation: ScriptedConversation) { return conversation.getState().previewCandidates ?? []; }
+function latestAssistantText(conversation: ScriptedConversation) {
+  const messages = conversation.getState().messages.filter(message => message.role === 'assistant');
+  return messages[messages.length - 1]?.content ?? '';
+}
 function expectNextWeek(conversation: ScriptedConversation, end = '2026-10-18') {
   expect(candidates(conversation).length).toBeGreaterThan(0);
   expect(candidates(conversation).every(entry => entry.date >= '2026-10-12' && entry.date <= end)).toBe(true);
@@ -135,26 +139,37 @@ describe('real E2E A–G: full application turns with scripted provider wire res
 
 
 describe('dispatch attribution: repairs are counted, not hidden in the two-call successful path', () => {
-  it.each([false, true])('G uses exactly one semantic repair, plus renderer repair only when its output violates the contract (%s)', async (repairRenderer) => {
+  it.each(['none', 'ack_out_of_order', 'unknown_ack_fact'] as const)('G uses exactly one semantic repair; a renderer repair only for output that composition cannot fix (%s)', async (rendererFault) => {
     const conversation = start('G');
     let semantic = 0;
     let renderer = 0;
+    let acknowledgement = '';
     override = call => {
       if (call.kind === 'semantic_generic' && semantic++ === 0) return 'invalid fixture JSON';
-      if (call.kind === 'renderer' && renderer++ === 0 && repairRenderer) {
+      if (call.kind === 'renderer' && renderer++ === 0 && rendererFault !== 'none') {
         const reply = JSON.parse(campaignProviderReply(scenario, call.request as unknown as CampaignRequest));
-        // Keep the ACK metadata but omit its required leading text: one renderer repair.
-        reply.text = '候補を確認して「この内容で仮予定にする」を押してください。';
+        acknowledgement = reply.groundingAcknowledgement?.text ?? '';
+        if (rendererFault === 'ack_out_of_order') {
+          // ACK kept in its metadata but not leading the text: composed deterministically, no repair.
+          reply.text = '候補を確認して「この内容で仮予定にする」を押してください。';
+        } else {
+          // The ACK cites a fact this turn did not accept: composition cannot fix it, one repair.
+          reply.groundingAcknowledgement = { ...reply.groundingAcknowledgement, factIds: ['wpf_not_accepted_this_turn'] };
+        }
         return JSON.stringify(reply);
       }
       return undefined;
     };
-    const expected = ['semantic_generic', 'semantic_generic', 'renderer', ...(repairRenderer ? ['renderer'] : [])];
+    const expected = ['semantic_generic', 'semantic_generic', 'renderer', ...(rendererFault === 'unknown_ack_fact' ? ['renderer'] : [])];
     const turn = await submit(conversation, CAMPAIGN.G[0], expected);
     expect(turn.debugTrace.find(event => event.stage === 'semantic_repair_prepared')).toBeDefined();
-    if (repairRenderer) {
+    if (rendererFault === 'unknown_ack_fact') {
       const messages = turn.calls[turn.calls.length - 1].messages;
       expect(messages[messages.length - 1].content).toContain('ACK契約');
+    }
+    if (rendererFault === 'ack_out_of_order') {
+      expect(acknowledgement.length).toBeGreaterThan(0);
+      expect(latestAssistantText(conversation).startsWith(acknowledgement.trim())).toBe(true);
     }
     expect(candidates(conversation).length).toBeGreaterThan(0);
   });

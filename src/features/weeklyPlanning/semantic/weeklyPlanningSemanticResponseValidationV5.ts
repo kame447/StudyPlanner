@@ -6,6 +6,7 @@ import {
   validateWeeklyPlanningCurrentTurnProvenanceV5,
 } from './weeklyPlanningCurrentTurnProvenanceV5';
 import { projectWeeklyPlanningCorrectionContextV5 } from './weeklyPlanningCorrectionContextProjectionV5';
+import { projectWeeklyPlanningRegisteredMaterialReferencesV5 } from './weeklyPlanningRegisteredMaterialReferenceProjectionV5';
 import {
   validateWeeklyPlanningDecisionTargetReferencesV5,
 } from './weeklyPlanningDecisionReferenceValidationV5';
@@ -159,14 +160,21 @@ export function validateWeeklyPlanningSemanticResponseV5(
   const correctionContext = semanticConversationActs
     ? projectWeeklyPlanningCorrectionContextV5({ document: normalized.document, committedGraph: input.committedGraph })
     : { document: normalized.document, repairs: [] };
+  const materialReferences = semanticConversationActs
+    ? projectWeeklyPlanningRegisteredMaterialReferencesV5({
+        document: correctionContext.document,
+        publicStateSummary: input.publicStateSummary,
+      })
+    : { document: correctionContext.document, repairs: [] };
   const algorithmicRepairs = [
     ...preParseNormalization.repairs,
     ...normalized.repairs,
     ...correctionContext.repairs,
+    ...materialReferences.repairs,
   ];
   const document = actTargets
-    ? { ...correctionContext.document, conversationActs: actTargets.acts }
-    : correctionContext.document;
+    ? { ...materialReferences.document, conversationActs: actTargets.acts }
+    : materialReferences.document;
   const errors = [
     ...validateWeeklyPlanningSemanticNumericSafetyV5(document),
     ...planningWindowCanonicalValueErrors(

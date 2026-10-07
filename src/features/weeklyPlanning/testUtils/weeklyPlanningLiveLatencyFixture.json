@@ -1,0 +1,28 @@
+{
+  "source": "Real provider A T1, e34b3c02, 2026-10-08 JST; response strings retained verbatim. Only the referenced material context is included.",
+  "userText": "来週、アルゴリズムイントロダクションを20ページ読みたい。1ページ3分くらいで、平日は20時以降がいい",
+  "conversationId": "weekly-conversation-641fca90-5fd8-48fc-9010-d1c865511664",
+  "registeredMaterial": {
+    "materialId": "study-material-dd552e12-8fd1-4845-af63-35a8f91fc76e",
+    "name": "アルゴリズムイントロダクション",
+    "subjectName": "情報科学",
+    "catalogEntryId": null,
+    "catalogTitle": null,
+    "isbn10": null,
+    "isbn13": null,
+    "aliases": [],
+    "paceEnabled": true,
+    "progressUnit": "page",
+    "progressUnitLabel": null,
+    "totalUnits": 650,
+    "currentUnit": 120,
+    "remainingUnits": 530,
+    "targetDate": "2026-11-22",
+    "estimatedMinutesPerUnit": 8,
+    "maxUnitsPerDay": 12
+  },
+  "semanticResponse": "{\"schemaVersion\":\"weekly-planning-semantic-v5\",\"planningIntent\":\"create_plan\",\"planningWindow\":{\"localId\":\"planning-window-1\",\"kind\":\"relative_week\",\"value\":\"next_week\",\"start\":null,\"end\":null,\"sourceText\":\"来週\"},\"tasks\":[{\"localId\":\"task-1\",\"existingPublicId\":null,\"decompositionStatus\":\"decomposed\",\"category\":\"study\",\"title\":\"アルゴリズムイントロダクションを読む\",\"study\":{\"purpose\":\"self_study\",\"activityKind\":\"reading\",\"contextLabel\":\"アルゴリズムイントロダクション\",\"components\":[{\"localId\":\"component-1\",\"existingPublicId\":\"study-material-dd552e12-8fd1-4845-af63-35a8f91fc76e\",\"parentLocalId\":null,\"role\":\"material\",\"label\":\"アルゴリズムイントロダクション\",\"workloads\":[],\"durableContextSignals\":[],\"sourceText\":\"アルゴリズムイントロダクション\"}] },\"workloads\":[{\"localId\":\"workload-1\",\"quantityRole\":\"target\",\"amount\":20,\"unitCode\":\"page\",\"unitLabel\":\"ページ\",\"rangeStart\":null,\"rangeEnd\":null,\"perOccurrence\":false,\"periodExpression\":\"来週\",\"sourceText\":\"20ページ\"}],\"effortEstimates\":[{\"localId\":\"effort-1\",\"targetLocalId\":\"workload-1\",\"kind\":\"duration_per_unit\",\"minutes\":3,\"unitCode\":\"page\",\"precision\":\"approximate\",\"sourceText\":\"1ページ3分くらい\"}],\"temporalConstraints\":[],\"recurrence\":[],\"durableContextSignals\":[],\"sourceText\":\"来週、アルゴリズムイントロダクションを20ページ読みたい。\"}],\"relations\":[],\"availabilityDeclarations\":[{\"localId\":\"availability-1\",\"kind\":\"preferred\",\"dateExpression\":null,\"namedTimePeriod\":null,\"startTime\":\"20:00\",\"endTime\":null,\"recurrenceKind\":\"weekdays\",\"days\":[\"weekday:monday\",\"weekday:tuesday\",\"weekday:wednesday\",\"weekday:thursday\",\"weekday:friday\"],\"constraintLevel\":\"soft\",\"capacityMinutes\":null,\"sourceText\":\"平日は20時以降がいい\"}],\"constraintSourceRequests\":[],\"userContextFacts\":[],\"conversationActs\":[],\"uncertainties\":[],\"corrections\":[],\"decisions\":[]}",
+  "semanticRepairResponse": "{\"schemaVersion\":\"weekly-planning-semantic-v5\",\"planningIntent\":\"create_plan\",\"planningWindow\":{\"localId\":\"planning-window-1\",\"kind\":\"relative_week\",\"value\":\"next_week\",\"start\":null,\"end\":null,\"sourceText\":\"来週\"},\"tasks\":[{\"localId\":\"task-1\",\"existingPublicId\":null,\"decompositionStatus\":\"decomposed\",\"category\":\"study\",\"title\":\"アルゴリズムイントロダクションを読む\",\"study\":{\"purpose\":\"self_study\",\"activityKind\":\"reading\",\"contextLabel\":\"アルゴリズムイントロダクション\",\"components\":[{\"localId\":\"component-1\",\"existingPublicId\":null,\"parentLocalId\":null,\"role\":\"material\",\"label\":\"アルゴリズムイントロダクション\",\"workloads\":[],\"durableContextSignals\":[],\"sourceText\":\"アルゴリズムイントロダクション\"}]},\"workloads\":[{\"localId\":\"workload-1\",\"quantityRole\":\"target\",\"amount\":20,\"unitCode\":\"page\",\"unitLabel\":\"ページ\",\"rangeStart\":null,\"rangeEnd\":null,\"perOccurrence\":false,\"periodExpression\":\"来週\",\"sourceText\":\"20ページ\"}],\"effortEstimates\":[{\"localId\":\"effort-1\",\"targetLocalId\":\"workload-1\",\"kind\":\"duration_per_unit\",\"minutes\":3,\"unitCode\":\"page\",\"precision\":\"approximate\",\"sourceText\":\"1ページ3分くらい\"}],\"temporalConstraints\":[],\"recurrence\":[],\"durableContextSignals\":[],\"sourceText\":\"来週、アルゴリズムイントロダクションを20ページ読みたい。\"}],\"relations\":[],\"availabilityDeclarations\":[{\"localId\":\"availability-1\",\"kind\":\"preferred\",\"dateExpression\":null,\"namedTimePeriod\":null,\"startTime\":\"20:00\",\"endTime\":null,\"recurrenceKind\":\"weekdays\",\"days\":[\"weekday:monday\",\"weekday:tuesday\",\"weekday:wednesday\",\"weekday:thursday\",\"weekday:friday\"],\"constraintLevel\":\"soft\",\"capacityMinutes\":null,\"sourceText\":\"平日は20時以降がいい\"}],\"constraintSourceRequests\":[],\"userContextFacts\":[],\"conversationActs\":[],\"uncertainties\":[],\"corrections\":[],\"decisions\":[]}",
+  "rendererResponse": "{\"actionId\":\"stable-v5:weekly-conversation-641fca90-5fd8-48fc-9010-d1c865511664:request:1:preview_ready\",\"actionKind\":\"preview_ready\",\"questionCode\":null,\"groundingAcknowledgement\":{\"factIds\":[\"wpf_window_1jwgot1zrw4ep\",\"wpf_task_1sg41kp1etybrh\",\"wpf_workload_1u8yoxx1tlso2h\",\"wpf_effort_969z7z1lb2eir\",\"wpf_availability_sodwslyy0cnd\"],\"text\":\"来週、アルゴリズムイントロダクションを20ページ、1ページ約3分、平日は20時以降という希望ですね。\"},\"text\":\"候補が1件できました。「この内容で仮予定にする」を押して確認してください。\"}",
+  "rendererRepairResponse": "{\"actionId\":\"stable-v5:weekly-conversation-641fca90-5fd8-48fc-9010-d1c865511664:request:1:preview_ready\",\"actionKind\":\"preview_ready\",\"questionCode\":null,\"groundingAcknowledgement\":{\"factIds\":[\"wpf_window_1jwgot1zrw4ep\",\"wpf_task_1sg41kp1etybrh\",\"wpf_workload_1u8yoxx1tlso2h\",\"wpf_effort_969z7z1lb2eir\",\"wpf_availability_sodwslyy0cnd\"],\"text\":\"来週、アルゴリズムイントロダクションを20ページ、1ページ3分くらいで、平日は20時以降に取り組みたいのですね。\"},\"text\":\"来週、アルゴリズムイントロダクションを20ページ、1ページ3分くらいで、平日は20時以降に取り組みたいのですね。候補を1件用意しました。「この内容で仮予定にする」を押して確認してください。\"}"
+}

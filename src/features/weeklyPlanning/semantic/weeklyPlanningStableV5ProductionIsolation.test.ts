@@ -76,6 +76,8 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'dialogue/weeklyPlanningStableV5CommunicationContext.ts',
   // Interaction architecture: the single emergency wording used only when the renderer cannot run or fails.
   'dialogue/weeklyPlanningInteractionFallbackText.ts',
+  // Interaction presentation: compose typed ACK text, then rerun the complete V5 validator.
+  'dialogue/weeklyPlanningDialogueAcknowledgementComposition.ts',
   'dialogue/weeklyPlanningStableV5AiDialogueRenderer.ts',
   'dialogue/weeklyPlanningStableV5CurrentTurnGrounding.ts',
   'dialogue/weeklyPlanningStableV5DialoguePrompt.ts',

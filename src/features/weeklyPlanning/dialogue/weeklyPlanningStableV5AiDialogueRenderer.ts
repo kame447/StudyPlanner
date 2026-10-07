@@ -19,8 +19,8 @@ import {
   createWeeklyPlanningStableV5DialoguePrompt,
 } from './weeklyPlanningStableV5DialoguePrompt';
 import {
-  parseWeeklyPlanningStableV5DialogueRendererResponse,
-} from './weeklyPlanningStableV5DialogueValidation';
+  parseWeeklyPlanningDialogueWithAcknowledgement,
+} from './weeklyPlanningDialogueAcknowledgementComposition';
 
 export {
   WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
@@ -117,7 +117,7 @@ async function requestDialogueRender(params: {
     responseFormat: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
     purpose: 'weekly_planning_renderer',
   });
-  return parseWeeklyPlanningStableV5DialogueRendererResponse(rawResponse, params.input);
+  return parseWeeklyPlanningDialogueWithAcknowledgement(rawResponse, params.input);
 }
 
 export function createAiWeeklyPlanningStableV5DialogueRenderer(
