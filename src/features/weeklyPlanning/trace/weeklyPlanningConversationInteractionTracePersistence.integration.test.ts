@@ -263,6 +263,87 @@ function expectBounded(entry: unknown, workerEntry: unknown) {
 }
 
 describe('conversation interaction trace persistence gate', () => {
+  it('persists an accepted removal and its acknowledgment instruction through retry, future fields and large-value truncation', async () => {
+    const setup = mathSetup();
+    setup.availabilityDeclarations = [{
+      localId: 'tuesday-limit', kind: 'unavailable', dateExpression: 'weekday:tuesday', namedTimePeriod: null,
+      startTime: '18:00', endTime: '20:00', recurrenceKind: null, days: [], constraintLevel: 'hard',
+      capacityMinutes: null, sourceText: '火曜日の18時から20時は勉強できない',
+    }];
+    const conversation = createScriptedConversation({
+      provider, ownerId: USER_ID, conversationId: CONVERSATION_ID, weekStartDate: WEEK,
+    });
+    script = (call) => (call.kind === 'semantic_generic' ? JSON.stringify(setup) : undefined);
+    await conversation.submit(`${MATH_SETUP}。火曜日の18時から20時は勉強できない`);
+    const targetId = conversation.graph()!.availabilityDeclarations[0].id;
+    script = (call) => {
+      if (call.kind === 'semantic_generic') return JSON.stringify(emptyDocument({
+        planningIntent: 'update_plan',
+        corrections: [{
+          localId: 'remove-limit', target: { kind: 'availability_declaration', publicId: targetId, localId: null, mention: null },
+          operation: 'remove', replacementLocalId: null, sourceText: '火曜日の時間制限は取り消して',
+        }],
+        conversationActs: [{ kind: 'ask_about_pending_question', targetPublicId: null }],
+      }));
+      if (call.kind === 'renderer') return scriptedRendererReply(call,
+        '火曜日の時間制限は取り消しました。数学にかかる時間が分かると空き時間に合わせられます。1問あたり何分くらいですか？');
+      return undefined;
+    };
+    const turn = await conversation.submit('火曜日の時間制限は取り消して。なんで時間が必要なの？');
+    expect(turn.result?.failure).toBeUndefined();
+    expect(turn.result?.interactionOutcome).toMatchObject({ kind: 'explain_pending_question' });
+    const renderer = turn.calls.find((call) => call.kind === 'renderer')!;
+    const accepted = (renderer.payload!.planningStateSummary as Json).acceptedFacts as Json;
+    expect(accepted.removedThisTurn).toEqual([
+      { kind: 'availability_declaration', taskLabel: null, label: '火曜日の18時から20時は勉強できない' },
+    ]);
+    expect(String(renderer.payload!.request)).toContain('acceptedFacts.removedThisTurn');
+    const input = traceInput(turn, turn.debugTrace);
+    const traceContext = input.dialogueRendererTrace!.request!.promptContext as Json;
+    // Point 1: the persisted renderer context starts with the input actually sent to the provider.
+    const traceMessages = traceContext.messages as Array<{ role: string; content: string }>;
+    expect(traceMessages).toEqual(renderer.messages);
+    const tracePayload = JSON.parse(traceMessages.find((message) => message.role === 'user')!.content) as Json;
+    expect((tracePayload.planningStateSummary as Json).acceptedFacts).toEqual(accepted);
+
+    const extended = structuredClone(input);
+    const extendedContext = extended.dialogueRendererTrace!.request!.promptContext as Json;
+    const extendedMessages = extendedContext.messages as Array<{ role: string; content: string }>;
+    const extendedUser = extendedMessages.find((message) => message.role === 'user')!;
+    const extendedPayload = JSON.parse(extendedUser.content) as Json;
+    const extendedFacts = (extendedPayload.planningStateSummary as Json).acceptedFacts as Json;
+    (extendedFacts.removedThisTurn as Json[])[0].futureRemovalField = FUTURE_FIELD_SENTINEL;
+    extendedUser.content = JSON.stringify(extendedPayload);
+    extendedContext.requestBytes = new TextEncoder().encode(JSON.stringify(extendedMessages)).byteLength;
+    const oversized = structuredClone(extended);
+    oversized.requestId = `${CONVERSATION_ID}:request:oversized-removal`;
+    const oversizedContext = oversized.dialogueRendererTrace!.request!.promptContext as Json;
+    const oversizedMessages = oversizedContext.messages as Array<{ role: string; content: string }>;
+    const oversizedUser = oversizedMessages.find((message) => message.role === 'user')!;
+    const oversizedPayload = JSON.parse(oversizedUser.content) as Json;
+    oversizedPayload.futureLargeRemovalField = 'あ'.repeat(30_000);
+    oversizedUser.content = JSON.stringify(oversizedPayload);
+    oversizedContext.requestBytes = new TextEncoder().encode(JSON.stringify(oversizedMessages)).byteLength;
+    const harness = await persistThroughOutbox([extended, oversized]);
+    const kept = persistedFor(harness, turn.requestId!);
+    for (const entry of [kept.entry, kept.preparedEntry]) {
+      const text = JSON.stringify(entry);
+      expect(text).toContain('removedThisTurn');
+      expect(text).toContain('火曜日の18時から20時は勉強できない');
+      expect(text).toContain(FUTURE_FIELD_SENTINEL);
+      expect(text).toContain('acceptedFacts.removedThisTurn');
+    }
+    expectBounded(kept.entry, kept.preparedEntry);
+    const large = persistedFor(harness, oversized.requestId);
+    for (const entry of [large.entry, large.preparedEntry]) {
+      const text = JSON.stringify(entry);
+      expect(text).toContain('removedThisTurn');
+      expect(text).toMatch(/traceProjectionTruncated|traceTruncatedItems|truncated/u);
+      expect(text).not.toContain('あ'.repeat(30_000));
+    }
+    expectBounded(large.entry, large.preparedEntry);
+  });
+
   it('carries the real request, acts, outcome, freshness and renderer input through outbox retry and Worker preparation', async () => {
     const { explanation, recovery } = await realTurns();
     // Point 1: the recorded events contain what was actually sent / produced.
