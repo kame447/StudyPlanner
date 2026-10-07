@@ -32,14 +32,12 @@ const REPRESENTATION_ONLY_ERROR_PATTERNS = [
   TEMPORAL_DATE_REPRESENTATION_ERROR,
 ] as const;
 
-// Several facts of these kinds compose as a union (alternative preferred windows,
-// allowed or excluded dates), so one fact over a recurring weekday set may be restated
-// as one fact per weekday. Bounds, deadlines, fixed intervals and avoid windows never split.
-const SPLITTABLE_TASK_DATE_KINDS: ReadonlySet<string> = new Set([
-  'preferred_window',
-  'allowed_date',
-  'excluded_date',
-]);
+// Preferred windows are alternatives and a weekday token scopes them to that weekday in the
+// planning window, so one preference over a recurring weekday set may be restated as one per
+// weekday. Task date rules resolve a weekday token to its next dated occurrence from the
+// request date (not every such weekday in the window), so they - like bounds, deadlines,
+// fixed intervals and avoid windows - never split.
+const SPLITTABLE_TASK_DATE_KINDS: ReadonlySet<string> = new Set(['preferred_window']);
 const REPAIRABLE_CANONICAL_DATE = '__REPAIRABLE_CANONICAL_DATE__';
 
 interface MutableRecord {

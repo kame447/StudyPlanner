@@ -302,12 +302,10 @@ describe('a recurring weekday set restated during a date-representation repair (
     expect(guard(repaired)).toEqual(REJECTED);
   });
 
-  it('splits only kinds that compose as a union; bounds and deadlines keep one fact', () => {
-    for (const kind of ['allowed_date', 'excluded_date'] as const) {
-      const fact = evening({ kind, constraintLevel: 'hard', startTime: null, precision: 'exact' });
-      expect(guard(split(fact), initial(fact)), kind).toEqual([]);
-    }
-    for (const kind of ['deadline', 'latest_end', 'earliest_start', 'avoid_window'] as const) {
+  it('splits only preferred windows; date rules, bounds and deadlines keep one fact', () => {
+    // A date rule's weekday token is its next dated occurrence from the request date, so a
+    // per-weekday split of 「平日は入れないで」 would leave next week's Wednesday open.
+    for (const kind of ['allowed_date', 'excluded_date', 'deadline', 'latest_end', 'earliest_start', 'avoid_window'] as const) {
       const fact = evening({ kind, constraintLevel: kind === 'avoid_window' ? 'soft' : 'hard', startTime: null });
       expect(guard(split(fact), initial(fact)), kind).toEqual(REJECTED);
       const single = initial({ ...fact, dateExpression: 'weekday:friday' });
