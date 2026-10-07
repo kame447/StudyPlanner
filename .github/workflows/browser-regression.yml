@@ -70,6 +70,7 @@ jobs:
           name: browser-ui-images-${{ github.sha }}
           path: |
             artifacts/playwright-results/**/home-add-chooser.png
+            artifacts/playwright-results/**/week-date-labels.png
             artifacts/playwright-results/**/test-failed-*.png
             artifacts/todo-cross-surface-*.png
           if-no-files-found: ignore

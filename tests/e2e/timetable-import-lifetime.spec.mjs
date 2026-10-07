@@ -1,7 +1,8 @@
 import { expect, test } from './support/fixed-clock.mjs';
 
 const snapshot = page => page.evaluate(() => window.__plannerRecoveryRepository.snapshot());
-const durablePlans = page => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.plans') ?? '[]'));
+// Plans persist through ScheduleEvent authority, not the legacy plans key.
+const durablePlans = page => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]'));
 const writes = async page => (await snapshot(page)).calls.filter(call => call.method === 'upsertPlan' && call.phase === 'called');
 const dialog = page => page.locator('.timetable-import-modal');
 async function boot(page, viewport, theme) {
@@ -10,15 +11,21 @@ async function boot(page, viewport, theme) {
     const host = new URL(route.request().url()).hostname;
     return ['127.0.0.1', 'localhost', '[::1]'].includes(host) ? route.continue() : route.abort();
   });
-  await page.goto(`http://127.0.0.1:4174/full-planner-recovery.html?strict=true&theme=${theme}`);
+  await page.addInitScript(theme => {
+    if (localStorage.getItem('timetable-import-seeded')) return;
+    localStorage.clear();
+    localStorage.setItem('study-planner-theme-mode', theme);
+    localStorage.setItem('study-planner-theme-palette', 'ocean');
+    localStorage.setItem('timetable-import-seeded', 'true');
+  }, theme);
+  await page.goto('http://127.0.0.1:4174/timetable-import.html');
   await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook?.snapshot?.().ready ?? false)).toBe(true);
   for (const [title, periodNumber] of [['数学A', 1], ['英語B', 2]]) {
     await page.evaluate(args => window.__plannerRecoveryHook.startTimetableClass(args), { title, weekday: 'wed', periodNumber });
     await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(true);
     expect(await page.evaluate(() => window.__plannerRecoveryHook.saveError)).toBeNull();
   }
-  await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: '予定', exact: true }).click();
-  await page.getByRole('tab', { name: '日', exact: true }).click();
+  // Normal visible DayView controls; no forced hidden App callback activation.
   await page.getByTitle('今日の時間割を反映', { exact: true }).click();
   await expect(dialog(page).getByRole('checkbox')).toHaveCount(2);
 }
@@ -27,7 +34,7 @@ for (const options of [
   { name: 'desktop-light', viewport: { width: 1280, height: 900 }, theme: 'light' },
   { name: 'mobile-dark', viewport: { width: 390, height: 844 }, theme: 'dark' },
 ]) {
-  test(`timetable import keeps one batch through close and reopen ${options.name}`, async ({ page }, testInfo) => {
+  test(`real DayView import keeps one batch through close and reopen ${options.name}`, async ({ page }, testInfo) => {
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     await boot(page, options.viewport, options.theme);
     await page.evaluate(() => window.__plannerRecoveryRepository.holdNextPlanWrite());
@@ -46,14 +53,14 @@ for (const options of [
     await expect(dialog(page)).toBeVisible();
     await expect(dialog(page).getByRole('button', { name: '反映', exact: true })).toBeDisabled();
     expect(await writes(page)).toHaveLength(2);
-    expect((await durablePlans(page)).map(plan => plan.sourceId)).toHaveLength(2);
-    expect(new Set((await durablePlans(page)).map(plan => plan.sourceId)).size).toBe(2);
+    expect((await durablePlans(page)).map(plan => plan.provenance.sourceId)).toHaveLength(2);
+    expect(new Set((await durablePlans(page)).map(plan => plan.provenance.sourceId)).size).toBe(2);
     const screenshot = testInfo.outputPath(`timetable-import-${options.name}.png`);
     await page.screenshot({ path: screenshot, fullPage: true });
     await testInfo.attach(options.name, { path: screenshot, contentType: 'image/png' });
-    await page.evaluate(() => window.__plannerRecoveryRepository.preserveNextReload());
     await page.reload();
     await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook?.snapshot?.().ready ?? false)).toBe(true);
+    expect(await page.evaluate(() => window.__plannerRecoveryHook.snapshot().plans.map(plan => plan.title).sort())).toEqual(['数学A', '英語B']);
     expect((await durablePlans(page)).map(plan => plan.title).sort()).toEqual(['数学A', '英語B']);
     expect(await writes(page)).toHaveLength(0);
     expect(errors).toEqual([]);

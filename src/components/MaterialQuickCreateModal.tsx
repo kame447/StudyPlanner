@@ -1,7 +1,9 @@
 import { useEditorMutation } from '../hooks/useEditorMutation';
 import { useState, type FormEvent } from 'react';
 import {
+  isValidQuickEntryDate,
   isValidQuickEntryDuration,
+  isValidQuickEntryStartTime,
   resolveQuickEntryEndTime,
 } from '../lib/quickEntryDrafts';
 import type {
@@ -54,10 +56,10 @@ function MaterialQuickCreateModalSession({
   const [isCustomDuration, setIsCustomDuration] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const endTime = isValidQuickEntryDuration(durationMinutes)
+  const endTime = isValidQuickEntryStartTime(startTime) && isValidQuickEntryDuration(durationMinutes)
     ? resolveQuickEntryEndTime(startTime, durationMinutes)
     : null;
-  const canSave = Boolean(endTime) && !isSubmitting;
+  const canSave = isValidQuickEntryDate(date) && Boolean(endTime) && !isSubmitting;
 
   function applyDurationOption(value: DurationOptionValue) {
     if (value === 'custom') {
@@ -86,6 +88,15 @@ function MaterialQuickCreateModalSession({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!isValidQuickEntryDate(date)) {
+      setError('有効な日付を入力してください。');
+      return;
+    }
+    if (!isValidQuickEntryStartTime(startTime)) {
+      setError('有効な開始時間を入力してください。');
+      return;
+    }
 
     if (!endTime) {
       setError(
@@ -208,6 +219,7 @@ function MaterialQuickCreateModalSession({
                 <span>日付</span>
                 <input
                   type="date"
+                  required
                   value={date}
                   onChange={(event) => setDate(event.target.value)}
                 />
@@ -216,6 +228,7 @@ function MaterialQuickCreateModalSession({
                 <span>開始時間</span>
                 <input
                   type="time"
+                  required
                   value={startTime}
                   onChange={(event) => setStartTime(event.target.value)}
                 />
