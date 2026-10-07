@@ -44,7 +44,7 @@ const REPEATED_QUESTION_REPAIR_PREFIX = [
 
 const REPEATED_QUESTION_REPAIR_INSTRUCTION = [
   REPEATED_QUESTION_REPAIR_PREFIX,
-  'applicationDecision.communication.goalがexplain_questionの場合は、最初になぜその情報が必要かに答えてから尋ね直してください。',
+  'applicationDecision.communication.goalがexplain_questionの場合は、最初に（required_before_resumeならACKのすぐ後に）なぜその情報が必要かに答えてから尋ね直してください。',
 ].join('');
 
 /** Interaction architecture: the candidate talked about the app's internals. */
@@ -59,11 +59,24 @@ const LEGACY_REPEATED_QUESTION_REPAIR_INSTRUCTION = [
   'ユーザーが質問の意味や理由を尋ねている場合は、必要な情報の目的を短く説明してから尋ね直してください。',
 ].join('');
 
-const GROUNDING_ACK_REPAIR_INSTRUCTION = [
+const GROUNDING_ACK_REPAIR_PREFIX = [
   '前回候補はcurrentTurnGroundingのACK契約を満たしていません。',
   'mode=required_before_resumeなら、acceptedFactsのうち会話上重要なFactをgroundingAcknowledgementに示し、',
   'そのFactに時刻・日付・数量などユーザーが明示した具体値がある場合はACK本文でもその具体値を落とさず、',
+].join('');
+
+const GROUNDING_ACK_REPAIR_INSTRUCTION = [
+  GROUNDING_ACK_REPAIR_PREFIX,
   '最終textをその短いACK本文から始めてからapplicationDecisionの質問へ戻ってください。',
+].join('');
+
+/**
+ * Interaction architecture: after the acknowledgement the reply still does what its typed goal
+ * says (for example, explains why the question is needed before asking it again).
+ */
+const INTERACTION_GROUNDING_ACK_REPAIR_INSTRUCTION = [
+  GROUNDING_ACK_REPAIR_PREFIX,
+  '最終textをその短いACK本文から始め、そのあとapplicationDecision.communication.goalの内容を続けてください。',
 ].join('');
 
 function rendererPromptTraceContext(prompt: {
@@ -114,12 +127,15 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
         if (initial.status !== 'fallback') {
           return initial;
         }
+        const interaction = conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome;
         const repairInstruction = initial.reason === 'repeated_question_text'
-          ? (conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome
+          ? (interaction
               ? REPEATED_QUESTION_REPAIR_INSTRUCTION
               : LEGACY_REPEATED_QUESTION_REPAIR_INSTRUCTION)
           : initial.reason === 'grounding_contract_mismatch'
-            ? GROUNDING_ACK_REPAIR_INSTRUCTION
+            ? (interaction
+                ? INTERACTION_GROUNDING_ACK_REPAIR_INSTRUCTION
+                : GROUNDING_ACK_REPAIR_INSTRUCTION)
             : initial.reason === 'internal_process_text'
               ? INTERNAL_PROCESS_REPAIR_INSTRUCTION
               : null;

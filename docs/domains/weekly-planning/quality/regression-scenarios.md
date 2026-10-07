@@ -127,11 +127,12 @@ referentが一意でない状態で、特定task/sourceへ勝手にhard bindし�
 
 ### DIALOGUE-007: explanation is non-mutating and re-presents the same question
 
-pending questionの意味・理由を尋ねるturnはFact Graph/stateを変えず、同じquestionを明示的に再提示し（bindingも新しいmessageへ）、次の短い回答はそのquestionへbindする。無駄なcompleteness retryを起こさない。rendererには`explain_question`のgoalとquestion purpose code（必要なら後で必要になるlaterNeeds）が渡り、まず理由に答えてから同じ質問を一度だけ聞く。work-breakdown質問の下でも、planning contentを持たない説明はtarget taskの再記述を求められずに成功する（2026-10-07の実測失敗の回帰）。
+pending questionの意味・理由を尋ねるturnはFact Graph/stateを変えず、同じquestionを明示的に再提示し（bindingも新しいmessageへ）、次の短い回答はそのquestionへbindする。無駄なcompleteness retryを起こさない。rendererには`explain_question`のgoalとquestion purpose code（必要なら後で必要になるlaterNeeds）が渡り、まず理由に答えてから同じ質問を一度だけ聞く。work-breakdown質問の下でも、planning contentを持たない説明はtarget taskの再記述を求められずに成功する（2026-10-07の実測失敗の回帰）。新しい詳細と説明要求が同じmessageにあるmixed turnでは、詳細は通常どおり取り込まれてcurrent-turn groundingとして先にACKされ、その詳細で別の質問が先になる場合でも、説明対象の質問がまだ開いていて（未回答・未defer）freshなら提示し続けて説明する。stale/未提示の質問への説明要求は通常turnとして扱い、その質問を説明済みにはしない。
 
 Current example owners:
 - `src/features/weeklyPlanning/weeklyPlanningConversationInteraction.integration.test.ts`
 - `src/features/weeklyPlanning/weeklyPlanningConversationNaturalness.integration.test.ts`
+- `src/features/weeklyPlanning/application/weeklyPlanningInteractionDecision.test.ts`
 
 ### DIALOGUE-008: aside never re-arms the old question; resume re-presents first
 
@@ -188,7 +189,7 @@ Current example owners:
 
 ### DIALOGUE-014: ordinary replies are renderer-written and never describe the app's internals
 
-interaction architectureの通常turn（質問・説明・寄り道・再開・status・preview・semantic failureのrecovery）はrendererがtyped communication contextから書く。deterministic codeは何を伝えるか（goal・purpose code・status reason・disclosure）だけを持ち、説明の文章templateを持たない。renderer出力がユーザー発話・計画データに無い内部の仕組みの語彙を含む、またはapplication所有のpreview disclosureを落とすと拒否され（1回repair後fallback）、表示されるのは内部語彙の無い短いemergency文言だけ。週間計画の本番fileにある日本語literalはsource scanで分類済みでなければならない。
+interaction architectureの通常turn（質問・説明・寄り道・再開・status・preview・semantic failureのrecovery）はrendererがtyped communication contextから書く。deterministic codeは何を伝えるか（goal・purpose code・status reason・disclosure）だけを持ち、説明の文章templateを持たない。renderer出力がユーザー発話・計画データに無い内部の仕組みの語彙を含む、またはapplication所有のpreview disclosureを落とすと拒否され（1回repair後fallback）、表示されるのは内部語彙の無い短いemergency文言だけ。emergency文言はrouting/applicationの文を入力に取らない（statusはtyped reasonから言う）。週間計画の本番fileにある日本語literalはsource scanで分類済みでなければならず、表示されうる固定文はrenderer出力の検査と同じ内部語彙listでも検査する。
 
 Current example owners:
 - `src/features/weeklyPlanning/weeklyPlanningAssistantProse.contract.test.ts`

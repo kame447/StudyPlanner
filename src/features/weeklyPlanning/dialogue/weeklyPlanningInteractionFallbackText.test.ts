@@ -37,7 +37,7 @@ function context(goal: WeeklyPlanningStableV5CommunicationGoal, overrides: Parti
   } as WeeklyPlanningStableV5CommunicationContext;
 }
 
-function compose(communication: WeeklyPlanningStableV5CommunicationContext, extra: { questionCode?: string | null; applicationText?: string } = {}) {
+function compose(communication: WeeklyPlanningStableV5CommunicationContext, extra: { questionCode?: string | null } = {}) {
   return composeWeeklyPlanningInteractionFallbackText({
     communication,
     questionText: communication.askQuestion ? QUESTION : '',
@@ -45,7 +45,6 @@ function compose(communication: WeeklyPlanningStableV5CommunicationContext, extr
     previewCount: 3,
     previewPromotionControlLabel: 'この内容で仮予定にする',
     groundingNote: '',
-    applicationText: extra.applicationText ?? '',
   });
 }
 
@@ -106,10 +105,20 @@ describe('interaction emergency wording', () => {
     expect(text).not.toContain(QUESTION);
   });
 
-  it('keeps the application message only for a status without a typed reason', () => {
-    expect(compose(context('report_status', { statusReason: null }), { applicationText: '次の条件を確認します。' }))
-      .toBe('次の条件を確認します。');
-    expect(compose(context('report_status', { statusReason: 'preview_unchanged' }), { applicationText: 'ignored' }))
-      .not.toContain('ignored');
+  it('takes no application message: a status without a typed reason is a plain invitation', () => {
+    const text = compose(context('report_status', { statusReason: null }));
+    expect(text.length).toBeGreaterThan(0);
+    expect(text).not.toMatch(INTERNAL_PROCESS_WORDING);
+    // Structural guard (checked by the typecheck): routing sentences are not an input here.
+    composeWeeklyPlanningInteractionFallbackText({
+      communication: context('report_status', { statusReason: null }),
+      questionText: '',
+      questionCode: null,
+      previewCount: 0,
+      previewPromotionControlLabel: null,
+      groundingNote: '',
+      // @ts-expect-error the emergency wording never repeats an application message
+      applicationText: '条件を整理できました。',
+    });
   });
 });

@@ -204,6 +204,30 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
     }));
   });
 
+  it('asks the interaction repair to continue with the typed goal after the acknowledgement; legacy keeps its wording', async () => {
+    const renderInput = input({
+      currentTurnGrounding: {
+        mode: 'required_before_resume',
+        acceptedFacts: [{ factId: 'effort-30', kind: 'effort_estimate', sourceText: '30分くらい', data: { minutes: 30 } }],
+      },
+    });
+    const repairOf = async (architecture: 'interaction_v1' | 'legacy_v5') => {
+      const createChatCompletion = vi.fn().mockResolvedValue(response(renderInput, '英単語は1回分にどれくらいかかりますか？'));
+      await createAiWeeklyPlanningStableV5DialogueRenderer(config, { createChatCompletion })
+        .render({ ...renderInput, conversationArchitecture: architecture });
+      expect(createChatCompletion).toHaveBeenCalledTimes(2);
+      const messages = createChatCompletion.mock.calls[1]?.[0].messages as Array<{ content: string }>;
+      return messages[messages.length - 1].content;
+    };
+    const interaction = await repairOf('interaction_v1');
+    const legacy = await repairOf('legacy_v5');
+    expect(interaction).toContain('ACK契約');
+    expect(interaction).toContain('communication.goal');
+    expect(legacy).toContain('ACK契約');
+    expect(legacy).toContain('applicationDecisionの質問へ戻ってください');
+    expect(legacy).not.toContain('communication');
+  });
+
   it('falls back if the one repair attempt still repeats the same assistant question', async () => {
     const previousQuestion = 'この範囲は今回進めたい量ですか？';
     const renderInput = input({

@@ -204,6 +204,14 @@ function missesPreviewDisclosure(
   return disclosure.omittedWorkLabels.some((label) => !text.includes(label));
 }
 
+/**
+ * The app-internal words a text contains. One list for every check of what the user sees: the
+ * renderer's output here, and the fixed emergency wording in the prose contract test.
+ */
+export function weeklyPlanningInternalProcessTermsIn(text: string): string[] {
+  return [...normalizeSafetyText(text).matchAll(INTERNAL_PROCESS_TERMS)].map((match) => match[0]);
+}
+
 function exposesInternalProcess(
   text: string,
   input: WeeklyPlanningStableV5DialogueRenderInput,
@@ -217,8 +225,8 @@ function exposesInternalProcess(
     planningInformation: input.planningInformation,
     requiredLabels: input.requiredLabels,
   })).toLowerCase();
-  return [...normalizeSafetyText(text).matchAll(INTERNAL_PROCESS_TERMS)]
-    .some((match) => !grounding.includes(match[0].toLowerCase()));
+  return weeklyPlanningInternalProcessTermsIn(text)
+    .some((term) => !grounding.includes(term.toLowerCase()));
 }
 
 function missesPreviewPromotionControl(

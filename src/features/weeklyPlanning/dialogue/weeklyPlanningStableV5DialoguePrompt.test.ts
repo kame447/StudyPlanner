@@ -134,4 +134,49 @@ describe('Stable V5 dialogue prompt', () => {
     // the renderer merely to satisfy PR #130's former compactness target.
     expect(bytes(payload.request)).toBeLessThanOrEqual(4000);
   });
+
+  it('stays inside the size guard for every interaction goal with every optional instruction', () => {
+    const goals = ['ask_question', 'report_status', 'present_preview', 'explain_question',
+      'acknowledge_aside', 'resume_question', 'clarify_turn'] as const;
+    for (const goal of goals) {
+      const prompt = createWeeklyPlanningStableV5DialoguePrompt({
+        ...input(),
+        planningInformation: { ...input().planningInformation, selfRepair: { taskLabel: '院試', before: '3時間', after: '2時間' } },
+        communication: {
+          goal,
+          questionPurposes: ['tell_plan_amount_from_remaining_total'],
+          askQuestion: true,
+          laterNeeds: ['estimate_time_to_fit_available_time', 'set_planning_period', 'know_exact_time_range'],
+          statusReason: goal === 'report_status' ? 'ready_to_create_preview' : null,
+          planningDetailsNotApplied: true,
+          consultationDeferred: true,
+          previewDisclosure: goal === 'present_preview' ? { omittedWorkLabels: ['英語', '物理'] } : null,
+        },
+      });
+      const payload = JSON.parse(prompt.userPrompt) as { request: string };
+      expect(bytes(prompt.systemPrompt)).toBeLessThanOrEqual(900);
+      expect(bytes(payload.request)).toBeLessThanOrEqual(4000);
+    }
+  });
+
+  it('lets the acknowledgement of this turn\'s new details come before an explanation (mixed turn)', () => {
+    const prompt = createWeeklyPlanningStableV5DialoguePrompt({
+      ...input(),
+      communication: {
+        goal: 'explain_question',
+        questionPurposes: ['tell_plan_amount_from_remaining_total'],
+        askQuestion: true,
+        laterNeeds: [],
+        statusReason: null,
+        planningDetailsNotApplied: false,
+        consultationDeferred: false,
+        previewDisclosure: null,
+      },
+    });
+    const { request } = JSON.parse(prompt.userPrompt) as { request: string };
+    // The explanation instruction defers to the required acknowledgement instead of competing
+    // with it for the opening of the reply (the validator requires the reply to start with it).
+    const explanation = request.slice(request.indexOf('goal=explain_question'));
+    expect(explanation.slice(0, explanation.indexOf('なぜその情報が必要か'))).toContain('required_before_resume');
+  });
 });

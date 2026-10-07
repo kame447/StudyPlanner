@@ -105,8 +105,9 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
 
   // Interaction layer: typed conversation acts + machine state decide what kind of turn
-  // this was. It may redirect which open question is presented (a named topic) and never
-  // touches authorization, readiness, the graph or the preview decision.
+  // this was. It may redirect which open question is presented (a named topic, or the fresh
+  // question the user asked about) and never touches authorization, readiness, the graph or
+  // the preview decision.
   // Legacy architecture bypasses the layer entirely: no acts, no override, no outcome.
   const interactionPlan = conversationArchitecturePolicy(input.conversationArchitecture)
     .interactionOutcome
@@ -114,6 +115,9 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
         acts: semantic.normalization.document?.conversationActs,
         graph: semantic.graph,
         evaluation,
+        explainedQuestion: semanticTurn.pendingQuestionPresentation.status === 'fresh'
+          ? semanticTurn.pendingQuestionPresentation.questionContext
+          : null,
       })
     : null;
   const routingEvaluation = interactionPlan?.dialogueQuestionOverride

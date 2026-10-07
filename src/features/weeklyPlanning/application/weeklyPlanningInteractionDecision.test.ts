@@ -172,6 +172,61 @@ describe('naming a topic cannot override the repair policy', () => {
     expect(result).toMatchObject({ targetResolved: true, targetQuestionOpen: true });
   });
 
+  it('ignores a named topic that is not an active fact of this conversation', () => {
+    const graph = twoTopicGraph();
+    graph.factLifecycles = graph.factLifecycles.map((entry) => (entry.factId === 'task-b'
+      ? { ...entry, status: 'removed' as const, terminalRevision: 2 }
+      : entry));
+    // A topic removed here, a topic only another conversation knows, and no topic at all.
+    for (const targetPublicId of ['task-b', 'task-of-another-conversation', null]) {
+      for (const kind of ['topic_shift', 'resume_topic'] as const) {
+        const result = planWeeklyPlanningInteraction({
+          acts: [{ kind, targetPublicId }] as never, graph, evaluation: evaluationFor(graph, []),
+        });
+        expect(result).toMatchObject({ dialogueQuestionOverride: null, targetResolved: false, targetQuestionOpen: false });
+      }
+    }
+  });
+
+  const askedAbout = (factId: string): WeeklyPlanningQuestionContext => ({
+    kind: 'missing', targetSlot: 'stable_v5:missing_effort_estimate', intent: 'duration_per_unit', topicId: factId,
+  });
+  const ask = [{ kind: 'ask_about_pending_question', targetPublicId: null }] as never;
+
+  it('keeps the fresh question the user asked about presented while it is still open (mixed turn)', () => {
+    const graph = twoTopicGraph();
+    // Other details of the turn made wl-1 the policy's top question; the user asked about wl-2.
+    const kept = planWeeklyPlanningInteraction({
+      acts: ask, graph, evaluation: evaluationFor(graph, []), explainedQuestion: askedAbout('wl-2'),
+    });
+    expect(kept.dialogueQuestionOverride?.factId).toBe('wl-2');
+    expect(classifyWeeklyPlanningInteraction({
+      plan: kept,
+      output: output({ question: askedAbout('wl-2') }),
+      previousQuestion: askedAbout('wl-2'),
+      presentation: fresh,
+    }).kind).toBe('explain_pending_question');
+    // Already the top question: nothing to redirect.
+    expect(planWeeklyPlanningInteraction({
+      acts: ask, graph, evaluation: evaluationFor(graph, []), explainedQuestion: askedAbout('wl-1'),
+    }).dialogueQuestionOverride).toBeNull();
+  });
+
+  it('does not keep an asked-about question that is closed, deferred, not fresh, or not asked about', () => {
+    const graph = twoTopicGraph();
+    const keeps = (params: { acts?: never; deferred?: string[]; explained: WeeklyPlanningQuestionContext | null }) =>
+      planWeeklyPlanningInteraction({
+        acts: params.acts ?? ask,
+        graph,
+        evaluation: evaluationFor(graph, params.deferred ?? []),
+        explainedQuestion: params.explained,
+      }).dialogueQuestionOverride;
+    expect(keeps({ explained: askedAbout('wl-closed') })).toBeNull();
+    expect(keeps({ explained: askedAbout('wl-2'), deferred: ['wl-2'] })).toBeNull();
+    expect(keeps({ explained: null })).toBeNull();
+    expect(keeps({ explained: askedAbout('wl-2'), acts: [] as never })).toBeNull();
+  });
+
   it('does not pull a question the repair policy deferred this turn forward', () => {
     const graph = twoTopicGraph();
     for (const kind of ['topic_shift', 'resume_topic'] as const) {

@@ -341,7 +341,6 @@ function createRenderInput(params: {
           records: params.result.state.groundingRecords ?? [],
           currentTurnId: params.input.traceRequestId,
         }),
-        applicationText: params.result.message,
       })
     : typedFallbackText;
   const previousQuestionCode = questionCodeFromTargetSlot(

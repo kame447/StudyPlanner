@@ -128,6 +128,18 @@ describe('interaction emergency wording replaces routing sentences when the rend
     expect(result.message).toContain('入りきりませんでした');
   });
 
+  it('a status without a typed reason never repeats the routing sentence', async () => {
+    const result = await run({
+      message: '条件を整理できました。仮予定を作る場合は「この条件で予定を作って」と送ってください。',
+      interactionOutcome: { kind: 'apply', consultationDeferred: false },
+      communicationFacts: facts,
+    });
+    expect(result.responseSource).toBe('deterministic_fallback');
+    expect(result.message.length).toBeGreaterThan(0);
+    expect(result.message).not.toContain('条件を整理できました');
+    expect(result.message).not.toMatch(INTERNAL_PROCESS_WORDING);
+  });
+
   it('aside keeps the held question out of the reply', async () => {
     const result = await run({
       state: questionState('missing_effort_estimate'),

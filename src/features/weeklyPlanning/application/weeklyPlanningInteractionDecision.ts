@@ -1,5 +1,6 @@
 import type { WeeklyPlanningQuestionContext } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
+import { decodeWeeklyPlanningStableV5QuestionSlot } from '../intake/weeklyPlanningStableV5QuestionSlot';
 import type { SemanticConversationActV5 } from '../semantic/weeklyPlanningConversationActsV5';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import {
@@ -18,11 +19,12 @@ import {
  * semantic acts and machine state only. It never reads raw user text, and no decision
  * here changes authorization, readiness, the Fact Graph, preview, approval or save.
  *
- * Phase 1 (before routing) may redirect which open question the turn presents when the
- * user named a topic. Phase 2 (after routing) classifies the produced result.
+ * Phase 1 (before routing) may redirect which open question the turn presents: the one of a
+ * topic the user named, or the one the user asked about. Phase 2 (after routing) classifies
+ * the produced result.
  */
 export interface WeeklyPlanningInteractionPlan {
-  /** A different open question to present than the policy's top one (named topic). */
+  /** A different open question to present than the policy's top one (named topic / asked about). */
   dialogueQuestionOverride: WeeklyPlanningStableQuestionV5 | null;
   /** The act named an existing active topic (validated against the graph at use time). */
   targetResolved: boolean;
@@ -75,10 +77,28 @@ function questionConcernsTarget(
   return uncertainty?.targetFactId === targetId;
 }
 
+/** The still-open, askable machine question that the presented question context names. */
+function openQuestionFor(params: {
+  context: WeeklyPlanningQuestionContext;
+  evaluation: WeeklyPlanningStableV5PlanningEvaluation;
+  deferred: ReadonlySet<string>;
+}): WeeklyPlanningStableQuestionV5 | null {
+  const code = decodeWeeklyPlanningStableV5QuestionSlot(params.context.targetSlot);
+  const factId = params.context.topicId ?? null;
+  if (!code) return null;
+  return listWeeklyPlanningStableBlockingQuestionsV5(params.evaluation.compilation)
+    .find((question) =>
+      question.code === code
+      && question.factId === factId
+      && !(question.factId !== null && params.deferred.has(question.factId))) ?? null;
+}
+
 export function planWeeklyPlanningInteraction(params: {
   acts: readonly SemanticConversationActV5[] | undefined;
   graph: WeeklyPlanningFactGraphV5;
   evaluation: WeeklyPlanningStableV5PlanningEvaluation;
+  /** The question context the user was looking at, only when its presentation is fresh. */
+  explainedQuestion?: WeeklyPlanningQuestionContext | null;
 }): WeeklyPlanningInteractionPlan {
   const acts = params.acts ?? [];
   const flags = {
@@ -106,6 +126,26 @@ export function planWeeklyPlanningInteraction(params: {
       const withMeasurement = withStableV5EffortMeasurement({
         graph: params.evaluation.activeGraph,
         question: targeted,
+      });
+      const sameAsTop = withMeasurement.code === dialogue.question.code
+        && withMeasurement.factId === dialogue.question.factId;
+      if (!sameAsTop) override = withMeasurement;
+    }
+  }
+  // An explanation request is about the question on screen. While that question is still open
+  // and askable, it stays the presented one, even when other details of the same turn changed
+  // which question would come first (a mixed turn keeps both parts: the details are taken in,
+  // and the question the user asked about is explained and asked again).
+  if (flags.ask && !targetId && params.explainedQuestion && dialogue.status === 'ask_question') {
+    const explained = openQuestionFor({
+      context: params.explainedQuestion,
+      evaluation: params.evaluation,
+      deferred,
+    });
+    if (explained) {
+      const withMeasurement = withStableV5EffortMeasurement({
+        graph: params.evaluation.activeGraph,
+        question: explained,
       });
       const sameAsTop = withMeasurement.code === dialogue.question.code
         && withMeasurement.factId === dialogue.question.factId;

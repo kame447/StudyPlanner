@@ -3,6 +3,7 @@ import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { weeklyPlanningInternalProcessTermsIn } from './dialogue/weeklyPlanningStableV5DialogueValidation';
 
 /*
  * Issue #488 natural conversation repair: source-level guard for fixed assistant prose.
@@ -234,7 +235,10 @@ describe('fixed assistant prose in weekly planning (Issue #488)', () => {
     const violations = Object.entries(PROSE_REGISTRY)
       .filter(([, category]) => category === 'interaction_emergency' || category === 'interaction_emergency_shared')
       .flatMap(([file]) => (filesWithJapanese.get(file) ?? [])
-        .filter((literal) => INTERNAL_PROCESS_WORDING.test(literal))
+        // This file's stricter list (fixed text has no grounding exception) plus the renderer
+        // output validator's list, so fixed and rendered wording can never drift apart.
+        .filter((literal) => INTERNAL_PROCESS_WORDING.test(literal)
+          || weeklyPlanningInternalProcessTermsIn(literal).length > 0)
         .map((literal) => `${file}: ${literal}`));
     expect(violations).toEqual([]);
   });

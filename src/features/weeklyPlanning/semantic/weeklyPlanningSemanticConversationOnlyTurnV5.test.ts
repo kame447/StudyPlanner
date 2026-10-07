@@ -117,6 +117,41 @@ describe('conversation acts carry a turn whose planning delta is unusable', () =
     expect(result.document).toBeNull();
   });
 
+  it('carries nothing of a rejected response that also tried to change other facts', async () => {
+    // Rejected planning content aimed at facts this conversation does not have, next to a
+    // valid explanation act: the rescued turn is built empty, never merged from the response.
+    const adversarial = document({
+      ...INVALID_PLANNING,
+      corrections: [{
+        localId: 'c1', target: { kind: 'task', publicId: 'task-of-another-conversation', localId: null, mention: null },
+        operation: 'remove', replacementLocalId: null, sourceText: USER_TEXT,
+      }],
+      decisions: [{
+        localId: 'd1', target: { kind: 'proposal', publicId: 'proposal-of-another-conversation', localId: null, mention: null },
+        decision: 'accept', sourceText: USER_TEXT,
+      }],
+      conversationActs: [{ kind: 'ask_about_pending_question', targetPublicId: null }],
+    });
+    const result = await normalize(scriptedClient([adversarial, adversarial]));
+
+    expect(result.status).toBe('accepted');
+    expect(result.conversationOnly).toMatchObject({ planningDelta: 'rejected', planningContentPresent: true });
+    expect(result.document).toEqual({
+      schemaVersion: 'weekly-planning-semantic-v5',
+      planningIntent: 'discuss',
+      planningWindow: null,
+      tasks: [],
+      relations: [],
+      availabilityDeclarations: [],
+      constraintSourceRequests: [],
+      userContextFacts: [],
+      uncertainties: [],
+      corrections: [],
+      decisions: [],
+      conversationActs: [{ kind: 'ask_about_pending_question', targetPublicId: null }],
+    });
+  });
+
   it('never applies to unparseable output', async () => {
     const result = await normalize(scriptedClient(['not json', 'still not json']));
     expect(result.status).toBe('rejected');

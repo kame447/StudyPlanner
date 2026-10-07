@@ -334,6 +334,8 @@ describe('Issue #488 B: aside and resume', () => {
     expect(summaryOf(generic!).pendingQuestion).toBeNull();
     expect(shortReply.calls.filter((call) => call.kind === 'semantic_generic')).toHaveLength(1);
     expect(effortMinutesFor(conversation, english.topicId)).toEqual([]);
+    // An ordinary act-free turn: the reply still carries no app-internal wording.
+    expect(latestAssistant(conversation).content).not.toMatch(INTERNAL_PROCESS_WORDING);
 
     script = (call) => {
       if (call.kind === 'semantic_generic') {

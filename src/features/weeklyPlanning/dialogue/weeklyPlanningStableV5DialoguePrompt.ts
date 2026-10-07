@@ -174,7 +174,7 @@ const INTERACTION_GOAL_INSTRUCTIONS: Readonly<Record<WeeklyPlanningStableV5Commu
   ask_question: 'goal=ask_question: questionIntentの質問を一つ聞く。このturnで受け取った情報があれば先に短く受け止める。',
   report_status: 'goal=report_status: statusReason=ready_to_create_preview→予定を作るのに必要なことはそろい、頼めば仮予定を作れると伝える（「この条件で予定を作って」のように頼めると添えてよい）。preview_unchanged→今の仮予定の候補はそのままで、直したい点を言うかpreviewPromotionControlLabelの操作で進められると伝える。',
   present_preview: 'goal=present_preview: previewCount件の候補ができたことと、previewPromotionControlLabelの操作を案内する。',
-  explain_question: 'goal=explain_question: ユーザーは直前の質問の理由や意味を尋ねている。最初に、なぜその情報が必要かをquestionPurposes（意味はpurposeMeanings）と分かっている内容（relevantLabels・量・期間など）に沿って具体的に答える。ユーザーの思う質問の中身が実際と違えば、いま確かめたいことを穏やかに伝える。laterNeedsは疑問への答えに役立つときだけ触れてよい。そのあとaskQuestion=trueなら、同じ質問をrequestedInformationを落とさず、直前と同じ文面にせず一度だけ聞く。',
+  explain_question: 'goal=explain_question: ユーザーは直前の質問の理由や意味を尋ねている。最初に（required_before_resumeならACKのすぐ後に）、なぜその情報が必要かをquestionPurposes（意味はpurposeMeanings）と分かっている内容（relevantLabels・量・期間など）に沿って具体的に答える。ユーザーの思う質問の中身が実際と違えば、いま確かめたいことを穏やかに伝える。laterNeedsは疑問への答えに役立つときだけ触れてよい。そのあとaskQuestion=trueなら、同じ質問をrequestedInformationを落とさず、直前と同じ文面にせず一度だけ聞く。',
   acknowledge_aside: 'goal=acknowledge_aside: ユーザーが移った別の話題に自然に応じる。止まっている質問は聞かず、保留や未変更の説明もしない。',
   resume_question: 'goal=resume_question: その話題に自然に戻り、その質問を一つ聞く。',
   clarify_turn: 'goal=clarify_turn: このメッセージはいまの形では予定に使えず、予定には何も加わっていない。理由やアプリの事情は言わず、うまく受け取れなかったことを短く自然に伝え、askQuestion=trueならその質問を、falseなら何を予定に入れたいかを聞く。同じ文面の再送は頼まない。',

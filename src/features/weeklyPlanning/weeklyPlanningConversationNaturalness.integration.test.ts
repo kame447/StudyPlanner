@@ -153,6 +153,43 @@ function rendererReplyForBaseRequest(call: ScriptedProviderCall, text: string): 
   });
 }
 
+/** Like `rendererReplyForBaseRequest`, acknowledging every fact accepted in this turn first. */
+function acknowledgingRendererReply(call: ScriptedProviderCall, acknowledgement: string, rest: string): string {
+  const base = basePayload(call);
+  const decision = (base.applicationDecision ?? {}) as Json;
+  const grounding = (base.currentTurnGrounding ?? {}) as Json;
+  return JSON.stringify({
+    actionId: base.actionId ?? null,
+    actionKind: decision.actionKind ?? 'status',
+    questionCode: decision.questionCode ?? null,
+    groundingAcknowledgement: {
+      factIds: ((grounding.acceptedFacts ?? []) as Json[]).map((fact) => String(fact.factId)),
+      text: acknowledgement,
+    },
+    text: `${acknowledgement}${rest}`,
+  });
+}
+
+function englishReadingTask(): Json {
+  return {
+    localId: 't-english',
+    existingPublicId: null,
+    decompositionStatus: 'atomic',
+    category: 'study',
+    title: '英語の長文',
+    study: { purpose: 'self_study', activityKind: 'reading', contextLabel: null, components: [] },
+    workloads: [{
+      localId: 'wl-english', quantityRole: 'target', amount: 10, unitCode: 'page', unitLabel: 'ページ',
+      rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null, sourceText: '英語の長文も10ページ',
+    }],
+    effortEstimates: [],
+    temporalConstraints: [],
+    recurrence: [],
+    durableContextSignals: [],
+    sourceText: '英語の長文も10ページやりたい',
+  };
+}
+
 function rendererDecision(call: ScriptedProviderCall | undefined): Json {
   const decision = call?.payload?.applicationDecision;
   return typeof decision === 'object' && decision !== null ? decision as Json : {};
@@ -283,6 +320,7 @@ describe('Issue #488 naturalness: the measured explanation turn is a normal succ
 
   it('continues through a valid explanation act when the planning part stays unusable after the one repair', async () => {
     const conversation = await measuredSetup();
+    const pending = pendingTarget(conversation);
     const graphBefore = withoutTurnLedger(conversation);
     script = (call) => {
       if (call.kind !== 'semantic_generic') return undefined;
@@ -307,8 +345,13 @@ describe('Issue #488 naturalness: the measured explanation turn is a normal succ
     expect(rendererDecision(why.calls[2])).toMatchObject({
       communication: { goal: 'explain_question', planningDetailsNotApplied: true },
     });
-    // The invalid planning content was never applied.
+    // The invalid planning content was never applied. The pending question is the unclear-detail
+    // (semantic_uncertainty) one, whose contextual-answer path also sees this empty rescued turn:
+    // the committed graph (revision included) and that uncertainty stay exactly as they were, and
+    // the explained question stays the presented, fresh one.
     expect(withoutTurnLedger(conversation)).toEqual(graphBefore);
+    expect(pendingTarget(conversation)).toEqual(pending);
+    expect(freshness(conversation)).toBe('fresh');
     const decision = why.debugTrace.find((event) => event.stage === 'semantic_normalizer_decision'
       && (event.data as Json).orchestrationRoute === 'conversation_acts_without_planning_delta');
     expect(decision?.data).toMatchObject({
@@ -348,6 +391,118 @@ describe('Issue #488 naturalness: the measured explanation turn is a normal succ
     expect(state.intakeState?.shouldSavePlan).toBe(false);
     expect(state.previewCandidates ?? []).toEqual([]);
     expect(state.pendingApproval).toBeUndefined();
+  });
+});
+
+describe('Issue #488 naturalness: mixed, stale and foreign references', () => {
+  it('keeps both parts of a mixed turn: the new work is taken in and acknowledged before the explanation', async () => {
+    setupDocument = effortSetupDocument();
+    const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1' });
+    await conversation.submit(SETUP);
+    const pending = pendingTarget(conversation);
+    const acknowledgement = '英語の長文10ページですね。';
+    script = (call) => {
+      if (call.kind === 'semantic_generic') {
+        return JSON.stringify(emptyDocument({
+          planningIntent: 'update_plan',
+          tasks: [englishReadingTask()],
+          conversationActs: [act('ask_about_pending_question')],
+        }));
+      }
+      if (call.kind === 'renderer') {
+        return acknowledgingRendererReply(call, acknowledgement,
+          'それぞれにかかる時間が分かると、来週の空き時間に無理なく収まるか確かめられます。数学の問題集は1問あたりどれくらいかかりそうですか？');
+      }
+      return undefined;
+    };
+    const turn = await conversation.submit('あと英語の長文も10ページやりたい。なんで時間が必要なの？');
+
+    expect(turn.result?.failure).toBeUndefined();
+    expect(turn.result?.interactionOutcome).toMatchObject({ kind: 'explain_pending_question' });
+    const renderer = turn.calls.find((call) => call.kind === 'renderer');
+    expect(rendererDecision(renderer)).toMatchObject({
+      communication: { goal: 'explain_question', askQuestion: true, planningDetailsNotApplied: false },
+    });
+    // The planning part is applied and handed over as this turn's accepted facts, which the
+    // reply must acknowledge first; the explanation follows.
+    expect(conversation.graph()?.tasks.map((task) => task.title)).toEqual(['数学の問題集', '英語の長文']);
+    expect(renderer?.payload?.currentTurnGrounding).toMatchObject({
+      mode: 'required_before_resume',
+      acceptedFacts: expect.arrayContaining([
+        expect.objectContaining({ kind: 'task', data: expect.objectContaining({ title: '英語の長文' }) }),
+      ]),
+    });
+    expect(String(renderer?.payload?.request)).toContain('required_before_resume');
+    expect(turn.result?.responseSource).toBe('ai');
+    expect(lastMessage(conversation).startsWith(acknowledgement)).toBe(true);
+    // The question the user asked about stays the presented, fresh one...
+    expect(pendingTarget(conversation)).toEqual(pending);
+    expect(freshness(conversation)).toBe('fresh');
+
+    // ...although, without the explanation request, the new work's question would come first.
+    resetScriptedConversationRuntime();
+    script = () => undefined;
+    const plain = createScriptedConversation({ provider, architecture: 'interaction_v1' });
+    await plain.submit(SETUP);
+    script = (call) => (call.kind === 'semantic_generic'
+      ? JSON.stringify(emptyDocument({ planningIntent: 'update_plan', tasks: [englishReadingTask()] }))
+      : undefined);
+    await plain.submit('あと英語の長文も10ページやりたい');
+    expect(pendingTarget(plain).targetSlot).toBe(pending.targetSlot);
+    expect(pendingTarget(plain).topicId).not.toBe(pending.topicId);
+  });
+
+  it('does not bind an explanation act to a question that is no longer on screen', async () => {
+    const conversation = await measuredSetup();
+    const graphBefore = withoutTurnLedger(conversation);
+    script = (call) => (call.kind === 'semantic_generic'
+      ? JSON.stringify(emptyDocument({ conversationActs: [act('topic_shift')] }))
+      : undefined);
+    const aside = await conversation.submit('ところで、英語の勉強ってどう進めたらいいかな');
+    expect(aside.result?.interactionOutcome).toMatchObject({ kind: 'aside' });
+    expect(freshness(conversation)).not.toBe('fresh');
+
+    script = (call) => (call.kind === 'semantic_generic'
+      ? JSON.stringify(emptyDocument({ conversationActs: [act('ask_about_pending_question')] }))
+      : undefined);
+    const why = await conversation.submit(WHY);
+
+    // The held question was not the last thing shown, so the act is not trusted to refer to it:
+    // an ordinary turn that simply asks the open question again, which becomes the fresh one.
+    expect(why.result?.failure).toBeUndefined();
+    expect(why.result?.interactionOutcome).toMatchObject({ kind: 'apply' });
+    expect(rendererDecision(why.calls.find((call) => call.kind === 'renderer'))).toMatchObject({
+      communication: { goal: 'ask_question', askQuestion: true },
+    });
+    expect(withoutTurnLedger(conversation)).toEqual(graphBefore);
+    expect(pendingTarget(conversation).targetSlot).toBe('stable_v5:semantic_uncertainty');
+    expect(freshness(conversation)).toBe('fresh');
+    expect(lastMessage(conversation)).not.toMatch(INTERNAL_PROCESS_WORDING);
+  });
+
+  it('drops a topic reference that only another conversation knows', async () => {
+    const other = createScriptedConversation({ provider, architecture: 'interaction_v1', conversationId: 'issue488-other-chat' });
+    await other.submit(SETUP);
+    const otherGraph = withoutTurnLedger(other);
+    const foreignTaskId = otherGraph.tasks[0].id;
+    const conversation = await measuredSetup();
+    expect(conversation.graph()?.tasks.map((task) => task.id)).not.toContain(foreignTaskId);
+    const graphBefore = withoutTurnLedger(conversation);
+    script = (call) => (call.kind === 'semantic_generic'
+      ? JSON.stringify(emptyDocument({ conversationActs: [act('topic_shift', foreignTaskId)] }))
+      : undefined);
+    const turn = await conversation.submit('あっちの数学の話なんだけど');
+
+    const validation = turn.debugTrace.find((event) => event.stage === 'semantic_validation_result');
+    expect(validation?.data).toMatchObject({
+      accepted: true,
+      conversationActs: [{ kind: 'topic_shift', targetPublicId: null }],
+      conversationActDiagnostics: ['conversationActs[0].targetPublicId:degraded-unknown-topic'],
+    });
+    // No topic of this conversation is targeted; neither conversation changes.
+    expect(turn.result?.interactionOutcome).toMatchObject({ kind: 'aside' });
+    expect(withoutTurnLedger(conversation)).toEqual(graphBefore);
+    expect(withoutTurnLedger(other)).toEqual(otherGraph);
   });
 });
 

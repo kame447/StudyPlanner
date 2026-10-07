@@ -13,7 +13,9 @@ import { WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL } from './weeklyPlannin
  * the system, and it is not tuned per situation (that is the renderer's job).
  *
  * The question itself is the application-typed question text (shared with the legacy
- * architecture's fallback), so the user always learns what is being asked.
+ * architecture's fallback), so the user always learns what is being asked. Other application
+ * messages (the routing's status and preview sentences) are never an input here: every status
+ * is said from its typed reason, so a routing sentence cannot reach the user verbatim.
  */
 
 const PROVIDER_UNAVAILABLE = 'すみません、通信がうまくいかなかったようです。お手数ですが、もう一度送ってもらえますか？';
@@ -71,11 +73,6 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
   previewPromotionControlLabel: string | null;
   /** Application-owned date interpretation note for this turn ('' when none). */
   groundingNote: string;
-  /**
-   * The application's own message, used only for a status reply that carries no typed
-   * reason (callers without communication facts); every production status has a reason.
-   */
-  applicationText: string;
 }): string {
   const { communication } = params;
   const controlLabel = params.previewPromotionControlLabel ?? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL;
@@ -107,7 +104,7 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
           ? READY_TO_CREATE_PREVIEW
           : communication.statusReason === 'preview_unchanged'
             ? previewUnchangedText(controlLabel)
-            : params.applicationText || GENERIC_CONTINUE}`;
+            : GENERIC_CONTINUE}`;
       break;
     default:
       main = question || GENERIC_CONTINUE;
