@@ -31,10 +31,17 @@ describe('renderer claims about unverified or unmet preview constraints', () => 
 });
 
 
-it('limits claims to explicitly named tasks while keeping unscoped and mixed-task claims guarded', () => {
+it('guards every task while any condition is unverified; labels never count as claims', () => {
   const satisfied = { ...fact, taskId: 'english', taskLabel: '英語の長文', status: 'satisfied' as const };
   const unmet = { ...fact, taskId: 'english-short', taskLabel: '英語' };
-  expect(claims('英語の長文は夜の候補です。', [satisfied, unmet])).toBe(false);
+  // Naming a satisfied task does not scope the sentence: aliases and 「も」 can still
+  // describe the unmet task (critic probe4 on 56ab49e7). The reply gets one neutral repair.
+  expect(claims('英語の長文は夜の候補です。', [satisfied, unmet])).toBe(true);
+  const research = { ...fact, taskId: 'research', taskLabel: '卒業研究ノート', status: 'satisfied' as const };
+  const book = { ...fact, taskId: 'book', taskLabel: 'アルゴリズムイントロダクション' };
+  expect(claims('卒業研究ノートも本も夜に入れました。', [research, book])).toBe(true);
+  expect(claims('卒業研究ノートは夜に2回、もう一方も夜です。', [research, book])).toBe(true);
+  expect(claims('卒業研究ノートとアルゴリズムイントロダクションの候補を用意しました。', [research, book])).toBe(false);
   expect(claims('英語は夜の候補です。', [satisfied, unmet])).toBe(true);
   expect(claims('英語の長文と英語は夜の候補です。', [satisfied, unmet])).toBe(true);
   expect(claims('英語の長文は夜の候補です。どちらも夜です。', [satisfied, unmet])).toBe(true);
