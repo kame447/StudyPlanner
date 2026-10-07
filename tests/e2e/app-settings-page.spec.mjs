@@ -1,4 +1,13 @@
-import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
+import { E2E_TODAY, expect, test as fixedClockTest } from './support/fixed-clock.mjs';
+
+// A cold WebKit page can take most of a test's budget before application code
+// runs. Keep page creation separate; the behavior test still has its normal
+// 30-second budget and unchanged action/assertion timeouts.
+const test = fixedClockTest.extend({
+  settingsPage: [async ({ context }, use) => {
+    await use(await context.newPage());
+  }, { timeout: 30_000 }],
+});
 
 async function seed(page) {
   await page.addInitScript(({ today }) => {
@@ -63,7 +72,7 @@ async function assertReadable(page) {
 }
 
 for (const width of [1280, 390, 320]) {
-  test(`settings is a readable independent screen with coherent return at ${width}px`, async ({ page }, testInfo) => {
+  test(`settings is a readable independent screen with coherent return at ${width}px`, async ({ settingsPage: page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 }); await seed(page); await page.goto('/');
     await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: '予定', exact: true }).click();
     const schedule = page.getByRole('grid', { name: '月間カレンダー' });
