@@ -34,7 +34,7 @@ async function boot(page, options) {
     const url = new URL(route.request().url());
     return ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ? route.continue() : route.abort();
   });
-  await page.goto(`${HARNESS_URL}?theme=${options.theme}`);
+  await page.goto(`${HARNESS_URL}?theme=${options.theme}${options.strict ? '&strict=true' : ''}`);
   await page.waitForFunction(() => typeof window.__plannerRecoveryHook?.snapshot === 'function');
   await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
   await expect(page.getByRole('navigation', { name: '主要ナビゲーション' })).toBeVisible();
@@ -1533,5 +1533,65 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     await expect(editor).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]').map(event => event.title)))
       .toEqual(['後から入力した未保存の予定']);
+  });
+}
+
+for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
+  test(`Profile photo keeps the latest choice under StrictMode ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, { ...cases.find(item => item.label === viewport && item.theme === theme), strict: true });
+    expect((await hookSnapshot(page)).mounts).toBeGreaterThanOrEqual(2);
+    await page.evaluate(() => {
+      const Reader = window.FileReader;
+      window.__heldAvatarReads = [];
+      window.__avatarConversions = 0;
+      const toDataURL = HTMLCanvasElement.prototype.toDataURL;
+      HTMLCanvasElement.prototype.toDataURL = function (...args) {
+        const value = toDataURL.apply(this, args);
+        window.__avatarConversions += 1;
+        return value;
+      };
+      window.FileReader = class extends Reader {
+        readAsDataURL(file) {
+          if (file.name === 'held.png') window.__heldAvatarReads.push(() => super.readAsDataURL(file));
+          else super.readAsDataURL(file);
+        }
+      };
+    });
+    const photo = { name: 'held.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC', 'base64') };
+    const open = async () => {
+      await page.getByRole('button', { name: 'マイページを開く', exact: true }).click();
+      const editor = page.locator('.my-page-modal');
+      await editor.locator('.collapsible-toggle').click();
+      return editor;
+    };
+    let editor = await open();
+    await editor.locator('input[type=file]').setInputFiles(photo);
+    await expect(editor.getByRole('button', { name: 'プロフィールを保存', exact: true })).toBeDisabled();
+    await editor.getByRole('button', { name: '🚀', exact: true }).click();
+    await expect(editor.getByRole('button', { name: 'プロフィールを保存', exact: true })).toBeEnabled();
+    await page.evaluate(() => window.__heldAvatarReads.shift()());
+    await expect.poll(() => page.evaluate(() => window.__avatarConversions)).toBe(1);
+    await expect(editor.locator('.user-avatar')).toHaveText('🚀');
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    const storedAvatar = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.users')).find(user => user.id === 'planner-recovery-owner').avatar);
+    await expect.poll(storedAvatar).toBe('🚀');
+    // Profile props reset the expanded section after a successful save.
+    await expect(editor.locator('input[type=file]')).toHaveCount(0);
+    await editor.locator('.collapsible-toggle').click();
+    await editor.locator('input[type=file]').setInputFiles(photo);
+    await editor.getByRole('button', { name: '閉じる', exact: true }).click();
+    editor = await open();
+    await editor.locator('input[type=file]').setInputFiles(photo);
+    await page.evaluate(() => window.__heldAvatarReads.shift()());
+    await expect.poll(() => page.evaluate(() => window.__avatarConversions)).toBe(2);
+    await expect(editor.getByRole('button', { name: 'プロフィールを保存', exact: true })).toBeDisabled();
+    await expect(editor.locator('.user-avatar')).toHaveText('🚀');
+    await page.evaluate(() => window.__heldAvatarReads.shift()());
+    await expect.poll(() => page.evaluate(() => window.__avatarConversions)).toBe(3);
+    await expect(editor.getByRole('button', { name: 'プロフィールを保存', exact: true })).toBeEnabled();
+    const selected = await editor.locator('.user-avatar img').getAttribute('src');
+    expect(selected).toMatch(/^data:image\/jpeg;base64,/);
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect.poll(storedAvatar).toBe(selected);
   });
 }
