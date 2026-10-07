@@ -28,13 +28,16 @@ async function assertReadable(page) {
     const panel = element.querySelector('.app-settings-content');
     const box = element.getBoundingClientRect();
     return { width: box.width, height: box.height, x: box.x, y: box.y,
-      viewportWidth: innerWidth, viewportHeight: innerHeight,
+      viewportWidth: document.documentElement.clientWidth, viewportHeight: innerHeight,
       overflow: element.scrollWidth > element.clientWidth || panel.scrollWidth > panel.clientWidth,
       background: style.backgroundColor, text: labelStyle.color, card: cardStyle.backgroundColor,
       fontSize: parseFloat(labelStyle.fontSize) };
   });
   expect(values.x).toBe(0); expect(values.y).toBe(0);
-  expect(values.width).toBe(values.viewportWidth); expect(values.height).toBe(values.viewportHeight);
+  // The layout viewport excludes Chromium's reserved scrollbar gutter. WebKit
+  // can resolve 100dvh to a fractional CSS pixel, even for an integer viewport.
+  expect(Math.abs(values.width - values.viewportWidth)).toBeLessThanOrEqual(.5);
+  expect(Math.abs(values.height - values.viewportHeight)).toBeLessThanOrEqual(.5);
   expect(values.overflow).toBe(false);
   expect(values.background).toMatch(/^rgb\(/); expect(values.card).toMatch(/^rgb\(/);
   expect(values.fontSize).toBeGreaterThanOrEqual(16);
