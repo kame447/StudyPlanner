@@ -79,7 +79,7 @@ jobs:
           exit "$missing"
 
       - name: Install isolated Playwright test runner
-        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.62.1
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
 
       - name: Install Chromium
         run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
