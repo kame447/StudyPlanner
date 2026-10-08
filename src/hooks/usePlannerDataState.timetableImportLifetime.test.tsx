@@ -4,16 +4,18 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { DayTimetableImportDialog } from '../components/DayTimetableImportDialog';
 import { createLocalFixture, deferred } from '../repositories/localPersistenceConcurrency.testUtils';
 import type { PlannerRepository } from '../repositories/repositoryContracts';
-import type { TimetableImportCandidate } from '../lib/timetableImport';
+import { buildTimetableImportCandidates } from '../lib/timetableImport';
+import { createScheduleOccurrenceProjection } from '../domain/scheduleOccurrence';
+import type { ScheduleTemplate } from '../types/domain';
 import { usePlannerDataState, type UsePlannerDataStateResult } from './usePlannerDataState';
 
 const boundary = vi.hoisted(() => ({ repository: null as unknown as PlannerRepository }));
 vi.mock('../repositories', () => ({ plannerRepository: new Proxy({}, { get: (_target, key) => boundary.repository[key as keyof PlannerRepository] }) }));
 const DATE = '2026-10-07';
-const candidates: TimetableImportCandidate[] = ['one', 'two'].map((id, index) => ({
-  id, sourceId: id, templates: [], title: id, subject: '', type: 'study', weekday: 'wed',
+const templates: ScheduleTemplate[] = ['one', 'two'].map((id, index) => ({
+  id, userId: 'owner', title: id, subject: '', type: 'study', weekday: 'wed',
   termId: 'term', startTime: `${9 + index}:00`.padStart(5, '0'), endTime: `${10 + index}:00`,
-  periodLabel: '', classroom: '', memo: '', isGrouped: false,
+  memo: '', active: true, createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z',
 }));
 let state: UsePlannerDataStateResult; let renderer: ReactTestRenderer;
 let showDialog: (open: boolean) => void;
@@ -23,12 +25,17 @@ function Harness({ owner = 'owner', mounted = true }: { owner?: string; mounted?
   const [open, setOpen] = useState(true); showDialog = setOpen;
   const imported = new Set(state.plans.filter(plan => plan.userId === owner && plan.date === state.selectedDate)
     .map(plan => plan.sourceId).filter((id): id is string => Boolean(id)));
+  const candidates = buildTimetableImportCandidates({ templates: state.scheduleTemplates, date: state.selectedDate,
+    weekday: 'wed', termId: 'term', term: state.timetableTerms[0] });
   return mounted ? <DayTimetableImportDialog open={open} dateLabel={state.selectedDate} selectedDate={state.selectedDate}
     userId={owner} candidates={candidates} importedSourceIds={imported} onSavePlan={state.savePlanDraft}
     onClose={() => { closed(); setOpen(false); }} /> : null;
 }
 async function mount() {
   const fixture = createLocalFixture(); boundary.repository = fixture.repository;
+  await fixture.repository.upsertTimetableTerm({ id: 'term', userId: 'owner', year: 2026, kind: 'custom',
+    label: 'Term', isActive: true, createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' });
+  for (const template of templates) await fixture.repository.upsertScheduleTemplate(template);
   await act(async () => { renderer = create(<Harness />); });
   await act(async () => { await state.loadPlannerData('owner'); state.openDay(DATE); });
   return fixture;
@@ -98,4 +105,28 @@ it.each(['date', 'owner', 'unmount'] as const)('preserves dispatched persistence
   expect(await fixture.repository.getPlans('other')).toEqual([]);
   expect(closed).not.toHaveBeenCalled();
   if (change === 'date') expect(state.selectedDate).toBe('2026-10-08');
+});
+
+it('does not revive a canceled undispatched class from a closed batch', async () => {
+  const fixture = await mount(); const gate = deferred(), entered = deferred();
+  const put = fixture.repository.upsertPlan;
+  const save = vi.fn(async (plan: Parameters<typeof put>[0]) => {
+    if (plan.sourceId === 'one') { entered.resolve(); await gate.promise; }
+    return put(plan);
+  });
+  boundary.repository = { ...fixture.repository, upsertPlan: save };
+  await act(async () => { submit().props.onClick(); await entered.promise; });
+  act(() => renderer.root.findAllByType('button').find(button => button.children.includes('閉じる'))!.props.onClick());
+  const projection = () => createScheduleOccurrenceProjection({ ownerId: 'owner', plans: state.plans, monthEvents: state.monthEvents,
+    scheduleTemplates: state.scheduleTemplates, timetableTerms: state.timetableTerms, startDate: DATE, endDate: DATE }).occurrences;
+  const second = projection().find(row => row.source.backingKind === 'timetable-template' && row.title === 'two')!;
+  await act(async () => { await state.deleteDayOccurrence(second); });
+  expect(projection().some(row => row.title === 'two')).toBe(false);
+  await act(async () => gate.resolve());
+  expect(save.mock.calls.map(([plan]) => plan.sourceId)).toEqual(['one']);
+  expect((await fixture.repository.getPlans('owner')).map(plan => plan.sourceId)).toEqual(['one']);
+  expect(projection().some(row => row.title === 'two')).toBe(false);
+  act(() => showDialog(true));
+  expect(renderer.root.findAllByProps({ role: 'alert' })).toHaveLength(1);
+  expect(inputs()).toHaveLength(1);
 });

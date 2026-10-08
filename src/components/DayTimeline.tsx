@@ -34,6 +34,8 @@ interface DayTimelineProps {
   monthEvents: MonthEvent[];
   scheduleOccurrences: ScheduleOccurrence[];
   actuals: Actual[];
+  actualPlanSources?: Plan[];
+  actualMonthEventSources?: MonthEvent[];
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onMovePlan?: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
@@ -143,6 +145,8 @@ export function DayTimeline({
   monthEvents,
   scheduleOccurrences,
   actuals,
+  actualPlanSources = plans,
+  actualMonthEventSources = monthEvents,
   weeklyDraftBlocks = [],
   onRemoveWeeklyDraftBlock,
   onMovePlan,
@@ -257,7 +261,7 @@ export function DayTimeline({
   );
   const actualEntries = buildTimelineEntries(
     [
-      ...plans.flatMap((plan) => {
+      ...actualPlanSources.flatMap((plan) => {
         const actual = actualByOccurrenceKey.get(
           buildPlanOccurrenceKey(plan.id, plan.date)
         );
@@ -282,7 +286,7 @@ export function DayTimeline({
           },
         ];
       }),
-      ...monthEvents.flatMap((monthEvent) => {
+      ...actualMonthEventSources.flatMap((monthEvent) => {
         const actual = actuals.find((candidate) => candidate.planId === monthEvent.id);
 
         if (!actual) {

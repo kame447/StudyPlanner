@@ -1,7 +1,7 @@
 # Repository tooling operations runbook
 
 Status: current repository-wide operational guide
-Updated: 2026-10-07
+Updated: 2026-10-08
 
 This document stores durable operational knowledge about repository tooling, GitHub/CI integration failures, recurring tool limitations, and verified workarounds.
 
@@ -173,6 +173,15 @@ Permissions/preconditions: the existing repository CI action must be authorized,
 - Verified result: Issue #528 local tree `4e03f328daa26db591e6e885e70c563e7c7f1cea` completed fresh app/Worker types, 6,022 tests passed / 45 skipped / 1 todo, production build (7.32s) and exit 0 with this command-scoped option. Its 237 installed package identities were unchanged. The prior interrupted run remains incomplete evidence.
 - Cleanup: no repository setting or temporary workflow was added; restore the prior environment value if it was set persistently instead of for one command. Preserve both interrupted and successful logs.
 
+
+## React test-instance assertion failure exhausts the Vitest heap
+
+- Last verified: 2026-10-08, integrated Home changes at `81af4131`, Node 24.19.0, Vitest 3.2.7 and react-test-renderer 18.3.1.
+- Symptom: `HomePixelStudent.test.tsx` never finishes, then V8 reports a roughly 2 GB heap OOM; `ERR_IPC_CHANNEL_CLOSED` follows as a secondary worker failure. The isolated file also reproduced the OOM, and the adjacent-plan case alone remained unfinished at a diagnostic 25-second timeout. This rules out full-suite worker accumulation as the necessary cause.
+- The Home title now contains a native schedule-inspection button and icon. The stale assertion compared `h1.children`, including a `ReactTestInstance` with internal React references, directly with a string array. Formatting that failed comparison exhausts the heap; it is not evidence that Home itself renders forever.
+- Compare recursively collected rendered text as a primitive string, then separately assert the button's type, accessible name and click destination. Preserve all title, schedule-transition, animation and timer-cleanup checks. Do not raise the heap limit, skip the case, remove the new button or weaken expected product behavior to hide this failure.
+- With only that test updated, the same adjacent-plan case passed in 77 ms; all 12 scheduled-student cases and the Home add-flow, next-plan presentation and unplanned-session regressions passed together: 4 files, 36 tests, 3.13 seconds, exit 0. The same installed dependency tree and one-worker configuration were used, with no production, dependency, clock, runner or heap-setting changes. This focused evidence does not replace the integration owner's full `npm run verify`.
+- Permissions/cleanup: ordinary test maintenance on the active feature branch; no temporary repository probe, workflow, package installation or persistent setting is needed. Preserve the failing and successful logs and diagnose the actual assertion before applying this pattern to another OOM.
 
 ## Maintenance rule for new tooling knowledge
 

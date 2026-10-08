@@ -155,6 +155,17 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      - name: Upload compact cross-browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-cross-browser-diagnostics-${{ github.sha }}
+          path: |
+            artifacts/playwright-cross-browser-results.json
+            artifacts/playwright-cross-browser-results/**/error-context.md
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload compact cross-browser screenshots
         if: always()
         uses: actions/upload-artifact@v7

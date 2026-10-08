@@ -178,6 +178,8 @@ export function isScheduleTemplateActiveOnDate(
   date: string,
   term?: TimetableTerm | null,
 ): boolean {
+  if (template.excludedDates?.includes(date)) return false;
+
   if (!isDateWithinTimetableTerm(date, term)) {
     return false;
   }

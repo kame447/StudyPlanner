@@ -124,6 +124,12 @@ kind/details = study-specific / general-specific additional data
 
 ### Day
 
+- 日カレンダーには、月とは独立した「日カレンダーに時間割を表示」設定を設ける。初期値はON、ユーザー別ブラウザ保存。共通projection後に未取り込みの時間割だけを表示から除き、保存済み予定・実績・月/週/Home・AIのbusy判定は変更しない。
+- 日詳細の「この日だけ削除」は、表示設定とは別の永続的なoccurrence取消し。元Plan/MonthEventと系列・別日・ActualのID/linkは保持し、選択occurrenceの開始日に対する例外だけを保存する。複数日に跨る場合は開始〜終了日を明示し「この回だけ削除」と表示して、開始日単位の一つのoccurrence全体を対象にする（当日の切片だけは削除しない）。系列全体の削除へ拡大しない。既存の全削除/範囲選択経路のdependent削除契約は変更しない。
+- 未取り込み時間割の取消しは、template専用の当日例外commandで扱い、通常Planのdrag/edit/deleteへ投影IDを送らない。`ScheduleTemplate.excludedDates` はoptionalで未設定は空。連続コマをまとめたoccurrenceは構成templateすべてを既存のowner検証付きatomic timetable mutationで更新する。時間割マスタの行自体は残り、編集/import/学期ID整合化でも例外を保持する。
+- 当日例外は共通の時間割有効日判定に置き、Month/Week/Day/Home、取り込み候補、AIのbusy/配置判定に同じ結果を返す。取り込み済み・移動済みPlanのsourceDate/sourceId優先と重複抑止は維持する。
+- 取消し後も日表示は実績のoccurrenceDateから元の予定情報を引き、実績を一度だけ表示して記録編集を維持する。未保存の失敗時は元の表示を残して再試行できる。保存結果が不明な失敗時は該当sourceを再読込し、修復が確定するまで取消し・Undo・同sourceの編集/削除/移動を再送しない。Undoは同じowner・この画面が現在観測している変更後source内容が維持されている場合だけ戻し、観測済みの新しい編集や削除を上書きしない。未観測の他端末更新に対する新しい競合制御は追加せず、既存repositoryの責任境界を維持する。
+
 - 当日表示可否と当日時間sliceは`ScheduleOccurrence`から決める。
 - 終日または日を跨ぐoccurrenceはhourly grid上部の専用領域へ表示し、通常timed occurrenceとActualの時間軸を圧迫しない。
 - URL / memo / checklist等のrich metadataはbacking compatibility objectへ戻って参照してよいが、発生日判定を再解釈しない。

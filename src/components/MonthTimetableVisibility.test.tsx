@@ -42,3 +42,18 @@ it('updates an open month day sheet while retaining saved timetable plans', () =
   }
   act(() => renderer.unmount());
 });
+
+it('keeps the day and month settings independently accessible', () => {
+  const onDay = vi.fn(), onMonth = vi.fn();
+  let renderer!: ReturnType<typeof create>;
+  act(() => { renderer = create(<AppSettingsDialog open themeMode="light" themePalette="forest"
+    onChangeTheme={vi.fn()} onChangeThemePalette={vi.fn()} onClose={vi.fn()}
+    showMonthTimetable showDayTimetable={false} onChangeMonthTimetable={onMonth} onChangeDayTimetable={onDay} />); });
+  const day = renderer.root.findByProps({ role: 'group', 'aria-labelledby': 'day-timetable-label' });
+  const month = renderer.root.findByProps({ role: 'group', 'aria-labelledby': 'month-timetable-label' });
+  expect(day.findAllByType('button')[0].props['aria-pressed']).toBe(false);
+  expect(month.findAllByType('button')[0].props['aria-pressed']).toBe(true);
+  act(() => day.findAllByType('button')[0].props.onClick());
+  expect(onDay).toHaveBeenCalledWith(true); expect(onMonth).not.toHaveBeenCalled();
+  act(() => renderer.unmount());
+});

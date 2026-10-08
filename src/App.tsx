@@ -28,6 +28,7 @@ import { ScheduleToolbar } from './components/ScheduleToolbar';
 import { useWeeklyPlanningApplication } from './features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useMonthTimetablePreference } from './hooks/useMonthTimetablePreference';
+import { useTimetableDisplayPreference } from './hooks/useTimetableDisplayPreference';
 import { useThemePreference } from './hooks/useThemePreference';
 import {
   hasStoredAppAccessGrant,
@@ -157,6 +158,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     movePlanOccurrence,
     saveWeeklyApprovedPlan,
     completeWeeklyApprovalOperation,
+    deleteDayOccurrence,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
@@ -189,6 +191,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     setEditorDraft,
   } = state;
   const monthTimetablePreference = useMonthTimetablePreference(user?.id);
+  const dayTimetablePreference = useTimetableDisplayPreference('day', user?.id);
   const homeScenePreference = useHomeScenePreference();
   const {
     term: activeTimetableTerm,
@@ -450,7 +453,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
           onRetry={retryPlannerData}
         />
         {isHomeSurface ? (
-          <StudySessionProvider materials={studyMaterials} onSaveActual={saveActual}>
+          <StudySessionProvider userId={user.id} materials={studyMaterials} onSaveActual={saveActual} onSaveStandaloneActual={saveStandaloneActual}>
             <HomeScheduleView
               homeScenePreferences={homeScenePreference.preferences}
               userId={user.id}
@@ -547,6 +550,8 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
 
             {viewMode === 'day' ? (
               <DayView
+                onDeleteOccurrence={deleteDayOccurrence}
+                showTimetable={dayTimetablePreference.showTimetable}
                 selectedDate={selectedDate}
                 userId={user.id}
                 plans={plans}
@@ -729,6 +734,9 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         onChangeHomeSceneMotion={homeScenePreference.setAnimated}
         homeSceneError={homeScenePreference.error}
         open={settingsNavigation.isOpen}
+        showDayTimetable={dayTimetablePreference.showTimetable}
+        onChangeDayTimetable={dayTimetablePreference.setShowTimetable}
+        dayTimetableError={dayTimetablePreference.error}
         showMonthTimetable={monthTimetablePreference.showTimetable}
         onChangeMonthTimetable={monthTimetablePreference.setShowTimetable}
         monthTimetableError={monthTimetablePreference.error}

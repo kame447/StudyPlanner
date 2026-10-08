@@ -1,6 +1,6 @@
 import { HomeDisplayClockProvider } from './home/HomeDisplayClockContext';
 import { StrictMode } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HomeScheduleView } from './HomeScheduleView';
 import { HomeTopbar } from './HomeTopbar';
@@ -40,13 +40,16 @@ function home(fixture: Fixture, showHome = true) {
       onAddEntry={noop} onOpenDay={opened} onOpenTodo={noop} onOpenBookshelf={noop} onOpenReport={noop} /> : null}
   </HomeSceneAtmosphereProvider></HomeDisplayClockProvider></StrictMode>;
 }
+function textOf(node: ReactTestInstance | string): string {
+  return typeof node === 'string' ? node : node.children.map(textOf).join('');
+}
 function state() {
   const root = renderer!.root;
   const today = root.findByProps({ 'data-home-section': 'today-schedule' });
   return {
     date: root.findByProps({ className: 'home-date-display' }).props.dateTime,
     rows: today.findAllByProps({ className: 'home-schedule-row' }).map(row => row.findByType('strong').children.join('')),
-    next: root.findByProps({ 'data-home-section': 'next-plan' }).findByType('h1').children.join(''),
+    next: textOf(root.findByProps({ 'data-home-section': 'next-plan' }).findByType('h1')),
     sky: root.findByProps({ className: 'home-study-scene' }).props['data-scene-period'],
   };
 }
