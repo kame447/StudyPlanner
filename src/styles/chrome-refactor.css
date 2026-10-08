@@ -4,6 +4,7 @@
 .primary-app-header {
   container: primary-header / inline-size;
   width: min(calc(100vw - 24px), 484px);
+  max-width: 100%;
   margin-inline: auto;
   align-self: start;
   justify-self: center;
@@ -153,6 +154,7 @@
 .primary-bottom-nav span:last-child,
 .primary-bottom-nav.schedule-bottom-nav.home-bottom-nav span:last-child {
   font-size: var(--home-nav-label-size);
+  white-space: nowrap;
 }
 
 .primary-bottom-nav .home-nav-active-circle svg,

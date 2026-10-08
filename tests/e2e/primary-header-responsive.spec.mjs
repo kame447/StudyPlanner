@@ -100,14 +100,24 @@ async function readHeaderBounds(page) {
         violations.push(`header button ${button.getAttribute('aria-label')} shrinks or escapes`);
       }
     }
-    if (headerBox.left < -0.75 || headerBox.right > window.innerWidth + 0.75
+    const viewportWidth = document.documentElement.clientWidth;
+    if (headerBox.left < -0.75 || headerBox.right > viewportWidth + 0.75
       || header.scrollWidth > header.clientWidth + 1) violations.push('header overflows viewport');
     const nav = document.querySelector('.primary-bottom-nav');
     const navBox = nav.getBoundingClientRect();
-    if (navBox.left < -0.75 || navBox.right > window.innerWidth + 0.75) violations.push('navigation overflows viewport');
+    if (navBox.left < -0.75 || navBox.right > viewportWidth + 0.75
+      || nav.scrollWidth > nav.clientWidth + 1) violations.push('navigation overflows viewport');
     const navButtons = [...nav.querySelectorAll('button')];
     if (navButtons.length !== 5 || navButtons.some(button => !within(button.getBoundingClientRect(), navBox))) {
       violations.push('navigation button escapes footer');
+    }
+    for (const button of navButtons) {
+      const label = button.querySelector('span:last-child');
+      const range = document.createRange();
+      range.selectNodeContents(label);
+      if (!within(range.getBoundingClientRect(), button.getBoundingClientRect())) {
+        violations.push(`navigation label ${label.textContent} escapes button`);
+      }
     }
     return { violations, texts, headerHeight: headerBox.height };
   });
@@ -117,6 +127,12 @@ async function expectReadableHeader(page, expectedTexts) {
   await expect(page.locator('.home-date-display')).toBeVisible();
   await expect.poll(async () => (await readHeaderBounds(page)).violations).toEqual([]);
   expect((await readHeaderBounds(page)).texts).toEqual(expectedTexts);
+}
+
+async function attachScreenshot(testInfo, name, target) {
+  const path = testInfo.outputPath(`${name}.png`);
+  await target.screenshot({ path });
+  await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 
 for (const viewport of VIEWPORTS) {
@@ -131,9 +147,7 @@ for (const viewport of VIEWPORTS) {
       await expectReadableHeader(page, ['2026', '12', '31', '木']);
     }
     if ([320, 393].includes(viewport.width)) {
-      await testInfo.attach(`header-${viewport.width}`, {
-        body: await page.locator('.primary-app-header').screenshot(), contentType: 'image/png',
-      });
+      await attachScreenshot(testInfo, `header-${viewport.width}`, page.locator('.primary-app-header'));
     }
   });
 }
@@ -146,7 +160,7 @@ test('393px keeps both digits of September 10 visible without a second header ro
   await expect(page.locator('.ai-planning-view')).toBeVisible();
   await expectReadableHeader(page, ['2026', '9', '10', '木']);
   expect((await readHeaderBounds(page)).headerHeight).toBeLessThan(80);
-  await testInfo.attach('september-10-at-393px', { body: await page.screenshot(), contentType: 'image/png' });
+  await attachScreenshot(testInfo, 'september-10-at-393px', page);
 });
 
 for (const width of [320, 393, 768]) {
@@ -156,9 +170,15 @@ for (const width of [320, 393, 768]) {
     await page.goto('/');
     await page.addStyleTag({ content: ':root { font-size: 200% !important; }' });
     await expectReadableHeader(page, ['2026', '12', '31', '木']);
-    await testInfo.attach(`header-${width}-text-200`, {
-      body: await page.locator('.primary-app-header').screenshot(), contentType: 'image/png',
-    });
+    if (width === 320) {
+      await page.locator('.primary-bottom-nav button').filter({ hasText: 'AI計画' }).click();
+      await expect(page.locator('.ai-planning-view')).toBeVisible();
+      await expectReadableHeader(page, ['2026', '12', '31', '木']);
+      const composer = await page.locator('.ai-planning-composer').boundingBox();
+      const nav = await page.locator('.primary-bottom-nav').boundingBox();
+      expect(composer.y + composer.height).toBeLessThanOrEqual(nav.y + 1);
+    }
+    await attachScreenshot(testInfo, `header-${width}-text-200`, page.locator('.primary-app-header'));
   });
 }
 
