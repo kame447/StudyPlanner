@@ -68,3 +68,13 @@ AI計画で入力欄をタップして入力しようとすると、入力欄へ
 - ローカルChromiumの既知socket EPERMは同条件で再試行・迂回しない。ブラウザ確認は承認済み公開後のCIへ引き継ぐ。
 - 実iPhoneのキーボード/pan/IMEとpinch操作は未検証。合成VisualViewportやWebKit headlessだけで実機修正完了とは報告しない。
 - PR/main反映の承認はあるが、現時点でpush/PR/mergeは未実行。merge操作は統合ownerが担当する。Issue作成cancelは別操作として停止を維持する。
+
+## 公開後のfixture修正 — 2026-10-08 00:20 UTC
+
+- 公開先: [PR #537](https://github.com/kame447/StudyPlanner/pull/537)、初回remote HEAD `db4c41eb69bb8cd1ba702db02a8155fe58013726`。親は#536の`d824af492b2007a10482c4991d57b35d7778b0d0`、treeは統合local HEAD `4dcd573252b1cde68bca2afbd0d4a52c9791d72b` と同じ `2f7f21674ae8688e00c8ee6d27e6e96d480eb2f8`。
+- この統合treeの正規verifyは758 files / 6,132 passed / 45 skipped / 1 todo、fresh型/build/bundle guards成功。初回CI/Quality/Admin/visualも成功したが、[Browser Regression run 37705434154](https://github.com/kame447/StudyPlanner/actions/runs/37705434154) は381 passed / 4 failedで不合格。
+- 3幅とも初回`input.tap()`（旧line109）で`element is outside of the viewport`、preview caseは初回open（旧line181）で同理由。24 messagesと末尾位置の確認は通過済みで、keyboard縮小操作より前に失敗していた。関連#538の同fixture失敗画像も、履歴が存在しcomposerが画面外へ押し出された状態を示す。
+- 原因分類: E2E harness。`addInitScript`はviewport meta適用前に動き、mobile初期layoutの`window.innerHeight`をmockが固定していた。新fixtureは`page.viewportSize().height`を明示的に渡す。production sourceは変更しない。日付seed・メッセージ件数・containment・focus契約・timeoutは緩めない。
+- actual fixture関数をNode VMで評価し、初期innerHeightを2122とした反証: 旧版はrunner指定640/844/874/900の全例を2122に固定、新版は各指定値に一致。これはfixture入力検証でありbrowser成功の代替ではない。
+- 初期shell高さとcontainmentのassertionを追加。keyboard縮小時の成功画像をoutputPathへ保存しattach(path)する。次のexact-head browserで修正と実geometryを再検証する。
+- 本修正後のfull/CIはこれから再実行する。初回失敗を隠さず、同branch/PRで継続する。main mergeは統合ownerのみ。

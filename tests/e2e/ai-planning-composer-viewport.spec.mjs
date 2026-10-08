@@ -6,9 +6,14 @@ import { clickPrimaryNav, seedRegressionUser } from './support/ui-regression.mjs
 // Actual Safari keyboard/pinch interaction remains a separate device check.
 async function seedConversationAndViewport(page, withPreview = false) {
   await seedRegressionUser(page);
-  await page.addInitScript(({ withPreview }) => {
+  const initialViewport = page.viewportSize();
+  if (!initialViewport) throw new Error('The visual-viewport fixture requires an explicit browser viewport');
+  await page.addInitScript(({ withPreview, viewportHeight }) => {
     const viewport = window.visualViewport;
-    const metrics = { height: window.innerHeight, offsetTop: 0, scale: 1 };
+    // Init scripts run before the viewport meta tag. Mobile innerHeight can
+    // still describe the default 980px layout viewport here, not the configured
+    // device viewport. Use the runner's size until the test explicitly resizes.
+    const metrics = { height: viewportHeight, offsetTop: 0, scale: 1 };
     for (const key of Object.keys(metrics)) {
       Object.defineProperty(viewport, key, { configurable: true, get: () => metrics[key] });
     }
@@ -44,7 +49,7 @@ async function seedConversationAndViewport(page, withPreview = false) {
     localStorage.setItem(`studyplanner.weeklyPlanning.activeSession.${ownerId}`, JSON.stringify({
       version: 1, ownerId, weekStartDate, conversationId: null,
     }));
-  }, { withPreview });
+  }, { withPreview, viewportHeight: initialViewport.height });
 }
 
 async function changeViewport(page, metrics, event = 'resize') {
@@ -93,7 +98,7 @@ test.describe('AI conversation stays readable with a reduced visual viewport', (
     { width: 390, height: 844, keyboardHeight: 460 },
     { width: 402, height: 874, keyboardHeight: 480 },
   ]) {
-    test(`keeps history and composer visible during keyboard resize/pan at ${width}px`, async ({ page }) => {
+    test(`keeps history and composer visible during keyboard resize/pan at ${width}px`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height });
       await seedConversationAndViewport(page);
       await page.goto('/');
@@ -104,6 +109,8 @@ test.describe('AI conversation stays readable with a reduced visual viewport', (
       await expect(messages).toHaveCount(24);
       await expect(input).not.toBeFocused();
       const initial = await readLayout(page);
+      expect(initial.shell.height).toBe(height);
+      await expectReadableLayout(page);
       await expect.poll(async () => (await readLayout(page)).endGap).toBeLessThanOrEqual(2);
 
       await input.tap();
@@ -114,6 +121,11 @@ test.describe('AI conversation stays readable with a reduced visual viewport', (
       await expect.poll(async () => (await readLayout(page)).endGap).toBeLessThanOrEqual(2);
       await expect(messages.last()).toBeInViewport();
       await expect(page.getByRole('button', { name: '送信', exact: true })).toBeEnabled();
+      const screenshotPath = testInfo.outputPath(`ai-composer-keyboard-${width}.png`);
+      await page.screenshot({ path: screenshotPath });
+      await testInfo.attach(`ai-composer-keyboard-${width}`, {
+        path: screenshotPath, contentType: 'image/png',
+      });
 
       // Scroll old messages while input remains focused. Neither typing nor
       // visual-viewport panning may put the user back at the conversation end.
