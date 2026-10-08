@@ -1,4 +1,5 @@
 import { enforceSingleActivePlanningWindowV5 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
+import { reconcileWeeklyPlanningHistoricalWindowQuestionsV5 } from './weeklyPlanningPlanningWindowReconciliationV5';
 import { conversationArchitecturePolicy, type WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import { hasWeeklyPlanningSemanticUncertaintyResolutionV5 } from './weeklyPlanningSemanticUncertaintyResolutionV5';
 import { weeklyPlanningMaterialIdentityAnswersV5, applyWeeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
@@ -279,9 +280,13 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
     operationKeyPrefix: params.operationKeyPrefix,
     conversationArchitecture: params.conversationArchitecture,
   });
-  const canonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
+  const collapsedCanonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
     originalGraph: params.originalGraph,
     canonicalization: uncertaintyReconciledCanonicalization,
+  });
+  const canonicalization = reconcileWeeklyPlanningHistoricalWindowQuestionsV5({
+    originalGraph: params.originalGraph,
+    canonicalization: collapsedCanonicalization,
   });
   return {
     entityBindingApplication,

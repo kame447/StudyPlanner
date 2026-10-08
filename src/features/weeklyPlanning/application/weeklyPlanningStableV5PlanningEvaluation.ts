@@ -1,3 +1,4 @@
+import { compileWithWeeklyPlanningWindowQuestionSuspension } from './weeklyPlanningWindowQuestionClosure';
 import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
@@ -228,14 +229,18 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     localToFactId: semantic.canonicalization?.localToFactId ?? {},
     previousRecords: input.previousState?.learningStrategyProposalRecords ?? [],
   });
-  const rawBaselineCompilation = compileGenericSchedulerInput({
+  const rawBaselineCompilation = compileWithWeeklyPlanningWindowQuestionSuspension({
     graph: activeGraph,
-    context: schedulerContext,
-    externalSources,
-    estimateCalibrationMultiplier: estimateCalibration.multiplier,
-    observedEstimateOverrides: observedPaceProjection.estimateOverrides,
-    resolvedDateExpressions,
-    resolvedTemporalConstraints,
+    architecture: input.conversationArchitecture,
+    compile: graph => compileGenericSchedulerInput({
+      graph,
+      context: schedulerContext,
+      externalSources,
+      estimateCalibrationMultiplier: estimateCalibration.multiplier,
+      observedEstimateOverrides: observedPaceProjection.estimateOverrides,
+      resolvedDateExpressions,
+      resolvedTemporalConstraints,
+    }),
   });
   const provisionalTimeboxProjection = resolveWeeklyPlanningProvisionalTimeboxV5({
     directive: semantic.normalization.contextualDirective,

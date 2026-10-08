@@ -1,3 +1,4 @@
+import { reconcileWeeklyPlanningWindowDependentsV5 } from './weeklyPlanningPlanningWindowDependentsV5';
 import {
   createActiveLifecycleEntriesV5,
 } from './weeklyPlanningFactLifecycleV5';
@@ -66,12 +67,21 @@ export function enforceSingleActivePlanningWindowV5(
       .filter((entry) => entry.kind === 'planning_window')
       .map((entry) => entry.id),
   );
-  const terminalRevision = result.diff.toRevision;
+  let graph = result.graph;
+  const removed = [...result.diff.removed];
+  for (const window of superseded) {
+    const reconciled = reconcileWeeklyPlanningWindowDependentsV5({ graph, targetFactId: window.id,
+      replacementFactId, terminalRevision: result.diff.toRevision });
+    if (reconciled.errors.length) return { ...result, status: 'rejected', diff: null, errors: reconciled.errors };
+    graph = reconciled.graph;
+    removed.push(...reconciled.removed);
+  }
+  const terminalRevision = graph.revision;
   return {
     ...result,
     graph: {
-      ...result.graph,
-      factLifecycles: result.graph.factLifecycles.map((entry) =>
+      ...graph,
+      factLifecycles: graph.factLifecycles.map((entry) =>
         supersededIds.has(entry.factId) && entry.status === 'active'
           ? {
               ...entry,
@@ -83,6 +93,8 @@ export function enforceSingleActivePlanningWindowV5(
     },
     diff: {
       ...result.diff,
+      toRevision: graph.revision,
+      removed,
       superseded: [
         ...result.diff.superseded,
         ...superseded.filter((entry) => !alreadyRecordedIds.has(entry.id)),

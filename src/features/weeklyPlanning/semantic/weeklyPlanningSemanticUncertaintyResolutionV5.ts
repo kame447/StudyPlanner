@@ -18,6 +18,13 @@ export function hasWeeklyPlanningSemanticUncertaintyResolutionV5(params: {
 }): boolean {
   const { graph, document, uncertainty } = params;
   const target = uncertainty.targetFactId;
+  const window = graph.planningWindows.find(fact => fact.id === target);
+  if (window) {
+    // Window replacement owns this lifecycle, independently of the provider's
+    // field name. Contextual cleanup must not erase a carried question or remove
+    // a question a second time after the replacement already invalidated it.
+    return false;
+  }
   const bindings = resolveWeeklyPlanningExistingEntityGraphBindingsV5({ graph, document });
   if (bindings.errors.length > 0) return false;
   const boundId = (localId: string) => bindings.taskFactIdByLocalId[localId]

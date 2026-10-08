@@ -25,6 +25,7 @@ import {
 import {
   canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5,
 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
+import { prepareWeeklyPlanningWorkloadDependentsV5 } from './weeklyPlanningWorkloadDependentMigrationV5';
 import { conversationArchitecturePolicy, type WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import { hasWeeklyPlanningSemanticUncertaintyResolutionV5 } from './weeklyPlanningSemanticUncertaintyResolutionV5';
 import type {
@@ -421,38 +422,50 @@ function applyQuantityRoleAnswer(
     },
     createdRevision: nextRevision,
   };
-  const lifecycles = input.graph.factLifecycles.map((entry) =>
+  const added = [{ kind: 'workload' as const, id }];
+  const superseded = [{ kind: 'workload' as const, id: target.id }];
+  const stagedGraph: WeeklyPlanningFactGraphV5 = {
+    ...input.graph,
+    revision: nextRevision,
+    workloads: [...input.graph.workloads, replacement],
+    factLifecycles: [
+      ...input.graph.factLifecycles,
+      ...createActiveLifecycleEntriesV5({ added, revision: nextRevision }),
+    ],
+  };
+  const prepared = prepareWeeklyPlanningWorkloadDependentsV5({
+    graph: stagedGraph, targetFactId: target.id, replacementFactId: id,
+    migrationId: id, operationKey: `contextual:${turnKey(input)}`,
+  });
+  if (prepared.status === 'rejected') return {
+    status: 'rejected', graph: input.graph, diff: null, errors: prepared.errors, localToFactId: {},
+  };
+  const terminalRevision = prepared.graph.revision;
+  const lifecycles = prepared.graph.factLifecycles.map((entry) =>
     entry.factId === target.id
       ? {
           ...entry,
           status: 'superseded' as const,
-          terminalRevision: nextRevision,
+          terminalRevision,
           supersededByFactId: id,
         }
       : entry);
-  const added = [{ kind: 'workload' as const, id }];
-  const superseded = [{ kind: 'workload' as const, id: target.id }];
   return appliedResult({
     graph: {
-      ...input.graph,
-      revision: nextRevision,
+      ...prepared.graph,
       appliedTurnKeys: [...input.graph.appliedTurnKeys, turnKey(input)],
       appliedLifecycleOperationKeys: [
-        ...input.graph.appliedLifecycleOperationKeys,
+        ...prepared.graph.appliedLifecycleOperationKeys,
         `contextual:${turnKey(input)}`,
       ],
-      workloads: [...input.graph.workloads, replacement],
-      factLifecycles: [
-        ...lifecycles,
-        ...createActiveLifecycleEntriesV5({ added, revision: nextRevision }),
-      ],
+      factLifecycles: lifecycles,
     },
     diff: {
       fromRevision: input.graph.revision,
-      toRevision: nextRevision,
-      added,
-      superseded,
-      removed: [],
+      toRevision: terminalRevision,
+      added: [...added, ...prepared.added],
+      superseded: [...superseded, ...prepared.superseded],
+      removed: prepared.removed,
     },
   });
 }

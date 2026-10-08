@@ -7,6 +7,8 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import { isUserUtteranceSourcedV5 } from './weeklyPlanningFactGraphV5';
+import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './weeklyPlanningActiveSchedulerGraphViewV5';
+import type { WeeklyPlanningSemanticNormalizerInputV5 } from './weeklyPlanningSemanticNormalizerContractsV5';
 
 export const FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS = 80;
 
@@ -38,7 +40,7 @@ export interface FocusedAuthorizationDecisionV5 {
   decision: 'create_plan' | 'fallback';
 }
 
-export interface FocusedAuthorizationInputV5 {
+export interface FocusedAuthorizationInputV5 extends Pick<WeeklyPlanningSemanticNormalizerInputV5, 'committedGraph' | 'conversationArchitecture'> {
   userText: string;
   supplementalContext?: string;
   publicStateSummary?: Record<string, unknown>;
@@ -58,6 +60,11 @@ export function focusedAuthorizationEligibleV5(
   if (!isRecord(summary)) return false;
   if (summary.pendingQuestion !== null && summary.pendingQuestion !== undefined) return false;
   if (summary.previousCompatibilityStatus !== 'needs_scope') return false;
+  // Event-only acknowledgements need the ordinary semantic interpreter. This
+  // skips an optional transport shortcut; it grants no planning authority and
+  // does not suspend any question. Movable non-study work keeps normal validation.
+  if (input.conversationArchitecture === 'interaction_v1' && input.committedGraph
+    && !createWeeklyPlanningActiveSchedulerGraphViewV5(input.committedGraph).tasks.some(task => task.category === 'study')) return false;
   return Array.isArray(summary.tasks) && summary.tasks.length > 0;
 }
 
