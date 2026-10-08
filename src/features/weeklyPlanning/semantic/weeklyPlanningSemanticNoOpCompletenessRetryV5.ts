@@ -126,6 +126,50 @@ function acceptedPriorNoOpResult(params: {
   return result;
 }
 
+/**
+ * Whether an invalid re-read may have carried a change (typed shape only, never text). An
+ * unreadable response cannot be told apart, so it counts as possibly carrying one; a parsed
+ * response with no planning content at all keeps the still-valid no-op reading.
+ */
+function invalidRetryMayCarryChange(parsed: unknown): boolean {
+  if (!parsed || typeof parsed !== 'object') return true;
+  const doc = parsed as Record<string, unknown>;
+  if (!Array.isArray(doc.tasks)) return true;
+  const nonEmpty = (key: string) => Array.isArray(doc[key]) && (doc[key] as unknown[]).length > 0;
+  if (doc.planningWindow || ['relations', 'availabilityDeclarations', 'constraintSourceRequests', 'userContextFacts',
+    'uncertainties', 'corrections', 'decisions'].some(nonEmpty)) return true;
+  try {
+    return hasTaskSemanticPayload({ tasks: (doc.tasks as Array<Record<string, unknown>>).map((task) => ({
+      workloads: [], effortEstimates: [], temporalConstraints: [], recurrence: [], durableContextSignals: [], ...task,
+    })) } as unknown as WeeklyPlanningSemanticDocumentV5);
+  } catch {
+    return true;
+  }
+}
+
+function rejectedNoOpRetryResult(params: {
+  run: WeeklyPlanningSemanticNormalizerRunV5;
+  attemptCount: number;
+  repairAttempted: boolean;
+  validationErrors: string[];
+}): WeeklyPlanningSemanticNormalizerResultV5 {
+  const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+    status: 'rejected',
+    document: null,
+    diagnostics: params.run.diagnostics({
+      attemptCount: params.attemptCount,
+      repairAttempted: params.repairAttempted,
+      validationErrors: params.validationErrors,
+      providerError: null,
+    }),
+  };
+  params.run.recordDecision(result, {
+    route: 'schema_valid_noop_completeness_retry_rejected',
+    severity: 'error',
+  });
+  return result;
+}
+
 function providerFailureDuringCompletenessRetry(params: {
   run: WeeklyPlanningSemanticNormalizerRunV5;
   attemptCount: number;
@@ -478,6 +522,20 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
       return result;
     }
 
+    if (!shouldRetryAgain && !validation.document
+      && invalidRetryMayCarryChange(validation.parsedDocument ?? validation.providerDocument ?? null)
+      && conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs) {
+      // The first reading was a schema-valid contradiction (it pointed at the plan but carried no
+      // change) and the re-read that should have recovered the meaning is invalid. Accepting the
+      // empty reading would report the plan as unchanged while the message went unused, so the
+      // turn is an unusable message instead: nothing applied, recovery wording, no promotion.
+      return rejectedNoOpRetryResult({
+        run: params.run,
+        attemptCount,
+        repairAttempted,
+        validationErrors: [...validationErrors, ...validation.errors.map((error) => `completeness_retry:${error}`)],
+      });
+    }
     if (!shouldRetryAgain) {
       return acceptedPriorNoOpResult({
         run: params.run,

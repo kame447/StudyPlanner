@@ -210,7 +210,7 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     if (interactionCompletenessAuditRuns.has(params.run)) return null;
     interactionCompletenessAuditRuns.add(params.run);
   }
-  const abstain = (reason: 'provider_failure' | 'malformed_audit_response' | 'dispatch_budget_exhausted' | 'initial_facts_not_preserved' | 'repair_budget_consumed', step: 'audit' | 'retry') => {
+  const abstain = (reason: WeeklyPlanningSemanticCompletenessAbstentionV5['reason'], step: 'audit' | 'retry') => {
     if (!evidenceCoverageEligibility) return;
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: params.run.input.traceRequestId,
@@ -243,6 +243,33 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     };
     params.run.recordDecision(result, { route: 'completeness_retry_initial_facts_retained' });
     return result;
+  };
+  // A possible omission that could not be checked or taken in: the audit was selected by a
+  // literal gap and could not run, or it reported an omission and its re-read could not run.
+  // Interaction keeps the valid first reading and discloses it (safe failure, not silence);
+  // legacy keeps its historical silent retention.
+  // Semantic document attempts before the audit (the audit itself is not a reading attempt).
+  const attemptsBeforeAudit = Math.max(1, params.run.responseLengths.length);
+  const unverifiedOmissionResult = (reason: 'provider_failure' | 'malformed_audit_response' | 'dispatch_budget_exhausted', step: 'audit' | 'retry') => {
+    abstain(reason, step);
+    if (!retentionFloor) return null;
+    const result: WeeklyPlanningSemanticNormalizerResultV5 & { completenessAbstention: WeeklyPlanningSemanticCompletenessAbstentionV5 } = {
+      status: 'accepted', document: params.initialDocument,
+      completenessAbstention: { reason, step },
+      diagnostics: { ...params.run.diagnostics({ attemptCount: step === 'audit' ? attemptsBeforeAudit : attemptsBeforeAudit + 1,
+        repairAttempted: Boolean(params.semanticRepairConsumed?.()), validationErrors: [], providerError: null }),
+      algorithmicRepairs: initialAlgorithmicRepairs },
+    };
+    params.run.recordDecision(result, { route: 'completeness_unverified_initial_retained' });
+    return result;
+  };
+  // After an incomplete audit, an accepted reading that retained the floor but added no typed fact
+  // did not take the reported omission in: disclose it like any other unresolved omission.
+  const withOmissionTakenInCheck = <T extends WeeklyPlanningSemanticNormalizerResultV5>(result: T): T => {
+    if (!retentionFloor || result.status !== 'accepted' || !result.document || result.completenessAbstention) return result;
+    if (semanticFactCountV5(result.document) > semanticFactCountV5(params.initialDocument)) return result;
+    abstain('omission_not_taken_in', 'retry');
+    return { ...result, completenessAbstention: { reason: 'omission_not_taken_in', step: 'retry' } };
   };
 
   const auditMessages = createDenseTurnCompletenessAuditMessagesV5({
@@ -293,13 +320,11 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     // The turn's shared dispatch budget ran out: keep the valid initial document; budget
     // exhaustion is never reported as a connectivity failure.
     if (isWeeklyPlanningTurnDispatchBudgetExceeded(error)) {
+      if (evidenceCoverageEligibility) return unverifiedOmissionResult('dispatch_budget_exhausted', 'audit');
       abstain('dispatch_budget_exhausted', 'audit');
       return null;
     }
-    if (evidenceCoverageEligibility) {
-      abstain('provider_failure', 'audit');
-      return null;
-    }
+    if (evidenceCoverageEligibility) return unverifiedOmissionResult('provider_failure', 'audit');
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: params.run.input.traceRequestId,
       stage: 'semantic_dense_turn_completeness_audit_result',
@@ -329,10 +354,7 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     },
   });
   if (!audit) {
-    if (evidenceCoverageEligibility) {
-      abstain('malformed_audit_response', 'audit');
-      return null;
-    }
+    if (evidenceCoverageEligibility) return unverifiedOmissionResult('malformed_audit_response', 'audit');
     return completenessAuditFailureResult({
       run: params.run,
       repairAttempted: Boolean(params.semanticRepairConsumed?.()),
@@ -406,14 +428,8 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
   try {
     retryResponse = await params.run.callGeneric(retryMessages, 'dense_completeness_retry');
   } catch (error) {
-    if (isWeeklyPlanningTurnDispatchBudgetExceeded(error)) {
-      abstain('dispatch_budget_exhausted', 'retry');
-      return null;
-    }
-    if (evidenceCoverageEligibility) {
-      abstain('provider_failure', 'retry');
-      return null;
-    }
+    if (isWeeklyPlanningTurnDispatchBudgetExceeded(error)) return unverifiedOmissionResult('dispatch_budget_exhausted', 'retry');
+    if (evidenceCoverageEligibility) return unverifiedOmissionResult('provider_failure', 'retry');
     const result: WeeklyPlanningSemanticNormalizerResultV5 = {
       status: 'provider_failure',
       document: null,
@@ -476,7 +492,7 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     if (repaired.status === 'accepted' && repaired.document && !retainsInitialFacts(repaired.document)) {
       return finalizeBudgetCompletion(retainedInitialResult(repaired.diagnostics.attemptCount, repaired.diagnostics.repairAttempted), 'repair');
     }
-    return finalizeBudgetCompletion(repaired, 'repair');
+    return withOmissionTakenInCheck(finalizeBudgetCompletion(repaired, 'repair'));
   }
 
   const result: WeeklyPlanningSemanticNormalizerResultV5 = {
@@ -493,5 +509,20 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     route: 'dense_turn_completeness_retry',
     extra: { missingFacts: audit.missingFacts },
   });
-  return result;
+  return withOmissionTakenInCheck(result);
+}
+
+/** Typed planning facts in a document (retention excludes descriptive metadata the same way). */
+export function semanticFactCountV5(document: WeeklyPlanningSemanticDocumentV5): number {
+  let count = (document.planningWindow ? 1 : 0) + document.relations.length + document.availabilityDeclarations.length
+    + document.constraintSourceRequests.length + (document.userContextFacts?.length ?? 0) + document.uncertainties.length
+    + document.corrections.length + document.decisions.length;
+  for (const task of document.tasks) {
+    count += 1 + task.workloads.length + task.effortEstimates.length + task.temporalConstraints.length
+      + task.recurrence.length + (task.durableContextSignals?.length ?? 0);
+    for (const component of task.study?.components ?? []) {
+      count += 1 + component.workloads.length + (component.durableContextSignals?.length ?? 0);
+    }
+  }
+  return count;
 }

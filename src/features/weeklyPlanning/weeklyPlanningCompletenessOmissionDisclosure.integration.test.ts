@@ -6,7 +6,8 @@ import {
   resetScriptedConversationRuntime,
   scriptedRendererReply,
 } from './testUtils/weeklyPlanningScriptedConversationHarness';
-import { WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT } from './dialogue/weeklyPlanningInteractionFallbackText';
+import { WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT, WEEKLY_PLANNING_RETAINED_PREVIEW_UNCHANGED_TEXT } from './dialogue/weeklyPlanningInteractionFallbackText';
+import { A, schedulingDocument } from './testUtils/weeklyPlanningSchedulingConstraintsFixture';
 import { boundWeeklyPlanningDialogueRendererTraceForTransport } from './trace/weeklyPlanningDialogueRendererTrace';
 import type { WeeklyPlanningConversationArchitecture } from './weeklyPlanningConversationArchitecture';
 
@@ -96,5 +97,84 @@ describe('completeness omission disclosure (application-owned safe failure)', ()
     const { result, titles } = await turn({ architecture: 'legacy_v5', audit: 'incomplete', reread: ['数学', '化学'] });
     expect(titles).toEqual(['数学', '化学'].sort());
     expect(result.result?.message ?? '').not.toContain(WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT);
+  });
+});
+
+describe('every completion path that discards or cannot check a reading is disclosed (live H T3, round 3)', () => {
+  it('an empty first reading whose re-read is invalid is an unusable message, not an unchanged plan', async () => {
+    let turn2 = false;
+    let semanticCalls = 0;
+    provider = installScriptedWeeklyPlanningProvider(call => {
+      if (call.kind === 'renderer') return scriptedRendererReply(call, turn2
+        ? '変更をうまく受け取れませんでした。変えたい点を教えてください。'
+        : '候補を用意しました。内容を確認してください。');
+      if (!turn2) return JSON.stringify(schedulingDocument('A'));
+      semanticCalls += 1;
+      if (semanticCalls > 1) return '{invalid-reread';
+      const tasks = (call.payload!.publicStateSummary as Json).tasks as Json[];
+      // Live H T3 shape: the accepted task is pointed at, but no change is carried.
+      return JSON.stringify({ schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'update_plan', planningWindow: null,
+        tasks: [{ localId: 'shell', existingPublicId: tasks[0].publicId, decompositionStatus: 'atomic', category: 'study',
+          title: 'アルゴリズムイントロダクション', study: null, workloads: [], effortEstimates: [], temporalConstraints: [],
+          recurrence: [], durableContextSignals: [], sourceText: '水曜の夜にまとめて' }],
+        relations: [], availabilityDeclarations: [], constraintSourceRequests: [], userContextFacts: [],
+        conversationActs: [], uncertainties: [], corrections: [], decisions: [] });
+    });
+    const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1' });
+    await conversation.submit(A);
+    const previewBefore = structuredClone(conversation.getState().previewCandidates);
+    expect(previewBefore?.length).toBeGreaterThan(0);
+    const graphBefore = structuredClone(conversation.graph());
+    turn2 = true;
+    const result = await conversation.submit('じゃあ水曜の夜にまとめて');
+    expect(result.result?.interactionOutcome).toMatchObject({ kind: 'recover', failure: 'semantic' });
+    expect(result.result?.message).toContain(WEEKLY_PLANNING_RETAINED_PREVIEW_UNCHANGED_TEXT);
+    expect(result.result?.message).not.toContain('この内容で仮予定にする');
+    expect(conversation.getState().previewCandidates).toEqual(previewBefore);
+    expect(conversation.graph()?.tasks).toEqual(graphBefore?.tasks);
+    // initial reading and its single re-read; no repair is added
+    expect(result.calls.filter(call => call.kind === 'semantic_generic')).toHaveLength(2);
+  });
+
+  it('an invalid re-read that carries no change keeps the still-valid unchanged reading', async () => {
+    let turn2 = false;
+    let semanticCalls = 0;
+    let shellPublicId = '';
+    provider = installScriptedWeeklyPlanningProvider(call => {
+      if (call.kind === 'renderer') return scriptedRendererReply(call, '候補はこのままです。');
+      if (!turn2) return JSON.stringify(schedulingDocument('A'));
+      semanticCalls += 1;
+      // The re-read's last user message is the retry instruction, not a JSON payload.
+      if (semanticCalls === 1) shellPublicId = ((call.payload!.publicStateSummary as Json).tasks as Json[])[0].publicId as string;
+      // The re-read is schema-valid but fails semantic validation (it quotes text the user did
+      // not write) and still carries no planning content: nothing suggests a change, so the
+      // still-valid unchanged reading is kept.
+      return JSON.stringify({ schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'update_plan', planningWindow: null,
+        tasks: [{ localId: 'shell', existingPublicId: shellPublicId, decompositionStatus: 'atomic', category: 'study',
+          title: 'アルゴリズムイントロダクション', study: null, workloads: [], effortEstimates: [], temporalConstraints: [],
+          recurrence: [], durableContextSignals: [], sourceText: semanticCalls > 1 ? '発話にない引用' : 'うん' }],
+        relations: [], availabilityDeclarations: [], constraintSourceRequests: [], userContextFacts: [],
+        conversationActs: [], uncertainties: [], corrections: [], decisions: [] });
+    });
+    const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1' });
+    await conversation.submit(A);
+    const previewBefore = structuredClone(conversation.getState().previewCandidates);
+    turn2 = true;
+    const result = await conversation.submit('うん');
+    expect(result.result?.interactionOutcome?.kind).not.toBe('recover');
+    expect(conversation.getState().previewCandidates).toEqual(previewBefore);
+  });
+
+  it('a malformed audit on the short literal-gap route keeps the reading and discloses the possible omission', async () => {
+    const text = '来週、数学を10問進めたいです。化学も少しやりたいと思っています。';
+    provider = installScriptedWeeklyPlanningProvider(call => {
+      if (call.kind === 'renderer') return scriptedRendererReply(call, '数学は1問あたり何分くらいかかりそうですか？');
+      if (call.schemaName === 'weekly_planning_dense_turn_completeness_audit_v5') return '{"decision":"maybe"}';
+      return JSON.stringify(document(['数学'], 'interaction_v1'));
+    }, { completenessAudit: 'scripted' });
+    const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1' });
+    const result = await conversation.submit(text);
+    expect(result.result?.communicationFacts?.possibleCompletenessOmission).toBe(true);
+    expect(result.result?.message).toContain(WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT);
   });
 });

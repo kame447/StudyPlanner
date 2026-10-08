@@ -249,8 +249,10 @@ describe('shared interaction repair ledger dispatch boundaries', () => {
     markWeeklyPlanningSemanticRepairConsumedV5(run);
     const result = await tryWeeklyPlanningSemanticNoOpCompletenessRetryV5({ run, baseMessages: [],
       initialResponse: JSON.stringify(initialDocument), initialDocument, repairAttempted: true });
-    expect(result?.status).toBe('accepted');
-    expect(result?.document).toEqual(initialDocument);
+    // The empty contradiction is not reported as an unchanged plan: an invalid re-read makes the
+    // turn an unusable message (interaction), and still no repair is added.
+    expect(result?.status).toBe('rejected');
+    expect(result?.document).toBeNull();
     expect(requests.length).toBeGreaterThan(0);
     expect(requests.filter(request => request.semanticCensusStage === 'repair')).toHaveLength(0);
     expect(weeklyPlanningSemanticRepairConsumedV5(run)).toBe(true);

@@ -149,3 +149,75 @@ describe('interaction completeness re-read retention on every audit route', () =
     expect(calls).toHaveLength(3);
   });
 });
+
+describe('an omission the turn could not check or take in is disclosed, never silent (interaction)', () => {
+  // Short literal-gap route: 数学 is read, the rest of the turn is not cited (gap >= 8) and no
+  // effort is known, so the existing coverage audit is selected.
+  const SHORT = '来週、数学を10問進めたいです。化学も少しやりたいと思っています。';
+  async function runWith(architecture: WeeklyPlanningConversationArchitecture, behave: (kind: string, index: number) => string) {
+    const calls: string[] = [];
+    const normalizer = createWeeklyPlanningSemanticNormalizerV5({
+      async createChatCompletion(request: { responseFormat?: { json_schema?: { name?: string } } }) {
+        const kind = request.responseFormat?.json_schema?.name ?? 'other';
+        calls.push(kind);
+        return behave(kind, calls.length);
+      },
+    } as never);
+    const result = await normalizer.normalize({ userText: SHORT, conversationArchitecture: architecture } as never);
+    return { result: result as typeof result & { completenessAbstention?: { reason: string; step?: string } }, calls };
+  }
+  const doc = (architecture: WeeklyPlanningConversationArchitecture) => JSON.stringify(document(['数学'], architecture));
+  const AUDIT = 'weekly_planning_dense_turn_completeness_audit_v5';
+
+  it.each([
+    ['a malformed audit', 'malformed_audit_response', 'audit', (kind: string, index: number) => (kind === AUDIT ? '{"decision":"maybe"}' : index === 1 ? 'DOC' : '')],
+    ['an audit outage', 'provider_failure', 'audit', (kind: string, index: number) => { if (kind === AUDIT) throw new Error('audit outage'); return index === 1 ? 'DOC' : ''; }],
+    ['a re-read outage after an incomplete audit', 'provider_failure', 'retry', (kind: string, index: number) => {
+      if (kind === AUDIT) return JSON.stringify({ decision: 'incomplete', missingFacts: ['化学'] });
+      if (index === 1) return 'DOC';
+      throw new Error('re-read outage');
+    }],
+  ] as const)('%s keeps the first reading and records the disclosure signal', async (_label, reason, step, behave) => {
+    const { result } = await runWith('interaction_v1', (kind, index) => {
+      const value = behave(kind, index);
+      return value === 'DOC' ? doc('interaction_v1') : value;
+    });
+    expect(result.status).toBe('accepted');
+    expect(result.document?.tasks.map(task => task.title)).toEqual(['数学']);
+    expect(result.completenessAbstention).toEqual({ reason, step });
+  });
+
+  it('legacy keeps its silent retention (documented residual)', async () => {
+    const { result } = await runWith('legacy_v5', (kind, index) => (kind === AUDIT ? '{"decision":"maybe"}' : index === 1 ? doc('legacy_v5') : ''));
+    expect(result.status).toBe('accepted');
+    expect(result.completenessAbstention).toBeUndefined();
+  });
+});
+
+describe('a reported omission that the accepted re-read did not take in is disclosed (critic probe 24)', () => {
+  type Abstention = { completenessAbstention?: { reason: string; step?: string } };
+  it.each([['short', bytes(BASE)], ['dense', 1300]] as const)('a valid re-read that adds nothing: %s', async (_label, minimumBytes) => {
+    const { result, titles, calls } = await run(textOfAtLeast(minimumBytes), ['数学', '物理'], 'interaction_v1');
+    expect(result.status).toBe('accepted');
+    expect(titles).toEqual(['数学', '物理']);
+    expect((result as Abstention).completenessAbstention).toEqual({ reason: 'omission_not_taken_in', step: 'retry' });
+    expect(calls).toHaveLength(3);
+  });
+
+  it('a repaired re-read that adds nothing is disclosed the same way', async () => {
+    const { result, titles } = await run(textOfAtLeast(1300), [['数学', '物理']], 'interaction_v1');
+    expect(titles).toEqual(['数学', '物理']);
+    expect((result as Abstention).completenessAbstention).toEqual({ reason: 'omission_not_taken_in', step: 'retry' });
+  });
+
+  it('a re-read that takes the omission in carries no disclosure', async () => {
+    const { result, titles } = await run(textOfAtLeast(1300), ['数学', '物理', '化学'], 'interaction_v1');
+    expect(titles).toEqual(['数学', '物理', '化学']);
+    expect((result as Abstention).completenessAbstention).toBeUndefined();
+  });
+
+  it('legacy is unchanged: no disclosure signal', async () => {
+    const { result } = await run(textOfAtLeast(1300), ['数学', '物理'], 'legacy_v5');
+    expect((result as Abstention).completenessAbstention).toBeUndefined();
+  });
+});

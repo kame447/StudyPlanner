@@ -1,8 +1,16 @@
 import type { SemanticStudyComponentV5, SemanticTaskV5, WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
 import { normalizeWeeklyPlanningEvidenceTextV5 } from './weeklyPlanningCurrentTurnProvenanceV5';
 
+/**
+ * The turn kept its first valid reading although completion signalled a possible omission it
+ * could not take in or verify (interaction). The application discloses it; it never says what.
+ */
 export interface WeeklyPlanningSemanticCompletenessAbstentionV5 {
-  reason: 'initial_facts_not_preserved' | 'repair_budget_consumed';
+  reason: 'initial_facts_not_preserved' | 'repair_budget_consumed'
+    | 'provider_failure' | 'malformed_audit_response' | 'dispatch_budget_exhausted'
+    | 'omission_not_taken_in';
+  /** Unset for a refused or unrepairable re-read; set when the audit or re-read could not run. */
+  step?: 'audit' | 'retry';
 }
 
 type FactCounts = Map<string, number>;
