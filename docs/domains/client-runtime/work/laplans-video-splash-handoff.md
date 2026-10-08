@@ -3,7 +3,7 @@
 Status: active
 Updated: 2026-10-08
 
-Current state: [draft PR #545](https://github.com/kame447/StudyPlanner/pull/545) and its automatic preview are published. The first head passed CI, visual/quality/admin checks and eight of nine video browser cases. The reduced-motion transfer observer misclassified a Vite JavaScript asset module; the follow-up candidate corrects that observation, adds an actual-binary detection control and includes all ten cases in WebKit mobile. The corrected observer/WebKit-selection head passed final local verification and is running in CI. One final browser-only addition reproduces the known Pages Range-ignored delivery; its final local verification passed and final updated-head CI is pending. Nothing from this work is on main or in production.
+Current state: [draft PR #545](https://github.com/kame447/StudyPlanner/pull/545) and its automatic preview are published. The first head passed CI, visual/quality/admin checks and eight of nine video browser cases. The reduced-motion transfer observer misclassified a Vite JavaScript asset module; the follow-up candidate corrects that observation, adds an actual-binary detection control and includes all ten cases in WebKit mobile. The corrected observer/WebKit-selection head passed final local verification and is running in CI. One final browser-only addition reproduces the known Pages Range-ignored delivery; its published browser result exposed an engine-specific request-header assumption, corrected locally without changing playback assertions; final updated-head CI is pending. Nothing from this work is on main or in production.
 
 ## Ownership and source
 
@@ -99,7 +99,7 @@ The overall matrix is **failed**, not green: 331 passed / 3 intentional skips / 
 
 ## Pages delivery-condition regression
 
-The final browser-only addition retains the ordinary Vite completion case and adds one case that responds to MP4 media requests with status 200 and the complete original binary, Content-Length and a strong ETag, without Content-Range. The Vite JavaScript asset module is left unchanged. The case requires an actual Range request, real currentTime progress, the real ended event at approximately nine seconds, and the unchanged pending-data gate. A small JSON attachment records each substituted delivery.
+The final browser-only addition retains the ordinary Vite completion case and adds one case that responds to MP4 media requests with status 200 and the complete original binary, Content-Length and a strong ETag, without Content-Range. The Vite JavaScript asset module is left unchanged. The case requires native currentTime progress, a real ended event at approximately nine seconds and the unchanged pending-data gate. A separate explicit Range fetch verifies the ignored-range 200/full-body response; the native decoder is not required to choose Range transport. A small JSON attachment records each substituted delivery.
 
 This is a reproduction of the observed HTTP boundary, not a connection to Pages or proof of real iOS behavior. Syntax and collection succeed for eleven Chromium and eleven WebKit-mobile cases; execution is still pending. No runtime, asset, timeout, retry or assertion threshold changed. This is the final added verification scope for the known iPhone delivery risk.
 
@@ -110,6 +110,16 @@ The final Range-ignored case candidate passed `npm run verify` and the unchanged
 The first full attempt had one existing provider-exhaustion integration timeout (6,199 passed / 1 failed) and did not build. Its source/dependency hashes were stable. The unchanged file passed all six cases in isolation, and the exact failed case passed separately. After inspecting the fixture and Vitest timing boundaries, one fresh-process full retry passed with the original timeout. A root cause was not conclusively established; the failure, focused checks and reporter-duration distinction remain recorded. No failing test was excluded or weakened.
 
 Final Chromium/WebKit delivery execution and the full new-head matrix remain separate gates. The previous head's Home visibility flake remains diagnosed separately; it is not silently accepted as a green matrix.
+
+## Native transport observation correction
+
+Head `c9cc91b1f808fdf75d23108d84b8f86218e8f553` passed CI (6,200 tests, fresh types, Rules/build), Chromium 445 cases, quality/admin/visual and Pages. Matrix was failed with 332 passed / 3 skipped / 1 failed / no flaky cases. Its ten ordinary video cases passed on the first attempt and the previous Home flake did not recur.
+
+The added full-body case's WebKit first attempt and retry both received the exact original 1,628,755-byte MP4 via HTTP 200 and fired real `ended` with time=9 and duration=9. The network trace recorded `Sec-Fetch-Dest: video`, resource type `other` and no Range header. The failure was the test's assumption that every native decoder sends Range, after the successful ended assertions and before its final static-loading assertion. This was not a playback failure. [Matrix evidence](https://github.com/kame447/StudyPlanner/actions/runs/37788656384/artifacts/11555784151).
+
+The same case now separates contracts: preserve native full-body transfer, real playback/completion and pending-gate checks; explicitly fetch with `Range: bytes=0-63` and require status 200, video/mp4, no Content-Range and the full original byte length; require that the fixture actually observed that explicit Range. Native Range presence is recorded without imposing a platform-specific behavior. The attachment includes deliveries, ended data and the explicit probe response. No runtime, timeout, retry or pass threshold changed.
+
+Syntax, both eleven-case collections and independent diff/logic review cover the local correction. Under the updated verification procedure, the same draft PR is updated after focused checks and GitHub full/browser CI is the final gate; the full local suite is not repeated for this browser-only correction. The earlier successful local full run is historical evidence, not an assertion that this final browser edit has executed.
 
 ## Next action and exit criteria
 

@@ -111,12 +111,14 @@ test('Pages-style full-body 200 delivery completes the video while startup data 
   const { readFile } = await import('node:fs/promises');
   const clip = await readFile(new globalThis.URL('../../src/assets/laplans_blackhole_1080x1920.mp4', import.meta.url));
   const deliveries = [];
+  let ended;
+  let rangeProbe;
   await boot(page, 390, async () => {
     await page.route('**/*.mp4*', async route => {
       const request = route.request();
       const url = new globalThis.URL(request.url());
       if (request.resourceType() === 'script' || url.hostname !== '127.0.0.1') return route.fallback();
-      deliveries.push({ range: request.headers().range ?? null, resourceType: request.resourceType(), status: 200, bytes: clip.length });
+      deliveries.push({ url: request.url(), range: request.headers().range ?? null, resourceType: request.resourceType(), status: 200, bytes: clip.length });
       // Match Pages' observed delivery boundary: ignore Range and send the
       // complete original binary with a strong ETag and no Content-Range.
       await route.fulfill({ status: 200, contentType: 'video/mp4',
@@ -130,15 +132,27 @@ test('Pages-style full-body 200 delivery completes the video while startup data 
       node.addEventListener('ended', () => { window.__laplansEnded = { time: node.currentTime, duration: node.duration }; }, { once: true });
     });
     await expect(page.locator('video')).toHaveCount(0, { timeout: 12_000 });
-    const ended = await page.evaluate(() => window.__laplansEnded);
+    ended = await page.evaluate(() => window.__laplansEnded);
     expect(ended).toBeDefined();
     expect(ended.time).toBeCloseTo(9, 1);
     expect(ended.duration).toBeCloseTo(9, 1);
-    expect(deliveries.some(delivery => /^bytes=/.test(delivery.range ?? ''))).toBe(true);
+    expect(deliveries.length).toBeGreaterThan(0);
     expect(deliveries.every(delivery => delivery.status === 200 && delivery.bytes === 1_628_755)).toBe(true);
     await expectStaticLoading(page);
+
+    // Linux WebKit can request the native video without a Range header. Test
+    // the Range-ignored response independently instead of imposing a transport
+    // choice on the decoder whose real completion was asserted above.
+    rangeProbe = await page.evaluate(async url => {
+      const response = await fetch(url, { headers: { Range: 'bytes=0-63' }, cache: 'no-store' });
+      return { status: response.status, type: response.headers.get('content-type'),
+        contentRange: response.headers.get('content-range'), size: (await response.arrayBuffer()).byteLength };
+    }, deliveries[0].url);
+    expect(rangeProbe).toEqual({ status: 200, type: 'video/mp4', contentRange: null, size: 1_628_755 });
+    expect(deliveries.some(delivery => delivery.range === 'bytes=0-63')).toBe(true);
+    await expectStaticLoading(page);
   } finally {
-    await testInfo.attach('pages-full-body-delivery', { body: Buffer.from(JSON.stringify(deliveries, null, 2)), contentType: 'application/json' });
+    await testInfo.attach('pages-full-body-delivery', { body: Buffer.from(JSON.stringify({ deliveries, ended, rangeProbe }, null, 2)), contentType: 'application/json' });
   }
 });
 
