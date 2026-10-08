@@ -107,6 +107,28 @@ describe('StudyPlannerAppRoot', () => {
     expect(renderer.root.findAllByType(App)).toHaveLength(1);
   });
 
+  it.each(['auth', 'consent'].flatMap(stage => ['skip', 'ended', 'error'].map(event => [stage, event])))(
+    'preserves %s readiness when video presentation finishes via %s', (stage, event) => {
+      state.policy.status = 'loading';
+      mount();
+      if (stage === 'consent') act(() => fake.emit(verifiedUser));
+      act(() => {
+        if (event === 'skip') renderer.root.findByProps({ 'aria-label': '起動アニメーションをスキップ' }).props.onClick();
+        else renderer.root.findByType('video').props[event === 'ended' ? 'onEnded' : 'onError']();
+      });
+      expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(1);
+      expect(renderer.root.findAllByType(App)).toHaveLength(0);
+      expect(renderer.root.findAllByType(InitialPrivacyConsentScreen)).toHaveLength(0);
+      if (stage === 'auth') act(() => fake.emit(verifiedUser));
+      expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(1);
+      state.policy.status = 'required';
+      rerender();
+      expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(0);
+      expect(renderer.root.findAllByType(InitialPrivacyConsentScreen)).toHaveLength(1);
+      expect(renderer.root.findAllByType(App)).toHaveLength(0);
+    },
+  );
+
   it('uses the default session once when no service is injected', () => {
     act(() => { renderer = create(<StudyPlannerAppRoot />); });
     act(() => fake.emit(null));
