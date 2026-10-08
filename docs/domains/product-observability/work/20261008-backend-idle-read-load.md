@@ -1,0 +1,67 @@
+# Scheduled maintenance idle read load
+
+Status: locally verified; public evidence minimized and draft-PR publication in progress; not merged or deployed to production
+
+- Owning investigation: [Issue #542](https://github.com/kame447/StudyPlanner/issues/542); product-observability contracts remain owned by [Issue #213](https://github.com/kame447/StudyPlanner/issues/213).
+- Active branch: `perf/firestore-backend-idle-reads`; exact base: `22847120386987329e2f034d6062d59694ef1180`.
+- Preflight on 2026-10-08: current remote main verified; all open PRs and all 33 remote branches inspected. No active snapshot/retention read-load implementation found. Existing PR #312 is merged and Issue #308's HTTP subrequest budget is retained.
+- This is a separate backend release unit from published client-runtime PR #546. Its branch and working files are not modified. On 2026-10-08 the user approved publishing this implementation as an additional draft PR and its automatic Cloudflare preview. Main mutation/merge, production deployment, real Firestore/AI, credential and billing changes remain outside scope. Reuse Issue #542; do not create another Issue.
+- Current scope: reduce clean idle snapshot and unexpired-retention reads without changing official counts, dirty revision clearing, transaction consistency, scan resumption, expiry decisions, day boundaries or the 45-subrequest application budget. Both local changes passed independent type/concurrency review and final combined local verification.
+- Measured baseline: each clean snapshot invocation reads one rollup checkpoint plus job, current snapshot and all 64 accumulator keys: 67 keys even when no scan is needed. The 3 HTTP requests do not mean 3 document reads. Offline measurements distinguish returned documents, missing keys, empty queries and hypothetical billing equivalents.
+- Candidate: when no dirty source was supplied, check only the job and today's snapshot for a clean idle return. Otherwise retain the original complete read set and transactional compare before changing any state. Do not cache cross-invocation state.
+- Publication preflight at 2026-10-08 13:43 UTC rechecked all 33 remote branches, all 12 open PRs, related closed PRs, Issue #542 and its comments. Current main remains the exact base above. No overlapping backend idle-read PR or remote branch exists. The coherent backend implementation needs its own reviewable PR because client PR #546 owns a separate runtime boundary.
+- Next: publish the existing backend branch with path-minimized public evidence as one draft PR, verify remote/local tree identity, and follow exact-head CI and automatic Pages preview to terminal results. Keep main integration and production deployment separate. Do not edit the published client-runtime branch.
+- Exit criteria: idle 67 to 3 keys verified at the scheduled boundary; same canonical results and retry/ownership guarantees under dirty addition, day rollover, resumed work and conflicting reads; all scheduled paths remain within 45 HTTP subrequests; exact source/toolchain evidence and current documentation; full local verification before calling implementation ready. Production effectiveness and billing remain unverified.
+
+## Implemented local candidate
+
+The snapshot fast path is limited to a supplied empty dirty list. It validates the job and today's snapshot before returning idle. Any ambiguous/pending state falls through to the original full 66-key read; the exact full read remains the compare target inside the publish/checkpoint transaction. No cross-invocation cache, dirty-clear changes, index, IAM/Rules or metric schema changes are made.
+
+Retention now uses the existing ordered query with limit 1 only as an idle gate. A positive gate always triggers a fresh full page, and only the unchanged prefix predicate over that full page selects deletes. The same allowlist, cutoff captured once, batch clamps, commit boundary and delete-driven progression remain. A concurrent arrival after a negative probe can wait until the next invocation; it is not silently marked processed. The original full-read-to-commit refresh race and lexical timestamp edge are not repaired by this change.
+
+## Observed counts versus modeled cost
+
+[All evidence, definitions and reproduction](evidence/20261008-backend-idle-read-load/README.md) separate returned documents, missing keys, empty queries, HTTP requests and conditional read equivalents.
+
+| Scenario, one invocation | Before | Candidate |
+| --- | ---: | ---: |
+| Clean snapshot document keys, including rollup checkpoint | 67 (3 found, 64 missing) | 3 (3 found) |
+| Clean snapshot HTTP | 3 | 3 |
+| No-dirty empty day bootstrap HTTP / point keys | 36 / 133 | 37 / 135 |
+| Dirty maximum publish/clear HTTP | 44 | 44 |
+| Retention, 100 unexpired rows in each of four collections, returned documents | 400 | 4 |
+| Same retained fixture HTTP / deletes | 5 / 0 | 5 / 0 |
+| Retention, two full expired batches, returned documents / HTTP | 800 / 11 | 808 / 19 |
+| Retention deletion throughput, each batch / two batches | 400 / 800 | 400 / 800 |
+| Empty rollup point keys / empty queries / HTTP | 2 / 1 / 6 | unchanged |
+| Both backfills complete: point keys / HTTP | 2 / 3 | unchanged |
+| No-op reads and HTTP | 0 | 0 |
+
+Each phase runs 288 times/day if the every-minute cron runs continuously. In a deliberately steady retained-data scenario, backend returned documents are 117,216→3,168/day; empty-query minima add 288 on both sides. The baseline additionally requests 18,432 missing keys/day. Assigning one equivalent per missing key yields **135,936→3,456 conditional read equivalents/day**. Without that missing-key billing assumption, the comparison is **117,504→3,456**. These are not observed bills or whole-app totals. Retention alone supplies the original 115,200 returned documents/day from the same 400 retained records; no new user activity is needed in that scenario. Empty rollup checkpoint writes remain 288/day. Explicit verify writes are zero in the measured backend cases.
+
+The all-empty-query steady model is 21,888→3,456 equivalents/day under the same missing-key assumption. Both models exclude daily snapshot rollover, actual event/actor growth, dirty rebuilds, conflict retries, unfinished migrations, index-entry/aggregation charges, client reads and trace/admin work. A single empty day-bootstrap run replacing one baseline idle run adds 96 modeled equivalents; populated 30-day scans can be much larger.
+
+Data-dependent observations include 100 distinct-actor planning events in five rollup batches causing 320 point keys plus 100 event documents (31 HTTP), versus 35 point keys plus the same 100 events when all events share an actor/session in this synthetic missing-projection fixture. Two late conflicts reread 140 events and 448 keys at 45 HTTP. A dirty snapshot with 100 actor-day rows on each of 30 dates reads 3,000 actor-day documents plus 134 point keys. With 500 rows/date, the 35-page cap is reached after 9,000 returned rows and 17 empty page tails, and the job checkpoints rather than publishing partial counts. These paths are unchanged by the idle fast path.
+
+The combined backfill phase includes both profile registration and user enrichment. A 250-profile/17-user backlog processes 200 profiles and 17 summaries in one invocation: 217 query documents, 3 point keys, 17 empty recent-error queries and 17 COUNT aggregations, 44 HTTP. COUNT's scanned index entries were not measured. Completion avoids repeated profile scans but still reads both checkpoint documents on every backfill phase.
+
+## Verification checkpoint
+
+- Snapshot baseline: 4 expected failing regressions / 12 passing cases. Candidate: all 16 pass, including dirty/bootstrap 18,001-actor resumption and exact official counts.
+- Retention baseline: 9 expected failing regressions / 5 passing cases. Candidate: all 14 pass, including positive/negative gate races, malformed head, exact cutoff and failed commit retryability.
+- Combined focused check: 6 files / 56 tests passed. Existing 45-request hard stop and dirty-revision preservation tests remain unchanged.
+- All 32 scheduled mock scenarios have identical successful write/delete payload SHA-256 values and mock work-progress state before/after. The result is available in [comparison.json](evidence/20261008-backend-idle-read-load/comparison.json).
+- Independent snapshot review: four additional race/resume cases passed, no blocking finding.
+- Independent retention review: 33 baseline/candidate comparisons (11 fixtures × page sizes 1/2/100), four positive-gate races and three injected failure paths passed; no blocking finding.
+- Final fresh `npm run verify` ran 2026-10-08 12:45:25–13:02:51 UTC, **exit 0**: fresh app/Worker types, **759 files passed / 10 skipped**, **6,163 tests passed / 45 skipped / 1 todo**, and production build **10.42s**. Skipped/todo cases are not counted as passed. All eight unchanged bundle budgets passed at 13:02:52 UTC.
+- The 1,845 runtime/test/configuration input entries and installed-package identities are identical before/after: 237 actual installed packages and 99 platform-optional absent lock entries; no missing required package or version mismatch. [Summary](evidence/20261008-backend-idle-read-load/full-verification/summary.json), [terminal log](evidence/20261008-backend-idle-read-load/full-verification/verify.log), [scope](evidence/20261008-backend-idle-read-load/full-verification/scope.txt), [inputs](evidence/20261008-backend-idle-read-load/full-verification/inputs.json) and [actual packages](evidence/20261008-backend-idle-read-load/full-verification/installed-packages.json) retain exact-content proof.
+- One worker and isolated environment were used. Type/build outputs are per-worktree; the inherited shared Vitest result-order cache is disclosed in [environment notes](evidence/20261008-backend-idle-read-load/environment-notes.md). Installed Vitest code confirms this cache affects ordering/duration history, not whether tests execute. No in-progress environment change or dependency installation occurred.
+- No runtime/test/configuration input changed after full verification. Publication preflight independently rechecked all 1,845 input hashes and actual package identities: zero mismatches, 237 present and 99 platform-optional absent. Documentation-only publication-checkpoint updates do not constitute a second verification run. The exact local implementation commit is `119f52ad2fa6aa15ccc7cc3957e8f219a29b3441`; any later local change before publication is documentation-only. No new Issue or branch deletion is needed. The backend branch is retained for review; PR #546's client implementation remains separate. Live Firestore behavior, production effectiveness and billing are still unverified.
+
+## Public evidence handling
+
+The public evidence substitutes named placeholders for ephemeral checkout, dependency, runtime and generated-output directories. The unmodified evidence is retained locally. [Path normalization](evidence/20261008-backend-idle-read-load/path-normalization.json) records each original/public SHA-256 and the precise transformation purpose. Package names, versions, per-package hashes, missing/optional classifications, source hashes, all 32 scenario observations, modeled totals and mutation/progress comparisons are unchanged. The summary identifies both the original and public manifest/log hashes. This is a documentation-only serialization change, not another test run or a runtime change. Generic `/tmp` reproduction examples remain usable.
+
+## Deferred semantic issue
+
+The unchanged retention guard compares decoded timestamp strings lexically. Whole-second formatting can delay cleanup within the same second; microsecond values or malformed legacy strings expose additional defensive edge cases, but their presence in production is unverified. Normal inspected writers emit millisecond ISO timestamps, so an early-delete microsecond value is not established on those paths. A typed backend range would also change the current stop-at-malformed-head behavior. Keep any timestamp-semantic repair a separate explicit contract and test scope; this patch only reduces read load. See [independent safety review](evidence/20261008-backend-idle-read-load/review.md).
