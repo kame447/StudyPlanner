@@ -319,10 +319,23 @@ test.describe('multi-day month events', () => {
     await page.keyboard.press('Enter');
     const editorOverlay = page.locator('.month-event-modal-overlay');
     const editor = editorOverlay.locator('.month-event-modal');
+    async function waitForEditorEntrance() {
+      await expect(editor).toBeVisible();
+      await editor.evaluate(async (element) => {
+        const motion = element.closest('.month-event-dialog-motion');
+        if (!(motion instanceof HTMLElement)) throw new Error('Month event motion root is missing');
+        const entranceAnimations = motion.getAnimations({ subtree: true })
+          .filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime));
+        await Promise.all(entranceAnimations.map(animation => animation.finished.catch(() => undefined)));
+      });
+    }
+    // Storage recovery is the subject here; click only after the real entrance finishes.
+    await waitForEditorEntrance();
     const title = '失敗しても残す予定';
     await editor.getByLabel('タイトル').fill(title);
     await page.evaluate(() => { window.__monthEventSaveFailures = 1; });
     await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.__monthEventSaveFailures)).toBe(0);
     await expect(editor.getByRole('alert')).toContainText('もう一度保存');
     await expect(editor.getByLabel('タイトル')).toHaveValue(title);
     await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
@@ -334,10 +347,12 @@ test.describe('multi-day month events', () => {
 
     await cellForDay(grid, page, dates.startDay).click();
     await page.locator('.month-day-sheet-event').filter({ hasText: title }).click();
+    await waitForEditorEntrance();
     const editedTitle = '編集も残す予定';
     await editor.getByLabel('タイトル').fill(editedTitle);
     await page.evaluate(() => { window.__monthEventSaveFailures = 1; });
     await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.__monthEventSaveFailures)).toBe(0);
     await expect(editor.getByRole('alert')).toContainText('もう一度保存');
     await expect(editor.getByLabel('タイトル')).toHaveValue(editedTitle);
     await expect.poll(() => readCanonicalMonthEventRange(page, title))
