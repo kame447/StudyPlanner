@@ -6,7 +6,7 @@ function source(relativePath: string): string {
   return readFileSync(new URL(relativePath, import.meta.url), 'utf8');
 }
 
-function callsTo(sourceFile: ts.SourceFile, name: string): ts.CallExpression[] {
+function callsTo(root: ts.Node, name: string): ts.CallExpression[] {
   const calls: ts.CallExpression[] = [];
   function visit(node: ts.Node): void {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === name) {
@@ -14,7 +14,7 @@ function callsTo(sourceFile: ts.SourceFile, name: string): ts.CallExpression[] {
     }
     ts.forEachChild(node, visit);
   }
-  visit(sourceFile);
+  visit(root);
   return calls;
 }
 
@@ -87,8 +87,41 @@ describe('weekly planning scheduler date-expression ownership', () => {
     expect(ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name)
       ? declaration.name.text : null).toBe('resolvedDateExpressions');
 
+    const temporalResolutions = callsTo(planningEvaluation, 'resolveWeeklyPlanningTemporalConstraintsV5');
+    expect(temporalResolutions).toHaveLength(1);
+    expect(inputReferences(temporalResolutions[0])).toMatchObject({
+      graph: 'activeGraph', resolvedDateExpressions: 'resolvedDateExpressions',
+    });
+
+    const suspendedCompilations = callsTo(planningEvaluation, 'compileWithWeeklyPlanningWindowQuestionSuspension');
+    expect(suspendedCompilations).toHaveLength(1);
+    const suspension = suspendedCompilations[0];
+    expect(inputReferences(suspension)).toMatchObject({ graph: 'activeGraph' });
+    const baselineDeclaration = suspension.parent;
+    expect(ts.isVariableDeclaration(baselineDeclaration) && ts.isIdentifier(baselineDeclaration.name)
+      ? baselineDeclaration.name.text : null).toBe('rawBaselineCompilation');
+    const input = suspension.arguments[0];
+    if (!input || !ts.isObjectLiteralExpression(input)) throw new Error('baseline suspension needs an explicit input');
+    const compileProperty = input.properties.find((property) => ts.isPropertyAssignment(property)
+      && ts.isIdentifier(property.name) && property.name.text === 'compile');
+    if (!compileProperty || !ts.isPropertyAssignment(compileProperty)
+      || !ts.isArrowFunction(compileProperty.initializer)) throw new Error('baseline compilation must be the suspension callback');
+    const callback = compileProperty.initializer;
+    expect(callback.parameters).toHaveLength(1);
+    const parameter = callback.parameters[0].name;
+    if (!ts.isIdentifier(parameter)) throw new Error('projected graph must be an explicit callback parameter');
+    expect(ts.isCallExpression(callback.body) && ts.isIdentifier(callback.body.expression)
+      ? callback.body.expression.text : null).toBe('compileGenericSchedulerInput');
+    const baselineCalls = callsTo(callback, 'compileGenericSchedulerInput');
+    expect(baselineCalls).toHaveLength(1);
+    expect(inputReferences(baselineCalls[0])).toMatchObject({
+      graph: parameter.text,
+      resolvedDateExpressions: 'resolvedDateExpressions',
+      resolvedTemporalConstraints: 'resolvedTemporalConstraints',
+    });
+
     for (const [callee, expectedGraphs] of [
-      ['compileGenericSchedulerInput', ['activeGraph', 'provisionalSchedulerGraph']],
+      ['compileGenericSchedulerInput', [parameter.text, 'provisionalSchedulerGraph']],
       ['compileWeeklyPlanningMemoryCalibrationSchedulerInputV5', ['activeGraph']],
     ] as const) {
       const inputs = callsTo(planningEvaluation, callee).map(inputReferences);
