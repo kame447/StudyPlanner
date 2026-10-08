@@ -2,6 +2,7 @@
 :root { --primary-nav-height: 74px; }
 
 .primary-app-header {
+  container: primary-header / inline-size;
   width: min(calc(100vw - 24px), 484px);
   margin-inline: auto;
   align-self: start;
@@ -25,6 +26,42 @@
 
 .primary-app-header .home-topbar {
   width: 100%;
+  grid-template-columns:
+    minmax(max-content, 0.78fr)
+    minmax(max-content, 1.9fr)
+    minmax(max-content, 0.78fr);
+}
+
+/* Let the controls use their content width before taking space from the date.
+ * Fixed side columns left only 84px for all four date values at 320px. */
+@media (max-width: 699px) {
+  .primary-app-header .home-topbar {
+    grid-template-columns: max-content minmax(max-content, 1fr) max-content;
+  }
+}
+
+/* Reflow the plaque rather than clipping its digits or shrinking the type.
+ * rem also makes enlarged text select this layout before the cells collide. */
+@container primary-header (max-width: 20rem) {
+  .primary-app-header .home-topbar {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    row-gap: 4px;
+  }
+
+  .primary-app-header .home-streak-card {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .primary-app-header .home-top-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .primary-app-header .home-date-display {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }
 
 .workspace-primary-header,

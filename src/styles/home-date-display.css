@@ -17,7 +17,7 @@
   position: relative;
   height: 52px;
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(max-content, 1.4fr) repeat(3, minmax(max-content, 1fr));
   overflow: visible;
   border: 1px solid rgba(104, 59, 27, 0.28);
   border-radius: 11px;
@@ -99,9 +99,7 @@
 }
 
 .home-date-value {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
+  flex-shrink: 0;
   color: #fffaf0;
   font-size: 0.98rem;
   font-weight: 900;
@@ -109,7 +107,6 @@
   line-height: 1;
   letter-spacing: -0.025em;
   text-align: center;
-  text-overflow: clip;
   text-shadow:
     0 1px 0 rgba(93, 56, 27, 0.38),
     0 2px 4px rgba(70, 40, 18, 0.2);
@@ -117,7 +114,7 @@
 
 @media (max-width: 520px) {
   .home-date-paper {
-    grid-template-columns: minmax(0, 1.9fr) repeat(3, minmax(0, 1fr));
+    grid-template-columns: minmax(max-content, 1.9fr) repeat(3, minmax(max-content, 1fr));
   }
 
   .home-date-value {

@@ -7,7 +7,7 @@ const configDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(configDir, '../..');
 const artifactsDir = path.join(repoRoot, 'artifacts');
 const isCi = Boolean(process.env.CI);
-const sharedTests = ['**/cross-browser-smoke.spec.mjs', '**/home-next-plan-visual.spec.mjs', '**/home-scene-atmosphere.spec.mjs', '**/app-settings-page.spec.mjs'];
+const sharedTests = ['**/cross-browser-smoke.spec.mjs', '**/home-next-plan-visual.spec.mjs', '**/home-scene-atmosphere.spec.mjs', '**/app-settings-page.spec.mjs', '**/primary-header-responsive.spec.mjs'];
 
 export default defineConfig({
   ...baseConfig,
