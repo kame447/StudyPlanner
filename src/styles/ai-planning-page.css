@@ -4,12 +4,21 @@
  * keeping the persistent Home topbar above the chat.
  */
 .app-shell.home-app-shell:has(.ai-planning-view) {
+  position: fixed;
+  top: var(--ai-planning-viewport-top, 0px);
+  inset-inline: 0;
   box-sizing: border-box;
-  height: 100dvh;
-  min-height: 100dvh;
+  height: var(--ai-planning-viewport-height, 100dvh);
+  min-height: 0;
   overflow: hidden;
   padding-top: clamp(6px, 1.05dvh, 10px);
   padding-bottom: calc(var(--home-nav-height) + 8px + env(safe-area-inset-bottom, 0px));
+}
+
+/* The navigation shares the keyboard-safe shell instead of staying at the
+ * layout viewport's bottom behind the keyboard. Keep all routes available. */
+.app-shell.home-app-shell:has(.ai-planning-view) > .primary-bottom-nav {
+  position: absolute;
 }
 
 .home-main:has(.ai-planning-view) {

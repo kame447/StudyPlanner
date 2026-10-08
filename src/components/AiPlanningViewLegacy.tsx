@@ -52,6 +52,7 @@ import {
 } from '../lib/date';
 import { extractPlanningImageAttachment } from '../lib/planningImageAttachment';
 import { plannerRepository } from '../repositories';
+import { useAiPlanningViewport } from '../hooks/useAiPlanningViewport';
 import type { Plan, StudyMaterial, TodoTask } from '../types/domain';
 import { AiPlanningChatSidebar } from './AiPlanningChatSidebar';
 import {
@@ -221,6 +222,8 @@ export function AiPlanningView({
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const conversationRef = useRef<HTMLDivElement | null>(null);
+  const viewRef = useRef<HTMLElement | null>(null);
+  useAiPlanningViewport(viewRef, conversationRef);
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechBaseTextRef = useRef('');
   const speechFinalTextRef = useRef('');
@@ -829,7 +832,7 @@ export function AiPlanningView({
   }
 
   return (
-    <section className="ai-planning-view home-dashboard" aria-label="AI計画">
+    <section ref={viewRef} className="ai-planning-view home-dashboard" aria-label="AI計画">
       <AiPlanningChatSidebar
         open={isChatDrawerOpen}
         checkpointNotice={checkpointNotice}
