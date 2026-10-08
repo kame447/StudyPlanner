@@ -311,6 +311,13 @@ async function ensureMonthEvent(page, fixture) {
 }
 
 async function expandTodoSections(page) {
+  const completedDisclosure = page.locator('.todo-completed-disclosure');
+  if (
+    await locatorHasVisible(completedDisclosure) &&
+    await completedDisclosure.getAttribute('aria-expanded') === 'false'
+  ) {
+    await completedDisclosure.click();
+  }
   while (true) {
     const expandButton = page
       .locator('.todo-section-toggle')

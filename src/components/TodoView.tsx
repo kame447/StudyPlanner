@@ -1,8 +1,9 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useId, useMemo, useState, type FormEvent } from 'react';
 import {
   CalendarDays,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Circle,
   Clock,
@@ -160,6 +161,7 @@ export function TodoView({
   onScheduleTodo,
   onDeleteTodo,
 }: TodoViewProps) {
+  const completedListId = useId();
   const [sortDirection, setSortDirection] = useState<TodoSortDirection>('asc');
   const [expandedSections, setExpandedSections] = useState<
     Record<TodoSectionKey, boolean>
@@ -536,28 +538,58 @@ export function TodoView({
   function renderTodoSection(sectionKey: TodoSectionKey) {
     const sectionTodos = groupedTodos[sectionKey];
     const isExpanded = expandedSections[sectionKey];
-    const pinnedTodos =
-      sectionKey === 'done'
-        ? []
-        : sectionTodos.filter((todo) => todo.pinned === true);
-    const regularTodos =
-      sectionKey === 'done'
-        ? sectionTodos
-        : sectionTodos.filter((todo) => todo.pinned !== true);
-    const visibleTodos =
-      isExpanded || sectionKey === 'done'
-        ? sectionTodos
-        : [
-            ...pinnedTodos,
-            ...regularTodos.slice(0, TODO_INITIAL_VISIBLE_COUNT),
-          ];
-    const collapsedDoneTodos = sectionTodos.slice(0, TODO_INITIAL_VISIBLE_COUNT);
-    const renderedTodos =
-      !isExpanded && sectionKey === 'done' ? collapsedDoneTodos : visibleTodos;
-    const hasOverflow =
-      sectionKey === 'done'
-        ? sectionTodos.length > TODO_INITIAL_VISIBLE_COUNT
-        : regularTodos.length > TODO_INITIAL_VISIBLE_COUNT;
+
+    if (sectionKey === 'done') {
+      return (
+        <section className="todo-status-section" key={sectionKey}>
+          <div className="todo-status-section-head">
+            <h3 className="todo-completed-heading">
+              <button
+                className="todo-completed-disclosure"
+                type="button"
+                aria-expanded={isExpanded}
+                aria-controls={completedListId}
+                onClick={() =>
+                  setExpandedSections((current) => ({
+                    ...current,
+                    done: !current.done,
+                  }))
+                }
+              >
+                {isExpanded ? (
+                  <ChevronDown aria-hidden="true" size={18} strokeWidth={1.9} />
+                ) : (
+                  <ChevronRight aria-hidden="true" size={18} strokeWidth={1.9} />
+                )}
+                <span className="todo-completed-label">完了</span>
+                <span className="todo-section-count">{sectionTodos.length}</span>
+              </button>
+            </h3>
+          </div>
+          <div id={completedListId} hidden={!isExpanded}>
+            {isExpanded ? (
+              sectionTodos.length > 0 ? (
+                <div className="todo-list todo-view-list">
+                  {sectionTodos.map(renderTodo)}
+                </div>
+              ) : (
+                <p className="empty-copy todo-empty">Todoはありません。</p>
+              )
+            ) : null}
+          </div>
+        </section>
+      );
+    }
+
+    const pinnedTodos = sectionTodos.filter((todo) => todo.pinned === true);
+    const regularTodos = sectionTodos.filter((todo) => todo.pinned !== true);
+    const renderedTodos = isExpanded
+      ? sectionTodos
+      : [
+          ...pinnedTodos,
+          ...regularTodos.slice(0, TODO_INITIAL_VISIBLE_COUNT),
+        ];
+    const hasOverflow = regularTodos.length > TODO_INITIAL_VISIBLE_COUNT;
 
     return (
       <section className="todo-status-section" key={sectionKey}>

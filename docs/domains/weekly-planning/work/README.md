@@ -7,6 +7,8 @@ This directory contains durable unfinished task/checkpoint records only when an 
 
 Current durable records:
 
+- [AI入力時のviewportと会話履歴の表示](20261007-ai-composer-viewport-history-handoff.md) — 入力中の会話可視領域・scroll ownershipに限定した暫定local checkpoint。Issue作成がcancelされたため再試行を停止中。#488のsemantic実装とは別scope。
+
 - `20260728-trace-production-recovery.md` — Issue #89
 - `20260731-approval-operational-rollout.md` — Issue #51
 - `20260731-personalization-rollout.md` — Issue #47

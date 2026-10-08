@@ -256,7 +256,7 @@ export function NextPlanSection({
         )}
       </div>
 
-      <HomeScene kind={nextPlanVisual.kind} preferences={homeScenePreferences} />
+      <HomeScene kind={nextPlanVisual.kind} preferences={homeScenePreferences} plan={nextPlan} />
 
       <button
         className="home-start-button"

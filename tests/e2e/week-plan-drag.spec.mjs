@@ -234,7 +234,7 @@ test('active long press touch drag keeps the background completely stationary', 
   const { x, y } = await planCenter(page, /数学の復習.*タップで編集/);
   const scrollBox = await scroll.boundingBox();
   if (!scrollBox) throw new Error('Week scroll surface not measurable');
-  const bodyOverflowBefore = await page.evaluate(() => document.body.style.overflow);
+  const bodyOverflowBefore = await page.evaluate(() => getComputedStyle(document.body).overflow);
 
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
@@ -244,7 +244,7 @@ test('active long press touch drag keeps the background completely stationary', 
   await dispatchTouch(session, 'touchMove', scrollBox.x + 2, y + 45);
   await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
   await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).overflow)).toBe('hidden');
   await page.waitForTimeout(50);
 
   expect(await scroll.evaluate((element) => element.scrollLeft)).toBe(scrollMetrics.scrollLeft);
@@ -252,7 +252,7 @@ test('active long press touch drag keeps the background completely stationary', 
 
   await dispatchTouch(session, 'touchCancel', scrollBox.x + 2, y + 45);
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe(bodyOverflowBefore);
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).overflow)).toBe(bodyOverflowBefore);
 
   await context.close();
 });

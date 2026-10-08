@@ -116,6 +116,52 @@ async function expectStillArtwork(scene) {
   await expect.poll(() => scene.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
 }
 
+async function expectPlanterClearance(scene, sampleAnimations = false) {
+  const clearance = await scene.evaluate((element, sample) => {
+    const planter = element.querySelector('[data-scene-prop="planter"]');
+    const companion = element.querySelector('[data-scene-companion]');
+    const head = companion.querySelector('.home-scene-cat-head, .home-scene-turtle-head');
+    const animations = sample ? companion.getAnimations({ subtree: true }) : [];
+    const originals = animations.map(animation => ({ time: animation.currentTime, state: animation.playState }));
+    let petGap = Infinity; let headGap = Infinity; let frames = 0;
+    const measure = () => {
+      const right = planter.getBoundingClientRect().right;
+      petGap = Math.min(petGap, companion.getBoundingClientRect().left - right);
+      headGap = Math.min(headGap, head.getBoundingClientRect().left - right);
+      frames += 1;
+    };
+    // The pixel animations only translate (or shrink eyes). Independent
+    // keyframe extrema bound every intervening step, including nested motion.
+    const visit = index => {
+      if (index === animations.length) { measure(); return; }
+      const animation = animations[index];
+      const timing = animation.effect.getTiming();
+      const duration = Number(timing.duration);
+      const offsets = new Set([0, ...animation.effect.getKeyframes().map(frame => frame.computedOffset)]);
+      for (const offset of offsets) {
+        animation.currentTime = Number(timing.delay) + duration * offset;
+        visit(index + 1);
+      }
+    };
+    try {
+      animations.forEach(animation => animation.pause());
+      visit(0);
+      return { petGap, headGap, frames, animations: animations.length };
+    } finally {
+      animations.forEach((animation, index) => {
+        animation.currentTime = originals[index].time;
+        if (originals[index].state === 'running') animation.play();
+      });
+    }
+  }, sampleAnimations);
+  expect(clearance.petGap, 'plant and shelf remain beside the entire pet').toBeGreaterThan(8);
+  expect(clearance.headGap, 'planter cannot sit above the pet’s head like a hat').toBeGreaterThan(8);
+  if (sampleAnimations) {
+    expect(clearance.animations).toBeGreaterThan(0);
+    expect(clearance.frames).toBeGreaterThan(1);
+  }
+}
+
 async function expectCompanionAnimations(scene, style, enabled) {
   for (const [className, animationName] of Object.entries(COMPANION_ANIMATIONS[style] ?? {})) {
     const part = scene.locator(`.${className}`);
@@ -195,6 +241,7 @@ test.describe('home next-plan code-rendered scenes', () => {
         expect(companionBox.y).toBeGreaterThanOrEqual(sceneBox.y - .5);
         expect(companionBox.x + companionBox.width).toBeLessThanOrEqual(sceneBox.x + sceneBox.width + .5);
         expect(companionBox.y + companionBox.height).toBeLessThanOrEqual(sceneBox.y + sceneBox.height + .5);
+        await expectPlanterClearance(scene);
       }
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       const initialColor = await scene.evaluate(element => getComputedStyle(element).getPropertyValue('--scene-wall'));
@@ -287,29 +334,33 @@ test.describe('home next-plan code-rendered scenes', () => {
     await expect(scene).toHaveAttribute('data-scene-motion', 'off');
   });
 
-  for (const companion of ['pixel-cat', 'pixel-turtle']) {
-    test(`${companion} animates only when enabled and respects reduced motion`, async ({ page }) => {
+  for (const companion of ['pixel-cat', 'pixel-turtle']) for (const planCase of CASES) {
+    test(`${companion}/${planCase.name} animates only when enabled and respects reduced motion`, async ({ page }) => {
       await page.clock.setFixedTime(FIXED_NOW);
-      await seedHome(page, CASES[0], 'light', companion);
+      await seedHome(page, planCase, 'light', companion);
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       await page.goto('/');
       const scene = page.locator('.home-next-card .home-study-scene');
       await expect(scene).toHaveAttribute('data-scene-style', companion);
       await expectStillArtwork(scene);
       await expectCompanionAnimations(scene, companion, false);
+      await expectPlanterClearance(scene);
       let settings = await openSettings(page);
       await settings.getByRole('checkbox', { name: 'イラストをゆっくり動かす', exact: true }).check();
       for (const style of STYLES) {
         const preview = settings.locator(`.home-scene-preview[data-scene-style="${style.id}"]`);
         await expectStillArtwork(preview);
         await expectCompanionAnimations(preview, style.id, false);
+        if (COMPANION_ANIMATIONS[style.id]) await expectPlanterClearance(preview);
       }
       await settings.getByRole('button', { name: '戻る', exact: true }).click();
       await expect(scene).toBeVisible();
       await expectCompanionAnimations(scene, companion, true);
+      await expectPlanterClearance(scene, true);
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await expectStillArtwork(scene);
       await expectCompanionAnimations(scene, companion, false);
+      await expectPlanterClearance(scene);
       expect(await page.evaluate(() => localStorage.getItem('study-planner-home-scene-motion'))).toBe('true');
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       await expectCompanionAnimations(scene, companion, true);
