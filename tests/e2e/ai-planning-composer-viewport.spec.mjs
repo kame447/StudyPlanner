@@ -56,6 +56,24 @@ async function changeViewport(page, metrics, event = 'resize') {
   await page.evaluate(({ metrics, event }) => window.__aiComposerViewport.set(metrics, event), { metrics, event });
 }
 
+async function scrollConversationToStart(page, conversation, { browserName, isMobile }) {
+  await expect(conversation).toHaveCSS('overflow-y', 'auto');
+  expect(await conversation.evaluate(element => element.scrollHeight - element.clientHeight)).toBeGreaterThan(0);
+  if (browserName === 'webkit' && isMobile) {
+    // Playwright mobile WebKit does not support mouse.wheel. Establish the
+    // reader-position boundary directly, then exercise the real DOM/layout
+    // retention checks below. Chromium still verifies the native wheel path;
+    // neither this nor the viewport fixture substitutes for an iOS touch test.
+    await conversation.evaluate(element => { element.scrollTop = 0; });
+  } else {
+    const rect = await conversation.boundingBox();
+    if (!rect) throw new Error('Conversation scroll surface is not measurable');
+    await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    await page.mouse.wheel(0, -10000);
+  }
+  await expect.poll(() => conversation.evaluate(element => element.scrollTop)).toBe(0);
+}
+
 async function readLayout(page) {
   return page.evaluate(() => {
     const conversation = document.querySelector('.ai-planning-conversation');
@@ -101,7 +119,7 @@ test.describe('AI conversation stays readable with a reduced visual viewport', (
     { width: 390, height: 844, keyboardHeight: 460 },
     { width: 402, height: 874, keyboardHeight: 480 },
   ]) {
-    test(`keeps history and composer visible during keyboard resize/pan at ${width}px`, async ({ page }, testInfo) => {
+    test(`keeps history and composer visible during keyboard resize/pan at ${width}px`, async ({ page, browserName, isMobile }, testInfo) => {
       await page.setViewportSize({ width, height });
       await seedConversationAndViewport(page);
       await page.goto('/');
@@ -149,9 +167,7 @@ test.describe('AI conversation stays readable with a reduced visual viewport', (
 
       // Scroll old messages while input remains focused. Neither typing nor
       // visual-viewport panning may put the user back at the conversation end.
-      const conversationBox = await conversation.boundingBox();
-      await page.mouse.move(conversationBox.x + conversationBox.width / 2, conversationBox.y + conversationBox.height / 2);
-      await page.mouse.wheel(0, -10000);
+      await scrollConversationToStart(page, conversation, { browserName, isMobile });
       await expect.poll(async () => (await readLayout(page)).scrollTop).toBe(0);
       await expect(input).toBeFocused();
       await expect(messages.first()).toBeInViewport();
@@ -206,7 +222,7 @@ test.describe('AI conversation stays readable with a reduced visual viewport', (
     await expectReadableLayout(page);
   });
 
-  test('respects the preview scroll lock while the viewport changes and releases both owners on close', async ({ page }) => {
+  test('respects the preview scroll lock while the viewport changes and releases both owners on close', async ({ page, browserName, isMobile }) => {
     await seedConversationAndViewport(page, true); await page.goto('/');
     await clickPrimaryNav(page, 'AI計画');
     await expect(page.locator('.ai-planning-message-row')).toHaveCount(24);
@@ -229,9 +245,7 @@ test.describe('AI conversation stays readable with a reduced visual viewport', (
     }))).toEqual({ root: '', body: '', position: '' });
     await expect(page.locator('.ai-planning-composer textarea')).not.toBeFocused();
     await expectReadableLayout(page);
-    const rect = await conversation.boundingBox();
-    await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
-    await page.mouse.wheel(0, -10000);
+    await scrollConversationToStart(page, conversation, { browserName, isMobile });
     await expect.poll(() => conversation.evaluate(element => element.scrollTop)).toBe(0);
     await expect(conversation.locator('.ai-planning-message-row').first()).toBeInViewport();
   });
