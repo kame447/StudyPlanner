@@ -1,5 +1,34 @@
 import { expect, test, E2E_TODAY } from './support/fixed-clock.mjs';
 
+async function attachScreen(page, testInfo, name) {
+  const path = testInfo.outputPath('attachments', `${name}.png`);
+  await page.screenshot({ path });
+  await testInfo.attach(name, { path, contentType: 'image/png' });
+}
+
+async function inspectRecordLayout(record) {
+  return record.evaluate(element => {
+    const measure = node => {
+      const scrollWidth = node.scrollWidth;
+      const clientWidth = node.clientWidth;
+      const rect = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      return { tag: node.tagName, className: node.className, scrollWidth, clientWidth,
+        left: rect.left, right: rect.right, width: rect.width,
+        transform: style.transform, translate: style.translate,
+        animation: style.animation, minWidth: style.minWidth, overflowX: style.overflowX };
+    };
+    const root = measure(element);
+    const pane = element.querySelector('.study-session-page');
+    const overflowing = [...element.querySelectorAll('*')].filter(node => {
+      const rect = node.getBoundingClientRect();
+      return rect.width > 0 && (rect.right > root.right + 1 || rect.left < root.left - 1 || node.scrollWidth > node.clientWidth + 1);
+    }).map(measure);
+    return { root, pane: measure(pane), overflowing,
+      animations: pane.getAnimations().map(animation => ({ playState: animation.playState, currentTime: animation.currentTime })) };
+  });
+}
+
 async function seed(page, { kind = 'empty', material = false } = {}) {
   await page.addInitScript(({ kind, material, date }) => {
     const user = { id: 'unplanned-user', email: 'unplanned@example.test', username: 'Study', avatar: '', createdAt: new Date().toISOString() };
@@ -22,15 +51,36 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     const ready = page.getByRole('dialog', { name: '学習を開始', exact: true });
     await ready.getByRole('textbox', { name: '勉強する内容' }).fill('今から復習');
     await expect(ready.getByRole('combobox', { name: '教材', exact: true })).toHaveValue('');
-    await testInfo.attach(`unplanned-study-ready-${viewport.width}`, { body: await page.screenshot(), contentType: 'image/png' });
+    await attachScreen(page, testInfo, `unplanned-study-ready-${viewport.width}`);
     await ready.getByRole('button', { name: 'スタート', exact: true }).dblclick();
     await page.clock.fastForward(125_000);
     await page.getByRole('button', { name: '終了する', exact: true }).click();
     const record = page.getByRole('dialog', { name: '学習を記録', exact: true });
     await expect(record).toContainText(E2E_TODAY);
     const overflow = await record.evaluate(element => element.scrollWidth > element.clientWidth + 1);
+    const initialLayout = await inspectRecordLayout(record);
+    console.log('Unplanned record initial layout:', JSON.stringify(initialLayout));
+    await attachScreen(page, testInfo, `unplanned-study-record-${viewport.width}`);
+    if (overflow) {
+      console.log('Unplanned record after paint:', JSON.stringify(await inspectRecordLayout(record)));
+      const probes = await record.evaluate(element => {
+        const pane = element.querySelector('.study-session-page');
+        const original = pane.style.cssText;
+        const width = () => ({ scroll: element.scrollWidth, client: element.clientWidth, paneScroll: pane.scrollWidth, paneClient: pane.clientWidth });
+        const before = width();
+        pane.style.animation = 'none';
+        const withoutAnimation = width();
+        pane.style.cssText = original;
+        const inputs = [...pane.querySelectorAll('input, textarea, select')];
+        const originals = inputs.map(input => input.style.cssText);
+        inputs.forEach(input => { input.style.minWidth = '0'; input.style.maxWidth = '100%'; });
+        const boundedInputs = width();
+        inputs.forEach((input, index) => { input.style.cssText = originals[index]; });
+        return { before, withoutAnimation, boundedInputs };
+      });
+      console.log('Unplanned record overflow diagnostics:', JSON.stringify(probes));
+    }
     expect(overflow).toBe(false);
-    await testInfo.attach(`unplanned-study-record-${viewport.width}`, { body: await page.screenshot(), contentType: 'image/png' });
     await record.getByRole('button', { name: '記録を保存', exact: true }).dblclick();
     await expect(record).toHaveCount(0);
     const saved = await page.evaluate(() => ({ actuals: JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]'), plans: JSON.parse(localStorage.getItem('studyplanner.plans') ?? '[]') }));
