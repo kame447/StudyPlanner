@@ -4,6 +4,25 @@ test.use({ reducedMotion: 'no-preference', hasTouch: true });
 const URL = 'http://127.0.0.1:4174/startup-gates.html';
 const skipName = '起動アニメーションをスキップ';
 
+function observeVideoTransfers(page) {
+  const transfers = { requests: [], responses: [], assetModules: [] };
+  const isMp4 = url => new globalThis.URL(url).pathname.endsWith('.mp4');
+  page.on('request', request => {
+    if (!isMp4(request.url())) return;
+    const observed = { url: request.url(), resourceType: request.resourceType() };
+    // Vite imports a JavaScript URL module before React renders. It is not a
+    // media transfer; fetch/XHR/preload requests still count, as do media loads.
+    if (observed.resourceType === 'script') transfers.assetModules.push(observed);
+    else transfers.requests.push(observed);
+  });
+  page.on('response', response => {
+    if (isMp4(response.url()) && /^video\/mp4(?:;|$)/i.test(response.headers()['content-type'] ?? '')) {
+      transfers.responses.push({ url: response.url(), status: response.status() });
+    }
+  });
+  return transfers;
+}
+
 async function boot(page, width = 390) {
   await page.setViewportSize({ width, height: 844 });
   await page.route('**/*', route => ['127.0.0.1', 'localhost', '[::1]'].includes(new globalThis.URL(route.request().url()).hostname) ? route.continue() : route.abort());
@@ -33,10 +52,13 @@ async function expectStaticLoading(page) {
 
 for (const width of [390, 1280]) {
   test(`plays the supplied clip inline once and touch skip preserves startup gates at ${width}px`, async ({ page }, testInfo) => {
+    const transfers = observeVideoTransfers(page);
     await boot(page, width);
     const video = page.locator('video');
     await expect(video).toHaveCount(1);
     await expect.poll(() => video.evaluate(node => node.currentTime)).toBeGreaterThan(0);
+    await expect.poll(() => transfers.requests.length).toBeGreaterThan(0);
+    await expect.poll(() => transfers.responses.length).toBeGreaterThan(0);
     const original = await page.locator('.splash-screen:visible').elementHandle();
     expect(await video.evaluate(node => ({ muted: node.muted, inline: node.playsInline, controls: node.controls,
       width: node.videoWidth, height: node.videoHeight, fit: getComputedStyle(node).objectFit })))
@@ -98,14 +120,38 @@ test('ready application removes playing video immediately and unloads the media 
 
 test('reduced motion presents the final frame and makes no video request', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  const requestedVideos = [];
-  page.on('request', request => { if (new globalThis.URL(request.url()).pathname.endsWith('.mp4')) requestedVideos.push(request.url()); });
+  const transfers = observeVideoTransfers(page);
   await boot(page);
   await expectStaticLoading(page);
   await startPlanner(page);
   await page.evaluate(() => window.__plannerRecoveryRepository.releaseTargetReads());
   await expect(page.locator('.home-main')).toBeVisible();
-  expect(requestedVideos).toEqual([]);
+  expect(transfers.requests).toEqual([]);
+  expect(transfers.responses).toEqual([]);
+});
+
+test('video transfer observer detects a deliberately downloaded MP4 under reduced motion', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const transfers = observeVideoTransfers(page);
+  await boot(page);
+  await expectStaticLoading(page);
+  expect(transfers.requests).toEqual([]);
+  expect(transfers.responses).toEqual([]);
+
+  // Negative control for the no-transfer claim: fetch the actual binary after
+  // the untouched application has proved it did not request it automatically.
+  const importedAsset = transfers.assetModules.find(request => new globalThis.URL(request.url).searchParams.has('import'));
+  expect(importedAsset).toBeDefined();
+  const assetUrl = new globalThis.URL(importedAsset.url);
+  assetUrl.searchParams.delete('import');
+  const downloaded = await page.evaluate(async url => {
+    const response = await fetch(url, { cache: 'no-store' });
+    return { ok: response.ok, type: response.headers.get('content-type'), size: (await response.arrayBuffer()).byteLength };
+  }, assetUrl.href);
+  expect(downloaded).toEqual({ ok: true, type: 'video/mp4', size: 1_628_755 });
+  expect(transfers.requests).not.toEqual([]);
+  await expect.poll(() => transfers.responses.length).toBeGreaterThan(0);
+  await expectStaticLoading(page);
 });
 
 test('blocked autoplay falls back without trapping startup', async ({ page }) => {

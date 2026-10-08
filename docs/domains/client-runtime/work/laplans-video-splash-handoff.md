@@ -3,13 +3,13 @@
 Status: active
 Updated: 2026-10-08
 
-Current state: the frozen local candidate passed the regular final `npm run verify` and all eight bundle limits. Real browser playback/layout/gesture checks remain blocked by this environment. The user approved a PR and its automatic preview on 2026-10-08 at 11:47 UTC; publication is the next step and is not yet verified here. Nothing from this work is on main or in production.
+Current state: [draft PR #545](https://github.com/kame447/StudyPlanner/pull/545) and its automatic preview are published. The first head passed CI, visual/quality/admin checks and eight of nine video browser cases. The reduced-motion transfer observer misclassified a Vite JavaScript asset module; the follow-up candidate corrects that observation, adds an actual-binary detection control and includes all ten cases in WebKit mobile. Fresh final local verification passed for this correction; the updated-head browser results are pending. Nothing from this work is on main or in production.
 
 ## Ownership and source
 
-- Branch: `feat/laplans-video-splash` (local only)
+- Branch: `feat/laplans-video-splash`; [draft PR #545](https://github.com/kame447/StudyPlanner/pull/545)
 - Base / initial HEAD: `22847120386987329e2f034d6062d59694ef1180`
-- Related UI umbrella: Issue #483. No new Issue or implementation PR was created.
+- Related UI umbrella: Issue #483; no new Issue. The existing local implementation branch was published as PR #545 after confirming no matching implementation PR existed. Asset PR #543 contains a different, divergent change and was not reused for implementation.
 - Separate work: #542 remains in its own worktree/diff. Its Root props changes are not part of this video candidate; `StudyPlannerAppRoot.tsx` is unchanged from this branch's base.
 - Read preflight: current AGENTS, worktree/branch state, open PRs, related closed startup PRs, branch searches, and latest #483 comments. No existing active owner of the video presentation scope was found.
 - User-supplied video: `src/assets/laplans_blackhole_1080x1920.mp4`, from asset PR #543 (`assets/laplans-blackhole-video`, exact commit `ae409f0f55602db57449162ac2a1ad1b93d32422`). Only this one binary was extracted; the PR's other 123 changed files were not integrated. Its branch/history was not merged or cherry-picked.
@@ -17,7 +17,7 @@ Current state: the frozen local candidate passed the regular final `npm run veri
 - Actual video: 512×910, 9.000 seconds / 270 frames / 30fps, H.264 High level 3.1, yuv420p, no audio, 1,628,755 bytes. The filename's 1080×1920 is not the actual resolution. `moov` is at byte 28 before `mdat`, so no fast-start rewrite is needed. Full ffmpeg decode completed without error.
 - Representative frames and the final image were inspected: stars converge into a vortex, then the Laplans logo. The original encoding is unchanged. `laplans-startup-poster.jpg` is the actual 0.5-second star frame; `laplans-startup-still.jpg` is the actual final branded frame. No replacement artwork was generated. The first frame itself is black, so it was not used as the loading poster.
 
-Preparation and verification were confined to this isolated checkout. PR publication and its automatic preview were subsequently approved; main changes, production deployment, data and billing changes remain outside scope. The publication owner must record the actual remote commit/PR/preview result before describing them as published.
+Preparation and verification were confined to this isolated checkout. PR publication and its automatic preview were subsequently approved; main changes, production deployment, data and billing changes remain outside scope. The first published head and preview evidence are recorded below; later local changes are not treated as published before remote verification.
 
 ## Presentation boundary
 
@@ -73,11 +73,27 @@ The focused evidence below is supplemented by the exact-content full verificatio
 
 This full run does not include Playwright execution, native browser/iOS playback, screenshots/gesture checks, a Firestore emulator run, authenticated startup-speed measurements or live-network/cache tests. The separately reviewed socket-free MP4 response probe proves bytes/HTTP-response construction, not end-to-end browser delivery. No remote CI or preview result is implied by local success.
 
+## First publication and browser correction
+
+- First remote head: `1816590bc444bb6a44a14f3462471dc22b423c54`, tree `1639913e54a03c2c9077a3381fc74c27836cc063`. Native local commit `5d2c171bde799ed09c159ed0feb3114753144a6c` and CI synthetic merge `942fea730a3016a64a18bd81b91390f709e6f8e5` have that exact tree. The API commit has a different identity, not different file content.
+- [CI](https://github.com/kame447/StudyPlanner/actions/runs/37775765853): fresh app/Worker checks, 6,200 passed / 45 skipped / 1 todo, Firestore authority regression and build 6.51 seconds succeeded. [Matrix](https://github.com/kame447/StudyPlanner/actions/runs/37775765781): 322 cross-browser passed / 3 intentional skips; visual 4 passed. [Quality](https://github.com/kame447/StudyPlanner/actions/runs/37775766037): browser 5 passed and bundle success, with the existing conditional Lighthouse/stability skips. [Admin](https://github.com/kame447/StudyPlanner/actions/runs/37775766010): 45 passed.
+- [Chromium](https://github.com/kame447/StudyPlanner/actions/runs/37775765684): 442 passed / 1 failed / no flaky cases. Eight video scenarios succeeded on their first attempt, including actual 9-second completion, touch/keyboard skip and readiness-triggered cleanup. The 390px/1280px final-frame screenshots were inspected: complete Laplans composition and loading text, dark canvas, no clipping in the captured state. [Original browser artifact](https://github.com/kame447/StudyPlanner/actions/runs/37775765684/artifacts/11550287512).
+- The reduced-motion no-transfer assertion failed on the initial attempt and retry. Both traces contain exactly one observed `.mp4?import` request: resource type `script`, response `Content-Type: text/javascript`, 638-byte body. This is Vite's asset URL module, not the 1,628,755-byte MP4. The correction classifies non-script MP4 requests and independently captures `video/mp4` responses; it does not simply suppress a URL suffix. Both no-transfer empty assertions and the existing UI/gate assertions remain. Normal playback uses the same observer as a positive control, and a new deliberate binary-fetch case proves that an actual MP4 transfer is detected even under reduced motion.
+- The original cross-browser matrix did not select the video spec. The follow-up adds it only to `webkit-mobile`, retaining the existing ten scenario assertions and runner limits. It does not route `hasTouch: true` into Firefox or change shared fixtures. Collection establishes ten Chromium plus ten WebKit-mobile cases; collection is not execution.
+- [First preview](https://b10a1a12.studyplannner.pages.dev) deployed successfully for the exact first head. Its served MP4 and both JPEGs matched source bytes/SHA-256. Two Range probes (deployment URL / HTTP2 and branch alias / HTTP1.1 with identity encoding) returned `200` and the whole file, not `206`. This matches [documented Pages behavior](https://developers.cloudflare.com/pages/configuration/serving-pages/#behavior). The Node preview responder is separate and does not change Pages. No CDN settings or infrastructure were modified.
+- WebKit's local-harness result, once available, will not establish actual iOS behavior or deployed Pages playback. Those remain distinct release checks; the original file's fast-start layout and successful full download are not substitutes.
+
+## Follow-up final local verification
+
+The corrected media observer, explicit real-download control and WebKit-mobile selection passed a new exact-content `npm run verify` on 2026-10-08: exit 0, fresh app/Worker checks, 762 files / 6,200 tests passed, 45 skipped / 1 todo, production build 15.43 seconds. All eight unchanged bundle limits passed. The 1,843 non-documentation inputs and 237 installed packages were unchanged during the run; final source digest is `91ff664de56b6247a31feadaf6bd6020954a1a0a91b70ad6faf5dd642944f00b`. The [follow-up receipt](laplans-video-splash-evidence/followup-verification.json) records the two manifest overrides, installed/tool identity and raw-log hashes. Original runtime/media input hashes are unchanged.
+
+Ten video cases collect in each of Chromium and WebKit-mobile. Browser execution and the updated PR/preview checks still require their own final result; the reduced-motion expectation was not weakened and real iOS/Pages Safari playback remains a distinct boundary.
+
 ## Next action and exit criteria
 
 1. Preserve the verified runtime/test/media snapshot and review the exact staged diff before the local commit. Record the resulting commit in the publication handoff; a docs-only edit or commit creation does not require another full run.
-2. Publish the approved PR/automatic preview and verify the actual remote commit, required CI and preview outcome. Keep #542 and PR #543's other source changes separate.
+2. Update the same approved PR/automatic preview and verify the actual remote commit, CI and preview outcome. Keep #542 and PR #543's other source changes separate.
 3. Real browser desktop/mobile playback, layout and gesture verification remains a release gate in a permitted environment. Do not equate the React tests, ffmpeg decode or the presence of a browser spec with execution of that gate.
 4. Any later code, media, test, configuration, dependency or generated-input change requires reconciliation and the relevant fresh verification. Main/production/data/billing changes need separate authorization.
 
-The feature is a locally verified implementation candidate with an explicit browser-validation gap. It is not yet a verified published, production-deployed or fully browser-verified result.
+The feature is published as a draft with an explicit follow-up verification gap. It is not production-deployed or fully browser-verified; first-head successes are not a substitute for final updated-head acceptance.
