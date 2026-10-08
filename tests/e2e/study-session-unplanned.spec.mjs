@@ -76,9 +76,11 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     await expect.poll(() => ready.locator('.study-session-page').evaluate(element => element.getAnimations().length)).toBe(0);
     if (reducedMotion === 'reduce') await expect(ready.locator('.study-session-page')).toHaveCSS('animation-name', 'none');
     await attachScreen(page, testInfo, `unplanned-study-ready-${viewport.width}`);
-    await ready.getByRole('button', { name: 'スタート', exact: true }).dblclick();
+    // Phase/focus checks require a running timer; the separate rapid-start case covers dblclick.
+    await ready.getByRole('button', { name: 'スタート', exact: true }).click();
     const running = page.getByRole('dialog', { name: '学習中', exact: true });
     const pause = running.getByRole('button', { name: '一時停止', exact: true });
+    await expect(pause).toBeVisible();
     await running.locator('.study-session-page').evaluate(element => { element.scrollTop = 120; });
     await pause.focus();
     const readerScroll = await running.locator('.study-session-page').evaluate(element => element.scrollTop);
@@ -132,6 +134,43 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     expect(saved.plans).toEqual([]);
     expect(saved.actuals).toHaveLength(1);
     expect(saved.actuals[0]).toMatchObject({ planId: null, title: '今から復習', occurrenceDate: E2E_TODAY, isAlignedToPlan: false });
+  });
+}
+
+// Preserve the original two-width, two-motion rapid-start/save coverage independently
+// of the phase-navigation precondition. The second click reaches the new pause control.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
+  for (const reducedMotion of ['no-preference', 'reduce']) test(`rapid unplanned start resumes its paused timer and saves once at ${viewport.width}px (${reducedMotion})`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ reducedMotion });
+    await seed(page);
+    await page.goto('/');
+    await page.getByRole('button', { name: /勉強を開始/ }).click();
+    const ready = page.getByRole('dialog', { name: '学習を開始', exact: true });
+    await ready.getByRole('textbox', { name: '勉強する内容' }).fill('連続開始の復習');
+    await ready.getByRole('button', { name: 'スタート', exact: true }).dblclick();
+    const running = page.getByRole('dialog', { name: '学習中', exact: true });
+    await expect(page.locator('.study-session-page')).toHaveCount(1);
+    const resume = running.getByRole('button', { name: '再開', exact: true });
+    await expect(resume).toBeVisible();
+    console.log('Rapid unplanned start state:', { viewport: viewport.width, reducedMotion, control: await resume.innerText() });
+    const elapsed = running.locator('[data-study-session-elapsed]');
+    const pausedElapsed = await elapsed.innerText();
+    await page.clock.fastForward(5_000);
+    await expect(elapsed).toHaveText(pausedElapsed);
+    await resume.click();
+    await expect(running.getByRole('button', { name: '一時停止', exact: true })).toBeVisible();
+    await page.clock.fastForward(125_000);
+    await expect(elapsed).not.toHaveText(pausedElapsed);
+    await running.getByRole('button', { name: '終了する', exact: true }).click();
+    const record = page.getByRole('dialog', { name: '学習を記録', exact: true });
+    await expectScreenStartsBelowHeader(record);
+    await record.getByRole('button', { name: '記録を保存', exact: true }).dblclick();
+    await expect(record).toHaveCount(0);
+    const saved = await page.evaluate(() => ({ actuals: JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]'), plans: JSON.parse(localStorage.getItem('studyplanner.plans') ?? '[]') }));
+    expect(saved.plans).toEqual([]);
+    expect(saved.actuals).toHaveLength(1);
+    expect(saved.actuals[0]).toMatchObject({ planId: null, title: '連続開始の復習', occurrenceDate: E2E_TODAY, isAlignedToPlan: false });
   });
 }
 
