@@ -35,3 +35,7 @@ Firestore Rules は Phase 3 merge 後に repository-owned な WIF workflow か�
 - client/server authorityそのもの
 
 これらは各 owning domain 側で管理を継続し、scheduled occurrence の参照や確定予定の保存が必要な箇所でのみ本ドメインの境界へ接続する。
+
+## Active work
+
+- [Day timetable visibility and occurrence cancellation](work/day-timetable-occurrence-controls-handoff.md)

@@ -25,6 +25,7 @@ import {
   buildPlanOccurrenceKey,
   expandPlansForDate,
   getActualOccurrenceKey,
+  resolvePlanOccurrence,
 } from '../lib/planRecurrence';
 import {
   isScheduleOccurrenceOutsideHourlyGrid,
@@ -976,10 +977,10 @@ export function WeekView({
                         actual.occurrenceDate === date &&
                         !dayPlanKeys.has(getActualOccurrenceKey(actual)),
                     )
-                    .map((actual) => ({
-                      actual,
-                      plan: actual.planId ? planById.get(actual.planId) : undefined,
-                    }));
+                    .map((actual) => {
+                      const source = actual.planId ? planById.get(actual.planId) : undefined;
+                      return { actual, plan: source ? resolvePlanOccurrence(source, actual.occurrenceDate) : undefined };
+                    });
                   const dayActuals = [...linkedActuals, ...standaloneActuals].sort(
                     (left, right) =>
                       minutesFromTime(left.actual.actualStartTime) -

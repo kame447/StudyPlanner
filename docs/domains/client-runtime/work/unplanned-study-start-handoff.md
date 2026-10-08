@@ -5,6 +5,15 @@ Base: `3a1e60b9`
 Branch: `feat/unplanned-study-start`
 PR: https://github.com/kame447/StudyPlanner/pull/540 (draft); user authorized review-tested PR publication and main integration. Root owns publication coordination and main integration.
 
+## Current integration checkpoint — 2026-10-08 00:05 UTC
+
+- Latest integrated input: `4a809b2f8be236216b3f712d2612fd9fc4daa71a` / tree `ef8d7d8abb7be24066cbbed23830f0def7128d6d`, including the paused-record time-edit preservation follow-up. This already contains the preceding header and scheduled-student changes; it is not an isolated unplanned-study diff.
+- The exact follow-up's focused 194 tests, 17 session cases in each of Tokyo and New York, and fresh app/Worker typechecks are recorded below. Combined full verification, browser/visual execution, CI and release acceptance still require separate evidence.
+- The downstream Day controls input contains this work by a non-destructive merge. A downstream merge alone is not proof that either feature is published or that all integration gates passed.
+- The user approved PR publication/main integration for this additional scope. Root retains final release coordination and main merge ownership. No worker independently publishes or merges.
+
+The dated/source-specific evidence below remains historical proof for those exact inputs.
+
 ## Scope and ownership
 
 Home always offers 勉強を開始. A study Plan is visibly selected before starting, with an explicit alternative for unplanned study. Class/other/empty Home launches unplanned study. Keep schedule inspection available without a second primary CTA. Reuse the timer and standalone Actual save/admission; never create a fake Plan or change persistent schema.
@@ -124,3 +133,17 @@ Regression additions explicitly cover motion/reduced-motion media, completed ent
 Independent read-only final audit found no static blocker; changed JavaScript syntax and diff checks passed. WebKit collection: 123 cases in 10 files. Focused session/material/gesture unit tests: 36/36 passed. Runtime/browser success for this candidate is still unverified. Header `60162069` and scheduled-student `3280a914` are incorporated, including the subsequent reload clock-fixture correction. Run the next full verification only in the coordinator's exclusive slot, then update this same PR and follow actual browser evidence before accepting the fix.
 
 The fixed candidate `442d55bae54d0dfbfa518ead3136a84997e5e89c` / tree `67ef3c53e6a1bda5bd5a11c4275918c78b5632a7` has now passed fresh `npm run verify`, exit 0: 760 files passed / 10 skipped; 6,161 tests passed / 45 skipped / 1 todo; app/Worker full typechecks; production build 9.11 seconds. All eight bundle guards passed. The exclusive run used fork/thread min=max=2 with the same other command-scoped environment; before/after HEAD, tree, clean worktree, manifest hashes and all 237 installed locked package versions matched. Logs and snapshots: `/tmp/unplanned-study-verify/transform-*`. No source/test/config input changed during this run. The following checkpoint-only commit does not alter that verified input. Actual browser correction and strengthened swipe regressions still require CI execution.
+
+## In-bounds motion correction
+
+Published that candidate as `fa5dd1240f989621874b28837f1b6de096fa63ad`, tree `483ac315bb076758a6f1313a28893783f11ff481`, identical to local `d1b2653f`. Its parents preserve this PR, scheduled-student `54d1df1e` and header `88e3fa36` without force. Actual CI/type/unit, UI Quality, Admin and all four visual cases passed. Chromium passed the six unplanned cases and both swipe cases on the first attempt; its five failures were the separately owned 320px scrollbar-gutter header defect.
+
+WebKit established that the transform-only candidate was insufficient: normal-motion empty-session recording at both sizes and the final width after midpoint abort still failed, while normal drag/abort identity checks, reduced-motion recording at both sizes, open time inputs and the remaining two feature flows passed. Its cross-browser total was 315 passed / 3 failed. The failed outer widths remained exactly one pane width too large, even without an active or filled animation. Do not claim the first transform candidate fixed normal-motion WebKit.
+
+Header `ed4b967d` was incorporated through scheduled-student `5022d5e9`, preserving the entire own-feature binary diff. The resulting `71056b1a` / tree `8370e674b728ab88f211a7358f34ab43e57f135b` passed fresh `npm run verify`: exit 0, 6,161 passed / 45 skipped / 1 todo, fresh types, build 9.73 seconds, all eight bundle guards, and unchanged clean HEAD/tree/manifests/237 installed packages. Evidence: `/tmp/unplanned-study-verify/gutter-*`. This proof intentionally preserves the insufficient entry animation as historical input.
+
+The next candidate keeps the entry inside its final pane rectangle: right/top-origin scale 0.98 and opacity 0 progress to scale 1 and opacity 1. Swipe translation remains first in the transform, so a gesture offset is not scaled. This avoids offscreen entry geometry without extra clipping or imperative reflow. Independent static reviews favor it over a clipping wrapper or forced overflow recalculation; actual WebKit acceptance is still pending. The existing animation name/timing, backwards fill, cancellation path and reduced-motion behavior stay unchanged.
+
+Strengthened browser assertions sample entry bounds at 0/140/279ms, verify focus/input and a mode click during the paused entry, preserve the existing 18px drag/abort identity checks, and check final scale/opacity and outer width after a declined exit. Original width allowances are unchanged. Syntax and mobile collection pass for 126 cases across 10 files; final full and actual browser verification remain the next gates.
+
+The in-bounds candidate `c9d1c3fa8bb41ebfd626f94eaa81c00b2194b530` / tree `d05d79942aec74224df17add5e035ae45083ba5e` passed fresh `npm run verify`, exit 0: fresh app/Worker types, 760 files passed / 10 skipped, 6,161 tests passed / 45 skipped / 1 todo, production build 9.51 seconds and all eight bundle guards. One-worker settings and the previously recorded environment/toolchain were retained; before/after HEAD/tree/clean worktree/manifests and all 237 installed locked packages matched. Evidence: `/tmp/unplanned-study-verify/bounded-*`. The following scheduled-student merge from `6236db3b` changes only its verification document; no verified runtime, unit, type, build or E2E input changed. Actual browser verification of bounded motion remains pending on the next same-PR update.

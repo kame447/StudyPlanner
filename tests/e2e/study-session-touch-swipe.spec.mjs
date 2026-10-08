@@ -166,6 +166,7 @@ test('touch swipe locks horizontally, follows the finger, and opens the exit con
   await expect(sessionPage).not.toHaveClass(/is-swiping-back/);
   await expect.poll(() => sessionPage.evaluate(element => element.getAnimations().length)).toBe(0);
   await expect.poll(() => sessionPage.evaluate(element => element.getBoundingClientRect().left)).toBe(restingLeft);
+  expect(await session.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
 });
 
 test('aborting a drag during entry preserves its animation and settles without replay', async ({ page }) => {
@@ -189,6 +190,36 @@ test('aborting a drag during entry preserves its animation and settles without r
   });
   await page.getByRole('button', { name: '勉強を開始' }).click();
   await expect.poll(() => page.evaluate(() => Boolean(window.__studyEntry))).toBe(true);
+  const samples = await page.evaluate(() => {
+    const { element, animation } = window.__studyEntry;
+    const overlay = element.closest('.study-session-overlay');
+    const results = [0, 140, 279].map(time => {
+      animation.currentTime = time;
+      const rect = element.getBoundingClientRect();
+      const bounds = overlay.getBoundingClientRect();
+      return { time, overflow: overlay.scrollWidth - overlay.clientWidth,
+        left: rect.left - bounds.left, right: rect.right - bounds.right,
+        top: rect.top - bounds.top, bottom: rect.bottom - bounds.bottom };
+    });
+    animation.currentTime = 140;
+    return results;
+  });
+  for (const sample of samples) {
+    expect(sample.overflow).toBeLessThanOrEqual(1);
+    expect(sample.left).toBeGreaterThanOrEqual(-1);
+    expect(sample.right).toBeLessThanOrEqual(1);
+    expect(sample.top).toBeGreaterThanOrEqual(-1);
+    expect(sample.bottom).toBeLessThanOrEqual(1);
+  }
+  const ready = page.getByRole('dialog', { name: '学習を開始', exact: true });
+  await ready.getByRole('combobox', { name: '学習内容', exact: true }).selectOption('unplanned');
+  const title = ready.getByRole('textbox', { name: '勉強する内容', exact: true });
+  await title.fill('入場中の入力');
+  await expect(title).toBeFocused();
+  await expect(title).toHaveValue('入場中の入力');
+  const pomodoro = ready.getByRole('button', { name: /ポモドーロ/ });
+  await pomodoro.click();
+  await expect(pomodoro).toHaveClass(/active/);
   const feedback = await page.evaluate(() => {
     const { element, animation } = window.__studyEntry;
     const rect = element.getBoundingClientRect();
@@ -221,11 +252,14 @@ test('aborting a drag during entry preserves its animation and settles without r
   expect(feedback.sameAnimation).toBe(true);
   expect(feedback.currentTime).toBe(140);
   expect(feedback.playState).toBe('paused');
-  const ready = page.getByRole('dialog', { name: '学習を開始', exact: true });
   const pane = ready.locator('.study-session-page');
   await expect(ready).toBeVisible();
   await expect.poll(() => pane.evaluate(element => element.getAnimations().length)).toBe(0);
   expect(await page.evaluate(() => window.__studyEntryStarts)).toBe(1);
-  expect(await pane.evaluate(element => new DOMMatrix(getComputedStyle(element).transform).m41)).toBe(0);
+  expect(await pane.evaluate(element => {
+    const style = getComputedStyle(element);
+    const matrix = new DOMMatrix(style.transform);
+    return { x: matrix.m41, y: matrix.m42, scaleX: matrix.m11, scaleY: matrix.m22, opacity: Number(style.opacity) };
+  })).toEqual({ x: 0, y: 0, scaleX: 1, scaleY: 1, opacity: 1 });
   expect(await ready.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
 });

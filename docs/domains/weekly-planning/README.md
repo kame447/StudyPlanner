@@ -1,7 +1,7 @@
 # Weekly Planning
 
 Status: canonical domain index
-Updated: 2026-09-26
+Updated: 2026-10-08
 
 Stable V5 is the sole production weekly-planning runtime. This directory is the only current documentation root for weekly-planning responsibility.
 
@@ -58,6 +58,14 @@ These documents supplement the canonical owners above; they do not override them
 [Issue #305](https://github.com/kame447/StudyPlanner/issues/305) owns bounded Jev integration and rollout. [PR #332](https://github.com/kame447/StudyPlanner/pull/332) merged the server-side OpenRouter focused-authorization boundary and evaluation preparation into main with `JEV_MODE=off` / `JEV_CANARY_PERCENT=0`. Merging this foundation does not enable Jev for production decisions. The full semantic document, consultation and approval/save authority remain with their existing owners.
 
 [Issue #333](https://github.com/kame447/StudyPlanner/issues/333) owns the next Japanese evaluation work: reuse the existing Real Luna and Jev harnesses, compare the same cases and context, use Gemini only for first-pass review, and establish human-reviewed gold before canary. The existing 51 synthetic candidates are not gold. Execution ordering lives in [the roadmap](roadmap/current.md); integration and evaluation checkpoints remain in their respective Issues, and available setup/test commands live in [the repository README](../../../README.md#jev-focused-authorizationopenrouter).
+
+## AI conversation viewport
+
+The AI conversation shell follows the visual viewport's height and vertical offset so the composer and readable history share the available area when a mobile keyboard resizes or pans the viewport. A reader already at the newest message keeps that end anchor; a reader viewing older messages keeps the existing scroll position. Pinch zoom magnifies the existing layout without rewriting its dimensions. Leaving the view removes its listeners and restores the previous view-specific CSS values.
+
+This presentation boundary does not change semantic interpretation, stored conversation content, planning state, schedule persistence, input focus, or another surface's body/root scroll ownership. Keep the existing pre-focus 16px input sizing and explicit-user-focus policy. Regression coverage includes repeated resize/pan and focus cycles, multiline input, old-message reading, preview scroll ownership, desktop input and cleanup.
+
+Chromium and mobile-WebKit headless checks use a controlled VisualViewport fixture. Mobile WebKit establishes the old-message position through the DOM because its automation backend does not support mouse wheel; Chromium also exercises native wheel input. Neither establishes physical-iPhone keyboard, pan, IME or touch behavior. Completed release evidence is in the [viewport repair record](../../archive/work/closed/20261007-ai-composer-viewport-history-handoff.md).
 
 ## Historical documents
 

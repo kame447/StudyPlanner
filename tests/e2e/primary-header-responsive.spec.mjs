@@ -14,6 +14,8 @@ const VIEWPORTS = [
   { width: 1024, height: 768 },
   { width: 1280, height: 720 },
   { width: 852, height: 393 },
+  { width: 320, height: 568, gutter: 'auto' },
+  { width: 393, height: 852, gutter: 'auto' },
 ];
 const SURFACES = [
   ['AI計画', '.ai-planning-view'],
@@ -101,6 +103,14 @@ async function readHeaderBounds(page) {
       }
     }
     const viewportWidth = document.documentElement.clientWidth;
+    const shell = wrapper.parentElement;
+    const shellBox = shell.getBoundingClientRect();
+    const shellStyle = getComputedStyle(shell);
+    const contentLeft = shellBox.left + shell.clientLeft + Number.parseFloat(shellStyle.paddingLeft);
+    const contentRight = shellBox.left + shell.clientLeft + shell.clientWidth - Number.parseFloat(shellStyle.paddingRight);
+    if (headerBox.left < contentLeft - 0.75 || headerBox.right > contentRight + 0.75) {
+      violations.push('header escapes its parent content width');
+    }
     if (headerBox.left < -0.75 || headerBox.right > viewportWidth + 0.75
       || header.scrollWidth > header.clientWidth + 1) violations.push('header overflows viewport');
     const nav = document.querySelector('.primary-bottom-nav');
@@ -111,13 +121,27 @@ async function readHeaderBounds(page) {
     if (navButtons.length !== 5 || navButtons.some(button => !within(button.getBoundingClientRect(), navBox))) {
       violations.push('navigation button escapes footer');
     }
+    let minimumNavContentWidth = 0;
     for (const button of navButtons) {
       const label = button.querySelector('span:last-child');
       const range = document.createRange();
       range.selectNodeContents(label);
+      const buttonStyle = getComputedStyle(button);
+      minimumNavContentWidth += Math.max(range.getBoundingClientRect().width, button.firstElementChild.getBoundingClientRect().width)
+        + Number.parseFloat(buttonStyle.paddingLeft) + Number.parseFloat(buttonStyle.paddingRight);
       if (!within(range.getBoundingClientRect(), button.getBoundingClientRect())) {
-        violations.push(`navigation label ${label.textContent} escapes button`);
+        violations.push(`navigation label ${label.textContent} escapes button: ${JSON.stringify({
+          label: range.getBoundingClientRect().toJSON(), button: button.getBoundingClientRect().toJSON(),
+          minimum: getComputedStyle(button).minWidth, font: getComputedStyle(label).fontSize,
+          footer: navBox.toJSON(), footerColumns: getComputedStyle(nav).gridTemplateColumns,
+        })}`);
       }
+    }
+    const navStyle = getComputedStyle(nav);
+    const navContentWidth = nav.clientWidth - Number.parseFloat(navStyle.paddingLeft) - Number.parseFloat(navStyle.paddingRight);
+    minimumNavContentWidth += (navButtons.length - 1) * (Number.parseFloat(navStyle.columnGap) || 0);
+    if (minimumNavContentWidth > navContentWidth + 1) {
+      violations.push(`navigation intrinsic minimum ${minimumNavContentWidth} exceeds available ${navContentWidth}`);
     }
     return { violations, texts, headerHeight: headerBox.height };
   });
@@ -136,10 +160,11 @@ async function attachScreenshot(testInfo, name, target) {
 }
 
 for (const viewport of VIEWPORTS) {
-  test(`${viewport.width}x${viewport.height} keeps the full date and shared controls readable across pages`, async ({ page }, testInfo) => {
-    await page.setViewportSize(viewport);
+  test(`${viewport.width}x${viewport.height}${viewport.gutter ? ` gutter ${viewport.gutter}` : ''} keeps the full date and shared controls readable across pages`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await seedHeader(page);
     await page.goto('/');
+    if (viewport.gutter) await page.addStyleTag({ content: `html { scrollbar-gutter: ${viewport.gutter} !important; }` });
     await expectReadableHeader(page, ['2026', '12', '31', '木']);
     for (const [label, selector] of SURFACES) {
       await page.locator('.primary-bottom-nav button').filter({ hasText: label }).click();
@@ -163,22 +188,24 @@ test('393px keeps both digits of September 10 visible without a second header ro
   await attachScreenshot(testInfo, 'september-10-at-393px', page);
 });
 
-for (const width of [320, 393, 768]) {
-  test(`${width}px reflows the full header date at 200% text size`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width, height: 852 });
+for (const { width, height } of [{ width: 320, height: 568 }, ...[320, 393, 768].map(width => ({ width, height: 852 }))]) {
+  test(`${width}x${height} reflows the full header date at 200% text size`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height });
     await seedHeader(page);
     await page.goto('/');
     await page.addStyleTag({ content: ':root { font-size: 200% !important; }' });
     await expectReadableHeader(page, ['2026', '12', '31', '木']);
-    if (width === 320) {
-      await page.locator('.primary-bottom-nav button').filter({ hasText: 'AI計画' }).click();
-      await expect(page.locator('.ai-planning-view')).toBeVisible();
+    for (const [label, selector] of SURFACES) {
+      await page.locator('.primary-bottom-nav button').filter({ hasText: label }).click();
+      await expect(page.locator(selector)).toBeVisible();
       await expectReadableHeader(page, ['2026', '12', '31', '木']);
-      const composer = await page.locator('.ai-planning-composer').boundingBox();
-      const nav = await page.locator('.primary-bottom-nav').boundingBox();
-      expect(composer.y + composer.height).toBeLessThanOrEqual(nav.y + 1);
+      if (label === 'AI計画' && width === 320) {
+        const composer = await page.locator('.ai-planning-composer').boundingBox();
+        const nav = await page.locator('.primary-bottom-nav').boundingBox();
+        expect(composer.y + composer.height).toBeLessThanOrEqual(nav.y + 1);
+      }
     }
-    await attachScreenshot(testInfo, `header-${width}-text-200`, page.locator('.primary-app-header'));
+    await attachScreenshot(testInfo, `header-${width}-${height}-text-200`, page.locator('.primary-app-header'));
   });
 }
 

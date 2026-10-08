@@ -1,3 +1,4 @@
+import { createScheduleOccurrenceProjection } from '../../../domain/scheduleOccurrence';
 import { getRecurrenceWeekday } from '../../../lib/planRecurrence';
 import { buildTimetableImportCandidates } from '../../../lib/timetableImport';
 import type { Plan, ScheduleTemplate } from '../../../types/domain';
@@ -84,7 +85,7 @@ function existingPlanIntervals(
 ): MinuteInterval[] {
   const dateSet = new Set(dates);
   return plans.flatMap((plan) => {
-    if (!dateSet.has(plan.date)) return [];
+    if (!dateSet.has(plan.date) || plan.excludedDates?.includes(plan.occurrenceDate ?? plan.date)) return [];
     const interval = clipInterval({
       date: plan.date,
       start: minutesFromPlacementTime(plan.startTime) - EXISTING_PLAN_BUFFER_MINUTES,
@@ -95,6 +96,8 @@ function existingPlanIntervals(
 }
 
 function timetableIntervals(params: {
+  ownerId: string;
+  plans: readonly Plan[];
   templates: readonly ScheduleTemplate[];
   termId?: string;
   dates: readonly string[];
@@ -103,21 +106,27 @@ function timetableIntervals(params: {
   const templates = params.templates.filter(
     (template) => (template.termId || 'default') === termId,
   );
-  return params.dates.flatMap((date) =>
-    buildTimetableImportCandidates({
+  return params.dates.flatMap((date) => {
+    // The common projection owns imported/moved Plan override identity, including
+    // canceled Plans retained for their Actual history.
+    const visibleSources = new Set(createScheduleOccurrenceProjection({
+      ownerId: params.ownerId, startDate: date, endDate: date, plans: params.plans,
+      scheduleTemplates: templates, timetableTermId: termId,
+    }).occurrences.filter(row => row.source.backingKind === 'timetable-template').map(row => row.source.backingId));
+    return buildTimetableImportCandidates({
       templates,
       date,
       weekday: getRecurrenceWeekday(date),
       termId,
-    }).flatMap((candidate) => {
+    }).filter(candidate => visibleSources.has(candidate.sourceId)).flatMap((candidate) => {
       const interval = clipInterval({
         date,
         start: minutesFromPlacementTime(candidate.startTime) - EXISTING_PLAN_BUFFER_MINUTES,
         end: minutesFromPlacementTime(candidate.endTime) + EXISTING_PLAN_BUFFER_MINUTES,
       });
       return interval ? [interval] : [];
-    }),
-  );
+    });
+  });
 }
 
 function hardConstraintIntervals(params: {
@@ -159,6 +168,8 @@ export function buildPlacementBusyIntervals(params: {
     ...hardConstraintIntervals({ input: params.input, dates: params.dates }),
     ...existingPlanIntervals(params.plans, params.dates),
     ...timetableIntervals({
+      ownerId: params.input.ownerId,
+      plans: params.plans,
       templates: params.scheduleTemplates,
       termId: params.timetableTermId,
       dates: params.dates,

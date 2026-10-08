@@ -1,3 +1,5 @@
+import { buildDayOccurrenceCancellation } from '../domain/dayOccurrenceCancellation';
+import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
 import { startupTiming } from '../lib/startupTiming';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PlannerMutationReconciliation } from '../domain/plannerMutationReconciliation';
@@ -198,6 +200,7 @@ export interface UsePlannerDataStateResult {
   closePlanEditor: () => void;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   movePlanOccurrence: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
+  deleteDayOccurrence: (occurrence: ScheduleOccurrence) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
@@ -276,6 +279,12 @@ export function usePlannerDataState({
   const [scheduleTemplates, setScheduleTemplates, rawSetScheduleTemplates] = useScopedPlannerState<ScheduleTemplate[]>([], mutationScope);
   const [timetableTerms, setTimetableTerms, rawSetTimetableTerms] = useScopedPlannerState<TimetableTerm[]>([], mutationScope);
   const [timetablePeriods, setTimetablePeriods, rawSetTimetablePeriods] = useScopedPlannerState<TimetablePeriod[]>([], mutationScope);
+  const dayMutationData = useRef({ plans, monthEvents, scheduleTemplates, timetableTerms });
+  useLayoutEffect(() => { dayMutationData.current = { plans, monthEvents, scheduleTemplates, timetableTerms }; },
+    [plans, monthEvents, scheduleTemplates, timetableTerms]);
+  const pendingDayCancellations = useMemo(() => new Set<string>(), [mutationScope]);
+  const pendingDaySourceWrites = useMemo(() => new Map<string, number>(), [mutationScope]);
+  const uncertainDaySources = useMemo(() => new Map<string, NonNullable<ReturnType<PlannerDataReadAuthority['captureProjectionLease']>>>(), [mutationScope]);
   const plannerDataReadAuthorityRef = useRef<PlannerDataReadAuthority | null>(null);
   if (!plannerDataReadAuthorityRef.current) {
     plannerDataReadAuthorityRef.current = new PlannerDataReadAuthority();
@@ -863,6 +872,118 @@ export function usePlannerDataState({
         }
       },
     });
+  }
+
+  function requireKnownDaySources(keys: string[]) {
+    const current = plannerDataReadAuthority.captureProjectionLease();
+    for (const key of keys) {
+      const uncertain = uncertainDaySources.get(key);
+      if (!uncertain) continue;
+      if (current && plannerDataReadAuthority.isProjectionUsable(current) && plannerDataReadAuthority.hasAcceptedProjectionChanged(uncertain)) {
+        uncertainDaySources.delete(key);
+      } else {
+        throw new Error('予定の保存状態を確認できません。再読み込み後にもう一度お試しください。');
+      }
+    }
+  }
+
+  async function withDayOccurrenceSourceWrite<T>(target: string | string[] | undefined, write: () => Promise<T>): Promise<T> {
+    const keys = target ? typeof target === 'string' ? [target] : target : [];
+    requireKnownDaySources(keys);
+    if (keys.some(key => pendingDayCancellations.has(key))) throw new Error('この予定は保存中です。');
+    keys.forEach(key => pendingDaySourceWrites.set(key, (pendingDaySourceWrites.get(key) ?? 0) + 1));
+    try { return await write(); } finally {
+      keys.forEach(key => {
+        const remaining = (pendingDaySourceWrites.get(key) ?? 1) - 1;
+        if (remaining) pendingDaySourceWrites.set(key, remaining); else pendingDaySourceWrites.delete(key);
+      });
+    }
+  }
+
+  function timetableTermSourceKeys(term: TimetableTerm) {
+    return dayMutationData.current.scheduleTemplates.filter(row => (row.termId || 'default') === term.id)
+      .map(row => `timetable-template:${row.id}`);
+  }
+
+  function requireDayOccurrenceProjection() {
+    const lease = plannerDataReadAuthority.captureProjectionLease();
+    if (!lease || !plannerDataReadAuthority.isProjectionUsable(lease)) {
+      throw new Error('予定の保存状態を確認できません。再読み込み後にもう一度お試しください。');
+    }
+  }
+
+  async function deleteDayOccurrence(occurrence: ScheduleOccurrence) {
+    requireDayOccurrenceProjection();
+    if (!userId || occurrence.ownerId !== userId) throw new PlannerMutationScopeExpiredError();
+    const cancellation = buildDayOccurrenceCancellation({ ownerId: userId, occurrence, ...dayMutationData.current });
+    const keys = cancellation.kind === 'timetable'
+      ? cancellation.before.map(row => `timetable-template:${row.id}`)
+      : [`${occurrence.source.backingKind}:${occurrence.source.backingId}`];
+    requireKnownDaySources(keys);
+    const isPending = () => keys.some(key => pendingDayCancellations.has(key) || pendingDaySourceWrites.has(key));
+    const markPending = () => keys.forEach(key => pendingDayCancellations.add(key));
+    const clearPending = () => keys.forEach(key => pendingDayCancellations.delete(key));
+    if (isPending()) throw new Error('この予定は保存中です。');
+    const targets: PlannerRepairTarget[] = cancellation.kind === 'timetable' ? ['timetable']
+      : cancellation.kind === 'plan' ? ['plans-todos'] : ['month-events'];
+    const write = async (restore: boolean) => {
+      requireDayOccurrenceProjection();
+      const lease = plannerDataReadAuthority.captureProjectionLease();
+      const release = cancellation.kind === 'timetable' ? undefined
+        : admitActualMutation([], [cancellation.before.id]);
+      let failed = false;
+      try {
+        if (cancellation.kind === 'timetable') {
+          const templates = restore
+            ? cancellation.before.map(row => ({ ...row, excludedDates: row.excludedDates ?? [] }))
+            : cancellation.after;
+          await plannerRepository.applyTimetableMutation({ userId, templateUpserts: templates, templateDeletes: [],
+            termUpserts: [], termDeletes: [], periodUpserts: [], periodDeletes: [] });
+          if (lease && plannerDataReadAuthority.isOwnerCurrent(lease) && !plannerDataReadAuthority.hasAcceptedProjectionChanged(lease)) {
+            setScheduleTemplates(current => templates.reduce((rows, item) => upsertByKey(rows, item, row => row.id), current));
+          }
+        } else if (cancellation.kind === 'plan') {
+          const plan = restore ? cancellation.before : cancellation.after;
+          await plannerRepository.applyRecurringPlanMutation(userId, { planUpserts: [plan], planDeletes: [], actualUpserts: [], actualDeletes: [] });
+          if (lease && plannerDataReadAuthority.isOwnerCurrent(lease) && !plannerDataReadAuthority.hasAcceptedProjectionChanged(lease)) {
+            setPlans(current => sortAndUpsertPlans(current, [plan]));
+          }
+        } else {
+          const event = restore ? cancellation.before : cancellation.after;
+          await plannerRepository.upsertMonthEvent(event);
+          if (lease && plannerDataReadAuthority.isOwnerCurrent(lease) && !plannerDataReadAuthority.hasAcceptedProjectionChanged(lease)) {
+            setMonthEvents(current => sortMonthEvents(upsertByKey(current, event, row => row.id)));
+          }
+        }
+      } catch (error) {
+        failed = true;
+        if (lease) {
+          keys.forEach(key => uncertainDaySources.set(key, lease));
+          reconciliation.request(lease, targets);
+        }
+        throw error;
+      }
+      finally { if (release) settleActualAdmission(release, lease, cancellation.kind === 'plan' ? ['plans-todos'] : ['actual-material'], failed); }
+    };
+    markPending();
+    try {
+      await write(false);
+      showDeleteUndoNotice(async () => {
+        if (isPending()) throw new Error('この予定は保存中です。');
+        const data = dayMutationData.current;
+        const rows = cancellation.kind === 'timetable' ? data.scheduleTemplates
+          : cancellation.kind === 'plan' ? data.plans : data.monthEvents;
+        const expected = cancellation.kind === 'timetable' ? cancellation.after : [cancellation.after];
+        if (!expected.every(row => JSON.stringify(rows.find(current => current.id === row.id && current.userId === userId)) === JSON.stringify(row))) {
+          throw new Error('予定が更新されたため復元できません。現在の予定を確認してください。');
+        }
+        markPending();
+        try { await write(true); } finally { clearPending(); }
+      }, targets);
+    } catch (error) {
+      showNotice(resolveErrorMessage(error, 'この日の予定を削除できませんでした。'), 'error');
+      throw error;
+    } finally { clearPending(); }
   }
 
   async function deletePlan(plan: Plan) {
@@ -1717,7 +1838,7 @@ export function usePlannerDataState({
       throw new Error('隔週の授業は基準日を設定してください。');
     }
 
-    const currentTemplate = scheduleTemplates.find(
+    const currentTemplate = dayMutationData.current.scheduleTemplates.find(
       (template) => template.id === targetTemplateId,
     );
     const now = new Date().toISOString();
@@ -1742,6 +1863,7 @@ export function usePlannerDataState({
           ? normalizeTimetableDate(draft.weekIntervalAnchorDate)
           : null,
       memo: draft.memo.trim(),
+      ...(currentTemplate?.excludedDates ? { excludedDates: currentTemplate.excludedDates } : {}),
       createdAt: currentTemplate?.createdAt ?? now,
       updatedAt: now,
     };
@@ -2092,8 +2214,14 @@ export function usePlannerDataState({
     openCreatePlan,
     openEditPlan,
     closePlanEditor,
-    savePlanDraft: trackMutation(savePlanDraft, ['plans-todos']),
-    movePlanOccurrence: trackMutation(movePlanOccurrence, ['plans-todos']),
+    savePlanDraft: trackMutation((draft: PlanDraft, id?: string) => {
+      const target = id ?? editingPlanId;
+      if (!target && draft.sourceType === 'timetable') requireKnownDaySources([...uncertainDaySources.keys()]);
+      return withDayOccurrenceSourceWrite(target ? `plan:${target}` : undefined, () => savePlanDraft(draft, id));
+    }, ['plans-todos']),
+    movePlanOccurrence: trackMutation((plan: Plan, target: WeekPlanMoveTarget) =>
+      withDayOccurrenceSourceWrite(`plan:${plan.id}`, () => movePlanOccurrence(plan, target)), ['plans-todos']),
+    deleteDayOccurrence: trackMutation(deleteDayOccurrence, ['timetable', 'plans-todos', 'month-events']),
     deletePlan: trackMutation(deletePlan, ['actual-material', 'plans-todos']),
     confirmRecurringPlanScope: trackMutation(confirmRecurringPlanScope),
     cancelRecurringPlanScope,
@@ -2103,8 +2231,10 @@ export function usePlannerDataState({
     linkStandaloneActualToPlan: trackMutation(linkStandaloneActualToPlan),
     deleteActual: trackMutation(deleteActual),
     saveDayNote: trackMutation(saveDayNote, ['day-notes']),
-    saveMonthEvent: trackMutation(saveMonthEvent, ['month-events']),
-    deleteMonthEvent: trackMutation(deleteMonthEvent, ['month-events']),
+    saveMonthEvent: trackMutation((draft: MonthEventDraft, id?: string) =>
+      withDayOccurrenceSourceWrite(id ? `month-event:${id}` : undefined, () => saveMonthEvent(draft, id)), ['month-events']),
+    deleteMonthEvent: trackMutation((event: MonthEvent) =>
+      withDayOccurrenceSourceWrite(`month-event:${event.id}`, () => deleteMonthEvent(event)), ['month-events']),
     saveTodo: trackMutation(saveTodo, ['plans-todos']),
     scheduleTodoAsPlan: trackMutation(scheduleTodoAsPlan, ['plans-todos']),
     deleteTodo: trackMutation(deleteTodo, ['plans-todos']),
@@ -2113,11 +2243,15 @@ export function usePlannerDataState({
     captureStudyMaterialBaseline: actualAdmission.captureMaterial,
     saveStudyMaterial: trackMutation(saveStudyMaterial),
     deleteStudyMaterial: trackMutation(deleteStudyMaterial),
-    saveScheduleTemplate: trackMutation(saveScheduleTemplate, ['timetable']),
-    deleteScheduleTemplate: trackMutation(deleteScheduleTemplate, ['timetable']),
+    saveScheduleTemplate: trackMutation((draft: ScheduleTemplateDraft, id?: string) =>
+      withDayOccurrenceSourceWrite(id ? `timetable-template:${id}` : undefined, () => saveScheduleTemplate(draft, id)), ['timetable']),
+    deleteScheduleTemplate: trackMutation((template: ScheduleTemplate) =>
+      withDayOccurrenceSourceWrite(`timetable-template:${template.id}`, () => deleteScheduleTemplate(template)), ['timetable']),
     activateTimetableTerm: trackMutation(activateTimetableTerm, ['timetable']),
-    deleteTimetableTerm: trackMutation(deleteTimetableTerm, ['timetable']),
-    clearTimetableTermData: trackMutation(clearTimetableTermData, ['timetable']),
+    deleteTimetableTerm: trackMutation((term: TimetableTerm) =>
+      withDayOccurrenceSourceWrite(timetableTermSourceKeys(term), () => deleteTimetableTerm(term)), ['timetable']),
+    clearTimetableTermData: trackMutation((term: TimetableTerm) =>
+      withDayOccurrenceSourceWrite(timetableTermSourceKeys(term), () => clearTimetableTermData(term)), ['timetable']),
     saveTimetablePeriod: trackMutation(saveTimetablePeriod, ['timetable']),
     deleteTimetablePeriod: trackMutation(deleteTimetablePeriod, ['timetable']),
     selectDate,

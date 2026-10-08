@@ -180,3 +180,15 @@ describe('study record aggregation', () => {
     ).toBe(75);
   });
 });
+
+
+it('preserves occurrence-specific history metadata after its plan is canceled', () => {
+  const source = plan({ recurrenceRules: [{ id: 'specific', kind: 'date', startDate: '2026-05-04', until: null, dates: ['2026-05-04'],
+    weekdays: [], dayType: null, isOverride: true, startTime: '09:00', endTime: '10:00', title: '当日の特別授業', subject: 'English', type: 'school-event' }] });
+  const record = actual({ planId: source.id, title: undefined, subject: '' });
+  const before = normalizeStudyRecordsForDisplay({ plans: [source], actuals: [record] });
+  const after = normalizeStudyRecordsForDisplay({ plans: [{ ...source, excludedDates: ['2026-05-04'] }], actuals: [record] });
+  expect(after).toHaveLength(1);
+  expect(after[0]).toMatchObject({ title: '当日の特別授業', subject: 'English', type: 'school-event', durationMinutes: 60 });
+  expect(after[0].title).toBe(before[0].title); expect(after[0].actual).toEqual(record);
+});
