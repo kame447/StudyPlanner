@@ -70,7 +70,7 @@ test('study session waits for an explicit start and then flows into record savin
   await seedStudySession(page);
   await page.goto('/');
 
-  await page.getByRole('button', { name: '学習を開始する' }).click();
+  await page.getByRole('button', { name: '勉強を開始' }).click();
   const ready = page.getByRole('dialog', { name: '学習を開始' });
   await expect(ready).toBeVisible();
   await expect(ready.getByRole('heading', { name: '卒業研究' })).toBeVisible();
@@ -113,7 +113,7 @@ test('study session enters from the right and an edge swipe uses the existing ex
   await seedStudySession(page);
   await page.goto('/');
 
-  await page.getByRole('button', { name: '学習を開始する' }).click();
+  await page.getByRole('button', { name: '勉強を開始' }).click();
   const ready = page.getByRole('dialog', { name: '学習を開始' });
   const readyPage = ready.locator('.study-session-page');
   await expect(ready).toBeVisible();
@@ -154,7 +154,7 @@ test('pomodoro can be selected before start and exposes focus and break UI', asy
   await seedStudySession(page);
   await page.goto('/');
 
-  await page.getByRole('button', { name: '学習を開始する' }).click();
+  await page.getByRole('button', { name: '勉強を開始' }).click();
   const ready = page.getByRole('dialog', { name: '学習を開始' });
   const pomodoro = ready.getByRole('button', { name: /ポモドーロ/ });
   await pomodoro.click();

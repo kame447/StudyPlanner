@@ -450,7 +450,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
           onRetry={retryPlannerData}
         />
         {isHomeSurface ? (
-          <StudySessionProvider materials={studyMaterials} onSaveActual={saveActual}>
+          <StudySessionProvider userId={user.id} materials={studyMaterials} onSaveActual={saveActual} onSaveStandaloneActual={saveStandaloneActual}>
             <HomeScheduleView
               homeScenePreferences={homeScenePreference.preferences}
               userId={user.id}

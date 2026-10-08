@@ -81,7 +81,7 @@ test.describe('mobile overlay stability', () => {
   test('study session keeps its root surface pinned while only the page scrolls', async ({ page }) => {
     await seedMobileOverlayState(page, { includeMonthEvent: false });
     await page.goto('/');
-    await page.getByRole('button', { name: '学習を開始する' }).click();
+    await page.getByRole('button', { name: '勉強を開始' }).click();
 
     const overlay = page.locator('.study-session-overlay');
     const sessionPage = overlay.locator('.study-session-page');

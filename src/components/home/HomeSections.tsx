@@ -119,14 +119,23 @@ export function GettingStartedSection({
   onOpenTodo: () => void;
   onOpenBookshelf: () => void;
 }) {
+  const startStudySession = useStudySessionLauncher();
   const actions = [
+    {
+      id: 'start',
+      title: '勉強を開始',
+      detail: '予定なしで今から学習する',
+      icon: BookOpen,
+      onClick: () => startStudySession?.({ kind: 'unplanned' }),
+      primary: true,
+    },
     {
       id: 'ai',
       title: 'AIで学習計画を作る',
       detail: '目標や教材から予定を組み立てる',
       icon: MessageCircle,
       onClick: onOpenAiPlanning,
-      primary: true,
+      primary: false,
     },
     {
       id: 'material',
@@ -191,7 +200,6 @@ export function NextPlanSection({
   homeScenePreferences = DEFAULT_HOME_SCENE_PREFERENCES,
   dashboard,
   studyMaterials,
-  onOpenAiPlanning,
   onOpenDay,
 }: {
   homeScenePreferences?: HomeScenePreferences;
@@ -211,17 +219,9 @@ export function NextPlanSection({
   const usesStartAction = nextPlanPresentation?.semanticKind === 'study';
 
   function handlePrimaryAction() {
-    if (!nextPlan) {
-      onOpenAiPlanning();
-      return;
-    }
-
-    if (usesStartAction && startStudySession) {
-      startStudySession(nextPlan);
-      return;
-    }
-
-    onOpenDay(nextPlan.date);
+    startStudySession?.(usesStartAction && nextPlan
+      ? { kind: 'planned', plan: nextPlan }
+      : { kind: 'unplanned' });
   }
 
   return (
@@ -235,7 +235,11 @@ export function NextPlanSection({
         <p className="home-eyebrow">次の予定</p>
         {nextPlan ? (
           <>
-            <h1>{nextPlan.title}</h1>
+            <h1>{usesStartAction ? nextPlan.title : (
+              <button type="button" className="home-next-title-action" aria-label={`${nextPlanPresentation?.actionLabel ?? '予定を確認する'}: ${nextPlan.title}`} onClick={() => onOpenDay(nextPlan.date)}>
+                {nextPlan.title}<ChevronRight size={20} aria-hidden="true" />
+              </button>
+            )}</h1>
             <div className="home-next-meta">
               <span><Clock aria-hidden="true" size={18} />{nextPlan.startTime} - {nextPlan.endTime}</span>
               <span>
@@ -251,7 +255,6 @@ export function NextPlanSection({
         ) : (
           <>
             <h1>次の予定はありません</h1>
-            <p className="home-empty-copy">予定を追加するか、AI計画から今日の学習内容を組み立てられます。</p>
           </>
         )}
       </div>
@@ -264,9 +267,9 @@ export function NextPlanSection({
         onClick={handlePrimaryAction}
       >
         <span className="home-start-icon">
-          {nextPlan && !usesStartAction ? <ChevronRight aria-hidden="true" size={18} /> : '▶'}
+          {'▶'}
         </span>
-        {nextPlan ? nextPlanPresentation?.actionLabel ?? '予定を確認する' : 'AIで予定を作る'}
+        勉強を開始
       </button>
     </section>
   );

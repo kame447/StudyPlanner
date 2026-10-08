@@ -82,7 +82,7 @@ test('touch swipe locks horizontally, follows the finger, and opens the exit con
   await seedStudySession(page);
   await page.goto('/');
 
-  await page.getByRole('button', { name: '学習を開始する' }).click();
+  await page.getByRole('button', { name: '勉強を開始' }).click();
   const ready = page.getByRole('dialog', { name: '学習を開始' });
   await ready.getByRole('button', { name: 'スタート' }).click();
 

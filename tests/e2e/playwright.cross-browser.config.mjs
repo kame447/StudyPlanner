@@ -57,7 +57,7 @@ export default defineConfig({
     },
     {
       name: 'webkit-mobile',
-      testMatch: [...sharedTests, '**/ai-planning-composer-viewport.spec.mjs', '**/home-pixel-student.spec.mjs'],
+      testMatch: [...sharedTests, '**/ai-planning-composer-viewport.spec.mjs', '**/home-pixel-student.spec.mjs', '**/study-session-unplanned.spec.mjs'],
       use: {
         ...devices['iPhone 13'],
         browserName: 'webkit',

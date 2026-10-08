@@ -1129,3 +1129,20 @@
     grid-column: 1 / -1;
   }
 }
+
+.home-next-title-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-next-title-action svg { flex-shrink: 0; }
+.home-next-title-action:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }

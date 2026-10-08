@@ -32,7 +32,7 @@ const p=plan({title:'Math',startTime:'19:00',endTime:'20:00'}), noop=()=>{};
 const notices=vi.fn();
 const firstPlan={...p,materialId:'material',materialName:'Book'};
 const secondPlan={...firstPlan,id:'other-plan',seriesId:'other-plan',title:'Math second',startTime:'20:00',endTime:'21:00'};
-function Harness(){state=usePlannerDataState({userId:'owner',showNotice:notices});return <StudySessionProvider materials={state.studyMaterials} onSaveActual={state.saveActual}><HomeView plans={state.plans} actuals={state.actuals} todos={state.todos} studyMaterials={state.studyMaterials} primaryHeaderRef={{current:null}} primaryBottomNavRef={{current:null}} onOpenAiPlanning={noop} onOpenSchedule={noop} onAddEntry={noop} onOpenDay={noop} onOpenTodo={noop} onOpenBookshelf={noop} onOpenReport={noop}/></StudySessionProvider>}
+function Harness(){state=usePlannerDataState({userId:'owner',showNotice:notices});return <StudySessionProvider userId="owner" materials={state.studyMaterials} onSaveActual={state.saveActual} onSaveStandaloneActual={state.saveStandaloneActual}><HomeView plans={state.plans} actuals={state.actuals} todos={state.todos} studyMaterials={state.studyMaterials} primaryHeaderRef={{current:null}} primaryBottomNavRef={{current:null}} onOpenAiPlanning={noop} onOpenSchedule={noop} onAddEntry={noop} onOpenDay={noop} onOpenTodo={noop} onOpenBookshelf={noop} onOpenReport={noop}/></StudySessionProvider>}
 function button(label:string){return renderer!.root.findAllByType('button').find(b=>b.children.includes(label))!;}
 async function click(label:string){await act(async()=>{button(label).props.onClick()});}
 beforeEach(()=>{sdk.rows.clear();sdk.rows.set('plans',new Map([[p.id,p]]));sdk.log=[];sdk.gate=null;sdk.entered=false;notices.mockClear();
@@ -112,21 +112,21 @@ it('disjoint materials remain isolated despite late shared-hook acknowledgement'
 
 it('each Study Session launch fences old success and exit callbacks even for the same Plan object', async () => {
   const { useStudySessionLauncher } = await import('./StudySessionView');
-  let launch!: (plan: typeof firstPlan) => void;
+  let launch!: NonNullable<ReturnType<typeof useStudySessionLauncher>>;
   function LaunchProbe() { launch = useStudySessionLauncher()!; return null; }
   let complete!: () => void;
   const saved = new Promise<void>(resolve => { complete = resolve; });
   // The promise needs its resolver established before the provider invokes it.
   const save = vi.fn(() => saved);
   await act(async () => {
-    renderer = create(<StudySessionProvider materials={[material]} onSaveActual={save}><LaunchProbe /></StudySessionProvider>);
+    renderer = create(<StudySessionProvider userId="owner" materials={[material]} onSaveActual={save} onSaveStandaloneActual={save}><LaunchProbe /></StudySessionProvider>);
     await Promise.resolve();
   });
-  await act(async () => { launch(firstPlan); });
+  await act(async () => { launch({ kind: 'planned', plan: firstPlan }); });
   const oldExit = renderer!.root.findByProps({ role: 'dialog' }).parent!.props.onClose;
   await click('スタート'); await click('終了する'); await inputProgress('5'); await click('記録を保存');
   await back(); await back();
-  await act(async () => { launch(firstPlan); });
+  await act(async () => { launch({ kind: 'planned', plan: firstPlan }); });
   await click('スタート'); await click('終了する'); await inputProgress('7');
   await act(async () => { oldExit(); complete(); });
   expect(save).toHaveBeenCalledTimes(1);
