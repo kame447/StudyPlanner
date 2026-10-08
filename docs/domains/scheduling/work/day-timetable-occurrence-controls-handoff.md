@@ -1,9 +1,19 @@
 # Day timetable visibility and occurrence removal
 
-Status: active; final phase-transition integration passed local verification, updated draft publication and exact-head browser/image gates pending
+Status: active; final top-inset integration passed local verification, strict browser/image acceptance and main release remain pending
 Branch: `fix/day-timetable-occurrence-controls`
 Base: `3a1e60b9`
 PR: https://github.com/kame447/StudyPlanner/pull/541 (draft)
+
+## Final header-inset integration verification — 2026-10-08 06:39 UTC
+
+- Latest published `d4b0c7ba` passed CI / 6,228 tests / actual Firestore, visual, Quality and Admin. Browser finished 439 passes / 12 failures; cross-browser 328 passes / 3 existing skips / 12 failures. All failures are in the upstream study-session boundary check: summary top 76px against sticky-header bottom 78px. The prior rapid-start/focus premise was corrected; this is a separate structural overlap and no assertion or threshold was relaxed.
+- Day's two viewport cases passed first-attempt on Chromium and WebKit. Eight Day screenshots from the exact head were retrieved through the official Sediment file-ID path and verified against GitHub artifact SHA-256. The deletion button still lacks its base style; the coordinator explicitly deferred that low-priority class fix. The immediate retained-history screenshot shows the existing eight-second/closeable Undo toast over part of the content; persistent inaccessibility after dismissal is not verified. These observations are not relabeled as fixed.
+- Integrated upstream local `3bdf46e5e110f4585b1f21e2550fdf6932b1b140`: only page top padding and header top margin change to zero, leaving the header as the sole owner of safe-top padding and preserving the existing 12px bottom gap. The strict browser bounds, opacity, phase-reset, rapid-start, focus, widths, themes and motion assertions are unchanged. Day-owned production source and tests are unchanged.
+- Clean input `06f5fb7adbc9e29bb8eaec06d358bfcd6d9f907a`, tree `eae71b5754798c4566a2f98fc95d19b7e8b76130`, passed fresh `npm run verify`, exit 0: app/Worker full checks; 766 files / 6,228 tests passed, 10 files / 45 tests skipped, 1 todo; test duration 470.04 seconds; production build 10.64 seconds. All eight bundle guards passed (JS 2203.5 KiB raw / 592.3 KiB gzip; CSS 473.5 KiB raw / 79.5 KiB gzip).
+- The coordinator reserved one thread/fork worker for this snapshot. Every tracked input hash, HEAD/tree, clean worktree and all 237 actual installed package identities match before/after. Lock and installed-manifest SHA-256 remain the recorded values above. Evidence: ignored `artifacts/day-release/verify-inset-final-input.json`, `.log`, `.exit`, `verify-inset-final-post.json` and `bundle-inset-final.log`.
+- After that run, only the upstream full-result checkpoint and this Markdown record changed. The upstream actual remote is `a7d6009bc03c574d84d081813fab8c190f169a8b`, matching local `e6e3c7ec85457de9789ca682c77653fc08c5cf24` and tree `4c66bf1b4120dab588033a095eacc74fb8acad98`. Publish on this same draft PR with the existing Day remote and that actual upstream parent, preserving exact tree identity.
+- Main release remains held while the coordinator verifies the separate production entry incident. Strict final-head browser and rendered-image success is still required before feature acceptance; local full success is not a substitute.
 
 ## Final phase-transition integration verification — 2026-10-08 05:11 UTC
 
