@@ -1,9 +1,20 @@
 import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
 const OWNER = 'day-occurrence-owner';
+async function timedPhase(name, run) {
+  const startedAt = performance.now();
+  console.log('Day occurrence phase:', JSON.stringify({ name, state: 'started' }));
+  try {
+    return await test.step(name, run);
+  } finally {
+    console.log('Day occurrence phase:', JSON.stringify({ name, state: 'finished', elapsedMs: Math.round(performance.now() - startedAt) }));
+  }
+}
 async function attachScreen(page, testInfo, name) {
-  const path = testInfo.outputPath('attachments', `${name}.png`);
-  await page.screenshot({ path, animations: 'disabled' });
-  await testInfo.attach(name, { path, contentType: 'image/png' });
+  await timedPhase(`capture ${name}`, async () => {
+    const path = testInfo.outputPath('attachments', `${name}.png`);
+    await page.screenshot({ path, animations: 'disabled' });
+    await testInfo.attach(name, { path, contentType: 'image/png' });
+  });
 }
 async function seed(page) {
   await page.addInitScript(({ date, owner }) => {
@@ -44,59 +55,73 @@ async function setVisible(page, visible) {
 }
 for (const width of [390, 1280]) {
   test(`day visibility and single-occurrence cancellation preserve recorded history at ${width}px`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width, height: 900 }); await seed(page); await page.goto('/'); await openDay(page);
-    await expect(card(page, '自動表示の授業')).toHaveCount(1);
+    await timedPhase('open seeded Day', async () => {
+      await page.setViewportSize({ width, height: 900 }); await seed(page); await page.goto('/'); await openDay(page);
+      await expect(card(page, '自動表示の授業')).toHaveCount(1);
+    });
     const savedActuals = await actuals(page);
-    await setVisible(page, false);
-    await expect(card(page, '自動表示の授業')).toHaveCount(0);
-    await expect(card(page, '保存済み授業')).toHaveCount(1);
-    await expect(page.locator('.timeline-actual-block')).toHaveCount(2);
-    await page.reload(); await openDay(page); await expect(card(page, '自動表示の授業')).toHaveCount(0);
-    await page.getByRole('tab', { name: '月', exact: true }).click();
-    await expect(page.getByRole('grid', { name: '月間カレンダー' })).toContainText('自動表示の授業');
-    await page.getByRole('tab', { name: '日', exact: true }).click(); await setVisible(page, true);
-    await card(page, '自動表示の授業').click();
-    await expect(page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true })).toBeVisible();
-    await attachScreen(page, testInfo, `day-timetable-detail-${width}`);
-    const deletionBounds = await page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true })
-      .getByRole('button', { name: 'この日だけ削除', exact: true }).evaluate(button => {
-        const control = button.getBoundingClientRect();
-        const dialog = button.closest('[role="dialog"]').getBoundingClientRect();
-        return { height: control.height, left: control.left, right: control.right, top: control.top, bottom: control.bottom,
-          dialogLeft: dialog.left, dialogRight: dialog.right, dialogTop: dialog.top, dialogBottom: dialog.bottom,
-          viewportWidth: window.innerWidth, viewportHeight: window.innerHeight };
-      });
-    console.log('Day timetable deletion control bounds:', JSON.stringify({ width, ...deletionBounds }));
-    // Existing modal ghost buttons keep at least 40px on the narrow breakpoint.
-    expect(deletionBounds.height).toBeGreaterThanOrEqual(40);
-    expect(deletionBounds.left).toBeGreaterThanOrEqual(deletionBounds.dialogLeft);
-    expect(deletionBounds.right).toBeLessThanOrEqual(deletionBounds.dialogRight);
-    expect(deletionBounds.top).toBeGreaterThanOrEqual(deletionBounds.dialogTop);
-    expect(deletionBounds.bottom).toBeLessThanOrEqual(deletionBounds.dialogBottom);
-    expect(deletionBounds.left).toBeGreaterThanOrEqual(0);
-    expect(deletionBounds.right).toBeLessThanOrEqual(deletionBounds.viewportWidth);
-    expect(deletionBounds.top).toBeGreaterThanOrEqual(0);
-    expect(deletionBounds.bottom).toBeLessThanOrEqual(deletionBounds.viewportHeight);
-    await page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true }).getByRole('button', { name: 'この日だけ削除', exact: true }).click();
-    await expect(card(page, '自動表示の授業')).toHaveCount(0);
-    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleTemplates.v1')).map(row => row.excludedDates))).toEqual([[E2E_TODAY], [E2E_TODAY]]);
-    await page.getByRole('button', { name: '元に戻す', exact: true }).click();
-    await expect(card(page, '自動表示の授業')).toHaveCount(1);
-    for (const title of ['毎週の学習', '毎週の予定']) {
-      await card(page, title).click();
-      await page.getByRole('dialog', { name: `${title}の操作`, exact: true }).getByRole('button', { name: 'この日だけ削除', exact: true }).click();
-      await expect(card(page, title)).toHaveCount(0);
-    }
-    await expect(page.locator('.timeline-actual-block')).toHaveCount(2); expect(await actuals(page)).toBe(savedActuals);
-    await page.locator('.timeline-actual-block').first().click();
-    await expect(page.getByRole('dialog')).toContainText('記録は残っています');
-    await expect(page.getByRole('dialog').getByRole('button', { name: '記録を編集', exact: true })).toBeVisible();
-    await attachScreen(page, testInfo, `day-retained-actual-${width}`);
-    await page.getByRole('dialog').getByRole('button', { name: '閉じる', exact: true }).click();
-    await page.reload(); await openDay(page);
-    await expect(card(page, '毎週の学習')).toHaveCount(0); await expect(card(page, '毎週の予定')).toHaveCount(0);
-    await expect(page.locator('.timeline-actual-block')).toHaveCount(2); expect(await actuals(page)).toBe(savedActuals);
-    for (let day = 0; day < 7; day++) await page.getByRole('button', { name: '次の期間へ', exact: true }).click();
-    for (const title of ['毎週の学習', '毎週の予定', '自動表示の授業']) await expect(card(page, title)).toHaveCount(1);
+    await timedPhase('visibility preference persists independently of Month', async () => {
+      await setVisible(page, false);
+      await expect(card(page, '自動表示の授業')).toHaveCount(0);
+      await expect(card(page, '保存済み授業')).toHaveCount(1);
+      await expect(page.locator('.timeline-actual-block')).toHaveCount(2);
+      await page.reload(); await openDay(page); await expect(card(page, '自動表示の授業')).toHaveCount(0);
+      await page.getByRole('tab', { name: '月', exact: true }).click();
+      await expect(page.getByRole('grid', { name: '月間カレンダー' })).toContainText('自動表示の授業');
+      await page.getByRole('tab', { name: '日', exact: true }).click(); await setVisible(page, true);
+    });
+    await timedPhase('timetable target geometry, cancellation and Undo', async () => {
+      await card(page, '自動表示の授業').click();
+      await expect(page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true })).toBeVisible();
+      await attachScreen(page, testInfo, `day-timetable-detail-${width}`);
+      const deletionBounds = await page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true })
+        .getByRole('button', { name: 'この日だけ削除', exact: true }).evaluate(button => {
+          const control = button.getBoundingClientRect();
+          const dialog = button.closest('[role="dialog"]').getBoundingClientRect();
+          return { height: control.height, left: control.left, right: control.right, top: control.top, bottom: control.bottom,
+            dialogLeft: dialog.left, dialogRight: dialog.right, dialogTop: dialog.top, dialogBottom: dialog.bottom,
+            viewportWidth: window.innerWidth, viewportHeight: window.innerHeight };
+        });
+      console.log('Day timetable deletion control bounds:', JSON.stringify({ width, ...deletionBounds }));
+      // Existing modal ghost buttons keep at least 40px on the narrow breakpoint.
+      expect(deletionBounds.height).toBeGreaterThanOrEqual(40);
+      expect(deletionBounds.left).toBeGreaterThanOrEqual(deletionBounds.dialogLeft);
+      expect(deletionBounds.right).toBeLessThanOrEqual(deletionBounds.dialogRight);
+      expect(deletionBounds.top).toBeGreaterThanOrEqual(deletionBounds.dialogTop);
+      expect(deletionBounds.bottom).toBeLessThanOrEqual(deletionBounds.dialogBottom);
+      expect(deletionBounds.left).toBeGreaterThanOrEqual(0);
+      expect(deletionBounds.right).toBeLessThanOrEqual(deletionBounds.viewportWidth);
+      expect(deletionBounds.top).toBeGreaterThanOrEqual(0);
+      expect(deletionBounds.bottom).toBeLessThanOrEqual(deletionBounds.viewportHeight);
+      await page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true }).getByRole('button', { name: 'この日だけ削除', exact: true }).click();
+      await expect(card(page, '自動表示の授業')).toHaveCount(0);
+      await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleTemplates.v1')).map(row => row.excludedDates))).toEqual([[E2E_TODAY], [E2E_TODAY]]);
+      await page.getByRole('button', { name: '元に戻す', exact: true }).click();
+      await expect(card(page, '自動表示の授業')).toHaveCount(1);
+    });
+    await timedPhase('cancel recurring occurrences and inspect retained Actual', async () => {
+      for (const title of ['毎週の学習', '毎週の予定']) {
+        await card(page, title).click();
+        await page.getByRole('dialog', { name: `${title}の操作`, exact: true }).getByRole('button', { name: 'この日だけ削除', exact: true }).click();
+        await expect(card(page, title)).toHaveCount(0);
+      }
+      await expect(page.locator('.timeline-actual-block')).toHaveCount(2); expect(await actuals(page)).toBe(savedActuals);
+      await page.locator('.timeline-actual-block').first().click();
+      await expect(page.getByRole('dialog')).toContainText('記録は残っています');
+      await expect(page.getByRole('dialog').getByRole('button', { name: '記録を編集', exact: true })).toBeVisible();
+      await attachScreen(page, testInfo, `day-retained-actual-${width}`);
+      await page.getByRole('dialog').getByRole('button', { name: '閉じる', exact: true }).click();
+    });
+    await timedPhase('cancellation and Actual history survive reload', async () => {
+      await page.reload(); await openDay(page);
+      await expect(card(page, '毎週の学習')).toHaveCount(0); await expect(card(page, '毎週の予定')).toHaveCount(0);
+      await expect(page.locator('.timeline-actual-block')).toHaveCount(2); expect(await actuals(page)).toBe(savedActuals);
+    });
+    await timedPhase('navigate seven days to the next occurrence', async () => {
+      for (let day = 0; day < 7; day++) await page.getByRole('button', { name: '次の期間へ', exact: true }).click();
+    });
+    await timedPhase('verify all three next-week occurrences remain', async () => {
+      for (const title of ['毎週の学習', '毎週の予定', '自動表示の授業']) await expect(card(page, title)).toHaveCount(1);
+    });
   });
 }
