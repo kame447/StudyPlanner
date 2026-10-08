@@ -3,6 +3,7 @@
 
 .primary-app-header {
   container: primary-header / inline-size;
+  min-width: 0;
   width: min(calc(100vw - 24px), 484px);
   max-width: 100%;
   margin-inline: auto;
@@ -80,6 +81,12 @@
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+/* Resolve the shared column against the shell's real content box, including
+ * a reserved scrollbar gutter, before constraining the viewport-sized header. */
+.app-shell:has(> .primary-app-header) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .app-shell.home-app-shell:has(> .primary-app-header) > .home-main {
   min-width: 0;
   min-height: 0;
@@ -126,6 +133,12 @@
 
 .primary-bottom-nav button {
   color: var(--home-gray, var(--text-muted));
+}
+
+/* Schedule's legacy zero minimum must not shrink a shared nav button below
+ * its unwrapped label. Match the intrinsic minimum used on every other page. */
+.primary-bottom-nav.schedule-bottom-nav.home-bottom-nav button {
+  min-width: auto;
 }
 
 .primary-bottom-nav button:first-child:not(.active) {

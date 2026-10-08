@@ -109,7 +109,7 @@ test('study session waits for an explicit start and then flows into record savin
   })).toBe(1);
 });
 
-test('study session enters from the right and an edge swipe uses the existing exit confirmation', async ({ page }) => {
+test('study session reveals within its pane and an edge swipe uses the existing exit confirmation', async ({ page }) => {
   await seedStudySession(page);
   await page.goto('/');
 
