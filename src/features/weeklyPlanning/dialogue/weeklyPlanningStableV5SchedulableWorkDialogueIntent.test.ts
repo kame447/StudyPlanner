@@ -157,7 +157,7 @@ describe('Stable V5 schedulable-work dialogue intent', () => {
     const payload = JSON.parse(prompt.userPrompt) as { request: string };
     expect(payload.request).toContain('all_requested_work_complete=完了済みとして');
     expect(payload.request).toContain('同じ進捗を聞き直さず');
-    expect(payload.request).toContain('追加作業/制約だけ聞く');
+    expect(payload.request).toContain('追加の勉強内容/予定だけ聞く');
   });
 
   it('passes the open-ended progress contract to the renderer prompt', () => {
@@ -200,7 +200,7 @@ describe('Stable V5 schedulable-work dialogue intent', () => {
       requestedInformation: ['current_progress'],
     });
     expect(payload.request).toContain('existing_target_progress=現在進捗のみ');
-    expect(payload.request).toContain('別作業は聞かない');
+    expect(payload.request).toContain('別の内容は聞かない');
     expect(payload.request).toContain('completion_progress_without_known_unitは具体的な単位/総量を発明せず');
     expect(payload.request).toContain('100%概算や工程を聞く');
   });

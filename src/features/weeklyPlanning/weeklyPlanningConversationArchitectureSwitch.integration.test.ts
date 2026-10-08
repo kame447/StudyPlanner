@@ -329,7 +329,7 @@ describe('A. explanation under a pending effort question', () => {
         },
         {
           "kind": "renderer",
-          "sha256": "7190146dedcd473706320bc37347f4279638bd541bc63b021bcda981131c941c",
+          "sha256": "85bee75b66ca57bb6c69108ee8a2814e7bb97255d4c48c4af78b195359b90288",
         },
       ]
     `);
@@ -427,7 +427,7 @@ describe('C. semantic failure under a pending question', () => {
         },
         {
           "kind": "renderer",
-          "sha256": "cab425990bf179a2b8df4d30ad21455365690083f4db057b47a43b45fddae7eb",
+          "sha256": "48f734e6f5dce3ac7ca4594504ad175390d635234adcf0a4bab54d0be8ab96b3",
         },
       ]
     `);
@@ -539,7 +539,7 @@ describe('B. aside followed by a short reply', () => {
           },
           {
             "kind": "renderer",
-            "sha256": "de467e79106f934c1c3d862b28e37c0b7e5443929fd2318d677b528fe9c394eb",
+            "sha256": "a8058fe8b6364d971d7ade3b9f8ee559b9d6ec83a22919f565c6c913222d45a2",
           },
         ],
         "shortReply": [
@@ -549,7 +549,7 @@ describe('B. aside followed by a short reply', () => {
           },
           {
             "kind": "renderer",
-            "sha256": "e793fc62733d2deeec6e98d5fa72eea4aae9bda7e9a1b2a8d466b6a7b3c44c01",
+            "sha256": "99f40ad3b0293c529f8de793acd699a255b68ecb54fa2fdbfb4c98fe65cd603a",
           },
         ],
       }

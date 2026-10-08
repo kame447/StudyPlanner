@@ -9,7 +9,7 @@ import type { WeeklyPlanningPreviewConstraintSatisfaction } from '../application
  * application states it with this sentence next to the reply (and in the emergency wording), so
  * no reply can claim that omitted work is in the preview.
  */
-const SOME_WORK_OMITTED = '空き時間に入りきらなかった作業は、今回の候補には入れていません。';
+const SOME_WORK_OMITTED = '空き時間に入りきらなかった分は、今回の候補には入れていません。';
 
 export function weeklyPlanningPreviewOmissionDisclosureText(
   omittedWork: readonly WeeklyPlanningPreviewOmittedWork[],

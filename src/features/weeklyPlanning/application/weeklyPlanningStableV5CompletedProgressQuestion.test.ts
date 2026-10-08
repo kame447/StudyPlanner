@@ -86,7 +86,9 @@ describe('Stable V5 completed progress question suppression', () => {
 
     expect(question.targetFactId).toBeNull();
     expect(question.intent).toBe('all_requested_work_complete');
-    expect(question.message).toContain('完了済み');
+    expect(question.message).toContain('終わっています');
+    expect(question.message).not.toMatch(/作業|学習タスク/u);
+    expect(stableV5MissingSchedulableWorkQuestion(graph, 'legacy_v5').message).toContain('完了済み');
     expect(question.message).not.toContain('発表スライド');
     expect(question.message).not.toContain('100%とすると');
   });

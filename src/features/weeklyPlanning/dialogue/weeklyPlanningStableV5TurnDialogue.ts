@@ -16,6 +16,10 @@ import { communicationContextForStableV5Dialogue } from './weeklyPlanningStableV
 import { composeWeeklyPlanningInteractionFallbackText } from './weeklyPlanningInteractionFallbackText';
 import { weeklyPlanningPreviewConstraintDisclosureText, weeklyPlanningPreviewOmissionDisclosureText } from './weeklyPlanningPreviewOmissionDisclosure';
 import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
+import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
+import { scheduleCommunicationIntent } from '../application/weeklyPlanningFixedEventOnlyInteraction';
+import { stableV5ScheduleQuestionText } from '../application/weeklyPlanningStableV5RuntimeQuestions';
+import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import { withStableV5GroundingProposal } from '../application/weeklyPlanningStableV5GroundingFlow';
 import {
   decodeWeeklyPlanningStableV5QuestionSlot,
@@ -205,12 +209,18 @@ function effortFallbackText(
 
 function schedulableWorkFallbackText(
   intent: Extract<WeeklyPlanningStableV5DialogueQuestionIntent, { kind: 'schedulable_work_detail' }>,
+  architecture?: WeeklyPlanningConversationArchitecture,
 ): string {
+  const interaction = conversationArchitecturePolicy(architecture).interactionOutcome;
   if (intent.mode === 'all_requested_work_complete') {
-    return '指定された作業は完了済みです。ほかに予定へ加えたい作業や、考慮したい予定・制約があれば教えてください。';
+    return interaction
+      ? '指定された勉強は終わっています。ほかに勉強したいことや、考慮してほしい予定があれば教えてください。'
+      : '指定された作業は完了済みです。ほかに予定へ加えたい作業や、考慮したい予定・制約があれば教えてください。';
   }
   if (intent.mode === 'missing_task_identity') {
-    return '予定に入れたい作業を一つ教えてください。';
+    return interaction
+      ? stableV5ScheduleQuestionText('identify_study_work')
+      : '予定に入れたい作業を一つ教えてください。';
   }
   if (intent.mode === 'registered_material_target_scope') {
     const unit = intent.knownUnitLabel?.trim() || '単位';
@@ -238,8 +248,13 @@ function schedulableWorkFallbackText(
 export function fallbackTextForStableV5TypedIntent(params: {
   applicationText: string;
   questionIntent: WeeklyPlanningStableV5DialogueQuestionIntent | null | undefined;
+  conversationArchitecture?: WeeklyPlanningConversationArchitecture;
 }): string {
   const intent = params.questionIntent;
+  if (intent?.kind === 'schedule_request'
+    && conversationArchitecturePolicy(params.conversationArchitecture).interactionOutcome) {
+    return stableV5ScheduleQuestionText(intent.purpose);
+  }
   if (intent?.kind === 'learning_strategy_proposal') {
     if (intent.proposalKind === 'mixed_acquisition_review') {
       const { min, max } = intent.reviewSessionDurationMinutes;
@@ -257,7 +272,7 @@ export function fallbackTextForStableV5TypedIntent(params: {
     return effortFallbackText(intent);
   }
   if (intent?.kind === 'schedulable_work_detail') {
-    return schedulableWorkFallbackText(intent);
+    return schedulableWorkFallbackText(intent, params.conversationArchitecture);
   }
   return params.applicationText;
 }
@@ -312,8 +327,12 @@ function createRenderInput(params: {
     proposalRecords: params.result.state.learningStrategyProposalRecords ?? [],
   });
   const scheduleIntent = interaction && params.questionCode === 'missing_schedulable_work'
-    ? params.result.communicationFacts?.scheduleIntent : undefined;
-  const questionIntent = scheduleIntent && scheduleIntent !== 'identify_study_work'
+    ? params.result.communicationFacts?.scheduleIntent
+      ?? (params.result.stableV5Graph
+        ? scheduleCommunicationIntent(createWeeklyPlanningActiveSchedulerGraphViewV5(params.result.stableV5Graph))
+        : 'clarify_schedule_request')
+    : undefined;
+  const questionIntent = scheduleIntent && scheduleIntent !== 'identify_study_work' && !targetFactId
     ? { kind: 'schedule_request' as const, purpose: scheduleIntent,
         requestedInformation: ['schedule_request'] as const }
     : proposalIntent ?? questionIntentForStableV5Dialogue({
@@ -332,13 +351,18 @@ function createRenderInput(params: {
   const typedFallbackText = fallbackTextForStableV5TypedIntent({
     applicationText: params.result.message,
     questionIntent,
+    conversationArchitecture: params.input.conversationArchitecture,
   });
   // Interaction architecture: the application states WHAT to communicate as a typed context;
   // the renderer writes the words. The emergency text is composed from the same context.
   const communication = interaction
     ? communicationContextForStableV5Dialogue({
         outcome: params.result.interactionOutcome,
-        facts: params.result.communicationFacts,
+        // A generic schedule invitation must not mask a required progress/scope target.
+        facts: params.result.communicationFacts && targetFactId && params.questionCode === 'missing_schedulable_work'
+          && params.result.communicationFacts.scheduleIntent !== 'identify_study_work'
+          ? { ...params.result.communicationFacts, scheduleIntent: undefined }
+          : params.result.communicationFacts,
         actionKind: params.actionKind,
         questionCode: params.questionCode,
         questionIntent,

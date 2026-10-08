@@ -240,6 +240,10 @@ describe('Stable V5 missing schedulable work question', () => {
     const question = stableV5MissingSchedulableWorkQuestion(graph);
 
     expect(question.targetFactId).toBeNull();
-    expect(question.message).toContain('予定に入れる作業がまだありません');
+    expect(question.intent).toBe('missing_task_identity');
+    expect(question.message).toContain('勉強');
+    expect(question.message).not.toMatch(/作業|学習タスク|100%|今どこまで/u);
+    expect(stableV5MissingSchedulableWorkQuestion(graph, 'legacy_v5').message)
+      .toContain('予定に入れる作業がまだありません');
   });
 });

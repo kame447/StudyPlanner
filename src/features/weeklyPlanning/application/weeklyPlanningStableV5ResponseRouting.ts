@@ -141,7 +141,7 @@ function routeBeforePreview(params: {
     const sessionDurationQuestion = dialogue.question.effortMeasurement === 'session_duration';
     const renderedQuestion = sessionDurationQuestion
       ? ''
-      : renderStableV5RuntimeQuestion(graph, dialogue.question);
+      : renderStableV5RuntimeQuestion(graph, dialogue.question, input.conversationArchitecture);
     const message = sessionDurationQuestion
       ? ''
       : groundedMessage({
@@ -204,7 +204,7 @@ function routeBeforePreview(params: {
   }
 
   if (dialogue.status === 'nothing_to_schedule' || !schedulerInput) {
-    const missingWork = stableV5MissingSchedulableWorkQuestion(graph);
+    const missingWork = stableV5MissingSchedulableWorkQuestion(graph, input.conversationArchitecture);
     const message = groundedMessage({
       message: missingWork.message,
       records: groundingRecords,
@@ -390,7 +390,7 @@ function routeAfterPreview(params: {
   }
 
   if (preview.status === 'empty') {
-    const missingWork = stableV5MissingSchedulableWorkQuestion(semantic.graph);
+    const missingWork = stableV5MissingSchedulableWorkQuestion(semantic.graph, input.conversationArchitecture);
     const message = groundedMessage({
       message: missingWork.message,
       records: groundingRecords,

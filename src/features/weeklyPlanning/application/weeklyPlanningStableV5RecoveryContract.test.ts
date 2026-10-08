@@ -59,7 +59,7 @@ describe('Stable V5 ambiguity and recovery architecture contract', () => {
       'decideWeeklyPlanningStableDialogueV5(compilation)',
     );
     expect(responseRoutingSource).toContain(
-      'renderStableV5RuntimeQuestion(graph, dialogue.question)',
+      'renderStableV5RuntimeQuestion(graph, dialogue.question, input.conversationArchitecture)',
     );
     expect(runtimeSource).not.toContain('renderStableV5RuntimeQuestion');
   });

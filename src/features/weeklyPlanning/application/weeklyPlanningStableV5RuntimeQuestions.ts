@@ -3,8 +3,20 @@ import type { WeeklyPlanningFactGraphV5, WorkloadFactV5 } from '../semantic/week
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import { projectWeeklyPlanningStatedTimeBudgetGraphV5 } from '../semantic/weeklyPlanningStatedTimeBudgetProjectionV5';
 import type { WeeklyPlanningStableQuestionV5 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
+import { conversationArchitecturePolicy, type WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
+import { scheduleCommunicationIntent, type WeeklyPlanningScheduleCommunicationIntent } from './weeklyPlanningFixedEventOnlyInteraction';
 
 const QUESTION_SOURCE_EXCERPT_LIMIT = 80;
+
+/** Presentation only: the application supplies the purpose from typed state. */
+export function stableV5ScheduleQuestionText(intent: WeeklyPlanningScheduleCommunicationIntent): string {
+  switch (intent) {
+    case 'confirm_existing_schedule': return 'どんな予定がありますか？';
+    case 'register_event': return 'どんな予定を入れたいですか？';
+    case 'identify_study_work': return '何を勉強したいですか？';
+    case 'clarify_schedule_request': return 'どのような予定を立てたいですか？';
+  }
+}
 
 export type WeeklyPlanningStableV5MissingWorkIntent =
   | 'existing_target_progress'
@@ -111,6 +123,7 @@ function progressQuestion(params: {
 
 export function stableV5MissingSchedulableWorkQuestion(
   graph: WeeklyPlanningFactGraphV5,
+  architecture?: WeeklyPlanningConversationArchitecture,
 ): {
   message: string;
   questionCode: 'missing_schedulable_work';
@@ -121,6 +134,8 @@ export function stableV5MissingSchedulableWorkQuestion(
   const active = projectWeeklyPlanningStatedTimeBudgetGraphV5(
     createWeeklyPlanningActiveSchedulerGraphViewV5(graph),
   );
+  const interaction = conversationArchitecturePolicy(architecture).interactionOutcome;
+  const scheduleIntent = scheduleCommunicationIntent(active);
   const taskTitles = active.tasks.map((task) => task.title.trim()).filter(Boolean);
   const lifecycleByFactId = new Map(
     graph.factLifecycles.map((entry) => [entry.factId, entry] as const),
@@ -270,7 +285,11 @@ export function stableV5MissingSchedulableWorkQuestion(
   }));
   if (allRequestedWorkComplete) {
     return {
-      message: '指定された作業は完了済みです。予定に加えたい別の作業や、考慮したい予定・制約があれば教えてください。',
+      message: interaction
+        ? scheduleIntent === 'identify_study_work'
+          ? '指定された勉強は終わっています。ほかに勉強したいことや、考慮してほしい予定があれば教えてください。'
+          : '指定された内容は終わっています。ほかに入れたい予定があれば教えてください。'
+        : '指定された作業は完了済みです。予定に加えたい別の作業や、考慮したい予定・制約があれば教えてください。',
       questionCode: 'missing_schedulable_work',
       taskTitles,
       targetFactId: null,
@@ -279,7 +298,9 @@ export function stableV5MissingSchedulableWorkQuestion(
   }
 
   return {
-    message: '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',
+    message: interaction
+      ? stableV5ScheduleQuestionText(scheduleIntent)
+      : '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',
     questionCode: 'missing_schedulable_work',
     taskTitles,
     targetFactId: null,
@@ -313,6 +334,7 @@ function questionSourceExcerpt(value: string): string {
 function semanticUncertaintyQuestion(
   graph: WeeklyPlanningFactGraphV5,
   question: WeeklyPlanningStableQuestionV5,
+  architecture?: WeeklyPlanningConversationArchitecture,
 ): string {
   const uncertainty = question.factId
     ? graph.uncertainties.find((fact) => fact.id === question.factId)
@@ -324,7 +346,8 @@ function semanticUncertaintyQuestion(
     if (materialComponents.length === 1) {
       return concreteMaterialProgressQuestion(materialComponents[0].label.trim());
     }
-    const label = task?.title?.trim() || 'この作業';
+    const label = task?.title?.trim()
+      || (conversationArchitecturePolicy(architecture).interactionOutcome ? 'この予定' : 'この作業');
     return progressQuestion({ label, scopeTotal: null });
   }
   const sourceText = uncertainty
@@ -372,11 +395,12 @@ function missingEffortQuestion(
 export function typedStableV5RuntimeQuestionText(
   graph: WeeklyPlanningFactGraphV5,
   question: WeeklyPlanningStableQuestionV5,
+  architecture?: WeeklyPlanningConversationArchitecture,
 ): string | null {
   const label = stableV5IssueTaskLabel(graph, question);
   switch (question.code) {
     case 'semantic_uncertainty':
-      return semanticUncertaintyQuestion(graph, question);
+      return semanticUncertaintyQuestion(graph, question, architecture);
     case 'invalid_planning_horizon':
       return 'いつからいつまでの予定を作るか教えてください。例: 今日、今週、来週、7月25日から7月31日。';
     case 'ambiguous_planning_window':
@@ -409,7 +433,9 @@ export function typedStableV5RuntimeQuestionText(
       return '指定された外部予定を確認できませんでした。時間割・登録済み予定・カレンダーのどれを使うか確認してください。';
     case 'orphan_relation_task':
     case 'self_relation':
-      return 'タスクの順序関係を確認できませんでした。どの予定を先にするか教えてください。';
+      return conversationArchitecturePolicy(architecture).interactionOutcome
+        ? 'どの予定を先にするか教えてください。'
+        : 'タスクの順序関係を確認できませんでした。どの予定を先にするか教えてください。';
     default:
       return null;
   }
@@ -418,8 +444,9 @@ export function typedStableV5RuntimeQuestionText(
 export function renderStableV5RuntimeQuestion(
   graph: WeeklyPlanningFactGraphV5,
   question: WeeklyPlanningStableQuestionV5,
+  architecture?: WeeklyPlanningConversationArchitecture,
 ): string {
-  return typedStableV5RuntimeQuestionText(graph, question)
+  return typedStableV5RuntimeQuestionText(graph, question, architecture)
     ?? `${stableV5IssueTaskLabel(graph, question)}について、予定作成に必要な条件をもう少し具体的に教えてください。`;
 }
 

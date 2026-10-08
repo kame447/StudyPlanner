@@ -4,6 +4,7 @@ import type {
   WeeklyPlanningStableV5CommunicationContext,
   WeeklyPlanningStableV5CommunicationGoal,
   WeeklyPlanningStableV5DialogueRenderInput,
+  WeeklyPlanningStableV5DialogueQuestionIntent,
   WeeklyPlanningStableV5QuestionPurpose,
 } from './weeklyPlanningStableV5DialogueContracts';
 
@@ -108,8 +109,8 @@ const QUESTION_PURPOSE_MEANINGS: Readonly<Record<WeeklyPlanningStableV5QuestionP
   set_session_length: 'how long one study session should be, so the work can be split into sessions',
   skip_already_finished_work: 'how much is already done, so only the remaining part is scheduled',
   choose_scope_for_this_plan: 'how much of the remaining material to cover in this plan (saved progress is already known)',
-  identify_work_to_schedule: 'what study work to put into the schedule',
-  find_more_work_or_constraints: 'other work or conditions to add, because the requested work is already finished',
+  identify_work_to_schedule: 'what the user wants to study',
+  find_more_work_or_constraints: 'anything else to study or any schedule to consider; the requested study is already finished',
   identify_which_work_and_how_much: 'which material or part the stated amount refers to and how big it is, so the right work is scheduled in the right amount',
   resolve_unclear_detail: 'which meaning was intended for a detail that can be read in more than one way, so the wrong thing is not scheduled',
   set_planning_period: 'which days the plan should cover',
@@ -151,7 +152,35 @@ const SHARED_FACT_INSTRUCTIONS = [
   'currentTurnGrounding.acceptedFactsはこのturnで新たに受理したFactです。required_before_resumeでは会話上重要なFactを短くACKしてから質問へ戻し、groundingAcknowledgementにそのfactIdとACK本文を入れ、最終textをその本文から始めてください。ACK対象Factに時刻・日付・数量などユーザーが明示した具体値がある場合は、その具体値を省略せずACK本文にも残してください。recommendedは必要な場合だけ、noneはgroundingAcknowledgement=nullとし定型ACKを足さないでください。受理済みFactを再確認質問にしないでください。',
   '質問はquestionTarget/questionIntentの対象、requestedInformation、allowedChoices、measurement、mode、progressBasisを別の概念へ置き換えず、一つだけ聞いてください。questionCodeだけから目的を推測し直さないでください。',
 ];
+const INTERACTION_FACT_INSTRUCTIONS = [
+  'acceptedFacts received; resolutionPendingItems need scheduling details, not re-acceptance.',
+  ...SHARED_FACT_INSTRUCTIONS.slice(1),
+];
 const SCHEDULABLE_WORK_INSTRUCTION = 'schedulable_work_detailはmode/progressBasis厳守。existing_target_progress=現在進捗のみ、別作業は聞かない。registered_material_target_scope=保存済みtotal/current/remainingを再質問せず、knownUnitLabelのまま短く示し、今回が残り全部か別範囲かだけ聞く。known_bounded_quantityのみknownUnitLabel数量可。known_registered_material_progressは保存値/単位をそのまま使用。completion_progress_without_known_unitは具体的な単位/総量を発明せず、100%概算や工程を聞く。ユーザー提示単位を優先。missing_task_identity=作業自体。all_requested_work_complete=完了済みとして同じ進捗を聞き直さず、追加作業/制約だけ聞く。';
+/** Keep the shared historical rule above byte-identical for legacy requests. */
+const INTERACTION_SCHEDULABLE_MODE_INSTRUCTIONS = {
+  existing_target_progress: 'existing_target_progress=現在進捗のみ、別の内容は聞かない。',
+  registered_material_target_scope: 'registered_material_target_scope=保存済みtotal/current/remainingをknownUnitLabelで示し、今回は残り全部か別範囲かだけ聞く。保存済み進捗は再質問しない。',
+  missing_task_identity: 'missing_task_identity=勉強したい内容。',
+  all_requested_work_complete: 'all_requested_work_complete=完了済みとして同じ進捗を聞き直さず、追加の勉強内容/予定だけ聞く。',
+};
+const INTERACTION_PROGRESS_BASIS_INSTRUCTIONS = {
+  known_registered_material_progress: 'known_registered_material_progressは保存値/単位をそのまま使用し再質問しない。',
+  known_bounded_quantity: 'known_bounded_quantityのみknownUnitLabel数量可。',
+  completion_progress_without_known_unit: 'completion_progress_without_known_unitは具体的な単位/総量を発明せず100%概算や工程を聞く。',
+};
+
+function interactionSchedulableWorkInstructions(
+  intent: Extract<WeeklyPlanningStableV5DialogueQuestionIntent, { kind: 'schedulable_work_detail' }>,
+): string[] {
+  return [
+    'schedulable_work_detail: mode/progressBasis厳守。提示単位を優先。',
+    INTERACTION_SCHEDULABLE_MODE_INSTRUCTIONS[intent.mode],
+    ...(intent.progressBasis ? [INTERACTION_PROGRESS_BASIS_INSTRUCTIONS[intent.progressBasis]] : []),
+  ];
+}
+const INTERACTION_QUESTION_WORDING_INSTRUCTION = 'Wording follows typed purpose, never raw text. 日付/時刻/量の必須質問を保つ。「作業/学習タスク/schedulable_work/task identity」は会話に出さない。';
+const SCHEDULE_QUESTION_WORDING_INSTRUCTION = 'confirm_existing_schedule=「どんな予定がありますか？」、register_event=「どんな予定を入れたいですか？」、identify_study_work/identify_work_to_schedule=「何を勉強したいですか？」、clarify_schedule_request=予定の希望。例文は固定しない。';
 const EFFORT_MEASUREMENT_INSTRUCTION = 'effort_measurementのmeasurementを変えないでください。duration_per_unit=1単位あたり、session_duration=1回、total_duration=全体です。';
 const RESOLUTION_QUESTION_INSTRUCTION = 'resolution_questionのquantity_roleではplan_target_amount=今回この計画で進めたい量、remaining_total_amount=現在残っている全体量です。全体量対1回分など別の軸へ変えないでください。task_relation_referenceは関係の両端にあるタスクを特定するための質問であり、順序の承認、登録、予定への反映、新規タスク追加を求めないでください。task_relation_self_referenceは同一タスク同士になっている関係を修復するため、異なる二つの対象を聞いてください。';
 const PREVIEW_AND_GROUNDING_INSTRUCTION = 'previewPromotionControlLabelがあれば候補は生成済みです。その操作を案内してください。groundingContextのproposedは短く示し確認質問を足さず、contestedは断言しないでください。';
@@ -168,8 +197,11 @@ function interactionQuestionKindInstructions(
 ): string[] {
   const kind = input.questionIntent?.kind;
   return [
-    ...(kind === 'schedule_request' ? ['schedule_request: purposeに沿って予定について確認する。作業・学習タスクを前提にせず、追加や保存の完了を主張しない。'] : []),
-    ...(kind === 'schedulable_work_detail' ? [SCHEDULABLE_WORK_INSTRUCTION] : []),
+    INTERACTION_QUESTION_WORDING_INSTRUCTION,
+    ...(kind === 'schedule_request' ? [SCHEDULE_QUESTION_WORDING_INSTRUCTION,
+      'schedule_request: purposeを守り、勉強を前提にしない。追加/保存完了を主張しない。'] : []),
+    ...(input.questionIntent?.kind === 'schedulable_work_detail'
+      ? interactionSchedulableWorkInstructions(input.questionIntent) : []),
     ...(kind === 'effort_measurement' ? [EFFORT_MEASUREMENT_INSTRUCTION] : []),
     ...(kind === 'resolution_question' ? [RESOLUTION_QUESTION_INSTRUCTION] : []),
     PREVIEW_AND_GROUNDING_INSTRUCTION,
@@ -202,9 +234,9 @@ function interactionCommunicationInstructions(
     INTERACTION_GOAL_INSTRUCTION,
     INTERACTION_GOAL_INSTRUCTIONS[communication.goal],
     ...(communication.statusReason === 'fixed_event_manual_entry'
-      ? [`fixed_event_manual_entry: この固定予定はここでは追加・保存できない。一度だけ既存の「${ADD_SCHEDULE_CONTROL_LABEL}」から入力できると案内する。受け取った時刻等は空き時間の参考情報であり登録結果ではない。追加質問や作業の要求はしない。`] : []),
+      ? [`fixed_event_manual_entry: この固定予定はここでは追加・保存できない。一度だけ既存の「${ADD_SCHEDULE_CONTROL_LABEL}」から入力できると案内する。受け取った時刻等は空き時間の参考情報であり登録結果ではない。追加質問はしない。`] : []),
     ...(communication.statusReason === 'no_additional_work'
-      ? ['no_additional_work: 短く受け止めて会話を閉じる。追加の質問・作業の要求・登録案内の繰り返し・保存の主張はしない。'] : []),
+      ? ['no_additional_work: 短く受け止めて会話を閉じる。追加質問・登録案内の繰り返し・保存の主張はしない。'] : []),
     ...(communication.askQuestion ? ['askQuestion=true: その質問は「？」で終わる形で一度だけ聞く。'] : []),
     ...(hasSelfRepair
       ? ['ACK acceptedFacts.selfRepair (this turn’s before→after correction) briefly before continuing.']
@@ -297,7 +329,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
     },
     request: [
       SHARED_DECISION_INSTRUCTION,
-      ...SHARED_FACT_INSTRUCTIONS,
+      ...(interactionOutcome ? INTERACTION_FACT_INSTRUCTIONS : SHARED_FACT_INSTRUCTIONS),
       ...(interactionOutcome
         ? interactionCommunicationInstructions(
             communication,
