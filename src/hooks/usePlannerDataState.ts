@@ -197,6 +197,7 @@ export interface UsePlannerDataStateResult {
   openEditPlan: (plan: Plan) => void;
   closePlanEditor: () => void;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  projectPlanSave: (savePlan: () => Promise<Plan>) => Promise<Plan>;
   movePlanOccurrence: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
@@ -307,15 +308,19 @@ export function usePlannerDataState({
         // later fanout changes reconciliation activity and invalidates the
         // whole snapshot before publication; it cannot borrow this receipt.
         const repairSubjects = actualAdmission.requiresSubjectRepair();
+        // A union repair shares only this attempt's schedule read. Individual
+        // groups keep their narrow getters and never certify the other slice.
+        const scheduleSnapshot = targets.includes('month-events') && targets.includes('plans-todos')
+          ? plannerRepository.getScheduleSnapshot(ownerId) : null;
         const [actualMaterial, nextMonthEvents, plansTodos, nextDayNotes, timetable] = await Promise.all([
           targets.includes('actual-material') ? Promise.all([
             plannerRepository.getActuals(ownerId),
             plannerRepository.getStudyMaterials(ownerId),
             repairSubjects ? plannerRepository.getStudySubjects(ownerId) : undefined,
           ]) : undefined,
-          targets.includes('month-events') ? plannerRepository.getMonthEvents(ownerId) : undefined,
+          targets.includes('month-events') ? scheduleSnapshot?.then(snapshot => snapshot.monthEvents) ?? plannerRepository.getMonthEvents(ownerId) : undefined,
           targets.includes('plans-todos') ? Promise.all([
-            plannerRepository.getPlans(ownerId),
+            scheduleSnapshot?.then(snapshot => snapshot.plans) ?? plannerRepository.getPlans(ownerId),
             plannerRepository.getTodos(ownerId),
           ]) : undefined,
           targets.includes('day-notes') ? plannerRepository.getDayNotes(ownerId) : undefined,
@@ -481,10 +486,9 @@ export function usePlannerDataState({
 
     try {
       const [
-      nextPlans,
+      nextSchedule,
       nextActuals,
       nextDayNotes,
-      nextMonthEvents,
       nextTodos,
       nextStudySubjects,
       nextStudyMaterials,
@@ -492,10 +496,9 @@ export function usePlannerDataState({
       nextTimetableTerms,
       nextTimetablePeriods,
     ] = await Promise.all([
-      startupTiming.measure('plans', () => plannerRepository.getPlans(nextUserId)),
+      startupTiming.measure('schedule-snapshot', () => plannerRepository.getScheduleSnapshot(nextUserId)),
       startupTiming.measure('actuals', () => plannerRepository.getActuals(nextUserId)),
       startupTiming.measure('day-notes', () => plannerRepository.getDayNotes(nextUserId)),
-      startupTiming.measure('month-events', () => plannerRepository.getMonthEvents(nextUserId)),
       startupTiming.measure('todos', () => plannerRepository.getTodos(nextUserId)),
       startupTiming.measure('subjects', () => plannerRepository.getStudySubjects(nextUserId)),
       startupTiming.measure('materials', () => plannerRepository.getStudyMaterials(nextUserId)),
@@ -538,10 +541,10 @@ export function usePlannerDataState({
         return;
       }
 
-      rawSetPlans(sortByDateTime(nextPlans));
+      rawSetPlans(sortByDateTime(nextSchedule.plans));
       rawSetActuals(nextActuals);
       rawSetDayNotes(nextDayNotes);
-      rawSetMonthEvents(sortMonthEvents(nextMonthEvents));
+      rawSetMonthEvents(sortMonthEvents(nextSchedule.monthEvents));
       rawSetTodos(nextTodos);
       rawSetStudySubjects(sortStudySubjects(nextStudySubjects));
       rawSetStudyMaterials(sortStudyMaterials(nextStudyMaterials));
@@ -610,6 +613,34 @@ export function usePlannerDataState({
       reconciliation.pump();
     }
   };
+
+  // Approval persistence owns idempotency and authorization. This boundary owns
+  // the writer lifetime and whether its returned row can still enter the UI.
+  async function projectPlanSave(savePlan: () => Promise<Plan>): Promise<Plan> {
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
+    if (!userId || !acknowledgedProjection || acknowledgedProjection.ownerId !== userId) {
+      throw new PlannerMutationScopeExpiredError();
+    }
+    // trackMutation has already registered this write. Any additional writer
+    // makes a late idempotent response potentially older than the visible row.
+    const activity = reconciliation.captureActivity();
+    const savedPlan = await savePlan();
+    if (!mutationScope.isCurrent() || !plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)) {
+      throw new PlannerMutationScopeExpiredError();
+    }
+    if (savedPlan.userId !== userId) throw new Error('予定の所有者が一致しません。');
+    const settledActivity = reconciliation.captureActivity();
+    const otherMutationObserved = activity.pending !== 1
+      || activity.epoch !== settledActivity.epoch
+      || activity.started !== settledActivity.started
+      || activity.settled !== settledActivity.settled;
+    if (otherMutationObserved || plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
+      reconciliation.request(acknowledgedProjection, ['plans-todos']);
+    } else {
+      setPlans(current => sortAndUpsertPlans(current, [savedPlan]));
+    }
+    return savedPlan;
+  }
 
   function openCreatePlan() {
     if (!userId) {
@@ -2093,6 +2124,7 @@ export function usePlannerDataState({
     openEditPlan,
     closePlanEditor,
     savePlanDraft: trackMutation(savePlanDraft, ['plans-todos']),
+    projectPlanSave: trackMutation(projectPlanSave, ['plans-todos']),
     movePlanOccurrence: trackMutation(movePlanOccurrence, ['plans-todos']),
     deletePlan: trackMutation(deletePlan, ['actual-material', 'plans-todos']),
     confirmRecurringPlanScope: trackMutation(confirmRecurringPlanScope),

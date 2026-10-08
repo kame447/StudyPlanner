@@ -38,7 +38,7 @@ let heldMonthWrite = null;
 let planRestoreFault = null;
 let holdProjectionReads = false;
 const heldReads = [];
-const failures = { getScheduleTemplates: 0, getTimetableTerms: 0, getTimetablePeriods: 0, getDayNotes: 0, getActuals: 0, getStudyMaterials: 0, getMonthEvents: 0, getPlans: 0, getTodos: 0 };
+const failures = { getScheduleSnapshot: 0, getScheduleTemplates: 0, getTimetableTerms: 0, getTimetablePeriods: 0, getDayNotes: 0, getActuals: 0, getStudyMaterials: 0, getMonthEvents: 0, getPlans: 0, getTodos: 0 };
 const targetMethods = new Set(Object.keys(failures));
 const snapshot = () => structuredClone({ calls, pendingActualDispatches: heldActualDispatch ? 1 : 0, pendingAcknowledgments: heldAcknowledgment ? 1 : 0,
   pendingPlanWrites: heldPlanWrite ? 1 : 0, pendingMonthWrites: heldMonthWrite ? 1 : 0, pendingReads: heldReads.map(item => item.method) });

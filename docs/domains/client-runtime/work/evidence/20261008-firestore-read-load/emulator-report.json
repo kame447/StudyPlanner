@@ -1,0 +1,316 @@
+{
+  "project": "demo-studyplanner-read-load",
+  "endpoint": "127.0.0.1:44935",
+  "emulatorVersion": "1.20.2",
+  "nodeVersion": "v24.19.0",
+  "firebaseSdkVersion": "12.12.0",
+  "sdkTransport": "Node gRPC",
+  "limitations": [
+    "Query targets and document responses are observed SDK-to-emulator RPC messages, not billable Firestore reads.",
+    "Security-rule dependent reads, billing minimums, browser WebChannel behavior, and production usage are not measured.",
+    "Before uses the unchanged getPlans/getMonthEvents methods; after uses the shared getScheduleSnapshot method."
+  ],
+  "checks": [
+    "non-emulator gRPC and HTTP destinations rejected before connection",
+    "snapshot equivalence at 32/320/3200 documents",
+    "legacy migration and idempotent reload",
+    "post-migration legacy writes denied",
+    "cross-owner reads and writes denied"
+  ],
+  "results": [
+    {
+      "operation": "cold-before-concurrent",
+      "size": 32,
+      "counts": {
+        "queryTargets": {
+          "schedule_events": 1
+        },
+        "documentTargets": {
+          "schedule_event_migrations": 1
+        },
+        "documentResponses": {
+          "schedule_event_migrations": 1,
+          "schedule_events": 32
+        },
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "transactionDocumentPaths": [],
+        "commitRequests": 0,
+        "writeRequests": {},
+        "verifyDocumentPreconditions": 0,
+        "rpcErrors": []
+      }
+    },
+    {
+      "operation": "cold-before-sequential",
+      "size": 32,
+      "counts": {
+        "queryTargets": {
+          "schedule_events": 2
+        },
+        "documentTargets": {
+          "schedule_event_migrations": 1
+        },
+        "documentResponses": {
+          "schedule_event_migrations": 1,
+          "schedule_events": 64
+        },
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "transactionDocumentPaths": [],
+        "commitRequests": 0,
+        "writeRequests": {},
+        "verifyDocumentPreconditions": 0,
+        "rpcErrors": []
+      }
+    },
+    {
+      "operation": "cold-after-shared",
+      "size": 32,
+      "counts": {
+        "queryTargets": {
+          "schedule_events": 1
+        },
+        "documentTargets": {
+          "schedule_event_migrations": 1
+        },
+        "documentResponses": {
+          "schedule_event_migrations": 1,
+          "schedule_events": 32
+        },
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "transactionDocumentPaths": [],
+        "commitRequests": 0,
+        "writeRequests": {},
+        "verifyDocumentPreconditions": 0,
+        "rpcErrors": []
+      }
+    },
+    {
+      "operation": "cold-before-concurrent",
+      "size": 320,
+      "counts": {
+        "queryTargets": {
+          "schedule_events": 1
+        },
+        "documentTargets": {
+          "schedule_event_migrations": 1
+        },
+        "documentResponses": {
+          "schedule_event_migrations": 1,
+          "schedule_events": 320
+        },
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "transactionDocumentPaths": [],
+        "commitRequests": 0,
+        "writeRequests": {},
+        "verifyDocumentPreconditions": 0,
+        "rpcErrors": []
+      }
+    },
+    {
+      "operation": "cold-before-sequential",
+      "size": 320,
+      "counts": {
+        "queryTargets": {
+          "schedule_events": 2
+        },
+        "documentTargets": {
+          "schedule_event_migrations": 1
+        },
+        "documentResponses": {
+          "schedule_event_migrations": 1,
+          "schedule_events": 640
+        },
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "transactionDocumentPaths": [],
+        "commitRequests": 0,
+        "writeRequests": {},
+        "verifyDocumentPreconditions": 0,
+        "rpcErrors": []
+      }
+    },
+    {
+      "operation": "cold-after-shared",
+      "size": 320,
+      "counts": {
+        "queryTargets": {
+          "schedule_events": 1
+        },
+        "documentTargets": {
+          "schedule_event_migrations": 1
+        },
+        "documentResponses": {
+          "schedule_event_migrations": 1,
+          "schedule_events": 320
+        },
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "transactionDocumentPaths": [],
+        "commitRequests": 0,
+        "writeRequests": {},
+        "verifyDocumentPreconditions": 0,
+        "rpcErrors": []
+      }
+    },
+    {
+      "operation": "cold-before-concurrent",
+      "size": 3200,
+      "counts": {
+        "queryTargets": {
+          "schedule_events": 1
+        },
+        "documentTargets": {
+          "schedule_event_migrations": 1
+        },
+        "documentResponses": {
+          "schedule_event_migrations": 1,
+          "schedule_events": 3200
+        },
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "transactionDocumentPaths": [],
+        "commitRequests": 0,
+        "writeRequests": {},
+        "verifyDocumentPreconditions": 0,
+        "rpcErrors": []
+      }
+    },
+    {
+      "operation": "cold-before-sequential",
+      "size": 3200,
+      "counts": {
+        "queryTargets": {
+          "schedule_events": 2
+        },
+        "documentTargets": {
+          "schedule_event_migrations": 1
+        },
+        "documentResponses": {
+          "schedule_event_migrations": 1,
+          "schedule_events": 6400
+        },
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "transactionDocumentPaths": [],
+        "commitRequests": 0,
+        "writeRequests": {},
+        "verifyDocumentPreconditions": 0,
+        "rpcErrors": []
+      }
+    },
+    {
+      "operation": "cold-after-shared",
+      "size": 3200,
+      "counts": {
+        "queryTargets": {
+          "schedule_events": 1
+        },
+        "documentTargets": {
+          "schedule_event_migrations": 1
+        },
+        "documentResponses": {
+          "schedule_event_migrations": 1,
+          "schedule_events": 3200
+        },
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "transactionDocumentPaths": [],
+        "commitRequests": 0,
+        "writeRequests": {},
+        "verifyDocumentPreconditions": 0,
+        "rpcErrors": []
+      }
+    },
+    {
+      "operation": "legacy-migration",
+      "size": 32,
+      "counts": {
+        "queryTargets": {
+          "plans": 1,
+          "month_events": 1,
+          "schedule_events": 3
+        },
+        "documentTargets": {
+          "schedule_event_migrations": 1
+        },
+        "documentResponses": {
+          "plans": 24,
+          "month_events": 8,
+          "schedule_events": 64
+        },
+        "transactionDocumentRequests": 2,
+        "transactionDocumentResponses": 1,
+        "missingTransactionDocuments": 1,
+        "transactionDocumentPaths": [
+          "projects/demo-studyplanner-read-load/databases/(default)/documents/schedule_event_migrations/owner-migration",
+          "projects/demo-studyplanner-read-load/databases/(default)/documents/schedule_event_migrations/owner-migration"
+        ],
+        "commitRequests": 2,
+        "writeRequests": {
+          "schedule_event_migrations": 2,
+          "schedule_events": 32
+        },
+        "verifyDocumentPreconditions": 1,
+        "rpcErrors": []
+      }
+    },
+    {
+      "operation": "migration-reload",
+      "size": 32,
+      "counts": {
+        "queryTargets": {
+          "schedule_events": 1
+        },
+        "documentTargets": {
+          "schedule_event_migrations": 1
+        },
+        "documentResponses": {
+          "schedule_event_migrations": 1,
+          "schedule_events": 32
+        },
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "transactionDocumentPaths": [],
+        "commitRequests": 0,
+        "writeRequests": {},
+        "verifyDocumentPreconditions": 0,
+        "rpcErrors": []
+      }
+    }
+  ],
+  "verificationInputs": {
+    "approvalMode": null,
+    "replay": false,
+    "baseline": null,
+    "emulatorSha256": "4a117fc297b1441eac1b7756e80442e86ef88865b9e3caf6f59eabf83da574f8",
+    "rulesSha256": "a6881721ade2f8a47f218826edc91df0822e8d87693fddfcb1c698ab0640ade9",
+    "bundleSha256": "45b93522f294cfc97537b390727ef7eb880b02769bf87259161ecc36d21176c6",
+    "sourceSha256": {
+      "src/domain/scheduleEvent.ts": "0a4552a6077f11226d1c76a67c29d763c483314a66605c4e123edf8dcc681846",
+      "src/repositories/plannerWritePreparation.ts": "ea57696e3d3e02acf367e74ee95fdb44d9230b1941938a0de4725ac604cbc863",
+      "src/lib/date.ts": "bf057c854cbde882f57f1f84a87d9bc0836b4d3aba45d27652168e561b398641",
+      "src/lib/planRecurrence.ts": "170892e7ba8bf38a460090e85020737b613117b5c966962a39f6b8244abd6263",
+      "src/repositories/repositoryUtils.ts": "7214a7419e01a97e39762c024287fbd8d4730df66e796a529734a0c99b4881aa",
+      "src/repositories/firebasePlannerRepository.ts": "3412302bd12407727f60d406694e7762a9e439be77655f7173c55207dbb9fc08",
+      "src/lib/startupTiming.ts": "75344b74e34fb71fbbdffe31448f3c10074dc30d709605f9a1ba6a5cc0ffe43c",
+      "src/repositories/observeStartupDocument.ts": "c77ca45cfbf74488a886ff77bbbf0a5268bb934d00fd65b12594dbdddffe8829",
+      "src/repositories/scheduleEventAuthorityRepository.ts": "fcf36701c73eca845b31605a8e8c15c82561d673e7e7d99a5fa9e51a4bc7095a",
+      "src/repositories/firebaseScheduleEventAuthority.ts": "e978f403cd7c6aa908e69cfcef5bb12f24b482757a9673fef07f641b63035c15",
+      "tests/performance/firestore-read-load-emulator.integration.ts": "59d153b533566ecb26de412ecc01305542f956998f1ae73016d8569ffb8376d5"
+    }
+  }
+}

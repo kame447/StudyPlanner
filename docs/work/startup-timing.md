@@ -10,7 +10,7 @@ Rows contain only an anonymous sequence number, a fixed phase name, milliseconds
 - `auth-session`, `consent`, `preferences`: observed pending intervals at the React boundaries. Resolution can lead to onboarding or a signed-out view; success does not mean consent was granted
 - `memory`: context repository initialization, including transaction wait
 - `profile`: authentication repository restore, including its profile read/required write
-- `plans`, `actuals`, `day-notes`, `month-events`, `todos`, `subjects`, `materials`, `templates`, `terms`, `periods`: separately measured repository calls. These already run in parallel; do not sum them to infer critical-path duration
+- `schedule-snapshot`, `actuals`, `day-notes`, `todos`, `subjects`, `materials`, `templates`, `terms`, `periods`: separately measured full-load repository calls. The schedule snapshot supplies Plan and MonthEvent projections together. These calls run in parallel; do not sum them to infer critical-path duration. `plans` / `month-events` remain recognized diagnostic phase names for narrower or older consumers
 - `timetable-write`: canonicalization persistence call after the initial reads, not the pure transformation's CPU time
 - `bootstrap`: profile plus planner initialization. Error outcomes preserve the existing error handling/release behavior
 - `home-visible`: first animation-frame observation of a connected, laid-out Home with no splash. It approximates first usable Home, not a browser paint or complete image/font load metric
@@ -29,6 +29,8 @@ Readiness belongs to the keyed authenticated session. The bootstrap also checks 
 
 The overlap removes a dependency, not the remaining consent/preferences and slowest-planner-read latency. Compare exact builds in the same authenticated browser; do not promise one-second startup from deferred tests or add overlapping durations.
 
+The active [Firestore read-load and startup investigation](../domains/client-runtime/work/20261008-firestore-read-load-and-startup.md) records separate synthetic gate timing, SDK logical calls and Emulator observations. Its synthetic cold/warm inputs are not an optimization comparison or real-network measurement. A stalled consent status can prevent planner reads from starting, so inspect earlier gates before attributing every long splash to Firestore data volume.
+
 ## Completed schedule-migration gate
 
 Firebase schedule authority now owns the rollout-capability check and current completed-marker decision in one place. Startup uses a server-only marker read. Only an existing current-version completed marker with `fromCache === false` and `hasPendingWrites === false` skips transactional acquisition. This reuses the domain completed-state predicate; it does not claim full schema/owner validation beyond the existing authority contract. The owner-scoped document path remains unchanged.
@@ -36,6 +38,8 @@ Firebase schedule authority now owns the rollout-capability check and current co
 Missing, migrating, cached/pending-write, metadata-less or unsupported snapshots still go through the existing transaction, including concurrent completion checks. Completed cutover is monotonic under current Rules; no Rules change or persistent client cache is introduced. Only permission denial from the marker capability read permits legacy rollout compatibility. Network/authentication failure and every subsequent transaction/backfill/query failure remain failures, not a reason to fall back to legacy data. The composition wrapper's redundant probe is removed.
 
 The verified mechanism is one clean completed-marker server read instead of a probe followed by a read-only transaction with its verify commit. Missing/migrating paths retain their existing atomic work. This is one shared per-owner gate for plans and month events, not two migrations. End-to-end duration still requires real-browser measurement; do not infer milliseconds from the operation count.
+
+The full-load canonical query is now recorded as `schedule-canonical-snapshot`, with both projections derived from that result. It sits inside `schedule-snapshot`; do not add nested spans as separate critical-path time or billable reads. Explicit subsequent loads still perform a fresh query. Single-projection callers can retain `schedule-canonical-plans` / `schedule-canonical-month-events`.
 
 ## Readiness is the performance target
 

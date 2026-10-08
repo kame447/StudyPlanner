@@ -1,0 +1,11 @@
+
+ RUN  v3.2.7 /tmp/studyplanner-read-load-LL2uwb/before
+
+ ✓ tests/performance/firestoreReadLoad.measurement.test.tsx (5 tests) 5409ms
+   ✓ Firestore read-load executable measurement > medium: executes real app and persistence boundaries  456ms
+   ✓ Firestore read-load executable measurement > large: executes real app and persistence boundaries  4749ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  10:43:17
+   Duration  6.49s (transform 604ms, setup 40ms, collect 743ms, tests 5.41s, environment 0ms, prepare 82ms)

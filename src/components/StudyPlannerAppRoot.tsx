@@ -52,11 +52,13 @@ function ConsentedStudyPlannerApp({
   userId,
   startupScope,
   onStartupReady,
+  onStartupPending,
 }: {
   authSession: AuthSessionService;
   userId: string;
   startupScope: StartupSessionCapability;
   onStartupReady: () => void;
+  onStartupPending: () => void;
 }) {
   const personalization = useWeeklyPlanningPersonalizationProfile(userId);
   const finishProfileObservation = useStartupProfileObservation({
@@ -69,11 +71,13 @@ function ConsentedStudyPlannerApp({
   }, [finishProfileObservation, onStartupReady]);
   useStartupWait('preferences', personalization.loading, Boolean(personalization.error));
 
-  useEffect(() => {
-    if (!personalization.loading && !personalization.profile?.weekStartsOn) {
+  useLayoutEffect(() => {
+    if (personalization.loading) {
+      onStartupPending();
+    } else if (!personalization.profile?.weekStartsOn) {
       finishStartup();
     }
-  }, [finishStartup, personalization.loading, personalization.profile?.weekStartsOn]);
+  }, [finishStartup, onStartupPending, personalization.loading, personalization.profile?.weekStartsOn]);
 
   if (personalization.loading) {
     return null;
@@ -119,24 +123,27 @@ function AuthenticatedStudyPlannerApp({
   userId,
   startupScope,
   onStartupReady,
+  onStartupPending,
 }: {
   authSession: AuthSessionService;
   userId: string;
   startupScope: StartupSessionCapability;
   onStartupReady: () => void;
+  onStartupPending: () => void;
 }) {
   const policy = useWeeklyPlanningTracePolicy(userId);
   useStartupWait('consent', policy.status === 'loading', policy.status === 'unavailable');
 
-  useEffect(() => {
-    if (
-      policy.status !== 'loading'
-      && policy.status !== 'accepted'
+  useLayoutEffect(() => {
+    if (policy.status === 'loading') {
+      onStartupPending();
+    } else if (
+      policy.status !== 'accepted'
       && policy.status !== 'disabled'
     ) {
       onStartupReady();
     }
-  }, [onStartupReady, policy.status]);
+  }, [onStartupPending, onStartupReady, policy.status]);
 
   if (policy.status === 'accepted') {
     return (
@@ -145,6 +152,7 @@ function AuthenticatedStudyPlannerApp({
         userId={userId}
         startupScope={startupScope}
         onStartupReady={onStartupReady}
+        onStartupPending={onStartupPending}
       />
     );
   }
@@ -256,11 +264,12 @@ function AuthenticatedStartup({ authSession, userId, startupScope, onPresentatio
 }) {
   const [ready, setReady] = useState(false);
   const markReady = useCallback(() => setReady(true), []);
+  const markPending = useCallback(() => setReady(false), []);
   const presentation = useMemo<StartupPresentation>(() => ({ loading: !ready }), [ready]);
   useLayoutEffect(() => { onPresentation(presentation); }, [onPresentation, presentation]);
   return (
     <RootStartupReadyProvider onReady={markReady}>
-      <AuthenticatedStudyPlannerApp authSession={authSession} userId={userId} startupScope={startupScope} onStartupReady={markReady} />
+      <AuthenticatedStudyPlannerApp authSession={authSession} userId={userId} startupScope={startupScope} onStartupReady={markReady} onStartupPending={markPending} />
     </RootStartupReadyProvider>
   );
 }

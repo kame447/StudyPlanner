@@ -105,9 +105,17 @@ export interface TimetableMutation {
   periodDeletes: readonly TimetablePeriod[];
 }
 
+export interface PlannerScheduleSnapshot {
+  plans: Plan[];
+  monthEvents: MonthEvent[];
+}
+
 export interface PlannerRepository {
   // Optional read-only startup observation; never initiates schedule migration.
   observeStartupScheduleMarker?(expectedOwner: string, scope: StartupSessionCapability): () => void;
+  // One logical schedule read; canonical adapters project both slices from one query.
+  // Every call is fresh. The result is never retained across loads or writes.
+  getScheduleSnapshot(userId: string): Promise<PlannerScheduleSnapshot>;
   getPlans(userId: string): Promise<Plan[]>;
   getActuals(userId: string): Promise<Actual[]>;
   getDayNotes(userId: string): Promise<DayNote[]>;

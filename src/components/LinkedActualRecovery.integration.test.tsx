@@ -7,7 +7,7 @@ import { usePlannerDataState, type UsePlannerDataStateResult } from '../hooks/us
 import type { Actual, Plan } from '../types/domain';
 
 const repository = vi.hoisted(() => ({
-  getPlans: vi.fn(), getActuals: vi.fn(), getDayNotes: vi.fn(), getMonthEvents: vi.fn(), getTodos: vi.fn(),
+  getScheduleSnapshot: vi.fn(), getPlans: vi.fn(), getActuals: vi.fn(), getDayNotes: vi.fn(), getMonthEvents: vi.fn(), getTodos: vi.fn(),
   getStudySubjects: vi.fn(), getStudyMaterials: vi.fn(), getScheduleTemplates: vi.fn(), getTimetableTerms: vi.fn(), getTimetablePeriods: vi.fn(),
   applyTimetableMutation: vi.fn(),
   upsertActualWithMaterialProgress: vi.fn(), upsertActual: vi.fn(), deleteActual: vi.fn(),
@@ -55,6 +55,10 @@ beforeEach(() => {
   vi.stubGlobal('window', { addEventListener: noop, removeEventListener: noop, setTimeout, clearTimeout,
     matchMedia: () => ({ matches: true }), confirm: vi.fn(() => true) });
   for (const [name, fn] of Object.entries(repository)) if (name.startsWith('get')) fn.mockReset().mockResolvedValue([]);
+  repository.getScheduleSnapshot.mockImplementation(async (ownerId: string) => {
+    const [plans, monthEvents] = await Promise.all([repository.getPlans(ownerId), repository.getMonthEvents(ownerId)]);
+    return { plans, monthEvents };
+  });
   repository.getActuals.mockResolvedValue([actual]); repository.getPlans.mockResolvedValue([plan]);
   repository.upsertActualWithMaterialProgress.mockReset().mockImplementation(async ({ actual: next }: { actual: Actual }) => next);
   repository.upsertActual.mockReset().mockImplementation(async (next: Actual) => next);

@@ -7,6 +7,7 @@ import { startOfMonth } from '../lib/date';
 import { usePlannerDataState, type UsePlannerDataStateResult } from './usePlannerDataState';
 
 const repository = vi.hoisted(() => ({
+  getScheduleSnapshot: vi.fn(),
   getPlans: vi.fn(),
   getActuals: vi.fn(),
   getDayNotes: vi.fn(),
@@ -65,6 +66,12 @@ function deferred<T>() {
 }
 
 function resetRepositoryMocks() {
+  repository.getScheduleSnapshot.mockImplementation(async (userId: string) => {
+    const [plans, monthEvents] = await Promise.all([
+      repository.getPlans(userId), repository.getMonthEvents(userId),
+    ]);
+    return { plans, monthEvents };
+  });
   repository.getPlans.mockResolvedValue([]);
   repository.getActuals.mockResolvedValue([]);
   repository.getDayNotes.mockResolvedValue([]);

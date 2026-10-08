@@ -4,7 +4,7 @@ import { createLocalFixture, deferred, microtasks } from './localPersistenceConc
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Firestore } from 'firebase/firestore';
 import type { MonthEvent, Plan } from '../types/domain';
-import { scheduleEventFromPlan } from '../domain/scheduleEvent';
+import { scheduleEventFromMonthEvent, scheduleEventFromPlan } from '../domain/scheduleEvent';
 
 const mocks = vi.hoisted(() => ({
   batchSet: vi.fn(),
@@ -384,4 +384,56 @@ it('keeps canonical errors authoritative and stays inert when diagnostics are di
   vi.restoreAllMocks(); mocks.getDocs.mockResolvedValue({ docs: [] });
   const disabled = timingRecorder(false);
   await authority.getMonthEvents('user-1'); expect(disabled.getSnapshot()).toEqual([]);
+});
+
+
+describe('combined ScheduleEvent read snapshot', () => {
+  it('projects plans and month events from one owner-filtered canonical query', async () => {
+    const sourcePlan = plan({ busy: false });
+    const sourceEvent = monthEvent({ repeat: 'weekly', excludedDates: ['2026-09-09'] });
+    const canonical = [scheduleEventFromPlan(sourcePlan), scheduleEventFromMonthEvent(sourceEvent)];
+    mocks.getDocs.mockResolvedValue({ docs: canonical.map(event => firestoreDoc(event.id, event)) });
+    const authority = createFirebaseScheduleEventAuthority({} as Firestore);
+
+    const result = await authority.getScheduleSnapshot('user-1');
+
+    expect(result.plans).toEqual([expect.objectContaining(sourcePlan)]);
+    expect(result.monthEvents).toEqual([expect.objectContaining(sourceEvent)]);
+    expect(mocks.getDocs).toHaveBeenCalledTimes(1);
+    expect(mocks.getDocs).toHaveBeenCalledWith({ parts: [
+      { name: 'schedule_events' }, { parts: ['userId', '==', 'user-1'] },
+    ] });
+  });
+
+  it('reads again after a completed request and keeps owners independent', async () => {
+    const authority = createFirebaseScheduleEventAuthority({} as Firestore);
+    const initial = scheduleEventFromPlan(plan());
+    const updated = scheduleEventFromPlan(plan({ title: 'Changed elsewhere' }));
+    const other = scheduleEventFromPlan(plan({ id: 'other', userId: 'user-2' }));
+    mocks.getDocs
+      .mockResolvedValueOnce({ docs: [firestoreDoc(initial.id, initial)] })
+      .mockResolvedValueOnce({ docs: [firestoreDoc(updated.id, updated)] })
+      .mockResolvedValueOnce({ docs: [firestoreDoc(other.id, other)] });
+
+    expect((await authority.getScheduleSnapshot('user-1')).plans[0].title).toBe('Math');
+    expect((await authority.getScheduleSnapshot('user-1')).plans[0].title).toBe('Changed elsewhere');
+    expect((await authority.getScheduleSnapshot('user-2')).plans[0].userId).toBe('user-2');
+    expect(mocks.getDocs).toHaveBeenCalledTimes(3);
+  });
+
+  it('rejects the whole snapshot on read failure and retries with a fresh query', async () => {
+    const authority = createFirebaseScheduleEventAuthority({} as Firestore);
+    mocks.getDocs.mockRejectedValueOnce(new Error('canonical unavailable'));
+    await expect(authority.getScheduleSnapshot('user-1')).rejects.toThrow('canonical unavailable');
+    await expect(authority.getScheduleSnapshot('user-1')).resolves.toEqual({ plans: [], monthEvents: [] });
+    expect(mocks.getDocs).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+it('fails closed if a combined canonical query yields another owner record', async () => {
+  const authority = createFirebaseScheduleEventAuthority({} as Firestore);
+  const other = scheduleEventFromPlan(plan({ userId: 'user-2' }));
+  mocks.getDocs.mockResolvedValue({ docs: [firestoreDoc(other.id, other)] });
+  await expect(authority.getScheduleSnapshot('user-1')).rejects.toThrow('所有者が一致しません');
 });
