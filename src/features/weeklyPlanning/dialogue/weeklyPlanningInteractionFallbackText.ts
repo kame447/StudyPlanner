@@ -32,6 +32,11 @@ const DETAILS_INVITATION = '予定について変えたいことがあれば、�
 const READY_TO_CREATE_PREVIEW = '必要なことはそろいました。仮予定を作ってよければ、そう伝えてください。';
 const CAPACITY_SHORTFALL = '今の期間と空き時間では、全部は入りきりませんでした。期間を延ばすか、量を減らすか、使える時間を増やせるかを教えてください。';
 const GENERIC_CONTINUE = '続けて、予定の希望を教えてください。';
+/** Semantic recovery kept the existing preview; stated by the application, never by the renderer. */
+export const WEEKLY_PLANNING_RETAINED_PREVIEW_UNCHANGED_TEXT = '今の仮予定は変えていません。';
+const RETAINED_PREVIEW_UNCHANGED = WEEKLY_PLANNING_RETAINED_PREVIEW_UNCHANGED_TEXT;
+const RETAINED_PREVIEW_EDIT_INVITATION = '変えたい点をもう一度教えてください。';
+const ALTERNATIVE_ADOPTION_INVITATION = 'その案に変えたい場合は、そう伝えてください。今の候補はまだ変えていません。';
 
 /** A repeated submission of a turn that was already taken in (idempotency guard). */
 export const WEEKLY_PLANNING_INTERACTION_DUPLICATE_SUBMISSION_TEXT =
@@ -50,7 +55,10 @@ function previewUnchangedText(controlLabel: string): string {
 }
 
 /** A message that could not be used as it is: the retained question, or an invitation. */
-export function weeklyPlanningInteractionClarifyText(questionText: string | null): string {
+export function weeklyPlanningInteractionClarifyText(questionText: string | null, retainedPreviewUnchanged = false): string {
+  if (retainedPreviewUnchanged) {
+    return `${MESSAGE_NOT_UNDERSTOOD}${RETAINED_PREVIEW_UNCHANGED}${questionText || RETAINED_PREVIEW_EDIT_INVITATION}`;
+  }
   return questionText
     ? `${MESSAGE_NOT_UNDERSTOOD}\n\n${questionText}`
     : `${MESSAGE_NOT_UNDERSTOOD}${CONTINUE_INVITATION}`;
@@ -96,7 +104,7 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
       main = ASIDE_ACKNOWLEDGEMENT;
       break;
     case 'clarify_turn':
-      main = weeklyPlanningInteractionClarifyText(question || null);
+      main = weeklyPlanningInteractionClarifyText(question || null, communication.retainedPreviewUnchanged);
       break;
     case 'present_preview':
       main = `${params.groundingNote}${previewReadyText(params.previewCount, controlLabel)}${
@@ -123,9 +131,12 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
     default:
       main = question || GENERIC_CONTINUE;
   }
+  if (communication.alternativeRequiresAdoption) {
+    main = `${ALTERNATIVE_ADOPTION_INVITATION}${question}`;
+  }
   return [
     main,
-    communication.consultationDeferred ? CONSULTATION_NOT_ANSWERED : '',
+    communication.consultationDeferred && !communication.alternativeRequiresAdoption ? CONSULTATION_NOT_ANSWERED : '',
     communication.planningDetailsNotApplied ? DETAILS_INVITATION : '',
   ].join('');
 }

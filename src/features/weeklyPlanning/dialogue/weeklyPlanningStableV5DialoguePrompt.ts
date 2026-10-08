@@ -224,6 +224,8 @@ const INTERACTION_GOAL_INSTRUCTIONS: Readonly<Record<WeeklyPlanningStableV5Commu
   clarify_turn: 'goal=clarify_turn: このメッセージは予定づくりに使えなかった。そのことの報告や理由、アプリの事情は書かず、うまく受け取れなかったことを短く自然に伝える（聞き返す形でもよい）。askQuestion=trueならその質問を聞く。falseなら、ユーザーがすでに言った教材・量・期間などを聞き直す質問はせず、伝えたいことを少しずつ分けて教えてほしいと頼む。同じ文面の再送は頼まない。',
 };
 
+const RETAINED_PREVIEW_RECOVERY_INSTRUCTION = 'goal=clarify_turn: Briefly say the change could not be used. Do not describe the current candidates or preview; the application states that beside your reply. Invite the specific edit, never splitting/rephrasing. askQuestion=true keeps that required question instead.';
+
 function interactionCommunicationInstructions(
   communication: WeeklyPlanningStableV5CommunicationContext | null,
   hasSelfRepair: boolean,
@@ -232,12 +234,15 @@ function interactionCommunicationInstructions(
   if (!communication) return [INTERACTION_GOAL_INSTRUCTION];
   return [
     INTERACTION_GOAL_INSTRUCTION,
-    INTERACTION_GOAL_INSTRUCTIONS[communication.goal],
+    communication.goal === 'clarify_turn' && communication.retainedPreviewUnchanged
+      ? RETAINED_PREVIEW_RECOVERY_INSTRUCTION : INTERACTION_GOAL_INSTRUCTIONS[communication.goal],
+    ...(communication.alternativeRequiresAdoption
+      ? ['alternativeRequiresAdoption=true: This trial differs from the current preview. Never name/offer the promotion control; invite the user to say if they want to adopt it.'] : []),
     ...(communication.statusReason === 'fixed_event_manual_entry'
       ? [`fixed_event_manual_entry: この固定予定はここでは追加・保存できない。一度だけ既存の「${ADD_SCHEDULE_CONTROL_LABEL}」から入力できると案内する。受け取った時刻等は空き時間の参考情報であり登録結果ではない。追加質問はしない。`] : []),
     ...(communication.statusReason === 'no_additional_work'
       ? ['no_additional_work: 短く受け止めて会話を閉じる。追加質問・登録案内の繰り返し・保存の主張はしない。'] : []),
-    ...(communication.askQuestion ? ['askQuestion=true: その質問は「？」で終わる形で一度だけ聞く。'] : []),
+    ...(communication.askQuestion ? ['askQuestion=true: One question. Choices: ask which, not 選んでください？.'] : []),
     ...(hasSelfRepair
       ? ['ACK acceptedFacts.selfRepair (this turn’s before→after correction) briefly before continuing.']
       : []),

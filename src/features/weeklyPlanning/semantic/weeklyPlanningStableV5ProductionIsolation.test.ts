@@ -80,6 +80,8 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'chat/aiPlanningChatStore.ts',
   // Interaction architecture: typed communication context (goal / purpose codes) for the renderer; no prose.
   'dialogue/weeklyPlanningStableV5CommunicationContext.ts',
+  // Interaction presentation: read-only current-preview/task-date comparison; no authority.
+  'dialogue/weeklyPlanningRetainedPreviewCommunication.ts',
   // Interaction architecture: the single emergency wording used only when the renderer cannot run or fails.
   'dialogue/weeklyPlanningInteractionFallbackText.ts',
   // Interaction presentation: compose typed ACK text, then rerun the complete V5 validator.

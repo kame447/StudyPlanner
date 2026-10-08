@@ -80,6 +80,10 @@ export type WeeklyPlanningStableV5QuestionPurpose =
  * code decides WHAT has to be communicated; the renderer decides HOW to say it.
  */
 export interface WeeklyPlanningStableV5CommunicationContext {
+  /** Semantic recovery kept the existing preview; ask for the intended edit, not a rephrase. */
+  retainedPreviewUnchanged?: boolean;
+  /** A proposed-days trial does not match the current preview; it needs explicit adoption. */
+  alternativeRequiresAdoption?: boolean;
   scheduleIntent?: WeeklyPlanningScheduleCommunicationIntent;
   goal: WeeklyPlanningStableV5CommunicationGoal;
   /** Why the planner needs what the asked/explained question requests (empty without one). */
@@ -323,6 +327,8 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   /** Interaction presentation claims contradict application-owned evidence; repair once. */
   | 'unverified_preview_constraint_claim'
   | 'unchecked_consultation_feasibility'
+  /** A what-if answer invited promoting a different, unadopted current preview. */
+  | 'unadopted_alternative_promotion'
   | 'grounding_contract_mismatch'
   | 'unsafe_text'
   | 'ungrounded_text'

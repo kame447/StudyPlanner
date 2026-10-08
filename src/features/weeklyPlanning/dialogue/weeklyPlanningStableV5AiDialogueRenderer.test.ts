@@ -51,6 +51,23 @@ function response(
 }
 
 describe('Stable V5 AI dialogue renderer adapter', () => {
+  it.each([false, true])('repairs an alternative promotion invitation once, then returns safe wording or fallback (repair safe: %s)', async repairSafe => {
+    const renderInput = input({ actionKind: 'status', questionCode: null, requiredLabels: [],
+      communication: { goal: 'report_status', askQuestion: false, questionPurposes: [], laterNeeds: [], statusReason: null,
+        planningDetailsNotApplied: false, consultationDeferred: true, previewDisclosure: null, alternativeRequiresAdoption: true,
+        consultation: { mode: 'advisory_only', assessmentScope: 'proposed_days',
+          alternative: { scope: 'task', taskIds: ['task'], taskLabels: ['数学'], dates: ['2030-01-12'] },
+          feasibility: { status: 'fits', basis: 'alternative_scheduler' }, missingQuestionCodes: [], workEstimates: [], dailyLimits: [], nextAction: 'offer_alternative_adoption' },
+      } });
+    let calls = 0;
+    const createChatCompletion = vi.fn(async (_request: Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]) => JSON.stringify({ ...JSON.parse(response(renderInput,
+      repairSafe && calls++ > 0 ? 'その案を希望する場合は教えてください。' : '今の候補でよければ「この内容で仮予定にする」を押してください。')), feasibilityClaim: 'fits' }));
+    const result = await createAiWeeklyPlanningStableV5DialogueRenderer(config, { createChatCompletion }).render(renderInput);
+    expect(createChatCompletion).toHaveBeenCalledTimes(2);
+    const repair = createChatCompletion.mock.calls[1]![0] as Parameters<OpenAiCompatibleClient['createChatCompletion']>[0];
+    expect(repair.messages[repair.messages.length - 1]!.content).toContain('unadopted what-if');
+    expect(result).toMatchObject(repairSafe ? { status: 'rendered' } : { status: 'fallback', reason: 'unadopted_alternative_promotion' });
+  });
   it('sends one structured rendering request when the caller chooses the AI route', async () => {
     const renderInput = input();
     const client: OpenAiCompatibleClient = {

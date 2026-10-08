@@ -13,13 +13,15 @@ import type {
   WeeklyPlanningStableV5DialogueQuestionIntent,
 } from './weeklyPlanningStableV5DialogueContracts';
 import { communicationContextForStableV5Dialogue } from './weeklyPlanningStableV5CommunicationContext';
-import { composeWeeklyPlanningInteractionFallbackText } from './weeklyPlanningInteractionFallbackText';
+import { retainedPreviewCommunicationForStableV5Dialogue } from './weeklyPlanningRetainedPreviewCommunication';
+import { composeWeeklyPlanningInteractionFallbackText, WEEKLY_PLANNING_RETAINED_PREVIEW_UNCHANGED_TEXT } from './weeklyPlanningInteractionFallbackText';
 import { weeklyPlanningPreviewConstraintDisclosureText, weeklyPlanningPreviewOmissionDisclosureText } from './weeklyPlanningPreviewOmissionDisclosure';
 import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
 import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import { scheduleCommunicationIntent } from '../application/weeklyPlanningFixedEventOnlyInteraction';
 import { stableV5ScheduleQuestionText } from '../application/weeklyPlanningStableV5RuntimeQuestions';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
+import { placementCandidateBlocks } from '../semantic/weeklyPlanningStableV5PlacementCandidates';
 import { withStableV5GroundingProposal } from '../application/weeklyPlanningStableV5GroundingFlow';
 import {
   decodeWeeklyPlanningStableV5QuestionSlot,
@@ -345,7 +347,19 @@ function createRenderInput(params: {
   // preview is not presented as its result (live C on d7b85616 invited promoting the old
   // 30-page preview after the 20-page correction was rejected). The preview card stays.
   const unusedTurn = interaction && params.result.interactionOutcome?.kind === 'recover';
+  const retainedPreviewCommunication = interaction
+    ? retainedPreviewCommunicationForStableV5Dialogue({
+        preview: params.result.draftCandidates.length > 0
+          ? { candidateCount: params.result.draftCandidates.length,
+              placements: placementCandidateBlocks(params.result.draftCandidates).map(({ taskId, date }) => ({ taskId, date })) }
+          : params.result.preserveExistingPreview || unusedTurn ? params.input.currentPreview : undefined,
+        outcome: params.result.interactionOutcome,
+        consultation: params.result.interactionOutcome?.consultationDeferred
+          ? params.result.communicationFacts?.consultation : null,
+      })
+    : {};
   const previewPromotionControlLabel = params.result.state.status === 'draft_ready' && !unusedTurn
+    && !retainedPreviewCommunication.alternativeRequiresAdoption
     ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL
     : null;
   const typedFallbackText = fallbackTextForStableV5TypedIntent({
@@ -356,7 +370,7 @@ function createRenderInput(params: {
   // Interaction architecture: the application states WHAT to communicate as a typed context;
   // the renderer writes the words. The emergency text is composed from the same context.
   const communication = interaction
-    ? communicationContextForStableV5Dialogue({
+    ? { ...communicationContextForStableV5Dialogue({
         outcome: params.result.interactionOutcome,
         // A generic schedule invitation must not mask a required progress/scope target.
         facts: params.result.communicationFacts && targetFactId && params.questionCode === 'missing_schedulable_work'
@@ -366,7 +380,7 @@ function createRenderInput(params: {
         actionKind: params.actionKind,
         questionCode: params.questionCode,
         questionIntent,
-      })
+      }), ...retainedPreviewCommunication }
     : null;
   const fallbackText = communication
     ? composeWeeklyPlanningInteractionFallbackText({
@@ -532,7 +546,12 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     ? `${rendered.text}\n\n${weeklyPlanningPreviewOmissionDisclosureText(disclosure.omittedWork)}`
     : rendered.text;
   const constraintDisclosure = weeklyPlanningPreviewConstraintDisclosureText(renderInput.communication?.previewConstraintSatisfaction);
-  const finalMessage = constraintDisclosure ? `${previewMessage}\n\n${constraintDisclosure}` : previewMessage;
+  const disclosedMessage = constraintDisclosure ? `${previewMessage}\n\n${constraintDisclosure}` : previewMessage;
+  // Semantic recovery that kept the preview: the application states it; the renderer may not.
+  const retainedPreviewNotice = renderInput.communication?.goal === 'clarify_turn'
+    && renderInput.communication.retainedPreviewUnchanged
+    ? WEEKLY_PLANNING_RETAINED_PREVIEW_UNCHANGED_TEXT : null;
+  const finalMessage = retainedPreviewNotice ? `${disclosedMessage}\n\n${retainedPreviewNotice}` : disclosedMessage;
   const dialogueRendererTrace = createWeeklyPlanningAiRenderedDialogueTrace({
     actionId: currentActionId,
     actionKind,

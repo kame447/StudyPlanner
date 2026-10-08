@@ -388,6 +388,12 @@ function validateRenderedText(
 
   const eventStatus = conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome
     ? input.communication?.statusReason : null;
+  // Output presentation only: this check is never applied to the user's message.
+  if (conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome
+    && input.communication?.alternativeRequiresAdoption
+    && normalizeSafetyText(text).includes(WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL)) {
+    return 'unadopted_alternative_promotion';
+  }
   if ((eventStatus === 'fixed_event_manual_entry' || eventStatus === 'no_additional_work')
     // Renderer-output requests can be imperative, without a question mark. This
     // checks its presentation contract; it never interprets the user's message.
@@ -416,6 +422,8 @@ function validateRenderedText(
     && (NEW_CANDIDATES_CLAIM.test(text) || APPLIED_PLACEMENT_CLAIM.test(text))) {
     return 'preview_claim_without_preview';
   }
+  // Retained-preview recovery included: the application states that status itself, because a
+  // rendered claim cannot be checked for unaccepted values (e.g. a rejected 20-page correction).
   if (input.communication && input.communication.statusReason !== 'preview_unchanged'
     && UNCHANGED_CANDIDATES_CLAIM.test(text)) {
     return 'preview_claim_without_preview';

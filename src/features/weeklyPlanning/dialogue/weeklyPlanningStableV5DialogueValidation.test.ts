@@ -50,6 +50,39 @@ function response(
 }
 
 describe('Stable V5 dialogue renderer validation', () => {
+  it('guards only the renderer reply when typed alternative adoption is required', () => {
+    const communication = { goal: 'report_status' as const, askQuestion: false, questionPurposes: [], laterNeeds: [], statusReason: null,
+      planningDetailsNotApplied: false, consultationDeferred: false, previewDisclosure: null, alternativeRequiresAdoption: true };
+    const renderInput = input({ actionKind: 'status', questionCode: null, communication, currentUserMessage: '「この内容で仮予定にする」とは？' });
+    const text = '今の候補でよければ「この内容で仮予定にする」を押してください。';
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text), renderInput))
+      .toMatchObject({ status: 'fallback', reason: 'unadopted_alternative_promotion' });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput,
+      text.replace('この内容', 'この\u200b内容')), renderInput))
+      .toMatchObject({ status: 'fallback', reason: 'unadopted_alternative_promotion' });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, 'その案を希望する場合は教えてください。'), renderInput))
+      .toMatchObject({ status: 'rendered' });
+    const matching = { ...renderInput, communication: { ...communication, alternativeRequiresAdoption: undefined } };
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(matching, text), matching)).toMatchObject({ status: 'rendered' });
+    const legacy = { ...renderInput, conversationArchitecture: 'legacy_v5' as const };
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(legacy, text), legacy)).toMatchObject({ status: 'rendered' });
+  });
+  it('rejects a rendered unchanged-candidates claim even in retained-preview recovery; the application states it', () => {
+    const communication = { goal: 'clarify_turn' as const, askQuestion: false, questionPurposes: [], laterNeeds: [], statusReason: null,
+      planningDetailsNotApplied: false, consultationDeferred: false, previewDisclosure: null, retainedPreviewUnchanged: true };
+    const renderInput = input({ actionKind: 'status', questionCode: null, communication });
+    const text = '今の候補はそのままです。変えたい点を教えてください。';
+    // R28b: a rendered status claim cannot be checked for unaccepted values (e.g. 「20ページの候補はそのままです」).
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text), renderInput)).toMatchObject({ status: 'fallback', reason: 'preview_claim_without_preview' });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, '20ページの候補はそのままです。'), renderInput)).toMatchObject({ status: 'fallback', reason: 'preview_claim_without_preview' });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, 'うまく受け取れませんでした。変えたい点を教えてください。'), renderInput)).toMatchObject({ status: 'rendered' });
+    const without = { ...renderInput, communication: { ...communication, retainedPreviewUnchanged: undefined } };
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(without, text), without)).toMatchObject({ status: 'fallback', reason: 'preview_claim_without_preview' });
+    const legacy = { ...renderInput, conversationArchitecture: 'legacy_v5' as const };
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(legacy, text), legacy)).toMatchObject({ status: 'fallback', reason: 'preview_claim_without_preview' });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, '「この内容で仮予定にする」を押してください。'), renderInput))
+      .toMatchObject({ status: 'fallback', reason: 'preview_claim_without_preview' });
+  });
   it('accepts grounded explanation wording without requiring deterministic labels', () => {
     const renderInput = input();
     expect(parseWeeklyPlanningStableV5DialogueRendererResponse(

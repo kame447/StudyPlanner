@@ -56,6 +56,8 @@ const CONSULTATION_FEASIBILITY_REPAIR_INSTRUCTION = [
   '予定を変えたとは書かず、ACKとcommunicationの残りの契約を保ってください。',
 ].join('');
 
+const ALTERNATIVE_PROMOTION_REPAIR_INSTRUCTION = 'This is an unadopted what-if, not the current preview. Do not name or offer the promotion control. Answer the tested alternative, then invite the user to say if they want to adopt it. Keep the typed ACK and question contract.';
+
 const REPEATED_QUESTION_REPAIR_PREFIX = [
   '前回候補がrecentConversation内の直前assistant発話と同一でした。',
   'applicationDecisionの意味は変えず、直前と異なる自然な表現にしてください。',
@@ -169,7 +171,9 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
         }
         const neutralConstraintRepair = interaction
           && hasUnverifiedWeeklyPlanningPreviewConstraints(input.communication?.previewConstraintSatisfaction);
-        const repairInstruction = interaction && initial.reason === 'unchecked_consultation_feasibility'
+        const repairInstruction = interaction && initial.reason === 'unadopted_alternative_promotion'
+          ? ALTERNATIVE_PROMOTION_REPAIR_INSTRUCTION
+          : interaction && initial.reason === 'unchecked_consultation_feasibility'
           ? CONSULTATION_FEASIBILITY_REPAIR_INSTRUCTION
           : interaction && (initial.reason === 'unverified_preview_constraint_claim'
             || (initial.reason === 'grounding_contract_mismatch' && neutralConstraintRepair))

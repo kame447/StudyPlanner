@@ -25,6 +25,11 @@ import type { WeeklyPlanningMessage } from './types';
 import type { WeeklyPlanningConversationArchitecture } from './weeklyPlanningConversationArchitecture';
 
 export interface WeeklyPlanningTurnExecutionInput {
+  /** Current unsaved preview, for renderer presentation only; never semantic/approval input. */
+  currentPreview?: {
+    candidateCount: number;
+    placements: ReadonlyArray<{ taskId: string; date: string }>;
+  };
   previousState?: PlanningIntakeState;
   messages: readonly WeeklyPlanningMessage[];
   userText: string;

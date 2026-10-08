@@ -39,7 +39,8 @@ function reply(call: ScriptedProviderCall) {
     const claim = falseFirstClaim && rendererCount++ === 0 ? 'fits' : status === 'not_evaluated' ? 'none' : status;
     const base = JSON.parse(campaignRendererReply(call.payload as Json));
     const acknowledgement = base.groundingAcknowledgement?.text ?? '';
-    const previewControl = decision.actionKind === 'preview_ready' ? '今の候補を確認し、よければ「この内容で仮予定にする」を押してください。' : '';
+    const previewControl = decision.actionKind === 'preview_ready' && communication.alternativeRequiresAdoption !== true
+      ? '今の候補を確認し、よければ「この内容で仮予定にする」を押してください。' : '';
     return JSON.stringify({ ...base, actionId: call.payload?.actionId, actionKind: decision.actionKind,
       questionCode: decision.questionCode ?? null,
       feasibilityClaim: claim ?? 'none', text: acknowledgement + (claim === 'fits'
@@ -156,6 +157,10 @@ it('applies an independent session change while keeping the proposed days hypoth
   expect(turn.result?.interactionOutcome?.kind).toBe('apply');
   expect(turn.result?.responseSource, JSON.stringify(turn.result?.dialogueRendererTrace)).toBe('ai');
   expect(turn.result?.communicationFacts?.consultation?.feasibility.status).toBe('fits');
+  const decision = turn.calls.find(call => call.kind === 'renderer')!.payload!.applicationDecision as Json;
+  expect(decision.communication).toMatchObject({ alternativeRequiresAdoption: true });
+  expect(decision.previewPromotionControlLabel).toBeNull();
+  expect(turn.result?.message).not.toContain('この内容で仮予定にする');
   expect(conversation.graph()?.effortEstimates).toEqual(expect.arrayContaining([expect.objectContaining({ minutes: 90, kind: 'session_duration' })]));
   expect(conversation.graph()?.temporalConstraints).toEqual(before?.temporalConstraints);
   expect(conversation.graph()?.recurrences).toEqual(before?.recurrences);

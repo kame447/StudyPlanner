@@ -65,6 +65,31 @@ function bytes(value: string): number {
 }
 
 describe('Stable V5 dialogue prompt', () => {
+  it('distinguishes a retained-preview recovery from a no-preview clarification, with no splitting request', () => {
+    const communication = { goal: 'clarify_turn' as const, askQuestion: false, questionPurposes: [], laterNeeds: [], statusReason: null,
+      planningDetailsNotApplied: false, consultationDeferred: false, previewDisclosure: null, retainedPreviewUnchanged: true };
+    const renderInput = { ...input(), actionKind: 'status' as const, questionCode: null, questionIntent: null, communication };
+    const prompt = JSON.parse(createWeeklyPlanningStableV5DialoguePrompt(renderInput).userPrompt);
+    expect(prompt.applicationDecision.communication.retainedPreviewUnchanged).toBe(true);
+    // R28b: the application, not the renderer, states that the preview was kept.
+    expect(prompt.request).toContain('Do not describe the current candidates or preview');
+    expect(prompt.request).toContain('Invite the specific edit, never splitting/rephrasing');
+    expect(prompt.request).not.toContain('少しずつ分けて');
+    const legacy = JSON.parse(createWeeklyPlanningStableV5DialoguePrompt({ ...renderInput, conversationArchitecture: 'legacy_v5' }).userPrompt);
+    expect(legacy.applicationDecision).not.toHaveProperty('communication');
+    expect(legacy.request).not.toContain('Do not describe the current candidates or preview');
+    expect(bytes(prompt.request)).toBeLessThanOrEqual(4000);
+  });
+  it('forbids promotion of an unadopted alternative and asks choose-one prompts as questions', () => {
+    const communication = { goal: 'ask_question' as const, askQuestion: true, questionPurposes: [], laterNeeds: [], statusReason: null,
+      planningDetailsNotApplied: false, consultationDeferred: false, previewDisclosure: null, alternativeRequiresAdoption: true };
+    const prompt = JSON.parse(createWeeklyPlanningStableV5DialoguePrompt({ ...input(), communication }).userPrompt);
+    expect(prompt.request).toContain('alternativeRequiresAdoption=true');
+    expect(prompt.request).toContain('Never name/offer the promotion control');
+    expect(prompt.request).toContain('say if they want to adopt it');
+    expect(prompt.request).toContain('Choices: ask which, not 選んでください？');
+    expect(bytes(prompt.request)).toBeLessThanOrEqual(4000);
+  });
   it('separates accepted facts from downstream resolution-pending items', () => {
     const summary = createWeeklyPlanningStableV5DialogueStateSummary(input()) as {
       acceptedFacts: Record<string, unknown>;

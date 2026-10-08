@@ -17,6 +17,8 @@ import type {
   WeeklyPlanningTurnExecutionResult,
 } from '../weeklyPlanningTurnExecutionTypes';
 import { bindWeeklyPlanningStableV5RuntimeSessionScope } from './weeklyPlanningStableV5RuntimeSession';
+import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
+import { placementCandidateBlocks } from '../semantic/weeklyPlanningStableV5PlacementCandidates';
 import {
   createWeeklyPlanningTurnRequestContext,
 } from './weeklyPlanningTemporalContext';
@@ -78,7 +80,14 @@ export function createWeeklyPlanningTurnRuntimeGateway(
         timeZone: params.timeZone ?? resolvedTimeZone(),
         weekStartsOn: params.weekStartsOn ?? 'monday',
       });
+      const currentCandidates = params.snapshot.previewCandidates ?? [];
       return services.executeTurn({
+        ...(conversationArchitecturePolicy(params.conversationArchitecture).interactionOutcome && currentCandidates.length > 0
+          ? { currentPreview: {
+              candidateCount: currentCandidates.length,
+              placements: placementCandidateBlocks(currentCandidates).map(({ taskId, date }) => ({ taskId, date })),
+            } }
+          : {}),
         previousState: params.snapshot.intakeState,
         messages: params.snapshot.messages,
         userText: params.userText,

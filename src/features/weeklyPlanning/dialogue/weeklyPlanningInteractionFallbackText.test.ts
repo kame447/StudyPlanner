@@ -49,6 +49,23 @@ function compose(communication: WeeklyPlanningStableV5CommunicationContext, extr
 }
 
 describe('interaction emergency wording', () => {
+  it('describes a retained preview and invites the specific edit without splitting or offering promotion', () => {
+    for (const asks of [false, true]) {
+      const text = compose(context('clarify_turn', { retainedPreviewUnchanged: true, askQuestion: asks }));
+      expect(text).toContain('今の仮予定は変えていません。');
+      expect(text).not.toMatch(/分けて|少しずつ|言い換え|再送|この内容で仮予定にする/u);
+      expect(text.includes(QUESTION)).toBe(asks);
+      if (!asks) expect(text).toContain('変えたい点');
+      expect(text).not.toMatch(INTERNAL_PROCESS_WORDING);
+    }
+  });
+  it('asks for alternative adoption instead of offering the old preview control', () => {
+    const text = compose(context('report_status', { alternativeRequiresAdoption: true, consultationDeferred: true }));
+    expect(text).toContain('その案');
+    expect(text).toContain('伝えて');
+    expect(text).not.toContain('この内容で仮予定にする');
+    expect(text).not.toMatch(INTERNAL_PROCESS_WORDING);
+  });
   it('never exposes internal vocabulary, for every goal and flag combination', () => {
     for (const goal of GOALS) {
       for (const planningDetailsNotApplied of [false, true]) {

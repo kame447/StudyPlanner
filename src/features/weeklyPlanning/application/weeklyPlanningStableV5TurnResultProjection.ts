@@ -94,7 +94,8 @@ async function presentRecoveryTurn(params: {
   } catch {
     // Rendering itself broke: the retained state stays as it is and the short emergency
     // wording carries the same typed recovery decision (never an empty message).
-    const message = weeklyPlanningInteractionClarifyText(params.result.message || null);
+    const message = weeklyPlanningInteractionClarifyText(params.result.message || null,
+      (params.input.currentPreview?.candidateCount ?? 0) > 0);
     return {
       ...params.result,
       message,

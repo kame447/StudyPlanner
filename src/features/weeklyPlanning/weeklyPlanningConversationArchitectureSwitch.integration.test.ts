@@ -329,7 +329,7 @@ describe('A. explanation under a pending effort question', () => {
         },
         {
           "kind": "renderer",
-          "sha256": "85bee75b66ca57bb6c69108ee8a2814e7bb97255d4c48c4af78b195359b90288",
+          "sha256": "43a9ac1294735b9a9bad609d21f85778b8dcca67dd7597d7441e1683055d4b2c",
         },
       ]
     `);
@@ -427,7 +427,7 @@ describe('C. semantic failure under a pending question', () => {
         },
         {
           "kind": "renderer",
-          "sha256": "48f734e6f5dce3ac7ca4594504ad175390d635234adcf0a4bab54d0be8ab96b3",
+          "sha256": "1ba8e676605d2eca895e0c08ba1ff9ea3fe3eeb620b1be63a6127bca5453e32e",
         },
       ]
     `);
@@ -549,7 +549,7 @@ describe('B. aside followed by a short reply', () => {
           },
           {
             "kind": "renderer",
-            "sha256": "99f40ad3b0293c529f8de793acd699a255b68ecb54fa2fdbfb4c98fe65cd603a",
+            "sha256": "c30ef0845ba42c1130303019909f3d842ace1d8c95b7ed3c6b41db5acd27fd54",
           },
         ],
       }
