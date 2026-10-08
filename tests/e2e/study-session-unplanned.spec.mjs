@@ -6,6 +6,24 @@ async function attachScreen(page, testInfo, name) {
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 
+async function expectScreenStartsBelowHeader(dialog) {
+  await expect.poll(() => dialog.locator('.study-session-page').evaluate(element => element.scrollTop)).toBe(0);
+  const bounds = await dialog.evaluate(element => {
+    const header = element.querySelector('.study-session-header');
+    const summary = element.querySelector('.study-session-content > section');
+    const style = getComputedStyle(header);
+    const title = summary.querySelector('h2').getBoundingClientRect();
+    return { headerBottom: header.getBoundingClientRect().bottom, summaryTop: summary.getBoundingClientRect().top,
+      titleTop: title.top, titleBottom: title.bottom, viewportHeight: window.innerHeight,
+      backgroundImage: style.backgroundImage, backgroundColor: style.backgroundColor };
+  });
+  console.log('Study screen navigation bounds:', JSON.stringify(bounds));
+  expect(bounds.summaryTop).toBeGreaterThanOrEqual(bounds.headerBottom - 1);
+  expect(bounds.titleTop).toBeGreaterThanOrEqual(bounds.headerBottom - 1);
+  expect(bounds.titleBottom).toBeLessThanOrEqual(bounds.viewportHeight);
+  expect(bounds.backgroundImage !== 'none' || bounds.backgroundColor !== 'rgba(0, 0, 0, 0)').toBe(true);
+}
+
 async function inspectRecordLayout(record) {
   return record.evaluate(element => {
     const measure = node => {
@@ -29,8 +47,9 @@ async function inspectRecordLayout(record) {
   });
 }
 
-async function seed(page, { kind = 'empty', material = false } = {}) {
-  await page.addInitScript(({ kind, material, date }) => {
+async function seed(page, { kind = 'empty', material = false, dark = false } = {}) {
+  await page.addInitScript(({ kind, material, date, dark }) => {
+    localStorage.setItem('study-planner-theme-mode', dark ? 'dark' : 'light');
     const user = { id: 'unplanned-user', email: 'unplanned@example.test', username: 'Study', avatar: '', createdAt: new Date().toISOString() };
     const plan = { id: 'next-plan', seriesId: 'next-plan', userId: user.id, title: kind === 'class' ? '数学の授業' : '予定の学習', subject: '数学', type: 'study', date, startTime: '11:00', endTime: '12:00', memo: '', repeat: 'none', repeatUntil: null, excludedDates: [], recurrenceRules: [], sourceType: kind === 'class' ? 'timetable' : 'manual', createdAt: user.createdAt, updatedAt: user.createdAt };
     localStorage.setItem('studyplanner.users', JSON.stringify([user]));
@@ -39,15 +58,16 @@ async function seed(page, { kind = 'empty', material = false } = {}) {
     localStorage.setItem('studyplanner.actuals', '[]');
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify(material ? [{ id: 'book', userId: user.id, name: '数学の本', subjectId: 'math', subjectName: '数学', status: 'active', paceEnabled: true, progressUnit: 'page', currentUnit: 10, totalUnits: 100, createdAt: user.createdAt, updatedAt: user.createdAt }] : []));
-  }, { kind, material, date: E2E_TODAY });
+  }, { kind, material, date: E2E_TODAY, dark });
 }
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
-  for (const reducedMotion of ['no-preference', 'reduce']) test(`unplanned study without any setup saves one Actual at ${viewport.width}px (${reducedMotion})`, async ({ page }, testInfo) => {
+  for (const { reducedMotion, dark } of ['no-preference', 'reduce'].flatMap(reducedMotion => [false, true].map(dark => ({ reducedMotion, dark })))) test(`unplanned study without any setup saves one Actual at ${viewport.width}px (${reducedMotion}, ${dark ? 'dark' : 'light'})`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     await page.emulateMedia({ reducedMotion });
-    await seed(page);
+    await seed(page, { dark });
     await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', dark ? 'dark' : 'light');
     expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(reducedMotion === 'reduce');
     await page.getByRole('button', { name: /勉強を開始/ }).click();
     const ready = page.getByRole('dialog', { name: '学習を開始', exact: true });
@@ -57,10 +77,22 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     if (reducedMotion === 'reduce') await expect(ready.locator('.study-session-page')).toHaveCSS('animation-name', 'none');
     await attachScreen(page, testInfo, `unplanned-study-ready-${viewport.width}`);
     await ready.getByRole('button', { name: 'スタート', exact: true }).dblclick();
+    const running = page.getByRole('dialog', { name: '学習中', exact: true });
+    const pause = running.getByRole('button', { name: '一時停止', exact: true });
+    await running.locator('.study-session-page').evaluate(element => { element.scrollTop = 120; });
+    await pause.focus();
+    const readerScroll = await running.locator('.study-session-page').evaluate(element => element.scrollTop);
+    expect(readerScroll).toBeGreaterThan(0);
     await page.clock.fastForward(125_000);
-    await page.getByRole('button', { name: '終了する', exact: true }).click();
+    await expect(pause).toBeFocused();
+    expect(await running.locator('.study-session-page').evaluate(element => element.scrollTop)).toBe(readerScroll);
+    await pause.click();
+    await running.getByRole('button', { name: '再開', exact: true }).click();
+    expect(await running.locator('.study-session-page').evaluate(element => element.scrollTop)).toBe(readerScroll);
+    await running.getByRole('button', { name: '終了する', exact: true }).click();
     const record = page.getByRole('dialog', { name: '学習を記録', exact: true });
     await expect(record).toContainText(E2E_TODAY);
+    await expectScreenStartsBelowHeader(record);
     const overflow = await record.evaluate(element => element.scrollWidth > element.clientWidth + 1);
     const initialLayout = await inspectRecordLayout(record);
     console.log('Unplanned record initial layout:', JSON.stringify(initialLayout));
@@ -68,6 +100,24 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     expect(overflow).toBe(false);
     expect(initialLayout.pane.scrollWidth).toBeLessThanOrEqual(initialLayout.pane.clientWidth + 1);
     expect(initialLayout.overflowing).toEqual([]);
+    const note = record.getByRole('textbox', { name: 'メモ・気づき' });
+    await note.fill('画面を戻っても保持するメモ');
+    await expect(note).toBeFocused();
+    const editedScroll = await record.locator('.study-session-page').evaluate(element => element.scrollTop);
+    await note.press('End');
+    await note.press('!');
+    await expect(note).toBeFocused();
+    expect(await record.locator('.study-session-page').evaluate(element => element.scrollTop)).toBe(editedScroll);
+    for (let roundTrip = 0; roundTrip < 2; roundTrip++) {
+      await record.locator('.study-session-page').evaluate(element => { element.scrollTop = element.scrollHeight; });
+      await expect.poll(() => record.locator('.study-session-page').evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+      await record.getByRole('button', { name: '戻る', exact: true }).click();
+      const timer = page.getByRole('dialog', { name: '学習中', exact: true });
+      await expectScreenStartsBelowHeader(timer);
+      await timer.getByRole('button', { name: '終了する', exact: true }).click();
+      await expectScreenStartsBelowHeader(record);
+      await expect(note).toHaveValue('画面を戻っても保持するメモ!');
+    }
     await record.locator('summary').click();
     await expect(record.getByLabel('開始', { exact: true })).toBeVisible();
     await expect(record.getByLabel('終了', { exact: true })).toBeVisible();

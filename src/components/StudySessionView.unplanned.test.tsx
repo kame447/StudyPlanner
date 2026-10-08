@@ -36,8 +36,10 @@ function button(text: string) { return renderer!.root.findAllByType('button').fi
 async function click(text: string) { await act(async () => { button(text).props.onClick(); }); }
 async function change(props: Record<string, unknown>, value: string) { await act(async () => { renderer!.root.findByProps(props).props.onChange({ target: { value } }); }); }
 async function back() { await act(async () => { renderer!.root.findByProps({ 'aria-label': '戻る' }).props.onClick(); }); }
-async function mount(nextPlan: Plan | null = null) {
-  await act(async () => { renderer = create(<Harness nextPlan={nextPlan} />); });
+async function mount(nextPlan: Plan | null = null, page?: { scrollTop: number }) {
+  await act(async () => { renderer = create(<Harness nextPlan={nextPlan} />, {
+    createNodeMock: element => element.props.className === 'study-session-page' ? page ?? null : null,
+  }); });
   await act(async () => { await state.loadPlannerData('owner'); });
 }
 async function startAndFinish() {
@@ -255,4 +257,25 @@ it('resumed measurement refreshes its range while preserving other edited record
   vi.setSystemTime(new Date('2026-10-07T12:06:00'));
   await click('終了する'); await click('記録を保存');
   expect(standalone).toHaveBeenCalledWith(expect.objectContaining({ actualStartTime: '12:00', actualEndTime: '12:06', note: '続けて学習' }));
+});
+
+
+it.each([{ label: 'planned', nextPlan: futurePlan }, { label: 'unplanned', nextPlan: null }])('resets only phase navigation scroll for $label study while retaining edited fields', async ({ nextPlan }) => {
+  const page = { scrollTop: 0 };
+  await mount(nextPlan, page); await click('勉強を開始');
+  page.scrollTop = 144;
+  await click('スタート');
+  expect(page.scrollTop).toBe(144);
+  vi.setSystemTime(new Date('2026-10-07T12:05:00'));
+  await click('終了する');
+  expect(page.scrollTop).toBe(0);
+  page.scrollTop = 111;
+  await change({ rows: 3 }, 'スクロール後も入力を保持');
+  expect(page.scrollTop).toBe(111);
+  await back();
+  expect(page.scrollTop).toBe(0);
+  page.scrollTop = 144;
+  await click('終了する');
+  expect(page.scrollTop).toBe(0);
+  expect(renderer!.root.findByProps({ rows: 3 }).props.value).toBe('スクロール後も入力を保持');
 });

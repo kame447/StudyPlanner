@@ -182,6 +182,7 @@ function StudySessionView({
   const saveBlocked = useRef(false);
   const recordedElapsedMs = useRef<number | null>(null);
   const [phase, setPhase] = useState<SessionPhase>('timer');
+  const pageRef = useRef<HTMLDivElement>(null);
   const [studyMode, setStudyMode] = useState<StudyMode>('normal');
   const [nowMs, setNowMs] = useState(initialNow);
   const [tracker, setTracker] = useState<TrackerState>(buildInitialTracker);
@@ -255,6 +256,12 @@ function StudySessionView({
     : isStarted
       ? '学習中'
       : '学習を開始';
+
+  // The pane survives timer/record navigation so entry motion is not replayed.
+  // Each screen starts at its own heading; edits and timer ticks retain reader position.
+  useLayoutEffect(() => {
+    if (pageRef.current) pageRef.current.scrollTop = 0;
+  }, [phase]);
 
   useEffect(() => {
     if (phase !== 'timer' || tracker.runningFromMs === null) return undefined;
@@ -428,7 +435,7 @@ function StudySessionView({
       aria-modal="true"
       aria-label={dialogLabel}
     >
-      <div className="study-session-page">
+      <div className="study-session-page" ref={pageRef}>
         <header className="study-session-header">
           <button type="button" className="study-session-icon-button" onClick={handleBack} aria-label="戻る">
             <ArrowLeft size={24} aria-hidden="true" />
