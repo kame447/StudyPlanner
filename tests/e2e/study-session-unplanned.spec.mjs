@@ -103,13 +103,46 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     expect(initialLayout.pane.scrollWidth).toBeLessThanOrEqual(initialLayout.pane.clientWidth + 1);
     expect(initialLayout.overflowing).toEqual([]);
     const note = record.getByRole('textbox', { name: 'メモ・気づき' });
+    // A real click and first key may reveal an offscreen textarea in WebKit.
+    // Establish that visible editing position before testing application rerenders.
+    const needsReveal = await note.evaluate(element => element.getBoundingClientRect().bottom > window.innerHeight);
+    await note.click();
     await note.fill('画面を戻っても保持するメモ');
-    await expect(note).toBeFocused();
-    const editedScroll = await record.locator('.study-session-page').evaluate(element => element.scrollTop);
     await note.press('End');
-    await note.press('!');
+    await expect(note).toHaveValue('画面を戻っても保持するメモ');
     await expect(note).toBeFocused();
-    expect(await record.locator('.study-session-page').evaluate(element => element.scrollTop)).toBe(editedScroll);
+    await expect(note).toBeInViewport({ ratio: 1 });
+    const editing = await note.evaluate(element => {
+      const pane = element.closest('.study-session-page');
+      const rect = element.getBoundingClientRect();
+      const paneRect = pane.getBoundingClientRect();
+      const header = pane.querySelector('.study-session-header').getBoundingClientRect();
+      return { pageScroll: pane.scrollTop, top: rect.top, bottom: rect.bottom,
+        left: rect.left, right: rect.right, paneLeft: paneRect.left, paneRight: paneRect.right,
+        headerBottom: header.bottom, viewportHeight: window.innerHeight,
+        scrollWidth: element.scrollWidth, clientWidth: element.clientWidth,
+        scrollHeight: element.scrollHeight, clientHeight: element.clientHeight,
+        caretStart: element.selectionStart, caretEnd: element.selectionEnd, length: element.value.length };
+    });
+    console.log('Study note visible editing baseline:', JSON.stringify({ needsReveal, ...editing }));
+    if (needsReveal) expect(editing.pageScroll).toBeGreaterThan(0);
+    expect(editing.top).toBeGreaterThanOrEqual(editing.headerBottom - 1);
+    expect(editing.bottom).toBeLessThanOrEqual(editing.viewportHeight);
+    expect(editing.left).toBeGreaterThanOrEqual(editing.paneLeft - 1);
+    expect(editing.right).toBeLessThanOrEqual(editing.paneRight + 1);
+    expect(editing.scrollWidth).toBeLessThanOrEqual(editing.clientWidth + 1);
+    expect(editing.scrollHeight).toBeLessThanOrEqual(editing.clientHeight + 1);
+    expect(editing.caretStart).toBe(editing.length);
+    expect(editing.caretEnd).toBe(editing.length);
+    await note.press('!');
+    await expect(note).toHaveValue('画面を戻っても保持するメモ!');
+    await expect(note).toBeFocused();
+    await expect(note).toBeInViewport({ ratio: 1 });
+    expect(await record.locator('.study-session-page').evaluate(element => element.scrollTop)).toBe(editing.pageScroll);
+    await page.clock.fastForward(1_000);
+    await expect(note).toBeFocused();
+    await expect(note).toHaveValue('画面を戻っても保持するメモ!');
+    expect(await record.locator('.study-session-page').evaluate(element => element.scrollTop)).toBe(editing.pageScroll);
     for (let roundTrip = 0; roundTrip < 2; roundTrip++) {
       await record.locator('.study-session-page').evaluate(element => { element.scrollTop = element.scrollHeight; });
       await expect.poll(() => record.locator('.study-session-page').evaluate(element => element.scrollTop)).toBeGreaterThan(0);
