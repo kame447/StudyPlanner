@@ -10,11 +10,13 @@ const reportPath = path.join(reportDir, 'bundle-budget.json');
 
 const budgets = {
   javascript: {
-    // #164/#528: measured copy-cleanup + persisted-state validation + live Home clock stack.
-    // Combined 2,235,709 raw / 601,042 gzip: +2,868 raw / +292 gzip vs #527; no new dependency.
-    // Calibrate aggregate raw JS only; preserve gzip, individual-JS and all CSS guards.
-    totalRaw: 2_240_000,
-    totalGzip: 602_000,
+    // Eight-UI-feature integration candidate a6f25ab3: 2,255,608 raw / 606,339 gzip.
+    // Versus the 2,235,709 / 601,042 baseline: +19,899 raw (0.890%) / +5,297 gzip (0.881%).
+    // Independent audit: 28 chunks, four vendor SHA values and package/lock/Vite unchanged;
+    // no test-only imports. Growth matches the added runtime behavior, not dependencies.
+    // Calibrate only aggregate JS totals; preserve both per-chunk and all four CSS guards.
+    totalRaw: 2_260_000,
+    totalGzip: 608_000,
     largestRaw: 950_000,
     largestGzip: 260_000,
   },

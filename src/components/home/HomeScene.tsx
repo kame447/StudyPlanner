@@ -1,5 +1,7 @@
 import type { HomeNextPlanVisualKind } from '../../lib/homeNextPlanVisual';
 import { DEFAULT_HOME_SCENE_PREFERENCES, type HomeScenePreferences } from '../../lib/homeScenePreferences';
+import { useHomeDisplayClock } from './HomeDisplayClockContext';
+import { useScheduledPixelStudent, type PixelStudentPlan } from './useScheduledPixelStudent';
 import { CozyScene } from './scenes/CozyScene';
 import { MinimalScene } from './scenes/MinimalScene';
 import { PixelScene } from './scenes/PixelScene';
@@ -12,12 +14,16 @@ export function HomeScene({
   preferences = DEFAULT_HOME_SCENE_PREFERENCES,
   preview = false,
   atmosphere: suppliedAtmosphere,
+  plan,
 }: {
   kind: HomeNextPlanVisualKind;
   preferences?: HomeScenePreferences;
   preview?: boolean;
   atmosphere?: HomeSceneAtmosphere;
+  plan?: PixelStudentPlan | null;
 }) {
+  const now = useHomeDisplayClock();
+  const student = useScheduledPixelStudent(plan, now, preferences.style === 'pixel' && !preview && kind !== 'other', preferences.animated);
   const currentAtmosphere = useHomeSceneAtmosphere();
   const atmosphere = suppliedAtmosphere ?? currentAtmosphere;
   const pixelStyle = preferences.style.startsWith('pixel');
@@ -34,7 +40,7 @@ export function HomeScene({
         : preferences.style === 'minimal' ? <MinimalScene kind={kind} />
         : preferences.style === 'pixel-cat' ? <PixelCompanionScene kind={kind} companion="cat" atmosphere={atmosphere} />
         : preferences.style === 'pixel-turtle' ? <PixelCompanionScene kind={kind} companion="turtle" atmosphere={atmosphere} />
-        : <PixelScene kind={kind} atmosphere={atmosphere} />}
+        : <PixelScene kind={kind} atmosphere={atmosphere} student={preview ? 'studying' : student} />}
     </svg>
   </div>{pixelStyle && !preview ? <span className="home-scene-time-description">
     空の演出：{HOME_SKY_PERIOD_LABELS[atmosphere.period]}。月の形：{HOME_MOON_PHASE_LABELS[atmosphere.moonStage]}（月相の近似）。

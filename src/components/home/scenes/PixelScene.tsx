@@ -1,5 +1,7 @@
 import type { HomeNextPlanVisualKind } from '../../../lib/homeNextPlanVisual';
 import type { HomeSceneAtmosphere } from '../../../lib/homeSceneAtmosphere';
+import { PixelStudent } from './PixelStudent';
+import type { PixelStudentState } from '../useScheduledPixelStudent';
 import { PixelSky } from './PixelSky';
 
 function PixelPlant({ x, y }: { x: number; y: number }) {
@@ -18,7 +20,7 @@ function PixelWindow({ atmosphere }: { atmosphere: HomeSceneAtmosphere }) {
   </g>;
 }
 
-export function PixelScene({ kind, atmosphere }: { kind: HomeNextPlanVisualKind; atmosphere: HomeSceneAtmosphere }) {
+export function PixelScene({ kind, atmosphere, student = 'empty' }: { kind: HomeNextPlanVisualKind; atmosphere: HomeSceneAtmosphere; student?: PixelStudentState }) {
   return <g shapeRendering="crispEdges" data-scene-art="pixel">
     <path d="M0 0h320v200H0z" fill="var(--scene-wall)" />
     <path d="M0 168h320v32H0z" fill="var(--scene-floor)" />
@@ -28,10 +30,7 @@ export function PixelScene({ kind, atmosphere }: { kind: HomeNextPlanVisualKind;
       <path d="M78 44h48v4H78zM82 28h8v16h-8zM94 20h8v24h-8zM106 32h12v12h-12z" fill="var(--scene-accent)" />
       <PixelPlant x={76} y={110} />
       <path d="M226 144h32v8h-32zM250 148h8v36h-8zM226 148h8v36h-8zM254 116h8v32h-8z" fill="var(--scene-wood)" />
-      <path d="M218 96h24v8h8v24h-8v8h-24v-8h-8v-24h8z" fill="var(--scene-skin)" />
-      <path d="M214 96h28v4h8v20h-8v-12h-20v8h-12v-16h4z" fill="var(--scene-ink)" />
-      <path d="M216 128h28v24h-32v-16h4zM236 148h8v28h-8zM216 148h8v28h-8z" fill="var(--scene-accent)" />
-      <path d="M204 132h24v8h-24z" fill="var(--scene-skin)" />
+      <PixelStudent state={student} />
       <path d="M130 140h102v8H130zM138 148h8v36h-8zM218 148h8v36h-8z" fill="var(--scene-wood)" />
       <path d="M150 132h28v8h-28z" fill="var(--scene-clay)" />
       <path d="M154 124h28v8h-28zM180 128h24v12h-24z" fill="var(--scene-paper)" />
@@ -49,6 +48,7 @@ export function PixelScene({ kind, atmosphere }: { kind: HomeNextPlanVisualKind;
       <path d="M80 44h20v20H80z" fill="var(--scene-paper)" />
       <path className="home-scene-glint" d="M88 48h4v8h8v4H88z" fill="var(--scene-accent)" />
       <PixelPlant x={74} y={114} />
+      <PixelStudent state={student} classroom />
       {[142, 232].map(x => <g key={x} transform={`translate(${x} 132)`}>
         <path d="M0 0h60v8H0zM4 8h4v40H4zM52 8h4v40h-4z" fill="var(--scene-wood)" />
         <path d="M14 16h32v8H14zM14 24h4v24h-4zM42 24h4v24h-4zM14 8h4v12h-4zM42 8h4v12h-4z" fill="var(--scene-accent)" />
