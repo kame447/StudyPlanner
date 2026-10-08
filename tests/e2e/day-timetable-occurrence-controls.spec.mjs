@@ -1,5 +1,10 @@
 import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
 const OWNER = 'day-occurrence-owner';
+async function attachScreen(page, testInfo, name) {
+  const path = testInfo.outputPath('attachments', `${name}.png`);
+  await page.screenshot({ path, animations: 'disabled' });
+  await testInfo.attach(name, { path, contentType: 'image/png' });
+}
 async function seed(page) {
   await page.addInitScript(({ date, owner }) => {
     if (localStorage.getItem('day-occurrence-controls-seeded')) return;
@@ -52,7 +57,7 @@ for (const width of [390, 1280]) {
     await page.getByRole('tab', { name: '日', exact: true }).click(); await setVisible(page, true);
     await card(page, '自動表示の授業').click();
     await expect(page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true })).toBeVisible();
-    await testInfo.attach(`day-timetable-detail-${width}`, { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
+    await attachScreen(page, testInfo, `day-timetable-detail-${width}`);
     await page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true }).getByRole('button', { name: 'この日だけ削除', exact: true }).click();
     await expect(card(page, '自動表示の授業')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleTemplates.v1')).map(row => row.excludedDates))).toEqual([[E2E_TODAY], [E2E_TODAY]]);
@@ -67,7 +72,7 @@ for (const width of [390, 1280]) {
     await page.locator('.timeline-actual-block').first().click();
     await expect(page.getByRole('dialog')).toContainText('記録は残っています');
     await expect(page.getByRole('dialog').getByRole('button', { name: '記録を編集', exact: true })).toBeVisible();
-    await testInfo.attach(`day-retained-actual-${width}`, { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
+    await attachScreen(page, testInfo, `day-retained-actual-${width}`);
     await page.getByRole('dialog').getByRole('button', { name: '閉じる', exact: true }).click();
     await page.reload(); await openDay(page);
     await expect(card(page, '毎週の学習')).toHaveCount(0); await expect(card(page, '毎週の予定')).toHaveCount(0);

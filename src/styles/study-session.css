@@ -25,7 +25,8 @@
   min-height: 64px;
   margin: -14px -18px 12px;
   padding: max(14px, env(safe-area-inset-top, 0px)) 18px 8px;
-  background: color-mix(in srgb, var(--app-background) 92%, transparent);
+  /* The app background contains gradients, not a color accepted by color-mix. */
+  background: var(--app-background);
   backdrop-filter: blur(18px);
 }
 

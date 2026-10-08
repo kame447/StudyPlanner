@@ -1,9 +1,25 @@
 # Day timetable visibility and occurrence removal
 
-Status: active; queued-import repair passed final local verification, updated draft publication and exact-head browser/image gates pending
+Status: active; final phase-transition integration passed local verification, updated draft publication and exact-head browser/image gates pending
 Branch: `fix/day-timetable-occurrence-controls`
 Base: `3a1e60b9`
 PR: https://github.com/kame447/StudyPlanner/pull/541 (draft)
+
+## Final phase-transition integration verification — 2026-10-08 05:11 UTC
+
+- Merged the unplanned-study owner's reviewed `3fe2e8095d5d4142c8d59e0070766381c03042fc` without rewriting history. The exact incoming delta is its five owned files: phase-only pane scroll reset, valid header background, two unit regressions, strengthened light/dark browser cases, and checkpoint. Day's import-admission repair, its regressions and compact screenshot capture remain byte-identical.
+- Clean combined input `4b6256ab3afb902276b12470ae729527642d25b9`, tree `16452032bf223f90b102742620a0497f06d7d612`, passed regular `npm run verify`, exit 0: fresh app/Worker typechecks, 766 files / 6,228 tests passed, 10 files / 45 tests skipped and 1 todo; unit duration 586.51 seconds; production build 9.34 seconds. All eight bundle guards passed (JS 2203.5 KiB raw / 592.3 KiB gzip; CSS 473.5 KiB raw / 79.5 KiB gzip).
+- The coordinator authorized two concurrent one-worker runs for the distinct upstream and Day integration snapshots. This run used command-local thread/fork min=max=1. Every tracked input hash, HEAD/tree, clean worktree and all 237 installed package identities were equal before/after. Dependency lock/manifest identities remain unchanged. Evidence: ignored `artifacts/day-release/verify-phase-final-input.json`, `.log`, `.exit`, `verify-phase-final-post.json` and `bundle-phase-final.log`.
+- Both changed browser scripts pass syntax checks. Complete cross-browser selection collects 339 cases / 11 files, retaining Day plus all upstream targets. Collection is not execution. This record is the only post-full content change at this checkpoint.
+- Prior remote `d1504ab6` finished all five gates: CI 6,226 tests and real Firestore regression, Chromium 443 passes, cross-browser 332 passes / 3 existing skips, visual, Quality and Admin all succeeded. Its two Day cases passed first-attempt on both Chromium and WebKit. These results do not certify the newer upstream phase reset or path-backed image output.
+- Next: use the upstream owner's verified final remote commit as an additional parent, publish this exact local tree on the same draft PR, and follow final-head Firestore/browser/visual/quality plus actual Day/retained-history screenshots. Main remains held until the dependency's independent acceptance and the release coordinator's integration decision.
+
+## Compact screenshot evidence correction — 2026-10-08 04:53 UTC
+
+- The official artifact response provides a Sediment-backed file ID in addition to the URL. Materializing that returned ID through the supported download tool succeeded; the 10,687,731-byte Chromium ZIP exactly matches GitHub SHA-256 `51293beed0598a3ef8a9f76d46e67d62eb274191b9105e7c08e938b34a8bcfe0`. The rejected HTTP URL was not retried through an alternate network route.
+- Reading the actual archive and current Day spec showed that Day's successful images were still attached as in-memory bodies, so they were absent from the compact PNG artifact. Any earlier assumption that Day already used path-backed capture was incorrect. The full reports are 46–52 MB, beyond the materialization limit; do not bypass that limit or treat inaccessible images as inspected.
+- Local `c7eb21c1` changes only the two Day screenshot attachment sites to the established `outputPath` → `screenshot({ path })` → `attach({ path })` flow. Screenshot timing, disabled animations, behavioral assertions, thresholds, fixture and viewport are unchanged. JavaScript syntax and exact diff checks passed. Include this narrow evidence-harness correction with the next integrated candidate and inspect the generated compact images.
+- The unplanned-study owner identified a separate phase-transition scroll/overlap issue during actual WebKit image review. The coordinator has held dependency acceptance and is preparing that fix in PR #540. Keep Day's current CI running for its evidence, then incorporate the final upstream source and run the required final combined verification before accepting this stack.
 
 ## Final queued-import repair verification — 2026-10-08 04:45 UTC
 
