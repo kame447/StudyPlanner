@@ -1,5 +1,5 @@
 import { mkdir } from 'node:fs/promises';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/startup-ready.mjs';
 
 const VIEWPORTS = [
   { name: 'small-phone-320x568', width: 320, height: 568 },

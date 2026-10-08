@@ -9,7 +9,7 @@ import type { PlannerRepository } from '../repositories/repositoryContracts';
 import type { User } from '../types/domain';
 const fixture = vi.hoisted(() => ({ repository: null as unknown as PlannerRepository,
   profile: vi.fn(), memory: vi.fn(), content: vi.fn(), observe: vi.fn(), observation: 'off', markerObservation: 'off', marker: vi.fn(),
-  policy: 'accepted', preferenceError: '', preferenceLoading: false, weekStartsOn: 'monday' as string | null }));
+  reducedMotion: true, policy: 'accepted', preferenceError: '', preferenceLoading: false, weekStartsOn: 'monday' as string | null }));
 vi.mock('../repositories', () => ({ authRepository: { getCurrentUser: fixture.profile, observeStartupProfile: fixture.observe },
   plannerRepository: new Proxy({}, { get: (_, key) => fixture.repository[key as keyof PlannerRepository] }) }));
 vi.mock('../lib/startupMarkerObservation', () => ({ get startupMarkerObservation() { return fixture.markerObservation; } }));
@@ -32,13 +32,16 @@ vi.mock('../App', async () => {
   const React = await import('react');
   const { usePlannerAppState } = await import('../hooks/usePlannerAppState');
   const { useRootStartupReady } = await import('./RootStartupReadyContext');
+  const { useStartupContentVisible } = await import('./StartupSurface');
   function Probe({ state, onReady }: any) {
     const ready = useRootStartupReady();
-    React.useEffect(() => { if (!state.booting) { ready?.(); onReady?.(); } }, [state.booting, ready, onReady]);
+    const visible = useStartupContentVisible();
+    React.useEffect(() => { if (!state.booting) ready?.(); }, [state.booting, ready]);
+    React.useEffect(() => { if (!state.booting && visible) onReady?.(); }, [state.booting, visible, onReady]);
     fixture.content(state);
-    return <span data-testid="surface">{state.notice?.text ?? 'ready'}</span>;
+    return <span data-testid="surface" data-visible={visible}>{state.notice?.text ?? 'ready'}</span>;
   }
-  function Standalone() { const state = usePlannerAppState(); return <Probe state={state} />; }
+  function Standalone() { const visible = useStartupContentVisible(); const state = usePlannerAppState({ noticeAutoDismiss: visible }); return <Probe state={state} />; }
   return { default: ({ state, onReady }: any) => state ? <Probe state={state} onReady={onReady} /> : <Standalone /> };
 });
 const owner = (id: string): User => ({ id, username: id, email: `${id}@example.test`, avatar: '', createdAt: STAMP });
@@ -48,7 +51,9 @@ let memoryGate: ReturnType<typeof deferred>;
 let plannerGate: ReturnType<typeof deferred>;
 let plansSpy: ReturnType<typeof vi.fn>;
 beforeEach(() => {
-  vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: new MemoryStorage(), setTimeout, clearTimeout });
+  fixture.reducedMotion = true;
+  vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: new MemoryStorage(), setTimeout, clearTimeout,
+    matchMedia: () => ({ matches: fixture.reducedMotion }) });
   vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1)); vi.stubGlobal('cancelAnimationFrame', vi.fn());
   vi.clearAllMocks(); fixture.observation = 'off'; fixture.markerObservation = 'off'; fixture.marker.mockReset(); fixture.observe.mockReset(); fixture.policy = 'accepted'; fixture.preferenceError = ''; fixture.preferenceLoading = false; fixture.weekStartsOn = 'monday';
   fixture.repository = { ...createLocalFixture().repository };
@@ -62,6 +67,110 @@ afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.useRe
 async function mount() { await act(async () => { renderer = create(<StudyPlannerAppRoot authSession={fake.session} />); await microtasks(); }); }
 async function release(gate: ReturnType<typeof deferred>) { await act(async () => { gate.resolve(undefined); await microtasks(); }); }
 const splash = () => renderer!.root.findAllByType(SplashScreen).length;
+it.each(['ended', 'error'])('video %s cannot release memory or planner gates and leaves static loading until both settle', async event => {
+  fixture.reducedMotion = false;
+  await mount();
+  const originalSplash = renderer!.root.findByType(SplashScreen);
+  act(() => renderer!.root.findByType('video').props[event === 'ended' ? 'onEnded' : 'onError']());
+  expect(renderer!.root.findByType(SplashScreen)).toBe(originalSplash);
+  expect(renderer!.root.findByType(SplashScreen).props.videoOutcome).toBe(event === 'ended' ? 'ended' : 'media-error');
+  expect(renderer!.root.findAllByType('video')).toHaveLength(0);
+  expect(fixture.content).not.toHaveBeenCalled();
+  await release(memoryGate);
+  expect(splash()).toBe(1);
+  await release(plannerGate);
+  expect(splash()).toBe(0);
+  expect(fixture.content).toHaveBeenCalled();
+  expect(renderer!.root.findByProps({ 'data-testid': 'surface' }).props['data-visible']).toBe(true);
+});
+
+it.each(['ended', 'skip'])('retains a healthy ready-first intro until %s and only then reveals the current app', async event => {
+  fixture.reducedMotion = false;
+  await mount();
+  const video = renderer!.root.findByType('video');
+  const disabled = renderer!.root.findByProps({ 'aria-label': '起動アニメーション' });
+  expect(disabled.props.disabled).toBe(true);
+  act(() => disabled.props.onClick());
+  expect(renderer!.root.findByType('video')).toBe(video);
+  await release(memoryGate);
+  expect(renderer!.root.findByType('video')).toBe(video);
+  expect(renderer!.root.findByType(SplashScreen).props.canSkip).toBe(false);
+  await release(plannerGate);
+  expect(splash()).toBe(1);
+  expect(renderer!.root.findByType('video')).toBe(video);
+  expect(renderer!.root.findByProps({ 'data-testid': 'surface' }).props['data-visible']).toBe(false);
+  const button = renderer!.root.findByProps({ 'aria-label': '起動アニメーションをスキップ' });
+  expect(button.props.disabled).toBe(false);
+  act(() => event === 'ended' ? video.props.onEnded() : button.props.onClick());
+  expect(splash()).toBe(0);
+  expect(renderer!.root.findByProps({ 'data-testid': 'surface' }).props['data-visible']).toBe(true);
+  expect(fixture.profile).toHaveBeenCalledOnce(); expect(plansSpy).toHaveBeenCalledOnce();
+});
+
+it('retains an early error until the video completes and starts its full notice lifetime only when visible', async () => {
+  fixture.reducedMotion = false;
+  vi.useFakeTimers(); window.setTimeout = setTimeout as any; window.clearTimeout = clearTimeout as any;
+  fixture.profile.mockRejectedValue(new Error('profile unavailable'));
+  await mount();
+  await release(memoryGate);
+  expect(splash()).toBe(1);
+  const surface = () => renderer!.root.findByProps({ 'data-testid': 'surface' });
+  expect(surface().props['data-visible']).toBe(false);
+  await act(async () => { vi.advanceTimersByTime(9_000); });
+  expect(surface().children).toContain('profile unavailable');
+  act(() => renderer!.root.findByType('video').props.onEnded());
+  expect(splash()).toBe(0);
+  expect(surface().props['data-visible']).toBe(true);
+  await act(async () => { vi.advanceTimersByTime(3_599); });
+  expect(surface().children).toContain('profile unavailable');
+  await act(async () => { vi.advanceTimersByTime(1); });
+  expect(surface().children).toEqual(['ready']);
+});
+
+it.each(['after-commit', 'same-batch'])('revokes a formerly enabled skip when a newer owner is still loading: %s', async timing => {
+  fixture.reducedMotion = false;
+  await mount(); await release(memoryGate); await release(plannerGate);
+  const previousSkip = renderer!.root.findByProps({ 'aria-label': '起動アニメーションをスキップ' }).props.onClick;
+  const video = renderer!.root.findByType('video');
+  memoryGate = deferred(); plannerGate = deferred(); fixture.profile.mockResolvedValue(owner('b'));
+  await act(async () => {
+    fake.emit({ id: 'b', requiresEmailVerification: false });
+    if (timing === 'same-batch') previousSkip();
+    await microtasks();
+  });
+  expect(renderer!.root.findByType(SplashScreen).props.canSkip).toBe(false);
+  if (timing === 'after-commit') act(() => previousSkip());
+  expect(renderer!.root.findByType('video')).toBe(video);
+  expect(splash()).toBe(1);
+  act(() => video.props.onEnded());
+  expect(splash()).toBe(1);
+  await release(plannerGate); expect(splash()).toBe(1);
+  await release(memoryGate); expect(splash()).toBe(0);
+  expect(fixture.content.mock.lastCall?.[0].user.id).toBe('b');
+});
+
+it.each(['b', 'a'])('retains an accepted skip before a same-batch %s session change without bypass or deadlock', async nextOwner => {
+  fixture.reducedMotion = false;
+  await mount(); await release(memoryGate); await release(plannerGate);
+  const acceptedSkip = renderer!.root.findByProps({ 'aria-label': '起動アニメーションをスキップ' }).props.onClick;
+  memoryGate = deferred(); plannerGate = deferred(); fixture.profile.mockResolvedValue(owner(nextOwner));
+  await act(async () => {
+    acceptedSkip();
+    if (nextOwner === 'a') fake.emit(null);
+    fake.emit({ id: nextOwner, requiresEmailVerification: false });
+    await microtasks();
+  });
+  expect(splash()).toBe(1);
+  expect(renderer!.root.findByType(SplashScreen).props.videoOutcome).toBe('skipped');
+  expect(renderer!.root.findAllByType('video')).toHaveLength(0);
+  expect(renderer!.root.findAllByProps({ 'data-testid': 'surface' })).toHaveLength(0);
+  await release(plannerGate); expect(splash()).toBe(1);
+  await release(memoryGate); expect(splash()).toBe(0);
+  expect(renderer!.root.findByProps({ 'data-testid': 'surface' }).props['data-visible']).toBe(true);
+  expect(fixture.content.mock.lastCall?.[0].user.id).toBe(nextOwner);
+  expect(fixture.profile).toHaveBeenCalledTimes(2); expect(plansSpy).toHaveBeenCalledTimes(2);
+});
+
 it.each(['memory-first', 'planner-first'])('overlaps bootstrap with memory and retains both gates: %s', async order => {
   await mount();
   expect(fixture.memory).toHaveBeenCalledOnce();

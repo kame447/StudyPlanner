@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/startup-ready.mjs';
 import { clickPrimaryNav, seedRegressionUser } from './support/ui-regression.mjs';
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
