@@ -1,4 +1,5 @@
 import { buildDayOccurrenceCancellation } from '../domain/dayOccurrenceCancellation';
+import { requireCurrentTimetableImportTemplates } from '../domain/timetableImportAdmission';
 import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
 import { startupTiming } from '../lib/startupTiming';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -835,27 +836,31 @@ export function usePlannerDataState({
 
     const currentPlan = plans.find((plan) => plan.id === (targetPlanId ?? editingPlanId));
     const nextPlan = createPlanFromDraft(draft, currentPlan);
-    const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
-    const selectionOperation = selectionState.begin(() => selectionAt(nextPlan.date));
+    // Include the generated ID before publishing its optimistic occurrence.
+    // Day cancellation must not race the initial upsert of a newly imported Plan.
+    return withDayOccurrenceSourceWrite(`plan:${nextPlan.id}`, async () => {
+      const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
+      const selectionOperation = selectionState.begin(() => selectionAt(nextPlan.date));
 
-    try {
-      closePlanEditor();
-      await plannerRepository.upsertPlan(nextPlan);
-      selectionState.commit(selectionOperation);
-      planState.commit(planOperation);
-      showNotice(
-        currentPlan ? '学習予定を更新しました。' : '学習予定を追加しました。',
-        'success',
-      );
-    } catch (error) {
-      planState.reject(planOperation);
-      selectionState.reject(selectionOperation);
-      showNotice(
-        resolveErrorMessage(error, '学習予定を保存できませんでした。'),
-        'error',
-      );
-      throw error;
-    }
+      try {
+        closePlanEditor();
+        await plannerRepository.upsertPlan(nextPlan);
+        selectionState.commit(selectionOperation);
+        planState.commit(planOperation);
+        showNotice(
+          currentPlan ? '学習予定を更新しました。' : '学習予定を追加しました。',
+          'success',
+        );
+      } catch (error) {
+        planState.reject(planOperation);
+        selectionState.reject(selectionOperation);
+        showNotice(
+          resolveErrorMessage(error, '学習予定を保存できませんでした。'),
+          'error',
+        );
+        throw error;
+      }
+    });
   }
 
   function showDeleteUndoNotice(onUndo: () => Promise<void>, targets: readonly PlannerRepairTarget[] = []) {
@@ -2216,8 +2221,15 @@ export function usePlannerDataState({
     closePlanEditor,
     savePlanDraft: trackMutation((draft: PlanDraft, id?: string) => {
       const target = id ?? editingPlanId;
-      if (!target && draft.sourceType === 'timetable') requireKnownDaySources([...uncertainDaySources.keys()]);
-      return withDayOccurrenceSourceWrite(target ? `plan:${target}` : undefined, () => savePlanDraft(draft, id));
+      let keys = target ? [`plan:${target}`] : [];
+      if (!target && draft.sourceType === 'timetable') {
+        requireDayOccurrenceProjection();
+        requireKnownDaySources([...uncertainDaySources.keys()]);
+        const current = dayMutationData.current;
+        keys = requireCurrentTimetableImportTemplates(userId!, draft, current.scheduleTemplates, current.timetableTerms)
+          .map(row => `timetable-template:${row.id}`);
+      }
+      return withDayOccurrenceSourceWrite(keys, () => savePlanDraft(draft, id));
     }, ['plans-todos']),
     movePlanOccurrence: trackMutation((plan: Plan, target: WeekPlanMoveTarget) =>
       withDayOccurrenceSourceWrite(`plan:${plan.id}`, () => movePlanOccurrence(plan, target)), ['plans-todos']),

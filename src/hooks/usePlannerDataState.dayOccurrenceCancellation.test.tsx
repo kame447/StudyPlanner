@@ -4,6 +4,7 @@ import { createLocalFixture, deferred, plan, event, actual, STAMP } from '../rep
 import type { PlannerRepository } from '../repositories/repositoryContracts';
 import type { ScheduleTemplate } from '../types/domain';
 import { createScheduleOccurrenceProjection } from '../domain/scheduleOccurrence';
+import { buildTimetableImportCandidates, createPlanDraftFromTimetableImportCandidate } from '../lib/timetableImport';
 import { usePlannerDataState, type UsePlannerDataStateResult } from './usePlannerDataState';
 import type { ShowNotice } from './useNoticeState';
 const boundary = vi.hoisted(() => ({ repository: null as unknown as PlannerRepository }));
@@ -189,4 +190,40 @@ it('does not let template editing overwrite an uncertain cancellation after its 
   await act(async () => { await state.retryPlannerData(); });
   await act(async () => { await state.saveScheduleTemplate({ ...row, title: 'Safe after refresh' }, row.id); });
   expect(state.scheduleTemplates.find(item => item.id === row.id)?.excludedDates).toEqual([DATE]);
+});
+
+function currentImportDraft(date = DATE) {
+  const candidate = buildTimetableImportCandidates({ templates: state.scheduleTemplates, date, weekday: 'mon',
+    termId: 'custom', term: state.timetableTerms[0] })[0];
+  return createPlanDraftFromTimetableImportCandidate(candidate, 'owner', date);
+}
+
+it('rejects an old queued grouped import after cancellation while allowing the next week and Undo', async () => {
+  const { repository } = await mount();
+  const draft = currentImportDraft(), queuedSave = state.savePlanDraft;
+  await act(async () => { await state.deleteDayOccurrence(get('timetable-template')); });
+  const restore = undo(), writes = vi.spyOn(boundary.repository, 'upsertPlan');
+  await act(async () => { await expect(queuedSave(draft)).rejects.toThrow('時間割が更新'); });
+  expect(writes).not.toHaveBeenCalled();
+  expect(project().some(row => row.title === template.title)).toBe(false);
+  await act(async () => { await state.savePlanDraft(currentImportDraft('2026-10-12')); });
+  expect((await repository.getPlans('owner')).filter(row => row.sourceType === 'timetable')).toHaveLength(1);
+  await act(async () => { await restore(); await state.savePlanDraft(currentImportDraft()); });
+  expect((await repository.getPlans('owner')).filter(row => row.sourceType === 'timetable')).toHaveLength(2);
+});
+
+it.each(['cancel-first', 'import-first'] as const)('protects grouped new import and same-source cancellation (%s)', async order => {
+  const { repository } = await mount();
+  const occurrence = get('timetable-template'), draft = currentImportDraft(), gate = deferred();
+  const put = boundary.repository.upsertPlan, cancel = boundary.repository.applyTimetableMutation;
+  boundary.repository.upsertPlan = async value => { await gate.promise; return put(value); };
+  boundary.repository.applyTimetableMutation = async value => { await gate.promise; return cancel(value); };
+  let first!: Promise<void>;
+  await act(async () => { first = order === 'cancel-first' ? state.deleteDayOccurrence(occurrence) : state.savePlanDraft(draft); });
+  await act(async () => { await expect(order === 'cancel-first' ? state.savePlanDraft(draft)
+    : state.deleteDayOccurrence(project().find(row => row.title === template.title)!)).rejects.toThrow('保存中'); });
+  await act(async () => { gate.resolve(); await first; });
+  const imported = (await repository.getPlans('owner')).filter(row => row.sourceType === 'timetable');
+  expect(imported).toHaveLength(order === 'import-first' ? 1 : 0);
+  expect(project().filter(row => row.title === template.title)).toHaveLength(order === 'import-first' ? 1 : 0);
 });

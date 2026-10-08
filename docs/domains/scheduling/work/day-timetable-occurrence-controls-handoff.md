@@ -1,8 +1,26 @@
 # Day timetable visibility and occurrence removal
 
-Status: active; local final-content verification passed, draft publication and real-browser/Firestore gates pending
+Status: active; queued-import repair passed final local verification, updated draft publication and exact-head browser/image gates pending
 Branch: `fix/day-timetable-occurrence-controls`
 Base: `3a1e60b9`
+PR: https://github.com/kame447/StudyPlanner/pull/541 (draft)
+
+## Final queued-import repair verification — 2026-10-08 04:45 UTC
+
+- Clean combined input `76621fae9846d845d948231a8101f88713861c55`, tree `7f6414247a9c152e1d0b7c173d13d1e6af6e0507`, passed fresh `npm run verify` with command-local fork/thread min=max=1: app/Worker full typechecks, 766 files passed / 10 skipped; 6,226 tests passed / 45 skipped / 1 todo; test duration 521.87 seconds; production build 10.05 seconds; exit 0. All eight bundle guards also passed (JS 2203.4 KiB raw / 592.3 KiB gzip; CSS 473.6 KiB raw / 79.5 KiB gzip).
+- This input includes the repair `6ffffbde` and non-destructive lower-stack sync with local `cfc95a03a37072fa7ac59da41955700e9c7e68f5`. The lower commit's actual remote is `14cd7b9e8db8395a0f793261784885bcdf658c55`, with matching tree `37fdb4b72947387089896cffdec2b67cdda96899`; its only new input to Day is ten checkpoint-document lines.
+- Before/after every tracked input hash, HEAD/tree, clean worktree and all 237 installed package names/versions match. The installed manifest and lock SHA-256 remain unchanged from the receipts above. Full input/environment/terminal evidence is ignored `artifacts/day-release/verify-import-repair-input.json`, `.log`, `.exit`, and `verify-import-repair-post.json`. The following documentation-only record preserves that runtime proof.
+- Initial remote `6d117765` completed all five workflows: Chromium 443/443 first-attempt passes; cross-browser 332 passes / 3 existing skips, including both Day sizes and all unplanned-study/swipe/entry-abort WebKit cases; CI/actual Firestore, visual, Quality and Admin succeeded. These remain evidence for the initial content, not the changed import-admission source.
+- Initial Chromium screenshot artifact `11529285536` was retrieved through the official artifact tool, but its returned download URL returned HTTP 403 to this executor. No alternate URL or permission bypass was attempted; rendered-image inspection remains unverified. The final-head artifact will be a separate generated output and still requires retrieval/inspection.
+- Next: publish this same branch without force, using `6d117765` as first parent and the verified final unplanned remote `14cd7b9e` as an additional parent. Verify exact local/remote tree equality, then follow final-content browser, Firestore, visual/quality and rendered-image results. The dependency's independent acceptance and main integration remain coordinated by the release owner.
+
+## Queued timetable import integration repair — 2026-10-08 04:34 UTC
+
+- First draft remote `6d1177652c09b82e43a8a0dafa26c0ac34463445` equals local `a31e357db2e80ad71ba792f9068dc9e1e1779bd4`, tree `89e43a8473bb424d46dee4a64851fc1ac44e6fdf`; its verified parents are unplanned-study `fa5dd1240f989621874b28837f1b6de096fa63ad` and main `22847120386987329e2f034d6062d59694ef1180`. CI [37727317184](https://github.com/kame447/StudyPlanner/actions/runs/37727317184) passed fresh types, all 6,215 tests, actual Auth/Firestore emulator regression including owner batch/foreign-owner rejection/Undo, production build and diff check. UI Quality, Admin and visual regression also passed. Browser and cross-browser were still running at this checkpoint.
+- Independent final review reproduced a production race not covered by those earlier tests: an approved import batch retains undispatched candidates when its dialog closes. Canceling the next class could be undone by that old queued callback creating a new Plan. In the reverse order, canceling the optimistic new Plan while its initial upsert waited could be overwritten by the later upsert, reappearing after reload.
+- New imports now resolve the latest owner/date/current-term candidate before dispatch and participate in every backing template's admission lock. A newly generated Plan ID also joins admission before its optimistic occurrence is published. Existing imported Plan editing/moving retains its source/date authority. Normal batch continuation after Close, unrelated imports, next-week imports and Undo remain supported.
+- The new repository regressions first failed on the prior code: 4 failures / 29 passes. After the repair, 3 focused files / 40 cases passed. The old import-lifetime fixture now seeds real source templates and a term; its seven previous assertions/cases remain intact, with one closed-batch regression added. Seven pure boundary cases cover grouped source changes, owner/date/term and current candidate content. An independent six-case probe passed, including the real closed dialog + hook + local repository path and both race directions. No assertion, timeout, skip, browser gate or dependency was weakened.
+- This is a runtime change, so the earlier full result is no longer proof of the final candidate. Next: incorporate the published unplanned-study final parent without rewriting history, run fresh combined `npm run verify`, publish on this same PR, then require final-head real-browser/Firestore/visual/quality acceptance. Main remains with the release coordinator.
 
 ## Publication continuation — 2026-10-08 04:21 UTC
 
