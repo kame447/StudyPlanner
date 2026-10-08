@@ -213,3 +213,41 @@ The critic also identified release/acceptance gaps that this campaign does not c
   - the empty-invitation decline follow-up;
   - a live re-run of the event scenario and live A–H. These are blocked at the moment: the production Firestore project returns `resource-exhausted`, so the app cannot pass its first-use check.
 - **Not in this round:** the unmet ACs 3 and 7 (anaphora across turns; test-fixed recent-context retention). `STABLE_V5_RECENT_TURN_LIMIT` is still 4.
+
+## Round 3: E2E-first results (2026-10-08 20:40 JST)
+
+Judged by the user's standard: a passing scenario is a provisional confirmation. A fix is root-cause only when it names the common cause and holds on every affected path. Issue #488 is **not complete**.
+
+- **New local commits since 14:50 JST:** `ad1e7784`, `9d1d63f7`, `b448cefe`, `8dcb6ca8`, `35c89d76`, `4b431c34`, `d645068a`, `97149799`. The final HEAD is `97149799`, docs-only on top of `d645068a`.
+  - The Codex implementers and the cross-model auditors hit the Codex usage limit, so their frozen work was recovered and completed by the integration owner.
+  - The only review of the completed code was by a read-only critic of the same model family. The report states this independence limit.
+- **Fixes:**
+
+  | Fix | Classification |
+  |---|---|
+  | Replacement-correction repair guidance | provisional; fails safe |
+  | Numeric literal-coverage bound | provisional; literal-span detection |
+  | Re-read retention on every interaction route, not only short turns (found by the independent ChatGPT audit) | root-cause for interaction; legacy dense is unresolved |
+  | What-if adoption guard and the app-owned unchanged-preview sentence | the app-owned sentence is root-cause for that claim; other output guards stay provisional |
+  | Possible-omission disclosure on the listed completion paths, and an empty reading with an invalid re-read treated as an unusable message | root-cause direction; residuals are listed in the contract |
+
+- **Live E2E:** production account, preview only. Two runs, on `4b431c34` and on `d645068a`. UI and machine state matched on 39/39 turns in each run.
+  - **Passed in both runs:** A, C, E, F, G, EV, X4.
+  - **Passed in only one run:** B, D, X1, X3.
+  - **Failed in both runs:** H (a different mode each time), X2 (pre-existing on `main`), X5.
+- **Final chain on `d645068a`:**
+  - verify passed, 7468 tests;
+  - every category passed;
+  - weekly-real 10/10;
+  - the browser failures are only environment-specific or load-sensitive ones;
+  - the legacy differential shows no difference.
+- **Unresolved common causes:**
+  - omission detection that relies on literal text and length;
+  - truthfulness of claims the renderer words itself;
+  - question resolution that enumerates per-field answer shapes, with no expiry for optional or inapplicable questions (X1, X2, X3, H);
+  - a reading with neither a delta nor a conversation act accepted as "unchanged" (B);
+  - a presentation title built from the model's free-text unit label (「903時間」);
+  - legacy dense re-read loss;
+  - no idempotency owner;
+  - uncommitted context carry-over (ACs 3 and 7);
+  - save → reload through real persistence has not been run, because no JDK is installed for the Firestore emulator. The in-memory synthetic save/restore passes.
