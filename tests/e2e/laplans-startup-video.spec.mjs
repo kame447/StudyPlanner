@@ -23,7 +23,7 @@ function observeVideoTransfers(page) {
   return transfers;
 }
 
-async function boot(page, width = 390) {
+async function boot(page, width = 390, beforeNavigation) {
   await page.setViewportSize({ width, height: 844 });
   await page.route('**/*', route => ['127.0.0.1', 'localhost', '[::1]'].includes(new globalThis.URL(route.request().url()).hostname) ? route.continue() : route.abort());
   await page.route('**/configureWeeklyPlanningTraceRepository.ts*', route => route.fulfill({ contentType: 'application/javascript', body: 'export function isWeeklyPlanningTraceFeatureEnabled() { return true; }' }));
@@ -34,6 +34,7 @@ async function boot(page, width = 390) {
       return { status, error: '', accept: async () => false, refresh: async () => {} };
     }
   ` }));
+  await beforeNavigation?.();
   await page.goto(URL);
   await page.waitForFunction(() => Boolean(window.__startupGateHarness));
 }
@@ -104,6 +105,41 @@ test('actual video completion keeps the final Laplans frame while data remains p
   expect(ended.time).toBeCloseTo(9, 1);
   expect(ended.duration).toBeCloseTo(9, 1);
   await expectStaticLoading(page);
+});
+
+test('Pages-style full-body 200 delivery completes the video while startup data remains pending', async ({ page }, testInfo) => {
+  const { readFile } = await import('node:fs/promises');
+  const clip = await readFile(new globalThis.URL('../../src/assets/laplans_blackhole_1080x1920.mp4', import.meta.url));
+  const deliveries = [];
+  await boot(page, 390, async () => {
+    await page.route('**/*.mp4*', async route => {
+      const request = route.request();
+      const url = new globalThis.URL(request.url());
+      if (request.resourceType() === 'script' || url.hostname !== '127.0.0.1') return route.fallback();
+      deliveries.push({ range: request.headers().range ?? null, resourceType: request.resourceType(), status: 200, bytes: clip.length });
+      // Match Pages' observed delivery boundary: ignore Range and send the
+      // complete original binary with a strong ETag and no Content-Range.
+      await route.fulfill({ status: 200, contentType: 'video/mp4',
+        headers: { 'Content-Length': String(clip.length), ETag: '"laplans-full-body-fixture"' }, body: clip });
+    });
+  });
+  try {
+    await startPlanner(page);
+    await expect.poll(() => page.locator('video').evaluate(node => node.currentTime)).toBeGreaterThan(0);
+    await page.locator('video').evaluate(node => {
+      node.addEventListener('ended', () => { window.__laplansEnded = { time: node.currentTime, duration: node.duration }; }, { once: true });
+    });
+    await expect(page.locator('video')).toHaveCount(0, { timeout: 12_000 });
+    const ended = await page.evaluate(() => window.__laplansEnded);
+    expect(ended).toBeDefined();
+    expect(ended.time).toBeCloseTo(9, 1);
+    expect(ended.duration).toBeCloseTo(9, 1);
+    expect(deliveries.some(delivery => /^bytes=/.test(delivery.range ?? ''))).toBe(true);
+    expect(deliveries.every(delivery => delivery.status === 200 && delivery.bytes === 1_628_755)).toBe(true);
+    await expectStaticLoading(page);
+  } finally {
+    await testInfo.attach('pages-full-body-delivery', { body: Buffer.from(JSON.stringify(deliveries, null, 2)), contentType: 'application/json' });
+  }
 });
 
 test('ready application removes playing video immediately and unloads the media source', async ({ page }) => {

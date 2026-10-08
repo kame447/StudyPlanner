@@ -3,7 +3,7 @@
 Status: active
 Updated: 2026-10-08
 
-Current state: [draft PR #545](https://github.com/kame447/StudyPlanner/pull/545) and its automatic preview are published. The first head passed CI, visual/quality/admin checks and eight of nine video browser cases. The reduced-motion transfer observer misclassified a Vite JavaScript asset module; the follow-up candidate corrects that observation, adds an actual-binary detection control and includes all ten cases in WebKit mobile. Fresh final local verification passed for this correction; the updated-head browser results are pending. Nothing from this work is on main or in production.
+Current state: [draft PR #545](https://github.com/kame447/StudyPlanner/pull/545) and its automatic preview are published. The first head passed CI, visual/quality/admin checks and eight of nine video browser cases. The reduced-motion transfer observer misclassified a Vite JavaScript asset module; the follow-up candidate corrects that observation, adds an actual-binary detection control and includes all ten cases in WebKit mobile. The corrected observer/WebKit-selection head passed final local verification and is running in CI. One final browser-only addition reproduces the known Pages Range-ignored delivery; its final local verification passed and final updated-head CI is pending. Nothing from this work is on main or in production.
 
 ## Ownership and source
 
@@ -88,6 +88,28 @@ This full run does not include Playwright execution, native browser/iOS playback
 The corrected media observer, explicit real-download control and WebKit-mobile selection passed a new exact-content `npm run verify` on 2026-10-08: exit 0, fresh app/Worker checks, 762 files / 6,200 tests passed, 45 skipped / 1 todo, production build 15.43 seconds. All eight unchanged bundle limits passed. The 1,843 non-documentation inputs and 237 installed packages were unchanged during the run; final source digest is `91ff664de56b6247a31feadaf6bd6020954a1a0a91b70ad6faf5dd642944f00b`. The [follow-up receipt](laplans-video-splash-evidence/followup-verification.json) records the two manifest overrides, installed/tool identity and raw-log hashes. Original runtime/media input hashes are unchanged.
 
 Ten video cases collect in each of Chromium and WebKit-mobile. Browser execution and the updated PR/preview checks still require their own final result; the reduced-motion expectation was not weakened and real iOS/Pages Safari playback remains a distinct boundary.
+
+## Corrected-observer publication checkpoint
+
+The corrected observer and WebKit-mobile selection were published at head `fceaaee4ba0c2a9649fcf01d48838ed6ca00cb7f`, tree `c81ae52d23eddce6c8d168b1f5fb7082812714ec`; local `e17b7b85d9c11f84e16845dfe4e9799461939ebf` and CI merge `e82dbe23f97ab33ba432b1fde40880a9ef5818a0` have the same tree. Its [CI](https://github.com/kame447/StudyPlanner/actions/runs/37781802728), [Quality](https://github.com/kame447/StudyPlanner/actions/runs/37781802680), [Admin](https://github.com/kame447/StudyPlanner/actions/runs/37781802687), visual job and [Pages preview](https://b5a29646.studyplannner.pages.dev) succeeded.
+
+[Chromium](https://github.com/kame447/StudyPlanner/actions/runs/37781803223) passed all 444 cases. All ten video cases also passed on their first attempt in [WebKit mobile](https://github.com/kame447/StudyPlanner/actions/runs/37781802780), including the corrected no-transfer observation and deliberate real-download control. Both 390px/1280px WebKit final-frame images were inspected. This proves the local Vite/browser fixture behavior, not real iOS or deployed Pages playback.
+
+The overall matrix is **failed**, not green: 331 passed / 3 intentional skips / 1 flaky. The existing `home-pixel-student.spec.mjs` America/New_York 1280px hidden-start case observed `entering` instead of `studying`, then passed its retry. That separate Home visibility/clock diagnostic is read-only and no Home source or test is changed in this candidate. The final new-head matrix must still be checked; a retry pass is not accepted as overall success.
+
+## Pages delivery-condition regression
+
+The final browser-only addition retains the ordinary Vite completion case and adds one case that responds to MP4 media requests with status 200 and the complete original binary, Content-Length and a strong ETag, without Content-Range. The Vite JavaScript asset module is left unchanged. The case requires an actual Range request, real currentTime progress, the real ended event at approximately nine seconds, and the unchanged pending-data gate. A small JSON attachment records each substituted delivery.
+
+This is a reproduction of the observed HTTP boundary, not a connection to Pages or proof of real iOS behavior. Syntax and collection succeed for eleven Chromium and eleven WebKit-mobile cases; execution is still pending. No runtime, asset, timeout, retry or assertion threshold changed. This is the final added verification scope for the known iPhone delivery risk.
+
+## Final Range-delivery local verification
+
+The final Range-ignored case candidate passed `npm run verify` and the unchanged bundle gate: exit 0, fresh app/Worker checks, 762 files / 6,200 tests passed, 45 skipped / 1 todo, build 10.95 seconds. All 1,843 source-input records and 237 installed package identities matched before/after. Final non-documentation digest: `fab2a7fd7ecee113c4f8585a00135a775d0bd44d4521d103b2d1af6578bb7c0e`. [Exact receipt](laplans-video-splash-evidence/range200-verification.json).
+
+The first full attempt had one existing provider-exhaustion integration timeout (6,199 passed / 1 failed) and did not build. Its source/dependency hashes were stable. The unchanged file passed all six cases in isolation, and the exact failed case passed separately. After inspecting the fixture and Vitest timing boundaries, one fresh-process full retry passed with the original timeout. A root cause was not conclusively established; the failure, focused checks and reporter-duration distinction remain recorded. No failing test was excluded or weakened.
+
+Final Chromium/WebKit delivery execution and the full new-head matrix remain separate gates. The previous head's Home visibility flake remains diagnosed separately; it is not silently accepted as a green matrix.
 
 ## Next action and exit criteria
 

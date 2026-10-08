@@ -1,0 +1,97 @@
+{
+  "started_at_utc": "2026-10-08T13:42:08.750500+00:00",
+  "finished_at_utc": "2026-10-08T13:54:07.268360+00:00",
+  "scope": "Final Range-ignored 200/full original MP4 E2E delivery case; no production/runtime/media/runner/dependency changes.",
+  "head_before_commit": "e17b7b85d9c11f84e16845dfe4e9799461939ebf",
+  "branch": "feat/laplans-video-splash",
+  "commands": [
+    {
+      "command": "npm run verify",
+      "exit": 0
+    },
+    {
+      "command": "node scripts/ci/check-bundle-budget.mjs",
+      "exit": 0
+    }
+  ],
+  "source_input_count": 1843,
+  "source_input_digest": "fab2a7fd7ecee113c4f8585a00135a775d0bd44d4521d103b2d1af6578bb7c0e",
+  "source_manifest_base": "after.json",
+  "source_manifest_overrides": {
+    "tests/e2e/laplans-startup-video.spec.mjs": {
+      "size": 11082,
+      "sha256": "a428871747674f6b32bbe5a868eb216d64d9139c0b4dce92e726d9b7850ad2bd"
+    },
+    "tests/e2e/playwright.cross-browser.config.mjs": {
+      "size": 2184,
+      "sha256": "8856a09ad8f134a160fbb798708f28fd244a1675b4f2086003e88a14a07aa9e9"
+    }
+  },
+  "stable_before_after": {
+    "head": true,
+    "branch": true,
+    "input_digest": true,
+    "package_lock": true,
+    "package_json": true,
+    "installed_lock": true,
+    "node_modules_link": true,
+    "installed_packages_digest": true,
+    "source_env_files": true,
+    "tools": true,
+    "generated_worker_types": true
+  },
+  "installed_packages_digest": "c2e89d328f764cab8d792110f5318037b59b31166f914af5fc03fb4c716449b7",
+  "installed_packages_present": 237,
+  "generated_worker_types": {
+    "size": 615867,
+    "sha256": "bf808b3fb4789a76410fc9c1ba8cd85e80453b8f92fa0981bdb86a9d523d612e"
+  },
+  "tools": {
+    "node_version": "v24.19.0",
+    "node_binary": {
+      "size": 125989464,
+      "sha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12"
+    },
+    "npm_version": "11.9.0"
+  },
+  "summary": [
+    "Test Files  762 passed | 10 skipped (772)",
+    "Tests  6200 passed | 45 skipped | 1 todo (6246)",
+    "Duration  648.46s (transform 27.93s, setup 0ms, collect 160.95s, tests 162.62s, environment 369ms, prepare 105.42s)",
+    "\u2713 built in 10.95s"
+  ],
+  "browser_collection": {
+    "chromium": 11,
+    "webkit_mobile": 11,
+    "execution": "pending final exact-head CI"
+  },
+  "prior_failed_attempt": {
+    "exit": 1,
+    "passed": 6199,
+    "failed": 1,
+    "test_file": "src/features/weeklyPlanning/application/weeklyPlanningProviderExhaustion.integration.test.tsx",
+    "test": "recovers a provider-created preview after before-commit without duplicate approved plans",
+    "error": "Test timed out in 5000ms",
+    "first_reported_ms": 5828,
+    "same_file_focused": "6 passed; first case3479ms reported",
+    "exact_case_focused": "1 passed/5 filtered;3316ms reported",
+    "retry_reported_ms": 2617,
+    "classification": "Non-reproducing timeout on unchanged unit/runtime inputs; actual root cause not proven. Stateful leak, runner/GC cost and prior timing variability considered. No timeout increase, skipped failing case or source change. One full retry only.",
+    "duration_boundary": "Inspected Vitest3.2.7 chunk-hooks.js: result.duration includes beforeEach/test/afterEach; testTimeout wraps the test function separately. Reporter durations are not test-body timing.",
+    "source_scope": "vite.config.mjs excludes tests/e2e/**; production/unit/config/dependencies unchanged from prior successful heads.",
+    "raw_log_sha256": "c5676add822a49304f922e784d81516190abf60647701a61fc9954828d5bbd54"
+  },
+  "files": {
+    "before.json": "8b3d5f04c9b0a2ded3b773ffb9a724b31d93c571ac75ae5e55f06719d9f89d5f",
+    "after.json": "b8d5dab4fda1adc4930c66058507f632017f71f501699fab441a545f0aa82301",
+    "verify.log": "a11090ae4ba7c98bae141a7d66b6dbd17249ca72b7bc3020d5a87c71f97a92c7",
+    "budget.log": "c3c428ebcf39016e5d9efdaf0a7e42e224f51fa560296ab9e5e2187c00e19367",
+    "bundle-budget.json": "3bdfde9257db92fcb21bca7066ce4653e36a31d64b8c1b3423da41c725aaa19f",
+    "execution-environment.json": "7d3c96434f29f28a6390391de3951fa34576c10fe2eee083b8ff02fa1d2e712d"
+  },
+  "notes": [
+    "Failed run and focused diagnostic logs are preserved separately; focused passes were not treated as full verification.",
+    "Original source manifest plus two overrides reconstructs final digest.",
+    "Local green does not establish browser or real-iOS playback."
+  ]
+}
