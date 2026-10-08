@@ -1,5 +1,6 @@
 import fc from 'fast-check';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { emptyMaterialAnswer, FOCUSED_MATERIAL_SCHEMA } from './testUtils/weeklyPlanningFocusedMaterialAnswerFixture';
 import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './application/weeklyPlanningStableV5RuntimeSession';
 import {
   createScriptedConversation,
@@ -167,6 +168,7 @@ beforeEach(() => {
   resetScriptedConversationRuntime();
   semantic = measuredSemantic;
   provider = installScriptedWeeklyPlanningProvider((call) => {
+    if (call.schemaName === FOCUSED_MATERIAL_SCHEMA) return JSON.stringify(emptyMaterialAnswer());
     if (call.kind === 'renderer') return 'renderer unavailable in fixture';
     if (call.kind === 'semantic_focused_contextual') {
       return JSON.stringify({

@@ -38,8 +38,9 @@ export function normalizeWeeklyPlanningEvidenceTextV5(value: string): string {
  * A label adopted in this turn shares a contiguous fragment (three characters, or the whole
  * label when shorter, case-folded) with its own current-turn sourceText. A literal overlap
  * check, not intent inference: a bookshelf name adopted while quoting 「ありがとう」 has no
- * such fragment. It only ever gates towards the conservative binding-only outcome and must
- * not be reused to route meaning.
+ * such fragment. Its two conservative uses gate towards binding-only handling or more AI
+ * interpretation for an effort-only quote containing owner material evidence. Neither use
+ * establishes meaning or binds a material by this match.
  */
 export function weeklyPlanningLabelEvidencedBySourceV5(label: string, sourceText: string): boolean {
   const characters = Array.from(normalizedEvidenceText(label).toLowerCase());

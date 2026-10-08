@@ -50,6 +50,10 @@ export function installFixedEventConversation(options: {
   let conversation: ScriptedConversation;
   const provider = installScriptedWeeklyPlanningProvider(call => {
     if (call.kind === 'renderer') return eventRendererReply(call, options.rendererText);
+    if (call.schemaName === 'weekly_planning_focused_material_answer_v5') return JSON.stringify({
+      decision: 'fallback', label: null, registeredChoice: null, workloadChoice: null, effortKind: null,
+      minutes: null, precision: null, sourceText: null, effortSourceText: null,
+    });
     if (call.kind === 'semantic_focused_authorization') return JSON.stringify({ decision: 'fallback' });
     if (call.kind === 'semantic_focused_contextual') return JSON.stringify({ decision: 'fallback', effortTarget: null, effortMeasurement: null, minutes: null, precision: null, quantityRole: null });
     const text = call.payload?.userText;

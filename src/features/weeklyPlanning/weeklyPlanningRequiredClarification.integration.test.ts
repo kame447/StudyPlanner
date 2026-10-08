@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolveWeeklyPlanningQuestionPresentationFreshness } from './intake/weeklyPlanningQuestionPresentation';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './semantic/weeklyPlanningActiveSchedulerGraphViewV5';
+import { emptyMaterialAnswer, FOCUSED_MATERIAL_SCHEMA } from './testUtils/weeklyPlanningFocusedMaterialAnswerFixture';
 import {
   createScriptedConversation,
   installScriptedWeeklyPlanningProvider,
@@ -66,6 +67,12 @@ beforeEach(() => {
   liveTaskShape = false;
   provider = installScriptedWeeklyPlanningProvider((call) => {
     if (call.kind === 'renderer') return scriptedRendererReply(call, 'どの教材を使いますか？');
+    if (call.schemaName === FOCUSED_MATERIAL_SCHEMA) {
+      const text = String(call.payload?.currentUserText ?? '');
+      return JSON.stringify(text === RATE ? emptyMaterialAnswer('effort_answer', { workloadChoice: 'w1', effortKind: 'duration_per_unit', minutes: 3, precision: 'approximate', sourceText: RATE })
+        : text === MATERIAL ? emptyMaterialAnswer('material_answer', { label: '青チャート', sourceText: '青チャート' })
+        : text === 'なんで時間が必要なの？' ? emptyMaterialAnswer('explain_question', { sourceText: text }) : emptyMaterialAnswer());
+    }
     if (call.kind === 'semantic_focused_contextual') return JSON.stringify({
       decision: 'fallback', effortTarget: null, effortMeasurement: null, minutes: null, precision: null, quantityRole: null,
     });
@@ -136,7 +143,9 @@ describe('required clarification remains authoritative across explanation and an
     expect(explanation.result?.interactionOutcome?.kind).toBe('explain_pending_question');
     const explainedGraph = conversation.graph()!;
     expect({ ...explainedGraph, appliedTurnKeys: [] }).toEqual({ ...graphBefore, appliedTurnKeys: [] });
-    expect(explanation.calls.filter((call) => call.kind === 'semantic_generic')).toHaveLength(1);
+    expect(explanation.calls.filter((call) => call.kind !== 'renderer').map((call) => call.schemaName)).toEqual([
+      ['material', 'material_identity'].includes(field) && !liveShape ? FOCUSED_MATERIAL_SCHEMA : 'weekly_planning_semantic_document_v5',
+    ]);
     expect(conversation.getState().intakeState!.lastQuestionContext!.topicId).toBe(context.topicId);
     expect(freshness(conversation).status).toBe('fresh');
 

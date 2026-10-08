@@ -1,4 +1,5 @@
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import { weeklyPlanningSemanticRepairConsumedV5 } from './weeklyPlanningSemanticRepairLedgerV5';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
   validateWeeklyPlanningCurrentTurnProvenanceV5,
@@ -126,11 +127,18 @@ export function createWeeklyPlanningSemanticNormalizerV5(
       // A turn whose planning delta is unusable may still be carried by a valid
       // non-mutating conversation act from the same model response (interaction only:
       // legacy responses carry no acts, so no candidate is ever recorded there).
-      const finish = (result: WeeklyPlanningSemanticNormalizerResultV5) =>
-        continueWithConversationActsOnlyV5({
+      const finish = (result: WeeklyPlanningSemanticNormalizerResultV5) => {
+        if (weeklyPlanningSemanticRepairConsumedV5(run)
+          && (!result.diagnostics.repairAttempted || result.diagnostics.attemptCount < run.responseLengths.length)) {
+          result = { ...result, diagnostics: { ...result.diagnostics, repairAttempted: true,
+            attemptCount: Math.max(result.diagnostics.attemptCount, run.responseLengths.length) } };
+          run.recordDecision(result, { route: 'focused_material_fallthrough_repair_consumed' });
+        }
+        return continueWithConversationActsOnlyV5({
           run,
           result: enforceFinalCurrentTurnProvenance({ input, run, result }),
         });
+      };
 
       const contextualResult = input.supplementalContext?.trim()
         ? null

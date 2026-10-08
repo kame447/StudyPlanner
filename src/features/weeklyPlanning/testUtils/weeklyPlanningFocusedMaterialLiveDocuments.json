@@ -1,0 +1,688 @@
+{
+  "pending_bookshelf": {
+    "captureFiles": [
+      "055053-vb2f-B3-T1-fetch.json",
+      "055151-vb2f-B3-T3-fetch.json",
+      "055238-vb2f-B3-T4-fetch.json"
+    ],
+    "initial": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "create_plan",
+      "planningWindow": {
+        "localId": "window-1",
+        "kind": "relative_week",
+        "value": "next_week",
+        "start": null,
+        "end": null,
+        "sourceText": "来週"
+      },
+      "tasks": [
+        {
+          "localId": "task-1",
+          "existingPublicId": null,
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "数学の問題集を進める",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "problem_solving",
+            "contextLabel": null,
+            "components": []
+          },
+          "workloads": [
+            {
+              "localId": "workload-1",
+              "quantityRole": "target",
+              "amount": 20,
+              "unitCode": "problem",
+              "unitLabel": "問",
+              "rangeStart": null,
+              "rangeEnd": null,
+              "perOccurrence": false,
+              "periodExpression": null,
+              "sourceText": "20問"
+            }
+          ],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "数学の問題集を20問進めたい"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [
+        {
+          "localId": "uncertainty-1",
+          "targetLocalId": "task-1",
+          "field": "material",
+          "reason": "「数学の問題集」に該当する登録教材が複数あり、対象教材を一意に特定できないため。",
+          "sourceText": "数学の問題集"
+        }
+      ],
+      "corrections": [],
+      "decisions": []
+    },
+    "pace": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "update_plan",
+      "planningWindow": null,
+      "tasks": [
+        {
+          "localId": "task_math_problems",
+          "existingPublicId": "{{task:0}}",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "数学の問題集を進める",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "problem_solving",
+            "contextLabel": null,
+            "components": []
+          },
+          "workloads": [
+            {
+              "localId": "workload_math_20",
+              "quantityRole": "target",
+              "amount": 20,
+              "unitCode": "problem",
+              "unitLabel": "問",
+              "rangeStart": null,
+              "rangeEnd": null,
+              "perOccurrence": false,
+              "periodExpression": null,
+              "sourceText": "20問"
+            }
+          ],
+          "effortEstimates": [
+            {
+              "localId": "effort_math_problem",
+              "targetLocalId": "workload_math_20",
+              "kind": "duration_per_unit",
+              "minutes": 3,
+              "unitCode": "problem",
+              "precision": "approximate",
+              "sourceText": "1問3分くらい"
+            }
+          ],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "数学の問題集を20問進めたい"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [
+        {
+          "kind": "answer_pending_question",
+          "targetPublicId": "{{task:0}}"
+        }
+      ],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "name": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "update_plan",
+      "planningWindow": null,
+      "tasks": [
+        {
+          "localId": "task_8bcefnjmetbb",
+          "existingPublicId": "{{task:0}}",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "数学の問題集を進める",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "problem_solving",
+            "contextLabel": null,
+            "components": [
+              {
+                "localId": "component_aoc_chart_math3",
+                "existingPublicId": "{{catalog_blue}}",
+                "parentLocalId": null,
+                "role": "material",
+                "label": "青チャート（架空A）",
+                "workloads": [],
+                "durableContextSignals": [],
+                "sourceText": "青チャートのこと"
+              }
+            ]
+          },
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "青チャートのこと"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [
+        {
+          "kind": "answer_pending_question",
+          "targetPublicId": "{{task:0}}"
+        }
+      ],
+      "uncertainties": [],
+      "corrections": [
+        {
+          "localId": "correction_material_ambiguity",
+          "target": {
+            "kind": "task",
+            "publicId": "{{task:0}}",
+            "localId": null,
+            "mention": "数学の問題集"
+          },
+          "operation": "remove",
+          "replacementLocalId": "component_aoc_chart_math3",
+          "sourceText": "青チャートのこと"
+        }
+      ],
+      "decisions": []
+    }
+  },
+  "pending_pace_drop": {
+    "captureFiles": [
+      "060308-v48a-B1-T1-fetch.json",
+      "060411-v48a-B1-T3-fetch.json",
+      "055238-vb2f-B3-T4-fetch.json"
+    ],
+    "initial": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "create_plan",
+      "planningWindow": {
+        "localId": "planning-window-1",
+        "kind": "relative_week",
+        "value": "next_week",
+        "start": null,
+        "end": null,
+        "sourceText": "来週"
+      },
+      "tasks": [
+        {
+          "localId": "task-1",
+          "existingPublicId": null,
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "数学の問題集を進める",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "problem_solving",
+            "contextLabel": null,
+            "components": []
+          },
+          "workloads": [
+            {
+              "localId": "workload-1",
+              "quantityRole": "target",
+              "amount": 20,
+              "unitCode": "problem",
+              "unitLabel": "問",
+              "rangeStart": null,
+              "rangeEnd": null,
+              "perOccurrence": false,
+              "periodExpression": "next_week",
+              "sourceText": "数学の問題集を20問進めたい"
+            }
+          ],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "数学の問題集を20問進めたい"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [
+        {
+          "localId": "uncertainty-1",
+          "targetLocalId": "task-1",
+          "field": "material",
+          "reason": "「数学の問題集」が登録済みの複数の数学教材のどれを指すか特定できません。",
+          "sourceText": "数学の問題集"
+        }
+      ],
+      "corrections": [],
+      "decisions": []
+    },
+    "pace": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "update_plan",
+      "planningWindow": null,
+      "tasks": [
+        {
+          "localId": "task_existing_math_problem_set",
+          "existingPublicId": "{{task:0}}",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "",
+          "study": null,
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": ""
+        },
+        {
+          "localId": "workload_existing_math_20_problems",
+          "existingPublicId": "{{workload:0}}",
+          "decompositionStatus": "atomic",
+          "category": "unknown",
+          "title": "",
+          "study": null,
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": ""
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [
+        {
+          "kind": "answer_pending_question",
+          "targetPublicId": "{{task:0}}"
+        }
+      ],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "name": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "update_plan",
+      "planningWindow": null,
+      "tasks": [
+        {
+          "localId": "task_8bcefnjmetbb",
+          "existingPublicId": "{{task:0}}",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "数学の問題集を進める",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "problem_solving",
+            "contextLabel": null,
+            "components": [
+              {
+                "localId": "component_aoc_chart_math3",
+                "existingPublicId": "{{catalog_blue}}",
+                "parentLocalId": null,
+                "role": "material",
+                "label": "青チャート（架空A）",
+                "workloads": [],
+                "durableContextSignals": [],
+                "sourceText": "青チャートのこと"
+              }
+            ]
+          },
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "青チャートのこと"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [
+        {
+          "kind": "answer_pending_question",
+          "targetPublicId": "{{task:0}}"
+        }
+      ],
+      "uncertainties": [],
+      "corrections": [
+        {
+          "localId": "correction_material_ambiguity",
+          "target": {
+            "kind": "task",
+            "publicId": "{{task:0}}",
+            "localId": null,
+            "mention": "数学の問題集"
+          },
+          "operation": "remove",
+          "replacementLocalId": "component_aoc_chart_math3",
+          "sourceText": "青チャートのこと"
+        }
+      ],
+      "decisions": []
+    }
+  },
+  "noquestion_shell": {
+    "captureFiles": [
+      "061644-vc82-B1-fetch.json",
+      "053607-v644-B-T4-fetch.json"
+    ],
+    "initial": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "create_plan",
+      "planningWindow": {
+        "localId": "planning-window-1",
+        "kind": "relative_week",
+        "value": "next_week",
+        "start": null,
+        "end": null,
+        "sourceText": "来週"
+      },
+      "tasks": [
+        {
+          "localId": "task-1",
+          "existingPublicId": null,
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "数学の問題集を進める",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "problem_solving",
+            "contextLabel": null,
+            "components": []
+          },
+          "workloads": [
+            {
+              "localId": "workload-1",
+              "quantityRole": "target",
+              "amount": 20,
+              "unitCode": "problem",
+              "unitLabel": "問",
+              "rangeStart": null,
+              "rangeEnd": null,
+              "perOccurrence": false,
+              "periodExpression": null,
+              "sourceText": "数学の問題集を20問進めたい"
+            }
+          ],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "数学の問題集を20問進めたい"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "pace": null,
+    "name": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "update_plan",
+      "planningWindow": null,
+      "tasks": [
+        {
+          "localId": "task_existing_math_workbook",
+          "existingPublicId": "{{task:0}}",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "数学の問題集を進める",
+          "study": {
+            "purpose": "unknown",
+            "activityKind": "unknown",
+            "contextLabel": "架空教材6",
+            "components": []
+          },
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "青チャートのこと"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    }
+  },
+  "noquestion_topic": {
+    "captureFiles": [
+      "061644-vc82-B1-fetch.json",
+      "061644-vc82-B1-fetch.json"
+    ],
+    "initial": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "create_plan",
+      "planningWindow": {
+        "localId": "planning-window-1",
+        "kind": "relative_week",
+        "value": "next_week",
+        "start": null,
+        "end": null,
+        "sourceText": "来週"
+      },
+      "tasks": [
+        {
+          "localId": "task-1",
+          "existingPublicId": null,
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "数学の問題集を進める",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "problem_solving",
+            "contextLabel": null,
+            "components": []
+          },
+          "workloads": [
+            {
+              "localId": "workload-1",
+              "quantityRole": "target",
+              "amount": 20,
+              "unitCode": "problem",
+              "unitLabel": "問",
+              "rangeStart": null,
+              "rangeEnd": null,
+              "perOccurrence": false,
+              "periodExpression": null,
+              "sourceText": "数学の問題集を20問進めたい"
+            }
+          ],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "数学の問題集を20問進めたい"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "pace": null,
+    "name": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "update_plan",
+      "planningWindow": null,
+      "tasks": [
+        {
+          "localId": "task_math_workbook",
+          "existingPublicId": "{{task:0}}",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "数学の問題集を進める",
+          "study": {
+            "purpose": "practice",
+            "activityKind": "problem_solving",
+            "contextLabel": "架空教材6",
+            "components": []
+          },
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "青チャートのこと"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [
+        {
+          "kind": "topic_shift",
+          "targetPublicId": "{{task:0}}"
+        }
+      ],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    }
+  },
+  "noquestion_relabel": {
+    "captureFiles": [
+      "053726-v644-B2-T1-fetch.json",
+      "053839-v644-B2-T4-fetch.json"
+    ],
+    "initial": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "create_plan",
+      "planningWindow": {
+        "localId": "window-1",
+        "kind": "relative_week",
+        "value": "next_week",
+        "start": null,
+        "end": null,
+        "sourceText": "来週"
+      },
+      "tasks": [
+        {
+          "localId": "task-1",
+          "existingPublicId": null,
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "数学の問題集を進める",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "problem_solving",
+            "contextLabel": null,
+            "components": [
+              {
+                "localId": "component-1",
+                "existingPublicId": null,
+                "parentLocalId": null,
+                "role": "material",
+                "label": "数学の問題集",
+                "workloads": [
+                  {
+                    "localId": "workload-1",
+                    "quantityRole": "target",
+                    "amount": 20,
+                    "unitCode": "problem",
+                    "unitLabel": "問",
+                    "rangeStart": null,
+                    "rangeEnd": null,
+                    "perOccurrence": false,
+                    "periodExpression": null,
+                    "sourceText": "20問"
+                  }
+                ],
+                "durableContextSignals": [],
+                "sourceText": "数学の問題集"
+              }
+            ]
+          },
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "数学の問題集を20問進めたい"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    },
+    "pace": null,
+    "name": {
+      "schemaVersion": "weekly-planning-semantic-v5",
+      "planningIntent": "update_plan",
+      "planningWindow": null,
+      "tasks": [
+        {
+          "localId": "task_existing_ymkcrfgw5pnz",
+          "existingPublicId": "{{task:0}}",
+          "decompositionStatus": "atomic",
+          "category": "study",
+          "title": "数学の問題集を進める",
+          "study": {
+            "purpose": "self_study",
+            "activityKind": "problem_solving",
+            "contextLabel": null,
+            "components": [
+              {
+                "localId": "component_existing_ox127515au4et",
+                "existingPublicId": "{{component:0}}",
+                "parentLocalId": null,
+                "role": "material",
+                "label": "架空教材6",
+                "workloads": [],
+                "durableContextSignals": [],
+                "sourceText": "青チャートのこと"
+              }
+            ]
+          },
+          "workloads": [],
+          "effortEstimates": [],
+          "temporalConstraints": [],
+          "recurrence": [],
+          "durableContextSignals": [],
+          "sourceText": "青チャートのこと"
+        }
+      ],
+      "relations": [],
+      "availabilityDeclarations": [],
+      "constraintSourceRequests": [],
+      "userContextFacts": [],
+      "conversationActs": [],
+      "uncertainties": [],
+      "corrections": [],
+      "decisions": []
+    }
+  }
+}

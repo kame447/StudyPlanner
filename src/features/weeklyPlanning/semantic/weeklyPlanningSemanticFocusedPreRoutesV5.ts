@@ -1,4 +1,5 @@
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
+import { tryFocusedMaterialAnswerRouteV5 } from './weeklyPlanningFocusedMaterialAnswerV5';
 import {
   focusedContextualDecisionContextV5,
   focusedDecisionContextV5,
@@ -194,6 +195,8 @@ function createProvisionalTimeboxDocumentV5(): WeeklyPlanningSemanticDocumentV5 
 export async function tryFocusedContextualAnswerRouteV5(
   run: WeeklyPlanningSemanticNormalizerRunV5,
 ): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
+  const material = await tryFocusedMaterialAnswerRouteV5(run);
+  if (material) return material;
   if (!focusedContextualAnswerEligibleV5(run.input)) return null;
 
   const target = focusedContextualTargetV5(run.input);

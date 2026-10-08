@@ -32,6 +32,7 @@ import {
   type WeeklyPlanningSemanticNormalizerRunV5,
 } from './weeklyPlanningSemanticNormalizerRunV5';
 import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemanticResponseValidationV5';
+import { markWeeklyPlanningSemanticRepairConsumedV5, weeklyPlanningSemanticRepairConsumedV5 } from './weeklyPlanningSemanticRepairLedgerV5';
 
 type SemanticValidationResultV5 = ReturnType<typeof validateWeeklyPlanningSemanticResponseV5>;
 
@@ -125,6 +126,7 @@ async function tryFocusedUserContextDateRepairRouteV5(params: {
 
   let response: string;
   try {
+    markWeeklyPlanningSemanticRepairConsumedV5(params.run);
     response = await params.run.callTracked(request, 'focused_user_context_date_repair');
   } catch (error) {
     return providerFailureResult(params.run, params.initialValidation.errors, error);
@@ -226,6 +228,7 @@ async function tryFocusedPlanningWindowRepairRouteV5(params: {
 
   let response: string;
   try {
+    markWeeklyPlanningSemanticRepairConsumedV5(params.run);
     response = await params.run.callTracked(request, 'focused_planning_window_repair');
   } catch (error) {
     return providerFailureResult(params.run, params.initialValidation.errors, error);
@@ -330,6 +333,7 @@ async function tryFocusedTemporalScopeRepairRouteV5(params: {
 
   let response: string;
   try {
+    markWeeklyPlanningSemanticRepairConsumedV5(params.run);
     response = await params.run.callTracked(request, 'focused_temporal_scope_repair');
   } catch (error) {
     return providerFailureResult(params.run, params.initialValidation.errors, error);
@@ -398,6 +402,17 @@ export async function tryFocusedSemanticRepairRouteV5(params: {
   initialResponse: string;
   initialValidation: SemanticValidationResultV5;
 }): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
+  if (weeklyPlanningSemanticRepairConsumedV5(params.run)) {
+    const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+      status: 'rejected', document: null,
+      diagnostics: params.run.diagnostics({
+        attemptCount: params.run.responseLengths.length, repairAttempted: true,
+        validationErrors: params.initialValidation.errors, providerError: null,
+      }),
+    };
+    params.run.recordDecision(result, { route: 'focused_material_fallthrough_repair_limit', severity: 'error' });
+    return result;
+  }
   const userContextDateResult = await tryFocusedUserContextDateRepairRouteV5({
     run: params.run,
     initialValidation: params.initialValidation,

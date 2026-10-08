@@ -4,21 +4,34 @@ import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticD
 // planning deltas leave at most 5. This is audit eligibility, never semantic truth.
 export const WEEKLY_PLANNING_EVIDENCE_COVERAGE_GAP_CODE_POINTS = 8;
 
+/** Literal evidence class only, never a numeric interpretation. */
+export function isWeeklyPlanningEvidenceDigitV5(point: string): boolean {
+  const code = point.codePointAt(0)!;
+  return (code >= 0x30 && code <= 0x39) || (code >= 0xff10 && code <= 0xff19);
+}
+
 export interface WeeklyPlanningSemanticEvidenceCoverageV5 {
   route: 'partial_leaf_evidence_coverage';
   eligible: boolean;
   coveredCodePoints: number;
   maxUncoveredSpanCodePoints: number;
+  uncoveredDigitCodePoints?: number;
 }
 
 export function measureWeeklyPlanningSemanticEvidenceCoverageV5(params: {
   userText: string;
   document: WeeklyPlanningSemanticDocumentV5;
+  /** Validated conversational source spans, without creating planning facts. */
+  additionalSourceTexts?: readonly string[];
+  /** Focused acceptance anchors only; document leaf quotes remain provenance. */
+  additionalSourceTextsOnly?: boolean;
+  /** Focused acceptance only; absent preserves the original result shape. */
+  includeUncoveredDigits?: boolean;
 }): WeeklyPlanningSemanticEvidenceCoverageV5 {
   const { userText, document } = params;
-  const sources: string[] = [];
+  const sources: string[] = [...(params.additionalSourceTexts ?? [])];
   const add = (fact: { sourceText: string } | null | undefined) => {
-    if (fact?.sourceText) sources.push(fact.sourceText);
+    if (!params.additionalSourceTextsOnly && fact?.sourceText) sources.push(fact.sourceText);
   };
   add(document.planningWindow);
   for (const facts of [document.relations, document.availabilityDeclarations,
@@ -46,8 +59,10 @@ export function measureWeeklyPlanningSemanticEvidenceCoverageV5(params: {
   let gap = 0;
   let coveredCodePoints = 0;
   let maxUncoveredSpanCodePoints = 0;
+  let uncoveredDigitCodePoints = 0;
   // Count Unicode code points literally, including punctuation/whitespace.
-  // No character classes, Japanese keywords, tokenization or normalization.
+  // The opt-in focused digit count is literal quantity evidence only. Omitted
+  // flags keep the original result; no Japanese keywords or tokenization.
   for (const point of userText) {
     if (covered[offset]) {
       coveredCodePoints += 1;
@@ -55,6 +70,7 @@ export function measureWeeklyPlanningSemanticEvidenceCoverageV5(params: {
     } else {
       gap += 1;
       maxUncoveredSpanCodePoints = Math.max(maxUncoveredSpanCodePoints, gap);
+      if (params.includeUncoveredDigits && isWeeklyPlanningEvidenceDigitV5(point)) uncoveredDigitCodePoints += 1;
     }
     offset += point.length;
   }
@@ -65,5 +81,6 @@ export function measureWeeklyPlanningSemanticEvidenceCoverageV5(params: {
     eligible: coveredCodePoints > 0 && maxUncoveredSpanCodePoints >= WEEKLY_PLANNING_EVIDENCE_COVERAGE_GAP_CODE_POINTS,
     coveredCodePoints,
     maxUncoveredSpanCodePoints,
+    ...(params.includeUncoveredDigits ? { uncoveredDigitCodePoints } : {}),
   };
 }

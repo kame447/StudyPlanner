@@ -1,4 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
+import { emptyMaterialAnswer, FOCUSED_MATERIAL_SCHEMA } from '../testUtils/weeklyPlanningFocusedMaterialAnswerFixture';
 import { WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS, measureWeeklyPlanningTraceJsonBytes } from '../../../../shared/weeklyPlanningTraceContract';
 import { prepareWeeklyPlanningTraceServerWrite } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
 import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
@@ -71,6 +72,11 @@ it('retains the required question and accepted rate through real turn traces, ou
   resetWeeklyPlanningStableV5TraceRuntimeForTest();
   provider = installScriptedWeeklyPlanningProvider((call) => {
     if (call.kind === 'renderer') return scriptedRendererReply(call, 'どの教材を使いますか？');
+    if (call.schemaName === FOCUSED_MATERIAL_SCHEMA) {
+      const text = String(call.payload?.currentUserText ?? '');
+      return JSON.stringify(text === RATE ? emptyMaterialAnswer('effort_answer', { workloadChoice: 'w1', effortKind: 'duration_per_unit', minutes: 3, precision: 'approximate', sourceText: RATE })
+        : text === MATERIAL ? emptyMaterialAnswer('material_answer', { label: '青チャート', sourceText: '青チャート' }) : emptyMaterialAnswer('explain_question', { sourceText: text }));
+    }
     const text = String(call.payload?.userText ?? '');
     if (text === SETUP) return JSON.stringify(document({
       planningIntent: 'create_plan',

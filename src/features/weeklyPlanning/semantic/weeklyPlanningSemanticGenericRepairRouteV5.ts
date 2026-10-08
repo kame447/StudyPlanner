@@ -10,6 +10,7 @@ import {
 import { createWeeklyPlanningSemanticRepairMessagesV5 } from './weeklyPlanningSemanticRepairPromptV5';
 import { validateWeeklyPlanningSemanticRepairPreservationV5 } from './weeklyPlanningSemanticRepairPreservationV5';
 import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemanticResponseValidationV5';
+import { markWeeklyPlanningSemanticRepairConsumedV5, weeklyPlanningSemanticRepairConsumedV5 } from './weeklyPlanningSemanticRepairLedgerV5';
 
 type SemanticValidationResultV5 = ReturnType<typeof validateWeeklyPlanningSemanticResponseV5>;
 
@@ -20,6 +21,18 @@ export async function runGenericSemanticRepairRouteV5(params: {
   initialValidation: SemanticValidationResultV5;
   attemptCountBeforeRepair?: number;
 }): Promise<WeeklyPlanningSemanticNormalizerResultV5> {
+  // Completeness re-reads also reach this boundary after a valid initial response.
+  if (weeklyPlanningSemanticRepairConsumedV5(params.run)) {
+    const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+      status: 'rejected', document: null,
+      diagnostics: params.run.diagnostics({
+        attemptCount: params.run.responseLengths.length, repairAttempted: true,
+        validationErrors: params.initialValidation.errors, providerError: null,
+      }),
+    };
+    params.run.recordDecision(result, { route: 'focused_material_fallthrough_repair_limit', severity: 'error' });
+    return result;
+  }
   const attemptCountBeforeRepair = params.attemptCountBeforeRepair ?? 1;
   const repairAttemptCount = attemptCountBeforeRepair + 1;
   const repairMessages = createWeeklyPlanningSemanticRepairMessagesV5({
@@ -42,6 +55,7 @@ export async function runGenericSemanticRepairRouteV5(params: {
 
   let repairedResponse: string;
   try {
+    markWeeklyPlanningSemanticRepairConsumedV5(params.run);
     repairedResponse = await params.run.callGeneric(repairMessages, 'repair');
   } catch (error) {
     const result: WeeklyPlanningSemanticNormalizerResultV5 = {
