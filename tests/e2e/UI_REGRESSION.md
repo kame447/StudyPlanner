@@ -16,6 +16,14 @@ Visual snapshots are an explicit product contract. A changed screenshot must not
 
 The broad E2E and each focused Playwright configuration emit machine-readable JSON in CI in addition to human-readable reports. On the default branch, `/qa e2e` runs the existing broad Browser Regression, while `/qa visual` and `/qa cross-browser` run the focused matrix. Additional accessibility, responsive-boundary, runtime-health, bundle-budget, performance, stability, and test-intelligence automation is documented in `tests/quality/QUALITY_AUTOMATION.md`.
 
+## Responsive header and compact Home
+
+The primary header keeps the complete year/month/day/weekday. At narrow widths or enlarged text it can use two rows instead of clipping digits or reducing the type size. `primary-header-responsive.spec.mjs` checks the text ranges, control bounds and footer across four browser projects, including September 10 at 393px and 200% text.
+
+Ordinary Home sizes keep the existing bounded overview contract. When width is at most 336px and height at most 640px, or height is at most 480px, only the Home body scrolls. Its schedule rows and add action retain their natural height; the header and navigation remain in their viewport slots. This deliberately replaces the compact-only requirement that every card must be above the footer before scrolling. It must not replace clipping with unreachable content below the footer.
+
+`home-layout-responsive.spec.mjs` runs in broad Chromium and mobile WebKit. At 320×568 and 852×393, one-plan and four-plan fixtures must scroll each whole card and the whole add action into the body viewport, keep the header/navigation stationary and the document unscrolled, and open/cancel the add chooser. Computed body overflow must be `auto`, and Chromium proves a native wheel changes its scroll position before checking reachability. Mobile WebKit does not support Playwright's wheel API, so its DOM reader-position fixture proves layout/control boundaries only. Normal-size containment assertions remain unchanged. Successful header and compact-Home screenshots are written to `testInfo.outputPath` for compact CI image artifacts. These are emulated browser checks, not physical iPhone touch/keyboard evidence.
+
 ## Schedule touch-scroll evidence
 
 `schedule-touch-drag-background-lock.spec.mjs` belongs to the broad Chromium gate. It uses CDP `Input.dispatchTouchEvent`, not DOM-dispatched `TouchEvent` objects, to exercise native gesture arbitration. Each day/short-screen-week case first proves the actual nested scroll owner can move with an ordinary swipe over a plan. It then observes document and nested scroll offsets through long press (including an 8px pre-hold finger-jitter case), the first and subsequent drag moves, and drop/cancel/stationary release. A new ordinary swipe must work after release. Scroll-event/frame samples and touch trust/cancellation metadata are attached as `native-touch-scroll-evidence` JSON.

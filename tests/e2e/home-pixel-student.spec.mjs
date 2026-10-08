@@ -31,12 +31,16 @@ for (const { zone, offset } of [{ zone: 'Asia/Tokyo', offset: '+09:00' }, { zone
     for (const sourceType of ['timetable', 'manual']) test(`${sourceType}: enters once at start, sits, and follows next plan`, async ({ page }, testInfo) => {
       const errors = []; page.on('pageerror', error => errors.push(String(error)));
       await page.clock.install({ time: instant('10:19:00') });
+      // Mount with a paused clock so scheduler performance reads cannot move
+      // timer registration a millisecond past the exact minute we assert.
+      // The production minute timer still drives the entrance below.
+      await page.clock.pauseAt(instant('10:19:59'));
       await seed(page, { now: instant('10:19:00').toISOString(), sourceType });
       await page.goto('/');
       await expect(scene(page)).toHaveAttribute('data-scene-kind', sourceType === 'timetable' ? 'class' : 'study');
+      expect(await page.evaluate(() => Date.now())).toBe(instant('10:19:59').getTime());
       await expect(student(page)).toHaveCount(0);
       const originalData = await data(page);
-      await page.clock.pauseAt(instant('10:19:59'));
       await page.clock.runFor(1000);
       await expect(student(page)).toHaveAttribute('data-pixel-student', 'entering');
       const walking = student(page).locator('.home-pixel-student-walking');
@@ -79,10 +83,12 @@ for (const { zone, offset } of [{ zone: 'Asia/Tokyo', offset: '+09:00' }, { zone
 
     for (const mode of ['off', 'reduced']) test(`${mode}: shows a seated person without movement`, async ({ page }) => {
       await page.clock.install({ time: instant('10:19:00') });
+      await page.clock.pauseAt(instant('10:19:59'));
       await seed(page, { now: instant('10:19:00').toISOString(), motion: mode !== 'off' });
       if (mode === 'reduced') await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.goto('/'); await expect(student(page)).toHaveCount(0);
-      await page.clock.pauseAt(instant('10:19:59')); await page.clock.runFor(1000);
+      expect(await page.evaluate(() => Date.now())).toBe(instant('10:19:59').getTime());
+      await page.clock.runFor(1000);
       await expect(student(page)).toHaveAttribute('data-pixel-student', 'studying');
       expect(await student(page).evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
       await page.clock.resume();
