@@ -295,6 +295,10 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     return <LegalPage kind="contact" />;
   }
 
+  // Readiness hooks above keep running behind the intro, but layout/scene
+  // descendants must first mount with visible geometry and a fresh lifetime.
+  if (!startupVisible) return null;
+
   if (booting) {
     return <SplashScreen fixedLight />;
   }

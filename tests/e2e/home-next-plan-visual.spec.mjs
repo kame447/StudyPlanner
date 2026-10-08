@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/startup-ready.mjs';
 import { waitForVisualReady } from './support/ui-regression.mjs';
 
 const FIXED_NOW = new Date('2026-08-22T09:00:00Z');

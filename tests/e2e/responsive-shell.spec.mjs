@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/startup-ready.mjs';
 
 const VIEWPORTS = [
   { name: 'compact-phone', width: 390, height: 844 },
@@ -11,7 +11,7 @@ for (const viewport of VIEWPORTS) {
 
     test('interactive root surface remains operable without horizontal page overflow', async ({ page }) => {
       await page.goto('/');
-      await expect(page.locator('body')).toBeVisible();
+      await expect(page.locator('input').first()).toBeVisible();
 
       const metrics = await page.evaluate(() => ({
         viewportWidth: document.documentElement.clientWidth,

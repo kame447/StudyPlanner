@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/startup-ready.mjs';
 
 async function seedSchedule(page) {
   await page.addInitScript(() => {
