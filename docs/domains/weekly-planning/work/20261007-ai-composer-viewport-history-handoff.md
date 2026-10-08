@@ -78,3 +78,12 @@ AI計画で入力欄をタップして入力しようとすると、入力欄へ
 - actual fixture関数をNode VMで評価し、初期innerHeightを2122とした反証: 旧版はrunner指定640/844/874/900の全例を2122に固定、新版は各指定値に一致。これはfixture入力検証でありbrowser成功の代替ではない。
 - 初期shell高さとcontainmentのassertionを追加。keyboard縮小時の成功画像をoutputPathへ保存しattach(path)する。次のexact-head browserで修正と実geometryを再検証する。
 - 本修正後のfull/CIはこれから再実行する。初回失敗を隠さず、同branch/PRで継続する。main mergeは統合ownerのみ。
+
+## WebKit scroll fixture修正 — 2026-10-08 00:54 UTC
+
+- local `503c0779aef962285f8821665703ce14dd428599` / remote `16c8d36e7c5e2283b89472287558f106f2716be4` / tree `d1ccaa8abf791ff1f7b789bc0b436f299344ba08` はAPIで完全一致を確認した。clean worktreeの正規 `npm run verify` exit 0（758 files / 6,132 passed / 45 skipped / 1 todo、fresh app/Worker型、build）、8 bundle guards成功。Node24.19.0 / Vitest3.2.7、237実依存とlock前後一致、依存変更なし。中断した直前のfullは成功扱いにしていない。
+- このheadの [Browser Regression 37708682319](https://github.com/kame447/StudyPlanner/actions/runs/37708682319) は385 passed。初回tap、3幅のkeyboard/pan/typing/履歴読返し、preview解除、desktopの6新規ケースを含め成功した。CI・Quality・Admin・visual比較も成功。
+- [Matrix 37708682364](https://github.com/kame447/StudyPlanner/actions/runs/37708682364) は195 passed / 4 failed / 3 skipped。失敗はすべて新AIケースの `Mouse wheel is not supported in mobile WebKit`。初期containment・keyboard相当縮小・末尾表示は通過し、3幅の成功画像を保存した。インストール済Playwright1.62.1の実コードでもmobile WebKitのwheelが無条件throwであることを照合した。
+- 原因分類はharness capability。WebKitをskipする案はcoverageを失い、keyboardでscrollする案は入力focusを移すため、本来の保持契約を検証できない。WebKit-mobileだけDOMのreader-position境界を設定し、Chromiumは実wheelを残す。overflow-y:autoと実scroll rangeを追加確認し、先頭message視認・入力focus・typing/pan後位置保持・解除後の復帰という元のassertionを維持した。
+- 実helperのNode VM probeはmobile WebKitの境界設定、Chromium mobileとWebKit desktopのwheel維持、overflow:hidden/scroll rangeなしの拒否の5例が成功。syntaxとChromium/WebKit-mobile各6件の収集が成功。これはbrowser実行成功の代わりではない。
+- 今回の差分はこの文書と独立E2Eファイルのみ。runtime・unit・型・build入力の同一性と237依存/lockを再照合し上記full証拠を再利用する。変更したE2Eは新exact-head CIで全gateを実行して再検証する。WebKit実touch gesture、実iPhone keyboard/pan/IMEは未検証のままである。
