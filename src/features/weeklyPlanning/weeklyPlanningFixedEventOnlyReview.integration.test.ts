@@ -1,9 +1,9 @@
 // Preload the lazy runtime during collection; this test measures conversation behavior, not module transform time.
 import './application/weeklyPlanningStableV5InstrumentedRuntimeExecutor';
 import { afterEach, describe, expect, it } from 'vitest';
-import { resetScriptedConversationRuntime, type ScriptedConversationTurn } from './testUtils/weeklyPlanningScriptedConversationHarness';
+import { createScriptedConversation, installScriptedWeeklyPlanningProvider, resetScriptedConversationRuntime, type ScriptedConversationTurn } from './testUtils/weeklyPlanningScriptedConversationHarness';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './semantic/weeklyPlanningActiveSchedulerGraphViewV5';
-import { BUSY_ONLY_TEXT, FIXED_EVENT_TURNS, MIXED_EVENT_TEXT, eventStudyTask, fixedEventTask, installFixedEventConversation, type Json } from './testUtils/weeklyPlanningFixedEventOnlyFixture';
+import { BUSY_ONLY_TEXT, FIXED_EVENT_TURNS, MIXED_EVENT_TEXT, eventDocument, eventRendererReply, eventStudyTask, fixedEventTask, installFixedEventConversation, type Json } from './testUtils/weeklyPlanningFixedEventOnlyFixture';
 
 let fixture: ReturnType<typeof installFixedEventConversation>;
 afterEach(() => { fixture?.provider.restore(); resetScriptedConversationRuntime(); });
@@ -86,6 +86,67 @@ describe('fixed-event-only controller regression (issue6048944396)', () => {
       expect(fixture.conversation.graph()!.tasks).toEqual([]);
       expect(fixture.conversation.graph()!.availabilityDeclarations).toHaveLength(1);
     } else expect(turns.slice(2).map(turn => turn.result?.state.lastQuestionContext?.targetSlot)).toEqual(Array(3).fill('stable_v5:missing_schedulable_work'));
+  });
+
+  it('gives a fresh explicit fixed-task registration request one handoff, then stays quiet', async () => {
+    fixture = installFixedEventConversation({ registrationAct: true });
+    for (const text of FIXED_EVENT_TURNS) assertNoWrite(await fixture.conversation.submit(text));
+    const before = createWeeklyPlanningActiveSchedulerGraphViewV5(fixture.conversation.graph()!);
+    expect(before.tasks).toHaveLength(1);
+    const requested = await fixture.conversation.submit('その予定も追加して'); assertNoWrite(requested);
+    expect(requested.result?.communicationFacts?.statusReason).toBe('fixed_event_manual_entry');
+    expect(requested.result?.message).toContain('予定を追加');
+    expect(requested.result?.state.lastQuestionContext).toBeUndefined();
+    expect(createWeeklyPlanningActiveSchedulerGraphViewV5(fixture.conversation.graph()!)).toEqual(before);
+    const acknowledged = await fixture.conversation.submit('わかりました'); assertNoWrite(acknowledged);
+    expect(acknowledged.result?.communicationFacts?.statusReason).toBe('no_additional_work');
+    expect(acknowledged.result?.message).not.toContain('予定を追加');
+    expect(acknowledged.result?.state.lastQuestionContext).toBeUndefined();
+    expect(createWeeklyPlanningActiveSchedulerGraphViewV5(fixture.conversation.graph()!)).toEqual(before);
+  });
+
+  it.each([
+    { representation: 'fixed_task', resume: false }, { representation: 'unavailable', resume: false },
+    { representation: 'fixed_task', resume: true }, { representation: 'unavailable', resume: true },
+  ])('preserves a new consultation after $representation handoff (resume=$resume)', async ({ representation, resume }) => {
+    let phase: 'event' | 'consultation' | 'acknowledgement' = 'event';
+    const provider = installScriptedWeeklyPlanningProvider(call => {
+      if (call.kind === 'renderer') return eventRendererReply(call);
+      if (phase !== 'event') return JSON.stringify(eventDocument({
+        conversationActs: phase === 'consultation'
+          ? [{ kind: 'consultation_request', targetPublicId: null }, ...(resume ? [{ kind: 'resume_topic', targetPublicId: null }] : [])] : [],
+      }));
+      return JSON.stringify(eventDocument({ planningIntent: 'create_plan', planningWindow: {
+        localId: 'today', kind: 'relative_day', value: 'today', start: null, end: null, sourceText: '今日',
+      }, ...(representation === 'fixed_task' ? { tasks: [fixedEventTask()] } : { availabilityDeclarations: [{
+        localId: 'club', kind: 'unavailable', dateExpression: 'today', namedTimePeriod: null,
+        startTime: '10:30', endTime: '12:00', recurrenceKind: null, days: [], constraintLevel: 'hard', capacityMinutes: null, sourceText: BUSY_ONLY_TEXT,
+      }] }), conversationActs: [{ kind: 'request_event_registration', targetPublicId: null }] }));
+    });
+    const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1', now: () => '2026-10-07T00:00:00.000Z' });
+    fixture = { provider, conversation };
+    const first = await conversation.submit(FIXED_EVENT_TURNS[2]); assertNoWrite(first);
+    expect(first.result?.communicationFacts?.statusReason).toBe('fixed_event_manual_entry');
+    const before = createWeeklyPlanningActiveSchedulerGraphViewV5(conversation.graph()!);
+    phase = 'consultation';
+    const consultation = await conversation.submit('部活の前に休憩を入れるのはどう？'); assertNoWrite(consultation);
+    expect(consultation.result?.interactionOutcome).toMatchObject({ kind: resume ? 'apply' : 'aside', consultationDeferred: true });
+    expect(createWeeklyPlanningActiveSchedulerGraphViewV5(conversation.graph()!)).toEqual(before);
+    expect(consultation.result?.state.lastQuestionContext).toBeUndefined();
+    expect(rendererDecision(consultation).communication).toMatchObject({
+      consultationDeferred: true, statusReason: null, goal: resume ? 'report_status' : 'acknowledge_aside', askQuestion: false,
+    });
+    expect(consultation.calls.find(call => call.kind === 'renderer')!.messages.map(message => message.content).join('\n'))
+      .not.toContain('no_additional_work: 短く受け止めて会話を閉じる');
+    expect(consultation.result?.message).not.toContain('予定を追加');
+    phase = 'acknowledgement';
+    const acknowledged = await conversation.submit('わかりました'); assertNoWrite(acknowledged);
+    expect(acknowledged.result?.state.lastQuestionContext).toBeUndefined();
+    expect(rendererDecision(acknowledged).communication).toMatchObject({
+      consultationDeferred: false, statusReason: 'no_additional_work', goal: 'report_status', askQuestion: false,
+    });
+    expect(acknowledged.result?.message).not.toContain('予定を追加');
+    expect(createWeeklyPlanningActiveSchedulerGraphViewV5(conversation.graph()!)).toEqual(before);
   });
 
   it('presents the handoff even when the same typed request shifts the topic', async () => {

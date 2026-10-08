@@ -157,8 +157,11 @@ export function communicationContextForStableV5Dialogue(params: {
   questionCode: string | null;
   questionIntent: WeeklyPlanningStableV5DialogueQuestionIntent | null | undefined;
 }): WeeklyPlanningStableV5CommunicationContext {
-  // A routed terminal invitation/handoff must be presented even beside an aside act.
-  const goal = params.facts?.statusReason === 'fixed_event_manual_entry' || params.facts?.statusReason === 'no_additional_work'
+  // A new handoff takes priority, but a closed work invitation must not silence a new consultation.
+  const closedInvitationWithConsultation = params.facts?.statusReason === 'no_additional_work'
+    && params.outcome?.consultationDeferred === true;
+  const goal = params.facts?.statusReason === 'fixed_event_manual_entry'
+    || (params.facts?.statusReason === 'no_additional_work' && !closedInvitationWithConsultation)
     ? 'report_status' : goalFor(params.outcome, params.actionKind);
   const askQuestion = params.actionKind === 'question';
   const questionPurposes = askQuestion
@@ -183,7 +186,7 @@ export function communicationContextForStableV5Dialogue(params: {
     laterNeeds,
     // A consultation answered with typed evidence is the subject of the reply. Reporting the
     // unchanged preview as well turned the answer into 「今の候補のままです」 (live E on 65f178e0).
-    statusReason: goal === 'report_status'
+    statusReason: goal === 'report_status' && !closedInvitationWithConsultation
       && !(params.outcome?.consultationDeferred === true && params.facts?.consultation
         && params.facts.statusReason === 'preview_unchanged')
       ? params.facts?.statusReason ?? null

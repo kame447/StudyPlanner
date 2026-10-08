@@ -37,7 +37,8 @@ export function fixedEventOnlyInteractionStatus(params: {
       || (!params.semanticChanged && params.previousOptionalInvitationClosed)
       ? 'no_additional_work' : null;
   }
-  return params.semanticChanged || params.previousQuestionSlot === 'stable_v5:missing_schedulable_work'
+  return params.requestedEventRegistration || params.semanticChanged
+    || params.previousQuestionSlot === 'stable_v5:missing_schedulable_work'
     ? 'fixed_event_manual_entry' : 'no_additional_work';
 }
 
