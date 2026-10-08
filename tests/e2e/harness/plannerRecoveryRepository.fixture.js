@@ -216,6 +216,7 @@ window.__plannerRecoveryRepository = {
   failNextTimetableRead() { failures.getScheduleTemplates += 1; },
   failNextDayNoteRead() { failures.getDayNotes += 1; },
   failNextMonthRead() { failures.getMonthEvents += 1; },
+  failNextScheduleSnapshotRead() { failures.getScheduleSnapshot += 1; },
   failNextActualRead() { failures.getActuals += 1; },
   failNextTodoRead() { failures.getTodos += 1; },
   holdTargetReads() { holdProjectionReads = true; },

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "status": "validated against successful replay evidence on both revisions; not billing measurement",
   "pricingCheckedDate": "2026-10-08",
   "currency": "USD",
@@ -8,7 +8,24 @@
   "pricingModel": "default pay-as-you-go, no CUD",
   "pricingSources": [
     "https://cloud.google.com/firestore/pricing",
-    "https://firebase.google.com/docs/firestore/quotas"
+    "https://firebase.google.com/docs/firestore/quotas",
+    "https://docs.cloud.google.com/firestore/native/docs/billing-questions#usage-dashboard-discrepancies",
+    "https://firebase.google.com/docs/firestore/pricing#free-quota-applies-only-to-one-database-per-project"
+  ],
+  "readEquivalentDefinition": "Observed Listen and transaction document responses plus dedicated verify-only Commit operations; pricing sensitivity, not measured production billing.",
+  "verifyOnlyEvidence": "Instrumented outgoing Commit/Write verify-operation counter and unchanged final replay reports; raw RPC payloads were not persisted.",
+  "freeQuotaEligibility": "One eligible database per project assumed; actual deployment eligibility is unverified.",
+  "excludedWorkloads": [
+    "auth/profile",
+    "catalog/metadata",
+    "trace append/retry",
+    "admin history/export",
+    "shared backend/cron",
+    "Rules-dependent reads",
+    "index-entry reads",
+    "contention retries",
+    "SDK reconnects",
+    "storage/network/other services"
   ],
   "readPricePer100000USD": "0.03",
   "writePricePer100000USD": "0.09",
@@ -42,9 +59,11 @@
         "replayListenDocumentResponses": 346,
         "replayTransactionDocumentResponses": 32,
         "sessionQueryTargets": 54,
-        "readEquivalentPerSession": 447,
+        "responseReadEquivalentPerSession": 447,
+        "commitVerifyOnlyOperationsPerSession": 16,
+        "readEquivalentPerSession": 463,
         "actualWritesPerSession": 16,
-        "actualWritesStatus": "16 mutations observed; 16 verify preconditions excluded",
+        "actualWritesStatus": "16 mutations observed; 16 dedicated verify-only operations excluded from writes and included in modeled reads",
         "commitRequests": 6
       },
       "after": {
@@ -54,9 +73,11 @@
         "replayListenDocumentResponses": 6,
         "replayTransactionDocumentResponses": 32,
         "sessionQueryTargets": 9,
-        "readEquivalentPerSession": 107,
+        "responseReadEquivalentPerSession": 107,
+        "commitVerifyOnlyOperationsPerSession": 16,
+        "readEquivalentPerSession": 123,
         "actualWritesPerSession": 16,
-        "actualWritesStatus": "16 mutations observed; 16 verify preconditions excluded",
+        "actualWritesStatus": "16 mutations observed; 16 dedicated verify-only operations excluded from writes and included in modeled reads",
         "commitRequests": 6
       }
     },
@@ -72,9 +93,11 @@
         "replayListenDocumentResponses": 2821,
         "replayTransactionDocumentResponses": 32,
         "sessionQueryTargets": 54,
-        "readEquivalentPerSession": 3417,
+        "responseReadEquivalentPerSession": 3417,
+        "commitVerifyOnlyOperationsPerSession": 16,
+        "readEquivalentPerSession": 3433,
         "actualWritesPerSession": 16,
-        "actualWritesStatus": "16 mutations observed; 16 verify preconditions excluded",
+        "actualWritesStatus": "16 mutations observed; 16 dedicated verify-only operations excluded from writes and included in modeled reads",
         "commitRequests": 6
       },
       "after": {
@@ -84,9 +107,11 @@
         "replayListenDocumentResponses": 6,
         "replayTransactionDocumentResponses": 32,
         "sessionQueryTargets": 9,
-        "readEquivalentPerSession": 602,
+        "responseReadEquivalentPerSession": 602,
+        "commitVerifyOnlyOperationsPerSession": 16,
+        "readEquivalentPerSession": 618,
         "actualWritesPerSession": 16,
-        "actualWritesStatus": "16 mutations observed; 16 verify preconditions excluded",
+        "actualWritesStatus": "16 mutations observed; 16 dedicated verify-only operations excluded from writes and included in modeled reads",
         "commitRequests": 6
       }
     },
@@ -102,9 +127,11 @@
         "replayListenDocumentResponses": 27571,
         "replayTransactionDocumentResponses": 32,
         "sessionQueryTargets": 54,
-        "readEquivalentPerSession": 33117,
+        "responseReadEquivalentPerSession": 33117,
+        "commitVerifyOnlyOperationsPerSession": 16,
+        "readEquivalentPerSession": 33133,
         "actualWritesPerSession": 16,
-        "actualWritesStatus": "16 mutations observed; 16 verify preconditions excluded",
+        "actualWritesStatus": "16 mutations observed; 16 dedicated verify-only operations excluded from writes and included in modeled reads",
         "commitRequests": 6
       },
       "after": {
@@ -114,9 +141,11 @@
         "replayListenDocumentResponses": 6,
         "replayTransactionDocumentResponses": 32,
         "sessionQueryTargets": 9,
-        "readEquivalentPerSession": 5552,
+        "responseReadEquivalentPerSession": 5552,
+        "commitVerifyOnlyOperationsPerSession": 16,
+        "readEquivalentPerSession": 5568,
         "actualWritesPerSession": 16,
-        "actualWritesStatus": "16 mutations observed; 16 verify preconditions excluded",
+        "actualWritesStatus": "16 mutations observed; 16 dedicated verify-only operations excluded from writes and included in modeled reads",
         "commitRequests": 6
       }
     }
@@ -131,20 +160,20 @@
       "writesPerMonth": 48000,
       "monthlyWriteUSD": "0E-7",
       "before": {
-        "readsPerDay": 44700,
-        "readsPerMonth": 1341000,
+        "readsPerDay": 46300,
+        "readsPerMonth": 1389000,
         "monthlyReadUSD": "0E-7",
         "monthlyReadWriteUSD": "0E-7",
         "dailyReadUSD": "0E-7"
       },
       "after": {
-        "readsPerDay": 10700,
-        "readsPerMonth": 321000,
+        "readsPerDay": 12300,
+        "readsPerMonth": 369000,
         "monthlyReadUSD": "0E-7",
         "monthlyReadWriteUSD": "0E-7",
         "dailyReadUSD": "0E-7"
       },
-      "readEquivalentReductionPercent": "76.06263982102908277404921700"
+      "readEquivalentReductionPercent": "73.43412526997840172786177106"
     },
     {
       "dataset": "small",
@@ -155,20 +184,20 @@
       "writesPerMonth": 480000,
       "monthlyWriteUSD": "0E-7",
       "before": {
-        "readsPerDay": 447000,
-        "readsPerMonth": 13410000,
-        "monthlyReadUSD": "3.5730000",
-        "monthlyReadWriteUSD": "3.5730000",
-        "dailyReadUSD": "0.1191000"
+        "readsPerDay": 463000,
+        "readsPerMonth": 13890000,
+        "monthlyReadUSD": "3.7170000",
+        "monthlyReadWriteUSD": "3.7170000",
+        "dailyReadUSD": "0.1239000"
       },
       "after": {
-        "readsPerDay": 107000,
-        "readsPerMonth": 3210000,
-        "monthlyReadUSD": "0.5130000",
-        "monthlyReadWriteUSD": "0.5130000",
-        "dailyReadUSD": "0.0171000"
+        "readsPerDay": 123000,
+        "readsPerMonth": 3690000,
+        "monthlyReadUSD": "0.6570000",
+        "monthlyReadWriteUSD": "0.6570000",
+        "dailyReadUSD": "0.0219000"
       },
-      "readEquivalentReductionPercent": "76.06263982102908277404921700"
+      "readEquivalentReductionPercent": "73.43412526997840172786177106"
     },
     {
       "dataset": "small",
@@ -179,20 +208,20 @@
       "writesPerMonth": 4800000,
       "monthlyWriteUSD": "3.7800000",
       "before": {
-        "readsPerDay": 4470000,
-        "readsPerMonth": 134100000,
-        "monthlyReadUSD": "39.7800000",
-        "monthlyReadWriteUSD": "43.5600000",
-        "dailyReadUSD": "1.3260000"
+        "readsPerDay": 4630000,
+        "readsPerMonth": 138900000,
+        "monthlyReadUSD": "41.2200000",
+        "monthlyReadWriteUSD": "45.0000000",
+        "dailyReadUSD": "1.3740000"
       },
       "after": {
-        "readsPerDay": 1070000,
-        "readsPerMonth": 32100000,
-        "monthlyReadUSD": "9.1800000",
-        "monthlyReadWriteUSD": "12.9600000",
-        "dailyReadUSD": "0.3060000"
+        "readsPerDay": 1230000,
+        "readsPerMonth": 36900000,
+        "monthlyReadUSD": "10.6200000",
+        "monthlyReadWriteUSD": "14.4000000",
+        "dailyReadUSD": "0.3540000"
       },
-      "readEquivalentReductionPercent": "76.06263982102908277404921700"
+      "readEquivalentReductionPercent": "73.43412526997840172786177106"
     },
     {
       "dataset": "medium",
@@ -203,20 +232,20 @@
       "writesPerMonth": 48000,
       "monthlyWriteUSD": "0E-7",
       "before": {
-        "readsPerDay": 341700,
-        "readsPerMonth": 10251000,
-        "monthlyReadUSD": "2.6253000",
-        "monthlyReadWriteUSD": "2.6253000",
-        "dailyReadUSD": "0.0875100"
+        "readsPerDay": 343300,
+        "readsPerMonth": 10299000,
+        "monthlyReadUSD": "2.6397000",
+        "monthlyReadWriteUSD": "2.6397000",
+        "dailyReadUSD": "0.0879900"
       },
       "after": {
-        "readsPerDay": 60200,
-        "readsPerMonth": 1806000,
-        "monthlyReadUSD": "0.0918000",
-        "monthlyReadWriteUSD": "0.0918000",
-        "dailyReadUSD": "0.0030600"
+        "readsPerDay": 61800,
+        "readsPerMonth": 1854000,
+        "monthlyReadUSD": "0.1062000",
+        "monthlyReadWriteUSD": "0.1062000",
+        "dailyReadUSD": "0.0035400"
       },
-      "readEquivalentReductionPercent": "82.38220661398887913374304946"
+      "readEquivalentReductionPercent": "81.99825225750072822604136324"
     },
     {
       "dataset": "medium",
@@ -227,20 +256,20 @@
       "writesPerMonth": 480000,
       "monthlyWriteUSD": "0E-7",
       "before": {
-        "readsPerDay": 3417000,
-        "readsPerMonth": 102510000,
-        "monthlyReadUSD": "30.3030000",
-        "monthlyReadWriteUSD": "30.3030000",
-        "dailyReadUSD": "1.0101000"
+        "readsPerDay": 3433000,
+        "readsPerMonth": 102990000,
+        "monthlyReadUSD": "30.4470000",
+        "monthlyReadWriteUSD": "30.4470000",
+        "dailyReadUSD": "1.0149000"
       },
       "after": {
-        "readsPerDay": 602000,
-        "readsPerMonth": 18060000,
-        "monthlyReadUSD": "4.9680000",
-        "monthlyReadWriteUSD": "4.9680000",
-        "dailyReadUSD": "0.1656000"
+        "readsPerDay": 618000,
+        "readsPerMonth": 18540000,
+        "monthlyReadUSD": "5.1120000",
+        "monthlyReadWriteUSD": "5.1120000",
+        "dailyReadUSD": "0.1704000"
       },
-      "readEquivalentReductionPercent": "82.38220661398887913374304946"
+      "readEquivalentReductionPercent": "81.99825225750072822604136324"
     },
     {
       "dataset": "medium",
@@ -251,20 +280,20 @@
       "writesPerMonth": 4800000,
       "monthlyWriteUSD": "3.7800000",
       "before": {
-        "readsPerDay": 34170000,
-        "readsPerMonth": 1025100000,
-        "monthlyReadUSD": "307.0800000",
-        "monthlyReadWriteUSD": "310.8600000",
-        "dailyReadUSD": "10.2360000"
+        "readsPerDay": 34330000,
+        "readsPerMonth": 1029900000,
+        "monthlyReadUSD": "308.5200000",
+        "monthlyReadWriteUSD": "312.3000000",
+        "dailyReadUSD": "10.2840000"
       },
       "after": {
-        "readsPerDay": 6020000,
-        "readsPerMonth": 180600000,
-        "monthlyReadUSD": "53.7300000",
-        "monthlyReadWriteUSD": "57.5100000",
-        "dailyReadUSD": "1.7910000"
+        "readsPerDay": 6180000,
+        "readsPerMonth": 185400000,
+        "monthlyReadUSD": "55.1700000",
+        "monthlyReadWriteUSD": "58.9500000",
+        "dailyReadUSD": "1.8390000"
       },
-      "readEquivalentReductionPercent": "82.38220661398887913374304946"
+      "readEquivalentReductionPercent": "81.99825225750072822604136324"
     },
     {
       "dataset": "large",
@@ -275,20 +304,20 @@
       "writesPerMonth": 48000,
       "monthlyWriteUSD": "0E-7",
       "before": {
-        "readsPerDay": 3311700,
-        "readsPerMonth": 99351000,
-        "monthlyReadUSD": "29.3553000",
-        "monthlyReadWriteUSD": "29.3553000",
-        "dailyReadUSD": "0.9785100"
+        "readsPerDay": 3313300,
+        "readsPerMonth": 99399000,
+        "monthlyReadUSD": "29.3697000",
+        "monthlyReadWriteUSD": "29.3697000",
+        "dailyReadUSD": "0.9789900"
       },
       "after": {
-        "readsPerDay": 555200,
-        "readsPerMonth": 16656000,
-        "monthlyReadUSD": "4.5468000",
-        "monthlyReadWriteUSD": "4.5468000",
-        "dailyReadUSD": "0.1515600"
+        "readsPerDay": 556800,
+        "readsPerMonth": 16704000,
+        "monthlyReadUSD": "4.5612000",
+        "monthlyReadWriteUSD": "4.5612000",
+        "dailyReadUSD": "0.1520400"
       },
-      "readEquivalentReductionPercent": "83.23519642479693208925929281"
+      "readEquivalentReductionPercent": "83.19500196179036006398454713"
     },
     {
       "dataset": "large",
@@ -299,20 +328,20 @@
       "writesPerMonth": 480000,
       "monthlyWriteUSD": "0E-7",
       "before": {
-        "readsPerDay": 33117000,
-        "readsPerMonth": 993510000,
-        "monthlyReadUSD": "297.6030000",
-        "monthlyReadWriteUSD": "297.6030000",
-        "dailyReadUSD": "9.9201000"
+        "readsPerDay": 33133000,
+        "readsPerMonth": 993990000,
+        "monthlyReadUSD": "297.7470000",
+        "monthlyReadWriteUSD": "297.7470000",
+        "dailyReadUSD": "9.9249000"
       },
       "after": {
-        "readsPerDay": 5552000,
-        "readsPerMonth": 166560000,
-        "monthlyReadUSD": "49.5180000",
-        "monthlyReadWriteUSD": "49.5180000",
-        "dailyReadUSD": "1.6506000"
+        "readsPerDay": 5568000,
+        "readsPerMonth": 167040000,
+        "monthlyReadUSD": "49.6620000",
+        "monthlyReadWriteUSD": "49.6620000",
+        "dailyReadUSD": "1.6554000"
       },
-      "readEquivalentReductionPercent": "83.23519642479693208925929281"
+      "readEquivalentReductionPercent": "83.19500196179036006398454713"
     },
     {
       "dataset": "large",
@@ -323,41 +352,41 @@
       "writesPerMonth": 4800000,
       "monthlyWriteUSD": "3.7800000",
       "before": {
-        "readsPerDay": 331170000,
-        "readsPerMonth": 9935100000,
-        "monthlyReadUSD": "2980.0800000",
-        "monthlyReadWriteUSD": "2983.8600000",
-        "dailyReadUSD": "99.3360000"
+        "readsPerDay": 331330000,
+        "readsPerMonth": 9939900000,
+        "monthlyReadUSD": "2981.5200000",
+        "monthlyReadWriteUSD": "2985.3000000",
+        "dailyReadUSD": "99.3840000"
       },
       "after": {
-        "readsPerDay": 55520000,
-        "readsPerMonth": 1665600000,
-        "monthlyReadUSD": "499.2300000",
-        "monthlyReadWriteUSD": "503.0100000",
-        "dailyReadUSD": "16.6410000"
+        "readsPerDay": 55680000,
+        "readsPerMonth": 1670400000,
+        "monthlyReadUSD": "500.6700000",
+        "monthlyReadWriteUSD": "504.4500000",
+        "dailyReadUSD": "16.6890000"
       },
-      "readEquivalentReductionPercent": "83.23519642479693208925929281"
+      "readEquivalentReductionPercent": "83.19500196179036006398454713"
     }
   ],
   "freeDocumentOperationHeadcountWithNoOtherLoad": [
     {
       "dataset": "small",
-      "before": 111,
-      "after": 467,
+      "before": 107,
+      "after": 406,
       "sharedAdditionalReads": 0,
       "sharedAdditionalWrites": 0
     },
     {
       "dataset": "medium",
       "before": 14,
-      "after": 83,
+      "after": 80,
       "sharedAdditionalReads": 0,
       "sharedAdditionalWrites": 0
     },
     {
       "dataset": "large",
       "before": 1,
-      "after": 9,
+      "after": 8,
       "sharedAdditionalReads": 0,
       "sharedAdditionalWrites": 0
     }
