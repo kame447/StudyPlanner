@@ -95,6 +95,8 @@ describe('turn-level AI dispatch budget', () => {
       diagnostics: vi.fn((value: unknown) => value),
       recordDecision: vi.fn(),
       addAlgorithmicRepairs: vi.fn(),
+      // A real normalizer run always carries this list (initialized to []).
+      algorithmicRepairs: [],
     } as unknown as WeeklyPlanningSemanticNormalizerRunV5;
 
     // null = keep the already valid initial document (not a provider_failure result).
