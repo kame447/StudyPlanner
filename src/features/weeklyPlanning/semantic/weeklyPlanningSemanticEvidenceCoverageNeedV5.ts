@@ -41,3 +41,17 @@ export function hasWeeklyPlanningEvidenceCoverageMissingEffortV5(params: {
     && !compiled.items.some((item) => item.taskId === task.id));
   return missingEffort || missingWork;
 }
+
+/** Typed existing-task modification scope; identity-only and new-task turns keep their existing route. */
+export function hasWeeklyPlanningEvidenceCoverageTaskModificationV5(params: {
+  document: WeeklyPlanningSemanticDocumentV5;
+  committedGraph?: WeeklyPlanningFactGraphV5;
+}): boolean {
+  if (!params.committedGraph || params.document.tasks.length === 0) return false;
+  const active = createWeeklyPlanningActiveSchedulerGraphViewV5(params.committedGraph);
+  const taskIds = new Set(active.tasks.map(task => task.id));
+  if (!params.document.tasks.every(task => task.existingPublicId && taskIds.has(task.existingPublicId))) return false;
+  return params.document.tasks.some(task => task.workloads.length > 0 || task.effortEstimates.length > 0
+    || task.temporalConstraints.length > 0 || task.recurrence.length > 0
+    || (task.study?.components ?? []).some(component => component.workloads.length > 0));
+}

@@ -231,9 +231,11 @@ describe('shared interaction repair ledger dispatch boundaries', () => {
     const run = new WeeklyPlanningSemanticNormalizerRunV5(client, value);
     markWeeklyPlanningSemanticRepairConsumedV5(run);
     const result = await tryWeeklyPlanningDenseTurnCompletenessRetryV5({ run, baseMessages: [], initialResponse,
-      initialDocument: validation.document! });
-    expect(result?.status).toBe('rejected');
-    expect(result?.document).toBeNull();
+      initialDocument: validation.document!, semanticRepairConsumed: () => weeklyPlanningSemanticRepairConsumedV5(run) });
+    expect(result?.status).toBe('accepted');
+    expect(result?.document).toEqual(validation.document);
+    expect(result?.completenessAbstention).toEqual({ reason: 'repair_budget_consumed' });
+    expect(result?.diagnostics.repairAttempted).toBe(true);
     expect(requests.map(request => request.semanticCensusStage)).toEqual(['audit', 'retry']);
     expect(weeklyPlanningSemanticRepairConsumedV5(run)).toBe(true);
     expect(value.committedGraph).toEqual(before);

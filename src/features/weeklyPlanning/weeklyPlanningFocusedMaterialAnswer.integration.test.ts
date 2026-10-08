@@ -361,7 +361,6 @@ describe('typed material answers through the real controller', () => {
     });
     await fixture.conversation.submit(MATERIAL_SETUP);
     const before = structuredClone(fixture.conversation.graph()!);
-    const question = structuredClone(fixture.conversation.getState().intakeState?.lastQuestionContext);
     const turn = await fixture.conversation.submit(MATERIAL_MIXED + (dense ? 'のこと'.repeat(200) : ''));
     expect(turn.calls.filter((call) => call.schemaName === FOCUSED_MATERIAL_SCHEMA)).toHaveLength(2);
     expect(turn.calls.filter((call) => call.schemaName === 'weekly_planning_dense_turn_completeness_audit_v5')).toHaveLength(1);
@@ -369,11 +368,24 @@ describe('typed material answers through the real controller', () => {
     const attempts = turn.debugTrace.filter((event) => event.stage === 'semantic_provider_request')
       .map((event) => (event.data as { attempt: string }).attempt);
     expect(attempts).toEqual(['focused_material_answer', 'focused_material_answer_repair', 'initial', 'dense_completeness_audit', 'dense_completeness_retry']);
-    expect(turn.result?.failure?.code).toBe('stable_v5_normalization_rejected');
-    expect(fixture.conversation.graph()).toEqual(before);
+    expect(turn.result?.failure).toBeUndefined();
+    // The approved completeness floor accepts the valid initial material meaning.
+    // Earlier accepted amounts, ids and sources still survive the invalid reread.
+    const active = createWeeklyPlanningActiveSchedulerGraphViewV5(fixture.conversation.graph()!);
+    // Material naming rebases the component reference, preserving each accepted
+    // workload's identity, amount and exact source under the same task owner.
+    expect(fixture.conversation.graph()!.workloads).toEqual(before.workloads.map(workload => ({
+      ...workload, componentId: active.components[0].id,
+    })));
+    expect(active.components).toEqual([expect.objectContaining({ label: '青チャート' })]);
+    expect(active.effortEstimates).toEqual([]);
     const pending = fixture.conversation.getState().intakeState?.lastQuestionContext;
-    expect(pending).toEqual({ ...question, presentation: expect.objectContaining({ graphRevision: before.revision }) });
-    const decision = turn.debugTrace.filter((event) => event.stage === 'semantic_normalizer_decision').slice(-1)[0]!.data as { diagnostics: { repairAttempted: boolean; attemptCount: number } };
+    expect(pending?.targetSlot).toBe('stable_v5:missing_effort_estimate');
+    expect(turn.result?.draftCandidates).toEqual([]);
+    expect(turn.debugTrace).toContainEqual(expect.objectContaining({ stage: 'semantic_validation_result',
+      data: expect.objectContaining({ attempt: 'completeness_floor:repair_budget_consumed', accepted: true }) }));
+    const decision = turn.debugTrace.filter((event) => event.stage === 'semantic_normalizer_decision').slice(-1)[0]!.data as { status: string; diagnostics: { repairAttempted: boolean; attemptCount: number } };
+    expect(decision.status).toBe('accepted');
     expect(decision.diagnostics).toMatchObject({ repairAttempted: true, attemptCount: 5 });
   });
   it('reports a consumed focused repair when the later generic interpretation succeeds without another repair', async () => {

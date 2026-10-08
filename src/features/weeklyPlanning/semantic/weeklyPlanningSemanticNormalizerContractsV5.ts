@@ -1,3 +1,4 @@
+import type { WeeklyPlanningSemanticCompletenessAbstentionV5 } from './weeklyPlanningSemanticCompletenessPreservationV5';
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticTypesV5';
 import type { WeeklyPlanningTurnEvidenceV5 } from './weeklyPlanningTurnEvidenceV5';
 import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
@@ -51,6 +52,8 @@ export interface WeeklyPlanningConversationOnlyTurnV5 {
 
 export interface WeeklyPlanningSemanticNormalizerResultV5 {
   status: 'accepted' | 'rejected' | 'provider_failure';
+  /** Interaction-only: a lossy completeness retry retained its valid initial meaning. */
+  completenessAbstention?: WeeklyPlanningSemanticCompletenessAbstentionV5;
   document: WeeklyPlanningSemanticDocumentV5 | null;
   contextualDirective?: WeeklyPlanningContextualDirectiveV5 | null;
   /** Present only when the accepted document is conversation acts without a planning delta. */

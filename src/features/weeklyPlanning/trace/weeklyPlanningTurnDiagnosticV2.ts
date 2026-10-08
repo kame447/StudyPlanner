@@ -1041,6 +1041,8 @@ export function createWeeklyPlanningTurnDiagnosticV2(
     canonicalizationErrors,
     tracker,
   });
+  const budgetCompletion = eventData(events, 'semantic_orchestrator_route')
+    .filter(data => data.route === 'audit_authored_registered_material_timebox');
   const entry: DiagnosticWithTruncation = {
     id: input.id,
     sessionId: input.sessionId,
@@ -1075,12 +1077,14 @@ export function createWeeklyPlanningTurnDiagnosticV2(
           'aiInterpreter.input.planningStateSummary',
         ),
         requests: aiRequests(events, tracker),
-        ...(hasEvent(events, 'semantic_evidence_coverage_eligibility')
+        ...((hasEvent(events, 'semantic_evidence_coverage_eligibility') || budgetCompletion.length > 0)
           ? {
               evidenceCoverageAudit: boundedUnknown({
-                eligibility: latestEventData(events, 'semantic_evidence_coverage_eligibility'),
+                eligibility: hasEvent(events, 'semantic_evidence_coverage_eligibility')
+                  ? latestEventData(events, 'semantic_evidence_coverage_eligibility') : null,
                 abstention: hasEvent(events, 'semantic_evidence_coverage_abstained')
                   ? latestEventData(events, 'semantic_evidence_coverage_abstained') : null,
+                ...(budgetCompletion.length > 0 ? { registeredMaterialBudgetCompletion: budgetCompletion } : {}),
               }, 1_000, tracker, 'aiInterpreter.input.evidenceCoverageAudit'),
             }
           : {}),

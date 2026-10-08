@@ -428,6 +428,8 @@ function branchBasisProjection(value: unknown): Record<string, unknown> {
 
 function projectStageData(stage: string, value: unknown): unknown {
   const data = record(value);
+  if (stage === 'semantic_orchestrator_route'
+    && data.route === 'audit_authored_registered_material_timebox') return compactUnknown(data);
   switch (stage) {
     case 'semantic_evidence_coverage_eligibility':
     case 'semantic_evidence_coverage_abstained':

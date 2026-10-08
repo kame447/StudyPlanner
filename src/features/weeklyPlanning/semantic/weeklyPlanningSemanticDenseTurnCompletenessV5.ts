@@ -1,10 +1,19 @@
+import {
+  applyValidatedRegisteredMaterialBudgetCompletionV5,
+  parseRegisteredMaterialBudgetCompletionV5,
+  registeredMaterialBudgetAccountsForAllOmissionsV5,
+  registeredMaterialBudgetAuditFormatV5,
+  registeredMaterialBudgetAuditLabelsV5,
+  REGISTERED_MATERIAL_BUDGET_AUDIT_INSTRUCTION_V5,
+} from './weeklyPlanningRegisteredMaterialBudgetCompletionV5';
+import { validateWeeklyPlanningSemanticCompletenessPreservationV5, type WeeklyPlanningSemanticCompletenessAbstentionV5 } from './weeklyPlanningSemanticCompletenessPreservationV5';
 import { isWeeklyPlanningTurnDispatchBudgetExceeded } from '../application/weeklyPlanningTurnDispatchBudget';
 import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
 import {
   measureWeeklyPlanningSemanticEvidenceCoverageV5,
   type WeeklyPlanningSemanticEvidenceCoverageV5,
 } from './weeklyPlanningSemanticEvidenceCoverageV5';
-import { hasWeeklyPlanningEvidenceCoverageMissingEffortV5 } from './weeklyPlanningSemanticEvidenceCoverageNeedV5';
+import { hasWeeklyPlanningEvidenceCoverageMissingEffortV5, hasWeeklyPlanningEvidenceCoverageTaskModificationV5 } from './weeklyPlanningSemanticEvidenceCoverageNeedV5';
 import type {
   ChatMessage,
   JsonSchemaResponseFormat,
@@ -143,13 +152,14 @@ export function createDenseTurnCompletenessRetryMessagesV5(params: {
 function completenessAuditFailureResult(params: {
   run: WeeklyPlanningSemanticNormalizerRunV5;
   providerError: string;
+  repairAttempted?: boolean;
 }): WeeklyPlanningSemanticNormalizerResultV5 {
   const result: WeeklyPlanningSemanticNormalizerResultV5 = {
     status: 'provider_failure',
     document: null,
     diagnostics: params.run.diagnostics({
       attemptCount: 1,
-      repairAttempted: false,
+      repairAttempted: Boolean(params.repairAttempted),
       validationErrors: [],
       providerError: params.providerError,
     }),
@@ -166,7 +176,9 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
   baseMessages: ChatMessage[];
   initialResponse: string;
   initialDocument: WeeklyPlanningSemanticDocumentV5;
+  semanticRepairConsumed?: () => boolean;
 }): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
+  const initialAlgorithmicRepairs = [...params.run.algorithmicRepairs];
   const dense = denseTurnCompletenessAuditEligibleV5(params.run.input.userText);
   let evidenceCoverageEligibility = !dense
     && conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs
@@ -178,6 +190,8 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     ...evidenceCoverageEligibility,
     eligible: hasWeeklyPlanningEvidenceCoverageMissingEffortV5({
       document: params.initialDocument, committedGraph: params.run.input.committedGraph,
+    }) || hasWeeklyPlanningEvidenceCoverageTaskModificationV5({
+      document: params.initialDocument, committedGraph: params.run.input.committedGraph,
     }),
   };
   if (evidenceCoverageEligibility) recordWeeklyPlanningStableV5DebugTrace({
@@ -186,7 +200,7 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     data: evidenceCoverageEligibility,
   });
   if (!dense && !evidenceCoverageEligibility?.eligible) return null;
-  const abstain = (reason: 'provider_failure' | 'malformed_audit_response' | 'dispatch_budget_exhausted', step: 'audit' | 'retry') => {
+  const abstain = (reason: 'provider_failure' | 'malformed_audit_response' | 'dispatch_budget_exhausted' | 'initial_facts_not_preserved' | 'repair_budget_consumed', step: 'audit' | 'retry') => {
     if (!evidenceCoverageEligibility) return;
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: params.run.input.traceRequestId,
@@ -195,11 +209,48 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     });
   };
 
+  const retainsInitialFacts = (document: WeeklyPlanningSemanticDocumentV5) => !evidenceCoverageEligibility
+    || validateWeeklyPlanningSemanticCompletenessPreservationV5({
+      userText: params.run.input.userText, initialDocument: params.initialDocument, retryDocument: document,
+    }).length === 0;
+  const retainedInitialResult = (attemptCount: number, repairAttempted: boolean, reason: WeeklyPlanningSemanticCompletenessAbstentionV5['reason'] = 'initial_facts_not_preserved') => {
+    abstain(reason, 'retry');
+    // Keep the actual accepted floor in the existing validation slot. Persisted
+    // diagnostics retain only two validation results; raw responses keep the retry.
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: params.run.input.traceRequestId, stage: 'semantic_validation_result',
+      severity: 'warn', data: { attempt: `completeness_floor:${reason}`, accepted: true, errors: [], parsedDocument: params.initialDocument, conversationActs: params.initialDocument.conversationActs ?? [] },
+    });
+    const result: WeeklyPlanningSemanticNormalizerResultV5 & { completenessAbstention: WeeklyPlanningSemanticCompletenessAbstentionV5 } = {
+      status: 'accepted', document: params.initialDocument,
+      completenessAbstention: { reason },
+      diagnostics: { ...params.run.diagnostics({ attemptCount, repairAttempted: repairAttempted || Boolean(params.semanticRepairConsumed?.()), validationErrors: [], providerError: null }),
+        algorithmicRepairs: initialAlgorithmicRepairs },
+    };
+    params.run.recordDecision(result, { route: 'completeness_retry_initial_facts_retained' });
+    return result;
+  };
+
   const auditMessages = createDenseTurnCompletenessAuditMessagesV5({
     userText: params.run.input.userText,
     candidateDocument: params.initialDocument,
     evidenceCoverageEligibility,
   });
+  const budgetLabels = conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs
+    && ['create_plan', 'update_plan'].includes(params.initialDocument.planningIntent)
+    ? registeredMaterialBudgetAuditLabelsV5(params.run.input.publicStateSummary) : [];
+  const budgetAuditEnabled = budgetLabels.length > 0;
+  if (budgetAuditEnabled) {
+    // Only the named exception can author meaning; other coverage findings stay advisory.
+    auditMessages[0] = { ...auditMessages[0], content: auditMessages[0].content.replace(
+      'Audit semantic coverage only. Do not schedule, repair, rewrite, or add meaning.',
+      'Audit semantic coverage. Do not schedule, repair or rewrite candidateDocument. Only the named registered-material timebox exception below may author an additive semantic candidate.',
+    ) + '\n' + REGISTERED_MATERIAL_BUDGET_AUDIT_INSTRUCTION_V5 };
+    const auditInput = JSON.parse(auditMessages[1].content) as Record<string, unknown>;
+    auditMessages[1] = { ...auditMessages[1], content: JSON.stringify({ ...auditInput,
+      registeredMaterialLabels: budgetLabels, acceptedTasks: params.run.input.publicStateSummary?.tasks ?? [],
+    }) };
+  }
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.run.input.traceRequestId,
     stage: 'semantic_orchestrator_route',
@@ -218,7 +269,9 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     auditRawResponse = await params.run.callTracked({
       messages: auditMessages,
       temperature: 0,
-      responseFormat: DENSE_TURN_COMPLETENESS_AUDIT_RESPONSE_FORMAT_V5,
+      responseFormat: budgetAuditEnabled
+        ? registeredMaterialBudgetAuditFormatV5(DENSE_TURN_COMPLETENESS_AUDIT_RESPONSE_FORMAT_V5)
+        : DENSE_TURN_COMPLETENESS_AUDIT_RESPONSE_FORMAT_V5,
       purpose: 'weekly_planning_semantic_normalizer',
       maxCompletionTokens: DENSE_TURN_COMPLETENESS_AUDIT_MAX_COMPLETION_TOKENS,
     }, 'dense_completeness_audit');
@@ -244,6 +297,7 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     });
     return completenessAuditFailureResult({
       run: params.run,
+      repairAttempted: Boolean(params.semanticRepairConsumed?.()),
       providerError: `Dense semantic completeness audit failed: ${semanticNormalizerErrorMessage(error)}`,
     });
   }
@@ -267,10 +321,55 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     }
     return completenessAuditFailureResult({
       run: params.run,
+      repairAttempted: Boolean(params.semanticRepairConsumed?.()),
       providerError: 'Dense semantic completeness audit returned an invalid structured response.',
     });
   }
   if (audit.decision === 'complete') return null;
+
+  const budgetCompletion = budgetAuditEnabled
+    ? parseRegisteredMaterialBudgetCompletionV5(auditRawResponse, audit.missingFacts.length) : null;
+  const applyBudgetCompletion = (document: WeeklyPlanningSemanticDocumentV5, phase: 'initial' | 'reread' | 'repair') => {
+    if (!budgetCompletion) return { document, acceptedOmissionIndexes: [] };
+    const completed = applyValidatedRegisteredMaterialBudgetCompletionV5({
+      document, completion: budgetCompletion, phase,
+      input: {
+        currentUserText: params.run.input.userText, supplementalContext: params.run.input.supplementalContext,
+        selectedStarterTarget: params.run.input.selectedStarterTarget, recentConversation: params.run.input.recentConversation,
+        publicStateSummary: params.run.input.publicStateSummary, committedGraph: params.run.input.committedGraph,
+        conversationArchitecture: params.run.input.conversationArchitecture,
+      },
+    });
+    if (phase !== 'initial' || completed.acceptedOmissionIndexes.length === 0
+      || registeredMaterialBudgetAccountsForAllOmissionsV5(budgetCompletion, completed.acceptedOmissionIndexes)) recordWeeklyPlanningStableV5DebugTrace({
+      requestId: params.run.input.traceRequestId, stage: 'semantic_orchestrator_route',
+      data: { route: 'audit_authored_registered_material_timebox', phase, meaningOwner: 'ai',
+        interpretationAuthor: 'completeness_audit',
+        applied: completed.document !== document && (phase !== 'initial'
+          || registeredMaterialBudgetAccountsForAllOmissionsV5(budgetCompletion, completed.acceptedOmissionIndexes)),
+        decisions: completed.decisions },
+    });
+    return completed;
+  };
+  const finalizeBudgetCompletion = <T extends WeeklyPlanningSemanticNormalizerResultV5>(result: T, phase: 'reread' | 'repair'): T => {
+    if (!result.document || !budgetCompletion) return result;
+    const completed = applyBudgetCompletion(result.document, phase);
+    if (completed.document === result.document) return result;
+    const final = { ...result, document: completed.document };
+    params.run.recordDecision(final, { route: 'audit_authored_registered_material_timebox_after_retention' });
+    return final;
+  };
+  const initialCompletion = applyBudgetCompletion(params.initialDocument, 'initial');
+  if (budgetCompletion && registeredMaterialBudgetAccountsForAllOmissionsV5(
+    budgetCompletion, initialCompletion.acceptedOmissionIndexes,
+  )) {
+    const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+      status: 'accepted', document: initialCompletion.document,
+      diagnostics: params.run.diagnostics({ attemptCount: 2, repairAttempted: Boolean(params.semanticRepairConsumed?.()), validationErrors: [], providerError: null }),
+    };
+    params.run.recordDecision(result, { route: 'audit_authored_registered_material_timebox' });
+    return result;
+  }
 
   const retryMessages = createDenseTurnCompletenessRetryMessagesV5({
     baseMessages: params.baseMessages,
@@ -306,7 +405,7 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
       document: null,
       diagnostics: params.run.diagnostics({
         attemptCount: 2,
-        repairAttempted: false,
+        repairAttempted: Boolean(params.semanticRepairConsumed?.()),
         validationErrors: [],
         providerError: semanticNormalizerErrorMessage(error),
       }),
@@ -331,6 +430,14 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     },
   );
   params.run.addAlgorithmicRepairs(retryValidation.algorithmicRepairs);
+  const retentionErrors = evidenceCoverageEligibility && retryValidation.document
+    ? validateWeeklyPlanningSemanticCompletenessPreservationV5({
+        userText: params.run.input.userText, initialDocument: params.initialDocument, retryDocument: retryValidation.document,
+      }) : [];
+  if (retryValidation.document && retentionErrors.length > 0) return finalizeBudgetCompletion(retainedInitialResult(2, false), 'reread');
+  if (!retryValidation.document && conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs && params.semanticRepairConsumed?.()) {
+    return finalizeBudgetCompletion(retainedInitialResult(2, true, 'repair_budget_consumed'), 'reread');
+  }
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.run.input.traceRequestId,
     stage: 'semantic_validation_result',
@@ -345,21 +452,25 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
   });
 
   if (!retryValidation.document) {
-    return runGenericSemanticRepairRouteV5({
+    const repaired = await runGenericSemanticRepairRouteV5({
       run: params.run,
       baseMessages: params.baseMessages,
       initialResponse: retryResponse,
       initialValidation: retryValidation,
       attemptCountBeforeRepair: 2,
     });
+    if (repaired.status === 'accepted' && repaired.document && !retainsInitialFacts(repaired.document)) {
+      return finalizeBudgetCompletion(retainedInitialResult(repaired.diagnostics.attemptCount, repaired.diagnostics.repairAttempted), 'repair');
+    }
+    return finalizeBudgetCompletion(repaired, 'repair');
   }
 
   const result: WeeklyPlanningSemanticNormalizerResultV5 = {
     status: 'accepted',
-    document: retryValidation.document,
+    document: applyBudgetCompletion(retryValidation.document, 'reread').document,
     diagnostics: params.run.diagnostics({
       attemptCount: 2,
-      repairAttempted: false,
+      repairAttempted: Boolean(params.semanticRepairConsumed?.()),
       validationErrors: [],
       providerError: null,
     }),

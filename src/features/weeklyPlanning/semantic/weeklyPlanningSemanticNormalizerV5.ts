@@ -209,6 +209,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           baseMessages,
           initialResponse,
           initialDocument: initialValidation.document,
+          semanticRepairConsumed: () => weeklyPlanningSemanticRepairConsumedV5(run),
         });
         if (denseCompletenessRetry) return finish(denseCompletenessRetry);
 
