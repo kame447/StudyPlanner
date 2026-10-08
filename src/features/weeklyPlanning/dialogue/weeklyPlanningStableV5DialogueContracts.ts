@@ -1,3 +1,4 @@
+import type { WeeklyPlanningScheduleCommunicationIntent } from '../application/weeklyPlanningFixedEventOnlyInteraction';
 import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import type { WeeklyPlanningConsultationCommunication } from '../application/weeklyPlanningConsultationCommunication';
 import type { WeeklyPlanningPreviewConstraintSatisfaction } from '../application/weeklyPlanningPreviewConstraintSatisfaction';
@@ -44,6 +45,9 @@ export const WEEKLY_PLANNING_STABLE_V5_QUESTION_PURPOSES = [
   'skip_already_finished_work',
   'choose_scope_for_this_plan',
   'identify_work_to_schedule',
+  'confirm_existing_schedule',
+  'register_event',
+  'clarify_schedule_request',
   'find_more_work_or_constraints',
   'identify_which_work_and_how_much',
   'resolve_unclear_detail',
@@ -76,6 +80,7 @@ export type WeeklyPlanningStableV5QuestionPurpose =
  * code decides WHAT has to be communicated; the renderer decides HOW to say it.
  */
 export interface WeeklyPlanningStableV5CommunicationContext {
+  scheduleIntent?: WeeklyPlanningScheduleCommunicationIntent;
   goal: WeeklyPlanningStableV5CommunicationGoal;
   /** Why the planner needs what the asked/explained question requests (empty without one). */
   questionPurposes: WeeklyPlanningStableV5QuestionPurpose[];
@@ -247,7 +252,14 @@ export type WeeklyPlanningStableV5DialogueLearningStrategyProposalIntent =
   | WeeklyPlanningStableV5DialoguePaceCalibrationProposalIntent
   | WeeklyPlanningStableV5DialogueMixedAcquisitionReviewProposalIntent;
 
+export interface WeeklyPlanningStableV5DialogueScheduleQuestionIntent {
+  kind: 'schedule_request';
+  purpose: Exclude<WeeklyPlanningScheduleCommunicationIntent, 'identify_study_work'>;
+  requestedInformation: readonly ['schedule_request'];
+}
+
 export type WeeklyPlanningStableV5DialogueQuestionIntent =
+  | WeeklyPlanningStableV5DialogueScheduleQuestionIntent
   | WeeklyPlanningStableV5DialogueEffortQuestionIntent
   | WeeklyPlanningStableV5DialogueSchedulableWorkQuestionIntent
   | WeeklyPlanningStableV5DialogueResolutionQuestionIntent

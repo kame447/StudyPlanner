@@ -1,5 +1,6 @@
 import { act, create } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
+import { ADD_SCHEDULE_CONTROL_LABEL } from './quickAddMenuLabels';
 import { QuickAddMenu } from './QuickAddMenu';
 
 describe('QuickAddMenu', () => {
@@ -30,6 +31,7 @@ describe('QuickAddMenu', () => {
       .findAllByProps({ className: 'quick-add-option-label' })
       .map((label) => label.children.join(''));
     expect(labels).toEqual(['AI計画', '学習を追加', '予定を追加']);
+    expect(labels[2]).toBe(ADD_SCHEDULE_CONTROL_LABEL);
     expect(actions.map((action) => action.props.style['--quick-add-index'])).toEqual([2, 1, 0]);
 
     act(() => {

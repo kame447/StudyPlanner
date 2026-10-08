@@ -1,3 +1,4 @@
+import { ADD_SCHEDULE_CONTROL_LABEL } from '../../../components/quickAddMenuLabels';
 import type { WeeklyPlanningStableV5CommunicationContext } from './weeklyPlanningStableV5DialogueContracts';
 import { WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL } from './weeklyPlanningStableV5DialogueContext';
 import { weeklyPlanningPreviewConstraintDisclosureText, weeklyPlanningPreviewOmissionDisclosureText } from './weeklyPlanningPreviewOmissionDisclosure';
@@ -75,10 +76,16 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
 }): string {
   const { communication } = params;
   const controlLabel = params.previewPromotionControlLabel ?? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL;
+  const scheduleQuestion = communication.scheduleIntent === 'confirm_existing_schedule'
+    ? 'すでにどんな予定がありますか？'
+    : communication.scheduleIntent === 'register_event'
+      ? 'どんな予定を入れたいですか？'
+      : communication.scheduleIntent === 'clarify_schedule_request'
+        ? 'どのような予定を立てたいですか？' : null;
   const question = communication.askQuestion
     ? (params.questionCode === 'insufficient_capacity'
         ? `${params.groundingNote}${CAPACITY_SHORTFALL}`
-        : params.questionText)
+        : (params.questionCode === 'missing_schedulable_work' ? scheduleQuestion : null) ?? params.questionText)
     : '';
   let main: string;
   switch (communication.goal) {
@@ -103,7 +110,11 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
       break;
     case 'report_status':
       main = `${params.groundingNote}${
-        communication.statusReason === 'ready_to_create_preview'
+        communication.statusReason === 'fixed_event_manual_entry'
+          ? `この固定予定はここでは追加・保存できません。「${ADD_SCHEDULE_CONTROL_LABEL}」から入力してください。`
+          : communication.statusReason === 'no_additional_work'
+            ? 'わかりました。'
+            : communication.statusReason === 'ready_to_create_preview'
           ? READY_TO_CREATE_PREVIEW
           : communication.statusReason === 'preview_unchanged'
             ? previewUnchangedText(controlLabel)

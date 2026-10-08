@@ -1,3 +1,4 @@
+import { fixedEventOnlyInteractionStatus } from './weeklyPlanningFixedEventOnlyInteraction';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import type { GenericSchedulerInput } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import type { WeeklyPlanningStableV5PreviewSchedulerResult } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
@@ -90,6 +91,8 @@ function routeBeforePreview(params: {
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
   graph: WeeklyPlanningFactGraphV5;
   evaluation: WeeklyPlanningStableV5PlanningEvaluation;
+  declinedAdditionalWork?: boolean;
+  requestedEventRegistration?: boolean;
 }): WeeklyPlanningStableV5PrePreviewRoute {
   const { input, graph, evaluation } = params;
   const {
@@ -176,6 +179,28 @@ function routeBeforePreview(params: {
       severity: 'warn',
     });
     return respond(output);
+  }
+
+  // Required questions above retain precedence. A fixed-only plan has no candidate
+  // creation path: close only the otherwise optional invitation for more work.
+  const eventStatus = fixedEventOnlyInteractionStatus({
+    architecture: input.conversationArchitecture, graph, compilation, semanticChanged,
+    previousQuestionSlot: input.previousState?.lastQuestionContext?.targetSlot,
+    declinedAdditionalWork: params.declinedAdditionalWork === true,
+    requestedEventRegistration: params.requestedEventRegistration === true,
+    previousOptionalInvitationClosed: input.previousState?.status === 'needs_scope'
+      && !input.previousState.lastQuestionContext,
+  });
+  if (eventStatus) {
+    const output = projectStableV5CompatibilityOutput({
+      previousState: input.previousState, userText: input.userText, message: '',
+      draftCandidates: [], authorized: false, groundingRecords,
+      repairAgenda: repairDecision.agenda,
+      learningStrategyProposalRecords: learningStrategyProposals.records,
+    });
+    traceRuntimeBranch({ requestId: input.traceRequestId, branch: eventStatus,
+      basis: { compilationStatus: compilation.status, fixedReservationCount: schedulerInput?.fixedTaskReservations.length ?? 0 }, output });
+    return respond(output, eventStatus);
   }
 
   if (dialogue.status === 'nothing_to_schedule' || !schedulerInput) {

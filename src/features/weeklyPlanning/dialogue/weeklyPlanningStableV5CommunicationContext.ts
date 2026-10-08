@@ -109,6 +109,7 @@ export function questionPurposesForStableV5Dialogue(params: {
   questionIntent: WeeklyPlanningStableV5DialogueQuestionIntent | null | undefined;
 }): WeeklyPlanningStableV5QuestionPurpose[] {
   const intent = params.questionIntent;
+  if (intent?.kind === 'schedule_request') return [intent.purpose];
   if (intent?.kind === 'effort_measurement') {
     return intent.measurement === 'session_duration'
       ? ['set_session_length']
@@ -156,7 +157,9 @@ export function communicationContextForStableV5Dialogue(params: {
   questionCode: string | null;
   questionIntent: WeeklyPlanningStableV5DialogueQuestionIntent | null | undefined;
 }): WeeklyPlanningStableV5CommunicationContext {
-  const goal = goalFor(params.outcome, params.actionKind);
+  // A routed terminal invitation/handoff must be presented even beside an aside act.
+  const goal = params.facts?.statusReason === 'fixed_event_manual_entry' || params.facts?.statusReason === 'no_additional_work'
+    ? 'report_status' : goalFor(params.outcome, params.actionKind);
   const askQuestion = params.actionKind === 'question';
   const questionPurposes = askQuestion
     ? questionPurposesForStableV5Dialogue({
@@ -174,6 +177,7 @@ export function communicationContextForStableV5Dialogue(params: {
     .slice(0, LATER_NEEDS_LIMIT);
   return {
     goal,
+    ...(params.facts?.scheduleIntent ? { scheduleIntent: params.facts.scheduleIntent } : {}),
     questionPurposes,
     askQuestion,
     laterNeeds,

@@ -1,3 +1,4 @@
+import type { WeeklyPlanningScheduleCommunicationIntent } from './weeklyPlanningFixedEventOnlyInteraction';
 import type { WeeklyPlanningConsultationCommunication } from './weeklyPlanningConsultationCommunication';
 import type { WeeklyPlanningPreviewConstraintSatisfaction } from './weeklyPlanningPreviewConstraintSatisfaction';
 import type { WeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
@@ -52,7 +53,11 @@ export type WeeklyPlanningTurnStatusReason =
   /** Everything needed is known; a draft schedule is made when the user asks for it. */
   | 'ready_to_create_preview'
   /** An existing draft schedule stays as it is (nothing in this turn changed it). */
-  | 'preview_unchanged';
+  | 'preview_unchanged'
+  /** Fixed commitments are busy-time evidence, not savable event candidates. */
+  | 'fixed_event_manual_entry'
+  /** Acknowledgement after the one-time event-entry handoff; no further invitation. */
+  | 'no_additional_work';
 
 /** Work the scheduler left out of a preview: all of it, or only the part that did not fit. */
 export interface WeeklyPlanningPreviewOmittedWork {
@@ -66,6 +71,7 @@ export interface WeeklyPlanningPreviewOmittedWork {
  * never read back as planning truth. Absent in the legacy architecture.
  */
 export interface WeeklyPlanningTurnCommunicationFacts {
+  scheduleIntent?: WeeklyPlanningScheduleCommunicationIntent;
   /** Accepted preferences compared with the candidates actually shown in this turn. */
   previewConstraintSatisfaction?: WeeklyPlanningPreviewConstraintSatisfaction[];
   allocationBreakdown?: WeeklyPlanningAllocationBreakdown | null;

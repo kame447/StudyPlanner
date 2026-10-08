@@ -1,3 +1,4 @@
+import { ADD_SCHEDULE_CONTROL_LABEL } from '../../../components/quickAddMenuLabels';
 import { evaluatedWeeklyPlanningConsultationDates } from '../application/weeklyPlanningConsultationCommunication';
 import {
   groundedDateExpressionsFromPlanningInformation,
@@ -383,6 +384,16 @@ function validateRenderedText(
     || containsSensitiveValue(text)
   ) {
     return 'unsafe_text';
+  }
+
+  const eventStatus = conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome
+    ? input.communication?.statusReason : null;
+  if ((eventStatus === 'fixed_event_manual_entry' || eventStatus === 'no_additional_work')
+    // Renderer-output requests can be imperative, without a question mark. This
+    // checks its presentation contract; it never interprets the user's message.
+    && (/[?？]|教えて|お聞かせ|ありますか|続けてください/u.test(text) || (eventStatus === 'fixed_event_manual_entry'
+      ? !text.includes(ADD_SCHEDULE_CONTROL_LABEL) : text.includes(ADD_SCHEDULE_CONTROL_LABEL)))) {
+    return 'action_contract_mismatch';
   }
 
   if (missesPreviewPromotionControl(text, input) || mentionsFullyOmittedWork(text, input)) {

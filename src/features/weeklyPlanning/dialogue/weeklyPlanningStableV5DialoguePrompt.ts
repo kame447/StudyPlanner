@@ -1,3 +1,4 @@
+import { ADD_SCHEDULE_CONTROL_LABEL } from '../../../components/quickAddMenuLabels';
 import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
 import type {
   WeeklyPlanningStableV5CommunicationContext,
@@ -117,6 +118,9 @@ const QUESTION_PURPOSE_MEANINGS: Readonly<Record<WeeklyPlanningStableV5QuestionP
   choose_one_time_estimate: 'which of the stated time estimates to use',
   apply_time_limits_to_right_days: 'which days a time limit applies to, so study avoids the right days',
   know_exact_time_range: 'the start and end time, so study can be placed around it',
+  confirm_existing_schedule: 'confirm existing scheduled events; ask about schedules, not study tasks',
+  register_event: 'clarify which event the user wants to add; no registration has occurred',
+  clarify_schedule_request: 'clarify what kind of schedule the user wants; study work is not assumed',
   place_fixed_commitment: 'when a fixed commitment happens, so study stays clear of it',
   resolve_conflicting_day_rule: 'whether a day is allowed or excluded, because both were stated',
   avoid_existing_commitments: 'which existing schedule to treat as busy time',
@@ -164,6 +168,7 @@ function interactionQuestionKindInstructions(
 ): string[] {
   const kind = input.questionIntent?.kind;
   return [
+    ...(kind === 'schedule_request' ? ['schedule_request: purposeに沿って予定について確認する。作業・学習タスクを前提にせず、追加や保存の完了を主張しない。'] : []),
     ...(kind === 'schedulable_work_detail' ? [SCHEDULABLE_WORK_INSTRUCTION] : []),
     ...(kind === 'effort_measurement' ? [EFFORT_MEASUREMENT_INSTRUCTION] : []),
     ...(kind === 'resolution_question' ? [RESOLUTION_QUESTION_INSTRUCTION] : []),
@@ -196,6 +201,10 @@ function interactionCommunicationInstructions(
   return [
     INTERACTION_GOAL_INSTRUCTION,
     INTERACTION_GOAL_INSTRUCTIONS[communication.goal],
+    ...(communication.statusReason === 'fixed_event_manual_entry'
+      ? [`fixed_event_manual_entry: この固定予定はここでは追加・保存できない。一度だけ既存の「${ADD_SCHEDULE_CONTROL_LABEL}」から入力できると案内する。受け取った時刻等は空き時間の参考情報であり登録結果ではない。追加質問や作業の要求はしない。`] : []),
+    ...(communication.statusReason === 'no_additional_work'
+      ? ['no_additional_work: 短く受け止めて会話を閉じる。追加の質問・作業の要求・登録案内の繰り返し・保存の主張はしない。'] : []),
     ...(communication.askQuestion ? ['askQuestion=true: その質問は「？」で終わる形で一度だけ聞く。'] : []),
     ...(hasSelfRepair
       ? ['ACK acceptedFacts.selfRepair (this turn’s before→after correction) briefly before continuing.']

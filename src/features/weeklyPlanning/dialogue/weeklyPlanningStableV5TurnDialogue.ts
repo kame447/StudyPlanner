@@ -311,7 +311,12 @@ function createRenderInput(params: {
     actionId: params.result.state.lastQuestionContext?.actionId ?? null,
     proposalRecords: params.result.state.learningStrategyProposalRecords ?? [],
   });
-  const questionIntent = proposalIntent ?? questionIntentForStableV5Dialogue({
+  const scheduleIntent = interaction && params.questionCode === 'missing_schedulable_work'
+    ? params.result.communicationFacts?.scheduleIntent : undefined;
+  const questionIntent = scheduleIntent && scheduleIntent !== 'identify_study_work'
+    ? { kind: 'schedule_request' as const, purpose: scheduleIntent,
+        requestedInformation: ['schedule_request'] as const }
+    : proposalIntent ?? questionIntentForStableV5Dialogue({
     questionCode: params.questionCode,
     questionTarget,
     planningInformation,

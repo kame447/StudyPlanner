@@ -20,6 +20,9 @@ import { parseWeeklyPlanningConsultationAlternativeV5, type WeeklyPlanningConsul
 export const WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5 = [
   /** The user is answering the question the machine is waiting for (needs a typed delta). */
   'answer_pending_question',
+  /** No more items to add; closes only an optional fixed-only invitation, never required details. */
+  'decline_additional_work',
+  'request_event_registration',
   /** The user asks why / what the pending question means. */
   'ask_about_pending_question',
   /** The user moves to another topic or an aside. */
@@ -44,6 +47,8 @@ export interface SemanticConversationActV5 {
 
 /** Acts that are valid conversation meaning on their own, without any planning delta. */
 const SELF_SUFFICIENT_ACT_KINDS: readonly WeeklyPlanningConversationActKindV5[] = [
+  'decline_additional_work',
+  'request_event_registration',
   'ask_about_pending_question',
   'topic_shift',
   'resume_topic',
@@ -148,5 +153,7 @@ export function resolveWeeklyPlanningConversationActTargetsV5(params: {
   return { acts, diagnostics };
 }
 
+export const WEEKLY_PLANNING_EVENT_ACT_INSTRUCTION_V5 = 'decline_additional_work=no more items; request_event_registration=add a fixed event; neither saves.';
+
 /** Interaction-only semantic instruction; legacy policy never includes this rule. */
-export const WEEKLY_PLANNING_CONVERSATION_ACT_INSTRUCTION_V5 = 'conversationActs add non-mutating meaning: ask_about_pending_question (why/what; no fact), topic_shift, resume_topic, consultation_request (advice), answer_pending_question (with delta). targetPublicId=existing task/component or null; plain planning=[]. Keep independent facts. Consultation-only placementAlternative={scope:task|plan,dateExpressions:canonical days,sourceText:current quote}, else null; weekdays use accepted horizon. Hypothetical days are not planning facts.';
+export const WEEKLY_PLANNING_CONVERSATION_ACT_INSTRUCTION_V5 = 'conversationActs add non-mutating meaning: ask_about_pending_question (why/what; no fact), topic_shift, resume_topic, consultation_request (advice), answer_pending_question (with delta). targetPublicId=existing task/component or null; plain planning=[]. Keep independent facts. Consultation-only placementAlternative={scope:task|plan,dateExpressions:canonical days,sourceText:current quote}, else null; weekdays use accepted horizon. Hypothetical days are not planning facts.' + ' ' + WEEKLY_PLANNING_EVENT_ACT_INSTRUCTION_V5;

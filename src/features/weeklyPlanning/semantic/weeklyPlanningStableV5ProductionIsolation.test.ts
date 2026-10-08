@@ -39,6 +39,8 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/weeklyPlanningLegacyFailurePresentation.ts',
   // Interaction layer: typed conversation acts + question identity over the graph; no raw text.
   'application/weeklyPlanningInteractionDecision.ts',
+  // Interaction layer: read-only compiled fixed-event state and optional question presentation.
+  'application/weeklyPlanningFixedEventOnlyInteraction.ts',
   // Interaction layer: read-only consultation evidence from the actual preview result (type-only).
   'application/weeklyPlanningConsultationCommunication.ts',
   // Interaction layer: read-only hypothetical placement using the canonical scheduler.

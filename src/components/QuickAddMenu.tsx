@@ -1,3 +1,4 @@
+import { ADD_SCHEDULE_CONTROL_LABEL } from './quickAddMenuLabels';
 import { BookOpenCheck, CalendarPlus, Plus, Sparkles } from 'lucide-react';
 import {
   useEffect,
@@ -27,7 +28,7 @@ const ACTIONS = [
   },
   {
     id: 'schedule',
-    label: '予定を追加',
+    label: ADD_SCHEDULE_CONTROL_LABEL,
     icon: CalendarPlus,
   },
 ] as const;

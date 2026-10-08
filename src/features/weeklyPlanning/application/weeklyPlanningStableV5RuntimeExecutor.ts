@@ -1,3 +1,4 @@
+import { isExistingScheduleQuestion, scheduleCommunicationIntent } from './weeklyPlanningFixedEventOnlyInteraction';
 import { evaluateWeeklyPlanningConsultationAlternative, type WeeklyPlanningConsultationAlternativeEvidence } from './weeklyPlanningConsultationAlternativeEvaluation';
 import {
   withWeeklyPlanningProvisionalTimeboxStateV5,
@@ -99,6 +100,11 @@ function communicationFacts(params: {
         })
       : null,
     statusReason: params.statusReason,
+    ...(isExistingScheduleQuestion(code) ? { scheduleIntent: 'confirm_existing_schedule' as const } : {}),
+    ...(code === 'missing_schedulable_work' || params.statusReason === 'fixed_event_manual_entry'
+      || params.statusReason === 'no_additional_work'
+      ? { scheduleIntent: params.statusReason === 'fixed_event_manual_entry'
+          ? 'register_event' as const : scheduleCommunicationIntent(params.evaluation.activeGraph) } : {}),
     upcomingQuestionCodes: upcomingQuestionCodesForInteraction({
       evaluation: params.evaluation,
       presented: code ? { code, factId: context?.topicId ?? null } : null,
@@ -167,6 +173,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     input,
     graph: semantic.graph,
     evaluation: routingEvaluation,
+    declinedAdditionalWork: semantic.normalization.document?.conversationActs?.some(act => act.kind === 'decline_additional_work'),
+    requestedEventRegistration: semantic.normalization.document?.conversationActs?.some(act => act.kind === 'request_event_registration'),
   });
   if (responseRoute.kind === 'respond') {
     const output = withProvisionalTimeboxState({
