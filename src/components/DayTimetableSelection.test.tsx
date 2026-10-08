@@ -23,7 +23,7 @@ let props: ComponentProps<typeof DayView>;
 beforeEach(() => {
   vi.stubGlobal('window', { addEventListener: noop, removeEventListener: noop, setTimeout, clearTimeout,
     matchMedia: () => ({ matches: true }) });
-  vi.stubGlobal('document', { body: {} });
+  vi.stubGlobal('document', Object.assign(new EventTarget(), { body: {} }));
   props = { selectedDate: '2026-10-05', userId: 'owner', plans: [plan], actuals: [], monthEvents: [],
     studySubjects: [], studyMaterials: [], scheduleTemplates: [template], timetableTermId: term.id, timetableTerm: term, timetableTerms: [term],
     onChangeDay: vi.fn(), onEditPlan: vi.fn(), onMovePlan: vi.fn(async () => undefined), onDeletePlan: vi.fn(async () => undefined),
