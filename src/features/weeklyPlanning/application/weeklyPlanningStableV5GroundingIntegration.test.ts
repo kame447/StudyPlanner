@@ -118,7 +118,9 @@ describe('Stable V5 planning-window grounding integration', () => {
     });
 
     expect(result.message).toContain('8月17日〜23日');
-    expect(result.message).toContain('教えてください');
+    // interaction_v1 (default): moves on with the general schedule question, never 「作業」.
+    expect(result.message).toContain('どのような予定を立てたいですか？');
+    expect(result.message).not.toContain('作業');
     expect(result.state.groundingRecords).toEqual([
       expect.objectContaining({
         status: 'proposed', targetFactId: expect.any(String),

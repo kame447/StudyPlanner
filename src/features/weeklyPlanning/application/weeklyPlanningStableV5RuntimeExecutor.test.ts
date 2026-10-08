@@ -595,9 +595,9 @@ describe('Stable V5 runtime executor', () => {
         intent: 'missing_task_identity',
       },
     });
-    expect(result.message).toBe(
-      '予定に入れる作業がまだありません。まず一つ、何を進めたいか教えてください。',
-    );
+    // interaction_v1 (default): a general schedule invitation from typed state, never 「作業」.
+    expect(result.message).toBe('どのような予定を立てたいですか？');
+    expect(result.message).not.toContain('作業');
     expect(result.message).not.toContain('構造化結果を安全に採用できませんでした');
     expect(result.draftCandidates).toEqual([]);
 
