@@ -2,7 +2,10 @@ import { mkdir } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 const VIEWPORTS = [
+  { name: 'small-phone-320x568', width: 320, height: 568 },
   { name: 'mobile-390x844', width: 390, height: 844 },
+  { name: 'mobile-393x852', width: 393, height: 852 },
+  { name: 'short-landscape-852x393', width: 852, height: 393 },
   { name: 'desktop-1280x720', width: 1280, height: 720 },
   { name: 'tablet-1024x1366', width: 1024, height: 1366 },
 ];

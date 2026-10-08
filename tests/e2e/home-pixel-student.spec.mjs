@@ -72,8 +72,12 @@ for (const { zone, offset } of [{ zone: 'Asia/Tokyo', offset: '+09:00' }, { zone
       await nav.getByRole('button', { name: '予定', exact: true }).click();
       await nav.getByRole('button', { name: 'ホーム', exact: true }).click();
       await expect(student(page)).toHaveAttribute('data-pixel-student', 'studying');
+      // Use the same deterministic registration boundary for the reload's
+      // minute timer while still verifying an already-active mount.
+      await page.clock.pauseAt(instant('10:20:59'));
       await page.reload(); await expect(student(page)).toHaveAttribute('data-pixel-student', 'studying');
-      await page.clock.pauseAt(instant('10:20:59')); await page.clock.runFor(1000);
+      expect(await page.evaluate(() => Date.now())).toBe(instant('10:20:59').getTime());
+      await page.clock.runFor(1000);
       await expect(student(page)).toHaveCount(0);
       await expect(page.locator('.home-next-card h1')).toHaveText('later');
       await page.clock.runFor(60_000); await expect(student(page)).toHaveAttribute('data-pixel-student', 'entering');

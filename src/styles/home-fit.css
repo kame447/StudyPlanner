@@ -364,8 +364,18 @@
  * leaves too little block size for all cards at once. Only the Home body
  * scrolls; the shared header and footer keep their fixed viewport slots. */
 @media (max-width: 336px) and (max-height: 640px), (max-height: 480px) {
+  .app-shell.home-app-shell:has(> .home-main > .home-dashboard-default) {
+    /* Unlike hidden, clip cannot pan the persistent chrome when focus or
+     * scrollIntoView walks through the body's ancestors. */
+    overflow: clip;
+  }
+
   .home-main > .home-dashboard-default {
     display: block;
+    box-sizing: border-box;
+    /* Preserve the existing 3px outline + 2px offset at the scroll boundary. */
+    padding: 5px;
+    scroll-padding: 5px;
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
