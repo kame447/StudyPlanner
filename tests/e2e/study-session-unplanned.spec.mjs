@@ -171,9 +171,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
 }
 
 // Preserve the original two-width, two-motion rapid-start/save coverage independently
-// of the phase-navigation precondition. The second click reaches the new pause control.
+// of the phase-navigation precondition. The gesture may leave the same timer running
+// or paused; assert that exact state set before normalizing it.
 for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
-  for (const reducedMotion of ['no-preference', 'reduce']) test(`rapid unplanned start resumes its paused timer and saves once at ${viewport.width}px (${reducedMotion})`, async ({ page }) => {
+  for (const reducedMotion of ['no-preference', 'reduce']) test(`rapid unplanned start keeps one timer and saves once at ${viewport.width}px (${reducedMotion})`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     await page.emulateMedia({ reducedMotion });
     await seed(page);
@@ -181,20 +182,44 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     await page.getByRole('button', { name: /勉強を開始/ }).click();
     const ready = page.getByRole('dialog', { name: '学習を開始', exact: true });
     await ready.getByRole('textbox', { name: '勉強する内容' }).fill('連続開始の復習');
+    const originalPane = await ready.locator('.study-session-page').elementHandle();
+    expect(originalPane).not.toBeNull();
     await ready.getByRole('button', { name: 'スタート', exact: true }).dblclick();
     const running = page.getByRole('dialog', { name: '学習中', exact: true });
+    await expect(page.locator('.study-session-overlay')).toHaveCount(1);
     await expect(page.locator('.study-session-page')).toHaveCount(1);
+    await expect(running).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'スタート', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: '学習を開始', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: '学習を記録', exact: true })).toHaveCount(0);
+    expect(await originalPane.evaluate(element => element.isConnected && element === document.querySelector('.study-session-page'))).toBe(true);
+    await originalPane.dispose();
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]'))).toEqual([]);
+    const pause = running.getByRole('button', { name: '一時停止', exact: true });
     const resume = running.getByRole('button', { name: '再開', exact: true });
-    await expect(resume).toBeVisible();
-    console.log('Rapid unplanned start state:', { viewport: viewport.width, reducedMotion, control: await resume.innerText() });
+    const toggle = pause.or(resume);
+    await expect(toggle).toHaveCount(1);
+    await expect(toggle).toBeVisible();
+    const control = (await toggle.innerText()).trim();
+    expect(['一時停止', '再開']).toContain(control);
+    const initiallyPaused = control === '再開';
+    await expect(pause).toHaveCount(initiallyPaused ? 0 : 1);
+    await expect(resume).toHaveCount(initiallyPaused ? 1 : 0);
+    await expect(running.getByRole('button', { name: '終了する', exact: true })).toHaveCount(1);
+    console.log('Rapid unplanned start state:', { viewport: viewport.width, reducedMotion, control, initiallyPaused });
     const elapsed = running.locator('[data-study-session-elapsed]');
-    const pausedElapsed = await elapsed.innerText();
+    const initialElapsed = await elapsed.innerText();
     await page.clock.fastForward(5_000);
-    await expect(elapsed).toHaveText(pausedElapsed);
-    await resume.click();
-    await expect(running.getByRole('button', { name: '一時停止', exact: true })).toBeVisible();
+    if (initiallyPaused) await expect(elapsed).toHaveText(initialElapsed);
+    else await expect(elapsed).not.toHaveText(initialElapsed);
+    await attachScreen(page, testInfo, `unplanned-rapid-${initiallyPaused ? 'paused' : 'running'}-${viewport.width}`);
+    if (initiallyPaused) await resume.click();
+    await expect(pause).toBeVisible();
+    await expect(resume).toHaveCount(0);
+    const runningElapsed = await elapsed.innerText();
     await page.clock.fastForward(125_000);
-    await expect(elapsed).not.toHaveText(pausedElapsed);
+    await expect(elapsed).not.toHaveText(runningElapsed);
+    await expect(page.locator('.study-session-page')).toHaveCount(1);
     await running.getByRole('button', { name: '終了する', exact: true }).click();
     const record = page.getByRole('dialog', { name: '学習を記録', exact: true });
     await expectScreenStartsBelowHeader(record);
