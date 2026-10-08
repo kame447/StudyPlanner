@@ -214,7 +214,7 @@ The critic also identified release/acceptance gaps that this campaign does not c
   - a live re-run of the event scenario and live A–H. These are blocked at the moment: the production Firestore project returns `resource-exhausted`, so the app cannot pass its first-use check.
 - **Not in this round:** the unmet ACs 3 and 7 (anaphora across turns; test-fixed recent-context retention). `STABLE_V5_RECENT_TURN_LIMIT` is still 4.
 
-## Round 3: E2E-first results (2026-10-08 20:40 JST)
+## Round 3: E2E-first results (2026-10-08 20:32 JST; corrected 20:45 JST)
 
 Judged by the user's standard: a passing scenario is a provisional confirmation. A fix is root-cause only when it names the common cause and holds on every affected path. Issue #488 is **not complete**.
 
@@ -229,14 +229,17 @@ Judged by the user's standard: a passing scenario is a provisional confirmation.
   | Numeric literal-coverage bound | provisional; literal-span detection |
   | Re-read retention on every interaction route, not only short turns (found by the independent ChatGPT audit) | root-cause for interaction; legacy dense is unresolved |
   | What-if adoption guard and the app-owned unchanged-preview sentence | the app-owned sentence is root-cause for that claim; other output guards stay provisional |
-  | Possible-omission disclosure on the listed completion paths, and an empty reading with an invalid re-read treated as an unusable message | root-cause direction; residuals are listed in the contract |
+  | Possible-omission disclosure on the listed completion paths | root-cause direction. Residuals are listed in the contract. **No live evidence:** the notice never fired in either live run, so its only evidence is synthetic tests. |
+  | An empty reading with an invalid re-read treated as an unusable message | **provisional (path-limited).** Live B T4 on the same HEAD shows the sibling path still open: a *valid* empty re-read with no act is reported as an unchanged plan. |
 
 - **Live E2E:** production account, preview only. Two runs, on `4b431c34` and on `d645068a`. UI and machine state matched on 39/39 turns in each run.
-  - **Passed in both runs:** A, C, E, F, G, EV, X4.
+  - **Passed in both runs:** A, C, F, G, EV, X4.
+  - **E:** the scheduling target passed in both runs, but on `d645068a` every preview title read 「903時間」 for a 3-hour task. That is a pre-existing `main` defect: `weeklyPlanningAcceptedMemorySessionProjectionV5.ts` appends the model's free-text `unitLabel`. Not a clean pass.
   - **Passed in only one run:** B, D, X1, X3.
   - **Failed in both runs:** H (a different mode each time), X2 (pre-existing on `main`), X5.
 - **Final chain on `d645068a`:**
   - verify passed, 7468 tests;
+  - the bundle budget gate fails: JS 2347.6/635.1 KiB against caps of 2207.0/593.8 KiB. Changing the caps is the user's decision;
   - every category passed;
   - weekly-real 10/10;
   - the browser failures are only environment-specific or load-sensitive ones;
@@ -248,6 +251,7 @@ Judged by the user's standard: a passing scenario is a provisional confirmation.
   - a reading with neither a delta nor a conversation act accepted as "unchanged" (B);
   - a presentation title built from the model's free-text unit label (「903時間」);
   - legacy dense re-read loss;
+  - retention compares workloads and components by picking included fields, so a new schema field silently escapes the floor;
   - no idempotency owner;
   - uncommitted context carry-over (ACs 3 and 7);
   - save → reload through real persistence has not been run, because no JDK is installed for the Firestore emulator. The in-memory synthetic save/restore passes.
