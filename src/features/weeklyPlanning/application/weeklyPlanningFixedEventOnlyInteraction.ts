@@ -33,7 +33,10 @@ export function fixedEventOnlyInteractionStatus(params: {
     const busyOnly = active.availabilityDeclarations.some(fact => fact.kind === 'unavailable' && fact.constraintLevel === 'hard');
     // The preceding closed, question-free status is retained by the compatibility state.
     // New planning details reopen ordinary routing; an unchanged acknowledgement does not.
+    const declinedOptionalInvitation = params.declinedAdditionalWork
+      && params.previousQuestionSlot === 'stable_v5:missing_schedulable_work';
     return (busyOnly && params.declinedAdditionalWork)
+      || declinedOptionalInvitation
       || (!params.semanticChanged && params.previousOptionalInvitationClosed)
       ? 'no_additional_work' : null;
   }
