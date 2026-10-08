@@ -137,3 +137,26 @@ The critic also identified release/acceptance gaps that this campaign does not c
 - Live E2E: preview-only on the user's account, approved directly by the user.
 - The old-build deletion fix is its own release unit: `fix/weekly-session-preserve-unreadable` on main `38dabae3`. It must be deployed before this branch.
 - Rules: at most one semantic repair per turn; `legacy_v5` byte-identical; one semantic patch integrated at a time, each followed by the scripted A–H suite and the legacy differential.
+
+## Round 2 handoff checkpoint (2026-10-08): handoff to a fresh orchestrator (user-directed)
+
+- **Code baseline: `584a64ab`.** This docs commit leaves the code unchanged.
+  - Since `e3f74a04`: renderer short action token; exact-public-id duration binding; consultation what-if evidence for an alternative placement; evidenced preview-creation claims; the WS1 merge (`bdcf2325`, unreadable persisted sessions are quarantined, never deleted); the fixed-event-only handoff to 「予定を追加」 with two non-mutating acts; and the repeat-request and consultation follow-ups.
+  - Scripted gates: `npm run verify` green (824 files / 6,926 tests); boundary categories, weekly-real Playwright and the extended legacy differential all unchanged; main browser suite green except the 2 known macOS geometry cases and load-only timeouts that pass alone.
+  - Bundle gate: fails (JS 2291.1 / 618.9 KiB against 2187.5 / 587.9 KiB).
+- **Real-provider evidence differs from the scripted evidence.** Live EV on `584a64ab` still loops.
+  - The model raised a planning-window uncertainty ("tasks"). Replacing the window rejected the correction (active dependent), or left that uncertainty active on the superseded window. Neither the event nor 「特にない」 can resolve it.
+  - The settled fix direction: invalidate a window-targeted uncertainty when the window changes, keep it when the window is identical; interaction-only suspension when a projected compile has no movable work; a write-result invariant only (never the load validator); load tolerance for dangling references. It is unintegrated WIP.
+  - Live A–H have not been re-run on any round-2 tip. Save/reload and the exam-student persona E2E have not been performed.
+- **Unintegrated work at handoff, all frozen as patches with checkpoints:**
+  - EV window fix (WIP);
+  - B focused material/pace answer v4 (WIP; v1–v3 rejected by review);
+  - D(b) re-read retention v2 (review MAJOR open: components and category are not compared);
+  - D run-2 audit complement (prototype);
+  - WS1 size reduction (WIP).
+- **Release blockers:**
+  - WS1 on current main (`da2e60e9`) exceeds the main bundle caps by +722 raw / +437 gzip;
+  - #488 exceeds them by about +100 KB / +30 KB;
+  - per the user's handoff direction, caps may be adjusted only with separately measured performance evidence, and no number is pre-approved;
+  - ACs 3 and 7, and parts of 2 and 4, remain unmet. No close claim.
+- **Full handoff with ownership, artifacts, commands and decisions:** `handoff-to-fresh-orchestrator-20261008.md` in the campaign runtime directory (`issue488-e2e-blocker-campaign-20261007`). The previous orchestrator writes no further code; the next one reuses this branch and Issue.
