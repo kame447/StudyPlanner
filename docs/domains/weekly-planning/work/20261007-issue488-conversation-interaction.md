@@ -193,3 +193,23 @@ The critic also identified release/acceptance gaps that this campaign does not c
   6. the WS1/bundle decision;
   7. final quiet-machine chain and live A–H plus the event scenario (preview only).
 - The detailed live checkpoint (agent names, models, states, hashes) is `tealgoodall-checkpoint.md` in the campaign runtime directory.
+
+## Round 2 resume progress (2026-10-08 14:50 JST)
+
+- **Integrated as local commits**, each after an independent cross-model audit PASS on the exact patch:
+  - `9622bbf9`: merge of `main` `22847120`;
+  - `63b7b113`: material/pace focused answer, plus the one-semantic-repair ledger;
+  - `d282d62a`: intent-aware question wording;
+  - `299d5d06`: two stale wording assertions;
+  - `9ea3b882`: event-window loop fix, plus the quantity-role pace carry. The carry is a documented shared fix that also applies to legacy.
+- **Verification so far:**
+  - The full chain on `d282d62a` was green apart from the stale assertions, which are now fixed. Browser failures there are only the macOS-environment cases that also fail on `main`, plus load-sensitive specs that pass alone. The legacy differential is unchanged.
+  - The full chain on the new tip runs next.
+- **Release:**
+  - The reader-first fix that preserves unreadable sessions is ready on its own branch as a merge with current `main`. It is verified, independently audited, and fits main's recalibrated caps. Push, pull request and merge await the user.
+  - #488 exceeds the JS totals. Measured cold-start cost and a cap option are in the bundle report, for the user to decide.
+- **Open:**
+  - re-read retention v4.1, plus the budget complement;
+  - the empty-invitation decline follow-up;
+  - a live re-run of the event scenario and live A–H. These are blocked at the moment: the production Firestore project returns `resource-exhausted`, so the app cannot pass its first-use check.
+- **Not in this round:** the unmet ACs 3 and 7 (anaphora across turns; test-fixed recent-context retention). `STABLE_V5_RECENT_TURN_LIMIT` is still 4.
