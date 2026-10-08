@@ -2,7 +2,8 @@ import { HomeDisplayClockProvider } from './components/home/HomeDisplayClockCont
 import { useSettingsNavigation } from './hooks/useSettingsNavigation';
 import { HomeSceneAtmosphereProvider } from './components/home/HomeSceneAtmosphereContext';
 import { useHomeScenePreference } from './hooks/useHomeScenePreference';
-import { useRootStartupReady } from './components/RootStartupReadyContext';
+import { RootStartupReadyProvider, useRootStartupReady } from './components/RootStartupReadyContext';
+import { StartupSurface, useStartupContentVisible } from './components/StartupSurface';
 import type { PlannerAppSnapshot } from './components/PlannerAppBootstrap';
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
@@ -90,16 +91,24 @@ export default function App({ state, onReady }: { state?: PlannerAppSnapshot; on
   return state ? <AppContent state={state} onReady={onReady} /> : <StandaloneApp />;
 }
 
+const ignoreStandaloneReady = () => {};
 function StandaloneApp() {
-  const state = usePlannerAppState();
-  return <AppContent state={state} />;
+  const rootOwned = useRootStartupReady() !== null;
+  const parentVisible = useStartupContentVisible();
+  const [standaloneVisible, setStandaloneVisible] = useState(false);
+  const legal = ['/terms', '/privacy', '/contact'].includes(window.location.pathname);
+  const state = usePlannerAppState({ noticeAutoDismiss: rootOwned ? parentVisible : legal || standaloneVisible });
+  if (rootOwned || legal) return <AppContent state={state} />;
+  return <StartupSurface loading={state.booting} onVisibilityChange={setStandaloneVisible}>
+    <RootStartupReadyProvider onReady={ignoreStandaloneReady}><AppContent state={state} /></RootStartupReadyProvider>
+  </StartupSurface>;
 }
 
 function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: () => void }) {
   const markRootStartupReady = useRootStartupReady();
-  useEffect(() => {
-    if (!state.booting) { markRootStartupReady?.(); onReady?.(); }
-  }, [state.booting, markRootStartupReady, onReady]);
+  const startupVisible = useStartupContentVisible();
+  useEffect(() => { if (!state.booting) markRootStartupReady?.(); }, [state.booting, markRootStartupReady]);
+  useEffect(() => { if (!state.booting && startupVisible) onReady?.(); }, [state.booting, startupVisible, onReady]);
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const settingsNavigation = useSettingsNavigation();
   const [quickEntry, setQuickEntry] = useState<{ ownerId: string; id: number; materialId?: string } | null>(null);
@@ -246,7 +255,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
           ? 'workspace-primary-header'
           : 'home-primary-header';
 
-  const canPreloadViews = !booting && appAccessGranted && Boolean(user)
+  const canPreloadViews = startupVisible && !booting && appAccessGranted && Boolean(user)
     && !['/terms', '/privacy', '/contact'].includes(currentPath)
     && isPlannerDataReadyForOwner(plannerDataAvailability, user?.id ?? '');
 
