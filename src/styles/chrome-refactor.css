@@ -135,6 +135,12 @@
   color: var(--home-gray, var(--text-muted));
 }
 
+/* Schedule's legacy zero minimum must not shrink a shared nav button below
+ * its unwrapped label. Match the intrinsic minimum used on every other page. */
+.primary-bottom-nav.schedule-bottom-nav.home-bottom-nav button {
+  min-width: auto;
+}
+
 .primary-bottom-nav button:first-child:not(.active) {
   color: var(--home-gray, var(--text-muted));
 }

@@ -121,13 +121,27 @@ async function readHeaderBounds(page) {
     if (navButtons.length !== 5 || navButtons.some(button => !within(button.getBoundingClientRect(), navBox))) {
       violations.push('navigation button escapes footer');
     }
+    let minimumNavContentWidth = 0;
     for (const button of navButtons) {
       const label = button.querySelector('span:last-child');
       const range = document.createRange();
       range.selectNodeContents(label);
+      const buttonStyle = getComputedStyle(button);
+      minimumNavContentWidth += Math.max(range.getBoundingClientRect().width, button.firstElementChild.getBoundingClientRect().width)
+        + Number.parseFloat(buttonStyle.paddingLeft) + Number.parseFloat(buttonStyle.paddingRight);
       if (!within(range.getBoundingClientRect(), button.getBoundingClientRect())) {
-        violations.push(`navigation label ${label.textContent} escapes button`);
+        violations.push(`navigation label ${label.textContent} escapes button: ${JSON.stringify({
+          label: range.getBoundingClientRect().toJSON(), button: button.getBoundingClientRect().toJSON(),
+          minimum: getComputedStyle(button).minWidth, font: getComputedStyle(label).fontSize,
+          footer: navBox.toJSON(), footerColumns: getComputedStyle(nav).gridTemplateColumns,
+        })}`);
       }
+    }
+    const navStyle = getComputedStyle(nav);
+    const navContentWidth = nav.clientWidth - Number.parseFloat(navStyle.paddingLeft) - Number.parseFloat(navStyle.paddingRight);
+    minimumNavContentWidth += (navButtons.length - 1) * (Number.parseFloat(navStyle.columnGap) || 0);
+    if (minimumNavContentWidth > navContentWidth + 1) {
+      violations.push(`navigation intrinsic minimum ${minimumNavContentWidth} exceeds available ${navContentWidth}`);
     }
     return { violations, texts, headerHeight: headerBox.height };
   });
