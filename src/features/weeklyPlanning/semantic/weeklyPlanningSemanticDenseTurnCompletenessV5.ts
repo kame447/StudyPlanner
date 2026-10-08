@@ -219,7 +219,11 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     });
   };
 
-  const retainsInitialFacts = (document: WeeklyPlanningSemanticDocumentV5) => !evidenceCoverageEligibility
+  // One acceptance boundary for every interaction completeness re-read and its repair, whichever
+  // route selected the audit: literal coverage, the size-gated dense audit or a post-no-op recheck.
+  // Legacy keeps replacing the initial reading (documented residual).
+  const retentionFloor = conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs;
+  const retainsInitialFacts = (document: WeeklyPlanningSemanticDocumentV5) => !retentionFloor
     || validateWeeklyPlanningSemanticCompletenessPreservationV5({
       userText: params.run.input.userText, initialDocument: params.initialDocument, retryDocument: document,
     }).length === 0;
@@ -440,7 +444,7 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     },
   );
   params.run.addAlgorithmicRepairs(retryValidation.algorithmicRepairs);
-  const retentionErrors = evidenceCoverageEligibility && retryValidation.document
+  const retentionErrors = retentionFloor && retryValidation.document
     ? validateWeeklyPlanningSemanticCompletenessPreservationV5({
         userText: params.run.input.userText, initialDocument: params.initialDocument, retryDocument: retryValidation.document,
       }) : [];
