@@ -340,12 +340,19 @@ function validationResults(
   events: readonly WeeklyPlanningStableV5DebugTraceEvent[],
   tracker: TruncationTracker,
 ): WeeklyPlanningTraceAiValidationResult[] {
-  return limitedArray(
-    eventData(events, 'semantic_validation_result'),
+  const results = eventData(events, 'semantic_validation_result');
+  const selected = limitedArray(
+    results,
     NORMAL_LIMITS.validationResults,
     tracker,
     'aiInterpreter.structuredResults',
-  ).map((item, index) => {
+  );
+  const floor = [...results].reverse().find(item => item.accepted === true
+    && stringValue(item.attempt)?.startsWith('completeness_floor:'));
+  // A prior repair may occupy slot two. Keep the initial validation and the
+  // selected floor without increasing the cap or hiding the truncation count.
+  if (floor && !selected.includes(floor)) selected[NORMAL_LIMITS.validationResults - 1] = floor;
+  return selected.map((item, index) => {
     const allErrors = Array.isArray(item.errors)
       ? item.errors.filter((error): error is string => typeof error === 'string')
       : [];

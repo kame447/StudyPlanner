@@ -1,6 +1,7 @@
 import './application/weeklyPlanningStableV5InstrumentedRuntimeExecutor';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { StudyMaterial } from '../../types/domain';
+import type { WeeklyPlanningSemanticDocumentV5 } from './semantic/weeklyPlanningSemanticDocumentV5';
 import captured from './testUtils/weeklyPlanningRound2DurationFixture.json';
 import { createScriptedConversation, installScriptedWeeklyPlanningProvider, resetScriptedConversationRuntime, scriptedRendererReply, type ScriptedConversation } from './testUtils/weeklyPlanningScriptedConversationHarness';
 
@@ -95,4 +96,39 @@ it('keeps legacy effort/timing turns on their exact existing dispatch path', asy
   expect(turn.calls.map(call => call.kind)).toEqual(['semantic_generic', 'renderer']);
   expect(turn.debugTrace.filter(event => event.stage === 'semantic_evidence_coverage_eligibility')).toEqual([]);
   expect(conversation.graph()!.temporalConstraints).toEqual([]);
+});
+
+it.each(['complete_audit', 'recover_preference', 'lossy_reread'] as const)('a whole-turn effort quote cannot mask the omitted preference (%s)', async scenario => {
+  const fixture = captured.omittedNight; let conversation: ScriptedConversation; let followups = 0;
+  const bind = (document: unknown) => JSON.stringify(document).replace(/\$accepted-task-(\d+)/g,
+    (_token, index: string) => conversation.graph()!.tasks[Number(index)].id);
+  provider = installScriptedWeeklyPlanningProvider(call => {
+    if (call.kind === 'renderer') return scriptedRendererReply(call, '候補を確認してください。');
+    if (call.schemaName === 'weekly_planning_dense_turn_completeness_audit_v5') return JSON.stringify({
+      decision: scenario === 'complete_audit' ? 'complete' : 'incomplete', missingFacts: scenario === 'complete_audit' ? [] : ['a stated timing preference'],
+    });
+    if (call.kind === 'semantic_focused_contextual') return JSON.stringify({ decision: 'effort_answer', effortTarget: 'question_target', effortMeasurement: 'duration_per_unit', minutes: 3, precision: 'approximate', quantityRole: null });
+    if (call.payload?.userText === fixture.setupUserText) return JSON.stringify(fixture.setupDocument);
+    const doc = structuredClone(fixture.firstDocument) as WeeklyPlanningSemanticDocumentV5; const reread = followups++ > 0;
+    for (const [index, task] of doc.tasks.entries()) {
+      task.recurrence = [];
+      task.effortEstimates.forEach(estimate => { estimate.sourceText = fixture.followupUserText; });
+      if (reread) task.temporalConstraints = [{ localId: `night-${index}`, targetLocalId: task.localId, kind: 'preferred_window',
+        constraintLevel: 'soft', dateExpression: null, namedTimePeriod: 'night', startTime: null, endTime: null,
+        precision: 'approximate', sourceText: 'どっちも夜がいい' }];
+      if (reread && scenario === 'lossy_reread') task.effortEstimates = [];
+    }
+    return bind(doc);
+  }, { completenessAudit: 'scripted' });
+  conversation = createScriptedConversation({ provider, ownerId: 'duration-capture-owner', architecture: 'interaction_v1', studyMaterials: fixture.materials as StudyMaterial[] });
+  await conversation.submit(fixture.setupUserText); await conversation.submit('1ページ3分くらい');
+  const turn = await conversation.submit(fixture.followupUserText);
+  expect(turn.result?.failure).toBeUndefined();
+  expect(turn.calls.filter(call => call.schemaName === 'weekly_planning_dense_turn_completeness_audit_v5')).toHaveLength(1);
+  expect(turn.calls.filter(call => call.kind === 'semantic_generic')).toHaveLength(scenario === 'complete_audit' ? 1 : 2);
+  expect(turn.debugTrace.filter(event => event.stage === 'semantic_repair_prepared')).toEqual([]);
+  expect(conversation.graph()!.effortEstimates.filter(fact => fact.kind === 'session_duration')).toHaveLength(2);
+  expect(conversation.graph()!.temporalConstraints.filter(fact => fact.kind === 'preferred_window')).toHaveLength(scenario === 'recover_preference' ? 2 : 0);
+  if (scenario === 'recover_preference') expect(conversation.getState().previewCandidates!.every(candidate => candidate.startTime >= '21:00')).toBe(true);
+  if (scenario === 'lossy_reread') expect(turn.debugTrace).toContainEqual(expect.objectContaining({ stage: 'semantic_validation_result', data: expect.objectContaining({ attempt: 'completeness_floor:initial_facts_not_preserved', accepted: true }) }));
 });

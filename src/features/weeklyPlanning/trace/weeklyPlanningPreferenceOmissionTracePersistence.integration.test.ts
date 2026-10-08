@@ -4,6 +4,8 @@ import type { StudyMaterial } from '../../../types/domain';
 import { measureWeeklyPlanningTraceJsonBytes, WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS } from '../../../../shared/weeklyPlanningTraceContract';
 import { prepareWeeklyPlanningTraceServerWrite } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
 import captured from '../testUtils/weeklyPlanningRound2DurationFixture.json';
+import diagnosticBaseline from '../testUtils/weeklyPlanningR27DiagnosticBaseline.json';
+import { createWeeklyPlanningTurnDiagnosticV2 } from './weeklyPlanningTurnDiagnosticV2';
 import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import { createScriptedConversation, installScriptedWeeklyPlanningProvider, resetScriptedConversationRuntime, scriptedRendererReply, type ScriptedConversation } from '../testUtils/weeklyPlanningScriptedConversationHarness';
 import { recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5TraceRuntimeForTest, resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest } from './weeklyPlanningStableV5TraceRuntime';
@@ -19,13 +21,26 @@ let provider: ReturnType<typeof installScriptedWeeklyPlanningProvider>;
 let restoreStorage: () => void;
 afterEach(() => { provider?.restore(); restoreStorage?.(); resetScriptedConversationRuntime(); resetWeeklyPlanningStableV5TraceRuntimeForTest(); setWeeklyPlanningTraceRepositoryForTests(undefined); });
 
-it.each(['recovered', 'malformed_audit', 'lossy_retry'] as const)('persists the preference coverage decision through retry/Worker/future fields (%s)', async scenario => {
+// Synthetic inputs and full serialized outputs generated on archived 3105efa8.
+it.each(diagnosticBaseline)('preserves every $name diagnostic byte without a completeness floor', fixture => {
+  const diagnostic = createWeeklyPlanningTurnDiagnosticV2(fixture.input as Parameters<typeof createWeeklyPlanningTurnDiagnosticV2>[0]);
+  expect(JSON.stringify(diagnostic)).toBe(JSON.stringify(fixture.output));
+});
+
+it.each(['recovered', 'malformed_audit', 'lossy_retry', 'numeric_quote', 'post_noop_numeric_quote', 'post_repair_noop_invalid'] as const)('persists the preference coverage decision through retry/Worker/future fields (%s)', async scenario => {
   const abstain = scenario === 'malformed_audit';
+  const postRepair = scenario === 'post_repair_noop_invalid';
+  const numericQuote = scenario === 'numeric_quote' || scenario === 'post_noop_numeric_quote' || postRepair;
+  const postNoOp = scenario === 'post_noop_numeric_quote' || postRepair;
   const fixture = captured.omittedNight;
+  const coverage = numericQuote
+    ? { eligible: true, coveredCodePoints: 0, maxUncoveredSpanCodePoints: Array.from(fixture.followupUserText).length, excludedNumericSourceCount: 2 }
+    : { eligible: true, maxUncoveredSpanCodePoints: 9 };
   restoreStorage = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
   resetScriptedConversationRuntime(); resetWeeklyPlanningStableV5TraceRuntimeForTest();
   let conversation: ScriptedConversation;
   let followups = 0;
+  let acceptedNoOpRaw: string | undefined;
   const bind = (document: unknown) => JSON.stringify(document)
     .replace(/\$accepted-task-(\d+)/g, (_token, index: string) => conversation.graph()!.tasks[Number(index)].id);
   provider = installScriptedWeeklyPlanningProvider(call => {
@@ -34,9 +49,23 @@ it.each(['recovered', 'malformed_audit', 'lossy_retry'] as const)('persists the 
     if (call.kind === 'semantic_focused_contextual') return JSON.stringify({ decision: 'effort_answer', effortTarget: 'question_target', effortMeasurement: 'duration_per_unit', minutes: 3, precision: 'approximate', quantityRole: null });
     if (call.payload?.userText === fixture.setupUserText) return JSON.stringify(fixture.setupDocument);
     const document = structuredClone(fixture.firstDocument);
-    if (followups++ > 0) for (const [index, task] of document.tasks.entries()) Object.assign(task, { temporalConstraints: [{ localId: `night-${index}`, targetLocalId: task.localId,
+    const followup = followups++;
+    if (postRepair && followup === 0) return 'not-json';
+    if (postNoOp && followup === (postRepair ? 1 : 0)) {
+      for (const task of document.tasks) { task.effortEstimates = []; task.recurrence = []; }
+      return bind(document);
+    }
+    if (numericQuote) for (const task of document.tasks) for (const fact of [...task.effortEstimates, ...task.recurrence]) fact.sourceText = fixture.followupUserText;
+    if (postRepair && followup === 3) document.tasks[0].effortEstimates[0].minutes = -1;
+    if (!postRepair && followup >= (postNoOp ? 2 : 1)) for (const [index, task] of document.tasks.entries()) Object.assign(task, { temporalConstraints: [{ localId: `night-${index}`, targetLocalId: task.localId,
       kind: 'preferred_window', constraintLevel: 'soft', dateExpression: null, namedTimePeriod: 'night', startTime: null, endTime: null, precision: 'approximate', sourceText: 'どっちも夜がいい' }] });
     if (scenario === 'lossy_retry' && followups > 1) for (const task of document.tasks) { task.effortEstimates = []; task.recurrence = []; }
+    if (postNoOp && followup === (postRepair ? 2 : 1)) {
+      document.tasks[0].effortEstimates[0].targetLocalId = conversation.graph()!.workloads[0].id;
+      // The transport trims outer whitespace; internal provider formatting survives.
+      acceptedNoOpRaw = bind(document).replace('{"schemaVersion":', '{ "schemaVersion":');
+      return acceptedNoOpRaw;
+    }
     return bind(document);
   }, { completenessAudit: 'scripted' });
   conversation = createScriptedConversation({ provider, ownerId: OWNER, conversationId: CONVERSATION, architecture: 'interaction_v1', studyMaterials: fixture.materials as StudyMaterial[] });
@@ -45,18 +74,36 @@ it.each(['recovered', 'malformed_audit', 'lossy_retry'] as const)('persists the 
   const turn = await conversation.submit(fixture.followupUserText);
   expect(turn.result?.failure).toBeUndefined();
   const audit = turn.calls.find(call => call.schemaName === 'weekly_planning_dense_turn_completeness_audit_v5')!;
-  expect(audit.payload?.evidenceCoverageEligibility).toMatchObject({ eligible: true, maxUncoveredSpanCodePoints: 9 });
+  expect(audit.payload?.evidenceCoverageEligibility).toMatchObject(coverage);
   const request = turn.debugTrace.find(event => event.stage === 'semantic_provider_request' && (event.data as Json).attempt === 'dense_completeness_audit')!.data as { request: { messages: unknown }; requestBytes: number };
   expect(request.request.messages).toEqual(audit.messages);
-  expect(turn.calls.filter(call => call.kind !== 'renderer')).toHaveLength(abstain ? 2 : 3);
+  expect(turn.debugTrace.filter(event => event.stage === 'semantic_provider_request')
+    .map(event => (event.data as { request: { messages: unknown } }).request.messages))
+    .toEqual(turn.calls.filter(call => call.kind !== 'renderer').map(call => call.messages));
+  expect(turn.calls.map(call => call.schemaName)).toEqual([
+    'weekly_planning_semantic_document_v5',
+    ...(postRepair ? ['weekly_planning_semantic_document_v5'] : []),
+    ...(postNoOp ? ['weekly_planning_semantic_document_v5'] : []),
+    'weekly_planning_dense_turn_completeness_audit_v5',
+    ...(abstain ? [] : ['weekly_planning_semantic_document_v5']),
+    'weekly_planning_stable_v5_dialogue_response',
+  ]);
+  if (postNoOp) {
+    const retry = turn.calls.filter(call => call.schemaName === 'weekly_planning_semantic_document_v5').slice(-1)[0];
+    expect(retry.messages.filter(message => message.role === 'assistant').slice(-1)[0].content).toBe(acceptedNoOpRaw);
+  }
   const events = structuredClone(turn.debugTrace);
-  const eligibility = events.find(event => event.stage === 'semantic_evidence_coverage_eligibility')!.data as Json;
+  const eligibility = events.filter(event => event.stage === 'semantic_evidence_coverage_eligibility').slice(-1)[0].data as Json;
   eligibility.futurePreferenceCoverage = SENTINEL;
+  if (postRepair) {
+    const floor = events.find(event => event.stage === 'semantic_validation_result' && (event.data as Json).attempt === 'completeness_floor:repair_budget_consumed')!;
+    ((floor.data as Json).parsedDocument as Json).futureNumericFloor = SENTINEL;
+  }
   const kept = { userId: OWNER, conversationId: CONVERSATION, requestId: turn.requestId!, userText: fixture.followupUserText,
     assistantMessage: turn.result!.message, responseSource: turn.result!.responseSource, outcome: 'preview', previewCount: turn.result!.draftCandidates.length, debugTraceEvents: events };
   const large = structuredClone(kept);
   large.requestId = `${CONVERSATION}:oversized`;
-  (large.debugTraceEvents.find(event => event.stage === 'semantic_evidence_coverage_eligibility')!.data as Json).futureLargeCoverage = '大'.repeat(30_000);
+  (large.debugTraceEvents.filter(event => event.stage === 'semantic_evidence_coverage_eligibility').slice(-1)[0].data as Json).futureLargeCoverage = '大'.repeat(30_000);
   const writes: Array<{ session: WeeklyPlanningTraceSession; entries: WeeklyPlanningTraceEntry[] }> = [];
   let fail = true;
   const repository: WeeklyPlanningTraceRepository = {
@@ -82,8 +129,21 @@ it.each(['recovered', 'malformed_audit', 'lossy_retry'] as const)('persists the 
       expect(persisted.constraintContext.scheduler?.preview?.candidateCount).toBe(3);
       if (index === 0) {
         const context = persisted.aiInterpreter.input.evidenceCoverageAudit as { eligibility: Json; abstention: Json | null };
-        expect(context.eligibility).toMatchObject({ eligible: true, maxUncoveredSpanCodePoints: 9, futurePreferenceCoverage: SENTINEL });
+        expect(context.eligibility).toMatchObject({ ...coverage, futurePreferenceCoverage: SENTINEL });
+        if (scenario === 'post_noop_numeric_quote') {
+          const response = persisted.aiInterpreter.rawResponses.find(response => response.attempt === 'completeness_retry');
+          expect(response?.text).toBe(acceptedNoOpRaw);
+        }
         if (abstain) expect(context.abstention).toMatchObject({ reason: 'malformed_audit_response' });
+        else if (postRepair) {
+          expect(context.abstention).toMatchObject({ reason: 'repair_budget_consumed', step: 'retry' });
+          const floor = persisted.aiInterpreter.structuredResults.find(result => result.attempt === 'completeness_floor:repair_budget_consumed');
+          expect(floor).toMatchObject({ accepted: true });
+          expect(JSON.stringify(floor?.structuredResult)).toContain('session_duration');
+          expect(JSON.stringify(floor?.structuredResult)).toContain(SENTINEL);
+          expect(persisted.aiInterpreter.structuredResults).toHaveLength(2);
+          expect(persisted.aiInterpreter.structuredResults[0]).toMatchObject({ attempt: 'initial', accepted: false });
+        }
         else if (scenario === 'lossy_retry') {
           expect(context.abstention).toMatchObject({ reason: 'initial_facts_not_preserved', step: 'retry' });
           expect(JSON.stringify(persisted.aiInterpreter.structuredResults)).toContain('completeness_floor:initial_facts_not_preserved');

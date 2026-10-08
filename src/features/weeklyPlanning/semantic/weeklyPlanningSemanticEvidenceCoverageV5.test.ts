@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import calibration from '../testUtils/weeklyPlanningSemanticEvidenceCoverageCalibration.json';
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
-import { measureWeeklyPlanningSemanticEvidenceCoverageV5 } from './weeklyPlanningSemanticEvidenceCoverageV5';
+import { measureWeeklyPlanningSemanticEvidenceCoverageV5, boundedEffortEvidenceV5 } from './weeklyPlanningSemanticEvidenceCoverageV5';
 import { hasWeeklyPlanningEvidenceCoverageMissingEffortV5 } from './weeklyPlanningSemanticEvidenceCoverageNeedV5';
 import { coverageDocument } from '../testUtils/weeklyPlanningSemanticEvidenceCoverageFixture';
 import { canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
@@ -57,4 +57,46 @@ describe('partial leaf-evidence coverage as AI audit eligibility', () => {
     expect(hasWeeklyPlanningEvidenceCoverageMissingEffortV5({ document: next, committedGraph: graph })).toBe(false);
     expect(graph).toEqual(before);
   });
+});
+
+it('keeps the bounded-quote option absent from the default coverage result', () => {
+  const document = coverageDocument(true); const text = '1回1時間くらいで2回に分けたい。どっちも夜がいい';
+  document.planningWindow = null; document.availabilityDeclarations = [];
+  const task = document.tasks[0]; task.workloads = []; task.study!.components = [];
+  task.effortEstimates = [{ localId: 'session', targetLocalId: task.localId, kind: 'session_duration',
+    minutes: 60, unitCode: null, precision: 'approximate', sourceText: text }];
+  task.temporalConstraints = []; task.recurrence = [];
+  expect(measureWeeklyPlanningSemanticEvidenceCoverageV5({ userText: text, document }))
+    .toEqual({ route: 'partial_leaf_evidence_coverage', eligible: false, coveredCodePoints: Array.from(text).length, maxUncoveredSpanCodePoints: 0 });
+});
+
+it.each([['60abcdefg', true], ['60abcdefgh', false], ['６０abcdefg', true], ['６０abcdefgh', false],
+  ['60😀😀😀😀😀😀😀', true], ['60😀😀😀😀😀😀😀😀', false]] as const)('shares the exact literal K8 bound: %s', (source, expected) => {
+  expect(boundedEffortEvidenceV5(source)).toBe(expected);
+});
+it.each(['effort', 'workload', 'recurrence'] as const)('numeric %s whole-turn provenance selects the audit with zero covered points', kind => {
+  const text = '1回60分で2回に分けたい。どちらも夜に'; const doc = coverageDocument(true); const task = doc.tasks[0];
+  doc.planningWindow = null; doc.availabilityDeclarations = []; task.study!.components = []; task.workloads = [];
+  task.effortEstimates = []; task.temporalConstraints = []; task.recurrence = [];
+  if (kind === 'effort') task.effortEstimates = [{ localId: 'numeric', targetLocalId: task.localId, kind: 'session_duration', minutes: 60, unitCode: null, precision: 'approximate', sourceText: text }];
+  if (kind === 'workload') task.workloads = [{ localId: 'numeric', quantityRole: 'target', amount: 60, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null, sourceText: text }];
+  if (kind === 'recurrence') task.recurrence = [{ localId: 'numeric', targetLocalId: task.localId, kind: 'custom', count: 2, days: [], sourceText: text }];
+  expect(measureWeeklyPlanningSemanticEvidenceCoverageV5({ userText: text, document: doc, boundedNumericSourceTexts: true }))
+    .toMatchObject({ coveredCodePoints: 0, maxUncoveredSpanCodePoints: Array.from(text).length, eligible: true, excludedNumericSourceCount: 1 });
+  expect(measureWeeklyPlanningSemanticEvidenceCoverageV5({ userText: text, document: doc }).eligible).toBe(false);
+});
+
+it.each(['workload', 'component_workload', 'effort', 'recurrence'] as const)('literal material anchors bound only %s workload coverage', kind => {
+  const text = '青チャートの例題を30題にする'; const doc = coverageDocument(true); const task = doc.tasks[0];
+  doc.planningWindow = null; doc.availabilityDeclarations = []; task.workloads = []; task.effortEstimates = []; task.temporalConstraints = []; task.recurrence = [];
+  task.study!.components = [{ localId: 'material', existingPublicId: null, parentLocalId: null, role: 'material', label: '青チャート', sourceText: '青チャート', workloads: [], durableContextSignals: [] }];
+  const work = { localId: 'amount', quantityRole: 'target' as const, amount: 30, unitCode: 'problem' as const, unitLabel: '題',
+    rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null, sourceText: text };
+  if (kind === 'workload') task.workloads = [work];
+  if (kind === 'component_workload') task.study!.components[0].workloads = [work];
+  if (kind === 'effort') task.effortEstimates = [{ localId: 'numeric', targetLocalId: task.localId, kind: 'session_duration', minutes: 30, unitCode: null, precision: 'approximate', sourceText: text }];
+  if (kind === 'recurrence') task.recurrence = [{ localId: 'numeric', targetLocalId: task.localId, kind: 'custom', count: 30, days: [], sourceText: text }];
+  const covered = kind === 'workload' || kind === 'component_workload';
+  expect(measureWeeklyPlanningSemanticEvidenceCoverageV5({ userText: text, document: doc, boundedNumericSourceTexts: true }))
+    .toMatchObject({ eligible: !covered, excludedNumericSourceCount: covered ? 0 : 1 });
 });

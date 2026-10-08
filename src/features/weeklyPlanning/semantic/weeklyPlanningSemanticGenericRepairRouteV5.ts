@@ -20,6 +20,7 @@ export async function runGenericSemanticRepairRouteV5(params: {
   initialResponse: string;
   initialValidation: SemanticValidationResultV5;
   attemptCountBeforeRepair?: number;
+  afterNoOpCompletenessRetry?: (result: WeeklyPlanningSemanticNormalizerResultV5) => Promise<WeeklyPlanningSemanticNormalizerResultV5>;
 }): Promise<WeeklyPlanningSemanticNormalizerResultV5> {
   // Completeness re-reads also reach this boundary after a valid initial response.
   if (weeklyPlanningSemanticRepairConsumedV5(params.run)) {
@@ -150,7 +151,10 @@ export async function runGenericSemanticRepairRouteV5(params: {
     repairAttempted: true,
     validationErrors: params.initialValidation.errors,
   });
-  if (completenessRetry) return completenessRetry;
+  if (completenessRetry) {
+    return completenessRetry.status === 'accepted' && completenessRetry.document && params.afterNoOpCompletenessRetry
+      ? params.afterNoOpCompletenessRetry(completenessRetry) : completenessRetry;
+  }
 
   const result: WeeklyPlanningSemanticNormalizerResultV5 = {
     status: 'accepted',

@@ -8,21 +8,13 @@ import type { WeeklyPlanningSemanticNormalizerInputV5, WeeklyPlanningSemanticNor
 import { semanticNormalizerByteLength, semanticNormalizerErrorMessage, type WeeklyPlanningSemanticNormalizerRunV5 } from './weeklyPlanningSemanticNormalizerRunV5';
 import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemanticResponseValidationV5';
 import { normalizeWeeklyPlanningEvidenceTextV5, weeklyPlanningLabelEvidencedBySourceV5 } from './weeklyPlanningCurrentTurnProvenanceV5';
-import { measureWeeklyPlanningSemanticEvidenceCoverageV5, isWeeklyPlanningEvidenceDigitV5, WEEKLY_PLANNING_EVIDENCE_COVERAGE_GAP_CODE_POINTS } from './weeklyPlanningSemanticEvidenceCoverageV5';
+import { measureWeeklyPlanningSemanticEvidenceCoverageV5, boundedEffortEvidenceV5 } from './weeklyPlanningSemanticEvidenceCoverageV5';
 import { markWeeklyPlanningSemanticRepairConsumedV5, weeklyPlanningSemanticRepairConsumedV5 } from './weeklyPlanningSemanticRepairLedgerV5';
 
 const SCHEMA_NAME = 'weekly_planning_focused_material_answer_v5';
 const ANSWER_FIELDS = ['decision', 'label', 'registeredChoice', 'workloadChoice', 'effortKind', 'minutes', 'precision', 'sourceText', 'effortSourceText'];
 /** Per-run repair consumption checked at each subsequent repair dispatch boundary. */
 export const focusedMaterialRepairConsumedV5 = weeklyPlanningSemanticRepairConsumedV5;
-function boundedEffortEvidence(span: string): boolean {
-  let run = 0;
-  for (const point of span) {
-    run = isWeeklyPlanningEvidenceDigitV5(point) ? 0 : run + 1;
-    if (run >= WEEKLY_PLANNING_EVIDENCE_COVERAGE_GAP_CODE_POINTS) return false;
-  }
-  return true;
-}
 
 /** Exact typed idempotency only: retain the accepted estimate's identity and source. */
 function withoutRedundantFocusedRate(run: WeeklyPlanningSemanticNormalizerRunV5,
@@ -223,7 +215,7 @@ export async function tryFocusedMaterialAnswerRouteV5(run: WeeklyPlanningSemanti
     const materialLabel = task?.study?.components[0]?.label;
     const effortSource = task?.effortEstimates[0]?.sourceText;
     const materialAnchorMissing = Boolean(materialLabel && !run.input.userText.includes(materialLabel));
-    const effortAnchorUnbounded = Boolean(effortSource && !boundedEffortEvidence(effortSource));
+    const effortAnchorUnbounded = Boolean(effortSource && !boundedEffortEvidenceV5(effortSource));
     // A quoted whole reply cannot make one material leaf cover an omitted pace.
     const anchors = materialLabel ? [materialLabel, ...(effortSource && !effortAnchorUnbounded ? [effortSource] : [])]
       : effortSource ? effortAnchorUnbounded ? [] : [effortSource] : parsed.sourceSpans;

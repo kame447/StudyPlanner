@@ -26,6 +26,13 @@ import {
 import { semanticProviderResponseFormatV5 } from './weeklyPlanningSemanticProviderResponseFormatV5';
 import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemanticResponseValidationV5';
 
+const acceptedNoOpRetryResponses = new WeakMap<WeeklyPlanningSemanticNormalizerResultV5, string>();
+
+/** Transient provider bytes for replay; the validated document remains the floor. */
+export function weeklyPlanningSemanticNoOpRetryResponseV5(result: WeeklyPlanningSemanticNormalizerResultV5): string | undefined {
+  return acceptedNoOpRetryResponses.get(result);
+}
+
 function completenessRetryInstruction(params: {
   userText: string;
   final: boolean;
@@ -291,6 +298,7 @@ async function tryFocusedTaskTemporalSideContributionV5(params: {
   params.run.recordDecision(result, {
     route: 'schema_valid_noop_focused_task_temporal_side_contribution',
   });
+  acceptedNoOpRetryResponses.set(result, response);
   return { attempted: true, result };
 }
 
@@ -466,6 +474,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
           ? 'schema_valid_noop_completeness_retry_final'
           : 'schema_valid_noop_completeness_retry',
       });
+      acceptedNoOpRetryResponses.set(result, response);
       return result;
     }
 

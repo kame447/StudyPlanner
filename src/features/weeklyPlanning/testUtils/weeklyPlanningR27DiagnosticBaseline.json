@@ -1,0 +1,354 @@
+[
+  {
+    "name": "default",
+    "input": {
+      "id": "r27-byte-trace",
+      "sessionId": "r27-byte-session",
+      "logicalConversationId": "r27-byte-conversation",
+      "sequence": 0,
+      "turnIndex": 0,
+      "requestId": "r27-byte-request",
+      "occurredAt": "2026-10-08T00:00:00.000Z",
+      "observedAt": "2026-10-08T00:00:01.000Z",
+      "expireAt": "2027-04-08T00:00:00.000Z",
+      "userText": "合成の引用",
+      "assistantMessage": "候補を確認してください。",
+      "outcome": "preview",
+      "previewCount": 1,
+      "debugTraceEvents": [
+        {
+          "schemaVersion": 2,
+          "sequence": 0,
+          "stage": "runtime_turn_input",
+          "occurredAt": "2026-10-08T00:00:00.000Z",
+          "severity": "debug",
+          "data": {}
+        },
+        {
+          "schemaVersion": 2,
+          "sequence": 1,
+          "stage": "semantic_validation_result",
+          "occurredAt": "2026-10-08T00:00:00.000Z",
+          "severity": "debug",
+          "data": {
+            "attempt": "initial",
+            "accepted": true,
+            "errors": [],
+            "parsedDocument": {
+              "marker": "initial",
+              "sourceText": "合成の引用"
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "sequence": 2,
+          "stage": "semantic_validation_result",
+          "occurredAt": "2026-10-08T00:00:00.000Z",
+          "severity": "debug",
+          "data": {
+            "attempt": "repair",
+            "accepted": true,
+            "errors": [],
+            "parsedDocument": {
+              "marker": "repair",
+              "sourceText": "合成の引用"
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "sequence": 3,
+          "stage": "semantic_validation_result",
+          "occurredAt": "2026-10-08T00:00:00.000Z",
+          "severity": "debug",
+          "data": {
+            "attempt": "completeness_retry",
+            "accepted": true,
+            "errors": [],
+            "parsedDocument": {
+              "marker": "completeness_retry",
+              "sourceText": "合成の引用"
+            }
+          }
+        }
+      ]
+    },
+    "output": {
+      "id": "r27-byte-trace",
+      "sessionId": "r27-byte-session",
+      "logicalConversationId": "r27-byte-conversation",
+      "sequence": 0,
+      "requestId": "r27-byte-request",
+      "occurredAt": "2026-10-08T00:00:00.000Z",
+      "observedAt": "2026-10-08T00:00:01.000Z",
+      "schemaVersion": 2,
+      "expireAt": "2027-04-08T00:00:00.000Z",
+      "kind": "turn_diagnostic",
+      "traceSchema": "weekly-planning-turn-diagnostic-v2",
+      "turnIndex": 0,
+      "userInput": {
+        "text": "合成の引用"
+      },
+      "aiInterpreter": {
+        "provider": null,
+        "model": null,
+        "promptVersion": null,
+        "input": {
+          "userText": "合成の引用",
+          "conversationContext": [],
+          "planningStateSummary": null,
+          "requests": []
+        },
+        "rawResponses": [],
+        "structuredResults": [
+          {
+            "attempt": "initial",
+            "accepted": true,
+            "errors": [],
+            "structuredResult": {
+              "marker": "initial",
+              "sourceText": "合成の引用"
+            }
+          },
+          {
+            "attempt": "repair",
+            "accepted": true,
+            "errors": [],
+            "structuredResult": {
+              "marker": "repair",
+              "sourceText": "合成の引用"
+            }
+          }
+        ],
+        "candidateOperations": [],
+        "error": null
+      },
+      "parsers": [],
+      "decision": {
+        "status": "preview",
+        "acceptedOperations": [],
+        "rejectedOperations": [],
+        "finalOperations": [],
+        "precedence": null,
+        "reason": null,
+        "stateDiff": null
+      },
+      "constraintContext": {
+        "existingPlanCount": 0,
+        "scheduleTemplateCount": 0,
+        "relevantBusyIntervals": [],
+        "scheduler": {
+          "selectedDate": null,
+          "timeZone": null,
+          "planningHorizon": null,
+          "externalSources": [],
+          "compilationStatus": null,
+          "issues": [],
+          "dialogueStatus": null,
+          "selectedQuestionCode": null,
+          "preview": null,
+          "duplicateSuppressed": false
+        }
+      },
+      "assistantOutput": {
+        "text": "候補を確認してください。",
+        "responseSource": "rules"
+      },
+      "diagnostics": {
+        "durationMs": 0,
+        "fallback": null,
+        "error": null,
+        "outcome": "preview",
+        "previewCount": 1,
+        "stale": false,
+        "truncation": {
+          "applied": true,
+          "fields": [
+            "aiInterpreter.structuredResults"
+          ],
+          "originalCounts": {
+            "aiInterpreter.structuredResults": 3
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "legacy",
+    "input": {
+      "id": "r27-byte-trace",
+      "sessionId": "r27-byte-session",
+      "logicalConversationId": "r27-byte-conversation",
+      "sequence": 0,
+      "turnIndex": 0,
+      "requestId": "r27-byte-request",
+      "occurredAt": "2026-10-08T00:00:00.000Z",
+      "observedAt": "2026-10-08T00:00:01.000Z",
+      "expireAt": "2027-04-08T00:00:00.000Z",
+      "userText": "合成の引用",
+      "assistantMessage": "候補を確認してください。",
+      "outcome": "preview",
+      "previewCount": 1,
+      "debugTraceEvents": [
+        {
+          "schemaVersion": 2,
+          "sequence": 0,
+          "stage": "runtime_turn_input",
+          "occurredAt": "2026-10-08T00:00:00.000Z",
+          "severity": "debug",
+          "data": {
+            "conversationArchitecture": "legacy_v5"
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "sequence": 1,
+          "stage": "semantic_validation_result",
+          "occurredAt": "2026-10-08T00:00:00.000Z",
+          "severity": "debug",
+          "data": {
+            "attempt": "initial",
+            "accepted": true,
+            "errors": [],
+            "parsedDocument": {
+              "marker": "initial",
+              "sourceText": "合成の引用"
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "sequence": 2,
+          "stage": "semantic_validation_result",
+          "occurredAt": "2026-10-08T00:00:00.000Z",
+          "severity": "debug",
+          "data": {
+            "attempt": "repair",
+            "accepted": true,
+            "errors": [],
+            "parsedDocument": {
+              "marker": "repair",
+              "sourceText": "合成の引用"
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "sequence": 3,
+          "stage": "semantic_validation_result",
+          "occurredAt": "2026-10-08T00:00:00.000Z",
+          "severity": "debug",
+          "data": {
+            "attempt": "completeness_retry",
+            "accepted": true,
+            "errors": [],
+            "parsedDocument": {
+              "marker": "completeness_retry",
+              "sourceText": "合成の引用"
+            }
+          }
+        }
+      ]
+    },
+    "output": {
+      "id": "r27-byte-trace",
+      "sessionId": "r27-byte-session",
+      "logicalConversationId": "r27-byte-conversation",
+      "sequence": 0,
+      "requestId": "r27-byte-request",
+      "occurredAt": "2026-10-08T00:00:00.000Z",
+      "observedAt": "2026-10-08T00:00:01.000Z",
+      "schemaVersion": 2,
+      "expireAt": "2027-04-08T00:00:00.000Z",
+      "kind": "turn_diagnostic",
+      "traceSchema": "weekly-planning-turn-diagnostic-v2",
+      "turnIndex": 0,
+      "userInput": {
+        "text": "合成の引用"
+      },
+      "aiInterpreter": {
+        "provider": null,
+        "model": null,
+        "promptVersion": null,
+        "input": {
+          "userText": "合成の引用",
+          "conversationContext": [],
+          "planningStateSummary": null,
+          "requests": []
+        },
+        "rawResponses": [],
+        "structuredResults": [
+          {
+            "attempt": "initial",
+            "accepted": true,
+            "errors": [],
+            "structuredResult": {
+              "marker": "initial",
+              "sourceText": "合成の引用"
+            }
+          },
+          {
+            "attempt": "repair",
+            "accepted": true,
+            "errors": [],
+            "structuredResult": {
+              "marker": "repair",
+              "sourceText": "合成の引用"
+            }
+          }
+        ],
+        "candidateOperations": [],
+        "error": null
+      },
+      "parsers": [],
+      "decision": {
+        "status": "preview",
+        "acceptedOperations": [],
+        "rejectedOperations": [],
+        "finalOperations": [],
+        "precedence": null,
+        "reason": null,
+        "stateDiff": null
+      },
+      "constraintContext": {
+        "existingPlanCount": 0,
+        "scheduleTemplateCount": 0,
+        "relevantBusyIntervals": [],
+        "scheduler": {
+          "selectedDate": null,
+          "timeZone": null,
+          "planningHorizon": null,
+          "externalSources": [],
+          "compilationStatus": null,
+          "issues": [],
+          "dialogueStatus": null,
+          "selectedQuestionCode": null,
+          "preview": null,
+          "duplicateSuppressed": false
+        }
+      },
+      "assistantOutput": {
+        "text": "候補を確認してください。",
+        "responseSource": "rules"
+      },
+      "diagnostics": {
+        "durationMs": 0,
+        "fallback": null,
+        "error": null,
+        "outcome": "preview",
+        "previewCount": 1,
+        "stale": false,
+        "truncation": {
+          "applied": true,
+          "fields": [
+            "aiInterpreter.structuredResults"
+          ],
+          "originalCounts": {
+            "aiInterpreter.structuredResults": 3
+          }
+        }
+      }
+    }
+  }
+]

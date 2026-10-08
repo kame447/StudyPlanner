@@ -6,7 +6,10 @@ import {
 } from './weeklyPlanningCurrentTurnProvenanceV5';
 import {
   tryWeeklyPlanningDenseTurnCompletenessRetryV5,
+  denseTurnCompletenessAuditEligibleV5,
 } from './weeklyPlanningSemanticDenseTurnCompletenessV5';
+import { hasWeeklyPlanningEvidenceCoverageTaskModificationV5 } from './weeklyPlanningSemanticEvidenceCoverageNeedV5';
+import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
 import { runGenericSemanticRepairRouteV5 } from './weeklyPlanningSemanticGenericRepairRouteV5';
 import { continueWithConversationActsOnlyV5 } from './weeklyPlanningSemanticConversationOnlyTurnV5';
 import {
@@ -16,6 +19,7 @@ import {
 import { tryFocusedSemanticRepairRouteV5 } from './weeklyPlanningSemanticFocusedRepairRoutesV5';
 import {
   tryWeeklyPlanningSemanticNoOpCompletenessRetryV5,
+  weeklyPlanningSemanticNoOpRetryResponseV5,
 } from './weeklyPlanningSemanticNoOpCompletenessRetryV5';
 import {
   createWeeklyPlanningSemanticBaseMessagesV5,
@@ -116,6 +120,36 @@ function enforceFinalCurrentTurnProvenance(params: {
     severity: 'error',
   });
   return result;
+}
+
+async function auditAcceptedNoOpCompletenessRetry(params: {
+  run: WeeklyPlanningSemanticNormalizerRunV5;
+  baseMessages: ReturnType<typeof createWeeklyPlanningSemanticBaseMessagesV5>;
+  result: WeeklyPlanningSemanticNormalizerResultV5;
+}): Promise<WeeklyPlanningSemanticNormalizerResultV5> {
+  const { run, result } = params;
+  if (result.status !== 'accepted' || !result.document
+    || !conversationArchitecturePolicy(run.input.conversationArchitecture).semanticConversationActs
+    || denseTurnCompletenessAuditEligibleV5(run.input.userText)
+    || !hasWeeklyPlanningEvidenceCoverageTaskModificationV5({
+      document: result.document, committedGraph: run.input.committedGraph,
+    })) return result;
+
+  const rawResponse = weeklyPlanningSemanticNoOpRetryResponseV5(result);
+  if (rawResponse === undefined) return result;
+  const afterNoOpAudit = await tryWeeklyPlanningDenseTurnCompletenessRetryV5({
+    run, baseMessages: params.baseMessages, initialResponse: rawResponse,
+    initialDocument: result.document,
+    semanticRepairConsumed: () => weeklyPlanningSemanticRepairConsumedV5(run),
+  });
+  const selected = afterNoOpAudit ?? result;
+  const final = { ...selected, diagnostics: { ...run.diagnostics({
+    attemptCount: Math.max(selected.diagnostics.attemptCount, run.responseLengths.length),
+    repairAttempted: selected.diagnostics.repairAttempted || weeklyPlanningSemanticRepairConsumedV5(run),
+    validationErrors: selected.diagnostics.validationErrors, providerError: selected.diagnostics.providerError,
+  }), algorithmicRepairs: selected.diagnostics.algorithmicRepairs } };
+  run.recordDecision(final, { route: 'accepted_noop_reread_evidence_coverage_rechecked' });
+  return final;
 }
 
 export function createWeeklyPlanningSemanticNormalizerV5(
@@ -219,7 +253,9 @@ export function createWeeklyPlanningSemanticNormalizerV5(
           initialResponse,
           initialDocument: initialValidation.document,
         });
-        if (completenessRetry) return finish(completenessRetry);
+        if (completenessRetry) {
+          return finish(await auditAcceptedNoOpCompletenessRetry({ run, baseMessages, result: completenessRetry }));
+        }
 
         const result: WeeklyPlanningSemanticNormalizerResultV5 = {
           status: 'accepted',
@@ -247,6 +283,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         baseMessages,
         initialResponse,
         initialValidation,
+        afterNoOpCompletenessRetry: result => auditAcceptedNoOpCompletenessRetry({ run, baseMessages, result }),
       }));
     },
   };

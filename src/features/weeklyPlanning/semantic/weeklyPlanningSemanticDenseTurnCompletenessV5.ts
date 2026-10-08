@@ -31,6 +31,8 @@ import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemant
 
 export const DENSE_TURN_COMPLETENESS_AUDIT_MAX_COMPLETION_TOKENS = 3200;
 
+const interactionCompletenessAuditRuns = new WeakSet<WeeklyPlanningSemanticNormalizerRunV5>();
+
 export const DENSE_TURN_COMPLETENESS_AUDIT_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
   type: 'json_schema',
   json_schema: {
@@ -180,19 +182,23 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
 }): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
   const initialAlgorithmicRepairs = [...params.run.algorithmicRepairs];
   const dense = denseTurnCompletenessAuditEligibleV5(params.run.input.userText);
+  const taskModification = !dense
+    && conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs
+    && hasWeeklyPlanningEvidenceCoverageTaskModificationV5({
+      document: params.initialDocument, committedGraph: params.run.input.committedGraph,
+    });
   let evidenceCoverageEligibility = !dense
     && conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs
     ? measureWeeklyPlanningSemanticEvidenceCoverageV5({
         userText: params.run.input.userText, document: params.initialDocument,
+        ...(taskModification ? { boundedNumericSourceTexts: true, committedGraph: params.run.input.committedGraph } : {}),
       })
     : undefined;
   if (evidenceCoverageEligibility?.eligible) evidenceCoverageEligibility = {
     ...evidenceCoverageEligibility,
     eligible: hasWeeklyPlanningEvidenceCoverageMissingEffortV5({
       document: params.initialDocument, committedGraph: params.run.input.committedGraph,
-    }) || hasWeeklyPlanningEvidenceCoverageTaskModificationV5({
-      document: params.initialDocument, committedGraph: params.run.input.committedGraph,
-    }),
+    }) || taskModification,
   };
   if (evidenceCoverageEligibility) recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.run.input.traceRequestId,
@@ -200,6 +206,10 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     data: evidenceCoverageEligibility,
   });
   if (!dense && !evidenceCoverageEligibility?.eligible) return null;
+  if (conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs) {
+    if (interactionCompletenessAuditRuns.has(params.run)) return null;
+    interactionCompletenessAuditRuns.add(params.run);
+  }
   const abstain = (reason: 'provider_failure' | 'malformed_audit_response' | 'dispatch_budget_exhausted' | 'initial_facts_not_preserved' | 'repair_budget_consumed', step: 'audit' | 'retry') => {
     if (!evidenceCoverageEligibility) return;
     recordWeeklyPlanningStableV5DebugTrace({
