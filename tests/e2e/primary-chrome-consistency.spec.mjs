@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 
 const VIEWPORTS = [
   { name: 'small-phone-320x568', width: 320, height: 568 },
+  { name: 'small-phone-320x852-text-200', width: 320, height: 852, textScale: 200 },
   { name: 'mobile-390x844', width: 390, height: 844 },
   { name: 'mobile-393x852', width: 393, height: 852 },
   { name: 'short-landscape-852x393', width: 852, height: 393 },
@@ -117,6 +118,7 @@ async function readChromeMetrics(page) {
       actions: rect(actions),
       iconButton: rect(iconButton),
       nav: rect(nav),
+      navButtonWidths: [...nav.querySelectorAll('button')].map(button => button.getBoundingClientRect().width),
       activeCircle: rect(activeCircle),
       headerGrid: headerStyle.gridTemplateColumns,
       headerGap: px(headerStyle.columnGap),
@@ -178,6 +180,9 @@ function expectChromeToMatchHome(actual, home) {
   expectRectToMatch(actual.actions, home.actions, ['width', 'height']);
   expectRectToMatch(actual.iconButton, home.iconButton, ['width', 'height']);
   expectRectToMatch(actual.nav, home.nav, ['x', 'y', 'width', 'height']);
+  actual.navButtonWidths.forEach((width, index) => {
+    expect(Math.abs(width - home.navButtonWidths[index]), `nav button ${index} width`).toBeLessThanOrEqual(1);
+  });
   expectRectToMatch(actual.activeCircle, home.activeCircle, ['width', 'height']);
 
   expect(actual.headerGrid).toBe(home.headerGrid);
@@ -218,6 +223,7 @@ for (const viewport of VIEWPORTS) {
     await mkdir(`artifacts/chrome-audit/${viewport.name}`, { recursive: true });
 
     await page.goto('/');
+    if (viewport.textScale) await page.addStyleTag({ content: `:root { font-size: ${viewport.textScale}% !important; }` });
     await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
     await expect
       .poll(() => page.locator('.primary-app-header').getAttribute('data-home-chrome-viewport'))
