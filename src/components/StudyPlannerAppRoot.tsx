@@ -3,7 +3,7 @@ import { createStartupSessionScope, type StartupSessionCapability, type StartupS
 import { retireStartupPreviewCache } from '../lib/retiredStartupPreviewCache';
 import { PlannerAppBootstrap } from './PlannerAppBootstrap';
 import { startupTiming } from '../lib/startupTiming';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import App from '../App';
 import { UserPlanningContextProvider } from '../features/userPlanningContext/UserPlanningContextContext';
 import {
@@ -19,7 +19,7 @@ import { InitialPrivacyConsentScreen } from './InitialPrivacyConsentScreen';
 import { InitialWeekStartPreferenceScreen } from './InitialWeekStartPreferenceScreen';
 import { RootManagedAuthenticationProvider } from './RootManagedAuthenticationContext';
 import { RootStartupReadyProvider } from './RootStartupReadyContext';
-import { SplashScreen } from './SplashScreen';
+import { StartupSurface } from './StartupSurface';
 
 function useStartupWait(phase: 'auth-session' | 'consent' | 'preferences', pending: boolean, failed = false) {
   const finish = useRef<ReturnType<typeof startupTiming.begin> | null>(null);
@@ -30,23 +30,10 @@ function useStartupWait(phase: 'auth-session' | 'consent' | 'preferences', pendi
   useEffect(() => () => { finish.current?.('cancelled'); finish.current = null; }, [phase]);
 }
 
-function StartupSurface({
-  children,
-  loading,
-}: PropsWithChildren<{ loading: boolean }>) {
-  return (
-    <>
-      <div style={loading ? { display: 'none' } : undefined}>
-        {children}
-      </div>
-      {loading ? <SplashScreen fixedLight /> : null}
-    </>
-  );
-}
-
 interface StartupPresentation { loading: boolean }
 
 const ignoreEarlyBootstrapReady = () => {};
+const readyPresentation: StartupPresentation = { loading: false };
 function ConsentedStudyPlannerApp({
   authSession,
   userId,
@@ -202,6 +189,8 @@ export function StudyPlannerAppRoot({
     setPresentation((previous) => previous?.session === session && previous.value === value
       ? previous : { session, value });
   }, [session]);
+  const markUnauthenticatedReady = useCallback(() => presentStartup(readyPresentation), [presentStartup]);
+  const isCurrentSession = useCallback(() => currentSession.current === session, [session]);
   const authenticatedUserId = session.userId;
   useStartupWait('auth-session', authenticatedUserId === undefined);
 
@@ -238,10 +227,10 @@ export function StudyPlannerAppRoot({
 
   const currentPresentation = presentation?.session === session ? presentation.value : null;
   const loading = authenticatedUserId === undefined
-    || (typeof authenticatedUserId === 'string' && (currentPresentation?.loading ?? true));
+    || (currentPresentation?.loading ?? true);
   return (
-    <StartupSurface loading={loading}>
-      {authenticatedUserId === null ? <RootManagedUnauthenticatedApp />
+    <StartupSurface loading={loading} isCurrent={isCurrentSession}>
+      {authenticatedUserId === null ? <RootStartupReadyProvider onReady={markUnauthenticatedReady}><RootManagedUnauthenticatedApp /></RootStartupReadyProvider>
         : typeof authenticatedUserId === 'string' ? (
           <AuthenticatedStartup key={JSON.stringify([authenticatedUserId, session.epoch])}
             authSession={authSession} userId={authenticatedUserId} startupScope={session.scope} onPresentation={presentStartup} />

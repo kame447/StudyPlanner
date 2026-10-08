@@ -11,16 +11,30 @@ import { InitialWeekStartPreferenceScreen } from './InitialWeekStartPreferenceSc
 import { RootManagedAuthenticationProvider } from './RootManagedAuthenticationContext';
 import { RootStartupReadyProvider } from './RootStartupReadyContext';
 import { SplashScreen } from './SplashScreen';
+import { StartupSurface } from './StartupSurface';
 import { StudyPlannerAppRoot } from './StudyPlannerAppRoot';
 
 const state = vi.hoisted(() => ({
   traceEnabled: true,
+  reducedMotion: true,
   policy: {} as WeeklyPlanningTracePolicyState,
   personalization: {} as WeeklyPlanningPersonalizationProfileState,
 }));
 
 vi.mock('../services/authSession', () => ({ createAuthSessionService: vi.fn() }));
-vi.mock('../App', () => ({ default: () => null }));
+vi.mock('../App', async () => {
+  const { useEffect } = await import('react');
+  const { useRootManagedAuthentication } = await import('./RootManagedAuthenticationContext');
+  const { useRootStartupReady } = await import('./RootStartupReadyContext');
+  return { default: () => {
+    const managedAuthentication = useRootManagedAuthentication();
+    const ready = useRootStartupReady();
+    // Only the login surface settles itself. Authenticated tests still own their
+    // explicit readiness signal, so this probe cannot bypass data gates.
+    useEffect(() => { if (managedAuthentication) ready?.(); }, [managedAuthentication, ready]);
+    return null;
+  } };
+});
 vi.mock('./PlannerAppBootstrap', () => ({ PlannerAppBootstrap: ({ children }: any) => children({}, () => {}) }));
 vi.mock('../features/userPlanningContext/UserPlanningContextContext', () => ({
   UserPlanningContextProvider: ({ children }: { children: React.ReactNode }) => children,
@@ -50,7 +64,8 @@ function rerender() {
 describe('StudyPlannerAppRoot', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal('window', { location: { pathname: '/' } });
+    state.reducedMotion = true;
+    vi.stubGlobal('window', { location: { pathname: '/' }, matchMedia: () => ({ matches: state.reducedMotion }) });
     fake = createFakeAuthSession();
     vi.mocked(createAuthSessionService).mockReturnValue(fake.session);
     state.traceEnabled = true;
@@ -109,25 +124,75 @@ describe('StudyPlannerAppRoot', () => {
 
   it.each(['auth', 'consent'].flatMap(stage => ['skip', 'ended', 'error'].map(event => [stage, event])))(
     'preserves %s readiness when video presentation finishes via %s', (stage, event) => {
+      state.reducedMotion = false;
       state.policy.status = 'loading';
       mount();
       if (stage === 'consent') act(() => fake.emit(verifiedUser));
       act(() => {
-        if (event === 'skip') renderer.root.findByProps({ 'aria-label': '起動アニメーションをスキップ' }).props.onClick();
+        if (event === 'skip') {
+          const button = renderer.root.findByProps({ 'aria-label': '起動アニメーション' });
+          expect(button.props.disabled).toBe(true);
+          button.props.onClick();
+        }
         else renderer.root.findByType('video').props[event === 'ended' ? 'onEnded' : 'onError']();
       });
       expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(1);
+      expect(renderer.root.findAllByType('video')).toHaveLength(event === 'skip' ? 1 : 0);
       expect(renderer.root.findAllByType(App)).toHaveLength(0);
       expect(renderer.root.findAllByType(InitialPrivacyConsentScreen)).toHaveLength(0);
       if (stage === 'auth') act(() => fake.emit(verifiedUser));
       expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(1);
       state.policy.status = 'required';
       rerender();
+      if (event === 'skip') {
+        expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(1);
+        const button = renderer.root.findByProps({ 'aria-label': '起動アニメーションをスキップ' });
+        expect(button.props.disabled).toBe(false);
+        act(() => button.props.onClick());
+      }
       expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(0);
       expect(renderer.root.findAllByType(InitialPrivacyConsentScreen)).toHaveLength(1);
       expect(renderer.root.findAllByType(App)).toHaveLength(0);
     },
   );
+
+  it.each(['ended', 'skip'] as const)('keeps a ready login behind the video until %s without a second intro', event => {
+    state.reducedMotion = false;
+    mount();
+    const video = renderer.root.findByType('video');
+    expect(renderer.root.findByType(StartupSurface).findAllByType('div')[0].props.style).toEqual({ display: 'none' });
+    act(() => fake.emit(null));
+    expect(renderer.root.findAllByType(RootManagedAuthenticationProvider)).toHaveLength(1);
+    expect(renderer.root.findAllByType('video')).toHaveLength(1);
+    expect(renderer.root.findByType('video')).toBe(video);
+    expect(renderer.root.findByType(SplashScreen).props.canSkip).toBe(true);
+    expect(renderer.root.findByType(StartupSurface).findAllByType('div')[0].props.style).toEqual({ display: 'none' });
+    act(() => event === 'ended' ? video.props.onEnded()
+      : renderer.root.findByProps({ 'aria-label': '起動アニメーションをスキップ' }).props.onClick());
+    expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(0);
+    expect(renderer.root.findByType(StartupSurface).findAllByType('div')[0].props.style).toBeUndefined();
+  });
+
+  it.each(['required', 'unavailable', 'preference-error'] as const)('keeps ready %s recovery behind healthy video until explicit skip', outcome => {
+    state.reducedMotion = false;
+    state.policy.status = 'loading';
+    fake = createFakeAuthSession({ currentUser: verifiedUser });
+    mount();
+    const video = renderer.root.findByType('video');
+    state.policy.status = outcome === 'preference-error' ? 'accepted' : outcome;
+    if (outcome === 'preference-error') state.personalization.error = 'preferences unavailable';
+    if (outcome === 'unavailable') state.policy.error = 'consent unavailable';
+    rerender();
+    expect(renderer.root.findByType('video')).toBe(video);
+    expect(renderer.root.findByType(StartupSurface).findAllByType('div')[0].props.style).toEqual({ display: 'none' });
+    const button = renderer.root.findByProps({ 'aria-label': '起動アニメーションをスキップ' });
+    expect(button.props.disabled).toBe(false);
+    act(() => button.props.onClick());
+    expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(0);
+    expect(renderer.root.findByType(StartupSurface).findAllByType('div')[0].props.style).toBeUndefined();
+    if (outcome === 'preference-error') expect(renderer.root.findByType(InitialWeekStartPreferenceScreen).props.error).toBe('preferences unavailable');
+    else expect(renderer.root.findByType(InitialPrivacyConsentScreen).props.unavailable).toBe(outcome === 'unavailable');
+  });
 
   it('uses the default session once when no service is injected', () => {
     act(() => { renderer = create(<StudyPlannerAppRoot />); });

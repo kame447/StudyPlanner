@@ -23,7 +23,7 @@ it('uses the supplied video only for the startup splash and retains the loading 
 });
 
 it.each(['skip', 'ended', 'error'])('keeps the same dark loading surface and actual final-frame artwork after %s', event => {
-  act(() => { renderer = create(<SplashScreen fixedLight />); });
+  act(() => { renderer = create(<SplashScreen fixedLight canSkip={event === 'skip'} />); });
   const main = renderer!.root.findByType('main');
   act(() => {
     if (event === 'skip') renderer!.root.findByType('button').props.onClick();
@@ -34,7 +34,7 @@ it.each(['skip', 'ended', 'error'])('keeps the same dark loading surface and act
   expect(renderer!.root.findAllByType('video')).toHaveLength(0);
   expect(renderer!.root.findByType('img').props).toMatchObject({ alt: 'Laplans', className: 'startup-video__still' });
   expect(renderer!.root.findByType('img').props.src).toContain('laplans-startup-still.jpg');
-  expect(renderer!.root.findByType('p').children).toEqual(['アプリを準備しています...']);
+  expect(renderer!.root.findByType('p').children).toEqual([event === 'skip' ? '準備できました' : 'アプリを準備しています...']);
 });
 
 it('uses final-frame artwork without mounting video for reduced motion', () => {
@@ -51,7 +51,7 @@ it('does not mount a second video inside an already root-owned startup', () => {
       <div style={{ display: 'none' }}>
         <RootStartupReadyProvider onReady={onReady}><SplashScreen fixedLight /></RootStartupReadyProvider>
       </div>
-      <SplashScreen fixedLight />
+      <SplashScreen fixedLight canSkip />
     </>);
   });
   expect(renderer!.root.findAllByType(SplashScreen)).toHaveLength(2);
