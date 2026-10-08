@@ -31,9 +31,18 @@ describe('fixed-event presentation boundary', () => {
   });
 
   it('does not turn an ordinary empty plan or a legacy request into an event handoff', () => {
-    for (const architecture of ['legacy_v5', 'interaction_v1'] as const) {
-      expect(fixedEventOnlyInteractionStatus({ architecture, graph: createEmptyWeeklyPlanningFactGraphV5(), compilation: { status: 'empty', input: null, issues: [] },
-        semanticChanged: false, previousQuestionSlot: 'stable_v5:missing_schedulable_work', declinedAdditionalWork: true })).toBeNull();
-    }
+    const emptyInput = (architecture: 'legacy_v5' | 'interaction_v1', declinedAdditionalWork: boolean) => ({
+      architecture, graph: createEmptyWeeklyPlanningFactGraphV5(), compilation: { status: 'empty' as const, input: null, issues: [] },
+      semanticChanged: false, previousQuestionSlot: 'stable_v5:missing_schedulable_work', declinedAdditionalWork,
+    });
+    // Legacy keeps its historical behavior, even for a typed decline.
+    expect(fixedEventOnlyInteractionStatus(emptyInput('legacy_v5', true))).toBeNull();
+    // An ordinary empty plan without a decline is never turned into any status.
+    expect(fixedEventOnlyInteractionStatus(emptyInput('interaction_v1', false))).toBeNull();
+    // R12: a typed decline of the previous optional invitation closes it quietly,
+    // and it is never an event handoff.
+    const declined = fixedEventOnlyInteractionStatus(emptyInput('interaction_v1', true));
+    expect(declined).toBe('no_additional_work');
+    expect(declined).not.toBe('fixed_event_manual_entry');
   });
 });
