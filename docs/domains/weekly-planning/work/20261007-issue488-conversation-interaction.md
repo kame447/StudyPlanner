@@ -160,3 +160,36 @@ The critic also identified release/acceptance gaps that this campaign does not c
   - per the user's handoff direction, caps may be adjusted only with separately measured performance evidence, and no number is pre-approved;
   - ACs 3 and 7, and parts of 2 and 4, remain unmet. No close claim.
 - **Full handoff with ownership, artifacts, commands and decisions:** `handoff-to-fresh-orchestrator-20261008.md` in the campaign runtime directory (`issue488-e2e-blocker-campaign-20261007`). The previous orchestrator writes no further code; the next one reuses this branch and Issue.
+
+## Round 2 resume checkpoint (2026-10-08 13:26 JST): ownership transferred to a fresh parent
+
+- **Owner:** the user resumed the work under a new single parent and integration owner. The previous orchestrator released ownership and writes nothing further; its children stay frozen and read-only.
+  - Same branch (local only) and same Issue.
+  - Code-only, local commits only: no push, PR, remote merge, deploy, GitHub comment, credential/production-setting change, account creation, data seeding, or approve/save/reload of real data.
+  - Live E2E stays preview-only on the authorized account.
+- **Exact state at resume:** branch HEAD `53b54d04` (docs-only over the verified code `584a64ab`), clean.
+  - `main` is now `22847120` (#537, #538 and #539 merged after the handoff).
+  - #539 raised the aggregate JS caps to 2,260,000 raw / 608,000 gzip bytes. WS1's fit and #488's overrun must be re-measured against these caps.
+- **Decisions taken at resume:**
+  - **Window-replacement equality rule:** typed payload, no clock.
+    - An identical window keeps a window-targeted uncertainty, with its id.
+    - The same canonical kind with a different value invalidates it.
+    - A cross-kind change or a free-text named-period difference counts as unknown and keeps the question. A question is never hidden.
+  - **Already-dangling window uncertainties** (written by main and by `584a64ab`): reconciled by the same rule at the next write, together with any pending question bound to them. Loading still tolerates them in both architectures.
+  - **Question wording becomes its own work item:** separate existing-schedule, new-registration and study-task questions by typed intent; no abrupt 「作業」 and no internal terms. No surface-wide replacement.
+- **Team:** independent implementers for:
+  - the event-window loop;
+  - the material/pace answer;
+  - re-read retention plus the budget complement;
+  - question wording;
+  - release/bundle measurement.
+  - Separate cross-model auditors review them. Each implementer delivers a patch from its own worktree; only the parent integrates and runs the full chain.
+- **Integration order:**
+  1. merge `main`;
+  2. the event-window loop fix, then a live re-run of that scenario;
+  3. material/pace;
+  4. re-read retention, then the budget complement;
+  5. question wording;
+  6. the WS1/bundle decision;
+  7. final quiet-machine chain and live A–H plus the event scenario (preview only).
+- The detailed live checkpoint (agent names, models, states, hashes) is `tealgoodall-checkpoint.md` in the campaign runtime directory.
