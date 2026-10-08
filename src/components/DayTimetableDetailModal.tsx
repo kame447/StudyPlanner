@@ -53,7 +53,7 @@ export function DayTimetableDetailModal({ occurrence, onClose, onOpenTimetable, 
           <p>{formatDateLabel(occurrence.start.date)} {occurrence.start.time} - {occurrence.end.date !== occurrence.start.date ? `${formatDateLabel(occurrence.end.date)} ` : ''}{occurrence.end.time}</p>
           <p>時間割から表示しています。内容の変更は時間割で行えます。</p>
           {onDeleteOccurrence && deletion.description ? <p>{deletion.description}</p> : null}
-          {onDeleteOccurrence ? <button className="ghost-button danger-button" type="button" disabled={deleting || isExiting}
+          {onDeleteOccurrence ? <button className="ghost-button danger-button day-timetable-delete-button" type="button" disabled={deleting || isExiting}
             onClick={() => void remove()}>{deleting ? '削除中…' : deletion.label}</button> : null}
           {error ? <p className="inline-error" role="alert">{error}</p> : null}
           {onOpenTimetable ? <button className="primary-button" type="button" disabled={deleting || isExiting}

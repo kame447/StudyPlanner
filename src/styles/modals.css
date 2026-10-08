@@ -225,6 +225,10 @@
   font-size: 0.78rem;
 }
 
+.daily-detail-modal .day-timetable-delete-button {
+  min-height: 40px;
+}
+
 .actual-form-compact {
   display: grid;
   gap: 10px;

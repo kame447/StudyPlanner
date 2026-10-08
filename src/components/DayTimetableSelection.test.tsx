@@ -90,7 +90,7 @@ it('retains a timetable deletion menu on failure, blocks duplicate/close, and re
   props = { ...props, onDeleteOccurrence: remove };
   mount(); clickCard(template.title);
   const button = () => dialogs()[0].findAllByType('button').find(node => node.children.includes('この日だけ削除') || node.children.includes('削除中…'))!;
-  expect(button().props.className.split(/\s+/)).toEqual(expect.arrayContaining(['ghost-button', 'danger-button']));
+  expect(button().props.className.split(/\s+/)).toEqual(expect.arrayContaining(['ghost-button', 'danger-button', 'day-timetable-delete-button']));
   const click = button().props.onClick;
   await act(async () => { click(); click(); });
   expect(remove).toHaveBeenCalledTimes(1);

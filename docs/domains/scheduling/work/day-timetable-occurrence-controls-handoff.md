@@ -5,6 +5,22 @@ Branch: `fix/day-timetable-occurrence-controls`
 Base: `3a1e60b9`
 PR: https://github.com/kame447/StudyPlanner/pull/541 (draft)
 
+## Scoped 40px target final local verification — 2026-10-08 08:25 UTC
+
+- Clean `43fc99f82dc2f5a0b78a4528973a308aa82dd2f1`, tree `dd68eb8b7ae338c2dfae85926985f0ecc40b8e93`, passed regular `npm run verify`, exit 0. Fresh app/Worker checks, 766 files / 6,228 tests passed; 10 files / 45 tests skipped and 1 todo; test duration 620.74 seconds; production build 14.66 seconds. All eight bundle guards passed (JS 2203.5 KiB raw / 592.3 KiB gzip, CSS 473.5 KiB raw / 79.5 KiB gzip).
+- The single-worker run progressed to completion without retries or input changes. Every tracked input hash, HEAD/tree, clean worktree and 237 installed identities match before/after. Lock/manifest identities remain unchanged. Durable local evidence is ignored `artifacts/day-release/verify-target-final-input.json`, `.log`, `.exit`, `verify-target-final-post.json` and `bundle-target-final.log`.
+- The scoped CSS rule follows the generic 36px desktop modal rule and precedes the existing responsive 42px/40px rules. A complete stylesheet-rule scan found no later matching lower minimum for this control. This is static cascade evidence only; the unchanged browser height/containment gate and images must still verify actual layout.
+- Prior `7b3a1eb4` ultimately failed only the 1280px height case in each engine: Chromium 450 passed / 1 failed; cross-browser 339 passed / 3 existing skips / 1 failed. Both attempts measured 36px. Every upstream rapid/phase case passed; the upstream independent head `ba3d4b24` completed all required gates successfully. Do not hide the earlier Day failures or lower the existing 40px assertion.
+- This checkpoint is documentation-only after the verified input. Publish the exact new tree on the same branch, retaining the current remote as first parent, then follow the complete exact-head suite and final 390/1280 images. Main remains held and no shared toast/global-control change is included.
+
+## Deletion-control target-size repair — 2026-10-08 08:11 UTC
+
+- Published `7b3a1eb4` revealed a real sizing mismatch in the new geometry gate: Chromium 390px passed at 40px height and inside the dialog/viewport, but 1280px measured 36px on both attempts. Browser result is 450 passes / 1 failure. The failure remains recorded; the 40px requirement is unchanged.
+- The actual cascade is `modals.css`'s existing `.daily-detail-modal .ghost-button` rule, whose desktop minimum is 36px; later responsive rules use 42px or 40px. Applying the shared ghost class alone therefore did not guarantee the requested minimum on desktop.
+- The coordinator authorized a bounded repair for this control only. Added `day-timetable-delete-button` and a scoped 40px minimum immediately after the desktop modal rule. The existing later responsive rules remain authoritative when larger. No global ghost control, spacing, wording, action, persistence or Undo behavior changed.
+- Class-wiring regression fails before the repair and passes after it; all 47 focused cases pass. The existing real-browser height and containment assertions are untouched. The exact source diff is the control's class, one selector/declaration in `modals.css`, the regression, and this checkpoint.
+- Run fresh single-worker type/full/build/budget checks on the frozen candidate, then publish on this same PR and require actual final 390/1280 Chromium/WebKit measurements and screenshots. Main remains held by the release coordinator; no additional UI scope is authorized.
+
 ## Final deletion-control local proof — 2026-10-08 07:49 UTC
 
 - Clean input `02d4b0011418b3d9ab1e1bbf68311ed2300d728c`, tree `7aa88b7615e3b89ed45476fc277405c86fc57c0d`, passed regular `npm run verify`, exit 0: fresh app/Worker full checks; 766 files / 6,228 tests passed, 10 files / 45 tests skipped, 1 todo; test duration 500.50 seconds; production build 12.73 seconds. All eight bundle guards passed (JS 2203.5 KiB raw / 592.4 KiB gzip; CSS 473.5 KiB raw / 79.5 KiB gzip).
