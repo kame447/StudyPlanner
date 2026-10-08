@@ -130,6 +130,29 @@ const tinyChunkScenarioArbitrary: fc.Arbitrary<PlacementScenario> = fc.record({
     (duration) => duration % scenario.maxSessionMinutes !== 30,
   ));
 
+// Independent reference model for a family that is placeable by construction (#382): every
+// task fits in one session, there are no more tasks than days, there are no existing plans, and
+// every generated day keeps at least 13:00-18:00 free (windows start 08-12, end 18-24, and only
+// 12:00-13:00 is blocked). One task per day is then always a valid placement, so a correct
+// placement must place all requested minutes. The expectation is derived from this model, never
+// from the production validator or scorer.
+const placeableScenarioArbitrary: fc.Arbitrary<PlacementScenario> = fc.record({
+  dayCount: fc.integer({ min: 1, max: 7 }),
+  maxSessionMinutes: fc.constantFrom(60, 90, 120),
+  availableStartHour: fc.integer({ min: 8, max: 12 }),
+  availableEndHour: fc.integer({ min: 18, max: 24 }),
+  breakMinutes: fc.constantFrom(0, 10, 15),
+  bufferMinutes: fc.constantFrom(0, 15, 30),
+}).chain((base) => fc.array(
+  fc.integer({ min: 1, max: base.maxSessionMinutes / 30 }).map((value) => value * 30),
+  { minLength: 1, maxLength: Math.min(base.dayCount, 5) },
+).map((taskDurations) => ({
+  ...base,
+  taskDurations,
+  avoidTinyChunks: false,
+  existingPlans: [],
+})));
+
 function runScenario(scenario: PlacementScenario) {
   const sourceText = `来週、${scenario.taskDurations
     .map((duration, index) => `科目${index + 1}を${duration}分`)
@@ -250,6 +273,17 @@ describe('weekly placement properties', () => {
         return duration >= 30 && duration < 40;
       })).toBe(false);
     }), { seed: PROPERTY_SEED + 3, numRuns: 10 });
+  });
+
+  it('places every requested minute when the reference model proves the request placeable', () => {
+    fc.assert(fc.property(placeableScenarioArbitrary, (scenario) => {
+      const { requestedMinutes, result } = runScenario(scenario);
+
+      // "Place nothing and report it all unplaced" also conserves minutes; it must fail here.
+      expect(result.blocks.length).toBeGreaterThan(0);
+      expect(result.unplacedMinutes).toBe(0);
+      expect(result.placedMinutes).toBe(requestedMinutes);
+    }), { seed: PROPERTY_SEED + 5, numRuns: 25 });
   });
 
   it('is deterministic for the same generated scenario', () => {

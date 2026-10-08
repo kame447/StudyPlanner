@@ -247,28 +247,60 @@ describe('weekly planning session reducer properties', () => {
     ));
   });
 
-  it('increments revision by exactly one for accepted mutations and preserves identity for rejected ones', () => {
-    fc.assert(fc.property(
-      fc.integer({ min: 0, max: 3 }),
-      fc.nat(),
-      (stateIndex, actionIndex) => {
-        const states = [
-          createInitialPlanningState(WEEK_START),
-          stateWithDrafts(),
-          stateWithPendingTurn(),
-          stateWithPendingApproval(),
-        ];
-        const current = states[stateIndex];
-        const actions = actionsForState(current);
-        const action = actions[actionIndex % actions.length];
+  it('accepts and rejects each action as the session contract says, independent of the reducer (#382)', () => {
+    // Independent accept/reject table: derived from the session contract (no pending work ->
+    // ordinary edits apply when their target exists; a pending turn admits only its own
+    // commit/fail/cancel and reset; a pending approval admits only its own complete/fail and
+    // reset; terminal results without a pending operation are stale). 'either' marks pairs the
+    // contract leaves open; only the revision invariant is checked for them.
+    type Expected = 'accept' | 'reject' | 'either';
+    const idle = (hasDrafts: boolean): Record<WeeklyPlanningAction['type'], Expected> => ({
+      add_draft_blocks: 'accept',
+      remove_draft_block: hasDrafts ? 'accept' : 'reject',
+      remove_draft_blocks: hasDrafts ? 'accept' : 'reject',
+      clear_draft_blocks: hasDrafts ? 'accept' : 'reject',
+      remove_preview_candidate: 'reject',
+      mark_draft_block_user_edited: hasDrafts ? 'accept' : 'reject',
+      append_message: 'accept',
+      set_intake_state: 'either',
+      clear_conversation: 'either',
+      reset_session: hasDrafts ? 'accept' : 'either',
+      set_last_assistant_message: 'accept',
+      begin_turn: 'accept',
+      commit_turn: 'reject',
+      fail_turn: 'reject',
+      cancel_turn: 'reject',
+      begin_approval: hasDrafts ? 'accept' : 'either',
+      complete_approval: 'reject',
+      fail_approval: 'reject',
+    } as Record<WeeklyPlanningAction['type'], Expected>);
+    const onlyAdmits = (admitted: WeeklyPlanningAction['type'][]) => (type: WeeklyPlanningAction['type']): Expected =>
+      admitted.includes(type) ? 'accept' : 'reject';
+    const cases: Array<{ label: string; state: () => PlanningState; expected: (type: WeeklyPlanningAction['type']) => Expected }> = [
+      { label: 'initial', state: () => createInitialPlanningState(WEEK_START), expected: (type) => idle(false)[type] },
+      { label: 'with drafts', state: stateWithDrafts, expected: (type) => idle(true)[type] },
+      { label: 'pending turn', state: stateWithPendingTurn, expected: onlyAdmits(['commit_turn', 'fail_turn', 'cancel_turn', 'reset_session']) },
+      { label: 'pending approval', state: stateWithPendingApproval, expected: onlyAdmits(['complete_approval', 'fail_approval', 'reset_session']) },
+    ];
+    let checked = 0;
+    for (const testCase of cases) {
+      for (const action of actionsForState(testCase.state())) {
+        const current = testCase.state();
         const next = weeklyPlanningReducer(current, action);
-
-        if (next === current) {
-          expect(next.revision).toBe(current.revision);
+        const expected = testCase.expected(action.type);
+        const label = `${testCase.label} / ${action.type}`;
+        if (expected === 'accept') {
+          expect(next, label).not.toBe(current);
+          expect(next.revision, label).toBe(current.revision + 1);
+        } else if (expected === 'reject') {
+          expect(next, label).toBe(current);
         } else {
-          expect(next.revision).toBe(current.revision + 1);
+          expect(next.revision, label).toBe(next === current ? current.revision : current.revision + 1);
         }
-      },
-    ));
+        checked += 1;
+      }
+    }
+    // 4 states x 19 actions, enumerated (a bounded matrix, not every reducer state).
+    expect(checked).toBe(76);
   });
 });
