@@ -62,6 +62,34 @@ afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.useRe
 async function mount() { await act(async () => { renderer = create(<StudyPlannerAppRoot authSession={fake.session} />); await microtasks(); }); }
 async function release(gate: ReturnType<typeof deferred>) { await act(async () => { gate.resolve(undefined); await microtasks(); }); }
 const splash = () => renderer!.root.findAllByType(SplashScreen).length;
+it.each(['skip', 'ended', 'error'])('video %s cannot release memory or planner gates, while readiness never waits for the video', async event => {
+  await mount();
+  const originalSplash = renderer!.root.findByType(SplashScreen);
+  act(() => {
+    if (event === 'skip') renderer!.root.findByProps({ 'aria-label': '起動アニメーションをスキップ' }).props.onClick();
+    else renderer!.root.findByType('video').props[event === 'ended' ? 'onEnded' : 'onError']();
+  });
+  expect(renderer!.root.findByType(SplashScreen)).toBe(originalSplash);
+  expect(renderer!.root.findAllByType('video')).toHaveLength(0);
+  expect(fixture.content).not.toHaveBeenCalled();
+  await release(memoryGate);
+  expect(splash()).toBe(1);
+  await release(plannerGate);
+  expect(splash()).toBe(0);
+  expect(fixture.content).toHaveBeenCalled();
+});
+
+it('releases a healthy still-playing intro as soon as current startup data is ready', async () => {
+  await mount();
+  expect(renderer!.root.findAllByType('video')).toHaveLength(1);
+  await release(memoryGate);
+  expect(renderer!.root.findAllByType('video')).toHaveLength(1);
+  await release(plannerGate);
+  expect(splash()).toBe(0);
+  expect(renderer!.root.findAllByType('video')).toHaveLength(0);
+  expect(fixture.content).toHaveBeenCalled();
+});
+
 it.each(['memory-first', 'planner-first'])('overlaps bootstrap with memory and retains both gates: %s', async order => {
   await mount();
   expect(fixture.memory).toHaveBeenCalledOnce();
