@@ -3,7 +3,7 @@
 Status: active, final integration and publication verification
 Base: `3a1e60b9`
 Branch: `feat/unplanned-study-start`
-PR: initial draft publication in progress on the same branch; user authorized review-tested PR publication and main integration. Root owns publication coordination and main integration.
+PR: https://github.com/kame447/StudyPlanner/pull/540 (draft); user authorized review-tested PR publication and main integration. Root owns publication coordination and main integration.
 
 ## Scope and ownership
 
@@ -94,3 +94,33 @@ The release coordinator approved publishing this coherent implementation as a dr
 The additional AI mobile-WebKit fixture correction changes only E2E handling of unsupported `mouse.wheel`; runtime/type/unit/build inputs remain identical to the full-pass snapshot. Syntax checks for the changed specs/config and all 97 mobile cases collected successfully; 237 installed package versions still match. This does not establish real browser success.
 
 Known lower-stack blockers must stay visible in the draft PR: the 320×568 Home Today area compresses enough to clip its add action, and responsive-header golden images have not been accepted. Neither browser results nor main integration are complete. Do not mark ready or merge; incorporate the reviewed header repair into this same branch and re-evaluate its runtime verification before main integration.
+
+## Header repair and visual continuation
+
+Initial publication verified remote `65cd16c7e5a8d2af44f93fea223641cbd8aba8c7`, local `1612c72b5ff3a0cc97d95aace6cff841e6d7a1b4`, identical tree `eb15d606e7037dfa3303c41aa4e049f6da142737`, and the sole scheduled-student remote parent. Initial CI, UI Quality and Admin checks passed. Browser and cross-browser checks are still running; initial visual has two desktop passes and two mobile failures from the pending baseline changes.
+
+Merged scheduled-student `1be06e187e6ae829e667a43d0e0d3b03b49389ec`, including header `026e3122` compact-Home runtime repair and reviewed mobile baselines, as `6a2a2f1b`. Retained all WebKit targets, including compact Home, scheduled student and unplanned study; 119 cases in 9 files collect. This runtime CSS change requires a new combined full verification; the earlier full remains evidence only for its stated snapshot.
+
+Reviewed and adopted only the two mobile Home CTA baselines from the digest-verified initial PR #540 compact artifact. Compared with the accepted scheduled-student images, the sole light/dark difference is the deliberate `勉強を開始` text region; all other pixels match. The compact CSS does not apply at these 390×844 golden dimensions. Full provenance and preservation of the other six mobile baselines are recorded in `tests/e2e/UI_REGRESSION.md`. Do not treat reviewed goldens as a final Matrix pass.
+
+Next: wait for the coordinated heavy-test slot, run full verification on the repaired combined runtime, update the same remote branch without rewriting history using the latest published student tree, then follow new CI and review the unplanned-session success images. Main remains unmerged.
+
+## Repaired-runtime verification and WebKit investigation
+
+The repaired runtime at `94044701b03c0c749c9d81cbce3b334bf029a69f` / tree `bbda36c0a7c7cec9dc2daa696eda2601a7e92ddc` passed exact `npm run verify`: exit 0, fresh app/Worker typechecks, 760 files passed / 10 skipped, 6,161 tests passed / 45 skipped / 1 todo, build 6.86 seconds. All eight bundle guards passed. The same Node/toolchain and one-worker settings were used, with all 237 installed locked packages and manifest hashes unchanged. During this run, the only worktree change was diagnostic logging in `tests/e2e/study-session-unplanned.spec.mjs`, which the full unit suite excludes and type/build do not consume; application/Worker/unit/build inputs and HEAD/tree remained unchanged. Evidence: `/tmp/unplanned-study-verify/final-*`.
+
+Initial real browser evidence for `65cd16c7`: all four unplanned cases passed in Chromium; the class and explicit-planned-choice cases passed in mobile WebKit. The two completely-empty mobile-WebKit cases failed the unchanged outer-dialog horizontal-overflow assertion at 390px and 1280px. Do not classify this as fixed based on unit tests or screenshots alone. The main candidates are native input sizing, retained entrance-animation overflow and measurement/paint timing. The closed time-adjust details and apparently bounded inner pane weaken the native-input hypothesis; exact geometry is being collected.
+
+The intermediate public commit `f6de617fbd3d23d5d97adf69cb4b40a30b53a2fb` retains the initial runtime and changes only that E2E file to log initial/after-paint geometry and reversible animation/input-width diagnostic probes while preserving the original failing assertion. Successful screenshots now use a real output path so the compact artifact contains them. Matrix run `37713672316` is pending. These diagnostics are not a new production fix or a relaxed overflow allowance. The final local header/golden integration has not yet been published.
+
+## Bounded entry/swipe transform candidate
+
+The diagnostic Matrix run completed with the same two WebKit failures and 290 other passes. On both attempts, the 390px dialog reports scroll width 780 while its pane is 390/390, and the 1280px dialog reports 2100 while its pane is 820/820 at x=460. Every visible descendant stays within the dialog. An additional paint, removing animation after the fact, and constraining native inputs do not change the reported outer width. The surplus is exactly one pane width, consistent with retained offscreen entry bounds; this rules out ordinary form intrinsic overflow for the closed-details failure. Chromium again passed all four feature cases.
+
+The accompanying candidate replaces individual `translate` entry keyframes with the sum of entry offset and the existing swipe variable inside one `transform`. It uses backwards fill only, so finished entry no longer retains an animation effect over the base swipe transform. Reduced motion disables entry animation and transition. No new clipping, allowed-overflow increase, persistence or timer logic change is introduced. A proposal to disable animation only during the swipe class was rejected in independent review because removing that class could replay entry.
+
+Regression additions explicitly cover motion/reduced-motion media, completed entry, pane/root/descendant widths with time adjustment open, drag's rendered position, confirm dismissal and an abort during the real CSS animation paused at 140ms. The abort test verifies animation identity/time, final resting transform, one entry only and bounded outer width without modifying production animation duration. Temporary diagnostic style probes are removed; geometry logs and file-backed screenshots remain. WebKit selection preserves all prior targets and adds the existing touch-swipe spec.
+
+Independent read-only final audit found no static blocker; changed JavaScript syntax and diff checks passed. WebKit collection: 123 cases in 10 files. Focused session/material/gesture unit tests: 36/36 passed. Runtime/browser success for this candidate is still unverified. Header `60162069` and scheduled-student `3280a914` are incorporated, including the subsequent reload clock-fixture correction. Run the next full verification only in the coordinator's exclusive slot, then update this same PR and follow actual browser evidence before accepting the fix.
+
+The fixed candidate `442d55bae54d0dfbfa518ead3136a84997e5e89c` / tree `67ef3c53e6a1bda5bd5a11c4275918c78b5632a7` has now passed fresh `npm run verify`, exit 0: 760 files passed / 10 skipped; 6,161 tests passed / 45 skipped / 1 todo; app/Worker full typechecks; production build 9.11 seconds. All eight bundle guards passed. The exclusive run used fork/thread min=max=2 with the same other command-scoped environment; before/after HEAD, tree, clean worktree, manifest hashes and all 237 installed locked package versions matched. Logs and snapshots: `/tmp/unplanned-study-verify/transform-*`. No source/test/config input changed during this run. The following checkpoint-only commit does not alter that verified input. Actual browser correction and strengthened swipe regressions still require CI execution.

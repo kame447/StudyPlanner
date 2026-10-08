@@ -24,7 +24,7 @@ async function inspectRecordLayout(record) {
       const rect = node.getBoundingClientRect();
       return rect.width > 0 && (rect.right > root.right + 1 || rect.left < root.left - 1 || node.scrollWidth > node.clientWidth + 1);
     }).map(measure);
-    return { root, pane: measure(pane), overflowing,
+    return { root, pane: measure(pane), overflowing, reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
       animations: pane.getAnimations().map(animation => ({ playState: animation.playState, currentTime: animation.currentTime })) };
   });
 }
@@ -43,14 +43,18 @@ async function seed(page, { kind = 'empty', material = false } = {}) {
 }
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
-  test(`unplanned study without any setup saves one Actual at ${viewport.width}px`, async ({ page }, testInfo) => {
+  for (const reducedMotion of ['no-preference', 'reduce']) test(`unplanned study without any setup saves one Actual at ${viewport.width}px (${reducedMotion})`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
+    await page.emulateMedia({ reducedMotion });
     await seed(page);
     await page.goto('/');
+    expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(reducedMotion === 'reduce');
     await page.getByRole('button', { name: /勉強を開始/ }).click();
     const ready = page.getByRole('dialog', { name: '学習を開始', exact: true });
     await ready.getByRole('textbox', { name: '勉強する内容' }).fill('今から復習');
     await expect(ready.getByRole('combobox', { name: '教材', exact: true })).toHaveValue('');
+    await expect.poll(() => ready.locator('.study-session-page').evaluate(element => element.getAnimations().length)).toBe(0);
+    if (reducedMotion === 'reduce') await expect(ready.locator('.study-session-page')).toHaveCSS('animation-name', 'none');
     await attachScreen(page, testInfo, `unplanned-study-ready-${viewport.width}`);
     await ready.getByRole('button', { name: 'スタート', exact: true }).dblclick();
     await page.clock.fastForward(125_000);
@@ -61,26 +65,17 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     const initialLayout = await inspectRecordLayout(record);
     console.log('Unplanned record initial layout:', JSON.stringify(initialLayout));
     await attachScreen(page, testInfo, `unplanned-study-record-${viewport.width}`);
-    if (overflow) {
-      console.log('Unplanned record after paint:', JSON.stringify(await inspectRecordLayout(record)));
-      const probes = await record.evaluate(element => {
-        const pane = element.querySelector('.study-session-page');
-        const original = pane.style.cssText;
-        const width = () => ({ scroll: element.scrollWidth, client: element.clientWidth, paneScroll: pane.scrollWidth, paneClient: pane.clientWidth });
-        const before = width();
-        pane.style.animation = 'none';
-        const withoutAnimation = width();
-        pane.style.cssText = original;
-        const inputs = [...pane.querySelectorAll('input, textarea, select')];
-        const originals = inputs.map(input => input.style.cssText);
-        inputs.forEach(input => { input.style.minWidth = '0'; input.style.maxWidth = '100%'; });
-        const boundedInputs = width();
-        inputs.forEach((input, index) => { input.style.cssText = originals[index]; });
-        return { before, withoutAnimation, boundedInputs };
-      });
-      console.log('Unplanned record overflow diagnostics:', JSON.stringify(probes));
-    }
     expect(overflow).toBe(false);
+    expect(initialLayout.pane.scrollWidth).toBeLessThanOrEqual(initialLayout.pane.clientWidth + 1);
+    expect(initialLayout.overflowing).toEqual([]);
+    await record.locator('summary').click();
+    await expect(record.getByLabel('開始', { exact: true })).toBeVisible();
+    await expect(record.getByLabel('終了', { exact: true })).toBeVisible();
+    const adjustedLayout = await inspectRecordLayout(record);
+    console.log('Unplanned record time-adjust layout:', JSON.stringify(adjustedLayout));
+    expect(adjustedLayout.root.scrollWidth).toBeLessThanOrEqual(adjustedLayout.root.clientWidth + 1);
+    expect(adjustedLayout.pane.scrollWidth).toBeLessThanOrEqual(adjustedLayout.pane.clientWidth + 1);
+    expect(adjustedLayout.overflowing).toEqual([]);
     await record.getByRole('button', { name: '記録を保存', exact: true }).dblclick();
     await expect(record).toHaveCount(0);
     const saved = await page.evaluate(() => ({ actuals: JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]'), plans: JSON.parse(localStorage.getItem('studyplanner.plans') ?? '[]') }));

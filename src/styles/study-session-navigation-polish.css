@@ -14,7 +14,9 @@
   transition: transform 160ms cubic-bezier(0.25, 1, 0.5, 1);
   touch-action: pan-y;
   overscroll-behavior-x: contain;
-  animation: study-session-enter-from-right 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* Keep entry and swipe in one transform. WebKit retains the offscreen
+     individual-translate bounds; do not retain an animation after entry. */
+  animation: study-session-enter-from-right 280ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 .study-session-page.is-swiping-back {
@@ -23,10 +25,10 @@
 
 @keyframes study-session-enter-from-right {
   from {
-    translate: 100% 0;
+    transform: translate3d(calc(100% + var(--study-session-swipe-x, 0px)), 0, 0);
   }
   to {
-    translate: 0 0;
+    transform: translate3d(var(--study-session-swipe-x, 0px), 0, 0);
   }
 }
 
@@ -121,7 +123,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .study-session-page {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+    animation: none !important;
+    transition: none !important;
   }
 }

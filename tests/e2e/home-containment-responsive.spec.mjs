@@ -1,11 +1,13 @@
 import { expect, test } from './support/fixed-clock.mjs';
+import { expectCompactHomeReachable } from './support/compact-home.mjs';
 import {
   expectOrderedWithoutOverlap,
   expectRectContained,
 } from './support/layout-containment.mjs';
 
 const VIEWPORTS = [
-  { name: 'small-phone', width: 320, height: 568 },
+  { name: 'small-phone', width: 320, height: 568, scrollBody: true },
+  { name: 'short-landscape', width: 852, height: 393, scrollBody: true },
   { name: 'compact-phone', width: 360, height: 640 },
   { name: 'modern-phone', width: 390, height: 844 },
   { name: 'large-phone', width: 430, height: 932 },
@@ -20,10 +22,12 @@ const VIEWPORTS = [
 ];
 
 const RESIZE_SEQUENCE = [
+  { width: 320, height: 568, scrollBody: true },
   { width: 360, height: 640 },
   { width: 1536, height: 864 },
   { width: 1920, height: 1080 },
   { width: 1024, height: 768 },
+  { width: 852, height: 393, scrollBody: true },
   { width: 390, height: 844 },
 ];
 
@@ -140,11 +144,11 @@ async function readContainmentMetrics(page) {
   });
 }
 
-function expectContainment(metrics) {
+function expectContainment(metrics, scrollBody = false) {
   expect(metrics.pageWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
   expect(metrics.pageHeight).toBeLessThanOrEqual(metrics.viewportHeight + 1);
-  expect(metrics.todayDisplay).toBe('grid');
-  expect(['auto', 'scroll']).toContain(metrics.scheduleOverflowY);
+  expect(metrics.todayDisplay).toBe(scrollBody ? 'block' : 'grid');
+  expect(scrollBody ? ['visible'] : ['auto', 'scroll']).toContain(metrics.scheduleOverflowY);
 
   expectRectContained(metrics.today, metrics.heading);
   expectRectContained(metrics.today, metrics.schedule);
@@ -159,26 +163,29 @@ function expectContainment(metrics) {
   expectOrderedWithoutOverlap(metrics.progress, metrics.material);
 
   const lastContent = metrics.material ?? metrics.progress;
-  if (lastContent && metrics.nav) {
+  if (!scrollBody && lastContent && metrics.nav) {
     expect(lastContent.bottom).toBeLessThanOrEqual(metrics.nav.top + 1);
   }
 }
 
 for (const viewport of VIEWPORTS) {
   for (const planCount of [1, 4]) {
-    test(`${viewport.name} ${viewport.width}x${viewport.height} keeps ${planCount} schedule row(s) inside today's card`, async ({ page }) => {
+    test(`${viewport.name} ${viewport.width}x${viewport.height} keeps ${planCount} schedule row(s) inside today's card`, async ({ page, browserName, isMobile }, testInfo) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await seedHome(page, planCount);
       await page.goto('/');
       await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
       await page.waitForTimeout(650);
 
-      expectContainment(await readContainmentMetrics(page));
+      expectContainment(await readContainmentMetrics(page), viewport.scrollBody);
+      if (viewport.scrollBody) {
+        await expectCompactHomeReachable(page, testInfo, `home-containment-${viewport.name}-${planCount}`, { browserName, isMobile });
+      }
     });
   }
 }
 
-test('keeps containment while resizing between phone, laptop, desktop, and tablet layouts', async ({ page }) => {
+test('keeps containment while resizing between phone, laptop, desktop, and tablet layouts', async ({ page, browserName, isMobile }, testInfo) => {
   await page.setViewportSize(RESIZE_SEQUENCE[0]);
   await seedHome(page, 4);
   await page.goto('/');
@@ -187,6 +194,9 @@ test('keeps containment while resizing between phone, laptop, desktop, and table
   for (const viewport of RESIZE_SEQUENCE) {
     await page.setViewportSize(viewport);
     await page.waitForTimeout(450);
-    expectContainment(await readContainmentMetrics(page));
+    expectContainment(await readContainmentMetrics(page), viewport.scrollBody);
+    if (viewport.scrollBody) {
+      await expectCompactHomeReachable(page, testInfo, `home-resize-${viewport.width}-${viewport.height}`, { browserName, isMobile });
+    }
   }
 });
