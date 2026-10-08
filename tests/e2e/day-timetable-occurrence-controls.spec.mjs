@@ -58,6 +58,25 @@ for (const width of [390, 1280]) {
     await card(page, '自動表示の授業').click();
     await expect(page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true })).toBeVisible();
     await attachScreen(page, testInfo, `day-timetable-detail-${width}`);
+    const deletionBounds = await page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true })
+      .getByRole('button', { name: 'この日だけ削除', exact: true }).evaluate(button => {
+        const control = button.getBoundingClientRect();
+        const dialog = button.closest('[role="dialog"]').getBoundingClientRect();
+        return { height: control.height, left: control.left, right: control.right, top: control.top, bottom: control.bottom,
+          dialogLeft: dialog.left, dialogRight: dialog.right, dialogTop: dialog.top, dialogBottom: dialog.bottom,
+          viewportWidth: window.innerWidth, viewportHeight: window.innerHeight };
+      });
+    console.log('Day timetable deletion control bounds:', JSON.stringify({ width, ...deletionBounds }));
+    // Existing modal ghost buttons keep at least 40px on the narrow breakpoint.
+    expect(deletionBounds.height).toBeGreaterThanOrEqual(40);
+    expect(deletionBounds.left).toBeGreaterThanOrEqual(deletionBounds.dialogLeft);
+    expect(deletionBounds.right).toBeLessThanOrEqual(deletionBounds.dialogRight);
+    expect(deletionBounds.top).toBeGreaterThanOrEqual(deletionBounds.dialogTop);
+    expect(deletionBounds.bottom).toBeLessThanOrEqual(deletionBounds.dialogBottom);
+    expect(deletionBounds.left).toBeGreaterThanOrEqual(0);
+    expect(deletionBounds.right).toBeLessThanOrEqual(deletionBounds.viewportWidth);
+    expect(deletionBounds.top).toBeGreaterThanOrEqual(0);
+    expect(deletionBounds.bottom).toBeLessThanOrEqual(deletionBounds.viewportHeight);
     await page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true }).getByRole('button', { name: 'この日だけ削除', exact: true }).click();
     await expect(card(page, '自動表示の授業')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleTemplates.v1')).map(row => row.excludedDates))).toEqual([[E2E_TODAY], [E2E_TODAY]]);

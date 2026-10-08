@@ -1,9 +1,25 @@
 # Day timetable visibility and occurrence removal
 
-Status: active; final top-inset integration passed local verification, strict browser/image acceptance and main release remain pending
+Status: active; final deletion-button styling passed local verification, exact browser/image acceptance and main release remain pending
 Branch: `fix/day-timetable-occurrence-controls`
 Base: `3a1e60b9`
 PR: https://github.com/kame447/StudyPlanner/pull/541 (draft)
+
+## Final deletion-control local proof — 2026-10-08 07:49 UTC
+
+- Clean input `02d4b0011418b3d9ab1e1bbf68311ed2300d728c`, tree `7aa88b7615e3b89ed45476fc277405c86fc57c0d`, passed regular `npm run verify`, exit 0: fresh app/Worker full checks; 766 files / 6,228 tests passed, 10 files / 45 tests skipped, 1 todo; test duration 500.50 seconds; production build 12.73 seconds. All eight bundle guards passed (JS 2203.5 KiB raw / 592.4 KiB gzip; CSS 473.5 KiB raw / 79.5 KiB gzip).
+- One-worker thread/fork settings were command-local. Every tracked input hash, exact HEAD/tree, clean worktree and all 237 installed package identities match before/after. Lock and installed-manifest identities are unchanged. Receipts and terminal output: ignored `artifacts/day-release/verify-button-final-input.json`, `.log`, `.exit`, `verify-button-final-post.json`, and `bundle-button-final.log`.
+- After this completed run, merged upstream E2E-only `a510ab3459a48ad15344e08f627c6a72a0a23511`, whose actual remote is `ba3d4b24314f0a191fac45272b3114c7d603695d` and tree `71d0af113dddb5390e2f588817161b41303e2917`. No production, app/Worker type, unit, build, config or dependency input changed. The new test validates the observed exact running/paused state set after a rapid native gesture, a single retained pane, no premature Actual, state-consistent elapsed time, continued timing, and one final saved Actual. It does not alter production behavior or accept an arbitrary state.
+- The earlier one-flaky gate remains failed evidence. New exact-head Chromium/WebKit execution must establish the corrected gesture premise and Day control geometry. The class-only Day candidate still needs its actual 40px-or-larger target/containment and screenshot checks; local full success is not rendered-UI acceptance.
+- Update this same draft PR non-destructively with the actual upstream parent and exact local tree. This is the final authorized Day UI adjustment; shared Undo toast behavior remains untouched. Main remains with the release coordinator and held pending production-entry verification.
+
+## Final deletion-control styling candidate — 2026-10-08 07:35 UTC
+
+- Latest remote `1897d9b6` completed Chromium 451/451, CI / 6,228 tests / actual Firestore, visual, Quality and Admin. Cross-browser finished 339 passed / 3 existing skips / 1 flaky, so `failOnFlakyTests` correctly fails that gate. Every Day viewport case and the upstream phase/caret cases passed first-attempt. The only flaky result is upstream rapid-start at WebKit 1280px/normal motion: its first attempt showed a single actively running timer, while the test required the paused state; its retry passed. The owning release is diagnosing that premise rather than accepting a flaky run.
+- The coordinator authorized one final Day UI change: apply the existing timetable button combination `ghost-button danger-button` to the Day deletion control. This is one class-only production change; wording, callbacks, persistence, disabled/double-click guards and Undo are untouched. Do not expand into shared toast design.
+- Added a regression to the existing failure/duplicate/close/retry test. It fails on the old class and passes with the fix. Four focused files / 47 cases passed. The real-browser spec additionally checks the existing narrow-modal button minimum of 40 CSS px and full containment in the dialog and viewport, after the unchanged screenshot capture. Existing assertions and thresholds are not relaxed; syntax and diff checks passed.
+- Actual final control dimensions and updated screenshots remain pending. The previously observed Undo-toast overlap remains a temporary existing presentation observation, not a verified persistent accessibility failure and not a repaired behavior.
+- Next: combine the upstream rapid-start test correction if needed, freeze one final input, run the coordinator-authorized single-worker full verification, update this same PR without force, and require exact-head browser/image evidence. Main remains with the coordinator and is still held for production-entry verification.
 
 ## Final header-inset integration verification — 2026-10-08 06:39 UTC
 
