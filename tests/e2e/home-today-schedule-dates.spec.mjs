@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/startup-ready.mjs';
 
 const NOW = new Date('2026-10-08T01:07:00+09:00');
 const TODAY = '2026-10-08';

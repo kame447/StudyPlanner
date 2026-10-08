@@ -1,13 +1,13 @@
 # Firestore read load and startup investigation
 
-Status: active draft PR #546; initial publication and preview succeeded; browser contract fixes under verification; first-save Rules repair separately owned
+Status: active draft PR #546; full-length video main integrated locally; 174 focused tests, fresh app/Worker checks and build/bundle passed; new exact-head CI pending
 Updated: 2026-10-08 UTC
 Owner: [Issue #542](https://github.com/kame447/StudyPlanner/issues/542)
 
 ## Current checkpoint
 
 - Active branch: `perf/firestore-read-load`.
-- Base: `22847120386987329e2f034d6062d59694ef1180`. Initial verified implementation commit: `d48ad6c7d741d26db51eda03ef51f101a8c01614`, tree `631aec9f01a5ddfbffaed75ff343dcb17b2381dc`. Its initial publication added only a documentation checkpoint; the 1,855 runtime/test/config input hashes and 336 installed-package identities matched that full run. The subsequent three-file E2E correction described below changes the test-input snapshot and requires fresh verification.
+- Original base: `22847120386987329e2f034d6062d59694ef1180`. Initial verified implementation commit: `d48ad6c7d741d26db51eda03ef51f101a8c01614`, tree `631aec9f01a5ddfbffaed75ff343dcb17b2381dc`. Its initial publication added only a documentation checkpoint; the 1,855 runtime/test/config input hashes and 336 installed-package identities matched that full run. The subsequent three-file E2E correction described below changes the test-input snapshot and requires fresh verification.
 - The user approved publishing this independent PR and its automatic Cloudflare preview on 2026-10-08. The existing Issue #542 owns publication and CI tracking; current remote HEAD and PR URL will be recorded there after creation. Main integration, production data, production Rules deployment and billing changes remain excluded.
 - Publication preflight at 2026-10-08 11:53 UTC found main unchanged at the base, Issue #542 open, and no existing remote branch or PR for this scope. The intended new PR is draft until its exact-HEAD CI and browser gates are evaluated.
 - Scope: reduce redundant planner reads while preserving save, recovery, account isolation and fresh UI projection. The 2026-10-08 10:31 UTC request also includes investigating and repairing very slow application startup.
@@ -22,7 +22,8 @@ Owner: [Issue #542](https://github.com/kame447/StudyPlanner/issues/542)
 - Integration audit caught and repaired an activity-telemetry regression from the new combined getter. The final independent native-save/snapshot/telemetry run passes 17 tests.
 - Published draft: [PR #546](https://github.com/kame447/StudyPlanner/pull/546), original remote HEAD `1465f7beb957ff9621bf4817064543d708db8bff`, tree `df42015294f52e710050a84e0094a4373c96a5c9`, verified identical to the local publication snapshot. Its automatic [Cloudflare preview](https://54bebc28.studyplannner.pages.dev) succeeded. The owning Issue records the current remote HEAD and CI status.
 - A subsequent independent billing audit identified 16 dedicated verify-only operations omitted by the first response-only pricing model. The documentation-only correction below adds them to read equivalents, preserves the raw fixture reports, and leaves all verified runtime/test/config inputs unchanged.
-- Next: publish the freshly verified three-file E2E contract correction and documentation-only pricing correction on this same branch, then check its exact-head CI gates and preview. Local browser/visual acceptance and real-device latency are not established. Issue #51 owns the separately authorized first-save Rules repair; this branch does not change Rules or establish that fix.
+- Current integration target: main `fc708da391037589a0cd15c872563d2e086e3e5e`, after full-length startup-video PR #548 merged. The earlier #545-only local candidate is preserved as `c0fff8bddfc20345a66dcbbf1a5f9765b4e0612c` and was not published. The published read-load head `fabc46dcddc77e987c7eac6254899d4e2383a8cc` passed all five triggered workflows before that base change; those results are historical, not certification of the new combined content.
+- Next: publish the focused-verified integration candidate on this same draft PR, then verify its exact-head full CI, browser gates and automatic preview. The latest authorized workflow uses local focused checks and CI for the final combined proof, without another local full-suite repetition. Local browser/visual acceptance and real-device latency are not established. Issue #51 owns the separately authorized first-save Rules repair; this branch does not change Rules or establish that fix.
 
 This is an active execution record, not a new canonical storage contract. [Read projection recovery](../architecture/planner-read-projection-recovery.md), [client-first requirements](../spec/client-first-execution-requirements.md), [scheduled-event authority](../../scheduling/architecture/scheduled-event-authority.md) and [weekly-planning runtime](../../weekly-planning/architecture/current-contract-v5.md) retain their existing responsibilities. In particular, Issue #437 reconciliation safety and Issue #164 account/local-replica requirements are not replaced. Orrery/Issue #488 is outside this work.
 
@@ -322,6 +323,36 @@ All **1,855 inputs** match before/after, manifest SHA-256 `f2f59692ffc42421f1c29
 - `tests/e2e/startup-gates.spec.mjs`: `ec050ee0df0742d5444fca937d66bf1296950c6c112f8c9815c92f590956ecb9`
 
 The shared Vitest cache stores result/duration ordering, not permission to skip executing tests. Serial execution removed the overlapping heavy jobs; the improved timings support the resource-contention explanation without proving causality in isolation. The earlier failed/interrupted run remains incomplete evidence. This final local full pass does not execute Playwright; the corrected browser candidate must still pass its next exact-head PR CI.
+
+### Historical, unpublished integration after startup-video PR #545 merged
+
+Main advanced to `f281c6c0ba56ef7b57865b7edcfd276d11a7b2ab`, tree `f5ebab6e78fc1c4828e07b383d970bef35ff2e50`. The existing local video commit `cec07c57c8aa0bd625a929b4bd70511151a83c81` has exactly that tree and the same original merge base, so it supplies the local three-way integration content. That candidate was preserved locally and not published after the user changed the video-completion contract. Its proposed remote-parent pair is historical; the latest integration below targets the newer main.
+
+The sole textual conflict is the client-runtime README. Its resolution retains both the Issue #542 investigation and startup-video handoff links. The shared parallel-startup test merges automatically, preserving video skip/end/error checks while targeting the required combined schedule snapshot. All other nonoverlapping changed files match their respective exact source commits; there is no additional production-runtime correction.
+
+Five regressions from the independent combined audit are now retained in the actual startup-latency suite. They exercise media skip/end/error during the real policy timeout, retry, unresolved schedule snapshot and stale response, plus owner A→B and batched A→null→A retirement. Media remains decorative: it cannot grant consent, restore a retired owner lease or publish planner readiness.
+
+On 2026-10-08 at 15:07:58 UTC, **142 tests in 10 files passed**, exit 0, using one Vitest worker with `--no-cache`. The six combined startup/media/policy suites account for 110 cases; approval projection, native persistence, snapshot and telemetry boundary suites add 32. Input manifest SHA-256 is `bc529711b3528944ce5edc2fb6ed6ecab9f6f4ef5ff2536f273dfc9b85f05cb1` for **1,864 included inputs**; all match before/after. The 336 installed-package entries preserve SHA-256 `33f6896aab782ec816c5d3afa66c7f15c5d040354650ba8534b8f00053570ecd`. The normal development `npm run typecheck` also passed for app and Worker, including Worker-type regeneration; this is not a fresh full-suite claim. This is focused local evidence, not a full or browser pass of the combined candidate. Final exact-head CI and automatic preview remain required after the draft update. PR #546 has no main-merge authorization.
+
+### Integration with full-length startup video, PR #548
+
+Current main is `fc708da391037589a0cd15c872563d2e086e3e5e`, tree `7baae48b32dff69869d95dc0f9cbfa87662cfe0e`. The clean video-owner local commit `8e57d17c9df8589986492e895072a1be2c4421cc` matches that tree. The prior read-load integration candidate remains an immutable local parent; no saved verification record is overwritten. Publication must use the actual remote parents, current read-load HEAD `fabc46dcddc77e987c7eac6254899d4e2383a8cc` and main `fc708da391037589a0cd15c872563d2e086e3e5e`, with a normal same-branch fast-forward and no main merge.
+
+The new video-owned `StartupSurface` keeps app readiness and media completion separate. A healthy movie continues after data becomes ready, and only then admits the optional skip action. A completed/failed media outcome cannot make pending policy, preferences, memory or planner reads ready. The read-load branch's existing layout-time pending notification remains in the root so a consent or preference retry restores loading immediately; it does not replay an already-completed intro. Old-owner responses cannot release the current session.
+
+Three-way content integration was conflict-free. The shared parallel-startup test retained one newly added `plansSpy` reference after its surrounding fixture had moved to `snapshotSpy`; that stale test reference was corrected. The startup-latency suite's old media assumptions were migrated explicitly: ordinary data-timing tests first finish the intro through its real ended event, while separate combined tests keep the real video mounted. These assert ready-first full playback and ready-only skip, early-gesture rejection, policy timeout/retry, pending combined snapshot, late retired responses and A→B / batched A→null→A session changes. The old expectation that a retry remounts an intro is replaced with the current one-playback lifecycle, while pending-loading and save/read authority assertions remain.
+
+The initial contract probe recorded **14 failures / 3 passes** against the older media expectations. After this test-contract migration, the two startup suites passed **56 tests**. Final local validation ran from **2026-10-08 22:10:04 to 22:11:23 UTC**:
+
+- **174 focused tests / 12 files passed**, exit 0, one worker and `--no-cache`.
+- Fresh non-incremental app and Worker checks passed via `npm run typecheck:full`, with Worker types regenerated.
+- Production build passed in 11.12 seconds; all eight unchanged bundle budgets passed.
+- All **1,867 included inputs** match before/after, manifest SHA-256 `9bf441d043cc67adeca03883cd0350e42fd6f71fc9bf901ed220bfc5d8108f49`. All 336 installed-package entries retain SHA-256 `33f6896aab782ec816c5d3afa66c7f15c5d040354650ba8534b8f00053570ecd`.
+- Relative to the saved read-load candidate, no additional edits were made under AI planning implementation, Worker AI code, dedicated weekly/AI E2E paths, or Issue #488. The new main's already-merged general startup/test support is retained unchanged. Manual code adjustments are limited to the two startup test files; the production root is the automatic composition of the existing read-load pending callback and the new video-owned surface.
+
+An independent read-only review found no blocking issue: it checked the root/media/readiness composition, all 1,867 current input hashes, all 336 installed-package entries, protected-path parity and the final logs. Unit-generated media events are not presented as real playback evidence.
+
+This is **focused/type/build evidence, not a full unit or browser pass of this combined snapshot**. The authorized sequence is local focused validation, same draft-PR update, then final exact-head CI and preview verification. Previous per-PR greens remain historical. The work does not authorize merging PR #546 or changing production data, Rules or billing.
 
 ### Pending-branch compatibility, not an integration pass
 

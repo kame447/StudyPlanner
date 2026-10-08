@@ -3,6 +3,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { StudyPlannerAppRoot } from './StudyPlannerAppRoot';
 import { SplashScreen } from './SplashScreen';
+import { StartupSurface } from './StartupSurface';
 import { InitialPrivacyConsentScreen } from './InitialPrivacyConsentScreen';
 import { InitialWeekStartPreferenceScreen } from './InitialWeekStartPreferenceScreen';
 import { createFakeAuthSession } from '../test/fakeAuthSession';
@@ -95,8 +96,11 @@ beforeEach(() => {
   configureDelays({});
 });
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
-async function mount() {
+async function mount(completeIntro = true) {
   await act(async () => { renderer = create(<StudyPlannerAppRoot authSession={fake.session} />); await microtasks(); });
+  // Most cases isolate data readiness after a genuinely completed intro.
+  // The combined cases below retain the video and assert the separate gate.
+  if (completeIntro) act(() => renderer!.root.findByType('video').props.onEnded());
 }
 async function advance(milliseconds: number) {
   await act(async () => { await vi.advanceTimersByTimeAsync(milliseconds); await microtasks(); });
@@ -106,6 +110,7 @@ async function authenticate(milliseconds = 0) {
   await act(async () => { fake.emit({ id: 'a', requiresEmailVerification: false }); await microtasks(); });
 }
 const splash = () => renderer!.root.findAllByType(SplashScreen).length;
+const appLoading = () => renderer!.root.findByType(StartupSurface).props.loading as boolean;
 
 it.each([
   { name: 'cold-client synthetic delays', auth: 120, token: 180, policy: 700, preferences: 400, profile: 600, memory: 900, planner: 800 },
@@ -250,4 +255,102 @@ it.each(['success', 'failure'] as const)('keeps preference retry visible until %
     expect(fixture.profile).not.toHaveBeenCalled();
     expect(fixture.content).not.toHaveBeenCalled();
   }
+});
+
+
+// Combined full-length intro + read-load contract: real policy hook/client.
+it.each(['ended', 'error'] as const)('media %s cannot release the real policy timeout, retry, or schedule snapshot gates', async event => {
+  const oldResponse = deferred<Response>();
+  const retryResponse = deferred<Response>();
+  const schedule = deferred<{ plans: never[]; monthEvents: never[] }>();
+  fixture.fetch.mockReturnValueOnce(oldResponse.promise).mockReturnValueOnce(retryResponse.promise);
+  fixture.repository.getScheduleSnapshot = vi.fn(() => schedule.promise);
+  await mount(false); await authenticate();
+  expect(renderer!.root.findAllByType('video')).toHaveLength(1);
+  act(() => renderer!.root.findByType('video').props[event === 'ended' ? 'onEnded' : 'onError']());
+  expect(splash()).toBe(1); expect(appLoading()).toBe(true);
+  expect(renderer!.root.findAllByType('video')).toHaveLength(0);
+  expect(fixture.preferences).not.toHaveBeenCalled();
+  await advance(WEEKLY_PLANNING_TRACE_POLICY_TIMEOUT_MS);
+  expect(splash()).toBe(0);
+  expect(renderer!.root.findByType(InitialPrivacyConsentScreen).props.unavailable).toBe(true);
+  expect(fixture.repository.getScheduleSnapshot).not.toHaveBeenCalled();
+  const retry = renderer!.root.findByType(InitialPrivacyConsentScreen).props.onRetry;
+  let retryResult!: Promise<void>;
+  await act(async () => { retryResult = retry(); await microtasks(); });
+  expect(splash()).toBe(1); expect(appLoading()).toBe(true);
+  // A retry restores pending presentation, not a second intro playback.
+  expect(renderer!.root.findAllByType('video')).toHaveLength(0);
+  expect(fixture.fetch).toHaveBeenCalledTimes(2);
+  expect(fixture.content).not.toHaveBeenCalled();
+  await act(async () => { retryResponse.resolve(new Response(JSON.stringify(accepted))); await retryResult; await microtasks(); });
+  expect(splash()).toBe(1); expect(appLoading()).toBe(true);
+  expect(fixture.repository.getScheduleSnapshot).toHaveBeenCalledExactlyOnceWith('a');
+  expect(fixture.content).not.toHaveBeenCalled();
+  await act(async () => { oldResponse.resolve(new Response(JSON.stringify({ ...accepted, accepted: false }))); await microtasks(); });
+  expect(splash()).toBe(1);
+  expect(renderer!.root.findAllByType(InitialPrivacyConsentScreen)).toHaveLength(0);
+  await act(async () => { schedule.resolve({ plans: [], monthEvents: [] }); await microtasks(); });
+  expect(splash()).toBe(0); expect(appLoading()).toBe(false);
+  expect(fixture.content).toHaveBeenCalled();
+  expect(fixture.fetch).toHaveBeenCalledTimes(2);
+});
+
+it.each(['ended', 'skip'] as const)('real policy and snapshot readiness preserve healthy playback until %s', async completion => {
+  const policy = deferred<Response>();
+  const schedule = deferred<{ plans: never[]; monthEvents: never[] }>();
+  fixture.fetch.mockReturnValueOnce(policy.promise);
+  fixture.repository.getScheduleSnapshot = vi.fn(() => schedule.promise);
+  await mount(false); await authenticate();
+  const video = renderer!.root.findByType('video');
+  const pendingButton = renderer!.root.findByProps({ 'aria-label': '起動アニメーション' });
+  expect(pendingButton.props.disabled).toBe(true);
+  act(() => pendingButton.props.onClick());
+  expect(renderer!.root.findByType('video')).toBe(video);
+  expect(appLoading()).toBe(true); expect(fixture.preferences).not.toHaveBeenCalled();
+  await act(async () => { policy.resolve(new Response(JSON.stringify(accepted))); await microtasks(); });
+  expect(fixture.repository.getScheduleSnapshot).toHaveBeenCalledExactlyOnceWith('a');
+  expect(fixture.content).not.toHaveBeenCalled();
+  expect(renderer!.root.findByType(SplashScreen).props.canSkip).toBe(false);
+  expect(renderer!.root.findByType('video')).toBe(video);
+  await act(async () => { schedule.resolve({ plans: [], monthEvents: [] }); await microtasks(); });
+  expect(appLoading()).toBe(false); expect(fixture.content).toHaveBeenCalled();
+  expect(splash()).toBe(1); expect(renderer!.root.findByType('video')).toBe(video);
+  const readyButton = renderer!.root.findByProps({ 'aria-label': '起動アニメーションをスキップ' });
+  expect(readyButton.props.disabled).toBe(false);
+  act(() => completion === 'ended' ? video.props.onEnded() : readyButton.props.onClick());
+  expect(splash()).toBe(0); expect(appLoading()).toBe(false);
+  expect(fixture.repository.getScheduleSnapshot).toHaveBeenCalledOnce();
+});
+
+it.each(['a', 'b'])('early media gestures cannot revive retired policy readiness after a session transition to %s', async nextOwner => {
+  const oldResponse = deferred<Response>(), nextResponse = deferred<Response>();
+  fixture.fetch.mockReturnValueOnce(oldResponse.promise).mockReturnValueOnce(nextResponse.promise);
+  await mount(false); await authenticate();
+  const video = renderer!.root.findByType('video');
+  act(() => renderer!.root.findByProps({ 'aria-label': '起動アニメーション' }).props.onClick());
+  expect(renderer!.root.findByType('video')).toBe(video);
+  const oldSignal = fixture.fetch.mock.calls[0][1].signal as AbortSignal;
+  await act(async () => {
+    if (nextOwner === 'a') fake.emit(null);
+    fake.emit({ id: nextOwner, requiresEmailVerification: false });
+    await microtasks();
+  });
+  expect(oldSignal.aborted).toBe(true);
+  expect(fixture.fetch).toHaveBeenCalledTimes(2);
+  await act(async () => { oldResponse.resolve(new Response(JSON.stringify(accepted))); await microtasks(); });
+  expect(splash()).toBe(1); expect(appLoading()).toBe(true);
+  expect(renderer!.root.findByType(SplashScreen).props.canSkip).toBe(false);
+  expect(fixture.preferences).not.toHaveBeenCalled();
+  expect(fixture.content).not.toHaveBeenCalled();
+  await act(async () => { nextResponse.resolve(new Response(JSON.stringify({ ...accepted, accepted: false }))); await microtasks(); });
+  expect(appLoading()).toBe(false); expect(splash()).toBe(1);
+  expect(renderer!.root.findByType('video')).toBe(video);
+  const readySkip = renderer!.root.findByProps({ 'aria-label': '起動アニメーションをスキップ' });
+  expect(readySkip.props.disabled).toBe(false);
+  act(() => readySkip.props.onClick());
+  expect(splash()).toBe(0);
+  expect(renderer!.root.findByType(InitialPrivacyConsentScreen).props.unavailable).toBe(false);
+  expect(fixture.profile).not.toHaveBeenCalled();
+  plannerReads.forEach(read => expect(read).not.toHaveBeenCalled());
 });
