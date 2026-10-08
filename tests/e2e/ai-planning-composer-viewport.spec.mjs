@@ -83,7 +83,8 @@ async function readLayout(page) {
     };
     return {
       top: visualViewport.offsetTop, bottom: visualViewport.offsetTop + visualViewport.height,
-      shell: box('.app-shell'), conversation: box('.ai-planning-conversation'),
+      shell: box('.app-shell'), header: box('.primary-app-header'),
+      conversation: box('.ai-planning-conversation'),
       composer: box('.ai-planning-composer'), send: box('.ai-planning-send-button'),
       nav: box('.primary-bottom-nav'), scrollTop: conversation.scrollTop,
       endGap: conversation.scrollHeight - conversation.clientHeight - conversation.scrollTop,
@@ -101,6 +102,7 @@ async function expectReadableLayout(page) {
   expect(layout.shell.top).toBeGreaterThanOrEqual(layout.top - 1);
   expect(layout.shell.bottom).toBeLessThanOrEqual(layout.bottom + 1);
   expect(layout.conversation.top).toBeGreaterThanOrEqual(layout.top);
+  expect(layout.header.bottom).toBeLessThanOrEqual(layout.conversation.top + 1);
   expect(layout.conversation.bottom).toBeLessThanOrEqual(layout.composer.top + 1);
   expect(layout.composer.bottom).toBeLessThanOrEqual(layout.nav.top + 1);
   expect(layout.send.top).toBeGreaterThanOrEqual(layout.top);
@@ -112,6 +114,7 @@ test.describe('AI conversation stays readable with a reduced visual viewport', (
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
   for (const { width, height, keyboardHeight } of [
+    { width: 320, height: 568, keyboardHeight: 400 },
     { width: 360, height: 640, keyboardHeight: 400 },
     { width: 390, height: 844, keyboardHeight: 460 },
     { width: 402, height: 874, keyboardHeight: 480 },
@@ -136,6 +139,23 @@ test.describe('AI conversation stays readable with a reduced visual viewport', (
       await changeViewport(page, { height: keyboardHeight, offsetTop: 76 });
       await input.fill('前の相談を確認しながら入力\n2行目も保持');
       await expectReadableLayout(page);
+      if (width === 320) {
+        const headerLayout = await page.locator('.home-topbar').evaluate(header => {
+          const plaque = header.querySelector('.home-date-paper').getBoundingClientRect();
+          const streak = header.querySelector('.home-streak-card').getBoundingClientRect();
+          const clippedValues = [...header.querySelectorAll('.home-date-value')].filter(value => {
+            const range = document.createRange();
+            range.selectNodeContents(value);
+            const text = range.getBoundingClientRect();
+            const cell = value.getBoundingClientRect();
+            return text.left < cell.left - 0.75 || text.right > cell.right + 0.75
+              || value.scrollWidth > value.clientWidth + 1;
+          }).map(value => value.textContent);
+          return { plaqueTop: plaque.top, streakBottom: streak.bottom, clippedValues };
+        });
+        expect(headerLayout.plaqueTop).toBeGreaterThanOrEqual(headerLayout.streakBottom - 1);
+        expect(headerLayout.clippedValues).toEqual([]);
+      }
       await expect.poll(async () => (await readLayout(page)).endGap).toBeLessThanOrEqual(2);
       await expect(messages.last()).toBeInViewport();
       await expect(page.getByRole('button', { name: '送信', exact: true })).toBeEnabled();

@@ -7,7 +7,7 @@ const configDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(configDir, '../..');
 const artifactsDir = path.join(repoRoot, 'artifacts');
 const isCi = Boolean(process.env.CI);
-const sharedTests = ['**/cross-browser-smoke.spec.mjs', '**/home-next-plan-visual.spec.mjs', '**/home-scene-atmosphere.spec.mjs', '**/app-settings-page.spec.mjs'];
+const sharedTests = ['**/cross-browser-smoke.spec.mjs', '**/home-next-plan-visual.spec.mjs', '**/home-scene-atmosphere.spec.mjs', '**/app-settings-page.spec.mjs', '**/primary-header-responsive.spec.mjs'];
 
 export default defineConfig({
   ...baseConfig,
@@ -57,7 +57,7 @@ export default defineConfig({
     },
     {
       name: 'webkit-mobile',
-      testMatch: [...sharedTests, '**/ai-planning-composer-viewport.spec.mjs'],
+      testMatch: [...sharedTests, '**/ai-planning-composer-viewport.spec.mjs', '**/home-layout-responsive.spec.mjs'],
       use: {
         ...devices['iPhone 13'],
         browserName: 'webkit',
