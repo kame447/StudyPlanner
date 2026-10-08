@@ -74,6 +74,7 @@ function communicationFacts(params: {
   output: WeeklyPlanningTurnExecutionResult;
   statusReason: WeeklyPlanningTurnStatusReason | null;
   planningDetailsNotApplied: boolean;
+  possibleCompletenessOmission: boolean;
   omittedWork: WeeklyPlanningPreviewOmittedWork[] | null;
   consultationRequested: boolean;
   alternativeEvidence?: WeeklyPlanningConsultationAlternativeEvidence | null;
@@ -110,6 +111,7 @@ function communicationFacts(params: {
       presented: code ? { code, factId: context?.topicId ?? null } : null,
     }),
     planningDetailsNotApplied: params.planningDetailsNotApplied,
+    ...(params.possibleCompletenessOmission ? { possibleCompletenessOmission: true } : {}),
     previewDisclosure: params.omittedWork
       ? { omittedWork: params.omittedWork }
       : null,
@@ -169,6 +171,9 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   // A turn carried only by its conversation act (no usable planning delta) applied nothing;
   // the renderer is told when the model saw planning details in it that were not taken in.
   const planningDetailsNotApplied = semantic.normalization.conversationOnly?.planningContentPresent === true;
+  // The normalizer kept its first valid reading after an audit-reported omission could not be
+  // integrated: say so instead of silently dropping what the audit found (safe failure).
+  const possibleCompletenessOmission = semantic.normalization.completenessAbstention !== undefined;
   const responseRoute = weeklyPlanningStableV5ResponseRouter.beforePreview({
     input,
     graph: semantic.graph,
@@ -196,6 +201,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
               output,
               statusReason: responseRoute.statusReason,
               planningDetailsNotApplied,
+              possibleCompletenessOmission,
               omittedWork: null,
               consultationRequested: interactionPlan.acts.consultation,
               alternativeEvidence,
@@ -243,6 +249,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
             output,
             statusReason: null,
             planningDetailsNotApplied,
+            possibleCompletenessOmission,
             omittedWork: provisionalCapacity ? provisionalCapacity.omittedWork : null,
             consultationRequested: interactionPlan!.acts.consultation,
             alternativeEvidence,

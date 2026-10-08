@@ -84,6 +84,8 @@ export interface WeeklyPlanningStableV5CommunicationContext {
   retainedPreviewUnchanged?: boolean;
   /** A proposed-days trial does not match the current preview; it needs explicit adoption. */
   alternativeRequiresAdoption?: boolean;
+  /** An audit-reported omission could not be taken in; the application states it beside the reply. */
+  possibleCompletenessOmission?: boolean;
   scheduleIntent?: WeeklyPlanningScheduleCommunicationIntent;
   goal: WeeklyPlanningStableV5CommunicationGoal;
   /** Why the planner needs what the asked/explained question requests (empty without one). */

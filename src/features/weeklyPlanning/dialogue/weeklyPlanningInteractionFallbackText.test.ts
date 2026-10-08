@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   composeWeeklyPlanningInteractionFallbackText,
+  WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT,
   WEEKLY_PLANNING_INTERACTION_DUPLICATE_SUBMISSION_TEXT,
   WEEKLY_PLANNING_INTERACTION_UNEXPECTED_FAILURE_TEXT,
   weeklyPlanningInteractionProviderUnavailableText,
@@ -49,6 +50,13 @@ function compose(communication: WeeklyPlanningStableV5CommunicationContext, extr
 }
 
 describe('interaction emergency wording', () => {
+  it('states an audit-reported omission that was not taken in, for every goal, and only then', () => {
+    for (const goal of GOALS) {
+      expect(compose(context(goal, { possibleCompletenessOmission: true }))).toContain(WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT);
+      expect(compose(context(goal))).not.toContain(WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT);
+    }
+  });
+
   it('describes a retained preview and invites the specific edit without splitting or offering promotion', () => {
     for (const asks of [false, true]) {
       const text = compose(context('clarify_turn', { retainedPreviewUnchanged: true, askQuestion: asks }));

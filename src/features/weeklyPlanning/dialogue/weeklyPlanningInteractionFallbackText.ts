@@ -35,6 +35,8 @@ const GENERIC_CONTINUE = '続けて、予定の希望を教えてください。
 /** Semantic recovery kept the existing preview; stated by the application, never by the renderer. */
 export const WEEKLY_PLANNING_RETAINED_PREVIEW_UNCHANGED_TEXT = '今の仮予定は変えていません。';
 const RETAINED_PREVIEW_UNCHANGED = WEEKLY_PLANNING_RETAINED_PREVIEW_UNCHANGED_TEXT;
+/** An audit-reported omission was not taken in; stated by the application, never by the renderer. */
+export const WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT = '一部の内容を読み取れていない可能性があります。抜けている予定があれば教えてください。';
 const RETAINED_PREVIEW_EDIT_INVITATION = '変えたい点をもう一度教えてください。';
 const ALTERNATIVE_ADOPTION_INVITATION = 'その案に変えたい場合は、そう伝えてください。今の候補はまだ変えていません。';
 
@@ -138,5 +140,6 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
     main,
     communication.consultationDeferred && !communication.alternativeRequiresAdoption ? CONSULTATION_NOT_ANSWERED : '',
     communication.planningDetailsNotApplied ? DETAILS_INVITATION : '',
+    communication.possibleCompletenessOmission ? WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT : '',
   ].join('');
 }

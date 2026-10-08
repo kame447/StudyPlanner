@@ -86,6 +86,11 @@ export interface WeeklyPlanningTurnCommunicationFacts {
    */
   planningDetailsNotApplied: boolean;
   /**
+   * A completeness audit reported content that could not be taken in, and the turn kept its first
+   * valid reading. The application states the possible omission; the renderer never words it.
+   */
+  possibleCompletenessOmission?: boolean;
+  /**
    * Application-owned preview disclosure: work that did not fit. The application states it in
    * its own sentence next to the reply; the renderer never words it.
    */
