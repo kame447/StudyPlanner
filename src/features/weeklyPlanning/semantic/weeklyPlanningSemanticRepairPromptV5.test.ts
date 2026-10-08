@@ -200,3 +200,20 @@ it('keeps a stated time of day when a date rule must drop its period (live H on 
   expect(create('interaction_v1')).toContain('separate preferred_window');
   expect(create('legacy_v5')).not.toContain('Never drop the stated time of day');
 });
+
+
+it('interaction unknown replacement guidance preserves the referenced id and corrected kind or drops a no-change correction', () => {
+  const create = (conversationArchitecture: 'interaction_v1' | 'legacy_v5', validationErrors: string[]) => repairPayload(createWeeklyPlanningSemanticRepairMessagesV5({
+    baseMessages: [{ role: 'user', content: 'ordinary user input' }],
+    invalidResponse: '{}', validationErrors, conversationArchitecture,
+  })).requiredChanges?.join('\n') ?? '';
+  const error = 'document.corrections[0].replacementLocalId:unknown:deadline-next';
+  const current = create('interaction_v1', [error]);
+  expect(current).toContain('corrected kind');
+  expect(current).toContain('referenced correction.replacementLocalId');
+  expect(current).toContain('drop the correction if no change is meant');
+  const historical = create('legacy_v5', [error]);
+  expect(historical).toBe('Declare missing replacement facts in a schema-valid task/component; keep valid fields. Set correction.replacementLocalId to each fresh localId. Use exact existingPublicIds for accepted parent identity. Correct every listed validation failure. Treat listed validation failures cumulatively. Preserve unrelated supported current-turn facts and schema-valid fields from the invalid response. Re-read userText for supported omissions.');
+  const unrelated = create('interaction_v1', ['document.tasks[0].localId:required']);
+  expect(unrelated).not.toContain('corrected kind');
+});
