@@ -745,3 +745,14 @@ Method: `vite build --sourcemap` of `ea0d871a` and of the fork point `22847120`.
     - the five held-out replies become regression cases;
     - the next gate needs a fresh held-out set that the verifier's author has not seen;
     - the result is recorded as a smoke gate, not a measured rate.
+- **P2 slice 1 v5 re-integrated after its gate (2026-10-10 00:22 JST)**, fast-forwarded to `7324f710` (`7b70c3f6`…`7324f710`).
+  - **Verifier fix, written in general terms with no example texts:**
+    - the plan total is defined as the whole plan's need, never the unmet amount;
+    - when further unmet items exist, the reply must say so;
+    - the literal checks require their count;
+    - a per-code handler registry also defines `declared_amount_waiting`, which nothing produces yet.
+  - **Gate:** a fresh held-out set written by the critic and never shown to the verifier's author (two different facts, one with no further items; 15 replies, 11 expected fail; hashes verified before the run). The verifier ran alone, twice each, plus the full regression set (corpus v1, the author's six regression replies, the critic's first five held-out replies). That was 66 real-provider calls on the authorized preview account, run against copies of the exact v5 modules **before** integration.
+  - **Result:** 0 false passes for the verifier alone and for the whole pipeline, on both held-out facts and on the regression set; 0 nondeterministic cases; 0 errors.
+    - One false fail, by design: a reply that says 「など」 without the count of further items now fails the literal check.
+    - Recorded as a **smoke gate**, not a measured rate. Any re-tuning needs another fresh set.
+  - Typecheck is clean and the 32 focused tests pass. The chain, the W4/W3 reruns and the live X4 check follow; the migration is accepted only after the live check.
