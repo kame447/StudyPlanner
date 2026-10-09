@@ -1,6 +1,6 @@
 import { expect, test } from './support/fixed-clock.mjs';
 
-test.use({ skipStartupVideo: false, contextOptions: { reducedMotion: 'no-preference' }, hasTouch: true });
+test.use({ skipStartupVideo: false, reducedMotion: 'no-preference', hasTouch: true });
 const URL = 'http://127.0.0.1:4174/startup-gates.html';
 const skipName = '起動アニメーションをスキップ';
 
@@ -65,8 +65,8 @@ async function expectRealCompletion(page) {
   const ended = await page.evaluate(() => window.__laplansEnded);
   expect(ended).toBeDefined();
   expect(ended.trusted).toBe(true);
-  expect(ended.time).toBeCloseTo(9, 1);
-  expect(ended.duration).toBeCloseTo(9, 1);
+  expect(ended.time).toBeCloseTo(5, 1);
+  expect(ended.duration).toBeCloseTo(5, 1);
   return ended;
 }
 
@@ -77,7 +77,7 @@ async function expectUnloaded(media) {
 
 async function expectStaticLoading(page) {
   await expect(page.locator('video')).toHaveCount(0);
-  await expect(page.getByRole('img', { name: 'Laplans', exact: true })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Laplance', exact: true })).toBeVisible();
   await expect(page.getByRole('main', { name: 'アプリ起動中', exact: true })).toBeVisible();
   await expect(page.getByRole('status')).toContainText('アプリを準備しています...');
   await expect(page.locator('.home-main:visible')).toHaveCount(0);
@@ -117,6 +117,58 @@ for (const width of [390, 1280]) {
     await expect(page.locator('.home-main')).toBeVisible();
     await expect(page.locator('.splash-screen:visible')).toHaveCount(0);
     await expectUnloaded(media);
+  });
+}
+
+for (const width of [390, 1280]) {
+  test.describe(`public authentication initial viewport ${width}px`, () => {
+    test.use({ viewport: { width, height: 844 }, screen: { width, height: 844 } });
+  test(`opens ordinary authentication without a preview key after the intro at ${width}px`, async ({ page }, testInfo) => {
+    await boot(page, width);
+    const actualViewport = await page.evaluate(width => ({
+      client: document.documentElement.clientWidth,
+      visual: window.visualViewport?.width,
+      media: matchMedia(`(width: ${width}px)`).matches,
+    }), width);
+    expect(actualViewport.client).toBe(width);
+    expect(actualViewport.visual).toBeCloseTo(width, 0);
+    expect(actualViewport.media).toBe(true);
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.app-access-key'))).toBeNull();
+    await page.evaluate(() => window.__startupGateHarness.emitAuth(null));
+    await expect(page.getByRole('button', { name: skipName })).toBeEnabled();
+    await expect(page.getByRole('heading', { name: '新規会員登録' })).toHaveCount(0);
+    const video = page.locator('video');
+    await observeEnded(video);
+    if (width === 390) await expectRealCompletion(page);
+    else await page.getByRole('button', { name: skipName }).click();
+
+    await expect(page.getByRole('heading', { name: '新規会員登録' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '限定公開キー' })).toHaveCount(0);
+    await expect(page.getByLabel('閲覧キー', { exact: true })).toHaveCount(0);
+    await expect(page.locator('.home-main:visible')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: '利用規約' })).toHaveAttribute('href', '/terms');
+    await expect(page.getByRole('link', { name: 'プライバシーポリシー' })).toHaveAttribute('href', '/privacy');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await testInfo.attach(`auth-entry-signup-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+
+    await page.getByRole('tab', { name: 'ログイン', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'ログイン', exact: true })).toBeVisible();
+    await expect(page.getByLabel('メールアドレス')).toBeVisible();
+    await expect(page.getByLabel('パスワード', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Googleでログイン' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'パスワードを再設定' })).toBeVisible();
+    await testInfo.attach(`auth-entry-login-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+
+    await page.evaluate(() => localStorage.setItem('studyplanner.app-access-key', 'obsolete-synthetic-value'));
+    await page.reload();
+    await page.waitForFunction(() => Boolean(window.__startupGateHarness));
+    await page.evaluate(() => window.__startupGateHarness.emitAuth(null));
+    await page.getByRole('button', { name: skipName }).click();
+    await expect(page.getByRole('heading', { name: '新規会員登録' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '限定公開キー' })).toHaveCount(0);
+    await expect(page.locator('.home-main:visible')).toHaveCount(0);
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.app-access-key'))).toBe('obsolete-synthetic-value');
+  });
   });
 }
 
@@ -169,7 +221,7 @@ for (const key of ['Enter', 'Space', 'Escape']) {
   });
 }
 
-test('actual video completion keeps the final Laplans frame while data remains pending', async ({ page }) => {
+test('actual video completion keeps the final Laplance frame while data remains pending', async ({ page }) => {
   await boot(page);
   await startPlanner(page);
   await expect.poll(() => page.locator('video').evaluate(node => node.currentTime)).toBeGreaterThan(0);
@@ -183,7 +235,7 @@ test('actual video completion keeps the final Laplans frame while data remains p
 
 test('Pages-style full-body 200 delivery completes the video while startup data remains pending', async ({ page }, testInfo) => {
   const { readFile } = await import('node:fs/promises');
-  const clip = await readFile(new globalThis.URL('../../src/assets/laplans_blackhole_1080x1920.mp4', import.meta.url));
+  const clip = await readFile(new globalThis.URL('../../src/assets/laplance_blackhole_1080x1920.mp4', import.meta.url));
   const deliveries = [];
   let ended;
   let rangeProbe;
@@ -205,7 +257,7 @@ test('Pages-style full-body 200 delivery completes the video while startup data 
     await observeEnded(page.locator('video'));
     ended = await expectRealCompletion(page);
     expect(deliveries.length).toBeGreaterThan(0);
-    expect(deliveries.every(delivery => delivery.status === 200 && delivery.bytes === 1_628_755)).toBe(true);
+    expect(deliveries.every(delivery => delivery.status === 200 && delivery.bytes === 839_108)).toBe(true);
     await expectStaticLoading(page);
 
     // Linux WebKit can request the native video without a Range header. Test
@@ -216,7 +268,7 @@ test('Pages-style full-body 200 delivery completes the video while startup data 
       return { status: response.status, type: response.headers.get('content-type'),
         contentRange: response.headers.get('content-range'), size: (await response.arrayBuffer()).byteLength };
     }, deliveries[0].url);
-    expect(rangeProbe).toEqual({ status: 200, type: 'video/mp4', contentRange: null, size: 1_628_755 });
+    expect(rangeProbe).toEqual({ status: 200, type: 'video/mp4', contentRange: null, size: 839_108 });
     expect(deliveries.some(delivery => delivery.range === 'bytes=0-63')).toBe(true);
     await expectStaticLoading(page);
   } finally {
@@ -224,7 +276,7 @@ test('Pages-style full-body 200 delivery completes the video while startup data 
   }
 });
 
-test('ready application preserves the playing video until its real nine-second end', async ({ page }) => {
+test('ready application preserves the playing video until its real five-second end', async ({ page }) => {
   await boot(page);
   const video = page.locator('video');
   await expect.poll(() => video.evaluate(node => node.currentTime)).toBeGreaterThan(0);
@@ -232,7 +284,7 @@ test('ready application preserves the playing video until its real nine-second e
   await observeEnded(video);
   await readyPlanner(page);
   const readyTime = await media.evaluate(node => node.currentTime);
-  expect(readyTime).toBeLessThan(9);
+  expect(readyTime).toBeLessThan(5);
   expect(await media.evaluate(node => node === document.querySelector('video') && !node.paused && !node.ended)).toBe(true);
   await expect.poll(() => media.evaluate(node => node.currentTime)).toBeGreaterThan(readyTime);
   await expect(page.locator('.home-main:visible')).toHaveCount(0);
@@ -322,7 +374,7 @@ test('video transfer observer detects a deliberately downloaded MP4 under reduce
     const response = await fetch(url, { cache: 'no-store' });
     return { ok: response.ok, type: response.headers.get('content-type'), size: (await response.arrayBuffer()).byteLength };
   }, assetUrl.href);
-  expect(downloaded).toEqual({ ok: true, type: 'video/mp4', size: 1_628_755 });
+  expect(downloaded).toEqual({ ok: true, type: 'video/mp4', size: 839_108 });
   expect(transfers.requests).not.toEqual([]);
   await expect.poll(() => transfers.responses.length).toBeGreaterThan(0);
   await expectStaticLoading(page);

@@ -52,9 +52,9 @@ export function AppSettingsSupportPanel() {
             <Info aria-hidden="true" size={20} strokeWidth={1.9} />
             <span>バージョン情報</span>
           </span>
-          <strong>StudyPlanner 0.1.0</strong>
+          <strong>Laplance 0.1.0</strong>
         </div>
-        <p className="support-copyright">© 2026 StudyPlanner</p>
+        <p className="support-copyright">© 2026 Laplance</p>
       </section>
     </div>
   );

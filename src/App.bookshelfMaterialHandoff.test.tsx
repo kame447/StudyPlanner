@@ -22,7 +22,6 @@ vi.mock('./repositories', () => ({ plannerRepository: new Proxy({}, {
 vi.mock('./lib/preloadAppViews', () => ({ scheduleAppViewPreload: () => () => undefined }));
 vi.mock('./features/weeklyPlanning/application/useWeeklyPlanningApplication', () => ({ useWeeklyPlanningApplication: () => ({ pendingDraftBlocks: [], canEditDraftBlocks: false }) }));
 vi.mock('./hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));
-vi.mock('./lib/appAccessGate', () => ({ isAppAccessGateEnabled: () => false, hasStoredAppAccessGrant: () => true }));
 vi.mock('./components/PrimaryAppHeader', () => ({ PrimaryAppHeader: forwardRef(() => <header />) }));
 vi.mock('./components/HomeScheduleView', () => ({ HomeScheduleView: () => null }));
 vi.mock('./components/MonthView', () => ({ MonthView: () => null }));
@@ -56,7 +55,7 @@ beforeEach(() => {
   const storage = new MemoryStorage();
   vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: storage });
   vi.stubGlobal('localStorage', storage);
-  vi.stubGlobal('document', { body: { style: { overflow: '', overscrollBehavior: '' } } });
+  vi.stubGlobal('document', { documentElement: { dataset: {} }, body: { style: { overflow: '', overscrollBehavior: '' } } });
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('network forbidden'); }));
   showNotice.mockClear();
 });

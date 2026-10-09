@@ -1,9 +1,9 @@
 # Unplanned study start checkpoint
 
-Status: active, final integration and publication verification
-Base: `3a1e60b9`
+Status: active, current-main integration locally checked; mobile WebKit and exact-head publication gates pending
+Base: `657805e089969588f474d8220c24db9a3c8fe5c3` (Laplance branding and approved five-second startup media)
 Branch: `feat/unplanned-study-start`
-PR: https://github.com/kame447/StudyPlanner/pull/540 (draft); user authorized review-tested PR publication and main integration. Root owns publication coordination and main integration.
+PR: https://github.com/kame447/StudyPlanner/pull/540; user authorized review-tested PR publication and main integration. Root owns publication coordination and main integration.
 
 ## Scope and ownership
 
@@ -226,3 +226,39 @@ Mechanical collection comparison proves that the four disjoint project selection
 The final gate remains a successful full workflow on the newly published exact head. Historical per-case success is not substituted for that gate, and this checkpoint does not claim merge or deployment.
 
 Independent read-only review repeated the full/project collection and aggregate exit checks with the same results. It also mechanically combined this workflow with the existing Playwright-update candidate and confirmed conflict-free version alignment; that later update is not included here. Reviewed workflow SHA-256: `0f6e3e0fa36393e75de980398c2f19901ebbc982fe8f24834eccacd4a9821a2f`.
+
+## 2026-10-09 integration with the released Laplans name/icon
+
+Main `32623e36` released #551 before this feature. The normal integration has no conflict, and its source tree `09833803` exactly matches the independently built name-plus-#540 preflight. That production build measured JavaScript 2,256,597 raw / 607,834 gzip and CSS 485,037 raw / 81,584 gzip (largest CSS 424,509 raw / 68,919 gzip).
+
+The new wordmark framing adds 59 CSS bytes to the accepted #540 total of 484,978, exceeding the former aggregate raw cap by 37 bytes. The approved calibration changes only CSS totalRaw from 485,000 to 485,500. All seven other guards remain unchanged and pass. Synthetic boundary checks accept exactly 485,500 and reject 485,501 with only the expected aggregate CSS violation. This bounded calibration does not incorporate the separate optional-theme allowance.
+
+Fresh combined focused verification passed 16 files / 135 tests; fresh nonincremental app and regenerated Worker typechecks passed with recorded exit zero. The measured preflight tree and current tree are identical before the checker-only calibration; that checker is also byte-identical to the calibrated preflight. No repeated full local suite is substituted for the required new exact-head CI. The prior f7049f22 workflow split passed all gates, including 498 Chromium cases, the complete 384-pass/6-skip cross-browser set and its strict aggregate, and Ready-triggered CI. The new main integration must receive its own final gate.
+
+
+## 2026-10-09 current-main continuation
+
+The existing PR #540 and branch are reused. Local ownership was handed over by the publication coordinator at local `ff9ab410b8fc9e56a6ce2e207cf70567b3b0a5f9`; GitHub head `f7049f22b9049aa6a66aa26c007fe9a895254824` and main `1207f1a842a59ca958b2a497a868b10a2d82770f` were freshly fetched. Normal merge retains all old source history. The previously created remote commit `dd6fba7a` was never attached to the branch and is not a publication checkpoint.
+
+Only two merge conflicts required resolution: keep the current main bundle checker byte-for-byte (CSS aggregate 493,000 bytes; JS aggregate 2,260,000 raw / 608,500 gzip) and use the union of both mobile-WebKit spec lists. The released appearance, Day visibility, material editor, dependency and access-gate work remain in the integration. No AI semantic or save-authority changes are introduced.
+
+Current status: integration content is unverified. The next gates are focused component/domain tests, fresh app/Worker types, production build and unchanged budgets, then Chromium and mobile-WebKit feature/layout execution and image review. Heavy local work waits for the existing full-unit task to release its shared resources. The publication coordinator alone owns remote writes, exact-head full CI, merge and deployment. Historical full/browser passes above do not verify this new integration.
+
+
+## 2026-10-09 Laplance main integration and bounded local handoff
+
+Normal merge `26e91ca4fef2a37c9a16576bccbe1619c61dbe43` / tree `131c7dc66e30b09eaaa47e7dd4a2012a4b9a3658` incorporates externally released main `657805e089969588f474d8220c24db9a3c8fe5c3` without conflict. The new Laplance display copy, startup images, unchanged 839,108-byte five-second video and current native-playback spec are retained byte-for-byte from main. No old nine-second premise was restored. The final checkpoint-only commit changes this document and no verification input.
+
+Latest-source checks on `26e91ca4`:
+- Focused: 6 files / 57 tests passed, including the 19 unplanned-session cases plus Home clock, current brand/icons and startup contracts.
+- Fresh nonincremental app and Worker type checks with regenerated Worker declarations: exit 0. Production build: exit 0.
+- All current bundle/appearance guards passed unchanged. JS 2,259,931 raw / 608,313 gzip; CSS 492,036 raw / 83,387 gzip; largest CSS 424,509 / 68,919. Remaining JS aggregate headroom is only 69 raw / 187 gzip bytes. Any later main integration requires a fresh combined build.
+- Chromium representative browser selection: 11 passed. Covers long-title dialog/keyboard behavior, font enlargement/recovery, natural session entry, empty-start/save at 390/1280, duplicate start/save, distinct class inspection, explicit planned/unplanned choice, 320/390px 200% text, and desktop dual actions. The source specs, assertions and time budgets are unchanged.
+- Mobile WebKit is **not verified**. The representative run failed its first shared Home-title case at the 30-second whole-test limit after Home and title/keyboard interactions succeeded; 10 selected cases did not run because the local diagnostic stopped on the first failure. A clean detached main `657805e0` control, freshly built with the same installed dependencies and browser wrapper, also failed that same spec at its initial five-second visible-state wait while the existing ready-only startup skip handler ran. This does not establish a #540-only regression or one exclusive environmental cause.
+- A separate three-case WebKit feature selection also stopped on its first failure: rapid unplanned start reached a single timer, pause/resume and the record screen, but exhausted the 30-second total before the record-position/save checks completed. Saving is not claimed as locally verified in WebKit; the other two selected cases did not run. No timeout, assertion, retry or repository skip was relaxed, and no repeat-until-green attempt was made.
+
+Earlier current-main integration `44570baa` remains separate evidence: fresh types/build/guards succeeded and Chromium passed 41 cases. Its 18-file focused batch had 206 passes and three failures in the unchanged standalone-editor test: two five-second timeouts followed by a stale `actual-b` spy observation. One isolated run of that exact file, with the same five-second limit, passed all six cases in 11.05 seconds. Relevant test/editor/Day/data-hook files are byte-identical to main; no production fix was inferred from that isolated pass. Its old-base mobile-WebKit run was interrupted after repeated shared Home startup/action timeouts, and is not a successful browser gate. A still-earlier focused attempt was deliberately interrupted for resource scheduling (exit 130), not counted as a test result.
+
+Environment: Node 24.19.0, Vitest 3.2.7, Wrangler 4.147.0, Playwright 1.62.1, Chrome for Testing 155.0.8059.39, mobile WebKit 2336 via the existing local wrapper. All 235 installed locked package manifests were checked; versions match the current lock. No shared dependency installation was changed. Browser work used production bundles, repository fixtures, one worker, Japanese locale/Tokyo timezone and the canonical reduced-motion setting; normal-motion cases retain their explicit overrides. No live Firebase, real AI call, physical iPhone/Safari rotation or installed-PWA performance claim is added.
+
+Evidence is retained under ignored `artifacts/verification/pr540-current-main/` and `artifacts/verification/pr540-laplance-main/`, including failed logs, traces/screenshots, the main control and successful check exit statuses. Current bundle output is `artifacts/quality-gate/bundle-budget.json`. The publication coordinator owns the only GitHub writer, new exact-head full CI and **successful mobile-WebKit CI as a required merge gate**, followed by expected-head merge, main CI and deployment verification. The source is ready to hand off with this explicit local-WebKit limitation; it is not a completed release.

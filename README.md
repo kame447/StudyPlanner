@@ -1,11 +1,13 @@
-# StudyPlanner
+# Laplance
 
 [![CI](https://github.com/kame447/StudyPlanner/actions/workflows/ci.yml/badge.svg)](https://github.com/kame447/StudyPlanner/actions/workflows/ci.yml)
 [![Browser Regression](https://github.com/kame447/StudyPlanner/actions/workflows/browser-regression.yml/badge.svg)](https://github.com/kame447/StudyPlanner/actions/workflows/browser-regression.yml)
 
 学習計画、実績、教材、時間割を一元管理し、自然言語を使った週間計画の作成を支援する Web アプリケーションです。
 
-StudyPlanner は、学習予定と実績を分けて記録し、教材・時間割・進捗を含む情報から次の学習計画を作成します。AI は自然言語の解釈に利用し、スケジューリング、状態更新、承認、保存はアプリケーション側で管理します。
+Laplance は、学習予定と実績を分けて記録し、教材・時間割・進捗を含む情報から次の学習計画を作成します。AI は自然言語の解釈に利用し、スケジューリング、状態更新、承認、保存はアプリケーション側で管理します。
+
+ブランド表記は Laplance（ラプランス）です。取得済みの `laplance.com` は現在アプリの公開先ではありません。既存のデプロイURL、Firebase/Cloudflareの識別子、保存データとの互換性は維持します。独自ドメインの公開設定と認証許可ドメインの切り替えは別作業として実施します。
 
 ## 主な機能
 
@@ -23,7 +25,7 @@ StudyPlanner は、学習予定と実績を分けて記録し、教材・時間�
 
 ### 教材・進捗管理
 
-教材や学習対象を登録し、現在の進捗を管理できます。書籍教材の追加では ISBN または教材名から共有 catalog / NDL Search を使った候補検索を利用でき、検索を使わず従来どおり手入力でも登録できます。外部書誌は候補情報として扱い、教科・進捗・章構造・学習量は StudyPlanner 側が所有します。
+教材や学習対象を登録し、現在の進捗を管理できます。書籍教材の追加では ISBN または教材名から共有 catalog / NDL Search を使った候補検索を利用でき、検索を使わず従来どおり手入力でも登録できます。外部書誌は候補情報として扱い、教科・進捗・章構造・学習量は Laplance 側が所有します。
 
 ### ホーム・時間割
 
@@ -105,8 +107,9 @@ VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
 VITE_FIREBASE_MESSAGING_SENDER_ID=your-messaging-sender-id
 VITE_FIREBASE_MEASUREMENT_ID=
 VITE_CLOUDFLARE_AI_PROXY_URL=https://your-worker-name.your-subdomain.workers.dev
-VITE_APP_ACCESS_KEY=shared-preview-key
 ```
+
+入口の共有キーは不要です。登録・ログイン、メール確認、初回のデータ保存同意と、ユーザーごとのアクセス権は引き続き必要です。旧 `VITE_APP_ACCESS_KEY` 設定や端末に残るキーは参照しません。
 
 Firestore Rules は次のコマンドでデプロイします。
 
@@ -168,7 +171,7 @@ npm run eval:jev:shadow
 キーをCloudflareのSecretに登録済みなら、Wranglerへログインした端末から次の任意試験も実行できます。キーを端末へ取り出さず、一時remote dev内で同じadapterと本番の1.5秒timeoutを検証します。本番コードやroutingはデプロイせず、通常CIにも追加しません。
 
 ```bash
-npm exec --yes --package=wrangler@4.143.1 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
+npm exec --yes --package=wrangler@4.147.0 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
 ```
 
 検証コードは3分で失効する認証付きの合成入力専用です。終了時に開発サーバーを停止し、一時ファイルを削除します。判断結果の採用gateは疎通確認とは別に記録し、`abstained`なら既存LLMへ戻す方針を維持します。API仕様・日本語品質・本番設定の問題を隠すためにgateを緩めないでください。
@@ -223,7 +226,7 @@ client-first execution と local/server authority の境界は [`docs/domains/cl
 
 ## 開発状況
 
-StudyPlanner は開発中です。現在の `main` を基準に主要機能とテストを継続的に更新しています。
+Laplance は開発中です。現在の `main` を基準に主要機能とテストを継続的に更新しています。
 
 ## ライセンス
 

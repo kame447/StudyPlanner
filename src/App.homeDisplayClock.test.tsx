@@ -17,7 +17,6 @@ vi.mock('./repositories', () => ({ plannerRepository: new Proxy({}, {
 vi.mock('./features/weeklyPlanning/application/useWeeklyPlanningApplication', () => ({ useWeeklyPlanningApplication: boundary.weeklyPlanning }));
 vi.mock('./lib/preloadAppViews', () => ({ scheduleAppViewPreload: () => () => undefined }));
 vi.mock('./hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));
-vi.mock('./lib/appAccessGate', () => ({ isAppAccessGateEnabled: () => false, hasStoredAppAccessGrant: () => true }));
 vi.mock('./components/MyPageDialog', () => ({ MyPageDialog: () => null }));
 vi.mock('./components/AppSettingsDialog', () => ({ AppSettingsDialog: () => null }));
 
@@ -44,7 +43,7 @@ beforeEach(async () => {
     requestAnimationFrame: () => 0, cancelAnimationFrame: () => {},
     matchMedia: () => ({ matches: false }), setTimeout, clearTimeout,
   });
-  browserDocument = Object.assign(new EventTarget(), { visibilityState: 'visible', fonts: { ready: Promise.resolve() },
+  browserDocument = Object.assign(new EventTarget(), { documentElement: { dataset: {} }, visibilityState: 'visible', fonts: { ready: Promise.resolve() },
     body: { style: { overflow: '', overscrollBehavior: '' } } });
   vi.stubGlobal('window', browserWindow); vi.stubGlobal('document', browserDocument);
   vi.stubGlobal('HTMLElement', class {}); vi.stubGlobal('localStorage', storage);

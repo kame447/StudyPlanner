@@ -170,7 +170,7 @@ export function GettingStartedSection({
         <span className="home-setup-mark"><BookOpen size={22} aria-hidden="true" /></span>
         <div>
           <p>はじめに</p>
-          <h1 id="home-getting-started-title">StudyPlannerを準備する</h1>
+          <h1 id="home-getting-started-title">Laplanceを準備する</h1>
         </div>
       </div>
       <p className="home-setup-copy">

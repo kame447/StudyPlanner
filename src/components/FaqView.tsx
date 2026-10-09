@@ -1,6 +1,6 @@
 const FAQ_ITEMS = [
   {
-    question: 'StudyPlannerでは何ができますか',
+    question: 'Laplanceでは何ができますか',
     answer: '月・週・日の予定作成、学習記録、予定と記録の比較、AI入力による予定追加や編集補助ができます。',
   },
   {

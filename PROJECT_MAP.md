@@ -1,4 +1,4 @@
-# StudyPlanner Project Map
+# Laplance Project Map
 
 Status: canonical repository navigation map
 Updated: 2026-10-07
@@ -342,7 +342,7 @@ Telemetry and analytics are best-effort observation, never product authority. Li
 
 ### External integrations
 
-External data is evidence/suggestion, never an automatic replacement for StudyPlanner-owned product truth. Provider outage, malformed responses or changed quota/terms must fail closed to the existing manual/local product path instead of silently fabricating metadata.
+External data is evidence/suggestion, never an automatic replacement for Laplance-owned product truth. Provider outage, malformed responses or changed quota/terms must fail closed to the existing manual/local product path instead of silently fabricating metadata.
 
 ### Persistence
 
