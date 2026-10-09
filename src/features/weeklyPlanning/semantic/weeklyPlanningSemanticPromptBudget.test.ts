@@ -220,7 +220,7 @@ describe('Stable V5 semantic prompt budget', () => {
   });
 
   it('names the divided-total representation in the interaction policy only (live X5)', () => {
-    const sentence = 'Dividing a total across named periods is a split too';
+    const sentence = 'Dividing a target across named periods is a split too';
     expect(createWeeklyPlanningSemanticMeaningPolicyV5('interaction_v1')).toContain(sentence);
     expect(createWeeklyPlanningSemanticMeaningPolicyV5('legacy_v5')).not.toContain(sentence);
   });
