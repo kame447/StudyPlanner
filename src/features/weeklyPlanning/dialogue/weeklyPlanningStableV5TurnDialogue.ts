@@ -560,7 +560,7 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
   const omissionNotice = renderInput.communication?.possibleCompletenessOmission
     ? WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT : null;
   const releaseNotice = renderInput.communication?.uncertaintyReleased
-    ? weeklyPlanningUncertaintyReleaseText(renderInput.communication.uncertaintyReleased.quote) : null;
+    ? weeklyPlanningUncertaintyReleaseText(renderInput.communication.uncertaintyReleased) : null;
   const finalMessage = [disclosedMessage, retainedPreviewNotice, omissionNotice, releaseNotice].filter(Boolean).join('\n\n');
   const dialogueRendererTrace = createWeeklyPlanningAiRenderedDialogueTrace({
     actionId: currentActionId,

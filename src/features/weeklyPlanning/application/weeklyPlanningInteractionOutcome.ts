@@ -105,7 +105,7 @@ export interface WeeklyPlanningTurnCommunicationFacts {
    * A free-form blocking question was released by the user's bound answer (not resolved). The application
    * states that the point stays unconfirmed in its own sentence (with the user's quote); the renderer never words it.
    */
-  uncertaintyReleased?: { quote: string | null; count: number; ids: string[] };
+  uncertaintyReleased?: { quote: string | null; count: number; ids: string[]; nothingRead: boolean };
 }
 
 export function emptyWeeklyPlanningTurnCommunicationFacts(): WeeklyPlanningTurnCommunicationFacts {

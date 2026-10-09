@@ -137,5 +137,5 @@ it('the AI-rendered release reply is followed by the application sentence (not r
   await conv.submit(T2);
   const turn = await conv.submit(T3);
   expect(turn.result?.responseSource).toBe('ai');
-  expect(turn.result?.message).toMatch(/\n\n「あとこれって1日でまとめて読んでも平気？」について未確定の点を残したまま、仮予定を作りました。$/);
+  expect(turn.result?.message).toMatch(/\n\n「あとこれって1日でまとめて読んでも平気？」については未確定のまま進めます。この返事からは新しい条件を読み取っていません。条件があれば、あらためて教えてください。$/);
 });

@@ -47,7 +47,6 @@ import {
 import { consultationCommunicationForPlanning } from './weeklyPlanningConsultationCommunication';
 import type { GenericSchedulerInput } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import { projectWeeklyPlanningPreviewConstraintSatisfaction } from './weeklyPlanningPreviewConstraintSatisfaction';
-import type { UncertaintyFactV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { releasedUncertaintiesOfTurnV5 } from '../semantic/weeklyPlanningSemanticUncertaintyReleaseV5';
 import { summarizeWeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
 
@@ -80,7 +79,7 @@ function communicationFacts(params: {
   possibleCompletenessOmission: boolean;
   omittedWork: WeeklyPlanningPreviewOmittedWork[] | null;
   consultationRequested: boolean;
-  releasedUncertainties?: readonly UncertaintyFactV5[];
+  releasedUncertainties?: ReturnType<typeof releasedUncertaintiesOfTurnV5>;
   alternativeEvidence?: WeeklyPlanningConsultationAlternativeEvidence | null;
   preview?: ReturnType<typeof executeWeeklyPlanningStableV5Preview>;
   schedulerInput?: GenericSchedulerInput;
@@ -123,7 +122,12 @@ function communicationFacts(params: {
     ...(params.possibleCompletenessOmission ? { possibleCompletenessOmission: true } : {}),
     ...(capacityShortfall ? { capacityShortfall } : {}),
     ...(params.releasedUncertainties?.length
-      ? { uncertaintyReleased: { quote: params.releasedUncertainties[0].source.sourceText, count: params.releasedUncertainties.length, ids: params.releasedUncertainties.map((fact) => fact.id) } }
+      ? { uncertaintyReleased: {
+          quote: params.releasedUncertainties[0].fact.source.sourceText,
+          count: params.releasedUncertainties.length,
+          ids: params.releasedUncertainties.map((entry) => entry.fact.id),
+          nothingRead: params.releasedUncertainties.some((entry) => entry.basis === 'no_delta'),
+        } }
       : {}),
     previewDisclosure: params.omittedWork
       ? { omittedWork: params.omittedWork }

@@ -395,7 +395,7 @@ describe('H-release: a blocking free-form question has a deterministic end state
   const Q = 'あとこれって1日でまとめて読んでも平気？';
   const L1 = `${H.T1}。英語の本も10ページ読む。1ページ3分`;
   type Variant = 'placement_task' | 'placement_uncertainty' | 'ack_task' | 'ack_uncertainty' | 'other_target' | 'rate_only'
-    | 'unbound' | 're_declare' | 'two_uncertainties' | 'replayed_constraint';
+    | 'unbound' | 're_declare' | 'two_uncertainties' | 'replayed_constraint' | 'capacity';
   const uncertaintyOf = (extra: Json = {}): Json => ({ localId: 'u-one-day', targetLocalId: 'paper', field: 'one_day_completion_feasibility',
     reason: '1日でまとめて読めるか', sourceText: Q, ...extra });
   function installLoop(variant: Variant, o: { flag?: boolean; field?: string; architecture?: WeeklyPlanningConversationArchitecture } = {}) {
@@ -419,7 +419,7 @@ describe('H-release: a blocking free-form question has a deterministic end state
       if (text === H.T2) {
         return emptyDocument({
           tasks: [studyTask({ localId: 'paper', existingPublicId: taskId, title: 'レポートの文献', activityKind: 'reading', sourceText: 'やっぱり25ページで',
-            workloads: [workload('paper-amount-2', 25, 'page', 'ページ', '25ページ')],
+            workloads: [workload('paper-amount-2', variant === 'capacity' ? 5000 : 25, 'page', 'ページ', '25ページ')],
             effortEstimates: [perUnit('paper-rate-2', 'paper-amount-2', 3, 'page', '1ページ3分')],
             ...(variant === 'replayed_constraint' ? { temporalConstraints: [preferredNight('paper-night-old', 'paper', 'まとめて読んでも')] } : {}) })],
           uncertainties: [
@@ -427,6 +427,16 @@ describe('H-release: a blocking free-form question has a deterministic end state
             ...(variant === 'two_uncertainties' ? [uncertaintyOf({ localId: 'u-second', field: 'second_free_form_point', sourceText: 'まとめて読んでも平気' })] : []),
           ],
           conversationActs: [{ kind: 'consultation_request', targetPublicId: taskId }],
+        }, architecture);
+      }
+      if (text === T4) {
+        return emptyDocument({
+          tasks: [
+            studyTask({ localId: 'vocab', existingPublicId: vocabId, title: '英語の本', activityKind: 'reading', sourceText: text, temporalConstraints: [preferredNight('vocab-thu', 'vocab', text)] }),
+            studyTask({ localId: 'paper', existingPublicId: taskId, title: 'レポートの文献', activityKind: 'reading', sourceText: text }),
+          ],
+          // The model recalls the released point from history: the quote is T2's, not this turn's.
+          uncertainties: [uncertaintyOf({ targetLocalId: 'paper' })],
         }, architecture);
       }
       const answer = (target: string | null) => ({ kind: 'answer_pending_question', targetPublicId: target });
@@ -448,7 +458,9 @@ describe('H-release: a blocking free-form question has a deterministic end state
     });
   }
   const uncertainties = (c: ScriptedConversation) => createWeeklyPlanningActiveSchedulerGraphViewV5(c.graph()!).uncertainties;
-  const SENTENCE = `「${Q}」について未確定の点を残したまま、仮予定を作りました。`;
+  const T4 = '英語の本は木曜の夜に';
+  const RELEASED = `「${Q}」については未確定のまま進めます。`;
+  const NOTHING_READ = 'この返事からは新しい条件を読み取っていません。条件があれば、あらためて教えてください。';
   async function toThirdTurn(variant: Variant, o: Parameters<typeof installLoop>[1] = {}, t3 = '水曜の夜にまとめて') {
     installLoop(variant, o);
     const conversation = open(o.architecture);
@@ -469,10 +481,11 @@ describe('H-release: a blocking free-form question has a deterministic end state
     const { conversation, third } = await toThirdTurn(variant, {}, variant.startsWith('ack') ? 'うん、それで' : '水曜の夜にまとめて');
     expect(uncertainties(conversation)).toEqual([]);
     expect(third.result?.draftCandidates.length).toBeGreaterThan(0);
-    expect(third.result?.message).toContain(SENTENCE);
-    expect(third.result?.communicationFacts?.uncertaintyReleased).toMatchObject({ quote: Q, count: 1 });
+    expect(third.result?.message).toContain(`${RELEASED}${NOTHING_READ}`);
+    expect(third.result?.message).not.toContain('仮予定を作りました');
+    expect(third.result?.communicationFacts?.uncertaintyReleased).toMatchObject({ quote: Q, count: 1, nothingRead: true });
     const decision = third.calls.filter(call => call.kind === 'renderer').pop()?.payload?.applicationDecision as Json;
-    expect((decision.communication as Json).uncertaintyReleased).toEqual({ quote: Q });
+    expect((decision.communication as Json).uncertaintyReleased).toEqual({ quote: Q, nothingRead: true });
     expect(JSON.stringify(third.calls.filter(call => call.kind === 'renderer').pop()?.messages)).toContain('uncertaintyReleased: The app states');
   });
   it('the no-delta release rides the existing bounded no-op retry (3 semantic reads, no extra call)', async () => {
@@ -482,7 +495,9 @@ describe('H-release: a blocking free-form question has a deterministic end state
   });
   it('a release turn is the only one with the sentence; the lifecycle key is a release, not a resolution', async () => {
     const { second, third, conversation } = await toThirdTurn('placement_task');
-    expect(second.result?.message).not.toContain('未確定の点を残したまま');
+    expect(second.result?.message).not.toContain('未確定のまま進めます');
+    expect(third.result?.message).toContain(RELEASED);
+    expect(third.result?.message).not.toContain(NOTHING_READ);
     const keys = conversation.graph()!.appliedLifecycleOperationKeys;
     expect(keys.some(key => key.includes(':released-free-form-uncertainty:'))).toBe(true);
     expect(keys.some(key => key.includes(':resolved-work-breakdown:'))).toBe(false);
@@ -490,11 +505,12 @@ describe('H-release: a blocking free-form question has a deterministic end state
   });
 
   describe('stays open', () => {
-    it.each(['other_target', 'rate_only', 'unbound', 're_declare'] as const)('%s: no release, no preview', async variant => {
-      const { conversation, third } = await toThirdTurn(variant, {}, variant === 'rate_only' ? '1回1時間で' : '水曜の夜にまとめて');
+    it.each(['other_target', 'rate_only', 'unbound', 're_declare', 'placement_uncertainty', 'ack_uncertainty', 'replayed_constraint'] as const)('%s: no release, no preview', async variant => {
+      // An act binds only to a task/component: an uncertainty id degrades to an unbound act by contract (live: all acts task-bound).
+      const { conversation, third } = await toThirdTurn(variant, {}, variant === 'rate_only' ? '1回1時間で' : variant.startsWith('ack') ? 'うん、それで' : '水曜の夜にまとめて');
       expect(uncertainties(conversation).length).toBeGreaterThanOrEqual(1);
       expect(third.result?.draftCandidates).toEqual([]);
-      expect(third.result?.message ?? '').not.toContain('未確定の点を残したまま');
+      expect(third.result?.message ?? '').not.toContain('未確定のまま進めます');
       expect(third.result?.communicationFacts?.uncertaintyReleased).toBeUndefined();
     });
     it.each(['material_identity', 'work_breakdown'])('known field %s with a bound placement answer keeps the question', async field => {
@@ -513,9 +529,9 @@ describe('H-release: a blocking free-form question has a deterministic end state
       const { conversation, third } = await toThirdTurn('placement_task', { architecture: 'legacy_v5' });
       expect(conversation.graph()!.appliedLifecycleOperationKeys.some(key => key.includes('released-free-form-uncertainty'))).toBe(false);
       expect(third.result?.communicationFacts).toBeUndefined();
-      expect(third.result?.message ?? '').not.toContain('未確定の点を残したまま');
+      expect(third.result?.message ?? '').not.toContain('未確定のまま進めます');
     });
-    it('re-raise: after a release, a later reading may re-declare the point from the old quote; it blocks again and the same bound answer releases it again', async () => {
+    it('re-raise (the user): a later turn whose own text carries the quote blocks again as today', async () => {
       installLoop('placement_task');
       const conversation = open();
       await conversation.submit(L1);
@@ -524,6 +540,53 @@ describe('H-release: a blocking free-form question has a deterministic end state
       expect(uncertainties(conversation)).toEqual([]);
       await conversation.submit(H.T2);
       expect(uncertainties(conversation)).toHaveLength(1);
+    });
+    it('re-raise (the model, from history): an unrelated turn whose reading re-declares the released point from the old quote stays released and the update applies', async () => {
+      installLoop('placement_task');
+      const conversation = open();
+      await conversation.submit(L1);
+      await conversation.submit(H.T2);
+      await conversation.submit('水曜の夜にまとめて');
+      const fourth = await conversation.submit(T4);
+      expect(fourth.result?.failure).toBeUndefined();
+      expect(uncertainties(conversation)).toEqual([]);
+      expect(questionSlot(conversation)).not.toBe('stable_v5:semantic_uncertainty');
+      expect(fourth.result?.draftCandidates.length).toBeGreaterThan(0);
+      expect(fourth.result?.message).not.toContain('意味を一つに決められませんでした');
+      expect(JSON.stringify(fourth.debugTrace)).toContain('released-uncertainty-not-reraised:1');
+      const view = createWeeklyPlanningActiveSchedulerGraphViewV5(conversation.graph()!);
+      expect(view.temporalConstraints.some(constraint => constraint.taskId !== view.tasks.find(t => t.title === 'レポートの文献')?.id)).toBe(true);
+    });
+  });
+
+  describe('the sentence states the release, never a plan (both outcomes pinned)', () => {
+    it('another question follows: the release is stated, no plan is claimed', async () => {
+      const { third } = await toThirdTurn('two_uncertainties');
+      expect(third.result?.draftCandidates).toEqual([]);
+      expect(third.result?.message).toContain(RELEASED);
+      expect(third.result?.message).not.toContain('仮予定を作りました');
+      expect(third.result?.message).toContain('意味を一つに決められませんでした');
+    });
+    it('no capacity follows: the release is stated beside the shortfall, no plan is claimed', async () => {
+      const { third } = await toThirdTurn('capacity');
+      expect(third.result?.draftCandidates).toEqual([]);
+      expect(third.result?.message).toContain(RELEASED);
+      expect(third.result?.message).not.toContain('仮予定を作りました');
+      expect(third.result?.communicationFacts?.uncertaintyReleased).toBeDefined();
+    });
+  });
+
+  describe('a no-delta release never hides a dropped condition (critic 33a)', () => {
+    it('「うん、それで。あと金曜は無理」 with every read dropping the condition: released, the plan applies, and the reply says nothing new was read', async () => {
+      const { conversation, third } = await toThirdTurn('ack_task', {}, 'うん、それで。あと金曜は無理');
+      expect(uncertainties(conversation)).toEqual([]);
+      expect(third.result?.draftCandidates.length).toBeGreaterThan(0);
+      expect(third.result?.message).toContain(`${RELEASED}${NOTHING_READ}`);
+      expect(third.result?.communicationFacts?.uncertaintyReleased?.nothingRead).toBe(true);
+    });
+    it('a placement-delta release does not claim that nothing was read', async () => {
+      const { third } = await toThirdTurn('placement_task');
+      expect(third.result?.communicationFacts?.uncertaintyReleased?.nothingRead).toBe(false);
     });
   });
 });

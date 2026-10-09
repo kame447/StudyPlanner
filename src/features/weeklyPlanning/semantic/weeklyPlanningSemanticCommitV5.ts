@@ -3,8 +3,9 @@ import { reconcileWeeklyPlanningHistoricalWindowQuestionsV5 } from './weeklyPlan
 import { conversationArchitecturePolicy, type WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import { hasWeeklyPlanningSemanticUncertaintyResolutionV5 } from './weeklyPlanningSemanticUncertaintyResolutionV5';
 import {
+  WEEKLY_PLANNING_RELEASED_UNCERTAINTY_NO_DELTA_OPERATION_V5,
   WEEKLY_PLANNING_RELEASED_UNCERTAINTY_OPERATION_V5,
-  releasedFreeFormUncertaintyIdsV5,
+  releasedFreeFormUncertaintiesV5,
 } from './weeklyPlanningSemanticUncertaintyReleaseV5';
 import { weeklyPlanningMaterialIdentityAnswersV5, applyWeeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 import { bindWeeklyPlanningExistingWorkloadRatesV5 } from './weeklyPlanningExistingWorkloadRateReferenceV5';
@@ -109,23 +110,26 @@ function removeResolvedSemanticUncertaintiesV5(params: {
     .map((uncertainty) => uncertainty.id)
     .sort();
   // A free-form question ended by the user's own bound answer is released, not resolved (disclosed to the user).
-  const releasedIds = requireCompatibleResolution
-    ? new Set(releasedFreeFormUncertaintyIdsV5({
+  const released = requireCompatibleResolution
+    ? releasedFreeFormUncertaintiesV5({
         graph: params.originalGraph,
         document: params.document,
         pendingQuestion: params.pendingQuestion,
         noOpRetryConfirmed: params.noOpRetryConfirmed === true,
-      }))
-    : new Set<string>();
+      })
+    : [];
+  const releasedIds = new Map(released.map((entry) => [entry.id, entry.basis]));
 
-  for (const uncertaintyId of [...uncertaintyIds, ...releasedIds]) {
+  for (const uncertaintyId of [...uncertaintyIds, ...releasedIds.keys()]) {
     if (!activeIds().has(uncertaintyId)) continue;
     const result = applyWeeklyPlanningFactLifecycleOperationV5({
       graph,
       expectedRevision: graph.revision,
       operation: {
-        operationKey: `${params.operationKeyPrefix}:${releasedIds.has(uncertaintyId)
-          ? WEEKLY_PLANNING_RELEASED_UNCERTAINTY_OPERATION_V5 : 'resolved-work-breakdown'}:${uncertaintyId}`,
+        operationKey: `${params.operationKeyPrefix}:${releasedIds.get(uncertaintyId) === 'delta'
+          ? WEEKLY_PLANNING_RELEASED_UNCERTAINTY_OPERATION_V5
+          : releasedIds.get(uncertaintyId) === 'no_delta'
+            ? WEEKLY_PLANNING_RELEASED_UNCERTAINTY_NO_DELTA_OPERATION_V5 : 'resolved-work-breakdown'}:${uncertaintyId}`,
         kind: 'remove',
         targetFactId: uncertaintyId,
       },

@@ -40,6 +40,8 @@ import type {
 import {
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
+import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
+import { dropReReleasedUncertaintiesV5 } from './weeklyPlanningSemanticUncertaintyReleaseV5';
 import {
   finalizeWeeklyPlanningSemanticCanonicalizationV5,
 } from './weeklyPlanningSemanticCommitV5';
@@ -249,6 +251,19 @@ export function createWeeklyPlanningSemanticPipelineV5(
           },
         });
         return result;
+      }
+
+      // A free-form point an earlier turn released stays released when the model re-declares it from history
+      // (a quote the current user text does not carry); interaction only.
+      if (conversationArchitecturePolicy(input.conversationArchitecture).freshPendingQuestionBinding) {
+        const reReleased = dropReReleasedUncertaintiesV5({ graph, document: normalization.document, userText: input.userText });
+        if (reReleased.dropped > 0) {
+          normalization.document.uncertainties = reReleased.document.uncertainties;
+          normalization.diagnostics.algorithmicRepairs = [
+            ...(normalization.diagnostics.algorithmicRepairs ?? []),
+            `released-uncertainty-not-reraised:${reReleased.dropped}`,
+          ];
+        }
       }
 
       const pendingQuestion = readWeeklyPlanningPendingQuestionV5(publicStateSummary);

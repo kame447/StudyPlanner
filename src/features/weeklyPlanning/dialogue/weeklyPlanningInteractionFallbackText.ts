@@ -143,6 +143,6 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
     communication.consultationDeferred && !communication.alternativeRequiresAdoption ? CONSULTATION_NOT_ANSWERED : '',
     communication.planningDetailsNotApplied ? DETAILS_INVITATION : '',
     communication.possibleCompletenessOmission ? WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT : '',
-    communication.uncertaintyReleased ? weeklyPlanningUncertaintyReleaseText(communication.uncertaintyReleased.quote) : '',
+    communication.uncertaintyReleased ? weeklyPlanningUncertaintyReleaseText(communication.uncertaintyReleased) : '',
   ].join('');
 }

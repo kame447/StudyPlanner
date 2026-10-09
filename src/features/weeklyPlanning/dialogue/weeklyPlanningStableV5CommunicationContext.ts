@@ -205,7 +205,7 @@ export function communicationContextForStableV5Dialogue(params: {
       : {}),
     ...(params.questionCode === 'insufficient_capacity' && params.actionKind === 'question' && params.facts?.capacityShortfall
       ? { capacityShortfall: params.facts.capacityShortfall } : {}),
-    ...(params.facts?.uncertaintyReleased ? { uncertaintyReleased: { quote: params.facts.uncertaintyReleased.quote } } : {}),
+    ...(params.facts?.uncertaintyReleased ? { uncertaintyReleased: { quote: params.facts.uncertaintyReleased.quote, nothingRead: params.facts.uncertaintyReleased.nothingRead } } : {}),
     previewDisclosure: params.actionKind === 'preview_ready'
       ? params.facts?.previewDisclosure ?? null
       : null,
