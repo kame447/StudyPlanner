@@ -54,13 +54,13 @@ async function homeStart(){await act(async()=>{renderer!.root.findByProps({class
 function progressDraft(target:typeof firstPlan, delta:number){return {...createActualDraftForPlan(target),materialProgressUpdates:[{materialId:'material',deltaUnits:delta}]};}
 it('public Home next-plan busy rejection preserves B progress through A completion and retries from committed material',async()=>{
  await mount();
- expect(renderer!.root.findByProps({'data-home-section':'next-plan'}).findByType('h1').children).toEqual(['Math']);
+ expect(renderer!.root.findByProps({'data-home-section':'next-plan'}).findByProps({ className: 'home-plan-title' }).findByType('span').children).toEqual(['Math']);
  let release!:()=>void;sdk.gate=new Promise<void>(r=>release=r);
  await homeStart();await click('スタート');vi.setSystemTime(new Date('2026-10-04T20:00:00'));await click('終了する');await inputProgress('5');await click('記録を保存');
  expect(sdk.entered).toBe(true);
  await back();await back();
  expect(renderer!.root.findAllByProps({role:'dialog'})).toHaveLength(0);
- expect(renderer!.root.findByProps({'data-home-section':'next-plan'}).findByType('h1').children).toEqual(['Math second']);
+ expect(renderer!.root.findByProps({'data-home-section':'next-plan'}).findByProps({ className: 'home-plan-title' }).findByType('span').children).toEqual(['Math second']);
  await homeStart();await click('スタート');await click('終了する');await inputProgress('7');await click('記録を保存');
  expect((await boundary.repository.getStudyMaterials('owner'))[0].currentUnit).toBe(10);
  expect(await boundary.repository.getActuals('owner')).toHaveLength(0);

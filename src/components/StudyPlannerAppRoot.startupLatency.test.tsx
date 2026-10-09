@@ -8,6 +8,7 @@ import { InitialPrivacyConsentScreen } from './InitialPrivacyConsentScreen';
 import { InitialWeekStartPreferenceScreen } from './InitialWeekStartPreferenceScreen';
 import { createFakeAuthSession } from '../test/fakeAuthSession';
 import { createLocalFixture, deferred, MemoryStorage, microtasks, STAMP } from '../repositories/localPersistenceConcurrency.testUtils';
+import { PERSONALIZATION_READ_TIMEOUT_MS } from '../features/weeklyPlanning/personalization/useWeeklyPlanningPersonalizationProfile';
 import { WEEKLY_PLANNING_TRACE_POLICY_TIMEOUT_MS } from '../features/weeklyPlanning/trace/weeklyPlanningTracePrivacyClient';
 import { createStartupTimingRecorder } from '../lib/startupTiming';
 import type { PlannerRepository } from '../repositories/repositoryContracts';
@@ -235,7 +236,7 @@ it.each(['success', 'failure'] as const)('keeps preference retry visible until %
   const retry = renderer!.root.findByType(InitialWeekStartPreferenceScreen).props.onRetry;
   let result!: Promise<void>;
   await act(async () => { result = retry(); await microtasks(); });
-  await advance(60_000);
+  await advance(PERSONALIZATION_READ_TIMEOUT_MS - 1);
   expect(splash()).toBe(1);
   expect(renderer!.root.findAllByType(InitialWeekStartPreferenceScreen)).toHaveLength(0);
   expect(fixture.profile).not.toHaveBeenCalled();
@@ -353,4 +354,79 @@ it.each(['a', 'b'])('early media gestures cannot revive retired policy readiness
   expect(renderer!.root.findByType(InitialPrivacyConsentScreen).props.unavailable).toBe(false);
   expect(fixture.profile).not.toHaveBeenCalled();
   plannerReads.forEach(read => expect(read).not.toHaveBeenCalled());
+});
+
+it('bounds a stalled preference read and keeps planner initialization gated', async () => {
+  fixture.preferences.mockReturnValueOnce(deferred<typeof savedPreferences>().promise);
+  await mount(); await authenticate(); await advance(PERSONALIZATION_READ_TIMEOUT_MS - 1);
+  expect(splash()).toBe(1);
+  expect(fixture.profile).not.toHaveBeenCalled();
+  await advance(1);
+  expect(splash()).toBe(0);
+  expect(renderer!.root.findByType(InitialWeekStartPreferenceScreen).props.readFailed).toBe(true);
+  expect(fixture.profile).not.toHaveBeenCalled();
+  expect(fixture.memory).not.toHaveBeenCalled();
+  plannerReads.forEach(read => expect(read).not.toHaveBeenCalled());
+  expect(fixture.clock.getSnapshot().find(row => row.phase === 'preferences')).toMatchObject({
+    durationMs: PERSONALIZATION_READ_TIMEOUT_MS, outcome: 'error',
+  });
+});
+
+it('requires a successful fresh preference retry before bootstrap after a timeout', async () => {
+  const old = deferred<typeof savedPreferences>(), next = deferred<typeof savedPreferences>();
+  fixture.preferences.mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise);
+  await mount(); await authenticate(); await advance(PERSONALIZATION_READ_TIMEOUT_MS);
+  const screen = renderer!.root.findByType(InitialWeekStartPreferenceScreen);
+  expect(screen.props.readFailed).toBe(true);
+  await act(async () => { expect(await screen.props.onSave('sunday')).toBe(false); });
+  expect(fixture.profile).not.toHaveBeenCalled();
+  let retry!: Promise<void>;
+  await act(async () => { retry = screen.props.onRetry(); await microtasks(); });
+  expect(splash()).toBe(1);
+  await act(async () => { old.resolve(savedPreferences); await microtasks(); });
+  expect(splash()).toBe(1);
+  expect(fixture.profile).not.toHaveBeenCalled();
+  await act(async () => { next.resolve(savedPreferences); await retry; await microtasks(); });
+  expect(splash()).toBe(0);
+  expect(fixture.preferences).toHaveBeenCalledTimes(2);
+  expect(fixture.profile).toHaveBeenCalledOnce();
+  expect(fixture.memory).toHaveBeenCalledOnce();
+  plannerReads.forEach(read => expect(read).toHaveBeenCalledOnce());
+});
+
+it.each(['a', 'b'])('retires a pending preference read during a session transition to %s', async nextOwner => {
+  const old = deferred<typeof savedPreferences>(), next = deferred<typeof savedPreferences>();
+  fixture.preferences.mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise);
+  await mount(); await authenticate();
+  await act(async () => {
+    if (nextOwner === 'a') fake.emit(null);
+    fake.emit({ id: nextOwner, requiresEmailVerification: false });
+    await microtasks();
+  });
+  expect(fixture.preferences.mock.calls.map(call => call[0])).toEqual(['a', nextOwner]);
+  await act(async () => { old.resolve(savedPreferences); await microtasks(); });
+  expect(splash()).toBe(1);
+  expect(fixture.profile).not.toHaveBeenCalled();
+  // A successful missing profile still permits initial setup for the new session.
+  await act(async () => { next.resolve(null as any); await microtasks(); });
+  expect(splash()).toBe(0);
+  expect(renderer!.root.findByType(InitialWeekStartPreferenceScreen).props.readFailed).toBe(false);
+  expect(fixture.profile).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('a preference deadline exposes recovery readiness without bypassing intro playback', async () => {
+  fixture.preferences.mockReturnValueOnce(deferred<typeof savedPreferences>().promise);
+  await mount(false); await authenticate();
+  const video = renderer!.root.findByType('video');
+  expect(renderer!.root.findByType(SplashScreen).props.canSkip).toBe(false);
+  await advance(PERSONALIZATION_READ_TIMEOUT_MS);
+  expect(appLoading()).toBe(false);
+  expect(splash()).toBe(1);
+  expect(renderer!.root.findByType('video')).toBe(video);
+  expect(renderer!.root.findByType(SplashScreen).props.canSkip).toBe(true);
+  expect(fixture.content).not.toHaveBeenCalled();
+  act(() => renderer!.root.findByProps({ 'aria-label': '起動アニメーションをスキップ' }).props.onClick());
+  expect(splash()).toBe(0);
+  expect(renderer!.root.findByType(InitialWeekStartPreferenceScreen).props.readFailed).toBe(true);
 });

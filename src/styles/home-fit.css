@@ -174,10 +174,6 @@
     font-size: clamp(0.86rem, 2dvh, 0.96rem);
   }
 
-  .home-dashboard-default .home-date-unit {
-    font-size: clamp(0.57rem, 1.35dvh, 0.63rem);
-  }
-
   .home-dashboard-default .home-icon-button,
   .home-dashboard-default .home-avatar-button {
     width: 33px;

@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type FormEvent } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   CalendarDays,
   CheckCircle2,
@@ -153,7 +153,11 @@ function formatTodoDue(todo: TodoTask): string {
     : `締切 ${dateLabel}`;
 }
 
-export function TodoView({
+export function TodoView(props: TodoViewProps) {
+  return <TodoViewSession key={props.userId} {...props} />;
+}
+
+function TodoViewSession({
   userId,
   selectedDate,
   todos,
@@ -180,10 +184,47 @@ export function TodoView({
     useState(false);
   const [customScheduleDurationInput, setCustomScheduleDurationInput] =
     useState('');
-  const [savingTodoId, setSavingTodoId] = useState<string | null>(null);
+  const pendingTodoIds = useRef(new Set<string>());
+  const [savingTodoIds, setSavingTodoIds] = useState<ReadonlySet<string>>(new Set());
+  const lifetime = useRef<object | null>(null);
+
+  useLayoutEffect(() => {
+    lifetime.current = {};
+    return () => {
+      lifetime.current = null;
+      pendingTodoIds.current.clear();
+    };
+  }, []);
+
+  function canOperateTodo(todo: TodoTask) {
+    return lifetime.current !== null && todo.userId === userId &&
+      !pendingTodoIds.current.has(todo.id);
+  }
+
+  function runTodoOperation(todo: TodoTask, operation: () => Promise<unknown>) {
+    if (!canOperateTodo(todo)) return false;
+    const owner = lifetime.current;
+    pendingTodoIds.current.add(todo.id);
+    setSavingTodoIds(new Set(pendingTodoIds.current));
+    void (async () => {
+      try {
+        await operation();
+      } catch {
+        // The parent mutation owns notices and recovery; this view owns only pending UI.
+      } finally {
+        if (lifetime.current === owner) {
+          pendingTodoIds.current.delete(todo.id);
+          setSavingTodoIds(new Set(pendingTodoIds.current));
+        }
+      }
+    })();
+    return true;
+  }
 
   const groupedTodos = useMemo(() => {
-    const visibleTodos = todos.filter((todo) => todo.status !== 'archived');
+    const visibleTodos = todos.filter((todo) =>
+      todo.userId === userId && todo.status !== 'archived',
+    );
     const activeTodos = visibleTodos.filter((todo) => todo.status !== 'done');
 
     return {
@@ -203,7 +244,7 @@ export function TodoView({
         .filter((todo) => todo.status === 'done')
         .sort((left, right) => compareDueTodos(left, right, sortDirection)),
     };
-  }, [sortDirection, todos]);
+  }, [sortDirection, todos, userId]);
 
   function updateEditDraft<K extends keyof TodoTaskDraft>(
     key: K,
@@ -230,6 +271,7 @@ export function TodoView({
   }
 
   function openEditModal(todo: TodoTask) {
+    if (!canOperateTodo(todo)) return;
     setEditingTodo(todo);
     setEditDraft(createTodoDraftFromTask(todo));
   }
@@ -240,6 +282,7 @@ export function TodoView({
   }
 
   function openScheduleModal(todo: TodoTask) {
+    if (!canOperateTodo(todo)) return;
     setSchedulingTodo(todo);
     setScheduleDate(todo.dueDate ?? selectedDate ?? todayIsoDate());
     setScheduleStartTime('19:00');
@@ -269,15 +312,14 @@ export function TodoView({
     setCustomScheduleDurationInput('');
   }
 
-  async function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!editingTodo || !editDraft || !editDraft.title.trim()) {
       return;
     }
 
-    setSavingTodoId(editingTodo.id);
-    void onSaveTodo(
+    const started = runTodoOperation(editingTodo, () => onSaveTodo(
       {
         ...editDraft,
         userId,
@@ -289,47 +331,35 @@ export function TodoView({
         status: editingTodo.status,
       },
       editingTodo.id,
-    )
-      .catch(() => undefined)
-      .finally(() => setSavingTodoId(null));
-    closeEditModal();
+    ));
+    if (started) closeEditModal();
   }
 
-  async function updateTodoStatus(todo: TodoTask, status: TodoStatus) {
-    setSavingTodoId(todo.id);
-    try {
-      await onSaveTodo(
-        {
-          ...createTodoDraftFromTask(todo),
-          userId,
-          status,
-          scheduledPlanId: status === 'open' ? null : todo.scheduledPlanId,
-          pinned:
-            status === 'done' || status === 'open'
-              ? false
-              : Boolean(todo.pinned),
-        },
-        todo.id,
-      );
-    } finally {
-      setSavingTodoId(null);
-    }
+  function updateTodoStatus(todo: TodoTask, status: TodoStatus) {
+    runTodoOperation(todo, () => onSaveTodo(
+      {
+        ...createTodoDraftFromTask(todo),
+        userId,
+        status,
+        scheduledPlanId: status === 'open' ? null : todo.scheduledPlanId,
+        pinned:
+          status === 'done' || status === 'open'
+            ? false
+            : Boolean(todo.pinned),
+      },
+      todo.id,
+    ));
   }
 
-  async function toggleTodoPinned(todo: TodoTask) {
-    setSavingTodoId(todo.id);
-    try {
-      await onSaveTodo(
-        {
-          ...createTodoDraftFromTask(todo),
-          userId,
-          pinned: !Boolean(todo.pinned),
-        },
-        todo.id,
-      );
-    } finally {
-      setSavingTodoId(null);
-    }
+  function toggleTodoPinned(todo: TodoTask) {
+    runTodoOperation(todo, () => onSaveTodo(
+      {
+        ...createTodoDraftFromTask(todo),
+        userId,
+        pinned: !Boolean(todo.pinned),
+      },
+      todo.id,
+    ));
   }
 
   function applyScheduleDuration(value: DurationOptionValue) {
@@ -357,7 +387,7 @@ export function TodoView({
     );
   }
 
-  async function handleScheduleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleScheduleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (
@@ -370,8 +400,7 @@ export function TodoView({
       return;
     }
 
-    setSavingTodoId(schedulingTodo.id);
-    void onScheduleTodo(schedulingTodo, {
+    const started = runTodoOperation(schedulingTodo, () => onScheduleTodo(schedulingTodo, {
       userId,
       title: schedulingTodo.title.trim(),
       subject: schedulingTodo.subject.trim(),
@@ -386,14 +415,12 @@ export function TodoView({
       memo: schedulingTodo.memo.trim(),
       sourceType: 'todo',
       sourceId: schedulingTodo.id,
-    })
-      .catch(() => undefined)
-      .finally(() => setSavingTodoId(null));
-    closeScheduleModal();
+    }));
+    if (started) closeScheduleModal();
   }
 
   function renderTodo(todo: TodoTask) {
-    const isBusy = savingTodoId === todo.id;
+    const isBusy = savingTodoIds.has(todo.id);
     const isPinned = todo.pinned === true && todo.status !== 'done';
 
     return (
@@ -449,6 +476,7 @@ export function TodoView({
         <div className="todo-item-actions">
           <button
             className="ghost-button todo-icon-button"
+            disabled={isBusy}
             onClick={() => openEditModal(todo)}
             aria-label="編集"
             title="編集"
@@ -522,7 +550,7 @@ export function TodoView({
             className="ghost-button todo-icon-button todo-delete-button"
             disabled={isBusy}
             onClick={() => {
-              void onDeleteTodo(todo);
+              runTodoOperation(todo, () => onDeleteTodo(todo));
             }}
             aria-label="削除"
             title="削除"
@@ -772,7 +800,7 @@ export function TodoView({
               </button>
               <button
                 className="primary-button"
-                disabled={savingTodoId === editingTodo.id || !editDraft.title.trim()}
+                disabled={savingTodoIds.has(editingTodo.id) || !editDraft.title.trim()}
                 type="submit"
               >
                 保存
@@ -869,7 +897,7 @@ export function TodoView({
               <button
                 className="primary-button"
                 disabled={
-                  savingTodoId === schedulingTodo.id ||
+                  savingTodoIds.has(schedulingTodo.id) ||
                   !schedulingTodo.title.trim() ||
                   !scheduleDate ||
                   !scheduleStartTime ||

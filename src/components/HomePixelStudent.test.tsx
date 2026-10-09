@@ -102,7 +102,7 @@ describe('scheduled student in the actual Home card', () => {
       plan('later', { startTime: '10:23', endTime: '10:24' })];
     mount(plans); advance(30_000); advance(60_000);
     expect(state()).toBe('entering');
-    expect(renderer!.root.findByType('h1').children).toEqual(['adjacent']);
+    expect(renderer!.root.findByProps({ className: 'home-plan-title' }).findByType('span').children).toEqual(['adjacent']);
     advance(60_000); expect(state()).toBe('empty');
     advance(60_000); expect(state()).toBe('entering');
     advance(60_000); expect(state()).toBe('empty');

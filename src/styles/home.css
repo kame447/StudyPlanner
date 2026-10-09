@@ -121,39 +121,6 @@
   border-radius: 9px;
 }
 
-.home-date-rings {
-  position: absolute;
-  z-index: 4;
-  inset: 0;
-  pointer-events: none;
-}
-
-.home-date-ring {
-  position: absolute;
-  top: -1px;
-  width: 7px;
-  height: 18px;
-  transform: translateX(-50%);
-  border: 2px solid #17213a;
-  border-radius: 999px;
-  background: #f8fbfd;
-  box-shadow:
-    0 1px 1px rgba(23, 33, 58, 0.1),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.8);
-}
-
-.home-date-ring::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: -5px;
-  width: 3px;
-  height: 8px;
-  transform: translateX(-50%);
-  border-radius: 999px;
-  background: #17213a;
-}
-
 .home-date-segment {
   min-width: 0;
   display: flex;
@@ -176,13 +143,6 @@
   font-weight: 900;
   line-height: 1;
   letter-spacing: -0.025em;
-}
-
-.home-date-unit {
-  color: #202a43;
-  font-size: 0.68rem;
-  font-weight: 900;
-  line-height: 1;
 }
 
 .home-top-actions {
@@ -997,10 +957,6 @@
     font-size: 0.9rem;
   }
 
-  .home-date-unit {
-    font-size: 0.62rem;
-  }
-
   .home-next-card {
     height: 222px;
     padding-inline: 14px;
@@ -1038,16 +994,8 @@
     grid-template-columns: 112px minmax(0, 1fr) 116px;
   }
 
-  .home-date-ring {
-    width: 6px;
-  }
-
   .home-date-value {
     font-size: 0.82rem;
-  }
-
-  .home-date-unit {
-    font-size: 0.56rem;
   }
 
   .home-streak-card {
@@ -1111,10 +1059,6 @@
 
   .home-date-value {
     font-size: 0.76rem;
-  }
-
-  .home-date-unit {
-    font-size: 0.52rem;
   }
 
   .home-alert-grid {

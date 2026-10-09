@@ -74,7 +74,7 @@ describe('StudyPlannerAppRoot', () => {
       accept: vi.fn(async () => true), refresh: vi.fn(async () => undefined),
     };
     state.personalization = {
-      loading: false, profile: null, error: '',
+      loading: false, profile: null, error: '', readFailed: false,
       setWeekStartsOn: vi.fn(async () => true), refresh: vi.fn(async () => undefined),
       resetProfile: vi.fn(async () => true),
     };
