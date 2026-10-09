@@ -37,11 +37,11 @@ it('ready alone preserves the same playing clip and enables the hint until actua
   expect(renderer!.root.findByType('video')).toBe(clip);
   expect(visible()).toBe(false); expect(splash().props.canSkip).toBe(true);
   expect(renderer!.root.findByType('p').children).toEqual(['準備できました']);
-  timing.now = 9_000;
+  timing.now = 5_000;
   act(() => clip.props.onEnded());
   expect(diagnosticRows()).toMatchObject([
     { phase: 'startup-wait-ended', startMs: 200 },
-    { phase: 'intro-complete', startMs: 9_000, introOutcome: 'ended' },
+    { phase: 'intro-complete', startMs: 5_000, introOutcome: 'ended' },
   ]);
   expect(visible()).toBe(true); expect(renderer!.root.findAllByType(SplashScreen)).toHaveLength(0);
   expect(onVisibilityChange.mock.calls.map(([value]) => value)).toEqual([false, true]);
@@ -52,7 +52,7 @@ it('ended first retains the still and loading until the current app is ready', (
   act(() => renderer!.root.findByType('video').props.onEnded());
   expect(diagnosticRows()).toMatchObject([{ phase: 'intro-complete', startMs: 100, introOutcome: 'ended' }]);
   expect(visible()).toBe(false); expect(splash().props.videoOutcome).toBe('ended');
-  expect(renderer!.root.findByType('img').props.alt).toBe('Laplans');
+  expect(renderer!.root.findByType('img').props.alt).toBe('Laplance');
   timing.now = 300;
   act(() => renderer!.update(surface(false)));
   expect(visible()).toBe(true);

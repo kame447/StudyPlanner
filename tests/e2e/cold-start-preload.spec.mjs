@@ -1,4 +1,5 @@
 import { expect, test, installStartupSkip } from './support/startup-ready.mjs';
+import { assertStartupTimingRow } from './support/startup-timing-contract.mjs';
 
 // Use a real performance clock (no date-dependent assertions). A fresh Playwright
 // context has an empty HTTP cache. Reload reuses that context; record actual
@@ -92,11 +93,10 @@ for (const width of [1280, 390]) {
       // startup completion/privacy checks without demanding retired spans.
       expect(diagnosticRows.filter(row => row.phase === 'schedule-snapshot')).toHaveLength(1);
       expect(diagnosticRows.filter(row => ['plans', 'month-events'].includes(row.phase))).toEqual([]);
-      for (const row of diagnosticRows) {
-        expect(Object.keys(row).sort()).toEqual(['durationMs', 'id', 'outcome', 'phase', 'startMs']);
-        expect(Number.isFinite(row.startMs)).toBe(true);
-        expect(row.durationMs === null || Number.isFinite(row.durationMs)).toBe(true);
-      }
+      // Only intro-complete has the additional fixed public reason. All other
+      // rows retain the original five keys; unknown fields still fail privacy.
+      for (const row of diagnosticRows) assertStartupTimingRow(row);
+      expect(diagnosticRows.filter(row => row.phase === 'intro-complete')).toHaveLength(1);
       expect(JSON.stringify(diagnosticRows)).not.toMatch(/startup@example|cold-start-owner|起動検証/);
       const coldHome = await snapshot(homePage);
       expect(coldHome.pendingIdle).toBe(1);

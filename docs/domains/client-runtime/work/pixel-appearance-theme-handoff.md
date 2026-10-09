@@ -120,3 +120,35 @@ The exact, independently reviewed four-project CI partition from #540 is reused 
 Both new appearance specs are explicitly selected in mobile WebKit CI. Collection on current main confirms 174 mobile cases including all 16 appearance cases, plus the existing three 69-case desktop projects (381 total). The width cases create contexts at their actual initial viewport and assert layout/visual viewport and media-query state, rather than treating innerWidth alone as a real resize. The two palette-mode cases retain all ten palette/mode combinations and explicit opposite-mode transitions, with the original per-case deadline and behavioral assertions.
 
 The local implementation checks above remain their precisely scoped evidence. The name/icon integration changes the base and has this new build/asset measurement; the final exact published head still needs full application/Worker types, all unit/rules tests, browser/visual checks and deployment verification in CI. Physical-device installed-PWA behavior and existing Home Screen icon refresh remain unverified.
+
+
+## Report control paint follow-up — local ownership checkpoint (2026-10-09)
+
+- Owner: existing Issue #483 and the report-appearance follow-up to merged PR #552. This continues the existing appearance handoff; it does not create a new Issue or duplicate the theme implementation.
+- Local branch: `fix/pixel-report-control-paint`; base main `1207f1a842a59ca958b2a497a868b10a2d82770f`, tree `e87ca1829f6f89559a36c56ea8deaa167679505d`. The previous theme release is already merged. This section records a new, separately unverified local correction.
+- Before implementation, the owner checked existing Issue #483 body/comments, open PRs, related closed PR #552/#554 and remote branches, and found no active owner for this exact report-paint scope.
+- Report `.learning-report-scope-tabs` and `.learning-report-material-filter` retain their ordinary 14px rounded paint in pixel mode because the two wrappers are absent from the existing quiet-line appearance selector. The source and baseline screenshot observation are the starting evidence; this checkpoint does not claim a tested fix.
+- Proposed scope: add only these two wrappers to the existing quiet-line pixel-paint selector. Preserve DOM, handlers, view routing, dimensions, layout, standard-theme styling and existing report data behavior. Do not change `report.css` geometry or remove rounded styling globally.
+- Keep the previously observed report time-value ellipsis and narrow monthly date crowding separate. They are not the target of this two-wrapper correction.
+- Required local evidence: reproduce the old paint, verify both corrected wrappers with standard/pixel and relevant widths/modes, compare layout/computed geometry and interaction preservation, then run the relevant focused checks and unchanged asset guards. Record failures and limits before any completed claim.
+- Status: pre-implementation ownership checkpoint only. No new test success, publication, merge, production deployment, real account/data action or physical-device result is claimed. Public release authorization is not expanded by this local checkpoint.
+
+
+## Report control paint — selected local verification (2026-10-09)
+
+The follow-up adds `.learning-report-scope-tabs` and `.learning-report-material-filter` only to the existing quiet-line appearance selector, and adds those two names to the existing stylesheet coverage test. The ordinary report stylesheet, DOM, handlers, data calculations and layout rules are unchanged. The current source is a local candidate on base main `1207f1a`; no publication or main/deployment result is claimed here.
+
+- Regression before/after: the existing stylesheet suite reports 1 failed / 2 passed before the addition, then 3 passed after it. No timeout/assertion weakening.
+- Chromium 155.0.8059.39: baseline and candidate each execute 20 conditions (standard/pixel × light/dark × 320/390/412/768/1280). All report DOM rectangles and content are identical. Standard appearance has zero computed-style changes. Pixel changes are confined to the two wrappers' background/border colors, corner-radius properties (including logical aliases) and box shadow. No unexpected differences remain.
+- Scope tabs retain 46px height; the material filter retains 48px. All four appearance/mode combinations retain working tab/filter operations and unchanged saved synthetic data. Page errors and external requests are zero.
+- Mobile-profile WebKit 26.5 at 390px: baseline and candidate each pass light/dark, with identical wrapper rectangles, successful taps/filter operations and the intended 14px → 0px pixel radii. This is two comparisons/four executions, not proof across every Chromium width or physical Safari.
+- Production build and every current asset guard pass: JavaScript gzip 607,107 B, optional appearance CSS 7,060 B, font 500,340 B. Thresholds and dependencies are not changed.
+- The first comparison classifier treated equivalent logical border-color/radius aliases as unexpected because only physical CSS property names were allowlisted. Correcting that paint-property classification produced zero unexpected differences; no product source or assertion was loosened to hide a layout change. The raw before/after captures preserve these differences.
+
+Evidence is in `ui-report-current-audit/paint-comparison-summary.json`, `webkit-comparison-summary.json`, `paint-red.log`, `paint-green.log`, `candidate-build.log`, `candidate-budget.log` and the before/after images. These are local synthetic-browser observations. The immutable release backup should include the actual files and hashes before public handoff.
+
+Frozen implementation hashes:
+- `src/styles/appearance-pixel.css`: `b016da5481e25ab9a97ddeb5d6218c283a63430bcc3c83033649dec00daafdb4`
+- `src/styles/appearance-pixel.test.ts`: `801be9dfc35735985683ec3d1f201492af157cdba68b2fac090f273120c2c538`
+
+UNVERIFIED: full application/Worker verification, exact-head remote CI, public release and physical-device behavior have not been established by this local task. The existing report time-value ellipsis and narrow monthly date labels remain separate, unchanged issues. Do not substitute the previous full theme release's successful gates for this new candidate.

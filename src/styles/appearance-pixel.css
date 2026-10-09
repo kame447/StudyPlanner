@@ -92,6 +92,7 @@ html[data-appearance='pixel'] :is(
   .bookshelf-subject-symbol, .timetable-grid-shell, .timetable-editor-card,
   .quick-entry-card, .month-cell:not(.is-selected):not(.is-today), .ai-planning-composer,
   .todo-view-item:not(.todo-item-pinned),
+  .learning-report-scope-tabs, .learning-report-material-filter,
   .settings-segments, .home-scene-option:not([aria-pressed='true']), .theme-palette-button:not(.active),
   input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea, select
 ) {

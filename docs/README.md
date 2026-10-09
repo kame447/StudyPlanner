@@ -1,4 +1,4 @@
-# StudyPlanner Documentation
+# Laplance Documentation
 
 文書の配置ルールおよび統制は [DOCUMENT_DICTIONARY.md](DOCUMENT_DICTIONARY.md) に従います。
 
