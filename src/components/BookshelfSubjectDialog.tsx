@@ -114,6 +114,7 @@ function BookshelfSubjectDialogSession({
           <label className="field">
             <span>教科名</span>
             <input
+              disabled={isSubmitting}
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="数学"
@@ -130,6 +131,7 @@ function BookshelfSubjectDialogSession({
                       ? 'bookshelf-color-button active'
                       : 'bookshelf-color-button'
                   }
+                  disabled={isSubmitting}
                   key={option.value}
                   onClick={() => setColor(option.value)}
                   style={getSubjectStyle(option.value)}

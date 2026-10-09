@@ -17,6 +17,7 @@ import {
 } from '../../lib/homeNextPlanVisual';
 import { DEFAULT_HOME_SCENE_PREFERENCES, type HomeScenePreferences } from '../../lib/homeScenePreferences';
 import { HomeScene } from './HomeScene';
+import { HomePlanTitle } from './HomePlanTitle';
 import { buildPlanOccurrenceKey } from '../../lib/planRecurrence';
 import type { Actual, Plan, StudyMaterial, TodoTask } from '../../types/domain';
 import { useStudySessionLauncher } from '../StudySessionView';
@@ -160,7 +161,7 @@ export function GettingStartedSection({
         <span className="home-setup-mark"><BookOpen size={22} aria-hidden="true" /></span>
         <div>
           <p>はじめに</p>
-          <h1 id="home-getting-started-title">StudyPlannerを準備する</h1>
+          <h1 id="home-getting-started-title">Laplansを準備する</h1>
         </div>
       </div>
       <p className="home-setup-copy">
@@ -235,7 +236,7 @@ export function NextPlanSection({
         <p className="home-eyebrow">次の予定</p>
         {nextPlan ? (
           <>
-            <h1>{nextPlan.title}</h1>
+            <HomePlanTitle key={nextPlan.id} title={nextPlan.title} />
             <div className="home-next-meta">
               <span><Clock aria-hidden="true" size={18} />{nextPlan.startTime} - {nextPlan.endTime}</span>
               <span>

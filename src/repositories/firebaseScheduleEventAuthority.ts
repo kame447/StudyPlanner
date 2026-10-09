@@ -456,6 +456,25 @@ export function createFirebaseScheduleEventAuthority(
       }
     },
 
+    async getScheduleSnapshot(userId) {
+      try {
+        const events = await startupTiming.measure('schedule-canonical-snapshot', () => listByUserId<ScheduleEvent>(
+          firestoreDb,
+          SCHEDULE_EVENTS_COLLECTION,
+          userId,
+        ));
+        assertOwnedRecords(userId, events, '予定取得');
+        return {
+          plans: events.map(scheduleEventToPlan).filter((plan): plan is Plan => plan !== null),
+          monthEvents: events.map(scheduleEventToMonthEvent).filter((event): event is NonNullable<typeof event> => event !== null),
+        };
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('予定を取得できませんでした。', error as FirebaseLikeError),
+        );
+      }
+    },
+
     async getPlans(userId) {
       try {
         return (await startupTiming.measure('schedule-canonical-plans', () => listByUserId<ScheduleEvent>(

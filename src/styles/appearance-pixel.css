@@ -1,0 +1,163 @@
+/* Visual-only overlay. No dimensions, typography sizes, spacing, positioning,
+   display, overflow, visibility, layout, transitions or interaction rules.
+   Pixel frames are background paint inside the existing boxes. */
+/* Unused font faces are not requested: standard appearance does not select this
+   family. Do not preload it or add a font-ready startup gate. */
+@font-face {
+  font-family: 'DotGothic16';
+  src: url('/fonts/DotGothic16-Regular.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+html[data-appearance='pixel'],
+html[data-appearance='pixel'] *,
+html[data-appearance='pixel'] *::before,
+html[data-appearance='pixel'] *::after,
+html[data-appearance='pixel'] *::placeholder {
+  font-family: 'DotGothic16', 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', sans-serif !important;
+}
+
+html[data-appearance='pixel'] {
+  --pixel-paper: color-mix(in srgb, #fffefa 96%, var(--accent) 4%);
+  --pixel-canvas: color-mix(in srgb, #edf2e7 90%, var(--accent) 10%);
+  --pixel-edge: color-mix(in srgb, var(--accent-strong) 72%, #29392f 28%);
+  --pixel-line: color-mix(in srgb, var(--accent) 25%, var(--pixel-paper) 75%);
+  --pixel-grid: color-mix(in srgb, var(--accent) 11%, transparent);
+  --pixel-shade: color-mix(in srgb, var(--accent-strong) 20%, transparent);
+  --pixel-button: var(--accent-strong);
+  --pixel-frame:
+    linear-gradient(var(--pixel-edge), var(--pixel-edge)) left 5px top / calc(100% - 10px) 2px no-repeat,
+    linear-gradient(var(--pixel-edge), var(--pixel-edge)) left 5px bottom / calc(100% - 10px) 2px no-repeat,
+    linear-gradient(var(--pixel-edge), var(--pixel-edge)) left top 5px / 2px calc(100% - 10px) no-repeat,
+    linear-gradient(var(--pixel-edge), var(--pixel-edge)) right top 5px / 2px calc(100% - 10px) no-repeat,
+    linear-gradient(var(--pixel-edge), var(--pixel-edge)) left 2px top 2px / 3px 3px no-repeat,
+    linear-gradient(var(--pixel-edge), var(--pixel-edge)) right 2px top 2px / 3px 3px no-repeat,
+    linear-gradient(var(--pixel-edge), var(--pixel-edge)) left 2px bottom 2px / 3px 3px no-repeat,
+    linear-gradient(var(--pixel-edge), var(--pixel-edge)) right 2px bottom 2px / 3px 3px no-repeat;
+  --pixel-grid-paper:
+    repeating-linear-gradient(0deg, transparent 0 7px, var(--pixel-grid) 7px 8px),
+    repeating-linear-gradient(90deg, transparent 0 7px, var(--pixel-grid) 7px 8px);
+}
+html[data-appearance='pixel'][data-theme='dark'] {
+  --pixel-paper: color-mix(in srgb, #17212a 92%, var(--accent) 8%);
+  --pixel-canvas: color-mix(in srgb, #101820 94%, var(--accent) 6%);
+  --pixel-edge: color-mix(in srgb, var(--accent) 72%, #dce5d6 28%);
+  --pixel-line: color-mix(in srgb, var(--accent) 28%, var(--pixel-paper) 72%);
+  --pixel-grid: color-mix(in srgb, var(--accent) 9%, transparent);
+  --pixel-shade: #070e1480;
+  --pixel-button: color-mix(in srgb, var(--accent-strong) 72%, #0f1720 28%);
+}
+
+/* One continuous grid inhabits the existing surrounding space. */
+html[data-appearance='pixel'],
+html[data-appearance='pixel'] :is(body, .app-shell, .app-settings-page, .app-settings-header, .app-settings-tabs) {
+  background: var(--pixel-grid-paper), var(--pixel-canvas) !important;
+}
+html[data-appearance='pixel'] .app-shell {
+  background: repeating-conic-gradient(var(--pixel-line) 0% 25%, transparent 0% 50%) left top / 8px 8px repeat-x, var(--pixel-grid-paper), var(--pixel-canvas) !important;
+}
+
+/* Existing top-level cards become stepped pixel frames; no borders are added. */
+html[data-appearance='pixel'] :is(
+  .home-next-card, .home-panel, .home-alert-card, .home-streak-card,
+  .bookshelf-dashboard, .panel.schedule-month-view, .panel.schedule-week-view,
+  .panel.schedule-day-view, .panel:has(> .day-timeline-header), .panel.timetable-view, .ai-planning-card,
+  .panel.todo-view, .learning-report-summary-card, .learning-report-card,
+  .learning-report-empty, .learning-report-insight, .legal-page-card,
+  .auth-main-card, .auth-stage-card,
+  .settings-group-card, .assistant-settings-card, .modal-card,
+  .month-day-sheet, .timetable-period-sheet, .bookshelf-action-sheet,
+  .ai-planning-plan-card, .ai-planning-plan-preview
+) {
+  background: var(--pixel-frame), var(--pixel-paper) !important;
+  border-color: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: 3px 3px 0 var(--pixel-shade) !important;
+}
+/* Existing hero is already positioned. This empty paint layer cannot receive input. */
+html[data-appearance='pixel'] .home-next-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  background: var(--pixel-frame);
+}
+
+/* Small surfaces share one quiet line weight and solid, readable paper. */
+html[data-appearance='pixel'] :is(
+  .home-schedule-list, .bookshelf-featured-card, .bookshelf-subject-row,
+  .bookshelf-recent-row, .bookshelf-subject-list, .bookshelf-recent-list, .bookshelf-featured-cover, .bookshelf-list-cover,
+  .bookshelf-subject-symbol, .timetable-grid-shell, .timetable-editor-card,
+  .quick-entry-card, .month-cell:not(.is-selected):not(.is-today), .ai-planning-composer,
+  .todo-view-item:not(.todo-item-pinned),
+  .settings-segments, .home-scene-option:not([aria-pressed='true']), .theme-palette-button:not(.active),
+  input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea, select
+) {
+  border-color: var(--pixel-line) !important;
+  border-radius: 0 !important;
+  background-color: var(--pixel-paper) !important;
+  box-shadow: inset 0 0 0 1px var(--pixel-line) !important;
+}
+html[data-appearance='pixel'] :is(.home-schedule-row, .home-schedule-add-row, .home-schedule-empty, .bookshelf-expanded-materials, .timetable-grid-cell:not(.has-class)) {
+  background-color: var(--pixel-paper) !important;
+  border-color: var(--pixel-line) !important;
+}
+
+/* Controls and task rows keep their dimensions and semantic states.
+   Pinned task colors stay owned by the original pinned-state rules. */
+html[data-appearance='pixel'] :is(button, .home-nav-active-circle, .user-avatar, .home-time-dot, .todo-view-item) {
+  border-radius: 0 !important;
+}
+html[data-appearance='pixel'] :is(
+  .home-start-button, .primary-button, .home-nav-active-circle,
+  .bookshelf-add-material-fab, .schedule-add-fab, .ai-planning-send-button,
+  .schedule-view-tabs button.active, .bookshelf-category-chips button.active,
+  .settings-segments button[aria-pressed='true']
+) {
+  background: var(--pixel-button) !important;
+  color: #fff !important;
+  border-color: var(--pixel-edge) !important;
+  box-shadow: inset 0 0 0 2px var(--pixel-edge), inset 0 0 0 4px color-mix(in srgb, #fff 75%, var(--accent) 25%), 3px 3px 0 var(--pixel-shade) !important;
+}
+html[data-appearance='pixel'] :is(
+  .home-icon-button, .home-avatar-button, .bookshelf-icon-button,
+  .ai-planning-chat-menu-button, .ghost-button, .home-plan-inspect, .settings-back-button,
+  .settings-tab[aria-selected='true']
+) {
+  background-color: var(--pixel-paper) !important;
+  border-color: var(--pixel-line) !important;
+  box-shadow: inset 0 0 0 1px var(--pixel-edge), inset 0 0 0 3px var(--pixel-paper) !important;
+}
+html[data-appearance='pixel'] .home-bottom-nav {
+  background: repeating-conic-gradient(var(--pixel-line) 0% 25%, transparent 0% 50%) left bottom / 8px 8px repeat-x, var(--pixel-paper) !important;
+  border-color: var(--pixel-edge) !important;
+  box-shadow: inset 0 2px 0 var(--pixel-edge), inset 0 4px 0 var(--pixel-paper), inset 0 5px 0 var(--pixel-line) !important;
+}
+html[data-appearance='pixel'] .home-date-paper {
+  border-radius: 0 !important;
+  box-shadow: inset 0 0 0 2px #67472d, inset 0 0 0 4px #e9c798, 3px 3px 0 var(--pixel-shade) !important;
+}
+
+/* Original SVG paths and viewboxes remain intact; only their painted edges change. */
+html[data-appearance='pixel'] :is(button, .home-next-meta, .home-time-dot, .home-alert-body, .settings-field-label) svg {
+  shape-rendering: crispEdges;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+/* Preserve status meaning and visible focus without changing hit areas. */
+html[data-appearance='pixel'] .home-alert-card.danger {
+  background: var(--pixel-frame), color-mix(in srgb, var(--pixel-paper) 95%, #e74769 5%) !important;
+}
+html[data-appearance='pixel'] .home-alert-card.warning {
+  background: var(--pixel-frame), color-mix(in srgb, var(--pixel-paper) 94%, #e8a145 6%) !important;
+}
+html[data-appearance='pixel'] :is(input[type='checkbox'], input[type='radio']) {
+  accent-color: var(--accent);
+}
+html[data-appearance='pixel'] :is(button, input, textarea, select):focus-visible {
+  outline: 2px solid var(--pixel-edge) !important;
+  outline-offset: 2px !important;
+}

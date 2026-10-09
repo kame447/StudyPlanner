@@ -1,11 +1,11 @@
-# StudyPlanner
+# Laplans
 
 [![CI](https://github.com/kame447/StudyPlanner/actions/workflows/ci.yml/badge.svg)](https://github.com/kame447/StudyPlanner/actions/workflows/ci.yml)
 [![Browser Regression](https://github.com/kame447/StudyPlanner/actions/workflows/browser-regression.yml/badge.svg)](https://github.com/kame447/StudyPlanner/actions/workflows/browser-regression.yml)
 
 学習計画、実績、教材、時間割を一元管理し、自然言語を使った週間計画の作成を支援する Web アプリケーションです。
 
-StudyPlanner は、学習予定と実績を分けて記録し、教材・時間割・進捗を含む情報から次の学習計画を作成します。AI は自然言語の解釈に利用し、スケジューリング、状態更新、承認、保存はアプリケーション側で管理します。
+Laplans は、学習予定と実績を分けて記録し、教材・時間割・進捗を含む情報から次の学習計画を作成します。AI は自然言語の解釈に利用し、スケジューリング、状態更新、承認、保存はアプリケーション側で管理します。
 
 ## 主な機能
 
@@ -23,7 +23,7 @@ StudyPlanner は、学習予定と実績を分けて記録し、教材・時間�
 
 ### 教材・進捗管理
 
-教材や学習対象を登録し、現在の進捗を管理できます。書籍教材の追加では ISBN または教材名から共有 catalog / NDL Search を使った候補検索を利用でき、検索を使わず従来どおり手入力でも登録できます。外部書誌は候補情報として扱い、教科・進捗・章構造・学習量は StudyPlanner 側が所有します。
+教材や学習対象を登録し、現在の進捗を管理できます。書籍教材の追加では ISBN または教材名から共有 catalog / NDL Search を使った候補検索を利用でき、検索を使わず従来どおり手入力でも登録できます。外部書誌は候補情報として扱い、教科・進捗・章構造・学習量は Laplans 側が所有します。
 
 ### ホーム・時間割
 
@@ -223,7 +223,7 @@ client-first execution と local/server authority の境界は [`docs/domains/cl
 
 ## 開発状況
 
-StudyPlanner は開発中です。現在の `main` を基準に主要機能とテストを継続的に更新しています。
+Laplans は開発中です。現在の `main` を基準に主要機能とテストを継続的に更新しています。
 
 ## ライセンス
 

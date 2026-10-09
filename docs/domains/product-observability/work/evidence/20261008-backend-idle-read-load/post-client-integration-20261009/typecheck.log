@@ -1,0 +1,26 @@
+
+> studyplanner-app@0.1.0 typecheck:full
+> npm run typecheck:app:full && npm run typecheck:worker:full
+
+
+> studyplanner-app@0.1.0 typecheck:app:full
+> tsc --noEmit --incremental false
+
+
+> studyplanner-app@0.1.0 typecheck:worker:full
+> npm run types:worker && tsc --noEmit -p tsconfig.worker.json --incremental false
+
+
+> studyplanner-app@0.1.0 types:worker
+> node -e "require('node:fs').mkdirSync('.wrangler/types', { recursive: true })" && wrangler types .wrangler/types/worker-runtime.d.ts --config workers/ai-proxy/wrangler.jsonc --include-env=false
+
+Generating runtime types...
+
+Runtime types generated.
+
+
+✨ Types written to .wrangler/types/worker-runtime.d.ts
+
+📖 Read about runtime types
+https://developers.cloudflare.com/workers/languages/typescript/#generate-types
+📣 Remember to rerun 'wrangler types' after you change your wrangler.jsonc file.

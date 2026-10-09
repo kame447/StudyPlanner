@@ -1,0 +1,121 @@
+{
+  "status": "local integration preparation passed; not full-suite or browser verification",
+  "publishedPr": 547,
+  "publishedHead": "05906f69687ef3bacc5265e30869e0a7584dba72",
+  "currentMain": "f281c6c0ba56ef7b57865b7edcfd276d11a7b2ab",
+  "mergeBase": "22847120386987329e2f034d6062d59694ef1180",
+  "syntheticLocalCandidate": "c14b967b9dc4501776e1ba2df7113bcf20baf562",
+  "verifiedSourceTree": "a77942747de125c23154ed57179b0b7c30b5ed4d",
+  "mainChangedFiles": 32,
+  "prChangedFiles": 36,
+  "overlappingPaths": [],
+  "allMainAndPrFilesPreservedByteForByte": true,
+  "agentInstructionsIdentical": true,
+  "noDependencyOrRunnerChange": true,
+  "protectedAIPlanningOrDedicatedE2EDiff": [],
+  "focused": {
+    "files": 11,
+    "passed": 144,
+    "backendPassed": 56,
+    "startupPassed": 81,
+    "monthEventPersistencePassed": 7,
+    "exit": 0,
+    "command": "node node_modules/vitest/vitest.mjs --config vite.config.mjs run --no-cache workers/ai-proxy/src/productObservabilityActiveUserSnapshot.test.ts workers/ai-proxy/src/traceWorker.scheduledSubrequestBudget.test.ts workers/ai-proxy/src/productObservabilityRetention.test.ts workers/ai-proxy/src/productObservabilityRollup.actorDates.test.ts workers/ai-proxy/src/productObservabilityStore.test.ts workers/ai-proxy/src/workerSubrequestBudget.test.ts src/components/SplashScreen.test.tsx src/components/StartupVideo.test.tsx src/components/StudyPlannerAppRoot.parallelStartup.test.tsx src/components/StudyPlannerAppRoot.test.tsx src/components/MonthEventDialog.persistence.test.tsx",
+    "testFiles": [
+      "workers/ai-proxy/src/productObservabilityActiveUserSnapshot.test.ts",
+      "workers/ai-proxy/src/traceWorker.scheduledSubrequestBudget.test.ts",
+      "workers/ai-proxy/src/productObservabilityRetention.test.ts",
+      "workers/ai-proxy/src/productObservabilityRollup.actorDates.test.ts",
+      "workers/ai-proxy/src/productObservabilityStore.test.ts",
+      "workers/ai-proxy/src/workerSubrequestBudget.test.ts",
+      "src/components/SplashScreen.test.tsx",
+      "src/components/StartupVideo.test.tsx",
+      "src/components/StudyPlannerAppRoot.parallelStartup.test.tsx",
+      "src/components/StudyPlannerAppRoot.test.tsx",
+      "src/components/MonthEventDialog.persistence.test.tsx"
+    ]
+  },
+  "media": {
+    "files": 1,
+    "passed": 22,
+    "exit": 0,
+    "command": "node node_modules/vitest/vitest.mjs --config vite.config.mjs run --no-cache scripts/preview-media-response.test.mjs"
+  },
+  "checks": {
+    "freshAppAndWorkerTypes": 0,
+    "workerTypesRegenerated": true,
+    "productionBuild": 0,
+    "buildSeconds": 7.14,
+    "bundleBudget": 0,
+    "passedBudgetGuards": 8,
+    "commands": [
+      "npm run typecheck:full",
+      "npm run build",
+      "node scripts/ci/check-bundle-budget.mjs"
+    ]
+  },
+  "identity": {
+    "nonDocumentationTrackedInputs": 1854,
+    "inputManifestSha256": "1f1d4a5d828b8cccbf33ff98badbd5c49da5fac465547c45b8226954f556dc5d",
+    "postVerificationInputMismatches": [],
+    "installedPresent": 237,
+    "platformOptionalAbsent": 99,
+    "installedPackageMismatches": [],
+    "installedPackageRawManifestSha256": "33f6896aab782ec816c5d3afa66c7f15c5d040354650ba8534b8f00053570ecd",
+    "node": "v24.19.0",
+    "workerRuntimeTypesSha256": "bf808b3fb4789a76410fc9c1ba8cd85e80453b8f92fa0981bdb86a9d523d612e"
+  },
+  "environment": "One Vitest worker, --no-cache, explicit loopback development host, isolated HOME/npm cache, offline package resolution; existing installed packages reused read-only. No credentials or live services.",
+  "initialInvocationError": {
+    "command": "node --test scripts/preview-media-response.test.mjs",
+    "classification": "Wrong test runner: file imports Vitest. Stopped at initialization, no product assertion executed. Corrected to repository Vitest runner; 22 tests then passed.",
+    "exit": 1
+  },
+  "notPerformed": [
+    "full unit suite on integration candidate",
+    "integration browser/visual/remote CI",
+    "real Firestore or AI",
+    "push or public PR update",
+    "main branch mutation or merge",
+    "production deployment/data/billing action"
+  ],
+  "next": "Review this detached local candidate, run required final full/integration gates under the chosen publication workflow, obtain any required main-integration approval before remote changes.",
+  "logs": [
+    {
+      "file": "focused.log",
+      "rawSha256": "ca387d272d6d4c0ec0cbb5b4330b9f499c9c16aa5152438244009417f85e451b",
+      "storedSha256": "e3eefc4e0944bcff05425308a57de4f4aed613c96b4c250c54a8f1d6793787d7",
+      "normalization": "Replace ephemeral worktree/dependency roots with named placeholders; remove ANSI styling and trailing whitespace only."
+    },
+    {
+      "file": "preview-media-vitest.log",
+      "rawSha256": "6ef1a08822a86d37f449dd1c2d569a34c31d1c2261b28400f8cf61009c51d1f4",
+      "storedSha256": "58d2aa6f01131119daddc58e36de4712d463ccdd6c77ce3b36b42dcc8302aa2a",
+      "normalization": "Replace ephemeral worktree/dependency roots with named placeholders; remove ANSI styling and trailing whitespace only."
+    },
+    {
+      "file": "typecheck.log",
+      "rawSha256": "1b4b5e6e6ee9ad7328eb834dc63e4e3e5bc67cb7ccec41ffbf677744d7dae08e",
+      "storedSha256": "9f05ae5e64cc9e364b4b88ad70402a71c335b0cb264d946e4d557d25c31dfd43",
+      "normalization": "Replace ephemeral worktree/dependency roots with named placeholders; remove ANSI styling and trailing whitespace only."
+    },
+    {
+      "file": "build.log",
+      "rawSha256": "7bf7f1650377d91026c72164132ef1c107b22dd608c724fd68a74d8f7d43790c",
+      "storedSha256": "1e0894eaa23d7dcd8727b3b87481a2f522691dcf96fbec08d989f2d32af64b4f",
+      "normalization": "Replace ephemeral worktree/dependency roots with named placeholders; remove ANSI styling and trailing whitespace only."
+    },
+    {
+      "file": "bundle.log",
+      "rawSha256": "c3c428ebcf39016e5d9efdaf0a7e42e224f51fa560296ab9e5e2187c00e19367",
+      "storedSha256": "c3c428ebcf39016e5d9efdaf0a7e42e224f51fa560296ab9e5e2187c00e19367",
+      "normalization": "Replace ephemeral worktree/dependency roots with named placeholders; remove ANSI styling and trailing whitespace only."
+    },
+    {
+      "file": "preview-media.log",
+      "rawSha256": "5a02c1de805671246dd1e9bf7512d140c760aeacd43700183881a6f0c61d55d6",
+      "storedSha256": "819ed00af12f264e3cb64989f2e76bb2d67495315baf13878f1fce3aea0964fb",
+      "normalization": "Replace ephemeral worktree/dependency roots with named placeholders; remove ANSI styling and trailing whitespace only."
+    }
+  ]
+}

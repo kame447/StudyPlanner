@@ -105,9 +105,9 @@ export function AdminApp({
         <div className="admin-console-layout">
           <aside className="admin-console-sidebar">
             <div className="admin-console-brand">
-              <span className="admin-console-brand-mark" aria-hidden="true">S</span>
+              <span className="admin-console-brand-mark" aria-hidden="true">L</span>
               <div>
-                <strong>StudyPlanner</strong>
+                <strong>Laplans</strong>
                 <small>Admin Console</small>
               </div>
             </div>

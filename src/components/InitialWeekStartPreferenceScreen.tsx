@@ -4,6 +4,7 @@ import { StudyPlannerLogo } from './StudyPlannerLogo';
 
 interface InitialWeekStartPreferenceScreenProps {
   error: string;
+  readFailed?: boolean;
   onSave(value: WeeklyPlanningWeekStartsOn): Promise<boolean>;
   onRetry(): Promise<void>;
   onSignOut(): Promise<void>;
@@ -11,6 +12,7 @@ interface InitialWeekStartPreferenceScreenProps {
 
 export function InitialWeekStartPreferenceScreen({
   error,
+  readFailed = false,
   onSave,
   onRetry,
   onSignOut,
@@ -20,7 +22,7 @@ export function InitialWeekStartPreferenceScreen({
   const [localError, setLocalError] = useState('');
 
   async function save() {
-    if (submitting) return;
+    if (submitting || readFailed) return;
     setSubmitting(true);
     setLocalError('');
     try {
@@ -47,9 +49,11 @@ export function InitialWeekStartPreferenceScreen({
         <div className="auth-stage-card">
           <div className="auth-stage-header">
             <div>
-              <h2>1週間の始まりを選択</h2>
+              <h2>{readFailed ? '学習設定を読み込めませんでした' : '1週間の始まりを選択'}</h2>
               <p>
-                「今週」「来週」の予定を正しく解釈するため、最初に一度だけ確認します。後からアプリ設定で変更できます。
+                {readFailed
+                  ? '保存済みの設定を確認できていないため、まだ変更できません。もう一度読み込むか、ログアウトしてください。'
+                  : '「今週」「来週」の予定を正しく解釈するため、最初に一度だけ確認します。後からアプリ設定で変更できます。'}
               </p>
             </div>
           </div>
@@ -58,6 +62,7 @@ export function InitialWeekStartPreferenceScreen({
             <label className="field">
               <span>週の始まり</span>
               <select
+                disabled={readFailed || submitting}
                 value={selected}
                 onChange={(event) => setSelected(event.target.value as WeeklyPlanningWeekStartsOn)}
               >
@@ -82,7 +87,7 @@ export function InitialWeekStartPreferenceScreen({
 
             <button
               className="primary-button"
-              disabled={submitting}
+              disabled={submitting || readFailed}
               onClick={() => void save()}
               type="button"
             >

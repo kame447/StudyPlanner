@@ -1,7 +1,7 @@
 # Product Observability
 
 Status: canonical domain entry point
-Updated: 2026-10-03
+Updated: 2026-10-08
 Owning Issue: #213
 
 このドメインは、StudyPlanner 全体の利用状況・AI/API 利用・機能品質・運用状態を、管理者が分析し、個別障害まで掘り下げるための観測責務を所有する。
@@ -21,6 +21,10 @@ Owning Issue: #213
 - product intent / information architecture / metric semantics: `spec/console-requirements.md`
 - telemetry / aggregation / trust / retention / drill-down architecture: `architecture/telemetry-and-read-model.md`
 - current implementation order: `roadmap/current.md`
+
+## Active work
+
+- [Scheduled maintenance idle read load](work/20261008-backend-idle-read-load.md): Issue #542 backend read measurement and local bounded idle-read reduction. Separate from the published client-runtime release unit; production billing and rollout remain unverified.
 
 ## Ownership
 

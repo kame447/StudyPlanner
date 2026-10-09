@@ -4,7 +4,7 @@ import { StudyPlannerAppRoot } from '../../../src/components/StudyPlannerAppRoot
 import { authRepository, plannerRepository } from '../../../src/repositories';
 import { StartupTimingPanel } from '../../../src/components/StartupTimingPanel';
 import { addDays, toIsoDate } from '../../../src/lib/date';
-import { createLocalWeeklyPlanningPersonalizationRepository } from '../../../src/features/weeklyPlanning/personalization/weeklyPlanningPersonalizationRepository';
+import { createLocalWeeklyPlanningPersonalizationRepository, setWeeklyPlanningPersonalizationRepositoryForTests } from '../../../src/features/weeklyPlanning/personalization/weeklyPlanningPersonalizationRepository';
 import './plannerRecoveryRepository.fixture.js';
 import '../../../src/styles.css';
 import '../../../src/styles/interaction-continuity.css';
@@ -25,7 +25,27 @@ if (!localStorage.getItem('startup-gates-seeded')) {
   }));
   localStorage.setItem('startup-gates-seeded', 'true');
 }
-await createLocalWeeklyPlanningPersonalizationRepository().setWeekStartsOn(ownerId, 'monday');
+if (new URLSearchParams(location.search).get('weekStart') !== 'missing') {
+  await createLocalWeeklyPlanningPersonalizationRepository().setWeekStartsOn(ownerId, 'monday');
+}
+// Opt-in synthetic read failure; the production hook/root own retry and readiness.
+if (new URLSearchParams(location.search).get('preferenceWait') === '1') {
+  const local = createLocalWeeklyPlanningPersonalizationRepository();
+  const requests = [];
+  const control = window.__preferenceReadHarness = {
+    writes: 0,
+    get readCount() { return requests.length; },
+    async resolve(index, missing = false) {
+      requests[index].resolve(missing ? null : await local.getProfile(ownerId));
+    },
+  };
+  setWeeklyPlanningPersonalizationRepositoryForTests({
+    getProfile() { return new Promise((resolve, reject) => requests.push({ resolve, reject })); },
+    setWeekStartsOn(...args) { control.writes += 1; return local.setWeekStartsOn(...args); },
+    resetProfile(...args) { control.writes += 1; return local.resetProfile(...args); },
+  });
+}
+
 window.__plannerRecoveryRepository.holdTargetReads();
 window.__realWeeklyEvents = [];
 const authListeners = new Set();

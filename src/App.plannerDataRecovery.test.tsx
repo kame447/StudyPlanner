@@ -2,6 +2,10 @@ import { forwardRef, useEffect } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import App from './App';
+import { StartupSurface } from './components/StartupSurface';
+import { SplashScreen } from './components/SplashScreen';
+import { RootStartupReadyProvider } from './components/RootStartupReadyContext';
+import { AuthScreen } from './components/AuthScreen';
 import { PrimaryAppHeader } from './components/PrimaryAppHeader';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
 import { PlannerDataRecoveryNotice } from './components/PlannerDataRecoveryNotice';
@@ -14,6 +18,7 @@ import type { User } from './types/domain';
 const fixture = vi.hoisted(() => ({
   state: {} as Partial<ReturnType<typeof usePlannerAppState>>,
   homeEntryMount: vi.fn(),
+  homeSurfaceMount: vi.fn(),
   schedulePreload: vi.fn(() => vi.fn()),
   application: vi.fn(() => ({ pendingDraftBlocks: [], canEditDraftBlocks: false })),
 }));
@@ -23,7 +28,7 @@ vi.mock('./features/weeklyPlanning/application/useWeeklyPlanningApplication', ()
 vi.mock('./hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));
 vi.mock('./lib/appAccessGate', () => ({ isAppAccessGateEnabled: () => false, hasStoredAppAccessGrant: () => true, verifyAndStoreAppAccessKey: () => true }));
 vi.mock('./components/PrimaryAppHeader', () => ({ PrimaryAppHeader: forwardRef(() => <header />) }));
-vi.mock('./components/HomeScheduleView', () => ({ HomeScheduleView: () => <div className="home-dashboard home-dashboard-default" /> }));
+vi.mock('./components/HomeScheduleView', () => ({ HomeScheduleView: () => { useEffect(() => { fixture.homeSurfaceMount(); }, []); return <div className="home-dashboard home-dashboard-default" />; } }));
 vi.mock('./components/AiPlanningView', () => ({ AiPlanningView: () => <div className="ai-planning-view home-dashboard" /> }));
 vi.mock('./components/MonthView', () => ({ MonthView: () => <div className="schedule-month-view" /> }));
 vi.mock('./components/ScheduleToolbar', () => ({ ScheduleToolbar: () => <div className="schedule-toolbar" /> }));
@@ -35,11 +40,12 @@ vi.mock('./components/AppSettingsDialog', () => ({ AppSettingsDialog: () => null
 
 let renderer: ReactTestRenderer | undefined;
 beforeEach(() => {
-  vi.stubGlobal('window', { location: { pathname: '/' } });
+  vi.stubGlobal('window', { matchMedia: () => ({ matches: true }), location: { pathname: '/' } });
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('network forbidden by fixture'); }));
   vi.mocked(usePlannerAppState).mockClear();
   fixture.application.mockClear();
   fixture.homeEntryMount.mockClear();
+  fixture.homeSurfaceMount.mockClear();
   fixture.schedulePreload.mockClear();
   fixture.state = {
     booting: false, user: { id: 'owner-a' } as User,
@@ -162,7 +168,7 @@ it('opens Home creation without navigation, clears prior edits and fences old cl
 it('retains the previous App view and Home entry instance while settings owns the visible screen', async () => {
   let historyState: Record<string, unknown> | null = null;
   let pop: (() => void) | undefined;
-  vi.stubGlobal('window', { location: { pathname: '/' }, scrollX: 0, scrollY: 0, scrollTo: vi.fn(),
+  vi.stubGlobal('window', { matchMedia: () => ({ matches: true }), location: { pathname: '/' }, scrollX: 0, scrollY: 0, scrollTo: vi.fn(),
     history: { get state() { return historyState; }, length: 2,
       pushState: (value: Record<string, unknown>) => { historyState = value; }, back: vi.fn() },
     addEventListener: (_type: string, listener: () => void) => { pop = listener; }, removeEventListener: vi.fn(),
@@ -186,4 +192,58 @@ it('retains the previous App view and Home entry instance while settings owns th
   act(() => { historyState = null; pop!(); });
   expect(renderer!.root.findByProps({ className: 'app-shell schedule-workspace-shell' }).props.hidden).toBe(false);
   expect(renderer!.root.findByType('main').props.className).toBe('section-stack schedule-main planner-data-recovery-main');
+});
+
+
+it('standalone and trace-disabled App retain a healthy intro after boot while suppressing notice dismissal and preload', () => {
+  vi.stubGlobal('window', { ...window, matchMedia: () => ({ matches: false }) });
+  fixture.state.booting = true;
+  fixture.state.plannerDataAvailability = { status: 'ready', ownerId: 'owner-a', observedAt: 'now', lastSuccessfulAt: 'now' };
+  act(() => { renderer = create(<App />); });
+  expect(renderer!.root.findAllByType('video')).toHaveLength(1);
+  const clip = renderer!.root.findByType('video');
+  expect(renderer!.root.findByType(StartupSurface).props.loading).toBe(true);
+  expect(usePlannerAppState).toHaveBeenLastCalledWith({ noticeAutoDismiss: false });
+  expect(fixture.schedulePreload).not.toHaveBeenCalled();
+  act(() => renderer!.root.findByType('button').props.onClick());
+  expect(renderer!.root.findByType('video')).toBe(clip);
+  fixture.state = { ...fixture.state, booting: false };
+  act(() => renderer!.update(<App />));
+  expect(renderer!.root.findByType('video')).toBe(clip);
+  expect(renderer!.root.findByProps({ className: 'startup-video' }).props.disabled).toBe(false);
+  expect(fixture.schedulePreload).not.toHaveBeenCalled();
+  expect(usePlannerAppState).toHaveBeenLastCalledWith({ noticeAutoDismiss: false });
+  // Home geometry and scene effects must not start in a display:none ancestor.
+  expect(renderer!.root.findAllByType(HomeScheduleView)).toHaveLength(0);
+  expect(fixture.homeSurfaceMount).not.toHaveBeenCalled();
+  act(() => clip.props.onEnded());
+  expect(renderer!.root.findAllByType(SplashScreen)).toHaveLength(0);
+  expect(usePlannerAppState).toHaveBeenLastCalledWith({ noticeAutoDismiss: true });
+  expect(fixture.schedulePreload).toHaveBeenCalledOnce();
+  expect(fixture.homeSurfaceMount).toHaveBeenCalledOnce();
+});
+
+it('standalone App can reveal sign-in by a ready skip without creating a second movie', () => {
+  vi.stubGlobal('window', { ...window, matchMedia: () => ({ matches: false }) });
+  fixture.state.user = null;
+  act(() => { renderer = create(<App />); });
+  expect(renderer!.root.findAllByType('video')).toHaveLength(1);
+  expect(renderer!.root.findAllByType(AuthScreen)).toHaveLength(0);
+  act(() => renderer!.root.findByProps({ className: 'startup-video' }).props.onClick());
+  expect(renderer!.root.findAllByType(SplashScreen)).toHaveLength(0);
+  expect(renderer!.root.findAllByType(AuthScreen)).toHaveLength(1);
+});
+
+it('root-owned standalone App delegates presentation and reports boot readiness without playing an inner movie', () => {
+  vi.stubGlobal('window', { ...window, matchMedia: () => ({ matches: false }) });
+  fixture.state.booting = true;
+  const ready = vi.fn();
+  const tree = () => <RootStartupReadyProvider onReady={ready}><App /></RootStartupReadyProvider>;
+  act(() => { renderer = create(tree()); });
+  expect(renderer!.root.findAllByType('video')).toHaveLength(0);
+  expect(ready).not.toHaveBeenCalled();
+  fixture.state = { ...fixture.state, booting: false };
+  act(() => renderer!.update(tree()));
+  expect(ready).toHaveBeenCalledOnce();
+  expect(renderer!.root.findAllByType(StartupSurface)).toHaveLength(0);
 });

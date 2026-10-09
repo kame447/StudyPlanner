@@ -1,0 +1,131 @@
+{
+  "purpose": "Data minimization for public reproducible evidence; no source/test/configuration or outcome change. Original files are retained locally.",
+  "rules": {
+    "<BACKEND_WORKTREE>": "Absolute root of the tested backend checkout. Append the retained relative source path to a reproducing checkout.",
+    "<DEPENDENCY_WORKTREE>": "Absolute root containing the shared installed node_modules. Package-relative locations, names, versions and package.json hashes remain.",
+    "<NODE_RUNTIME>": "Absolute root of the installed Node runtime. Version and executable hash remain.",
+    "<MEASUREMENT_BASELINE_OUTPUT>": "Generated baseline measurement fixture output directory.",
+    "<MEASUREMENT_CANDIDATE_OUTPUT>": "Generated candidate measurement fixture output directory.",
+    "<MEASUREMENT_OUTPUT>": "Ephemeral parent directory of the synthetic measurement artifacts.",
+    "<REVIEW_OUTPUT>": "Ephemeral directory used by independent local reviews."
+  },
+  "limits": "Original measured source/package fingerprints and outcome digests are retained. Use this record for the normalized public file hashes; these file hash changes are not new test results. Generic /tmp reproduction examples are not observed environment paths and remain.",
+  "files": [
+    {
+      "file": "snapshot-red.log",
+      "originalSha256": "d0b0435eeed6c2e2d4a4a3de0aa28de41834b8a74981286c7282b7a5570a54eb",
+      "publicSha256": "f67e8658bdb293f301748122d17b8192c3e95f3f75411508f86c8fcf88c81469",
+      "replacements": {
+        "<BACKEND_WORKTREE>": 1
+      }
+    },
+    {
+      "file": "focused-tests.log",
+      "originalSha256": "92313a34e70d0a78386d4c2bc3b97c5e94b397777efc0c86bb26f1fe2066e37d",
+      "publicSha256": "d8c64df31a9c932e4fb2453738fe2508535c29044c2456eb16c0fc7ba62261fc",
+      "replacements": {
+        "<BACKEND_WORKTREE>": 1
+      }
+    },
+    {
+      "file": "before.json",
+      "originalSha256": "3f4c391d5b5c649802cdc25db99d52e333b12f9c3b1381a6a9701db17303c11a",
+      "publicSha256": "a362063c340613eee8bb7404969ece267ec1b3a710db197d0a2ffc4f2d6cb5d1",
+      "replacements": {
+        "<MEASUREMENT_BASELINE_OUTPUT>": 1
+      }
+    },
+    {
+      "file": "review.md",
+      "originalSha256": "b301b07dc3bf2fc0f186af89b8f387620a2faf6ba5c2cfe22157e247911c6ed1",
+      "publicSha256": "d35640f58af5896848408c251cb5665a15a64973def7c30ae0b97859c607519d",
+      "replacements": {
+        "<MEASUREMENT_OUTPUT>": 1
+      }
+    },
+    {
+      "file": "snapshot-review.md",
+      "originalSha256": "938db9acf6ec3a82621291c4b1c688256ab4e5c75536ee4d84b1783ef38bd4e0",
+      "publicSha256": "e5d6ca684de78dda1e845e5a53370a81b481e56faf2038fc39f04570e5cb9ae2",
+      "replacements": {
+        "<BACKEND_WORKTREE>": 2,
+        "<MEASUREMENT_OUTPUT>": 1,
+        "<REVIEW_OUTPUT>": 1
+      }
+    },
+    {
+      "file": "retention-candidate-review.md",
+      "originalSha256": "824a8d17f4eb2c46c1442346bc8bbfcb611ff35c210d2de900e1fc79b3fc2826",
+      "publicSha256": "2118726cd57e5202dca792f6b4b2a865d6aa531124d44702ddc091443598d5ff",
+      "replacements": {
+        "<BACKEND_WORKTREE>": 2,
+        "<MEASUREMENT_OUTPUT>": 2,
+        "<REVIEW_OUTPUT>": 1
+      }
+    },
+    {
+      "file": "snapshot-races.log",
+      "originalSha256": "f33e41725d5a6d43ec9e3d498dcb2f363c28f26ac0cfb1098483a4314d6183c3",
+      "publicSha256": "fb19e569714c84dfce53576f8a8bb911c79f6e1096ebb3ea74cfef474b2015eb",
+      "replacements": {
+        "<BACKEND_WORKTREE>": 1
+      }
+    },
+    {
+      "file": "retention-red.log",
+      "originalSha256": "41cb2db85d816361e1929d2143e76916c893cf74b3c01b4edb67b5158ed84955",
+      "publicSha256": "534343e5cea8bcaa8ffd4357797bb7d296f647915c6bb05441f1738aff9bc8fb",
+      "replacements": {
+        "<BACKEND_WORKTREE>": 1
+      }
+    },
+    {
+      "file": "after.json",
+      "originalSha256": "d003a297b124c2e97988c7e1d8e4a61fc661485968a97fe5d7a5e69ff83cfd28",
+      "publicSha256": "4dfd1a4d0fde3370662b88b08949f0ebbeea6a34d796388bb098c79dc1e2d336",
+      "replacements": {
+        "<MEASUREMENT_CANDIDATE_OUTPUT>": 1
+      }
+    },
+    {
+      "file": "full-verification/verify.log",
+      "originalSha256": "c88d6c1a09694e00ac0b1100e1fb7c894a97038fb8131eedcf355a0249bca3ba",
+      "publicSha256": "9045b03d84c743fe1dee6cf54e3868196d93ddbffda0e89b03c19d6ebc62a5db",
+      "replacements": {
+        "<BACKEND_WORKTREE>": 19,
+        "<DEPENDENCY_WORKTREE>": 10
+      }
+    },
+    {
+      "file": "full-verification/installed-packages.json",
+      "originalSha256": "33f6896aab782ec816c5d3afa66c7f15c5d040354650ba8534b8f00053570ecd",
+      "publicSha256": "e71c1751d9042603e45009ba1dcc4ec8b4a47bf799062fdfcdfbb0d9728d18a5",
+      "replacements": {
+        "<DEPENDENCY_WORKTREE>": 237
+      }
+    },
+    {
+      "file": "full-verification/summary.json",
+      "originalSha256": "8b053c891fc22b39613848b096f8abb014775fb5ab2976975090e74390480196",
+      "publicSha256": "e71980342e5bf306ebc37d1eccdedbf242fada14de883ce9f65dee0e3cf419a0",
+      "replacements": {
+        "<DEPENDENCY_WORKTREE>": 2,
+        "<NODE_RUNTIME>": 2
+      }
+    },
+    {
+      "file": "README.md",
+      "originalSha256": "4e9c6bea5aa47c5a39303ba72095fc98ba617ce9a814866b4add7330bbf04b28",
+      "publicSha256": "3e6491449ee09702bbc871cdd4a57fb10d9a5e1c464400dc9bd3ba10a0d52c93",
+      "replacements": {},
+      "change": "Document the public path normalization and retain original evidence hashes"
+    },
+    {
+      "file": "log-normalization.json",
+      "originalSha256": "5a54a6cd294e908337add9b8f742167242bbe91e7087ac37b9689fce3a5d0e08",
+      "publicSha256": "02dcc1b94a253ff123e27e26128ba1701ea6558d8fa35722567717f67e847fc3",
+      "replacements": {},
+      "change": "Document the public path normalization and retain original evidence hashes"
+    }
+  ]
+}

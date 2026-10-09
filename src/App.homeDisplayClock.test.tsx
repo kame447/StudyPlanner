@@ -44,7 +44,7 @@ beforeEach(async () => {
     requestAnimationFrame: () => 0, cancelAnimationFrame: () => {},
     matchMedia: () => ({ matches: false }), setTimeout, clearTimeout,
   });
-  browserDocument = Object.assign(new EventTarget(), { visibilityState: 'visible', fonts: { ready: Promise.resolve() },
+  browserDocument = Object.assign(new EventTarget(), { documentElement: { dataset: {} }, visibilityState: 'visible', fonts: { ready: Promise.resolve() },
     body: { style: { overflow: '', overscrollBehavior: '' } } });
   vi.stubGlobal('window', browserWindow); vi.stubGlobal('document', browserDocument);
   vi.stubGlobal('HTMLElement', class {}); vi.stubGlobal('localStorage', storage);
@@ -87,7 +87,7 @@ it('keeps selected planner month/date and an open unsaved draft while Home and i
   act(() => renderer!.root.findByType(PlanEditorPanel).props.onCancel());
   await act(async () => renderer!.root.findByType(PrimaryBottomNav).props.onOpenHome());
   expect(renderer!.root.findByProps({ className: 'home-date-display' }).props.dateTime).toBe('2026-10-08');
-  expect(renderer!.root.findByProps({ 'data-home-section': 'next-plan' }).findByType('h1').children.join('')).toBe('Today');
+  expect(renderer!.root.findByProps({ 'data-home-section': 'next-plan' }).findByProps({ className: 'home-plan-title' }).findByType('span').children.join('')).toBe('Today');
   expect(state.selectedDate).toBe('2027-02-16');
   expect(state.monthDate).toBe('2027-02-01');
   expect(await boundary.repository.getPlans('owner')).toEqual(storedPlans);

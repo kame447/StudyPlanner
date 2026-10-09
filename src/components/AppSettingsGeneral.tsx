@@ -1,11 +1,15 @@
 import { useState, type ReactNode } from 'react';
 import { CalendarDays, ChevronDown, ChevronRight, Palette, RotateCcw, Sparkles, SunMoon } from 'lucide-react';
 import { useWeeklyPlanningPersonalization } from '../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext';
+import type { Appearance } from '../lib/appearance';
 import { THEME_PALETTE_OPTIONS, type ThemeMode, type ThemePalette } from '../lib/themePalette';
 import { DEFAULT_HOME_SCENE_PREFERENCES, HOME_SCENE_STYLE_OPTIONS, type HomeScenePreferences, type HomeSceneStyle } from '../lib/homeScenePreferences';
 import { HomeScene } from './home/HomeScene';
 
 export interface AppSettingsGeneralProps {
+  appearance?: Appearance;
+  onChangeAppearance?: (appearance: Appearance) => void;
+  appearanceError?: string | null;
   homeScenePreferences?: HomeScenePreferences;
   onChangeHomeSceneStyle?: (style: HomeSceneStyle) => void;
   onChangeHomeSceneMotion?: (animated: boolean) => void;
@@ -27,6 +31,7 @@ function SettingsGroup({ title, children }: { title: string; children: ReactNode
 }
 
 export function AppSettingsGeneral({
+  appearance = 'standard', onChangeAppearance, appearanceError,
   homeScenePreferences = DEFAULT_HOME_SCENE_PREFERENCES,
   onChangeHomeSceneStyle, onChangeHomeSceneMotion, homeSceneError,
   showMonthTimetable = true, onChangeMonthTimetable, monthTimetableError,
@@ -38,6 +43,18 @@ export function AppSettingsGeneral({
 
   return <div className="settings-group-list">
     <SettingsGroup title="表示とデザイン">
+      {onChangeAppearance ? <div className="settings-row-block">
+        <div className="settings-row">
+          <span className="settings-field-label" id="settings-appearance-label"><Palette aria-hidden="true" size={21} />テーマ</span>
+          <div className="settings-segments" role="group" aria-labelledby="settings-appearance-label">
+            {(['standard', 'pixel'] as const).map(value => <button key={value} type="button"
+              aria-pressed={appearance === value} onClick={() => onChangeAppearance(value)}>
+              {value === 'standard' ? '標準' : 'ドット'}
+            </button>)}
+          </div>
+        </div>
+        {appearanceError ? <p className="settings-inline-error settings-group-note" role="alert">{appearanceError}</p> : null}
+      </div> : null}
       <div className="settings-row">
         <span className="settings-field-label" id="settings-theme-label"><SunMoon aria-hidden="true" size={21} />表示モード</span>
         <div className="settings-segments" role="group" aria-labelledby="settings-theme-label">

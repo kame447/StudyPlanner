@@ -693,17 +693,19 @@ cold OAuth を含む scheduled phase の実測上限contractは次のとおり�
 | Rollup、empty | 6 |
 | Rollup、20 event × 5 batch | 31 |
 | Rollup、最後のbatchで transaction conflict 2回 | 45 |
-| Active-user snapshot、初回30日scan | 36 |
+| Active-user snapshot、dirtyなしの初回30日scan | 37 |
 | Active-user snapshot、dirtyなし / current snapshotあり | 3 |
 | Active-user snapshot、最大35 actor-day page + publish + dirty clear | 44 |
 | Active-user snapshot、最大scan後の transaction conflict | 42 |
 | Combined backfill、profile empty + user migration開始 / 両方completed | 7 / 3 |
 | Combined backfill、profile 100件 × 2 + user enrichment 17件 | 44 |
-| Retention、expiredなし / 4 collection × 100 delete × 2 batch | 5 / 11 |
+| Retention、expiredなし / 4 collection × 100 delete × 2 batch | 5 / 19 |
 | no-op | 0 |
 
 rollup は1 batchを最大20 eventとし、既知のcheckpoint、actor-day、daily rollup、planning session、user summaryをtransaction token付きのcross-collection `batchGet` 1回で読む。session projectionから判明するplanning cohortも2回目の `batchGet` へまとめる。cursor確認、projection、checkpoint更新は同じtransactionでcommitし、競合してもcursorを先へ進めない。45件へ達したretryはfailure checkpointを無理に追加せず次回invocationへ繰り越す。
 
+active-user snapshot はdirty sourceが空の場合だけjobと当日snapshotの2文書を先に確認する。jobがidleで当日snapshotが既にあれば、64 accumulatorを読まずに終了する。scheduled checkpointを含む文書キー数はこの定常経路で3となる（HTTPも3だが同じ尺度ではない）。jobがscanning、当日snapshotが欠損、またはdirty sourceがある場合は、従来の66文書の開始時snapshotとcommit transaction内の再読取比較を維持する。idle probeの一部を後続の書込みsnapshotに混ぜない。dirtyありの最大形は44 HTTPのまま、dirtyなしbootstrapの最大35page形は42 HTTPで、45のbudgetを変えない。
+
 active-user snapshot はdirty sourceの1 revision・1 target dateだけを一度に処理する。最大35 pageで止まり、job state、date cursor、64 shardのpseudonymous actor accumulatorを保存する。長いscan中はFirestore transactionを開いたままにせず、scan後の短いtransactionでjob/shardの再読取が開始時と一致する場合だけcheckpointまたはsnapshotをcommitする。canonical `observability_active_user_windows` は30日すべてのscanが終わるまで更新しない。accumulatorはactor IDをfield keyにしたmapではなく、shardごとにsort済みactor IDとwindow flagを1個のcanonical string fieldへencodeする。これによりactorごとの自動single-field index entryを生成しない。各shardはFirestoreのdocument name・field name/value・32-byte overhead式で450,000 bytes以下とし、publish transactionは削除する64 shardのdocument storageと既定の昇順/降順index entry、canonical snapshot/jobの更新前後を保守的に合算して8 MiB以下であることを事前検査する（Firestore hard limit 10 MiBに2 MiBの余白）。HTTP request bodyもtransportで別途10 MiB未満を再検査する。完成時はcanonical snapshotのpublish、idle job state、64 shard削除を1 transactionへまとめる。dirty sourceは同じrevisionだけを別transactionでclearするため、途中で新revisionが入っても古いjobが消さない。publish後にclearが失敗した場合はjobがidleなので、次回は同じsourceを再scanしてからclearし、古い完了jobが再利用されたrevisionを誤ってclearするABAを避ける。
 
-profile registration backfill はprofileのfield-mask updateとcheckpointを同じbulk commitへまとめ、その後の残budgetでuser enrichmentを最大17件進める。cold OAuthを共有した最大形はprofile 6 Firestore request + user enrichment `checkpoint 1 + summary page 1 + 17 × 2 reads + conditional commit 1 = 37` の合計44である。retention は4 collectionのexpired prefixを読み、最大400 deleteを1 commitにまとめる。いずれもcommit失敗時にcheckpointだけ、またはmutationの一部だけが進んだ状態を作らず、次回同じworkを再試行できる。これらのquery shapeは既存の単一field/orderを維持し、新しいcomposite indexを要求しない。
+profile registration backfill はprofileのfield-mask updateとcheckpointを同じbulk commitへまとめ、その後の残budgetでuser enrichmentを最大17件進める。cold OAuthを共有した最大形はprofile 6 Firestore request + user enrichment `checkpoint 1 + summary page 1 + 17 × 2 reads + conditional commit 1 = 37` の合計44である。retention は既存と同じ順序で各collectionの先頭1件を確認し、既存expiry判定で期限切れの場合だけ通常のfull pageを新しく取得する。deleteとhasMoreは必ずそのfull pageから決め、probeで得た行を直接削除しない。これにより期限内データだけの定常経路は各collection最大1文書となる。全期限切れ時はprobe分のreadが増えるが、最大400 deleteを1 commitにまとめ、2 batch合計800 deleteの進行は維持する。この最大形は800→808返却文書、11→19 HTTPであり、改善量から隠さない。いずれもcommit失敗時にcheckpointだけ、またはmutationの一部だけが進んだ状態を作らず、次回同じworkを再試行できる。これらのquery shapeは既存の単一field/orderを維持し、新しいcomposite indexを要求しない。

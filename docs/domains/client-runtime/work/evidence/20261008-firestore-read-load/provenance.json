@@ -1,0 +1,136 @@
+{
+  "baseCommit": "22847120386987329e2f034d6062d59694ef1180",
+  "candidateHead": "22847120386987329e2f034d6062d59694ef1180",
+  "candidateDiffSha256": "b31f039b76f34b30edb6baba88e7b012a5a8977c87b2fc1f54b01947d4bdcd55",
+  "node": "v24.19.0",
+  "installedDependencies": {
+    "vitest": "3.2.7",
+    "react": "18.3.1",
+    "react-test-renderer": "18.3.1",
+    "firebase": "12.12.0",
+    "vite": "6.4.3"
+  },
+  "command": "node scripts/performance/measure-firestore-read-load.mjs 22847120386987329e2f034d6062d59694ef1180 /tmp/firestore-read-load-final",
+  "rerunReason": "Final source freeze: guaranteed mock cleanup and integration runtime/test changes require new exact-input evidence.",
+  "fullInputsManifestSha256": "d8a8f2f7c0cb4c5f0d1a717956d7d8bb209d48bfc9a0ceb4ff874856f6e2e8ac",
+  "before": {
+    "sourceManifestSha256": "ce78460aa34b736884d488189052f792c9340f61daba6574cf88ce570437602b",
+    "inputFileCount": 1414,
+    "selectedFiles": [
+      {
+        "path": "src/features/weeklyPlanning/application/weeklyPlanningApprovalFirestoreRepository.ts",
+        "sha256": "49b07842c865981aa089f611eb5c089b06471a3d029ad1e242430a8d59c8a317"
+      },
+      {
+        "path": "src/hooks/usePlannerAppState.ts",
+        "sha256": "443d9163abed8ede12669a398770986cd59cd9acd1ea0697f72ad5d308be35a8"
+      },
+      {
+        "path": "src/hooks/usePlannerDataState.ts",
+        "sha256": "2a497a3b2c4a33af08689cf55c4de202f3f52b55639eb541f026f7149d15f9cf"
+      },
+      {
+        "path": "src/repositories/firebasePlannerRepository.ts",
+        "sha256": "6904b7d5a65dbe4efd3c916e2ef58819019adc4f7e69a19d0d1154d6999fbf3e"
+      },
+      {
+        "path": "src/repositories/firebaseScheduleEventAuthority.ts",
+        "sha256": "3bbfb37314bfaabf6d9914f8c954d0291f0d23c6a021bc062ed50da73e95cb76"
+      },
+      {
+        "path": "src/repositories/scheduleEventAuthorityRepository.ts",
+        "sha256": "420cbe5d73130dd0331ebbd94e1b50a7b07b1a1fa93053a22e2d06c4b0f820e3"
+      },
+      {
+        "path": "tests/performance/firestoreReadLoad.fixtures.ts",
+        "sha256": "8919b325ef81b7334dcd2b364e0d7a6c381632d335084b5e926e2a8ae47b6fdc"
+      },
+      {
+        "path": "tests/performance/firestoreReadLoad.measurement.test.tsx",
+        "sha256": "54099781e0477675aa17c5fca841eabcf8906a7fe479ac5c74f5d423b53f2d2b"
+      },
+      {
+        "path": "tests/performance/firestoreReadLoad.noNetwork.ts",
+        "sha256": "a8c2715888a445a3f0570bfa91d8b8914f325ddf0dfbe45637f3de5052829f30"
+      },
+      {
+        "path": "scripts/performance/measure-firestore-read-load.mjs",
+        "sha256": "2ac5cf2fc2deb702c85643b2808ff5c03f50146532a4540ad4db8caa1fe4b1ee"
+      },
+      {
+        "path": "scripts/performance/vitest.firestore-read-load.config.mjs",
+        "sha256": "efab57581cc7b2c01d9b34e982766350db879b8ff706311279831a29dab13dfb"
+      }
+    ]
+  },
+  "after": {
+    "sourceManifestSha256": "307af50dbe14ce7e819447f48f3ae93f8e13f5decbac662d8c9c3bd6a3398a97",
+    "inputFileCount": 1419,
+    "selectedFiles": [
+      {
+        "path": "src/features/weeklyPlanning/application/weeklyPlanningApprovalFirestoreRepository.ts",
+        "sha256": "49b07842c865981aa089f611eb5c089b06471a3d029ad1e242430a8d59c8a317"
+      },
+      {
+        "path": "src/hooks/usePlannerAppState.ts",
+        "sha256": "a5f6d898005b465e3385a7bb241b6df0ef51418e200833993d6355d7ce094724"
+      },
+      {
+        "path": "src/hooks/usePlannerDataState.ts",
+        "sha256": "32649cc57533dbe6976fd6215f810a63f09fc4ab279793c54321e017fcb90390"
+      },
+      {
+        "path": "src/repositories/firebasePlannerRepository.ts",
+        "sha256": "3412302bd12407727f60d406694e7762a9e439be77655f7173c55207dbb9fc08"
+      },
+      {
+        "path": "src/repositories/firebaseScheduleEventAuthority.ts",
+        "sha256": "e978f403cd7c6aa908e69cfcef5bb12f24b482757a9673fef07f641b63035c15"
+      },
+      {
+        "path": "src/repositories/scheduleEventAuthorityRepository.ts",
+        "sha256": "fcf36701c73eca845b31605a8e8c15c82561d673e7e7d99a5fa9e51a4bc7095a"
+      },
+      {
+        "path": "tests/performance/firestoreReadLoad.fixtures.ts",
+        "sha256": "8919b325ef81b7334dcd2b364e0d7a6c381632d335084b5e926e2a8ae47b6fdc"
+      },
+      {
+        "path": "tests/performance/firestoreReadLoad.measurement.test.tsx",
+        "sha256": "54099781e0477675aa17c5fca841eabcf8906a7fe479ac5c74f5d423b53f2d2b"
+      },
+      {
+        "path": "tests/performance/firestoreReadLoad.noNetwork.ts",
+        "sha256": "a8c2715888a445a3f0570bfa91d8b8914f325ddf0dfbe45637f3de5052829f30"
+      },
+      {
+        "path": "scripts/performance/measure-firestore-read-load.mjs",
+        "sha256": "2ac5cf2fc2deb702c85643b2808ff5c03f50146532a4540ad4db8caa1fe4b1ee"
+      },
+      {
+        "path": "scripts/performance/vitest.firestore-read-load.config.mjs",
+        "sha256": "efab57581cc7b2c01d9b34e982766350db879b8ff706311279831a29dab13dfb"
+      }
+    ]
+  },
+  "resultFiles": {
+    "before.json": "e36abce7620ae226b37ba03456b24418c99107ba8d3237a777980f35f8001893",
+    "after.json": "d0021e41d3b21cf8365cd33a7242da59ce9f3ecd00d9ada171aac33b8db7cdc2",
+    "comparison.json": "6bd67a293801d6c8950b2da47eabfb10630baff98eaf18e0739e3e38290957b9"
+  },
+  "verification": {
+    "baselineTests": 5,
+    "candidateTests": 5,
+    "equivalentPhases": 39,
+    "identicalFinalPersistedDatasets": 3,
+    "countsUnchangedFromPreviousMeasurement": true,
+    "candidateFrozenInputsMatchCurrentWorktree": true,
+    "verifiedInputFileCount": 1419
+  },
+  "currentRunLogs": {
+    "before": "\n RUN  v3.2.7 /tmp/studyplanner-read-load-5MNLP3/before\n\n \u2713 tests/performance/firestoreReadLoad.measurement.test.tsx (5 tests) 6134ms\n   \u2713 Firestore read-load executable measurement > medium: executes real app and persistence boundaries  797ms\n   \u2713 Firestore read-load executable measurement > large: executes real app and persistence boundaries  5164ms\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  11:17:23\n   Duration  7.59s (transform 473ms, setup 41ms, collect 587ms, tests 6.13s, environment 0ms, prepare 212ms)\n\n",
+    "after": "\n RUN  v3.2.7 /tmp/studyplanner-read-load-5MNLP3/after\n\n \u2713 tests/performance/firestoreReadLoad.measurement.test.tsx (5 tests) 4705ms\n   \u2713 Firestore read-load executable measurement > medium: executes real app and persistence boundaries  483ms\n   \u2713 Firestore read-load executable measurement > large: executes real app and persistence boundaries  3944ms\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  11:17:32\n   Duration  6.01s (transform 624ms, setup 57ms, collect 860ms, tests 4.70s, environment 0ms, prepare 92ms)\n\n"
+  },
+  "standaloneLogFiles": "before.log and after.log retain the earlier run; currentRunLogs above contains this final rerun.",
+  "measurementLimit": "Synthetic SDK operation accounting. Server wire reads and billable reads are not measured. Auth, profile, catalog, telemetry, security-rule dependent reads, cache, query deduplication, index entries, retries and background Worker jobs are outside this harness."
+}
