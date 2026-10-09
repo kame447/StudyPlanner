@@ -4,6 +4,14 @@ Use `?startupTiming=1` on the application URL to opt into an in-memory diagnosti
 
 Rows contain only an anonymous sequence number, a fixed phase name, milliseconds from this page's monotonic performance clock, duration, and a pending/success/error/cancelled outcome. The recorder is capped at 80 rows and stops accepting new spans after the first visible Home observation. Existing pending spans may finish. No account IDs, schedule contents, request URLs, tokens, results, or raw error messages are retained. Startup timing is intentionally separate from AI conversation traces; it does not alter trace fields or retention.
 
+## Start from the existing app
+
+In the app, open Settings → Support and choose “起動を計測して再読み込み”. This explicitly reloads the same browsing context with `startupTiming=1`, which also works as an entry point for an already-installed Home Screen instance without creating another icon. The timing panel offers “計測を終了して再読み込み” to remove the recorder switch. The Support card offers that same stop action while the recorder is enabled.
+
+Both actions preserve the current origin, path, fragment and all other query parameters, including any explicit diagnostic comparison choices. Removing `startupTiming` disables those choices on the next document under the existing selector rules; their URL values remain present. Re-enabling timing can therefore reactivate previously supplied comparison choices. The button labels promise a recorder toggle, not resetting every diagnostic option. No diagnostic preference, recording, authentication or data is written by these controls. Existing leave-page warnings still apply; cancelling one keeps the control usable.
+
+A reload starts a new sample and does not recover timings from the previous document. This entry does not diagnose or speed up startup by itself, and a normal browser sample must not be substituted for a slow Home Screen instance.
+
 ## Interpretation
 
 - `splash-mounted`: first committed splash effect, not an exact pixel-render timestamp
