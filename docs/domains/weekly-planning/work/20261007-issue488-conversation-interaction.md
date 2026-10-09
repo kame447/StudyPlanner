@@ -423,3 +423,22 @@ W4 RedFeynman (Sonnet 5.5, test-only) built it. The fixture has 15 events, 14 li
   - T2's question sentence, which still claims the meaning was ambiguous (follow-up assigned).
 
 **X5g (`0344abdd`, test only).** A task-level `total_duration` left beside a corrected clock-unit target is **inert for the plan**. A clock workload's estimate is its own amount, and a control graph without the stale total gives identical blocks. Fault injection that makes minute workloads skip that estimate turns the pin RED. Residual: the stale fact stays visible to the model in later summaries.
+
+**H follow-up (`56d4bfbd`, `a4dd115e`).** The free-form question is now asked neutrally. It no longer claims the meaning was ambiguous, and it invites a go-ahead. An entirely empty reading also releases it, with no act needed. The generic consultation notice is no longer doubled.
+- **Why the empty reading counts.** Critic probe 34 showed that the invitation was false when the reading carried no act: the identical question came back. The live H r1 T3 reading on `fd6a29fd` was exactly that shape, `conversationActs: []`. The release then adds 「この返事からは新しい条件を読み取っていません。条件があれば、あらためて教えてください。」, so a dropped condition is visible.
+- **Audit.** My probe (12 variants) showed:
+  - the act-less 「このまま進めて」 releases;
+  - the live drop shape under the question releases with the nothing-read sentence;
+  - an empty reading with a consultation act stays open.
+- **Fault injection.** Turning each guard off makes tests fail: requiring a bound act, 4; allowing any act, 1; consultation suppression off, 1.
+- **Chain on `a4dd115e`:**
+  - verify passes 7,675 tests; every category is green;
+  - browser: 440 pass and 7 fail, all also failing on main;
+  - weekly-real: 10/10;
+  - legacy differential: unchanged;
+  - bundle: JS +1.5 KiB raw.
+
+**Live H on `fd6a29fd` (real provider, preview only, 2 runs).** In both runs the model honoured the consultation with `blocksPlanning` set, so no question was asked and **the release path has not run live yet**.
+- **r1 T3 failed:** the first reading was entirely empty, which is never re-read when no question is pending. The Wednesday-night placement was dropped behind 「今の仮予定の候補はそのままです」.
+- **r2 T3 passed:** the first reading was a task shell, which is re-read, so Wed 17:00–18:15 was recovered.
+- **Cause:** whether a reading is re-read depends on the shape the model happened to choose. Assigned as x6: re-read an empty reading under a plan, and state 「この返事からは新しい条件を読み取っていません…」 whenever the final reading is empty.
