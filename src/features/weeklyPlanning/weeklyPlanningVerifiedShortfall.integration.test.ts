@@ -31,6 +31,7 @@ const OMITTING = 'いくつかの作業が入りきりませんでした。ど�
 async function overload(
   renderer: (call: ScriptedProviderCall, rendererIndex: number) => ScriptedProviderReply,
   verifier: (call: ScriptedProviderCall) => ScriptedProviderReply = acceptingReplyVerifierReply,
+  beforeTurn?: (conv: ReturnType<typeof createScriptedConversation>) => void,
 ) {
   let rendererIndex = 0;
   provider = installExamOverloadProvider(30, false, false, (call) => renderer(call, rendererIndex++), verifier);
@@ -38,11 +39,14 @@ async function overload(
   await conv.submit(BULK);
   await conv.submit(DECLINE);
   const before = JSON.stringify(conv.getState());
+  beforeTurn?.(conv);
   const calls = () => provider.calls.filter(call => call.kind === 'renderer' || call.kind === 'reply_verifier');
   const priorCalls = calls().length;
   const turn = await conv.submit(OVERLOAD);
   return { conv, turn, before, turnCalls: calls().slice(priorCalls) };
 }
+const workloadsOf = (graph: ReturnType<ReturnType<typeof createScriptedConversation>['graph']>) =>
+  (graph?.workloads ?? []).map(w => `${w.id}:${(w as unknown as Json).amount}`).sort();
 const isCapacity = (call: ScriptedProviderCall) => mustConveyOf(call) !== undefined;
 const render = (call: ScriptedProviderCall, text: string) => scriptedRendererReply(call, text);
 
@@ -65,12 +69,16 @@ describe('P2 slice 1: the shortfall is verified, not appended', () => {
   });
 
   it('omit twice → technical stop: controlled failure, state unchanged, no claim', async () => {
-    const { conv, turn, before, turnCalls } = await overload((call) => render(call, OMITTING));
+    let graphBefore: { revision: number; workloads: unknown } = { revision: -1, workloads: null };
+    const { conv, turn, turnCalls } = await overload((call) => render(call, OMITTING), acceptingReplyVerifierReply, (c) => { graphBefore = { revision: c.graph()?.revision ?? -1, workloads: workloadsOf(c.graph()) }; });
     expect(turn.result?.failure?.code).toBe('stable_v5_dialogue_verification_failed');
     expect(turn.result?.message).toBe(WEEKLY_PLANNING_VERIFIED_DIALOGUE_TECHNICAL_STOP_TEXT);
     expect(turn.result?.responseSource).toBe('system');
     expect(turnCalls.filter(call => call.kind === 'renderer').length).toBe(2);
-    expect(JSON.stringify((conv.getState().intakeState as unknown as Json | undefined)?.facts ?? null)).toBe(JSON.stringify(JSON.parse(before).intakeState?.facts ?? null));
+    expect(graphBefore.revision).toBeGreaterThan(0);
+    expect((graphBefore.workloads as unknown[]).length).toBeGreaterThan(0);
+    expect(conv.graph()?.revision).toBe(graphBefore.revision);
+    expect(workloadsOf(conv.graph())).toEqual(graphBefore.workloads);
     expect(conv.getState().pendingTurn).toBeFalsy();
   });
 
@@ -117,6 +125,23 @@ describe('P2 slice 1: the shortfall is verified, not appended', () => {
     expect(kept?.presentation?.assistantMessageId).not.toBe(start.presentation.assistantMessageId);
   });
 
+  it('after a stop the NEXT turn\'s semantic pendingQuestion equals the pre-stop one (same code, target and graph revision)', async () => {
+    let omit = false;
+    const { conv } = await overload((call) => render(call, isCapacity(call) && !omit ? faithfulText(call) : OMITTING));
+    const pendingOf = (turn: { calls: ScriptedProviderCall[] }) => {
+      const semantic = turn.calls.find(call => call.kind === 'semantic_generic')!;
+      return (semantic.payload?.publicStateSummary as Json | undefined)?.pendingQuestion ?? null;
+    };
+    omit = true;
+    const stopped = await conv.submit(OVERLOAD);
+    expect(stopped.result?.failure?.code).toBe('stable_v5_dialogue_verification_failed');
+    const preStop = pendingOf(stopped);
+    expect(preStop, 'the question the user still sees').toMatchObject({ questionCode: 'insufficient_capacity' });
+    omit = false;
+    const next = await conv.submit(OVERLOAD);
+    expect(pendingOf(next)).toEqual(preStop);
+  });
+
   it('a resend after the stop applies once (same state as a clean turn)', async () => {
     let failFirst = true;
     const { conv, turn } = await overload((call) => {
@@ -129,6 +154,8 @@ describe('P2 slice 1: the shortfall is verified, not appended', () => {
     const again = await conv.submit(OVERLOAD);
     expect(again.result?.failure).toBeUndefined();
     expect(again.result?.message).toMatch(/合計\d+分/);
+    const clean = await overload((call) => render(call, isCapacity(call) ? faithfulText(call) : 'ok'));
+    expect(workloadsOf(conv.graph())).toEqual(workloadsOf(clean.conv.graph()));
   });
 
   it('legacy_v5 is unchanged: no mustConvey, no verifier call', async () => {
