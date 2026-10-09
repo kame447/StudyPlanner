@@ -1,6 +1,7 @@
 import { ADD_SCHEDULE_CONTROL_LABEL } from '../../../components/quickAddMenuLabels';
 import type { WeeklyPlanningStableV5CommunicationContext } from './weeklyPlanningStableV5DialogueContracts';
 import { WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL } from './weeklyPlanningStableV5DialogueContext';
+import { weeklyPlanningDetailsNotAppliedNotice } from './weeklyPlanningDetailsNotAppliedDisclosure';
 import { weeklyPlanningReleaseAndNothingReadText } from './weeklyPlanningNothingReadDisclosure';
 import { weeklyPlanningRateNotices } from './weeklyPlanningRateDisclosure';
 import { weeklyPlanningCapacityShortfallText } from './weeklyPlanningCapacityShortfallDisclosure';
@@ -31,7 +32,6 @@ const CONTINUE_INVITATION = 'お手数ですが、伝えたいことを少しず
 const EXPLANATION_BRIDGE = '予定を無理なく組むのに必要なので、確認させてください。';
 const ASIDE_ACKNOWLEDGEMENT = 'わかりました。どうぞ続けてください。';
 const CONSULTATION_NOT_ANSWERED = 'その点はここでは決めきれないので、希望があればそのまま条件として教えてください。';
-const DETAILS_INVITATION = '予定について変えたいことがあれば、もう一度教えてください。';
 const READY_TO_CREATE_PREVIEW = '必要なことはそろいました。仮予定を作ってよければ、そう伝えてください。';
 const CAPACITY_SHORTFALL = '今の期間と空き時間では、全部は入りきりませんでした。期間を延ばすか、量を減らすか、使える時間を増やせるかを教えてください。';
 const GENERIC_CONTINUE = '続けて、予定の希望を教えてください。';
@@ -142,7 +142,7 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
   return [
     main,
     communication.consultationDeferred && !communication.alternativeRequiresAdoption && !communication.openPointCoversConsultation ? CONSULTATION_NOT_ANSWERED : '',
-    communication.planningDetailsNotApplied ? DETAILS_INVITATION : '',
+    weeklyPlanningDetailsNotAppliedNotice(communication) ?? '',
     communication.possibleCompletenessOmission ? WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT : '',
     weeklyPlanningReleaseAndNothingReadText(communication),
     weeklyPlanningRateNotices(communication),
