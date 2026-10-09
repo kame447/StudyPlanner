@@ -31,7 +31,7 @@ describe('Worker toolchain security and launcher pin contract', () => {
 
   it('resolves the patched native image dependency from the pinned Miniflare', () => {
     const miniflareRequire = createRequire(require.resolve('miniflare'));
-    expect(manifest.overrides['miniflare@5.20260926.1-alpha']).toEqual({ sharp: '0.35.5' });
+    expect(manifest.overrides['miniflare@5.20261001.0-alpha']).toEqual({ sharp: '0.35.5' });
     const sharp = miniflareRequire('sharp');
     expect(sharp.versions.sharp).toBe('0.35.5');
     expect(sharp.versions.rsvg).toBe('2.63.2');

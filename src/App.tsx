@@ -29,13 +29,9 @@ import { ScheduleToolbar } from './components/ScheduleToolbar';
 import { useWeeklyPlanningApplication } from './features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useMonthTimetablePreference } from './hooks/useMonthTimetablePreference';
+import { useTimetableDisplayPreference } from './hooks/useTimetableDisplayPreference';
 import { useThemePreference } from './hooks/useThemePreference';
 import { AppearanceProvider, useAppAppearance } from './components/AppearanceProvider';
-import {
-  hasStoredAppAccessGrant,
-  isAppAccessGateEnabled,
-  verifyAndStoreAppAccessKey,
-} from './lib/appAccessGate';
 import { scheduleAppViewPreload } from './lib/preloadAppViews';
 import { isPlannerDataReadyForOwner } from './domain/plannerDataReadAuthority';
 import { resolveActiveTimetableTerm } from './domain/timetableTerm';
@@ -121,9 +117,6 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   const [primarySurface, setPrimarySurface] = useState<PrimarySurface>('home');
   const [bookshelfInitialAction, setBookshelfInitialAction] =
     useState<BookshelfInitialAction>(null);
-  const [appAccessGranted, setAppAccessGranted] = useState(
-    () => !isAppAccessGateEnabled() || hasStoredAppAccessGrant(),
-  );
   const primaryHeaderRef = useRef<HTMLDivElement | null>(null);
   const primaryBottomNavRef = useRef<HTMLElement | null>(null);
   const { themeMode, setThemeMode, themePalette, setThemePalette } =
@@ -200,6 +193,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     setEditorDraft,
   } = state;
   const monthTimetablePreference = useMonthTimetablePreference(user?.id);
+  const dayTimetablePreference = useTimetableDisplayPreference('day', user?.id);
   const homeScenePreference = useHomeScenePreference();
   const {
     term: activeTimetableTerm,
@@ -257,7 +251,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
           ? 'workspace-primary-header'
           : 'home-primary-header';
 
-  const canPreloadViews = startupVisible && !booting && appAccessGranted && Boolean(user)
+  const canPreloadViews = startupVisible && !booting && Boolean(user)
     && !['/terms', '/privacy', '/contact'].includes(currentPath)
     && isPlannerDataReadyForOwner(plannerDataAvailability, user?.id ?? '');
 
@@ -305,18 +299,11 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     return <SplashScreen fixedLight />;
   }
 
-  if (!user || !appAccessGranted) {
+  if (!user) {
     return (
       <AuthScreen
         notice={notice}
         onDismissNotice={dismissNotice}
-        accessGateEnabled={isAppAccessGateEnabled()}
-        accessGateUnlocked={appAccessGranted}
-        onUnlockAccessGate={(key) => {
-          const didUnlock = verifyAndStoreAppAccessKey(key);
-          if (didUnlock) setAppAccessGranted(true);
-          return didUnlock;
-        }}
         onSignUpWithPassword={signUpWithPassword}
         onSignInWithPassword={signInWithPassword}
         onSignInWithGoogle={signInWithGoogle}
@@ -562,6 +549,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
 
             {viewMode === 'day' ? (
               <DayView
+                showTimetable={dayTimetablePreference.showTimetable}
                 selectedDate={selectedDate}
                 userId={user.id}
                 plans={plans}
@@ -744,6 +732,9 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         onChangeHomeSceneMotion={homeScenePreference.setAnimated}
         homeSceneError={homeScenePreference.error}
         open={settingsNavigation.isOpen}
+        showDayTimetable={dayTimetablePreference.showTimetable}
+        onChangeDayTimetable={dayTimetablePreference.setShowTimetable}
+        dayTimetableError={dayTimetablePreference.error}
         showMonthTimetable={monthTimetablePreference.showTimetable}
         onChangeMonthTimetable={monthTimetablePreference.setShowTimetable}
         monthTimetableError={monthTimetablePreference.error}

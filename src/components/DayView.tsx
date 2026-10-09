@@ -46,6 +46,7 @@ import type {
 } from '../types/domain';
 
 interface DayViewProps {
+  showTimetable?: boolean;
   selectedDate: string;
   userId: string;
   plans: Plan[];
@@ -119,6 +120,7 @@ function createMonthEventActualPlan(
 }
 
 export function DayView({
+  showTimetable = true,
   selectedDate,
   userId,
   plans,
@@ -183,9 +185,15 @@ export function DayView({
       userId,
     ],
   );
+  const visibleDayOccurrences = useMemo(
+    () => showTimetable ? dayScheduleProjection.occurrences : dayScheduleProjection.occurrences.filter(
+      occurrence => occurrence.source.backingKind !== 'timetable-template',
+    ),
+    [dayScheduleProjection.occurrences, showTimetable],
+  );
   const dayOccurrenceById = useMemo(
-    () => new Map(dayScheduleProjection.occurrences.map((occurrence) => [occurrence.id, occurrence])),
-    [dayScheduleProjection.occurrences],
+    () => new Map(visibleDayOccurrences.map((occurrence) => [occurrence.id, occurrence])),
+    [visibleDayOccurrences],
   );
   const dayPlans = useMemo(
     () => sortByDateTime(expandPlansForDate(plans, selectedDate)),
@@ -542,7 +550,7 @@ export function DayView({
         dateLabel={dayRangeLabel}
         plans={dayPlans}
         monthEvents={dayMonthEvents}
-        scheduleOccurrences={dayScheduleProjection.occurrences}
+        scheduleOccurrences={visibleDayOccurrences}
         actuals={dayActuals}
         weeklyDraftBlocks={weeklyDraftBlocks.filter(
           (block) => block.date === selectedDate && block.status === 'draft',

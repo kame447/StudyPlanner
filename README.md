@@ -105,8 +105,9 @@ VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
 VITE_FIREBASE_MESSAGING_SENDER_ID=your-messaging-sender-id
 VITE_FIREBASE_MEASUREMENT_ID=
 VITE_CLOUDFLARE_AI_PROXY_URL=https://your-worker-name.your-subdomain.workers.dev
-VITE_APP_ACCESS_KEY=shared-preview-key
 ```
+
+入口の共有キーは不要です。登録・ログイン、メール確認、初回のデータ保存同意と、ユーザーごとのアクセス権は引き続き必要です。旧 `VITE_APP_ACCESS_KEY` 設定や端末に残るキーは参照しません。
 
 Firestore Rules は次のコマンドでデプロイします。
 
@@ -168,7 +169,7 @@ npm run eval:jev:shadow
 キーをCloudflareのSecretに登録済みなら、Wranglerへログインした端末から次の任意試験も実行できます。キーを端末へ取り出さず、一時remote dev内で同じadapterと本番の1.5秒timeoutを検証します。本番コードやroutingはデプロイせず、通常CIにも追加しません。
 
 ```bash
-npm exec --yes --package=wrangler@4.143.1 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
+npm exec --yes --package=wrangler@4.147.0 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
 ```
 
 検証コードは3分で失効する認証付きの合成入力専用です。終了時に開発サーバーを停止し、一時ファイルを削除します。判断結果の採用gateは疎通確認とは別に記録し、`abstained`なら既存LLMへ戻す方針を維持します。API仕様・日本語品質・本番設定の問題を隠すためにgateを緩めないでください。

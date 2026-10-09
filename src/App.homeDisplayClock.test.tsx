@@ -17,7 +17,6 @@ vi.mock('./repositories', () => ({ plannerRepository: new Proxy({}, {
 vi.mock('./features/weeklyPlanning/application/useWeeklyPlanningApplication', () => ({ useWeeklyPlanningApplication: boundary.weeklyPlanning }));
 vi.mock('./lib/preloadAppViews', () => ({ scheduleAppViewPreload: () => () => undefined }));
 vi.mock('./hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));
-vi.mock('./lib/appAccessGate', () => ({ isAppAccessGateEnabled: () => false, hasStoredAppAccessGrant: () => true }));
 vi.mock('./components/MyPageDialog', () => ({ MyPageDialog: () => null }));
 vi.mock('./components/AppSettingsDialog', () => ({ AppSettingsDialog: () => null }));
 
