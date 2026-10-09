@@ -32,7 +32,7 @@ it.each(['skip', 'ended', 'error'])('keeps the same dark loading surface and act
   expect(renderer!.root.findByType('main')).toBe(main);
   expect(main.props.className).toContain('startup-splash');
   expect(renderer!.root.findAllByType('video')).toHaveLength(0);
-  expect(renderer!.root.findByType('img').props).toMatchObject({ alt: 'Laplans', className: 'startup-video__still' });
+  expect(renderer!.root.findByType('img').props).toMatchObject({ alt: 'Laplance', className: 'startup-video__still' });
   expect(renderer!.root.findByType('img').props.src).toContain('laplans-startup-still.jpg');
   expect(renderer!.root.findByType('p').children).toEqual([event === 'skip' ? '準備できました' : 'アプリを準備しています...']);
 });
@@ -41,7 +41,7 @@ it('uses final-frame artwork without mounting video for reduced motion', () => {
   vi.stubGlobal('window', { matchMedia: () => ({ matches: true }) });
   act(() => { renderer = create(<SplashScreen fixedLight />); });
   expect(renderer!.root.findAllByType('video')).toHaveLength(0);
-  expect(renderer!.root.findByType('img').props.alt).toBe('Laplans');
+  expect(renderer!.root.findByType('img').props.alt).toBe('Laplance');
 });
 
 it('does not mount a second video inside an already root-owned startup', () => {
@@ -65,6 +65,6 @@ it('keeps ordinary lazy-route loading static and theme-compatible', () => {
   act(() => { renderer = create(<SplashScreen />); });
   expect(renderer!.root.findAllByType(StartupVideo)).toHaveLength(0);
   expect(renderer!.root.findByType('main').props.className).toBe('loading-screen splash-screen');
-  expect(renderer!.root.findByType('img').props.src).toContain('laplans-wordmark.jpeg');
-  expect(renderer!.root.findByType('img').props.alt).toBe('Laplans');
+  expect(renderer!.root.findByType('img').props.src).toBe('/icons/laplans-192.png');
+  expect(renderer!.root.findByProps({ className: 'brand-lockup' }).props['aria-label']).toBe('Laplance');
 });
