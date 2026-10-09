@@ -63,3 +63,34 @@ for(const [width,height] of [[360,800],[768,1024],[1280,800]]) {
     await separated(page); await actions(page);
   });
 }
+
+for (const width of [390, 1280]) {
+  test(`${width}px retained title dialog yields to settings during history navigation`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await seed(page); await page.goto('/');
+    await expect(page.locator('.home-main')).toBeVisible();
+    const saved = await page.evaluate(() => localStorage.getItem('studyplanner.plans'));
+    await page.getByRole('button', { name: 'メニューを開く', exact: true }).click();
+    const settings = page.getByRole('main', { name: 'アプリ設定' });
+    await expect(settings).toBeVisible();
+    await page.goBack(); await expect(settings).toHaveCount(0);
+    const trigger = page.getByRole('button', { name: `予定名の全文を読む: ${TITLE}`, exact: true });
+    await trigger.click();
+    const dialog = page.getByRole('dialog', { name: '予定名の全文', exact: true });
+    await expect(dialog).toBeVisible();
+    await page.goForward(); await expect(settings).toBeVisible();
+    await expect(dialog).toBeHidden();
+    await settings.getByRole('tab', { name: '設定', exact: true }).focus();
+    await page.keyboard.press('Tab');
+    await expect(settings.getByRole('tabpanel')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await page.goBack(); await expect(settings).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(TITLE);
+    await page.keyboard.press('Tab');
+    await expect(dialog.getByRole('button', { name: '閉じる', exact: true })).toBeFocused();
+    await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.plans'))).toBe(saved);
+  });
+}

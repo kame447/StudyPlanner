@@ -11,7 +11,7 @@ export function HomePlanTitle({ title }: { title: string }) {
     <h1><button type="button" className="home-plan-title" aria-haspopup="dialog"
       aria-label={`予定名の全文を読む: ${title}`} onClick={() => setOpen(true)}>{title}</button></h1>
     {open && createPortal(
-      <div className="overlay modal-overlay" onClick={close}>
+      <div className="overlay modal-overlay home-title-overlay" onClick={close}>
         <div ref={dialogRef} tabIndex={-1} className="modal-card panel section-stack"
           role="dialog" aria-modal="true" aria-label="予定名の全文" onClick={event => event.stopPropagation()}>
           <div className="section-header"><h2>{title}</h2></div>

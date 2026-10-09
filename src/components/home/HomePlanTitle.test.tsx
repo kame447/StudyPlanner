@@ -15,6 +15,7 @@ for (const title of ['情報資源総論', '非常に長い予定名の全文を
     expect(renderer!.root.findAllByProps({ role: 'dialog' })).toHaveLength(0);
     act(() => trigger.props.onClick());
     const dialog = renderer!.root.findByProps({ role: 'dialog' });
+    expect(dialog.parent!.props.className).toContain('home-title-overlay');
     expect(dialog.props['aria-modal']).toBe('true');
     expect(dialog.findByType('h2').children).toEqual([title]);
     const actions = dialog.findAllByType('button');

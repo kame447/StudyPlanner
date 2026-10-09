@@ -2,7 +2,7 @@
 .app-shell[hidden] { display: none !important; }
 /* Only these existing planner-owned body portals follow the retained screen.
    Keep independent live regions, notifications and settings portals untouched. */
-body:has(.app-settings-page) > :is(.home-add-overlay, .month-event-dialog-motion,
+body:has(.app-settings-page) > :is(.home-add-overlay, .home-title-overlay, .month-event-dialog-motion,
   .quick-entry-overlay, .daily-detail-modal-overlay, .schedule-week-drag-overlay,
   .drag-undo-redo-controls, .time-picker-overlay) { display: none !important; }
 .app-settings-page {
