@@ -99,6 +99,8 @@ export function createWeeklyPlanningConversationRecoveryOutput(params: {
   userText: string;
   graph: WeeklyPlanningFactGraphV5;
   pendingQuestionPresentation: WeeklyPlanningQuestionPresentationFreshness;
+  /** D2: the user's planning details were read but not applied (a rejected reading), whatever route rejected it. */
+  planningDetailsNotApplied?: boolean;
 }): WeeklyPlanningTurnExecutionResult {
   const { previousState, pendingQuestionPresentation } = params;
   const questionText = previousState && pendingQuestionPresentation.status === 'fresh'
@@ -132,7 +134,9 @@ export function createWeeklyPlanningConversationRecoveryOutput(params: {
       failure: params.failure,
       representedQuestion: questionText !== null,
     },
-    communicationFacts: emptyWeeklyPlanningTurnCommunicationFacts(),
+    communicationFacts: params.planningDetailsNotApplied && params.failure === 'semantic'
+      ? { ...emptyWeeklyPlanningTurnCommunicationFacts(), planningDetailsNotApplied: true }
+      : emptyWeeklyPlanningTurnCommunicationFacts(),
     ...(questionText && pendingQuestionPresentation.status === 'fresh'
       ? {
           questionPresentationContent: { ...RECOVERY_PRESENTATION_CONTENT },

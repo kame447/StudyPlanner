@@ -74,6 +74,7 @@ function semanticFailureOutput(params: {
   graph: WeeklyPlanningFactGraphV5;
   pendingQuestionPresentation: WeeklyPlanningQuestionPresentationFreshness;
   basis: unknown;
+  planningDetailsNotApplied?: boolean;
 }): WeeklyPlanningTurnExecutionResult {
   const output = params.policy.conversationalFailureRecovery
     ? createWeeklyPlanningConversationRecoveryOutput({
@@ -82,6 +83,7 @@ function semanticFailureOutput(params: {
         userText: params.input.userText,
         graph: params.graph,
         pendingQuestionPresentation: params.pendingQuestionPresentation,
+        planningDetailsNotApplied: params.planningDetailsNotApplied,
       })
     : createWeeklyPlanningLegacyFailureOutput({
         branch: params.branch,
@@ -274,6 +276,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
         graph: runtimeSession.graph,
         pendingQuestionPresentation,
         basis: { semanticStatus: semantic.status, normalization: semantic.normalization },
+        planningDetailsNotApplied: semantic.normalization.planningContentRejected === true,
       }),
     };
   }
@@ -293,6 +296,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
           actualInputGraphRevision: runtimeSession.graph.revision,
           canonicalization: semantic.canonicalization,
         },
+        planningDetailsNotApplied: true,
       }),
     };
   }

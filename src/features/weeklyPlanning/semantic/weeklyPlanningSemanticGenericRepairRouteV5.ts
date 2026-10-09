@@ -21,6 +21,11 @@ export async function runGenericSemanticRepairRouteV5(params: {
   initialValidation: SemanticValidationResultV5;
   attemptCountBeforeRepair?: number;
   afterNoOpCompletenessRetry?: (result: WeeklyPlanningSemanticNormalizerResultV5) => Promise<WeeklyPlanningSemanticNormalizerResultV5>;
+  /**
+   * D2: the generic repair's own response was rejected. A focused recovery (one more call) may still read what the repair left
+   * dangling; null leaves the rejection as it is. Supplied by the normalizer (the focused routes cannot be imported from here).
+   */
+  recoverRejectedRepair?: (rejected: { response: string; validation: ReturnType<typeof validateWeeklyPlanningSemanticResponseV5> }) => Promise<WeeklyPlanningSemanticNormalizerResultV5 | null>;
 }): Promise<WeeklyPlanningSemanticNormalizerResultV5> {
   // Completeness re-reads also reach this boundary after a valid initial response.
   if (weeklyPlanningSemanticRepairConsumedV5(params.run)) {
@@ -123,6 +128,10 @@ export async function runGenericSemanticRepairRouteV5(params: {
     },
   });
 
+  if (!repairedValidation.document && params.recoverRejectedRepair) {
+    const recovered = await params.recoverRejectedRepair({ response: repairedResponse, validation: repairedValidation });
+    if (recovered) return recovered;
+  }
   if (!repairedValidation.document || preservationErrors.length > 0) {
     const result: WeeklyPlanningSemanticNormalizerResultV5 = {
       status: 'rejected',

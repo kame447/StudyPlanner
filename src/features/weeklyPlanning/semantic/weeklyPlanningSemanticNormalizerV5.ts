@@ -16,7 +16,8 @@ import {
   tryFocusedAuthorizationRouteV5,
   tryFocusedContextualAnswerRouteV5,
 } from './weeklyPlanningSemanticFocusedPreRoutesV5';
-import { tryFocusedSemanticRepairRouteV5 } from './weeklyPlanningSemanticFocusedRepairRoutesV5';
+import { semanticResponseCarriesPlanningContentV5 } from './weeklyPlanningSemanticValidatorV5';
+import { tryFocusedSemanticRepairRouteV5, tryFocusedTemporalReplacementRecoveryAfterRepairV5 } from './weeklyPlanningSemanticFocusedRepairRoutesV5';
 import {
   tryWeeklyPlanningSemanticNoOpCompletenessRetryV5,
   weeklyPlanningSemanticNoOpRetryResponseV5,
@@ -168,10 +169,11 @@ export function createWeeklyPlanningSemanticNormalizerV5(
             attemptCount: Math.max(result.diagnostics.attemptCount, run.responseLengths.length) } };
           run.recordDecision(result, { route: 'focused_material_fallthrough_repair_consumed' });
         }
-        return continueWithConversationActsOnlyV5({
-          run,
-          result: enforceFinalCurrentTurnProvenance({ input, run, result }),
-        });
+        const enforced = enforceFinalCurrentTurnProvenance({ input, run, result });
+        const continued = continueWithConversationActsOnlyV5({ run, result: enforced });
+        return continued.status === 'rejected' && run.genericResponses.some(semanticResponseCarriesPlanningContentV5)
+          ? { ...continued, planningContentRejected: true as const }
+          : continued;
       };
 
       const contextualResult = input.supplementalContext?.trim()
@@ -284,6 +286,10 @@ export function createWeeklyPlanningSemanticNormalizerV5(
         initialResponse,
         initialValidation,
         afterNoOpCompletenessRetry: result => auditAcceptedNoOpCompletenessRetry({ run, baseMessages, result }),
+        // D2: a dangling TEMPORAL replacement the generic repair could not resolve either is read by one focused call.
+        recoverRejectedRepair: ({ response, validation }) => tryFocusedTemporalReplacementRecoveryAfterRepairV5({
+          run, initialResponse: response, initialValidation: validation,
+        }),
       }));
     },
   };

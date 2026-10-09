@@ -419,6 +419,16 @@ function responseCarriesPlanningContent(value: Record<string, unknown>): boolean
     });
 }
 
+/** D2: a raw semantic response carries planning content (any fact, decision, correction, window or create intent). */
+export function semanticResponseCarriesPlanningContentV5(rawResponse: string): boolean {
+  try {
+    const value = JSON.parse(rawResponse) as unknown;
+    return isRecord(value) && responseCarriesPlanningContent(value);
+  } catch {
+    return false;
+  }
+}
+
 export function validateWeeklyPlanningSemanticValueV5(
   value: unknown,
   options: WeeklyPlanningSemanticValueOptionsV5 = {},

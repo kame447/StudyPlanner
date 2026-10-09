@@ -89,6 +89,8 @@ export class WeeklyPlanningSemanticNormalizerRunV5 {
   readonly responseLengths: number[] = [];
   readonly algorithmicRepairs: string[] = [];
   readonly conversationActCandidates: WeeklyPlanningConversationActCandidateV5[] = [];
+  /** Raw generic responses, kept so a rejected turn can say whether its reading carried planning content (D2). */
+  readonly genericResponses: string[] = [];
 
   constructor(
     readonly client: OpenAiCompatibleClient,
@@ -99,13 +101,15 @@ export class WeeklyPlanningSemanticNormalizerRunV5 {
     messages: ChatMessage[],
     attempt: GenericSemanticAttempt,
   ): Promise<string> {
-    return this.callTracked({
+    const response = await this.callTracked({
       messages,
       temperature: 0,
       responseFormat: semanticProviderResponseFormatV5(this.input.conversationArchitecture),
       purpose: 'weekly_planning_semantic_normalizer',
       maxCompletionTokens: semanticNormalizerCompletionTokenBudgetV5(this.input),
     }, attempt);
+    this.genericResponses.push(response);
+    return response;
   }
 
   async callTracked(

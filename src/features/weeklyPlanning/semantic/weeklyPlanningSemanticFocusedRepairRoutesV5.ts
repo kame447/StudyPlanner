@@ -1,3 +1,4 @@
+import type { ChatMessage, JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
   FOCUSED_PLANNING_WINDOW_REPAIR_MAX_COMPLETION_TOKENS,
@@ -33,6 +34,14 @@ import {
   parseFocusedReplacementFactRepairDecisionV5,
   readFocusedReplacementFactRepairCandidatesV5,
 } from './weeklyPlanningFocusedReplacementFactRepairV5';
+import {
+  applyFocusedTemporalReplacementRepairV5,
+  createFocusedTemporalReplacementRepairMessagesV5,
+  FOCUSED_TEMPORAL_REPLACEMENT_REPAIR_MAX_COMPLETION_TOKENS,
+  FOCUSED_TEMPORAL_REPLACEMENT_REPAIR_RESPONSE_FORMAT_V5,
+  parseFocusedTemporalReplacementRepairDecisionV5,
+  readFocusedTemporalReplacementCandidatesV5,
+} from './weeklyPlanningFocusedTemporalReplacementRepairV5';
 import { measureInteractionEvidenceCoverageEligibilityV5, tryWeeklyPlanningDenseTurnCompletenessRetryV5 } from './weeklyPlanningSemanticDenseTurnCompletenessV5';
 import { createWeeklyPlanningSemanticBaseMessagesV5 } from './weeklyPlanningSemanticPromptAssemblyV5';
 import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
@@ -415,6 +424,16 @@ async function tryFocusedTemporalScopeRepairRouteV5(params: {
  * (the deadline 「金曜日までに」 the readings dropped can still be recovered), and a recovered document whose coverage stays
  * eligible after that audit is DISCLOSED as possibly incomplete: a disclosure only, never a gate and never a change of meaning.
  */
+/** How one fact kind's dangling replacement is asked for and merged; everything after the merge is shared. */
+interface ReplacementRecoveryStrategyV5 {
+  messages: ChatMessage[];
+  responseFormat: JsonSchemaResponseFormat;
+  maxCompletionTokens: number;
+  route: 'focused_replacement_fact_repair' | 'focused_temporal_replacement_repair';
+  /** Merged raw JSON for full revalidation, or null (the existing recovery runs). */
+  merge(response: string): string | null;
+}
+
 async function tryFocusedReplacementFactRepairRouteV5(params: {
   run: WeeklyPlanningSemanticNormalizerRunV5;
   initialResponse: string;
@@ -425,21 +444,68 @@ async function tryFocusedReplacementFactRepairRouteV5(params: {
     rawResponse: params.initialResponse, validationErrors: params.initialValidation.errors, committedGraph: params.run.input.committedGraph,
   });
   if (!candidates) return null;
+  return runFocusedReplacementRecoveryV5(params, {
+    messages: createFocusedReplacementFactRepairMessagesV5({ userText: params.run.input.userText, candidates }),
+    responseFormat: FOCUSED_REPLACEMENT_FACT_REPAIR_RESPONSE_FORMAT_V5,
+    maxCompletionTokens: FOCUSED_REPLACEMENT_FACT_REPAIR_MAX_COMPLETION_TOKENS,
+    route: 'focused_replacement_fact_repair',
+    merge: (response) => {
+      const decision = parseFocusedReplacementFactRepairDecisionV5(response);
+      return decision ? applyFocusedReplacementFactRepairV5({ rawResponse: params.initialResponse, candidates, decision }) : null;
+    },
+  });
+}
 
-  const messages = createFocusedReplacementFactRepairMessagesV5({ userText: params.run.input.userText, candidates });
+/**
+ * D2: the same recovery for a dangling TEMPORAL replacement (a deadline extended in the user's own words, live round 7). It runs
+ * only AFTER the generic repair returned a reading that still dangles (the generic repair keeps its pins and its own chance), so
+ * it costs one extra semantic call on exactly that turn and none otherwise.
+ */
+export async function tryFocusedTemporalReplacementRecoveryAfterRepairV5(params: {
+  run: WeeklyPlanningSemanticNormalizerRunV5;
+  initialResponse: string;
+  initialValidation: SemanticValidationResultV5;
+}): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
+  if (!conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs) return null;
+  const candidates = readFocusedTemporalReplacementCandidatesV5({
+    rawResponse: params.initialResponse, validationErrors: params.initialValidation.errors, committedGraph: params.run.input.committedGraph,
+  });
+  if (!candidates) return null;
+  return runFocusedReplacementRecoveryV5(params, {
+    messages: createFocusedTemporalReplacementRepairMessagesV5({
+      userText: params.run.input.userText, calendarContext: focusedRepairCalendarContextV5(params.run.input), candidates,
+    }),
+    responseFormat: FOCUSED_TEMPORAL_REPLACEMENT_REPAIR_RESPONSE_FORMAT_V5,
+    maxCompletionTokens: FOCUSED_TEMPORAL_REPLACEMENT_REPAIR_MAX_COMPLETION_TOKENS,
+    route: 'focused_temporal_replacement_repair',
+    merge: (response) => {
+      const decision = parseFocusedTemporalReplacementRepairDecisionV5(response);
+      return decision ? applyFocusedTemporalReplacementRepairV5({
+        rawResponse: params.initialResponse, userText: params.run.input.userText, candidates, decision,
+      }) : null;
+    },
+  });
+}
+
+async function runFocusedReplacementRecoveryV5(params: {
+  run: WeeklyPlanningSemanticNormalizerRunV5;
+  initialResponse: string;
+  initialValidation: SemanticValidationResultV5;
+}, strategy: ReplacementRecoveryStrategyV5): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
+  const messages = strategy.messages;
   const request = {
     messages,
     temperature: 0,
-    responseFormat: FOCUSED_REPLACEMENT_FACT_REPAIR_RESPONSE_FORMAT_V5,
+    responseFormat: strategy.responseFormat,
     purpose: 'weekly_planning_semantic_normalizer' as const,
-    maxCompletionTokens: FOCUSED_REPLACEMENT_FACT_REPAIR_MAX_COMPLETION_TOKENS,
+    maxCompletionTokens: strategy.maxCompletionTokens,
   };
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.run.input.traceRequestId,
     stage: 'semantic_orchestrator_route',
     severity: 'warn',
     data: {
-      route: 'focused_replacement_fact_repair_candidate',
+      route: `${strategy.route}_candidate`,
       meaningOwner: 'ai',
       deterministicResponsibilities: [
         'route_from_exact_dangling_replacement_errors',
@@ -454,16 +520,15 @@ async function tryFocusedReplacementFactRepairRouteV5(params: {
   let response: string;
   try {
     markWeeklyPlanningSemanticRepairConsumedV5(params.run);
-    response = await params.run.callTracked(request, 'focused_replacement_fact_repair');
+    response = await params.run.callTracked(request, strategy.route);
   } catch (error) {
     return providerFailureResult(params.run, params.initialValidation.errors, error);
   }
-  const decision = parseFocusedReplacementFactRepairDecisionV5(response);
-  const merged = decision ? applyFocusedReplacementFactRepairV5({ rawResponse: params.initialResponse, candidates, decision }) : null;
+  const merged = strategy.merge(response);
   if (!merged) {
     return rejectedResult(params.run, [
       ...params.initialValidation.errors.map((value) => `initial:${value}`),
-      'repair:focused-replacement-fact:invalid-response',
+      `repair:${strategy.route.replace(/_/g, '-')}:invalid-response`,
     ]);
   }
   const validation = validateWeeklyPlanningSemanticResponseV5(merged, validationState(params.run));
@@ -473,7 +538,7 @@ async function tryFocusedReplacementFactRepairRouteV5(params: {
     stage: 'semantic_validation_result',
     severity: validation.document ? 'info' : 'error',
     data: {
-      attempt: 'focused_replacement_fact_repair', accepted: Boolean(validation.document), errors: validation.errors,
+      attempt: strategy.route, accepted: Boolean(validation.document), errors: validation.errors,
       algorithmicRepairs: validation.algorithmicRepairs, parsedDocument: validation.parsedDocument,
     },
   });
@@ -489,10 +554,10 @@ async function tryFocusedReplacementFactRepairRouteV5(params: {
     status: 'accepted',
     document: recovered,
     diagnostics: params.run.diagnostics({
-      attemptCount: 2, repairAttempted: true, validationErrors: params.initialValidation.errors, providerError: null,
+      attemptCount: params.run.responseLengths.length, repairAttempted: true, validationErrors: params.initialValidation.errors, providerError: null,
     }),
   };
-  params.run.recordDecision(accepted, { route: 'focused_replacement_fact_repair' });
+  params.run.recordDecision(accepted, { route: strategy.route });
   // The same evidence-coverage audit as any accepted reading: the turn's uncovered part (live: the deadline) may still be recovered.
   const audited = await tryWeeklyPlanningDenseTurnCompletenessRetryV5({
     run: params.run,

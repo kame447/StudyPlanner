@@ -58,6 +58,11 @@ export interface WeeklyPlanningSemanticNormalizerResultV5 {
   contextualDirective?: WeeklyPlanningContextualDirectiveV5 | null;
   /** Present only when the accepted document is conversation acts without a planning delta. */
   conversationOnly?: WeeklyPlanningConversationOnlyTurnV5;
+  /**
+   * Set on a REJECTED result whose generic reading carried planning content (a fact, correction, decision or window): that content
+   * was not applied, whatever route rejected it (D2). Absent otherwise.
+   */
+  planningContentRejected?: true;
   diagnostics: WeeklyPlanningSemanticNormalizerDiagnosticsV5;
 }
 
