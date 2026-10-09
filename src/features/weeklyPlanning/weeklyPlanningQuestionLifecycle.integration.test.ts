@@ -153,6 +153,24 @@ describe('X2 boundaries', () => {
     expect(proposals(conversation)[0]).toMatchObject({ status: 'pending', decidedAtTurnId: null });
   });
 
+  it.each(['empty_reading', 'ack_shell', 'ack_shell_with_answer_act'] as const)('%s leaves the presented proposal open and re-presented', async shape => {
+    install((text, call) => {
+      if (text === X2.T1) return x2Script(text, call);
+      const [vocab] = summaryTaskIds(call);
+      return shape === 'empty_reading' ? emptyDocument()
+        : emptyDocument({
+          tasks: [studyTask({ localId: 'vocab', existingPublicId: vocab, title: '英単語', activityKind: 'memorization_retrieval', sourceText: 'うん、それでお願い' })],
+          ...(shape === 'ack_shell_with_answer_act' ? { conversationActs: [{ kind: 'answer_pending_question', targetPublicId: null }] } : {}),
+        });
+    });
+    const conversation = open();
+    await conversation.submit(X2.T1);
+    // A shell may be recovered as an unusable turn; either way the machine state stays held.
+    const second = await conversation.submit('うん、それでお願い');
+    expect(proposals(conversation)[0]).toMatchObject({ status: 'pending', decidedAtTurnId: null });
+    expect(second.result?.draftCandidates).toEqual([]);
+  });
+
   it('after a lapse the required question that the proposal was hiding is asked, and the preview stays blocked', async () => {
     install((text, call) => {
       if (text !== X2.T1) return x2Script(text, call);

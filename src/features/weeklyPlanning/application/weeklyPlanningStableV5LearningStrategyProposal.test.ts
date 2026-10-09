@@ -342,6 +342,7 @@ describe('optional proposal lifecycle: presented once, then decided or lapsed (I
     doc: WeeklyPlanningSemanticDocumentV5;
     turnId: string;
     restrictToPresentedProposal?: boolean;
+    graphChanged?: boolean;
   }) => evaluateWeeklyPlanningLearningStrategyProposalsV5({
     presentedProposalId: params.presentedProposalId,
     previousState: state(params.records),
@@ -351,6 +352,7 @@ describe('optional proposal lifecycle: presented once, then decided or lapsed (I
     graphRevision: 1,
     turnId: params.turnId,
     restrictToPresentedProposal: params.restrictToPresentedProposal,
+    graphChanged: params.graphChanged ?? true,
   });
   const withActs = (acts: Array<{ kind: string; targetPublicId: null }>, planning: boolean): WeeklyPlanningSemanticDocumentV5 => ({
     ...(planning ? document({ activityKind: 'problem_solving' }) : document({ activityKind: 'unknown', decision: undefined }) ),
@@ -368,6 +370,17 @@ describe('optional proposal lifecycle: presented once, then decided or lapsed (I
     const third = nextTurn({ records: second.records, presentedProposalId: null, doc: document({ activityKind: 'memorization_retrieval' }), turnId: 'turn-3' });
     expect(third.pendingProposal).toBeNull();
     expect(third.records).toHaveLength(1);
+  });
+
+  it('a turn that applied no graph change (empty reading, acknowledgement shell, recovery) never lapses it', () => {
+    const first = pendingRecords();
+    for (const doc of [withActs([], false), withActs([], true), withActs([{ kind: 'answer_pending_question', targetPublicId: null }], true)]) {
+      const second = nextTurn({
+        records: first.records, presentedProposalId: first.pendingProposal!.id, doc, turnId: 'turn-2', graphChanged: false,
+      });
+      expect(second.pendingProposal?.id).toBe(first.pendingProposal!.id);
+      expect(second.records[0].decidedAtTurnId).toBeNull();
+    }
   });
 
   it('does not lapse a proposal that was not freshly presented', () => {

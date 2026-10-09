@@ -50,8 +50,13 @@ function lapseUndecidedPresentedProposal(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   turnId: string;
   presentedProposalId: string | null;
+  graphChanged: boolean;
 }): WeeklyPlanningLearningStrategyProposalRecord[] {
-  if (!params.presentedProposalId || turnKeepsPresentedQuestionHeld(params.document)) return params.records;
+  // Positive typed evidence that the user moved on: this turn applied a planning change to the committed
+  // graph. An empty reading, an acknowledgement shell, a recovered or no-change turn keeps it held.
+  if (!params.presentedProposalId || !params.graphChanged || turnKeepsPresentedQuestionHeld(params.document)) {
+    return params.records;
+  }
   return params.records.map((record) => record.id === params.presentedProposalId && isOpenLearningStrategyProposal(record)
     ? { ...record, decidedAtTurnId: params.turnId }
     : record);
@@ -256,6 +261,8 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
   presentedProposalId: string | null;
   /** Interaction architecture (default): only the presented proposal can change status. */
   restrictToPresentedProposal?: boolean;
+  /** This turn changed the committed graph (the evaluation's `semanticChanged`); required for a lapse. */
+  graphChanged?: boolean;
 }): WeeklyPlanningLearningStrategyProposalEvaluation {
   const rebasedPreviousRecords = rebaseProposalWorkloadReferences({
     records: params.previousState?.learningStrategyProposalRecords ?? [],
@@ -271,6 +278,7 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
   if (params.restrictToPresentedProposal !== false) {
     records = lapseUndecidedPresentedProposal({
       records, document: params.document, turnId: params.turnId, presentedProposalId: params.presentedProposalId,
+      graphChanged: params.graphChanged === true,
     });
   }
 
