@@ -584,3 +584,44 @@ Integration HEAD for app code: `167751ca` (docs since then only). E2E is **not c
 - C T3, 「10月16日まで」, restates the deadline that is already applied. The reply keeps the plan and adds the nothing-read sentence. That is true, since nothing new was read, but the invitation to restate conditions is slightly unnatural here: a minor wording residual.
 
 In round 5, both C and X5 had failed on the date and quantity correction path; in these three runs they pass. The dangling-replacement recovery (x9b) is still in progress for the C T2 shape round 5 saw.
+
+**Bundle: module-level cause analysis and reduction proposals (measured 2026-10-09; not implemented, and the limit is not relaxed).**
+
+Method: `vite build --sourcemap` of `ea0d871a` and of the fork point `22847120`. Every minified byte is attributed to its source file through the sourcemaps (a scratch script; no new dependency).
+
+- **Total JS growth: +199,737 B, almost all weekly planning:**
+  - `semantic` +115,014;
+  - `dialogue` +42,540;
+  - `application` +29,930;
+  - feature root +6,441;
+  - `trace` +3,316;
+  - everything else about +2 KB.
+- The growth splits into 58 new source files (108,923 B) and 96 grown files (+94,819 B); 7 files shrank (−4,005 B).
+- Weekly planning is 890 KB of the 2.44 MB.
+  - 443 KB of it sits in the **eager** `index` chunk, which is a startup-cost problem;
+  - 435 KB sits in the lazy runtime chunk.
+  - Code splitting would not change the budget, which counts all JS.
+
+| Category (weekly planning) | Bytes now | Growth |
+| --- | --- | --- |
+| Model-facing prompt, policy, schema and instruction modules (14 files) | 68,426 | +21,434 |
+| Focused-call modules (11 files) | 56,617 | +20,081 |
+| Completeness, retry, repair and preservation modules (14 files) | 78,090 | +33,496 |
+| Trace and diagnostics (22 files; trace persistence is a required gate) | 103,242 | +4,951 |
+| App-owned Japanese UI text (8 files; must stay) | 16,528 | +7,835 |
+
+**Reduction proposals.** Estimates are minified bytes. All except R5 are Stage-3 work under the user's merge-order decision: none is done before E2E works.
+- **R1. Assemble model-facing prompts server-side,** in the AI proxy Worker, keyed by a prompt version; the client keeps its typed inputs and validators.
+  - Estimate: −40 to −60 KB.
+  - Needs a Worker deploy and an architecture decision (the user's).
+- **R2. Share one typed focused-request helper** (request building, response-format plumbing, trace recording) across the 11 focused-call modules.
+  - Estimate: −10 to −20 KB.
+  - Fault detection must transfer before any test is removed.
+- **R3. Consolidate the completeness, retry and repair attempt bookkeeping** (14 modules).
+  - Estimate: −10 to −20 KB.
+- **R4. Retire the `legacy_v5` code paths** once the user accepts `interaction_v1`.
+  - The code is interleaved through architecture flags, so a stubbed build must measure the saving; it is likely tens of KB.
+  - Needs the user's decision, because legacy compatibility is a current requirement.
+- **R5. Move eager weekly-planning imports out of the startup chunk.** This improves startup but does not change the total-JS budget, so it is not counted as a reduction.
+
+**Assessment:** R1–R3 together are about −60 to −100 KB raw against a +169,928 B raw overage, and the gzip overage is +50,213 B. Without R4, or a measured and justified budget decision by the user, the gap does not close. The gate stays failing and attributed to this Issue.
