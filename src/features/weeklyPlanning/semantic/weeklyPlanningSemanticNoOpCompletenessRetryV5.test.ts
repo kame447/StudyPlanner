@@ -185,6 +185,39 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     })).toBe(expected);
   });
 
+  describe('eligibility is identical to the a4dd115e logic except the intended interaction row (96 combinations)', () => {
+    // Reference: the eligibility logic of a4dd115e, restated here as the oracle.
+    const SELF_SUFFICIENT = ['decline_additional_work', 'request_event_registration', 'ask_about_pending_question', 'topic_shift', 'resume_topic', 'consultation_request'];
+    const reference = (p: { document: WeeklyPlanningSemanticDocumentV5; pending: boolean; acceptedTask: boolean; actAware: boolean; reread: boolean }) => {
+      if (!p.pending && !(p.actAware && p.acceptedTask && (p.document.tasks.length > 0 || p.reread))) return false;
+      if (p.actAware && (p.document.conversationActs ?? []).some(act => SELF_SUFFICIENT.includes(act.kind))) return false;
+      return p.document.tasks.every(task => task.existingPublicId && task.workloads.length === 0 && task.effortEstimates.length === 0
+        && task.temporalConstraints.length === 0 && task.recurrence.length === 0 && (task.study?.components.length ?? 0) === 0);
+    };
+    const combinations: Array<{ architecture: 'legacy_v5' | 'interaction_v1'; pending: boolean; shell: boolean; intent: 'update_plan' | 'create_plan'; act: string | null; reread: boolean }> = [];
+    for (const architecture of ['legacy_v5', 'interaction_v1'] as const) for (const pending of [true, false]) for (const shell of [true, false])
+      for (const intent of ['update_plan', 'create_plan'] as const) for (const act of [null, 'answer_pending_question', 'topic_shift'] as const)
+        for (const reread of [false, true]) combinations.push({ architecture, pending, shell, intent, act, reread });
+    it('covers 96 combinations and deviates from a4dd115e only for an interaction first reading, no pending question, task-less update_plan', () => {
+      expect(combinations).toHaveLength(96);
+      const deviations: string[] = [];
+      for (const c of combinations) {
+        const base = existingTaskShell();
+        const document = { ...base, planningIntent: c.intent, tasks: c.shell ? base.tasks : [],
+          conversationActs: c.act ? [{ kind: c.act, targetPublicId: null }] : [] } as unknown as WeeklyPlanningSemanticDocumentV5;
+        const summary = c.pending ? publicStateSummary() : { ...publicStateSummary(), pendingQuestion: null };
+        const actual = isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({ document, publicStateSummary: summary,
+          conversationArchitecture: c.architecture, rereadAfterContradiction: c.reread });
+        const expected = reference({ document, pending: c.pending, acceptedTask: true, actAware: c.architecture === 'interaction_v1', reread: c.reread });
+        if (actual !== expected) deviations.push(JSON.stringify(c));
+      }
+      // The intended change: an entirely empty reading is re-read (interaction, no pending, first reading, update_plan; with or
+      // without a bare answer act). Re-reads (reread=true) and every create_plan row are identical to a4dd115e.
+      expect(deviations.sort()).toEqual(combinations.filter(c => c.architecture === 'interaction_v1' && !c.pending && !c.shell
+        && c.intent === 'update_plan' && !c.reread && c.act !== 'topic_shift').map(c => JSON.stringify(c)).sort());
+    });
+  });
+
   it('uses a focused typed route to recover a task temporal side contribution', async () => {
     const fake = fakeClient([
       JSON.stringify(existingTaskShell()),

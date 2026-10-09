@@ -186,6 +186,21 @@ describe('x6: an entirely empty FINAL reading says so, once (nothingRead)', () =
     expect(conv.getState().previewCandidates?.length).toBe(first.result?.draftCandidates.length);
   });
 
+  it('B-T4 shape with an empty create_plan re-read: still the disclosed unusable-message recover, never an authorization or a promotion', async () => {
+    const described = (taskId: string): Json => shell(taskId, { study: { purpose: 'self_study', activityKind: 'reading', contextLabel: '宿題', components: [] } });
+    installReadings(described, () => empty({ planningIntent: 'create_plan' }));
+    const conv = open();
+    const first = await conv.submit(T1);
+    const turn = await conv.submit(T3);
+    expect(generic(turn)).toBe(2);
+    expect(turn.result?.interactionOutcome?.kind).toBe('recover');
+    expect(turn.result?.message).toContain('今の仮予定は変えていません。');
+    expect(turn.result?.communicationFacts?.nothingRead).toBeUndefined();
+    expect(turn.result?.state.shouldSavePlan).not.toBe(true);
+    expect(conv.getState().previewCandidates?.length).toBe(first.result?.draftCandidates.length);
+    expect(turn.result?.interactionOutcome).not.toMatchObject({ kind: 'apply' });
+  });
+
   it('under a pending question: an empty final reading says so once beside the re-presented question', async () => {
     let t3Calls = 0;
     provider = installScriptedWeeklyPlanningProvider((call: ScriptedProviderCall) => {

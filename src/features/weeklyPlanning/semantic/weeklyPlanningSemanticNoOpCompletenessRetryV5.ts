@@ -4,7 +4,7 @@ import { filterActiveWeeklyPlanningFactsV5 } from './weeklyPlanningFactLifecycle
 import { createWeeklyPlanningSemanticRepairMessagesV5 } from './weeklyPlanningSemanticRepairPromptV5';
 import { validateWeeklyPlanningSemanticRepairPreservationV5 } from './weeklyPlanningSemanticRepairPreservationV5';
 import { markWeeklyPlanningSemanticRepairConsumedV5, weeklyPlanningSemanticRepairConsumedV5 } from './weeklyPlanningSemanticRepairLedgerV5';
-import { hasTaskSemanticPayloadV5, isCreationAuthorizationReadingV5, isEmptyReadingV5 } from './weeklyPlanningEmptyReadingV5';
+import { hasNoDeltaAnywhereV5, hasTaskSemanticPayloadV5, isCreationAuthorizationReadingV5, isEmptyReadingV5 } from './weeklyPlanningEmptyReadingV5';
 import { weeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 import {
   conversationArchitecturePolicy,
@@ -221,6 +221,7 @@ async function repairInvalidCompletenessRetry(params: {
       document: repaired.document!,
       publicStateSummary: params.run.input.publicStateSummary,
       conversationArchitecture: params.run.input.conversationArchitecture,
+      rereadAfterContradiction: true,
     });
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.run.input.traceRequestId,
@@ -298,6 +299,11 @@ export function isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5(params: 
   document: WeeklyPlanningSemanticDocumentV5;
   publicStateSummary?: Record<string, unknown>;
   conversationArchitecture?: WeeklyPlanningConversationArchitecture;
+  /**
+   * Judging a RE-READ (after a contradiction or a completeness retry), not a first reading: a task-less `create_plan`
+   * is then not taken as a creation authorization (the disclosed unusable-message recover stands, live B T4).
+   */
+  rereadAfterContradiction?: boolean;
 }): boolean {
   const actAware = conversationArchitecturePolicy(params.conversationArchitecture).actAwareNoOpRetry;
   // Interaction: once a plan is accepted, an empty reading is as suspicious as one under a pending question: live D
@@ -307,12 +313,14 @@ export function isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5(params: 
   if (!hasMachinePendingQuestion(params.publicStateSummary)) {
     if (!actAware || !hasAcceptedTask(params.publicStateSummary)) return false;
     // A task-less creation-authorization reading (the typed "go ahead and create it") carries its meaning in the intent.
-    // This exception is for the no-pending path only: under a pending question eligibility is unchanged.
-    if (params.document.tasks.length === 0 && isCreationAuthorizationReadingV5(params.document)) return false;
+    // This exception is for a FIRST reading on the no-pending path only: never when judging a re-read, and under a
+    // pending question eligibility is unchanged.
+    if (!params.rereadAfterContradiction && params.document.tasks.length === 0 && isCreationAuthorizationReadingV5(params.document)) return false;
   }
   // A self-sufficient conversational act is a valid complete result with an empty planning delta; only a bare
   // answer act without any delta is a contradiction worth a bounded retry (the typed definition shared with `nothingRead`).
-  return isEmptyReadingV5(params.document);
+  // Legacy documents carry no acts and the legacy eligibility never read them: only the delta check applies there.
+  return actAware ? isEmptyReadingV5(params.document) : hasNoDeltaAnywhereV5(params.document);
 }
 
 async function tryFocusedTaskTemporalSideContributionV5(params: {
@@ -570,6 +578,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
           document: validation.document,
           publicStateSummary: params.run.input.publicStateSummary,
           conversationArchitecture: params.run.input.conversationArchitecture,
+          rereadAfterContradiction: true,
             })
       : false;
     const shouldRetryAgain = retryIndex + 1 < retryLimit && (!validation.document || stillNoOp);
