@@ -11,6 +11,7 @@ import type {
 } from './weeklyPlanningTraceTypes';
 
 export const WEEKLY_PLANNING_TRACE_POLICY_VERSION = '2026-07-18-v1';
+export const WEEKLY_PLANNING_TRACE_POLICY_TIMEOUT_MS = 15_000;
 
 export type WeeklyPlanningTraceRequestStage =
   | 'health'
@@ -102,7 +103,7 @@ export interface WeeklyPlanningTraceAdminRawSessions {
 
 export interface WeeklyPlanningTraceApiClient {
   getHealth?(): Promise<WeeklyPlanningTraceHealthStatus>;
-  getPolicyStatus(): Promise<WeeklyPlanningTracePolicyStatus>;
+  getPolicyStatus(options?: { signal?: AbortSignal }): Promise<WeeklyPlanningTracePolicyStatus>;
   acceptPolicy(): Promise<WeeklyPlanningTracePolicyStatus>;
   startSession(input: WeeklyPlanningTraceSessionStartInput): Promise<WeeklyPlanningTraceServerHandle>;
   append(payload: WeeklyPlanningTraceAppendInput): Promise<void>;
@@ -188,8 +189,8 @@ async function authenticatedTraceRequest(
   path: string,
   stage: WeeklyPlanningTraceRequestStage,
   init: RequestInit = {},
+  requestCorrelationId = correlationId(),
 ): Promise<TraceApiEnvelope> {
-  const requestCorrelationId = correlationId();
   const currentUser = getFirebaseAuth()?.currentUser;
   if (!currentUser) {
     throw new WeeklyPlanningTraceApiError(
@@ -206,6 +207,9 @@ async function authenticatedTraceRequest(
   }
 
   const idToken = await currentUser.getIdToken();
+  // A token can finish after a policy deadline or owner retirement. Do not
+  // dispatch that retired read after the caller has already stopped waiting.
+  if (init.signal?.aborted) throw init.signal.reason;
   let response: Response;
   try {
     response = await fetch(`${traceApiBaseUrl()}${path}`, {
@@ -219,6 +223,7 @@ async function authenticatedTraceRequest(
       },
     });
   } catch {
+    if (init.signal?.aborted) throw init.signal.reason;
     const error = new WeeklyPlanningTraceApiError('週間計画traceサーバーへ接続できませんでした。', {
       stage,
       status: null,
@@ -294,6 +299,40 @@ async function authenticatedTraceRequest(
   };
 }
 
+async function requestPolicyStatus(signal?: AbortSignal): Promise<WeeklyPlanningTracePolicyStatus> {
+  if (signal?.aborted) throw signal.reason;
+  const controller = new AbortController();
+  const requestCorrelationId = correlationId();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let stopOnCallerAbort: (() => void) | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    const stop = (reason: unknown) => {
+      controller.abort(reason);
+      reject(reason);
+    };
+    stopOnCallerAbort = () => stop(signal?.reason);
+    signal?.addEventListener('abort', stopOnCallerAbort, { once: true });
+    timeout = setTimeout(() => stop(new WeeklyPlanningTraceApiError(
+      '同意状況の確認に時間がかかっています。通信状態を確認して、もう一度お試しください。',
+      { stage: 'policy', status: null, code: 'trace_policy_timeout', category: 'network',
+        correlationId: requestCorrelationId, retryable: true },
+    )), WEEKLY_PLANNING_TRACE_POLICY_TIMEOUT_MS);
+  });
+  try {
+    // Bound the entire read, including token restoration and response-body read.
+    // Abort alone cannot settle a pending token or a transport ignoring abort.
+    const payload = await Promise.race([
+      authenticatedTraceRequest('/weekly-planning-trace/policy', 'policy',
+        { signal: controller.signal }, requestCorrelationId),
+      deadline,
+    ]);
+    return policyStatus(payload);
+  } finally {
+    clearTimeout(timeout);
+    if (stopOnCallerAbort) signal?.removeEventListener('abort', stopOnCallerAbort);
+  }
+}
+
 function policyStatus(payload: TraceApiEnvelope): WeeklyPlanningTracePolicyStatus {
   return {
     policyVersion: typeof payload.policyVersion === 'string'
@@ -362,8 +401,8 @@ export function createWeeklyPlanningTraceApiClient(): WeeklyPlanningTraceApiClie
         storageLayoutVersion: numericCount(payload.storageLayoutVersion),
       };
     },
-    async getPolicyStatus() {
-      return policyStatus(await authenticatedTraceRequest('/weekly-planning-trace/policy', 'policy'));
+    getPolicyStatus(options = {}) {
+      return requestPolicyStatus(options.signal);
     },
     async acceptPolicy() {
       return policyStatus(await authenticatedTraceRequest(

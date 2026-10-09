@@ -83,7 +83,7 @@ function holdFullRead(failedGetter: 'getActuals' | 'getPlans') {
   const retryEntered = deferred(), retryRelease = deferred();
   const actualRead = boundary.repository.getActuals;
   const planRead = boundary.repository.getPlans;
-  let firstActual = true, firstPlans = true, holdRetry = true;
+  let firstActual = true, holdRetry = true;
   let mode: 'fail' | 'hold-retry' | 'open' = 'fail';
   const actualReads = vi.fn(async (owner: string) => {
     if (firstActual) {
@@ -103,7 +103,6 @@ function holdFullRead(failedGetter: 'getActuals' | 'getPlans') {
     return snapshot;
   });
   const planReads = vi.fn(async (owner: string) => {
-    if (firstPlans) { firstPlans = false; return planRead(owner); }
     if (mode === 'fail' && failedGetter === 'getPlans') throw new Error('Repair Plan read unavailable');
     return planRead(owner);
   });

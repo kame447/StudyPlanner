@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "reason": "The staged diff check exposed one new blank line at EOF in each previously untracked log. Documentation-only normalization; no success/failure text, timing, command, result or source input changed.",
+  "logs": [
+    {
+      "file": "after.log",
+      "originalSha256": "b091ad283a1b739d93a9997003b44b343ec30fca334496e056c576f04c5b5638",
+      "storedSha256": "18806e5d7111ddc8691e07b6709a4b5d6e7041245b1555e1060cb3a522c8b875",
+      "originalBytes": 655,
+      "storedBytes": 654,
+      "removedTerminalBlankLines": 1,
+      "transformation": "Removed only the final blank line (one LF byte); retained the preceding line ending and every other byte.",
+      "originalBackupPath": "/tmp/issue542-doc-log-originals-i_5u49pf/after.log"
+    },
+    {
+      "file": "before.log",
+      "originalSha256": "c84afa87b414ee893657b8eee0065516b8575797f03f6ea74b722a3129c19b7c",
+      "storedSha256": "884fa5ba194ca51efa27d23a0a5d0939c446160888a88598fb2ce75ae31bdfec",
+      "originalBytes": 544,
+      "storedBytes": 543,
+      "removedTerminalBlankLines": 1,
+      "transformation": "Removed only the final blank line (one LF byte); retained the preceding line ending and every other byte.",
+      "originalBackupPath": "/tmp/issue542-doc-log-originals-i_5u49pf/before.log"
+    },
+    {
+      "file": "cross-projection-tests.log",
+      "originalSha256": "d369a024c96be734c4ca622681890b554d48b77e17e038f6b1780527978412f1",
+      "storedSha256": "34ce4dcd48e358a7178a5fe5decbc6698e348898ce55cc7d0cd167ab47d80c0d",
+      "originalBytes": 10216,
+      "storedBytes": 10215,
+      "removedTerminalBlankLines": 1,
+      "transformation": "Removed only the final blank line (one LF byte); retained the preceding line ending and every other byte.",
+      "originalBackupPath": "/tmp/issue542-doc-log-originals-i_5u49pf/cross-projection-tests.log"
+    }
+  ],
+  "referenceIntegrity": "provenance.currentRunLogs contains separate final-run strings and was not changed. Existing standaloneLogFiles identifies before.log/after.log as older runs. cross-projection-manifest records the original probe filename but no log SHA-256. No existing log-hash reference required replacement."
+}

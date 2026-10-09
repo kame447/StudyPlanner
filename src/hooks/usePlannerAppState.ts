@@ -172,6 +172,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     isRecurringPlanEdit,
     pendingRecurringPlanAction,
     loadPlannerData,
+    projectPlanSave,
     resetPlannerData,
     setViewMode,
     openCreatePlan,
@@ -304,27 +305,20 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     );
 
     try {
-      const savedPlan = await weeklyPlanningApprovalPlanRepository.saveApprovedPlan(draft);
+      // The repository acknowledgement remains the durable authority. The data
+      // hook tracks the write before dispatch and reconciles only Plans/Todos
+      // if a newer read or another mutation crossed this acknowledgement.
+      const savedPlan = await projectPlanSave(
+        () => weeklyPlanningApprovalPlanRepository.saveApprovedPlan(draft),
+      );
       if (!approvalScope.isCurrent()) throw new PlannerMutationScopeExpiredError();
-      setWeeklyApprovedPlanOverlay((current) =>
-        sortByDateTime(
-          upsertByKey(
-            current.filter((plan) => plan.id !== nextPlan.id),
-            savedPlan,
-            (plan) => plan.id,
-          ),
-        ),
-      );
-      await loadPlannerData(user.id);
-      setWeeklyApprovedPlanOverlay((current) =>
-        current.filter((plan) => plan.id !== nextPlan.id && plan.id !== savedPlan.id),
-      );
       return savedPlan;
-    } catch (error) {
+    } finally {
+      // This overlay is pending UI only. Confirmed rows belong to the shared
+      // projection; failed/unknown responses must never become saved truth.
       setWeeklyApprovedPlanOverlay((current) =>
         current.filter((plan) => plan.id !== nextPlan.id),
       );
-      throw error;
     }
   }
 
