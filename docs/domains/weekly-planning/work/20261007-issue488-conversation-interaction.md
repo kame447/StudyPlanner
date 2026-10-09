@@ -380,3 +380,5 @@ W4 RedFeynman (Sonnet 5.5, test-only) built it. The fixture has 15 events, 14 li
 - **Residuals:**
   - a correction targeting an effort that a dependent migration superseded in the same turn;
   - a stale `total_duration` left beside a corrected target workload.
+
+**X5 correction-path hardening (`ad92271e`).** Probes 28 and 29 showed that the correction pruning silently deleted turn-created content: a new 60-minute total, and a new 「第3章」 component. The plan stayed unchanged while the reply claimed 「修正しました」 with the confirm button. Now any non-redundant prune rejects the turn as a disclosed recover, and validation directs the one repair for the uninstalled-workload shape (provisional). This is root-cause for "pruning deletes content". Live X5 had already passed 3/3 on `87df2e6a`; the hardening closes the variants that live runs had not hit.
