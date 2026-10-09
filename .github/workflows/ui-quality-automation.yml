@@ -74,7 +74,7 @@ jobs:
         shell: bash
         run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
       - name: Install isolated Playwright and axe
-        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.62.1 @axe-core/playwright@4.13.0
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0 @axe-core/playwright@4.13.0
       - name: Verify isolated install did not mutate application manifests
         shell: bash
         run: sha256sum -c /tmp/studyplanner-manifests.sha256
@@ -188,7 +188,7 @@ jobs:
       - name: Install application dependencies
         run: npm ci
       - name: Install isolated Playwright test runner
-        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.62.1
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
       - name: Install Chromium, Firefox and WebKit
         run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium firefox webkit
       - name: Build production bundle

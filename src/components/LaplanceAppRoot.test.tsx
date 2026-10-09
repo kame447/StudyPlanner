@@ -12,7 +12,7 @@ import { RootManagedAuthenticationProvider } from './RootManagedAuthenticationCo
 import { RootStartupReadyProvider } from './RootStartupReadyContext';
 import { SplashScreen } from './SplashScreen';
 import { StartupSurface } from './StartupSurface';
-import { StudyPlannerAppRoot } from './StudyPlannerAppRoot';
+import { LaplanceAppRoot } from './LaplanceAppRoot';
 
 const state = vi.hoisted(() => ({
   traceEnabled: true,
@@ -54,14 +54,14 @@ let renderer: ReactTestRenderer;
 let fake: ReturnType<typeof createFakeAuthSession>;
 
 function mount() {
-  act(() => { renderer = create(<StudyPlannerAppRoot authSession={fake.session} />); });
+  act(() => { renderer = create(<LaplanceAppRoot authSession={fake.session} />); });
 }
 
 function rerender() {
-  act(() => renderer.update(<StudyPlannerAppRoot authSession={fake.session} />));
+  act(() => renderer.update(<LaplanceAppRoot authSession={fake.session} />));
 }
 
-describe('StudyPlannerAppRoot', () => {
+describe('LaplanceAppRoot', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     state.reducedMotion = true;
@@ -195,9 +195,9 @@ describe('StudyPlannerAppRoot', () => {
   });
 
   it('uses the default session once when no service is injected', () => {
-    act(() => { renderer = create(<StudyPlannerAppRoot />); });
+    act(() => { renderer = create(<LaplanceAppRoot />); });
     act(() => fake.emit(null));
-    act(() => renderer.update(<StudyPlannerAppRoot />));
+    act(() => renderer.update(<LaplanceAppRoot />));
     expect(createAuthSessionService).toHaveBeenCalledTimes(1);
     expect(fake.session.subscribe).toHaveBeenCalledTimes(1);
   });

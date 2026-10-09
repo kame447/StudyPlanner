@@ -62,11 +62,11 @@ describe('AdminApp auth session', () => {
     expect(fake.session.subscribe).not.toHaveBeenCalled();
   });
 
-  it('uses the Laplans initial and product name in the admin brand', () => {
+  it('uses the Laplance initial and product name in the admin brand', () => {
     mount();
     act(() => fake.emit(user));
     act(() => emitAdmin(true));
-    expect(hasText('Laplans')).toBe(true);
+    expect(hasText('Laplance')).toBe(true);
     expect(renderer.root.findByProps({ className: 'admin-console-brand-mark' }).children).toEqual(['L']);
   });
 
