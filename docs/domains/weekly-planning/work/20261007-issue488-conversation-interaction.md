@@ -505,3 +505,26 @@ The statements agree with the preview, so no false plan is claimed. A determinis
 - **No failure traces to this round's changes** (H-release, the neutral question, x6, x7).
 - The dangling-replacement family appeared in 2 of 14 runs (C, X5). The proposed X5f repair directive is blocked on the user's directive-cap decision.
 - Round 4 on `f4fa664a` passed 11 of 14 with a different mix of failures. With single samples per scenario, the difference is within model variance; it is not evidence of a regression.
+
+### Completion status against the user's merge-order decision (Issue #488 body, 2026-10-09, Stage 1)
+Integration HEAD for app code: `167751ca` (docs since then only). E2E is **not complete**.
+
+| Completion chain step | Evidence | Kind | Status |
+| --- | --- | --- | --- |
+| Natural input → confirmation and correction → constraint-respecting preview | Live round 5 (14 scenarios, preview only) | Real provider, real screen | Partial: 7 of 14 strict. Failures are below |
+| Explicit approval → persistent save → week/day/month reflection → reload match → no duplicates on resend or double approval | W3 `weekly-real-save-reload`, 8/8 | Production App, runtime and gateway, with a scripted provider; production **local** repository (browser localStorage) | Verified only at the local-repository boundary |
+| The same chain through Worker and Firestore | — | — | **Unverified.** A real save on the authorized account is forbidden (it would touch the user's data), and no isolated Firestore environment or dedicated account with cleanup is authorized |
+| The same chain with the real provider | — | — | **Unverified** for the same reason. Live runs never press 「この内容で仮予定にする」, 「この内容で保存」 or 「予定を追加」 |
+
+**Representative paths:**
+- **Exam student:** W4 is 28/2. Both failures are B4: the persona's daily caps are not given to the product, so they are a product decision, not a user-stated constraint.
+- **Fixed events only:** X1 and EV pass live.
+- **Normal study:** A, F and G pass live.
+- **Mixed input:** D fails live, with a disclosure (model drop).
+- **Date and quantity corrections:** C and X5 fail live, with a disclosure (dangling replacements; X5f is blocked on the directive-cap decision).
+- **Re-question loops:** H passes in 4 of the last 7 runs, and each failure cause is fixed or disclosed. X2 fails silently (x8 in progress). X3 passes.
+
+**Gates on the exact code `167751ca`:**
+- verify passes 7,715 tests; every category is green; the legacy differential is unchanged;
+- browser: 9 failures, all also failing on main `22847120` (environment);
+- size: JS 2373.0 KiB raw / 642.8 KiB gzip, **over the cap and not raised**.
