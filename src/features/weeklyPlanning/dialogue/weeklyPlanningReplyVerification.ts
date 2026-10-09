@@ -75,6 +75,7 @@ const HANDLERS: { [C in WeeklyPlanningMustConveyEntry['code']]: MustConveyHandle
       'Code "shortfall": planTotalMinutes is the minutes the WHOLE plan needs; NOT all of the work fits in the available time; unmetItems lists each work item that could NOT be placed, with its own minutes; furtherUnmetItemCount is how many MORE items did not fit and are not listed.',
       'planTotalMinutes is NOT the amount that did not fit: a reply that presents it as the unmet amount, or attaches any figure to the wrong thing, is contradicted.',
       'stated_accurately requires all of: the reply says not everything fits; it names every unmet item with its own minutes; it gives the plan total as what the whole plan needs; and, when furtherUnmetItemCount is above zero, it says that further items also did not fit (missing if it does not).',
+      'When the unmet work IS the whole plan (a single unmet item whose minutes equal planTotalMinutes, or every item is unmet), stating the plan total once, naming the work, and saying that it does not fit is accurate: the item\'s own minutes need not be repeated separately, and a total that equals the one unmet item is not a confusion of the two.',
       'contradicted if it says otherwise, for example that everything fits or was scheduled.',
     ].join(' '),
     forbidden: ['plan_fits', 'plan_complete', 'saved'],

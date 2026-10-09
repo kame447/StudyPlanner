@@ -56,6 +56,20 @@ describe('shortfall: the further unmet items (V3) and the verifier definition (V
   });
 });
 
+describe('shortfall: the whole plan is the unmet work (D1)', () => {
+  const only = [{ label: '英語の長文問題', minutes: 1320 }];
+  it('the verifier prompt says a total equal to the single unmet item is accurate and not a confusion', () => {
+    const system = createReplyVerifierMessages({ entries: [entry(1320, only)], text: 'x' })[0].content;
+    expect(system).toContain('the unmet work IS the whole plan');
+    expect(system).toContain('need not be repeated separately');
+    expect(system).toContain('planTotalMinutes is NOT the amount that did not fit');
+  });
+  it('V3 accepts the natural single-item reply (total stated once, work named) and still rejects an omission', () => {
+    expect(fails('英語の長文問題に必要な時間は1320分で、今日中には収まりません。どの方法にしますか？', entry(1320, only))).toBe(false);
+    expect(fails('英語の長文問題は今日中には収まりません。', entry(1320, only))).toBe(true);
+  });
+});
+
 describe('declared_amount_waiting (P3 S1 payload; derivation elsewhere)', () => {
   const waiting = (amount: number, unitCode: 'minute' | 'hour', quote = '合計2時間くらい'): WeeklyPlanningMustConveyEntry =>
     ({ code: 'declared_amount_waiting', factId: 'wpf_workload_1', quote, amount, unitCode });

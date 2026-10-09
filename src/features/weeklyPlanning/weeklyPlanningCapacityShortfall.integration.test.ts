@@ -67,7 +67,7 @@ describe('B3: the AI-rendered reply', () => {
     expect(turn.result?.message).toMatch(/合計\d+分です。$/);
     expect(turn.result?.message).not.toMatch(/\n\n入りきらなかった作業: /);
     const renderer = turn.calls.filter(call => call.kind === 'renderer').pop()!;
-    expect(JSON.stringify(renderer.messages)).toContain('mustConvey shortfall: In your own words');
+    expect(JSON.stringify(renderer.messages)).toContain('mustConvey shortfall: State these facts naturally in your own words');
   });
   it('the capacity fact exists only on the capacity question', async () => {
     provider = installExamOverloadProvider(30);

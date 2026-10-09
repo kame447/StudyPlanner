@@ -273,7 +273,7 @@ function interactionCommunicationInstructions(
       ? ['uncertaintyReleased: The app states that one open point stays unconfirmed beside your reply. Do not say it was settled, confirmed or resolved, and do not restate it.']
       : []),
     ...(communication.mustConvey?.some((entry) => entry.code === 'shortfall')
-      ? ['mustConvey shortfall: In your own words say the work did not all fit, state requiredMinutes and each unmet item with its label and minutes exactly as given (moreCount more if above zero), then ask the question. Do not say the plan fits, is complete, saved or applied. The reply is verified against these figures.']
+      ? ['mustConvey shortfall: State these facts naturally in your own words: that the work did not all fit, the total minutes the plan needs (requiredMinutes), which work did not fit (use the labels as the user wrote them, with the minutes), and how many more items did not fit when moreCount is above zero; when the one unmet item is the whole plan, the total and the name are enough. Then ask the question. Do not say the plan fits, is complete, saved or applied. The reply is checked against these facts.']
       : communication.capacityShortfall
       ? ['capacityShortfall: The app states the unmet work and its amounts after your reply. Do not state amounts, minutes or a shortfall yourself; say the work did not all fit and ask the question.']
       : []),
