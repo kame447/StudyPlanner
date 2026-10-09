@@ -82,7 +82,7 @@ function configureDelays({ token = 0, policy = 0, preferences = 0, profile = 0, 
     const read = vi.fn(() => latency(method, planner, []));
     fixture.repository[method] = read;
     return read;
-  });
+  }).filter((_, index) => methods[index] !== 'getDayNotes');
   const schedule = vi.fn(() => latency('getScheduleSnapshot', planner, { plans: [], monthEvents: [] }));
   fixture.repository.getScheduleSnapshot = schedule;
   plannerReads.push(schedule);
@@ -129,6 +129,7 @@ it.each([
   plannerReads.forEach(read => expect(read).not.toHaveBeenCalled());
   await advance(delays.profile);
   plannerReads.forEach(read => expect(read).toHaveBeenCalledOnce());
+  expect(fixture.repository.getDayNotes).not.toHaveBeenCalled();
   const readyAt = delays.auth + consentMs + delays.preferences + Math.max(delays.memory, delays.profile + delays.planner);
   await advance(readyAt - Date.now() - 1);
   expect(splash()).toBe(1);

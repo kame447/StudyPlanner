@@ -88,6 +88,8 @@ vi.mock('./usePlannerDataState', () => ({
     isRecurringPlanEdit: false,
     pendingRecurringPlanAction: null,
     loadPlannerData: loadPlannerDataMock,
+    bootstrapPlannerData: loadPlannerDataMock,
+    loadDayNotes: stableAsyncNoop,
     projectPlanSave: projectPlanSaveMock,
     resetPlannerData: stableNoop,
     setViewMode: stableNoop,
