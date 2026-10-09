@@ -336,3 +336,28 @@ Base `f4fa664a`. Independently audited with probes and fault injection, then int
 The contract sentence about which entries mark the repair ledger was wrong (a code/contract mismatch, found by W2 and confirmed by a critic grep). It is corrected: re-reads are not repairs.
 
 **Live confirmation of round 4b:** pending, in the next live round on the integrated head.
+
+## Exam-student persona E2E (2026-10-09, direct user order)
+This E2E is **synthetic, isolated and deterministic**:
+- the real App, turn runtime, scheduler, preview, approval and local repository;
+- a scripted provider double for the AI;
+- a fixed clock;
+- no non-loopback network.
+
+**Real provider: NOT RUN.** No isolated synthetic calendar exists, and the real account must not be seeded. **Firebase: NOT RUN.**
+
+W4 RedFeynman (Sonnet 5.5, test-only) built it. The fixture has 15 events, 14 life/travel buffers (stored as Plan rows; the product has no buffer type), 9 study items and 1,088 min, plus an overload variant of +720 min (1,808 total). Product fixes were by MistyFabre (B2, B3) and BrightLavoisier (B1), each independently audited with fault injection before integration.
+
+| Stage | Result |
+| --- | --- |
+| Seed and reload of the existing events and buffers | PASS |
+| Bulk request → Fact Graph → scheduler → preview | PASS: 21 blocks / 1,115 min; every requested quantity exact; 0 collisions; deadlines and sleep kept |
+| Approve → save → week/day/month → reload | PASS: identical IDs and times; no duplicates after double approval or after an interrupted save and retry |
+| Variants (extra midweek lesson; English to the weekend) | PASS: other tasks and commitments preserved |
+| Variant math 30→20 (**B1**) | Was RED; **fixed** (canonical order plus a deadline-first retry); now a regression test |
+| MonthEvent-backed buffers (**B2**) | Was RED; **fixed** (timed MonthEvents are busy); all-day interim policy awaits the user |
+| Overload carries the unmet amount (**B3**) | Was RED; **fixed** (typed shortfall plus an app-owned sentence) |
+| Persona daily-load caps and reserve day (**B4**) | **RED**: Sat 315/300, Sun 325/240, reserve day heaviest. The product has no load-balancing or reserve-day notion, so this is product scope and awaits the user |
+| Ambiguous request → question; other-owner rows ignored | PASS |
+
+**Can the system finish a usable weekly plan for this persona?** In the deterministic synthetic environment, yes: it plans, saves and reloads 21 blocks with every hard constraint kept. It does not yet balance daily load or protect the reserve day (B4). Real-model understanding and Firestore persistence remain unverified.
