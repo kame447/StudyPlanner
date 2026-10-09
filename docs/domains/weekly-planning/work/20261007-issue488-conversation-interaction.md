@@ -442,3 +442,29 @@ W4 RedFeynman (Sonnet 5.5, test-only) built it. The fixture has 15 events, 14 li
 - **r1 T3 failed:** the first reading was entirely empty, which is never re-read when no question is pending. The Wednesday-night placement was dropped behind 「今の仮予定の候補はそのままです」.
 - **r2 T3 passed:** the first reading was a task shell, which is re-read, so Wed 17:00–18:15 was recovered.
 - **Cause:** whether a reading is re-read depends on the shape the model happened to choose. Assigned as x6: re-read an empty reading under a plan, and state 「この返事からは新しい条件を読み取っていません…」 whenever the final reading is empty.
+
+**x6: empty readings (`6eb978e3` through `39c3547b`, parent `80af22a3`).** Under an accepted plan, an entirely empty first reading is now re-read once, as a task shell already was. An empty final reading says 「この返事からは新しい条件を読み取っていません。条件があれば、あらためて教えてください。」 once.
+- **Audit:** two deliveries were rejected before integration.
+  - v1 put the creation-authorization exception inside the shared predicate. That changed legacy eligibility, and under a free-form question it brought back the identical invitation for 「このまま作って」.
+  - v2 still flipped the B-T4 contradiction re-read (critic probe 35, row 30).
+  - v3: the 36-row table equals `a4dd115e` except the two intended rows.
+- **Before and after (scripted):**
+  - the live r1 shape now recovers the Wednesday-night placement; before, it took 1 call and was dropped;
+  - an empty or acknowledgement reply now shows the sentence, at 2 calls instead of 1;
+  - the live r2 shell shape recovers in both.
+- **Fault injection over the whole directory:**
+  - re-read off: 9 failures;
+  - exception applied to re-reads: 2;
+  - fact off: 7;
+  - double sentence: 10.
+- **Chain on `80af22a3`:**
+  - verify passes 7,701 tests; every category is green;
+  - browser: 440 pass and 7 fail, all also failing on main;
+  - weekly-real: 10/10;
+  - legacy differential: unchanged;
+  - bundle: JS +0.2 KiB.
+- **Live H on `80af22a3` (2 runs).** T1 and T2 passed in both, with the consultation deferred and no question.
+  - r1 T3 failed, with a disclosure: the first reading was a shell, and the re-read and the repair both mis-referenced ids, so the reply was 「その変更は使えませんでした…今の仮予定は変えていません」.
+  - r2 T3 passed: Wed 17:00–18:15.
+  - An empty first reading did not recur, so x6's live path is still unexercised.
+  - Observation (prompt-level, provisional): in r2 T2 the renderer said 「今回の量なら一日分として収まる見込みです」 although the consultation was deferred.
