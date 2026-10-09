@@ -13,8 +13,7 @@ describe('weeklyPlanningUncertaintyReleaseText', () => {
   it('falls back to a generic sentence without a quote, never claiming resolution', () => {
     for (const quote of [null, undefined, '  ']) expect(weeklyPlanningUncertaintyReleaseText({ quote })).toBe('未確定の点を残したまま進めます。');
   });
-  it('a release that applied nothing says so (a dropped condition is never silent)', () => {
-    expect(weeklyPlanningUncertaintyReleaseText({ quote: 'Q', nothingRead: true }))
-      .toBe('「Q」については未確定のまま進めます。この返事からは新しい条件を読み取っていません。条件があれば、あらためて教えてください。');
+  it('never carries the nothing-read sentence itself: that is one turn-level sentence (weeklyPlanningNothingReadDisclosure)', () => {
+    expect(weeklyPlanningUncertaintyReleaseText({ quote: 'Q' })).toBe('「Q」については未確定のまま進めます。');
   });
 });

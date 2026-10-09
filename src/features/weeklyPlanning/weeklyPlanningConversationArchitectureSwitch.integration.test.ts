@@ -548,8 +548,12 @@ describe('B. aside followed by a short reply', () => {
             "sha256": "0b2e81057373ec391abc3db84041320fcc21839800de784c57656cec8fc8b10b",
           },
           {
+            "kind": "semantic_generic",
+            "sha256": "cfbdf00b88f80f9989676b7ac57cd6f8573fb806bfadd3df3c55fa93724e29d8",
+          },
+          {
             "kind": "renderer",
-            "sha256": "c30ef0845ba42c1130303019909f3d842ace1d8c95b7ed3c6b41db5acd27fd54",
+            "sha256": "8ff800c6be2ca1bd7d23f087742284e1c08493f6080c9331badc295fac53b0a5",
           },
         ],
       }

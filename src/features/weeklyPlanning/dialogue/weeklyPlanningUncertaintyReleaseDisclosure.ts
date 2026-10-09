@@ -8,11 +8,9 @@
  */
 const QUOTE_LIMIT = 80;
 const GENERIC = '未確定の点を残したまま進めます。';
-const NOTHING_READ = 'この返事からは新しい条件を読み取っていません。条件があれば、あらためて教えてください。';
 
-export function weeklyPlanningUncertaintyReleaseText(release: { quote: string | null | undefined; nothingRead?: boolean }): string {
+export function weeklyPlanningUncertaintyReleaseText(release: { quote: string | null | undefined }): string {
   const normalized = (release.quote ?? '').replace(/\s+/g, ' ').trim();
   const excerpt = normalized.length <= QUOTE_LIMIT ? normalized : `${normalized.slice(0, QUOTE_LIMIT)}…`;
-  const released = normalized ? `「${excerpt}」については未確定のまま進めます。` : GENERIC;
-  return release.nothingRead ? `${released}${NOTHING_READ}` : released;
+  return normalized ? `「${excerpt}」については未確定のまま進めます。` : GENERIC;
 }

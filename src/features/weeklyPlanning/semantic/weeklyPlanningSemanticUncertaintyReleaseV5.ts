@@ -1,6 +1,7 @@
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './weeklyPlanningActiveSchedulerGraphViewV5';
 import type { UncertaintyFactV5, WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
+import { hasNoDeltaAnywhereV5 } from './weeklyPlanningEmptyReadingV5';
 import {
   hasWeeklyPlanningSemanticUncertaintyResolutionV5,
   isKnownWeeklyPlanningUncertaintyFieldV5,
@@ -25,30 +26,6 @@ export const WEEKLY_PLANNING_RELEASED_UNCERTAINTY_NO_DELTA_OPERATION_V5 = 'relea
 export interface ReleasedFreeFormUncertaintyV5 {
   id: string;
   basis: 'delta' | 'no_delta';
-}
-
-type Task = WeeklyPlanningSemanticDocumentV5['tasks'][number];
-
-function isPureExistingShell(task: Task): boolean {
-  return typeof task.existingPublicId === 'string' && task.existingPublicId.length > 0
-    && task.workloads.length === 0
-    && task.effortEstimates.length === 0
-    && task.temporalConstraints.length === 0
-    && task.recurrence.length === 0
-    && (task.durableContextSignals?.length ?? 0) === 0
-    && (task.study?.components.length ?? 0) === 0;
-}
-
-function hasNoDeltaAnywhere(document: WeeklyPlanningSemanticDocumentV5): boolean {
-  return document.planningWindow === null
-    && document.tasks.every(isPureExistingShell)
-    && document.relations.length === 0
-    && document.availabilityDeclarations.length === 0
-    && document.constraintSourceRequests.length === 0
-    && (document.userContextFacts?.length ?? 0) === 0
-    && document.uncertainties.length === 0
-    && document.corrections.length === 0
-    && document.decisions.length === 0;
 }
 
 /**
@@ -107,7 +84,7 @@ export function releasedFreeFormUncertaintiesV5(params: {
   // Only answer acts (unbound or bound here) may accompany it; any other act (consultation, topic shift, ...) keeps it open.
   const emptyReadingWithoutOtherActs = acts.every((act) => act.kind === 'answer_pending_question'
     && (act.targetPublicId === null || isTarget(act.targetPublicId)));
-  const noDeltaRelease = params.noOpRetryConfirmed && hasNoDeltaAnywhere(document) && emptyReadingWithoutOtherActs;
+  const noDeltaRelease = params.noOpRetryConfirmed && hasNoDeltaAnywhereV5(document) && emptyReadingWithoutOtherActs;
   if (!bound && !noDeltaRelease) return [];
   const redeclared = document.uncertainties.some((current) => current.field === uncertainty.field
     && (current.targetLocalId === null || target === null

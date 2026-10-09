@@ -50,6 +50,7 @@ import { projectWeeklyPlanningPreviewConstraintSatisfaction } from './weeklyPlan
 import { isKnownWeeklyPlanningUncertaintyFieldV5 } from '../semantic/weeklyPlanningSemanticUncertaintyResolutionV5';
 import { releasedUncertaintiesOfTurnV5 } from '../semantic/weeklyPlanningSemanticUncertaintyReleaseV5';
 import { summarizeWeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
+import { isNothingReadV5 } from '../semantic/weeklyPlanningEmptyReadingV5';
 
 export type {
   ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
@@ -78,6 +79,7 @@ function communicationFacts(params: {
   statusReason: WeeklyPlanningTurnStatusReason | null;
   planningDetailsNotApplied: boolean;
   possibleCompletenessOmission: boolean;
+  nothingRead?: boolean;
   omittedWork: WeeklyPlanningPreviewOmittedWork[] | null;
   consultationRequested: boolean;
   releasedUncertainties?: ReturnType<typeof releasedUncertaintiesOfTurnV5>;
@@ -125,6 +127,7 @@ function communicationFacts(params: {
     }),
     planningDetailsNotApplied: params.planningDetailsNotApplied,
     ...(params.possibleCompletenessOmission ? { possibleCompletenessOmission: true } : {}),
+    ...(params.nothingRead ? { nothingRead: true } : {}),
     ...(capacityShortfall ? { capacityShortfall } : {}),
     // The selected question is a free-form open point on the very task the consultation act targets: the question
     // already invites the user's condition, so the generic "not decided here" notice would ask for it twice.
@@ -206,6 +209,11 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   // The normalizer kept its first valid reading after an audit-reported omission could not be
   // integrated: say so instead of silently dropping what the audit found (safe failure).
   const possibleCompletenessOmission = semantic.normalization.completenessAbstention !== undefined;
+  // The final accepted reading is entirely empty (no delta, no act the renderer answers): the application says nothing
+  // was read. Only under an accepted plan or a pending question; a first-turn greeting has its own clarify reply.
+  const nothingRead = semantic.normalization.document !== null && semantic.normalization.document !== undefined
+    && isNothingReadV5(semantic.normalization.document)
+    && (semantic.graph.tasks.length > 0 || Boolean(input.previousState?.lastQuestionContext));
   const responseRoute = weeklyPlanningStableV5ResponseRouter.beforePreview({
     input,
     graph: semantic.graph,
@@ -234,6 +242,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
               statusReason: responseRoute.statusReason,
               planningDetailsNotApplied,
               possibleCompletenessOmission,
+              nothingRead,
               omittedWork: null,
               consultationRequested: interactionPlan.acts.consultation,
               releasedUncertainties,
@@ -284,6 +293,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
             statusReason: null,
             planningDetailsNotApplied,
             possibleCompletenessOmission,
+            nothingRead,
             omittedWork: provisionalCapacity ? provisionalCapacity.omittedWork : null,
             consultationRequested: interactionPlan!.acts.consultation,
             releasedUncertainties,
