@@ -31,7 +31,7 @@ it('ended first retains the still and loading until the current app is ready', (
   act(() => { renderer = create(surface(true)); });
   act(() => renderer!.root.findByType('video').props.onEnded());
   expect(visible()).toBe(false); expect(splash().props.videoOutcome).toBe('ended');
-  expect(renderer!.root.findByType('img').props.alt).toBe('Laplans');
+  expect(renderer!.root.findByType('img').props.alt).toBe('Laplance');
   act(() => renderer!.update(surface(false)));
   expect(visible()).toBe(true);
 });
