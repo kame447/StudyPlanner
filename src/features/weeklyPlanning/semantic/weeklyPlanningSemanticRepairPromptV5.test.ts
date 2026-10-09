@@ -217,3 +217,36 @@ it('interaction unknown replacement guidance preserves the referenced id and cor
   const unrelated = create('interaction_v1', ['document.tasks[0].localId:required']);
   expect(unrelated).not.toContain('corrected kind');
 });
+
+describe('repair of a restated accepted fact (live D T3)', () => {
+  const restated = (existingPublicId: string | null) => JSON.stringify({
+    tasks: [{
+      localId: 'task_reading', existingPublicId, sourceText: '',
+      workloads: [{ localId: 'w1', amount: 20, unitCode: 'page', sourceText: '20ページ' }],
+      effortEstimates: [{ localId: 'e1', kind: 'session_duration', minutes: 60, sourceText: '1回1時間' }],
+    }],
+  });
+  const create = (
+    invalidResponse: string,
+    validationErrors: string[],
+    conversationArchitecture: 'interaction_v1' | 'legacy_v5' = 'interaction_v1',
+  ) => repairPayload(createWeeklyPlanningSemanticRepairMessagesV5({
+    baseMessages: [{ role: 'user', content: 'ordinary user input' }],
+    invalidResponse, validationErrors, conversationArchitecture,
+  })).requiredChanges?.join('\n') ?? '';
+  const errors = [
+    'document.tasks[0].sourceText:not-grounded-in-current-user-text',
+    'document.tasks[0].workloads[0].sourceText:not-grounded-in-current-user-text',
+  ];
+
+  it('tells the repair not to restate an accepted entity bound by existingPublicId', () => {
+    expect(create(restated('task-accepted'), errors)).toContain('Do not restate');
+  });
+
+  it('adds nothing for an unbound entity, for unrelated errors, or in legacy', () => {
+    expect(create(restated(null), errors)).not.toContain('Do not restate');
+    expect(create(restated('task-accepted'), ['document.tasks[0].localId:required'])).not.toContain('Do not restate');
+    expect(create(restated('task-accepted'), errors, 'legacy_v5')).not.toContain('Do not restate');
+    expect(create('not json', errors)).not.toContain('Do not restate');
+  });
+});

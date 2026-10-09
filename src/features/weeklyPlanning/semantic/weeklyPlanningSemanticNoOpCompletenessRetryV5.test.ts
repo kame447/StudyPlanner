@@ -345,6 +345,13 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
       expect(result.status).toBe('rejected');
     });
 
+    it('a restated title that differs from the accepted one is unusable too (silently lost today)', async () => {
+      const renamed = existingTaskShell();
+      renamed.tasks[0].title = '別の題名';
+      const { result } = await run([JSON.stringify(renamed), JSON.stringify(emptyReading())]);
+      expect(result.status).toBe('rejected');
+    });
+
     it('keeps the unchanged plan for a bare acknowledgement shell whose re-read is empty (no description was lost)', async () => {
       const { result } = await run([JSON.stringify(existingTaskShell()), JSON.stringify(emptyReading())]);
       expect(result.status).toBe('accepted');

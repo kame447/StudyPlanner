@@ -11,7 +11,34 @@ const PRESERVE_VALID_MEANING_CLAUSE =
 const CANONICAL_DATE_REMINDER =
   'Any dateExpression you write must be canonical: YYYY-MM-DD, YYYY-MM-DD/YYYY-MM-DD, today/tomorrow/this_week/next_week, weekday:<english-weekday>, or custom:<text> only when none applies.';
 
-function repairDirectivesForErrors(errors: string[], architecture?: WeeklyPlanningConversationArchitecture): string[] {
+const UNGROUNDED_SOURCE_PATH = /^document\.tasks\[(\d+)\](?:\.[A-Za-z]+(?:\[\d+\])?)*\.sourceText:not-grounded-in-current-user-text$/;
+
+/**
+ * Whether a rejected quote sits under a task the invalid response bound to an accepted fact
+ * (existingPublicId). Typed structure of the response only: the model restated an accepted
+ * entity instead of returning just the current turn's changes (live D T3).
+ */
+function ungroundedQuoteUnderAcceptedTask(errors: string[], invalidResponse: string | undefined): boolean {
+  if (!invalidResponse) return false;
+  let tasks: unknown;
+  try {
+    tasks = (JSON.parse(invalidResponse) as { tasks?: unknown }).tasks;
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(tasks)) return false;
+  return errors.some((error) => {
+    const match = UNGROUNDED_SOURCE_PATH.exec(error);
+    const task = match ? tasks[Number(match[1])] as { existingPublicId?: unknown } | undefined : undefined;
+    return typeof task?.existingPublicId === 'string' && task.existingPublicId.length > 0;
+  });
+}
+
+function repairDirectivesForErrors(
+  errors: string[],
+  architecture?: WeeklyPlanningConversationArchitecture,
+  invalidResponse?: string,
+): string[] {
   const directives: string[] = [];
 
   if (errors.some((error) =>
@@ -48,6 +75,11 @@ function repairDirectivesForErrors(errors: string[], architecture?: WeeklyPlanni
   }
   if (errors.some((error) => error.includes('sourceText:not-grounded-in-current-user-text'))) {
     directives.push('For every rejected sourceText, copy an exact contiguous substring from current userText that directly supports that fact; do not paraphrase, synthesize, or reuse prior-turn/stored text. If current userText does not support that fact, remove only that unsupported fact. Quoted or serialized data that the current request explicitly imports or applies does support its planning facts; fix such a citation by copying the data\'s exact characters instead of removing the fact.');
+  }
+  if (conversationArchitecturePolicy(architecture).semanticConversationActs
+    && ungroundedQuoteUnderAcceptedTask(errors, invalidResponse)) {
+    // Live D T3: both the reading and its repair restated accepted facts with empty or stale quotes.
+    directives.push('A rejected quote sits under an accepted entity bound by existingPublicId. Do not restate it: keep its title/category/label/role exactly as in publicStateSummary, omit its unchanged accepted workloads, efforts and constraints, and return only the facts currentUserText adds or changes, each quoted from currentUserText.');
   }
   const selfReferentialUncertainty = errors.some((error) =>
     error.includes('document.uncertainties')
@@ -115,7 +147,7 @@ export function createWeeklyPlanningSemanticRepairMessagesV5(params: {
   const repairInstruction: ChatMessage = {
     role: 'user',
     content: JSON.stringify({
-      requiredChanges: repairDirectivesForErrors(params.validationErrors, params.conversationArchitecture),
+      requiredChanges: repairDirectivesForErrors(params.validationErrors, params.conversationArchitecture, params.invalidResponse),
       validationErrors: params.validationErrors,
     }),
   };

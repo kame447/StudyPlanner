@@ -1,4 +1,6 @@
 import { isWeeklyPlanningTurnDispatchBudgetExceeded } from '../application/weeklyPlanningTurnDispatchBudget';
+import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
+import { filterActiveWeeklyPlanningFactsV5 } from './weeklyPlanningFactLifecycleV5';
 import { hasSelfSufficientConversationActV5 } from './weeklyPlanningConversationActsV5';
 import { weeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 import {
@@ -148,22 +150,34 @@ function invalidRetryMayCarryChange(parsed: unknown): boolean {
 }
 
 /**
- * Whether the first (contradictory) reading described something about an accepted task that no
- * typed planning fact carries: a non-empty study context label (the public state never shows one,
- * so it is not an echo) or a changed title/category. Typed shape only, never text. Such a message
- * had content the reading could not encode; a bare shell has none.
+ * Whether the first (contradictory) reading carried typed content on a bound existing task that
+ * differs from the accepted state. Existing-entity binding discards transient task/study context
+ * before commit (see ExistingTaskShellNormalization), so such a value reaches no fact and nothing
+ * reports it: the message had content the turn could not keep. Non-null/`unknown` values are
+ * "not restated", never a change; an identical shell (an acknowledgement) carries nothing.
+ * Compared: title and category (public state), study purpose and context label (committed study
+ * context). The activity kind is not stored in the accepted state, so it is not compared (residual),
+ * and the discard set is duplicated from the binding (residual). Typed shape only, never text.
  */
 function initialReadingCarriesUnappliedDescription(
   document: WeeklyPlanningSemanticDocumentV5,
   publicStateSummary: Record<string, unknown> | undefined,
+  committedGraph: WeeklyPlanningFactGraphV5 | undefined,
 ): boolean {
   const accepted = Array.isArray(publicStateSummary?.tasks)
     ? (publicStateSummary.tasks as Array<Record<string, unknown>>) : [];
+  const contexts = committedGraph
+    ? filterActiveWeeklyPlanningFactsV5(committedGraph, committedGraph.studyContexts) : [];
   return document.tasks.some((task) => {
     if (!task.existingPublicId) return false;
-    if ((task.study?.contextLabel ?? '').trim().length > 0) return true;
     const bound = accepted.find((candidate) => candidate.publicId === task.existingPublicId);
-    return Boolean(bound) && (bound?.title !== task.title || bound?.category !== task.category);
+    if (!bound) return false;
+    if (bound.title !== task.title || bound.category !== task.category) return true;
+    const label = (task.study?.contextLabel ?? '').trim();
+    const context = contexts.find((candidate) => candidate.taskId === task.existingPublicId);
+    if (label.length > 0 && label !== (context?.contextLabel ?? '').trim()) return true;
+    const purpose = task.study?.purpose;
+    return Boolean(context) && purpose !== undefined && purpose !== 'unknown' && purpose !== context?.purpose;
   });
 }
 
@@ -555,7 +569,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
       && ((!validation.document
           && invalidRetryMayCarryChange(validation.parsedDocument ?? validation.providerDocument ?? null))
         || (!pendingQuestion && initialReadingCarriesUnappliedDescription(
-          params.initialDocument, params.run.input.publicStateSummary)))) {
+          params.initialDocument, params.run.input.publicStateSummary, params.run.input.committedGraph)))) {
       // The first reading was a schema-valid contradiction (it pointed at the plan but carried no
       // change) and the re-read that should have recovered the meaning is invalid or empty.
       // Accepting the empty reading would report the plan as unchanged while the message went
