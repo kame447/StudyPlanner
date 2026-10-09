@@ -321,3 +321,18 @@ Every delivery was independently audited with probes and fault injection before 
 - **Titles:** kanji-numeral unit echoes.
 - **Save evidence:** the in-flight double approval is not exercised through a write gate; real Firestore persistence remains unrun.
 - **Pending user decision:** whether to merge origin/main into the integration branch (a local merge was denied by the permission classifier), and the JS/CSS bundle caps.
+
+## Round 4b: fixes for the live round-4 failures (2026-10-09)
+Base `f4fa664a`. Independently audited with probes and fault injection, then integrated: W1 MistyFabre (5 commits, `71860db4`) and W2 BrightLavoisier (3 commits, `4a645d47`).
+
+| Live failure | Confirmed cause | Change | Classification |
+| --- | --- | --- | --- |
+| H-T3: preview cleared, rate re-asked | The accepted 25-page workload sits on a material component, and the model restated it at task level. Binding and provenance compared component placement strictly | One restatement predicate (exact role, per-occurrence, amount, unit; nullable fields tolerated only when null; exactly one match) | Root-cause for the observed direction; **provisional overall** (the reverse direction is open) |
+| X2-T3: deadline lost | The first reading was empty. The no-op re-read emitted the out-of-grammar `next_week:weekday:thursday` and could not be repaired: re-reads do not mark the ledger, and the invalid re-read path never used the unspent repair | Repair the invalid final re-read with the turn's single repair | Root-cause for the "repairable re-read lost" class. Accepting the token directly as a grammar tolerance was declined |
+| X3-T3: the rate 「1章40分」 dropped | The workload quote covered the rate's digits, so the literal gap stayed under 8 and no audit ran | Workload-quote digit runs beyond its typed numbers earn no coverage | **Provisional** (effort quotes and kanji numerals uncovered; recovery depends on the audit) |
+| H-T2: false "may have missed" notice | The live audit listed the consultation as a missing fact. The act carries no quote, so the clause was uncovered | (a) a dropped advisory uncertainty credits its quote (typed); (b) the audit prompt states that consultations are covered | (a) root-cause for the advisory path; (b) provisional. The act-only audit cost is a residual |
+| Observability | The abstention reason was persisted only on the literal route | `{route, reason, step}` persisted for every selecting route | Root-cause for the gap |
+
+The contract sentence about which entries mark the repair ledger was wrong (a code/contract mismatch, found by W2 and confirmed by a critic grep). It is corrected: re-reads are not repairs.
+
+**Live confirmation of round 4b:** pending, in the next live round on the integrated head.
