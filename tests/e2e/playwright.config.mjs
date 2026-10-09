@@ -17,6 +17,8 @@ export default defineConfig({
     '**/visual-regression.spec.mjs',
     // Has its own full-runtime provider-fixture server/config.
     '**/weekly-real-scenarios.spec.mjs',
+    // Likewise: full-App harness with its own provider-double server/config (port 4187).
+    '**/weekly-real-save-reload*.spec.mjs',
   ],
   fullyParallel: false,
   forbidOnly: isCi,
