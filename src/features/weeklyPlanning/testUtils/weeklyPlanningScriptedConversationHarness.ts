@@ -124,7 +124,9 @@ export function installScriptedWeeklyPlanningProvider(
       && options.completenessAudit !== 'scripted'
       ? JSON.stringify({ decision: 'complete', missingFacts: [] })
       : call.kind === 'shown_question_purpose' && options.shownQuestionPurpose !== 'scripted'
-        // Scenarios that do not script the check treat the shown question as a plan question (the pre-check behaviour).
+        // FAIL-OPEN in tests, fail-closed in production (an unavailable check declares the amount): a scenario that does not script
+        // the check treats the shown question as a plan question (the pre-check behaviour keeps old rows green). Every NEW test with
+        // a progress-type question followed by a budget MUST opt in (`shownQuestionPurpose: 'scripted'`) or it passes the promotion silently.
         ? JSON.stringify({ purpose: 'plan' })
         : await respond(call);
     if (typeof reply !== 'string') {

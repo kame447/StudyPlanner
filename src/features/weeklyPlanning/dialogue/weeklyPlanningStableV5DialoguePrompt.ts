@@ -117,6 +117,7 @@ const QUESTION_PURPOSE_MEANINGS: Readonly<Record<WeeklyPlanningStableV5QuestionP
   set_planning_period: 'which days the plan should cover',
   choose_one_planning_period: 'which of the mentioned periods to plan for',
   tell_plan_amount_from_remaining_total: 'whether the amount is what to do in this plan or everything that remains, because that changes how much is scheduled',
+  tell_plan_amount_from_completed_amount: 'whether the amount is what to do in this plan or work already done, because that changes how much is scheduled',
   choose_one_time_estimate: 'which of the stated time estimates to use',
   apply_time_limits_to_right_days: 'which days a time limit applies to, so study avoids the right days',
   know_exact_time_range: 'the start and end time, so study can be placed around it',
@@ -205,6 +206,9 @@ function interactionQuestionKindInstructions(
       ? interactionSchedulableWorkInstructions(input.questionIntent) : []),
     ...(kind === 'effort_measurement' ? [EFFORT_MEASUREMENT_INSTRUCTION] : []),
     ...(kind === 'resolution_question' ? [RESOLUTION_QUESTION_INSTRUCTION] : []),
+    ...(input.questionIntent?.kind === 'resolution_question'
+      && (input.questionIntent.allowedChoices as readonly string[]).includes('completed_amount')
+      ? ['completed_amount=すでに終わった量。'] : []),
     PREVIEW_AND_GROUNDING_INSTRUCTION,
   ];
 }

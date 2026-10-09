@@ -118,14 +118,34 @@ describe('live F shape (round 6): missing_schedulable_work on an unbounded, non-
     expect(minutes(conversation)).toBe(120);
     expect(active(conversation).workloads).toEqual([expect.objectContaining({ quantityRole: 'target', amount: 120, unitCode: 'minute' })]);
   });
-  it('(a2) 「もう終わった量」 as the role answer gives no new plan', async () => {
+  it('(a2) 「もう終わった量」 as the role answer gives no new plan — and the question that was shown OFFERED that choice (critic 4261)', async () => {
+    install(script(text => text === BUDGET ? { effortEstimates: [total(120, BUDGET)] } : {}));
+    const conversation = open();
+    await conversation.submit(T1_UNQUANTIFIED);
+    const second = await conversation.submit(BUDGET);
+    // The scripted reader returns `completed` for this text regardless of the question, so the pin is on what the user was asked:
+    // the typed role question carries the already-done choice and its own purpose, and no remaining total (no scope total exists).
+    const shown = second.calls.filter(call => call.kind === 'renderer').pop()!;
+    const intent = (shown.payload?.applicationDecision as Json).questionIntent as Json;
+    expect(intent).toMatchObject({ kind: 'resolution_question', resolutionKind: 'quantity_role', allowedChoices: ['plan_target_amount', 'completed_amount'] });
+    expect(((shown.payload?.applicationDecision as Json).communication as Json).questionPurposes).toEqual(['tell_plan_amount_from_completed_amount']);
+    const system = JSON.stringify(shown.messages);
+    expect(system).toContain('whether the amount is what to do in this plan or work already done');
+    expect(system).toContain('completed_amount=すでに終わった量');
+    const done = await conversation.submit(ALREADY_DONE);
+    expect(done.result?.failure).toBeUndefined();
+    expect(minutes(conversation)).toBe(0);
+    expect(active(conversation).workloads).toEqual([expect.objectContaining({ quantityRole: 'completed', amount: 120, unitCode: 'minute' })]);
+  });
+  it('the held turn after it (T3) states the same choice: still to do, or already done (one framing across T2 and T3)', async () => {
     install(script(text => text === BUDGET ? { effortEstimates: [total(120, BUDGET)] } : {}));
     const conversation = open();
     await conversation.submit(T1_UNQUANTIFIED);
     await conversation.submit(BUDGET);
-    const done = await conversation.submit(ALREADY_DONE);
-    expect(done.result?.failure).toBeUndefined();
-    expect(minutes(conversation)).toBe(0);
+    const third = await conversation.submit('お任せします');
+    const system = JSON.stringify(third.calls.filter(call => call.kind === 'renderer').pop()!.messages);
+    expect(system).toContain('declared_amount_waiting');
+    expect(system).toContain('still to do, or already done');
   });
   it('(d) repeated budgets terminate: progress question, budget, budget again -> the same progress question is not presented a third time', async () => {
     install(script(text => text === BUDGET ? { effortEstimates: [total(120, BUDGET)] } : {}));
@@ -185,6 +205,14 @@ describe('a bounded progress question (「全90ページのうち今どこまで
     expect(minutes(conversation)).toBe(0);
     expect(slot(conversation)).toBe('stable_v5:quantity_role_unresolved');
     expect(active(conversation).workloads.filter(w => w.quantityRole === 'target')).toEqual([]);
+  });
+  it('where a scope total exists the role question also offers the remaining total (plan / already done / remaining)', async () => {
+    install(script(text => text === BUDGET ? { effortEstimates: [total(120, BUDGET)] } : {}));
+    const conversation = open();
+    await conversation.submit(T1_BOUNDED);
+    const second = await conversation.submit(BUDGET);
+    const intent = (second.calls.filter(call => call.kind === 'renderer').pop()!.payload?.applicationDecision as Json).questionIntent as Json;
+    expect(intent.allowedChoices).toEqual(['plan_target_amount', 'completed_amount', 'remaining_total_amount']);
   });
   it('per contribution: 「30ページ終わって、合計2時間くらい」 binds the 30 pages and sends the 120 to the role confirmation', async () => {
     install(script(text => text === DONE_PLUS_BUDGET

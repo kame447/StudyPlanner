@@ -140,6 +140,11 @@ export function questionPurposesForStableV5Dialogue(params: {
     return ['confirm_open_point'];
   }
   if (intent?.kind === 'learning_strategy_proposal') return ['decide_on_study_method_suggestion'];
+  // A declared amount that may be work already done (P3): the choices say so, so the purpose does too.
+  if (intent?.kind === 'resolution_question' && intent.resolutionKind === 'quantity_role'
+    && (intent.allowedChoices as readonly string[]).includes('completed_amount')) {
+    return ['tell_plan_amount_from_completed_amount'];
+  }
   return params.questionCode ? purposesForQuestionCode(params.questionCode) : [];
 }
 

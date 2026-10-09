@@ -351,6 +351,7 @@ function createRenderInput(params: {
     questionTarget,
     planningInformation,
     effortMeasurement: params.result.state.lastQuestionContext?.intent ?? null,
+    interaction,
   });
   // Interaction: a message the application could not use changed nothing, so the previous
   // preview is not presented as its result (live C on d7b85616 invited promoting the old

@@ -58,6 +58,7 @@ export const WEEKLY_PLANNING_STABLE_V5_QUESTION_PURPOSES = [
   'set_planning_period',
   'choose_one_planning_period',
   'tell_plan_amount_from_remaining_total',
+  'tell_plan_amount_from_completed_amount',
   'choose_one_time_estimate',
   'apply_time_limits_to_right_days',
   'know_exact_time_range',
@@ -228,6 +229,8 @@ export type WeeklyPlanningStableV5DialogueRequestedInformation =
 export type WeeklyPlanningStableV5DialogueResolutionChoice =
   | 'plan_target_amount'
   | 'remaining_total_amount'
+  /** P3: the amount the user stated may be work already done (a declared amount answering a progress-type question). */
+  | 'completed_amount'
   | 'allowed_date'
   | 'excluded_date'
   | 'timetable'

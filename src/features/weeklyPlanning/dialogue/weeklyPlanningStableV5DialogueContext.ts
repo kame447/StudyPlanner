@@ -288,9 +288,29 @@ function registeredMaterialTargetScopeIntent(params: {
   };
 }
 
+/**
+ * Interaction: a declared (role-unresolved) amount may be work already done, so the typed choices say so; `remaining` is offered
+ * only where a scope total exists for the task. Other role questions keep the original two choices.
+ */
+function quantityRoleChoices(params: {
+  questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>;
+  planningInformation?: Record<string, unknown> | null;
+  interaction?: boolean;
+}): readonly ('plan_target_amount' | 'completed_amount' | 'remaining_total_amount')[] {
+  const fact = params.questionTarget?.fact;
+  if (!params.interaction || fact?.quantityRole !== 'declared') return ['plan_target_amount', 'remaining_total_amount'];
+  const hasScopeTotal = recordArray(params.planningInformation ?? null, 'workloads').some((workload) =>
+    workload.taskId === fact.taskId && workload.quantityRole === 'scope_total');
+  return hasScopeTotal
+    ? ['plan_target_amount', 'completed_amount', 'remaining_total_amount']
+    : ['plan_target_amount', 'completed_amount'];
+}
+
 function resolutionIntent(params: {
   questionCode: string;
   questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>;
+  planningInformation?: Record<string, unknown> | null;
+  interaction?: boolean;
 }) {
   const fact = params.questionTarget?.fact;
   const id = targetFactId(params.questionTarget);
@@ -322,7 +342,7 @@ function resolutionIntent(params: {
         ...base,
         resolutionKind: 'quantity_role' as const,
         requestedInformation: ['quantity_role'] as const,
-        allowedChoices: ['plan_target_amount', 'remaining_total_amount'] as const,
+        allowedChoices: quantityRoleChoices(params),
         knownAmount: typeof fact?.amount === 'number' && Number.isFinite(fact.amount) ? fact.amount : null,
         knownUnitLabel: typeof fact?.unitLabel === 'string' ? fact.unitLabel : null,
       };
@@ -381,6 +401,8 @@ export function questionIntentForStableV5Dialogue(params: {
   questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>;
   planningInformation?: Record<string, unknown> | null;
   effortMeasurement?: string | null;
+  /** The interaction architecture (typed role choices include already-done work). */
+  interaction?: boolean;
 }) {
   const fact = params.questionTarget?.fact;
 
@@ -488,7 +510,7 @@ export function questionIntentForStableV5Dialogue(params: {
   }
 
   return params.questionCode
-    ? resolutionIntent({ questionCode: params.questionCode, questionTarget: params.questionTarget })
+    ? resolutionIntent({ questionCode: params.questionCode, questionTarget: params.questionTarget, planningInformation: params.planningInformation, interaction: params.interaction })
     : null;
 }
 
