@@ -3,7 +3,7 @@ import { BookshelfMaterialDialog } from './BookshelfMaterialDialog';
 import { BookshelfSubjectDialog } from './BookshelfSubjectDialog';
 import { HomeView } from './HomeView';
 import { createActualDraftForPlan } from '../lib/actualDrafts';
-import { createLocalFixture, actual } from '../repositories/localPersistenceConcurrency.testUtils';
+import { createLocalFixture, actual, deferred, microtasks } from '../repositories/localPersistenceConcurrency.testUtils';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Firestore } from 'firebase/firestore';
@@ -32,7 +32,7 @@ const p=plan({title:'Math',startTime:'19:00',endTime:'20:00'}), noop=()=>{};
 const notices=vi.fn();
 const firstPlan={...p,materialId:'material',materialName:'Book'};
 const secondPlan={...firstPlan,id:'other-plan',seriesId:'other-plan',title:'Math second',startTime:'20:00',endTime:'21:00'};
-function Harness(){state=usePlannerDataState({userId:'owner',showNotice:notices});return <StudySessionProvider materials={state.studyMaterials} onSaveActual={state.saveActual}><HomeView plans={state.plans} actuals={state.actuals} todos={state.todos} studyMaterials={state.studyMaterials} primaryHeaderRef={{current:null}} primaryBottomNavRef={{current:null}} onOpenAiPlanning={noop} onOpenSchedule={noop} onOpenDay={noop} onOpenTodo={noop} onOpenBookshelf={noop} onOpenReport={noop}/></StudySessionProvider>}
+function Harness(){state=usePlannerDataState({userId:'owner',showNotice:notices});return <StudySessionProvider materials={state.studyMaterials} onSaveActual={state.saveActual}><HomeView plans={state.plans} actuals={state.actuals} todos={state.todos} studyMaterials={state.studyMaterials} primaryHeaderRef={{current:null}} primaryBottomNavRef={{current:null}} onOpenAiPlanning={noop} onOpenSchedule={noop} onAddEntry={noop} onOpenDay={noop} onOpenTodo={noop} onOpenBookshelf={noop} onOpenReport={noop}/></StudySessionProvider>}
 function button(label:string){return renderer!.root.findAllByType('button').find(b=>b.children.includes(label))!;}
 async function click(label:string){await act(async()=>{button(label).props.onClick()});}
 beforeEach(()=>{sdk.rows.clear();sdk.rows.set('plans',new Map([[p.id,p]]));sdk.log=[];sdk.gate=null;sdk.entered=false;notices.mockClear();
@@ -54,13 +54,13 @@ async function homeStart(){await act(async()=>{renderer!.root.findByProps({class
 function progressDraft(target:typeof firstPlan, delta:number){return {...createActualDraftForPlan(target),materialProgressUpdates:[{materialId:'material',deltaUnits:delta}]};}
 it('public Home next-plan busy rejection preserves B progress through A completion and retries from committed material',async()=>{
  await mount();
- expect(renderer!.root.findByProps({'data-home-section':'next-plan'}).findByType('h1').children).toEqual(['Math']);
+ expect(renderer!.root.findByProps({'data-home-section':'next-plan'}).findByProps({ className: 'home-plan-title' }).findByType('span').children).toEqual(['Math']);
  let release!:()=>void;sdk.gate=new Promise<void>(r=>release=r);
  await homeStart();await click('スタート');vi.setSystemTime(new Date('2026-10-04T20:00:00'));await click('終了する');await inputProgress('5');await click('記録を保存');
  expect(sdk.entered).toBe(true);
  await back();await back();
  expect(renderer!.root.findAllByProps({role:'dialog'})).toHaveLength(0);
- expect(renderer!.root.findByProps({'data-home-section':'next-plan'}).findByType('h1').children).toEqual(['Math second']);
+ expect(renderer!.root.findByProps({'data-home-section':'next-plan'}).findByProps({ className: 'home-plan-title' }).findByType('span').children).toEqual(['Math second']);
  await homeStart();await click('スタート');await click('終了する');await inputProgress('7');await click('記録を保存');
  expect((await boundary.repository.getStudyMaterials('owner'))[0].currentUnit).toBe(10);
  expect(await boundary.repository.getActuals('owner')).toHaveLength(0);
@@ -287,4 +287,29 @@ it.each(['scope-reset', 'observed-recreation'] as const)('open Bookshelf Delete 
   expect(await boundary.repository.getStudyMaterials('owner')).toEqual([original]);
   await click('キャンセル'); await openMaterialEditor(); await click('削除');
   expect(await boundary.repository.getStudyMaterials('owner')).toEqual([]);
+});
+
+
+it.each(['save', 'delete'] as const)('late Bookshelf %s completion cannot close a newer material draft', async action => {
+  await mountBookshelf(); await openMaterialEditor();
+  const gate = deferred();
+  if (action === 'save') {
+    const original = boundary.repository.upsertStudyMaterial;
+    boundary.repository = { ...boundary.repository, upsertStudyMaterial: async row => { const saved = await original(row); await gate.promise; return saved; } };
+  } else {
+    const original = boundary.repository.deleteStudyMaterial;
+    boundary.repository = { ...boundary.repository, deleteStudyMaterial: async (...args) => { await original(...args); await gate.promise; } };
+  }
+  let saving!: Promise<void>;
+  await act(async () => {
+    saving = action === 'save'
+      ? renderer!.root.findByType(BookshelfMaterialDialog).findByType('form').props.onSubmit({ preventDefault: noop })
+      : button('削除').props.onClick();
+    await microtasks();
+  });
+  await click('キャンセル'); await click('教材追加');
+  await act(async () => { materialNameInput().props.onChange({ target: { value: 'New unsaved draft' } }); });
+  await act(async () => { gate.resolve(); await saving; await microtasks(); });
+  expect(renderer!.root.findAllByType(BookshelfMaterialDialog)).toHaveLength(1);
+  expect(materialNameInput().props.value).toBe('New unsaved draft');
 });

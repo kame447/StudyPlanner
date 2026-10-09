@@ -44,6 +44,7 @@ import {
   type WeekViewLane,
 } from '../lib/weekViewLayout';
 import { useScheduleItemActionPress } from '../hooks/useScheduleItemActionPress';
+import { useTimelineDragCancellation } from '../hooks/useTimelineDragCancellation';
 import { useUndoRedoHistory } from '../hooks/useUndoRedoHistory';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import type {
@@ -98,6 +99,7 @@ type WeekPreviewBlock = WeekPreviewBaseBlock & WeekViewLane;
 
 interface DragSession {
   inputKind: DragInputKind;
+  sourceElement: HTMLElement;
   blockId: string;
   plan: Plan;
   originalDate: string;
@@ -151,10 +153,13 @@ const DRAG_EDGE_SCROLL_PX = 30;
 const DRAG_EDGE_SCROLL_STEP_PX = 14;
 const CLICK_SUPPRESSION_MS = 700;
 
-function formatWeekDate(dateString: string): string {
+function formatWeekDate(dateString: string, format: 'compact' | 'full'): string {
   const date = new Date(`${dateString}T00:00:00`);
   const weekday = WEEKDAY_LABELS[date.getDay()] ?? '';
-  return `${date.getMonth() + 1}/${date.getDate()}(${weekday})`;
+  const day = format === 'full'
+    ? `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+    : `${date.getDate()}`;
+  return `${day}（${weekday}）`;
 }
 
 function resolveActualTitle(actual: Actual, plan?: Plan): string {
@@ -338,17 +343,25 @@ export function WeekView({
 
   function clearDragSession() {
     const session = dragSessionRef.current;
+    if (!session) return;
     clearLongPressTimer(session);
     releaseInteractionLock(session);
     dragSessionRef.current = null;
     setDragVisual(null);
   }
 
+  useTimelineDragCancellation(clearDragSession);
+
+  useEffect(() => {
+    if (dragSessionRef.current?.sourceElement.isConnected === false) clearDragSession();
+  });
+
   useEffect(() => {
     return () => {
       const session = dragSessionRef.current;
       clearLongPressTimer(session);
       releaseInteractionLock(session);
+      dragSessionRef.current = null;
     };
   }, []);
 
@@ -381,6 +394,7 @@ export function WeekView({
 
     return {
       inputKind,
+      sourceElement: element,
       blockId: entry.id,
       plan: entry.plan,
       originalDate: target.date,
@@ -424,7 +438,7 @@ export function WeekView({
     suppressClickUntilRef.current = Date.now() + CLICK_SUPPRESSION_MS;
 
     if (session.inputKind === 'touch') {
-      session.releaseInteractionLock = acquireTimelineDragInteractionLock();
+      session.releaseInteractionLock ??= acquireTimelineDragInteractionLock();
       if ('vibrate' in navigator) navigator.vibrate?.(10);
     }
 
@@ -568,6 +582,8 @@ export function WeekView({
       return;
     }
 
+    clearDragSession();
+
     const session = createDragSession(
       'pointer',
       entry,
@@ -632,6 +648,7 @@ export function WeekView({
     event: ReactTouchEvent<HTMLButtonElement>,
     entry: WeekPreviewBlock,
   ) {
+    clearDragSession();
     if (event.touches.length !== 1) {
       return;
     }
@@ -651,15 +668,26 @@ export function WeekView({
     dragSessionRef.current = session;
     session.longPressTimer = window.setTimeout(() => {
       if (dragSessionRef.current !== session || session.canceled) return;
+      if (!session.sourceElement.isConnected) {
+        clearDragSession();
+        return;
+      }
+      // The first move must reach a native non-passive guard before React.
+      session.releaseInteractionLock = acquireTimelineDragInteractionLock();
       session.longPressArmed = true;
     }, TOUCH_LONG_PRESS_MS);
   }
 
   function handlePlanTouchMove(event: ReactTouchEvent<HTMLButtonElement>) {
     const session = dragSessionRef.current;
-    if (!session || session.inputKind !== 'touch' || event.touches.length !== 1) {
+    if (!session || session.inputKind !== 'touch') {
       return;
     }
+    if (event.touches.length !== 1) {
+      clearDragSession();
+      return;
+    }
+    if (session.canceled) return;
 
     const touch = event.touches[0];
     if (!session.active) {
@@ -883,12 +911,13 @@ export function WeekView({
                 <div className="weekly-draft-preview-corner">時間</div>
                 {weekDates.map((date) => (
                   <button
+                    aria-label={formatWeekDate(date, 'full')}
                     className="weekly-draft-preview-date"
                     key={date}
                     onClick={() => onOpenDay(date)}
                     type="button"
                   >
-                    <strong>{formatWeekDate(date)}</strong>
+                    <strong>{formatWeekDate(date, 'compact')}</strong>
                   </button>
                 ))}
               </div>
@@ -1019,7 +1048,7 @@ export function WeekView({
                       onDoubleClick={() => onOpenDay(date)}
                       style={timelineStyle}
                       role="group"
-                      aria-label={`${formatWeekDate(date)}の${timelineMode === 'plan' ? '予定' : '記録'}`}
+                      aria-label={`${formatWeekDate(date, 'full')}の${timelineMode === 'plan' ? '予定' : '記録'}`}
                     >
                       {WEEK_HOURS.map((hour) => (
                         <span

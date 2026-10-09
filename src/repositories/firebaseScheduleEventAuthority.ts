@@ -1,9 +1,12 @@
+import { observeStartupDocument } from './observeStartupDocument';
+import { startupTiming } from '../lib/startupTiming';
 import type { Firestore, Transaction, WriteBatch } from 'firebase/firestore';
 import {
   collection,
   deleteDoc,
   doc,
   getDocs,
+  getDocFromServer,
   query,
   runTransaction,
   setDoc,
@@ -26,9 +29,10 @@ import {
   type ScheduleEventMigrationState,
 } from '../domain/scheduleEvent';
 import type { Actual, Plan } from '../types/domain';
-import type {
-  LegacyScheduleSnapshot,
-  ScheduleEventAuthorityRepository,
+import {
+  ScheduleEventMigrationCapabilityUnavailableError,
+  type LegacyScheduleSnapshot,
+  type ScheduleEventAuthorityRepository,
 } from './scheduleEventAuthorityRepository';
 
 const SCHEDULE_EVENTS_COLLECTION = 'schedule_events';
@@ -377,22 +381,52 @@ export function createFirebaseScheduleEventAuthority(
   firestoreDb: Firestore,
 ): ScheduleEventAuthorityRepository {
   return {
+    observeStartupScheduleMarker(ownerId, scope) {
+      return observeStartupDocument({
+        reference: doc(firestoreDb, SCHEDULE_EVENT_MIGRATIONS_COLLECTION, ownerId), scope,
+        phase: 'schedule-marker-observation', stopPhase: 'schedule-marker-observer-stop',
+      });
+    },
     async ensureMigrated(
       userId: string,
       loadLegacy: () => Promise<LegacyScheduleSnapshot>,
     ) {
+      // Keep rollout capability classification restricted to this marker read.
+      // A server read may still include local pending writes: those cannot certify cutover.
+      let snapshot;
       try {
-        const state = await acquireMigrationDocument(firestoreDb, userId);
+        snapshot = await startupTiming.measure('schedule-marker-read', () =>
+          getDocFromServer(doc(firestoreDb, SCHEDULE_EVENT_MIGRATIONS_COLLECTION, userId)));
+      } catch (error) {
+        const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+        if (code.includes('permission-denied')) {
+          startupTiming.markOnce('schedule-marker-unavailable');
+          throw new ScheduleEventMigrationCapabilityUnavailableError(
+            'Firestore Rules do not expose the ScheduleEvent migration capability yet.',
+          );
+        }
+        throw error;
+      }
+      if (snapshot.exists() && snapshot.metadata?.fromCache === false
+        && snapshot.metadata?.hasPendingWrites === false
+        && isCurrentScheduleEventMigration(snapshot.data() as ScheduleEventMigrationCandidate)) {
+        startupTiming.markOnce('schedule-marker-complete');
+        return;
+      }
+
+      try {
+        const state = await startupTiming.measure('schedule-migration-acquire', () => acquireMigrationDocument(firestoreDb, userId));
         if (isCurrentScheduleEventMigration(state)) return;
 
-        const legacy = await loadLegacy();
+        const legacy = await startupTiming.measure('schedule-legacy-read', loadLegacy);
         assertOwnedRecords(userId, [...legacy.plans, ...legacy.monthEvents], '予定移行');
         const migration = migrateLegacyScheduleRecords(legacy);
-        const shouldComplete = await replaceCanonicalSnapshot(
+        // Backfill includes canonical reads, guarded writes and read-back verification.
+        const shouldComplete = await startupTiming.measure('schedule-migration-backfill', () => replaceCanonicalSnapshot(
           firestoreDb,
           userId,
           migration.events,
-        );
+        ));
         if (!shouldComplete) return;
 
         const completed = createScheduleEventMigrationState({
@@ -408,10 +442,10 @@ export function createFirebaseScheduleEventAuthority(
           revision: MIGRATION_REVISION,
           startedAt: state.startedAt,
         };
-        await setDoc(
+        await startupTiming.measure('schedule-migration-complete-write', () => setDoc(
           doc(firestoreDb, SCHEDULE_EVENT_MIGRATIONS_COLLECTION, userId),
           completedDocument,
-        );
+        ));
       } catch (error) {
         throw new Error(
           normalizeErrorMessage(
@@ -422,13 +456,32 @@ export function createFirebaseScheduleEventAuthority(
       }
     },
 
-    async getPlans(userId) {
+    async getScheduleSnapshot(userId) {
       try {
-        return (await listByUserId<ScheduleEvent>(
+        const events = await startupTiming.measure('schedule-canonical-snapshot', () => listByUserId<ScheduleEvent>(
           firestoreDb,
           SCHEDULE_EVENTS_COLLECTION,
           userId,
-        ))
+        ));
+        assertOwnedRecords(userId, events, '予定取得');
+        return {
+          plans: events.map(scheduleEventToPlan).filter((plan): plan is Plan => plan !== null),
+          monthEvents: events.map(scheduleEventToMonthEvent).filter((event): event is NonNullable<typeof event> => event !== null),
+        };
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('予定を取得できませんでした。', error as FirebaseLikeError),
+        );
+      }
+    },
+
+    async getPlans(userId) {
+      try {
+        return (await startupTiming.measure('schedule-canonical-plans', () => listByUserId<ScheduleEvent>(
+          firestoreDb,
+          SCHEDULE_EVENTS_COLLECTION,
+          userId,
+        )))
           .map(scheduleEventToPlan)
           .filter((plan): plan is Plan => plan !== null);
       } catch (error) {
@@ -440,11 +493,11 @@ export function createFirebaseScheduleEventAuthority(
 
     async getMonthEvents(userId) {
       try {
-        return (await listByUserId<ScheduleEvent>(
+        return (await startupTiming.measure('schedule-canonical-month-events', () => listByUserId<ScheduleEvent>(
           firestoreDb,
           SCHEDULE_EVENTS_COLLECTION,
           userId,
-        ))
+        )))
           .map(scheduleEventToMonthEvent)
           .filter((event): event is NonNullable<typeof event> => event !== null);
       } catch (error) {

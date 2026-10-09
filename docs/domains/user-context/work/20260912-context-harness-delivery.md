@@ -80,7 +80,7 @@ canonical Phase 1と#164の共同境界。前提は共通policyと、#164が決�
 
 ## 7. UC-P2A：bounded retrievalの接続
 
-対応はcanonical Phase 2〜3の読取部分。前提は必要なidentity/forget/競合契約と、#152の対応trust-boundary検証。初期実装はembeddingなし、AI rerankerなし。read serviceでeligibility、current-state conflict、順位、予算を分け、scope/origin/valid time/sourceを保持するprojectionへ接続する。
+対応はcanonical Phase 2〜3の読取部分。前提は必要なidentity/forget/競合契約と、#152で確立したtrust boundaryおよび変更経路に対応するcurrent security regression。初期実装はembeddingなし、AI rerankerなし。read serviceでeligibility、current-state conflict、順位、予算を分け、scope/origin/valid time/sourceを保持するprojectionへ接続する。
 
 まず同じsnapshotへ旧V2と新selectorを走らせるshadow比較を行い、ID、採否理由、欠落、bytes、時間だけを観測する。shadowは別providerへ実データを二重送信する許可ではない。fixtureと同意済みpilotを区別する。
 
@@ -156,7 +156,7 @@ evidenceでは原文「短く区切りたい」と表示文「毎日15分」を�
 
 追加読取ではGraphにない新しい話題を参照し、一回で終了、不明時の確認、abort/timeout後の無更新を確認する。圧縮では直近より前の経緯を保持してもpending targetとapproval revisionは正式状態のままとし、圧縮失敗/増大/古いsummaryでも変わらないことを試す。
 
-securityでは記憶本文、教材名、episodeにrole風文字列、閉じタグ、Unicode境界、保存命令を含める。権限・承認・current-turn factへ昇格しないことを#152のcorpusへ集約し、禁止語表をproduction意味判定にしない。
+securityでは記憶本文、教材名、episodeにrole風文字列、閉じタグ、Unicode境界、保存命令を含める。権限・承認・current-turn factへ昇格しないことを#152で確立したcorpusとcurrent regression gateで検証し、禁止語表をproduction意味判定にしない。
 
 fixtureはcase ID、固定clock、source snapshot/revision、turn列、必須/禁止の根拠ID、許可surface mode、期待/禁止mutationを持つ。property-based testは既存fast-checkを利用し、同一操作再送、順序変更、無関係記録の追加で不変条件を検査する。日本語全文一致ではなく、必要情報と禁止主張を評価する。
 
@@ -176,7 +176,7 @@ fixtureはcase ID、固定clock、source snapshot/revision、turn列、必須/�
 
 #164はlocal replica、共有authority、操作ID/revision、offline queue、旧client、migration/rollbackを提供する。read adapterは既存repositoryで進められるが、新しい共有write/forgetの有効化には該当契約が必要。WASM等の全体完了を一括依存にしない。
 
-#152とDraft PR #174はstored/indirect injection、provenance、durable poisoning、rendererのsecurity評価を維持する。今回の文書branchへ既存security差分を取り込まず、別security Issue/PRを作らない。再開時にcurrent mainへ整合させ、変更経路の検証を行う。古いHEADの成功はcurrent-mainの証拠ではない。
+#152とDraft PR #174は完了済みのsecurity evaluation履歴である。そこで確立したstored/indirect injection、provenance、durable poisoning、rendererのbaselineを維持し、今回の文書branchへ過去のsecurity差分を取り込まない。実装再開時はcurrent mainへ整合させ、変更経路に対応するcurrent regression gateを実行する。古いHEADの成功はcurrent-mainの証拠ではない。
 
 #246はTurnPurpose、ActiveInteraction、advice proposal/review/adoption/promotionのownerを保持し、共通contextとfreshnessをconsumeする。#269/#270は既にmainのbaselineであり、availabilityやatomic formal-turnを再実装しない。助言生成をdurable memory生成と同一視しない。
 
@@ -190,4 +190,4 @@ fixtureはcase ID、固定clock、source snapshot/revision、turn列、必須/�
 
 2026-09-12の整備は、既存#294の管理情報を更新し、supporting設計・本work・既存roadmapと入口を接続する文書変更である。新しい親Issueや全phase用のplaceholder PRは作らない。最新branch/PR/HEADと文書検証の結果は#294のcheckpointを参照する。
 
-文書PRをマージしても、UC-P0の実測、UC-P1A以降のコード、#152の再検証、本番への投入が完了したとは扱わない。次のruntime unitは現時点のmainとactive ownerを再確認した上で、roadmapに従って着手する。
+文書PRをマージしても、UC-P0の実測、UC-P1A以降のコード、変更経路に対応するcurrent security regression、本番への投入が完了したとは扱わない。次のruntime unitは現時点のmainとactive ownerを再確認した上で、roadmapに従って着手する。

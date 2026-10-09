@@ -77,7 +77,7 @@ interface PlannerAppState {
   signInWithPassword: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
-  saveUserProfile: (draft: UserProfileDraft) => Promise<void>;
+  saveUserProfile: (draft: UserProfileDraft) => Promise<User>;
   signOut: () => Promise<void>;
   openCreatePlan: () => void;
   openEditPlan: (plan: Plan) => void;
@@ -133,8 +133,8 @@ interface PlannerAppState {
   currentDayNote: DayNote | DayNoteDraft | null;
 }
 
-export function usePlannerAppState(): PlannerAppState {
-  const { notice, showNotice, dismissNotice } = useNoticeState();
+export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, onBootstrapSettled }: { noticeAutoDismiss?: boolean; expectedUserId?: string; onBootstrapSettled?: () => void } = {}): PlannerAppState {
+  const { notice, showNotice, dismissNotice } = useNoticeState(noticeAutoDismiss);
   const weeklyPlanningApprovalPlanRepository =
     getWeeklyPlanningApprovalPlanRepository();
   const {
@@ -147,7 +147,7 @@ export function usePlannerAppState(): PlannerAppState {
     sendPasswordReset,
     saveUserProfile,
     signOut: signOutSession,
-  } = useAuthSessionState({ showNotice });
+  } = useAuthSessionState({ showNotice, expectedUserId, onBootstrapSettled });
   const {
     plans: storedPlans,
     actuals,
@@ -172,6 +172,7 @@ export function usePlannerAppState(): PlannerAppState {
     isRecurringPlanEdit,
     pendingRecurringPlanAction,
     loadPlannerData,
+    projectPlanSave,
     resetPlannerData,
     setViewMode,
     openCreatePlan,
@@ -236,15 +237,23 @@ export function usePlannerAppState(): PlannerAppState {
     void bootstrapSession(loadPlannerData);
   }, [bootstrapSession, loadPlannerData]);
 
+  // Keep the early request, but do not repeat a confirmed successful read when
+  // the root-owned profile is restored. A fresh root mount gets a fresh scope.
+  const catalogStartup = useMemo(() => ({ successful: false }), [expectedUserId]);
   useEffect(() => {
+    if (expectedUserId && catalogStartup.successful) return;
+    let active = true;
     void import('../data/naturalLanguageCatalog').then(
-      ({ loadNaturalLanguageCatalog }) => {
-        void loadNaturalLanguageCatalog({
-          seedWhenMissing: Boolean(user?.id),
-        });
+      async ({ loadNaturalLanguageCatalogWithOutcome }) => {
+        if (!active) return;
+        const result = await loadNaturalLanguageCatalogWithOutcome();
+        // Completion belongs to this mount/owner scope, not the user-id effect:
+        // null-to-owner cleanup must not invalidate an already-started shared read.
+        if (result.source === 'server') catalogStartup.successful = true;
       },
     );
-  }, [user?.id]);
+    return () => { active = false; };
+  }, [catalogStartup, expectedUserId, user?.id]);
 
   async function signUpWithPassword(
     email: string,
@@ -296,27 +305,20 @@ export function usePlannerAppState(): PlannerAppState {
     );
 
     try {
-      const savedPlan = await weeklyPlanningApprovalPlanRepository.saveApprovedPlan(draft);
+      // The repository acknowledgement remains the durable authority. The data
+      // hook tracks the write before dispatch and reconciles only Plans/Todos
+      // if a newer read or another mutation crossed this acknowledgement.
+      const savedPlan = await projectPlanSave(
+        () => weeklyPlanningApprovalPlanRepository.saveApprovedPlan(draft),
+      );
       if (!approvalScope.isCurrent()) throw new PlannerMutationScopeExpiredError();
-      setWeeklyApprovedPlanOverlay((current) =>
-        sortByDateTime(
-          upsertByKey(
-            current.filter((plan) => plan.id !== nextPlan.id),
-            savedPlan,
-            (plan) => plan.id,
-          ),
-        ),
-      );
-      await loadPlannerData(user.id);
-      setWeeklyApprovedPlanOverlay((current) =>
-        current.filter((plan) => plan.id !== nextPlan.id && plan.id !== savedPlan.id),
-      );
       return savedPlan;
-    } catch (error) {
+    } finally {
+      // This overlay is pending UI only. Confirmed rows belong to the shared
+      // projection; failed/unknown responses must never become saved truth.
       setWeeklyApprovedPlanOverlay((current) =>
         current.filter((plan) => plan.id !== nextPlan.id),
       );
-      throw error;
     }
   }
 

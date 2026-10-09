@@ -1,0 +1,32 @@
+{
+  "prior_head": "c9cc91b1f808fdf75d23108d84b8f86218e8f553",
+  "prior_matrix_run": 37788656384,
+  "prior_artifact": 11555784151,
+  "prior_result": {
+    "matrix_failed": true,
+    "passed": 332,
+    "skipped": 3,
+    "failed": 1,
+    "flaky": 0,
+    "webkit_received_original_mp4": true,
+    "webkit_real_ended": {
+      "time": 9,
+      "duration": 9
+    },
+    "native_range_observed": false,
+    "native_resource_type": "other",
+    "failure": "Incorrect universal native Range-header assertion, after actual completion."
+  },
+  "correction": "Separate native playback contract from explicit Range-fetch full-body response contract in the same scenario. No runtime change.",
+  "local_checks": [
+    "node --check",
+    "Chromium11-case collection",
+    "WebKit-mobile11-case collection",
+    "git diff --check",
+    "independent parent diff review"
+  ],
+  "final_gate": "Exact-head GitHub full verification and browser matrix; no local full rerun for this browser-only correction.",
+  "test_sha256": "7e50386fcf9411204a6862b4e8321bce3acbf568c9f710b2ca98107af0c855e5",
+  "real_ios_verified": false,
+  "live_pages_safari_verified": false
+}

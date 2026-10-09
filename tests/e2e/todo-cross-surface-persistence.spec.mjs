@@ -1,9 +1,15 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/startup-ready.mjs';
 
 async function openTodo(page) {
   await page.locator('.primary-bottom-nav button').filter({ hasText: '予定' }).click();
   await page.getByRole('tab', { name: 'Todo', exact: true }).click();
   await expect(page.locator('.todo-view')).toBeVisible();
+}
+
+async function expectCompactTodoHeader(page) {
+  const sortBox = await page.locator('.todo-sort-control').boundingBox();
+  const headingBox = await page.locator('.todo-status-section-head').first().boundingBox();
+  expect(headingBox.y - (sortBox.y + sortBox.height)).toBeLessThanOrEqual(40);
 }
 
 for (const [name, viewport] of [
@@ -33,6 +39,10 @@ for (const [name, viewport] of [
     });
     await page.goto('/');
     await openTodo(page);
+    await expectCompactTodoHeader(page);
+    await page.setViewportSize({ width: 1024, height: 1366 });
+    await expectCompactTodoHeader(page);
+    await page.setViewportSize(viewport);
     const row = page.locator('.todo-view-item').filter({ hasText: '画面横断の課題' });
     await row.getByRole('button', { name: '編集', exact: true }).click();
     await page.locator('.todo-edit-modal').getByLabel('タイトル', { exact: true }).fill('保存した画面横断の課題');
@@ -59,6 +69,7 @@ for (const [name, viewport] of [
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: '削除', exact: true }).click();
     await expect(row).toHaveCount(0);
+    await expectCompactTodoHeader(page);
     await page.getByRole('button', { name: '元に戻す', exact: true }).click();
     await expect(row).toBeVisible();
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.todos.v1')).length)).toBe(1);

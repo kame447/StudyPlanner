@@ -1,0 +1,204 @@
+{
+  "generatedAt": "2026-10-08T11:53:29.200Z",
+  "javascript": {
+    "totalRaw": 2243661,
+    "totalGzip": 603532,
+    "largestRaw": 762739,
+    "largestGzip": 215434,
+    "files": [
+      {
+        "file": "dist/assets/index-CBrzFt2l.js",
+        "raw": 762739,
+        "gzip": 215434
+      },
+      {
+        "file": "dist/assets/vendor-firebase-FApntBPu.js",
+        "raw": 480845,
+        "gzip": 111073
+      },
+      {
+        "file": "dist/assets/weeklyPlanningStableV5InstrumentedRuntimeExecutor-Nj_TTzgr.js",
+        "raw": 355566,
+        "gzip": 88247
+      },
+      {
+        "file": "dist/assets/vendor-react-j6gBtND5.js",
+        "raw": 142952,
+        "gzip": 45719
+      },
+      {
+        "file": "dist/assets/BookshelfView-DAL1bpy1.js",
+        "raw": 110098,
+        "gzip": 26614
+      },
+      {
+        "file": "dist/assets/AdminApp-CeIOttyc.js",
+        "raw": 83956,
+        "gzip": 20918
+      },
+      {
+        "file": "dist/assets/DayView-VQ-0VK_r.js",
+        "raw": 61173,
+        "gzip": 16749
+      },
+      {
+        "file": "dist/assets/AiPlanningView-C8QY3GSe.js",
+        "raw": 56233,
+        "gzip": 16755
+      },
+      {
+        "file": "dist/assets/vendor-icons-5U6lONxQ.js",
+        "raw": 34748,
+        "gzip": 7281
+      },
+      {
+        "file": "dist/assets/TimetableView-BCvH1rs-.js",
+        "raw": 25507,
+        "gzip": 7716
+      },
+      {
+        "file": "dist/assets/naturalLanguageCatalog-HKCDV4wU.js",
+        "raw": 23355,
+        "gzip": 8029
+      },
+      {
+        "file": "dist/assets/WeekView-CNKxZKm-.js",
+        "raw": 18930,
+        "gzip": 6662
+      },
+      {
+        "file": "dist/assets/QuickEntryModal-BOgmEBUG.js",
+        "raw": 15206,
+        "gzip": 4322
+      },
+      {
+        "file": "dist/assets/TodoView-CTK2fdW7.js",
+        "raw": 13352,
+        "gzip": 3776
+      },
+      {
+        "file": "dist/assets/ReportView-DvkNkWje.js",
+        "raw": 13330,
+        "gzip": 4289
+      },
+      {
+        "file": "dist/assets/vendor-runtime-CsTA7JqP.js",
+        "raw": 7799,
+        "gzip": 3567
+      },
+      {
+        "file": "dist/assets/TimetableOcrImportDialog-qC7qu1dn.js",
+        "raw": 7655,
+        "gzip": 2538
+      },
+      {
+        "file": "dist/assets/TimelineDragOverlay-C2soa5MB.js",
+        "raw": 5797,
+        "gzip": 2227
+      },
+      {
+        "file": "dist/assets/subjectInference-XJ3NmUKl.js",
+        "raw": 5592,
+        "gzip": 2516
+      },
+      {
+        "file": "dist/assets/ScheduleItemDeleteAction-Nv-90Dt4.js",
+        "raw": 4544,
+        "gzip": 2114
+      },
+      {
+        "file": "dist/assets/week-plan-drag-BQpk9zDZ.js",
+        "raw": 3974,
+        "gzip": 1738
+      },
+      {
+        "file": "dist/assets/naturalLanguageCatalog-BemF7W7C.js",
+        "raw": 1905,
+        "gzip": 818
+      },
+      {
+        "file": "dist/assets/HomeAddFlow-Zw5scUYF.js",
+        "raw": 1772,
+        "gzip": 880
+      },
+      {
+        "file": "dist/assets/weeklyPlanningMemoryPaceObservationsV5-CRIo0azp.js",
+        "raw": 1608,
+        "gzip": 761
+      },
+      {
+        "file": "dist/assets/aiImageAttachment-DXRLKI3P.js",
+        "raw": 1605,
+        "gzip": 848
+      },
+      {
+        "file": "dist/assets/quickEntryDrafts-mAeXgM4V.js",
+        "raw": 1567,
+        "gzip": 774
+      },
+      {
+        "file": "dist/assets/useEditorMutation-CerX001Z.js",
+        "raw": 1057,
+        "gzip": 569
+      },
+      {
+        "file": "dist/assets/timetableTime-BglNDXzE.js",
+        "raw": 796,
+        "gzip": 598
+      }
+    ]
+  },
+  "css": {
+    "totalRaw": 484924,
+    "totalGzip": 81483,
+    "largestRaw": 424396,
+    "largestGzip": 68818,
+    "files": [
+      {
+        "file": "dist/assets/index-eJWyKeJ-.css",
+        "raw": 424396,
+        "gzip": 68818
+      },
+      {
+        "file": "dist/assets/AiPlanningView-CzYw3TTs.css",
+        "raw": 34908,
+        "gzip": 6522
+      },
+      {
+        "file": "dist/assets/AdminApp-xWc48Q7_.css",
+        "raw": 11262,
+        "gzip": 2329
+      },
+      {
+        "file": "dist/assets/TimetableView-DSePjugX.css",
+        "raw": 7393,
+        "gzip": 1885
+      },
+      {
+        "file": "dist/assets/week-plan-drag-CWO5B0FK.css",
+        "raw": 4117,
+        "gzip": 1175
+      },
+      {
+        "file": "dist/assets/BookshelfView-BC_aTddq.css",
+        "raw": 2848,
+        "gzip": 754
+      }
+    ]
+  },
+  "budgets": {
+    "javascript": {
+      "totalRaw": 2260000,
+      "totalGzip": 608000,
+      "largestRaw": 950000,
+      "largestGzip": 260000
+    },
+    "css": {
+      "totalRaw": 485000,
+      "totalGzip": 85000,
+      "largestRaw": 425000,
+      "largestGzip": 70000
+    }
+  },
+  "violations": []
+}

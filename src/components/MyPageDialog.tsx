@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useLayoutEffect, useRef, useState, type ChangeEvent } from 'react';
 import { Image, LogOut, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { useAdminStatus } from '../hooks/useAdminStatus';
 import { createAvatarDataUrl, isImageAvatar } from '../lib/avatarImage';
@@ -9,7 +9,7 @@ import { UserAvatar } from './UserAvatar';
 interface MyPageDialogProps {
   open: boolean;
   user: User;
-  onSaveProfile: (draft: UserProfileDraft) => Promise<void>;
+  onSaveProfile: (draft: UserProfileDraft) => Promise<User>;
   onSignOut: () => Promise<void>;
   onClose: () => void;
 }
@@ -26,56 +26,137 @@ export function MyPageDialog({
   const [isAvatarSectionOpen, setIsAvatarSectionOpen] = useState(false);
   const [status, setStatus] = useState('');
   const [statusTone, setStatusTone] = useState<'info' | 'error'>('info');
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const session = useRef<object | null>(null);
+  const selection = useRef<object | null>(null);
+  const pendingPhoto = useRef<object | null>(null);
+  const draftRevision = useRef<object>({});
+  const hasLocalIntent = useRef(false);
+  const latestSave = useRef<object | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { isAdmin } = useAdminStatus(open ? user.id : null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    session.current = null;
+    selection.current = null;
+    pendingPhoto.current = null;
+    setIsProcessingPhoto(false);
     if (!open) {
       return;
     }
 
+    session.current = {};
+    draftRevision.current = {};
+    hasLocalIntent.current = false;
+    latestSave.current = null;
     setUsername(user.username);
     setAvatar(user.avatar);
     setIsAvatarSectionOpen(false);
     setStatus('');
     setStatusTone('info');
-  }, [open, user.avatar, user.username]);
+    return () => {
+      session.current = null;
+      selection.current = null;
+      pendingPhoto.current = null;
+    };
+  }, [open, user.id]);
+
+  useLayoutEffect(() => {
+    // Untouched sessions follow profile refreshes. Once editing starts, only a
+    // correlated save result may replace the draft until this dialog is reopened.
+    if (open && session.current && !hasLocalIntent.current) {
+      setUsername(user.username);
+      setAvatar(user.avatar);
+    }
+  }, [open, user.id, user.username, user.avatar]);
 
   if (!open) {
     return null;
   }
 
   async function handleSaveProfile() {
-    await onSaveProfile({
-      username,
-      avatar,
-    });
+    const owner = session.current;
+    const revision = draftRevision.current;
+    if (!owner || pendingPhoto.current) return;
+    const request = {};
+    latestSave.current = request;
+    hasLocalIntent.current = true;
+    const isCurrent = () => session.current === owner
+      && draftRevision.current === revision && latestSave.current === request;
+    try {
+      const saved = await onSaveProfile({ username, avatar });
+      if (!isCurrent()) return;
+      setUsername(saved.username);
+      setAvatar(saved.avatar);
+    } catch (error) {
+      if (!isCurrent()) return;
+      setStatus(error instanceof Error ? error.message : 'プロフィールを更新できませんでした。');
+      setStatusTone('error');
+      return;
+    }
     setStatus('保存しました。');
+    setStatusTone('info');
+  }
+
+  function handleClose() {
+    session.current = null;
+    selection.current = null;
+    pendingPhoto.current = null;
+    onClose();
+  }
+
+  function markDraftEdited() {
+    hasLocalIntent.current = true;
+    draftRevision.current = {};
+  }
+
+  function selectAvatar(value: string) {
+    if (!session.current) return;
+    markDraftEdited();
+    selection.current = {};
+    pendingPhoto.current = null;
+    setIsProcessingPhoto(false);
+    setAvatar(value);
+    setStatus('');
     setStatusTone('info');
   }
 
   async function handleAvatarFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
 
-    if (!file) {
+    const owner = session.current;
+    if (!file || !owner) {
       return;
     }
 
+    // Clear synchronously so an older completion cannot clear a newer input.
+    event.target.value = '';
+    markDraftEdited();
+    const choice = {};
+    selection.current = choice;
+    pendingPhoto.current = choice;
+    setIsProcessingPhoto(true);
+    const isCurrent = () => session.current === owner && selection.current === choice;
     setStatus('画像を処理しています...');
     setStatusTone('info');
 
     try {
       const avatarDataUrl = await createAvatarDataUrl(file);
+      if (!isCurrent()) return;
       setAvatar(avatarDataUrl);
       setStatus('写真を読み込みました。保存すると反映されます。');
       setStatusTone('info');
     } catch (error) {
+      if (!isCurrent()) return;
       setStatus(
         error instanceof Error ? error.message : '写真を読み込めませんでした。',
       );
       setStatusTone('error');
     } finally {
-      event.target.value = '';
+      if (isCurrent() && pendingPhoto.current === choice) {
+        pendingPhoto.current = null;
+        setIsProcessingPhoto(false);
+      }
     }
   }
 
@@ -88,15 +169,14 @@ export function MyPageDialog({
   }
 
   return (
-    <div className="overlay modal-overlay" onClick={onClose}>
+    <div className="overlay modal-overlay" onClick={handleClose}>
       <div className="modal-card my-page-modal" onClick={(event) => event.stopPropagation()}>
         <div className="section-stack">
           <div className="section-header">
             <div>
               <h2>マイページ</h2>
-              <p>表示名とアイコンを編集できます。</p>
             </div>
-            <button className="ghost-button" onClick={onClose} type="button">
+            <button className="ghost-button" onClick={handleClose} type="button">
               閉じる
             </button>
           </div>
@@ -128,7 +208,15 @@ export function MyPageDialog({
               <span>ユーザーネーム</span>
               <input
                 value={username}
-                onChange={(event) => setUsername(event.target.value)}
+                onChange={(event) => {
+                  if (!session.current) return;
+                  markDraftEdited();
+                  setUsername(event.target.value);
+                  if (!pendingPhoto.current) {
+                    setStatus('');
+                    setStatusTone('info');
+                  }
+                }}
                 placeholder="未入力ならメールアドレスを使います"
               />
             </label>
@@ -164,7 +252,7 @@ export function MyPageDialog({
                     {isImageAvatar(avatar) ? (
                       <button
                         className="ghost-button"
-                        onClick={() => setAvatar('')}
+                        onClick={() => selectAvatar('')}
                         type="button"
                       >
                         写真を外す
@@ -184,7 +272,8 @@ export function MyPageDialog({
                   <div className="avatar-option-grid">
                     <button
                       className={!avatar ? 'avatar-option active' : 'avatar-option'}
-                      onClick={() => setAvatar('')}
+                      onClick={() => selectAvatar('')}
+                      aria-pressed={!avatar}
                       type="button"
                     >
                       文字
@@ -193,7 +282,8 @@ export function MyPageDialog({
                       <button
                         key={option}
                         className={avatar === option ? 'avatar-option active' : 'avatar-option'}
-                        onClick={() => setAvatar(option)}
+                        onClick={() => selectAvatar(option)}
+                        aria-pressed={avatar === option}
                         type="button"
                       >
                         {option}
@@ -206,14 +296,14 @@ export function MyPageDialog({
           </section>
 
           <div className="row-actions">
-            <button className="primary-button" onClick={() => void handleSaveProfile()} type="button">
+            <button className="primary-button" onClick={() => void handleSaveProfile()} type="button" disabled={isProcessingPhoto}>
               プロフィールを保存
             </button>
             {isAdmin ? (
               <button
                 className="ghost-button"
                 onClick={() => {
-                  onClose();
+                  handleClose();
                   window.location.assign('/admin/users');
                 }}
                 type="button"
@@ -227,7 +317,7 @@ export function MyPageDialog({
               ログアウト
             </button>
             {status ? (
-              <span className={statusTone === 'error' ? 'inline-error' : 'inline-note'}>
+              <span role="status" className={statusTone === 'error' ? 'inline-error' : 'inline-note'}>
                 {status}
               </span>
             ) : null}

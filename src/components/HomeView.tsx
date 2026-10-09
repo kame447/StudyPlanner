@@ -1,3 +1,6 @@
+import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
+import { useHomeTextReflow } from './home/useHomeTextReflow';
+import type { HomeScenePreferences } from '../lib/homeScenePreferences';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { buildHomeDashboardModel } from '../lib/homeDashboard';
 import type { Actual, Plan, StudyMaterial, TodoTask } from '../types/domain';
@@ -13,6 +16,7 @@ import {
 import { WeeklyProgressSection } from './home/WeeklyProgressSection';
 
 interface HomeViewProps {
+  homeScenePreferences?: HomeScenePreferences;
   plans: Plan[];
   actuals: Actual[];
   todos: TodoTask[];
@@ -21,6 +25,7 @@ interface HomeViewProps {
   primaryBottomNavRef: RefObject<HTMLElement | null>;
   onOpenAiPlanning: () => void;
   onOpenSchedule: () => void;
+  onAddEntry: () => void;
   onOpenDay: (date: string) => void;
   onOpenTodo: () => void;
   onOpenBookshelf: () => void;
@@ -90,14 +95,16 @@ function preferredScheduleListHeight(scheduleList: HTMLElement): number {
   const rows = Array.from(scheduleList.children).filter(
     (element): element is HTMLElement => element instanceof HTMLElement,
   );
-  if (rows.length <= MAX_VISIBLE_TODAY_ROWS) return scheduleList.scrollHeight;
+  const borderHeight = scheduleList.offsetHeight - scheduleList.clientHeight;
+  if (rows.length <= MAX_VISIBLE_TODAY_ROWS) return scheduleList.scrollHeight + borderHeight;
 
   return rows
     .slice(0, MAX_VISIBLE_TODAY_ROWS)
-    .reduce((height, row) => height + row.getBoundingClientRect().height, 0);
+    .reduce((height, row) => height + row.getBoundingClientRect().height, borderHeight);
 }
 
 export function HomeView({
+  homeScenePreferences,
   plans,
   actuals,
   todos,
@@ -106,14 +113,16 @@ export function HomeView({
   primaryBottomNavRef,
   onOpenAiPlanning,
   onOpenSchedule,
+  onAddEntry,
   onOpenDay,
   onOpenTodo,
   onOpenBookshelf,
   onOpenReport,
 }: HomeViewProps) {
+  const now = useHomeDisplayClock();
   const dashboard = useMemo(
-    () => buildHomeDashboardModel({ plans, actuals, todos }),
-    [actuals, plans, todos],
+    () => buildHomeDashboardModel({ plans, actuals, todos, now }),
+    [actuals, plans, todos, now],
   );
   const isGettingStarted =
     plans.length === 0 &&
@@ -135,6 +144,7 @@ export function HomeView({
     );
   }, [activeStudyMaterials]);
   const coreSectionsRef = useRef<HTMLDivElement | null>(null);
+  const homeTextSize = useHomeTextReflow(coreSectionsRef, isGettingStarted);
   const materialProbeRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const layoutRelaxationRef = useRef<HomeLayoutRelaxation>(emptyLayoutRelaxation());
   const [supplementalMaterialRows, setSupplementalMaterialRows] = useState<number | null>(null);
@@ -176,6 +186,8 @@ export function HomeView({
         ) {
           return;
         }
+
+        if (dashboardElement.dataset.contentScroll === 'true') return;
 
         const chromeViewportKey = `${window.innerWidth}x${window.innerHeight}`;
         let chromeLocked = header.dataset.homeChromeViewport === chromeViewportKey;
@@ -269,7 +281,7 @@ export function HomeView({
         ).slice(0, MAX_VISIBLE_TODAY_ROWS);
         const availableCoreHeight = Math.max(0, navTop - coreRect.top);
         const preferredListHeight = preferredScheduleListHeight(scheduleList);
-        const todayChromeHeight = Math.max(0, todayRect.height - scheduleList.clientHeight);
+        const todayChromeHeight = Math.max(0, todayRect.height - scheduleList.offsetHeight);
         const preferredTodayHeight = todayChromeHeight + preferredListHeight;
         const preferredCoreHeight = coreRect.height - todayRect.height + preferredTodayHeight;
         const needsFourRowCap = scheduleList.children.length > MAX_VISIBLE_TODAY_ROWS;
@@ -389,6 +401,7 @@ export function HomeView({
         nextRelaxation.hero += heroAddition;
         remaining -= heroAddition;
 
+        let scheduleHeightAddition = 0;
         if (remaining > 0.5 && scheduleRows.length > 0) {
           const rowCapacity = Math.max(
             0,
@@ -402,9 +415,8 @@ export function HomeView({
           nextRelaxation.row += rowAddition;
           remaining -= rowAddition * scheduleRows.length;
           if (rowAddition > 0.05 && needsFourRowCap) {
-            setScheduleMaxHeight(
-              preferredListHeight + rowAddition * scheduleRows.length,
-            );
+            scheduleHeightAddition += rowAddition * scheduleRows.length;
+            setScheduleMaxHeight(preferredListHeight + scheduleHeightAddition);
           }
         }
 
@@ -421,7 +433,8 @@ export function HomeView({
           const scheduleImpact = sideAddition * 2 * visibleScheduleChildren.length;
           remaining -= scheduleImpact;
           if (sideAddition > 0.05 && needsFourRowCap) {
-            setScheduleMaxHeight(preferredListHeight + scheduleImpact);
+            scheduleHeightAddition += scheduleImpact;
+            setScheduleMaxHeight(preferredListHeight + scheduleHeightAddition);
           }
         }
 
@@ -512,6 +525,7 @@ export function HomeView({
       window.visualViewport?.removeEventListener('resize', restartMeasurement);
     };
   }, [
+    homeTextSize,
     dashboard.todayPlans.length,
     dashboard.upcomingPlans.length,
     isGettingStarted,
@@ -526,6 +540,7 @@ export function HomeView({
       case 'next-plan':
         return (
           <NextPlanSection
+            homeScenePreferences={homeScenePreferences}
             key={sectionId}
             dashboard={dashboard}
             studyMaterials={studyMaterials}
@@ -540,7 +555,7 @@ export function HomeView({
             dashboard={dashboard}
             studyMaterials={studyMaterials}
             onOpenDay={onOpenDay}
-            onOpenSchedule={onOpenSchedule}
+            onAddEntry={onAddEntry}
           />
         );
       case 'attention':

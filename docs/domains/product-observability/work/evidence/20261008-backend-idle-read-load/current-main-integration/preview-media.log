@@ -1,0 +1,36 @@
+file://<DEPENDENCY_WORKTREE>/node_modules/vitest/dist/chunks/utils.XdZDrNZV.js:9
+		throw new Error(errorMsg);
+		      ^
+
+Error: Vitest failed to access its internal state.
+
+One of the following is possible:
+- "vitest" is imported directly without running "vitest" command
+- "vitest" is imported inside "globalSetup" (to fix this, use "setupFiles" instead, because "globalSetup" runs in a different context)
+- "vitest" is imported inside Vite / Vitest config file
+- Otherwise, it might be a Vitest bug. Please report it to https://github.com/vitest-dev/vitest/issues
+
+    at getWorkerState (file://<DEPENDENCY_WORKTREE>/node_modules/vitest/dist/chunks/utils.XdZDrNZV.js:9:9)
+    at getCurrentEnvironment (file://<DEPENDENCY_WORKTREE>/node_modules/vitest/dist/chunks/utils.XdZDrNZV.js:23:16)
+    at createExpect (file://<DEPENDENCY_WORKTREE>/node_modules/vitest/dist/chunks/vi.bdSIJ99Y.js:426:16)
+    at file://<DEPENDENCY_WORKTREE>/node_modules/vitest/dist/chunks/vi.bdSIJ99Y.js:464:22
+    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    at async node:internal/modules/esm/loader:643:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+
+Node.js v24.19.0
+✖ scripts/preview-media-response.test.mjs (273.819066ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 302.636896
+
+✖ failing tests:
+
+test at scripts/preview-media-response.test.mjs:1:1
+✖ scripts/preview-media-response.test.mjs (273.819066ms)
+  'test failed'

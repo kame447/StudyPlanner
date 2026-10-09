@@ -1,7 +1,7 @@
 # Learning Consultation Prompt and Evidence Design
 
-Status: supporting design / implementation preflight aligned
-Updated: 2026-08-31
+Status: supporting design / Phase 1A foundation merged; production integration pending
+Updated: 2026-10-07
 Owning Issue: [#246](https://github.com/kame447/StudyPlanner/issues/246)
 Parent canonical: [learning-consultation-and-advice.md](learning-consultation-and-advice.md)
 
@@ -155,7 +155,7 @@ ContextSourceEnvelope
 
 AIはunavailable/omitted/staleを「存在しない」と解釈しない。
 
-### 7.2 #269 dependency
+### 7.2 #269 completed availability baseline
 
 planner arraysの`[]`を見てemptyと判定しない。
 
@@ -257,7 +257,7 @@ SupplementalEvidence
 - missing supplemental evidenceを不存在と解釈しない。
 - conflicting evidenceをstring後勝ちで決めない。
 
-formal trust/provenanceは#152 owner。
+formal trust/provenanceは#152で確立したbaselineを消費する。
 
 ## 12. Review Context
 
@@ -540,15 +540,15 @@ validated answer
 
 commit failureでreviewable machine stateまたはpresentationの片側だけを成功扱いしない。
 
-Phase 1Aのpure schema/state testsでは#270を待つ必要はないが、production turn wiringでは必須。
+Phase 1Aのpure schema/state foundationはPR #280でmainへ統合済み。production turn wiringは#270で確立したatomic boundaryを必ず消費する。
 
-## 22. Planner availability dependency — #269
+## 22. Planner availability baseline — #269
 
 context builderはplanner data arraysだけを受け取るinterfaceに固定しない。
 
 owner-side availability/basisも受け取り、authoritative emptyとunavailable/staleを区別する。
 
-#269未解決中に#246側で`[] = empty`という独自推測を追加しない。
+#269は解決済みである。#246側で過去の`[] = empty`推測を再導入せず、既存のtyped availabilityを消費する。
 
 ## 23. Examples
 
@@ -654,19 +654,19 @@ application must guarantee:
 - commit/approval freshness
 - new revision on strategy modification/composition
 - no duplicate review/promotion
-- planner source availability from #269 owner state
-- formal proposal/presentation commit through #270
+- planner source availability from the completed #269 typed-availability baseline
+- formal proposal/presentation commit through the completed #270 atomic-turn baseline
 - multi-tab coordination via #164
 - material identity via #187
-- supplemental trust/provenance via #152
+- supplemental trust/provenance via the completed #152 baseline
 - full promotion coverage
 - no auto durable memory
 
 Implementation readiness:
 
-- pure TurnPurpose / ActiveInteraction projection / consultation state / AdviceAnswerDocument / validators / review lifecycle / context-envelope contracts: READY.
-- live planner-data grounding: consume #269; do not locally infer missing status.
-- live reviewable proposal commit/presentation: consume #270 atomic turn boundary.
-- production multi-tab / material / supplemental boundaries remain owned by #164 / #187 / #152.
+- pure TurnPurpose / ActiveInteraction projection / consultation state / AdviceAnswerDocument / validators / review lifecycle / context-envelope contracts: foundation merged by PR #280.
+- live planner-data grounding: consume the completed #269 typed-availability baseline; do not locally infer missing status.
+- live reviewable proposal commit/presentation: consume the completed #270 atomic-turn boundary.
+- production multi-tab / material boundaries remain owned by #164 / #187; supplemental trust/provenance uses the completed #152 baseline and the applicable current security gate.
 
 Prompt quality is never a substitute for lifecycle, security, or SSOT authority.

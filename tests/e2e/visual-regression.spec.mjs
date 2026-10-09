@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/startup-ready.mjs';
 import {
   clickPrimaryNav,
   installVisualGuards,
@@ -8,7 +8,7 @@ import {
 
 async function captureSurface(page, name, selector) {
   await waitForVisualReady(page, selector);
-  await expect(page).toHaveScreenshot(`${name}.png`);
+  await expect.soft(page).toHaveScreenshot(`${name}.png`);
 }
 
 async function assertAndNormalizeScheduleOccurrenceLabels(page) {

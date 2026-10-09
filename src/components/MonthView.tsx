@@ -69,6 +69,7 @@ export function MonthView({
     [grid],
   );
   const cellRefs = useRef(new Map<string, HTMLButtonElement>());
+  const viewRef = useRef<HTMLElement | null>(null);
   const shouldFocusSelectedCell = useRef(false);
   const pendingCellClickTimeout = useRef<number | null>(null);
   const lastCellClick = useRef<{ date: string; at: number } | null>(null);
@@ -174,6 +175,8 @@ export function MonthView({
 
   useEffect(() => {
     function handleWindowKeyDown(event: KeyboardEvent) {
+      // Settings retains this view while hiding it; its shortcuts must pause too.
+      if (!viewRef.current?.getClientRects().length) return;
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
         return;
       }
@@ -237,7 +240,7 @@ export function MonthView({
   }, []);
 
   return (
-    <section className="panel schedule-month-view">
+    <section ref={viewRef} className="panel schedule-month-view">
       <div className="schedule-month-static-grid">
         <MonthGridPanel
           monthDate={monthDate}

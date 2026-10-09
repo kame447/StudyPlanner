@@ -9,12 +9,15 @@ import {
   Plus,
   Target,
 } from 'lucide-react';
-import { formatCompactDate, minutesBetween } from '../../lib/date';
+import { minutesBetween } from '../../lib/date';
 import type { HomeDashboardModel } from '../../lib/homeDashboard';
 import {
   resolveHomeNextPlanPresentation,
   resolveHomeNextPlanVisual,
 } from '../../lib/homeNextPlanVisual';
+import { DEFAULT_HOME_SCENE_PREFERENCES, type HomeScenePreferences } from '../../lib/homeScenePreferences';
+import { HomeScene } from './HomeScene';
+import { HomePlanTitle } from './HomePlanTitle';
 import { buildPlanOccurrenceKey } from '../../lib/planRecurrence';
 import type { Actual, Plan, StudyMaterial, TodoTask } from '../../types/domain';
 import { useStudySessionLauncher } from '../StudySessionView';
@@ -72,13 +75,11 @@ function HomeScheduleRow({
   plan,
   actual,
   studyMaterials,
-  future = false,
   onOpenDay,
 }: {
   plan: Plan;
   actual?: Actual;
   studyMaterials: StudyMaterial[];
-  future?: boolean;
   onOpenDay: (date: string) => void;
 }) {
   const presentation = resolveHomeNextPlanPresentation(plan, studyMaterials);
@@ -86,7 +87,7 @@ function HomeScheduleRow({
 
   return (
     <button
-      className={future ? 'home-schedule-row future' : 'home-schedule-row'}
+      className="home-schedule-row"
       type="button"
       onClick={() => onOpenDay(plan.date)}
     >
@@ -95,7 +96,6 @@ function HomeScheduleRow({
       </span>
       <span className="home-schedule-content">
         <time>
-          {future ? `${formatCompactDate(plan.date)} ` : ''}
           {plan.startTime} - {plan.endTime}
         </time>
         <strong>{plan.title}</strong>
@@ -161,7 +161,7 @@ export function GettingStartedSection({
         <span className="home-setup-mark"><BookOpen size={22} aria-hidden="true" /></span>
         <div>
           <p>はじめに</p>
-          <h1 id="home-getting-started-title">StudyPlannerを準備する</h1>
+          <h1 id="home-getting-started-title">Laplansを準備する</h1>
         </div>
       </div>
       <p className="home-setup-copy">
@@ -189,11 +189,13 @@ export function GettingStartedSection({
 }
 
 export function NextPlanSection({
+  homeScenePreferences = DEFAULT_HOME_SCENE_PREFERENCES,
   dashboard,
   studyMaterials,
   onOpenAiPlanning,
   onOpenDay,
 }: {
+  homeScenePreferences?: HomeScenePreferences;
   dashboard: HomeDashboardModel;
   studyMaterials: StudyMaterial[];
   onOpenAiPlanning: () => void;
@@ -234,7 +236,7 @@ export function NextPlanSection({
         <p className="home-eyebrow">次の予定</p>
         {nextPlan ? (
           <>
-            <h1>{nextPlan.title}</h1>
+            <HomePlanTitle key={nextPlan.id} title={nextPlan.title} />
             <div className="home-next-meta">
               <span><Clock aria-hidden="true" size={18} />{nextPlan.startTime} - {nextPlan.endTime}</span>
               <span>
@@ -255,14 +257,7 @@ export function NextPlanSection({
         )}
       </div>
 
-      <div className="home-study-scene" aria-hidden="true">
-        <img
-          className="home-study-scene-image"
-          src={nextPlanVisual.src}
-          alt=""
-          decoding="async"
-        />
-      </div>
+      <HomeScene kind={nextPlanVisual.kind} preferences={homeScenePreferences} plan={nextPlan} />
 
       <button
         className="home-start-button"
@@ -282,20 +277,13 @@ export function TodayScheduleSection({
   dashboard,
   studyMaterials,
   onOpenDay,
-  onOpenSchedule,
+  onAddEntry,
 }: {
   dashboard: HomeDashboardModel;
   studyMaterials: StudyMaterial[];
   onOpenDay: (date: string) => void;
-  onOpenSchedule: () => void;
+  onAddEntry: () => void;
 }) {
-  const futureSlots = Math.max(0, 4 - Math.min(4, dashboard.todayPlans.length));
-  const visibleUpcomingPlans = dashboard.upcomingPlans.slice(0, futureSlots);
-  const showFuturePlaceholder =
-    dashboard.todayPlans.length > 0 &&
-    dashboard.todayPlans.length < 4 &&
-    visibleUpcomingPlans.length === 0;
-
   return (
     <section className="home-panel home-today-panel" data-home-section="today-schedule">
       <div className="home-section-heading">
@@ -319,31 +307,11 @@ export function TodayScheduleSection({
                 />
               );
             })}
-            {dashboard.todayPlans.length < 4
-              ? visibleUpcomingPlans.map((plan) => (
-                  <HomeScheduleRow
-                    key={`future:${plan.id}:${plan.date}`}
-                    plan={plan}
-                    future
-                    studyMaterials={studyMaterials}
-                    onOpenDay={onOpenDay}
-                  />
-                ))
-              : null}
-            {showFuturePlaceholder ? (
-              <button className="home-schedule-add-row" type="button" onClick={onOpenSchedule}>
-                <span><Plus size={15} aria-hidden="true" /></span>
-                <strong>この先の予定を追加</strong>
-                <ChevronRight size={17} aria-hidden="true" />
-              </button>
-            ) : null}
           </>
-        ) : (
-          <button className="home-schedule-empty" type="button" onClick={onOpenSchedule}>
-            <span><Plus size={16} aria-hidden="true" /></span>
-            今日の予定はまだありません。予定を追加する
-          </button>
-        )}
+        ) : null}
+        <button className={dashboard.todayPlans.length > 0 ? 'home-schedule-add-row' : 'home-schedule-empty'} type="button" onClick={onAddEntry} aria-label="今日の予定に追加">
+          <Plus size={20} aria-hidden="true" />
+        </button>
       </div>
       {dashboard.todayPlans.length > 4 ? <p className="home-scroll-hint">下にスクロールして続きを読む ↓</p> : null}
     </section>

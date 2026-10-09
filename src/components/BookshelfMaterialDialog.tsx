@@ -1,5 +1,7 @@
+import { useEditorMutation } from '../hooks/useEditorMutation';
 import { ActualMutationAdmissionError, materialUncertainMessage, type MaterialEditBaseline } from '../hooks/useActualMutationAdmission';
 import {
+  useLayoutEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -50,7 +52,12 @@ function catalogMeta(candidate: MaterialMetadataCandidate): string {
     .join(' ・ ');
 }
 
-export function BookshelfMaterialDialog({
+export function BookshelfMaterialDialog(props: BookshelfMaterialDialogProps) {
+  if (props.material && props.material.userId !== props.userId) return null;
+  return <BookshelfMaterialDialogSession key={JSON.stringify([props.userId, props.material?.id ?? null])} {...props} />;
+}
+
+function BookshelfMaterialDialogSession({
   userId,
   material,
   baseline,
@@ -59,6 +66,7 @@ export function BookshelfMaterialDialog({
   onSave,
   onDelete,
 }: BookshelfMaterialDialogProps) {
+  const beginMutation = useEditorMutation();
   const [editBaseline] = useState(baseline);
   const [requiresInspection, setRequiresInspection] = useState(false);
   const firstSubject = subjects[0] ?? null;
@@ -95,46 +103,77 @@ export function BookshelfMaterialDialog({
   const [statusTone, setStatusTone] = useState<'info' | 'error'>('info');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const coverRevision = useRef(0);
+  // The search component allows only one catalogue resolution at a time.
+  const catalogCoverRevision = useRef(0);
+  const pendingPhotoRevision = useRef<number | null>(null);
+  const pendingCatalogSelection = useRef(false);
+  const [isResolvingCatalog, setIsResolvingCatalog] = useState(false);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; coverRevision.current += 1; };
+  }, []);
+
+  function beginCoverSelection() {
+    coverRevision.current += 1;
+    pendingPhotoRevision.current = null;
+    setIsProcessingPhoto(false);
+    return coverRevision.current;
+  }
   const selectedSubject = subjects.find((subject) => subject.id === subjectId) ?? null;
   const parsedTotalUnits = parseOptionalNumber(totalUnits);
   const unitLabel =
     progressUnit === 'custom'
       ? progressUnitLabel.trim() || '単位'
       : getMaterialUnitLabel({ progressUnit });
-  const canSave = name.trim().length > 0 && Boolean(selectedSubject) && !isSubmitting && !requiresInspection;
+  const canSave = name.trim().length > 0 && Boolean(selectedSubject) && !isSubmitting && !requiresInspection && !isProcessingPhoto && !isResolvingCatalog;
   const coverPreviewSource = coverImageDataUrl || catalogCoverUrl;
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
 
-    if (!file) {
+    if (!file || !mounted.current) {
       return;
     }
 
+    // Clear this selection immediately; an older completion must not clear a newer input.
+    event.target.value = '';
+    const revision = beginCoverSelection();
+    pendingPhotoRevision.current = revision;
+    setIsProcessingPhoto(true);
     setStatus('画像を処理しています...');
     setStatusTone('info');
 
     try {
       const nextDataUrl = await createMaterialCoverDataUrl(file);
+      if (!mounted.current || coverRevision.current !== revision) return;
       setCoverImageDataUrl(nextDataUrl);
       setCatalogCoverUrl('');
       setStatus('写真を読み込みました。保存すると反映されます。');
       setStatusTone('info');
     } catch (error) {
+      if (!mounted.current || coverRevision.current !== revision) return;
       setStatus(error instanceof Error ? error.message : '写真を読み込めませんでした。');
       setStatusTone('error');
     } finally {
-      event.target.value = '';
+      if (mounted.current && pendingPhotoRevision.current === revision) {
+        pendingPhotoRevision.current = null;
+        setIsProcessingPhoto(false);
+      }
     }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!canSave || !selectedSubject) {
+    if (!canSave || !selectedSubject || pendingPhotoRevision.current !== null || pendingCatalogSelection.current) {
       return;
     }
 
+    const operation = beginMutation();
+    if (!operation) return;
     setIsSubmitting(true);
     try {
       const nextTotalUnits = parseOptionalNumber(totalUnits);
@@ -183,14 +222,15 @@ export function BookshelfMaterialDialog({
         });
       }
 
-      onClose();
+      if (operation.isCurrent()) onClose();
     } catch (error) {
+      if (!operation.isCurrent()) return;
       const uncertain = !(error instanceof ActualMutationAdmissionError);
       setRequiresInspection(uncertain);
       setStatus(`${error instanceof Error ? error.message : '教材を保存できませんでした。'}${uncertain ? ` ${materialUncertainMessage}` : ''}`);
       setStatusTone('error');
     } finally {
-      setIsSubmitting(false);
+      if (operation.finish()) setIsSubmitting(false);
     }
   }
 
@@ -199,22 +239,26 @@ export function BookshelfMaterialDialog({
       return;
     }
 
+    const operation = beginMutation();
+    if (!operation) return;
     const confirmed = window.confirm(`${material.name} を削除しますか？`);
     if (!confirmed) {
+      operation.finish();
       return;
     }
 
     setIsSubmitting(true);
     try {
       await onDelete(material, editBaseline);
-      onClose();
+      if (operation.isCurrent()) onClose();
     } catch (error) {
+      if (!operation.isCurrent()) return;
       const uncertain = !(error instanceof ActualMutationAdmissionError);
       setRequiresInspection(uncertain);
       setStatus(`${error instanceof Error ? error.message : '教材を削除できませんでした。'}${uncertain ? ` ${materialUncertainMessage}` : ''}`);
       setStatusTone('error');
     } finally {
-      setIsSubmitting(false);
+      if (operation.finish()) setIsSubmitting(false);
     }
   }
 
@@ -239,7 +283,7 @@ export function BookshelfMaterialDialog({
           <div className="section-header">
             <div>
               <h2>{material ? '教材を編集' : '教材を追加'}</h2>
-              <p>{material ? '教材情報を編集します。' : 'まず教材を探し、見つからなければ手入力できます。'}</p>
+              {!material ? <p>まず教材を探し、見つからなければ手入力できます。</p> : null}
             </div>
             <button className="ghost-button" onClick={onClose} type="button">
               閉じる
@@ -254,13 +298,24 @@ export function BookshelfMaterialDialog({
 
           {!material ? (
             <BookshelfMaterialSearch
+              onSelectionPendingChange={(pending) => {
+                pendingCatalogSelection.current = pending;
+                setIsResolvingCatalog(pending);
+                if (pending) {
+                  catalogCoverRevision.current = beginCoverSelection();
+                  setStatus('');
+                }
+              }}
               onSelect={(candidate) => {
                 setCatalogCandidate(candidate);
                 setName(candidate.title);
-                setCatalogCoverUrl(candidate.coverImageUrl ?? '');
-                setCoverImageDataUrl('');
-                setStatus('検索候補の教材情報を反映しました。');
-                setStatusTone('info');
+                // Metadata remains selected even when a later custom photo wins.
+                if (coverRevision.current === catalogCoverRevision.current) {
+                  setCatalogCoverUrl(candidate.coverImageUrl ?? '');
+                  setCoverImageDataUrl('');
+                  setStatus('検索候補の教材情報を反映しました。');
+                  setStatusTone('info');
+                }
               }}
             />
           ) : null}
@@ -369,6 +424,9 @@ export function BookshelfMaterialDialog({
                   <button
                     className="ghost-button"
                     onClick={() => {
+                      beginCoverSelection();
+                      setStatus('');
+                      setStatusTone('info');
                       setCoverImageDataUrl('');
                       setCatalogCoverUrl('');
                     }}

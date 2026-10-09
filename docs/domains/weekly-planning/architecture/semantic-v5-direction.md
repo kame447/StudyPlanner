@@ -41,4 +41,4 @@ current planning memory、durable preference、observed learning evidenceを分�
 
 ## Security
 
-Current security/adversarial execution order is owned by [the roadmap](../roadmap/current.md) and Issue #152. Stored untrusted strings must not become instructions, and AI alone must never bypass authorization/approval/save.
+Current security/adversarial execution order is owned by [the roadmap](../roadmap/current.md). Issue #152 is the completed Stable V5 baseline; new Jev replacement units use Issue #335 when the change affects those regressions. Stored untrusted strings must not become instructions, and AI alone must never bypass authorization/approval/save.

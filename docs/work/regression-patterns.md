@@ -1,7 +1,7 @@
 # Repository regression patterns
 
 Status: current repository-wide regression knowledge
-Updated: 2026-09-01
+Updated: 2026-10-07
 
 この文書は、StudyPlanner で過去に発生したバグや回帰を、個別症状の一覧ではなく、再発する原因クラス、責任境界、守るべき不変条件、検証方法として形式知化するための正本です。
 
@@ -81,6 +81,14 @@ semantic repair も局所的でなければなりません。無効な correctio
 
 検証は double submit、retry、reload、repository/runtime recreation、cancel 後の遅延結果、stale expected revision、archive 中の追加 entry、same request ID を含む sequence test で行います。単発 unit test より、ordering を変えた stateful test が有効なパターンです。
 
+編集画面では、保存済みの値と未保存 draft の owner を分けます。[#515](https://github.com/kame447/StudyPlanner/pull/515) では、同一 account の古い保存結果が profile props を更新すると editor session まで再生成され、新しい入力や写真処理が失われていました。認証 lifetime、editor の open/owner lifetime、draft revision、save request identity は独立した境界です。未編集の session は同一 owner の refresh に追従できますが、編集または保存送信で local intent を持った後は、同じ session・revision・最新 request に対応する結果だけを draft と editor 内の保存 feedback に反映します。保存が成功しても、受動 refresh の権限を無条件に戻しません。repository が返した正規化済みの値を使い、UI に正規化規則を複製しません。この UI 保護は durable write の順序保証や cancellation とは別です。
+
+この境界の回帰には、同じ画面と close/reopen 後の新しい入力、同じ draft revision での重複送信、入力を変えて元に戻す操作、成功・失敗の逆順完了、未編集 session の refresh を含めます。写真選択など独立した非同期操作も、名前編集で取消されず、古い保存結果から保護されることを確認します。browser test は incidental な画面リセットではなく、対応する保存完了 feedback を待ちます。
+
+保存中の入力を許すかは、editor の再送信と保存済み target identity の契約まで含めて決めます。[Issue #437](https://github.com/kame447/StudyPlanner/issues/437) の時間割修正では、[#475](https://github.com/kame447/StudyPlanner/pull/475) が close/reopen 後の別 session を保護していても、送信元 session で保存中に変えた入力は古い成功で失われました。新規授業のように保存結果から canonical ID を受け取れない editor では、draft revision を増やして閉じなくするだけでは次の保存が別の create になる危険があります。save/delete が pending の間、その送信 session の入力を DOM と draft 更新 callback の両方で lock し、失敗後は保持した入力を再編集・再試行できます。Close/backdrop は維持し、同じ授業や別の授業を開き直した session は編集可能にします。元の write が終わるまで重複 mutation の入場は別に制限し、古い完了で新しい session を閉じません。この UI 境界は永続化順序の保証を追加しません。
+
+複数行を順番に保存する import では、batch の入場、表示 session の完了通知、owner/date context の継続可否を分けます。[Issue #437](https://github.com/kame447/StudyPlanner/issues/437) の時間割反映では、close/reopen が表示上の pending を解除すると、元の batch と新しい送信が同じ授業を二重作成できました。component が維持された同一 owner/date の close/reopen で入場制限を解除せず、既に選択された batch の二重開始を防ぎます。古い完了は新しい dialog を閉じません。owner/date 変更や unmount 後は未送信の行を新たに送らず、送信済みの write は完了を待ちます。部分失敗は同じ context に残し、optimistic な反映中も選択意図を失わず、rollback した行を再試行可能にします。成功応答から parent projection 反映までの間は確認済みの行を再送せず、反映後は通常の削除・再取り込みを妨げません。この component 内の保護は server 側や複数タブ間の一意性保証を追加しません。
+
 ## R6. Persistence / schema / restore / trace の end-to-end contract 欠落
 
 重要度: Critical。再発性: 非常に高い。
@@ -92,6 +100,8 @@ semantic repair も局所的でなければなりません。無効な correctio
 不変条件は、write schema、storage key/document ID、transaction、outbox/retry、read/query、redaction、restore、projection/export までを一つの contract chain として考えることです。複数 entity が一つのユーザー操作として変わる場合は、その aggregate mutation 全体を一つの persistence contract とし、Firestore では batch/transaction、local storage では snapshot + compensating rollback などで途中成功を外へ見せません。会話状態と authoritative graph / user context のように保存先が分かれる場合も、ユーザーへ success を公開する commit point は authoritative preparation/commit が成立した後に置きます。構造 ID と user content の redaction 責任を分け、server/path が authority の ID は client payload より path を正本にします。新 field は request producer の unit test だけでなく、persistent outbox や server preparation を通って read/export 側まで残ることを確認します。
 
 検証では、実際の repository boundary を含む integration test を優先します。初回 append failure→reload→retry、large entry pagination、legacy/current mixed data、malformed schema、ownership mismatch、duplicate sequence、reload after save を通し、partial success や transport error を正常な empty state として扱わないことを固定します。
+
+保存前の入力検証もこの chain の一部です。[Issue #516](https://github.com/kame447/StudyPlanner/issues/516) の教材 quick entry では、native date/time control があるだけでは空の日付を防げず、保存成功後も日表示から見えない実績を作成できました。共有の date/time validator を送信境界でも適用し、無効な入力は保存 callback・成功通知・dialog close より前に拒否して draft を保持します。disabled button や browser の native validation だけに依存せず、直接 submit、実在しない日付、不正時刻、修正後の正常保存を予定と実績の両経路で検証します。有効な閏日と既存の日跨ぎ挙動も維持します。
 
 ## R7. Mobile viewport / overlay / scroll / gesture / focus ownership
 
@@ -107,6 +117,8 @@ semantic repair も局所的でなければなりません。無効な correctio
 
 検証は 360 / 390 / 402px の狭幅だけでなく、600 / 768px 付近の breakpoint も含め、bounding box、`scrollWidth <= clientWidth`、hit test、background scroll position、gesture中の transform、close lifecycle を測ります。単なる screenshot や z-index 数値比較だけでは不十分です。
 
+元画面を mount したまま隠して別画面へ移る場合は、表示の非活性化と input/focus の所有権をそろえます。body portal は元画面の祖先を隠すだけでは隠れず、残存する画面や menu の window-level listener は見えなくても矢印キーで日付を変えたり、Tab/Escape を奪ったりします。非表示の owner は shortcut、初期 focus、予約済み focus 復帰、keyboard trapping を行わず、browser Back/Forward で再表示される場合も現在の可視 surface だけが操作を受けます。
+
 ## R8. Test harness / browser model / real-device gap の誤分類
 
 重要度: High。再発性: 非常に高い。
@@ -118,6 +130,10 @@ green test と実機正常は同義ではなく、red test と product defect �
 不変条件は、失敗した gate を production defect、stale/incorrect contract、harness/environment defect、infrastructure/transient failure に分類してから編集することです。新しい harness が疑わしい場合は、既知の reference control に同じ操作を適用して harness 自体を検証します。#274 では新しい planner-data availability 契約に E2E harness が追従しておらず、fail-closed した production ingress を緩めるのではなく harness 側へ authoritative `ready` を明示して回帰を復旧しました。required contract の追加直後に一群の E2E が入口で同時に止まる場合は、production guard を弱める前に harness が新契約を表現しているかを確認します。GitHub Actions が step 0 件で終了した場合は code failure でも success でもなく missing evidence とします。threshold、timeout、assertion を根拠なく緩めて green にしてはいけません。
 
 実機が automation の仮定を反証した場合、その観測を一回限りの手動確認で終わらせず、可能な範囲で geometry、hit testing、pre-focus state、WebKit behavior、scroll ownership の deterministic regression へ昇格します。iOS/WebKit 固有の gap が既知になった領域では Chromium-only を merge evidence として十分とみなしません。
+
+画像も「URL が取得できる」「形式の signature が正しい」「一つの browser で表示できる」を完全性の証拠にしません。[Issue #482](https://github.com/kame447/StudyPlanner/issues/482) では、Chromium が表示できた WebP に宣言長と実 payload の不一致があり、strict decoder は拒否しました。container/chunk の完全性、実 pixel decode、意図した絵の視覚的完全性は独立した検証です。byte 補完候補は strict decode を通過しても下部に大きな崩れがあり、修復として不適切でした。壊れた source の tolerant decode と同じ pixel を再現できても、意図した artwork の復元は証明できません。健全な原本またはレビュー済みの対象画像と比較して実画を確認し、欠落 byte の推測、header の書換え、再エンコードだけを修復の証明にしません。この asset defect の確認だけでは、元の端末で起きた失敗の単独原因まで証明したことにはなりません。
+
+表示の検証は実際の描画経路に合わせます。旧 WebP 表示の light 画像要素と dark CSS background のように別経路がある場合、各種類の decode と実画を確認します。computed background URL が存在することは decode 成功を意味せず、別種類の画像だけを使う既存 screenshot は対象画像の見た目を保証しません。#482 で選択した code-rendered SVG scene への置換は、破損した原画の復元とは別の成果です。置換後は古い asset の decode だけを品質根拠にせず、種類・style・theme ごとの実画、設定の復元、motion の既定値と reduced-motion、切替後の表示を検証します。配信後の確認も source の検査と分け、実際に配信された実装と描画結果を確認します。
 
 ## R9. Migration / version skew / rollout ordering
 

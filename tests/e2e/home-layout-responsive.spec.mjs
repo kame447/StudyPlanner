@@ -1,7 +1,8 @@
 import { expect, test } from './support/fixed-clock.mjs';
+import { expectCompactHomeReachable } from './support/compact-home.mjs';
 
 const VIEWPORTS = [
-  { name: 'small-phone', width: 320, height: 568, materialFits: false },
+  { name: 'small-phone', width: 320, height: 568, materialFits: false, scrollBody: true },
   { name: 'compact-phone', width: 360, height: 640, materialFits: false },
   { name: 'classic-phone', width: 375, height: 667, materialFits: false },
   { name: 'modern-phone', width: 390, height: 844, materialFits: true },
@@ -11,6 +12,7 @@ const VIEWPORTS = [
   { name: 'home-reference', width: 511, height: 1094, materialFits: true },
   { name: 'blackberry-devtools', width: 768, height: 710, materialFits: true },
   { name: 'landscape-tablet', width: 1024, height: 768, materialFits: true },
+  { name: 'short-landscape', width: 852, height: 393, materialFits: false, scrollBody: true },
 ];
 
 const MAX_BOTTOM_GAP = 18;
@@ -85,7 +87,7 @@ async function readHomeMetrics(page) {
     const progress = document.querySelector('.home-progress-panel');
     const scheduleList = document.querySelector('.home-schedule-list');
     const scheduleRows = [...document.querySelectorAll('.home-schedule-row')];
-    const addScheduleRow = document.querySelector('.home-schedule-add-row');
+    const addScheduleRow = document.querySelector('.home-schedule-add-row, .home-schedule-empty');
     const core = document.querySelector('.home-core-sections');
     const lastCore = core?.lastElementChild ?? null;
     const navRect = nav?.getBoundingClientRect() ?? null;
@@ -172,7 +174,7 @@ async function expectScheduleTailAccessible(page, metrics) {
 
   const tail = await page.evaluate(() => {
     const schedule = document.querySelector('.home-schedule-list');
-    const addRow = document.querySelector('.home-schedule-add-row');
+    const addRow = document.querySelector('.home-schedule-add-row, .home-schedule-empty');
     if (!(schedule instanceof HTMLElement) || !(addRow instanceof HTMLElement)) {
       return null;
     }
@@ -199,8 +201,9 @@ async function expectScheduleTailAccessible(page, metrics) {
   expect(tail.addRowBottom).toBeLessThanOrEqual(tail.scheduleBottom + 1);
 }
 
+
 for (const viewport of VIEWPORTS) {
-  test(`${viewport.name} ${viewport.width}x${viewport.height} keeps the single-plan home layout bounded`, async ({ page }) => {
+  test(`${viewport.name} ${viewport.width}x${viewport.height} keeps the single-plan home layout bounded`, async ({ page, browserName, isMobile }, testInfo) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await seedHomeState(page, 1);
     await page.goto('/');
@@ -212,21 +215,22 @@ for (const viewport of VIEWPORTS) {
     const metrics = await readHomeMetrics(page);
 
     expectNoStructuralOverlap(metrics);
-    expectBottomSpaceUsed(metrics);
+    if (!viewport.scrollBody) expectBottomSpaceUsed(metrics);
     expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
     expect(metrics.pageScrollHeight).toBeLessThanOrEqual(metrics.viewportHeight + 1);
-    expect(metrics.visibleMaterialPanelCount).toBe(viewport.materialFits ? 1 : 0);
+    expect(metrics.visibleMaterialPanelCount, JSON.stringify(metrics)).toBe(viewport.materialFits ? 1 : 0);
     expect(metrics.visibleMaterialPanelCount).toBeLessThanOrEqual(1);
     expect(metrics.materialProbeVisibility).toBe('hidden');
-    expect(metrics.lastCoreBottom).toBeLessThanOrEqual(metrics.navTop + 1);
+    if (!viewport.scrollBody) expect(metrics.lastCoreBottom).toBeLessThanOrEqual(metrics.navTop + 1);
     if (metrics.materialBottom !== null) {
       expect(metrics.materialBottom).toBeLessThanOrEqual(metrics.navTop + 1);
     }
     expect(metrics.progressHeight).toBeLessThanOrEqual(140);
     await expectScheduleTailAccessible(page, metrics);
+    if (viewport.scrollBody) await expectCompactHomeReachable(page, testInfo, `home-${viewport.name}-single-plan-tail`, { browserName, isMobile });
   });
 
-  test(`${viewport.name} ${viewport.width}x${viewport.height} prioritizes four plans over material progress`, async ({ page }) => {
+  test(`${viewport.name} ${viewport.width}x${viewport.height} prioritizes four plans over material progress`, async ({ page, browserName, isMobile }, testInfo) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await seedHomeState(page, 4);
     await page.goto('/');
@@ -239,28 +243,35 @@ for (const viewport of VIEWPORTS) {
     const scheduleIsScrollable = metrics.scheduleScrollHeight > metrics.scheduleClientHeight + 1;
 
     expectNoStructuralOverlap(metrics);
-    expectBottomSpaceUsed(metrics);
+    if (!viewport.scrollBody) expectBottomSpaceUsed(metrics);
     expect(metrics.scheduleRowCount).toBe(4);
     expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
     expect(metrics.pageScrollHeight).toBeLessThanOrEqual(metrics.viewportHeight + 1);
     expect(metrics.visibleMaterialPanelCount).toBeLessThanOrEqual(1);
     expect(metrics.materialProbeVisibility).toBe('hidden');
-    expect(metrics.lastCoreBottom).toBeLessThanOrEqual(metrics.navTop + 1);
+    if (!viewport.scrollBody) expect(metrics.lastCoreBottom).toBeLessThanOrEqual(metrics.navTop + 1);
     if (metrics.materialBottom !== null) {
       expect(metrics.materialBottom).toBeLessThanOrEqual(metrics.navTop + 1);
     }
-    if (scheduleIsScrollable) {
-      expect(metrics.visibleMaterialPanelCount).toBe(0);
-    } else if (metrics.fourthScheduleBottom !== null && metrics.scheduleBottom !== null) {
-      expect(metrics.fourthScheduleBottom).toBeLessThanOrEqual(metrics.scheduleBottom + 1);
+    // The new plus action is the scrollable tail after the plan rows. Material
+    // progress is excluded only when one of the four plans itself does not fit.
+    if (metrics.fourthScheduleBottom !== null && metrics.scheduleBottom !== null) {
+      if (metrics.fourthScheduleBottom > metrics.scheduleBottom + 1) {
+        expect(scheduleIsScrollable).toBe(true);
+        expect(metrics.visibleMaterialPanelCount, JSON.stringify(metrics)).toBe(0);
+      } else {
+        expect(metrics.fourthScheduleBottom).toBeLessThanOrEqual(metrics.scheduleBottom + 1);
+      }
     }
 
+    await expectScheduleTailAccessible(page, metrics);
+    if (viewport.scrollBody) await expectCompactHomeReachable(page, testInfo, `home-${viewport.name}-four-plan-tail`, { browserName, isMobile });
     if (viewport.name === 'blackberry-devtools') {
-      expect(scheduleIsScrollable).toBe(false);
+      expect(scheduleIsScrollable).toBe(true);
       expect(metrics.visibleMaterialPanelCount).toBe(0);
     }
     if (viewport.name === 'home-reference') {
-      expect(scheduleIsScrollable).toBe(false);
+      expect(scheduleIsScrollable).toBe(true);
       expect(metrics.visibleMaterialPanelCount).toBe(1);
     }
   });

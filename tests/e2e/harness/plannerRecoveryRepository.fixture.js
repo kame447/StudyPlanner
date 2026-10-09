@@ -7,7 +7,25 @@ import { createLocalAuthStorageGateway } from '../../../src/repositories/localSt
 import { createLocalPlannerRepository } from '../../../src/repositories/createLocalPlannerRepository';
 
 const real = createLocalPlannerRepository();
-export const authRepository = createAuthRepository(createLocalAuthStorageGateway());
+const authStorage = createLocalAuthStorageGateway();
+let failProfileWrite = false;
+let holdProfileResponse = false;
+let heldProfileResponse = null;
+let profileResponsesReturned = 0;
+const writeUsers = authStorage.writeUsers;
+authStorage.writeUsers = async users => {
+  if (failProfileWrite) {
+    failProfileWrite = false;
+    throw new Error('プロフィールの保存に失敗しました（検証用）。');
+  }
+  await writeUsers(users);
+  if (holdProfileResponse) {
+    holdProfileResponse = false;
+    await new Promise(resolve => { heldProfileResponse = resolve; });
+  }
+  profileResponsesReturned += 1;
+};
+export const authRepository = createAuthRepository(authStorage);
 const calls = [];
 let holdActualDispatch = false;
 let heldActualDispatch = null;
@@ -20,7 +38,7 @@ let heldMonthWrite = null;
 let planRestoreFault = null;
 let holdProjectionReads = false;
 const heldReads = [];
-const failures = { getScheduleTemplates: 0, getTimetableTerms: 0, getTimetablePeriods: 0, getDayNotes: 0, getActuals: 0, getStudyMaterials: 0, getMonthEvents: 0, getPlans: 0, getTodos: 0 };
+const failures = { getScheduleSnapshot: 0, getScheduleTemplates: 0, getTimetableTerms: 0, getTimetablePeriods: 0, getDayNotes: 0, getActuals: 0, getStudyMaterials: 0, getMonthEvents: 0, getPlans: 0, getTodos: 0 };
 const targetMethods = new Set(Object.keys(failures));
 const snapshot = () => structuredClone({ calls, pendingActualDispatches: heldActualDispatch ? 1 : 0, pendingAcknowledgments: heldAcknowledgment ? 1 : 0,
   pendingPlanWrites: heldPlanWrite ? 1 : 0, pendingMonthWrites: heldMonthWrite ? 1 : 0, pendingReads: heldReads.map(item => item.method) });
@@ -72,6 +90,28 @@ export const plannerRepository = Object.fromEntries(Object.entries(real).map(([m
 
 window.__plannerRecoveryRepository = {
   snapshot,
+  failNextProfileWrite() { failProfileWrite = true; },
+  holdNextProfileResponse() { holdProfileResponse = true; },
+  profileResponseState() { return { pending: Boolean(heldProfileResponse), returned: profileResponsesReturned }; },
+  releaseProfileResponse() {
+    const release = heldProfileResponse;
+    if (!release) return false;
+    heldProfileResponse = null;
+    release();
+    return true;
+  },
+  async seedRecurringEditorPlans({ userId, date }) {
+    const now = new Date().toISOString();
+    const plans = ['A', 'B'].map((suffix, index) => ({
+      id: `recurring-editor-${suffix}`, seriesId: `recurring-editor-${suffix}`, userId,
+      title: `繰り返し予定${suffix}`, subject: '数学', date,
+      startTime: `${9 + index * 2}:00`.padStart(5, '0'), endTime: `${10 + index * 2}:00`,
+      repeat: 'daily', repeatUntil: '2026-12-31', excludedDates: [], recurrenceRules: [],
+      type: 'study', memo: '', createdAt: now, updatedAt: now,
+    }));
+    for (const plan of plans) await plannerRepository.upsertPlan(plan);
+    return plans;
+  },
   async seedOpenTodo(userId) {
     const now = new Date().toISOString();
     await plannerRepository.upsertTodo({ id: 'read-repair-todo', userId, title: '予定化するTodo',
@@ -146,8 +186,13 @@ window.__plannerRecoveryRepository = {
     release();
     return true;
   },
+  holdNextMaterialWrite(method) {
+    if (!['upsertStudyMaterial', 'deleteStudyMaterial'].includes(method)) throw new Error('Unsupported material write');
+    holdPlanWrite = method;
+  },
   holdNextTemplateWrite() { holdPlanWrite = 'upsertScheduleTemplate'; },
   holdNextPlanWrite() { holdPlanWrite = 'upsertPlan'; },
+  holdNextRecurringWrite() { holdPlanWrite = 'applyRecurringPlanMutation'; },
   holdNextTodoSchedule() { holdPlanWrite = 'scheduleTodoPlan'; },
   releasePlanWrite() {
     const release = heldPlanWrite;
@@ -171,6 +216,7 @@ window.__plannerRecoveryRepository = {
   failNextTimetableRead() { failures.getScheduleTemplates += 1; },
   failNextDayNoteRead() { failures.getDayNotes += 1; },
   failNextMonthRead() { failures.getMonthEvents += 1; },
+  failNextScheduleSnapshotRead() { failures.getScheduleSnapshot += 1; },
   failNextActualRead() { failures.getActuals += 1; },
   failNextTodoRead() { failures.getTodos += 1; },
   holdTargetReads() { holdProjectionReads = true; },

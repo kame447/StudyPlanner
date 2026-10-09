@@ -32,7 +32,7 @@ vi.mock('./useAuthSessionState', async () => {
     sendPasswordReset: auth.noop, saveUserProfile: auth.noop, signOut: auth.signOut,
   }) };
 });
-vi.mock('../data/naturalLanguageCatalog', () => ({ loadNaturalLanguageCatalog: auth.noop }));
+vi.mock('../data/naturalLanguageCatalog', () => ({ loadNaturalLanguageCatalogWithOutcome: async () => { await auth.noop(); return { source: 'server' }; } }));
 vi.mock('../features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository', () => ({
   getWeeklyPlanningApprovalPlanRepository: () => ({ saveApprovedPlan: auth.noop, completeOperation: auth.noop }),
 }));
@@ -66,7 +66,7 @@ async function mount() {
     await fixture.repository.upsertActual(actual({ id: `actual-${owner.id}`, planId: `plan-${owner.id}`, userId: owner.id }));
   }
   boundary.repository = { ...fixture.repository };
-  const getPlans = vi.spyOn(boundary.repository, 'getPlans');
+  const getScheduleSnapshot = vi.spyOn(boundary.repository, 'getScheduleSnapshot');
   const session = deferred<User | null>();
   auth.bootstrap.mockImplementation(async load => {
     const current = await session.promise;
@@ -75,14 +75,14 @@ async function mount() {
   });
   await act(async () => { renderer = create(<Harness />); });
   expect(auth.bootstrap).toHaveBeenCalledTimes(1);
-  expect(getPlans).not.toHaveBeenCalled();
+  expect(getScheduleSnapshot).not.toHaveBeenCalled();
   const initialLoader = auth.bootstrap.mock.calls[0][0];
   await act(async () => { session.resolve(A); await auth.bootstrap.mock.results[0].value; await microtasks(); });
   expect(state.user?.id).toBe(A.id);
   expect(state.plannerDataAvailability).toMatchObject({ status: 'ready', ownerId: A.id });
   expect(auth.bootstrap).toHaveBeenCalledTimes(1);
-  expect(getPlans).toHaveBeenCalledTimes(1);
-  return { ...fixture, getPlans, initialLoader };
+  expect(getScheduleSnapshot).toHaveBeenCalledTimes(1);
+  return { ...fixture, getScheduleSnapshot, initialLoader };
 }
 
 describe('real planner application bootstrap dependency stability', () => {
@@ -103,7 +103,7 @@ describe('real planner application bootstrap dependency stability', () => {
     await act(async () => { state.dismissNotice(); });
     await act(async () => { await fixture.initialLoader(A.id); });
     expect(auth.bootstrap).toHaveBeenCalledTimes(1);
-    expect(fixture.getPlans.mock.calls.map(call => call[0])).toEqual([A.id, A.id]);
+    expect(fixture.getScheduleSnapshot.mock.calls.map(call => call[0])).toEqual([A.id, A.id]);
     expect(state.plannerDataAvailability.status).toBe('ready');
     expect(state.actuals).toEqual(await fixture.repository.getActuals(A.id));
   });
@@ -132,7 +132,7 @@ describe('real planner application bootstrap dependency stability', () => {
     await act(async () => { await state.signInWithPassword('owner@example.test', 'test-only-placeholder'); });
     expect(state.user?.id).toBe(A.id);
     expect(auth.bootstrap).toHaveBeenCalledTimes(1);
-    expect(fixture.getPlans.mock.calls.map(call => call[0])).toEqual([A.id, B.id, A.id]);
+    expect(fixture.getScheduleSnapshot.mock.calls.map(call => call[0])).toEqual([A.id, B.id, A.id]);
     expect(state.actuals).toEqual(await fixture.repository.getActuals(A.id));
     expect(auth.bootstrap.mock.calls[0][0]).toBe(fixture.initialLoader);
   });

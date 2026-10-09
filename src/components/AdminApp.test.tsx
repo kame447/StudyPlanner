@@ -62,6 +62,14 @@ describe('AdminApp auth session', () => {
     expect(fake.session.subscribe).not.toHaveBeenCalled();
   });
 
+  it('uses the Laplans initial and product name in the admin brand', () => {
+    mount();
+    act(() => fake.emit(user));
+    act(() => emitAdmin(true));
+    expect(hasText('Laplans')).toBe(true);
+    expect(renderer.root.findByProps({ className: 'admin-console-brand-mark' }).children).toEqual(['L']);
+  });
+
   it('preserves the independent admin access check and live access revocation', () => {
     mount();
     // Admin auth has never applied the planner email-verification gate.

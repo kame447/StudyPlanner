@@ -192,7 +192,13 @@ it.each([false, true])('cancel releases the view while late submission stays obs
   mocks.execute.mockReturnValueOnce(old.promise);
   await mount(); await attach(); await act(async () => { send().props.onClick(); });
   expect(app.state.pendingTurn).toBeDefined();
-  const cancel = renderer!.root.findAllByType('button').find((node) => node.children.includes('処理をキャンセル'))!;
+  const cancel = renderer!.root.findByProps({ 'aria-label': '処理をキャンセル' });
+  expect(cancel.props.className).toBe('ai-planning-send-button');
+  expect(cancel.parent?.props.className).toBe('ai-planning-composer');
+  expect(cancel.props.disabled).toBe(false);
+  expect(cancel.findByType('svg').props.className).toContain('lucide-x');
+  expect(renderer!.root.findAllByProps({ 'aria-label': '送信' })).toHaveLength(0);
+  expect(renderer!.root.findAllByProps({ className: 'ai-planning-pending-turn-actions' })).toHaveLength(0);
   await act(async () => { cancel.props.onClick(); });
   expect(app.state.pendingTurn).toBeUndefined(); expect(sidebar().props.disabled).toBe(false);
   await act(async () => { sidebar().props.onCreate(); });

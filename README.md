@@ -1,11 +1,11 @@
-# StudyPlanner
+# Laplans
 
 [![CI](https://github.com/kame447/StudyPlanner/actions/workflows/ci.yml/badge.svg)](https://github.com/kame447/StudyPlanner/actions/workflows/ci.yml)
 [![Browser Regression](https://github.com/kame447/StudyPlanner/actions/workflows/browser-regression.yml/badge.svg)](https://github.com/kame447/StudyPlanner/actions/workflows/browser-regression.yml)
 
 学習計画、実績、教材、時間割を一元管理し、自然言語を使った週間計画の作成を支援する Web アプリケーションです。
 
-StudyPlanner は、学習予定と実績を分けて記録し、教材・時間割・進捗を含む情報から次の学習計画を作成します。AI は自然言語の解釈に利用し、スケジューリング、状態更新、承認、保存はアプリケーション側で管理します。
+Laplans は、学習予定と実績を分けて記録し、教材・時間割・進捗を含む情報から次の学習計画を作成します。AI は自然言語の解釈に利用し、スケジューリング、状態更新、承認、保存はアプリケーション側で管理します。
 
 ## 主な機能
 
@@ -23,11 +23,15 @@ StudyPlanner は、学習予定と実績を分けて記録し、教材・時間�
 
 ### 教材・進捗管理
 
-教材や学習対象を登録し、現在の進捗を管理できます。書籍教材の追加では ISBN または教材名から共有 catalog / NDL Search を使った候補検索を利用でき、検索を使わず従来どおり手入力でも登録できます。外部書誌は候補情報として扱い、教科・進捗・章構造・学習量は StudyPlanner 側が所有します。
+教材や学習対象を登録し、現在の進捗を管理できます。書籍教材の追加では ISBN または教材名から共有 catalog / NDL Search を使った候補検索を利用でき、検索を使わず従来どおり手入力でも登録できます。外部書誌は候補情報として扱い、教科・進捗・章構造・学習量は Laplans 側が所有します。
 
 ### ホーム・時間割
 
 ホームでは、今日の予定、次の予定、週間の進捗、継続状況をまとめて確認できます。時間割は授業などの固定予定として管理し、週間計画の空き時間計算にも利用します。
+
+「次の予定」のイラストは、学習・授業・その他の予定に合わせたコード描画の scene です。設定の「ホームのイラスト」で「ピクセル」「ピクセル・猫」「ピクセル・亀」「イラスト」「ミニマル」の5種類を選び、ゆっくりした動きを任意で有効にできます。初期値はピクセル・動きなしで、ライト/ダークに対応し、OS の「視差効果を減らす」等の reduced-motion 設定を優先します。見た目の設定は利用中のブラウザだけに保存し、アカウントや別端末へ同期しません。
+
+3種類のピクセル系では、端末の現在時刻に合わせて朝・昼・夕方・夜の空へ変わり、夜は現在の瞬間から近似した8段階の月相を表示します。空の時間帯はテーマとは独立した演出で、地域の日の入りや月の出・方位を再現するものではありません。イラスト／ミニマルの描画は従来どおりです。外部通信や位置情報は不要で、天気との連動は含みません。月相計算に使う SunCalc の配布条件は [ライセンス表示](public/licenses/suncalc.txt) を参照してください。
 
 ### 学習レポート
 
@@ -164,7 +168,7 @@ npm run eval:jev:shadow
 キーをCloudflareのSecretに登録済みなら、Wranglerへログインした端末から次の任意試験も実行できます。キーを端末へ取り出さず、一時remote dev内で同じadapterと本番の1.5秒timeoutを検証します。本番コードやroutingはデプロイせず、通常CIにも追加しません。
 
 ```bash
-npm exec --yes --package=wrangler@4.143.1 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
+npm exec --yes --package=wrangler@4.147.0 -- node scripts/jev-cloud-smoke.mjs --worker studyplanner-ai-proxy
 ```
 
 検証コードは3分で失効する認証付きの合成入力専用です。終了時に開発サーバーを停止し、一時ファイルを削除します。判断結果の採用gateは疎通確認とは別に記録し、`abstained`なら既存LLMへ戻す方針を維持します。API仕様・日本語品質・本番設定の問題を隠すためにgateを緩めないでください。
@@ -219,7 +223,7 @@ client-first execution と local/server authority の境界は [`docs/domains/cl
 
 ## 開発状況
 
-StudyPlanner は開発中です。現在の `main` を基準に主要機能とテストを継続的に更新しています。
+Laplans は開発中です。現在の `main` を基準に主要機能とテストを継続的に更新しています。
 
 ## ライセンス
 

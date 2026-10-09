@@ -1,5 +1,7 @@
+import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
+import type { HomeScenePreferences } from '../lib/homeScenePreferences';
 import { useMemo, type RefObject } from 'react';
-import { todayIsoDate } from '../lib/date';
+import { toIsoDate } from '../lib/date';
 import { augmentHomePlansWithScheduleOccurrences } from '../lib/homeScheduleAugmentation';
 import type {
   Actual,
@@ -13,6 +15,7 @@ import type {
 import { HomeView } from './HomeView';
 
 interface HomeScheduleViewProps {
+  homeScenePreferences?: HomeScenePreferences;
   userId: string;
   plans: Plan[];
   actuals: Actual[];
@@ -27,6 +30,7 @@ interface HomeScheduleViewProps {
   primaryBottomNavRef: RefObject<HTMLElement | null>;
   onOpenAiPlanning: () => void;
   onOpenSchedule: () => void;
+  onAddEntry: () => void;
   onOpenDay: (date: string) => void;
   onOpenTodo: () => void;
   onOpenBookshelf: () => void;
@@ -34,6 +38,7 @@ interface HomeScheduleViewProps {
 }
 
 export function HomeScheduleView({
+  homeScenePreferences,
   userId,
   plans,
   actuals,
@@ -48,11 +53,13 @@ export function HomeScheduleView({
   primaryBottomNavRef,
   onOpenAiPlanning,
   onOpenSchedule,
+  onAddEntry,
   onOpenDay,
   onOpenTodo,
   onOpenBookshelf,
   onOpenReport,
 }: HomeScheduleViewProps) {
+  const today = toIsoDate(useHomeDisplayClock());
   const displayPlans = useMemo(
     () =>
       augmentHomePlansWithScheduleOccurrences({
@@ -63,7 +70,7 @@ export function HomeScheduleView({
         timetableTermId,
         timetableTerm,
         timetableTerms,
-        startDate: todayIsoDate(),
+        startDate: today,
       }),
     [
       monthEvents,
@@ -73,11 +80,13 @@ export function HomeScheduleView({
       timetableTermId,
       timetableTerms,
       userId,
+      today,
     ],
   );
 
   return (
     <HomeView
+      homeScenePreferences={homeScenePreferences}
       plans={displayPlans}
       actuals={actuals}
       todos={todos}
@@ -86,6 +95,7 @@ export function HomeScheduleView({
       primaryBottomNavRef={primaryBottomNavRef}
       onOpenAiPlanning={onOpenAiPlanning}
       onOpenSchedule={onOpenSchedule}
+      onAddEntry={onAddEntry}
       onOpenDay={onOpenDay}
       onOpenTodo={onOpenTodo}
       onOpenBookshelf={onOpenBookshelf}

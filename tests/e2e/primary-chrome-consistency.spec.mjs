@@ -1,8 +1,12 @@
 import { mkdir } from 'node:fs/promises';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/startup-ready.mjs';
 
 const VIEWPORTS = [
+  { name: 'small-phone-320x568', width: 320, height: 568 },
+  { name: 'small-phone-320x852-text-200', width: 320, height: 852, textScale: 200 },
   { name: 'mobile-390x844', width: 390, height: 844 },
+  { name: 'mobile-393x852', width: 393, height: 852 },
+  { name: 'short-landscape-852x393', width: 852, height: 393 },
   { name: 'desktop-1280x720', width: 1280, height: 720 },
   { name: 'tablet-1024x1366', width: 1024, height: 1366 },
 ];
@@ -114,6 +118,7 @@ async function readChromeMetrics(page) {
       actions: rect(actions),
       iconButton: rect(iconButton),
       nav: rect(nav),
+      navButtonWidths: [...nav.querySelectorAll('button')].map(button => button.getBoundingClientRect().width),
       activeCircle: rect(activeCircle),
       headerGrid: headerStyle.gridTemplateColumns,
       headerGap: px(headerStyle.columnGap),
@@ -175,6 +180,9 @@ function expectChromeToMatchHome(actual, home) {
   expectRectToMatch(actual.actions, home.actions, ['width', 'height']);
   expectRectToMatch(actual.iconButton, home.iconButton, ['width', 'height']);
   expectRectToMatch(actual.nav, home.nav, ['x', 'y', 'width', 'height']);
+  actual.navButtonWidths.forEach((width, index) => {
+    expect(Math.abs(width - home.navButtonWidths[index]), `nav button ${index} width`).toBeLessThanOrEqual(1);
+  });
   expectRectToMatch(actual.activeCircle, home.activeCircle, ['width', 'height']);
 
   expect(actual.headerGrid).toBe(home.headerGrid);
@@ -215,13 +223,38 @@ for (const viewport of VIEWPORTS) {
     await mkdir(`artifacts/chrome-audit/${viewport.name}`, { recursive: true });
 
     await page.goto('/');
+    if (viewport.textScale) await page.addStyleTag({ content: `:root { font-size: ${viewport.textScale}% !important; }` });
     await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
-    await expect
-      .poll(() => page.locator('.primary-app-header').getAttribute('data-home-chrome-viewport'))
-      .not.toBeNull();
+    if (viewport.textScale) {
+      // Enlarged text deliberately bypasses compact fitting and scrolls the Home body.
+      await expect(page.locator('.home-main > .home-dashboard-default'))
+        .toHaveAttribute('data-content-scroll', 'true');
+    } else {
+      await expect
+        .poll(() => page.locator('.primary-app-header').getAttribute('data-home-chrome-viewport'))
+        .not.toBeNull();
+    }
     await markPersistentChrome(page);
     await page.waitForTimeout(250);
     const home = await readChromeMetrics(page);
+    if (viewport.textScale) {
+      const dashboard = page.locator('.home-main > .home-dashboard-default');
+      await expect(dashboard).toHaveCSS('overflow-y', 'auto');
+      await dashboard.hover();
+      await page.mouse.wheel(0, 800);
+      await expect.poll(() => dashboard.evaluate(element => element.scrollTop))
+        .toBeGreaterThan(0);
+      expectChromeToMatchHome(await readChromeMetrics(page), home);
+      for (const button of await page.locator('.primary-app-header button, .primary-bottom-nav button').all()) {
+        await button.click({ trial: true });
+      }
+      expect(await page.evaluate(() => ({
+        top: document.documentElement.scrollTop,
+        body: document.body.scrollTop,
+        height: document.documentElement.scrollHeight,
+        client: document.documentElement.clientHeight,
+      }))).toEqual({ top: 0, body: 0, height: viewport.height, client: viewport.height });
+    }
     await page.screenshot({
       path: `artifacts/chrome-audit/${viewport.name}/home.png`,
       fullPage: false,

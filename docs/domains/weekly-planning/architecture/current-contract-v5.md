@@ -47,6 +47,8 @@ For the planned Issue #246 extension, whether a user turn semantically asks for 
 
 AI output is a current-turn semantic delta, not an accepted-state snapshot. Past facts are not recopied without current evidence. Formal IDs, revision, lifecycle mutation and scheduler decisions are not AI-owned.
 
+When a validated turn explicitly corrects a planning window, canonical staging must not implicitly supersede its still-active target before the correction transaction validates it. Apply the explicit correction first, then reconcile the single-active-window invariant within the semantic commit before scheduling or persistence. Stale revisions, unknown or already-terminal targets, and invalid replacements still reject atomically with the original graph unchanged. Implicit window replacement and repair of historical duplicate active windows retain their existing behavior when no new explicit window correction is present.
+
 Provider failure, malformed output, validation failure or repair failure does not authorize legacy-parser fallback. Semantic repair is at most once where this contract permits it.
 
 ## Acceptance and recovery validation

@@ -72,8 +72,6 @@
   font-weight: 600;
 }
 
-.memory-editor-field input,
-.memory-editor-field select,
 .memory-editor-field textarea {
   width: 100%;
   min-height: 42px;
@@ -93,8 +91,6 @@
   line-height: 1.5;
 }
 
-.memory-editor-field input:focus,
-.memory-editor-field select:focus,
 .memory-editor-field textarea:focus {
   outline: 2px solid color-mix(in srgb, var(--accent, #2563eb) 30%, transparent);
   outline-offset: 1px;

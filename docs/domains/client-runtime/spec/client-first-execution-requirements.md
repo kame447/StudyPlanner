@@ -226,7 +226,7 @@ offline対応は「すべての機能がofflineで動く」ことを意味しな
 
 ### CON-005
 
-Issue #47、#51、#45、#89、#128、#152、#160 の既存 responsibility を横取りせず、共通基盤が必要な場合のみ接続する。
+Issue #47、#51、#45、#89、#128、#160 の既存 responsibility を横取りせず、完了済み #152 で確立した security / provenance baseline も維持し、共通基盤が必要な場合のみ接続する。
 
 ## 9. 用語と状態モデル
 
@@ -381,6 +381,8 @@ local data は owner scope を持ち、別 account の data を復元・同期�
 sign-out / account switch の cache retention policy を明示し、別 owner へ old cache を再保存しない。
 
 通常planner mutationと承認保存のUI反映は、開始時のowner / reset世代に束縛する。owner切替、reset、unmount後の成功結果・失敗rollback・通知・Undoが現行画面を更新してはならず、旧世代の完了を現行操作の成功として返さない。UI projectionの共通境界は `src/hooks/usePlannerMutationScope.ts`、load結果の世代検証は既存の `PlannerDataReadAuthority` が所有する。同ownerの通常refreshはmutationのowner世代を変えない。これは既に送信したrepository writeの取消しやserver rollbackではなく、server idempotency / 権限 / offline同期の代替にもならない。
+
+入力editorの保存後close・busy解除も、保存を開始したeditorの寿命へ束縛する。同じownerでも閉じる→再入場した新しい入力を古い保存完了で閉じず、owner変更時は前ownerの未保存draftを再利用しない。これは送信済みwriteを取り消すものではなく、永続化callbackと画面の寿命を分離するUI側の責務である。
 
 ### DATA-005: Storage failure behavior
 
@@ -916,9 +918,9 @@ trace privacy / lifecycle / production recovery を所有する。trace を oper
 
 legacy saved-preview approval compatibility を所有する。storage migration と preview metadata version が交差する場合は migration order を共同で定義する。
 
-### Issue #152
+### Issue #152 security baseline
 
-prompt injection / adversarial AI security を所有する。client-first化で untrusted text が新しい server instruction boundary を横断しないよう整合させる。
+Issue #152 は完了済みで、prompt injection / adversarial AI security の baseline を確立した。client-first化ではこの trust boundary を維持し、新しく追加する経路は該当する current regression gate で検証する。
 
 ### Issue #160
 

@@ -43,8 +43,8 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
-function AuthSessionHarness({ showNotice }: { showNotice: ShowNotice }) {
-  latestState = useAuthSessionState({ showNotice });
+function AuthSessionHarness({ showNotice, onBootstrapSettled, expectedUserId }: { showNotice: ShowNotice; onBootstrapSettled?: () => void; expectedUserId?: string }) {
+  latestState = useAuthSessionState({ showNotice, onBootstrapSettled, expectedUserId });
 
   return (
     <span>
@@ -57,10 +57,12 @@ function AuthSessionHarness({ showNotice }: { showNotice: ShowNotice }) {
 function renderHarness(
   rootManaged = false,
   onStartupReady?: () => void,
+  onBootstrapSettled?: () => void,
+  expectedUserId?: string,
 ) {
   const showNotice = vi.fn<ShowNotice>();
   let renderer!: ReactTestRenderer;
-  let content = <AuthSessionHarness showNotice={showNotice} />;
+  let content = <AuthSessionHarness showNotice={showNotice} onBootstrapSettled={onBootstrapSettled} expectedUserId={expectedUserId} />;
 
   if (rootManaged) {
     content = (
@@ -93,6 +95,25 @@ describe('useAuthSessionState', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     latestState = null;
+  });
+
+  it.each(['old-success', 'old-failure'])('ignores %s from an obsolete bootstrap attempt', async outcome => {
+    const first = createDeferred<User | null>(), second = createDeferred<User | null>();
+    authRepositoryMock.getCurrentUser.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const ready = vi.fn(), settled = vi.fn(), load = vi.fn(async () => undefined);
+    const { renderer, showNotice } = renderHarness(false, ready, settled);
+    let old!: Promise<void>, current!: Promise<void>;
+    act(() => { old = latestState!.bootstrapSession(load); current = latestState!.bootstrapSession(load); });
+    await act(async () => {
+      if (outcome === 'old-success') first.resolve(currentUser); else first.reject(new Error('old'));
+      await old;
+    });
+    expect(load).not.toHaveBeenCalled(); expect(ready).not.toHaveBeenCalled(); expect(settled).not.toHaveBeenCalled();
+    expect(showNotice).not.toHaveBeenCalled(); expect(renderedState(renderer)).toBe('booting:anonymous');
+    await act(async () => { second.resolve(currentUser); await current; });
+    expect(load).toHaveBeenCalledExactlyOnceWith(currentUser.id); expect(ready).toHaveBeenCalledOnce();
+    expect(settled).toHaveBeenCalledOnce();
+    expect(renderedState(renderer)).toBe('ready:user-1'); act(() => renderer.unmount());
   });
 
   it('keeps booting active until authenticated planner data has finished loading', async () => {
@@ -205,4 +226,21 @@ describe('useAuthSessionState', () => {
     expect(result).toEqual(currentUser);
     expect(renderedState(renderer)).toBe('booting:user-1');
   });
+});
+
+it('settles optional cleanup on mismatched identity without needing another auth event', async () => {
+  authRepositoryMock.getCurrentUser.mockResolvedValue({ ...currentUser, id: 'different-owner' });
+  const settled = vi.fn(), load = vi.fn(async () => {});
+  const { renderer } = renderHarness(false, undefined, settled, 'user-1');
+  await act(async () => { await latestState!.bootstrapSession(load); });
+  expect(settled).toHaveBeenCalledOnce(); expect(load).not.toHaveBeenCalled();
+  expect(renderedState(renderer)).toBe('booting:anonymous'); act(() => renderer.unmount());
+});
+it('optional settlement callback failures cannot alter successful bootstrap', async () => {
+  authRepositoryMock.getCurrentUser.mockResolvedValue(currentUser);
+  const settled = vi.fn(() => { throw new Error('optional cleanup'); });
+  const { renderer, showNotice } = renderHarness(false, undefined, settled);
+  await act(async () => { await latestState!.bootstrapSession(async () => {}); });
+  expect(settled).toHaveBeenCalledOnce(); expect(showNotice).not.toHaveBeenCalled();
+  expect(renderedState(renderer)).toBe('ready:user-1'); act(() => renderer.unmount());
 });

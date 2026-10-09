@@ -1,3 +1,4 @@
+import { observeStartupDocument } from './observeStartupDocument';
 import type { Auth, User as FirebaseAuthUser } from 'firebase/auth';
 import {
   browserLocalPersistence,
@@ -122,7 +123,7 @@ async function ensureProfile(
   const createdAt = existingProfile?.createdAt
     || authUser.metadata.creationTime
     || new Date().toISOString();
-  const nextProfile = await upsertProfile(firestoreDb, {
+  const nextProfile: ProfileDoc = {
     id: authUser.uid,
     email,
     username:
@@ -131,8 +132,18 @@ async function ensureProfile(
       normalizeUsername(fallbackUsername, email),
     avatar: existingProfile?.avatar ?? '',
     createdAt,
-    ...(!existingProfile ? { registeredAt: serverTimestamp() } : {}),
-  });
+  };
+  const unchanged = existingProfile && Object.entries(nextProfile).every(
+    ([key, value]) => existingProfile[key as keyof ProfileDoc] === value,
+  );
+  // Restoring an unchanged profile is a read, not a login heartbeat. Avoid a
+  // redundant write acknowledgement before the planner can start loading.
+  if (!unchanged) {
+    await upsertProfile(firestoreDb, {
+      ...nextProfile,
+      ...(!existingProfile ? { registeredAt: serverTimestamp() } : {}),
+    });
+  }
 
   return mapProfileDocToUser(nextProfile);
 }
@@ -250,6 +261,16 @@ export function createFirebaseAuthRepository(
             error as { message?: string | null }),
         );
       }
+    },
+    observeStartupProfile(expectedOwner, scope) {
+      const eligible = () => {
+        const user = firebaseAuth.currentUser;
+        return scope.isCurrent() && Boolean(user && user.uid === expectedOwner
+          && (!isPasswordLogin(user) || user.emailVerified));
+      };
+      return observeStartupDocument({ reference: doc(firestoreDb, 'profiles', expectedOwner),
+        scope: { isCurrent: eligible, onInvalidate: dispose => scope.onInvalidate(dispose) },
+        phase: 'profile-observation', stopPhase: 'profile-observer-stop' });
     },
     async getCurrentUser() {
       await ensureLocalAuthPersistence(firebaseAuth);

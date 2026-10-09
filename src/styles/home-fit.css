@@ -174,10 +174,6 @@
     font-size: clamp(0.86rem, 2dvh, 0.96rem);
   }
 
-  .home-dashboard-default .home-date-unit {
-    font-size: clamp(0.57rem, 1.35dvh, 0.63rem);
-  }
-
   .home-dashboard-default .home-icon-button,
   .home-dashboard-default .home-avatar-button {
     width: 33px;
@@ -357,5 +353,41 @@
     overflow: hidden;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
+  }
+}
+
+/* Keep every Home action reachable when a two-row header or a short viewport
+ * leaves too little block size for all cards at once. Only the Home body
+ * scrolls; the shared header and footer keep their fixed viewport slots. */
+@media (max-width: 336px) and (max-height: 640px), (max-height: 480px) {
+  .app-shell.home-app-shell:has(> .home-main > .home-dashboard-default) {
+    /* Unlike hidden, clip cannot pan the persistent chrome when focus or
+     * scrollIntoView walks through the body's ancestors. */
+    overflow: clip;
+  }
+
+  .home-main > .home-dashboard-default {
+    display: block;
+    box-sizing: border-box;
+    /* Preserve the existing 3px outline + 2px offset at the scroll boundary. */
+    padding: 5px;
+    scroll-padding: 5px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .home-main > .home-dashboard-default .home-core-sections {
+    min-block-size: min-content;
+  }
+
+  .home-main > .home-dashboard-default .home-today-panel {
+    display: block;
+  }
+
+  .home-main > .home-dashboard-default .home-today-panel > .home-schedule-list {
+    min-block-size: max(44px, 3rem);
+    max-block-size: none;
+    overflow: visible;
   }
 }

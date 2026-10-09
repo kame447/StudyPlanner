@@ -29,6 +29,14 @@ describe('Worker toolchain security and launcher pin contract', () => {
     expect(miniflareRequire('undici/package.json').version).toBe('7.29.1');
   });
 
+  it('resolves the patched native image dependency from the pinned Miniflare', () => {
+    const miniflareRequire = createRequire(require.resolve('miniflare'));
+    expect(manifest.overrides['miniflare@5.20261001.0-alpha']).toEqual({ sharp: '0.35.5' });
+    const sharp = miniflareRequire('sharp');
+    expect(sharp.versions.sharp).toBe('0.35.5');
+    expect(sharp.versions.rsvg).toBe('2.63.2');
+  });
+
   it('checks the embedded CLI transport as well as the separately audited dependency', () => {
     const wranglerPackagePath = require.resolve('wrangler/package.json');
     const installed = JSON.parse(fs.readFileSync(wranglerPackagePath, 'utf8'));

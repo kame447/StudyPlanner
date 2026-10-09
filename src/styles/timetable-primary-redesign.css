@@ -82,7 +82,7 @@
   z-index: 90;
   align-items: stretch;
   justify-content: flex-end;
-  padding: 0 0 calc(var(--bottom-nav-height, 72px) + env(safe-area-inset-bottom, 0px));
+  padding: 0 0 calc(var(--primary-nav-height) + env(safe-area-inset-bottom, 0px));
   background: rgb(15 23 42 / 0.28);
 }
 
@@ -219,7 +219,7 @@
   .timetable-modal-overlay {
     align-items: flex-end;
     justify-content: center;
-    padding: 0 0 calc(var(--bottom-nav-height, 72px) + env(safe-area-inset-bottom, 0px));
+    padding: 0 0 calc(var(--primary-nav-height) + env(safe-area-inset-bottom, 0px));
   }
 
   .modal-card.timetable-editor-modal {

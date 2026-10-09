@@ -42,9 +42,10 @@ export function PlanEditorPanel({
 
     try {
       await onSubmit();
-      onCancel();
+      // The submit owner closes the submitted editor. A late completion must
+      // never cancel a different draft opened while persistence was pending.
     } catch {
-      // Keep the editor open; the data layer already reports the failure.
+      // The data layer owns failure reporting and the editor's lifecycle.
     }
   }
 

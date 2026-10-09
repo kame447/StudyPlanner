@@ -6,7 +6,7 @@ import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // This is the supported toolchain pin, not evidence of a fresh live-provider evaluation.
-const PINNED_WRANGLER_VERSION = '4.143.1';
+const PINNED_WRANGLER_VERSION = '4.147.0';
 
 async function loadWrangler() {
   for (const directory of (process.env.PATH ?? '').split(delimiter)) {
@@ -17,7 +17,7 @@ async function loadWrangler() {
       `Refusing remote smoke with Wrangler ${String(packageJson.version)}; expected ${PINNED_WRANGLER_VERSION}.`);
     return import(pathToFileURL(resolve(dirname(executable), '../wrangler-dist/cli.js')).href);
   }
-  throw new Error('Run through npm exec --package=wrangler@4.143.1 so Wrangler is available.');
+  throw new Error('Run through npm exec --package=wrangler@4.147.0 so Wrangler is available.');
 }
 
 async function main() {

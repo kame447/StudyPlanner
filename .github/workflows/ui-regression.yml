@@ -94,10 +94,25 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  cross-browser-smoke:
+      - name: Upload compact visual comparison images
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-visual-images-${{ github.sha }}
+          path: |
+            artifacts/playwright-visual-results/**/*-actual.png
+            artifacts/playwright-visual-results/**/*-diff.png
+          if-no-files-found: ignore
+          retention-days: 14
+
+  cross-browser-projects:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium-desktop, firefox-desktop, webkit-desktop, webkit-mobile]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -130,16 +145,38 @@ jobs:
         run: npm run build
 
       - name: Run cross-browser smoke matrix
-        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.cross-browser.config.mjs
+        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.cross-browser.config.mjs --project=${{ matrix.project }}
 
       - name: Upload cross-browser artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ui-cross-browser-${{ github.sha }}
+          name: ui-cross-browser-${{ matrix.project }}-${{ github.sha }}
           path: |
             artifacts/playwright-cross-browser-results/
             artifacts/playwright-cross-browser-report/
             artifacts/playwright-cross-browser-results.json
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Upload compact cross-browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-cross-browser-images-${{ matrix.project }}-${{ github.sha }}
+          path: artifacts/playwright-cross-browser-results/**/*.png
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Preserve the existing required check while all project jobs run independently.
+  # A failed, cancelled or skipped project must never become a successful gate.
+  cross-browser-smoke:
+    if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser') }}
+    needs: cross-browser-projects
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Require every browser project to succeed
+        env:
+          PROJECT_RESULT: ${{ needs.cross-browser-projects.result }}
+        run: test "$PROJECT_RESULT" = success

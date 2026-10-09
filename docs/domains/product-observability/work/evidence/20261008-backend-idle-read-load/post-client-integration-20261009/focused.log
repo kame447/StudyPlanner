@@ -1,0 +1,192 @@
+
+ RUN  v3.2.7 <INTEGRATION_WORKTREE>
+
+ ✓ src/hooks/usePlannerDataState.reconciliation.test.tsx (112 tests) 700ms
+ ✓ src/hooks/usePlannerDataState.planUndoRecovery.test.tsx (36 tests) 304ms
+stderr | src/hooks/usePlannerDataState.test.tsx > usePlannerDataState transform orchestration > keeps all original timetable collections when normalization persistence fails
+[Timetable] term canonicalization failed Error: normalization unavailable
+    at <INTEGRATION_WORKTREE>/src/hooks/usePlannerDataState.test.tsx:401:61
+    at file://<INTEGRATION_WORKTREE>/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11
+    at file://<INTEGRATION_WORKTREE>/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26
+    at file://<INTEGRATION_WORKTREE>/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file://<INTEGRATION_WORKTREE>/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)
+    at runTest (file://<INTEGRATION_WORKTREE>/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)
+    at runSuite (file://<INTEGRATION_WORKTREE>/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runSuite (file://<INTEGRATION_WORKTREE>/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runFiles (file://<INTEGRATION_WORKTREE>/node_modules/@vitest/runner/dist/chunk-hooks.js:1787:3)
+
+ ✓ src/hooks/usePlannerDataState.test.tsx (41 tests) 252ms
+ ✓ workers/ai-proxy/src/traceWorker.scheduledSubrequestBudget.test.ts (10 tests) 1326ms
+   ✓ traceWorker scheduled subrequest budget > defers at 45 when retries exhaust the budget and progresses on the next invocation  395ms
+   ✓ traceWorker scheduled subrequest budget > moves a rollup backlog forward by five batches on every invocation  340ms
+stderr | src/components/StudyPlannerAppRoot.parallelStartup.test.tsx > video error cannot release memory or planner gates and leaves static loading until both settle
+[Firebase Config] Missing required environment variables: [
+  'VITE_FIREBASE_API_KEY',
+  'VITE_FIREBASE_AUTH_DOMAIN',
+  'VITE_FIREBASE_PROJECT_ID',
+  'VITE_FIREBASE_APP_ID'
+]
+
+ ✓ src/components/StudyPlannerAppRoot.parallelStartup.test.tsx (38 tests) 424ms
+ ✓ workers/ai-proxy/src/productObservabilityActiveUserSnapshot.test.ts (16 tests) 1332ms
+   ✓ ProductObservabilityActiveUserSnapshotService > keeps a near-limit publish below 10 MiB and rejects an oversized publish first  645ms
+ ✓ src/components/StudyPlannerAppRoot.startupLatency.test.tsx (18 tests) 299ms
+ ✓ src/hooks/usePlannerDataState.monthEventRecovery.test.tsx (70 tests) 512ms
+ ✓ src/repositories/firebaseScheduleEventAuthority.test.ts (14 tests) 81ms
+ ✓ tests/performance/firestoreReadLoad.measurement.test.tsx (5 tests) 3572ms
+   ✓ Firestore read-load executable measurement > small: executes real app and persistence boundaries  303ms
+   ✓ Firestore read-load executable measurement > medium: executes real app and persistence boundaries  361ms
+   ✓ Firestore read-load executable measurement > large: executes real app and persistence boundaries  2895ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx (15 tests) 116ms
+ ✓ src/hooks/usePlannerDataState.todoReadRecovery.test.tsx (19 tests) 192ms
+stderr | src/hooks/usePlannerDataState.actualAdmissionReadLifetime.test.tsx > Actual admission across the entire full-read lifetime > 'recurrence': 'read-before-settlement', 'reject-before-write'
+[RecurringPlanScope] failed {
+  action: 'delete',
+  scope: 'all',
+  source: 'plan-card',
+  userId: 'owner',
+  sourcePlan: {
+    id: 'plan',
+    seriesId: 'plan',
+    userId: 'owner',
+    date: '2026-10-04',
+    occurrenceDate: null,
+    title: 'Restored Plan',
+    repeat: 'daily',
+    repeatUntil: '2026-10-31',
+    excludedDates: [],
+    recurrenceRuleKinds: [],
+    hasOverrides: false
+  },
+  error: {
+    code: null,
+    message: 'recurrence reject-before-write',
+    customData: undefined
+  }
+}
+
+stderr | src/hooks/usePlannerDataState.actualAdmissionReadLifetime.test.tsx > Actual admission across the entire full-read lifetime > 'recurrence': 'read-before-settlement', 'reject-after-write'
+[RecurringPlanScope] failed {
+  action: 'delete',
+  scope: 'all',
+  source: 'plan-card',
+  userId: 'owner',
+  sourcePlan: {
+    id: 'plan',
+    seriesId: 'plan',
+    userId: 'owner',
+    date: '2026-10-04',
+    occurrenceDate: null,
+    title: 'Restored Plan',
+    repeat: 'daily',
+    repeatUntil: '2026-10-31',
+    excludedDates: [],
+    recurrenceRuleKinds: [],
+    hasOverrides: false
+  },
+  error: {
+    code: null,
+    message: 'recurrence reject-after-write',
+    customData: undefined
+  }
+}
+
+stderr | src/hooks/usePlannerDataState.actualAdmissionReadLifetime.test.tsx > Actual admission across the entire full-read lifetime > 'recurrence': 'read-after-settlement', 'reject-before-write'
+[RecurringPlanScope] failed {
+  action: 'delete',
+  scope: 'all',
+  source: 'plan-card',
+  userId: 'owner',
+  sourcePlan: {
+    id: 'plan',
+    seriesId: 'plan',
+    userId: 'owner',
+    date: '2026-10-04',
+    occurrenceDate: null,
+    title: 'Restored Plan',
+    repeat: 'daily',
+    repeatUntil: '2026-10-31',
+    excludedDates: [],
+    recurrenceRuleKinds: [],
+    hasOverrides: false
+  },
+  error: {
+    code: null,
+    message: 'recurrence reject-before-write',
+    customData: undefined
+  }
+}
+
+stderr | src/hooks/usePlannerDataState.actualAdmissionReadLifetime.test.tsx > Actual admission across the entire full-read lifetime > 'recurrence': 'read-after-settlement', 'reject-after-write'
+[RecurringPlanScope] failed {
+  action: 'delete',
+  scope: 'all',
+  source: 'plan-card',
+  userId: 'owner',
+  sourcePlan: {
+    id: 'plan',
+    seriesId: 'plan',
+    userId: 'owner',
+    date: '2026-10-04',
+    occurrenceDate: null,
+    title: 'Restored Plan',
+    repeat: 'daily',
+    repeatUntil: '2026-10-31',
+    excludedDates: [],
+    recurrenceRuleKinds: [],
+    hasOverrides: false
+  },
+  error: {
+    code: null,
+    message: 'recurrence reject-after-write',
+    customData: undefined
+  }
+}
+
+ ✓ src/hooks/usePlannerDataState.actualAdmissionReadLifetime.test.tsx (43 tests) 516ms
+ ✓ workers/ai-proxy/src/productObservabilityStore.test.ts (11 tests) 30ms
+ ✓ src/hooks/usePlannerDataState.dayNoteReadRecovery.test.tsx (12 tests) 483ms
+ ✓ src/components/MonthEventDialog.persistence.test.tsx (7 tests) 148ms
+ ✓ src/components/LinkedActualRecovery.integration.test.tsx (7 tests) 531ms
+stderr | src/components/DayPlanDeleteRecovery.integration.test.tsx > preserves recurring scope selection and its existing failed-mutation retry boundary
+[RecurringPlanScope] failed {
+  action: 'delete',
+  scope: 'single',
+  source: 'plan-card',
+  userId: 'owner-a',
+  sourcePlan: {
+    id: 'plan-a',
+    seriesId: 'plan-a',
+    userId: 'owner-a',
+    date: '2026-08-14',
+    occurrenceDate: null,
+    title: '英語',
+    repeat: 'weekly',
+    repeatUntil: '2026-09-30',
+    excludedDates: [],
+    recurrenceRuleKinds: [],
+    hasOverrides: false
+  },
+  error: { code: null, message: 'scope-offline', customData: undefined }
+}
+
+ ✓ src/components/DayPlanDeleteRecovery.integration.test.tsx (6 tests) 740ms
+   ✓ isolates old success and failure after plan, owner, date or mounted-view replacement  445ms
+ ✓ src/hooks/usePlannerAppState.weeklyApproval.test.tsx (4 tests) 37ms
+ ✓ src/features/weeklyPlanning/trace/weeklyPlanningTracePolicyRequest.test.tsx (12 tests) 44ms
+ ✓ src/hooks/weeklyApprovalNative.issue542Audit.test.tsx (4 tests) 95ms
+ ✓ src/components/StandaloneActualRecovery.integration.test.tsx (6 tests) 411ms
+ ✓ workers/ai-proxy/src/productObservabilityRetention.test.ts (14 tests) 30ms
+ ✓ src/hooks/usePlannerAppState.bootstrapIdentity.test.tsx (3 tests) 91ms
+ ✓ src/repositories/localScheduleEventAuthority.test.ts (5 tests) 26ms
+ ✓ src/repositories/scheduleEventAuthorityRepository.test.ts (7 tests) 20ms
+ ✓ workers/ai-proxy/src/productObservabilityRollup.actorDates.test.ts (4 tests) 37ms
+ ✓ src/hooks/usePlannerDataState.selectivePublication.test.tsx (5 tests) 103ms
+ ✓ src/repositories/scheduleSnapshot.issue542Audit.test.ts (4 tests) 31ms
+ ✓ workers/ai-proxy/src/workerSubrequestBudget.test.ts (1 test) 11ms
+
+ Test Files  30 passed (30)
+      Tests  549 passed (549)
+   Start at  04:40:18
+   Duration  30.27s (transform 3.05s, setup 0ms, collect 8.44s, tests 12.49s, environment 8ms, prepare 2.91s)

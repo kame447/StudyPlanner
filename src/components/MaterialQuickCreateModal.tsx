@@ -1,6 +1,9 @@
+import { useEditorMutation } from '../hooks/useEditorMutation';
 import { useState, type FormEvent } from 'react';
 import {
+  isValidQuickEntryDate,
   isValidQuickEntryDuration,
+  isValidQuickEntryStartTime,
   resolveQuickEntryEndTime,
 } from '../lib/quickEntryDrafts';
 import type {
@@ -31,7 +34,12 @@ interface MaterialQuickCreateModalProps {
   onSaveStandaloneActual: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
 }
 
-export function MaterialQuickCreateModal({
+export function MaterialQuickCreateModal(props: MaterialQuickCreateModalProps) {
+  if (props.material.userId !== props.userId) return null;
+  return <MaterialQuickCreateModalSession key={JSON.stringify([props.userId, props.material.id, props.selectedDate])} {...props} />;
+}
+
+function MaterialQuickCreateModalSession({
   userId,
   selectedDate,
   material,
@@ -39,6 +47,7 @@ export function MaterialQuickCreateModal({
   onSavePlan,
   onSaveStandaloneActual,
 }: MaterialQuickCreateModalProps) {
+  const beginMutation = useEditorMutation();
   const [kind, setKind] = useState<MaterialQuickCreateKind>('actual');
   const [date, setDate] = useState(selectedDate);
   const [startTime, setStartTime] = useState('19:00');
@@ -47,10 +56,10 @@ export function MaterialQuickCreateModal({
   const [isCustomDuration, setIsCustomDuration] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const endTime = isValidQuickEntryDuration(durationMinutes)
+  const endTime = isValidQuickEntryStartTime(startTime) && isValidQuickEntryDuration(durationMinutes)
     ? resolveQuickEntryEndTime(startTime, durationMinutes)
     : null;
-  const canSave = Boolean(endTime) && !isSubmitting;
+  const canSave = isValidQuickEntryDate(date) && Boolean(endTime) && !isSubmitting;
 
   function applyDurationOption(value: DurationOptionValue) {
     if (value === 'custom') {
@@ -80,6 +89,15 @@ export function MaterialQuickCreateModal({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (!isValidQuickEntryDate(date)) {
+      setError('有効な日付を入力してください。');
+      return;
+    }
+    if (!isValidQuickEntryStartTime(startTime)) {
+      setError('有効な開始時間を入力してください。');
+      return;
+    }
+
     if (!endTime) {
       setError(
         durationMinutes === null
@@ -90,6 +108,8 @@ export function MaterialQuickCreateModal({
     }
 
     setError('');
+    const operation = beginMutation();
+    if (!operation) return;
     setIsSubmitting(true);
     try {
       const baseFields = {
@@ -127,11 +147,12 @@ export function MaterialQuickCreateModal({
         });
       }
 
-      onClose();
+      if (operation.isCurrent()) onClose();
     } catch {
+      if (!operation.isCurrent()) return;
       setError(kind === 'plan' ? '予定を保存できませんでした。' : '記録を保存できませんでした。');
     } finally {
-      setIsSubmitting(false);
+      if (operation.finish()) setIsSubmitting(false);
     }
   }
 
@@ -198,6 +219,7 @@ export function MaterialQuickCreateModal({
                 <span>日付</span>
                 <input
                   type="date"
+                  required
                   value={date}
                   onChange={(event) => setDate(event.target.value)}
                 />
@@ -206,6 +228,7 @@ export function MaterialQuickCreateModal({
                 <span>開始時間</span>
                 <input
                   type="time"
+                  required
                   value={startTime}
                   onChange={(event) => setStartTime(event.target.value)}
                 />

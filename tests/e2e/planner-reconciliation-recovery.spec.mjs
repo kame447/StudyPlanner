@@ -34,7 +34,7 @@ async function boot(page, options) {
     const url = new URL(route.request().url());
     return ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ? route.continue() : route.abort();
   });
-  await page.goto(`${HARNESS_URL}?theme=${options.theme}`);
+  await page.goto(`${HARNESS_URL}?theme=${options.theme}${options.strict ? '&strict=true' : ''}`);
   await page.waitForFunction(() => typeof window.__plannerRecoveryHook?.snapshot === 'function');
   await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
   await expect(page.getByRole('navigation', { name: '主要ナビゲーション' })).toBeVisible();
@@ -554,7 +554,7 @@ test('failed Plan Undo preserves a queued MonthEvent through rollback and real r
   }
 });
 
-// The 13 existing cases stay unchanged. Full refresh admits its ten queued
+// Full refresh admits its nine queued
 // getters before the actual Undo click in this same browser task. No read or
 // restore gate creates the race; only the later targeted Todo read is failed.
 test('Plan Undo repairs all linked projections after an older full refresh; retry is read-only mobile-dark', async ({ page }) => {
@@ -600,7 +600,7 @@ test('Plan Undo repairs all linked projections after an older full refresh; retr
     button.click();
     return refreshing.then(() => admitted);
   });
-  expect(admitted).toEqual(['getPlans', 'getActuals', 'getDayNotes', 'getMonthEvents', 'getTodos',
+  expect(admitted).toEqual(['getScheduleSnapshot', 'getActuals', 'getDayNotes', 'getTodos',
     'getStudySubjects', 'getStudyMaterials', 'getScheduleTemplates', 'getTimetableTerms', 'getTimetablePeriods']);
   await expect.poll(async () => (await hookSnapshot(page)).recovery?.phase).toBe('failed');
   await expect(retry(page)).toBeVisible();
@@ -614,7 +614,7 @@ test('Plan Undo repairs all linked projections after an older full refresh; retr
   const failedCalls = afterFailure.calls.slice(before.calls.length);
   expect(failedCalls.filter(call => call.phase === 'failed')).toEqual([{ method: 'getTodos', phase: 'failed' }]);
   expect(failedCalls.filter(call => call.method === 'restorePlanWithDependents' && call.phase === 'returned')).toHaveLength(1);
-  expect(calledMethods(afterFailure).slice(calledMethods(before).length, calledMethods(before).length + 11))
+  expect(calledMethods(afterFailure).slice(calledMethods(before).length, calledMethods(before).length + admitted.length + 1))
     .toEqual([...admitted, 'restorePlanWithDependents']);
   expect(writeMethods(afterFailure).slice(writeMethods(before).length))
     .toEqual(['restorePlanWithDependents', 'applyTimetableMutation']);
@@ -703,17 +703,17 @@ test(`Quick Entry pending linked save blocks Day record open and Plan delete, th
     const actualBlock = page.locator('.timeline-actual-block').filter({ hasText: seeded.plan.title });
     await actualBlock.click();
     const actions = page.getByRole('dialog', { name: `${seeded.plan.title}の操作`, exact: true });
-    const openRecord = actions.getByRole('button', { name: '記録を編集 実際の内容を保存', exact: true });
+    const openRecord = actions.getByRole('button', { name: '記録を編集', exact: true });
     await expect(openRecord).toBeDisabled();
     await expect(actions.getByRole('alert')).toContainText('保存・更新中');
     await expect(page.locator('.actual-editor-card')).toHaveCount(0);
     const heldCalls = (await repoSnapshot(page)).calls;
-    await actions.getByRole('button', { name: '削除 この予定を削除', exact: true }).click();
+    await actions.getByRole('button', { name: '削除', exact: true }).click();
     // Identical busy feedback is shown once; unchanged repository calls and
     // durable bytes below independently prove the Plan deletion was rejected.
     await expect(actions.getByRole('alert').filter({ hasText: '保存・更新中' })).toHaveCount(1);
     await expect(actions).toBeVisible();
-    await expect(actions.getByRole('button', { name: '削除 この予定を削除', exact: true })).toBeEnabled();
+    await expect(actions.getByRole('button', { name: '削除', exact: true })).toBeEnabled();
     await expect(page.getByRole('button', { name: '元に戻す', exact: true })).toHaveCount(0);
     expect((await repoSnapshot(page)).calls).toEqual(heldCalls);
     expect(await durableWrites(page)).toEqual(storageBefore);
@@ -1264,8 +1264,15 @@ for (const options of [cases.find(item => item.label === 'desktop' && item.theme
     await page.evaluate(() => window.__plannerRecoveryRepository.holdNextTemplateWrite());
     await editor.getByRole('button', { name: '保存', exact: true }).click();
     await expect.poll(async () => (await repoSnapshot(page)).pendingPlanWrites).toBe(1);
+    for (const control of await editor.locator('input, select, textarea, .segment').all()) {
+      await expect(control).toBeDisabled();
+    }
+    await expect(editor.getByRole('button', { name: '閉じる', exact: true })).toBeEnabled();
     await editor.getByRole('button', { name: '閉じる', exact: true }).click();
     await page.getByRole('button', { name: '火曜 1限 授業Bを編集', exact: true }).click();
+    for (const control of await editor.locator('input, select, textarea, .segment').all()) {
+      await expect(control).toBeEnabled();
+    }
     await editor.getByLabel('授業名', { exact: true }).fill('未保存の授業B');
     await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanWrite());
     await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
@@ -1276,5 +1283,475 @@ for (const options of [cases.find(item => item.label === 'desktop' && item.theme
     await editor.getByRole('button', { name: '保存', exact: true }).click();
     await expect(editor).toHaveCount(0);
     await expect(page.getByRole('button', { name: '火曜 1限 未保存の授業Bを編集', exact: true })).toBeVisible();
+  });
+
+  test(`new timetable class stays locked until one create completes ${options.label}-${options.theme}`, async ({ page }, testInfo) => {
+    await boot(page, options);
+    await navigate(page, '時間割');
+    await page.getByRole('button', { name: '水曜 1限 授業を追加', exact: true }).press('Enter');
+    const editor = page.locator('.timetable-editor-modal');
+    await editor.getByLabel('授業名', { exact: true }).fill('新しく保存する授業');
+    const before = writeMethods(await repoSnapshot(page));
+    await page.evaluate(() => window.__plannerRecoveryRepository.holdNextTemplateWrite());
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect.poll(async () => (await repoSnapshot(page)).pendingPlanWrites).toBe(1);
+    for (const control of await editor.locator('input, select, textarea, .segment').all()) {
+      await expect(control).toBeDisabled();
+    }
+    await expect(editor.getByRole('button', { name: '閉じる', exact: true })).toBeEnabled();
+    await expect(editor.getByLabel('授業名', { exact: true })).toHaveValue('新しく保存する授業');
+    // Native form submission cannot dispatch another create while the first is pending.
+    await editor.evaluate(form => { form.requestSubmit(); form.requestSubmit(); });
+    expect(writeMethods(await repoSnapshot(page)).slice(before.length)).toEqual(['upsertScheduleTemplate']);
+    await page.screenshot({ path: testInfo.outputPath(`timetable-pending-create-${options.label}-${options.theme}.png`), fullPage: true });
+    await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanWrite());
+    await expect(editor).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '水曜 1限 新しく保存する授業を編集', exact: true })).toBeVisible();
+    expect(writeMethods(await repoSnapshot(page)).slice(before.length)).toEqual(['upsertScheduleTemplate']);
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleTemplates.v1') ?? '[]'));
+    expect(saved).toEqual([expect.objectContaining({ title: '新しく保存する授業' })]);
+  });
+}
+
+for (const viewport of [
+  { width: 1280, height: 900, reducedMotion: 'no-preference' },
+  { width: 390, height: 844, reducedMotion: 'no-preference' },
+  { width: 390, height: 600, reducedMotion: 'reduce' },
+  { width: 800, height: 1100, reducedMotion: 'no-preference' },
+  { width: 1000, height: 1250, reducedMotion: 'no-preference' },
+]) {
+  test(`timetable overlay keeps lower fields above navigation ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
+    await page.emulateMedia({ reducedMotion: viewport.reducedMotion });
+    await boot(page, { ...viewport, theme: 'light' });
+    await page.evaluate(() => window.__plannerRecoveryHook.startTimetableClass({ title: '編集する授業', periodNumber: 1 }));
+    await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(true);
+    await navigate(page, '時間割');
+    await page.getByRole('button', { name: '月曜 1限 編集する授業を編集', exact: true }).click();
+    const editor = page.locator('.timetable-editor-modal');
+    await expect(editor).toBeVisible();
+    // Use an independent fixed element outside the route as the browser's
+    // reference. Root clientWidth can include a reserved scrollbar gutter.
+    const geometry = await page.evaluate(() => {
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position:fixed;inset:0;margin:0;padding:0;border:0;visibility:hidden;pointer-events:none';
+      document.body.append(probe);
+      try {
+        const rect = probe.getBoundingClientRect();
+        const overlay = document.querySelector('.timetable-modal-overlay').getBoundingClientRect();
+        return {
+          overlay: { x: overlay.x, y: overlay.y, width: overlay.width, height: overlay.height },
+          rootRect: document.documentElement.getBoundingClientRect().toJSON(),
+          fixedViewport: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          innerWidth, innerHeight,
+          rootClientWidth: document.documentElement.clientWidth,
+          rootClientHeight: document.documentElement.clientHeight,
+          rootTransform: getComputedStyle(document.documentElement).transform,
+          bodyTransform: getComputedStyle(document.body).transform,
+          routeTransform: getComputedStyle(document.querySelector('.timetable-view')).transform,
+          rootGutter: getComputedStyle(document.documentElement).scrollbarGutter,
+        };
+      } finally { probe.remove(); }
+    });
+    const bounds = geometry.overlay;
+    await testInfo.attach('overlay-geometry', { body: JSON.stringify({ viewport, geometry }), contentType: 'application/json' });
+    expect(bounds.x).toBeCloseTo(0, 0);
+    expect(bounds.y).toBeCloseTo(0, 0);
+    expect(geometry.rootTransform).toBe('none');
+    expect(geometry.bodyTransform).toBe('none');
+    expect(geometry.routeTransform).toBe('none');
+    expect(bounds.x).toBeCloseTo(geometry.fixedViewport.x, 0);
+    expect(bounds.y).toBeCloseTo(geometry.fixedViewport.y, 0);
+    expect(bounds.width).toBeCloseTo(geometry.fixedViewport.width, 0);
+    expect(bounds.height).toBeCloseTo(geometry.fixedViewport.height, 0);
+    const nav = await page.getByRole('navigation', { name: '主要ナビゲーション' }).boundingBox();
+    const form = await editor.boundingBox();
+    expect(form.y + form.height).toBeLessThanOrEqual(nav.y + 1);
+    for (const control of [editor.getByLabel('教室', { exact: true }), editor.getByLabel('メモ', { exact: true }), editor.getByRole('button', { name: '授業を削除', exact: true })]) {
+      await control.scrollIntoViewIfNeeded();
+      await control.click({ trial: true });
+      expect(await control.evaluate(node => {
+        const r = node.getBoundingClientRect();
+        return [0.25, 0.5, 0.75].every(ratio => {
+          const hit = document.elementFromPoint(r.left + r.width * ratio, r.top + r.height / 2);
+          return hit === node || node.contains(hit);
+        });
+      })).toBe(true);
+    }
+    await page.screenshot({ path: testInfo.outputPath(`timetable-overlay-${viewport.width}x${viewport.height}.png`), fullPage: true });
+    await editor.getByRole('button', { name: '閉じる', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+  });
+}
+
+
+for (const viewport of cases.filter(item => item.theme === 'light' && ['desktop', 'mobile'].includes(item.label))) {
+  test(`Bookshelf old save/delete cannot dismiss a replacement editor ${viewport.label}`, async ({ page }, testInfo) => {
+    await boot(page, viewport); await navigate(page, '教材');
+    for (const action of ['save', 'delete']) {
+      await page.getByRole('button', { name: '更新前の教材のメニュー', exact: true }).first().click();
+      await page.getByRole('button', { name: '教材情報・進捗を編集', exact: true }).click();
+      const editor = page.locator('form').filter({ has: page.getByRole('heading', { name: '教材を編集', exact: true }) });
+      await expect(editor).toBeVisible();
+      const method = action === 'save' ? 'upsertStudyMaterial' : 'deleteStudyMaterial';
+      await page.evaluate(method => window.__plannerRecoveryRepository.holdNextMaterialWrite(method), method);
+      if (action === 'save') {
+        await editor.getByLabel('現在位置', { exact: true }).fill('12');
+        await editor.getByRole('button', { name: '保存', exact: true }).click();
+      } else {
+        page.once('dialog', dialog => dialog.accept());
+        await editor.getByRole('button', { name: '削除', exact: true }).click();
+      }
+      await expect.poll(async () => (await repoSnapshot(page)).pendingPlanWrites).toBe(1);
+      await editor.getByRole('button', { name: 'キャンセル', exact: true }).click();
+      await page.getByRole('button', { name: '教材追加', exact: true }).click();
+      const replacement = page.locator('form').filter({ has: page.getByRole('heading', { name: '教材を追加', exact: true }) });
+      await replacement.getByPlaceholder('黄色チャート').fill('後から入力した未保存の教材');
+      expect(await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanWrite())).toBe(true);
+      await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+      await expect.poll(async () => (await repoSnapshot(page)).calls.filter(call => call.method === method && call.phase === 'returned').length).toBe(1);
+      await expect(replacement).toBeVisible();
+      await expect(replacement.getByPlaceholder('黄色チャート')).toHaveValue('後から入力した未保存の教材');
+      const saved = await durable(page);
+      expect(saved.materials.some(material => material.name === '後から入力した未保存の教材')).toBe(false);
+      if (action === 'save') expect(saved.materials[0].currentUnit).toBe(12);
+      else expect(saved.materials).toEqual([]);
+      const screenshot = testInfo.outputPath(`${viewport.label}-${action}-new-draft-retained.png`);
+      await page.screenshot({ path: screenshot, fullPage: true });
+      await testInfo.attach('New material draft survives old completion', { path: screenshot, contentType: 'image/png' });
+      await replacement.getByRole('button', { name: 'キャンセル', exact: true }).click();
+    }
+  });
+}
+
+for (const viewport of cases.filter(item => item.theme === 'light' && ['desktop', 'mobile'].includes(item.label))) {
+  test(`Bookshelf cover follows the latest choice ${viewport.label}`, async ({ page }, testInfo) => {
+    await boot(page, viewport); await navigate(page, '教材');
+    // Delay only FileReader start; use the real decoder, resize, editor and repository.
+    await page.evaluate(() => {
+      const RealFileReader = window.FileReader;
+      window.__heldCoverReads = [];
+      window.__coverConversions = 0;
+      const realToDataURL = HTMLCanvasElement.prototype.toDataURL;
+      HTMLCanvasElement.prototype.toDataURL = function (...args) {
+        const result = realToDataURL.apply(this, args);
+        window.__coverConversions += 1;
+        return result;
+      };
+      window.FileReader = class extends RealFileReader {
+        readAsDataURL(file) {
+          if (file.name === 'held.png') window.__heldCoverReads.push(() => super.readAsDataURL(file));
+          else super.readAsDataURL(file);
+        }
+      };
+    });
+    const photo = (name, base64) => ({ name, mimeType: 'image/png', buffer: Buffer.from(base64, 'base64') });
+    const oldPhoto = photo('held.png', 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC');
+    const newPhoto = photo('new.png', 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYPgPAAEDAQAIicLsAAAAAElFTkSuQmCC');
+    const openEditor = async () => {
+      await page.getByRole('button', { name: '更新前の教材のメニュー', exact: true }).first().click();
+      await page.getByRole('button', { name: '教材情報・進捗を編集', exact: true }).click();
+      return page.locator('form').filter({ has: page.getByRole('heading', { name: '教材を編集', exact: true }) });
+    };
+    let editor = await openEditor();
+    const input = editor.locator('input[type=file]');
+    await input.setInputFiles(oldPhoto);
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+    await input.setInputFiles(newPhoto);
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
+    const expectedCover = await editor.locator('.bookshelf-cover-preview img').getAttribute('src');
+    expect(expectedCover).toMatch(/^data:image\/jpeg;base64,/);
+    const conversions = await page.evaluate(() => window.__coverConversions);
+    await page.evaluate(() => window.__heldCoverReads.shift()());
+    await expect.poll(() => page.evaluate(() => window.__coverConversions)).toBe(conversions + 1);
+    await expect(editor.locator('.bookshelf-cover-preview img')).toHaveAttribute('src', expectedCover);
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    expect((await durable(page)).materials[0].coverImageDataUrl).toBe(expectedCover);
+    editor = await openEditor();
+    await editor.locator('input[type=file]').setInputFiles(oldPhoto);
+    await editor.getByRole('button', { name: '写真を外す', exact: true }).click();
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
+    await page.evaluate(() => window.__heldCoverReads.shift()());
+    await expect.poll(() => page.evaluate(() => window.__coverConversions)).toBe(conversions + 2);
+    await expect(editor.locator('.bookshelf-cover-preview img')).toHaveCount(0);
+    const screenshot = testInfo.outputPath(`${viewport.label}-cover-removed.png`);
+    await page.screenshot({ path: screenshot, fullPage: true });
+    await testInfo.attach('Later cover removal retained', { path: screenshot, contentType: 'image/png' });
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    expect((await durable(page)).materials[0].coverImageDataUrl).toBeUndefined();
+  });
+}
+
+for (const viewport of cases.filter(item => item.theme === 'light' && ['desktop', 'mobile'].includes(item.label))) {
+  test(`Bookshelf pending catalogue selection can be cancelled safely ${viewport.label}`, async ({ page }, testInfo) => {
+    await boot(page, viewport);
+    // Control only metadata responses; keep real search/dialog and durable repository.
+    await page.route('**/src/services/materialMetadataService.ts*', route => route.fulfill({
+      contentType: 'application/javascript',
+      body: `
+        const candidate = { catalogEntryId: 'fixture:catalog', title: '検索した教材', authors: [], aliases: [] };
+        window.__catalogDetailRequests = [];
+        export async function searchMaterialMetadata() { return { results: [candidate] }; }
+        export function resolveMaterialMetadataCandidate() {
+          return new Promise(resolve => window.__catalogDetailRequests.push(resolve));
+        }
+      `,
+    }));
+    await page.reload();
+    await page.waitForFunction(() => window.__plannerRecoveryHook?.snapshot?.().ready === true);
+    await navigate(page, '教材');
+    await page.getByRole('button', { name: '教材追加', exact: true }).click();
+    const editor = page.locator('form').filter({ has: page.getByRole('heading', { name: '教材を追加', exact: true }) });
+    await editor.getByPlaceholder('黄色チャート').fill('保持する手入力');
+    await editor.getByLabel('ISBN / 教材名', { exact: true }).fill('教材');
+    await editor.getByRole('button', { name: '検索', exact: true }).click();
+    const candidate = editor.locator('.material-metadata-result');
+    await candidate.click();
+    await expect.poll(() => page.evaluate(() => window.__catalogDetailRequests.length)).toBe(1);
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+    const cancel = editor.getByRole('button', { name: '教材の選択を取り消す', exact: true });
+    await expect(cancel).toBeVisible();
+    const screenshot = testInfo.outputPath(`${viewport.label}-cancel-catalogue-selection.png`);
+    await page.screenshot({ path: screenshot, fullPage: true });
+    await testInfo.attach('Pending catalogue selection cancellation', { path: screenshot, contentType: 'image/png' });
+    await cancel.click();
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
+    await expect(editor.getByPlaceholder('黄色チャート')).toHaveValue('保持する手入力');
+    await candidate.click();
+    await expect.poll(() => page.evaluate(() => window.__catalogDetailRequests.length)).toBe(2);
+    await page.evaluate(() => window.__catalogDetailRequests[0]({ catalogEntryId: 'cancelled', title: '取り消した教材', authors: [], aliases: [] }));
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+    await expect(editor.getByPlaceholder('黄色チャート')).toHaveValue('保持する手入力');
+    await page.evaluate(() => window.__catalogDetailRequests[1]({ catalogEntryId: 'fixture:catalog', title: '検索した教材', authors: [], aliases: [] }));
+    await expect(editor.getByPlaceholder('黄色チャート')).toHaveValue('検索した教材');
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    expect((await durable(page)).materials).toEqual(expect.arrayContaining([expect.objectContaining({ name: '検索した教材', catalogEntryId: 'fixture:catalog' })]));
+    expect((await durable(page)).materials.some(item => item.name === '保持する手入力' || item.catalogEntryId === 'cancelled')).toBe(false);
+  });
+}
+
+for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
+  test(`Plan editor keeps a reopened draft after the previous save completes ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, cases.find(item => item.label === viewport && item.theme === theme));
+    const seeded = await page.evaluate(async date => {
+      const userId = window.__plannerRecoveryHook.snapshot().ownerId;
+      const seeded = await window.__plannerRecoveryRepository.seedPlanUndo({ userId, date, withActual: false });
+      await window.__plannerRecoveryHook.refresh();
+      return seeded;
+    }, E2E_TODAY);
+    await navigate(page, '予定');
+    await page.getByRole('tab', { name: '日', exact: true }).click();
+    const openEditor = async title => {
+      await page.locator('.timeline-plan-block').filter({ hasText: title }).click();
+      await page.getByRole('dialog', { name: `${title}の操作`, exact: true })
+        .getByRole('button', { name: '予定を編集', exact: true }).click();
+      return page.getByRole('dialog', { name: '学習予定を編集', exact: true });
+    };
+    let editor = await openEditor(seeded.plan.title);
+    const returnedBefore = (await repoSnapshot(page)).calls.filter(call => call.method === 'upsertPlan' && call.phase === 'returned').length;
+    await editor.getByRole('textbox', { name: '予定名', exact: true }).fill('先に保存した予定');
+    await page.evaluate(() => window.__plannerRecoveryRepository.holdNextPlanWrite());
+    await editor.getByRole('button', { name: '学習予定を更新', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    await expect.poll(async () => (await repoSnapshot(page)).pendingPlanWrites).toBe(1);
+    editor = await openEditor('先に保存した予定');
+    await editor.getByRole('textbox', { name: '予定名', exact: true }).fill('後から入力した未保存の予定');
+    expect(await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanWrite())).toBe(true);
+    await expect.poll(async () => (await repoSnapshot(page)).calls.filter(call => call.method === 'upsertPlan' && call.phase === 'returned').length).toBe(returnedBefore + 1);
+    await expect(page.getByText('学習予定を更新しました。', { exact: true })).toBeVisible();
+    await expect(editor).toBeVisible();
+    await expect(editor.getByRole('textbox', { name: '予定名', exact: true })).toHaveValue('後から入力した未保存の予定');
+    await editor.getByRole('button', { name: '学習予定を更新', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]').map(event => event.title)))
+      .toEqual(['後から入力した未保存の予定']);
+  });
+}
+
+for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
+  test(`Profile photo keeps the latest choice under StrictMode ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, { ...cases.find(item => item.label === viewport && item.theme === theme), strict: true });
+    expect((await hookSnapshot(page)).mounts).toBeGreaterThanOrEqual(2);
+    await page.evaluate(() => {
+      const Reader = window.FileReader;
+      window.__heldAvatarReads = [];
+      window.__avatarConversions = 0;
+      const toDataURL = HTMLCanvasElement.prototype.toDataURL;
+      HTMLCanvasElement.prototype.toDataURL = function (...args) {
+        const value = toDataURL.apply(this, args);
+        window.__avatarConversions += 1;
+        return value;
+      };
+      window.FileReader = class extends Reader {
+        readAsDataURL(file) {
+          if (file.name === 'held.png') window.__heldAvatarReads.push(() => super.readAsDataURL(file));
+          else super.readAsDataURL(file);
+        }
+      };
+    });
+    const photo = { name: 'held.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC', 'base64') };
+    const open = async () => {
+      await page.getByRole('button', { name: 'マイページを開く', exact: true }).click();
+      const editor = page.locator('.my-page-modal');
+      await editor.locator('.collapsible-toggle').click();
+      return editor;
+    };
+    let editor = await open();
+    await editor.locator('input[type=file]').setInputFiles(photo);
+    await expect(editor.getByRole('button', { name: 'プロフィールを保存', exact: true })).toBeDisabled();
+    await editor.getByRole('button', { name: '🚀', exact: true }).click();
+    await expect(editor.getByRole('button', { name: 'プロフィールを保存', exact: true })).toBeEnabled();
+    await page.evaluate(() => window.__heldAvatarReads.shift()());
+    await expect.poll(() => page.evaluate(() => window.__avatarConversions)).toBe(1);
+    await expect(editor.locator('.user-avatar')).toHaveText('🚀');
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    const storedAvatar = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.users')).find(user => user.id === 'planner-recovery-owner').avatar);
+    await expect.poll(storedAvatar).toBe('🚀');
+    // A successful save preserves the current editing session and section.
+    await expect(editor.getByRole('status')).toHaveText('保存しました。');
+    await expect(editor.locator('input[type=file]')).toHaveCount(1);
+    await editor.locator('input[type=file]').setInputFiles(photo);
+    await editor.getByRole('button', { name: '閉じる', exact: true }).click();
+    editor = await open();
+    await editor.locator('input[type=file]').setInputFiles(photo);
+    await page.evaluate(() => window.__heldAvatarReads.shift()());
+    await expect.poll(() => page.evaluate(() => window.__avatarConversions)).toBe(2);
+    await expect(editor.getByRole('button', { name: 'プロフィールを保存', exact: true })).toBeDisabled();
+    await expect(editor.locator('.user-avatar')).toHaveText('🚀');
+    await page.evaluate(() => window.__heldAvatarReads.shift()());
+    await expect.poll(() => page.evaluate(() => window.__avatarConversions)).toBe(3);
+    await expect(editor.getByRole('button', { name: 'プロフィールを保存', exact: true })).toBeEnabled();
+    const selected = await editor.locator('.user-avatar img').getAttribute('src');
+    expect(selected).toMatch(/^data:image\/jpeg;base64,/);
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect.poll(storedAvatar).toBe(selected);
+  });
+}
+
+for (const [viewport, theme, replacement] of [['desktop', 'light', 'editor'], ['mobile', 'dark', 'scope']]) {
+  test(`Recurring confirmation preserves a newer ${replacement} ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, cases.find(item => item.label === viewport && item.theme === theme));
+    await page.evaluate(async date => {
+      await window.__plannerRecoveryRepository.seedRecurringEditorPlans({ userId: window.__plannerRecoveryHook.snapshot().ownerId, date });
+      await window.__plannerRecoveryHook.refresh();
+    }, E2E_TODAY);
+    await navigate(page, '予定');
+    await page.getByRole('tab', { name: '日', exact: true }).click();
+    const openEditor = async title => {
+      await page.locator('.timeline-plan-block').filter({ hasText: title }).click();
+      await page.getByRole('dialog', { name: `${title}の操作`, exact: true })
+        .getByRole('button', { name: '予定を編集', exact: true }).click();
+      return page.getByRole('dialog', { name: '学習予定を編集', exact: true });
+    };
+    const scope = () => page.locator('.modal-card').filter({ has: page.getByRole('heading', { name: '繰り返し予定の更新範囲', exact: true }) });
+    let editor = await openEditor('繰り返し予定A');
+    await editor.getByRole('textbox', { name: '予定名', exact: true }).fill('保存する繰り返し予定A');
+    await editor.getByRole('button', { name: '学習予定を更新', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    await page.evaluate(() => window.__plannerRecoveryRepository.holdNextRecurringWrite());
+    await scope().getByRole('button', { name: /^すべての予定/ }).click();
+    await expect.poll(async () => (await repoSnapshot(page)).pendingPlanWrites).toBe(1);
+    await scope().getByRole('button', { name: '閉じる', exact: true }).click();
+    editor = await openEditor('繰り返し予定B');
+    await editor.getByRole('textbox', { name: '予定名', exact: true }).fill('未保存の繰り返し予定B');
+    if (replacement === 'scope') await editor.getByRole('button', { name: '学習予定を更新', exact: true }).click();
+    const before = (await repoSnapshot(page)).calls.filter(call => call.method === 'applyRecurringPlanMutation' && call.phase === 'returned').length;
+    expect(await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanWrite())).toBe(true);
+    await expect.poll(async () => (await repoSnapshot(page)).calls.filter(call => call.method === 'applyRecurringPlanMutation' && call.phase === 'returned').length).toBe(before + 1);
+    await expect(page.getByText('繰り返し予定を更新しました。', { exact: true })).toBeVisible();
+    if (replacement === 'scope') {
+      await expect(scope()).toBeVisible();
+      await expect(scope()).toContainText('繰り返し予定B');
+      await scope().getByRole('button', { name: '閉じる', exact: true }).click();
+    } else {
+      await expect(editor.getByRole('textbox', { name: '予定名', exact: true })).toHaveValue('未保存の繰り返し予定B');
+      await editor.getByRole('button', { name: '閉じる', exact: true }).click();
+    }
+    const events = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1')));
+    expect(events.map(event => event.title).sort()).toEqual(['保存する繰り返し予定A', '繰り返し予定B'].sort());
+  });
+}
+
+for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
+  test(`Profile save reports storage failure honestly and permits retry ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, cases.find(item => item.label === viewport && item.theme === theme));
+    const readProfile = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.users')).find(user => user.id === 'planner-recovery-owner'));
+    const before = await readProfile();
+    await page.getByRole('button', { name: 'マイページを開く', exact: true }).click();
+    const editor = page.locator('.my-page-modal');
+    await editor.getByRole('textbox', { name: 'ユーザーネーム', exact: true }).fill('保存を再試行する名前');
+    await page.evaluate(() => window.__plannerRecoveryRepository.failNextProfileWrite());
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect(editor.getByRole('status')).toHaveText('プロフィールの保存に失敗しました（検証用）。');
+    await expect(editor).not.toContainText('保存しました。');
+    await expect(editor.getByRole('textbox', { name: 'ユーザーネーム', exact: true })).toHaveValue('保存を再試行する名前');
+    expect(await readProfile()).toEqual(before);
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect.poll(async () => (await readProfile()).username).toBe('保存を再試行する名前');
+    await expect(page.getByText('プロフィールを更新しました。', { exact: true })).toBeVisible();
+    await expect(editor).not.toContainText('プロフィールの保存に失敗しました（検証用）。');
+  });
+}
+
+for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
+  test(`Profile save cannot restore the signed-out UI under StrictMode ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, { ...cases.find(item => item.label === viewport && item.theme === theme), strict: true });
+    expect((await hookSnapshot(page)).mounts).toBeGreaterThanOrEqual(2);
+    await page.getByRole('button', { name: 'マイページを開く', exact: true }).click();
+    const editor = page.locator('.my-page-modal');
+    await editor.getByRole('textbox', { name: 'ユーザーネーム', exact: true }).fill('応答を待つプロフィール');
+    await page.evaluate(() => window.__plannerRecoveryRepository.holdNextProfileResponse());
+    const responseState = () => page.evaluate(() => window.__plannerRecoveryRepository.profileResponseState());
+    const before = await responseState();
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect.poll(async () => (await responseState()).pending).toBe(true);
+    const storedProfile = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.users')).find(user => user.id === 'planner-recovery-owner'));
+    await expect.poll(async () => (await storedProfile()).username).toBe('応答を待つプロフィール');
+    await editor.getByRole('button', { name: 'ログアウト', exact: true }).click();
+    await expect(page.locator('.auth-shell')).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.session'))).toBeNull();
+    expect(await page.evaluate(() => window.__plannerRecoveryRepository.releaseProfileResponse())).toBe(true);
+    await expect.poll(async () => (await responseState()).returned).toBe(before.returned + 1);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(page.locator('.auth-shell')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'マイページを開く', exact: true })).toHaveCount(0);
+    await expect(page.getByText('プロフィールを更新しました。', { exact: true })).toHaveCount(0);
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.session'))).toBeNull();
+    expect((await storedProfile()).username).toBe('応答を待つプロフィール');
+  });
+}
+
+
+for (const [viewport, theme, reopen] of [['desktop', 'light', false], ['mobile', 'dark', true]]) {
+  test(`Profile save preserves newer typing under StrictMode ${viewport}-${theme}`, async ({ page }) => {
+    await boot(page, { ...cases.find(item => item.label === viewport && item.theme === theme), strict: true });
+    expect((await hookSnapshot(page)).mounts).toBeGreaterThanOrEqual(2);
+    await page.getByRole('button', { name: 'マイページを開く', exact: true }).click();
+    const editor = page.locator('.my-page-modal');
+    const username = editor.getByRole('textbox', { name: 'ユーザーネーム', exact: true });
+    await username.fill('先に保存した名前');
+    await page.evaluate(() => window.__plannerRecoveryRepository.holdNextProfileResponse());
+    const responseState = () => page.evaluate(() => window.__plannerRecoveryRepository.profileResponseState());
+    const before = await responseState();
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect.poll(async () => (await responseState()).pending).toBe(true);
+    const storedName = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.users')).find(user => user.id === 'planner-recovery-owner').username);
+    await expect.poll(storedName).toBe('先に保存した名前');
+    if (reopen) {
+      await editor.getByRole('button', { name: '閉じる', exact: true }).click();
+      await page.getByRole('button', { name: 'マイページを開く', exact: true }).click();
+    }
+    await username.fill('後から入力した未保存の名前');
+    expect(await page.evaluate(() => window.__plannerRecoveryRepository.releaseProfileResponse())).toBe(true);
+    await expect.poll(async () => (await responseState()).returned).toBe(before.returned + 1);
+    await expect(page.getByText('プロフィールを更新しました。', { exact: true })).toBeVisible();
+    await expect(username).toHaveValue('後から入力した未保存の名前');
+    await expect(editor).not.toContainText('保存しました。');
+    expect(await storedName()).toBe('先に保存した名前');
+    await editor.getByRole('button', { name: 'プロフィールを保存', exact: true }).click();
+    await expect(editor.getByRole('status')).toHaveText('保存しました。');
+    await expect.poll(storedName).toBe('後から入力した未保存の名前');
   });
 }

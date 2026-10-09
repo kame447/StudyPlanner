@@ -6,6 +6,7 @@ import {
   type TouchEvent as ReactTouchEvent,
 } from 'react';
 import { acquireTimelineDragInteractionLock } from '../lib/timelineDragInteractionLock';
+import { useTimelineDragCancellation } from './useTimelineDragCancellation';
 import {
   calculateWeekPlanVelocityTilt,
   hasWeekPlanMoveChanged,
@@ -30,6 +31,7 @@ export interface TimelineDragDescriptor<TItem> {
 
 interface DragSession<TItem> {
   inputKind: DragInputKind;
+  sourceElement: HTMLElement;
   descriptor: TimelineDragDescriptor<TItem>;
   startX: number;
   startY: number;
@@ -112,17 +114,25 @@ export function useTimelineDragController<TItem>({
 
   function clearDragSession() {
     const session = dragSessionRef.current;
+    if (!session) return;
     clearLongPressTimer(session);
     releaseInteractionLock(session);
     dragSessionRef.current = null;
     setDragVisual(null);
   }
 
+  useTimelineDragCancellation(clearDragSession);
+
+  useEffect(() => {
+    if (dragSessionRef.current?.sourceElement.isConnected === false) clearDragSession();
+  });
+
   useEffect(() => {
     return () => {
       const session = dragSessionRef.current;
       clearLongPressTimer(session);
       releaseInteractionLock(session);
+      dragSessionRef.current = null;
     };
   }, []);
 
@@ -144,6 +154,7 @@ export function useTimelineDragController<TItem>({
 
     return {
       inputKind,
+      sourceElement: element,
       descriptor,
       startX: clientX,
       startY: clientY,
@@ -241,7 +252,7 @@ export function useTimelineDragController<TItem>({
     suppressClickUntilRef.current = Date.now() + CLICK_SUPPRESSION_MS;
 
     if (session.inputKind === 'touch') {
-      session.releaseInteractionLock = acquireTimelineDragInteractionLock();
+      session.releaseInteractionLock ??= acquireTimelineDragInteractionLock();
       if ('vibrate' in navigator) navigator.vibrate?.(10);
     }
 
@@ -273,6 +284,8 @@ export function useTimelineDragController<TItem>({
     descriptor: TimelineDragDescriptor<TItem>,
   ) {
     if (event.pointerType === 'touch' || event.button !== 0 || !event.isPrimary) return;
+
+    clearDragSession();
 
     const session = createDragSession(
       'pointer',
@@ -330,6 +343,7 @@ export function useTimelineDragController<TItem>({
     event: ReactTouchEvent<HTMLElement>,
     descriptor: TimelineDragDescriptor<TItem>,
   ) {
+    clearDragSession();
     if (event.touches.length !== 1) return;
 
     const touch = event.touches[0];
@@ -344,6 +358,14 @@ export function useTimelineDragController<TItem>({
 
     dragSessionRef.current = session;
     session.longPressTimer = window.setTimeout(() => {
+      if (dragSessionRef.current !== session || session.canceled) return;
+      if (!session.sourceElement.isConnected) {
+        clearDragSession();
+        return;
+      }
+      // React's touchmove listener is passive. Install the native scroll guard
+      // before the first move, while the held gesture is still stationary.
+      session.releaseInteractionLock = acquireTimelineDragInteractionLock();
       if (deferTouchDragRef.current) {
         session.longPressArmed = true;
         return;
@@ -354,7 +376,12 @@ export function useTimelineDragController<TItem>({
 
   function handleTouchMove(event: ReactTouchEvent<HTMLElement>) {
     const session = dragSessionRef.current;
-    if (!session || session.inputKind !== 'touch' || event.touches.length !== 1) return;
+    if (!session || session.inputKind !== 'touch') return;
+    if (event.touches.length !== 1) {
+      clearDragSession();
+      return;
+    }
+    if (session.canceled) return;
 
     const touch = event.touches[0];
     if (!session.active) {

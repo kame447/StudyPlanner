@@ -1,0 +1,14 @@
+Command: npm run verify
+Then: node scripts/ci/check-bundle-budget.mjs
+cwd: studyplanner-backend-idle-read-work
+Branch: perf/firestore-backend-idle-reads
+Base/HEAD during verification: 22847120386987329e2f034d6062d59694ef1180
+Dirty runtime/tests: productObservabilityActiveUserSnapshot.ts/.test.ts; productObservabilityRetention.ts/.test.ts; traceWorker.scheduledSubrequestBudget.test.ts
+Exact all-non-documentation source snapshot: inputs.json (1,845 entries)
+Actual installed identity: installed-packages.json (237 present, 99 optional absent)
+Environment: clean env -i; Node24.19.0 path; isolated HOME, npm cache, Wrangler log directory; npm offline; metrics disabled; DEV_LAN_HOST=127.0.0.1; TZ=UTC; VITEST_MAX/MIN_FORKS/THREADS=1
+Generated Worker types/build: independent worktree
+Shared Vitest result-order cache disclosure: ../environment-notes.md (no cached-pass reuse)
+Outcome: exit0; 6,163 passed / 45 skipped / 1 todo; 759 files passed / 10 skipped; build success; all8 budgets passed
+Source and installed-package manifests are byte-equivalent before/after. Runtime/test content remains frozen after verification; subsequent edits only document the result.
+Not performed: real Firestore, production requests or mutation, real AI, browser validation, deployed index/IAM audit, billing observation, publication, PR or main change.

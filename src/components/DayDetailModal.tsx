@@ -131,7 +131,6 @@ function DayDetailSession({
                   <span className="schedule-action-icon"><Pencil aria-hidden="true" size={24} /></span>
                   <span className="schedule-action-copy">
                     <strong>予定を編集</strong>
-                    <small>時間や内容を変更</small>
                   </span>
                   <ChevronRight aria-hidden="true" size={22} />
                 </button>
@@ -151,7 +150,6 @@ function DayDetailSession({
                 <span className="schedule-action-icon"><NotebookPen aria-hidden="true" size={24} /></span>
                 <span className="schedule-action-copy">
                   <strong>{detailActual ? '記録を編集' : '記録を保存'}</strong>
-                  <small>実際の内容を保存</small>
                 </span>
                 <ChevronRight aria-hidden="true" size={22} />
               </button>
@@ -166,7 +164,6 @@ function DayDetailSession({
                   <span className="schedule-action-icon"><Trash2 aria-hidden="true" size={24} /></span>
                   <span className="schedule-action-copy">
                     <strong>削除</strong>
-                    <small>この予定を削除</small>
                   </span>
                   <ChevronRight aria-hidden="true" size={22} />
                 </button>

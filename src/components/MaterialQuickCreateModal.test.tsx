@@ -1,3 +1,4 @@
+import { deferred } from '../repositories/localPersistenceConcurrency.testUtils';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 import type { StudyMaterial } from '../types/domain';
@@ -38,6 +39,31 @@ function renderModal({
 }
 
 describe('MaterialQuickCreateModal', () => {
+  for (const kind of ['予定', '記録']) {
+    it.each([
+      ['date', ''], ['date', '2026-02-30'], ['date', '2026-13-01'], ['date', 'invalid'],
+      ['time', ''], ['time', '25:00'], ['time', '19:90'], ['time', '7:00'],
+    ])(`rejects invalid %s=%s for ${kind} and allows correction`, async (type, value) => {
+      const { renderer, onSavePlan, onSaveStandaloneActual, onClose } = renderModal();
+      const root = renderer.root;
+      act(() => root.findAllByType('button').find(button => button.props.role === 'tab' && button.props.children === kind)!.props.onClick());
+      const input = () => root.findAllByType('input').find(input => input.props.type === type)!;
+      act(() => input().props.onChange({ target: { value } }));
+      expect(root.findByProps({ type: 'submit' }).props.disabled).toBe(true);
+      await act(async () => { await root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); });
+      expect(onSavePlan).not.toHaveBeenCalled();
+      expect(onSaveStandaloneActual).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(input().props.value).toBe(value);
+      act(() => input().props.onChange({ target: { value: type === 'date' ? '2028-02-29' : '19:00' } }));
+      expect(root.findByProps({ type: 'submit' }).props.disabled).toBe(false);
+      await act(async () => { await root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); });
+      expect(kind === '予定' ? onSavePlan : onSaveStandaloneActual).toHaveBeenCalledOnce();
+      expect(onClose).toHaveBeenCalledOnce();
+      act(() => renderer.unmount());
+    });
+  }
+
   it('keeps the default material quick-create path as a standalone actual', async () => {
     const { renderer, onSaveStandaloneActual, onClose } = renderModal();
 
@@ -118,4 +144,26 @@ describe('MaterialQuickCreateModal', () => {
     );
     expect(onSaveStandaloneActual).not.toHaveBeenCalled();
   });
+});
+
+
+it('keeps a replacement quick-entry session open and admits a pending submission only once', async () => {
+  const gate = deferred(); const save = vi.fn(() => gate.promise), close = vi.fn();
+  let renderer!: ReactTestRenderer;
+  const view = (date: string) => <MaterialQuickCreateModal userId="user-1" selectedDate={date} material={material}
+    onClose={close} onSavePlan={vi.fn()} onSaveStandaloneActual={save} />;
+  act(() => { renderer = create(view('2026-08-14')); });
+  const submit = renderer.root.findByType('form').props.onSubmit;
+  let pending!: Promise<void>;
+  act(() => { pending = submit({ preventDefault: vi.fn() }); void submit({ preventDefault: vi.fn() }); });
+  expect(save).toHaveBeenCalledOnce();
+  act(() => { renderer.update(view('2026-08-15')); });
+  await act(async () => { gate.resolve(); await pending; });
+  expect(close).not.toHaveBeenCalled();
+  expect(renderer.root.findAllByType('input').find(input => input.props.type === 'date')!.props.value).toBe('2026-08-15');
+  await act(async () => { await submit({ preventDefault: vi.fn() }); });
+  expect(save).toHaveBeenCalledOnce();
+  await act(async () => { await renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); });
+  expect(close).toHaveBeenCalledOnce(); expect(save).toHaveBeenCalledTimes(2);
+  act(() => renderer.unmount());
 });

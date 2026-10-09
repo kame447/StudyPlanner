@@ -35,7 +35,7 @@ function button(label:string){return renderer!.root.findAllByType('button').find
 async function click(label:string){await act(async()=>{button(label).props.onClick()});}
 beforeEach(()=>{sdk.rows.clear();sdk.rows.set('plans',new Map([[p.id,p]]));sdk.log=[];sdk.gate=null;sdk.entered=false;notices.mockClear();
   vi.stubGlobal('window',{addEventListener:noop,removeEventListener:noop,setTimeout,clearTimeout,matchMedia:()=>({matches:true}),confirm:()=>true});
-  vi.stubGlobal('document',{body:{style:{overflow:'',overscrollBehavior:''}}});
+  vi.stubGlobal('document',Object.assign(new EventTarget(),{body:{style:{overflow:'',overscrollBehavior:''}}}));
   boundary.repository=createFirebasePlannerRepository({} as Firestore);
 });
 afterEach(()=>{act(()=>renderer?.unmount());renderer=undefined;vi.unstubAllGlobals()});

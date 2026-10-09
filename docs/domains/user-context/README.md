@@ -42,6 +42,6 @@ PR #302でcanonical文書の導入は完了した。旧documentation branchは�
 
 #47は共有conversation/Fact Graph session、outcome観測・集計・個別最適化を所有し、このdomainの共通contextをconsumeする。#164はlocal/shared authority、操作ID/revision、offline再送、複数端末、migration/rollbackを所有する。両Issueを#294へ丸ごと統合closeしない。
 
-#152 / PR #174はstored/indirect injection、durable poisoning、provenance、renderer securityの検証ownerを維持する。#246は学習相談の提案・review・adoption・promotionを所有し、助言や今回限りの採用をdurable memoryへ無断昇格しない。#213は本文を含まない品質・費用・latencyの観測を担当する。
+#152で確立されたstored/indirect injection、durable poisoning、provenance、renderer securityのbaselineを維持する。#152 / PR #174は完了済みの履歴であり、新しいrelease unitはcurrent roadmapと該当する回帰gate（Jev変更なら#335）を使う。#246は学習相談の提案・review・adoption・promotionを所有し、助言や今回限りの採用をdurable memoryへ無断昇格しない。#213は本文を含まない品質・費用・latencyの観測を担当する。
 
 #187と本棚domainからは現在の教材情報を読む。学習相談向けAgents APIの接続・利用条件は#187、相談処理そのものは#246で扱い、provider sessionを#294や#47の正本にしない。scheduling domainはcompleted #278のScheduleEvent/Occurrence baselineを所有する。#190の明示設定、#51の承認一意性、#45/#89のtrace運用、#128の保存済みpreview互換もそれぞれのownerを維持する。

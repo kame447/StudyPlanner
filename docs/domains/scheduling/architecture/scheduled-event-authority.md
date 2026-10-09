@@ -1,7 +1,7 @@
 # Scheduled event authority
 
 Status: canonical architecture contract
-Updated: 2026-10-05
+Updated: 2026-10-07
 Baseline implementation: Issue #278 — completed
 
 ## Product invariant
@@ -48,6 +48,8 @@ per-user cutover完了後、時間が確定した予定の保存正本は `sched
 productionのFirebase repository bundleはlegacy repositoryをmigration inputとして内包し、その外側をScheduleEvent-backed repositoryで包む。callerがlegacy write authorityを選択してはならない。
 
 localStorage fallbackも同じcanonical/legacy分離を使うが、これはdevelopment / localhost用である。複数端末cutoverのtransaction保証はFirestore migration boundaryが所有する。
+
+local/browser回帰では、legacy `studyplanner.plans` をmigration入力としてseedしても、cutover後の保存結果はcanonical `studyplanner.scheduleEvents.v1` の `ScheduleEvent`、または実repository facadeから再取得した `Plan` で検証する。凍結されたlegacy配列に新規書込が反映されないことを保存失敗と誤認せず、保存先の実schemaとowner/IDを確認し、reload後も対象の予定や教材への参照が保持されることを確かめる。
 
 ## Identity
 
@@ -236,3 +238,26 @@ Phase 3 migrationは以下を必須とする。
 10. Rules/clientのdeploy順序だけを理由にavailabilityを落としたり、legacyとcanonicalへdual-writeしたりしない。
 
 legacy collectionsの物理削除は本Phaseの必須条件ではない。write authority撤去と復旧証拠の保持を優先し、削除は保存期間・運用方針を別途決定してから行う。
+
+
+## Home creation entry
+
+「今日の予定」は既存の当日用projectionに含まれる予定だけを表示する。当日の件数が1〜3件でも、4行の表示枠を埋めるために将来日の予定を補充しない。空状態、一覧末尾の＋、当日への「すべて見る」、予定の並び順・実績対応は既存の契約を維持する。
+
+Homeの「今日の予定」の＋は、カレンダーへ移動せず「予定を追加」「学習を追加」の2択を開く。空の一覧には説明文を追加しない。＋は一覧の末尾に置き、予定が多い場合もスクロールして到達できる。既存の予定4行を優先する画面密度を維持する。
+
+アイコンは既存のカレンダー追加メニューと同じ `Plus` / `CalendarPlus` / `BookOpenCheck` を使う。選択後は既存の予定フォームまたは学習フォームを使用し、日付は選択時の端末の今日（変更可）。学習は時間指定を初期表示する。カレンダー・教材側の既存Todo初期値は変えない。
+
+入力形式の選択は保存正本を増やさない。既存application callback / repository facadeを経由し、Home独自の保存処理を作らない。保存・取消後もHomeに留まり、再表示は既存の予定projectionを使う。「すべて見る」は日表示への移動として追加操作から分離する。
+
+作成sessionはアカウント・画面・開き直しで分離し、過去の編集対象や遅い完了通知を次の入力へ持ち込まない。選択パネルはモバイルでは下部、PCでは中央に表示し、フォーム内の保存中/下位ダイアログのdismissal契約を上書きしない。
+
+## Plan editor and recurring confirmation lifetime
+
+予定フォームを閉じる責任は保存application側が持つ。通常保存は書込待ちに入る前にフォームを閉じ、繰り返し編集は適用範囲の選択へ渡す時点で閉じる。フォーム側は保存完了後に取消を再実行しない。
+
+繰り返しの範囲確認は書込中も閉じられる。成功時に消してよいのは、その書込を開始した同一の確認だけであり、後から開いた編集フォームや確認を閉じない。失敗時は現在の確認と入力を保持して再試行できる。確認を閉じても、既に開始した書込の取消を意味しない。
+
+繰り返し編集の表示日選択は、書込の入場確認後・通信待ち前に既存の順序付きUI操作へ登録する。成功で確定し、失敗ではその操作だけを除く。後からの日付・月・週移動（同じ値の明示選択を含む）や他の保存による選択を、古い完了で巻き戻さない。この順序管理はUI専用であり、永続化順序や複数client間の競合方針を定義しない。
+
+検証証跡と未解決の隣接範囲は [Issue #437](https://github.com/kame447/StudyPlanner/issues/437) が所有する。

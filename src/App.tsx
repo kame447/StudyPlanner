@@ -1,3 +1,10 @@
+import { HomeDisplayClockProvider } from './components/home/HomeDisplayClockContext';
+import { useSettingsNavigation } from './hooks/useSettingsNavigation';
+import { HomeSceneAtmosphereProvider } from './components/home/HomeSceneAtmosphereContext';
+import { useHomeScenePreference } from './hooks/useHomeScenePreference';
+import { RootStartupReadyProvider, useRootStartupReady } from './components/RootStartupReadyContext';
+import { StartupSurface, useStartupContentVisible } from './components/StartupSurface';
+import type { PlannerAppSnapshot } from './components/PlannerAppBootstrap';
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { HomeScheduleView } from './components/HomeScheduleView';
@@ -23,13 +30,18 @@ import { useWeeklyPlanningApplication } from './features/weeklyPlanning/applicat
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useMonthTimetablePreference } from './hooks/useMonthTimetablePreference';
 import { useThemePreference } from './hooks/useThemePreference';
+import { AppearanceProvider, useAppAppearance } from './components/AppearanceProvider';
 import {
   hasStoredAppAccessGrant,
   isAppAccessGateEnabled,
   verifyAndStoreAppAccessKey,
 } from './lib/appAccessGate';
+import { scheduleAppViewPreload } from './lib/preloadAppViews';
+import { isPlannerDataReadyForOwner } from './domain/plannerDataReadAuthority';
 import { resolveActiveTimetableTerm } from './domain/timetableTerm';
 import type { ViewMode } from './types/domain';
+
+const HomeAddFlow = lazy(() => import('./components/HomeAddFlow').then((module) => ({ default: module.HomeAddFlow })));
 
 const AiPlanningView = lazy(() =>
   import('./components/AiPlanningView').then((module) => ({
@@ -76,10 +88,34 @@ type PrimarySurface = 'home' | 'ai-planning' | 'workspace';
 
 const SCHEDULE_VIEW_MODES = new Set<ViewMode>(['month', 'week', 'day', 'todo']);
 
-export default function App() {
+export default function App({ state, onReady }: { state?: PlannerAppSnapshot; onReady?: () => void } = {}) {
+  return <AppearanceProvider>{state ? <AppContent state={state} onReady={onReady} /> : <StandaloneApp />}</AppearanceProvider>;
+}
+
+const ignoreStandaloneReady = () => {};
+function StandaloneApp() {
+  const rootOwned = useRootStartupReady() !== null;
+  const parentVisible = useStartupContentVisible();
+  const [standaloneVisible, setStandaloneVisible] = useState(false);
+  const legal = ['/terms', '/privacy', '/contact'].includes(window.location.pathname);
+  const state = usePlannerAppState({ noticeAutoDismiss: rootOwned ? parentVisible : legal || standaloneVisible });
+  if (rootOwned || legal) return <AppContent state={state} />;
+  return <StartupSurface loading={state.booting} onVisibilityChange={setStandaloneVisible}>
+    <RootStartupReadyProvider onReady={ignoreStandaloneReady}><AppContent state={state} /></RootStartupReadyProvider>
+  </StartupSurface>;
+}
+
+function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: () => void }) {
+  const markRootStartupReady = useRootStartupReady();
+  const startupVisible = useStartupContentVisible();
+  useEffect(() => { if (!state.booting) markRootStartupReady?.(); }, [state.booting, markRootStartupReady]);
+  useEffect(() => { if (!state.booting && startupVisible) onReady?.(); }, [state.booting, startupVisible, onReady]);
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
-  const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
-  const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
+  const settingsNavigation = useSettingsNavigation();
+  const [quickEntry, setQuickEntry] = useState<{ ownerId: string; id: number; materialId?: string } | null>(null);
+  const quickEntrySequence = useRef(0);
+  const [homeEntry, setHomeEntry] = useState<{ ownerId: string; id: number } | null>(null);
+  const homeEntrySequence = useRef(0);
   const [monthCreateRequestId, setMonthCreateRequestId] = useState(0);
   const [pendingMonthCreate, setPendingMonthCreate] = useState(false);
   const [primarySurface, setPrimarySurface] = useState<PrimarySurface>('home');
@@ -92,6 +128,7 @@ export default function App() {
   const primaryBottomNavRef = useRef<HTMLElement | null>(null);
   const { themeMode, setThemeMode, themePalette, setThemePalette } =
     useThemePreference();
+  const appearancePreference = useAppAppearance();
   const {
     booting,
     user,
@@ -161,8 +198,9 @@ export default function App() {
     openWeek,
     openDay,
     setEditorDraft,
-  } = usePlannerAppState();
+  } = state;
   const monthTimetablePreference = useMonthTimetablePreference(user?.id);
+  const homeScenePreference = useHomeScenePreference();
   const {
     term: activeTimetableTerm,
     termId: activeTimetableTermId,
@@ -219,11 +257,24 @@ export default function App() {
           ? 'workspace-primary-header'
           : 'home-primary-header';
 
+  const canPreloadViews = startupVisible && !booting && appAccessGranted && Boolean(user)
+    && !['/terms', '/privacy', '/contact'].includes(currentPath)
+    && isPlannerDataReadyForOwner(plannerDataAvailability, user?.id ?? '');
+
+  useEffect(() => {
+    // Optional screens must not compete with authentication or the initial data load.
+    // Cancelling on sign-out/reload also cancels an idle callback that has not run yet.
+    if (canPreloadViews) return scheduleAppViewPreload();
+  }, [canPreloadViews, user?.id]);
+
   useEffect(() => {
     if (user?.id) {
       setPrimarySurface('home');
     }
   }, [user?.id]);
+
+  useEffect(() => { setHomeEntry(null); }, [user?.id, primarySurface]);
+  useEffect(() => { setQuickEntry(null); }, [user?.id]);
 
   useEffect(() => {
     if (!pendingMonthCreate || !isScheduleSurface || viewMode !== 'month') {
@@ -245,6 +296,10 @@ export default function App() {
   if (currentPath === '/contact') {
     return <LegalPage kind="contact" />;
   }
+
+  // Readiness hooks above keep running behind the intro, but layout/scene
+  // descendants must first mount with visible geometry and a fresh lifetime.
+  if (!startupVisible) return null;
 
   if (booting) {
     return <SplashScreen fixedLight />;
@@ -268,6 +323,11 @@ export default function App() {
         onSendPasswordReset={sendPasswordReset}
       />
     );
+  }
+
+  function openQuickEntry(materialId?: string) {
+    if (!user) return;
+    setQuickEntry({ ownerId: user.id, id: ++quickEntrySequence.current, materialId });
   }
 
   function openAiPlanningSurface() {
@@ -319,7 +379,10 @@ export default function App() {
   };
 
   return (
+    <HomeDisplayClockProvider>
+    <HomeSceneAtmosphereProvider>
     <div
+      hidden={settingsNavigation.isOpen}
       className={
         isWorkspaceSurface
           ? isScheduleSurface
@@ -335,7 +398,7 @@ export default function App() {
         actuals={actuals}
         todos={todos}
         onOpenProfile={() => setIsMyPageOpen(true)}
-        onOpenSettings={() => setIsAppSettingsOpen(true)}
+        onOpenSettings={settingsNavigation.open}
         className={primaryHeaderClassName}
       />
 
@@ -404,6 +467,7 @@ export default function App() {
         {isHomeSurface ? (
           <StudySessionProvider materials={studyMaterials} onSaveActual={saveActual}>
             <HomeScheduleView
+              homeScenePreferences={homeScenePreference.preferences}
               userId={user.id}
               plans={plans}
               actuals={actuals}
@@ -418,6 +482,10 @@ export default function App() {
               primaryBottomNavRef={primaryBottomNavRef}
               onOpenAiPlanning={openAiPlanningSurface}
               onOpenSchedule={openScheduleSurface}
+              onAddEntry={() => {
+                closePlanEditor();
+                setHomeEntry({ ownerId: user.id, id: ++homeEntrySequence.current });
+              }}
               onOpenDay={(date) => {
                 setPrimarySurface('workspace');
                 openDay(date);
@@ -522,6 +590,7 @@ export default function App() {
                 onSaveStandaloneActual={saveStandaloneActual}
                 onLinkStandaloneActualToPlan={linkStandaloneActualToPlan}
                 onDeleteActual={deleteActual}
+                onOpenTimetable={openTimetableSurface}
                 onOpenBookshelf={() => setViewMode('bookshelf')}
                 onOpenAddMaterial={() => {
                   setBookshelfInitialAction('add-material');
@@ -583,7 +652,7 @@ export default function App() {
                 onCaptureMaterialBaseline={captureStudyMaterialBaseline}
                 onSaveMaterial={saveStudyMaterial}
                 onDeleteMaterial={deleteStudyMaterial}
-                onAddMaterialToPlan={() => setIsQuickEntryOpen(true)}
+                onAddMaterialToPlan={(material) => openQuickEntry(material.id)}
               />
             ) : null}
           </Suspense>
@@ -593,7 +662,7 @@ export default function App() {
       {isScheduleSurface ? (
         <QuickAddMenu
           onAddSchedule={openMonthEventCreate}
-          onAddStudy={() => setIsQuickEntryOpen(true)}
+          onAddStudy={() => openQuickEntry()}
           onOpenAiPlanning={openAiPlanningSurface}
         />
       ) : null}
@@ -629,16 +698,29 @@ export default function App() {
         />
       ) : null}
 
-      {isQuickEntryOpen ? (
+      {isHomeSurface && homeEntry?.ownerId === user.id ? (
+        <Suspense fallback={null}>
+          <HomeAddFlow key={homeEntry.id} userId={user.id} plans={plans} actuals={actuals} materials={studyMaterials}
+            subjects={studySubjects} monthEvents={monthEvents}
+            onClose={() => setHomeEntry((current) => current === homeEntry ? null : current)}
+            onSaveTodo={saveTodo} onSavePlan={savePlanDraft} onSaveStandaloneActual={saveStandaloneActual}
+            onSaveLinkedActual={saveActual} onSaveMonthEvent={saveMonthEvent} onDeleteMonthEvent={deleteMonthEvent} />
+        </Suspense>
+      ) : null}
+
+      {quickEntry?.ownerId === user.id ? (
         <Suspense fallback={null}>
           <QuickEntryModal
+            key={quickEntry.id}
+            initialMaterialId={quickEntry.materialId}
+            initialMode={quickEntry.materialId ? 'scheduled' : 'later'}
             userId={user.id}
             selectedDate={selectedDate}
             plans={plans}
             actuals={actuals}
             materials={studyMaterials}
             subjects={studySubjects}
-            onClose={() => setIsQuickEntryOpen(false)}
+            onClose={() => setQuickEntry((current) => current === quickEntry ? null : current)}
             onSaveTodo={saveTodo}
             onSavePlan={savePlanDraft}
             onSaveStandaloneActual={saveStandaloneActual}
@@ -655,17 +737,26 @@ export default function App() {
         onClose={() => setIsMyPageOpen(false)}
       />
 
+    </div>
       <AppSettingsDialog
-        open={isAppSettingsOpen}
+        homeScenePreferences={homeScenePreference.preferences}
+        onChangeHomeSceneStyle={homeScenePreference.setStyle}
+        onChangeHomeSceneMotion={homeScenePreference.setAnimated}
+        homeSceneError={homeScenePreference.error}
+        open={settingsNavigation.isOpen}
         showMonthTimetable={monthTimetablePreference.showTimetable}
         onChangeMonthTimetable={monthTimetablePreference.setShowTimetable}
         monthTimetableError={monthTimetablePreference.error}
+        appearance={appearancePreference.appearance}
+        onChangeAppearance={appearancePreference.setAppearance}
+        appearanceError={appearancePreference.error}
         themeMode={themeMode}
         themePalette={themePalette}
         onChangeTheme={setThemeMode}
         onChangeThemePalette={setThemePalette}
-        onClose={() => setIsAppSettingsOpen(false)}
+        onClose={settingsNavigation.close}
       />
-    </div>
+    </HomeSceneAtmosphereProvider>
+    </HomeDisplayClockProvider>
   );
 }

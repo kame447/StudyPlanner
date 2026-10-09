@@ -32,7 +32,7 @@ test('retains planned-record input after initial save and date-move failures, th
   await page.getByRole('tab', { name: '日', exact: true }).click();
   const plan = page.locator('.timeline-plan-block').filter({ hasText: '英語の予定' });
   await plan.click();
-  await page.getByRole('button', { name: '記録を保存 実際の内容を保存' }).click();
+  await page.getByRole('button', { name: '記録を保存', exact: true }).click();
   const editor = page.locator('.actual-editor-card');
   await editor.getByRole('textbox', { name: 'メモ・気づき', exact: true }).fill('失敗しても残すメモ');
   await page.evaluate(() => { window.__actualWriteFailures = 1; });
@@ -48,7 +48,7 @@ test('retains planned-record input after initial save and date-move failures, th
   expect(saved).toMatchObject({ planId: 'recovery-plan', occurrenceDate: E2E_TODAY, note: '失敗しても残すメモ' });
 
   await plan.click();
-  await page.getByRole('button', { name: '記録を編集 実際の内容を保存' }).click();
+  await page.getByRole('button', { name: '記録を編集', exact: true }).click();
   await editor.getByLabel('日付', { exact: true }).fill(NEXT_DAY);
   await editor.getByRole('textbox', { name: 'メモ・気づき', exact: true }).fill('翌日に移した記録');
   await page.evaluate(() => { window.__actualWriteFailures = 1; });

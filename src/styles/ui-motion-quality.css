@@ -48,9 +48,14 @@
 
 .home-main > .ai-planning-view,
 .section-stack > .schedule-month-view,
-.section-stack > .bookshelf-view,
-.section-stack > .timetable-view {
+.section-stack > .bookshelf-view {
   animation: ui-surface-enter var(--ui-motion-base) var(--ui-motion-spring) both;
+}
+
+/* A transformed route would contain the timetable's fixed editor overlay.
+   Fade only, and leave no animation-created stacking context after entry. */
+.section-stack > .timetable-view {
+  animation: ui-surface-fade var(--ui-motion-fast) ease-out backwards;
 }
 
 @keyframes ui-surface-fade {

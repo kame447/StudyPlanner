@@ -1,5 +1,11 @@
+/* Shared fixed-footer footprint, also used by overlays outside the footer. */
+:root { --primary-nav-height: 74px; }
+
 .primary-app-header {
+  container: primary-header / inline-size;
+  min-width: 0;
   width: min(calc(100vw - 24px), 484px);
+  max-width: 100%;
   margin-inline: auto;
   align-self: start;
   justify-self: center;
@@ -22,6 +28,42 @@
 
 .primary-app-header .home-topbar {
   width: 100%;
+  grid-template-columns:
+    minmax(max-content, 0.78fr)
+    minmax(max-content, 1.9fr)
+    minmax(max-content, 0.78fr);
+}
+
+/* Let the controls use their content width before taking space from the date.
+ * Fixed side columns left only 84px for all four date values at 320px. */
+@media (max-width: 699px) {
+  .primary-app-header .home-topbar {
+    grid-template-columns: max-content minmax(max-content, 1fr) max-content;
+  }
+}
+
+/* Reflow the plaque rather than clipping its digits or shrinking the type.
+ * rem also makes enlarged text select this layout before the cells collide. */
+@container primary-header (max-width: 20rem) {
+  .primary-app-header .home-topbar {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    row-gap: 4px;
+  }
+
+  .primary-app-header .home-streak-card {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .primary-app-header .home-top-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .primary-app-header .home-date-display {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }
 
 .workspace-primary-header,
@@ -37,6 +79,12 @@
  */
 .app-shell.home-app-shell:has(> .primary-app-header) {
   grid-template-rows: auto minmax(0, 1fr);
+}
+
+/* Resolve the shared column against the shell's real content box, including
+ * a reserved scrollbar gutter, before constraining the viewport-sized header. */
+.app-shell:has(> .primary-app-header) {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .app-shell.home-app-shell:has(> .primary-app-header) > .home-main {
@@ -58,13 +106,12 @@
  * owns the home navigation metrics itself.
  */
 .primary-bottom-nav {
-  --home-nav-height: 74px;
   --home-nav-icon-size: 25px;
   --home-nav-label-size: 0.66rem;
   --home-nav-active-size: 40px;
   --home-nav-active-icon-size: 22px;
   width: min(508px, 100%);
-  height: calc(var(--home-nav-height) + env(safe-area-inset-bottom, 0px));
+  height: calc(var(--primary-nav-height) + env(safe-area-inset-bottom, 0px));
   padding: 7px 8px env(safe-area-inset-bottom, 0px);
 }
 
@@ -74,7 +121,7 @@
 .primary-bottom-nav.schedule-bottom-nav.home-bottom-nav {
   z-index: 95;
   width: min(508px, 100%);
-  height: calc(var(--home-nav-height) + env(safe-area-inset-bottom, 0px));
+  height: calc(var(--primary-nav-height) + env(safe-area-inset-bottom, 0px));
   padding: 7px 8px env(safe-area-inset-bottom, 0px);
   border-top: 1px solid #e4e9f0;
   border-radius: 0;
@@ -86,6 +133,12 @@
 
 .primary-bottom-nav button {
   color: var(--home-gray, var(--text-muted));
+}
+
+/* Schedule's legacy zero minimum must not shrink a shared nav button below
+ * its unwrapped label. Match the intrinsic minimum used on every other page. */
+.primary-bottom-nav.schedule-bottom-nav.home-bottom-nav button {
+  min-width: auto;
 }
 
 .primary-bottom-nav button:first-child:not(.active) {
@@ -114,6 +167,7 @@
 .primary-bottom-nav span:last-child,
 .primary-bottom-nav.schedule-bottom-nav.home-bottom-nav span:last-child {
   font-size: var(--home-nav-label-size);
+  white-space: nowrap;
 }
 
 .primary-bottom-nav .home-nav-active-circle svg,
@@ -177,12 +231,12 @@
 }
 
 @media (max-height: 760px) {
+  :root { --primary-nav-height: 68px; }
   .app-shell.home-app-shell:has(> .primary-app-header) > .home-main {
     padding-top: 5px;
   }
 
   .primary-bottom-nav {
-    --home-nav-height: 68px;
     --home-nav-icon-size: 23px;
     --home-nav-label-size: 0.62rem;
     --home-nav-active-size: 37px;
@@ -220,8 +274,8 @@
 }
 
 @media (min-width: 700px) and (min-height: 1000px) {
+  :root { --primary-nav-height: 96px; }
   .primary-bottom-nav {
-    --home-nav-height: 96px;
     --home-nav-icon-size: 31px;
     --home-nav-label-size: 0.78rem;
     --home-nav-active-size: 49px;
@@ -249,10 +303,9 @@
   }
 }
 
+
 @media (min-width: 900px) and (min-height: 1200px) {
-  .primary-bottom-nav {
-    --home-nav-height: 100px;
-  }
+  :root { --primary-nav-height: 100px; }
 }
 
 @media (max-width: 540px) {

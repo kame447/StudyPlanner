@@ -139,7 +139,7 @@ test('day long press then movement hands off to drag and hides delete action', a
   const { context, page, session } = await openDaySchedule(browser);
   const plan = page.locator('.timeline-plan-block').filter({ hasText: '長押し削除確認' });
   const { x, y } = await locatorCenter(plan);
-  const bodyOverflowBefore = await page.evaluate(() => document.body.style.overflow);
+  const bodyOverflowBefore = await page.evaluate(() => getComputedStyle(document.body).overflow);
   const scrollYBefore = await page.evaluate(() => window.scrollY);
 
   await dispatchTouch(session, 'touchStart', x, y);
@@ -156,7 +156,7 @@ test('day long press then movement hands off to drag and hides delete action', a
   await expect
     .poll(() => page.evaluate(() => document.documentElement.classList.contains('is-timeline-drag-interaction-locked')))
     .toBe(true);
-  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).overflow)).toBe('hidden');
   expect(await page.evaluate(() => window.scrollY)).toBe(scrollYBefore);
 
   await dispatchTouch(session, 'touchCancel', x, y + 90);
@@ -164,7 +164,7 @@ test('day long press then movement hands off to drag and hides delete action', a
   await expect
     .poll(() => page.evaluate(() => document.documentElement.classList.contains('is-timeline-drag-interaction-locked')))
     .toBe(false);
-  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe(bodyOverflowBefore);
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).overflow)).toBe(bodyOverflowBefore);
   await context.close();
 });
 
@@ -188,7 +188,7 @@ test('day action-menu deletion failure keeps the target available for retry with
   const plan = page.locator('.timeline-plan-block').filter({ hasText: '長押し削除確認' });
   await plan.click();
   const menu = page.getByRole('dialog', { name: '長押し削除確認の操作', exact: true });
-  const remove = menu.getByRole('button', { name: '削除 この予定を削除', exact: true });
+  const remove = menu.getByRole('button', { name: '削除', exact: true });
   await remove.click();
   await expect(menu.getByRole('alert')).toContainText('もう一度');
   await expect(remove).toBeEnabled();

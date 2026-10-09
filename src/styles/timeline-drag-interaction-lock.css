@@ -1,0 +1,7 @@
+/* Own only the drag lock. Modal inline styles can change independently, including
+   when a parent closes before the dragged card's unmount cleanup runs. */
+html.is-timeline-drag-interaction-locked,
+html.is-timeline-drag-interaction-locked body {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}

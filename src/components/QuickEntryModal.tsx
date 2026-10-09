@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Pin } from 'lucide-react';
 import { minutesFromTime, timeFromMinutes } from '../lib/date';
 import { expandPlansForDate, getRecurrenceWeekday } from '../lib/planRecurrence';
@@ -38,6 +38,8 @@ type MaterialSource = 'none' | 'title' | 'user';
 interface QuickEntryModalProps {
   userId: string;
   selectedDate: string;
+  initialMode?: QuickEntryMode;
+  initialMaterialId?: string;
   plans: Plan[];
   actuals: Actual[];
   materials: StudyMaterial[];
@@ -87,9 +89,15 @@ function calculateEndTime(startTime: string, durationMinutes: number | null): st
   return timeFromMinutes(endMinutes);
 }
 
-export function QuickEntryModal({
+export function QuickEntryModal(props: QuickEntryModalProps) {
+  return <QuickEntryEditor key={props.userId} {...props} />;
+}
+
+function QuickEntryEditor({
   userId,
   selectedDate,
+  initialMode = 'later',
+  initialMaterialId,
   plans,
   actuals,
   materials,
@@ -100,13 +108,15 @@ export function QuickEntryModal({
   onSaveStandaloneActual,
   onSaveLinkedActual,
 }: QuickEntryModalProps) {
+  const initialMaterial = materials.find((material) =>
+    material.id === initialMaterialId && material.userId === userId && material.status !== 'archived');
   const [entryKind, setEntryKind] = useState<QuickEntryKind>('plan');
-  const [mode, setMode] = useState<QuickEntryMode>('later');
-  const [title, setTitle] = useState('');
-  const [subject, setSubject] = useState('');
-  const [subjectSource, setSubjectSource] = useState<SubjectSource>('none');
-  const [selectedMaterialId, setSelectedMaterialId] = useState('');
-  const [materialSource, setMaterialSource] = useState<MaterialSource>('none');
+  const [mode, setMode] = useState<QuickEntryMode>(initialMode);
+  const [title, setTitle] = useState(initialMaterial?.name ?? '');
+  const [subject, setSubject] = useState(initialMaterial?.subjectName ?? '');
+  const [subjectSource, setSubjectSource] = useState<SubjectSource>(initialMaterial ? 'material' : 'none');
+  const [selectedMaterialId, setSelectedMaterialId] = useState(initialMaterialId ?? '');
+  const [materialSource, setMaterialSource] = useState<MaterialSource>(initialMaterialId ? 'user' : 'none');
   const [type, setType] = useState<PlanType>('study');
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [dueDate, setDueDate] = useState<string>('');
@@ -124,6 +134,11 @@ export function QuickEntryModal({
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submissionInFlightRef = useRef(false);
+  const mountedRef = useRef(false);
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const isSupportedRepeatKind = isSupportedQuickEntryRepeatKind(repeatKind);
   const actualEndTime = calculateEndTime(actualStartTime, estimatedMinutes);
   const dayPlans = useMemo(
@@ -144,6 +159,7 @@ export function QuickEntryModal({
   );
   const selectedMaterial =
     availableMaterials.find((material) => material.id === selectedMaterialId) ?? null;
+  const hasUnavailableMaterial = selectedMaterialId !== '' && !selectedMaterial;
   const candidateActual =
     actualEndTime && title.trim()
       ? {
@@ -160,6 +176,7 @@ export function QuickEntryModal({
   const canSave =
     title.trim().length > 0 &&
     !isSubmitting &&
+    (!hasUnavailableMaterial || (entryKind === 'plan' && mode === 'later')) &&
     (entryKind === 'actual'
       ? estimatedMinutes !== null && actualEndTime !== null
       : mode === 'later' ||
@@ -350,7 +367,7 @@ export function QuickEntryModal({
   }
 
   function renderMaterialSelect() {
-    if (availableMaterials.length === 0) {
+    if (availableMaterials.length === 0 && !hasUnavailableMaterial) {
       return null;
     }
 
@@ -361,6 +378,7 @@ export function QuickEntryModal({
           value={selectedMaterialId}
           onChange={(event) => selectMaterial(event.target.value)}
         >
+          {hasUnavailableMaterial ? <option value={selectedMaterialId} disabled>選択した教材は利用できません</option> : null}
           <option value="">教材なし</option>
           {availableMaterials.map((material) => (
             <option key={material.id} value={material.id}>
@@ -368,12 +386,13 @@ export function QuickEntryModal({
             </option>
           ))}
         </select>
+        {hasUnavailableMaterial ? <span role="alert">教材を選び直してください。</span> : null}
       </label>
     );
   }
 
   async function handleSaveLinkedActual(plan: Plan) {
-    if (submissionInFlightRef.current || !actualEndTime || !title.trim()) {
+    if (!mountedRef.current || submissionInFlightRef.current || hasUnavailableMaterial || !actualEndTime || !title.trim()) {
       return;
     }
 
@@ -392,17 +411,19 @@ export function QuickEntryModal({
         note: memo.trim(),
         ...getSelectedMaterialFields(),
       });
-      onClose();
+      if (mountedRef.current) onClose();
     } finally {
-      submissionInFlightRef.current = false;
-      setIsSubmitting(false);
+      if (mountedRef.current) {
+        submissionInFlightRef.current = false;
+        setIsSubmitting(false);
+      }
     }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (submissionInFlightRef.current || !canSave) {
+    if (!mountedRef.current || submissionInFlightRef.current || !canSave) {
       return;
     }
 
@@ -460,10 +481,12 @@ export function QuickEntryModal({
           pinned: todoPinned,
         });
       }
-      onClose();
+      if (mountedRef.current) onClose();
     } finally {
-      submissionInFlightRef.current = false;
-      setIsSubmitting(false);
+      if (mountedRef.current) {
+        submissionInFlightRef.current = false;
+        setIsSubmitting(false);
+      }
     }
   }
 
@@ -872,7 +895,7 @@ export function QuickEntryModal({
                           </div>
                           <button
                             className="mini-button"
-                            disabled={candidate.isRecorded || isSubmitting}
+                            disabled={candidate.isRecorded || isSubmitting || hasUnavailableMaterial}
                             onClick={() => void handleSaveLinkedActual(candidate.plan)}
                             type="button"
                           >

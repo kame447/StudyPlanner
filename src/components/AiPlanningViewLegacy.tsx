@@ -52,6 +52,7 @@ import {
 } from '../lib/date';
 import { extractPlanningImageAttachment } from '../lib/planningImageAttachment';
 import { plannerRepository } from '../repositories';
+import { useAiPlanningViewport } from '../hooks/useAiPlanningViewport';
 import type { Plan, StudyMaterial, TodoTask } from '../types/domain';
 import { AiPlanningChatSidebar } from './AiPlanningChatSidebar';
 import {
@@ -69,6 +70,7 @@ interface AiPlanningViewProps {
   selectedDate: string;
   plans: Plan[];
   cancellationEpoch?: { readonly current: number };
+  onCancelPendingTurn?: () => void;
   checkpointNotice?: ReactNode;
 }
 
@@ -185,9 +187,11 @@ export function AiPlanningView({
   selectedDate,
   plans,
   cancellationEpoch,
+  onCancelPendingTurn,
   checkpointNotice,
 }: AiPlanningViewProps) {
   const { state, pendingDraftBlocks, approvalAvailability } = application;
+  const canCancelTurn = Boolean(state.pendingTurn && onCancelPendingTurn);
   const [text, setText] = useState('');
   const [selectedStarterOption, setSelectedStarterOption] =
     useState<AiPlanningStarterPromptOption | null>(null);
@@ -218,6 +222,8 @@ export function AiPlanningView({
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const conversationRef = useRef<HTMLDivElement | null>(null);
+  const viewRef = useRef<HTMLElement | null>(null);
+  useAiPlanningViewport(viewRef, conversationRef);
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechBaseTextRef = useRef('');
   const speechFinalTextRef = useRef('');
@@ -826,7 +832,7 @@ export function AiPlanningView({
   }
 
   return (
-    <section className="ai-planning-view home-dashboard" aria-label="AI計画">
+    <section ref={viewRef} className="ai-planning-view home-dashboard" aria-label="AI計画">
       <AiPlanningChatSidebar
         open={isChatDrawerOpen}
         checkpointNotice={checkpointNotice}
@@ -1083,13 +1089,17 @@ export function AiPlanningView({
           <button
             className="ai-planning-send-button"
             type="button"
-            aria-label="送信"
-            disabled={
+            aria-label={canCancelTurn ? '処理をキャンセル' : '送信'}
+            title={canCancelTurn ? '処理をキャンセル' : '送信'}
+            disabled={!canCancelTurn && (
               (!text.trim() && !imageAttachment) || isComposerBusy || isListening || !application.plannerDataReady || moduleLoadFailed || waitingForStarterTarget
-            }
-            onClick={() => void submitMessage()}
+            )}
+            onClick={() => {
+              if (canCancelTurn) onCancelPendingTurn?.();
+              else void submitMessage();
+            }}
           >
-            <Send size={20} aria-hidden="true" />
+            {canCancelTurn ? <X size={20} aria-hidden="true" /> : <Send size={20} aria-hidden="true" />}
           </button>
         </div>
       </div>

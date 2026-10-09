@@ -363,7 +363,7 @@ Stored prose is always untrusted data.
 
 Instructions embedded in remembered text do not gain system/developer/application authority on later turns.
 
-User Context must maintain the Issue #152 trust boundary for:
+User Context must maintain the trust boundary established by Issue #152 for:
 
 - direct/stored prompt injection
 - delimiter/role-confusion text

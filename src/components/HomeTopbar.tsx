@@ -1,3 +1,4 @@
+import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
 import { useMemo } from 'react';
 import { Bell, Flame, Menu } from 'lucide-react';
 import { buildHomeDashboardModel } from '../lib/homeDashboard';
@@ -22,9 +23,10 @@ export function HomeTopbar({
   onOpenProfile,
   onOpenSettings,
 }: HomeTopbarProps) {
+  const now = useHomeDisplayClock();
   const dashboard = useMemo(
-    () => buildHomeDashboardModel({ plans, actuals, todos }),
-    [actuals, plans, todos],
+    () => buildHomeDashboardModel({ plans, actuals, todos, now }),
+    [actuals, plans, todos, now],
   );
 
   return (
@@ -65,7 +67,11 @@ export function HomeTopbar({
         <button
           className="home-icon-button"
           type="button"
-          onClick={onOpenSettings}
+          onClick={(event) => {
+            // Safari does not focus a button on pointer activation by default.
+            event.currentTarget.focus({ preventScroll: true });
+            onOpenSettings();
+          }}
           aria-label="メニューを開く"
         >
           <Menu aria-hidden="true" size={24} />

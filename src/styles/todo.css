@@ -69,6 +69,39 @@
   font-size: 0.95rem;
 }
 
+.todo-completed-heading {
+  width: 100%;
+}
+
+.todo-completed-disclosure {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.todo-completed-disclosure:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.todo-completed-disclosure > svg {
+  flex: 0 0 auto;
+}
+
+.todo-completed-label {
+  flex: 1;
+}
+
 .todo-section-count {
   display: inline-flex;
   align-items: center;
