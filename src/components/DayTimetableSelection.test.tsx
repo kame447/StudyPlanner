@@ -65,3 +65,19 @@ it('drops template details when the visible date, owner or source changes', () =
     act(() => renderer!.unmount()); renderer = undefined;
   }
 });
+
+it('filters only projected timetable entries and closes an open hidden detail', () => {
+  const imported: Plan = { ...plan, id: 'imported', title: '取り込み済み授業', sourceType: 'timetable', sourceId: 'saved-class' };
+  props = { ...props, plans: [plan, imported], scheduleTemplates: [template, { ...template, id: 'saved-class' }],
+    actuals: [{ id: 'actual', userId: 'owner', planId: imported.id, occurrenceDate: props.selectedDate,
+      actualStartTime: '11:00', actualEndTime: '12:00', subject: '英語', note: '', updatedAt: stamp }] };
+  mount(); clickCard(template.title);
+  for (const showTimetable of [false, true, false]) {
+    act(() => renderer!.update(<DayView {...props} showTimetable={showTimetable} />));
+    const text = JSON.stringify(renderer!.toJSON());
+    expect(text.includes(template.title)).toBe(showTimetable);
+    expect(text).toContain(imported.title);
+    expect(renderer!.root.findAllByType('button').filter(node => node.props.className?.includes('timeline-actual-block'))).toHaveLength(1);
+    expect(dialogs()).toHaveLength(0);
+  }
+});
