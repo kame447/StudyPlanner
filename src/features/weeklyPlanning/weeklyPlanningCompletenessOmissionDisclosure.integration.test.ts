@@ -136,7 +136,7 @@ describe('every completion path that discards or cannot check a reading is discl
     expect(result.calls.filter(call => call.kind === 'semantic_generic')).toHaveLength(2);
   });
 
-  it('an invalid re-read that carries no change keeps the still-valid unchanged reading', async () => {
+  it('an invalid re-read that carries no change is an unusable message too (B T4: valid or not, nothing was used)', async () => {
     let turn2 = false;
     let semanticCalls = 0;
     let shellPublicId = '';
@@ -147,8 +147,8 @@ describe('every completion path that discards or cannot check a reading is discl
       // The re-read's last user message is the retry instruction, not a JSON payload.
       if (semanticCalls === 1) shellPublicId = ((call.payload!.publicStateSummary as Json).tasks as Json[])[0].publicId as string;
       // The re-read is schema-valid but fails semantic validation (it quotes text the user did
-      // not write) and still carries no planning content: nothing suggests a change, so the
-      // still-valid unchanged reading is kept.
+      // not write) and still carries no planning content and no act: the reading pointed at the
+      // plan without a change and the re-read recovered nothing, so the message was not used.
       return JSON.stringify({ schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'update_plan', planningWindow: null,
         tasks: [{ localId: 'shell', existingPublicId: shellPublicId, decompositionStatus: 'atomic', category: 'study',
           title: 'アルゴリズムイントロダクション', study: null, workloads: [], effortEstimates: [], temporalConstraints: [],
@@ -161,7 +161,8 @@ describe('every completion path that discards or cannot check a reading is discl
     const previewBefore = structuredClone(conversation.getState().previewCandidates);
     turn2 = true;
     const result = await conversation.submit('うん');
-    expect(result.result?.interactionOutcome?.kind).not.toBe('recover');
+    expect(result.result?.interactionOutcome?.kind).toBe('recover');
+    expect(result.result?.message).not.toContain('この内容で仮予定にする');
     expect(conversation.getState().previewCandidates).toEqual(previewBefore);
   });
 

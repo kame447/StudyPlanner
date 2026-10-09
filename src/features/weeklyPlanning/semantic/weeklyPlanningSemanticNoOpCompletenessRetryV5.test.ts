@@ -314,4 +314,45 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
       json_schema: { name: 'weekly_planning_focused_task_temporal_side_contribution_v5' },
     });
   });
+  describe('an accepted plan and a reading that never carries the message (interaction, live B T4)', () => {
+    const noPending = () => ({ ...publicStateSummary(), pendingQuestion: null });
+    const emptyReading = () => ({ ...existingTaskShell(), tasks: [] });
+    const run = (responses: string[], conversationArchitecture: 'interaction_v1' | 'legacy_v5' = 'interaction_v1') => {
+      const fake = fakeClient(responses);
+      return createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
+        userText, publicStateSummary: noPending(), conversationArchitecture,
+      }).then((result) => ({ result, calls: fake.calls }));
+    };
+
+    it('treats a valid empty re-read with no act as an unusable message, not an unchanged plan', async () => {
+      const { result, calls } = await run([JSON.stringify(existingTaskShell()), JSON.stringify(emptyReading())]);
+      expect(calls).toHaveLength(2);
+      expect(result.status).toBe('rejected');
+      expect(result.document).toBeNull();
+    });
+
+    it('treats an invalid re-read that carries no planning content the same way', async () => {
+      const { result } = await run([
+        JSON.stringify(existingTaskShell()),
+        JSON.stringify({ schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5, tasks: [] }),
+      ]);
+      expect(result.status).toBe('rejected');
+    });
+
+    it('still accepts a re-read that carries a delta or a self-sufficient act', async () => {
+      const delta = await run([JSON.stringify(existingTaskShell()), JSON.stringify(recoveredDeadline())]);
+      expect(delta.result.status).toBe('accepted');
+      expect(delta.result.document?.tasks[0].temporalConstraints).toHaveLength(1);
+      const aside = await run([
+        JSON.stringify(existingTaskShell()),
+        JSON.stringify({ ...emptyReading(), conversationActs: [{ kind: 'topic_shift', targetPublicId: null }] }),
+      ]);
+      expect(aside.result.status).toBe('accepted');
+    });
+
+    it('keeps the legacy reading of an empty re-read', async () => {
+      const { result } = await run([JSON.stringify(existingTaskShell())], 'legacy_v5');
+      expect(result.status).toBe('accepted');
+    });
+  });
 });

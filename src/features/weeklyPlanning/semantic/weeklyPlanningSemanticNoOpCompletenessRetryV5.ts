@@ -198,6 +198,12 @@ export function isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5(params: 
   document: WeeklyPlanningSemanticDocumentV5;
   publicStateSummary?: Record<string, unknown>;
   conversationArchitecture?: WeeklyPlanningConversationArchitecture;
+  /**
+   * Judging the re-read that follows a contradiction: the first reading already named an
+   * accepted task, so a re-read that carries no delta and no self-sufficient act is still a
+   * contradiction even though it names no task (the first-reading gate below does not apply).
+   */
+  rereadAfterContradiction?: boolean;
 }): boolean {
   const actAware = conversationArchitecturePolicy(params.conversationArchitecture).actAwareNoOpRetry;
   // Interaction: once a plan is accepted, an empty delta without any conversational act is as
@@ -207,7 +213,8 @@ export function isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5(params: 
   // Without a pending question only a response that names accepted tasks yet carries nothing
   // for them is re-read; a bare empty reply (「うん」, thanks) stays a valid no-op.
   if (!hasMachinePendingQuestion(params.publicStateSummary)
-    && !(actAware && hasAcceptedTask(params.publicStateSummary) && document.tasks.length > 0)) return false;
+    && !(actAware && hasAcceptedTask(params.publicStateSummary)
+      && (document.tasks.length > 0 || params.rereadAfterContradiction))) return false;
   // A typed non-mutating conversational act (explain / aside / resume / consultation) is a
   // valid complete result with an empty planning delta. Re-asking the model for "missing"
   // content would only waste dispatches; only a bare answer act without any delta is a
@@ -481,6 +488,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
           document: validation.document,
           publicStateSummary: params.run.input.publicStateSummary,
           conversationArchitecture: params.run.input.conversationArchitecture,
+          rereadAfterContradiction: true,
         })
       : false;
     const shouldRetryAgain = retryIndex + 1 < retryLimit && (!validation.document || stillNoOp);
@@ -522,13 +530,17 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
       return result;
     }
 
-    if (!shouldRetryAgain && !validation.document
-      && invalidRetryMayCarryChange(validation.parsedDocument ?? validation.providerDocument ?? null)
-      && conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs) {
+    if (!shouldRetryAgain
+      && conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs
+      && (pendingQuestion
+        ? !validation.document && invalidRetryMayCarryChange(validation.parsedDocument ?? validation.providerDocument ?? null)
+        : true)) {
       // The first reading was a schema-valid contradiction (it pointed at the plan but carried no
-      // change) and the re-read that should have recovered the meaning is invalid. Accepting the
-      // empty reading would report the plan as unchanged while the message went unused, so the
-      // turn is an unusable message instead: nothing applied, recovery wording, no promotion.
+      // change) and the re-read did not recover the meaning: it is invalid, or valid yet carries
+      // neither a delta nor a self-sufficient act. Accepting the empty reading would report the
+      // plan as unchanged while the message went unused, so the turn is an unusable message
+      // instead: nothing applied, recovery wording, no promotion. Under a pending question the
+      // fallback to the initial reading stays (a readable, content-free invalid re-read keeps it).
       return rejectedNoOpRetryResult({
         run: params.run,
         attemptCount,
