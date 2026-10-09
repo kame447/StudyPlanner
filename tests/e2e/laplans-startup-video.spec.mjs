@@ -1,6 +1,6 @@
 import { expect, test } from './support/fixed-clock.mjs';
 
-test.use({ skipStartupVideo: false, contextOptions: { reducedMotion: 'no-preference' }, hasTouch: true });
+test.use({ skipStartupVideo: false, reducedMotion: 'no-preference', hasTouch: true });
 const URL = 'http://127.0.0.1:4174/startup-gates.html';
 const skipName = '起動アニメーションをスキップ';
 
