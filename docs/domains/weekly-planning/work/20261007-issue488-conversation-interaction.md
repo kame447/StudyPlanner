@@ -360,4 +360,10 @@ W4 RedFeynman (Sonnet 5.5, test-only) built it. The fixture has 15 events, 14 li
 | Persona daily-load caps and reserve day (**B4**) | **RED**: Sat 315/300, Sun 325/240, reserve day heaviest. The product has no load-balancing or reserve-day notion, so this is product scope and awaits the user |
 | Ambiguous request → question; other-owner rows ignored | PASS |
 
-**Can the system finish a usable weekly plan for this persona?** In the deterministic synthetic environment, yes: it plans, saves and reloads 21 blocks with every hard constraint kept. It does not yet balance daily load or protect the reserve day (B4). Real-model understanding and Firestore persistence remain unverified.
+**Can the system finish a usable weekly plan for this persona?** In the deterministic synthetic environment, it plans, saves and reloads 21 blocks with every collision, quantity, deadline and sleep constraint kept. By the canonical oracle it still fails the persona's daily-capacity caps and leaves the reserve day the heaviest (B4), so the answer is a qualified yes. Real-model understanding and Firestore persistence remain unverified.
+
+**Live sanity on code `2c1378a7` (real provider, preview only):**
+- A passes. It costs 4 calls, because the round-4b digit-rule audit now fires: a documented cost.
+- D-T3 partially fails: the model omitted one task of 「どっちも夜」 (n=1), in the omission-detection family.
+- X5 fails: the model typed the stated 90-minute target as `scope_total`, so the app asks a progress question that repeats (n=1). X5 is now flaky, and a prompt-level fix would be provisional.
+- The semantic prompt is unchanged since round 4, so neither failure is a regression from B1–B3.
