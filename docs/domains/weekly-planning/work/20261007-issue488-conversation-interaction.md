@@ -274,7 +274,7 @@ Every delivery was independently audited with probes and fault injection before 
 | X1: the decline is ignored and the question loops | A typed decline closes the optional invitation for any all-non-study plan, and takes precedence over the manual-entry handoff. A fixed commitment is not asked about progress | Root-cause for the invitation path. The wording is provisional (prompt) |
 | X2: an optional proposal blocks the preview forever | A presented proposal lapses when the next turn applies a plan change without deciding it. It is truthful in persisted and model-visible state | Root-cause for the optional-proposal path |
 | X3: `work_breakdown` never resolves | It shares one structural-evidence predicate with free-form fields. The B negatives stay | Root-cause for the predicate divergence. The loop family stays provisional (see residuals) |
-| H: a consultation became a blocking question | Interaction uncertainties carry a model-declared `blocksPlanning`, honoured only for free-form fields | **Provisional (model-dependent).** When the model omits or misjudges the flag, the original loop returns: the free-form uncertainty stays blocking and no natural answer resolves it (critic probe 31; the removed H test fails at HEAD). Open: a deterministic release path |
+| H: a consultation became a blocking question | Interaction uncertainties carry a model-declared `blocksPlanning`, honoured only for free-form fields. When the model omits it, the blocking free-form question now ends: the user's bound answer releases it, and the release is disclosed (H-release, `fd6a29fd`) | **Root-cause for the free-form end state** (H-release). The flag stays the first line. Residuals: an act bound to the uncertainty id, a renamed-field re-declaration, effort-only answers, and the T2 question wording |
 | E: 「903時間」 | Titles take a trustworthy unit: clock units from the code; digit-bearing labels get the canonical label. Shared fix | Root-cause for clock units and digit echoes. Kanji numerals are a residual |
 | B T4: a dropped material statement is reported as "unchanged" | Typed content discarded by binding, with an empty or invalid re-read, is an unusable message | Root-cause for the false claim. The content is still not taken in |
 | D T3: restated accepted facts with stale or empty quotes | The single repair is told not to restate a bound accepted entity | Root-cause for the repair stage. Provisional overall |
@@ -388,3 +388,38 @@ W4 RedFeynman (Sonnet 5.5, test-only) built it. The fixture has 15 events, 14 li
 **Live X5 on `ad92271e`:** T2 failed 2/2, both as disclosed recovers (「…今の仮予定は変えていません。」), not silent. The first readings left replacement ids dangling, and the one repair then restated the T1 windows with stale quotes (not grounded in the current text). This is model variance in correction encoding. Neither failure was caused by X5d (no `support-not-installed` error occurred). It remains an open residual: corrections of an accepted total are unreliable when the model leaves replacements dangling, and the D-T3 restatement directive does not cover that error.
 
 **Correction (H):** H is **provisional (model-dependent)**, not root-cause. When the model omits `blocksPlanning:false`, the consultation becomes a blocking free-form uncertainty again. No natural answer can resolve it, because contract line 206 requires new structure, so the loop returns (critic probe 31 on HEAD `641f5dd3`: T2 and T3 repeat the clarification request). The original H test ("a typed answer bound to the consultation target closes it") was removed in round 4 and never re-added. An earlier note that "H moved, then re-added" was inaccurate. Open. The cause is specific to free-form fields: their only resolution criterion is new structure, which a question whose answer is not structure (a consultation answered by a placement or an acknowledgement) can never meet. The X3 residual (the user cannot give structure) is a separate open point: a known structural field's criterion is satisfiable (an amount, content or a time budget). A fix for H does not close it.
+
+**H-release (`adb1a1aa`, `c178ab6e`, `fd6a29fd`).** A blocking free-form question now has a deterministic end. The user's answer act, bound to the question's task, releases it when the reading adds a new placement fact (a time-window constraint or recurrence) on that task, or, after the existing re-read, adds nothing at all. The question is released, not resolved, and the application always says so in a fixed sentence quoting the user. Known structural fields keep the structural rule (see the contract).
+- **Before and after (scripted, same shapes; probe `zzTealAuditHRelease`).**
+  - Before (`24ee164d`): the same clarification repeated, with no preview, for all four answers: a placement bound to the task or to the uncertainty, and 「うん、それで」 bound to either. 「うん」 cost 3 semantic and 2 renderer calls.
+  - After (`fd6a29fd`), answers bound to the task:
+    - a placement: preview plus 「「あとこれって1日でまとめて読んでも平気？」については未確定のまま進めます。」;
+    - 「うん、それで」: preview plus the same sentence, plus 「この返事からは新しい条件を読み取っていません。条件があれば、あらためて教えてください。」, with 3 semantic and 1 renderer calls.
+  - Answers bound to the uncertainty id still leave the question open. Live round 4 bound all 10 answer acts to tasks.
+- **The first delivery failed audit on three points, all fixed before integration:**
+  - the sentence claimed 「仮予定を作りました」 when another question or a capacity question followed;
+  - an empty reply released the question while every reading dropped 「金曜は無理」 (critic probe 33a), so the dropped condition was silent;
+  - a model re-declaration from the old quote brought the same question back on the next, unrelated turn.
+- **Fault injection (my own, 5 files, 61 tests).** Turning each guard off makes tests fail:
+  - the re-raise guard: 1;
+  - the nothing-read sentence: 3;
+  - the plan-claim wording: 9;
+  - the release itself: 14;
+  - the known-field guard: 3.
+- **Full chain on `fd6a29fd`:**
+  - verify passes 7,666 tests, with typecheck and build;
+  - every category is green;
+  - browser: 439 pass and 8 fail. All 8 also fail on main `22847120` (bookshelf geometry and touch-drag lock); none is weekly planning;
+  - weekly-real: 10/10;
+  - legacy differential: unchanged from `f12743ab` (0 leaves against the three later legacy snapshots);
+  - bundle: JS +5.7 KiB raw and +1.6 KiB gzip against `f12743ab`. The budget was already exceeded, and that policy is the user's decision.
+- **Classification.** Root-cause for "a blocking free-form question has no end state when the answer is not structure". It covers every answer path: a new placement, an empty reply, and a re-declaration from history. The renderer instruction line is provisional.
+- **Still open:**
+  - X3's known-field residual ("the user cannot give structure") has a satisfiable criterion and a different cause;
+  - an act bound to the uncertainty id;
+  - a re-declaration under a renamed field;
+  - effort-only bound answers (the B lesson);
+  - a free-form field that means material, which can be released with the disclosure;
+  - T2's question sentence, which still claims the meaning was ambiguous (follow-up assigned).
+
+**X5g (`0344abdd`, test only).** A task-level `total_duration` left beside a corrected clock-unit target is **inert for the plan**. A clock workload's estimate is its own amount, and a control graph without the stale total gives identical blocks. Fault injection that makes minute workloads skip that estimate turns the pin RED. Residual: the stale fact stays visible to the model in later summaries.
