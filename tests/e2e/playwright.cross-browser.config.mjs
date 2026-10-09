@@ -48,6 +48,7 @@ export default defineConfig({
     },
     {
       name: 'webkit-desktop',
+      testMatch: [...sharedTests, '**/bookshelf-material-name-order.spec.mjs'],
       use: {
         ...devices['Desktop Safari'],
         browserName: 'webkit',
@@ -57,7 +58,7 @@ export default defineConfig({
     },
     {
       name: 'webkit-mobile',
-      testMatch: [...sharedTests, '**/appearance-theme.spec.mjs', '**/appearance-startup.spec.mjs', '**/ai-planning-composer-viewport.spec.mjs', '**/home-layout-responsive.spec.mjs', '**/home-pixel-student.spec.mjs', '**/laplans-startup-video.spec.mjs', '**/home-content-responsive.spec.mjs', '**/preferences-read-recovery.spec.mjs', '**/startup-diagnostics.spec.mjs'],
+      testMatch: [...sharedTests, '**/bookshelf-material-name-order.spec.mjs', '**/appearance-theme.spec.mjs', '**/appearance-startup.spec.mjs', '**/ai-planning-composer-viewport.spec.mjs', '**/home-layout-responsive.spec.mjs', '**/home-pixel-student.spec.mjs', '**/laplans-startup-video.spec.mjs', '**/home-content-responsive.spec.mjs', '**/preferences-read-recovery.spec.mjs', '**/startup-diagnostics.spec.mjs'],
       use: {
         ...devices['iPhone 13'],
         browserName: 'webkit',
