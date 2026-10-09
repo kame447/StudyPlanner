@@ -18,6 +18,9 @@ const EXPECTED = [
 ];
 const TITLE = /^アルゴリズムイントロダクション 20ページ（\d+〜\d+ページ）$/;
 
+// Later trees add a skippable startup animation with a shared skip helper; older ones have neither.
+const startupSkip = await import('./support/startup-ready.mjs').catch(() => null);
+
 const externalRequests = [];
 
 test.beforeEach(async ({ page }) => {
@@ -30,6 +33,7 @@ test.beforeEach(async ({ page }) => {
     return route.abort();
   });
   await page.clock.install({ time: CLOCK });
+  if (startupSkip) await startupSkip.installStartupSkip(page);
 });
 
 test.afterEach(async () => {
