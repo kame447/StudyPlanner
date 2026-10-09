@@ -56,10 +56,11 @@ function markFixtureHistory(graph: WeeklyPlanningFactGraphV5, bucket: 'temporalC
     status, terminalRevision: graph.revision, supersededByFactId: status === 'superseded' ? graph[bucket][1].id : null,
   });
 }
-function commitCorrection(baseline: WeeklyPlanningFactGraphV5, input: WeeklyPlanningSemanticDocumentV5, turnId: string) {
+function commitCorrection(baseline: WeeklyPlanningFactGraphV5, input: WeeklyPlanningSemanticDocumentV5, turnId: string, afterValidation?: () => void) {
   const publicStateSummary = createWeeklyPlanningSemanticPublicStateSummaryV5(undefined, baseline);
   expect(validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5({ document: input, publicStateSummary })).toEqual([]);
   expect(validateWeeklyPlanningCorrectionTargetReferencesV5(input, publicStateSummary)).toEqual([]);
+  afterValidation?.();
   const finalized = finalizeWeeklyPlanningSemanticCanonicalizationV5({ originalGraph: baseline, document: input,
     baseCanonicalization: canonical(input, baseline, turnId), contextualAnswer: false, questionCode: null,
     operationKeyPrefix: turnId }).canonicalization;
@@ -164,7 +165,8 @@ it('retains terminal correction provenance but requires literal lifecycle status
     { localId: 'remove-new-effort', target: { kind: 'effort_estimate', publicId: null, localId: 'math-new-effort', mention: '追加の見積もり' },
       operation: 'remove', replacementLocalId: null, sourceText: '追加の見積もりは削除' },
   ];
-  const graph = commitCorrection(baseline, input, 'correction-turn');
+  // Provenance fixture: validation requires a distinct title; the committed container restates the accepted task so the typed-redundant prune applies.
+  const graph = commitCorrection(baseline, input, 'correction-turn', () => { input.tasks[0].title = '数学'; });
   const historical = graph.effortEstimates.find(fact => fact.source.semanticLocalId === 'math-new-effort')!;
   const target = graph.workloads.find(fact => fact.id === historical.targetFactId)!;
   expect(historical.taskId).not.toBe(target.taskId);

@@ -17,6 +17,8 @@ const T2 = 'やっぱり合計60分で足りそう';
 const T1C = '数学の課題の第2章を、今日の夜と明日の朝に分けて合わせて90分やりたい';
 const T2C = '第2章じゃなくて第3章の分だった';
 const UNCHANGED_SENTENCE = '今の仮予定は変えていません。';
+const T2R = '数学の課題じゃなくて数学の宿題で、合計60分だった';
+const T2S = 'やっぱり数学の課題は合計60分だった';
 const T2B = '数学の課題90分は、1回30分ずつにして';
 
 const empty = (o: Json = {}): Json => ({ schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'update_plan', planningWindow: null,
@@ -52,7 +54,7 @@ function t1Chapter(): Json {
     recurrence: [{ localId: 'split', targetLocalId: 'task', kind: 'custom', count: 2, days: [], sourceText: '今日の夜と明日の朝に分けて' }] })] });
 }
 
-type Variant = 'r1' | 'dangling' | 'c2only' | 'additive' | 'stub' | 'chapter';
+type Variant = 'r1' | 'dangling' | 'c2only' | 'additive' | 'stub' | 'chapter' | 'rename' | 'sameTitle';
 function t2(variant: Variant, summary: Json): Json {
   const taskId = String(((summary.tasks as Json[]) ?? [])[0].publicId);
   const wl = String(((summary.workloads as Json[]) ?? [])[0].publicId);
@@ -71,6 +73,11 @@ function t2(variant: Variant, summary: Json): Json {
       { localId: 'correction_workload_total', target: target('workload', wl), operation: 'replace', replacementLocalId: 'workload_math_60', sourceText: 'やっぱり合計60分' },
       { localId: 'correction_effort_session', target: target('effort_estimate', eff), operation: 'replace', replacementLocalId: 'effort_math_session_30', sourceText: 'やっぱり合計60分' }],
     tasks: [shell()] });
+  if (variant === 'rename' || variant === 'sameTitle') return empty({
+    // Critic probe 30: the replacement workload sits in a NEW task container (no existingPublicId); 'rename' retitles the task.
+    corrections: [{ localId: 'c1', target: target('workload', wl), operation: 'replace', replacementLocalId: 'amt2', sourceText: '合計60分だった' }],
+    tasks: [task({ localId: 'taskNew', existingPublicId: null, title: variant === 'rename' ? '数学の宿題' : '数学の課題',
+      sourceText: variant === 'rename' ? T2R : T2S, workloads: [minutes('amt2', 60, '合計60分')] })] });
   if (variant === 'chapter') return empty({
     // Critic probe 29: the workload is said to belong to chapter 3; the replacement sits in a NEW component.
     corrections: [{ localId: 'c1', target: target('workload', wl), operation: 'replace', replacementLocalId: 'amt3', sourceText: T2C }],
@@ -92,18 +99,22 @@ function t2(variant: Variant, summary: Json): Json {
 let lastT2: string | null = null;
 let lastSummary: Json = {};
 let compliantRepair = false;
+let legacyDocuments = false;
+/** Legacy documents carry no conversationActs (the legacy schema is closed). */
+const wire = (document: Json): string => JSON.stringify(legacyDocuments ? Object.fromEntries(Object.entries(document).filter(([key]) => key !== 'conversationActs')) : document);
 function install(variant: Variant, withTotalDuration: boolean, effortOn = 'amt'): void {
   lastT2 = null;
   compliantRepair = false;
+  legacyDocuments = false;
   provider = installScriptedWeeklyPlanningProvider((call: ScriptedProviderCall) => {
     if (call.kind === 'renderer') return scriptedRendererReply(call, 'わかりました。');
     if (call.kind === 'semantic_focused_authorization') return JSON.stringify({ decision: 'fallback' });
     if (call.kind === 'semantic_focused_contextual') return JSON.stringify({ decision: 'fallback', effortTarget: null, effortMeasurement: null, minutes: null, precision: null, quantityRole: null });
     if (call.schemaName === 'weekly_planning_focused_material_answer_v5') return JSON.stringify({ decision: 'fallback', label: null, registeredChoice: null, workloadChoice: null, effortKind: null, minutes: null, precision: null, sourceText: null, effortSourceText: null });
     const text = String(call.payload?.userText ?? '');
-    if (text === T1) return JSON.stringify(t1(withTotalDuration, effortOn));
+    if (text === T1) return wire(t1(withTotalDuration, effortOn));
     if (text === T1C) return JSON.stringify(t1Chapter());
-    if (text === T2 || text === T2B || text === T2C) { lastSummary = (call.payload?.publicStateSummary ?? {}) as Json; lastT2 = JSON.stringify(t2(variant, lastSummary)); return lastT2; }
+    if (text === T2 || text === T2B || text === T2C || text === T2R || text === T2S) { lastSummary = (call.payload?.publicStateSummary ?? {}) as Json; lastT2 = wire(t2(variant, lastSummary)); return lastT2; }
     if (compliantRepair && call.kind === 'semantic_generic') return JSON.stringify(t2('r1', lastSummary));
     // The repair payload carries no userText: the model returns the identical shape (as observed live).
     if (lastT2 !== null && call.kind === 'semantic_generic') return lastT2;
@@ -199,32 +210,47 @@ describe('X5-T2: a correction of an accepted time total', () => {
     expect(view.workloads.map(w => w.amount).sort((a, b) => a - b)).toEqual([20, 90]);
   });
 
-  it('legacy control: the validator emits no support error in legacy_v5', async () => {
-    install('c2only', false, 'task');
-    const conv = createScriptedConversation({ provider, architecture: 'legacy_v5', weekStartDate: '2026-10-05', now: () => '2026-10-07T09:00:00.000Z' });
-    await conv.submit(T1);
-    const second = await conv.submit(T2);
-    const errors = second.debugTrace.filter(e => e.stage === 'semantic_validation_result').map(e => JSON.stringify(e.data)).join('|');
-    expect(second.calls.some(c => c.kind === 'semantic_generic')).toBe(true);
-    expect(errors).not.toContain('support-not-installed');
-  });
-
-  it('critic probe 29: a replacement placed in a new component 第3章 is never silently deleted - disclosed recover, plan unchanged (canonical layer only)', async () => {
-    install('chapter', false, 'task');
+  it('critic probe 30: a rename inside a new task container is never silently lost - disclosed recover, the task keeps its title and the plan is unchanged', async () => {
+    install('rename', false, 'task');
     const conv = open();
-    const first = await conv.submit(T1C);
-    expect(first.result?.draftCandidates.length).toBe(2);
-    const second = await conv.submit(T2C);
+    await conv.submit(T1);
+    const second = await conv.submit(T2R);
     const errors = second.debugTrace.filter(e => e.stage === 'semantic_validation_result').map(e => JSON.stringify(e.data)).join('|');
-    expect(errors).not.toContain('support-not-installed');
+    expect(errors).not.toContain('existing-task-binding-required');
     const rejected = second.debugTrace.filter(e => e.stage === 'runtime_semantic_result_received').map(e => JSON.stringify(e.data)).join('|');
     expect(rejected).toContain('replacement-container-not-installed');
     expect(second.result?.interactionOutcome?.kind).toBe('recover');
     expect(second.result?.message).toContain(UNCHANGED_SENTENCE);
-    const g = conv.graph()!;
-    const active = new Set(g.factLifecycles.filter(l => l.status === 'active').map(l => l.factId));
-    expect(g.components.filter(c => active.has(c.id)).map(c => c.label)).toEqual(['第2章']);
-    expect(conv.getState().previewCandidates?.length).toBe(2);
+    const view = createWeeklyPlanningActiveSchedulerGraphViewV5(conv.graph()!);
+    expect(view.tasks.map(t => t.title)).toEqual(['数学の課題']);
+    expect(view.workloads.map(w => w.amount)).toEqual([90]);
+  });
+
+  it('control: a container restating the same title is stopped at validation (existing-task-binding-required), as before', async () => {
+    install('sameTitle', false, 'task');
+    const conv = open();
+    await conv.submit(T1);
+    const second = await conv.submit(T2S);
+    const errors = second.debugTrace.filter(e => e.stage === 'semantic_validation_result').map(e => JSON.stringify(e.data)).join('|');
+    expect(errors).toContain('existing-task-binding-required');
+    const view = createWeeklyPlanningActiveSchedulerGraphViewV5(conv.graph()!);
+    expect(view.workloads.map(w => w.amount)).toEqual([90]);
+  });
+
+  it('legacy_v5 (real legacy turn, T1 succeeds): the c2-only shape is rejected by the shared canonical rule, nothing applied', async () => {
+    install('c2only', false, 'task');
+    legacyDocuments = true;
+    const conv = createScriptedConversation({ provider, architecture: 'legacy_v5', weekStartDate: '2026-10-05', now: () => '2026-10-07T09:00:00.000Z' });
+    const first = await conv.submit(T1);
+    const second = await conv.submit(T2);
+    const view = createWeeklyPlanningActiveSchedulerGraphViewV5(conv.graph()!);
+    const results = second.debugTrace.filter(e => e.stage === 'runtime_semantic_result_received').map(e => JSON.stringify(e.data)).join('|');
+    expect(first.result?.draftCandidates.length).toBe(2);
+    // The canonical rule is shared with legacy: the c2-only turn is rejected (legacy's own disclosure), nothing is applied.
+    expect(results).toContain('"status":"canonicalization_rejected"');
+    expect(results).toContain('replacement-support-not-installed');
+    expect(second.result?.message).toContain('変更は反映していません');
+    expect(view.workloads.map(w => w.amount)).toEqual([90]);
+    expect(view.effortEstimates.filter(e => e.kind === 'session_duration').map(e => e.minutes)).toEqual([45]);
   });
 });
-

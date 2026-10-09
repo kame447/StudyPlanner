@@ -180,9 +180,10 @@ export function isRedundantOrphanComponentV5(
 }
 
 /**
- * A turn-created task container is a pure holder (redundant) only when it has the target's category and study
- * context and no active fact still hangs from it: its title alone is incidental once the replaced fact lives on the
- * target task. Any remaining active child (component, workload, effort, temporal, recurrence) is user content.
+ * A turn-created task container is a pure holder (redundant) only when it equals a target task in its typed fields
+ * (title, category, study purpose and label; a study context present only on the container is content) and no active
+ * fact still hangs from it (children also being pruned are excluded). A different title is a rename the user stated,
+ * so it is content. (The semantic activityKind is not persisted in the graph and cannot be compared.)
  */
 export function isRedundantOrphanTaskV5(
   graph: WeeklyPlanningFactGraphV5,
@@ -201,10 +202,11 @@ export function isRedundantOrphanTaskV5(
   const context = (id: string) => graph.studyContexts.find((fact) => fact.taskId === id);
   return [...targetTaskIds].some((targetId) => {
     const target = graph.tasks.find((fact) => fact.id === targetId);
-    if (!target || target.id === orphan.id || target.category !== orphan.category) return false;
+    if (!target || target.id === orphan.id || target.title !== orphan.title || target.category !== orphan.category) return false;
     const left = context(orphan.id);
     const right = context(target.id);
-    return !left || !right || (left.purpose === right.purpose && left.contextLabel === right.contextLabel);
+    if (left && !right) return false;
+    return !left || (right !== undefined && left.purpose === right.purpose && left.contextLabel === right.contextLabel);
   });
 }
 
