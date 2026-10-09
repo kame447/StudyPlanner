@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { StudyPlannerAppRoot } from './StudyPlannerAppRoot';
+import { LaplanceAppRoot } from './LaplanceAppRoot';
 import { SplashScreen } from './SplashScreen';
 import { StartupSurface } from './StartupSurface';
 import { InitialPrivacyConsentScreen } from './InitialPrivacyConsentScreen';
@@ -98,7 +98,7 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 async function mount(completeIntro = true) {
-  await act(async () => { renderer = create(<StudyPlannerAppRoot authSession={fake.session} />); await microtasks(); });
+  await act(async () => { renderer = create(<LaplanceAppRoot authSession={fake.session} />); await microtasks(); });
   // Most cases isolate data readiness after a genuinely completed intro.
   // The combined cases below retain the video and assert the separate gate.
   if (completeIntro) act(() => renderer!.root.findByType('video').props.onEnded());

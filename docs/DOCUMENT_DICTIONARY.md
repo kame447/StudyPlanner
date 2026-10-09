@@ -1,4 +1,4 @@
-# StudyPlanner Documentation Dictionary
+# Laplance Documentation Dictionary
 
 Status: canonical documentation-governance contract
 Updated: 2026-10-05

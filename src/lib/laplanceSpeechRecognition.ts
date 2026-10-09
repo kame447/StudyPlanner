@@ -22,7 +22,7 @@ type SpeechRecognitionResultHandler = ((event: SpeechRecognitionEventLike) => vo
 type SpeechRecognitionErrorHandler = ((event: SpeechRecognitionErrorEventLike) => void) | null;
 type SpeechRecognitionEndHandler = (() => void) | null;
 
-type SpeechRecognitionConstructorLike = new () => StudyPlannerSpeechRecognition;
+type SpeechRecognitionConstructorLike = new () => LaplanceSpeechRecognition;
 
 type SpeechRecognitionWindowLike = Window & {
   SpeechRecognition?: SpeechRecognitionConstructorLike;
@@ -58,7 +58,7 @@ function mapMicrophoneError(error: unknown): string {
   }
 }
 
-class StudyPlannerSpeechRecognition {
+class LaplanceSpeechRecognition {
   lang = 'ja-JP';
   continuous = false;
   interimResults = false;
@@ -259,10 +259,10 @@ class StudyPlannerSpeechRecognition {
   }
 }
 
-export function installStudyPlannerSpeechRecognition(): void {
+export function installLaplanceSpeechRecognition(): void {
   if (typeof window === 'undefined') return;
 
   const speechWindow = window as SpeechRecognitionWindowLike;
-  speechWindow.SpeechRecognition = StudyPlannerSpeechRecognition;
-  speechWindow.webkitSpeechRecognition = StudyPlannerSpeechRecognition;
+  speechWindow.SpeechRecognition = LaplanceSpeechRecognition;
+  speechWindow.webkitSpeechRecognition = LaplanceSpeechRecognition;
 }
