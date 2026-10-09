@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type PropsWithChildren } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type PropsWithChildren } from 'react';
+import { startupTiming } from '../lib/startupTiming';
 import { SplashScreen } from './SplashScreen';
 import type { StartupVideoOutcome } from './StartupVideo';
 
@@ -21,6 +22,18 @@ export function StartupSurface({ children, loading, isCurrent, onVisibilityChang
     setOutcome(previous => previous ?? reason);
     return true;
   }, [isCurrent]);
+  // Observe the existing presentation gate, including error/onboarding exits.
+  // This is not a second definition of successful data readiness.
+  const waitingObserved = useRef(true);
+  useLayoutEffect(() => {
+    if (loading) { waitingObserved.current = true; return; }
+    if (!waitingObserved.current || isCurrent?.() === false) return;
+    waitingObserved.current = false;
+    startupTiming.begin('startup-wait-ended')();
+  }, [isCurrent, loading]);
+  useLayoutEffect(() => {
+    if (outcome) startupTiming.markIntroComplete(outcome);
+  }, [outcome]);
   const visible = !loading && outcome !== null;
   useEffect(() => { onVisibilityChange?.(visible); }, [onVisibilityChange, visible]);
   return <>

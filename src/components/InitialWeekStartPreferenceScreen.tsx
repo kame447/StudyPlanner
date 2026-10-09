@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { WeeklyPlanningWeekStartsOn } from '../features/weeklyPlanning/personalization/weeklyPlanningWeek';
-import { StudyPlannerLogo } from './StudyPlannerLogo';
+import { LaplanceLogo } from './LaplanceLogo';
 
 interface InitialWeekStartPreferenceScreenProps {
   error: string;
@@ -43,7 +43,7 @@ export function InitialWeekStartPreferenceScreen({
     <main className="auth-shell auth-shell-modern">
       <section className="auth-card auth-main-card">
         <div className="auth-brand-header">
-          <StudyPlannerLogo />
+          <LaplanceLogo />
         </div>
 
         <div className="auth-stage-card">

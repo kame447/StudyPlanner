@@ -10,16 +10,15 @@ const reportPath = path.join(reportDir, 'bundle-budget.json');
 
 const budgets = {
   javascript: {
-    // Eight-UI-feature integration candidate a6f25ab3: 2,255,608 raw / 606,339 gzip.
-    // Versus the 2,235,709 / 601,042 baseline: +19,899 raw (0.890%) / +5,297 gzip (0.881%).
-    // Independent audit: 28 chunks, four vendor SHA values and package/lock/Vite unchanged;
-    // no test-only imports. Growth matches the added runtime behavior, not dependencies.
-    // Calibrate only aggregate JS totals; preserve both per-chunk and all four CSS guards.
-    totalRaw: 2_260_000,
-    // Pixel settings + failure-aware lazy loader add 359 gzip bytes on the
-    // approved #540 base: 607,842 -> 608,201. Accept that required feature cost
-    // with a bounded +500 aggregate-gzip baseline; no other JS guard changes.
-    totalGzip: 608_500,
+    // Approved #549 → #559 → #558 → #560 → #540 integration on main 4e162408:
+    // 2,263,870 raw / 609,511 gzip, with 28 unchanged chunk families.
+    // Stage attribution: diagnostics +639/+300, deferred DayNotes +3,303/+992,
+    // unplanned start +3,907/+1,165 bytes; paint changes no raw JS.
+    // Same installed dependencies/config; Firebase server-query wrapper adds 148/6.
+    // Bound only aggregate JS growth; preserve both per-chunk and all CSS guards.
+    // Evidence: docs/domains/client-runtime/work/unplanned-study-start-handoff.md.
+    totalRaw: 2_265_000,
+    totalGzip: 610_000,
     largestRaw: 950_000,
     largestGzip: 260_000,
   },

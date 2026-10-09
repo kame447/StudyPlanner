@@ -9,7 +9,8 @@ const root = postcss.parse(css);
 describe('pixel paint scope', () => {
   it('covers the actual secondary surfaces without repainting pinned task colors', () => {
     for (const selector of ['.panel:has(> .day-timeline-header)', '.panel.todo-view', '.learning-report-summary-card',
-      '.learning-report-card', '.learning-report-empty', '.learning-report-insight', '.legal-page-card', '.auth-main-card', '.auth-stage-card']) {
+      '.learning-report-card', '.learning-report-empty', '.learning-report-insight',
+      '.learning-report-scope-tabs', '.learning-report-material-filter', '.legal-page-card', '.auth-main-card', '.auth-stage-card']) {
       expect(css).toContain(selector);
     }
     expect(css).toContain('.todo-view-item:not(.todo-item-pinned)');

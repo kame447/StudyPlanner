@@ -60,9 +60,22 @@ try {
     if (oldSet.rows.length !== newSet.rows.length) throw new Error('Operation count mismatch');
     for (let j = 0; j < oldSet.rows.length; j++) {
       const oldRow = oldSet.rows[j], newRow = newSet.rows[j];
-      if (oldRow.operation !== newRow.operation || oldRow.dataDigest !== newRow.dataDigest || oldRow.projectionDigest !== newRow.projectionDigest
+      if (oldRow.operation !== newRow.operation || oldRow.consumedDataDigest !== newRow.consumedDataDigest
+        || (oldRow.collectionSizes.dayNotes !== null && newRow.collectionSizes.dayNotes !== null && oldRow.dataDigest !== newRow.dataDigest)
+        || oldRow.projectionDigest !== newRow.projectionDigest
         || JSON.stringify(oldRow.view) !== JSON.stringify(newRow.view)) throw new Error(`Data/projection/navigation equivalence failed: ${oldSet.dataset}/${oldRow.operation}`);
-      if (newRow.readCalls > oldRow.readCalls || newRow.returnedDocuments > oldRow.returnedDocuments) throw new Error(`Read regression: ${oldSet.dataset}/${oldRow.operation}`);
+      const firstNoteUse = oldRow.operation === 'first-note-use' || oldRow.operation === 'first-note-use-after-reload';
+      if (firstNoteUse) {
+        // Deferred first use pays exactly its one notes query; no unrelated
+        // normalization, save replay or full-collection reload is permitted.
+        if (newRow.readCalls > 1 || newRow.returnedDocuments > 4 * newSet.scale
+          || Object.keys(newRow.byCollection).some(name => name !== 'day_notes')
+          || newRow.writtenDocuments !== 0 || newRow.transactionAttempts !== 0) {
+          throw new Error(`Unexpected lazy-note work: ${oldSet.dataset}/${oldRow.operation}`);
+        }
+      } else if (newRow.readCalls > oldRow.readCalls || newRow.returnedDocuments > oldRow.returnedDocuments) {
+        throw new Error(`Read regression: ${oldSet.dataset}/${oldRow.operation}`);
+      }
       comparison.push({ dataset: oldSet.dataset, operation: oldRow.operation, equivalent: true,
         beforeReadCalls: oldRow.readCalls, afterReadCalls: newRow.readCalls,
         beforeReturnedDocuments: oldRow.returnedDocuments, afterReturnedDocuments: newRow.returnedDocuments,
@@ -73,7 +86,9 @@ try {
   if (before.results.length !== 3 || after.results.length !== 3) throw new Error('All three dataset results required');
   writeFileSync(path.join(output, 'comparison.json'), JSON.stringify({ inputs: { baseCommit, candidateHead,
     beforeSourceSha256: inputManifests.before.sha256, afterSourceSha256: inputManifests.after.sha256 },
-    actualBillingMeasured: false, serverReadsMeasured: false, allEquivalent: true, comparison }, null, 2));
+    actualBillingMeasured: false, serverReadsMeasured: false,
+    equivalenceScope: 'Current App-consumed collections, schedule projections, navigation and persisted data; unread DayNotes remain null, not empty.',
+    allConsumedProjectionsEquivalent: true, comparison }, null, 2));
   console.table(comparison.map(row => ({ dataset: row.dataset, operation: row.operation,
     calls: `${row.beforeReadCalls} -> ${row.afterReadCalls}`, returned: `${row.beforeReturnedDocuments} -> ${row.afterReturnedDocuments}` })));
   console.log(`Verified source manifests, logs and JSON: ${output}`);

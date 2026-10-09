@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { StudyPlannerAppRoot } from '../../../src/components/StudyPlannerAppRoot';
+import { LaplanceAppRoot } from '../../../src/components/LaplanceAppRoot';
 import { authRepository, plannerRepository } from '../../../src/repositories';
 import { StartupTimingPanel } from '../../../src/components/StartupTimingPanel';
 import { addDays, toIsoDate } from '../../../src/lib/date';
@@ -96,5 +96,5 @@ const session = {
   async signOut() { window.__startupGateHarness.emitAuth(null); },
 };
 ReactDOM.createRoot(document.getElementById('root')).render(<React.StrictMode>
-  <StartupTimingPanel /><StudyPlannerAppRoot authSession={session} />
+  <StartupTimingPanel /><LaplanceAppRoot authSession={session} />
 </React.StrictMode>);

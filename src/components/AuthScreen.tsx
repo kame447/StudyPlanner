@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { NoticeState } from '../hooks/useNoticeState';
-import { StudyPlannerLogo } from './StudyPlannerLogo';
+import { LaplanceLogo } from './LaplanceLogo';
 
 type AuthIntent = 'sign-in' | 'sign-up';
 
@@ -100,7 +100,7 @@ export function AuthScreen({
 
       <section className="auth-card auth-main-card">
         <div className="auth-brand-header">
-          <StudyPlannerLogo />
+          <LaplanceLogo />
         </div>
 
         <div className="auth-stage-card">

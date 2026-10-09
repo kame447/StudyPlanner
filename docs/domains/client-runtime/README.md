@@ -1,7 +1,7 @@
 # Client Runtime
 
 Status: canonical domain index
-Updated: 2026-10-08
+Updated: 2026-10-09
 
 This domain owns client-first execution, local/runtime capability boundaries, synchronization authority and the conditions under which work may move from server-mediated execution toward the client.
 
@@ -22,6 +22,7 @@ Supporting architecture:
 Execution tracking:
 
 - Issue #164
+- [Deferred DayNote startup scope](work/20261009-day-note-startup-scope.md) — Issue #542; scoped verification snapshot, preserving full-read and DayNote recovery contracts
 - [Firestore read load and startup investigation](work/20261008-firestore-read-load-and-startup.md) — Issue #542; verified local candidate, separated mock/Emulator/cost evidence, with browser acceptance and the separately tracked first-save Rules repair still open
 
 The requirements document is the specification; the Issue is the work-state owner. Do not duplicate the full requirements under a generic task directory.

@@ -33,9 +33,11 @@ function canonical(value: unknown): unknown {
 function digest(value: unknown) { return createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex'); }
 function snapshot(state: AppState) {
   return Object.fromEntries(['plans', 'actuals', 'dayNotes', 'monthEvents', 'todos', 'studySubjects', 'studyMaterials',
-    'scheduleTemplates', 'timetableTerms', 'timetablePeriods'].map(key => [key,
-    [...(key === 'plans' ? state.plans.map(normalizePlanRecord) : state[key as keyof AppState]) as Array<{ id: string }>]
-      .sort((left, right) => left.id.localeCompare(right.id))]));
+    'scheduleTemplates', 'timetableTerms', 'timetablePeriods'].map(key => {
+      const rows = key === 'plans' ? state.plans.map(normalizePlanRecord) : state[key as keyof AppState];
+      return [key, rows === null ? null : [...rows as Array<{ id: string }>]
+        .sort((left, right) => left.id.localeCompare(right.id))];
+    }));
 }
 
 export async function runApprovalMeasurement(db: Firestore, options: { measure: Measure; mode: 'before' | 'after'; scale: number; replay?: boolean }) {
@@ -164,7 +166,7 @@ export async function runApprovalMeasurement(db: Firestore, options: { measure: 
     if (options.replay) assert.deepEqual(canonical(snapshot(readState())), initialState);
     assert(saved.every(plan => readState().plans.some(current => current.id === plan.id)));
     const beforeRefresh = canonical(snapshot(readState()));
-    await phase('explicit-full-refresh', async () => {
+    await phase('explicit-planner-reload', async () => {
       assert(runtime.loader); await act(async () => { await runtime.loader!(OWNER); });
     });
     assert.deepEqual(canonical(snapshot(readState())), beforeRefresh);
@@ -179,7 +181,7 @@ export async function runApprovalMeasurement(db: Firestore, options: { measure: 
     return { ...baseReport, status: 'passed', successfulSavedCount: saved.length, phases,
       finalDataDigest: digest(snapshot(readState())), persistedApprovedPlanDigest: digest(persisted),
       checks: ['initial planner completeness', 'historical recurring exclusion', 'multi-day event',
-        'all five acknowledged plans visible', 'refresh preserves full normalized state', 'independent server existence of all five saved plans'],
+        'all five acknowledged plans visible', 'reload preserves requested normalized state', 'independent server existence of all five saved plans'],
       uncountedVerificationReads: saved.length };
   } catch (error) {
     const details = error as { code?: unknown; message?: unknown; cause?: { code?: unknown; message?: unknown } };

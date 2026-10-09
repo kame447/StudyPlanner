@@ -20,7 +20,7 @@ function check({ css = 8_000, font = 512_000, includeFont = true } = {}) {
 describe('optional appearance bundle guards', () => {
   it('accepts exact new-asset boundaries and preserves every other limit', () => {
     const result = check(); expect(result.status).toBe(0); expect(result.report.violations).toEqual([]);
-    expect(result.report.budgets.javascript).toEqual({ totalRaw: 2_260_000, totalGzip: 608_500, largestRaw: 950_000, largestGzip: 260_000 });
+    expect(result.report.budgets.javascript).toEqual({ totalRaw: 2_265_000, totalGzip: 610_000, largestRaw: 950_000, largestGzip: 260_000 });
     expect(result.report.budgets.css).toEqual({ totalRaw: 493_000, totalGzip: 85_000, largestRaw: 425_000, largestGzip: 70_000 });
   });
   it.each([{ css: 8_001, metric: 'stylesheetRaw' }, { font: 512_001, metric: 'fontRaw' }])('rejects an over-budget $metric', ({ metric, ...sizes }) => {

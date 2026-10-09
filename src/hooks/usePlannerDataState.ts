@@ -23,6 +23,7 @@ import {
   type PlannerDataAvailability,
   type PlannerDataRecovery,
   type PlannerRepairTarget,
+  type PlannerDataOwnerScope,
 } from '../domain/plannerDataReadAuthority';
 import {
   normalizePlannerTimetableData,
@@ -76,6 +77,7 @@ import type { ShowNotice } from './useNoticeState';
 interface UsePlannerDataStateOptions {
   userId: string | null;
   showNotice: ShowNotice;
+  deferDayNotes?: boolean;
 }
 
 interface PendingRecurringPlanActionState {
@@ -191,6 +193,8 @@ export interface UsePlannerDataStateResult {
   isRecurringPlanEdit: boolean;
   pendingRecurringPlanAction: { kind: 'edit' | 'delete'; plan: Plan } | null;
   loadPlannerData: (userId: string) => Promise<void>;
+  bootstrapPlannerData: (userId: string) => Promise<void>;
+  loadDayNotes: () => Promise<void>;
   resetPlannerData: () => void;
   setViewMode: (viewMode: ViewMode) => void;
   openCreatePlan: () => void;
@@ -246,17 +250,25 @@ export interface UsePlannerDataStateResult {
   currentDayNote: DayNote | DayNoteDraft | null;
 }
 
+export type DeferredDayNotesPlannerDataStateResult = Omit<UsePlannerDataStateResult, 'dayNotes'> & {
+  // null means not requested/read, never an authoritative empty collection.
+  dayNotes: DayNote[] | null;
+};
+
+export function usePlannerDataState(options: UsePlannerDataStateOptions & { deferDayNotes: true }): DeferredDayNotesPlannerDataStateResult;
+export function usePlannerDataState(options: UsePlannerDataStateOptions & { deferDayNotes?: false }): UsePlannerDataStateResult;
 export function usePlannerDataState({
   userId,
   showNotice: showOwnerNotice,
-}: UsePlannerDataStateOptions): UsePlannerDataStateResult {
+  deferDayNotes = false,
+}: UsePlannerDataStateOptions): DeferredDayNotesPlannerDataStateResult {
   const { scope: mutationScope, invalidate: invalidateMutationScope } = usePlannerMutationScope(userId);
   const showNotice = useMemo(() => mutationScope.bindNotice(showOwnerNotice), [mutationScope, showOwnerNotice]);
   const planState = useOptimisticPlannerState<Plan[]>([], mutationScope);
   const { value: plans, set: setPlans, replace: rawSetPlans } = planState;
   const actualState = useOptimisticPlannerState<Actual[]>([], mutationScope);
   const { value: actuals, set: setActuals, replace: rawSetActuals } = actualState;
-  const [dayNotes, setDayNotes, rawSetDayNotes] = useScopedPlannerState<DayNote[]>([], mutationScope);
+  const [dayNotes, setDayNotes, rawSetDayNotes] = useScopedPlannerState<DayNote[] | null>(deferDayNotes ? null : [], mutationScope);
   const monthEventState = useOptimisticPlannerState<MonthEvent[]>([], mutationScope);
   const { value: monthEvents, set: setMonthEvents, replace: rawSetMonthEvents } = monthEventState;
   const [studySubjects, setStudySubjects, rawSetStudySubjects] = useScopedPlannerState<StudySubject[]>([], mutationScope);
@@ -282,11 +294,57 @@ export function usePlannerDataState({
     plannerDataReadAuthorityRef.current = new PlannerDataReadAuthority();
   }
   const plannerDataReadAuthority = plannerDataReadAuthorityRef.current;
+  type NoteLoad = { promise: Promise<void>; resolve: () => void; reject: (error: Error) => void; isCurrent: () => boolean };
+  const dayNoteDemand = useRef<{
+    scope: PlannerDataOwnerScope;
+    notes: DayNote[] | null;
+    readyOnce: boolean;
+    waiting?: NoteLoad;
+  } | null>(null);
+  const readDayNotes = useCallback((ownerId: string) => {
+    const demand = dayNoteDemand.current;
+    const requiresServer = deferDayNotes && (!demand
+      || !plannerDataReadAuthority.isOwnerCurrent(demand.scope) || !demand.readyOnce);
+    return requiresServer ? plannerRepository.getDayNotes(ownerId, { requireServer: true })
+      : plannerRepository.getDayNotes(ownerId);
+  }, [deferDayNotes, plannerDataReadAuthority]);
+  const settleDayNoteLoad = useCallback(() => {
+    const demand = dayNoteDemand.current;
+    if (!demand) return;
+    const snapshot = plannerDataReadAuthority.readSnapshot();
+    if (plannerDataReadAuthority.isOwnerCurrent(demand.scope)
+      && snapshot.availability.status === 'ready' && demand.notes !== null) demand.readyOnce = true;
+    const waiting = demand.waiting;
+    if (!waiting) return;
+    if (!plannerDataReadAuthority.isOwnerCurrent(demand.scope) || !waiting.isCurrent()) {
+      demand.waiting = undefined;
+      waiting.reject(new PlannerMutationScopeExpiredError());
+    } else if (snapshot.recovery?.phase === 'failed') {
+      demand.waiting = undefined;
+      waiting.reject(new Error('日次メモを読み込めませんでした。再読み込みしてから保存してください。'));
+    } else if (snapshot.availability.status === 'ready' && demand.notes !== null) {
+      demand.waiting = undefined;
+      waiting.resolve();
+    }
+  }, [plannerDataReadAuthority]);
+  const replaceDayNotes = useCallback((notes: DayNote[]) => {
+    const scope = plannerDataReadAuthority.captureOwnerScope();
+    if (!scope) return;
+    const demand = dayNoteDemand.current;
+    dayNoteDemand.current = demand && plannerDataReadAuthority.isOwnerCurrent(demand.scope)
+      ? { ...demand, notes } : { scope, notes, readyOnce: false };
+    rawSetDayNotes(notes);
+  }, [plannerDataReadAuthority, rawSetDayNotes]);
+  const resetDayNoteDemand = useCallback(() => {
+    dayNoteDemand.current?.waiting?.reject(new PlannerMutationScopeExpiredError());
+    dayNoteDemand.current = null;
+  }, []);
   const [plannerDataReadSnapshot, setPlannerDataReadSnapshot] = useState(() => plannerDataReadAuthority.readSnapshot());
   const { availability: plannerDataAvailability, recovery: plannerDataRecovery } = plannerDataReadSnapshot;
   const publishReadSnapshot = useCallback(() => {
     setPlannerDataReadSnapshot(plannerDataReadAuthority.readSnapshot());
-  }, [plannerDataReadAuthority]);
+    settleDayNoteLoad();
+  }, [plannerDataReadAuthority, settleDayNoteLoad]);
   type RepairSnapshot = {
     actualMaterial?: { actuals: Actual[]; materials: StudyMaterial[]; subjects?: StudySubject[] };
     monthEvents?: MonthEvent[];
@@ -323,7 +381,7 @@ export function usePlannerDataState({
             scheduleSnapshot?.then(snapshot => snapshot.plans) ?? plannerRepository.getPlans(ownerId),
             plannerRepository.getTodos(ownerId),
           ]) : undefined,
-          targets.includes('day-notes') ? plannerRepository.getDayNotes(ownerId) : undefined,
+          targets.includes('day-notes') ? readDayNotes(ownerId) : undefined,
           targets.includes('timetable') ? Promise.all([
             plannerRepository.getScheduleTemplates(ownerId),
             plannerRepository.getTimetableTerms(ownerId),
@@ -350,7 +408,7 @@ export function usePlannerDataState({
           if (snapshot.actualMaterial.subjects) rawSetStudySubjects(snapshot.actualMaterial.subjects);
         }
         if (snapshot.monthEvents) rawSetMonthEvents(snapshot.monthEvents);
-        if (snapshot.dayNotes) rawSetDayNotes(snapshot.dayNotes);
+        if (snapshot.dayNotes) replaceDayNotes(snapshot.dayNotes);
         if (snapshot.timetable) {
           rawSetScheduleTemplates(snapshot.timetable.templates);
           rawSetTimetableTerms(snapshot.timetable.terms);
@@ -370,13 +428,15 @@ export function usePlannerDataState({
     return () => {
       mounted.current = false;
       plannerDataReadAuthority.reset();
+      resetDayNoteDemand();
       reconciliation.reset(null);
     };
-  }, [plannerDataReadAuthority, reconciliation]);
+  }, [plannerDataReadAuthority, reconciliation, resetDayNoteDemand]);
   useLayoutEffect(() => {
     const scope = plannerDataReadAuthority.captureOwnerScope();
     if (scope && scope.ownerId !== userId) {
       plannerDataReadAuthority.reset();
+      resetDayNoteDemand();
       publishReadSnapshot();
     }
     // The initial load can begin before the auth-state render. Adopt that same
@@ -405,7 +465,8 @@ export function usePlannerDataState({
   const clearPlannerDataCollections = useCallback(() => {
     rawSetPlans([]);
     rawSetActuals([]);
-    rawSetDayNotes([]);
+    resetDayNoteDemand();
+    rawSetDayNotes(deferDayNotes ? null : []);
     rawSetMonthEvents([]);
     rawSetTodos([]);
     rawSetStudySubjects([]);
@@ -413,7 +474,7 @@ export function usePlannerDataState({
     rawSetScheduleTemplates([]);
     rawSetTimetableTerms([]);
     rawSetTimetablePeriods([]);
-  }, []);
+  }, [deferDayNotes, resetDayNoteDemand]);
   const [viewMode, setViewMode] = useScopedPlannerState<ViewMode>('month', mutationScope);
   const selectionState = useOptimisticPlannerState(selectionAt(todayIsoDate()), mutationScope);
   const { selectedDate, monthDate } = selectionState.value;
@@ -469,7 +530,7 @@ export function usePlannerDataState({
 
   const isRecurringPlanEdit = isScopedRecurringEditCandidate(editingPlan);
 
-  const loadPlannerData = useCallback(async (nextUserId: string) => {
+  const readPlannerData = useCallback(async (nextUserId: string, bootstrap = false) => {
     if (!mounted.current) return;
     reconciliation.activateOwner(nextUserId);
     const fullReadActivity = reconciliation.captureActivity();
@@ -482,6 +543,13 @@ export function usePlannerDataState({
       rawSetEditingPlanId(null);
       rawSetEditingPlan(null);
       rawSetPendingRecurringPlanAction(null);
+    }
+
+    // A previously requested (including failed) note read remains required for
+    // this owner epoch. A later bootstrap cannot silently discharge its concern.
+    const includeDayNotes = !bootstrap || !deferDayNotes || dayNoteDemand.current !== null;
+    if (includeDayNotes && !dayNoteDemand.current) {
+      dayNoteDemand.current = { scope: loadStart.token, notes: null, readyOnce: false };
     }
 
     try {
@@ -498,7 +566,7 @@ export function usePlannerDataState({
     ] = await Promise.all([
       startupTiming.measure('schedule-snapshot', () => plannerRepository.getScheduleSnapshot(nextUserId)),
       startupTiming.measure('actuals', () => plannerRepository.getActuals(nextUserId)),
-      startupTiming.measure('day-notes', () => plannerRepository.getDayNotes(nextUserId)),
+      includeDayNotes ? startupTiming.measure('day-notes', () => readDayNotes(nextUserId)) : null,
       startupTiming.measure('todos', () => plannerRepository.getTodos(nextUserId)),
       startupTiming.measure('subjects', () => plannerRepository.getStudySubjects(nextUserId)),
       startupTiming.measure('materials', () => plannerRepository.getStudyMaterials(nextUserId)),
@@ -543,7 +611,7 @@ export function usePlannerDataState({
 
       rawSetPlans(sortByDateTime(nextSchedule.plans));
       rawSetActuals(nextActuals);
-      rawSetDayNotes(nextDayNotes);
+      if (nextDayNotes !== null) replaceDayNotes(nextDayNotes);
       rawSetMonthEvents(sortMonthEvents(nextSchedule.monthEvents));
       rawSetTodos(nextTodos);
       rawSetStudySubjects(sortStudySubjects(nextStudySubjects));
@@ -588,7 +656,30 @@ export function usePlannerDataState({
     } finally {
       reconciliation.pump();
     }
-  }, [clearPlannerDataCollections, invalidateMutationScope, plannerDataReadAuthority, publishReadSnapshot, reconciliation, showOwnerNotice]);
+  }, [clearPlannerDataCollections, deferDayNotes, invalidateMutationScope, plannerDataReadAuthority, publishReadSnapshot, readDayNotes, reconciliation, replaceDayNotes, showOwnerNotice]);
+
+  // Explicit full refresh remains fresh and covers every repository collection.
+  const loadPlannerData = useCallback((ownerId: string) => readPlannerData(ownerId), [readPlannerData]);
+  const bootstrapPlannerData = useCallback((ownerId: string) => readPlannerData(ownerId, true), [readPlannerData]);
+  const loadDayNotes = mutationScope.bindMutation(async () => {
+    const scope = plannerDataReadAuthority.captureOwnerScope();
+    if (!userId || !scope || scope.ownerId !== userId) throw new PlannerMutationScopeExpiredError();
+    const previous = dayNoteDemand.current;
+    const demand = previous && plannerDataReadAuthority.isOwnerCurrent(previous.scope)
+      ? previous : { scope, notes: null, readyOnce: false, waiting: undefined as NoteLoad | undefined };
+    dayNoteDemand.current = demand;
+    if (demand.waiting) return demand.waiting.promise;
+    if (demand.notes !== null && plannerDataReadAuthority.read().status === 'ready') return;
+    let resolve!: () => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<void>((onResolve, onReject) => { resolve = onResolve; reject = onReject; });
+    demand.waiting = { promise, resolve, reject, isCurrent: mutationScope.isCurrent };
+    // Reuse the existing read-only DayNotes repair, its writer barrier and union
+    // publication. Never start this request from inside a mutation ticket.
+    reconciliation.request(scope, ['day-notes']);
+    settleDayNoteLoad();
+    return promise;
+  });
 
   const resetPlannerData = useCallback(() => {
     invalidateMutationScope();
@@ -1297,17 +1388,46 @@ export function usePlannerDataState({
       return;
     }
 
-    const currentDayNote = dayNotes.find((dayNote) => dayNote.date === draft.date);
+    const demand = dayNoteDemand.current;
+    const currentNotes = demand && plannerDataReadAuthority.isOwnerCurrent(demand.scope) ? demand.notes : dayNotes;
+    if (currentNotes === null) throw new Error('日次メモを読み込んでから保存してください。');
+    const currentDayNote = currentNotes.find((dayNote) => dayNote.date === draft.date);
     const nextDayNote = createDayNoteFromDraft(draft, currentDayNote);
 
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     await plannerRepository.upsertDayNote(nextDayNote);
-    if (!acknowledgedProjection || (plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)
-      && !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection))) {
-      setDayNotes((current) => upsertByKey(current, nextDayNote, (item) => item.id));
+    if (mutationScope.isCurrent() && (!acknowledgedProjection || (plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)
+      && !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)))) {
+      const currentDemand = dayNoteDemand.current;
+      if (currentDemand && currentDemand.scope.ownerId === userId
+        && plannerDataReadAuthority.isOwnerCurrent(currentDemand.scope) && currentDemand.notes !== null) {
+        currentDemand.notes = upsertByKey(currentDemand.notes, nextDayNote, (item) => item.id);
+        setDayNotes(currentDemand.notes);
+      } else {
+        setDayNotes((current) => current === null ? null : upsertByKey(current, nextDayNote, (item) => item.id));
+      }
     }
     showNotice('日次メモを保存しました。', 'success');
   }
+
+  const saveDayNoteAfterLoad = mutationScope.bindMutation(async (draft: DayNoteDraft) => {
+    if (draft.userId !== userId) throw new PlannerMutationScopeExpiredError();
+    const scope = plannerDataReadAuthority.captureOwnerScope();
+    const demand = dayNoteDemand.current;
+    const hasNotes = demand && plannerDataReadAuthority.isOwnerCurrent(demand.scope) && demand.notes !== null && demand.readyOnce;
+    if (deferDayNotes && !hasNotes) {
+      await loadDayNotes();
+      // A response can be superseded before this continuation. Never choose an
+      // ID from an unread/retired snapshot or dispatch before accepted recovery.
+      if (!scope || !mutationScope.isCurrent() || !plannerDataReadAuthority.isOwnerCurrent(scope)) {
+        throw new PlannerMutationScopeExpiredError();
+      }
+      if (plannerDataReadAuthority.read().status !== 'ready' || dayNoteDemand.current?.notes == null) {
+        throw new Error('日次メモの読み込みが更新されました。もう一度保存してください。');
+      }
+    }
+    await trackMutation(saveDayNote, ['day-notes'])(draft);
+  });
 
   async function saveMonthEvent(
     draft: MonthEventDraft,
@@ -2088,10 +2208,13 @@ export function usePlannerDataState({
     setViewMode('day');
   }
 
+  const visibleDayNotes = deferDayNotes && (!dayNoteDemand.current
+    || dayNoteDemand.current.scope.ownerId !== userId
+    || !plannerDataReadAuthority.isOwnerCurrent(dayNoteDemand.current.scope)) ? null : dayNotes;
   return {
     plans,
     actuals,
-    dayNotes,
+    dayNotes: visibleDayNotes,
     monthEvents,
     todos,
     studySubjects,
@@ -2118,6 +2241,8 @@ export function usePlannerDataState({
           }
         : null,
     loadPlannerData,
+    bootstrapPlannerData,
+    loadDayNotes,
     resetPlannerData,
     setViewMode,
     openCreatePlan,
@@ -2134,7 +2259,7 @@ export function usePlannerDataState({
     saveStandaloneActual: trackMutation(saveStandaloneActual),
     linkStandaloneActualToPlan: trackMutation(linkStandaloneActualToPlan),
     deleteActual: trackMutation(deleteActual),
-    saveDayNote: trackMutation(saveDayNote, ['day-notes']),
+    saveDayNote: saveDayNoteAfterLoad,
     saveMonthEvent: trackMutation(saveMonthEvent, ['month-events']),
     deleteMonthEvent: trackMutation(deleteMonthEvent, ['month-events']),
     saveTodo: trackMutation(saveTodo, ['plans-todos']),
@@ -2157,6 +2282,6 @@ export function usePlannerDataState({
     openWeek,
     openDay,
     setEditorDraft,
-    currentDayNote: userId ? resolveDayNoteDraft(dayNotes, userId, selectedDate) : null,
+    currentDayNote: userId && visibleDayNotes !== null ? resolveDayNoteDraft(visibleDayNotes, userId, selectedDate) : null,
   };
 }
