@@ -38,7 +38,7 @@ function t1(withTotalDuration: boolean, effortOn: string): Json {
     recurrence: [{ localId: 'split', targetLocalId: 'task', kind: 'custom', count: 2, days: [], sourceText: '今日の夜と明日の朝に分けて' }] })] });
 }
 
-type Variant = 'r1' | 'r2' | 'r3';
+type Variant = 'r1' | 'dangling' | 'c2only';
 function t2(variant: Variant, summary: Json): Json {
   const taskId = String(((summary.tasks as Json[]) ?? [])[0].publicId);
   const wl = String(((summary.workloads as Json[]) ?? [])[0].publicId);
@@ -51,19 +51,21 @@ function t2(variant: Variant, summary: Json): Json {
       { localId: 'c1', target: target('workload', wl), operation: 'replace', replacementLocalId: 'amt2', sourceText: 'やっぱり合計60分' },
       { localId: 'c2', target: target('effort_estimate', eff), operation: 'replace', replacementLocalId: 'each2', sourceText: 'やっぱり合計60分' }],
     tasks: [shell({ workloads: [minutes('amt2', 60, '合計60分')], effortEstimates: [session('each2', 'amt2', 30, '合計60分')] })] });
-  if (variant === 'r2') return empty({
+  if (variant === 'dangling') return empty({
+    // The live r2 shape: both replacement ids name no fact.
     corrections: [
-      { localId: 'c1', target: target('workload', wl), operation: 'replace', replacementLocalId: null, sourceText: 'やっぱり合計60分' },
-      { localId: 'c2', target: target('effort_estimate', eff), operation: 'replace', replacementLocalId: null, sourceText: 'やっぱり合計60分' }],
+      { localId: 'correction_workload_total', target: target('workload', wl), operation: 'replace', replacementLocalId: 'workload_math_60', sourceText: 'やっぱり合計60分' },
+      { localId: 'correction_effort_session', target: target('effort_estimate', eff), operation: 'replace', replacementLocalId: 'effort_math_session_30', sourceText: 'やっぱり合計60分' }],
     tasks: [shell()] });
+  // c2only (critic probe 28): only the session is corrected; the new 60-minute total is a plain new fact it hangs from.
   return empty({
-    corrections: [
-      { localId: 'c1', target: target('workload', wl), operation: 'replace', replacementLocalId: null, sourceText: 'やっぱり合計60分' },
-      { localId: 'c2', target: target('effort_estimate', eff), operation: 'replace', replacementLocalId: null, sourceText: 'やっぱり合計60分' }],
+    corrections: [{ localId: 'c2', target: target('effort_estimate', eff), operation: 'replace', replacementLocalId: 'each2', sourceText: 'やっぱり合計60分' }],
     tasks: [shell({ workloads: [minutes('amt2', 60, '合計60分')], effortEstimates: [session('each2', 'amt2', 30, '合計60分')] })] });
 }
 
+let lastT2: string | null = null;
 function install(variant: Variant, withTotalDuration: boolean, effortOn = 'amt'): void {
+  lastT2 = null;
   provider = installScriptedWeeklyPlanningProvider((call: ScriptedProviderCall) => {
     if (call.kind === 'renderer') return scriptedRendererReply(call, 'わかりました。');
     if (call.kind === 'semantic_focused_authorization') return JSON.stringify({ decision: 'fallback' });
@@ -71,7 +73,9 @@ function install(variant: Variant, withTotalDuration: boolean, effortOn = 'amt')
     if (call.schemaName === 'weekly_planning_focused_material_answer_v5') return JSON.stringify({ decision: 'fallback', label: null, registeredChoice: null, workloadChoice: null, effortKind: null, minutes: null, precision: null, sourceText: null, effortSourceText: null });
     const text = String(call.payload?.userText ?? '');
     if (text === T1) return JSON.stringify(t1(withTotalDuration, effortOn));
-    if (text === T2) return JSON.stringify(t2(variant, (call.payload?.publicStateSummary ?? {}) as Json));
+    if (text === T2) { lastT2 = JSON.stringify(t2(variant, (call.payload?.publicStateSummary ?? {}) as Json)); return lastT2; }
+    // The repair payload carries no userText: the model returns the identical shape (as observed live).
+    if (lastT2 !== null && call.kind === 'semantic_generic') return lastT2;
     throw new Error(`unscripted: ${text}`);
   });
 }
@@ -92,15 +96,33 @@ describe('X5-T2: a correction of an accepted time total', () => {
   });
 
 
-  it('control (live r2): replace corrections without any replacement fact change nothing and the turn is reported as not applied', async () => {
-    install('r2', false, 'task');
+  it('control (live r2): dangling replacement ids go through the one scripted repair and recover with the plan unchanged', async () => {
+    install('dangling', false, 'task');
     const conv = open();
     await conv.submit(T1);
     const second = await conv.submit(T2);
     const view = createWeeklyPlanningActiveSchedulerGraphViewV5(conv.graph()!);
+    const errors = second.debugTrace.filter(e => e.stage === 'semantic_validation_result').map(e => JSON.stringify(e.data)).join('|');
+    expect(errors).toContain('replacementLocalId:unknown:workload_math_60');
+    expect(errors).toContain('replacementLocalId:unknown:effort_math_session_30');
+    expect(second.calls.filter(c => c.kind === 'semantic_generic').length).toBe(2);
+    expect(second.result?.interactionOutcome?.kind).toBe('recover');
+    expect(view.workloads.map(w => w.amount)).toEqual([90]);
+    expect(view.effortEstimates.filter(e => e.kind === 'session_duration').map(e => e.minutes)).toEqual([45]);
+    expect(conv.getState().previewCandidates?.length).toBe(2);
+  });
+
+  it('critic probe 28: only the session is corrected and the new 60-minute total hangs from it - the turn is never applied with the 90 total', async () => {
+    install('c2only', false, 'task');
+    const conv = open();
+    await conv.submit(T1);
+    const second = await conv.submit(T2);
+    const view = createWeeklyPlanningActiveSchedulerGraphViewV5(conv.graph()!);
+    // The user's 60 is either installed or the turn is disclosed as not applied; it is never dropped silently.
+    const dropped = !view.workloads.some(w => w.amount === 60);
+    expect(dropped && second.result?.interactionOutcome?.kind === 'apply').toBe(false);
     expect(second.result?.interactionOutcome?.kind).toBe('recover');
     expect(view.workloads.map(w => w.amount)).toEqual([90]);
     expect(view.effortEstimates.filter(e => e.kind === 'session_duration').map(e => e.minutes)).toEqual([45]);
   });
 });
-
