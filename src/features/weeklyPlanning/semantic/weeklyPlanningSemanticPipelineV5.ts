@@ -335,6 +335,9 @@ export function createWeeklyPlanningSemanticPipelineV5(
         questionCode: pendingQuestion?.questionCode ?? null,
         operationKeyPrefix: `${input.conversationId}:${input.turnId}`,
         conversationArchitecture: input.conversationArchitecture,
+        pendingQuestion: pendingQuestion
+          ? { questionCode: pendingQuestion.questionCode, targetFactId: pendingQuestion.targetFactId ?? null } : null,
+        noOpRetryConfirmed: normalization.diagnostics.attemptCount >= 2,
       });
       const {
         entityBindingApplication,

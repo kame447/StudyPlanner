@@ -47,6 +47,8 @@ import {
 import { consultationCommunicationForPlanning } from './weeklyPlanningConsultationCommunication';
 import type { GenericSchedulerInput } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import { projectWeeklyPlanningPreviewConstraintSatisfaction } from './weeklyPlanningPreviewConstraintSatisfaction';
+import type { UncertaintyFactV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import { releasedUncertaintiesOfTurnV5 } from '../semantic/weeklyPlanningSemanticUncertaintyReleaseV5';
 import { summarizeWeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
 
 export type {
@@ -78,6 +80,7 @@ function communicationFacts(params: {
   possibleCompletenessOmission: boolean;
   omittedWork: WeeklyPlanningPreviewOmittedWork[] | null;
   consultationRequested: boolean;
+  releasedUncertainties?: readonly UncertaintyFactV5[];
   alternativeEvidence?: WeeklyPlanningConsultationAlternativeEvidence | null;
   preview?: ReturnType<typeof executeWeeklyPlanningStableV5Preview>;
   schedulerInput?: GenericSchedulerInput;
@@ -119,6 +122,9 @@ function communicationFacts(params: {
     planningDetailsNotApplied: params.planningDetailsNotApplied,
     ...(params.possibleCompletenessOmission ? { possibleCompletenessOmission: true } : {}),
     ...(capacityShortfall ? { capacityShortfall } : {}),
+    ...(params.releasedUncertainties?.length
+      ? { uncertaintyReleased: { quote: params.releasedUncertainties[0].source.sourceText, count: params.releasedUncertainties.length, ids: params.releasedUncertainties.map((fact) => fact.id) } }
+      : {}),
     previewDisclosure: params.omittedWork
       ? { omittedWork: params.omittedWork }
       : null,
@@ -177,6 +183,10 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     : evaluation;
   // A turn carried only by its conversation act (no usable planning delta) applied nothing;
   // the renderer is told when the model saw planning details in it that were not taken in.
+  const releasedUncertainties = releasedUncertaintiesOfTurnV5({
+    graph: semantic.graph,
+    operationKeyPrefix: `${input.conversationId}:${input.traceRequestId}`,
+  });
   const planningDetailsNotApplied = semantic.normalization.conversationOnly?.planningContentPresent === true;
   // The normalizer kept its first valid reading after an audit-reported omission could not be
   // integrated: say so instead of silently dropping what the audit found (safe failure).
@@ -211,6 +221,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
               possibleCompletenessOmission,
               omittedWork: null,
               consultationRequested: interactionPlan.acts.consultation,
+              releasedUncertainties,
               alternativeEvidence,
             }),
           }
@@ -259,6 +270,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
             possibleCompletenessOmission,
             omittedWork: provisionalCapacity ? provisionalCapacity.omittedWork : null,
             consultationRequested: interactionPlan!.acts.consultation,
+            releasedUncertainties,
             alternativeEvidence,
             preview,
             schedulerInput: responseRoute.schedulerInput,

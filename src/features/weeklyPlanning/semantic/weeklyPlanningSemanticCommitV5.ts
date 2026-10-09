@@ -2,6 +2,10 @@ import { enforceSingleActivePlanningWindowV5 } from './weeklyPlanningSemanticCan
 import { reconcileWeeklyPlanningHistoricalWindowQuestionsV5 } from './weeklyPlanningPlanningWindowReconciliationV5';
 import { conversationArchitecturePolicy, type WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import { hasWeeklyPlanningSemanticUncertaintyResolutionV5 } from './weeklyPlanningSemanticUncertaintyResolutionV5';
+import {
+  WEEKLY_PLANNING_RELEASED_UNCERTAINTY_OPERATION_V5,
+  releasedFreeFormUncertaintyIdsV5,
+} from './weeklyPlanningSemanticUncertaintyReleaseV5';
 import { weeklyPlanningMaterialIdentityAnswersV5, applyWeeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 import { bindWeeklyPlanningExistingWorkloadRatesV5 } from './weeklyPlanningExistingWorkloadRateReferenceV5';
 import {
@@ -65,6 +69,8 @@ function removeResolvedSemanticUncertaintiesV5(params: {
   canonicalization: WeeklyPlanningSemanticCanonicalizationResultV5;
   operationKeyPrefix: string;
   conversationArchitecture?: WeeklyPlanningConversationArchitecture;
+  pendingQuestion?: { questionCode: string; targetFactId: string | null } | null;
+  noOpRetryConfirmed?: boolean;
 }): WeeklyPlanningSemanticCanonicalizationResultV5 {
   const { canonicalization } = params;
   if (canonicalization.status !== 'applied' || !canonicalization.diff) {
@@ -102,14 +108,24 @@ function removeResolvedSemanticUncertaintiesV5(params: {
           && resolvedTargetIds.has(uncertainty.targetFactId))
     .map((uncertainty) => uncertainty.id)
     .sort();
+  // A free-form question ended by the user's own bound answer is released, not resolved (disclosed to the user).
+  const releasedIds = requireCompatibleResolution
+    ? new Set(releasedFreeFormUncertaintyIdsV5({
+        graph: params.originalGraph,
+        document: params.document,
+        pendingQuestion: params.pendingQuestion,
+        noOpRetryConfirmed: params.noOpRetryConfirmed === true,
+      }))
+    : new Set<string>();
 
-  for (const uncertaintyId of uncertaintyIds) {
+  for (const uncertaintyId of [...uncertaintyIds, ...releasedIds]) {
     if (!activeIds().has(uncertaintyId)) continue;
     const result = applyWeeklyPlanningFactLifecycleOperationV5({
       graph,
       expectedRevision: graph.revision,
       operation: {
-        operationKey: `${params.operationKeyPrefix}:resolved-work-breakdown:${uncertaintyId}`,
+        operationKey: `${params.operationKeyPrefix}:${releasedIds.has(uncertaintyId)
+          ? WEEKLY_PLANNING_RELEASED_UNCERTAINTY_OPERATION_V5 : 'resolved-work-breakdown'}:${uncertaintyId}`,
         kind: 'remove',
         targetFactId: uncertaintyId,
       },
@@ -227,6 +243,8 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
   operationKeyPrefix: string;
   conversationArchitecture?: WeeklyPlanningConversationArchitecture;
   algorithmicRepairs?: readonly string[];
+  pendingQuestion?: { questionCode: string; targetFactId: string | null } | null;
+  noOpRetryConfirmed?: boolean;
 }) {
   const materialIdentityAnswers = conversationArchitecturePolicy(params.conversationArchitecture).freshPendingQuestionBinding
     ? weeklyPlanningMaterialIdentityAnswersV5(params.originalGraph, params.document) : [];
@@ -279,6 +297,8 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
     canonicalization: boundedProjectedCanonicalization,
     operationKeyPrefix: params.operationKeyPrefix,
     conversationArchitecture: params.conversationArchitecture,
+    pendingQuestion: params.pendingQuestion,
+    noOpRetryConfirmed: params.noOpRetryConfirmed,
   });
   const collapsedCanonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
     originalGraph: params.originalGraph,
