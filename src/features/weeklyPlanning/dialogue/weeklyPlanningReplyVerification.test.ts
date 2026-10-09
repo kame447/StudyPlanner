@@ -72,6 +72,18 @@ describe('declared_amount_waiting (P3 S1 payload; derivation elsewhere)', () => 
     const both = JSON.stringify({ verdicts: entries.map(e => ({ key: e.code === 'declared_amount_waiting' ? `${e.code}:${e.factId}` : e.code, verdict: 'stated_accurately' })), forbidden: [] });
     expect(evaluateReplyVerifierResponse(both, entries)).toEqual({ ok: true });
   });
+  it('a wrong key with the right count is malformed (single entry)', () => {
+    const raw = JSON.stringify({ verdicts: [{ key: 'shortfall', verdict: 'stated_accurately' }], forbidden: [] });
+    expect(evaluateReplyVerifierResponse(raw, [waiting(120, 'minute')])).toEqual({ ok: false, reason: 'malformed' });
+  });
+  it('a duplicated key with the right count is malformed (two entries answered [k1, k1])', () => {
+    const entries = [waiting(120, 'minute'), { ...waiting(60, 'minute'), factId: 'wpf_workload_2' } as WeeklyPlanningMustConveyEntry];
+    const raw = JSON.stringify({ verdicts: [
+      { key: 'declared_amount_waiting:wpf_workload_1', verdict: 'stated_accurately' },
+      { key: 'declared_amount_waiting:wpf_workload_1', verdict: 'stated_accurately' },
+    ], forbidden: [] });
+    expect(evaluateReplyVerifierResponse(raw, entries)).toEqual({ ok: false, reason: 'malformed' });
+  });
   it('adding the code does not change the shortfall request', () => {
     const shortfallOnly = createReplyVerifierMessages({ entries: [entry(240)], text: 'x' })[1].content;
     expect(shortfallOnly).not.toContain('statedAmount');
