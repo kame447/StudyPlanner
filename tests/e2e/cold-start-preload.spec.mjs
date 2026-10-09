@@ -85,9 +85,13 @@ for (const width of [1280, 390]) {
       await expect.poll(async () => (await timingRows()).some(row => row.phase === 'home-visible')).toBe(true);
       const diagnosticRows = await timingRows();
       expect(diagnosticRows.length).toBeLessThanOrEqual(80);
-      for (const phase of ['profile', 'plans', 'actuals', 'month-events', 'bootstrap', 'home-visible']) {
+      for (const phase of ['profile', 'schedule-snapshot', 'actuals', 'bootstrap', 'home-visible']) {
         expect(diagnosticRows.some(row => row.phase === phase && row.outcome === 'success')).toBe(true);
       }
+      // One combined full-load read owns both projections. Retain the
+      // startup completion/privacy checks without demanding retired spans.
+      expect(diagnosticRows.filter(row => row.phase === 'schedule-snapshot')).toHaveLength(1);
+      expect(diagnosticRows.filter(row => ['plans', 'month-events'].includes(row.phase))).toEqual([]);
       for (const row of diagnosticRows) {
         expect(Object.keys(row).sort()).toEqual(['durationMs', 'id', 'outcome', 'phase', 'startMs']);
         expect(Number.isFinite(row.startMs)).toBe(true);

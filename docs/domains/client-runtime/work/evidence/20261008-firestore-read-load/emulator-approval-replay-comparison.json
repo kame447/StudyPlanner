@@ -1,0 +1,299 @@
+{
+  "scenario": "Five previously saved plans from an already-completed approval operation, replayed with ordinary owner authentication and unchanged repository Rules.",
+  "firstSaveSucceeded": false,
+  "firstSaveEvidence": "emulator-approval-new-before.json and emulator-approval-new-after.json record the pre-existing permission-denied blocker.",
+  "billableReadsMeasured": false,
+  "allFixturesEqual": true,
+  "allFinalApplicationStatesEqual": true,
+  "allPersistedApprovalPlansEqual": true,
+  "rows": [
+    {
+      "scale": 1,
+      "operation": "cold-planner-launch",
+      "before": {
+        "queryTargets": 9,
+        "documentTargets": 1,
+        "listenDocumentResponses": 69,
+        "markerDocumentResponses": 1,
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 0,
+        "actualWritesByCollection": {},
+        "verifyDocumentPreconditions": 0
+      },
+      "after": {
+        "queryTargets": 9,
+        "documentTargets": 1,
+        "listenDocumentResponses": 69,
+        "markerDocumentResponses": 1,
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 0,
+        "actualWritesByCollection": {},
+        "verifyDocumentPreconditions": 0
+      },
+      "dataEqual": true,
+      "projectionEqual": true
+    },
+    {
+      "scale": 1,
+      "operation": "approved-save-K-and-complete",
+      "before": {
+        "queryTargets": 45,
+        "documentTargets": 6,
+        "listenDocumentResponses": 346,
+        "markerDocumentResponses": 6,
+        "transactionDocumentRequests": 32,
+        "transactionDocumentResponses": 32,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 6,
+        "actualWritesByCollection": {
+          "weekly_planning_approval_operations": 6,
+          "weekly_planning_approval_items": 10
+        },
+        "verifyDocumentPreconditions": 16
+      },
+      "after": {
+        "queryTargets": 0,
+        "documentTargets": 6,
+        "listenDocumentResponses": 6,
+        "markerDocumentResponses": 6,
+        "transactionDocumentRequests": 32,
+        "transactionDocumentResponses": 32,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 6,
+        "actualWritesByCollection": {
+          "weekly_planning_approval_operations": 6,
+          "weekly_planning_approval_items": 10
+        },
+        "verifyDocumentPreconditions": 16
+      },
+      "dataEqual": true,
+      "projectionEqual": true
+    },
+    {
+      "scale": 1,
+      "operation": "explicit-full-refresh",
+      "before": {
+        "queryTargets": 9,
+        "documentTargets": 0,
+        "listenDocumentResponses": 68,
+        "markerDocumentResponses": 0,
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 0,
+        "actualWritesByCollection": {},
+        "verifyDocumentPreconditions": 0
+      },
+      "after": {
+        "queryTargets": 9,
+        "documentTargets": 0,
+        "listenDocumentResponses": 68,
+        "markerDocumentResponses": 0,
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 0,
+        "actualWritesByCollection": {},
+        "verifyDocumentPreconditions": 0
+      },
+      "dataEqual": true,
+      "projectionEqual": true
+    },
+    {
+      "scale": 10,
+      "operation": "cold-planner-launch",
+      "before": {
+        "queryTargets": 9,
+        "documentTargets": 1,
+        "listenDocumentResponses": 564,
+        "markerDocumentResponses": 1,
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 0,
+        "actualWritesByCollection": {},
+        "verifyDocumentPreconditions": 0
+      },
+      "after": {
+        "queryTargets": 9,
+        "documentTargets": 1,
+        "listenDocumentResponses": 564,
+        "markerDocumentResponses": 1,
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 0,
+        "actualWritesByCollection": {},
+        "verifyDocumentPreconditions": 0
+      },
+      "dataEqual": true,
+      "projectionEqual": true
+    },
+    {
+      "scale": 10,
+      "operation": "approved-save-K-and-complete",
+      "before": {
+        "queryTargets": 45,
+        "documentTargets": 6,
+        "listenDocumentResponses": 2821,
+        "markerDocumentResponses": 6,
+        "transactionDocumentRequests": 32,
+        "transactionDocumentResponses": 32,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 6,
+        "actualWritesByCollection": {
+          "weekly_planning_approval_operations": 6,
+          "weekly_planning_approval_items": 10
+        },
+        "verifyDocumentPreconditions": 16
+      },
+      "after": {
+        "queryTargets": 0,
+        "documentTargets": 6,
+        "listenDocumentResponses": 6,
+        "markerDocumentResponses": 6,
+        "transactionDocumentRequests": 32,
+        "transactionDocumentResponses": 32,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 6,
+        "actualWritesByCollection": {
+          "weekly_planning_approval_operations": 6,
+          "weekly_planning_approval_items": 10
+        },
+        "verifyDocumentPreconditions": 16
+      },
+      "dataEqual": true,
+      "projectionEqual": true
+    },
+    {
+      "scale": 10,
+      "operation": "explicit-full-refresh",
+      "before": {
+        "queryTargets": 9,
+        "documentTargets": 0,
+        "listenDocumentResponses": 563,
+        "markerDocumentResponses": 0,
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 0,
+        "actualWritesByCollection": {},
+        "verifyDocumentPreconditions": 0
+      },
+      "after": {
+        "queryTargets": 9,
+        "documentTargets": 0,
+        "listenDocumentResponses": 563,
+        "markerDocumentResponses": 0,
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 0,
+        "actualWritesByCollection": {},
+        "verifyDocumentPreconditions": 0
+      },
+      "dataEqual": true,
+      "projectionEqual": true
+    },
+    {
+      "scale": 100,
+      "operation": "cold-planner-launch",
+      "before": {
+        "queryTargets": 9,
+        "documentTargets": 1,
+        "listenDocumentResponses": 5514,
+        "markerDocumentResponses": 1,
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 0,
+        "actualWritesByCollection": {},
+        "verifyDocumentPreconditions": 0
+      },
+      "after": {
+        "queryTargets": 9,
+        "documentTargets": 1,
+        "listenDocumentResponses": 5514,
+        "markerDocumentResponses": 1,
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 0,
+        "actualWritesByCollection": {},
+        "verifyDocumentPreconditions": 0
+      },
+      "dataEqual": true,
+      "projectionEqual": true
+    },
+    {
+      "scale": 100,
+      "operation": "approved-save-K-and-complete",
+      "before": {
+        "queryTargets": 45,
+        "documentTargets": 6,
+        "listenDocumentResponses": 27571,
+        "markerDocumentResponses": 6,
+        "transactionDocumentRequests": 32,
+        "transactionDocumentResponses": 32,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 6,
+        "actualWritesByCollection": {
+          "weekly_planning_approval_operations": 6,
+          "weekly_planning_approval_items": 10
+        },
+        "verifyDocumentPreconditions": 16
+      },
+      "after": {
+        "queryTargets": 0,
+        "documentTargets": 6,
+        "listenDocumentResponses": 6,
+        "markerDocumentResponses": 6,
+        "transactionDocumentRequests": 32,
+        "transactionDocumentResponses": 32,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 6,
+        "actualWritesByCollection": {
+          "weekly_planning_approval_operations": 6,
+          "weekly_planning_approval_items": 10
+        },
+        "verifyDocumentPreconditions": 16
+      },
+      "dataEqual": true,
+      "projectionEqual": true
+    },
+    {
+      "scale": 100,
+      "operation": "explicit-full-refresh",
+      "before": {
+        "queryTargets": 9,
+        "documentTargets": 0,
+        "listenDocumentResponses": 5513,
+        "markerDocumentResponses": 0,
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 0,
+        "actualWritesByCollection": {},
+        "verifyDocumentPreconditions": 0
+      },
+      "after": {
+        "queryTargets": 9,
+        "documentTargets": 0,
+        "listenDocumentResponses": 5513,
+        "markerDocumentResponses": 0,
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "commitRequests": 0,
+        "actualWritesByCollection": {},
+        "verifyDocumentPreconditions": 0
+      },
+      "dataEqual": true,
+      "projectionEqual": true
+    }
+  ]
+}

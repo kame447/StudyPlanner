@@ -1,0 +1,188 @@
+{
+  "project": "demo-studyplanner-read-load",
+  "endpoint": "127.0.0.1:35445",
+  "mode": "after",
+  "emulatorVersion": "1.20.2",
+  "firebaseSdkVersion": "12.12.0",
+  "nodeVersion": "v24.19.0",
+  "sdkTransport": "Node gRPC",
+  "rules": "repository firestore.rules, unchanged",
+  "scope": "Real app/data hooks, Firebase repositories, and weekly approval transactions; auth/catalog/notices substituted.",
+  "limitations": [
+    "Emulator RPC messages do not equal billable reads; security-rule dependent reads are excluded.",
+    "A denied save is recorded as a blocker, never counted as successful read reduction."
+  ],
+  "results": [
+    {
+      "mode": "after",
+      "scale": 1,
+      "seedPlanCount": 24,
+      "seedMonthEventCount": 8,
+      "approvalCount": 5,
+      "fixtureDigest": "2dc7360bf4a03afb312eac9b10d5497ca04a907bf09c9d5908bb5659692106eb",
+      "scenario": "Cold planner launch, then five new approved plans and operation completion; no earlier manual or single approval save.",
+      "status": "blocked",
+      "blockedPhase": "approved-save-1-of-5",
+      "successfulSavedCount": 0,
+      "phases": [
+        {
+          "operation": "cold-planner-launch",
+          "counts": {
+            "queryTargets": {
+              "actuals": 1,
+              "day_notes": 1,
+              "todos": 1,
+              "study_subjects": 1,
+              "study_materials": 1,
+              "schedule_templates": 1,
+              "timetable_terms": 1,
+              "timetable_periods": 1,
+              "schedule_events": 1
+            },
+            "documentTargets": {
+              "schedule_event_migrations": 1
+            },
+            "documentResponses": {
+              "schedule_event_migrations": 1,
+              "actuals": 12,
+              "day_notes": 4,
+              "todos": 3,
+              "study_subjects": 1,
+              "study_materials": 4,
+              "schedule_templates": 3,
+              "timetable_terms": 1,
+              "timetable_periods": 3,
+              "schedule_events": 32
+            },
+            "transactionDocumentRequests": 0,
+            "transactionDocumentResponses": 0,
+            "missingTransactionDocuments": 0,
+            "transactionDocumentPaths": [],
+            "rpcErrors": []
+          },
+          "dataDigest": "e407145f1c7becafa94f6453efe120b620d578928687a9bdc54215efc3f13d75",
+          "projectionDigest": "5f384d90664576196776443e0f869a764441948d60c1b396b144a1bed4997de3"
+        }
+      ],
+      "error": {
+        "code": "transaction_failed",
+        "message": "週間計画の保存処理を完了できませんでした。",
+        "causeCode": null,
+        "causeMessage": null
+      },
+      "rulesChanged": false,
+      "claim": "An incomplete or denied save is not evidence of successful read reduction."
+    }
+  ],
+  "transport": [
+    {
+      "operation": "after:cold-planner-launch",
+      "size": 32,
+      "counts": {
+        "queryTargets": {
+          "actuals": 1,
+          "day_notes": 1,
+          "todos": 1,
+          "study_subjects": 1,
+          "study_materials": 1,
+          "schedule_templates": 1,
+          "timetable_terms": 1,
+          "timetable_periods": 1,
+          "schedule_events": 1
+        },
+        "documentTargets": {
+          "schedule_event_migrations": 1
+        },
+        "documentResponses": {
+          "schedule_event_migrations": 1,
+          "actuals": 12,
+          "day_notes": 4,
+          "todos": 3,
+          "study_subjects": 1,
+          "study_materials": 4,
+          "schedule_templates": 3,
+          "timetable_terms": 1,
+          "timetable_periods": 3,
+          "schedule_events": 32
+        },
+        "transactionDocumentRequests": 0,
+        "transactionDocumentResponses": 0,
+        "missingTransactionDocuments": 0,
+        "transactionDocumentPaths": [],
+        "rpcErrors": []
+      }
+    },
+    {
+      "operation": "after:approved-save-K-and-complete",
+      "size": 32,
+      "counts": {
+        "queryTargets": {},
+        "documentTargets": {
+          "schedule_event_migrations": 1
+        },
+        "documentResponses": {
+          "schedule_event_migrations": 1
+        },
+        "transactionDocumentRequests": 3,
+        "transactionDocumentResponses": 1,
+        "missingTransactionDocuments": 0,
+        "transactionDocumentPaths": [
+          "projects/demo-studyplanner-read-load/databases/(default)/documents/weekly_planning_approval_operations/weekly-approval-read-load-owner%1Femulator-approval-operation",
+          "projects/demo-studyplanner-read-load/databases/(default)/documents/weekly_planning_approval_operations/weekly-approval-read-load-owner%1Femulator-approval-operation/weekly_planning_approval_items/item-block-0",
+          "projects/demo-studyplanner-read-load/databases/(default)/documents/schedule_event_migrations/read-load-owner"
+        ],
+        "rpcErrors": [
+          "Firestore (12.12.0): GrpcConnection RPC 'BatchGetDocuments' 0x23b254ea failed with error: Error: 7 PERMISSION_DENIED: \nevaluation error at L403:24 for 'get' @ L403, Null value error. for 'get' @ L403"
+        ]
+      }
+    }
+  ],
+  "verificationInputs": {
+    "approvalMode": "after",
+    "baseline": null,
+    "emulatorSha256": "4a117fc297b1441eac1b7756e80442e86ef88865b9e3caf6f59eabf83da574f8",
+    "rulesSha256": "a6881721ade2f8a47f218826edc91df0822e8d87693fddfcb1c698ab0640ade9",
+    "bundleSha256": "ad7e225b288a6a57532973c3cbf2b29840e28caa99c8ae78ff413a9427c9471f",
+    "sourceSha256": {
+      "src/domain/scheduleEvent.ts": "0a4552a6077f11226d1c76a67c29d763c483314a66605c4e123edf8dcc681846",
+      "src/repositories/plannerWritePreparation.ts": "ea57696e3d3e02acf367e74ee95fdb44d9230b1941938a0de4725ac604cbc863",
+      "src/lib/date.ts": "bf057c854cbde882f57f1f84a87d9bc0836b4d3aba45d27652168e561b398641",
+      "src/lib/planRecurrence.ts": "170892e7ba8bf38a460090e85020737b613117b5c966962a39f6b8244abd6263",
+      "src/repositories/repositoryUtils.ts": "7214a7419e01a97e39762c024287fbd8d4730df66e796a529734a0c99b4881aa",
+      "src/repositories/firebasePlannerRepository.ts": "3412302bd12407727f60d406694e7762a9e439be77655f7173c55207dbb9fc08",
+      "src/lib/startupTiming.ts": "75344b74e34fb71fbbdffe31448f3c10074dc30d709605f9a1ba6a5cc0ffe43c",
+      "src/repositories/observeStartupDocument.ts": "c77ca45cfbf74488a886ff77bbbf0a5268bb934d00fd65b12594dbdddffe8829",
+      "src/repositories/scheduleEventAuthorityRepository.ts": "fcf36701c73eca845b31605a8e8c15c82561d673e7e7d99a5fa9e51a4bc7095a",
+      "src/repositories/firebaseScheduleEventAuthority.ts": "e978f403cd7c6aa908e69cfcef5bb12f24b482757a9673fef07f641b63035c15",
+      "tests/performance/firestore-read-load-emulator.integration.ts": "2727ff2b397154e80d9cf213fccc6facf67648708870a776f58d2452235b74e9",
+      "src/lib/id.ts": "ba88cb86d19538289f067a7b487ed169c7eafc5de812f16d2f8244ec6ae6774e",
+      "src/domain/planner.ts": "c0dd19f8382b4e43dfc9b17b24395d9381ad7b106edb0995de7241edffc98e03",
+      "src/domain/timetableTerm.ts": "96f58e92dd6fb783c135d47f138fd60eee607e69555cc0376609308529fe8f91",
+      "src/domain/timetableDataNormalization.ts": "8ff1f99be1544a9b8bdec36b35e669569f86a805c404b4e1ebca0452ae928536",
+      "tests/performance/firestoreReadLoad.fixtures.ts": "8919b325ef81b7334dcd2b364e0d7a6c381632d335084b5e926e2a8ae47b6fdc",
+      "src/features/weeklyPlanning/planning/weeklyPlanningPlanProvenance.ts": "f2ae7aa5650f33f01ecc08c738fbfe52baf003dc805ba0d1c13d769dee5c0635",
+      "src/features/weeklyPlanning/application/weeklyPlanningApprovalPersistencePolicy.ts": "f18c95ab9b6a97dc5a7b27c54b7c9c3511b0a7fc7be069f60eb14e69c478ee6a",
+      "src/features/weeklyPlanning/application/weeklyPlanningApprovalFirestoreRepository.ts": "49b07842c865981aa089f611eb5c089b06471a3d029ad1e242430a8d59c8a317",
+      "src/hooks/usePlannerMutationScope.ts": "c5d70e78dde9e1eac3217905683b627a37a1535ba1041fddf6b61856fcd453a1",
+      "src/lib/collections.ts": "49cf5e938553d10aec72a366390b887ff325c57c86184a75ec8dba0188336ccb",
+      "src/features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository.ts": "1f24325b6746f9d1349781e226be501d4aa95ed863f24bd96fb3b20cb650165d",
+      "src/hooks/useAuthSessionState.ts": "506095e524a35f8f3105fda6c728241bf5ebc9d4b974dd90a0e7fc9dcc038243",
+      "src/hooks/useNoticeState.ts": "7ffd125bcf8178e5fd531b091ce69a644dceac7dd1e7a232651a713ccd4add07",
+      "src/domain/plannerDataReadAuthority.ts": "48cbc182c221e624d6e9a5957d3000f1cf36b1278b35fc776c7e2537d0e8486a",
+      "src/domain/plannerMutationReconciliation.ts": "82c30f7929d4baf32eacc3a560cebda5fcc898e4799c840d40c034b648460264",
+      "src/hooks/useOptimisticPlannerState.ts": "b8b6803208b423fa4ad1465de682484bc88cc324a28ddee06be1c32725eb2bd4",
+      "src/hooks/useActualMutationAdmission.ts": "da558f6113b3e6fc2737e5b4e14e4d90c6f3f9a8d2d726c1c54d0c989b3a32e1",
+      "src/lib/materialPace.ts": "a14b05167593ab019c7d694829bbe228473d18b525ebd547f8684053bbd010ce",
+      "src/domain/plannerDataTransforms.ts": "1a9149e1739a8926feae1eefae122240a0668f28bd47a09ca165e90af249b962",
+      "src/lib/monthEvents.ts": "6443a74043fb919974f259898bd8fe3ed0b953e51d639d62c6416288314bb9c6",
+      "src/repositories/index.ts": "91f6696d183d27a33cf52b3476f27bb8b5e40d2ca06d3b5f721fbc195885a466",
+      "src/domain/recurringPlan.ts": "8e6d25a64b112ee284640ef4318b3681b0325ecb58707864ba8de2b3ebf59437",
+      "src/domain/recurringPlanMutation.ts": "a61ae0190c2bb762a1c2a592b2c39922ab4d27804b99c5ad35c0e08cd0be4a95",
+      "src/hooks/usePlannerDataState.ts": "32649cc57533dbe6976fd6215f810a63f09fc4ab279793c54321e017fcb90390",
+      "src/data/naturalLanguageCatalog.ts": "856d4e51b6d6b7ace9c6a4d49f26188bb947d240a4a0c0e672ac12c94e705584",
+      "src/hooks/usePlannerAppState.ts": "a5f6d898005b465e3385a7bb241b6df0ef51418e200833993d6355d7ce094724",
+      "tests/performance/firestore-read-load-emulator.approval.tsx": "7892fecac42995da097c6d1f6a6471f5aa97394bb46d6eb417b18d56c0dadd2a",
+      "tests/performance/firestore-read-load-emulator.approval-entry.ts": "c7ddbbef178bc41ac33473c3eb21e246ba0680d00b2cf61d3f9fbc4aa8e54b66"
+    }
+  }
+}

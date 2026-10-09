@@ -1,0 +1,10 @@
+{
+  "inputs": [],
+  "installed-packages": [],
+  "excluded-paths": [
+    "docs/domains/client-runtime/work/20261008-firestore-read-load-and-startup.md",
+    "docs/domains/client-runtime/work/evidence/20261008-firestore-read-load/README.md",
+    "docs/domains/client-runtime/work/evidence/20261008-firestore-read-load/comparison.json",
+    "docs/domains/client-runtime/work/evidence/20261008-firestore-read-load/provenance.json"
+  ]
+}

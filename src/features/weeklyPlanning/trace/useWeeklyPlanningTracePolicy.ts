@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCloudflareAiProxyUrl } from '../../../lib/aiConfig';
 import { isWeeklyPlanningTraceEnabled } from './weeklyPlanningTraceRepository';
 import {
@@ -42,8 +42,14 @@ export function useWeeklyPlanningTracePolicy(
   );
   const [acceptedAt, setAcceptedAt] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const pendingRead = useRef<AbortController | null>(null);
+  const cancelPendingRead = useCallback(() => {
+    pendingRead.current?.abort();
+    pendingRead.current = null;
+  }, []);
 
   const refresh = useCallback(async () => {
+    cancelPendingRead();
     if (!enabled) {
       setStatus('disabled');
       setAcceptedAt(null);
@@ -56,26 +62,35 @@ export function useWeeklyPlanningTracePolicy(
       setError('同意状況を確認するサーバーの設定が不足しています。');
       return;
     }
+    const request = new AbortController();
+    pendingRead.current = request;
+    const isCurrent = () => pendingRead.current === request && !request.signal.aborted;
     setStatus('loading');
     setError('');
     try {
-      const next = await client.getPolicyStatus();
+      const next = await client.getPolicyStatus({ signal: request.signal });
+      if (!isCurrent()) return;
       const currentAccepted = next.accepted
         && next.policyVersion === WEEKLY_PLANNING_TRACE_POLICY_VERSION;
       setStatus(currentAccepted ? 'accepted' : 'required');
       setAcceptedAt(currentAccepted ? next.acceptedAt : null);
     } catch (caught) {
+      if (!isCurrent()) return;
       setStatus('unavailable');
       setAcceptedAt(null);
       setError(errorMessage(caught));
+    } finally {
+      if (pendingRead.current === request) pendingRead.current = null;
     }
-  }, [client, enabled, proxyConfigured, userId]);
+  }, [cancelPendingRead, client, enabled, proxyConfigured, userId]);
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    return cancelPendingRead;
+  }, [cancelPendingRead, refresh]);
 
   const accept = useCallback(async () => {
+    cancelPendingRead();
     if (!enabled) {
       setStatus('disabled');
       return true;
@@ -101,7 +116,7 @@ export function useWeeklyPlanningTracePolicy(
       setError(errorMessage(caught));
       return false;
     }
-  }, [client, enabled, proxyConfigured, userId]);
+  }, [cancelPendingRead, client, enabled, proxyConfigured, userId]);
 
   return {
     status,

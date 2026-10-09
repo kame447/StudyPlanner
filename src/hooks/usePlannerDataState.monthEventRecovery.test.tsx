@@ -192,10 +192,11 @@ describe.each(['legacy', 'canonical'] as const)('MonthEvent refresh recovery wit
 
   it('full read started first and accepted after a successful MonthEvent write repairs the stale captured collection', async () => {
     await seed();
-    const monthGate = deferred(); const original = boundary.repository.getMonthEvents;
-    const monthRead = vi.spyOn(boundary.repository, 'getMonthEvents').mockImplementationOnce(async owner => {
+    const monthGate = deferred(); const original = boundary.repository.getScheduleSnapshot;
+    const scheduleRead = vi.spyOn(boundary.repository, 'getScheduleSnapshot').mockImplementationOnce(async owner => {
       const captured = await original(owner); monthGate.entered = true; await monthGate.promise; return captured;
     });
+    const monthRead = vi.spyOn(boundary.repository, 'getMonthEvents');
     let loading!: Promise<void>;
     await act(async () => { loading = state.loadPlannerData('owner'); });
     expect(monthGate.entered).toBe(true);
@@ -203,7 +204,8 @@ describe.each(['legacy', 'canonical'] as const)('MonthEvent refresh recovery wit
     expect(state.monthEvents[0].title).toBe('Saved while full read waits');
     await act(async () => { monthGate.resolve(); await loading; });
     await sameStorage('full read accepts after write settled');
-    expect(monthRead).toHaveBeenCalledTimes(3); // Full read, target read, verification read.
+    expect(scheduleRead).toHaveBeenCalledOnce();
+    expect(monthRead).toHaveBeenCalledTimes(2); // Target read and verification read.
     expect(state.plannerDataAvailability.status).toBe('ready');
   });
 
@@ -234,10 +236,11 @@ describe.each(['legacy', 'canonical'] as const)('MonthEvent refresh recovery wit
   it.each(['success', 'failure'] as const)('retired full %s cannot overwrite a newer repaired full snapshot', async oldOutcome => {
     await seed();
     const old = deferred(), fresh = deferred();
-    const original = boundary.repository.getMonthEvents;
-    const monthRead = vi.spyOn(boundary.repository, 'getMonthEvents')
+    const original = boundary.repository.getScheduleSnapshot;
+    const scheduleRead = vi.spyOn(boundary.repository, 'getScheduleSnapshot')
       .mockImplementationOnce(async owner => { const captured = await original(owner); old.entered = true; await old.promise; return captured; })
       .mockImplementationOnce(async owner => { const captured = await original(owner); fresh.entered = true; await fresh.promise; return captured; });
+    const monthRead = vi.spyOn(boundary.repository, 'getMonthEvents');
     let oldLoading!: Promise<unknown>, freshLoading!: Promise<void>;
     await act(async () => { oldLoading = state.loadPlannerData('owner').catch(error => error); });
     await act(async () => { freshLoading = state.loadPlannerData('owner'); });
@@ -246,7 +249,8 @@ describe.each(['legacy', 'canonical'] as const)('MonthEvent refresh recovery wit
     await act(async () => { fresh.resolve(); await freshLoading; });
     expect(state.plannerDataAvailability.status).toBe('ready');
     expect(state.monthEvents[0].title).toBe('New durable after two full snapshots');
-    expect(monthRead).toHaveBeenCalledTimes(3);
+    expect(scheduleRead).toHaveBeenCalledTimes(2);
+    expect(monthRead).toHaveBeenCalledOnce();
     const accepted = state.monthEvents;
     await act(async () => {
       if (oldOutcome === 'success') old.resolve(); else old.reject(Error('obsolete full failure'));
@@ -254,7 +258,8 @@ describe.each(['legacy', 'canonical'] as const)('MonthEvent refresh recovery wit
     });
     expect(state.monthEvents).toBe(accepted);
     expect(state.plannerDataAvailability.status).toBe('ready');
-    expect(monthRead).toHaveBeenCalledTimes(3);
+    expect(scheduleRead).toHaveBeenCalledTimes(2);
+    expect(monthRead).toHaveBeenCalledOnce();
     await sameStorage('newer full supersession with successful MonthEvent evidence');
   });
 
@@ -263,7 +268,7 @@ describe.each(['legacy', 'canonical'] as const)('MonthEvent refresh recovery wit
     const writer = control('upsertMonthEvent');
     const op = await start(() => edit('Durable after failed later full'));
     await act(async () => { await state.loadPlannerData('owner'); });
-    const getPlans = vi.spyOn(boundary.repository, 'getPlans').mockRejectedValueOnce(Error('full failed'));
+    const scheduleRead = vi.spyOn(boundary.repository, 'getScheduleSnapshot').mockRejectedValueOnce(Error('full failed'));
     await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow('full failed'); });
     const upsert = vi.spyOn(boundary.repository, 'upsertMonthEvent');
     const monthRead = vi.spyOn(boundary.repository, 'getMonthEvents');
@@ -272,11 +277,11 @@ describe.each(['legacy', 'canonical'] as const)('MonthEvent refresh recovery wit
     expect(state.plannerDataAvailability.status).toBe('stale');
     expect(state.plannerDataRecovery).toMatchObject({ reason: 'full-read', phase: 'failed', canRetry: true });
     expect(monthRead).toHaveBeenCalledTimes(1);
-    expect(getPlans).toHaveBeenCalledTimes(1);
+    expect(scheduleRead).toHaveBeenCalledTimes(1);
     await act(async () => { await state.retryPlannerData(); });
     expect(state.plannerDataAvailability.status).toBe('ready');
-    expect(monthRead).toHaveBeenCalledTimes(2);
-    expect(getPlans).toHaveBeenCalledTimes(2);
+    expect(monthRead).toHaveBeenCalledOnce();
+    expect(scheduleRead).toHaveBeenCalledTimes(2);
     expect(upsert).not.toHaveBeenCalled();
     await sameStorage('full health and repaired MonthEvent data');
   });

@@ -1,6 +1,6 @@
 # Scheduled maintenance idle read load
 
-Status: integrating current main fc708da3 into existing Draft PR #547; focused/type/build and independent review passed; updated exact-head CI pending; not merged or deployed to production
+Status: integrating main c3113a49 after client PR #546; combined focused/type/build checks passed; final CI then authorized main/Pages rollout pending; manual scheduled-Worker deployment is separate and pending
 
 - Owning investigation: [Issue #542](https://github.com/kame447/StudyPlanner/issues/542); product-observability contracts remain owned by [Issue #213](https://github.com/kame447/StudyPlanner/issues/213).
 - Active branch: `perf/firestore-backend-idle-reads`; exact base: `22847120386987329e2f034d6062d59694ef1180`.
@@ -12,7 +12,7 @@ Status: integrating current main fc708da3 into existing Draft PR #547; focused/t
 - Publication preflight at 2026-10-08 13:43 UTC rechecked all 33 remote branches, all 12 open PRs, related closed PRs, Issue #542 and its comments. Current main remains the exact base above. No overlapping backend idle-read PR or remote branch exists. The coherent backend implementation needs its own reviewable PR because client PR #546 owns a separate runtime boundary.
 - Initial publication: [Draft PR #547](https://github.com/kame447/StudyPlanner/pull/547), remote head `8a9556e7373bab78d53b11a2d6cbd3a749e4d34e`, matching local `0e705061a33f26a03fabb5ded7f3b787c9995639` tree `743944f57be1824c7f243231008cd4bb9bd2bed6`. The single parent is the exact base above.
 - The browser harness repair was published on the same branch at `05906f69687ef3bacc5265e30869e0a7584dba72`; all five workflows and Pages succeeded at that published head (see [final Issue checkpoint](https://github.com/kame447/StudyPlanner/issues/542#issuecomment-6062029032)). Those checks used the original main base and do not certify the newer integration candidate below.
-- Current authorized workflow: incorporate current main `fc708da391037589a0cd15c872563d2e086e3e5e` into the existing PR #547 branch after focused/type/build checks, then follow the updated exact-head CI/Pages to terminal results. Main merge/direct write and production actions remain outside scope. Do not edit the client-runtime or video-fix branches. The prior `f281c6c0` local candidate is retained as historical evidence.
+- Current authorized workflow (2026-10-09): PR #546 merged first, then integrate its main `c3113a49e94e08ea4a3be5a75e1c962f34ac1aab` into existing PR #547, verify combined source and exact-head CI, and proceed with approved normal main merge/automatic Pages publication. The scheduled Worker requires a separate manual deployment/authentication step, not covered by the automatic Pages result. No credential, billing or manual production-data change is authorized. Preserve all protected AI planning/E2E and unrelated work.
 - Exit criteria: idle 67 to 3 keys verified at the scheduled boundary; same canonical results and retry/ownership guarantees under dirty addition, day rollover, resumed work and conflicting reads; all scheduled paths remain within 45 HTTP subrequests; exact source/toolchain evidence and current documentation; full local verification before calling implementation ready. Production effectiveness and billing remain unverified.
 
 ## Implemented local candidate
@@ -96,6 +96,20 @@ Main advanced to `fc708da391037589a0cd15c872563d2e086e3e5e`, including PR #548's
 - Follow the authorized focused-local → existing draft update → exact-head final CI workflow. A repeat local full suite is not claimed. The prior standalone PR green and earlier `f281c6c0` focused results remain historical evidence, not proof of this new integration.
 
 [Updated integration evidence](evidence/20261008-backend-idle-read-load/current-main-fc708-integration/summary.json) · [Independent review](evidence/20261008-backend-idle-read-load/current-main-fc708-integration/independent-review.md)
+
+## Post-client integration for rollout — 2026-10-09 04:42 UTC
+
+PR #546 merged into main `c3113a49e94e08ea4a3be5a75e1c962f34ac1aab`, tree `ccbca527dbb534e6ccbda06be1e7e20c808be27c`. Its source is identical to the already verified client head `9643af0`. Combining that main with backend head `259ec29` has no conflicts or overlapping client/backend paths, and yields tree `d97c01d9b8c80ed5e31505236b3b33ccecb8e0fc`. The anticipatory combined test snapshot and the actual post-merge combination match exactly; final source candidate is `8f13573ad91c817e73e7e93029ad98b94f330186`. No new implementation or protected AI planning/dedicated E2E edits were made.
+
+This execution environment contained an older workspace snapshot and lacked the prior backend worktrees/receipts. Source and published CI evidence were retrieved again from GitHub. A fresh isolated `npm ci` installed 237 packages; all installed package hashes and 99 optional absences match the published package inventory. This is new verification, not a claim that missing local receipts survived.
+
+- Combined focused suite: 549 passed across 30 files, cache disabled, exit 0.
+- Fresh app/Worker types with regenerated runtime types, production build (9.43 seconds), and all eight unchanged bundle guards passed.
+- Standalone offline audit scripts passed four snapshot race/resume cases and 33 retention comparisons, four probe races and three failure cases. Retention baseline was pinned to client head9643, whose source exactly matches merged main. No external requests or repository source writes occurred.
+- All 1,871 tracked non-documentation input hashes are unchanged before/after.
+- Next: publish this combination on the existing PR, follow exact-head full CI/browser/visual/quality to completion, then perform the approved normal main merge and automatic Pages verification. Manual production Worker deployment remains a separate approval/authentication step. A Pages result is not evidence of the scheduled Worker's deployed version or billing impact.
+
+[Combined verification evidence](evidence/20261008-backend-idle-read-load/post-client-integration-20261009/summary.json)
 
 ## Public evidence handling
 

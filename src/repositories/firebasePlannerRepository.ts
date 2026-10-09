@@ -224,7 +224,13 @@ async function upsertActualDocument(
 export function createFirebasePlannerRepository(
   firestoreDb: Firestore,
 ): PlannerRepository {
-  return {
+  const repository: PlannerRepository = {
+    async getScheduleSnapshot(userId) {
+      const [plans, monthEvents] = await Promise.all([
+        repository.getPlans(userId), repository.getMonthEvents(userId),
+      ]);
+      return { plans, monthEvents };
+    },
     async getPlans(userId) {
       try {
         return (await listByUserId<Plan>(firestoreDb, 'plans', userId)).map(
@@ -899,4 +905,5 @@ export function createFirebasePlannerRepository(
       }
     },
   };
+  return repository;
 }
