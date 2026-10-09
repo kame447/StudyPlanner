@@ -77,7 +77,8 @@ it.each([false, true])('replays D through the controller without saving work (ex
     const workloads = structuredClone(conversation.graph()!.workloads);
     const turn = await conversation.submit('1ページ3分くらい');
     expect(turn.result?.failure).toBeUndefined();
-    expect(turn.calls.filter(call => call.kind === 'renderer')).toHaveLength(1);
+    // An unevidenced mutation is regenerated once (the shared repair slot), is still ungrounded, and ends in the fallback.
+    expect(turn.calls.filter(call => call.kind === 'renderer')).toHaveLength(extraMutation ? 2 : 1);
     expect(turn.result?.dialogueRendererTrace?.response).toMatchObject(extraMutation
       ? { status: 'fallback', reason: 'ungrounded_text' } : { status: 'rendered', reason: null });
     if (!extraMutation) expect(turn.result?.responseSource).toBe('ai');

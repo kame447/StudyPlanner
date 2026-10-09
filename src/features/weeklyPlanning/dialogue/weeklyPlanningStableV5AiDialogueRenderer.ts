@@ -93,6 +93,16 @@ const INTERNAL_PROCESS_REPAIR_INSTRUCTION = [
   'applicationDecisionの意味は変えず、内部の仕組みや処理に触れない、人どうしの会話として自然な日本語で書き直してください。',
 ].join('');
 
+/**
+ * Interaction architecture: the candidate stated a time or date the user's words, the facts and the listed free windows
+ * do not contain (or misstated the candidate count / claimed an action that did not run). One regeneration, never a fixed text.
+ */
+const UNGROUNDED_TEXT_REPAIR_INSTRUCTION = [
+  '前回候補には、ユーザーの発言・acceptedFacts・提示された空き時間のいずれにも無い日時の表現が含まれていました。',
+  '日付と時刻は、ユーザーの言葉・Fact・空き時間として渡された値だけから述べてください。時刻は24時間表記（例: 20時から21時）で書き、「夜8時」のような言い方は避けてください。',
+  '「1時間ずつ」のような時間の長さはそのまま使って構いません。候補の件数や実行していない操作を述べないでください。',
+].join('');
+
 /** Legacy architecture (verbatim pre-#488): the renderer reads the raw message to decide. */
 const LEGACY_REPEATED_QUESTION_REPAIR_INSTRUCTION = [
   REPEATED_QUESTION_REPAIR_PREFIX,
@@ -246,6 +256,8 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
           : interaction && (initial.reason === 'unverified_preview_constraint_claim'
             || (initial.reason === 'grounding_contract_mismatch' && neutralConstraintRepair))
             ? UNVERIFIED_CONSTRAINT_REPAIR_INSTRUCTION
+            : interaction && initial.reason === 'ungrounded_text'
+            ? UNGROUNDED_TEXT_REPAIR_INSTRUCTION
             : initial.reason === 'repeated_question_text'
           ? (interaction
               ? REPEATED_QUESTION_REPAIR_INSTRUCTION

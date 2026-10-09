@@ -292,6 +292,47 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
     expect(messages[messages.length - 1].content).toContain('askQuestion=true');
   });
 
+  describe('ungrounded_text single repair (interaction only; shared repair slot)', () => {
+    const interactionInput = () => input({
+      conversationArchitecture: 'interaction_v1',
+      communication: {
+        goal: 'explain_question', questionPurposes: ['estimate_time_to_fit_available_time'], askQuestion: true,
+        laterNeeds: [], statusReason: null, planningDetailsNotApplied: false, consultationDeferred: false, previewDisclosure: null,
+      },
+    });
+    const SLIP = '夕方5時から始めて、英単語は1回分にどれくらいかかりますか？';
+    const GOOD = '英単語は1回分にどれくらいかかりますか？';
+
+    it('one ungrounded slip is repaired once with the grounding instruction and the repaired reply passes', async () => {
+      const renderInput = interactionInput();
+      const createChatCompletion = vi.fn()
+        .mockResolvedValueOnce(response(renderInput, SLIP))
+        .mockResolvedValueOnce(response(renderInput, GOOD));
+      await expect(createAiWeeklyPlanningStableV5DialogueRenderer(config, { createChatCompletion }).render(renderInput))
+        .resolves.toMatchObject({ status: 'rendered', text: GOOD });
+      expect(createChatCompletion).toHaveBeenCalledTimes(2);
+      const messages = createChatCompletion.mock.calls[1]?.[0].messages as Array<{ content: string }>;
+      expect(messages[messages.length - 1].content).toContain('24時間表記');
+      expect(messages[messages.length - 1].content).toContain('時間の長さはそのまま使って構いません');
+    });
+
+    it('two slips stop at the existing fallback, with one regeneration only', async () => {
+      const renderInput = interactionInput();
+      const createChatCompletion = vi.fn().mockResolvedValue(response(renderInput, SLIP));
+      await expect(createAiWeeklyPlanningStableV5DialogueRenderer(config, { createChatCompletion }).render(renderInput))
+        .resolves.toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
+      expect(createChatCompletion).toHaveBeenCalledTimes(2);
+    });
+
+    it('legacy keeps its behaviour: no repair, the same fallback', async () => {
+      const legacy = input({ conversationArchitecture: 'legacy_v5' });
+      const createChatCompletion = vi.fn().mockResolvedValue(response(legacy, SLIP));
+      await expect(createAiWeeklyPlanningStableV5DialogueRenderer(config, { createChatCompletion }).render(legacy))
+        .resolves.toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
+      expect(createChatCompletion).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('falls back if the one repair attempt still repeats the same assistant question', async () => {
     const previousQuestion = 'この範囲は今回進めたい量ですか？';
     const renderInput = input({
