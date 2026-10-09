@@ -58,7 +58,47 @@ export function projectWeeklyPlanningExistingWorkloadRateReferenceV5(params: {
       estimate.targetLocalId = task.localId;
     }
   }
+  repairs.push(...projectTaskSelfReferences(document, graph));
   return { rawResponse: repairs.length ? JSON.stringify(document) : params.rawResponse, repairs };
+}
+
+const SELF_REFERENCING_NESTED_KINDS = ['temporalConstraints', 'effortEstimates', 'recurrence'] as const;
+
+function declaredLocalIds(value: unknown, into = new Set<string>()): Set<string> {
+  if (Array.isArray(value)) value.forEach((item) => declaredLocalIds(item, into));
+  else if (value && typeof value === 'object') {
+    for (const [key, item] of Object.entries(value)) {
+      if (key === 'localId' && typeof item === 'string') into.add(item);
+      else declaredLocalIds(item, into);
+    }
+  }
+  return into;
+}
+
+/**
+ * A nested fact whose targetLocalId is the PUBLIC id of the very task entry that contains it has exactly one possible
+ * referent: that entry. Rewrite it to the entry's own localId (live H r1 on 80af22a3). Anything else - another task's
+ * public id, a task absent from the document, a component id, a value that is itself a declared localId - stays
+ * untouched and keeps going through normal validation and the single repair. A projection is not a repair: the
+ * ledger is not touched, only the diagnostic list.
+ */
+function projectTaskSelfReferences(
+  document: Record<string, unknown>,
+  graph: ReturnType<typeof createWeeklyPlanningActiveSchedulerGraphViewV5>,
+): string[] {
+  const repairs: string[] = [];
+  const declared = declaredLocalIds(document);
+  for (const task of records(document.tasks)) {
+    const publicId = task.existingPublicId;
+    if (typeof publicId !== 'string' || publicId.length === 0 || typeof task.localId !== 'string'
+      || !graph.tasks.some((fact) => fact.id === publicId) || declared.has(publicId)) continue;
+    for (const kind of SELF_REFERENCING_NESTED_KINDS) for (const fact of records(task[kind])) {
+      if (fact.targetLocalId !== publicId) continue;
+      fact.targetLocalId = task.localId;
+      repairs.push(`task-self-reference-projected:${JSON.stringify([task.localId, publicId, kind, fact.localId])}`);
+    }
+  }
+  return repairs;
 }
 
 /** The task-local bridge is representation only: retain the validated workload's scope. */
