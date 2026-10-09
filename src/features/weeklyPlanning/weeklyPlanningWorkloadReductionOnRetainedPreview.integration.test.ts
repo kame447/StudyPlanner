@@ -34,7 +34,7 @@ const COMBINED = '数学は20問に減らして、英語長文は土日にまと
 const OVERLOAD = '物理をさらに120問（1問6分）増やす。来週中に全部やりたい。';
 const DOWN = '数学は20問に減らして。ほかの科目はそのままで。';
 
-function bulk(mathProblems: number, mathLast = false): Json {
+function bulk(mathProblems: number, mathLast = false, mathSecond = false): Json {
   const sun = (d: string) => [deadline(d, '2026-10-18', 'それ以外は日曜まで')];
   const split = (d: string) => effort(d, 'session_duration', 60, 'session', '1回30〜60分');
   const perUnit = (d: string, m: number, t: string) => [effort(d, 'session_duration', m, 'session', t)];
@@ -66,6 +66,10 @@ function bulk(mathProblems: number, mathLast = false): Json {
       workloads: [workload('essay', 1, 'custom', '本', '1本')],
       efforts: [effort('essay', 'duration_per_unit', 90, 'custom', '1本90分')], deadlines: sun('essay') }),
   ] });
+  if (mathSecond) {
+    const [math, english, ...rest] = doc.tasks as Json[];
+    return { ...doc, tasks: [english, math, ...rest] };
+  }
   if (!mathLast) return doc;
   const [math, ...others] = doc.tasks as Json[];
   return { ...doc, tasks: [...others, math] };
@@ -105,14 +109,14 @@ function overload(summary: Json): Json {
     recurrence: [], durableContextSignals: [], sourceText: '物理をさらに120問増やす' }] });
 }
 
-function install(initialMath: number, mathLast = false): void {
+function install(initialMath: number, mathLast = false, mathSecond = false): void {
   provider = installScriptedWeeklyPlanningProvider((call: ScriptedProviderCall) => {
     if (call.kind === 'renderer') return scriptedRendererReply(call, 'わかりました。');
     if (call.kind === 'semantic_focused_authorization') return JSON.stringify({ decision: 'fallback' });
     if (call.kind === 'semantic_focused_contextual') return JSON.stringify({ decision: 'fallback', effortTarget: null, effortMeasurement: null, minutes: null, precision: null, quantityRole: null });
     if (call.schemaName === 'weekly_planning_focused_material_answer_v5') return JSON.stringify({ decision: 'fallback', label: null, registeredChoice: null, workloadChoice: null, effortKind: null, minutes: null, precision: null, sourceText: null, effortSourceText: null });
     const text = String(call.payload?.userText ?? '');
-    if (text === BULK) return JSON.stringify(bulk(initialMath, mathLast));
+    if (text === BULK) return JSON.stringify(bulk(initialMath, mathLast, mathSecond));
     if (text === DECLINE) return JSON.stringify(decline((call.payload?.publicStateSummary ?? {}) as Json));
     if (text === COMBINED) return JSON.stringify(combined((call.payload?.publicStateSummary ?? {}) as Json));
     if (text === OVERLOAD) return JSON.stringify(overload((call.payload?.publicStateSummary ?? {}) as Json));
@@ -125,6 +129,29 @@ const BUSY: Array<[string, string, string, string]> = [["2026-10-12","08:20","15
 const plans: Plan[] = BUSY.map(([date, startTime, endTime, title], index) => ({ id: `busy-${index}`, seriesId: `busy-${index}`, userId: 'issue488-owner',
   title, subject: '', date, startTime, endTime, repeat: 'none', repeatUntil: null, excludedDates: [], recurrenceRules: [], type: 'other', memo: '',
   createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z' }));
+// Recorded from the scheduler at 5cd87c61 (before the order change), same synthetic request.
+const FIRST_PASS_BLOCKS: string[] = [
+  "2026-10-12 19:50-20:25 英語・長文 1本（1〜1本）",
+  "2026-10-12 20:35-21:35 英単語 46個（95〜140個）",
+  "2026-10-13 17:50-18:20 日本史・文化史 30分（2/2）",
+  "2026-10-14 19:50-20:25 英語・長文 1本（2〜2本）",
+  "2026-10-14 20:35-21:35 数学・微積 10問（11〜20問）",
+  "2026-10-15 16:00-16:35 英語・長文 1本（3〜3本）",
+  "2026-10-15 16:45-17:45 数学・微積 10問（1〜10問）",
+  "2026-10-16 18:10-18:50 現代文・記述 1題（1〜1題）",
+  "2026-10-16 19:50-20:25 英語・長文 1本（4〜4本）",
+  "2026-10-16 20:35-21:35 英単語 47個（48〜94個）",
+  "2026-10-17 14:50-15:50 英単語 47個（1〜47個）",
+  "2026-10-17 16:00-17:00 物理・力学 10問（1〜10問）",
+  "2026-10-17 17:10-18:10 物理・力学 10問（11〜20問）",
+  "2026-10-17 19:50-20:50 化学・有機 1章（1〜1章）",
+  "2026-10-17 21:00-22:00 化学・有機 1章（2〜2章）",
+  "2026-10-18 09:00-09:40 現代文・記述 1題（2〜2題）",
+  "2026-10-18 09:50-10:30 現代文・記述 1題（3〜3題）",
+  "2026-10-18 10:40-11:40 古文・敬語 60分",
+  "2026-10-18 11:50-12:50 日本史・文化史 60分（1/2）",
+  "2026-10-18 15:20-17:05 小論文 1本",
+];
 const open = () => createScriptedConversation({ provider, plans, architecture: 'interaction_v1', weekStartDate: '2026-10-12', now: () => '2026-10-09T09:00:00.000Z' });
 const mathAmounts = (conv: ReturnType<typeof open>) => {
   const view = createWeeklyPlanningActiveSchedulerGraphViewV5(conv.graph()!);
@@ -181,5 +208,15 @@ describe('B1: workload reduction on a retained preview', () => {
     const overloaded = await conv.submit(OVERLOAD);
     expect(overloaded.result?.draftCandidates.length).toBe(0);
     expect(conv.getState().intakeState?.lastQuestionContext?.targetSlot).toBe('stable_v5:insufficient_capacity');
+  });
+
+  it('control: a plan that places on the first pass is not reordered by deadline (canonical order differs from deadline order)', async () => {
+    // English (Sunday deadline) is listed before math (Friday deadline) and everything fits in canonical order.
+    install(20, false, true);
+    const conv = open();
+    await conv.submit(BULK);
+    const first = await conv.submit(DECLINE);
+    const blocks = (first.result?.draftCandidates ?? []).map(c => `${c.date} ${c.startTime}-${c.endTime} ${c.title}`).sort();
+    expect(blocks).toEqual(FIRST_PASS_BLOCKS);
   });
 });
