@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { CORRECTION_PROMPT, MATH_DOWN_PROMPT, OVERLOAD_PROMPT } from './support/examStudentScenario.mjs';
 import { checkBlocks } from './support/examStudentOracle.mjs';
 import {
-  boot, bulkToPreview, capturePreview, installGuards, nav, openWeekly, rendererDecisions, sendAndSettle,
+  boot, bulkToPreview, capturePreview, installGuards, nav, openWeekly, promoteAndApprove, rendererDecisions, savedStudyBlocks, sendAndSettle,
 } from './support/examStudentFlow.mjs';
 
 // RED tests: reproducible product blockers found by the exam-student persona (Issue #488, synthetic isolated,
@@ -69,5 +69,20 @@ test.describe('RED B3: an overload does not carry the unmet duration/quantity to
     // writer is the only channel for the unmet amount; expected: at least one of those figures. Actual: none.
     const decisionText = JSON.stringify(last.applicationDecision);
     expect(['120', '720', '1808'].some(figure => decisionText.includes(figure)), `decision carried no unmet figure: ${decisionText.slice(0, 200)}`).toBe(true);
+  });
+});
+
+test.describe('RED B4: the saved weekly plan exceeds the persona daily-load caps', () => {
+  test('canonical daily caps (rules.maximumNewStudyMinutesPerDay) hold for the saved blocks', async ({ page }) => {
+    await boot(page); await openWeekly(page); await bulkToPreview(page);
+    await promoteAndApprove(page);
+    await expect(page.getByRole('dialog', { name: '計画プレビュー' })).toHaveCount(0);
+    const saved = await savedStudyBlocks(page);
+    expect(saved.length).toBeGreaterThanOrEqual(20);
+    const result = checkBlocks(saved);
+    expect(result.hard, 'hard constraints are covered by the main spec').toEqual([]);
+    // Expected: 0 daily-capacity errors (the campaign oracle's check_candidates counts them as errors).
+    // Actual: Sat 10/17 315/300 and Sun 10/18 325/240 (the reserve day is the heaviest). The product is not given these caps.
+    expect(result.advisory, 'daily load above the persona caps').toEqual([]);
   });
 });
