@@ -382,3 +382,7 @@ W4 RedFeynman (Sonnet 5.5, test-only) built it. The fixture has 15 events, 14 li
   - a stale `total_duration` left beside a corrected target workload.
 
 **X5 correction-path hardening (`ad92271e`).** Probes 28 and 29 showed that the correction pruning silently deleted turn-created content: a new 60-minute total, and a new 「第3章」 component. The plan stayed unchanged while the reply claimed 「修正しました」 with the confirm button. Now any non-redundant prune rejects the turn as a disclosed recover, and validation directs the one repair for the uninstalled-workload shape (provisional). This is root-cause for "pruning deletes content". Live X5 had already passed 3/3 on `87df2e6a`; the hardening closes the variants that live runs had not hit.
+
+**X5e (`cd4130a6`).** A rename carried by a new task container is no longer pruned silently: the turn becomes a disclosed recover. The legacy control now really runs `legacy_v5`; legacy also rejects the probe-28 shape, a deliberate shared change.
+
+**Live X5 on `ad92271e`:** T2 failed 2/2, both as disclosed recovers (「…今の仮予定は変えていません。」), not silent. The first readings left replacement ids dangling, and the one repair then restated the T1 windows with stale quotes (not grounded in the current text). This is model variance in correction encoding. Neither failure was caused by X5d (no `support-not-installed` error occurred). It remains an open residual: corrections of an accepted total are unreliable when the model leaves replacements dangling, and the D-T3 restatement directive does not cover that error.
