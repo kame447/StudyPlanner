@@ -33,10 +33,16 @@ describe('literal coverage: digit runs a typed fact does not account for', () =>
     expect(result).toMatchObject({ eligible: false, excludedNumericSourceCount: 0 });
   });
 
-  it('cost, not harm: a 1時間30分-style quote (two digit runs, one typed minutes value) now audits', () => {
-    const text = 'じゃあ1時間30分で見ておく';
-    const doc = document({ effortEstimates: [effort('total_duration', 90, '1時間30分')], sourceText: text });
+  it('cost, not harm: a workload quote with a digit run its amount cannot account for (第3章を20ページ) audits', () => {
+    const text = 'じゃあ第3章を20ページで見ておく';
+    const doc = document({ workloads: [{ ...workload('第3章を20ページ'), amount: 20, unitCode: 'page', unitLabel: 'ページ' }], sourceText: text });
     expect(measure(text, doc)).toMatchObject({ eligible: true, excludedNumericSourceCount: 1 });
+  });
+
+  it('effort and recurrence quotes keep the old bound: unit digits (1回1時間, 1時間30分) cost nothing extra', () => {
+    const text = 'じゃあ1回1時間で見ておく';
+    const doc = document({ effortEstimates: [effort('session_duration', 60, '1回1時間')], sourceText: text });
+    expect(measure(text, doc)).toMatchObject({ excludedNumericSourceCount: 0 });
   });
 
   it('the rule is scoped to the accepted-task-modification route (flag absent: unchanged)', () => {

@@ -73,8 +73,9 @@ export function measureWeeklyPlanningSemanticEvidenceCoverageV5(params: {
   const add = (fact: { sourceText: string } | null | undefined) => {
     if (!params.additionalSourceTextsOnly && fact?.sourceText) sources.push(fact.sourceText);
   };
-  // `numericSlots` is how many numbers the typed fact can account for. A quote with more literal digit
-  // runs than that states a number no typed value represents (X3-T3: 「3章ぶん、1章40分」 on a workload of 3),
+  // `numericSlots` (workload quotes only) is how many numbers the typed fact can account for. Effort and
+  // recurrence quotes routinely hold unit digits (「1回1時間」), so they keep the old bound. A workload quote with
+  // more literal digit runs than that states a number no typed value represents (X3-T3: 「3章ぶん、1章40分」 on a workload of 3),
   // so it is cited provenance but earns no coverage and the gap stays visible to the audit.
   const addNumeric = (fact: { sourceText: string }, boundedSource: string = fact.sourceText, numericSlots = Number.POSITIVE_INFINITY) => {
     if (params.boundedNumericSourceTexts && !params.additionalSourceTextsOnly
@@ -101,9 +102,9 @@ export function measureWeeklyPlanningSemanticEvidenceCoverageV5(params: {
       labels.length > 0 ? withoutLiteralWorkloadAnchors(fact.sourceText, labels) : fact.sourceText,
       1 + (fact.rangeStart != null ? 1 : 0) + (fact.rangeEnd != null ? 1 : 0));
     task.workloads.forEach(addWorkload);
-    task.effortEstimates.forEach(fact => addNumeric(fact, fact.sourceText, fact.kind === 'duration_per_unit' ? 2 : 1));
+    task.effortEstimates.forEach(fact => addNumeric(fact));
     task.temporalConstraints.forEach(add);
-    task.recurrence.forEach(fact => fact.count === null ? add(fact) : addNumeric(fact, fact.sourceText, 1));
+    task.recurrence.forEach(fact => fact.count === null ? add(fact) : addNumeric(fact));
     (task.durableContextSignals ?? []).forEach(add);
     for (const component of task.study?.components ?? []) {
       add(component);

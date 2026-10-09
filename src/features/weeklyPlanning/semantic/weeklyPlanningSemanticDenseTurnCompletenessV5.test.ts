@@ -82,7 +82,7 @@ describe('Stable V5 dense-turn semantic completeness audit', () => {
     const interaction = createDenseTurnCompletenessAuditMessagesV5({ ...base, interaction: true })[0]!.content;
     expect(legacy).not.toContain(WEEKLY_PLANNING_AUDIT_CONSULTATION_INSTRUCTION_V5);
     expect(interaction).toBe(`${legacy}\n${WEEKLY_PLANNING_AUDIT_CONSULTATION_INSTRUCTION_V5}`);
-    // Budget: 146 B + separator on the audit system prompt, interaction only.
+    // Budget: 145 B incl. separator on the audit system prompt, interaction only.
     expect(new TextEncoder().encode(`\n${WEEKLY_PLANNING_AUDIT_CONSULTATION_INSTRUCTION_V5}`).byteLength).toBeLessThanOrEqual(160);
   });
 
