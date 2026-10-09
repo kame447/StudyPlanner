@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { literalRequirementFailures, replyDigitRuns, replyDurationMinutes } from './weeklyPlanningReplyVerification';
+import { evaluateReplyVerifierResponse, literalRequirementFailures, replyDigitRuns, replyDurationMinutes } from './weeklyPlanningReplyVerification';
 import type { WeeklyPlanningMustConveyEntry } from './weeklyPlanningMustConvey';
 
 const entry = (requiredMinutes: number, unmet: Array<{ label: string; minutes: number }> = []): WeeklyPlanningMustConveyEntry =>
@@ -25,5 +25,17 @@ describe('V3 literal requirements', () => {
   it('requires each label literally', () => {
     expect(fails('合計60分。物理・力学は入りません', entry(60, [{ label: '物理・力学', minutes: 60 }]))).toBe(false);
     expect(fails('合計60分。物理は入りません', entry(60, [{ label: '物理・力学', minutes: 60 }]))).toBe(true);
+  });
+});
+
+describe('V2 verdict evaluation', () => {
+  const entries = [entry(240)];
+  it('a forbidden claim fails even when every verdict is stated_accurately', () => {
+    const raw = JSON.stringify({ verdicts: [{ code: 'shortfall', verdict: 'stated_accurately' }], forbidden: ['plan_fits'] });
+    expect(evaluateReplyVerifierResponse(raw, entries)).toEqual({ ok: false, reason: 'verdict', failedCodes: [], forbidden: ['plan_fits'] });
+  });
+  it('accurate and nothing forbidden passes', () => {
+    const raw = JSON.stringify({ verdicts: [{ code: 'shortfall', verdict: 'stated_accurately' }], forbidden: [] });
+    expect(evaluateReplyVerifierResponse(raw, entries)).toEqual({ ok: true });
   });
 });

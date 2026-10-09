@@ -89,6 +89,18 @@ describe('P2 slice 1: the shortfall is verified, not appended', () => {
     expect(turnCalls.map(call => call.kind)).toEqual(['renderer', 'reply_verifier', 'renderer', 'reply_verifier']);
   });
 
+  it('accurate verdicts but a forbidden claim (twice) → regenerate once → stop, graph unchanged', async () => {
+    const verifier = () => JSON.stringify({ verdicts: [{ code: 'shortfall', verdict: 'stated_accurately' }], forbidden: ['saved'] });
+    let graphBefore: { revision: number; workloads: unknown } = { revision: -1, workloads: null };
+    const { conv, turn, turnCalls } = await overload((call) => render(call, isCapacity(call) ? faithfulText(call) : 'ok'), verifier,
+      (c) => { graphBefore = { revision: c.graph()?.revision ?? -1, workloads: workloadsOf(c.graph()) }; });
+    expect(turn.result?.failure?.code).toBe('stable_v5_dialogue_verification_failed');
+    expect(turnCalls.map(call => call.kind)).toEqual(['renderer', 'reply_verifier', 'renderer', 'reply_verifier']);
+    expect(graphBefore.revision).toBeGreaterThan(0);
+    expect(conv.graph()?.revision).toBe(graphBefore.revision);
+    expect(workloadsOf(conv.graph())).toEqual(graphBefore.workloads);
+  });
+
   it.each([
     ['malformed', () => 'not json'],
     ['wrong code set', () => JSON.stringify({ verdicts: [], forbidden: [] })],
