@@ -22,6 +22,18 @@ export function boundedEffortEvidenceV5(span: string): boolean {
   return true;
 }
 
+/** Number of maximal runs of literal ASCII/full-width digits; a count only, never a numeric reading. */
+export function literalDigitRunCountV5(span: string): number {
+  let runs = 0;
+  let inRun = false;
+  for (const point of span) {
+    const digit = isWeeklyPlanningEvidenceDigitV5(point);
+    if (digit && !inRun) runs += 1;
+    inRun = digit;
+  }
+  return runs;
+}
+
 function withoutLiteralWorkloadAnchors(source: string, labels: readonly string[]): string {
   const removed = new Uint8Array(source.length);
   for (const label of new Set(labels.filter(label => label.length > 0))) {
@@ -61,9 +73,12 @@ export function measureWeeklyPlanningSemanticEvidenceCoverageV5(params: {
   const add = (fact: { sourceText: string } | null | undefined) => {
     if (!params.additionalSourceTextsOnly && fact?.sourceText) sources.push(fact.sourceText);
   };
-  const addNumeric = (fact: { sourceText: string }, boundedSource: string = fact.sourceText) => {
+  // `numericSlots` is how many numbers the typed fact can account for. A quote with more literal digit
+  // runs than that states a number no typed value represents (X3-T3: 「3章ぶん、1章40分」 on a workload of 3),
+  // so it is cited provenance but earns no coverage and the gap stays visible to the audit.
+  const addNumeric = (fact: { sourceText: string }, boundedSource: string = fact.sourceText, numericSlots = Number.POSITIVE_INFINITY) => {
     if (params.boundedNumericSourceTexts && !params.additionalSourceTextsOnly
-      && !boundedEffortEvidenceV5(boundedSource)) {
+      && (!boundedEffortEvidenceV5(boundedSource) || literalDigitRunCountV5(boundedSource) > numericSlots)) {
       if (fact.sourceText && userText.includes(fact.sourceText)) excludedNumericSourceCount += 1;
     } else add(fact);
   };
@@ -82,12 +97,13 @@ export function measureWeeklyPlanningSemanticEvidenceCoverageV5(params: {
       ...(owner && active ? [owner.title, ...active.components
         .filter(component => component.taskId === owner.id && component.role === 'material').map(component => component.label)] : []),
     ] : [];
-    const addWorkload = (fact: { sourceText: string }) => addNumeric(fact,
-      labels.length > 0 ? withoutLiteralWorkloadAnchors(fact.sourceText, labels) : fact.sourceText);
+    const addWorkload = (fact: { sourceText: string; rangeStart?: unknown; rangeEnd?: unknown }) => addNumeric(fact,
+      labels.length > 0 ? withoutLiteralWorkloadAnchors(fact.sourceText, labels) : fact.sourceText,
+      1 + (fact.rangeStart != null ? 1 : 0) + (fact.rangeEnd != null ? 1 : 0));
     task.workloads.forEach(addWorkload);
-    task.effortEstimates.forEach(fact => addNumeric(fact));
+    task.effortEstimates.forEach(fact => addNumeric(fact, fact.sourceText, fact.kind === 'duration_per_unit' ? 2 : 1));
     task.temporalConstraints.forEach(add);
-    task.recurrence.forEach(fact => fact.count === null ? add(fact) : addNumeric(fact));
+    task.recurrence.forEach(fact => fact.count === null ? add(fact) : addNumeric(fact, fact.sourceText, 1));
     (task.durableContextSignals ?? []).forEach(add);
     for (const component of task.study?.components ?? []) {
       add(component);
