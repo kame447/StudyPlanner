@@ -28,12 +28,13 @@
   overscroll-behavior: contain;
 }
 .home-dashboard-default[data-content-scroll='true'] .home-core-sections { min-block-size: min-content; }
-.home-dashboard-default[data-content-scroll='true'] .home-next-card {
+.home-dashboard-default:is([data-content-scroll='true'], :has(.home-plan-inspect)) .home-next-card {
   height: auto;
   min-height: var(--home-fit-hero-height);
   padding-bottom: 12px;
 }
-.home-dashboard-default[data-content-scroll='true'] .home-start-button {
+.home-dashboard-default[data-content-scroll='true'] .home-actions {
+  grid-template-columns: 1fr;
   position: relative;
   inset: auto;
   width: 100%;
@@ -44,4 +45,16 @@
   min-block-size: max(44px, 3rem);
   max-block-size: none;
   overflow: visible;
+}
+
+/* The independent inspection action shares a row; content determines the hero floor. */
+.home-dashboard-default .home-next-card:has(.home-plan-inspect) {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.home-next-card:has(.home-plan-inspect) .home-actions {
+  position: relative;
+  inset: auto;
+  margin-top: auto;
 }

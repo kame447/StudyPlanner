@@ -143,8 +143,8 @@
     width: 50%;
   }
 
-  .home-start-button,
-  .home-dashboard-default .home-start-button {
+  .home-actions,
+  .home-dashboard-default .home-actions {
     left: clamp(20px, 2.3vw, 28px);
     right: clamp(20px, 2.3vw, 28px);
     min-height: 50px;
@@ -326,7 +326,7 @@
     padding-bottom: 76px;
   }
 
-  .home-dashboard-default .home-start-button {
+  .home-dashboard-default .home-actions {
     min-height: 58px;
     bottom: 13px;
     font-size: 1.05rem;

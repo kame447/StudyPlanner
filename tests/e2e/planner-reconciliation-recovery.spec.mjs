@@ -894,7 +894,7 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     const initial = await hookSnapshot(page);
     const nextPlan = page.locator('[data-home-section="next-plan"]');
     await expect(nextPlan.getByRole('heading', { name: plans[0].title, exact: true })).toBeVisible();
-    await nextPlan.getByRole('button', { name: '▶ 学習を開始する', exact: true }).click();
+    await nextPlan.getByRole('button', { name: '▶ 勉強を開始', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '学習を開始', exact: true })
       .getByRole('heading', { name: plans[0].title, exact: true })).toBeVisible();
     await page.getByRole('dialog', { name: '学習を開始', exact: true })
@@ -921,7 +921,7 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
       .getByRole('button', { name: '戻る', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(nextPlan.getByRole('heading', { name: plans[1].title, exact: true })).toBeVisible();
-    await nextPlan.getByRole('button', { name: '▶ 学習を開始する', exact: true }).click();
+    await nextPlan.getByRole('button', { name: '▶ 勉強を開始', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '学習を開始', exact: true })
       .getByRole('heading', { name: plans[1].title, exact: true })).toBeVisible();
     await page.getByRole('dialog', { name: '学習を開始', exact: true })

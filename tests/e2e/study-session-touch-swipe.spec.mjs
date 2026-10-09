@@ -79,10 +79,11 @@ function expectExitDialog(page) {
 
 test('touch swipe locks horizontally, follows the finger, and opens the exit confirmation', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await seedStudySession(page);
   await page.goto('/');
 
-  await page.getByRole('button', { name: '学習を開始する' }).click();
+  await page.getByRole('button', { name: '勉強を開始' }).click();
   const ready = page.getByRole('dialog', { name: '学習を開始' });
   await ready.getByRole('button', { name: 'スタート' }).click();
 
@@ -91,6 +92,7 @@ test('touch swipe locks horizontally, follows the finger, and opens the exit con
   const elapsed = session.locator('[data-study-session-elapsed]');
   await expect(session).toBeVisible();
   await expect(elapsed).not.toHaveText('00:00:00', { timeout: 2500 });
+  const restingLeft = await sessionPage.evaluate(element => element.getBoundingClientRect().left);
 
   const dialogPromise = expectExitDialog(page);
   const feedback = await sessionPage.evaluate((element) => {
@@ -127,10 +129,12 @@ test('touch swipe locks horizontally, follows the finger, and opens the exit con
     const firstMovePrevented = dispatchTouch('touchmove', startX + 18, startY + 9, true);
     const firstOffset = element.style.getPropertyValue('--study-session-swipe-x');
     const firstLocked = element.classList.contains('is-swiping-back');
+    const firstRenderedOffset = element.getBoundingClientRect().left - rect.left;
 
     const secondMovePrevented = dispatchTouch('touchmove', startX + 78, startY + 42, true);
     const secondOffset = element.style.getPropertyValue('--study-session-swipe-x');
     const secondLocked = element.classList.contains('is-swiping-back');
+    const secondRenderedOffset = element.getBoundingClientRect().left - rect.left;
 
     dispatchTouch('touchend', startX + 86, startY + 48, false);
 
@@ -138,17 +142,21 @@ test('touch swipe locks horizontally, follows the finger, and opens the exit con
       firstMovePrevented,
       firstOffset,
       firstLocked,
+      firstRenderedOffset,
       secondMovePrevented,
       secondOffset,
       secondLocked,
+      secondRenderedOffset,
     };
   });
 
   expect(feedback.firstMovePrevented).toBe(true);
   expect(feedback.firstLocked).toBe(true);
   expect(feedback.firstOffset).not.toBe('');
+  expect(feedback.firstRenderedOffset).toBeCloseTo(Number.parseFloat(feedback.firstOffset), 0);
   expect(feedback.secondMovePrevented).toBe(true);
   expect(feedback.secondLocked).toBe(true);
+  expect(feedback.secondRenderedOffset).toBeCloseTo(Number.parseFloat(feedback.secondOffset), 0);
   expect(Number.parseFloat(feedback.secondOffset)).toBeGreaterThan(
     Number.parseFloat(feedback.firstOffset),
   );
@@ -156,4 +164,132 @@ test('touch swipe locks horizontally, follows the finger, and opens the exit con
   await dialogPromise;
   await expect(session).toBeVisible();
   await expect(sessionPage).not.toHaveClass(/is-swiping-back/);
+  await expect.poll(() => sessionPage.evaluate(element => element.getAnimations().length)).toBe(0);
+  await expect.poll(() => sessionPage.evaluate(element => element.getBoundingClientRect().left)).toBe(restingLeft);
+  expect(await session.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+});
+
+test('aborting a drag during entry preserves its animation and settles without replay', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await seedStudySession(page);
+  await page.goto('/');
+  // Pause from creation: on a slow WebKit frame animationstart can be dispatched
+  // after the 280 ms animation has finished, when getAnimations() is already empty.
+  // Keep the production keyframes and duration; only fixture playback is paused.
+  const entryPause = await page.addStyleTag({ content: '.study-session-page { animation-play-state: paused !important; }' });
+  await page.evaluate(() => {
+    window.__studyEntryStarts = 0;
+    document.addEventListener('animationstart', event => {
+      if (event.animationName !== 'study-session-enter-from-right') return;
+      window.__studyEntryStarts += 1;
+    }, { capture: true });
+  });
+  await page.getByRole('button', { name: '勉強を開始' }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const element = document.querySelector('.study-session-page');
+    const animation = element?.getAnimations().find(item => item.animationName === 'study-session-enter-from-right');
+    if (!animation) return false;
+    animation.currentTime = 140;
+    window.__studyEntry = { element, animation };
+    return true;
+  })).toBe(true);
+  const samples = await page.evaluate(() => {
+    const { element, animation } = window.__studyEntry;
+    const overlay = element.closest('.study-session-overlay');
+    const results = [0, 140, 279].map(time => {
+      animation.currentTime = time;
+      const rect = element.getBoundingClientRect();
+      const bounds = overlay.getBoundingClientRect();
+      return { time, overflow: overlay.scrollWidth - overlay.clientWidth,
+        left: rect.left - bounds.left, right: rect.right - bounds.right,
+        top: rect.top - bounds.top, bottom: rect.bottom - bounds.bottom };
+    });
+    animation.currentTime = 140;
+    return results;
+  });
+  for (const sample of samples) {
+    expect(sample.overflow).toBeLessThanOrEqual(1);
+    expect(sample.left).toBeGreaterThanOrEqual(-1);
+    expect(sample.right).toBeLessThanOrEqual(1);
+    expect(sample.top).toBeGreaterThanOrEqual(-1);
+    expect(sample.bottom).toBeLessThanOrEqual(1);
+  }
+  const ready = page.getByRole('dialog', { name: '学習を開始', exact: true });
+  await ready.getByRole('combobox', { name: '学習内容', exact: true }).selectOption('unplanned');
+  const title = ready.getByRole('textbox', { name: '勉強する内容', exact: true });
+  await title.fill('入場中の入力');
+  await expect(title).toBeFocused();
+  await expect(title).toHaveValue('入場中の入力');
+  const pomodoro = ready.getByRole('button', { name: /ポモドーロ/ });
+  await pomodoro.click();
+  await expect(pomodoro).toHaveClass(/active/);
+  const feedback = await page.evaluate(() => {
+    const { element, animation } = window.__studyEntry;
+    const rect = element.getBoundingClientRect();
+    const touch = (delta) => ({ identifier: 19, clientX: rect.left + 40 + delta, clientY: rect.top + 200 });
+    const touchList = value => ({ 0: value, length: value ? 1 : 0, item: index => index === 0 ? value : null });
+    const dispatch = (type, delta, active) => {
+      const value = touch(delta);
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'touches', { value: touchList(active ? value : null) });
+      Object.defineProperty(event, 'changedTouches', { value: touchList(value) });
+      element.dispatchEvent(event);
+    };
+    dispatch('touchstart', 0, true);
+    dispatch('touchmove', 18, true);
+    const visualOffset = element.getBoundingClientRect().left - rect.left;
+    const expectedOffset = Number.parseFloat(element.style.getPropertyValue('--study-session-swipe-x'));
+    dispatch('touchcancel', 18, false);
+    const result = { visualOffset, expectedOffset,
+      abortedOffset: element.getBoundingClientRect().left - rect.left,
+      locked: element.classList.contains('is-swiping-back'),
+      sameAnimation: element.getAnimations().includes(animation),
+      currentTime: animation.currentTime, playState: animation.playState };
+    animation.finish();
+    return result;
+  });
+  expect(feedback.expectedOffset).toBe(18);
+  expect(feedback.visualOffset).toBeCloseTo(18, 0);
+  expect(feedback.abortedOffset).toBeCloseTo(0, 0);
+  expect(feedback.locked).toBe(false);
+  expect(feedback.sameAnimation).toBe(true);
+  expect(feedback.currentTime).toBe(140);
+  expect(feedback.playState).toBe('paused');
+  const pane = ready.locator('.study-session-page');
+  await expect(ready).toBeVisible();
+  await expect.poll(() => pane.evaluate(element => element.getAnimations().length)).toBe(0);
+  expect(await page.evaluate(() => window.__studyEntryStarts)).toBe(1);
+  await entryPause.evaluate(element => element.remove());
+  expect(await pane.evaluate(element => {
+    const style = getComputedStyle(element);
+    const matrix = new DOMMatrix(style.transform);
+    return { x: matrix.m41, y: matrix.m42, scaleX: matrix.m11, scaleY: matrix.m22, opacity: Number(style.opacity) };
+  })).toEqual({ x: 0, y: 0, scaleX: 1, scaleY: 1, opacity: 1 });
+  expect(await ready.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+});
+
+test('released entry playback advances and naturally finishes without replacing its pane', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await seedStudySession(page); await page.goto('/');
+  const pause = await page.addStyleTag({ content: '.study-session-page { animation-play-state: paused !important; }' });
+  await page.getByRole('button', { name: '勉強を開始' }).click();
+  const pane = page.getByRole('dialog', { name: '学習を開始', exact: true }).locator('.study-session-page');
+  await expect.poll(() => pane.evaluate(element => {
+    const animation=element.getAnimations().find(item=>item.animationName==='study-session-enter-from-right');
+    if (!animation) return false;
+    animation.currentTime=0;
+    window.__naturalEntry={ element,animation,ended:0 };
+    animation.addEventListener('finish',()=>{ window.__naturalEntry.ended+=1; },{once:true});
+    return true;
+  })).toBe(true);
+  expect(await pane.evaluate(element=>Number(getComputedStyle(element).opacity))).toBe(0);
+  await pause.evaluate(element=>element.remove());
+  // Removing the fixture pause must resume the untouched production animation.
+  await expect.poll(()=>page.evaluate(()=>window.__naturalEntry.animation.currentTime)).toBeGreaterThan(0);
+  await expect.poll(()=>page.evaluate(()=>window.__naturalEntry.ended)).toBe(1);
+  expect(await pane.evaluate(element=>({ same:element===window.__naturalEntry.element,
+    state:window.__naturalEntry.animation.playState, time:window.__naturalEntry.animation.currentTime,
+    opacity:Number(getComputedStyle(element).opacity), remaining:element.getAnimations().length })))
+    .toEqual({ same:true,state:'finished',time:280,opacity:1,remaining:0 });
 });

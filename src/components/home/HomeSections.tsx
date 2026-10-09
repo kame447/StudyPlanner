@@ -120,14 +120,23 @@ export function GettingStartedSection({
   onOpenTodo: () => void;
   onOpenBookshelf: () => void;
 }) {
+  const startStudySession = useStudySessionLauncher();
   const actions = [
+    {
+      id: 'start',
+      title: '勉強を開始',
+      detail: '予定なしで今から学習する',
+      icon: BookOpen,
+      onClick: () => startStudySession?.({ kind: 'unplanned' }),
+      primary: true,
+    },
     {
       id: 'ai',
       title: 'AIで学習計画を作る',
       detail: '目標や教材から予定を組み立てる',
       icon: MessageCircle,
       onClick: onOpenAiPlanning,
-      primary: true,
+      primary: false,
     },
     {
       id: 'material',
@@ -192,7 +201,6 @@ export function NextPlanSection({
   homeScenePreferences = DEFAULT_HOME_SCENE_PREFERENCES,
   dashboard,
   studyMaterials,
-  onOpenAiPlanning,
   onOpenDay,
 }: {
   homeScenePreferences?: HomeScenePreferences;
@@ -212,17 +220,9 @@ export function NextPlanSection({
   const usesStartAction = nextPlanPresentation?.semanticKind === 'study';
 
   function handlePrimaryAction() {
-    if (!nextPlan) {
-      onOpenAiPlanning();
-      return;
-    }
-
-    if (usesStartAction && startStudySession) {
-      startStudySession(nextPlan);
-      return;
-    }
-
-    onOpenDay(nextPlan.date);
+    startStudySession?.(usesStartAction && nextPlan
+      ? { kind: 'planned', plan: nextPlan }
+      : { kind: 'unplanned' });
   }
 
   return (
@@ -247,28 +247,35 @@ export function NextPlanSection({
                 <Target aria-hidden="true" size={18} />
                 {nextPlanPresentation?.durationLabel} {formatMinutes(minutesBetween(nextPlan.startTime, nextPlan.endTime))}
               </span>
+
             </div>
           </>
         ) : (
           <>
             <h1>次の予定はありません</h1>
-            <p className="home-empty-copy">予定を追加するか、AI計画から今日の学習内容を組み立てられます。</p>
           </>
         )}
       </div>
 
       <HomeScene kind={nextPlanVisual.kind} preferences={homeScenePreferences} plan={nextPlan} />
 
+      <div className="home-actions">
       <button
         className="home-start-button"
         type="button"
         onClick={handlePrimaryAction}
       >
         <span className="home-start-icon">
-          {nextPlan && !usesStartAction ? <ChevronRight aria-hidden="true" size={18} /> : '▶'}
+          {'▶'}
         </span>
-        {nextPlan ? nextPlanPresentation?.actionLabel ?? '予定を確認する' : 'AIで予定を作る'}
+        勉強を開始
       </button>
+      {nextPlan && !usesStartAction && (
+        <button type="button" className="home-plan-inspect" aria-label={`${nextPlanPresentation?.actionLabel ?? '予定を確認する'}: ${nextPlan.title}`} onClick={() => onOpenDay(nextPlan.date)}>
+          {nextPlanPresentation?.semanticKind === 'class' ? '授業を確認' : '予定を確認'}
+        </button>
+      )}
+      </div>
     </section>
   );
 }

@@ -15,15 +15,15 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
   type PropsWithChildren,
 } from 'react';
-import { createActualDraftForPlan } from '../lib/actualDrafts';
+import { createStudySessionDraft, sessionCrossesLocalDate, type StudySessionRequest, type StudySessionTarget } from '../lib/studySessionTarget';
 import {
-  buildMeasuredRange,
   formatDurationDisplay,
   getElapsedMs,
   type TrackerState,
@@ -36,11 +36,13 @@ import {
 import type { ActualDraft, Plan, StudyMaterial } from '../types/domain';
 
 interface StudySessionProviderProps {
+  userId: string;
   materials: StudyMaterial[];
   onSaveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
+  onSaveStandaloneActual: (draft: ActualDraft) => Promise<void>;
 }
 
-type StudySessionLauncher = (plan: Plan) => void;
+type StudySessionLauncher = (request: StudySessionRequest) => void;
 type SessionPhase = 'timer' | 'record';
 type StudyMode = 'normal' | 'pomodoro';
 
@@ -54,26 +56,60 @@ export function useStudySessionLauncher(): StudySessionLauncher | null {
   return useContext(StudySessionLaunchContext);
 }
 
-export function StudySessionProvider({
+export function StudySessionProvider(props: PropsWithChildren<StudySessionProviderProps>) {
+  return <OwnedStudySessionProvider key={props.userId} {...props} />;
+}
+
+function OwnedStudySessionProvider({
   children,
+  userId,
   materials,
   onSaveActual,
+  onSaveStandaloneActual,
 }: PropsWithChildren<StudySessionProviderProps>) {
   const nextSessionId = useRef(0);
-  const [activeSession, setActiveSession] = useState<{ id: number; plan: Plan } | null>(null);
+  const mounted = useRef(true);
+  type ActiveSession = { id: number; target: StudySessionTarget };
+  const currentSession = useRef<ActiveSession | null>(null);
+  const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  function closeSession(session: ActiveSession) {
+    if (!mounted.current || currentSession.current !== session) return;
+    currentSession.current = null;
+    setActiveSession(null);
+  }
+
+  function launch(request: StudySessionRequest) {
+    if (!mounted.current || currentSession.current || !userId) return;
+    if (request.kind === 'planned' && request.plan.userId !== userId) return;
+    const target: StudySessionTarget = request.kind === 'planned'
+      ? request : { kind: 'unplanned', userId };
+    const session = { id: ++nextSessionId.current, target };
+    currentSession.current = session;
+    setActiveSession(session);
+  }
 
   return (
-    <StudySessionLaunchContext.Provider value={plan => setActiveSession({ id: ++nextSessionId.current, plan })}>
+    <StudySessionLaunchContext.Provider value={launch}>
       {children}
       {activeSession ? (
         <StudySessionView
           key={activeSession.id}
-          plan={activeSession.plan}
-          materials={materials}
-          onClose={() => setActiveSession(current => current === activeSession ? null : current)}
-          onSaveActual={async (plan, draft) => {
-            await onSaveActual(plan, draft);
-            setActiveSession(current => current === activeSession ? null : current);
+          initialTarget={activeSession.target}
+          userId={userId}
+          materials={materials.filter(material => material.userId === userId)}
+          onClose={() => closeSession(activeSession)}
+          onSaveActual={async (target, draft) => {
+            if (!mounted.current || currentSession.current !== activeSession || draft.userId !== userId) {
+              throw new ActualMutationAdmissionError('学習画面を開き直してください。');
+            }
+            if (target.kind === 'planned') await onSaveActual(target.plan, draft);
+            else await onSaveStandaloneActual(draft);
+            closeSession(activeSession);
           }}
         />
       ) : null}
@@ -122,18 +158,31 @@ function buildInitialTracker(): TrackerState {
 }
 
 function StudySessionView({
-  plan,
+  initialTarget,
+  userId,
   materials,
   onClose,
   onSaveActual,
 }: {
-  plan: Plan;
+  initialTarget: StudySessionTarget;
+  userId: string;
   materials: StudyMaterial[];
   onClose: () => void;
-  onSaveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
+  onSaveActual: (target: StudySessionTarget, draft: ActualDraft) => Promise<void>;
 }) {
   const initialNow = useMemo(() => Date.now(), []);
+  const [target, setTarget] = useState(initialTarget);
+  const plan = target.kind === 'planned' ? target.plan : null;
+  const [unplannedTitle, setUnplannedTitle] = useState('');
+  const [unplannedSubject, setUnplannedSubject] = useState('');
+  const [unplannedMaterialId, setUnplannedMaterialId] = useState('');
+  const [needsDateAdjustment, setNeedsDateAdjustment] = useState(false);
+  const started = useRef(false);
+  const savePending = useRef(false);
+  const saveBlocked = useRef(false);
+  const recordedElapsedMs = useRef<number | null>(null);
   const [phase, setPhase] = useState<SessionPhase>('timer');
+  const pageRef = useRef<HTMLDivElement>(null);
   const [studyMode, setStudyMode] = useState<StudyMode>('normal');
   const [nowMs, setNowMs] = useState(initialNow);
   const [tracker, setTracker] = useState<TrackerState>(buildInitialTracker);
@@ -144,12 +193,12 @@ function StudySessionView({
   const [error, setError] = useState('');
   const [requiresInspection, setRequiresInspection] = useState(false);
 
-  const plannedMinutes = Math.max(1, minutesBetween(plan.startTime, plan.endTime));
-  const plannedMs = plannedMinutes * 60_000;
+  const plannedMinutes = plan ? Math.max(1, minutesBetween(plan.startTime, plan.endTime)) : null;
+  const plannedMs = plannedMinutes === null ? null : plannedMinutes * 60_000;
   const elapsedMs = getElapsedMs(tracker, nowMs);
   const isStarted = tracker.anchorMs !== null;
-  const remainingMs = Math.max(plannedMs - elapsedMs, 0);
-  const normalProgressDegrees = clampPercent((elapsedMs / plannedMs) * 100) * 3.6;
+  const remainingMs = plannedMs === null ? null : Math.max(plannedMs - elapsedMs, 0);
+  const normalProgressDegrees = plannedMs === null ? 0 : clampPercent((elapsedMs / plannedMs) * 100) * 3.6;
 
   const pomodoroElapsedInCycle = elapsedMs % POMODORO_CYCLE_MS;
   const pomodoroIsFocus = pomodoroElapsedInCycle < POMODORO_FOCUS_MS;
@@ -165,9 +214,9 @@ function StudySessionView({
   );
   const pomodoroProgressDegrees =
     clampPercent((pomodoroPhaseElapsedMs / pomodoroPhaseDurationMs) * 100) * 3.6;
-  const totalPomodoroSets = Math.max(1, Math.ceil(plannedMs / POMODORO_CYCLE_MS));
+  const totalPomodoroSets = plannedMs === null ? null : Math.max(1, Math.ceil(plannedMs / POMODORO_CYCLE_MS));
   const currentPomodoroSet = Math.min(
-    totalPomodoroSets,
+    totalPomodoroSets ?? Number.POSITIVE_INFINITY,
     Math.floor(elapsedMs / POMODORO_CYCLE_MS) + 1,
   );
   const pomodoroPhaseLabel = pomodoroIsFocus ? '集中' : '休憩';
@@ -176,7 +225,8 @@ function StudySessionView({
   const progressDegrees = studyMode === 'pomodoro'
     ? pomodoroProgressDegrees
     : normalProgressDegrees;
-  const material = resolveMaterial(plan, materials);
+  const material = plan ? resolveMaterial(plan, materials) : materials.find(item => item.id === unplannedMaterialId) ?? null;
+  const sessionTitle = plan?.title ?? (unplannedTitle.trim() || '学習');
   const materialUnitLabel = material ? getMaterialUnitLabel(material) : '単位';
   const numericProgress = Number(progressInput);
   const validProgressDelta =
@@ -207,6 +257,12 @@ function StudySessionView({
       ? '学習中'
       : '学習を開始';
 
+  // The pane survives timer/record navigation so entry motion is not replayed.
+  // Each screen starts at its own heading; edits and timer ticks retain reader position.
+  useLayoutEffect(() => {
+    if (pageRef.current) pageRef.current.scrollTop = 0;
+  }, [phase]);
+
   useEffect(() => {
     if (phase !== 'timer' || tracker.runningFromMs === null) return undefined;
 
@@ -223,6 +279,8 @@ function StudySessionView({
   }, []);
 
   function startTimer() {
+    if (started.current) return;
+    started.current = true;
     const startedAt = Date.now();
     setNowMs(startedAt);
     setTracker({
@@ -260,8 +318,14 @@ function StudySessionView({
     const finalElapsedMs = Math.max(getElapsedMs(tracker, finishedAt), 1000);
     const anchorMs = tracker.anchorMs;
     const storedDurationMs = Math.max(finalElapsedMs, 60_000);
-    const measuredRange = buildMeasuredRange(anchorMs, storedDurationMs);
-    const draft = createActualDraftForPlan(plan);
+    const draft = createStudySessionDraft(target, anchorMs, storedDurationMs, {
+      title: unplannedTitle, subject: unplannedSubject, material,
+    });
+    const hasNewMeasurement = recordedElapsedMs.current !== finalElapsedMs;
+    recordedElapsedMs.current = finalElapsedMs;
+    if (target.kind === 'unplanned' && hasNewMeasurement) {
+      setNeedsDateAdjustment(sessionCrossesLocalDate(anchorMs, storedDurationMs) || sessionCrossesLocalDate(anchorMs, finishedAt - anchorMs));
+    }
 
     setNowMs(finishedAt);
     setTracker((current) => ({
@@ -269,10 +333,12 @@ function StudySessionView({
       runningFromMs: null,
       elapsedBeforeMs: finalElapsedMs,
     }));
-    setRecordDraft({
-      ...draft,
-      actualStartTime: measuredRange.startTime,
-      actualEndTime: measuredRange.endTime,
+    // A paused round trip preserves all edits; only resumed measurement replaces the range.
+    setRecordDraft(current => {
+      if (!current) return draft;
+      return hasNewMeasurement
+        ? { ...current, actualStartTime: draft.actualStartTime, actualEndTime: draft.actualEndTime }
+        : current;
     });
     setPhase('record');
     setError('');
@@ -296,17 +362,22 @@ function StudySessionView({
   }
 
   async function saveRecord() {
-    if (!recordDraft || saving || requiresInspection) return;
-    if (minutesBetween(recordDraft.actualStartTime, recordDraft.actualEndTime) <= 0) {
+    if (!recordDraft || savePending.current || saveBlocked.current) return;
+    if (needsDateAdjustment) {
+      setError('日付をまたいだ計測です。開始日の記録時刻を調整してください。翌日分は別の記録が必要です。');
+      return;
+    }
+    const recordMinutes = minutesBetween(recordDraft.actualStartTime, recordDraft.actualEndTime);
+    if (!Number.isFinite(recordMinutes) || recordMinutes <= 0) {
       setError('記録の終了時刻は開始時刻より後にしてください。');
       return;
     }
     if (!recordDraft.isAlignedToPlan && !recordDraft.title.trim()) {
-      setError('違う内容で記録する場合は、実際にやった内容を入力してください。');
+      setError('実際にやった内容を入力してください。');
       return;
     }
 
-    const observationSource = plan.weeklyPlanningObservationSource;
+    const observationSource = plan?.weeklyPlanningObservationSource;
     const observationProgress = Number(observationProgressInput);
     if (observationSource) {
       if (observationProgressInput.trim() === '') {
@@ -338,17 +409,20 @@ function StudySessionView({
         }
       : undefined;
 
+    savePending.current = true;
     setSaving(true);
     setError('');
     try {
-      await onSaveActual(plan, {
+      await onSaveActual(target, {
         ...recordDraft,
         materialProgressUpdates,
         weeklyPlanningObservationResult,
       });
     } catch (error) {
+      savePending.current = false;
       setSaving(false);
       const uncertain = !(error instanceof ActualMutationAdmissionError);
+      saveBlocked.current = uncertain;
       setRequiresInspection(uncertain);
       setError(`${error instanceof Error ? error.message : '記録の保存に失敗しました。'}${uncertain ? ` ${materialUncertainMessage}` : ''}`);
     }
@@ -361,7 +435,7 @@ function StudySessionView({
       aria-modal="true"
       aria-label={dialogLabel}
     >
-      <div className="study-session-page">
+      <div className="study-session-page" ref={pageRef}>
         <header className="study-session-header">
           <button type="button" className="study-session-icon-button" onClick={handleBack} aria-label="戻る">
             <ArrowLeft size={24} aria-hidden="true" />
@@ -374,12 +448,34 @@ function StudySessionView({
           <main className="study-session-content study-session-timer-view">
             <section className="study-session-card study-session-primary-card">
               <div className="study-session-eyebrow"><BookOpen size={18} aria-hidden="true" />現在の学習対象</div>
-              <h2>{plan.title}</h2>
-              <dl className="study-session-plan-meta">
-                <div><dt><Clock3 size={18} aria-hidden="true" />予定</dt><dd>{plan.startTime} - {plan.endTime}</dd></div>
-                <div><dt><TimerReset size={18} aria-hidden="true" />予定時間</dt><dd>{formatMinutesLabel(plannedMinutes)}</dd></div>
+              <h2>{sessionTitle}</h2>
+              {initialTarget.kind === 'planned' && !isStarted ? (
+                <label className="study-session-target-choice">学習内容
+                  <select aria-label="学習内容" value={target.kind} onChange={event => { if (!started.current) setTarget(event.target.value === 'planned' ? initialTarget : { kind: 'unplanned', userId }); }}>
+                    <option value="planned">この予定で学習: {initialTarget.plan.title}</option>
+                    <option value="unplanned">予定にない学習</option>
+                  </select>
+                </label>
+              ) : null}
+              {!plan && !isStarted ? (
+                <div className="study-session-field-grid study-session-unplanned-setup">
+                  <label>勉強する内容<input aria-label="勉強する内容" value={unplannedTitle} placeholder="学習" onChange={event => setUnplannedTitle(event.target.value)} /></label>
+                  <label>教材<select aria-label="教材" value={unplannedMaterialId} onChange={event => {
+                    const selected = materials.find(item => item.id === event.target.value);
+                    setUnplannedMaterialId(selected?.id ?? '');
+                    setUnplannedSubject(selected?.subjectName ?? '');
+                    setUnplannedTitle(current => !current || current === material?.name ? selected?.name ?? '' : current);
+                  }}>
+                    <option value="">教材なし</option>
+                    {materials.filter(item => item.status !== 'archived').map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                  </select></label>
+                </div>
+              ) : null}
+              {plan ? <dl className="study-session-plan-meta">
+                <div><dt><Clock3 size={18} aria-hidden="true" />予定</dt><dd>{plan.occurrenceDate ?? plan.date} {plan.startTime} - {plan.endTime}</dd></div>
+                <div><dt><TimerReset size={18} aria-hidden="true" />予定時間</dt><dd>{formatMinutesLabel(plannedMinutes ?? 0)}</dd></div>
                 <div><dt><FileText size={18} aria-hidden="true" />内容</dt><dd>{plan.memo.trim() || plan.subject || plan.title}</dd></div>
-              </dl>
+              </dl> : null}
 
               <div className="study-session-mode-section">
                 <span className="study-session-mode-label">学習方式</span>
@@ -392,7 +488,7 @@ function StudySessionView({
                     onClick={() => setStudyMode('normal')}
                   >
                     <strong>通常タイマー</strong>
-                    <small>予定時間を通して計測</small>
+                    <small>{plan ? '予定時間を通して計測' : '時間を決めずに計測'}</small>
                   </button>
                   <button
                     type="button"
@@ -413,13 +509,13 @@ function StudySessionView({
                     <>
                       <span data-pomodoro-phase>{pomodoroPhaseLabel}</span>
                       <strong data-study-session-phase-remaining>{formatPomodoroTime(pomodoroPhaseRemainingMs)}</strong>
-                      <b>{currentPomodoroSet} / {totalPomodoroSets} セット ・ 次は {pomodoroNextLabel}</b>
+                      <b>{currentPomodoroSet}{totalPomodoroSets === null ? '' : ` / ${totalPomodoroSets}`} セット ・ 次は {pomodoroNextLabel}</b>
                     </>
                   ) : (
                     <>
                       <span>{isStarted ? '経過時間' : '開始前'}</span>
                       <strong data-study-session-elapsed>{formatDurationDisplay(elapsedMs)}</strong>
-                      <b>{isStarted ? `残り ${formatDurationDisplay(remainingMs)}` : `予定 ${formatMinutesLabel(plannedMinutes)}`}</b>
+                      <b>{plannedMs === null ? '予定にない学習' : isStarted ? `残り ${formatDurationDisplay(remainingMs ?? 0)}` : `予定 ${formatMinutesLabel(plannedMinutes ?? 0)}`}</b>
                     </>
                   )}
                 </div>
@@ -463,11 +559,11 @@ function StudySessionView({
             <section className="study-session-card study-session-context-card">
               <div className="study-session-context-row">
                 <span className="study-session-context-icon material"><BookOpen size={21} aria-hidden="true" /></span>
-                <span><small>教材</small><strong>{material?.name ?? (plan.materialName?.trim() || '教材未設定')}</strong></span>
+                <span><small>教材</small><strong>{material?.name ?? (plan?.materialName?.trim() || '教材未設定')}</strong></span>
               </div>
               <div className="study-session-context-row">
                 <span className="study-session-context-icon"><NotebookPen size={21} aria-hidden="true" /></span>
-                <span><small>現在のメモ</small><strong>{plan.memo.trim() || 'メモはありません'}</strong></span>
+                <span><small>現在のメモ</small><strong>{plan?.memo.trim() || 'メモはありません'}</strong></span>
               </div>
             </section>
             <p className="study-session-helper">
@@ -478,34 +574,35 @@ function StudySessionView({
           <main className="study-session-content study-session-record-view">
             <section className="study-session-card study-session-record-summary">
               <div className="study-session-eyebrow"><BookOpen size={18} aria-hidden="true" />現在の学習対象</div>
-              <h2>{plan.title}</h2>
-              <dl className="study-session-plan-meta compact">
-                <div><dt><Clock3 size={18} aria-hidden="true" />予定</dt><dd>{plan.startTime} - {plan.endTime}</dd></div>
-                <div><dt><TimerReset size={18} aria-hidden="true" />予定時間</dt><dd>{formatMinutesLabel(plannedMinutes)}</dd></div>
-              </dl>
+              <h2>{sessionTitle}</h2>
+              {plan ? <dl className="study-session-plan-meta compact">
+                <div><dt><Clock3 size={18} aria-hidden="true" />予定</dt><dd>{plan.occurrenceDate ?? plan.date} {plan.startTime} - {plan.endTime}</dd></div>
+                <div><dt><TimerReset size={18} aria-hidden="true" />予定時間</dt><dd>{formatMinutesLabel(plannedMinutes ?? 0)}</dd></div>
+              </dl> : <p>予定にない学習 · {recordDraft.occurrenceDate}</p>}
               <div className="study-session-actual-time">
-                <span>実際の学習時間</span>
+                <span>{plan ? '実際の学習時間' : '計測した時間'}</span>
                 <strong>{formatMinutesLabel(Math.max(1, Math.round(elapsedMs / 60_000)))}</strong>
               </div>
-              <details className="study-session-time-adjust">
+              {needsDateAdjustment ? <p role="alert" className="study-session-error">日付をまたいだ計測です。開始日の記録時刻を調整してください。翌日分は別の記録が必要です。</p> : null}
+              <details className="study-session-time-adjust" open={needsDateAdjustment || undefined}>
                 <summary>記録時刻を調整</summary>
                 <div>
-                  <label>開始<input type="time" value={recordDraft.actualStartTime} onChange={(event) => setRecordDraft({ ...recordDraft, actualStartTime: event.target.value })} /></label>
-                  <label>終了<input type="time" value={recordDraft.actualEndTime} onChange={(event) => setRecordDraft({ ...recordDraft, actualEndTime: event.target.value })} /></label>
+                  <label>開始<input type="time" value={recordDraft.actualStartTime} onChange={(event) => { setRecordDraft({ ...recordDraft, actualStartTime: event.target.value }); setNeedsDateAdjustment(false); setError(''); }} /></label>
+                  <label>終了<input type="time" value={recordDraft.actualEndTime} onChange={(event) => { setRecordDraft({ ...recordDraft, actualEndTime: event.target.value }); setNeedsDateAdjustment(false); setError(''); }} /></label>
                 </div>
               </details>
             </section>
 
             <section className="study-session-card study-session-record-card">
-              <h3>予定との対応</h3>
-              <div className="study-session-segments">
+              <h3>{plan ? '予定との対応' : '学習内容'}</h3>
+              {plan ? <div className="study-session-segments">
                 <button type="button" className={recordDraft.isAlignedToPlan ? 'active' : ''} onClick={() => setRecordDraft({ ...recordDraft, isAlignedToPlan: true, title: plan.title, subject: plan.subject, materialId: plan.materialId ?? null, materialName: plan.materialName ?? '' })}>
                   予定通り <CheckCircle2 size={18} aria-hidden="true" />
                 </button>
                 <button type="button" className={!recordDraft.isAlignedToPlan ? 'active' : ''} onClick={() => setRecordDraft({ ...recordDraft, isAlignedToPlan: false })}>違う内容</button>
-              </div>
+              </div> : null}
 
-              {recordDraft.isAlignedToPlan ? (
+              {plan && recordDraft.isAlignedToPlan ? (
                 <div className="study-session-aligned-card"><strong>予定ベースで記録します</strong><span>内容: {plan.title}{plan.subject ? ` / ${plan.subject}` : ''}</span></div>
               ) : (
                 <div className="study-session-field-grid">
@@ -546,7 +643,7 @@ function StudySessionView({
                 </div>
               ) : null}
 
-              {plan.weeklyPlanningObservationSource ? (
+              {plan?.weeklyPlanningObservationSource ? (
                 <div className="study-session-progress-editor">
                   <label htmlFor="study-session-observation-progress">
                     今回進んだ量（{plan.weeklyPlanningObservationSource.unitLabel}）

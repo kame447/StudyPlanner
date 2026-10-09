@@ -431,25 +431,31 @@
 .home-scene-plant span:nth-child(3) { top: 36px; left: 0; }
 .home-scene-plant span:nth-child(4) { top: 49px; left: 18px; transform: scaleX(-1) rotate(-28deg); }
 
-.home-start-button {
+.home-actions {
   position: absolute;
   z-index: 3;
   left: 16px;
   right: 16px;
   bottom: 10px;
   min-height: 46px;
+  display: grid;
+  gap: 9px;
+  border-radius: 11px;
+  font-size: 0.96rem;
+}
+
+.home-actions:has(.home-plan-inspect) { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+.home-actions:has(.home-plan-inspect) > button { min-height: 44px; }
+.home-actions > button { min-width: 0; border-radius: inherit; font: inherit; cursor: pointer; }
+
+.home-start-button {
+  min-height: inherit;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 9px;
+  gap: inherit;
   border: 0;
-  border-radius: 11px;
-  background: linear-gradient(180deg, #0b72ff, #0562ec);
   color: #fff;
-  box-shadow: 0 7px 16px rgba(8, 107, 255, 0.22);
-  font-size: 0.96rem;
-  font-weight: 900;
-  cursor: pointer;
 }
 
 .home-start-icon {
@@ -974,7 +980,7 @@
     width: 55%;
   }
 
-  .home-start-button {
+  .home-actions {
     left: 14px;
     right: 14px;
   }
@@ -1073,3 +1079,11 @@
     grid-column: 1 / -1;
   }
 }
+
+.home-plan-inspect {
+  padding: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--text-primary);
+}
+.home-plan-inspect:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

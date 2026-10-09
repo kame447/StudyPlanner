@@ -1,5 +1,5 @@
 import { StrictMode } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HomeView } from './HomeView';
 import { HomeDisplayClockProvider } from './home/HomeDisplayClockContext';
@@ -9,6 +9,7 @@ import type { HomeScenePreferences } from '../lib/homeScenePreferences';
 import type { Plan } from '../types/domain';
 
 const noop = () => {};
+const onOpenDay = vi.fn();
 const empty: [] = [];
 const ref = { current: null };
 function plan(id = 'class', overrides: Partial<Plan> = {}): Plan {
@@ -24,18 +25,22 @@ function home(plans = [plan()], preferences: HomeScenePreferences = { style: 'pi
   return <StrictMode><HomeDisplayClockProvider>
     {visible ? <HomeView plans={plans} actuals={empty} todos={empty} studyMaterials={empty}
       homeScenePreferences={preferences} primaryHeaderRef={ref} primaryBottomNavRef={ref}
-      onOpenAiPlanning={noop} onOpenSchedule={noop} onAddEntry={noop} onOpenDay={noop}
+      onOpenAiPlanning={noop} onOpenSchedule={noop} onAddEntry={noop} onOpenDay={onOpenDay}
       onOpenTodo={noop} onOpenBookshelf={noop} onOpenReport={noop} /> : null}
   </HomeDisplayClockProvider></StrictMode>;
 }
 function state() {
   return renderer!.root.findAll(node => typeof node.type === 'string' && node.props['data-pixel-student'])[0]?.props['data-pixel-student'] ?? 'empty';
 }
+function renderedText(node: ReactTestInstance | string): string {
+  return typeof node === 'string' ? node : node.children.map(renderedText).join('');
+}
 function mount(plans?: Plan[], preferences?: HomeScenePreferences) { act(() => { renderer = create(home(plans, preferences)); }); }
 function advance(ms: number) { act(() => { vi.advanceTimersByTime(ms); }); }
 function event(target: EventTarget, name: string) { act(() => { target.dispatchEvent(new Event(name)); }); }
 
 beforeEach(() => {
+  onOpenDay.mockClear();
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-10-07T10:19:30'));
   media = Object.assign(new EventTarget(), { matches: false });
@@ -102,11 +107,17 @@ describe('scheduled student in the actual Home card', () => {
       plan('later', { startTime: '10:23', endTime: '10:24' })];
     mount(plans); advance(30_000); advance(60_000);
     expect(state()).toBe('entering');
-    expect(renderer!.root.findByProps({ className: 'home-plan-title' }).findByType('span').children).toEqual(['adjacent']);
+    const title = renderer!.root.findByType('h1');
+    expect(renderedText(title)).toBe('adjacent');
+    const titleAction = renderer!.root.findByProps({ className: 'home-plan-inspect' });
+    expect(titleAction.props.type).toBe('button');
+    expect(titleAction.props['aria-label']).toBe('授業を確認する: adjacent');
+    act(() => titleAction.props.onClick());
+    expect(onOpenDay).toHaveBeenCalledExactlyOnceWith('2026-10-07');
     advance(60_000); expect(state()).toBe('empty');
     advance(60_000); expect(state()).toBe('entering');
     advance(60_000); expect(state()).toBe('empty');
-    expect(renderer!.root.findByType('h1').children).toEqual(['次の予定はありません']);
+    expect(renderedText(renderer!.root.findByType('h1'))).toBe('次の予定はありません');
   });
 
   it('uses the local date through midnight and ignores tomorrow before then', () => {

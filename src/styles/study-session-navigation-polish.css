@@ -11,10 +11,13 @@
   background: var(--app-background);
   box-shadow: -14px 0 34px rgba(20, 32, 45, 0.1);
   transform: translate3d(var(--study-session-swipe-x, 0px), 0, 0);
+  transform-origin: top right;
   transition: transform 160ms cubic-bezier(0.25, 1, 0.5, 1);
   touch-action: pan-y;
   overscroll-behavior-x: contain;
-  animation: study-session-enter-from-right 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* Keep entry inside the final pane bounds. WebKit can retain offscreen
+     animation overflow even after the transform has returned to identity. */
+  animation: study-session-enter-from-right 280ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 .study-session-page.is-swiping-back {
@@ -23,10 +26,12 @@
 
 @keyframes study-session-enter-from-right {
   from {
-    translate: 100% 0;
+    transform: translate3d(var(--study-session-swipe-x, 0px), 0, 0) scale(0.98);
+    opacity: 0;
   }
   to {
-    translate: 0 0;
+    transform: translate3d(var(--study-session-swipe-x, 0px), 0, 0) scale(1);
+    opacity: 1;
   }
 }
 
@@ -121,7 +126,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .study-session-page {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+    animation: none !important;
+    transition: none !important;
   }
 }
