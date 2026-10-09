@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import './application/weeklyPlanningStableV5InstrumentedRuntimeExecutor';
-import { createScriptedConversation, resetScriptedConversationRuntime } from './testUtils/weeklyPlanningScriptedConversationHarness';
+import { createScriptedConversation, resetScriptedConversationRuntime, scriptedRendererReply, type ScriptedProviderCall } from './testUtils/weeklyPlanningScriptedConversationHarness';
 import { BULK, DECLINE, OVERLOAD, examBusyPlans, installExamOverloadProvider } from './testUtils/weeklyPlanningExamOverloadFixture';
 
 /*
@@ -48,15 +48,26 @@ describe('B3: the capacity question carries the unmet work', () => {
 
 describe('B3: the AI-rendered reply', () => {
   const ASK = 'いくつかの作業が今の期間に入りきりませんでした。期間を延ばすか、量を減らすか、使える時間を増やせるか、どれがよいですか？';
-  it('the renderer is told to state the figures, and no fixed sentence is appended (P2: verified instead)', async () => {
-    provider = installExamOverloadProvider(30, false, false, ASK + '合計1808分、物理・力学（120問・約720分）です。');
+  it('the renderer is told to state the figures; a faithful AI reply is shown as AI text with no fixed sentence appended (P2: verified)', async () => {
+    const mustConvey = (call: ScriptedProviderCall) => (((call.payload?.applicationDecision as Json)?.communication as Json)?.mustConvey as Json[] | undefined)?.[0] as
+      { requiredMinutes: number; unmet: Array<{ label: string; minutes: number }> } | undefined;
+    provider = installExamOverloadProvider(30, false, false, (call) => {
+      const fact = mustConvey(call);
+      return scriptedRendererReply(call, fact
+        ? `${ASK}${fact.unmet.map(item => `${item.label}（約${item.minutes}分）`).join('、')}が入らず、必要な時間は合計${fact.requiredMinutes}分です。`
+        : 'わかりました。');
+    });
     const conv = createScriptedConversation({ provider, plans: examBusyPlans, architecture: 'interaction_v1', weekStartDate: '2026-10-12', now: () => '2026-10-09T09:00:00.000Z' });
     await conv.submit(BULK);
     await conv.submit(DECLINE);
     const turn = await conv.submit(OVERLOAD);
+    expect(turn.result?.failure).toBeUndefined();
+    expect(turn.result?.responseSource).toBe('ai');
+    expect(turn.result?.message.startsWith(ASK)).toBe(true);
+    expect(turn.result?.message).toMatch(/合計\d+分です。$/);
+    expect(turn.result?.message).not.toMatch(/\n\n入りきらなかった作業: /);
     const renderer = turn.calls.filter(call => call.kind === 'renderer').pop()!;
     expect(JSON.stringify(renderer.messages)).toContain('mustConvey shortfall: In your own words');
-    expect(turn.result?.message ?? '').not.toMatch(/\n\n入りきらなかった作業: /);
   });
   it('the capacity fact exists only on the capacity question', async () => {
     provider = installExamOverloadProvider(30);
