@@ -116,6 +116,7 @@ function learningStrategyProposalsFromState(
   state: PlanningIntakeState | undefined,
 ): Array<Record<string, unknown>> {
   return (state?.learningStrategyProposalRecords ?? [])
+    .filter((record) => !(record.status === 'pending' && record.decidedAtTurnId !== null))
     .slice(-16)
     .map((record) => ({
       publicId: record.id,

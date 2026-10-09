@@ -55,7 +55,8 @@ export function evaluateWeeklyPlanningInsufficientCapacityProposalV5(params: {
   if (!acceptedSpacing) {
     const existingPending = eligibleSpacingRecords
       .map((record) => existingCapacityProposalForWorkload(records, record.workloadFactId))
-      .find((record) => record?.status === 'pending') ?? null;
+      // A lapsed proposal (pending, closed by a turn id) is not presented again.
+      .find((record) => record?.status === 'pending' && record.decidedAtTurnId === null) ?? null;
     return { records, pendingProposal: existingPending };
   }
 
