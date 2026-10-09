@@ -49,9 +49,18 @@ describe('releasedFreeFormUncertaintiesV5: replay identity and targets', () => {
     expect(release(graph(), doc(), true)).toEqual([{ id: 'U', basis: 'no_delta' }]);
     expect(release(graph(), doc({ relations: [{ localId: 'x' }] }), true)).toEqual([]);
   });
-  it('known fields, unbound acts and re-declarations never release', () => {
+  it('an entirely empty reading releases without any act (live: conversationActs []), but never with another act', () => {
+    expect(release(graph(), doc({ conversationActs: [] }), true)).toEqual([{ id: 'U', basis: 'no_delta' }]);
+    expect(release(graph(), doc({ conversationActs: [{ kind: 'answer_pending_question', targetPublicId: null }] }), true)).toEqual([{ id: 'U', basis: 'no_delta' }]);
+    expect(release(graph(), doc({ conversationActs: [{ kind: 'consultation_request', targetPublicId: 'T' }] }), true)).toEqual([]);
+    expect(release(graph(), doc({ conversationActs: [{ kind: 'topic_shift', targetPublicId: null }] }), true)).toEqual([]);
+    expect(release(graph(), doc({ conversationActs: [{ kind: 'answer_pending_question', targetPublicId: 'OTHER' }] }), true)).toEqual([]);
+    expect(release(graph(), doc({ conversationActs: [] }), false)).toEqual([]);
+  });
+  it('a delta still needs its bound act; known fields and re-declarations never release', () => {
+    expect(release(graph(), doc({ conversationActs: [], tasks: [shell({ recurrence: [recurrence(['thursday'])] })] }), true)).toEqual([]);
+    expect(release(graph(), doc({ conversationActs: [{ kind: 'answer_pending_question', targetPublicId: null }], tasks: [shell({ recurrence: [recurrence(['thursday'])] })] }), true)).toEqual([]);
     expect(release(graph({ field: 'work_breakdown' }), doc(), true)).toEqual([]);
-    expect(release(graph(), doc({ conversationActs: [{ kind: 'answer_pending_question', targetPublicId: null }] }), true)).toEqual([]);
     expect(release(graph(), doc({ uncertainties: [{ localId: 'u', targetLocalId: null, field: 'free_form', reason: 'r', sourceText: 'q' }] }), true)).toEqual([]);
   });
 });

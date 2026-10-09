@@ -47,6 +47,7 @@ import {
 import { consultationCommunicationForPlanning } from './weeklyPlanningConsultationCommunication';
 import type { GenericSchedulerInput } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import { projectWeeklyPlanningPreviewConstraintSatisfaction } from './weeklyPlanningPreviewConstraintSatisfaction';
+import { isKnownWeeklyPlanningUncertaintyFieldV5 } from '../semantic/weeklyPlanningSemanticUncertaintyResolutionV5';
 import { releasedUncertaintiesOfTurnV5 } from '../semantic/weeklyPlanningSemanticUncertaintyReleaseV5';
 import { summarizeWeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
 
@@ -80,12 +81,16 @@ function communicationFacts(params: {
   omittedWork: WeeklyPlanningPreviewOmittedWork[] | null;
   consultationRequested: boolean;
   releasedUncertainties?: ReturnType<typeof releasedUncertaintiesOfTurnV5>;
+  consultationActTargets?: ReadonlyArray<string | null>;
   alternativeEvidence?: WeeklyPlanningConsultationAlternativeEvidence | null;
   preview?: ReturnType<typeof executeWeeklyPlanningStableV5Preview>;
   schedulerInput?: GenericSchedulerInput;
 }): WeeklyPlanningTurnCommunicationFacts {
   const context = params.output.state.lastQuestionContext;
   const code = decodeWeeklyPlanningStableV5QuestionSlot(context?.targetSlot);
+  const openPoint = code === 'semantic_uncertainty'
+    ? params.evaluation.activeGraph.uncertainties.find((fact) => fact.id === context?.topicId) : undefined;
+  const openPointTarget = openPoint && !isKnownWeeklyPlanningUncertaintyFieldV5(openPoint.field) ? openPoint.targetFactId : null;
   const capacityShortfall = capacityShortfallFromPreview({
     preview: params.preview,
     schedulerInput: params.schedulerInput,
@@ -121,6 +126,10 @@ function communicationFacts(params: {
     planningDetailsNotApplied: params.planningDetailsNotApplied,
     ...(params.possibleCompletenessOmission ? { possibleCompletenessOmission: true } : {}),
     ...(capacityShortfall ? { capacityShortfall } : {}),
+    // The selected question is a free-form open point on the very task the consultation act targets: the question
+    // already invites the user's condition, so the generic "not decided here" notice would ask for it twice.
+    ...(params.consultationActTargets?.length && openPointTarget !== null && params.consultationActTargets.includes(openPointTarget)
+      ? { openPointCoversConsultation: true } : {}),
     ...(params.releasedUncertainties?.length
       ? { uncertaintyReleased: {
           quote: params.releasedUncertainties[0].fact.source.sourceText,
@@ -191,6 +200,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     graph: semantic.graph,
     operationKeyPrefix: `${input.conversationId}:${input.traceRequestId}`,
   });
+  const consultationActTargets = (semantic.normalization.document?.conversationActs ?? [])
+    .filter((act) => act.kind === 'consultation_request').map((act) => act.targetPublicId);
   const planningDetailsNotApplied = semantic.normalization.conversationOnly?.planningContentPresent === true;
   // The normalizer kept its first valid reading after an audit-reported omission could not be
   // integrated: say so instead of silently dropping what the audit found (safe failure).
@@ -226,6 +237,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
               omittedWork: null,
               consultationRequested: interactionPlan.acts.consultation,
               releasedUncertainties,
+              consultationActTargets,
               alternativeEvidence,
             }),
           }
@@ -275,6 +287,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
             omittedWork: provisionalCapacity ? provisionalCapacity.omittedWork : null,
             consultationRequested: interactionPlan!.acts.consultation,
             releasedUncertainties,
+            consultationActTargets,
             alternativeEvidence,
             preview,
             schedulerInput: responseRoute.schedulerInput,

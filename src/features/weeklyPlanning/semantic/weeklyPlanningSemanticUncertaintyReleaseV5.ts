@@ -98,19 +98,25 @@ export function releasedFreeFormUncertaintiesV5(params: {
   // A component target is answered through its task (constraints and recurrences sit on tasks).
   const targetTaskId = target === null ? null
     : graph.components.find((component) => component.id === target)?.taskId ?? target;
-  const bound = (document.conversationActs ?? []).some((act) => act.kind === 'answer_pending_question'
-    && typeof act.targetPublicId === 'string'
-    && (act.targetPublicId === uncertainty.id || act.targetPublicId === uncertainty.targetFactId
-      || (targetTaskId !== null && act.targetPublicId === targetTaskId)));
-  if (!bound) return [];
+  const acts = document.conversationActs ?? [];
+  const isTarget = (id: string | null) => id === uncertainty.id || id === uncertainty.targetFactId
+    || (targetTaskId !== null && id === targetTaskId);
+  const bound = acts.some((act) => act.kind === 'answer_pending_question' && typeof act.targetPublicId === 'string'
+    && isTarget(act.targetPublicId));
+  // An entirely empty reading needs no act: live, the model returns `conversationActs: []` for a plain go-ahead.
+  // Only answer acts (unbound or bound here) may accompany it; any other act (consultation, topic shift, ...) keeps it open.
+  const emptyReadingWithoutOtherActs = acts.every((act) => act.kind === 'answer_pending_question'
+    && (act.targetPublicId === null || isTarget(act.targetPublicId)));
+  const noDeltaRelease = params.noOpRetryConfirmed && hasNoDeltaAnywhere(document) && emptyReadingWithoutOtherActs;
+  if (!bound && !noDeltaRelease) return [];
   const redeclared = document.uncertainties.some((current) => current.field === uncertainty.field
     && (current.targetLocalId === null || target === null
       || document.tasks.some((task) => task.localId === current.targetLocalId && task.existingPublicId === target)));
   if (redeclared) return [];
   // A structural resolution is the normal path's, not a release.
   if (hasWeeklyPlanningSemanticUncertaintyResolutionV5({ graph, document, uncertainty })) return [];
-  if (targetTaskId !== null && hasQualifyingDeltaOnTarget(graph, document, targetTaskId)) return [{ id: uncertainty.id, basis: 'delta' }];
-  if (params.noOpRetryConfirmed && hasNoDeltaAnywhere(document)) return [{ id: uncertainty.id, basis: 'no_delta' }];
+  if (bound && targetTaskId !== null && hasQualifyingDeltaOnTarget(graph, document, targetTaskId)) return [{ id: uncertainty.id, basis: 'delta' }];
+  if (noDeltaRelease) return [{ id: uncertainty.id, basis: 'no_delta' }];
   return [];
 }
 

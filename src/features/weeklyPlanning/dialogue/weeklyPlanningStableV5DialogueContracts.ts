@@ -110,6 +110,8 @@ export interface WeeklyPlanningStableV5CommunicationContext {
   /** Work that did not fit (the capacity question only); the application states the figures beside the reply. */
   capacityShortfall?: WeeklyPlanningCapacityShortfall;
   /** A free-form point was released by the user's answer; the application states it (quote included) beside the reply. */
+  /** The presented question already invites the user's condition for the consulted task. */
+  openPointCoversConsultation?: boolean;
   uncertaintyReleased?: { quote: string | null; nothingRead: boolean };
 }
 

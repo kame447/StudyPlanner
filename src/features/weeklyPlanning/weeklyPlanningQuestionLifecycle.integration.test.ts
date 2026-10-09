@@ -395,10 +395,10 @@ describe('H-release: a blocking free-form question has a deterministic end state
   const Q = 'あとこれって1日でまとめて読んでも平気？';
   const L1 = `${H.T1}。英語の本も10ページ読む。1ページ3分`;
   type Variant = 'placement_task' | 'placement_uncertainty' | 'ack_task' | 'ack_uncertainty' | 'other_target' | 'rate_only'
-    | 'unbound' | 're_declare' | 'two_uncertainties' | 'replayed_constraint' | 'capacity';
+    | 'unbound' | 're_declare' | 'two_uncertainties' | 'replayed_constraint' | 'capacity' | 'noact' | 'empty_consult';
   const uncertaintyOf = (extra: Json = {}): Json => ({ localId: 'u-one-day', targetLocalId: 'paper', field: 'one_day_completion_feasibility',
     reason: '1日でまとめて読めるか', sourceText: Q, ...extra });
-  function installLoop(variant: Variant, o: { flag?: boolean; field?: string; architecture?: WeeklyPlanningConversationArchitecture } = {}) {
+  function installLoop(variant: Variant, o: { flag?: boolean; field?: string; architecture?: WeeklyPlanningConversationArchitecture; consultOther?: boolean } = {}) {
     const architecture = o.architecture ?? 'interaction_v1';
     const script = (text: string, call: ScriptedProviderCall): Json => {
       const [taskId, vocabId] = summaryTaskIds(call);
@@ -426,7 +426,7 @@ describe('H-release: a blocking free-form question has a deterministic end state
             uncertaintyOf({ field: o.field ?? 'one_day_completion_feasibility', ...(o.flag === undefined ? {} : { blocksPlanning: o.flag }) }),
             ...(variant === 'two_uncertainties' ? [uncertaintyOf({ localId: 'u-second', field: 'second_free_form_point', sourceText: 'まとめて読んでも平気' })] : []),
           ],
-          conversationActs: [{ kind: 'consultation_request', targetPublicId: taskId }],
+          conversationActs: [{ kind: 'consultation_request', targetPublicId: o.consultOther ? vocabId : taskId }],
         }, architecture);
       }
       if (text === T4) {
@@ -441,6 +441,8 @@ describe('H-release: a blocking free-form question has a deterministic end state
       }
       const answer = (target: string | null) => ({ kind: 'answer_pending_question', targetPublicId: target });
       switch (variant) {
+        case 'noact': return emptyDocument({}, architecture);
+        case 'empty_consult': return emptyDocument({ conversationActs: [{ kind: 'consultation_request', targetPublicId: taskId }] }, architecture);
         case 'ack_task': return emptyDocument({ conversationActs: [answer(taskId)] }, architecture);
         case 'ack_uncertainty': return emptyDocument({ conversationActs: [answer(uncertaintyId)] }, architecture);
         case 'placement_uncertainty': return emptyDocument({ tasks: [paperShell({ temporalConstraints: [preferredNight('paper-night', 'paper', text)] })], conversationActs: [answer(uncertaintyId)] }, architecture);
@@ -477,7 +479,7 @@ describe('H-release: a blocking free-form question has a deterministic end state
     expect(uncertainties(conversation)).toEqual([]);
     expect(third.result?.draftCandidates.length).toBeGreaterThan(0);
   });
-  it.each(['ack_task'] as const)('%s (「うん、それで」: no delta anywhere) releases, discloses the point in the user\'s own words, and the decision carries the fact', async variant => {
+  it.each(['ack_task', 'ack_uncertainty'] as const)('%s (「うん、それで」: no delta anywhere; an uncertainty-id act degrades to an unbound act, which an empty reading no longer needs) releases, discloses the point in the user\'s own words, and the decision carries the fact', async variant => {
     const { conversation, third } = await toThirdTurn(variant, {}, variant.startsWith('ack') ? 'うん、それで' : '水曜の夜にまとめて');
     expect(uncertainties(conversation)).toEqual([]);
     expect(third.result?.draftCandidates.length).toBeGreaterThan(0);
@@ -490,7 +492,9 @@ describe('H-release: a blocking free-form question has a deterministic end state
   });
   it('「このまま進めて」 as a bare act bound to the task releases under the new question text (T2 message pinned, combined with the consultation)', async () => {
     const { conversation, second, third } = await toThirdTurn('ack_task', {}, 'このまま進めて');
-    expect(second.result?.message).toContain(`「${Q}」について、まだ決まっていない点があります。決まっていれば教えてください。このまま進めてよければ、そう伝えてください。その点はここでは決めきれないので、希望があればそのまま条件として教えてください。`);
+    expect(second.result?.message).toContain(`「${Q}」について、まだ決まっていない点があります。決まっていれば教えてください。このまま進めてよければ、そう伝えてください。`);
+    // The consultation targets the same task: the generic "not decided here" notice would ask for the condition twice.
+    expect(second.result?.message).not.toContain('その点はここでは決めきれないので');
     const decision = second.calls.filter(call => call.kind === 'renderer').pop()?.payload?.applicationDecision as Json;
     expect((decision.communication as Json).questionPurposes).toEqual(['confirm_open_point']);
     const meaning = String((decision.purposeMeanings as Json).confirm_open_point);
@@ -499,6 +503,26 @@ describe('H-release: a blocking free-form question has a deterministic end state
     expect(uncertainties(conversation)).toEqual([]);
     expect(third.result?.draftCandidates.length).toBeGreaterThan(0);
     expect(third.result?.message).toContain(RELEASED);
+  });
+  describe('an act-less empty reading (live: conversationActs [] for a plain go-ahead) releases too', () => {
+    it.each(['このまま進めて', '水曜の夜にまとめて'])('%s: released with the nothing-read sentence, 3 semantic reads and 1 renderer call', async text => {
+      const { conversation, third } = await toThirdTurn('noact', {}, text);
+      expect(uncertainties(conversation)).toEqual([]);
+      expect(third.result?.draftCandidates.length).toBeGreaterThan(0);
+      expect(third.result?.message).toContain(`${RELEASED}${NOTHING_READ}`);
+      expect(third.calls.filter(call => call.kind === 'semantic_generic')).toHaveLength(3);
+      expect(third.calls.filter(call => call.kind === 'renderer')).toHaveLength(1);
+    });
+    it('another act with an empty reading (a consultation) keeps the question open', async () => {
+      const { conversation, third } = await toThirdTurn('empty_consult', {}, 'あと、それって大丈夫？');
+      expect(uncertainties(conversation).length).toBeGreaterThanOrEqual(1);
+      expect(third.result?.communicationFacts?.uncertaintyReleased).toBeUndefined();
+    });
+  });
+  it('a consultation on ANOTHER task keeps the generic notice beside the open-point question', async () => {
+    const { second } = await toThirdTurn('placement_task', { consultOther: true });
+    expect(second.result?.message).toContain('まだ決まっていない点があります');
+    expect(second.result?.message).toContain('その点はここでは決めきれないので');
   });
   it('the no-delta release rides the existing bounded no-op retry (3 semantic reads, no extra call)', async () => {
     const { third } = await toThirdTurn('ack_task', {}, 'うん、それで');
@@ -517,7 +541,7 @@ describe('H-release: a blocking free-form question has a deterministic end state
   });
 
   describe('stays open', () => {
-    it.each(['other_target', 'rate_only', 'unbound', 're_declare', 'placement_uncertainty', 'ack_uncertainty', 'replayed_constraint'] as const)('%s: no release, no preview', async variant => {
+    it.each(['other_target', 'rate_only', 'unbound', 're_declare', 'placement_uncertainty', 'replayed_constraint'] as const)('%s: no release, no preview', async variant => {
       // An act binds only to a task/component: an uncertainty id degrades to an unbound act by contract (live: all acts task-bound).
       const { conversation, third } = await toThirdTurn(variant, {}, variant === 'rate_only' ? '1回1時間で' : variant.startsWith('ack') ? 'うん、それで' : '水曜の夜にまとめて');
       expect(uncertainties(conversation).length).toBeGreaterThanOrEqual(1);

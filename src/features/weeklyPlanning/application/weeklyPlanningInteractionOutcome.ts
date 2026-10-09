@@ -105,6 +105,8 @@ export interface WeeklyPlanningTurnCommunicationFacts {
    * A free-form blocking question was released by the user's bound answer (not resolved). The application
    * states that the point stays unconfirmed in its own sentence (with the user's quote); the renderer never words it.
    */
+  /** The presented question is a free-form open point on the task the consultation targets (it already invites the condition). */
+  openPointCoversConsultation?: boolean;
   uncertaintyReleased?: { quote: string | null; count: number; ids: string[]; nothingRead: boolean };
 }
 

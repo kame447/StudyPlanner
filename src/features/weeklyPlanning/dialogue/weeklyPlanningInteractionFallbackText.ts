@@ -140,7 +140,7 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
   }
   return [
     main,
-    communication.consultationDeferred && !communication.alternativeRequiresAdoption ? CONSULTATION_NOT_ANSWERED : '',
+    communication.consultationDeferred && !communication.alternativeRequiresAdoption && !communication.openPointCoversConsultation ? CONSULTATION_NOT_ANSWERED : '',
     communication.planningDetailsNotApplied ? DETAILS_INVITATION : '',
     communication.possibleCompletenessOmission ? WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT : '',
     communication.uncertaintyReleased ? weeklyPlanningUncertaintyReleaseText(communication.uncertaintyReleased) : '',
