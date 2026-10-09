@@ -30,6 +30,7 @@ vi.mock('../lib/startupTiming', async importOriginal => ({
   startupTiming: {
     begin: (...args: Parameters<typeof fixture.clock.begin>) => fixture.clock.begin(...args),
     measure: (phase: Parameters<typeof fixture.clock.begin>[0], action: () => Promise<unknown>) => fixture.clock.measure(phase, action),
+    markIntroComplete: (...args: Parameters<typeof fixture.clock.markIntroComplete>) => fixture.clock.markIntroComplete(...args),
     markOnce: (...args: Parameters<typeof fixture.clock.markOnce>) => fixture.clock.markOnce(...args),
   },
 }));
@@ -134,6 +135,7 @@ it.each([
   await advance(1);
   expect(splash()).toBe(0); expect(fixture.content).toHaveBeenCalledWith(readyAt);
   const spans = fixture.clock.getSnapshot();
+  expect(spans.find(row => row.phase === 'startup-wait-ended')).toMatchObject({ startMs: readyAt, durationMs: 0 });
   expect(spans.find(row => row.phase === 'auth-session')?.durationMs).toBe(delays.auth);
   expect(spans.find(row => row.phase === 'consent')?.durationMs).toBe(consentMs);
   expect(spans.find(row => row.phase === 'preferences')?.durationMs).toBe(delays.preferences);
@@ -159,6 +161,11 @@ it.each(['token', 'response', 'body'] as const)('bounds an independent consent %
   expect(fixture.clock.getSnapshot().find(row => row.phase === 'consent')).toMatchObject({
     durationMs: WEEKLY_PLANNING_TRACE_POLICY_TIMEOUT_MS, outcome: 'error',
   });
+  // Releasing an error surface is a wait exit, not successful readiness.
+  expect(fixture.clock.getSnapshot().filter(row => row.phase === 'startup-wait-ended')).toMatchObject([
+    { startMs: WEEKLY_PLANNING_TRACE_POLICY_TIMEOUT_MS, durationMs: 0 },
+  ]);
+  expect(fixture.clock.getSnapshot().some(row => row.phase === 'bootstrap')).toBe(false);
   const callsAtTimeout = fixture.fetch.mock.calls.length;
   if (phase !== 'token') expect(fixture.fetch.mock.calls[0][1].signal.aborted).toBe(true);
   await act(async () => {
@@ -344,6 +351,7 @@ it.each(['a', 'b'])('early media gestures cannot revive retired policy readiness
   expect(renderer!.root.findByType(SplashScreen).props.canSkip).toBe(false);
   expect(fixture.preferences).not.toHaveBeenCalled();
   expect(fixture.content).not.toHaveBeenCalled();
+  expect(fixture.clock.getSnapshot().filter(row => row.phase === 'startup-wait-ended')).toEqual([]);
   await act(async () => { nextResponse.resolve(new Response(JSON.stringify({ ...accepted, accepted: false }))); await microtasks(); });
   expect(appLoading()).toBe(false); expect(splash()).toBe(1);
   expect(renderer!.root.findByType('video')).toBe(video);

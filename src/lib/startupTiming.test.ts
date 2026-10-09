@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createStartupTimingRecorder, type StartupPhase } from './startupTiming';
+import { createStartupTimingRecorder, STARTUP_INTRO_OUTCOMES, type StartupIntroOutcome, type StartupPhase } from './startupTiming';
 
 describe('local startup timing', () => {
   it('is inert when disabled, preserving the exact promise and sync failure', () => {
@@ -58,4 +58,29 @@ describe('local startup timing', () => {
     expect(listener).toHaveBeenCalledTimes(2); unsubscribe(); recorder.begin('plans')();
     expect(listener).toHaveBeenCalledTimes(2);
   });
+});
+
+it.each(STARTUP_INTRO_OUTCOMES)('records only a fixed intro outcome once: %s', reason => {
+  let now = 100;
+  const recorder = createStartupTimingRecorder(true, () => now);
+  recorder.markIntroComplete('private-error' as StartupIntroOutcome);
+  expect(recorder.getSnapshot()).toEqual([]);
+  recorder.markIntroComplete(reason);
+  now = 200;
+  recorder.markIntroComplete('ended');
+  expect(recorder.getSnapshot()).toEqual([
+    { id: 1, phase: 'intro-complete', startMs: 100, durationMs: 0, outcome: 'success', introOutcome: reason },
+  ]);
+});
+
+it('keeps intro observations inert when disabled and after the first visible Home', () => {
+  const now = vi.fn(() => 5);
+  const disabled = createStartupTimingRecorder(false, now);
+  disabled.markIntroComplete('ended');
+  expect(disabled.getSnapshot()).toEqual([]); expect(now).not.toHaveBeenCalled();
+  const closed = createStartupTimingRecorder(true, now);
+  closed.markOnce('home-visible');
+  closed.markIntroComplete('stalled');
+  closed.begin('startup-wait-ended')();
+  expect(closed.getSnapshot().map(row => row.phase)).toEqual(['home-visible']);
 });

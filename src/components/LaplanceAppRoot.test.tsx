@@ -86,22 +86,25 @@ describe('LaplanceAppRoot', () => {
   });
 
   it('records failed consent and preference waits as errors without changing their screens', () => {
-    const finish = vi.fn();
-    const spy = vi.spyOn(startupTiming, 'begin').mockReturnValue(finish);
+    const consentFinished = vi.fn();
+    const preferencesFinished = vi.fn();
+    const otherFinished = vi.fn();
+    const spy = vi.spyOn(startupTiming, 'begin').mockImplementation(phase =>
+      phase === 'consent' ? consentFinished : phase === 'preferences' ? preferencesFinished : otherFinished);
     try {
       fake = createFakeAuthSession({ currentUser: verifiedUser });
       state.policy.status = 'loading';
       mount();
       expect(spy).toHaveBeenCalledWith('consent');
       state.policy.status = 'unavailable'; rerender();
-      expect(finish).toHaveBeenLastCalledWith('error');
+      expect(consentFinished).toHaveBeenCalledExactlyOnceWith('error');
       expect(renderer.root.findAllByType(InitialPrivacyConsentScreen)).toHaveLength(1);
       state.personalization.loading = true;
       state.policy.status = 'accepted'; rerender();
       expect(spy).toHaveBeenCalledWith('preferences');
       state.personalization.loading = false;
       state.personalization.error = 'fixture failure'; rerender();
-      expect(finish).toHaveBeenLastCalledWith('error');
+      expect(preferencesFinished).toHaveBeenCalledExactlyOnceWith('error');
       expect(renderer.root.findAllByType(InitialWeekStartPreferenceScreen)).toHaveLength(1);
     } finally { spy.mockRestore(); }
   });

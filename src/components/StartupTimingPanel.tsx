@@ -34,6 +34,7 @@ export function StartupTimingPanel() {
     background: '#fff', color: '#111', padding: 8, border: '1px solid #777', fontSize: 12 }}>
     <summary>起動計測（端末内のみ）</summary>
     <p>ページ開始からのミリ秒。通信待ちを含みます。外部送信・保存はしません。</p>
+    <p>準備待ちと動画終了は別に記録します。待機終了だけではデータ取得成功を意味しません。</p>
     <p>Firestore比較設定: {startupFirestoreTransport}（この起動のみ）</p>
     <p>Profile比較設定: {startupProfileObservation}（この起動のみ）</p>
     <p>Marker比較設定: {startupMarkerObservation}（この起動のみ）</p>
