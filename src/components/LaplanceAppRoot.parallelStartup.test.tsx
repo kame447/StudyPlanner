@@ -1,6 +1,6 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { StudyPlannerAppRoot } from './StudyPlannerAppRoot';
+import { LaplanceAppRoot } from './LaplanceAppRoot';
 import { SplashScreen } from './SplashScreen';
 import { createFakeAuthSession } from '../test/fakeAuthSession';
 import { createLocalFixture, deferred, MemoryStorage, microtasks, STAMP } from '../repositories/localPersistenceConcurrency.testUtils';
@@ -64,7 +64,7 @@ beforeEach(() => {
   fake = createFakeAuthSession({ currentUser: { id: 'a', requiresEmailVerification: false } });
 });
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
-async function mount() { await act(async () => { renderer = create(<StudyPlannerAppRoot authSession={fake.session} />); await microtasks(); }); }
+async function mount() { await act(async () => { renderer = create(<LaplanceAppRoot authSession={fake.session} />); await microtasks(); }); }
 async function release(gate: ReturnType<typeof deferred>) { await act(async () => { gate.resolve(undefined); await microtasks(); }); }
 const splash = () => renderer!.root.findAllByType(SplashScreen).length;
 it.each(['ended', 'error'])('video %s cannot release memory or planner gates and leaves static loading until both settle', async event => {
@@ -263,10 +263,10 @@ it('keeps the same visible Splash across unresolved auth, consent, preferences a
   await act(async () => { fake.emit({ id: 'a', requiresEmailVerification: false }); await microtasks(); });
   expect(renderer!.root.findByType(SplashScreen)).toBe(initialSplash);
   fixture.policy = 'accepted'; fixture.preferenceError = ''; fixture.preferenceLoading = true;
-  await act(async () => { renderer!.update(<StudyPlannerAppRoot authSession={fake.session} />); });
+  await act(async () => { renderer!.update(<LaplanceAppRoot authSession={fake.session} />); });
   expect(renderer!.root.findByType(SplashScreen)).toBe(initialSplash);
   fixture.preferenceLoading = false;
-  await act(async () => { renderer!.update(<StudyPlannerAppRoot authSession={fake.session} />); await microtasks(); });
+  await act(async () => { renderer!.update(<LaplanceAppRoot authSession={fake.session} />); await microtasks(); });
   expect(renderer!.root.findByType(SplashScreen)).toBe(initialSplash);
   expect(fixture.profile).toHaveBeenCalledOnce(); expect(snapshotSpy).toHaveBeenCalledOnce();
   await release(memoryGate);
@@ -307,7 +307,7 @@ function enableObservation() {
   return stops;
 }
 async function updateRoot() {
-  await act(async () => { renderer!.update(<StudyPlannerAppRoot authSession={fake.session} />); await microtasks(); });
+  await act(async () => { renderer!.update(<LaplanceAppRoot authSession={fake.session} />); await microtasks(); });
 }
 it('diagnostic profile observation overlaps preferences without advancing write-capable bootstrap', async () => {
   const stops = enableObservation(); fixture.policy = 'loading'; await mount();

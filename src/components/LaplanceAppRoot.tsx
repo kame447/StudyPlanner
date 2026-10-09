@@ -35,7 +35,7 @@ interface StartupPresentation { loading: boolean }
 
 const ignoreEarlyBootstrapReady = () => {};
 const readyPresentation: StartupPresentation = { loading: false };
-function ConsentedStudyPlannerApp({
+function ConsentedLaplanceApp({
   authSession,
   userId,
   startupScope,
@@ -107,7 +107,7 @@ function ConsentedStudyPlannerApp({
   );
 }
 
-function AuthenticatedStudyPlannerApp({
+function AuthenticatedLaplanceApp({
   authSession,
   userId,
   startupScope,
@@ -136,7 +136,7 @@ function AuthenticatedStudyPlannerApp({
 
   if (policy.status === 'accepted') {
     return (
-      <ConsentedStudyPlannerApp
+      <ConsentedLaplanceApp
         authSession={authSession}
         userId={userId}
         startupScope={startupScope}
@@ -175,11 +175,11 @@ function RootManagedUnauthenticatedApp() {
   );
 }
 
-export function StudyPlannerAppRoot(props: { authSession?: AuthSessionService } = {}) {
-  return <AppearanceProvider><StudyPlannerAppRootContent {...props} /></AppearanceProvider>;
+export function LaplanceAppRoot(props: { authSession?: AuthSessionService } = {}) {
+  return <AppearanceProvider><LaplanceAppRootContent {...props} /></AppearanceProvider>;
 }
 
-function StudyPlannerAppRootContent({
+function LaplanceAppRootContent({
   authSession: injectedAuthSession,
 }: { authSession?: AuthSessionService } = {}) {
   const authSession = useMemo(
@@ -264,7 +264,7 @@ function AuthenticatedStartup({ authSession, userId, startupScope, onPresentatio
   useLayoutEffect(() => { onPresentation(presentation); }, [onPresentation, presentation]);
   return (
     <RootStartupReadyProvider onReady={markReady}>
-      <AuthenticatedStudyPlannerApp authSession={authSession} userId={userId} startupScope={startupScope} onStartupReady={markReady} onStartupPending={markPending} />
+      <AuthenticatedLaplanceApp authSession={authSession} userId={userId} startupScope={startupScope} onStartupReady={markReady} onStartupPending={markPending} />
     </RootStartupReadyProvider>
   );
 }
