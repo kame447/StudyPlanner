@@ -264,6 +264,12 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
         resolvedTemporalConstraints,
       })
     : rawBaselineCompilation;
+  const graphChanged = Boolean(
+    semanticDiff
+    && (semanticDiff.added.length > 0
+      || semanticDiff.superseded.length > 0
+      || semanticDiff.removed.length > 0),
+  );
   const learningStrategyProposals = semantic.normalization.document
     ? evaluateWeeklyPlanningLearningStrategyProposalsV5({
         previousState: input.previousState,
@@ -275,6 +281,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
         graphRevision: semantic.graph.revision,
         turnId: input.traceRequestId,
         presentedProposalId: freshPresentedProposalId(semanticTurn.pendingQuestionPresentation),
+        graphChanged,
         restrictToPresentedProposal: conversationArchitecturePolicy(
           input.conversationArchitecture,
         ).freshProposalDecisionsOnly,
