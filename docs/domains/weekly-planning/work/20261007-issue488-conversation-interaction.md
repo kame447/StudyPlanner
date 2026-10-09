@@ -695,3 +695,29 @@ Method: `vite build --sourcemap` of `ea0d871a` and of the fork point `22847120`.
 6. F, from a vague intent and multi-turn on the real provider, reaches a concrete proposal with few questions, with no invented amount, with changes accepted midway, and with the preview consistent with the accepted facts. The approve/save boundary is safe.
 7. Tests judge purpose, interpretation and final plan, not exact strings.
 8. Gates run on the exact code, and the validators are not relaxed.
+
+**Amendments after the design notes and the critic's review** (2026-10-09 23:40 JST; each claim below was checked in code).
+- **Design notes:** MistyFabre `children/MistyFabre-p3-design.md` (P3, `exp/MistyFabre-x11p`) and BrightLavoisier `children/BrightLavoisier-x11p-p2-design.md` (P2, `exp/BrightLavoisier-x11p-p2`). The critic's independent inventory agrees on the 8 appenders and the failure-only texts.
+- **P1, technical stop:** it is a controlled failure. The projection returns `failure`, so the turn-start state is kept and the staged graph and context are discarded (critic M2: a stop after a finalized turn would silently lose every `mustConvey` fact, and a resend could apply twice). Pins: two verification failures leave the revision unchanged; a resend applies once; the held question binding survives the stop.
+- **P2:**
+  - The typed self-declaration (`conveys`/`claims`) is dropped: it verifies nothing and adds a false-regeneration path. Literal checks, the independent verifier and the existing validators decide.
+  - The verifier runs on the existing `weekly_planning_renderer` purpose with its own prompt; the AI proxy rejects unknown purposes (`workers/ai-proxy/src/modelPolicy.ts`), so a separate purpose would need a worker deploy.
+  - The regeneration is the existing single repair slot (one per turn across format and fact reasons; at most 4 renderer-stage calls). The dispatch limit stays 8 until measured.
+  - The "no invented number" check is enabled only after its false-failure rate is measured offline on fixture corpora.
+- **P3:**
+  - The purpose is held in the existing optional `intent` string (`purpose:<enum>`), with no codec key: a new key would make an older client drop the whole session. Intents that already have readers stay byte-identical.
+  - **Binding rule (critic M4):** the held or AI-declared purpose is never given to the semantic reader, which reads the question as shown. A binding needs a positive match between the reading's own typed role and scope and the held purpose; an amount with no scope or role goes to confirmation. The held purpose only demotes, so a wrongly declared purpose costs at most one confirmation, never a binding.
+- **P4 amendment (critic M1):** `INTERNAL_PROCESS_TERMS` rejects 「反映していません」 and 「保留」, which would make the AI's own not-applied statement impossible. When such a notice is migrated, the term is allowed only while that notice's typed fact is present in the turn. This is a declared validator change, pinned in both directions.
+- **Criteria amendments:**
+  - criterion 1 also covers standalone app messages in the AI conversation, pending the owner's decision on the save receipt (critic M3);
+  - **criterion 9:** live runs report the technical-stop count per round, and a stop is never a pass.
+- **Started (RED first; no live run; parent integrates):**
+  - MistyFabre S1: held purpose, decode-on-read for old states, and the purpose guard. This alone stops F's silent promotion but does not make F pass.
+  - BrightLavoisier P2 slice 1: the capacity shortfall written by the AI and verified, the stop as a controlled failure, and the fault-injection harness.
+  - S2/S3 and the later notices wait for review. Each slice reports request bytes and the gzip bundle delta (the bundle already fails its cap).
+- **Owner decisions pending:**
+  - whether the save/approval receipt may stay a deterministic app message;
+  - the verifier's extra call on turns with a semantic notice (the nothing-read and retained-preview notices alone appeared up to 8 of 39 turns in round 5 and 3 of 39 in round 6; the other semantic notices were not counted);
+  - a separate verifier purpose (needs a worker deploy);
+  - UI-label tokens inside AI text;
+  - the duplicate-submission message.
