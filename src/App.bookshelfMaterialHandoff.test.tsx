@@ -56,7 +56,7 @@ beforeEach(() => {
   const storage = new MemoryStorage();
   vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: storage });
   vi.stubGlobal('localStorage', storage);
-  vi.stubGlobal('document', { body: { style: { overflow: '', overscrollBehavior: '' } } });
+  vi.stubGlobal('document', { documentElement: { dataset: {} }, body: { style: { overflow: '', overscrollBehavior: '' } } });
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('network forbidden'); }));
   showNotice.mockClear();
 });

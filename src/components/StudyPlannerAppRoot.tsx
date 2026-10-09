@@ -1,3 +1,4 @@
+import { AppearanceProvider } from './AppearanceProvider';
 import { useStartupProfileObservation } from '../hooks/useStartupProfileObservation';
 import { createStartupSessionScope, type StartupSessionCapability, type StartupSessionScope } from '../lib/startupSessionScope';
 import { retireStartupPreviewCache } from '../lib/retiredStartupPreviewCache';
@@ -174,7 +175,11 @@ function RootManagedUnauthenticatedApp() {
   );
 }
 
-export function StudyPlannerAppRoot({
+export function StudyPlannerAppRoot(props: { authSession?: AuthSessionService } = {}) {
+  return <AppearanceProvider><StudyPlannerAppRootContent {...props} /></AppearanceProvider>;
+}
+
+function StudyPlannerAppRootContent({
   authSession: injectedAuthSession,
 }: { authSession?: AuthSessionService } = {}) {
   const authSession = useMemo(
