@@ -566,3 +566,21 @@ Integration HEAD for app code: `167751ca` (docs since then only). E2E is **not c
   - X2 passed 2 of 2: the rate was used, and a preview came at T2 with physics at 105 min. The model typed the unit correctly both times, so the projection did not run.
   - H passed 1 of 1.
 - **Residual:** a repair that drops the user's rate entirely still leads to a re-ask with no notice. That is the repair-drop class, separate from the ignored-rate class.
+
+**x9a: same-turn corrections no longer depend on their order (`04effefd`, `53f50f47`, `af851076`; contract `62dda69d`).**
+- **Cause (live round 5, X5 T2, the X5c "r1 variant" now seen live):** correction 1 replaced the workload, and its dependent migration superseded the session effort. Correction 2 then named that superseded effort, so the turn was rejected; the reverse order had applied.
+- **Fix:** a correction whose target this transaction's own dependent migration superseded is applied to the migrated fact. Any other superseded target is still rejected, pinned at the unit level with the earlier gates bypassed.
+- **Explicit shared fix:** legacy changes for the live order only, from a rejection to an apply. Legacy pins establish this, because the legacy oracle has no such scenario.
+- **Fault injection:** retarget off, 4 failures; widened retarget, 1.
+- **Chain on `62dda69d`:**
+  - verify passes 7,746 tests; every category is green;
+  - browser: 441 pass and 6 fail, all also failing on main;
+  - weekly-real: 10/10;
+  - W4 is 28/2 and W3 8/8, with identical call counts.
+
+**Live on `62dda69d`:** X5 passed 2 of 2, and C passed 1 of 1.
+- X5 T2 gave 2×30.
+- C T2 applied 20 pages and the Friday deadline (10/16) together, after one repair.
+- C T3, 「10月16日まで」, restates the deadline that is already applied. The reply keeps the plan and adds the nothing-read sentence. That is true, since nothing new was read, but the invitation to restate conditions is slightly unnatural here: a minor wording residual.
+
+In round 5, both C and X5 had failed on the date and quantity correction path; in these three runs they pass. The dangling-replacement recovery (x9b) is still in progress for the C T2 shape round 5 saw.
