@@ -39,18 +39,20 @@ const fixture = vi.hoisted(() => {
     const previous = options?.merge ? store.get(ref.path) : undefined;
     store.set(ref.path, structuredClone({ ...previous, ...value })); writes.push(ref.path);
   }
+  function readQuery(query: Query, operation: string) {
+    if (query.constraints.some(constraint => constraint.operator !== '==')) throw new Error('Unsupported query operator');
+    const rows = [...store.entries()].filter(([path, value]) => path.split('/').length === 2 && path.startsWith(`${query.collectionName}/`)
+      && query.constraints.every(constraint => value[constraint.field] === constraint.value));
+    reads.push({ operation, collection: query.collectionName, returned: rows.length, missing: false, emptyQuery: rows.length === 0 });
+    return { docs: rows.map(([path, value]) => ({ id: path.split('/').at(-1)!, data: () => structuredClone(value) })), metadata: { fromCache: false, hasPendingWrites: false } };
+  }
   const sdk = {
     doc: reference,
     collection: (db: unknown, collectionName: string) => { if (db !== database) throw new Error('Non-synthetic collection'); return { collectionName }; },
     where: (field: string, operator: string, value: unknown) => ({ field, operator, value }),
     query: (collection: { collectionName: string }, ...constraints: Query['constraints']) => ({ ...collection, constraints }),
-    getDocs: async (query: Query) => {
-      if (query.constraints.some(constraint => constraint.operator !== '==')) throw new Error('Unsupported query operator');
-      const rows = [...store.entries()].filter(([path, value]) => path.split('/').length === 2 && path.startsWith(`${query.collectionName}/`)
-        && query.constraints.every(constraint => value[constraint.field] === constraint.value));
-      reads.push({ operation: 'getDocs', collection: query.collectionName, returned: rows.length, missing: false, emptyQuery: rows.length === 0 });
-      return { docs: rows.map(([path, value]) => ({ id: path.split('/').at(-1)!, data: () => structuredClone(value) })) };
-    },
+    getDocs: async (query: Query) => readQuery(query, 'getDocs'),
+    getDocsFromServer: async (query: Query) => readQuery(query, 'getDocsFromServer'),
     getDoc: (ref: Ref) => read(ref, 'getDoc'),
     getDocFromServer: (ref: Ref) => read(ref, 'getDocFromServer'),
     setDoc: async (ref: Ref, value: Record<string, unknown>, options?: { merge?: boolean }) => set(ref, value, options),
@@ -120,7 +122,10 @@ function canonical(value: unknown): unknown {
 function digest(value: unknown) { return createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex'); }
 function dataSnapshot() {
   return Object.fromEntries(['plans', 'actuals', 'dayNotes', 'monthEvents', 'todos', 'studySubjects', 'studyMaterials', 'scheduleTemplates', 'timetableTerms', 'timetablePeriods']
-    .map(key => [key, [...(key === 'plans' ? state.plans.map(normalizePlanRecord) : state[key as keyof AppState]) as Array<{ id: string }>].sort((a, b) => a.id.localeCompare(b.id))]));
+    .map(key => {
+      const rows = key === 'plans' ? state.plans.map(normalizePlanRecord) : state[key as keyof AppState];
+      return [key, rows === null ? null : [...rows as Array<{ id: string }>].sort((a, b) => a.id.localeCompare(b.id))];
+    }));
 }
 function projectionSnapshot() {
   return {
@@ -184,8 +189,10 @@ describe('Firestore read-load executable measurement', () => {
       fixture.reads.length = 0; fixture.writes.length = 0; fixture.transactions.length = 0;
       await act(async () => { await action(); });
       const snapshot = dataSnapshot();
-      rows.push({ operation, ...metrics(), dataDigest: digest(snapshot), projectionDigest: digest(projectionSnapshot()),
-        collectionSizes: Object.fromEntries(Object.entries(snapshot).map(([key, value]) => [key, (value as unknown[]).length])),
+      rows.push({ operation, ...metrics(), dataDigest: digest(snapshot),
+        consumedDataDigest: digest(Object.fromEntries(Object.entries(snapshot).filter(([key]) => key !== 'dayNotes'))),
+        projectionDigest: digest(projectionSnapshot()),
+        collectionSizes: Object.fromEntries(Object.entries(snapshot).map(([key, value]) => [key, value === null ? null : (value as unknown[]).length])),
         view: { mode: state.viewMode, selectedDate: state.selectedDate, monthDate: state.monthDate } });
       expect(state.plannerDataAvailability.status).toBe('ready');
       expect(state.plans.some(plan => plan.userId !== OWNER)).toBe(false);
@@ -226,12 +233,26 @@ describe('Firestore read-load executable measurement', () => {
       await phase('approved-save-K-and-complete', () => approval(APPROVAL_COUNT, 'batch-operation'));
       const beforeRefreshData = dataSnapshot();
       const beforeRefresh = digest(beforeRefreshData);
-      await phase('explicit-full-refresh', () => fixture.loader!(OWNER));
+      await phase('explicit-planner-reload', () => fixture.loader!(OWNER));
       expect(canonical(dataSnapshot())).toEqual(canonical(beforeRefreshData));
       await act(async () => renderer?.unmount()); installRepositories();
       await phase('cold-reload-after-saves', bootstrapMount);
       expect(digest(dataSnapshot())).toBe(beforeRefresh);
       expect(state.plans).toHaveLength(data.plans.length + 1 + 1 + APPROVAL_COUNT);
+      // Older baseline hooks already hydrate notes. Current hooks explicitly
+      // request them before using the retained save API; unread is never empty.
+      await phase('first-note-use', () => state.loadDayNotes?.());
+      expect(state.dayNotes).toHaveLength(4 * scale);
+      await phase('save-existing-note', () => state.saveDayNote({ userId: OWNER, date: '2024-01-01',
+        quickMemo: 'Updated historical note', reflection: '', nextFocus: '', checkedPlan: false,
+        checkedRecord: false, checkedReady: false }));
+      expect(state.dayNotes?.find(note => note.id === 'note-0')?.quickMemo).toBe('Updated historical note');
+      expect([...fixture.store.keys()].filter(key => key.startsWith('day_notes/'))).toHaveLength(4 * scale);
+      const withSavedNote = digest(dataSnapshot());
+      await act(async () => renderer?.unmount()); installRepositories();
+      await phase('cold-reload-after-note-save', bootstrapMount);
+      await phase('first-note-use-after-reload', () => state.loadDayNotes?.());
+      expect(digest(dataSnapshot())).toBe(withSavedNote);
       results.push({ dataset: name, scale, fixtureDigest: digest(data.documents),
         seededCollectionSizes: Object.fromEntries(Object.entries(data.documents).map(([key, value]) => [key, value.length])),
         finalPersistedDigest: digest([...fixture.store].sort(([a], [b]) => a.localeCompare(b))), rows });

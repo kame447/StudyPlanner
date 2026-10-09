@@ -118,7 +118,9 @@ export interface PlannerRepository {
   getScheduleSnapshot(userId: string): Promise<PlannerScheduleSnapshot>;
   getPlans(userId: string): Promise<Plan[]>;
   getActuals(userId: string): Promise<Actual[]>;
-  getDayNotes(userId: string): Promise<DayNote[]>;
+  // Deferred first hydration can require confirmed server absence/history.
+  // Local adapters read their canonical local storage; default behavior is unchanged.
+  getDayNotes(userId: string, options?: { requireServer: true }): Promise<DayNote[]>;
   getMonthEvents(userId: string): Promise<MonthEvent[]>;
   getTodos(userId: string): Promise<TodoTask[]>;
   getStudySubjects(userId: string): Promise<StudySubject[]>;

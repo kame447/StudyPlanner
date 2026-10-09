@@ -1,0 +1,94 @@
+{
+  "status": "local unpublished candidate; scoped verification complete, global release gates pending",
+  "base": "1207f1a842a59ca958b2a497a868b10a2d82770f",
+  "runtimePaths": [
+    "src/hooks/usePlannerAppState.ts",
+    "src/hooks/usePlannerDataState.ts",
+    "src/repositories/firebasePlannerRepository.ts",
+    "src/repositories/repositoryContracts.ts"
+  ],
+  "sourceManifestSha256": "3511082ddc9562b661318cf9ef1382d3087b7bdccf8cf29317bf8172312de6ba",
+  "freshAppAndWorkerTypes": "passed",
+  "focused": {
+    "files": 45,
+    "tests": 894,
+    "status": "passed"
+  },
+  "build": {
+    "status": "passed",
+    "seconds": 31.26
+  },
+  "bundleBudget": "passed",
+  "mock": {
+    "datasets": 3,
+    "phases": 51,
+    "consumedStateAndPersistenceEqual": true,
+    "coldReturnedDocumentsBefore": [
+      64,
+      559,
+      5509
+    ],
+    "coldReturnedDocumentsAfter": [
+      60,
+      519,
+      5109
+    ],
+    "coldCollectionQueriesBefore": 9,
+    "coldCollectionQueriesAfter": 8,
+    "firstNoteUseDeferredCost": "one owner-wide note query; 4/40/400 fixture documents"
+  },
+  "offlineSdk": {
+    "status": "passed after reproducible red",
+    "red": "4 notes on server; first offline read returned empty cache and ready",
+    "green": "first offline save rejects with null/stale and zero write requests; reconnect, existing note ID, independent server read and reload preserved"
+  },
+  "fullSuite": {
+    "finalSource": "not run by explicit task direction",
+    "olderCandidate": "cancelled/exit130 after 3 timeouts",
+    "diagnosis": "unchanged baseline reproduces before-commit timeout; cleanup near 5-second budget; no threshold or AI/test changes"
+  },
+  "notVerified": [
+    "global final-source unit/integration pass",
+    "browser/WebChannel/device startup latency",
+    "production usage/billing",
+    "new-plan first approval",
+    "full cross-client conflict behavior"
+  ],
+  "installedPackages": {
+    "present": 235,
+    "absent": 101,
+    "identityHashesUnchanged": true
+  },
+  "node": "v24.19.0",
+  "vitest": "3.2.7",
+  "externalRepositoryWrites": false,
+  "productionChanges": false,
+  "emulator": {
+    "datasets": 3,
+    "corePhases": 21,
+    "sdk": "Firebase 12.12.0 / Node gRPC",
+    "emulator": "1.20.2",
+    "coldResponsesBefore": [
+      69,
+      564,
+      5514
+    ],
+    "coldResponsesAfter": [
+      65,
+      524,
+      5114
+    ],
+    "collectionTargetsBefore": 9,
+    "collectionTargetsAfter": 8,
+    "allFinalDataAndPersistedDigestsEqual": true,
+    "billingObserved": false
+  },
+  "runtimeSha256": {
+    "src/hooks/usePlannerAppState.ts": "0451b5de1ba5566a7504f8e54c2cdbc13e73aa8c6b4f9971862fbbaea766eb39",
+    "src/hooks/usePlannerDataState.ts": "f8a015e6caff648a83aafd4e80a7d1f0d01093dd72e9dd690c7fa609d8784853",
+    "src/repositories/firebasePlannerRepository.ts": "53abea64fbab770e7d45a4440f946595ac88f544569c5e794abf17564b3ddfd9",
+    "src/repositories/repositoryContracts.ts": "c4b59bb6bcf2d82e5b7b8d756c43ebfd4cea73a1062985581171e3a50ed656c2"
+  },
+  "evidenceRetention": "Detailed synthetic fixtures, complete diagnostics, raw logs and exact input manifests are retained privately; this public summary does not embed machine-local paths or diagnostic source snapshots.",
+  "syntheticDataOnly": true
+}

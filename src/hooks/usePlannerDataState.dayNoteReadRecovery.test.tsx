@@ -199,3 +199,24 @@ it('pure Actual/material repair does not read DayNotes', async () => {
   expect(reads).not.toHaveBeenCalled();
   expect(state.plannerDataAvailability.status).toBe('ready');
 });
+
+it('late pre-hydration eager save acknowledgement cannot contaminate the next owner note baseline', async () => {
+  const fixture = createLocalFixture(); boundary.repository = { ...fixture.repository };
+  function OwnerHarness({ owner }: { owner: string }) { state = usePlannerDataState({ userId: owner, showNotice: vi.fn() }); return null; }
+  await act(async () => { renderer = create(<OwnerHarness owner="owner" />); });
+  const persisted = deferred(), release = deferred();
+  const put = vi.spyOn(boundary.repository, 'upsertDayNote').mockImplementationOnce(async note => {
+    const saved = await fixture.repository.upsertDayNote(note); persisted.resolve(); await release.promise; return saved;
+  });
+  let oldSave!: Promise<unknown>;
+  await act(async () => { oldSave = state.saveDayNote(draft()).catch(error => error); await persisted.promise; });
+  const oldId = (await fixture.repository.getDayNotes('owner'))[0].id;
+  await act(async () => { renderer!.update(<OwnerHarness owner="other" />); });
+  await act(async () => { await state.loadPlannerData('other'); }); expect(state.dayNotes).toEqual([]);
+  await act(async () => { release.resolve(); await oldSave; }); expect(await oldSave).toBeInstanceOf(PlannerMutationScopeExpiredError);
+  expect(state.dayNotes).toEqual([]);
+  await act(async () => { await state.saveDayNote({ ...draft(), userId: 'other', quickMemo: 'other owner note' }); });
+  expect(put.mock.calls[1][0].id).not.toBe(oldId);
+  expect(await fixture.repository.getDayNotes('owner')).toMatchObject([{ id: oldId, userId: 'owner', quickMemo: 'saved new memo' }]);
+  expect(await fixture.repository.getDayNotes('other')).toMatchObject([{ userId: 'other', quickMemo: 'other owner note' }]);
+});

@@ -5,6 +5,7 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  getDocsFromServer,
   query,
   setDoc,
   where,
@@ -255,8 +256,17 @@ export function createFirebasePlannerRepository(
         );
       }
     },
-    async getDayNotes(userId) {
+    async getDayNotes(userId, options) {
       try {
+        if (options?.requireServer) {
+          const snapshot = await getDocsFromServer(
+            query(collection(firestoreDb, 'day_notes'), where('userId', '==', userId)),
+          );
+          if (snapshot.metadata?.fromCache !== false || snapshot.metadata.hasPendingWrites !== false) {
+            throw new Error('日次メモの保存済みデータを確認できませんでした。オンラインで再読み込みしてください。');
+          }
+          return snapshot.docs.map(document => ({ ...document.data(), id: document.id }) as DayNote);
+        }
         return await listByUserId<DayNote>(firestoreDb, 'day_notes', userId);
       } catch (error) {
         throw new Error(

@@ -46,7 +46,7 @@ interface PlannerAppState {
   user: User | null;
   plans: Plan[];
   actuals: Actual[];
-  dayNotes: DayNote[];
+  dayNotes: DayNote[] | null;
   monthEvents: MonthEvent[];
   todos: TodoTask[];
   studySubjects: StudySubject[];
@@ -95,6 +95,7 @@ interface PlannerAppState {
   linkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   deleteActual: (actual: Actual) => Promise<void>;
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
+  loadDayNotes: () => Promise<void>;
   saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
   deleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
   saveTodo: (draft: TodoTaskDraft, targetTodoId?: string) => Promise<void>;
@@ -171,7 +172,8 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     editingPlan,
     isRecurringPlanEdit,
     pendingRecurringPlanAction,
-    loadPlannerData,
+    bootstrapPlannerData,
+    loadDayNotes,
     projectPlanSave,
     resetPlannerData,
     setViewMode,
@@ -215,6 +217,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
   } = usePlannerDataState({
     userId: user?.id ?? null,
     showNotice,
+    deferDayNotes: true,
   });
   const { scope: approvalScope, invalidate: invalidateApprovalScope } = usePlannerMutationScope(user?.id ?? null);
   const [weeklyApprovedPlanOverlay, setWeeklyApprovedPlanOverlay, clearWeeklyApprovedPlanOverlay] =
@@ -234,8 +237,8 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
   }, [clearWeeklyApprovedPlanOverlay, user?.id]);
 
   useEffect(() => {
-    void bootstrapSession(loadPlannerData);
-  }, [bootstrapSession, loadPlannerData]);
+    void bootstrapSession(bootstrapPlannerData);
+  }, [bootstrapSession, bootstrapPlannerData]);
 
   // Keep the early request, but do not repeat a confirmed successful read when
   // the root-owned profile is restored. A fresh root mount gets a fresh scope.
@@ -267,7 +270,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     const currentUser = await loginWithPassword(email, password);
 
     if (currentUser) {
-      await loadPlannerData(currentUser.id);
+      await bootstrapPlannerData(currentUser.id);
     }
   }
 
@@ -275,7 +278,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     const currentUser = await loginWithGoogle();
 
     if (currentUser) {
-      await loadPlannerData(currentUser.id);
+      await bootstrapPlannerData(currentUser.id);
     }
   }
 
@@ -381,6 +384,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     linkStandaloneActualToPlan,
     deleteActual,
     saveDayNote,
+    loadDayNotes,
     saveMonthEvent,
     deleteMonthEvent,
     saveTodo,
