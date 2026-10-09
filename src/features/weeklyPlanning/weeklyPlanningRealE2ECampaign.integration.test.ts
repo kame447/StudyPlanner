@@ -92,6 +92,10 @@ describe('real E2E A–G: full application turns with scripted provider wire res
     expect(rendererDecision(final)).toMatchObject({ actionKind: 'preview_ready', previewCount: 3 });
   });
 
+  // NOTE (P3 S1): this scripted F is the PLAN-SCOPE variant: turn 1 raises the work_breakdown clarification, whose answer (the stated
+  // 2-hour total) is a legitimate plan amount, so binding it is correct here. It is NOT the live F path (a progress question,
+  // `missing_schedulable_work` on an unbounded task); that path and the owner's F status are covered by the live-shape pins in
+  // weeklyPlanningAnswerPurposeGuard.integration.test.ts. The owner's F status must not be read from this test.
   it('F: all measured incremental turns reach a two-hour preview without repeating scope questions', async () => {
     const conversation = start('F');
     for (const [index, text] of CAMPAIGN.F.entries()) {

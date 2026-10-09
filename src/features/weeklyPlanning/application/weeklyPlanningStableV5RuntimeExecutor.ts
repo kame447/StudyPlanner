@@ -25,6 +25,8 @@ import {
   planWeeklyPlanningInteraction,
   upcomingQuestionCodesForInteraction,
 } from './weeklyPlanningInteractionDecision';
+import { openRoleNeedsV5 } from './weeklyPlanningHeldRoleConfirmationV5';
+import { blockingPlanningNeedsV5, calendarFreeV5, isAmountPlanningNeedV5, type CalendarFreeDayV5, type PlanningNeedV5 } from './weeklyPlanningPlanningNeedsV5';
 import { capacityShortfallFromPreview } from './weeklyPlanningCapacityShortfall';
 import type {
   WeeklyPlanningPreviewOmittedWork,
@@ -75,6 +77,27 @@ function withProvisionalTimeboxState(params: {
 }
 
 /** Typed facts for the renderer (interaction architecture only); never prose. */
+/** P3 S2: typed planning needs + the free calendar, only where the AI may ask about or propose an amount (or a held item waits). */
+function planningContextFacts(params: {
+  heldOpenItems: boolean;
+  amountQuestion: boolean;
+  hasQuestion: boolean;
+  asked: { code: string; factId: string | null } | null;
+  evaluation: WeeklyPlanningStableV5PlanningEvaluation;
+  schedulerInput: GenericSchedulerInput | null | undefined;
+  calendar: Omit<Parameters<typeof calendarFreeV5>[0], 'schedulerInput'> | undefined;
+}): { planningNeeds?: PlanningNeedV5[]; calendarFree?: CalendarFreeDayV5[] } {
+  const openRoleNeeds = openRoleNeedsV5(params.evaluation.activeGraph);
+  if (!params.hasQuestion || !(params.amountQuestion || (params.heldOpenItems && openRoleNeeds.length > 0))) return {};
+  const planningNeeds = blockingPlanningNeedsV5({ compilation: params.evaluation.compilation, openRoleNeeds, asked: params.asked });
+  const calendarFree = params.calendar
+    ? calendarFreeV5({ ...params.calendar, schedulerInput: params.schedulerInput, horizon: params.evaluation.horizon }) : [];
+  return {
+    ...(planningNeeds.length > 0 ? { planningNeeds } : {}),
+    ...(calendarFree.length > 0 ? { calendarFree } : {}),
+  };
+}
+
 function communicationFacts(params: {
   evaluation: WeeklyPlanningStableV5PlanningEvaluation;
   output: WeeklyPlanningTurnExecutionResult;
@@ -87,6 +110,10 @@ function communicationFacts(params: {
   consultationRequested: boolean;
   releasedUncertainties?: ReturnType<typeof releasedUncertaintiesOfTurnV5>;
   consultationActTargets?: ReadonlyArray<string | null>;
+  /** The question was held back this turn (an aside / a held role confirmation): open plan items reach the AI as typed needs. */
+  heldOpenItems?: boolean;
+  /** Busy-time sources for the calendar the AI may propose from (interaction only). */
+  calendar?: Omit<Parameters<typeof calendarFreeV5>[0], 'schedulerInput'>;
   alternativeEvidence?: WeeklyPlanningConsultationAlternativeEvidence | null;
   preview?: ReturnType<typeof executeWeeklyPlanningStableV5Preview>;
   schedulerInput?: GenericSchedulerInput;
@@ -139,6 +166,15 @@ function communicationFacts(params: {
         })()
       : {}),
     ...(capacityShortfall ? { capacityShortfall } : {}),
+    ...planningContextFacts({
+      heldOpenItems: params.heldOpenItems === true,
+      amountQuestion: isAmountPlanningNeedV5(code),
+      evaluation: params.evaluation,
+      schedulerInput: params.schedulerInput ?? params.evaluation.compilation.input,
+      calendar: params.calendar,
+      hasQuestion: Boolean(context),
+      asked: code ? { code, factId: context?.topicId ?? null } : null,
+    }),
     // The selected question is a free-form open point on the very task the consultation act targets: the question
     // already invites the user's condition, so the generic "not decided here" notice would ask for it twice.
     ...(params.consultationActTargets?.length && openPointTarget !== null && params.consultationActTargets.includes(openPointTarget)
@@ -215,6 +251,11 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
   const consultationActTargets = (semantic.normalization.document?.conversationActs ?? [])
     .filter((act) => act.kind === 'consultation_request').map((act) => act.targetPublicId);
+  const calendar = {
+    plans: input.plans, monthEvents: input.monthEvents, ownerId: input.userId, scheduleTemplates: input.scheduleTemplates,
+    timetableTermId: input.timetableTermId,
+    notBefore: { date: requestContext.notBeforeDate, time: requestContext.notBeforeTime },
+  };
   const planningDetailsNotApplied = semantic.normalization.conversationOnly?.planningContentPresent === true;
   // The normalizer kept its first valid reading after an audit-reported omission could not be
   // integrated: say so instead of silently dropping what the audit found (safe failure).
@@ -237,17 +278,23 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
       output: responseRoute.output,
       evaluation,
     });
+    const respondOutcome = interactionPlan
+      ? classifyWeeklyPlanningInteraction({
+          plan: interactionPlan,
+          output,
+          previousQuestion: input.previousState?.lastQuestionContext,
+          presentation: semanticTurn.pendingQuestionPresentation,
+          graph: semantic.graph,
+        })
+      : undefined;
     return {
       ...output,
       ...(interactionPlan
         ? {
-            interactionOutcome: classifyWeeklyPlanningInteraction({
-              plan: interactionPlan,
-              output,
-              previousQuestion: input.previousState?.lastQuestionContext,
-              presentation: semanticTurn.pendingQuestionPresentation,
-            }),
+            interactionOutcome: respondOutcome,
             communicationFacts: communicationFacts({
+              heldOpenItems: respondOutcome?.kind === 'aside',
+              calendar,
               evaluation: routingEvaluation,
               output,
               statusReason: responseRoute.statusReason,

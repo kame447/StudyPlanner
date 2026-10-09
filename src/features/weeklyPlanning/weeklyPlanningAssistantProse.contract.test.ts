@@ -83,6 +83,7 @@ const PROSE_REGISTRY: Readonly<Record<string, ProseCategory>> = {
   'dialogue/weeklyPlanningStableV5DialoguePrompt.ts': 'renderer_instruction',
   'dialogue/weeklyPlanningStableV5AiDialogueRenderer.ts': 'renderer_instruction',
   'dialogue/weeklyPlanningStableV5DialogueValidation.ts': 'output_validation',
+  'dialogue/weeklyPlanningCalendarClockGrounding.ts': 'output_validation',
   // Interaction semantic meaning rule quotes collective user words (どっちも/両方/全部) as examples.
   'semantic/weeklyPlanningSemanticMeaningPolicyV5.ts': 'model_context_marker',
   'application/weeklyPlanningApprovalApplication.ts': 'authoritative_status',
@@ -113,6 +114,7 @@ const PROSE_REGISTRY: Readonly<Record<string, ProseCategory>> = {
   'semantic/weeklyPlanningMemoryCalibrationSchedulerInputV5.ts': 'data_formatting',
   'semantic/weeklyPlanningSchedulerWorkDistributionV5.ts': 'data_formatting',
   'semantic/weeklyPlanningWorkloadQuantityLabelV5.ts': 'data_formatting',
+  'semantic/weeklyPlanningAnswerPurposeGuardV5.ts': 'data_formatting',
   'semantic/weeklyPlanningStableV5PlacementCandidates.ts': 'data_formatting',
   'semantic/weeklyPlanningStatedTimeBudgetProjectionV5.ts': 'data_formatting',
   'config/weeklyPendingConfigUpdater.ts': 'not_wired_pre_v5',

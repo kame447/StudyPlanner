@@ -260,6 +260,15 @@ function interactionCommunicationInstructions(
     ...(hasRemovals
       ? ['acceptedFacts.removedThisTurnはユーザーがこのturnで取り消した内容。最初に短く自然に受け止めてから続ける（取り消したものを予定に残っているようには言わない）。']
       : []),
+    ...(communication.mustConvey?.some((entry) => entry.code === 'declared_amount_waiting')
+      ? ["mustConvey declared_amount_waiting: In your own words say the user's amount (their quote or the amount) is not used in the plan yet and waits for their choice: still to do, or already done. Do not say it was applied or planned with, and do not offer a preview. The reply is verified."]
+      : []),
+    ...(communication.planningNeeds?.length && !communication.askQuestion && !communication.mustConvey?.length
+      ? ['planningNeeds: open plan items (not a question to ask now). Mention one only if it helps, in your own words; ask nothing about it; never say the plan is ready.']
+      : []),
+    ...(communication.calendarFree?.length
+      ? ['calendarFree: free minutes per day already known from the calendar; never ask for availability it answers. planningNeeds lists what the plan still needs, in no fixed order; you may propose an amount from calendarFree instead of asking.']
+      : []),
     ...(communication.uncertaintyReleased
       ? ['uncertaintyReleased: The app states that one open point stays unconfirmed beside your reply. Do not say it was settled, confirmed or resolved, and do not restate it.']
       : []),

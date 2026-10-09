@@ -1,3 +1,4 @@
+import { mustConveyFromOpenRoleNeedV5 } from '../application/weeklyPlanningHeldRoleConfirmationV5';
 import { isWeeklyPlanningAppenderRetired, mustConveyFromCapacityShortfall } from './weeklyPlanningMustConvey';
 import { isKnownWeeklyPlanningUncertaintyFieldV5 } from '../semantic/weeklyPlanningSemanticUncertaintyResolutionV5';
 import type {
@@ -187,6 +188,16 @@ export function communicationContextForStableV5Dialogue(params: {
   )]
     .filter((purpose) => !questionPurposes.includes(purpose))
     .slice(0, LATER_NEEDS_LIMIT);
+  const shortfallAsked = params.questionCode === 'insufficient_capacity' && params.actionKind === 'question'
+    && params.facts?.capacityShortfall !== undefined && isWeeklyPlanningAppenderRetired('shortfall');
+  // A declared amount waiting for its role (the question is held, not asked): the verified reply must convey it (P3 S1 / P2).
+  const waitingAmounts = !askQuestion
+    ? (params.facts?.planningNeeds ?? []).flatMap((need) => 'workloadFactId' in need ? [mustConveyFromOpenRoleNeedV5(need)] : [])
+    : [];
+  const mustConvey = [
+    ...(shortfallAsked && params.facts?.capacityShortfall ? [mustConveyFromCapacityShortfall(params.facts.capacityShortfall)] : []),
+    ...waitingAmounts,
+  ];
   return {
     goal,
     ...(params.facts?.scheduleIntent ? { scheduleIntent: params.facts.scheduleIntent } : {}),
@@ -216,11 +227,10 @@ export function communicationContextForStableV5Dialogue(params: {
       ? { allocationBreakdown: params.facts.allocationBreakdown }
       : {}),
     ...(params.questionCode === 'insufficient_capacity' && params.actionKind === 'question' && params.facts?.capacityShortfall
-      ? {
-          capacityShortfall: params.facts.capacityShortfall,
-          ...(isWeeklyPlanningAppenderRetired('shortfall')
-            ? { mustConvey: [mustConveyFromCapacityShortfall(params.facts.capacityShortfall)] } : {}),
-        } : {}),
+      ? { capacityShortfall: params.facts.capacityShortfall } : {}),
+    ...(mustConvey.length > 0 ? { mustConvey } : {}),
+    ...(params.facts?.planningNeeds?.length ? { planningNeeds: params.facts.planningNeeds } : {}),
+    ...(params.facts?.calendarFree?.length ? { calendarFree: params.facts.calendarFree } : {}),
     ...(params.facts?.openPointCoversConsultation && askQuestion ? { openPointCoversConsultation: true } : {}),
     ...(params.facts?.uncertaintyReleased ? { uncertaintyReleased: { quote: params.facts.uncertaintyReleased.quote, nothingRead: params.facts.uncertaintyReleased.nothingRead } } : {}),
     previewDisclosure: params.actionKind === 'preview_ready'

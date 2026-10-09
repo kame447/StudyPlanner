@@ -1,3 +1,4 @@
+import { clockExpressionsGroundedByCalendar } from './weeklyPlanningCalendarClockGrounding';
 import { ADD_SCHEDULE_CONTROL_LABEL } from '../../../components/quickAddMenuLabels';
 import { evaluatedWeeklyPlanningConsultationDates } from '../application/weeklyPlanningConsultationCommunication';
 import {
@@ -456,7 +457,9 @@ function validateRenderedText(
     }));
   }
   if (
-    addsUnsupportedExpression(text, groundingInformation, CLOCK_EXPRESSION)
+    // P4 re-targeting (S2): a time inside a free window the application listed for the day is grounded by the calendar.
+    addsUnsupportedExpression(text, groundingInformation, CLOCK_EXPRESSION,
+      clockExpressionsGroundedByCalendar(text, input.communication?.calendarFree))
     || addsUnsupportedExpression(
       text,
       groundingInformation,

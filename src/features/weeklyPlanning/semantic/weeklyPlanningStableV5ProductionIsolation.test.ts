@@ -91,6 +91,10 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'dialogue/weeklyPlanningStableV5DialoguePrompt.ts',
   'dialogue/weeklyPlanningStableV5DialogueValidation.ts',
   'dialogue/weeklyPlanningStableV5TurnDialogue.ts',
+  // P3 S1: the held purpose of the pending question is derived from the renderer's own typed intent; the held role confirmation reads the active graph.
+  'application/weeklyPlanningHeldRoleConfirmationV5.ts',
+  'application/weeklyPlanningPlanningNeedsV5.ts',
+  'dialogue/weeklyPlanningHeldQuestionPurposeV5.ts',
   'dialogue/weeklyPlanningStableV5TurnDialogueTrace.ts',
   'trace/weeklyPlanningStableV5TraceRuntime.ts',
   'trace/weeklyPlanningTraceOutbox.ts',

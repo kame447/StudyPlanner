@@ -1,4 +1,5 @@
 import type { WeeklyPlanningMustConveyEntry } from './weeklyPlanningMustConvey';
+import type { CalendarFreeDayV5, PlanningNeedV5 } from '../application/weeklyPlanningPlanningNeedsV5';
 import type { WeeklyPlanningScheduleCommunicationIntent } from '../application/weeklyPlanningFixedEventOnlyInteraction';
 import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import type { WeeklyPlanningConsultationCommunication } from '../application/weeklyPlanningConsultationCommunication';
@@ -113,6 +114,10 @@ export interface WeeklyPlanningStableV5CommunicationContext {
   /** P2: typed facts the reply must convey; the application verifies the reply against them (retired appenders only). */
   mustConvey?: WeeklyPlanningMustConveyEntry[];
   /** A free-form point was released by the user's answer; the application states it (quote included) beside the reply. */
+  /** Open plan items (typed); the reply words them in its own words and asks no question for them. */
+  planningNeeds?: PlanningNeedV5[];
+  /** Free time per day of the period; the reply must not ask what this already answers. */
+  calendarFree?: CalendarFreeDayV5[];
   /** The presented question already invites the user's condition for the consulted task. */
   openPointCoversConsultation?: boolean;
   uncertaintyReleased?: { quote: string | null; nothingRead: boolean };

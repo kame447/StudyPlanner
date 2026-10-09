@@ -329,7 +329,7 @@ describe('A. explanation under a pending effort question', () => {
         },
         {
           "kind": "renderer",
-          "sha256": "43a9ac1294735b9a9bad609d21f85778b8dcca67dd7597d7441e1683055d4b2c",
+          "sha256": "e0e892d1c22e149d47004d5fd5de18d0bb227392f045428b245354e8485c833c",
         },
       ]
     `);
@@ -539,7 +539,7 @@ describe('B. aside followed by a short reply', () => {
           },
           {
             "kind": "renderer",
-            "sha256": "a8058fe8b6364d971d7ade3b9f8ee559b9d6ec83a22919f565c6c913222d45a2",
+            "sha256": "bf5bbc1e29459dc1d1cd1b22c5cdcd98f114f6befe26099a99eadc1eabbe21c8",
           },
         ],
         "shortReply": [
@@ -553,7 +553,7 @@ describe('B. aside followed by a short reply', () => {
           },
           {
             "kind": "renderer",
-            "sha256": "8ff800c6be2ca1bd7d23f087742284e1c08493f6080c9331badc295fac53b0a5",
+            "sha256": "9453c51f74ade1ba236e1b73f34cfc8c191f719368b34092145deef23c6ee3ec",
           },
         ],
       }

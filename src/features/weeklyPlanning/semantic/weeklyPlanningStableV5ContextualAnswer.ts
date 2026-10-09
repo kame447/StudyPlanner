@@ -722,7 +722,9 @@ export function applyWeeklyPlanningStableV5ContextualAnswer(
   if (evaluation.reason === 'target_unavailable') {
     return rejectUnavailableTarget(input);
   }
-  if (evaluation.reason === 'uncertainty_not_resolved'
+  // Interaction: a reading that does not answer the open question but carries independently valid details (a session length
+  // while the role of an amount is still unconfirmed) is admitted through the ordinary canonicalization, not swallowed.
+  if ((evaluation.reason === 'uncertainty_not_resolved' || evaluation.reason === 'quantity_role_not_grounded_in_user_text')
     && conversationArchitecturePolicy(input.conversationArchitecture).freshPendingQuestionBinding
     && (containsResolvedSemanticDelta(input.document) || (input.document.userContextFacts?.length ?? 0) > 0)) {
     return null;

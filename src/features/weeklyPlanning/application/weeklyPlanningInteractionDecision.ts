@@ -1,3 +1,4 @@
+import { isHeldRoleConfirmationV5 } from './weeklyPlanningHeldRoleConfirmationV5';
 import type { WeeklyPlanningQuestionContext } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
 import { decodeWeeklyPlanningStableV5QuestionSlot } from '../intake/weeklyPlanningStableV5QuestionSlot';
@@ -182,6 +183,8 @@ export function classifyWeeklyPlanningInteraction(params: {
   output: WeeklyPlanningTurnExecutionResult;
   previousQuestion: WeeklyPlanningQuestionContext | undefined;
   presentation: WeeklyPlanningQuestionPresentationFreshness;
+  /** The committed graph of the turn (for the held role confirmation). */
+  graph?: WeeklyPlanningFactGraphV5;
 }): WeeklyPlanningInteractionOutcome {
   const { acts } = params.plan;
   const consultationDeferred = acts.consultation;
@@ -209,6 +212,14 @@ export function classifyWeeklyPlanningInteraction(params: {
       : apply;
   }
   if (acts.shift || (acts.consultation && !params.plan.planningChanged)) {
+    return { kind: 'aside', consultationDeferred };
+  }
+  // The role confirmation of a declared amount was already presented: hold it (answerable, not re-presented).
+  if (isHeldRoleConfirmationV5({
+    previous: params.previousQuestion,
+    next: params.output.state.lastQuestionContext,
+    graph: params.graph,
+  })) {
     return { kind: 'aside', consultationDeferred };
   }
   return apply;

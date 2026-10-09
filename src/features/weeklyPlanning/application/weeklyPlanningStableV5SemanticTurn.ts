@@ -1,3 +1,5 @@
+import { heldQuestionPurposeFromRendererIntentV5 } from '../dialogue/weeklyPlanningHeldQuestionPurposeV5';
+import { readWeeklyPlanningPendingQuestionV5 } from '../semantic/weeklyPlanningPendingQuestionV5';
 import { getAiConfig, getAiConfigValidationMessage } from '../../../lib/aiConfig';
 import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import {
@@ -228,6 +230,13 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     publicStateSummary: stateSummary,
     schedulerContext: initialSchedulerContext,
     conversationArchitecture: architecturePolicy.architecture,
+    ...(architecturePolicy.freshPendingQuestionBinding
+      ? { heldQuestionPurpose: heldQuestionPurposeFromRendererIntentV5({
+          graph: runtimeSession.graph,
+          pendingQuestion: readWeeklyPlanningPendingQuestionV5(stateSummary),
+          registeredMaterials: stateSummary.registeredMaterials,
+        }) }
+      : {}),
   });
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: input.traceRequestId,

@@ -41,6 +41,7 @@ import {
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
 import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
+import { guardAnswerAgainstHeldPurposeV5, settleDeclaredAmountsV5, type HeldQuestionPurposeV5 } from './weeklyPlanningAnswerPurposeGuardV5';
 import { dropReReleasedUncertaintiesV5 } from './weeklyPlanningSemanticUncertaintyReleaseV5';
 import {
   finalizeWeeklyPlanningSemanticCanonicalizationV5,
@@ -63,6 +64,8 @@ export interface WeeklyPlanningSemanticPipelineInputV5
   graph?: WeeklyPlanningFactGraphV5;
   schedulerContext: GenericSchedulerInputContext;
   externalSources?: ExternalConstraintSourceSnapshot[];
+  /** The purpose of the pending question as the renderer was told (interaction only; never sent to the model). */
+  heldQuestionPurpose?: { purpose: HeldQuestionPurposeV5; ownerTaskId: string } | null;
 }
 
 export type WeeklyPlanningSemanticPipelineStatusV5 =
@@ -267,6 +270,32 @@ export function createWeeklyPlanningSemanticPipelineV5(
       }
 
       const pendingQuestion = readWeeklyPlanningPendingQuestionV5(publicStateSummary);
+      // Purpose-keyed binding (interaction only): a contribution that does not match what the shown question asked (a plan
+      // target answering a progress question) becomes a declared, role-unresolved fact, so the typed role confirmation asks.
+      if (conversationArchitecturePolicy(input.conversationArchitecture).freshPendingQuestionBinding) {
+        const held = input.heldQuestionPurpose ?? null;
+        const guarded = held ? guardAnswerAgainstHeldPurposeV5({ graph, document: normalization.document, held }) : null;
+        if (guarded && guarded.demoted > 0) {
+          normalization.document.tasks = guarded.document.tasks;
+          normalization.diagnostics.algorithmicRepairs = [
+            ...(normalization.diagnostics.algorithmicRepairs ?? []),
+            `answer-purpose-mismatch-declared:${guarded.demoted}`,
+          ];
+        }
+        // A typed restatement of a declared amount with its role (the later answer to the held role confirmation) settles it.
+        const settledDeclared = settleDeclaredAmountsV5({
+          graph,
+          document: normalization.document,
+          excludeWorkloadFactId: pendingQuestion?.questionCode === 'quantity_role_unresolved' ? pendingQuestion.targetFactId : null,
+        });
+        if (settledDeclared.settled > 0) {
+          normalization.document.corrections = settledDeclared.document.corrections;
+          normalization.diagnostics.algorithmicRepairs = [
+            ...(normalization.diagnostics.algorithmicRepairs ?? []),
+            `declared-amount-settled:${settledDeclared.settled}`,
+          ];
+        }
+      }
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.turnId,
         stage: 'pending_question_resolved',
