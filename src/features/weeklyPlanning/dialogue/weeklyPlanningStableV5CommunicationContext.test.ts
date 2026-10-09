@@ -196,3 +196,23 @@ describe('question purpose codes', () => {
     expect(purposes(null)).toEqual(['resolve_unclear_detail']);
   });
 });
+
+describe('the declared amount waiting for its role (P3 S1 / P2 mustConvey)', () => {
+  const need = { need: 'role_unresolved', workloadFactId: 'wpf_workload_1', quote: '合計2時間くらい', amount: 120, unitCode: 'minute' } as never;
+  const withNeed = facts({ planningNeeds: [need] });
+  it('a reply that asks a question carries NO declared_amount_waiting entry (the question conveys it)', () => {
+    const asking = communicationContextForStableV5Dialogue({
+      outcome: { kind: 'apply', consultationDeferred: false }, facts: withNeed, actionKind: 'question', questionCode: 'quantity_role_unresolved',
+      questionIntent: null,
+    });
+    expect(asking.askQuestion).toBe(true);
+    expect((asking.mustConvey ?? []).some(entry => entry.code === 'declared_amount_waiting')).toBe(false);
+  });
+  it('a held reply that asks nothing carries exactly one entry', () => {
+    const held = communicationContextForStableV5Dialogue({
+      outcome: { kind: 'apply', consultationDeferred: false }, facts: withNeed, actionKind: 'status', questionCode: null, questionIntent: null,
+    });
+    expect(held.askQuestion).toBe(false);
+    expect((held.mustConvey ?? []).filter(entry => entry.code === 'declared_amount_waiting')).toHaveLength(1);
+  });
+});

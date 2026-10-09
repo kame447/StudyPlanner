@@ -20,6 +20,10 @@ const EXTERNAL_DESTINATION = /https?:\/\/|www\.|(?<![a-z0-9.-])(?:[a-z0-9](?:[a-
 const APPLICATION_MUTATION_OUTCOME = /(?:保存|作成|登録|追加|削除|承認|反映|確定|適用|スケジュール)(?:を|が|は|も)?(?:しました|されました|いたしました|しています|できました|完了(?:しました|しています)?|済み(?:です|でした)?)/;
 const SENSITIVE_VALUE = /(?:パスワード|暗証番号|秘密情報|APIキー|アクセストークン|口座番号|クレジットカード)/i;
 const CLOCK_EXPRESSION = /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:午前|午後)?\s*(?:[01]?\d|2[0-3])\s*時(?:\s*(?:[0-5]?\d\s*分|半))?/g;
+// Interaction only: a duration (「1時間」) is not a clock time, so `時` followed by `間` is not a clock expression. Legacy keeps
+// CLOCK_EXPRESSION byte-identical. Declared P4 re-targeting: an invented duration is no longer caught by the accidental clock check
+// (fabricated workload is prevented structurally: amounts become facts only through typed acceptance).
+const INTERACTION_CLOCK_EXPRESSION = /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:午前|午後)?\s*(?:[01]?\d|2[0-3])\s*時(?!間)(?:\s*(?:[0-5]?\d\s*分|半))?/g;
 const DATE_EXPRESSION = /(?:今日|明日|明後日|今週|来週|週末)|\d{1,2}\s*月\s*\d{1,2}\s*日/g;
 const PREVIEW_COUNT_EXPRESSION = /(\d+)\s*件/g;
 // Interaction architecture: the renderer's own claim that candidates were made or changed.
@@ -458,8 +462,12 @@ function validateRenderedText(
   }
   if (
     // P4 re-targeting (S2): a time inside a free window the application listed for the day is grounded by the calendar.
-    addsUnsupportedExpression(text, groundingInformation, CLOCK_EXPRESSION,
-      clockExpressionsGroundedByCalendar(text, input.communication?.calendarFree))
+    addsUnsupportedExpression(
+      text,
+      groundingInformation,
+      conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome ? INTERACTION_CLOCK_EXPRESSION : CLOCK_EXPRESSION,
+      clockExpressionsGroundedByCalendar(text, input.communication?.calendarFree),
+    )
     || addsUnsupportedExpression(
       text,
       groundingInformation,

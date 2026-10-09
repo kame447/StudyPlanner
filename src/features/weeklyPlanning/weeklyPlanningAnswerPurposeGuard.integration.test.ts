@@ -370,6 +370,19 @@ describe('the waiting amount is a verified mustConvey fact (P2): omitted or cont
     const entry = waitingEntry(turn.calls.filter(call => call.kind === 'renderer').pop()!);
     expect(entry).toEqual({ code: 'declared_amount_waiting', factId: expect.stringMatching(/^wpf_workload_/), quote: BUDGET, amount: 120, unitCode: 'minute' });
   });
+  it('the role-question turn carries NO waiting entry (the question itself conveys it); only the next held turn carries exactly one', async () => {
+    install(liveF);
+    const conversation = open();
+    await conversation.submit(T1_UNQUANTIFIED);
+    const questionTurn = await conversation.submit(BUDGET);
+    const questionCalls = questionTurn.calls.filter(call => call.kind === 'renderer');
+    expect(questionCalls.length).toBeGreaterThan(0);
+    for (const call of questionCalls) expect(waitingEntry(call)).toBeUndefined();
+    const held = await conversation.submit(DELEGATE);
+    const entries = held.calls.filter(call => call.kind === 'renderer').map(waitingEntry).filter(Boolean);
+    expect(entries.length).toBeGreaterThan(0);
+    expect(new Set(entries.map(entry => JSON.stringify(entry))).size).toBe(1);
+  });
   it('a faithful reply passes (AI-written, writer + one verifier call)', async () => {
     const { turn, calls } = await heldTurn();
     expect(turn.result?.responseSource).toBe('ai');

@@ -92,9 +92,24 @@ describe('Stable V5 dialogue grounding boundary', () => {
     await expect(grounded.render(renderInput)).resolves.toMatchObject({
       status: 'rendered',
     });
-    await expect(inventedExamples.render(renderInput)).resolves.toMatchObject({
+    // legacy_v5 is unchanged: an invented duration is still caught by the clock pattern (「2時」 inside 「2時間」).
+    const legacyInput = { ...renderInput, conversationArchitecture: 'legacy_v5' as const };
+    await expect(createAiWeeklyPlanningStableV5DialogueRenderer(
+      config,
+      clientReturning(legacyInput, 'たとえば資料作成を2時間、返信を30分のように教えてください。'),
+    ).render(legacyInput)).resolves.toMatchObject({
       status: 'fallback',
       reason: 'ungrounded_text',
     });
+    // interaction: a real clock time that nothing grounds is still caught; an invented duration is the declared P4
+    // re-targeting (a duration is not a clock; amounts become facts only through typed acceptance).
+    await expect(createAiWeeklyPlanningStableV5DialogueRenderer(
+      config,
+      clientReturning(renderInput, 'たとえば資料作成を2時に始める、のように教えてください。'),
+    ).render(renderInput)).resolves.toMatchObject({
+      status: 'fallback',
+      reason: 'ungrounded_text',
+    });
+    await expect(inventedExamples.render(renderInput)).resolves.toMatchObject({ status: 'rendered' });
   });
 });

@@ -16,6 +16,14 @@ describe('clockExpressionsGroundedByCalendar', () => {
     expect(clockExpressionsGroundedByCalendar('21:00から22:00', free)).toEqual(['21:00', '22:00']);
     expect(clockExpressionsGroundedByCalendar('22:01', free)).toEqual([]);
   });
+  it('夜/晩/夕方 + h (h <= 11) is the evening hour; 朝 + h stays; a duration is never a clock', () => {
+    expect(clockExpressionsGroundedByCalendar('火曜の夜8時から9時は空いています', free)).toEqual(['8時', '9時']);
+    expect(clockExpressionsGroundedByCalendar('夕方5時から', free)).toEqual(['5時']);
+    expect(clockExpressionsGroundedByCalendar('朝9時から', free)).toEqual(['9時']);
+    expect(clockExpressionsGroundedByCalendar('朝8時から', free)).toEqual([]);
+    expect(clockExpressionsGroundedByCalendar('夜1時から', free)).toEqual([]);
+    expect(clockExpressionsGroundedByCalendar('月曜と水曜の夜に1時間ずつ空きがあります', free)).toEqual([]);
+  });
   it('a time outside every free window is not grounded', () => {
     expect(clockExpressionsGroundedByCalendar('朝の6:00から', free)).toEqual([]);
     expect(clockExpressionsGroundedByCalendar('13:00から', [{ date: '2026-10-14', freeMinutes: 360, windows: ['09:00-12:00', '18:00-21:00'] }])).toEqual([]);

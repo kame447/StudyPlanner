@@ -187,4 +187,21 @@ describe('Stable V5 semantic-uncertainty contextual answer', () => {
       targetFactId: 'uncertainty-breakdown',
     });
   });
+  it('the independent-detail admit is interaction-only: a legacy turn keeps the no-op, interaction hands the reading to the ordinary path', () => {
+    const run = (conversationArchitecture: 'interaction_v1' | 'legacy_v5') => applyWeeklyPlanningStableV5ContextualAnswer({
+      graph: graphWithPendingBreakdown(),
+      document: breakdownDocument({
+        retainedUncertaintyField: 'work_breakdown',
+        retainedUncertaintyTargetLocalId: 'task-current',
+      }),
+      pendingQuestion,
+      conversationId: 'conversation-1',
+      turnId: 'turn-2',
+      expectedRevision: 2,
+      userText: '数学のワークと古典の課題が残ってます。内訳はまだ分かりません。',
+      conversationArchitecture,
+    });
+    expect(run('interaction_v1')).toBeNull();
+    expect(run('legacy_v5')).not.toBeNull();
+  });
 });

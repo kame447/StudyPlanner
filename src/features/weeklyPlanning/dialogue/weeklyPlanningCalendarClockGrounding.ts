@@ -8,8 +8,15 @@ import type { CalendarFreeDayV5 } from '../application/weeklyPlanningPlanningNee
  * `calendarFree` nothing is grounded (today's behaviour). Interaction only (the field exists only there). No language is parsed
  * beyond the validator's own literal clock/date patterns.
  */
-const CLOCK = /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:午前|午後)?\s*(?:[01]?\d|2[0-3])\s*時(?:\s*(?:[0-5]?\d\s*分|半))?/g;
+// Same interaction pattern as the validator: a duration (「1時間」) is not a clock time.
+const CLOCK = /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:午前|午後)?\s*(?:[01]?\d|2[0-3])\s*時(?!間)(?:\s*(?:[0-5]?\d\s*分|半))?/g;
 const DATE = /(\d{1,2})\s*月\s*(\d{1,2})\s*日/g;
+
+/** 夜/晩/夕方 + h (5 <= h <= 11) means the evening hour (h + 12; 夜1時 stays 01:00); 朝 + h is h. Read from the words just before the clock. */
+function timeOfDayShift(text: string, index: number, hour: number): number {
+  const before = text.slice(Math.max(0, index - 2), index);
+  return hour >= 5 && hour <= 11 && /(?:夜|晩|夕方)$/u.test(before) ? 12 : 0;
+}
 
 function minutesOf(expression: string): number | null {
   const compact = expression.replace(/\s+/g, '').replace('：', ':');
@@ -38,9 +45,12 @@ export function clockExpressionsGroundedByCalendar(text: string, calendarFree: r
     ? calendarFree
     : calendarFree.filter((day) => named.some((date) => Number(day.date.slice(5, 7)) === date.month && Number(day.date.slice(8, 10)) === date.day));
   const windows = days.flatMap(windowsOf);
-  return [...text.matchAll(CLOCK)].map((match) => match[0]).filter((expression) => {
-    const minutes = minutesOf(expression);
+  return [...text.matchAll(CLOCK)].filter((match) => {
+    const parsed = minutesOf(match[0]);
+    // Only the bare 「N時」 form carries a time-of-day word before it (午前/午後 are part of the expression itself).
+    const shift = parsed !== null && /^\d{1,2}\s*時/.test(match[0]) ? timeOfDayShift(text, match.index ?? 0, Math.floor(parsed / 60)) : 0;
+    const minutes = parsed === null ? null : parsed + shift * 60;
     // The end of a window (22:00) is inside the free time as a boundary.
     return minutes !== null && windows.some((window) => minutes >= window.start && minutes <= window.end);
-  });
+  }).map((match) => match[0]);
 }

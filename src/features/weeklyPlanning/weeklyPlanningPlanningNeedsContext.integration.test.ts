@@ -57,6 +57,21 @@ describe('S2 (critic probe 46): a proposal with clock times from the calendar is
     expect(turn.result?.message).toContain('20:00から21:00');
     expect(turn.result?.message).not.toMatch(/100%|割合|何%/);
   });
+  it('probe 48: the owner\'s example 「月曜と水曜の夜に1時間ずつ空きがあります」 is an AI reply (a duration is not a clock time), no fallback, no percentage text', async () => {
+    const turn = await run('月曜と水曜の夜に1時間ずつ空きがあります。この時間で進めますか？');
+    expect(turn.result?.responseSource).toBe('ai');
+    expect(turn.result?.message).toContain('1時間ずつ');
+    expect(turn.result?.message).not.toMatch(/100%|割合|何%/);
+  });
+  it('probe 48: 「火曜の夜8時から9時は空いています」 is grounded as 20:00-21:00 inside the free window (AI reply)', async () => {
+    const turn = await run('火曜の夜8時から9時は空いています。この時間で卒研を進めますか？');
+    expect(turn.result?.responseSource).toBe('ai');
+    expect(turn.result?.message).not.toMatch(/100%|割合|何%/);
+  });
+  it('a real clock time stays checked in interaction: 「1時に」 (01:00) is outside every free window and falls back', async () => {
+    const turn = await run('火曜の1時に空きがあります。この時間で卒研を進めますか？');
+    expect(turn.result?.responseSource).not.toBe('ai');
+  });
   it('a time outside every free window of the period falls back (still ungrounded)', async () => {
     const turn = await run('来週は火曜の6:00から7:00が空いています。この時間で卒研を進めますか？');
     expect(turn.result?.responseSource).not.toBe('ai');
