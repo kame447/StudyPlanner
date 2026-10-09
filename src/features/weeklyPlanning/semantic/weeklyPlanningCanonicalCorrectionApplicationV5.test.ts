@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyWeeklyPlanningCanonicalCorrectionsV5,
+  isRedundantOrphanComponentV5,
+  isRedundantOrphanTaskV5,
   isRedundantSupportFactV5,
   pruneableSupportFactIdsV5,
 } from './weeklyPlanningCanonicalCorrectionApplicationV5';
@@ -330,5 +332,63 @@ describe('turn-created content that no correction installs is never deleted sile
     });
     expect(applied.status).toBe('rejected');
     expect(applied.errors.join('|')).toContain('correction-application:replacement-support-not-installed:');
+  });
+});
+
+describe('container redundancy helpers (X5d/X5e)', () => {
+  type Rec = Record<string, unknown>;
+  const active = (...ids: string[]) => ids.map(factId => ({ factId, status: 'active' }));
+  const component = (id: string, over: Rec = {}) => ({ id, taskId: 't', parentComponentId: null, role: 'section', label: '第2章', ...over });
+  const workload = (id: string, componentId: string | null) => ({ id, taskId: 't', componentId, quantityRole: 'target', amount: 1, unitCode: 'minute',
+    perOccurrence: false, periodExpression: null, rangeStart: null, rangeEnd: null });
+  const graph = (over: Rec) => ({ tasks: [], components: [], workloads: [], effortEstimates: [], temporalConstraints: [], recurrences: [],
+    studyContexts: [], factLifecycles: [], ...over }) as never;
+
+  describe('isRedundantOrphanComponentV5', () => {
+    const base = (orphan: Rec, extra: Rec = {}) => graph({ components: [component('target'), component('orphan', orphan)],
+      factLifecycles: active('target', 'orphan', ...((extra.activeIds as string[]) ?? [])), ...extra });
+    it('same role and label as a target component is redundant', () => {
+      expect(isRedundantOrphanComponentV5(base({}), 'orphan', new Set(['target']))).toBe(true);
+    });
+    it('a different label is content, not redundant', () => {
+      expect(isRedundantOrphanComponentV5(base({ label: '第3章' }), 'orphan', new Set(['target']))).toBe(false);
+    });
+    it('a different role is not redundant', () => {
+      expect(isRedundantOrphanComponentV5(base({ role: 'material' }), 'orphan', new Set(['target']))).toBe(false);
+    });
+    it('an active workload still hanging from it is not redundant', () => {
+      expect(isRedundantOrphanComponentV5(base({}, { workloads: [workload('w', 'orphan')], activeIds: ['w'] }), 'orphan', new Set(['target']))).toBe(false);
+    });
+    it('no target component (null) is not redundant', () => {
+      expect(isRedundantOrphanComponentV5(base({}), 'orphan', new Set([null]))).toBe(false);
+    });
+  });
+
+  describe('isRedundantOrphanTaskV5', () => {
+    const task = (id: string, over: Rec = {}) => ({ id, title: '数学の課題', category: 'study', ...over });
+    const context = (id: string, taskId: string, over: Rec = {}) => ({ id, taskId, purpose: 'self_study', contextLabel: null, ...over });
+    const base = (orphan: Rec, extra: Rec = {}) => graph({ tasks: [task('target'), task('orphan', orphan)],
+      studyContexts: [context('c1', 'target'), context('c2', 'orphan')],
+      factLifecycles: active('target', 'orphan', 'c1', 'c2', ...((extra.activeIds as string[]) ?? [])), ...extra });
+    it('same title, purpose and label is redundant', () => {
+      expect(isRedundantOrphanTaskV5(base({}), 'orphan', new Set(['target']))).toBe(true);
+    });
+    it('a different title (a stated rename) is not redundant', () => {
+      expect(isRedundantOrphanTaskV5(base({ title: '数学の宿題' }), 'orphan', new Set(['target']))).toBe(false);
+    });
+    it('a study context only on the orphan is content', () => {
+      const g = graph({ tasks: [task('target'), task('orphan')], studyContexts: [context('c2', 'orphan')], factLifecycles: active('target', 'orphan', 'c2') });
+      expect(isRedundantOrphanTaskV5(g, 'orphan', new Set(['target']))).toBe(false);
+    });
+    it('a different study purpose or label is not redundant', () => {
+      const g = graph({ tasks: [task('target'), task('orphan')], studyContexts: [context('c1', 'target'), context('c2', 'orphan', { contextLabel: '宿題' })],
+        factLifecycles: active('target', 'orphan', 'c1', 'c2') });
+      expect(isRedundantOrphanTaskV5(g, 'orphan', new Set(['target']))).toBe(false);
+    });
+    it('an active child still hanging from it is not redundant, unless that child is pruned too', () => {
+      const withChild = base({}, { workloads: [workload('w', null) && { ...workload('w', null), taskId: 'orphan' }], activeIds: ['w'] });
+      expect(isRedundantOrphanTaskV5(withChild, 'orphan', new Set(['target']))).toBe(false);
+      expect(isRedundantOrphanTaskV5(withChild, 'orphan', new Set(['target']), new Set(['w']))).toBe(true);
+    });
   });
 });

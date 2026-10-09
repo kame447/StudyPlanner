@@ -210,6 +210,24 @@ describe('X5-T2: a correction of an accepted time total', () => {
     expect(view.workloads.map(w => w.amount).sort((a, b) => a - b)).toEqual([20, 90]);
   });
 
+  it('critic probe 29: a replacement placed in a new component 第3章 is never silently deleted - disclosed recover, plan unchanged (canonical layer only)', async () => {
+    install('chapter', false, 'task');
+    const conv = open();
+    const first = await conv.submit(T1C);
+    expect(first.result?.draftCandidates.length).toBe(2);
+    const second = await conv.submit(T2C);
+    const errors = second.debugTrace.filter(e => e.stage === 'semantic_validation_result').map(e => JSON.stringify(e.data)).join('|');
+    expect(errors).not.toContain('support-not-installed');
+    const rejected = second.debugTrace.filter(e => e.stage === 'runtime_semantic_result_received').map(e => JSON.stringify(e.data)).join('|');
+    expect(rejected).toContain('replacement-container-not-installed');
+    expect(second.result?.interactionOutcome?.kind).toBe('recover');
+    expect(second.result?.message).toContain(UNCHANGED_SENTENCE);
+    const g = conv.graph()!;
+    const active = new Set(g.factLifecycles.filter(l => l.status === 'active').map(l => l.factId));
+    expect(g.components.filter(c => active.has(c.id)).map(c => c.label)).toEqual(['第2章']);
+    expect(conv.getState().previewCandidates?.length).toBe(2);
+  });
+
   it('critic probe 30: a rename inside a new task container is never silently lost - disclosed recover, the task keeps its title and the plan is unchanged', async () => {
     install('rename', false, 'task');
     const conv = open();
