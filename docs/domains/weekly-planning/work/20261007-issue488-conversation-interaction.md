@@ -833,3 +833,13 @@ Method: `vite build --sourcemap` of `ea0d871a` and of the fork point `22847120`.
   - **Residual:** the regression sets show 2 false `plan` in the "how many days" class (「週に何日くらい…」, 「何日くらいに分けて…」). This is accepted as low risk, because an amount given there is naturally a plan amount, unlike progress or availability answers.
 - **The role confirmation for a demoted amount** offers "amount for this plan" or "already done", plus "remaining" only when a scope total exists. Legacy keeps the original pair.
 - Typecheck is clean and the weeklyPlanning suite passes (4335 tests).
+- **Why the days-class residual is acceptable (critic 4283):**
+  - The purpose check matters only when the answer carries a **time budget** for the asked task.
+  - A "how many days" question is normally answered with days, a recurrence or a session length. Those readings carry no budget, so the check's result changes nothing.
+  - A total given there is plausibly the user's plan, and nothing in that class mixes past progress with the future (the F class).
+  - **If the hook is ever widened** beyond budget answers, for example to day or recurrence answers, this gate must be re-run.
+- **Live F on `44bf49eb` (S3a v2), 2026-10-10 02:10 JST:**
+  - **The demotion confirmation now offers the right choice:** 「今回の計画で進めたい量ですか、それともすでに終わった量ですか？」.
+  - **The held turn keeps the same choice** in natural words.
+  - **Variant F2** answers 「これからやる分です」. It then gets the 120-minute plan, and 「1回1時間くらいで」 turns it into two one-hour night sessions (Mon/Tue 21:00–22:00) in four turns.
+  - **F itself still fails the owner's criterion 6:** the first question still asks about progress, and a confirmation turn is needed. Proposing from the calendar (S3b) is the remaining step.
