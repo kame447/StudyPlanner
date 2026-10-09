@@ -1,6 +1,9 @@
 import { isWeeklyPlanningTurnDispatchBudgetExceeded } from '../application/weeklyPlanningTurnDispatchBudget';
 import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import { filterActiveWeeklyPlanningFactsV5 } from './weeklyPlanningFactLifecycleV5';
+import { createWeeklyPlanningSemanticRepairMessagesV5 } from './weeklyPlanningSemanticRepairPromptV5';
+import { validateWeeklyPlanningSemanticRepairPreservationV5 } from './weeklyPlanningSemanticRepairPreservationV5';
+import { markWeeklyPlanningSemanticRepairConsumedV5, weeklyPlanningSemanticRepairConsumedV5 } from './weeklyPlanningSemanticRepairLedgerV5';
 import { hasSelfSufficientConversationActV5 } from './weeklyPlanningConversationActsV5';
 import { weeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 import {
@@ -179,6 +182,88 @@ function initialReadingCarriesUnappliedDescription(
     const purpose = task.study?.purpose;
     return Boolean(context) && purpose !== undefined && purpose !== 'unknown' && purpose !== context?.purpose;
   });
+}
+
+async function repairInvalidCompletenessRetry(params: {
+  run: WeeklyPlanningSemanticNormalizerRunV5;
+  baseMessages: ChatMessage[];
+  invalidResponse: string;
+  validation: ReturnType<typeof validateWeeklyPlanningSemanticResponseV5>;
+  attemptCount: number;
+  validationErrors: string[];
+}): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
+  const repairMessages = createWeeklyPlanningSemanticRepairMessagesV5({
+    baseMessages: params.baseMessages,
+    invalidResponse: params.invalidResponse,
+    validationErrors: params.validation.errors,
+    conversationArchitecture: params.run.input.conversationArchitecture,
+  });
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.run.input.traceRequestId,
+    stage: 'semantic_repair_prepared',
+    severity: 'warn',
+    data: {
+      route: 'completeness_retry_repair',
+      invalidResponse: params.invalidResponse,
+      validationErrors: params.validation.errors,
+      repairMessages,
+      attemptCountBeforeRepair: params.attemptCount,
+    },
+  });
+  let repairedResponse: string;
+  try {
+    markWeeklyPlanningSemanticRepairConsumedV5(params.run);
+    repairedResponse = await params.run.callGeneric(repairMessages, 'repair');
+  } catch {
+    // Budget refusal or provider failure: the existing outcome for an invalid re-read applies.
+    return null;
+  }
+  const repaired = validateWeeklyPlanningSemanticResponseV5(repairedResponse, {
+    currentUserText: params.run.input.userText,
+    supplementalContext: params.run.input.supplementalContext,
+    selectedStarterTarget: params.run.input.selectedStarterTarget,
+    recentConversation: params.run.input.recentConversation,
+    publicStateSummary: params.run.input.publicStateSummary,
+    committedGraph: params.run.input.committedGraph,
+    conversationArchitecture: params.run.input.conversationArchitecture,
+  });
+  params.run.addAlgorithmicRepairs(repaired.algorithmicRepairs);
+  const preservationErrors = validateWeeklyPlanningSemanticRepairPreservationV5({
+    initialDocument: params.validation.providerDocument ?? null,
+    repairedDocument: repaired.document ? repaired.providerDocument ?? null : null,
+    initialErrors: params.validation.errors,
+    conversationArchitecture: params.run.input.conversationArchitecture,
+  });
+  const usable = Boolean(repaired.document) && preservationErrors.length === 0
+    && !isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
+      document: repaired.document!,
+      publicStateSummary: params.run.input.publicStateSummary,
+      conversationArchitecture: params.run.input.conversationArchitecture,
+      rereadAfterContradiction: true,
+    });
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.run.input.traceRequestId,
+    stage: 'semantic_validation_result',
+    severity: usable ? 'info' : 'error',
+    data: {
+      attempt: 'repair', route: 'completeness_retry_repair', accepted: usable,
+      errors: [...repaired.errors, ...preservationErrors], parsedDocument: repaired.parsedDocument,
+    },
+  });
+  if (!usable || !repaired.document) return null;
+  const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+    status: 'accepted',
+    document: repaired.document,
+    diagnostics: params.run.diagnostics({
+      attemptCount: params.attemptCount + 1,
+      repairAttempted: true,
+      validationErrors: params.validationErrors,
+      providerError: null,
+    }),
+  };
+  params.run.recordDecision(result, { route: 'schema_valid_noop_completeness_retry_repaired' });
+  acceptedNoOpRetryResponses.set(result, repairedResponse);
+  return result;
 }
 
 function rejectedNoOpRetryResult(params: {
@@ -564,6 +649,17 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
       return result;
     }
 
+    if (!shouldRetryAgain && !validation.document && !repairAttempted
+      && conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs
+      && !weeklyPlanningSemanticRepairConsumedV5(params.run)) {
+      // The final re-read is invalid and the turn's single semantic repair is unspent (the re-read
+      // does not mark the shared ledger): repair it once instead of losing the content (live X2-T3:
+      // a re-read carrying the deadline failed the date grammar with repair=0).
+      const repaired = await repairInvalidCompletenessRetry({
+        run: params.run, baseMessages: messages, invalidResponse: response, validation, attemptCount, validationErrors,
+      });
+      if (repaired) return repaired;
+    }
     if (!shouldRetryAgain
       && conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs
       && ((!validation.document

@@ -132,8 +132,9 @@ describe('every completion path that discards or cannot check a reading is discl
     expect(result.result?.message).not.toContain('この内容で仮予定にする');
     expect(conversation.getState().previewCandidates).toEqual(previewBefore);
     expect(conversation.graph()?.tasks).toEqual(graphBefore?.tasks);
-    // initial reading and its single re-read; no repair is added
-    expect(result.calls.filter(call => call.kind === 'semantic_generic')).toHaveLength(2);
+    // initial reading, its re-read and the turn's single repair of that invalid re-read (round 4b);
+    // the repair is still invalid here, so the outcome is unchanged and no further call is made
+    expect(result.calls.filter(call => call.kind === 'semantic_generic')).toHaveLength(3);
   });
 
   it('an invalid re-read that carries no change keeps the still-valid unchanged reading', async () => {
