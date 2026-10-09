@@ -528,3 +528,22 @@ Integration HEAD for app code: `167751ca` (docs since then only). E2E is **not c
 - verify passes 7,715 tests; every category is green; the legacy differential is unchanged;
 - browser: 9 failures, all also failing on main `22847120` (environment);
 - size: JS 2373.0 KiB raw / 642.8 KiB gzip, **over the cap and not raised**.
+
+**Size gate attribution (measured 2026-10-09; each tree built with `npm run build` and its own `scripts/ci/check-bundle-budget.mjs`):**
+
+| Tree | JS raw | JS gzip | Caps in that tree |
+| --- | --- | --- | --- |
+| Fork point `22847120` (merge-base) | 2,240,846 | 602,673 | 2,260,000 / 608,000. Passes |
+| `origin/main` `dfcfd300` (39 commits ahead of the fork) | 2,257,414 | 607,571 | 2,260,000 / 608,500. Passes, with 2,586 B and 929 B of headroom |
+| Branch `167751ca` | 2,429,928 | 658,213 | 2,260,000 / 608,000. **Fails** |
+
+- **Cause:** this Issue. The branch adds +189,082 B raw and +55,540 B gzip over the fork point:
+  - the eager `index` chunk, +111,429 B;
+  - the lazy weekly-planning runtime chunk, +76,630 B;
+  - other chunks, about +1 KB.
+- **Content:** about +10,000 lines (+575 KB of source text) across 147 non-test files. This is the interaction architecture itself: completeness re-reads, repairs, focused answers, disclosures, retention and dispatch budgets, and turn measurement.
+- **Not resolved by a cap raise.** The user's decision forbids passing by an easy raise. The budget counts all JS chunks, so code splitting would not reduce the total.
+- **The resolution needs a user decision:**
+  - (a) a measured, justified cap change before merge;
+  - (b) a reduction in Stage 3 (for example, removing the legacy architecture's shipped duplicate paths or production-only debug projections), which is a large refactor and therefore deferred until E2E works;
+  - (c) both.
