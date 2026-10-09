@@ -489,3 +489,19 @@ W4 RedFeynman (Sonnet 5.5, test-only) built it. The fixture has 15 events, 14 li
 - 「…判断できません」 once;
 - 「…収まる見込みです」 or a minute figure three times.
 The statements agree with the preview, so no false plan is claimed. A deterministic check of free text would need text matching, so this stays a prompt-compliance residual.
+
+**Live round 5 (`167751ca`, all 14 scenarios, scripts verbatim from round 4; run Friday 10/09, 21:40–21:50 JST): 7 of 14 pass strictly.**
+- **Pass:** A, F, G, H, X1, X3, EV.
+  - H T3 placed Wed 17:00–18:15.
+  - EV's repeated window question at T2 is legitimate, since no work had been given yet.
+- **Fail, but disclosed to the user:**
+  - B T4: 「青チャートのこと」 reads as a shell whose context label binding discards, so the B-T4 unusable message shows. The material is still not taken in (a known residual).
+  - C T2: a correction's replacement fact was never emitted (a dangling `replacementLocalId`), and the repair stayed invalid, so the turn recovered. C T3 then recovered its deadline through the re-read.
+  - D T3: the model dropped 「どっちも夜」 in both readings. The re-read ran, and **the nothing-read sentence was shown**, the second live disclosure from x6.
+  - E T3: the weekend constraints targeted a workload rather than the task, and the repair repeated it. That is not the self-reference shape; widening a workload constraint to the task would change meaning, so it is not projected.
+  - X5 T2: dangling replacements; after the repair, correction application rejected the turn.
+- **Fail, silent (lost context):** X2. The T1 rate 「物理は1問6分くらい」 was read as `duration_per_unit 6` with unitCode `minute`, which should be `problem`. The rate is ignored, and the app re-asks 「1問あたり何分」. Assigned as x8.
+- **Inconclusive:** X4. 「金曜までに」, said on Friday at 21:49, leaves almost no time, so the insufficient-capacity question is correct for the run time.
+- **No failure traces to this round's changes** (H-release, the neutral question, x6, x7).
+- The dangling-replacement family appeared in 2 of 14 runs (C, X5). The proposed X5f repair directive is blocked on the user's directive-cap decision.
+- Round 4 on `f4fa664a` passed 11 of 14 with a different mix of failures. With single samples per scenario, the difference is within model variance; it is not evidence of a regression.
