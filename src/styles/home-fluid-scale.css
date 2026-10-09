@@ -73,10 +73,6 @@
     font-size: clamp(1rem, 1.65vw, 1.18rem);
   }
 
-  .home-date-unit {
-    font-size: clamp(0.67rem, 1vw, 0.75rem);
-  }
-
   .home-top-actions {
     gap: 7px;
   }

@@ -17,6 +17,7 @@ import {
 } from '../../lib/homeNextPlanVisual';
 import { DEFAULT_HOME_SCENE_PREFERENCES, type HomeScenePreferences } from '../../lib/homeScenePreferences';
 import { HomeScene } from './HomeScene';
+import { HomePlanTitle } from './HomePlanTitle';
 import { buildPlanOccurrenceKey } from '../../lib/planRecurrence';
 import type { Actual, Plan, StudyMaterial, TodoTask } from '../../types/domain';
 import { useStudySessionLauncher } from '../StudySessionView';
@@ -235,7 +236,7 @@ export function NextPlanSection({
         <p className="home-eyebrow">次の予定</p>
         {nextPlan ? (
           <>
-            <h1>{nextPlan.title}</h1>
+            <HomePlanTitle key={nextPlan.id} title={nextPlan.title} />
             <div className="home-next-meta">
               <span><Clock aria-hidden="true" size={18} />{nextPlan.startTime} - {nextPlan.endTime}</span>
               <span>

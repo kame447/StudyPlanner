@@ -46,7 +46,7 @@ function state() {
   return {
     date: root.findByProps({ className: 'home-date-display' }).props.dateTime,
     rows: today.findAllByProps({ className: 'home-schedule-row' }).map(row => row.findByType('strong').children.join('')),
-    next: root.findByProps({ 'data-home-section': 'next-plan' }).findByType('h1').children.join(''),
+    next: root.findByProps({ 'data-home-section': 'next-plan' }).findByProps({ className: 'home-plan-title' }).children.join(''),
     sky: root.findByProps({ className: 'home-study-scene' }).props['data-scene-period'],
   };
 }
