@@ -105,8 +105,9 @@ VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
 VITE_FIREBASE_MESSAGING_SENDER_ID=your-messaging-sender-id
 VITE_FIREBASE_MEASUREMENT_ID=
 VITE_CLOUDFLARE_AI_PROXY_URL=https://your-worker-name.your-subdomain.workers.dev
-VITE_APP_ACCESS_KEY=shared-preview-key
 ```
+
+入口の共有キーは不要です。登録・ログイン、メール確認、初回のデータ保存同意と、ユーザーごとのアクセス権は引き続き必要です。旧 `VITE_APP_ACCESS_KEY` 設定や端末に残るキーは参照しません。
 
 Firestore Rules は次のコマンドでデプロイします。
 

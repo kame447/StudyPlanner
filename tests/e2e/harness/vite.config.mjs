@@ -60,7 +60,6 @@ export default defineConfig({
     'import.meta.env.VITE_FIREBASE_AUTH_DOMAIN': JSON.stringify(''),
     'import.meta.env.VITE_FIREBASE_PROJECT_ID': JSON.stringify(''),
     'import.meta.env.VITE_FIREBASE_APP_ID': JSON.stringify(''),
-    'import.meta.env.VITE_APP_ACCESS_KEY': JSON.stringify(''),
   },
   server: {
     host: '127.0.0.1',
