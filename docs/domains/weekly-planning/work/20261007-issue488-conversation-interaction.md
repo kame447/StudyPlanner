@@ -654,3 +654,19 @@ Method: `vite build --sourcemap` of `ea0d871a` and of the fork point `22847120`.
   - the owner's regressions (a) to (d), plus the original F script pinned as the pre-fix failure;
   - then a real-provider re-check.
 - **Same family, seen live earlier:** X5 r3 asked 「今、どのくらい進んでいますか？」 after a workload was lost.
+
+### Owner's dialogue-text requirements (Issue #488 comment #10 edited 2026-10-09T14:15:36Z; comment #11 2026-10-09T14:19:37Z, which takes priority)
+- **F, the question itself:**
+  - Asking the total first (「…合計どれくらい時間を使いたいですか？」) is also rejected. Internal slot order is never projected onto questions.
+  - Check the calendar and propose when possible; ask only for what planning needs and the calendar does not know.
+  - The pending question **holds** its target meaning (progress, availability, wish, per-session or days). An answer whose meaning does not match is never promoted.
+  - A per-day 「1時間くらい」 is never a weekly total.
+  - F stays a failure until re-run on the real provider, multi-turn.
+- **No fixed text on the normal path.** Only a minimal technical-error text is allowed when the AI cannot generate.
+  - The owner's audit names the app-appended notices on the AI-rendered branch: omission, constraint, capacity shortfall, retained preview, possible omission, not-applied, nothing-read and rate notices. It also names the `RuntimeQuestions` intent texts and the non-technical fallback texts.
+  - The direction: structured context goes to the AI, which writes the text, the order and the proposals; the app **verifies** each reply against the facts, and on failure regenerates, confirms meaning, or stops with a clear error.
+  - Validators and the trust boundary are not relaxed, and no falsehood may return.
+- **Status of this round's safety sentences:** the nothing-read (x6), rate (x8), not-applied (x10), free-form release and recovered-omission (x9b) sentences remain as **interim guards against silent loss**, not the final design.
+  - They stay until a verified replacement exists. Removing them first would bring back the falsehoods the owner forbids.
+  - x11 (an app question asking the planned total) is **halted** as superseded.
+  - A read-only fixed-text inventory (normal path versus failure-only, with call conditions) and a design proposal for verified AI-written text are assigned. The critic builds an independent inventory for comparison.
