@@ -204,4 +204,42 @@ describe('Stable V5 schedulable-work dialogue intent', () => {
     expect(payload.request).toContain('completion_progress_without_known_unitは具体的な単位/総量を発明せず');
     expect(payload.request).toContain('100%概算や工程を聞く');
   });
+  it('asks for study work, never for progress, when the open question targets a fixed commitment (live X1)', () => {
+    const fixedOnly = {
+      ...planningInformation,
+      tasks: [{ id: 'task-shift', title: '火曜のバイト', category: 'non_study', createdRevision: 1 }],
+      temporalConstraints: [{ id: 'tc-shift', taskId: 'task-shift', targetFactId: 'task-shift', kind: 'fixed_interval',
+        constraintLevel: 'hard' }],
+    };
+    const questionTarget = questionTargetForStableV5Dialogue({
+      planningInformation: fixedOnly,
+      targetFactId: 'task-shift',
+    });
+    expect(questionIntentForStableV5Dialogue({
+      questionCode: 'missing_schedulable_work',
+      questionTarget,
+      planningInformation: fixedOnly,
+    })).toEqual({
+      kind: 'schedulable_work_detail',
+      mode: 'missing_task_identity',
+      targetFactId: null,
+      progressBasis: null,
+      knownUnitCode: null,
+      knownUnitLabel: null,
+      requestedInformation: ['task_identity'],
+    });
+    // A non_study task without a fixed time keeps the progress question.
+    const noFixedTime = { ...fixedOnly, temporalConstraints: [] };
+    expect(questionIntentForStableV5Dialogue({
+      questionCode: 'missing_schedulable_work',
+      questionTarget: questionTargetForStableV5Dialogue({ planningInformation: noFixedTime, targetFactId: 'task-shift' }),
+      planningInformation: noFixedTime,
+    })).toMatchObject({ mode: 'existing_target_progress' });
+    // A study target keeps the progress question.
+    expect(questionIntentForStableV5Dialogue({
+      questionCode: 'missing_schedulable_work',
+      questionTarget: questionTargetForStableV5Dialogue({ planningInformation, targetFactId: 'task-slides' }),
+      planningInformation,
+    })).toMatchObject({ mode: 'existing_target_progress' });
+  });
 });

@@ -366,6 +366,16 @@ function resolutionIntent(params: {
   }
 }
 
+function isFixedCommitmentTask(planningInformation: Record<string, unknown> | null, taskId: string): boolean {
+  const constraints = planningInformation?.temporalConstraints;
+  return Array.isArray(constraints) && constraints.some((constraint) =>
+    typeof constraint === 'object' && constraint !== null
+    && (constraint as Record<string, unknown>).kind === 'fixed_interval'
+    && (constraint as Record<string, unknown>).constraintLevel === 'hard'
+    && ((constraint as Record<string, unknown>).taskId === taskId
+      || (constraint as Record<string, unknown>).targetFactId === taskId));
+}
+
 export function questionIntentForStableV5Dialogue(params: {
   questionCode: string | null;
   questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>;
@@ -380,6 +390,21 @@ export function questionIntentForStableV5Dialogue(params: {
         || params.questionTarget?.collection === 'components')
       && typeof fact?.id === 'string'
     ) {
+      // A fixed commitment (a non_study task pinned by a hard fixed_interval) has no study progress
+      // to report: the open question is whether there is study work to plan (live X1 asked
+      // 「どのくらい終わっていますか？」). A non_study task without a fixed time keeps the progress question.
+      if (params.questionTarget.collection === 'tasks' && fact.category === 'non_study'
+        && isFixedCommitmentTask(params.planningInformation ?? null, fact.id)) {
+        return {
+          kind: 'schedulable_work_detail',
+          mode: 'missing_task_identity',
+          targetFactId: null,
+          progressBasis: null,
+          knownUnitCode: null,
+          knownUnitLabel: null,
+          requestedInformation: ['task_identity'],
+        } as const;
+      }
       const registeredIntent = registeredMaterialTargetScopeIntent({
         planningInformation: params.planningInformation ?? null,
         questionTarget: params.questionTarget,

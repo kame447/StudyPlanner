@@ -421,7 +421,9 @@ function createRenderInput(params: {
     previewPromotionControlLabel,
     requiredLabels: requiredLabelsForStableV5Dialogue({
       planningInformation,
-      targetFactId,
+      // A question that asks for study work names no accepted target (a fixed commitment is context only).
+      targetFactId: questionIntent?.kind === 'schedulable_work_detail' && questionIntent.mode === 'missing_task_identity'
+        ? null : targetFactId,
       includePreviewPromotionControl: previewPromotionControlLabel !== null,
     }),
     conversationArchitecture: params.input.conversationArchitecture,

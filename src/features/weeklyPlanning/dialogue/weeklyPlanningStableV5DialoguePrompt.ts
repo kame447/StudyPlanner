@@ -221,21 +221,25 @@ const INTERACTION_GOAL_INSTRUCTIONS: Readonly<Record<WeeklyPlanningStableV5Commu
   explain_question: 'goal=explain_question: 直前の質問の理由・意味に、questionPurposes/purposeMeaningsと既知の量・期間・relevantLabelsに沿ってまず具体的に答える（required_before_resumeならACKの後）。質問の誤解は穏やかに正す。laterNeedsは説明に役立つときだけ使う。askQuestion=trueならrequestedInformationを落とさず、直前と同じ文面を避けて同じ質問を一度聞く。',
   acknowledge_aside: 'goal=acknowledge_aside: ユーザーが移った別の話題に自然に応じる。止まっている質問は聞かず、保留や未変更の説明もしない。',
   resume_question: 'goal=resume_question: その話題に自然に戻り、その質問を一つ聞く。',
-  clarify_turn: 'goal=clarify_turn: このメッセージは予定づくりに使えなかった。そのことの報告や理由、アプリの事情は書かず、うまく受け取れなかったことを短く自然に伝える（聞き返す形でもよい）。askQuestion=trueならその質問を聞く。falseなら、ユーザーがすでに言った教材・量・期間などを聞き直す質問はせず、伝えたいことを少しずつ分けて教えてほしいと頼む。同じ文面の再送は頼まない。',
+  clarify_turn: 'goal=clarify_turn: このメッセージは予定づくりに使えなかった。そのことの報告や理由、アプリの事情は書かず、うまく受け取れなかったことを短く自然に伝える（聞き返す形でもよい）。依頼の内容や実現できるかどうかには触れない（「進められません」等と言わない）。askQuestion=trueならその質問を聞く。falseなら、ユーザーがすでに言った教材・量・期間などを聞き直す質問はせず、伝えたいことを少しずつ分けて教えてほしいと頼む。同じ文面の再送は頼まない。',
 };
 
-const RETAINED_PREVIEW_RECOVERY_INSTRUCTION = 'goal=clarify_turn: Briefly say the change could not be used. Do not describe the current candidates or preview; the application states that beside your reply. Invite the specific edit, never splitting/rephrasing. askQuestion=true keeps that required question instead.';
+const RETAINED_PREVIEW_RECOVERY_INSTRUCTION = 'goal=clarify_turn: Briefly say the change could not be used. Do not describe the current candidates or preview; the application states that beside your reply. Say nothing about the content of the request or whether it is possible. Invite the specific edit, never splitting/rephrasing. askQuestion=true keeps that required question instead.';
 
 function interactionCommunicationInstructions(
   communication: WeeklyPlanningStableV5CommunicationContext | null,
   hasSelfRepair: boolean,
   hasRemovals: boolean,
+  previewCount: number,
 ): string[] {
   if (!communication) return [INTERACTION_GOAL_INSTRUCTION];
   return [
     INTERACTION_GOAL_INSTRUCTION,
     communication.goal === 'clarify_turn' && communication.retainedPreviewUnchanged
       ? RETAINED_PREVIEW_RECOVERY_INSTRUCTION : INTERACTION_GOAL_INSTRUCTIONS[communication.goal],
+    // One block is the typed fact; a split the user asked for is not represented, so the reply must not echo it (live X5).
+    ...(communication.goal === 'present_preview' && previewCount === 1
+      ? ['previewCount=1: 分割・複数回に触れず、ユーザーの「分けて」等を繰り返さない。'] : []),
     ...(communication.alternativeRequiresAdoption
       ? ['alternativeRequiresAdoption=true: This trial differs from the current preview. Never name/offer the promotion control; invite the user to say if they want to adopt it.'] : []),
     ...(communication.possibleCompletenessOmission
@@ -344,6 +348,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
             isRecord(input.planningInformation)
               && Array.isArray(input.planningInformation.removedThisTurn)
               && input.planningInformation.removedThisTurn.length > 0,
+            input.previewCount,
           )
         : [LEGACY_EXPLANATION_INSTRUCTION]),
       ...(interactionOutcome
