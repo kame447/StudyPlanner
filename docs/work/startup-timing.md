@@ -2,7 +2,7 @@
 
 Use `?startupTiming=1` on the application URL to opt into an in-memory diagnostic panel. Open “起動計測（端末内のみ）” after startup. A normal URL has no panel or measurements. Reload starts a new recording; no database, localStorage, cookies, network telemetry, or trace payload is added by this instrumentation.
 
-Rows contain only an anonymous sequence number, a fixed phase name, milliseconds from this page's monotonic performance clock, duration, and a pending/success/error/cancelled outcome. The recorder is capped at 80 rows and stops accepting new spans after the first visible Home observation. Existing pending spans may finish. No account IDs, schedule contents, request URLs, tokens, results, or raw error messages are retained. Startup timing is intentionally separate from AI conversation traces; it does not alter trace fields or retention.
+Rows contain only an anonymous sequence number, a fixed phase name, milliseconds from this page's monotonic performance clock, duration, and a pending/success/error/cancelled outcome. An `intro-complete` point additionally contains one fixed `introOutcome` value. The recorder is capped at 80 rows and stops accepting new spans after the first visible Home observation. Existing pending spans may finish. No account IDs, schedule contents, request URLs, tokens, results, or raw error messages are retained. Startup timing is intentionally separate from AI conversation traces; it does not alter trace fields or retention.
 
 ## Start from the existing app
 
@@ -21,11 +21,13 @@ A reload starts a new sample and does not recover timings from the previous docu
 - `schedule-snapshot`, `actuals`, `day-notes`, `todos`, `subjects`, `materials`, `templates`, `terms`, `periods`: separately measured full-load repository calls. The schedule snapshot supplies Plan and MonthEvent projections together. These calls run in parallel; do not sum them to infer critical-path duration. `plans` / `month-events` remain recognized diagnostic phase names for narrower or older consumers
 - `timetable-write`: canonicalization persistence call after the initial reads, not the pure transformation's CPU time
 - `bootstrap`: profile plus planner initialization. Error outcomes preserve the existing error handling/release behavior
+- `startup-wait-ended`: the existing startup surface's first committed non-loading state, and each later loading → non-loading transition before the first visible Home. This also records releases to sign-in, onboarding or recovery/error UI. It observes presentation waiting only; it does not declare successful authentication, consent or data readiness. Revoked session observations are ignored.
+- `intro-complete`: the committed terminal intro outcome, recorded once per document. `introOutcome` is exactly one of `ended`, `skipped`, `reduced-motion`, `autoplay-blocked`, `media-error`, or `stalled`. A recorded point's `success` means observation succeeded, not that media playback or data loading succeeded. The reason describes why intro presentation ended; it does not bypass application waiting.
 - `home-visible`: first animation-frame observation of a connected, laid-out Home with no splash. It approximates first usable Home, not a browser paint or complete image/font load metric
 
 A Home layout may contain recovery/error UI; inspect bootstrap/read outcomes before saying schedules loaded successfully. A run starting signed out includes human login time and must not be compared with an authenticated reload.
 
-Compare the first splash point to Home and inspect the spans between them. Record the exact deployed commit, browser/device and whether this is a new tab or a reload. Asset cache warmth, Firebase cache warmth and existing login are separate conditions. Production runs and development StrictMode's repeated effects are not equivalent; cancelled spans identify effect cleanup. Logged-out/onboarding runs legitimately have no `home-visible` point. A failed phase does not make the application successful merely because its splash ends.
+Compare the first splash point to Home and inspect the spans between them. Use `startup-wait-ended` and `intro-complete` to distinguish preparation waiting from intro presentation; read error outcomes still determine whether required data loaded successfully. Multiple wait-ended points describe separate wait exits (for example a failed read and a later manual retry), not one successful launch. Before/after-video Home timings, skipped/full-playback samples and backgrounded/foreground samples are not directly interchangeable. Record the exact deployed commit, browser/device and whether this is a new tab or a reload. Asset cache warmth, Firebase cache warmth and existing login are separate conditions. Production runs and development StrictMode's repeated effects are not equivalent; cancelled spans identify effect cleanup. Logged-out/onboarding runs legitimately have no `home-visible` point. A failed phase does not make the application successful merely because its splash ends.
 
 The panel adds opt-in observation overhead, so do not present sub-millisecond differences as a user-visible speedup. Unit/deferred and synthetic local-repository browser fixtures verify measurement, error identity and ordering, not actual Firebase or mobile latency. Never put private screenshots/fixture replacements into public Issues. Publish only a manually reviewed phase timing summary with environment context.
 
@@ -57,7 +59,7 @@ Compare alternatives using the same device, network, account, dataset, build and
 
 ### 起動ロゴの寿命
 
-認証未確定から同意・個別設定・bootstrap待ちまで、可視Splashは同じ外側の起動シェルに保つ。内側のセッションはepoch付きで分離するが、認証が確定しただけでSplashを交換しない。通常画面が準備できた時点で初めて表示を切り替える。
+認証未確定から同意・個別設定・bootstrap待ちまで、可視Splashは同じ外側の起動シェルに保つ。内側のセッションはepoch付きで分離するが、認証が確定しただけでSplashを交換しない。通常画面の準備とイントロの終了・skipの両方が揃って初めて表示を切り替える。準備だけが先に終わった場合は動画を維持し、既存のskip操作を有効にする。
 
 PR122の再発監視として、Splashの個数だけでなくcomponent/DOMの同一性をunknown-auth→verified-ownerで検証する。`splash-mounted`はmark-onceなので、診断値が1件であることだけでは再マウント不存在の証明にならない。アカウント切替・サインアウト後の新セッションは別の寿命であり、古いready通知を採用しない。
 

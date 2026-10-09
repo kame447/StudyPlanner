@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type PropsWithChildren } from 'react';
 
+import type { StartupIntroOutcome } from '../lib/startupTiming';
+
 const MEDIA_WAIT_LIMIT_MS = 4_000;
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
-export type StartupVideoOutcome = 'ended' | 'skipped' | 'reduced-motion' | 'autoplay-blocked' | 'media-error' | 'stalled';
+export type StartupVideoOutcome = StartupIntroOutcome;
 const isHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
 const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.(REDUCED_MOTION_QUERY).matches === true;
 
