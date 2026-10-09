@@ -202,4 +202,28 @@ describe('Stable V5 dialogue context', () => {
       includePreviewPromotionControl: true,
     })).toEqual(['この内容で仮予定にする']);
   });
+
+  it('legacy keeps the original role choices for a declared amount; interaction offers already-done work (critic 4279)', () => {
+    const withDeclared = {
+      ...planningInformation,
+      workloads: [...planningInformation.workloads, {
+        id: 'workload-declared', taskId: 'task-vocabulary', componentId: null, quantityRole: 'declared', amount: 120,
+        unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null,
+        createdRevision: 2,
+      }],
+    };
+    const questionTarget = questionTargetForStableV5Dialogue({ planningInformation: withDeclared, targetFactId: 'workload-declared' });
+    const legacy = questionIntentForStableV5Dialogue({
+      questionCode: 'quantity_role_unresolved', questionTarget, planningInformation: withDeclared,
+    });
+    expect(legacy).toEqual(expect.objectContaining({
+      kind: 'resolution_question', resolutionKind: 'quantity_role', allowedChoices: ['plan_target_amount', 'remaining_total_amount'],
+    }));
+    const interaction = questionIntentForStableV5Dialogue({
+      questionCode: 'quantity_role_unresolved', questionTarget, planningInformation: withDeclared, interaction: true,
+    });
+    expect(interaction).toEqual(expect.objectContaining({
+      kind: 'resolution_question', resolutionKind: 'quantity_role', allowedChoices: ['plan_target_amount', 'completed_amount'],
+    }));
+  });
 });
