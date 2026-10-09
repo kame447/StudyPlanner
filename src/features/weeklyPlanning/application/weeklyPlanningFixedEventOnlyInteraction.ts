@@ -23,8 +23,13 @@ export function fixedEventOnlyInteractionStatus(params: {
     || (params.compilation.input?.movableWorkItems.length ?? 0) > 0) return null;
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(params.graph);
   const reservations = params.compilation.input?.fixedTaskReservations ?? [];
-  const fixedTasksOnly = active.tasks.length > 0 && active.tasks.every(task => task.category === 'non_study'
-    && reservations.some(reservation => reservation.taskId === task.id));
+  const nonStudyOnly = active.tasks.length > 0 && active.tasks.every(task => task.category === 'non_study');
+  const fixedTasksOnly = nonStudyOnly && active.tasks.every(task => reservations.some(reservation => reservation.taskId === task.id));
+  // A typed decline of the presented optional invitation ends it wherever no study work exists, whether or
+  // not the fixed commitments resolved to reservations (outside the window, unresolved dates).
+  const declinedOptionalInvitation = params.declinedAdditionalWork
+    && params.previousQuestionSlot === 'stable_v5:missing_schedulable_work';
+  if (nonStudyOnly && declinedOptionalInvitation && !params.requestedEventRegistration) return 'no_additional_work';
   if (!fixedTasksOnly) {
     const emptyResolved = active.tasks.length === 0 && params.compilation.status === 'empty'
       && params.compilation.issues.length === 0;
@@ -33,8 +38,6 @@ export function fixedEventOnlyInteractionStatus(params: {
     const busyOnly = active.availabilityDeclarations.some(fact => fact.kind === 'unavailable' && fact.constraintLevel === 'hard');
     // The preceding closed, question-free status is retained by the compatibility state.
     // New planning details reopen ordinary routing; an unchanged acknowledgement does not.
-    const declinedOptionalInvitation = params.declinedAdditionalWork
-      && params.previousQuestionSlot === 'stable_v5:missing_schedulable_work';
     return (busyOnly && params.declinedAdditionalWork)
       || declinedOptionalInvitation
       || (!params.semanticChanged && params.previousOptionalInvitationClosed)

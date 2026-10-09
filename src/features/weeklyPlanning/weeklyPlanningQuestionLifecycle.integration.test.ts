@@ -190,6 +190,7 @@ describe('X3 negatives: only the matching dimension retires a required question 
   it.each([
     { field: 'work_breakdown', answer: 'rate_only' },
     { field: 'material_identity', answer: 'content_quantity' },
+    { field: 'work_breakdown', answer: 'replayed_workload' },
   ] as const)('$answer does not retire $field', async ({ field, answer }) => {
     install((text, call) => {
       const [taskId] = summaryTaskIds(call);
@@ -199,23 +200,25 @@ describe('X3 negatives: only the matching dimension retires a required question 
         localId: 'chem-material', existingPublicId: componentId, parentLocalId: null, role: 'material', label: '化学の参考書',
         workloads, durableContextSignals: [], sourceText: '化学の参考書',
       });
-      if (text === X3.T1) {
+      if (text !== X3.T3) {
         return emptyDocument({
           planningIntent: 'create_plan', planningWindow: nextWeek,
-          tasks: [studyTask({ localId: 'chem', title: '化学の参考書', activityKind: 'other', sourceText: '化学の参考書を進めたい',
-            decompositionStatus: 'needs_breakdown', components: [{ ...material([]), existingPublicId: null }] })],
-          uncertainties: [{ localId: 'u', targetLocalId: 'chem', field, reason: '未確定', sourceText: '化学の参考書を進めたい' }],
+          tasks: [studyTask({ localId: 'chem', title: '化学の参考書', activityKind: 'other', sourceText: '化学の参考書',
+            decompositionStatus: 'needs_breakdown',
+            components: [{ ...material(answer === 'replayed_workload' ? [workload('chapters', 3, 'chapter', '章', '3章ぶん')] : []), existingPublicId: null }] })],
+          uncertainties: [{ localId: 'u', targetLocalId: 'chem', field, reason: '未確定', sourceText: '化学の参考書' }],
         });
       }
       return emptyDocument({
         tasks: [studyTask({ localId: 'chem', existingPublicId: taskId, title: '化学の参考書', activityKind: 'other',
           sourceText: answer === 'rate_only' ? '1章40分' : '3章ぶん', decompositionStatus: 'needs_breakdown',
-          components: answer === 'content_quantity' ? [material([workload('chapters', 3, 'chapter', '章', '3章ぶん')])] : [],
+          // The identical workload restated without any existing id is a replay, not new structure.
+          components: answer !== 'rate_only' ? [material([workload('chapters', 3, 'chapter', '章', '3章ぶん')])] : [],
           effortEstimates: answer === 'rate_only' ? [perUnit('rate', 'chem', 40, 'chapter', '1章40分')] : [] })],
       });
     });
     const conversation = open();
-    await conversation.submit(X3.T1);
+    await conversation.submit(answer === 'replayed_workload' ? '来週、化学の参考書を3章ぶん進めたいけど、どう分けるか決めていない' : X3.T1);
     const turn = await conversation.submit(X3.T3);
     expect(turn.result?.failure).toBeUndefined();
     expect(createWeeklyPlanningActiveSchedulerGraphViewV5(conversation.graph()!).uncertainties.filter(u => u.field === field)).toHaveLength(1);

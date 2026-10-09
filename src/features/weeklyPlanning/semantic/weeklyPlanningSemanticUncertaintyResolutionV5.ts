@@ -69,13 +69,31 @@ export function hasWeeklyPlanningSemanticUncertaintyResolutionV5(params: {
       || (existingWorkloads.length === 0 && workloads.length === 0 && currentTotals.length > 0);
   };
 
+  // New structural evidence for the exact bound target. A replay is recognised by the existing typed
+  // restatement binding (same task/component and workload shape), never by local id novelty alone.
+  const contentWorkIsNew = (workload: WeeklyPlanningSemanticDocumentV5['tasks'][number]['workloads'][number]) =>
+    !bindings.workloadFactIdByLocalId[workload.localId]
+    && !active.workloads.some((existing) => existing.id === workload.localId)
+    && workload.unitCode !== 'minute' && workload.unitCode !== 'hour';
+  const hasNewStructure = (task: WeeklyPlanningSemanticDocumentV5['tasks'][number], taskMatches: boolean): boolean => {
+    const components = task.study?.components ?? [];
+    if (taskMatches && components.some((component) =>
+      !component.existingPublicId && !bindings.componentFactIdByLocalId[component.localId])) return true;
+    if (taskMatches && task.workloads.some(contentWorkIsNew)) return true;
+    return components.some((component) =>
+      (taskMatches || boundId(component.localId) === target) && component.workloads.some(contentWorkIsNew));
+  };
+
   for (const task of document.tasks) {
     const taskMatches = boundId(task.localId) === target;
     const components = task.study?.components ?? [];
     switch (uncertainty.field) {
       case 'work_breakdown':
         if (!taskMatches) break;
-        if (components.some((component) => !component.existingPublicId)) return true;
+        // New structure (a new constituent, or a new content quantity on the
+        // bound task or its components) is the same evidence a free-form field
+        // accepts; one predicate keeps the two question paths from diverging.
+        if (hasNewStructure(task, taskMatches)) return true;
         // The stated-time-budget contract permits atomic work without a
         // content quantity. A rate for already bounded content is its cost,
         // and cannot answer a still-open structure/material question (B).
@@ -101,23 +119,13 @@ export function hasWeeklyPlanningSemanticUncertaintyResolutionV5(params: {
         if (task.effortEstimates.some((estimate) => estimate.kind === uncertainty.field
           && (boundId(estimate.targetLocalId) === target || taskMatches))) return true;
         break;
-      default: {
+      default:
         // The schema deliberately leaves field names free-form (the live B
         // provider used "material"). Do not infer their meaning from that
         // string. A new constituent/content quantity is structural evidence;
         // known identity shells and cost/session/time-budget answers are not.
-        if (taskMatches && components.some((component) =>
-          !component.existingPublicId && !bindings.componentFactIdByLocalId[component.localId])) return true;
-        const contentWorkIsNew = (workload: WeeklyPlanningSemanticDocumentV5['tasks'][number]['workloads'][number]) =>
-          !bindings.workloadFactIdByLocalId[workload.localId]
-          && !active.workloads.some((existing) => existing.id === workload.localId)
-          && workload.unitCode !== 'minute' && workload.unitCode !== 'hour';
-        if (taskMatches && task.workloads.some(contentWorkIsNew)) return true;
-        if (components.some((component) =>
-          (taskMatches || boundId(component.localId) === target)
-          && component.workloads.some(contentWorkIsNew))) return true;
+        if (hasNewStructure(task, taskMatches)) return true;
         break;
-      }
     }
   }
   return false;
