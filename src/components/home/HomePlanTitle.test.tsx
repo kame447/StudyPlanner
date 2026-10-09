@@ -11,7 +11,10 @@ for (const title of ['情報資源総論', '非常に長い予定名の全文を
     act(() => { renderer = create(<HomePlanTitle title={title} />); });
     const trigger = renderer!.root.findByType('button');
     expect(trigger.props['aria-haspopup']).toBe('dialog');
-    expect(trigger.props['aria-label']).toContain(title);
+    expect(trigger.props['aria-label']).toBeUndefined();
+    expect(trigger.findByType('span').children).toEqual([title]);
+    expect(renderer!.root.findByProps({ id: trigger.props['aria-describedby'] }).children)
+      .toEqual(['予定名の全文を読む']);
     expect(renderer!.root.findAllByProps({ role: 'dialog' })).toHaveLength(0);
     act(() => trigger.props.onClick());
     const dialog = renderer!.root.findByProps({ role: 'dialog' });

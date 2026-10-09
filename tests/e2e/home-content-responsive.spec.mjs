@@ -33,7 +33,9 @@ for (const [width,height] of [[360,640],[390,844],[412,915],[430,932],[768,1024]
   test(`${width}x${height} long title retains metadata and reads full text`, async ({page},info) => {
     await page.setViewportSize({width,height}); await seed(page); await page.goto('/');
     await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible(); await separated(page);
-    const trigger = page.getByRole('button', {name:`予定名の全文を読む: ${TITLE}`,exact:true});
+    const trigger = page.getByRole('button', {name:TITLE,exact:true});
+    await expect(page.locator('[data-home-section="next-plan"]').getByRole('heading', { name: TITLE, exact: true })).toBeVisible();
+    await expect(trigger).toHaveAccessibleDescription('予定名の全文を読む');
     expect(await trigger.evaluate(e=>e.getBoundingClientRect().height<=2*parseFloat(getComputedStyle(e).lineHeight)+1)).toBe(true);
     const saved = await page.evaluate(()=>localStorage.getItem('studyplanner.plans'));
     await page.screenshot({path:info.outputPath('home.png')});
@@ -74,7 +76,7 @@ for (const width of [390, 1280]) {
     const settings = page.getByRole('main', { name: 'アプリ設定' });
     await expect(settings).toBeVisible();
     await page.goBack(); await expect(settings).toHaveCount(0);
-    const trigger = page.getByRole('button', { name: `予定名の全文を読む: ${TITLE}`, exact: true });
+    const trigger = page.getByRole('button', { name: TITLE, exact: true });
     await trigger.click();
     const dialog = page.getByRole('dialog', { name: '予定名の全文', exact: true });
     await expect(dialog).toBeVisible();

@@ -225,12 +225,36 @@ for (const viewport of VIEWPORTS) {
     await page.goto('/');
     if (viewport.textScale) await page.addStyleTag({ content: `:root { font-size: ${viewport.textScale}% !important; }` });
     await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
-    await expect
-      .poll(() => page.locator('.primary-app-header').getAttribute('data-home-chrome-viewport'))
-      .not.toBeNull();
+    if (viewport.textScale) {
+      // Enlarged text deliberately bypasses compact fitting and scrolls the Home body.
+      await expect(page.locator('.home-main > .home-dashboard-default'))
+        .toHaveAttribute('data-content-scroll', 'true');
+    } else {
+      await expect
+        .poll(() => page.locator('.primary-app-header').getAttribute('data-home-chrome-viewport'))
+        .not.toBeNull();
+    }
     await markPersistentChrome(page);
     await page.waitForTimeout(250);
     const home = await readChromeMetrics(page);
+    if (viewport.textScale) {
+      const dashboard = page.locator('.home-main > .home-dashboard-default');
+      await expect(dashboard).toHaveCSS('overflow-y', 'auto');
+      await dashboard.hover();
+      await page.mouse.wheel(0, 800);
+      await expect.poll(() => dashboard.evaluate(element => element.scrollTop))
+        .toBeGreaterThan(0);
+      expectChromeToMatchHome(await readChromeMetrics(page), home);
+      for (const button of await page.locator('.primary-app-header button, .primary-bottom-nav button').all()) {
+        await button.click({ trial: true });
+      }
+      expect(await page.evaluate(() => ({
+        top: document.documentElement.scrollTop,
+        body: document.body.scrollTop,
+        height: document.documentElement.scrollHeight,
+        client: document.documentElement.clientHeight,
+      }))).toEqual({ top: 0, body: 0, height: viewport.height, client: viewport.height });
+    }
     await page.screenshot({
       path: `artifacts/chrome-audit/${viewport.name}/home.png`,
       fullPage: false,
