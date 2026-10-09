@@ -97,6 +97,16 @@ function existingPlanIntervals(
 }
 
 /**
+ * The month editor's all-day shape (MonthEventDialog / lib/monthEvents): starts 00:00 and ends 24:00, 00:00 or 23:59.
+ * Whether an all-day entry withholds planning days is the user's product decision, so for now it is
+ * non-blocking unless explicitly flagged busy (interim policy, not a canonical rule).
+ */
+function isAllDayMonthEvent(event: MonthEvent): boolean {
+  return event.startTime === '00:00'
+    && (event.endTime === '24:00' || event.endTime === '00:00' || event.endTime === '23:59');
+}
+
+/**
  * A persisted MonthEvent is the user's own busy time exactly like a Plan row, independent of whether the
  * reading carries a constraint-source request. Recurrence, multi-day spans and 24:00 come from the shared
  * occurrence projection (`busy ?? true`, owner-checked); a foreign-owner event is ignored, never an error.
@@ -114,7 +124,8 @@ function monthEventIntervals(params: {
     startDate: sorted[0],
     endDate: sorted[sorted.length - 1],
     plans: [],
-    monthEvents: params.monthEvents.filter((event) => event.userId === ownerId),
+    monthEvents: params.monthEvents.filter((event) =>
+      event.userId === ownerId && (!isAllDayMonthEvent(event) || (event as { busy?: boolean }).busy === true)),
     scheduleTemplates: [],
   });
   const intervals: MinuteInterval[] = [];

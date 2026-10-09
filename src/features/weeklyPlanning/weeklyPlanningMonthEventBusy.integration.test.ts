@@ -69,22 +69,32 @@ describe('MonthEvent-backed busy time reaches the placement engine', () => {
     const blocks = await preview({ monthEvents: [make(target)] });
     expect(overlaps(blocks, target.date, target.startTime, target.endTime)).toEqual([]);
   });
-  it('a multi-day all-day MonthEvent keeps every covered day free', async () => {
-    const target = (await preview({}))[0];
-    const blocks = await preview({ monthEvents: [monthEvent(target, { startTime: '00:00', endTime: '24:00', endDate: target.date })] });
-    expect(blocks.filter(block => block.date === target.date)).toEqual([]);
+  it('interim policy: an all-day MonthEvent (any span, no busy flag) does not block; busy:true blocks every covered day', async () => {
+    const baseline = await preview({});
+    const target = baseline[0];
+    const allDay = { startTime: '00:00', endTime: '24:00', endDate: target.date };
+    expect(await preview({ monthEvents: [monthEvent(target, allDay)] })).toEqual(baseline);
+    expect((await preview({ monthEvents: [monthEvent(target, { ...allDay, busy: true })] })).filter(block => block.date === target.date)).toEqual([]);
+  });
+  it('W4-like: an all-day 「テスト期間」 over Monday-Friday leaves the preview unchanged', async () => {
+    const baseline = await preview({});
+    const week = monthEvent(baseline[0], { id: 'exam-week', title: 'テスト期間', date: '2026-10-12', endDate: '2026-10-16', startTime: '00:00', endTime: '24:00' });
+    expect(await preview({ monthEvents: [week] })).toEqual(baseline);
+    expect(await preview({ monthEvents: [week], architecture: 'legacy_v5' })).toEqual(await preview({ architecture: 'legacy_v5' }));
+  });
+  it('a multi-day TIMED span (a trip) blocks', async () => {
+    const baseline = await preview({});
+    const trip = monthEvent(baseline[0], { id: 'trip', title: '旅行', date: '2026-10-12', endDate: '2026-10-14', startTime: '08:00', endTime: '18:00' });
+    const blocks = await preview({ monthEvents: [trip] });
+    expect(blocks.filter(block => block.date === '2026-10-12' && minutes(block.endTime) > minutes('07:50'))).toEqual([]);
+    expect(blocks.filter(block => block.date === '2026-10-13')).toEqual([]);
+    expect(blocks.filter(block => block.date === '2026-10-14' && minutes(block.startTime) < minutes('18:10'))).toEqual([]);
   });
   it('a weekly repeating MonthEvent blocks its later occurrences too', async () => {
     const baseline = await preview({});
     const target = baseline[0];
     const blocks = await preview({ monthEvents: [monthEvent(target, { repeat: 'weekly', repeatUntil: null })] });
     expect(overlaps(blocks, target.date, target.startTime, target.endTime)).toEqual([]);
-  });
-  it('an all-day MonthEvent without a busy flag blocks its whole day; busy:false does not', async () => {
-    const target = (await preview({}))[0];
-    const allDay = { startTime: '00:00', endTime: '24:00', endDate: target.date };
-    expect((await preview({ monthEvents: [monthEvent(target, allDay)] })).filter(block => block.date === target.date)).toEqual([]);
-    expect(await preview({ monthEvents: [monthEvent(target, { ...allDay, busy: false })] })).toEqual(await preview({}));
   });
   it('both the MonthEvent and an existing_plans source request apply: the same blocks, no double effect', async () => {
     const target = (await preview({}))[0];

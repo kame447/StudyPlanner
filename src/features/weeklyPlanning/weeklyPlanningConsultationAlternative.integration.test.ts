@@ -96,9 +96,9 @@ describe('alternative placement consultation through the real turn controller', 
     expect(conversation.getState().previewCandidates?.every(candidate => ['2026-10-17', '2026-10-18'].includes(candidate.date))).toBe(true);
     expect(conversation.getState().previewCandidates).not.toEqual(preview);
   });
-  it('the alternative scheduler sees MonthEvent busy time: an all-day weekend MonthEvent makes the weekend not fit', async () => {
+  it('the alternative scheduler sees MonthEvent busy time: an explicitly busy all-day weekend MonthEvent makes the weekend not fit', async () => {
     const day = (date: string) => ({ id: `weekend-${date}`, userId: 'issue488-owner', date, endDate: date, title: '予定', startTime: '00:00',
-      endTime: '24:00', repeat: 'none' as const, repeatUntil: null, excludedDates: [], url: '', memo: '', checklist: [], locationTags: [],
+      endTime: '24:00', busy: true, repeat: 'none' as const, repeatUntil: null, excludedDates: [], url: '', memo: '', checklist: [], locationTags: [],
       createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z' });
     const conversation = createScriptedConversation({ provider, architecture: 'interaction_v1', studyMaterials: CAMPAIGN_MATERIALS,
       monthEvents: [day('2026-10-17'), day('2026-10-18')] });
