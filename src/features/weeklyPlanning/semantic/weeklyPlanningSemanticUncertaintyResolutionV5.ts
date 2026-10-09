@@ -5,6 +5,35 @@ import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './weeklyPlanning
 import { weeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 
 /**
+ * Uncertainty fields the code gives meaning to. Whether they block planning is readiness, which is
+ * deterministic: a model-declared `blocksPlanning:false` never waives them. Every other field name is
+ * free-form (the code cannot interpret it), so the model's typed flag is the only basis there.
+ * The resolution switch below and the pre-parse advisory stage share this one definition.
+ */
+export const WEEKLY_PLANNING_KNOWN_UNCERTAINTY_FIELDS_V5 = {
+  planningWindow: 'planningWindow',
+  planningWindowSnake: 'planning_window',
+  constraintSource: 'constraintSource',
+  workBreakdown: 'work_breakdown',
+  materialIdentity: 'material_identity',
+  quantityRole: 'quantityRole',
+  amount: 'amount',
+  totalDuration: 'total_duration',
+  durationPerUnit: 'duration_per_unit',
+  sessionDuration: 'session_duration',
+} as const;
+
+const KNOWN_UNCERTAINTY_FIELD_NAMES: ReadonlySet<string> = new Set(
+  Object.values(WEEKLY_PLANNING_KNOWN_UNCERTAINTY_FIELDS_V5),
+);
+
+export function isKnownWeeklyPlanningUncertaintyFieldV5(field: unknown): boolean {
+  return typeof field === 'string' && KNOWN_UNCERTAINTY_FIELD_NAMES.has(field);
+}
+
+const F = WEEKLY_PLANNING_KNOWN_UNCERTAINTY_FIELDS_V5;
+
+/**
  * A delta is not an answer to every open need. Match the validated payload's
  * dimension and exact bound target before implicitly retiring an uncertainty.
  * Free-form fields require a new structural contribution for the exact target;
@@ -35,11 +64,11 @@ export function hasWeeklyPlanningSemanticUncertaintyResolutionV5(params: {
     && (current.targetLocalId === null || target === null || boundId(current.targetLocalId) === target))) return false;
   // These are plan-wide dimensions; document-level uncertainties have no
   // target fact. A matching window/source payload answers only that dimension.
-  if (uncertainty.field === 'planningWindow' || uncertainty.field === 'planning_window') {
+  if (uncertainty.field === F.planningWindow || uncertainty.field === F.planningWindowSnake) {
     return document.planningWindow !== null
       && (target === null || graph.planningWindows.some((window) => window.id === target));
   }
-  if (uncertainty.field === 'constraintSource') {
+  if (uncertainty.field === F.constraintSource) {
     return target === null && document.constraintSourceRequests.length > 0;
   }
   if (!target) return false;
@@ -88,7 +117,7 @@ export function hasWeeklyPlanningSemanticUncertaintyResolutionV5(params: {
     const taskMatches = boundId(task.localId) === target;
     const components = task.study?.components ?? [];
     switch (uncertainty.field) {
-      case 'work_breakdown':
+      case F.workBreakdown:
         if (!taskMatches) break;
         // New structure (a new constituent, or a new content quantity on the
         // bound task or its components) is the same evidence a free-form field
@@ -99,23 +128,23 @@ export function hasWeeklyPlanningSemanticUncertaintyResolutionV5(params: {
         // and cannot answer a still-open structure/material question (B).
         if (hasCurrentTaskTimeBudget(task)) return true;
         break;
-      case 'material_identity':
+      case F.materialIdentity:
         if (weeklyPlanningMaterialIdentityAnswersV5(graph, document).some((answer) => answer.targetId === target)) return true;
         if (taskMatches && components.some((component) =>
           component.role === 'material' && !component.existingPublicId)) return true;
         break;
-      case 'quantityRole':
-      case 'amount': {
+      case F.quantityRole:
+      case F.amount: {
         const workloads = [...task.workloads, ...components.flatMap((component) => component.workloads)];
         if (workloads.some((workload) => boundId(workload.localId) === target
-          && (uncertainty.field !== 'quantityRole'
+          && (uncertainty.field !== F.quantityRole
             || workload.quantityRole === 'target' || workload.quantityRole === 'remaining'
             || workload.quantityRole === 'completed'))) return true;
         break;
       }
-      case 'total_duration':
-      case 'duration_per_unit':
-      case 'session_duration':
+      case F.totalDuration:
+      case F.durationPerUnit:
+      case F.sessionDuration:
         if (task.effortEstimates.some((estimate) => estimate.kind === uncertainty.field
           && (boundId(estimate.targetLocalId) === target || taskMatches))) return true;
         break;

@@ -313,6 +313,26 @@ const H = {
   T3: 'じゃあ水曜の夜にまとめて',
 };
 
+describe('known structural fields ignore blocksPlanning (readiness is deterministic)', () => {
+  it.each([
+    { field: 'material_identity', flag: false }, { field: 'material_identity', flag: true },
+    { field: 'work_breakdown', flag: false }, { field: 'work_breakdown', flag: true },
+  ] as const)('$field with blocksPlanning=$flag keeps the question and shows no preview', async ({ field, flag }) => {
+    install(() => emptyDocument({
+      planningIntent: 'create_plan', planningWindow: nextWeek,
+      tasks: [studyTask({ localId: 'chem', title: '化学の参考書', activityKind: 'other', sourceText: '化学の参考書を進めたい',
+        decompositionStatus: 'needs_breakdown', components: [] })],
+      uncertainties: [{ localId: 'u', targetLocalId: 'chem', field, reason: '未確定', sourceText: '化学の参考書', blocksPlanning: flag }],
+    }));
+    const conversation = open();
+    const turn = await conversation.submit('来週、化学の参考書を進めたい');
+    expect(turn.result?.failure).toBeUndefined();
+    expect(createWeeklyPlanningActiveSchedulerGraphViewV5(conversation.graph()!).uncertainties.filter(u => u.field === field)).toHaveLength(1);
+    expect(questionSlot(conversation)).toBe('stable_v5:semantic_uncertainty');
+    expect(turn.result?.draftCandidates).toEqual([]);
+  });
+});
+
 describe('H: a consultation is not a blocking uncertainty unless the model declares that it blocks', () => {
   function installH(blocksPlanning: boolean | undefined, architecture: WeeklyPlanningConversationArchitecture = 'interaction_v1') {
     install((text, call) => {

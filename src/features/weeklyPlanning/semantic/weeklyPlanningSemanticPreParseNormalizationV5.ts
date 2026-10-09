@@ -28,6 +28,7 @@ import {
 import {
   normalizeResolvedProgressWorkloadsV5,
 } from './weeklyPlanningResolvedProgressNormalizationV5';
+import { isKnownWeeklyPlanningUncertaintyFieldV5 } from './weeklyPlanningSemanticUncertaintyResolutionV5';
 import {
   normalizeTaskDecompositionUncertaintiesV5,
 } from './weeklyPlanningTaskDecompositionNormalizationV5';
@@ -226,8 +227,9 @@ function normalizeEmptySemanticDeltaEnvelopeV5(
 
 /**
  * Interaction architecture: `blocksPlanning:false` uncertainties are dropped before any other stage
- * (so no later invariant derives from them), and the flag is removed from the kept ones. Applies to
- * every field uniformly; an absent flag keeps the uncertainty blocking. A non-boolean flag is left in
+ * (so no later invariant derives from them), and the flag is removed from the kept ones. Honoured only
+ * for free-form fields: the known structural fields (see the resolution module) ignore `false`, because
+ * their readiness is deterministic. An absent flag keeps the uncertainty blocking. A non-boolean flag is left in
  * place so validation rejects it. Legacy documents have no flag and are untouched.
  */
 function normalizeAdvisoryUncertaintiesV5(rawResponse: string): RawNormalizationResult {
@@ -244,12 +246,15 @@ function normalizeAdvisoryUncertaintiesV5(rawResponse: string): RawNormalization
   let dropped = 0;
   const uncertainties = parsed.uncertainties
     .filter((entry) => {
-      const advisory = isRecord(entry) && entry.blocksPlanning === false;
+      // Known structural fields stay blocking by construction: readiness is deterministic.
+      const advisory = isRecord(entry) && entry.blocksPlanning === false
+        && !isKnownWeeklyPlanningUncertaintyFieldV5(entry.field);
       if (advisory) dropped += 1;
       return !advisory;
     })
     .map((entry) => {
-      if (!isRecord(entry) || entry.blocksPlanning !== true) return entry;
+      // A kept entry's flag (true, or false on a known field) is stripped; a non-boolean flag stays for validation.
+      if (!isRecord(entry) || typeof entry.blocksPlanning !== 'boolean') return entry;
       const { blocksPlanning: _blocks, ...rest } = entry;
       return rest;
     });

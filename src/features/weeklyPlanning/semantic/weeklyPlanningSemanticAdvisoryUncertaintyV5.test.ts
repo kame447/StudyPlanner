@@ -4,6 +4,7 @@ import {
   WEEKLY_PLANNING_SEMANTIC_LEGACY_RESPONSE_FORMAT_V5,
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT_V5,
 } from './weeklyPlanningSemanticSchemaV5';
+import { WEEKLY_PLANNING_KNOWN_UNCERTAINTY_FIELDS_V5 } from './weeklyPlanningSemanticUncertaintyResolutionV5';
 import { createWeeklyPlanningSemanticMeaningPolicyV5 } from './weeklyPlanningSemanticMeaningPolicyV5';
 
 const uncertainty = (field: string, flag?: unknown) => ({
@@ -17,13 +18,16 @@ const raw = (uncertainties: unknown[]) => JSON.stringify({
 });
 
 describe('advisory uncertainty (blocksPlanning), interaction only (Issue #488 H)', () => {
-  it('drops blocksPlanning:false for every field uniformly and strips the flag from kept entries', () => {
-    const fields = ['one_day_completion_feasibility', 'work_breakdown', 'material', 'material_identity'];
+  it('drops blocksPlanning:false only for free-form fields; known structural fields stay blocking; the flag is stripped', () => {
+    const freeForm = ['one_day_completion_feasibility', 'material', '自由な項目'];
+    const known = Object.values(WEEKLY_PLANNING_KNOWN_UNCERTAINTY_FIELDS_V5);
     const result = normalizeWeeklyPlanningSemanticPreParseV5({
-      rawResponse: raw([...fields.map((field) => uncertainty(field, false)), uncertainty('kept-true', true), uncertainty('kept-absent')]),
+      rawResponse: raw([...freeForm.map((field) => uncertainty(field, false)), ...known.map((field) => uncertainty(field, false)),
+        ...known.map((field) => uncertainty(`${field}`, true)), uncertainty('kept-true', true), uncertainty('kept-absent')]),
     });
     const parsed = JSON.parse(result.rawResponse) as { uncertainties: Array<Record<string, unknown>> };
-    expect(parsed.uncertainties.map((entry) => entry.field)).toEqual(['kept-true', 'kept-absent']);
+    expect(parsed.uncertainties.map((entry) => entry.field)).toEqual([...known, ...known, 'kept-true', 'kept-absent']);
+    const fields = freeForm;
     expect(parsed.uncertainties.every((entry) => !('blocksPlanning' in entry))).toBe(true);
     expect(result.repairs).toContain(`advisory-uncertainty-not-committed:${fields.length}`);
   });
