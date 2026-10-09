@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateReplyVerifierResponse, literalRequirementFailures, replyDigitRuns, replyDurationMinutes } from './weeklyPlanningReplyVerification';
+import { createReplyVerifierMessages, evaluateReplyVerifierResponse, literalRequirementFailures, replyDigitRuns, replyDurationMinutes } from './weeklyPlanningReplyVerification';
 import type { WeeklyPlanningMustConveyEntry } from './weeklyPlanningMustConvey';
 
-const entry = (requiredMinutes: number, unmet: Array<{ label: string; minutes: number }> = []): WeeklyPlanningMustConveyEntry =>
-  ({ code: 'shortfall', requiredMinutes, unmet, moreCount: 0 });
+const entry = (requiredMinutes: number, unmet: Array<{ label: string; minutes: number }> = [], moreCount = 0): WeeklyPlanningMustConveyEntry =>
+  ({ code: 'shortfall', requiredMinutes, unmet, moreCount });
 const fails = (text: string, e: WeeklyPlanningMustConveyEntry) => literalRequirementFailures(text, [e]).length > 0;
 
 describe('V3 literal requirements', () => {
@@ -31,11 +31,50 @@ describe('V3 literal requirements', () => {
 describe('V2 verdict evaluation', () => {
   const entries = [entry(240)];
   it('a forbidden claim fails even when every verdict is stated_accurately', () => {
-    const raw = JSON.stringify({ verdicts: [{ code: 'shortfall', verdict: 'stated_accurately' }], forbidden: ['plan_fits'] });
+    const raw = JSON.stringify({ verdicts: [{ key: 'shortfall', verdict: 'stated_accurately' }], forbidden: ['plan_fits'] });
     expect(evaluateReplyVerifierResponse(raw, entries)).toEqual({ ok: false, reason: 'verdict', failedCodes: [], forbidden: ['plan_fits'] });
   });
   it('accurate and nothing forbidden passes', () => {
-    const raw = JSON.stringify({ verdicts: [{ code: 'shortfall', verdict: 'stated_accurately' }], forbidden: [] });
+    const raw = JSON.stringify({ verdicts: [{ key: 'shortfall', verdict: 'stated_accurately' }], forbidden: [] });
     expect(evaluateReplyVerifierResponse(raw, entries)).toEqual({ ok: true });
+  });
+});
+
+describe('shortfall: the further unmet items (V3) and the verifier definition (V2)', () => {
+  const item = [{ label: '物理・力学', minutes: 720 }];
+  it('requires the moreCount number when there are further items', () => {
+    expect(fails('合計1808分。物理・力学（720分）が入りません', entry(1808, item, 3))).toBe(true);
+    expect(fails('合計1808分。物理・力学（720分）とほか3件が入りません', entry(1808, item, 3))).toBe(false);
+    expect(fails('合計1808分。物理・力学（720分）が入りません', entry(1808, item, 0))).toBe(false);
+  });
+  it('the verifier prompt separates the plan total from the unmet work and names the further items', () => {
+    const system = createReplyVerifierMessages({ entries: [entry(1808, item, 3)], text: 'x' })[0].content;
+    expect(system).toContain('planTotalMinutes is NOT the amount that did not fit');
+    expect(system).toContain('furtherUnmetItemCount is above zero');
+    const user = JSON.parse(createReplyVerifierMessages({ entries: [entry(1808, item, 3)], text: 'x' })[1].content);
+    expect(user.required[0]).toMatchObject({ key: 'shortfall', planTotalMinutes: 1808, furtherUnmetItemCount: 3 });
+  });
+});
+
+describe('declared_amount_waiting (P3 S1 payload; derivation elsewhere)', () => {
+  const waiting = (amount: number, unitCode: 'minute' | 'hour', quote = '合計2時間くらい'): WeeklyPlanningMustConveyEntry =>
+    ({ code: 'declared_amount_waiting', factId: 'wpf_workload_1', quote, amount, unitCode });
+  it('V3: the quote or the amount (declared unit or equivalent hours/minutes) must appear', () => {
+    expect(fails('合計2時間くらいというお話はまだ使っていません', waiting(120, 'minute'))).toBe(false);
+    expect(fails('2時間の分はまだ使っていません', waiting(120, 'minute'))).toBe(false);
+    expect(fails('120分の分はまだ使っていません', waiting(2, 'hour'))).toBe(false);
+    expect(fails('お話の分はまだ使っていません', waiting(120, 'minute'))).toBe(true);
+  });
+  it('is keyed by code and fact id, so two waiting amounts need two verdicts', () => {
+    const entries = [waiting(120, 'minute'), { ...waiting(60, 'minute'), factId: 'wpf_workload_2' } as WeeklyPlanningMustConveyEntry];
+    const one = JSON.stringify({ verdicts: [{ key: 'declared_amount_waiting:wpf_workload_1', verdict: 'stated_accurately' }], forbidden: [] });
+    expect(evaluateReplyVerifierResponse(one, entries)).toEqual({ ok: false, reason: 'malformed' });
+    const both = JSON.stringify({ verdicts: entries.map(e => ({ key: e.code === 'declared_amount_waiting' ? `${e.code}:${e.factId}` : e.code, verdict: 'stated_accurately' })), forbidden: [] });
+    expect(evaluateReplyVerifierResponse(both, entries)).toEqual({ ok: true });
+  });
+  it('adding the code does not change the shortfall request', () => {
+    const shortfallOnly = createReplyVerifierMessages({ entries: [entry(240)], text: 'x' })[1].content;
+    expect(shortfallOnly).not.toContain('statedAmount');
+    expect(createReplyVerifierMessages({ entries: [waiting(120, 'minute')], text: 'x' })[0].content).toContain('NOT used in the plan yet');
   });
 });

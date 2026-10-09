@@ -6,7 +6,21 @@ import type { WeeklyPlanningCapacityShortfall } from '../application/weeklyPlann
  * (`weeklyPlanningReplyVerification`). A fact appears here only once its fixed-text appender is RETIRED: until then the
  * application sentence is appended as before and the renderer is told not to word it.
  */
-export type WeeklyPlanningMustConveyEntry = {
+export type WeeklyPlanningMustConveyEntry = WeeklyPlanningShortfallMustConvey | WeeklyPlanningDeclaredAmountWaitingMustConvey;
+
+/**
+ * P3 S1 (derivation owned by MistyFabre, verification here): a declared amount whose role confirmation was already
+ * presented and is held, so the amount waits for the user's choice and is not used yet. `quote` is the user's own words.
+ */
+export type WeeklyPlanningDeclaredAmountWaitingMustConvey = {
+  code: 'declared_amount_waiting';
+  factId: string;
+  quote: string;
+  amount: number;
+  unitCode: 'minute' | 'hour';
+};
+
+export type WeeklyPlanningShortfallMustConvey = {
   code: 'shortfall';
   /** Total minutes the plan needs (the figure the reply must state). */
   requiredMinutes: number;
@@ -16,6 +30,11 @@ export type WeeklyPlanningMustConveyEntry = {
 };
 
 export type WeeklyPlanningMustConveyCode = WeeklyPlanningMustConveyEntry['code'];
+
+/** Identity of one entry in a verdict list: the code, plus the fact id when several entries of a code can coexist. */
+export function mustConveyKey(entry: WeeklyPlanningMustConveyEntry): string {
+  return entry.code === 'declared_amount_waiting' ? `${entry.code}:${entry.factId}` : entry.code;
+}
 
 /** Appenders whose fixed text has been replaced by a verified AI sentence. Slice 1 retires the capacity shortfall only. */
 export const WEEKLY_PLANNING_RETIRED_APPENDERS: ReadonlySet<WeeklyPlanningMustConveyCode> = new Set<WeeklyPlanningMustConveyCode>(['shortfall']);

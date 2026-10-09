@@ -105,8 +105,8 @@ function overload(summary: Json): Json {
 
 /** A verifier that accepts every required code (the honest default); fault tests script their own. */
 export function acceptingReplyVerifierReply(call: ScriptedProviderCall): string {
-  const required = (call.payload?.required as Array<{ code: string }> | undefined) ?? [];
-  return JSON.stringify({ verdicts: required.map(item => ({ code: item.code, verdict: 'stated_accurately' })), forbidden: [] });
+  const required = (call.payload?.required as Array<{ key: string }> | undefined) ?? [];
+  return JSON.stringify({ verdicts: required.map(item => ({ key: item.key, verdict: 'stated_accurately' })), forbidden: [] });
 }
 
 export function installExamOverloadProvider(

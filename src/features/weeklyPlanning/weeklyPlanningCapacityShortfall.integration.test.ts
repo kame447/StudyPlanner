@@ -50,11 +50,11 @@ describe('B3: the AI-rendered reply', () => {
   const ASK = 'いくつかの作業が今の期間に入りきりませんでした。期間を延ばすか、量を減らすか、使える時間を増やせるか、どれがよいですか？';
   it('the renderer is told to state the figures; a faithful AI reply is shown as AI text with no fixed sentence appended (P2: verified)', async () => {
     const mustConvey = (call: ScriptedProviderCall) => (((call.payload?.applicationDecision as Json)?.communication as Json)?.mustConvey as Json[] | undefined)?.[0] as
-      { requiredMinutes: number; unmet: Array<{ label: string; minutes: number }> } | undefined;
+      { requiredMinutes: number; moreCount: number; unmet: Array<{ label: string; minutes: number }> } | undefined;
     provider = installExamOverloadProvider(30, false, false, (call) => {
       const fact = mustConvey(call);
       return scriptedRendererReply(call, fact
-        ? `${ASK}${fact.unmet.map(item => `${item.label}（約${item.minutes}分）`).join('、')}が入らず、必要な時間は合計${fact.requiredMinutes}分です。`
+        ? `${ASK}${fact.unmet.map(item => `${item.label}（約${item.minutes}分）`).join('、')}${fact.moreCount > 0 ? `とほか${fact.moreCount}件` : ''}が入らず、必要な時間は合計${fact.requiredMinutes}分です。`
         : 'わかりました。');
     });
     const conv = createScriptedConversation({ provider, plans: examBusyPlans, architecture: 'interaction_v1', weekStartDate: '2026-10-12', now: () => '2026-10-09T09:00:00.000Z' });

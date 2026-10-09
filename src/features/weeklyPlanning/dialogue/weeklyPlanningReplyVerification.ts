@@ -1,5 +1,5 @@
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
-import type { WeeklyPlanningMustConveyEntry } from './weeklyPlanningMustConvey';
+import { mustConveyKey, type WeeklyPlanningMustConveyEntry } from './weeklyPlanningMustConvey';
 
 /**
  * Verification of an AI-written reply against typed facts (Issue #488 P2). No Japanese parsing:
@@ -38,6 +38,76 @@ export interface WeeklyPlanningLiteralFailure {
   missingLabels: string[];
 }
 
+/**
+ * One handler per mustConvey code (the compiler requires a handler for every code of the union, so a new code is added
+ * HERE without touching another code's logic): its V3 check, the fact shown to the verifier, its definition for the
+ * verifier's system prompt, and the forbidden claims that are false whenever the fact holds.
+ */
+interface ReplyLiterals {
+  text: string;
+  runs: ReadonlySet<string>;
+  durations: ReadonlySet<number>;
+}
+
+interface MustConveyHandler<E extends WeeklyPlanningMustConveyEntry> {
+  literalFailure(entry: E, reply: ReplyLiterals): { missingNumbers: number[]; missingLabels: string[] };
+  verifierFact(entry: E): Record<string, unknown>;
+  definition: string;
+  forbidden: readonly WeeklyPlanningForbiddenClaim[];
+}
+
+export type WeeklyPlanningForbiddenClaim = 'plan_fits' | 'plan_complete' | 'saved' | 'preview_offered';
+
+const hasMinutes = (reply: ReplyLiterals, minutes: number): boolean =>
+  reply.runs.has(String(Math.round(minutes))) || reply.durations.has(Math.round(minutes));
+
+const HANDLERS: { [C in WeeklyPlanningMustConveyEntry['code']]: MustConveyHandler<Extract<WeeklyPlanningMustConveyEntry, { code: C }>> } = {
+  shortfall: {
+    // The total, each unmet item's minutes, and (when there are more) how many more: all must be digit runs of the reply.
+    literalFailure: (entry, reply) => {
+      const numbers = [entry.requiredMinutes, ...entry.unmet.map((item) => item.minutes)];
+      const missingNumbers = numbers.filter((value) => !hasMinutes(reply, value));
+      if (entry.moreCount > 0 && !reply.runs.has(String(entry.moreCount))) missingNumbers.push(entry.moreCount);
+      return { missingNumbers, missingLabels: entry.unmet.map((item) => item.label).filter((label) => label && !reply.text.includes(label)) };
+    },
+    verifierFact: (entry) => ({ key: mustConveyKey(entry), code: entry.code, planTotalMinutes: entry.requiredMinutes, unmetItems: entry.unmet, furtherUnmetItemCount: entry.moreCount }),
+    definition: [
+      'Code "shortfall": planTotalMinutes is the minutes the WHOLE plan needs; NOT all of the work fits in the available time; unmetItems lists each work item that could NOT be placed, with its own minutes; furtherUnmetItemCount is how many MORE items did not fit and are not listed.',
+      'planTotalMinutes is NOT the amount that did not fit: a reply that presents it as the unmet amount, or attaches any figure to the wrong thing, is contradicted.',
+      'stated_accurately requires all of: the reply says not everything fits; it names every unmet item with its own minutes; it gives the plan total as what the whole plan needs; and, when furtherUnmetItemCount is above zero, it says that further items also did not fit (missing if it does not).',
+      'contradicted if it says otherwise, for example that everything fits or was scheduled.',
+    ].join(' '),
+    forbidden: ['plan_fits', 'plan_complete', 'saved'],
+  },
+  declared_amount_waiting: {
+    // The user's own words OR the amount (in the declared unit, or as the equivalent hours/minutes) must appear.
+    literalFailure: (entry, reply) => {
+      const minutes = entry.unitCode === 'hour' ? entry.amount * 60 : entry.amount;
+      const stated = (entry.quote !== '' && reply.text.includes(entry.quote)) || hasMinutes(reply, minutes)
+        || reply.runs.has(String(Math.round(entry.amount)));
+      return { missingNumbers: stated ? [] : [entry.amount], missingLabels: [] };
+    },
+    verifierFact: (entry) => ({ key: mustConveyKey(entry), code: entry.code, statedAmount: entry.amount, unit: entry.unitCode, userQuote: entry.quote }),
+    definition: [
+      'Code "declared_amount_waiting": the user stated an amount (statedAmount in unit; userQuote is their own words) whose role is not yet known. It is NOT used in the plan yet and waits for the user to say whether it is an amount still to do or an amount already done.',
+      'stated_accurately requires the reply to convey that this amount is not used yet and waits for that choice; missing if it does not; contradicted if it says the amount was applied, counted or planned with, or that a plan was made using it.',
+    ].join(' '),
+    forbidden: ['plan_complete', 'saved', 'preview_offered'],
+  },
+};
+
+const ALL_FORBIDDEN_CLAIMS: readonly WeeklyPlanningForbiddenClaim[] = ['plan_fits', 'plan_complete', 'saved', 'preview_offered'];
+const FORBIDDEN_CLAIM_DEFINITIONS: Record<WeeklyPlanningForbiddenClaim, string> = {
+  plan_fits: 'plan_fits (says all the work fits, was scheduled or was placed, or that nothing is left over)',
+  plan_complete: 'plan_complete (calls the plan finished or complete)',
+  saved: 'saved (says the plan was saved, registered or added to the calendar)',
+  preview_offered: 'preview_offered (says a candidate schedule or preview is ready, or invites the user to look at or adopt one)',
+};
+
+function handlerOf<E extends WeeklyPlanningMustConveyEntry>(entry: E): MustConveyHandler<E> {
+  return HANDLERS[entry.code] as unknown as MustConveyHandler<E>;
+}
+
 /** V3: every required number is a digit run of the reply and every required user label occurs literally. */
 export function literalRequirementFailures(
   text: string,
@@ -47,9 +117,9 @@ export function literalRequirementFailures(
   const durations = replyDurationMinutes(text);
   const failures: WeeklyPlanningLiteralFailure[] = [];
   for (const entry of entries) {
-    const numbers = [entry.requiredMinutes, ...entry.unmet.map((item) => item.minutes)];
-    const missingNumbers = [...new Set(numbers.filter((value) => !runs.has(String(Math.round(value))) && !durations.has(Math.round(value))))];
-    const missingLabels = [...new Set(entry.unmet.map((item) => item.label).filter((label) => label && !text.includes(label)))];
+    const found = handlerOf(entry).literalFailure(entry, { text, runs, durations });
+    const missingNumbers = [...new Set(found.missingNumbers)];
+    const missingLabels = [...new Set(found.missingLabels)];
     if (missingNumbers.length > 0 || missingLabels.length > 0) failures.push({ code: entry.code, missingNumbers, missingLabels });
   }
   return failures;
@@ -70,16 +140,16 @@ export const WEEKLY_PLANNING_REPLY_VERIFIER_RESPONSE_FORMAT: JsonSchemaResponseF
           items: {
             type: 'object',
             additionalProperties: false,
-            required: ['code', 'verdict'],
+            required: ['key', 'verdict'],
             properties: {
-              code: { type: 'string', enum: ['shortfall'] },
+              key: { type: 'string' },
               verdict: { type: 'string', enum: ['stated_accurately', 'missing', 'contradicted'] },
             },
           },
         },
         forbidden: {
           type: 'array',
-          items: { type: 'string', enum: ['plan_fits', 'plan_complete', 'saved'] },
+          items: { type: 'string', enum: [...ALL_FORBIDDEN_CLAIMS] },
         },
       },
     },
@@ -90,23 +160,21 @@ export function createReplyVerifierMessages(params: {
   entries: readonly WeeklyPlanningMustConveyEntry[];
   text: string;
 }): Array<{ role: 'system' | 'user'; content: string }> {
+  const forbidden = [...new Set(params.entries.flatMap((entry) => handlerOf(entry).forbidden))];
   return [
     {
       role: 'system',
       content: [
         'You verify one assistant reply against typed facts. Judge only the reply and the facts given.',
-        'Code "shortfall": the weekly plan needs requiredMinutes minutes in total, NOT all of the work fits in the available time, and "unmet" lists the work (label and minutes) that could not be placed (moreCount further items are not listed).',
-        'For each required code return stated_accurately only if the reply conveys the fact with the given numbers and labels and does not contradict it; missing if it does not convey it; contradicted if it says otherwise (for example that everything fits or was scheduled).',
-        'In "forbidden" list each of these claims the reply makes, and nothing else: plan_fits (says all the work fits, was scheduled or was placed, or that nothing is left over); plan_complete (calls the plan finished or complete); saved (says the plan was saved, registered or added to the calendar).',
+        ...[...new Set(params.entries.map((entry) => entry.code))].map((code) => HANDLERS[code].definition),
+        'Return one verdict per required entry, with the entry\'s "key" exactly as given. For each entry return stated_accurately only if the reply conveys the fact accurately, missing if it does not convey it, contradicted if it says otherwise.',
+        `In "forbidden" list each of these claims the reply makes, and nothing else: ${forbidden.map((claim) => FORBIDDEN_CLAIM_DEFINITIONS[claim]).join('; ')}.`,
         'Saying that the user\'s message or a change was taken into account is NOT a forbidden claim.',
       ].join(' '),
     },
     {
       role: 'user',
-      content: JSON.stringify({
-        required: params.entries.map((entry) => ({ code: entry.code, requiredMinutes: entry.requiredMinutes, unmet: entry.unmet, moreCount: entry.moreCount })),
-        reply: params.text,
-      }),
+      content: JSON.stringify({ required: params.entries.map((entry) => handlerOf(entry).verifierFact(entry)), reply: params.text }),
     },
   ];
 }
@@ -126,12 +194,12 @@ export function evaluateReplyVerifierResponse(
     if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, reason: 'malformed' };
     const record = value as { verdicts?: unknown; forbidden?: unknown };
     if (!Array.isArray(record.verdicts) || !Array.isArray(record.forbidden)) return { ok: false, reason: 'malformed' };
-    const required = entries.map((entry) => entry.code).sort();
-    const answered = record.verdicts.map((item) => (item as { code?: unknown })?.code);
+    const required = entries.map(mustConveyKey).sort();
+    const answered = record.verdicts.map((item) => (item as { key?: unknown })?.key);
     if (answered.length !== required.length || [...answered].sort().some((code, index) => code !== required[index])) return { ok: false, reason: 'malformed' };
     const failedCodes = record.verdicts
       .filter((item) => (item as { verdict?: unknown }).verdict !== 'stated_accurately')
-      .map((item) => String((item as { code?: unknown }).code));
+      .map((item) => String((item as { key?: unknown }).key));
     const forbidden = record.forbidden.map(String);
     return failedCodes.length === 0 && forbidden.length === 0 ? { ok: true } : { ok: false, reason: 'verdict', failedCodes, forbidden };
   } catch {
