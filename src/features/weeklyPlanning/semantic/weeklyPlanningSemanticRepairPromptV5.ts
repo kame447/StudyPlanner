@@ -94,6 +94,9 @@ function repairDirectivesForErrors(
       ? 'Emit missing replacement facts with corrected kind and referenced correction.replacementLocalId as fresh localId in schema-valid task/component; keep valid fields, exact existingPublicIds, or drop the correction if no change is meant.'
       : 'Declare missing replacement facts in a schema-valid task/component; keep valid fields. Set correction.replacementLocalId to each fresh localId. Use exact existingPublicIds for accepted parent identity.');
   }
+  if (errors.some((error) => error.includes('.replacementLocalId:support-not-installed:'))) {
+    directives.push('A new fact that a replacement hangs from must be installed by a correction. If that new workload replaces an accepted workload, add a replace correction for it (exact publicId) with the new workload as replacementLocalId; if it is additional work, keep it as new work and attach the corrected session to its original target.');
+  }
   if (errors.some((error) => error.includes(':duplicate-of:'))) {
     directives.push('Facts that differ only by localId are duplicates. For a recurring weekday set give each copy its own dateExpression weekday:<english-weekday>; otherwise keep one copy.');
   }

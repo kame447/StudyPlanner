@@ -260,3 +260,15 @@ describe('repair of a restated accepted fact (live D T3)', () => {
     expect(create('not json', errors)).not.toContain('Do not restate');
   });
 });
+
+it('the support-not-installed directive is error-keyed, keeps additional work, and never licenses dropping a stated quantity', () => {
+  const create = (validationErrors: string[]) => repairPayload(createWeeklyPlanningSemanticRepairMessagesV5({
+    baseMessages: [{ role: 'user', content: 'ordinary user input' }],
+    invalidResponse: '{}', validationErrors, conversationArchitecture: 'interaction_v1',
+  })).requiredChanges?.join('\n') ?? '';
+  const current = create(['document.corrections[0].replacementLocalId:support-not-installed:amt2']);
+  expect(current).toContain('add a replace correction for it (exact publicId)');
+  expect(current).toContain('keep it as new work and attach the corrected session to its original target');
+  expect(current).not.toContain('drop the new workload');
+  expect(create(['document.tasks[0].localId:required'])).not.toContain('installed by a correction');
+});

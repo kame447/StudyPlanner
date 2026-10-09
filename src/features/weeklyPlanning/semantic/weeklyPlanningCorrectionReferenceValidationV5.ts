@@ -3,6 +3,7 @@ import type {
 } from './weeklyPlanningSemanticDocumentV5';
 import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import { WEEKLY_PLANNING_CORRECTABLE_REPLACEMENT_KINDS_V5 } from './weeklyPlanningCanonicalCorrectionApplicationExtendedV5';
+import { activeWeeklyPlanningFactIdsV5 } from './weeklyPlanningFactLifecycleV5';
 import { weeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 
 function nonEmpty(value: unknown): value is string {
@@ -142,6 +143,45 @@ export function validateWeeklyPlanningRawCorrectionTargetReferencesV5(
  * task). Reporting it here lets the single repair drop or fix the correction. Structural
  * only: declared reference kind versus the kind of the declared replacement fact.
  */
+/**
+ * Interaction: a replace correction of an effort whose replacement hangs from a NEW workload of the same
+ * document that no correction installs and that does not restate an accepted workload. The canonical owner would
+ * have to either delete that workload or apply it without a correction; it fails the turn instead (disclosed
+ * recover), so the single repair is told here, while it can still add the missing correction.
+ */
+export function validateWeeklyPlanningCorrectionSupportInstalledV5(
+  document: WeeklyPlanningSemanticDocumentV5,
+  graph?: WeeklyPlanningFactGraphV5,
+): string[] {
+  if (!graph) return [];
+  const activeIds = activeWeeklyPlanningFactIdsV5(graph);
+  const installed = new Set(document.corrections.map((correction) => correction.replacementLocalId));
+  const localWorkloads = new Map<string, { quantityRole: string; amount: number; unitCode: string; perOccurrence: boolean }>();
+  for (const task of document.tasks) {
+    for (const workload of task.workloads) localWorkloads.set(workload.localId, workload);
+    for (const component of task.study?.components ?? []) {
+      for (const workload of component.workloads) localWorkloads.set(workload.localId, workload);
+    }
+  }
+  const restatesAccepted = (workload: { quantityRole: string; amount: number; unitCode: string; perOccurrence: boolean }) =>
+    graph.workloads.some((fact) => (!activeIds || activeIds.has(fact.id))
+      && fact.quantityRole === workload.quantityRole && fact.amount === workload.amount
+      && fact.unitCode === workload.unitCode && fact.perOccurrence === workload.perOccurrence);
+  const errors: string[] = [];
+  document.corrections.forEach((correction, index) => {
+    if (correction.operation !== 'replace' || correction.target.kind !== 'effort_estimate'
+      || !correction.replacementLocalId || !correction.target.publicId) return;
+    const replaced = graph.effortEstimates.find((fact) => fact.id === correction.target.publicId);
+    if (!replaced) return;
+    const replacement = document.tasks.flatMap((task) => task.effortEstimates)
+      .find((effort) => effort.localId === correction.replacementLocalId);
+    const anchor = replacement ? localWorkloads.get(replacement.targetLocalId) : undefined;
+    if (!replacement || !anchor || installed.has(replacement.targetLocalId) || restatesAccepted(anchor)) return;
+    errors.push(`document.corrections[${index}].replacementLocalId:support-not-installed:${replacement.targetLocalId}`);
+  });
+  return errors;
+}
+
 export function validateWeeklyPlanningCorrectionReplacementKindsV5(
   document: WeeklyPlanningSemanticDocumentV5,
   graph?: WeeklyPlanningFactGraphV5,
@@ -166,7 +206,7 @@ export function validateWeeklyPlanningCorrectionReplacementKindsV5(
   }
   // A material identity answer consumes its own same-component replace correction.
   const identityAnswers = graph ? weeklyPlanningMaterialIdentityAnswersV5(graph, document) : [];
-  return document.corrections.flatMap((correction, index) => {
+  return [...validateWeeklyPlanningCorrectionSupportInstalledV5(document, graph), ...document.corrections.flatMap((correction, index) => {
     if (!correction.replacementLocalId || correction.target.kind === 'proposal') return [];
     const replacementKind = kindByLocalId.get(correction.replacementLocalId);
     if (!replacementKind) return [];
@@ -179,5 +219,5 @@ export function validateWeeklyPlanningCorrectionReplacementKindsV5(
       || identityAnswers.some((answer) => correction.target.kind === 'component'
         && answer.targetId === correction.target.publicId && answer.localId === correction.replacementLocalId)) return [];
     return [`document.corrections[${index}].replacementLocalId:unsupported-kind:${replacementKind}`];
-  });
+  })];
 }

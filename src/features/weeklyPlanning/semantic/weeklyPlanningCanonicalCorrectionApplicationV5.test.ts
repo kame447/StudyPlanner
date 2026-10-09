@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyWeeklyPlanningCanonicalCorrectionsV5,
+  isRedundantSupportFactV5,
   pruneableSupportFactIdsV5,
 } from './weeklyPlanningCanonicalCorrectionApplicationV5';
 import {
@@ -281,5 +282,53 @@ describe('pruneableSupportFactIdsV5', () => {
   });
   it('prunes every support fact when no correction names it as a replacement', () => {
     expect(pruneableSupportFactIdsV5({ supportFactIds: ['a', 'b'], correctionReplacementFactIds: ['c'] })).toEqual(['a', 'b']);
+  });
+});
+
+describe('isRedundantSupportFactV5', () => {
+  const workload = (id: string, over: Record<string, unknown> = {}) => ({ id, taskId: 't', componentId: null, quantityRole: 'target', amount: 90,
+    unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null, ...over });
+  const graph = (workloads: Array<{ id: string }>) => ({ workloads, factLifecycles: workloads.map(w => ({ factId: w.id, status: 'active' })) }) as never;
+  it('a workload restating another active workload of the task is redundant', () => {
+    expect(isRedundantSupportFactV5(graph([workload('a'), workload('b')]), 'b')).toBe(true);
+  });
+  it('a workload with content absent from the graph is not redundant', () => {
+    expect(isRedundantSupportFactV5(graph([workload('a'), workload('b', { amount: 60 })]), 'b')).toBe(false);
+    expect(isRedundantSupportFactV5(graph([workload('a'), workload('b', { perOccurrence: true })]), 'b')).toBe(false);
+  });
+  it('a non-workload support fact is never redundant', () => {
+    expect(isRedundantSupportFactV5(graph([workload('a')]), 'not-a-workload')).toBe(false);
+  });
+});
+
+describe('turn-created content that no correction installs is never deleted silently (X5d)', () => {
+  const effortTask = (localId: string, workloadLocalId: string | null, hours: number, effortLocalId: string, effortTarget: string, minutes: number): SemanticTaskV5 => ({
+    ...task(localId, '数学', workloadLocalId ?? 'unused', hours),
+    workloads: workloadLocalId ? task(localId, '数学', workloadLocalId, hours).workloads : [],
+    effortEstimates: [{ localId: effortLocalId, targetLocalId: effortTarget, kind: 'session_duration', minutes, unitCode: null, precision: 'approximate', sourceText: '1回分' }],
+  });
+
+  it('a replacement effort hanging from a new workload that no correction installs fails visibly', () => {
+    const first = canonicalize({
+      document: document({ tasks: [effortTask('task-old', 'workload-old', 3, 'effort-old', 'task-old', 45)] }),
+      conversationId: 'conversation-support', turnId: 'turn-1',
+    });
+    const second = canonicalize({
+      graph: first.graph,
+      document: document({
+        tasks: [effortTask('task-new', 'workload-new', 1, 'effort-new', 'workload-new', 30)],
+        corrections: [{
+          localId: 'correction-effort',
+          target: { kind: 'effort_estimate', publicId: first.localToFactId['effort-old'], localId: null, mention: null },
+          operation: 'replace', replacementLocalId: 'effort-new', sourceText: '1回30分',
+        }],
+      }),
+      conversationId: 'conversation-support', turnId: 'turn-2',
+    });
+    const applied = applyWeeklyPlanningCanonicalCorrectionsV5({
+      originalGraph: first.graph, canonicalization: second, operationKeyPrefix: 'conversation-support:turn-2',
+    });
+    expect(applied.status).toBe('rejected');
+    expect(applied.errors.join('|')).toContain('correction-application:replacement-support-not-installed:');
   });
 });

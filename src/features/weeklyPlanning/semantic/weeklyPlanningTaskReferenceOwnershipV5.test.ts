@@ -156,6 +156,8 @@ it('retains terminal correction provenance but requires literal lifecycle status
   const baseline = canonical(document()).graph;
   const input = document();
   input.tasks = [task('math-new', '追加課題', 20, 90)];
+  // The replacement container duplicates the accepted component (same role and label): typed-redundant, so it may be pruned.
+  input.tasks[0].study!.components[0].label = '数学教材';
   input.corrections = [
     { localId: 'replace-work', target: { kind: 'workload', publicId: baseline.workloads[0].id, localId: null, mention: '旧数学' },
       operation: 'replace', replacementLocalId: 'math-new-workload', sourceText: '数学の作業量を変更' },
