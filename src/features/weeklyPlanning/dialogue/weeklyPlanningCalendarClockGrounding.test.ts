@@ -21,6 +21,8 @@ describe('clockExpressionsGroundedByCalendar', () => {
     expect(clockExpressionsGroundedByCalendar('夕方5時から', free)).toEqual(['5時']);
     expect(clockExpressionsGroundedByCalendar('朝9時から', free)).toEqual(['9時']);
     expect(clockExpressionsGroundedByCalendar('朝8時から', free)).toEqual([]);
+    expect(clockExpressionsGroundedByCalendar('火曜の夜の8時から9時は空いています', free)).toEqual(['8時', '9時']);
+    expect(clockExpressionsGroundedByCalendar('夜の1時', free)).toEqual([]);
     expect(clockExpressionsGroundedByCalendar('夜1時から', free)).toEqual([]);
     expect(clockExpressionsGroundedByCalendar('月曜と水曜の夜に1時間ずつ空きがあります', free)).toEqual([]);
   });

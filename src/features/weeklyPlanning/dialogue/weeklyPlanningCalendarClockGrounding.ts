@@ -12,10 +12,10 @@ import type { CalendarFreeDayV5 } from '../application/weeklyPlanningPlanningNee
 const CLOCK = /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:午前|午後)?\s*(?:[01]?\d|2[0-3])\s*時(?!間)(?:\s*(?:[0-5]?\d\s*分|半))?/g;
 const DATE = /(\d{1,2})\s*月\s*(\d{1,2})\s*日/g;
 
-/** 夜/晩/夕方 + h (5 <= h <= 11) means the evening hour (h + 12; 夜1時 stays 01:00); 朝 + h is h. Read from the words just before the clock. */
+/** 夜/晩/夕方 (+ の) + h (5 <= h <= 11) means the evening hour (h + 12; 夜1時 stays 01:00); 朝 + h is h. Read from the words just before the clock. */
 function timeOfDayShift(text: string, index: number, hour: number): number {
-  const before = text.slice(Math.max(0, index - 2), index);
-  return hour >= 5 && hour <= 11 && /(?:夜|晩|夕方)$/u.test(before) ? 12 : 0;
+  const before = text.slice(Math.max(0, index - 3), index);
+  return hour >= 5 && hour <= 11 && /(?:夜|晩|夕方)の?$/u.test(before) ? 12 : 0;
 }
 
 function minutesOf(expression: string): number | null {

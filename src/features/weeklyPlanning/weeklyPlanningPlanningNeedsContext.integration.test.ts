@@ -68,6 +68,11 @@ describe('S2 (critic probe 46): a proposal with clock times from the calendar is
     expect(turn.result?.responseSource).toBe('ai');
     expect(turn.result?.message).not.toMatch(/100%|割合|何%/);
   });
+  it('probe 48: 「火曜の夜の8時から9時」 is grounded as 20:00-21:00 on the first reply (no repair needed)', async () => {
+    const turn = await run('火曜の夜の8時から9時は空いています。この時間で卒研を進めますか？');
+    expect(turn.result?.responseSource).toBe('ai');
+    expect(turn.calls.filter(call => call.kind === 'renderer')).toHaveLength(1);
+  });
   it('a real clock time stays checked in interaction: 「1時に」 (01:00) is outside every free window and falls back', async () => {
     const turn = await run('火曜の1時に空きがあります。この時間で卒研を進めますか？');
     expect(turn.result?.responseSource).not.toBe('ai');
