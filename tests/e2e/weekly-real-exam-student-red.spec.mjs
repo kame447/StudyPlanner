@@ -77,10 +77,15 @@ test.describe('regression B3: an overload carries the unmet duration/quantity to
       expect(item.minutes, `unmet minutes of ${item.label}`).toBeGreaterThan(0);
       expect(classifyTitle(item.label), `${item.label} is a requested task`).not.toBeNull();
     }
-    // The visible reply (app-owned sentence) states what did not fit and the required total.
+    // P2 slice 1: the reply is AI-written and verified against these typed facts, so its wording is free. The visible reply
+    // must still state, as literal digit runs and user labels, the required total and every listed unmet item with its minutes.
     const reply = (await page.locator('.ai-planning-message-row').allTextContents()).at(-1);
-    expect(reply, 'visible reply').toContain('入りきらなかった作業');
-    expect(reply, 'visible reply states the required total').toContain(String(shortfall.requiredMinutes).replace(/\B(?=(\d{3})+(?!\d))/g, ','));
+    const digits = reply.replace(/(\d),(?=\d{3})/g, '$1');
+    expect(digits, 'visible reply states the required total').toMatch(new RegExp(`(^|\\D)${shortfall.requiredMinutes}(\\D|$)`));
+    for (const item of shortfall.unmetWork) {
+      expect(reply, `visible reply names ${item.label}`).toContain(item.label);
+      expect(digits, `visible reply states ${item.minutes} minutes of ${item.label}`).toMatch(new RegExp(`(^|\\D)${item.minutes}(\\D|$)`));
+    }
   });
 });
 
