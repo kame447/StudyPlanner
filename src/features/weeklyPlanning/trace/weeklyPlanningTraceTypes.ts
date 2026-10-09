@@ -168,6 +168,13 @@ export interface WeeklyPlanningTraceSchedulerSummary {
     status: string | null;
     candidateCount: number;
     unscheduledCount: number;
+    /** insufficient_capacity only: amounts the renderer was told (counts and minutes; no titles). */
+    capacityShortfall?: {
+      requiredMinutes: number | null;
+      unmetMinutes: number | null;
+      unmetWorkCount: number | null;
+      moreCount: number | null;
+    };
     representativeCandidates: unknown[];
   } | null;
   duplicateSuppressed: boolean;

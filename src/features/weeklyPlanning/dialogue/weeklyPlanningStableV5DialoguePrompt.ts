@@ -255,6 +255,9 @@ function interactionCommunicationInstructions(
     ...(hasRemovals
       ? ['acceptedFacts.removedThisTurnはユーザーがこのturnで取り消した内容。最初に短く自然に受け止めてから続ける（取り消したものを予定に残っているようには言わない）。']
       : []),
+    ...(communication.capacityShortfall
+      ? ['capacityShortfall: The app states the unmet work and its amounts after your reply. Do not state amounts, minutes or a shortfall yourself; say the work did not all fit and ask the question.']
+      : []),
     ...(communication.previewDisclosure
       ? ['previewDisclosure: The app states omitted work after the reply. Do not name extent=all work or claim inclusion/exclusion; announce the preview count and control only.']
       : []),

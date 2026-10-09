@@ -622,6 +622,17 @@ function schedulerSummary(
       ? previewResult.unscheduled
       : [];
   const previewExists = Object.keys(previewEvent).length > 0;
+  // Numbers and counts only: the unmet task titles are user text and are not persisted here.
+  const shortfall = record(record(latestEventData(events, 'turn_executor_result_projected').projectedResult)
+    .communicationFacts).capacityShortfall;
+  const capacityShortfall = isRecord(shortfall)
+    ? {
+        requiredMinutes: numberValue(shortfall.requiredMinutes),
+        unmetMinutes: numberValue(shortfall.unmetMinutes),
+        unmetWorkCount: numberValue(shortfall.unmetWorkCount),
+        moreCount: numberValue(shortfall.moreCount),
+      }
+    : null;
   return {
     selectedDate: stringValue(runtime.selectedDate)
       ?? stringValue(context.currentDate)
@@ -646,6 +657,7 @@ function schedulerSummary(
           status: stringValue(previewResult.status),
           candidateCount: numberValue(previewEvent.candidateCount) ?? candidates.length,
           unscheduledCount: numberValue(previewEvent.unscheduledCount) ?? unscheduled.length,
+          ...(capacityShortfall ? { capacityShortfall } : {}),
           representativeCandidates: limitedArray(
             candidates.length > 0 ? candidates : (Array.isArray(previewEvent.candidates) ? previewEvent.candidates : []),
             NORMAL_LIMITS.previewCandidates,

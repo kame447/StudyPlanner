@@ -203,6 +203,8 @@ export function communicationContextForStableV5Dialogue(params: {
     ...(params.actionKind === 'preview_ready' && params.facts?.allocationBreakdown
       ? { allocationBreakdown: params.facts.allocationBreakdown }
       : {}),
+    ...(params.questionCode === 'insufficient_capacity' && params.actionKind === 'question' && params.facts?.capacityShortfall
+      ? { capacityShortfall: params.facts.capacityShortfall } : {}),
     previewDisclosure: params.actionKind === 'preview_ready'
       ? params.facts?.previewDisclosure ?? null
       : null,

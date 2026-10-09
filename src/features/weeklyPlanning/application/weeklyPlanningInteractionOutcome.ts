@@ -1,6 +1,7 @@
 import type { WeeklyPlanningScheduleCommunicationIntent } from './weeklyPlanningFixedEventOnlyInteraction';
 import type { WeeklyPlanningConsultationCommunication } from './weeklyPlanningConsultationCommunication';
 import type { WeeklyPlanningPreviewConstraintSatisfaction } from './weeklyPlanningPreviewConstraintSatisfaction';
+import type { WeeklyPlanningCapacityShortfall } from './weeklyPlanningCapacityShortfall';
 import type { WeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
 
 /**
@@ -95,6 +96,11 @@ export interface WeeklyPlanningTurnCommunicationFacts {
    * its own sentence next to the reply; the renderer never words it.
    */
   previewDisclosure: { omittedWork: WeeklyPlanningPreviewOmittedWork[] } | null;
+  /**
+   * Work that did not fit in an `insufficient_capacity` attempt (typed amounts). The application states it
+   * in its own sentence next to the reply; the renderer never words the figures.
+   */
+  capacityShortfall?: WeeklyPlanningCapacityShortfall;
 }
 
 export function emptyWeeklyPlanningTurnCommunicationFacts(): WeeklyPlanningTurnCommunicationFacts {

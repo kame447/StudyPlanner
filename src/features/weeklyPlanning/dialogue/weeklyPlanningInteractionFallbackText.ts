@@ -1,6 +1,7 @@
 import { ADD_SCHEDULE_CONTROL_LABEL } from '../../../components/quickAddMenuLabels';
 import type { WeeklyPlanningStableV5CommunicationContext } from './weeklyPlanningStableV5DialogueContracts';
 import { WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL } from './weeklyPlanningStableV5DialogueContext';
+import { weeklyPlanningCapacityShortfallText } from './weeklyPlanningCapacityShortfallDisclosure';
 import { weeklyPlanningPreviewConstraintDisclosureText, weeklyPlanningPreviewOmissionDisclosureText } from './weeklyPlanningPreviewOmissionDisclosure';
 
 /**
@@ -94,7 +95,7 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
         ? 'どのような予定を立てたいですか？' : null;
   const question = communication.askQuestion
     ? (params.questionCode === 'insufficient_capacity'
-        ? `${params.groundingNote}${CAPACITY_SHORTFALL}`
+        ? `${params.groundingNote}${CAPACITY_SHORTFALL}${communication.capacityShortfall ? `\n\n${weeklyPlanningCapacityShortfallText(communication.capacityShortfall)}` : ''}`
         : (params.questionCode === 'missing_schedulable_work' ? scheduleQuestion : null) ?? params.questionText)
     : '';
   let main: string;

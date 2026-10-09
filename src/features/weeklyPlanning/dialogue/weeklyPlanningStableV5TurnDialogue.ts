@@ -15,6 +15,7 @@ import type {
 import { communicationContextForStableV5Dialogue } from './weeklyPlanningStableV5CommunicationContext';
 import { retainedPreviewCommunicationForStableV5Dialogue } from './weeklyPlanningRetainedPreviewCommunication';
 import { composeWeeklyPlanningInteractionFallbackText, WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT, WEEKLY_PLANNING_RETAINED_PREVIEW_UNCHANGED_TEXT } from './weeklyPlanningInteractionFallbackText';
+import { weeklyPlanningCapacityShortfallText } from './weeklyPlanningCapacityShortfallDisclosure';
 import { weeklyPlanningPreviewConstraintDisclosureText, weeklyPlanningPreviewOmissionDisclosureText } from './weeklyPlanningPreviewOmissionDisclosure';
 import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
 import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
@@ -548,7 +549,9 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     ? `${rendered.text}\n\n${weeklyPlanningPreviewOmissionDisclosureText(disclosure.omittedWork)}`
     : rendered.text;
   const constraintDisclosure = weeklyPlanningPreviewConstraintDisclosureText(renderInput.communication?.previewConstraintSatisfaction);
-  const disclosedMessage = constraintDisclosure ? `${previewMessage}\n\n${constraintDisclosure}` : previewMessage;
+  const shortfall = renderInput.communication?.capacityShortfall;
+  const shortfallMessage = shortfall ? `${previewMessage}\n\n${weeklyPlanningCapacityShortfallText(shortfall)}` : previewMessage;
+  const disclosedMessage = constraintDisclosure ? `${shortfallMessage}\n\n${constraintDisclosure}` : shortfallMessage;
   // Semantic recovery that kept the preview: the application states it; the renderer may not.
   const retainedPreviewNotice = renderInput.communication?.goal === 'clarify_turn'
     && renderInput.communication.retainedPreviewUnchanged

@@ -103,9 +103,9 @@ function overload(summary: Json): Json {
     recurrence: [], durableContextSignals: [], sourceText: '物理をさらに120問増やす' }] });
 }
 
-export function installExamOverloadProvider(initialMath: number, mathLast = false, mathSecond = false) {
+export function installExamOverloadProvider(initialMath: number, mathLast = false, mathSecond = false, rendererText = 'わかりました。') {
   return installScriptedWeeklyPlanningProvider((call: ScriptedProviderCall) => {
-    if (call.kind === 'renderer') return scriptedRendererReply(call, 'わかりました。');
+    if (call.kind === 'renderer') return scriptedRendererReply(call, rendererText);
     if (call.kind === 'semantic_focused_authorization') return JSON.stringify({ decision: 'fallback' });
     if (call.kind === 'semantic_focused_contextual') return JSON.stringify({ decision: 'fallback', effortTarget: null, effortMeasurement: null, minutes: null, precision: null, quantityRole: null });
     if (call.schemaName === 'weekly_planning_focused_material_answer_v5') return JSON.stringify({ decision: 'fallback', label: null, registeredChoice: null, workloadChoice: null, effortKind: null, minutes: null, precision: null, sourceText: null, effortSourceText: null });

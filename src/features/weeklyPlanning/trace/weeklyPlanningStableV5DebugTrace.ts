@@ -401,6 +401,14 @@ function communicationFactsProjection(value: Record<string, unknown>): Record<st
     upcomingQuestionCodes: compactUnknown(value.upcomingQuestionCodes),
     planningDetailsNotApplied: value.planningDetailsNotApplied === true,
     ...(value.possibleCompletenessOmission === true ? { possibleCompletenessOmission: true } : {}),
+    ...(isRecord(value.capacityShortfall)
+      ? { capacityShortfall: {
+          requiredMinutes: numberValue(value.capacityShortfall.requiredMinutes),
+          unmetMinutes: numberValue(value.capacityShortfall.unmetMinutes),
+          unmetWorkCount: Array.isArray(value.capacityShortfall.unmetWork) ? value.capacityShortfall.unmetWork.length : null,
+          moreCount: numberValue(value.capacityShortfall.moreCount),
+        } }
+      : {}),
     omittedWorkCount: Array.isArray(disclosure.omittedWork)
       ? disclosure.omittedWork.length
       : null,

@@ -1,6 +1,7 @@
 import type { WeeklyPlanningScheduleCommunicationIntent } from '../application/weeklyPlanningFixedEventOnlyInteraction';
 import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import type { WeeklyPlanningConsultationCommunication } from '../application/weeklyPlanningConsultationCommunication';
+import type { WeeklyPlanningCapacityShortfall } from '../application/weeklyPlanningCapacityShortfall';
 import type { WeeklyPlanningPreviewConstraintSatisfaction } from '../application/weeklyPlanningPreviewConstraintSatisfaction';
 import type { WeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
@@ -105,6 +106,8 @@ export interface WeeklyPlanningStableV5CommunicationContext {
   allocationBreakdown?: WeeklyPlanningAllocationBreakdown | null;
   /** Work left out of the new draft because the free time ran out (must be disclosed). */
   previewDisclosure: { omittedWork: WeeklyPlanningPreviewOmittedWork[] } | null;
+  /** Work that did not fit (the capacity question only); the application states the figures beside the reply. */
+  capacityShortfall?: WeeklyPlanningCapacityShortfall;
 }
 
 export interface WeeklyPlanningStableV5DialogueConversationTurn {
