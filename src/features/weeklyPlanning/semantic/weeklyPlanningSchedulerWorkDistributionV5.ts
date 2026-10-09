@@ -1,3 +1,4 @@
+import { titleWithQuantityV5, workloadQuantityPhraseV5, workloadUnitDisplayV5 } from './weeklyPlanningWorkloadQuantityLabelV5';
 import type {
   EffortEstimateFact,
   PlanningTaskFact,
@@ -199,9 +200,10 @@ function distributedSlices(params: {
           end: String(explicitRange.start + ordinalEnd - sourceOrdinalStart),
         }
       : null;
+    const unitText = workloadUnitDisplayV5(params.item.quantity.unitCode, params.item.quantity.unitLabel) ?? '';
     const rangeLabel = actualRange
-      ? `${actualRange.start}〜${actualRange.end}${params.item.quantity.unitLabel}`
-      : `${ordinalStart}〜${ordinalEnd}${params.item.quantity.unitLabel}`;
+      ? `${actualRange.start}〜${actualRange.end}${unitText}`
+      : `${ordinalStart}〜${ordinalEnd}${unitText}`;
     const durationMinutes = durations[index];
     const baseEstimatedMinutes = params.item.baseEstimatedMinutes === null
       || params.item.baseEstimatedMinutes === undefined
@@ -212,7 +214,7 @@ function distributedSlices(params: {
     return {
       ...params.item,
       id: `${params.item.id}:${params.sessionDurations ? 'session' : 'daily'}:${index + 1}`,
-      label: `${label} ${quantity}${params.item.quantity.unitLabel}（${rangeLabel}）`,
+      label: `${titleWithQuantityV5(label, workloadQuantityPhraseV5(quantity, params.item.quantity.unitCode, params.item.quantity.unitLabel))}（${rangeLabel}）`,
       quantity: {
         ...params.item.quantity,
         amount: quantity,
@@ -299,7 +301,7 @@ function executionPolicySlices(params: {
     return {
       ...params.item,
       id: `${params.item.id}:session:${index + 1}`,
-      label: `${label} ${quantityLabel}${params.item.quantity.unitLabel}（${index + 1}/${chunks.length}）`,
+      label: `${titleWithQuantityV5(label, workloadQuantityPhraseV5(quantityLabel, params.item.quantity.unitCode, params.item.quantity.unitLabel))}（${index + 1}/${chunks.length}）`,
       quantity: {
         ...params.item.quantity,
         amount: displayQuantity,

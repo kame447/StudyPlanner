@@ -137,9 +137,12 @@ describe('accepted memory session projection', () => {
   });
   describe('session titles state a clock quantity from the typed unit', () => {
     function clockFixture(unitCode: 'minute' | 'hour', unitLabel: string, amount: number, sessionMinutes: number) {
-      const sourceGraph = graph();
-      sourceGraph.workloads = [{ ...sourceGraph.workloads[0], amount, unitCode, unitLabel }];
-      sourceGraph.effortEstimates = [{ ...sourceGraph.effortEstimates[0], minutes: sessionMinutes }];
+      const base = graph();
+      const sourceGraph = {
+        ...base,
+        workloads: [{ ...base.workloads[0], amount, unitCode, unitLabel }],
+        effortEstimates: [{ ...base.effortEstimates[0], minutes: sessionMinutes }],
+      };
       const sourceCompilation = compilation();
       const sourceItem = sourceCompilation.input!.movableWorkItems[0];
       sourceCompilation.input!.movableWorkItems[0] = {
@@ -170,6 +173,23 @@ describe('accepted memory session projection', () => {
       items.forEach((item, index) => {
         expect(item.label).toBe(`英単語 ${item.quantity.amount}時間（${index + 1}/${items.length}）`);
       });
+    });
+
+    it('does not echo the amount into a count unit (live review: 220語 became 32220語)', () => {
+      const items = clockFixture('minute', '分', 60, 20);
+      expect(items.length).toBeGreaterThan(1);
+      const echoedCompilation = compilation();
+      const echoedItem = echoedCompilation.input!.movableWorkItems[0];
+      echoedCompilation.input!.movableWorkItems[0] = {
+        ...echoedItem, quantity: { ...echoedItem.quantity, unitLabel: '220語' },
+      };
+      const echoed = applyAcceptedMemorySessionProjectionV5({
+        compilation: echoedCompilation, graph: graph(),
+        acceptedSpacedProposal: proposal('spaced_memory_practice'),
+        acceptedCalibrationProposal: null,
+      });
+      const w = echoed.input!.movableWorkItems;
+      w.forEach((item, index) => expect(item.label).toBe(`英単語 ${item.quantity.amount}語（${index + 1}/7）`));
     });
 
     it('keeps the model wording for non-clock units', () => {

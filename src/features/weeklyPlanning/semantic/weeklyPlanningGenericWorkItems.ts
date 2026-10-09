@@ -1,3 +1,4 @@
+import { titleWithQuantityV5, workloadQuantityPhraseV5 } from './weeklyPlanningWorkloadQuantityLabelV5';
 import type {
   EffortEstimateFact,
   PlanningTaskFact,
@@ -165,7 +166,7 @@ function buildLabel(params: {
   const range = params.workload.rangeStart && params.workload.rangeEnd
     ? `（${params.workload.rangeStart}〜${params.workload.rangeEnd}）`
     : '';
-  return `${label} ${params.workload.amount}${params.workload.unitLabel}${range}`;
+  return `${titleWithQuantityV5(label, workloadQuantityPhraseV5(params.workload.amount, params.workload.unitCode, params.workload.unitLabel))}${range}`;
 }
 
 function ordinalRange(workload: WorkloadFact): GenericWorkItemQuantity['ordinalRange'] {
