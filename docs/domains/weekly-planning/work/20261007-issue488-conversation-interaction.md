@@ -843,3 +843,8 @@ Method: `vite build --sourcemap` of `ea0d871a` and of the fork point `22847120`.
   - **The held turn keeps the same choice** in natural words.
   - **Variant F2** answers 「これからやる分です」. It then gets the 120-minute plan, and 「1回1時間くらいで」 turns it into two one-hour night sessions (Mon/Tue 21:00–22:00) in four turns.
   - **F itself still fails the owner's criterion 6:** the first question still asks about progress, and a confirmation turn is needed. Proposing from the calendar (S3b) is the remaining step.
+
+
+## 2026-10-10 一時停止と再開用文書
+
+Claude と Codex の使用枠枯渇を受け、#488 の実装を中断し、全 Orrery agent セッションを停止・soft-retire した。コードを完成・マージしたわけではない。今後の引継ぎでは、停止理由、統合前の実装 HEAD、未統合の S3a v3/S3b/P2、実E2Eと検証の不足、デプロイ・PR の未実施、33の未コミット worktree の保全、旧/新アーキテクチャと定型文を入れない合意、再開・段階マージ順序を記した [20261010-issue488-pause-handoff.md](20261010-issue488-pause-handoff.md) を正本チェックポイントとして読む。ユーザーの明示的な再開依頼があるまで新たな agent は起動しない。
