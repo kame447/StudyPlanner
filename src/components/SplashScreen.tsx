@@ -4,7 +4,7 @@ import startupVideo from '../assets/laplance_blackhole_1080x1920.mp4';
 import startupPoster from '../assets/laplance-startup-poster.jpg';
 import startupStill from '../assets/laplance-startup-still.jpg';
 import { StartupVideo, type StartupVideoOutcome } from './StartupVideo';
-import { StudyPlannerLogo } from './StudyPlannerLogo';
+import { LaplanceLogo } from './LaplanceLogo';
 import { useRootStartupReady } from './RootStartupReadyContext';
 
 export function SplashScreen({ fixedLight = false, canSkip = false, videoOutcome = null, onVideoComplete }: {
@@ -31,7 +31,7 @@ export function SplashScreen({ fixedLight = false, canSkip = false, videoOutcome
             <img src={startupStill} alt="Laplance" className="startup-video__still" />
           </StartupVideo>
         ) : (
-          <StudyPlannerLogo />
+          <LaplanceLogo />
         )}
         <p className="splash-screen__message" role="status">{playIntro && canSkip ? '準備できました' : 'アプリを準備しています...'}</p>
       </div>
