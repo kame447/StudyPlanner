@@ -241,6 +241,8 @@ export interface WeeklyPlanningTraceTurnDiagnosticEntry extends WeeklyPlanningTr
     } | null;
     outcome: string;
     previewCount: number;
+    /** A free-form blocking question was released by the user's bound answer (ids and count only). */
+    releasedUncertainties?: { count: number | null; ids: string[] };
     stale: boolean;
     truncation?: WeeklyPlanningTraceTruncationMetadata;
   };

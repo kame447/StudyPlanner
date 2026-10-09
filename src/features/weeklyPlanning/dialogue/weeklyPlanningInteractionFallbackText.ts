@@ -1,6 +1,7 @@
 import { ADD_SCHEDULE_CONTROL_LABEL } from '../../../components/quickAddMenuLabels';
 import type { WeeklyPlanningStableV5CommunicationContext } from './weeklyPlanningStableV5DialogueContracts';
 import { WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL } from './weeklyPlanningStableV5DialogueContext';
+import { weeklyPlanningUncertaintyReleaseText } from './weeklyPlanningUncertaintyReleaseDisclosure';
 import { weeklyPlanningCapacityShortfallText } from './weeklyPlanningCapacityShortfallDisclosure';
 import { weeklyPlanningPreviewConstraintDisclosureText, weeklyPlanningPreviewOmissionDisclosureText } from './weeklyPlanningPreviewOmissionDisclosure';
 
@@ -142,5 +143,6 @@ export function composeWeeklyPlanningInteractionFallbackText(params: {
     communication.consultationDeferred && !communication.alternativeRequiresAdoption ? CONSULTATION_NOT_ANSWERED : '',
     communication.planningDetailsNotApplied ? DETAILS_INVITATION : '',
     communication.possibleCompletenessOmission ? WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT : '',
+    communication.uncertaintyReleased ? weeklyPlanningUncertaintyReleaseText(communication.uncertaintyReleased.quote) : '',
   ].join('');
 }

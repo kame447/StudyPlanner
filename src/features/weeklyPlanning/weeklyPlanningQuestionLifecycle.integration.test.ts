@@ -391,6 +391,143 @@ describe('H: a consultation is not a blocking uncertainty unless the model decla
   });
 });
 
+describe('H-release: a blocking free-form question has a deterministic end state', () => {
+  const Q = 'あとこれって1日でまとめて読んでも平気？';
+  const L1 = `${H.T1}。英語の本も10ページ読む。1ページ3分`;
+  type Variant = 'placement_task' | 'placement_uncertainty' | 'ack_task' | 'ack_uncertainty' | 'other_target' | 'rate_only'
+    | 'unbound' | 're_declare' | 'two_uncertainties' | 'replayed_constraint';
+  const uncertaintyOf = (extra: Json = {}): Json => ({ localId: 'u-one-day', targetLocalId: 'paper', field: 'one_day_completion_feasibility',
+    reason: '1日でまとめて読めるか', sourceText: Q, ...extra });
+  function installLoop(variant: Variant, o: { flag?: boolean; field?: string; architecture?: WeeklyPlanningConversationArchitecture } = {}) {
+    const architecture = o.architecture ?? 'interaction_v1';
+    const script = (text: string, call: ScriptedProviderCall): Json => {
+      const [taskId, vocabId] = summaryTaskIds(call);
+      const summary = (call.payload?.publicStateSummary ?? {}) as Json;
+      const uncertaintyId = String(((summary.uncertainties ?? []) as Json[])[0]?.publicId ?? 'none');
+      const paperShell = (extra: Json = {}) => studyTask({ localId: 'paper', existingPublicId: taskId, title: 'レポートの文献', activityKind: 'reading', sourceText: text, ...extra });
+      if (text === L1) {
+        return emptyDocument({
+          planningIntent: 'create_plan', planningWindow: nextWeek,
+          tasks: [
+            studyTask({ localId: 'paper', title: 'レポートの文献', activityKind: 'reading', sourceText: '文献を30ページ読む',
+              workloads: [workload('paper-amount', 30, 'page', 'ページ', '30ページ')], effortEstimates: [perUnit('paper-rate', 'paper-amount', 3, 'page', '1ページ3分')] }),
+            studyTask({ localId: 'vocab', title: '英語の本', activityKind: 'reading', sourceText: '英語の本も10ページ読む',
+              workloads: [workload('vocab-amount', 10, 'page', 'ページ', '10ページ')], effortEstimates: [perUnit('vocab-rate', 'vocab-amount', 3, 'page', '1ページ3分')] }),
+          ],
+        }, architecture);
+      }
+      if (text === H.T2) {
+        return emptyDocument({
+          tasks: [studyTask({ localId: 'paper', existingPublicId: taskId, title: 'レポートの文献', activityKind: 'reading', sourceText: 'やっぱり25ページで',
+            workloads: [workload('paper-amount-2', 25, 'page', 'ページ', '25ページ')],
+            effortEstimates: [perUnit('paper-rate-2', 'paper-amount-2', 3, 'page', '1ページ3分')],
+            ...(variant === 'replayed_constraint' ? { temporalConstraints: [preferredNight('paper-night-old', 'paper', 'まとめて読んでも')] } : {}) })],
+          uncertainties: [
+            uncertaintyOf({ field: o.field ?? 'one_day_completion_feasibility', ...(o.flag === undefined ? {} : { blocksPlanning: o.flag }) }),
+            ...(variant === 'two_uncertainties' ? [uncertaintyOf({ localId: 'u-second', field: 'second_free_form_point', sourceText: 'まとめて読んでも平気' })] : []),
+          ],
+          conversationActs: [{ kind: 'consultation_request', targetPublicId: taskId }],
+        }, architecture);
+      }
+      const answer = (target: string | null) => ({ kind: 'answer_pending_question', targetPublicId: target });
+      switch (variant) {
+        case 'ack_task': return emptyDocument({ conversationActs: [answer(taskId)] }, architecture);
+        case 'ack_uncertainty': return emptyDocument({ conversationActs: [answer(uncertaintyId)] }, architecture);
+        case 'placement_uncertainty': return emptyDocument({ tasks: [paperShell({ temporalConstraints: [preferredNight('paper-night', 'paper', text)] })], conversationActs: [answer(uncertaintyId)] }, architecture);
+        case 'other_target': return emptyDocument({ tasks: [studyTask({ localId: 'vocab', existingPublicId: vocabId, title: '英単語', activityKind: 'memorization_retrieval', sourceText: text, temporalConstraints: [preferredNight('vocab-night', 'vocab', text)] })], conversationActs: [answer(taskId)] }, architecture);
+        case 'rate_only': return emptyDocument({ tasks: [paperShell({ effortEstimates: [{ localId: 'paper-session', targetLocalId: 'paper', kind: 'session_duration', minutes: 60, unitCode: 'session', precision: 'approximate', sourceText: text }] })], conversationActs: [answer(taskId)] }, architecture);
+        case 'unbound': return emptyDocument({ tasks: [paperShell({ temporalConstraints: [preferredNight('paper-night', 'paper', text)] })], conversationActs: [answer(null)] }, architecture);
+        case 're_declare': return emptyDocument({ tasks: [paperShell({ temporalConstraints: [preferredNight('paper-night', 'paper', text)] })], uncertainties: [uncertaintyOf()], conversationActs: [answer(taskId)] }, architecture);
+        default: return emptyDocument({ tasks: [paperShell({ temporalConstraints: [preferredNight('paper-night', 'paper', text)] })], conversationActs: [answer(taskId)] }, architecture);
+      }
+    };
+    install((text, call) => {
+      const doc = script(text, call);
+      if (architecture === 'legacy_v5') delete doc.conversationActs;
+      return doc;
+    });
+  }
+  const uncertainties = (c: ScriptedConversation) => createWeeklyPlanningActiveSchedulerGraphViewV5(c.graph()!).uncertainties;
+  const SENTENCE = `「${Q}」について未確定の点を残したまま、仮予定を作りました。`;
+  async function toThirdTurn(variant: Variant, o: Parameters<typeof installLoop>[1] = {}, t3 = '水曜の夜にまとめて') {
+    installLoop(variant, o);
+    const conversation = open(o.architecture);
+    await conversation.submit(L1);
+    const second = await conversation.submit(H.T2);
+    const third = await conversation.submit(t3);
+    return { conversation, second, third };
+  }
+
+  it.each([undefined, true])('flag=%s: a typed answer bound to the presented question releases it and the preview returns', async flag => {
+    const { conversation, second, third } = await toThirdTurn('placement_task', { flag });
+    expect(second.result?.draftCandidates).toEqual([]);
+    expect(third.result?.failure).toBeUndefined();
+    expect(uncertainties(conversation)).toEqual([]);
+    expect(third.result?.draftCandidates.length).toBeGreaterThan(0);
+  });
+  it.each(['ack_task'] as const)('%s (「うん、それで」: no delta anywhere) releases, discloses the point in the user\'s own words, and the decision carries the fact', async variant => {
+    const { conversation, third } = await toThirdTurn(variant, {}, variant.startsWith('ack') ? 'うん、それで' : '水曜の夜にまとめて');
+    expect(uncertainties(conversation)).toEqual([]);
+    expect(third.result?.draftCandidates.length).toBeGreaterThan(0);
+    expect(third.result?.message).toContain(SENTENCE);
+    expect(third.result?.communicationFacts?.uncertaintyReleased).toMatchObject({ quote: Q, count: 1 });
+    const decision = third.calls.filter(call => call.kind === 'renderer').pop()?.payload?.applicationDecision as Json;
+    expect((decision.communication as Json).uncertaintyReleased).toEqual({ quote: Q });
+    expect(JSON.stringify(third.calls.filter(call => call.kind === 'renderer').pop()?.messages)).toContain('uncertaintyReleased: The app states');
+  });
+  it('the no-delta release rides the existing bounded no-op retry (3 semantic reads, no extra call)', async () => {
+    const { third } = await toThirdTurn('ack_task', {}, 'うん、それで');
+    expect(third.calls.filter(call => call.kind === 'semantic_generic')).toHaveLength(3);
+    expect(third.calls.filter(call => call.kind === 'renderer')).toHaveLength(1);
+  });
+  it('a release turn is the only one with the sentence; the lifecycle key is a release, not a resolution', async () => {
+    const { second, third, conversation } = await toThirdTurn('placement_task');
+    expect(second.result?.message).not.toContain('未確定の点を残したまま');
+    const keys = conversation.graph()!.appliedLifecycleOperationKeys;
+    expect(keys.some(key => key.includes(':released-free-form-uncertainty:'))).toBe(true);
+    expect(keys.some(key => key.includes(':resolved-work-breakdown:'))).toBe(false);
+    expect(third.result?.communicationFacts?.uncertaintyReleased?.count).toBe(1);
+  });
+
+  describe('stays open', () => {
+    it.each(['other_target', 'rate_only', 'unbound', 're_declare'] as const)('%s: no release, no preview', async variant => {
+      const { conversation, third } = await toThirdTurn(variant, {}, variant === 'rate_only' ? '1回1時間で' : '水曜の夜にまとめて');
+      expect(uncertainties(conversation).length).toBeGreaterThanOrEqual(1);
+      expect(third.result?.draftCandidates).toEqual([]);
+      expect(third.result?.message ?? '').not.toContain('未確定の点を残したまま');
+      expect(third.result?.communicationFacts?.uncertaintyReleased).toBeUndefined();
+    });
+    it.each(['material_identity', 'work_breakdown'])('known field %s with a bound placement answer keeps the question', async field => {
+      const { conversation, third } = await toThirdTurn('placement_task', { field });
+      expect(uncertainties(conversation).filter(u => u.field === field)).toHaveLength(1);
+      expect(third.result?.draftCandidates).toEqual([]);
+      expect(third.result?.communicationFacts?.uncertaintyReleased).toBeUndefined();
+    });
+    it('two free-form uncertainties on one task: only the presented one is released', async () => {
+      const { conversation, third } = await toThirdTurn('two_uncertainties');
+      const remaining = uncertainties(conversation);
+      expect(remaining).toHaveLength(1);
+      expect(third.result?.communicationFacts?.uncertaintyReleased?.count ?? 0).toBeLessThanOrEqual(1);
+    });
+    it('legacy_v5 is untouched: no release operation, no release fact (the legacy resolution path is unchanged)', async () => {
+      const { conversation, third } = await toThirdTurn('placement_task', { architecture: 'legacy_v5' });
+      expect(conversation.graph()!.appliedLifecycleOperationKeys.some(key => key.includes('released-free-form-uncertainty'))).toBe(false);
+      expect(third.result?.communicationFacts).toBeUndefined();
+      expect(third.result?.message ?? '').not.toContain('未確定の点を残したまま');
+    });
+    it('re-raise: after a release, a later reading may re-declare the point from the old quote; it blocks again and the same bound answer releases it again', async () => {
+      installLoop('placement_task');
+      const conversation = open();
+      await conversation.submit(L1);
+      await conversation.submit(H.T2);
+      await conversation.submit('水曜の夜にまとめて');
+      expect(uncertainties(conversation)).toEqual([]);
+      await conversation.submit(H.T2);
+      expect(uncertainties(conversation)).toHaveLength(1);
+    });
+  });
+});
+
 const X1 = {
   T1: '来週の予定を整理したい。火曜と木曜は17時から20時までバイトが入ってる',
   T2: '勉強の予定は今回はいらない。それだけ',

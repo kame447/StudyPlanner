@@ -108,6 +108,8 @@ export interface WeeklyPlanningStableV5CommunicationContext {
   previewDisclosure: { omittedWork: WeeklyPlanningPreviewOmittedWork[] } | null;
   /** Work that did not fit (the capacity question only); the application states the figures beside the reply. */
   capacityShortfall?: WeeklyPlanningCapacityShortfall;
+  /** A free-form point was released by the user's answer; the application states it (quote included) beside the reply. */
+  uncertaintyReleased?: { quote: string | null };
 }
 
 export interface WeeklyPlanningStableV5DialogueConversationTurn {

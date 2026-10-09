@@ -15,6 +15,7 @@ import type {
 import { communicationContextForStableV5Dialogue } from './weeklyPlanningStableV5CommunicationContext';
 import { retainedPreviewCommunicationForStableV5Dialogue } from './weeklyPlanningRetainedPreviewCommunication';
 import { composeWeeklyPlanningInteractionFallbackText, WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT, WEEKLY_PLANNING_RETAINED_PREVIEW_UNCHANGED_TEXT } from './weeklyPlanningInteractionFallbackText';
+import { weeklyPlanningUncertaintyReleaseText } from './weeklyPlanningUncertaintyReleaseDisclosure';
 import { weeklyPlanningCapacityShortfallText } from './weeklyPlanningCapacityShortfallDisclosure';
 import { weeklyPlanningPreviewConstraintDisclosureText, weeklyPlanningPreviewOmissionDisclosureText } from './weeklyPlanningPreviewOmissionDisclosure';
 import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
@@ -558,7 +559,9 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     ? WEEKLY_PLANNING_RETAINED_PREVIEW_UNCHANGED_TEXT : null;
   const omissionNotice = renderInput.communication?.possibleCompletenessOmission
     ? WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT : null;
-  const finalMessage = [disclosedMessage, retainedPreviewNotice, omissionNotice].filter(Boolean).join('\n\n');
+  const releaseNotice = renderInput.communication?.uncertaintyReleased
+    ? weeklyPlanningUncertaintyReleaseText(renderInput.communication.uncertaintyReleased.quote) : null;
+  const finalMessage = [disclosedMessage, retainedPreviewNotice, omissionNotice, releaseNotice].filter(Boolean).join('\n\n');
   const dialogueRendererTrace = createWeeklyPlanningAiRenderedDialogueTrace({
     actionId: currentActionId,
     actionKind,

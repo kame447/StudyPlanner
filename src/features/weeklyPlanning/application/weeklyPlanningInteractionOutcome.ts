@@ -101,6 +101,11 @@ export interface WeeklyPlanningTurnCommunicationFacts {
    * in its own sentence next to the reply; the renderer never words the figures.
    */
   capacityShortfall?: WeeklyPlanningCapacityShortfall;
+  /**
+   * A free-form blocking question was released by the user's bound answer (not resolved). The application
+   * states that the point stays unconfirmed in its own sentence (with the user's quote); the renderer never words it.
+   */
+  uncertaintyReleased?: { quote: string | null; count: number; ids: string[] };
 }
 
 export function emptyWeeklyPlanningTurnCommunicationFacts(): WeeklyPlanningTurnCommunicationFacts {

@@ -1062,6 +1062,15 @@ export function createWeeklyPlanningTurnDiagnosticV2(
   });
   const budgetCompletion = eventData(events, 'semantic_orchestrator_route')
     .filter(data => data.route === 'audit_authored_registered_material_timebox');
+  // Ids and counts only: the released point's quote is user text and is not persisted here.
+  const releasedFact = record(record(latestEventData(events, 'turn_executor_result_projected').projectedResult)
+    .communicationFacts).uncertaintyReleased;
+  const releasedUncertainties = isRecord(releasedFact)
+    ? {
+        count: numberValue(releasedFact.count),
+        ids: (Array.isArray(releasedFact.ids) ? releasedFact.ids : []).filter((id): id is string => typeof id === 'string').slice(0, 5),
+      }
+    : null;
   const entry: DiagnosticWithTruncation = {
     id: input.id,
     sessionId: input.sessionId,
@@ -1156,6 +1165,7 @@ export function createWeeklyPlanningTurnDiagnosticV2(
       error,
       outcome: boundedText(input.outcome, 500, tracker, 'diagnostics.outcome'),
       previewCount: input.previewCount,
+      ...(releasedUncertainties ? { releasedUncertainties } : {}),
       stale: input.outcome === 'discarded_stale'
         || input.errorCode === 'stale_async_result_discarded',
       truncation: metadata(tracker),

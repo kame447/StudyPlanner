@@ -409,6 +409,12 @@ function communicationFactsProjection(value: Record<string, unknown>): Record<st
           moreCount: numberValue(value.capacityShortfall.moreCount),
         } }
       : {}),
+    ...(isRecord(value.uncertaintyReleased)
+      ? { uncertaintyReleased: {
+          count: numberValue(value.uncertaintyReleased.count),
+          ids: Array.isArray(value.uncertaintyReleased.ids) ? value.uncertaintyReleased.ids.filter((id): id is string => typeof id === 'string').slice(0, 5) : [],
+        } }
+      : {}),
     omittedWorkCount: Array.isArray(disclosure.omittedWork)
       ? disclosure.omittedWork.length
       : null,
