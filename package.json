@@ -49,12 +49,12 @@
     "@types/react-test-renderer": "^18.3.1",
     "@vitejs/plugin-basic-ssl": "^1.2.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "fast-check": "^4.10.0",
+    "fast-check": "^4.10.2",
     "react-test-renderer": "^18.3.1",
     "typescript": "^5.6.3",
     "vite": "^6.4.3",
     "vitest": "3.2.7",
-    "wrangler": "4.143.1"
+    "wrangler": "4.147.0"
   },
   "overrides": {
     "@firebase/firestore@4.14.0": {
@@ -63,7 +63,7 @@
     "vitest@3.2.7": {
       "tinypool": "2.1.2"
     },
-    "miniflare@5.20260926.1-alpha": {
+    "miniflare@5.20261001.0-alpha": {
       "sharp": "0.35.5"
     }
   }
