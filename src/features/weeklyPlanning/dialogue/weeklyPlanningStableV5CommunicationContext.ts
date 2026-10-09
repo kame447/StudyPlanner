@@ -1,3 +1,4 @@
+import { isWeeklyPlanningAppenderRetired, mustConveyFromCapacityShortfall } from './weeklyPlanningMustConvey';
 import { isKnownWeeklyPlanningUncertaintyFieldV5 } from '../semantic/weeklyPlanningSemanticUncertaintyResolutionV5';
 import type {
   WeeklyPlanningInteractionOutcome,
@@ -215,7 +216,11 @@ export function communicationContextForStableV5Dialogue(params: {
       ? { allocationBreakdown: params.facts.allocationBreakdown }
       : {}),
     ...(params.questionCode === 'insufficient_capacity' && params.actionKind === 'question' && params.facts?.capacityShortfall
-      ? { capacityShortfall: params.facts.capacityShortfall } : {}),
+      ? {
+          capacityShortfall: params.facts.capacityShortfall,
+          ...(isWeeklyPlanningAppenderRetired('shortfall')
+            ? { mustConvey: [mustConveyFromCapacityShortfall(params.facts.capacityShortfall)] } : {}),
+        } : {}),
     ...(params.facts?.openPointCoversConsultation && askQuestion ? { openPointCoversConsultation: true } : {}),
     ...(params.facts?.uncertaintyReleased ? { uncertaintyReleased: { quote: params.facts.uncertaintyReleased.quote, nothingRead: params.facts.uncertaintyReleased.nothingRead } } : {}),
     previewDisclosure: params.actionKind === 'preview_ready'

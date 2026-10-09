@@ -1,3 +1,5 @@
+import { isWeeklyPlanningAppenderRetired } from './weeklyPlanningMustConvey';
+import { WEEKLY_PLANNING_VERIFIED_DIALOGUE_TECHNICAL_STOP_TEXT } from './weeklyPlanningTechnicalStop';
 import { getAiConfig } from '../../../lib/aiConfig';
 import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import {
@@ -8,6 +10,7 @@ import {
   createAiWeeklyPlanningStableV5DialogueRenderer,
   type WeeklyPlanningStableV5DialogueActionKind,
   type WeeklyPlanningStableV5DialogueRenderInput,
+  type WeeklyPlanningStableV5DialogueRenderResult,
 } from './weeklyPlanningStableV5AiDialogueRenderer';
 import type {
   WeeklyPlanningStableV5DialogueQuestionIntent,
@@ -437,6 +440,62 @@ function createRenderInput(params: {
   };
 }
 
+/**
+ * P2 technical stop: the AI-written reply could not be verified. A controlled failure, never a rendered reply:
+ * the controller keeps the turn-start state and the staged graph is discarded, so no mustConvey fact is lost and
+ * a resend applies once. The held question's presentation is passed so a short answer keeps its target.
+ */
+function verifiedDialogueTechnicalStop(args: {
+  params: { input: WeeklyPlanningTurnExecutionInput; result: WeeklyPlanningTurnExecutionResult };
+  renderInput: WeeklyPlanningStableV5DialogueRenderInput;
+  rendered: Extract<WeeklyPlanningStableV5DialogueRenderResult, { status: 'fallback' }>;
+  actionKind: ReturnType<typeof dialogueActionKind>;
+  currentQuestionCode: ReturnType<typeof questionCode>;
+  currentActionId: string;
+  notice: string | null;
+}): WeeklyPlanningTurnExecutionResult {
+  const message = WEEKLY_PLANNING_VERIFIED_DIALOGUE_TECHNICAL_STOP_TEXT;
+  const dialogueRendererTrace = createWeeklyPlanningFallbackDialogueTrace({
+    actionId: args.currentActionId,
+    actionKind: args.actionKind,
+    questionCode: args.currentQuestionCode,
+    renderInput: args.renderInput,
+    rendered: args.rendered,
+    finalMessage: message,
+  });
+  const result = withAssistantMessage({
+    result: args.params.result,
+    message,
+    responseSource: 'system',
+    dialogueRendererTrace,
+    keepQuestions: true,
+    questionPresentationContent: questionPresentationContent({
+      result: args.params.result,
+      renderInput: args.renderInput,
+      responseSource: 'deterministic_fallback',
+      notice: args.notice,
+    }),
+  });
+  recordWeeklyPlanningDialogueDecisionV5({
+    requestId: args.params.input.traceRequestId,
+    branch: 'deterministic_fallback',
+    actionId: args.currentActionId,
+    reason: args.rendered.reason,
+    responseSource: 'system',
+    message,
+    severity: 'error',
+  });
+  return {
+    ...result,
+    failure: {
+      code: 'stable_v5_dialogue_verification_failed',
+      userMessage: message,
+      traceCode: args.rendered.reason,
+      diagnostics: { attemptCount: 0, repairAttempted: true, validationErrorCategories: [args.rendered.reason], providerErrorCategory: null },
+    },
+  };
+}
+
 export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
   input: WeeklyPlanningTurnExecutionInput;
   result: WeeklyPlanningTurnExecutionResult;
@@ -508,6 +567,10 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     selfRepairNotice: notice,
   });
 
+  if (rendered.status === 'fallback' && (rendered.reason === 'verification_failed' || rendered.reason === 'verification_unavailable')) {
+    return verifiedDialogueTechnicalStop({ params, renderInput, rendered, actionKind, currentQuestionCode, currentActionId, notice });
+  }
+
   if (rendered.status === 'fallback') {
     const finalMessage = renderInput.fallbackText;
     const dialogueRendererTrace = createWeeklyPlanningFallbackDialogueTrace({
@@ -553,7 +616,7 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     : rendered.text;
   const constraintDisclosure = weeklyPlanningPreviewConstraintDisclosureText(renderInput.communication?.previewConstraintSatisfaction);
   const shortfall = renderInput.communication?.capacityShortfall;
-  const shortfallMessage = shortfall ? `${previewMessage}\n\n${weeklyPlanningCapacityShortfallText(shortfall)}` : previewMessage;
+  const shortfallMessage = shortfall && !isWeeklyPlanningAppenderRetired('shortfall') ? `${previewMessage}\n\n${weeklyPlanningCapacityShortfallText(shortfall)}` : previewMessage;
   const disclosedMessage = constraintDisclosure ? `${shortfallMessage}\n\n${constraintDisclosure}` : shortfallMessage;
   // Semantic recovery that kept the preview: the application states it; the renderer may not.
   const retainedPreviewNotice = renderInput.communication?.goal === 'clarify_turn'

@@ -1,3 +1,4 @@
+import type { WeeklyPlanningMustConveyEntry } from './weeklyPlanningMustConvey';
 import type { WeeklyPlanningScheduleCommunicationIntent } from '../application/weeklyPlanningFixedEventOnlyInteraction';
 import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import type { WeeklyPlanningConsultationCommunication } from '../application/weeklyPlanningConsultationCommunication';
@@ -109,6 +110,8 @@ export interface WeeklyPlanningStableV5CommunicationContext {
   previewDisclosure: { omittedWork: WeeklyPlanningPreviewOmittedWork[] } | null;
   /** Work that did not fit (the capacity question only); the application states the figures beside the reply. */
   capacityShortfall?: WeeklyPlanningCapacityShortfall;
+  /** P2: typed facts the reply must convey; the application verifies the reply against them (retired appenders only). */
+  mustConvey?: WeeklyPlanningMustConveyEntry[];
   /** A free-form point was released by the user's answer; the application states it (quote included) beside the reply. */
   /** The presented question already invites the user's condition for the consulted task. */
   openPointCoversConsultation?: boolean;
@@ -361,7 +364,11 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
    * Interaction architecture: a reply that comes with no new preview claims that candidates
    * were made or changed (the renderer never sees the existing preview's contents).
    */
-  | 'preview_claim_without_preview';
+  | 'preview_claim_without_preview'
+  /** P2: the reply failed verification against the typed mustConvey facts after the one regeneration (technical stop). */
+  | 'verification_failed'
+  /** P2: the verification itself could not be completed (dispatch refused, provider error, malformed verdict): technical stop, never a pass. */
+  | 'verification_unavailable';
 
 export type WeeklyPlanningStableV5DialogueRenderResult =
   | {

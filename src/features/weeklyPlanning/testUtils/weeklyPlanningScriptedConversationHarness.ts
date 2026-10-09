@@ -40,6 +40,8 @@ export type ScriptedProviderCallKind =
   | 'semantic_focused_authorization'
   | 'semantic_other'
   | 'renderer'
+  /** P2: the independent reply verifier (`weekly_planning_reply_verifier_v1`). */
+  | 'reply_verifier'
   | 'other';
 
 export interface ScriptedProviderCall {
@@ -66,6 +68,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function callKind(schemaName: string): ScriptedProviderCallKind {
   if (schemaName === 'weekly_planning_stable_v5_dialogue_response') return 'renderer';
+  if (schemaName === 'weekly_planning_reply_verifier_v1') return 'reply_verifier';
   if (schemaName === 'weekly_planning_semantic_document_v5') return 'semantic_generic';
   if (schemaName === 'weekly_planning_focused_contextual_answer_v5') return 'semantic_focused_contextual';
   if (schemaName.includes('focused_authorization')) return 'semantic_focused_authorization';
