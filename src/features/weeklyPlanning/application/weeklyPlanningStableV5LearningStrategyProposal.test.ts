@@ -8,7 +8,9 @@ import {
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import {
   evaluateWeeklyPlanningLearningStrategyProposalsV5,
+  isLapsedLearningStrategyProposal,
 } from './weeklyPlanningStableV5LearningStrategyProposal';
+import { evaluateWeeklyPlanningInsufficientCapacityProposalV5 } from './weeklyPlanningStableV5CapacityProposal';
 
 function document(params: {
   activityKind: SemanticStudyActivityKindV5;
@@ -322,5 +324,114 @@ describe('Stable V5 learning strategy proposal policy', () => {
 
     expect(result.pendingProposal).toBeNull();
     expect(result.records).toEqual(records);
+  });
+});
+
+describe('optional proposal lifecycle: presented once, then decided or lapsed (Issue #488 X2)', () => {
+  const pendingRecords = () => evaluateWeeklyPlanningLearningStrategyProposalsV5({
+    presentedProposalId: null,
+    document: document({ activityKind: 'memorization_retrieval' }),
+    localToFactId: { task: 'task-public', workload: 'workload-public' },
+    compilation: compilation(),
+    graphRevision: 1,
+    turnId: 'turn-1',
+  });
+  const nextTurn = (params: {
+    records: ReturnType<typeof pendingRecords>['records'];
+    presentedProposalId: string | null;
+    doc: WeeklyPlanningSemanticDocumentV5;
+    turnId: string;
+    restrictToPresentedProposal?: boolean;
+  }) => evaluateWeeklyPlanningLearningStrategyProposalsV5({
+    presentedProposalId: params.presentedProposalId,
+    previousState: state(params.records),
+    document: params.doc,
+    localToFactId: {},
+    compilation: compilation(),
+    graphRevision: 1,
+    turnId: params.turnId,
+    restrictToPresentedProposal: params.restrictToPresentedProposal,
+  });
+  const withActs = (acts: Array<{ kind: string; targetPublicId: null }>, planning: boolean): WeeklyPlanningSemanticDocumentV5 => ({
+    ...(planning ? document({ activityKind: 'problem_solving' }) : document({ activityKind: 'unknown', decision: undefined }) ),
+    ...(planning ? {} : { tasks: [], planningWindow: null }),
+    conversationActs: acts,
+  } as unknown as WeeklyPlanningSemanticDocumentV5);
+
+  it('lapses a fresh presented proposal that the next turn does not decide, and never re-presents or re-creates it', () => {
+    const first = pendingRecords();
+    const id = first.pendingProposal!.id;
+    const second = nextTurn({ records: first.records, presentedProposalId: id, doc: withActs([], true), turnId: 'turn-2' });
+    expect(second.pendingProposal).toBeNull();
+    expect(isLapsedLearningStrategyProposal(second.records[0])).toBe(true);
+    expect(second.records[0]).toMatchObject({ status: 'pending', decidedAtTurnId: 'turn-2' });
+    const third = nextTurn({ records: second.records, presentedProposalId: null, doc: document({ activityKind: 'memorization_retrieval' }), turnId: 'turn-3' });
+    expect(third.pendingProposal).toBeNull();
+    expect(third.records).toHaveLength(1);
+  });
+
+  it('does not lapse a proposal that was not freshly presented', () => {
+    const first = pendingRecords();
+    const second = nextTurn({ records: first.records, presentedProposalId: null, doc: withActs([], true), turnId: 'turn-2' });
+    expect(second.pendingProposal?.id).toBe(first.pendingProposal!.id);
+    expect(second.records[0].decidedAtTurnId).toBeNull();
+  });
+
+  it.each([
+    ['explanation request', [{ kind: 'ask_about_pending_question', targetPublicId: null }], true, false],
+    ['consultation without planning content', [{ kind: 'consultation_request', targetPublicId: null }], false, false],
+    ['topic shift without planning content', [{ kind: 'topic_shift', targetPublicId: null }], false, false],
+    ['consultation with planning content', [{ kind: 'consultation_request', targetPublicId: null }], true, true],
+  ] as const)('%s: lapses=%s', (_label, acts, planning, lapses) => {
+    const first = pendingRecords();
+    const second = nextTurn({
+      records: first.records, presentedProposalId: first.pendingProposal!.id, doc: withActs([...acts], planning), turnId: 'turn-2',
+    });
+    expect(isLapsedLearningStrategyProposal(second.records[0])).toBe(lapses);
+    expect(second.pendingProposal === null).toBe(lapses);
+  });
+
+  it('a later decision on a lapsed proposal is neither a silent acceptance nor a rejection', () => {
+    const first = pendingRecords();
+    const id = first.pendingProposal!.id;
+    const lapsed = nextTurn({ records: first.records, presentedProposalId: id, doc: withActs([], true), turnId: 'turn-2' });
+    for (const decision of ['accept', 'reject'] as const) {
+      const later = nextTurn({
+        records: lapsed.records, presentedProposalId: id,
+        doc: document({ activityKind: 'unknown', decision: { proposalId: id, decision } }), turnId: 'turn-3',
+      });
+      expect(later.acceptedSpacedProposal).toBeNull();
+      expect(later.records[0]).toMatchObject({ status: 'pending', decidedAtTurnId: 'turn-2' });
+    }
+  });
+
+  it('legacy (unrestricted) decisions keep the pending gate: nothing lapses', () => {
+    const first = pendingRecords();
+    const second = nextTurn({
+      records: first.records, presentedProposalId: first.pendingProposal!.id, doc: withActs([], true), turnId: 'turn-2',
+      restrictToPresentedProposal: false,
+    });
+    expect(second.pendingProposal?.id).toBe(first.pendingProposal!.id);
+    expect(second.records[0].decidedAtTurnId).toBeNull();
+  });
+
+  it('a capacity proposal lapses the same way and the capacity path does not re-present it', () => {
+    const spacing = { ...pendingRecords().records[0], status: 'accepted' as const, decidedAtTurnId: 'turn-2' };
+    const capacity = {
+      ...spacing, id: 'wpp_capacity_x', kind: 'mixed_acquisition_review' as const, status: 'pending' as const, decidedAtTurnId: null,
+      capacityStrategy: { trigger: 'insufficient_capacity' as const, acquisition: 'longer_sessions' as const,
+        review: 'short_distributed_sessions' as const, unscheduledWorkItemIds: ['item-1'] },
+    };
+    const lapsed = nextTurn({ records: [spacing, capacity], presentedProposalId: 'wpp_capacity_x', doc: withActs([], true), turnId: 'turn-3' });
+    expect(lapsed.records.find((record) => record.id === 'wpp_capacity_x')).toMatchObject({ status: 'pending', decidedAtTurnId: 'turn-3' });
+    const again = evaluateWeeklyPlanningInsufficientCapacityProposalV5({
+      records: lapsed.records,
+      compilation: { status: 'ready', issues: [], input: { movableWorkItems: [{ id: 'item-1', workloadFactId: 'workload-public' }] } } as never,
+      preview: { status: 'insufficient_capacity', unscheduledWorkItemIds: ['item-1'] },
+      graphRevision: 1,
+      turnId: 'turn-4',
+    });
+    expect(again.pendingProposal).toBeNull();
+    expect(again.records).toHaveLength(lapsed.records.length);
   });
 });

@@ -139,6 +139,66 @@ describe('X2: an optional learning-strategy proposal that the user does not take
   });
 });
 
+function proposals(conversation: ScriptedConversation) {
+  return conversation.getState().intakeState?.learningStrategyProposalRecords ?? [];
+}
+
+describe('X2 boundaries', () => {
+  it('a consultation turn without planning content keeps the presented proposal held', async () => {
+    install((text, call) => text === X2.T1 ? x2Script(text, call)
+      : emptyDocument({ conversationActs: [{ kind: 'consultation_request', targetPublicId: null }] }));
+    const conversation = open();
+    await conversation.submit(X2.T1);
+    await conversation.submit(X2.T2);
+    expect(proposals(conversation)[0]).toMatchObject({ status: 'pending', decidedAtTurnId: null });
+  });
+
+  it('after a lapse the required question that the proposal was hiding is asked, and the preview stays blocked', async () => {
+    install((text, call) => {
+      if (text !== X2.T1) return x2Script(text, call);
+      const document = x2Script(text, call);
+      // 物理 without its per-problem rate: a required effort question coexists with the proposal.
+      (document.tasks as Json[])[1].effortEstimates = [];
+      return document;
+    });
+    const conversation = open();
+    await conversation.submit(X2.T1);
+    expect(questionSlot(conversation)).toBe('stable_v5:learning_strategy_proposal');
+    const second = await conversation.submit(X2.T2);
+    expect(second.result?.failure).toBeUndefined();
+    expect(questionSlot(conversation)).toBe('stable_v5:missing_effort_estimate');
+    expect(second.result?.draftCandidates).toEqual([]);
+  });
+
+  it('a later accept of the lapsed proposal is neither a silent acceptance nor a decline, and the model is not shown it', async () => {
+    let lapsedId = '';
+    install((text, call) => {
+      if (text === X2.T1 || text === X2.T2) return x2Script(text, call);
+      return emptyDocument({ decisions: [{ localId: 'd', target: { kind: 'proposal', publicId: lapsedId, localId: null, mention: null },
+        decision: 'accept', sourceText: X2.T3 }] });
+    });
+    const conversation = open();
+    await conversation.submit(X2.T1);
+    lapsedId = proposals(conversation)[0].id;
+    await conversation.submit(X2.T2);
+    const third = await conversation.submit(X2.T3);
+    const generic = third.calls.filter(call => call.kind === 'semantic_generic');
+    expect(generic.length).toBeGreaterThan(0);
+    // The first request is the model context; a later repair request only echoes the model's own answer.
+    expect(JSON.stringify(generic[0].messages)).not.toContain(lapsedId);
+    expect(proposals(conversation)[0]).toMatchObject({ status: 'pending', decidedAtTurnId: expect.any(String) });
+  });
+
+  it('legacy_v5 keeps the pending gate (no lapse)', async () => {
+    install((text, call) => x2Script(text, call, 'legacy_v5'));
+    const conversation = open('legacy_v5');
+    await conversation.submit(X2.T1);
+    await conversation.submit(X2.T2);
+    expect(questionSlot(conversation)).toBe('stable_v5:learning_strategy_proposal');
+    expect(proposals(conversation)[0]).toMatchObject({ status: 'pending', decidedAtTurnId: null });
+  });
+});
+
 const X3 = {
   T1: '来週、化学の参考書を進めたいんだけど、どのくらい時間がかかるか見当がつかない',
   T2: 'ふつう1章ってどれくらいかかるもの？',
