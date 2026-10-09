@@ -75,6 +75,7 @@ function ConsentedStudyPlannerApp({
     return (
       <InitialWeekStartPreferenceScreen
         error={personalization.error}
+        readFailed={personalization.readFailed}
         onSave={personalization.setWeekStartsOn}
         onRetry={personalization.refresh}
         onSignOut={async () => {
