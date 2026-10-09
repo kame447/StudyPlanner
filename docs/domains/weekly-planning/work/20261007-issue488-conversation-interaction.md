@@ -772,3 +772,35 @@ Method: `vite build --sourcemap` of `ea0d871a` and of the fork point `22847120`.
 - **W4/W3 rerun #7:**
   - unmodified W4 stops at the capacity turn in 4 tests, because the old scripted renderer omits the figures (a correct stop);
   - with the updated doubles, W4 is 28/2 (B4 only) and W3 is 8/8.
+
+**Live round 7 on `8ae06148`** (2026-10-10 00:43–00:52 JST; real provider; authorized preview account; previews read, never approved or saved). The production code is `d8ea5043`, which includes P2 slice 1.
+- **Strict result: 12/14.**
+  - **Pass:** A, C, D, E, G, H, EV, X2, X4 and X5.
+  - **Pass with a wording residual:** B and X1.
+    - In B, the interim nothing-read sentence is appended to a reply that applied a material label.
+    - In X1, the same sentence is appended to a closing reply.
+  - **Fail:** F and X3.
+    - F still asks about progress first and then promotes 「合計2時間くらい」; S1/S3 were not yet integrated.
+    - In X3, the answer to a consultation fell back to fixed text because 「1時間」 was read as a clock time; S2 v2 fixes that.
+  - **No technical stop in any scenario.** X4 did not reach the capacity question, because the run was on a Saturday.
+- **Capacity probe:**
+  - **D1:** the verifier rejected a natural, accurate single-item reply, and the regeneration was stilted.
+  - **D2:** 「来週の金曜までに延ばす」 was read as a correction pointing at a replacement deadline that does not exist. The turn failed with the fixed text 「内容をもう少しずつ教えてください。」, and the user was not told the change was not applied.
+  - Both are assigned. Disclosure must not depend on the route.
+
+**P3 S1+S2 and the S2 grounding fixes integrated** (`17c24f4a`, `37745d15`, `4592f939`, `cadd4ebd`; MistyFabre and BrightLavoisier; critic audit PASS on the combined tree).
+- **S1, purpose-keyed binding:**
+  - The held purpose is derived from the renderer's own typed intent.
+  - An answer that does not match is demoted, never promoted: a plan amount given in reply to a progress question becomes a declared amount whose role is unresolved.
+  - The role confirmation is presented once, and the waiting amount is then a verified `mustConvey` fact.
+  - A later restatement settles it. A bare 「はい」 or an unrelated amount does not.
+- **S2:** typed planning needs and the free calendar (times only) reach the AI on amount questions.
+- **Clock grounding (P4 re-targetings):**
+  - A time inside a listed free window is grounded.
+  - In interaction, a duration is not a clock time (`時(?!間)`), so an invented duration now renders; amounts become facts only through typed acceptance.
+  - 夜/晩/夕方 shift the hour by 12. 「夜1時」 is left alone.
+  - Recorded residual: a weekday word is not paired with a time.
+- **`ungrounded_text` repair:** it now gets the single shared repair (interaction only).
+- No new fixed sentence; legacy unchanged (oracle 0).
+- Typecheck is clean, and the weeklyPlanning suite passes (4282 tests).
+- F is still not claimed: choosing between a question and a proposal is S3.
