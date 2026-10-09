@@ -105,6 +105,7 @@ const PROSE_REGISTRY: Readonly<Record<string, ProseCategory>> = {
   'semantic/weeklyPlanningCalendarResolver.ts': 'data_formatting',
   'semantic/weeklyPlanningMemoryCalibrationSchedulerInputV5.ts': 'data_formatting',
   'semantic/weeklyPlanningSchedulerWorkDistributionV5.ts': 'data_formatting',
+  'semantic/weeklyPlanningWorkloadQuantityLabelV5.ts': 'data_formatting',
   'semantic/weeklyPlanningStableV5PlacementCandidates.ts': 'data_formatting',
   'semantic/weeklyPlanningStatedTimeBudgetProjectionV5.ts': 'data_formatting',
   'config/weeklyPendingConfigUpdater.ts': 'not_wired_pre_v5',
