@@ -1,3 +1,4 @@
+import { decodeWeeklyPlanningQuestionPresentation } from '../intake/weeklyPlanningQuestionPresentation';
 import { isWeeklyPlanningAppenderRetired } from './weeklyPlanningMustConvey';
 import { WEEKLY_PLANNING_VERIFIED_DIALOGUE_TECHNICAL_STOP_TEXT } from './weeklyPlanningTechnicalStop';
 import { getAiConfig } from '../../../lib/aiConfig';
@@ -469,13 +470,10 @@ function verifiedDialogueTechnicalStop(args: {
     responseSource: 'system',
     dialogueRendererTrace,
     keepQuestions: true,
-    questionPresentationContent: questionPresentationContent({
-      result: args.params.result,
-      renderInput: args.renderInput,
-      responseSource: 'deterministic_fallback',
-      notice: args.notice,
-    }),
   });
+  // The controller re-binds the retained TURN-START question to the stop message. Hand it that question's own presentation
+  // (content and graph revision), never the discarded turn's; with none, the binding is dropped (fail closed).
+  const held = decodeWeeklyPlanningQuestionPresentation(args.params.input.previousState?.lastQuestionContext?.presentation);
   recordWeeklyPlanningDialogueDecisionV5({
     requestId: args.params.input.traceRequestId,
     branch: 'deterministic_fallback',
@@ -485,8 +483,10 @@ function verifiedDialogueTechnicalStop(args: {
     message,
     severity: 'error',
   });
+  const { questionPresentationContent: _discardedContent, questionPresentationGraphRevision: _discardedRevision, ...retained } = result;
   return {
-    ...result,
+    ...retained,
+    ...(held ? { questionPresentationContent: held.content, questionPresentationGraphRevision: held.graphRevision } : {}),
     failure: {
       code: 'stable_v5_dialogue_verification_failed',
       userMessage: message,

@@ -70,6 +70,7 @@ const PROSE_REGISTRY: Readonly<Record<string, ProseCategory>> = {
   'dialogue/weeklyPlanningNothingReadDisclosure.ts': 'interaction_authoritative_disclosure',
   'dialogue/weeklyPlanningRateDisclosure.ts': 'interaction_authoritative_disclosure',
   'dialogue/weeklyPlanningTechnicalStop.ts': 'interaction_authoritative_disclosure',
+  'dialogue/weeklyPlanningReplyVerification.ts': 'output_validation',
   'application/weeklyPlanningStableV5RuntimeQuestions.ts': 'interaction_emergency_shared',
   'dialogue/weeklyPlanningStableV5TurnDialogue.ts': 'interaction_emergency_shared',
   'application/weeklyPlanningStableV5GroundingFlow.ts': 'interaction_emergency_shared',

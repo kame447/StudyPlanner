@@ -92,6 +92,31 @@ describe('P2 slice 1: the shortfall is verified, not appended', () => {
     expect(turnCalls.filter(call => call.kind === 'renderer').length).toBe(1);
   });
 
+  it('the verifier is told what shortfall means and forbids only claims that are false on a shortfall turn', async () => {
+    const { turnCalls } = await overload((call) => render(call, isCapacity(call) ? faithfulText(call) + '頂いた変更は取り込んでいます。' : 'ok'));
+    const system = turnCalls.find(call => call.kind === 'reply_verifier')!.messages[0].content;
+    expect(system).toContain('NOT all of the work fits');
+    expect(system).toContain('plan_fits');
+    expect(system).not.toContain('applied');
+    const schema = JSON.stringify(turnCalls.find(call => call.kind === 'reply_verifier')!.request);
+    expect(schema).not.toContain('"applied"');
+  });
+
+  it('after a stop the turn-start question stays bound: same target, same presentation, same graph revision', async () => {
+    let omit = false;
+    const { conv } = await overload((call) => render(call, isCapacity(call) && !omit ? faithfulText(call) : OMITTING));
+    const start = JSON.parse(JSON.stringify(conv.getState().intakeState?.lastQuestionContext));
+    expect(start?.presentation, 'the capacity question of the first turn is bound').toBeTruthy();
+    omit = true;
+    const stopped = await conv.submit(OVERLOAD);
+    expect(stopped.result?.failure?.code).toBe('stable_v5_dialogue_verification_failed');
+    const kept = conv.getState().intakeState?.lastQuestionContext as { targetSlot?: string; presentation?: { graphRevision: number; content: unknown; assistantMessageId: string } } | undefined;
+    expect(kept?.targetSlot).toBe(start.targetSlot);
+    expect(kept?.presentation?.graphRevision).toBe(start.presentation.graphRevision);
+    expect(kept?.presentation?.content).toEqual(start.presentation.content);
+    expect(kept?.presentation?.assistantMessageId).not.toBe(start.presentation.assistantMessageId);
+  });
+
   it('a resend after the stop applies once (same state as a clean turn)', async () => {
     let failFirst = true;
     const { conv, turn } = await overload((call) => {

@@ -25,8 +25,9 @@ export function replyDurationMinutes(text: string): Set<number> {
     .replace(/[０-９]/g, (digit) => String(digit.charCodeAt(0) - 0xff10))
     .replace(/(?<=\d)[,，](?=\d{3}(?!\d))/g, '');
   const minutes = new Set<number>();
-  for (const match of folded.matchAll(/(\d+(?:\.\d+)?)\s*時間(?:\s*(\d+)\s*分)?/g)) {
-    minutes.add(Math.round(Number(match[1]) * 60 + (match[2] ? Number(match[2]) : 0)));
+  for (const match of folded.matchAll(/(\d+(?:\.\d+)?)\s*時間(?:\s*(\d+)\s*分|半)?/g)) {
+    const extra = match[2] ? Number(match[2]) : match[0].endsWith('半') ? 30 : 0;
+    minutes.add(Math.round(Number(match[1]) * 60 + extra));
   }
   return minutes;
 }
@@ -78,7 +79,7 @@ export const WEEKLY_PLANNING_REPLY_VERIFIER_RESPONSE_FORMAT: JsonSchemaResponseF
         },
         forbidden: {
           type: 'array',
-          items: { type: 'string', enum: ['plan_fits', 'plan_complete', 'saved', 'applied'] },
+          items: { type: 'string', enum: ['plan_fits', 'plan_complete', 'saved'] },
         },
       },
     },
@@ -92,7 +93,13 @@ export function createReplyVerifierMessages(params: {
   return [
     {
       role: 'system',
-      content: 'You verify one assistant reply against typed facts. For each required code, return stated_accurately only if the reply states the fact with the given numbers and labels without contradicting it; missing if absent; contradicted if it says otherwise. In forbidden, list every claim the reply makes: plan_fits (the work fits or everything was scheduled), plan_complete, saved, applied. Judge only the reply and the facts.',
+      content: [
+        'You verify one assistant reply against typed facts. Judge only the reply and the facts given.',
+        'Code "shortfall": the weekly plan needs requiredMinutes minutes in total, NOT all of the work fits in the available time, and "unmet" lists the work (label and minutes) that could not be placed (moreCount further items are not listed).',
+        'For each required code return stated_accurately only if the reply conveys the fact with the given numbers and labels and does not contradict it; missing if it does not convey it; contradicted if it says otherwise (for example that everything fits or was scheduled).',
+        'In "forbidden" list each of these claims the reply makes, and nothing else: plan_fits (says all the work fits, was scheduled or was placed, or that nothing is left over); plan_complete (calls the plan finished or complete); saved (says the plan was saved, registered or added to the calendar).',
+        'Saying that the user\'s message or a change was taken into account is NOT a forbidden claim.',
+      ].join(' '),
     },
     {
       role: 'user',
