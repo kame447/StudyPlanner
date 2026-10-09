@@ -118,6 +118,20 @@ function resolveTargetFactId(params: {
   return { factId: candidateId, error: null };
 }
 
+/**
+ * A replacement fact's own target is a "support" stub that is pruned once the replacement is rebased onto the
+ * corrected fact's target. A support fact that is itself the replacement of another correction of the same turn
+ * is an explicitly corrected fact (e.g. the new workload of a total correction) and is never pruned.
+ */
+export function pruneableSupportFactIdsV5(params: {
+  supportFactIds: Iterable<string>;
+  correctionReplacementFactIds: Iterable<string | null>;
+}): string[] {
+  const kept = new Set<string>();
+  for (const id of params.correctionReplacementFactIds) if (id) kept.add(id);
+  return [...params.supportFactIds].filter((id) => !kept.has(id));
+}
+
 interface RebaseResult {
   graph: WeeklyPlanningFactGraphV5;
   orphanTaskIds: Set<string>;
@@ -485,7 +499,12 @@ export function applyWeeklyPlanningCanonicalCorrectionsV5(params: {
   }
 
   const pruneIds: string[] = [];
-  supportFactIds.forEach((id) => pruneIds.push(id));
+  pruneableSupportFactIdsV5({
+    supportFactIds,
+    correctionReplacementFactIds: graph.correctionIntents
+      .filter((fact) => correctionIds.includes(fact.id))
+      .map((fact) => fact.replacementFactId),
+  }).forEach((id) => pruneIds.push(id));
   [...orphanComponentIds]
     .sort((left, right) => {
       const leftDepth = graph.components.find((item) => item.id === left)?.parentComponentId ? 1 : 0;

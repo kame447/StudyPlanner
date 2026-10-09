@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyWeeklyPlanningCanonicalCorrectionsV5,
+  pruneableSupportFactIdsV5,
 } from './weeklyPlanningCanonicalCorrectionApplicationV5';
 import {
   createEmptyWeeklyPlanningFactGraphV5,
@@ -268,5 +269,17 @@ describe('Stable V5 canonical correction application', () => {
       expect.stringContaining('correction-target-kind-mismatch'),
     ]);
     expect(first.graph.revision).toBe(1);
+  });
+});
+
+describe('pruneableSupportFactIdsV5', () => {
+  it('keeps a support fact that is the replacement of a correction of the turn and still prunes a stub', () => {
+    expect(pruneableSupportFactIdsV5({
+      supportFactIds: new Set(['new-workload', 'stub']),
+      correctionReplacementFactIds: ['new-workload', null],
+    })).toEqual(['stub']);
+  });
+  it('prunes every support fact when no correction names it as a replacement', () => {
+    expect(pruneableSupportFactIdsV5({ supportFactIds: ['a', 'b'], correctionReplacementFactIds: ['c'] })).toEqual(['a', 'b']);
   });
 });
