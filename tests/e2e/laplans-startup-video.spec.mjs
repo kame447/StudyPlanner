@@ -120,6 +120,58 @@ for (const width of [390, 1280]) {
   });
 }
 
+for (const width of [390, 1280]) {
+  test.describe(`public authentication initial viewport ${width}px`, () => {
+    test.use({ viewport: { width, height: 844 }, screen: { width, height: 844 } });
+  test(`opens ordinary authentication without a preview key after the intro at ${width}px`, async ({ page }, testInfo) => {
+    await boot(page, width);
+    const actualViewport = await page.evaluate(width => ({
+      client: document.documentElement.clientWidth,
+      visual: window.visualViewport?.width,
+      media: matchMedia(`(width: ${width}px)`).matches,
+    }), width);
+    expect(actualViewport.client).toBe(width);
+    expect(actualViewport.visual).toBeCloseTo(width, 0);
+    expect(actualViewport.media).toBe(true);
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.app-access-key'))).toBeNull();
+    await page.evaluate(() => window.__startupGateHarness.emitAuth(null));
+    await expect(page.getByRole('button', { name: skipName })).toBeEnabled();
+    await expect(page.getByRole('heading', { name: '新規会員登録' })).toHaveCount(0);
+    const video = page.locator('video');
+    await observeEnded(video);
+    if (width === 390) await expectRealCompletion(page);
+    else await page.getByRole('button', { name: skipName }).click();
+
+    await expect(page.getByRole('heading', { name: '新規会員登録' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '限定公開キー' })).toHaveCount(0);
+    await expect(page.getByLabel('閲覧キー', { exact: true })).toHaveCount(0);
+    await expect(page.locator('.home-main:visible')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: '利用規約' })).toHaveAttribute('href', '/terms');
+    await expect(page.getByRole('link', { name: 'プライバシーポリシー' })).toHaveAttribute('href', '/privacy');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await testInfo.attach(`auth-entry-signup-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+
+    await page.getByRole('tab', { name: 'ログイン', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'ログイン', exact: true })).toBeVisible();
+    await expect(page.getByLabel('メールアドレス')).toBeVisible();
+    await expect(page.getByLabel('パスワード', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Googleでログイン' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'パスワードを再設定' })).toBeVisible();
+    await testInfo.attach(`auth-entry-login-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+
+    await page.evaluate(() => localStorage.setItem('studyplanner.app-access-key', 'obsolete-synthetic-value'));
+    await page.reload();
+    await page.waitForFunction(() => Boolean(window.__startupGateHarness));
+    await page.evaluate(() => window.__startupGateHarness.emitAuth(null));
+    await page.getByRole('button', { name: skipName }).click();
+    await expect(page.getByRole('heading', { name: '新規会員登録' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '限定公開キー' })).toHaveCount(0);
+    await expect(page.locator('.home-main:visible')).toHaveCount(0);
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.app-access-key'))).toBe('obsolete-synthetic-value');
+  });
+  });
+}
+
 test('pending authentication and data disable skip and ignore touch, click and keyboard input', async ({ page }) => {
   await boot(page);
   const video = page.locator('video');

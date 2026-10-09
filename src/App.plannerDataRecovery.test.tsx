@@ -26,7 +26,6 @@ vi.mock('./lib/preloadAppViews', () => ({ scheduleAppViewPreload: fixture.schedu
 vi.mock('./hooks/usePlannerAppState', () => ({ usePlannerAppState: vi.fn(() => fixture.state) }));
 vi.mock('./features/weeklyPlanning/application/useWeeklyPlanningApplication', () => ({ useWeeklyPlanningApplication: fixture.application }));
 vi.mock('./hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));
-vi.mock('./lib/appAccessGate', () => ({ isAppAccessGateEnabled: () => false, hasStoredAppAccessGrant: () => true, verifyAndStoreAppAccessKey: () => true }));
 vi.mock('./components/PrimaryAppHeader', () => ({ PrimaryAppHeader: forwardRef(() => <header />) }));
 vi.mock('./components/HomeScheduleView', () => ({ HomeScheduleView: () => { useEffect(() => { fixture.homeSurfaceMount(); }, []); return <div className="home-dashboard home-dashboard-default" />; } }));
 vi.mock('./components/AiPlanningView', () => ({ AiPlanningView: () => <div className="ai-planning-view home-dashboard" /> }));
@@ -60,7 +59,7 @@ beforeEach(() => {
     setViewMode: vi.fn(),
   };
 });
-afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.unstubAllGlobals(); });
+afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 it('keeps recovery inside main across actual App navigation and forwards the captured lease', async () => {
   await act(async () => { renderer = create(<App />); });
@@ -246,4 +245,25 @@ it('root-owned standalone App delegates presentation and reports boot readiness 
   act(() => renderer!.update(tree()));
   expect(ready).toHaveBeenCalledOnce();
   expect(renderer!.root.findAllByType(StartupSurface)).toHaveLength(0);
+});
+
+
+it.each([false, true])('ignores a retired preview key and preserves authenticated admission (signed in: %s)', async (signedIn) => {
+  vi.stubEnv('VITE_APP_ACCESS_KEY', 'retired-synthetic-preview-key');
+  const getItem = vi.fn(() => null);
+  const setItem = vi.fn();
+  vi.stubGlobal('window', { ...window, localStorage: { getItem, setItem } });
+  if (!signedIn) fixture.state.user = null;
+
+  await act(async () => { renderer = create(<App />); });
+
+  expect(renderer!.root.findAllByType(AuthScreen)).toHaveLength(signedIn ? 0 : 1);
+  expect(renderer!.root.findAllByType(HomeScheduleView)).toHaveLength(signedIn ? 1 : 0);
+  if (!signedIn) {
+    expect(renderer!.root.findAllByProps({ role: 'tablist', 'aria-label': '認証モード' })).toHaveLength(1);
+    expect(renderer!.root.findAllByProps({ type: 'email' })).toHaveLength(1);
+    expect(renderer!.root.findAllByType('h2').map((heading) => heading.children.join(''))).toContain('新規会員登録');
+  }
+  expect(getItem).not.toHaveBeenCalledWith('studyplanner.app-access-key');
+  expect(setItem).not.toHaveBeenCalled();
 });
