@@ -77,7 +77,7 @@ async function expectUnloaded(media) {
 
 async function expectStaticLoading(page) {
   await expect(page.locator('video')).toHaveCount(0);
-  await expect(page.getByRole('img', { name: 'Laplans', exact: true })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Laplance', exact: true })).toBeVisible();
   await expect(page.getByRole('main', { name: 'アプリ起動中', exact: true })).toBeVisible();
   await expect(page.getByRole('status')).toContainText('アプリを準備しています...');
   await expect(page.locator('.home-main:visible')).toHaveCount(0);
