@@ -15,6 +15,9 @@ describe('V3 literal requirements', () => {
     expect(fails('必要なのは240分です', entry(240))).toBe(false);
     expect(fails('必要なのは1時間30分です', entry(90))).toBe(false);
     expect(fails('必要なのは1.5時間です', entry(90))).toBe(false);
+    expect(fails('必要なのは1時間半です', entry(90))).toBe(false);
+    expect(fails('必要なのは2時間半です', entry(150))).toBe(false);
+    expect(fails('必要なのは1時間半です', entry(60))).toBe(true);
     expect(fails('時間が足りませんでした', entry(240))).toBe(true);
     expect(fails('必要なのは3時間です', entry(240))).toBe(true);
     expect([...replyDurationMinutes('2時間15分')]).toEqual([135]);
