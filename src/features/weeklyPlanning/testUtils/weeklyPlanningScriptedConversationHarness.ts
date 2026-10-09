@@ -25,7 +25,7 @@ import type {
   WeeklyPlanningTurnSubmissionResult,
 } from '../weeklyPlanningTurnExecutionTypes';
 import { createReadyPlannerDataAvailability } from './plannerDataAvailabilityTest';
-import type { StudyMaterial } from '../../../types/domain';
+import type { MonthEvent, Plan, StudyMaterial } from '../../../types/domain';
 import type { WeeklyPlanningStableV5DebugTraceEvent } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 
@@ -186,6 +186,9 @@ export function createScriptedConversation(params: {
   /** Monotonic ms clock for the turn measurement (fake clock in tests). */
   measurementClock?: () => number;
   studyMaterials?: StudyMaterial[];
+  /** Existing schedule rows the product would hand to the turn (default: none). */
+  plans?: Plan[];
+  monthEvents?: MonthEvent[];
   initialState?: PlanningState;
   /** Pins the conversation to an architecture before its first turn (otherwise: new-conversation default). */
   architecture?: WeeklyPlanningConversationArchitecture;
@@ -240,7 +243,8 @@ export function createScriptedConversation(params: {
         selectedDate: weekStartDate,
         now,
         measurementClock: params.measurementClock,
-        plans: [],
+        plans: params.plans ?? [],
+        ...(params.monthEvents ? { monthEvents: params.monthEvents } : {}),
         studyMaterials: params.studyMaterials ?? [],
         scheduleTemplates: [],
         plannerDataAvailability: createReadyPlannerDataAvailability(ownerId),

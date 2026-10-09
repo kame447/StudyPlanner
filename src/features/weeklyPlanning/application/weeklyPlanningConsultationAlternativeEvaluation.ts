@@ -22,7 +22,8 @@ export function evaluateWeeklyPlanningConsultationAlternative(params: {
   acts: readonly SemanticConversationActV5[] | undefined;
   compilation: GenericSchedulerInputCompilationResult;
   graph: WeeklyPlanningPlacementGraphViewV5;
-  input: Pick<ExecuteWeeklyPlanningStableV5RuntimeTurnInput, 'userText' | 'plans' | 'scheduleTemplates' | 'timetableTermId'>;
+  input: Partial<Pick<ExecuteWeeklyPlanningStableV5RuntimeTurnInput, 'monthEvents' | 'userId'>>
+    & Pick<ExecuteWeeklyPlanningStableV5RuntimeTurnInput, 'userText' | 'plans' | 'scheduleTemplates' | 'timetableTermId'>;
   requestContext: WeeklyPlanningTurnRequestContext;
 }): WeeklyPlanningConsultationAlternativeEvidence | null {
   const acts = (params.acts ?? []).filter(act => act.kind === 'consultation_request' && act.placementAlternative);
@@ -72,7 +73,7 @@ export function evaluateWeeklyPlanningConsultationAlternative(params: {
     });
   }
   const result = scheduleWeeklyPlanningStableV5Preview({
-    input, graph: params.graph, plans: params.input.plans, scheduleTemplates: params.input.scheduleTemplates,
+    input, graph: params.graph, plans: params.input.plans, ownerId: params.input.userId, monthEvents: params.input.monthEvents, scheduleTemplates: params.input.scheduleTemplates,
     timetableTermId: params.input.timetableTermId,
     notBefore: { date: params.requestContext.notBeforeDate, time: params.requestContext.notBeforeTime },
   });

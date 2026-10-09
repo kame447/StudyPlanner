@@ -11,7 +11,7 @@ import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlan
 import type { WeeklyPlanningTurnRequestContext } from './weeklyPlanningTemporalContext';
 
 export function executeWeeklyPlanningStableV5Preview(params: {
-  input: Pick<
+  input: Partial<Pick<ExecuteWeeklyPlanningStableV5RuntimeTurnInput, 'monthEvents' | 'userId'>> & Pick<
     ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
     'plans' | 'scheduleTemplates' | 'timetableTermId' | 'traceRequestId'
   >;
@@ -24,6 +24,8 @@ export function executeWeeklyPlanningStableV5Preview(params: {
     input: params.schedulerInput,
     graph: params.graph,
     plans: params.input.plans,
+    ownerId: params.input.userId,
+    monthEvents: params.input.monthEvents,
     scheduleTemplates: params.input.scheduleTemplates,
     timetableTermId: params.input.timetableTermId,
     notBefore: {

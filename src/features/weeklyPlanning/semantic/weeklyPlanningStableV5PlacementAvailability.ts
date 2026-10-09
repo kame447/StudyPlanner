@@ -1,6 +1,7 @@
 import { getRecurrenceWeekday } from '../../../lib/planRecurrence';
 import { buildTimetableImportCandidates } from '../../../lib/timetableImport';
-import type { Plan, ScheduleTemplate } from '../../../types/domain';
+import { createScheduleOccurrenceProjection } from '../../../domain/scheduleOccurrence';
+import type { MonthEvent, Plan, ScheduleTemplate } from '../../../types/domain';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
 import type { WeeklyPlanningPlacementNotBeforeV5 } from './weeklyPlanningStableV5PlacementPolicy';
 
@@ -20,6 +21,7 @@ export const DEFAULT_PLACEMENT_DAY_END = '22:00';
 
 const EXISTING_PLAN_BUFFER_MINUTES = 10;
 const MINUTES_PER_DAY = 24 * 60;
+const PLACEMENT_CLOCK = /^\d{2}:\d{2}$/;
 
 export function minutesFromPlacementTime(time: string): number {
   if (time === '24:00') return MINUTES_PER_DAY;
@@ -94,6 +96,44 @@ function existingPlanIntervals(
   });
 }
 
+/**
+ * A persisted MonthEvent is the user's own busy time exactly like a Plan row, independent of whether the
+ * reading carries a constraint-source request. Recurrence, multi-day spans and 24:00 come from the shared
+ * occurrence projection (`busy ?? true`, owner-checked); a foreign-owner event is ignored, never an error.
+ */
+function monthEventIntervals(params: {
+  ownerId?: string;
+  monthEvents?: readonly MonthEvent[];
+  dates: readonly string[];
+}): MinuteInterval[] {
+  if (!params.ownerId || !params.monthEvents?.length || params.dates.length === 0) return [];
+  const ownerId = params.ownerId;
+  const sorted = [...params.dates].sort();
+  const projection = createScheduleOccurrenceProjection({
+    ownerId,
+    startDate: sorted[0],
+    endDate: sorted[sorted.length - 1],
+    plans: [],
+    monthEvents: params.monthEvents.filter((event) => event.userId === ownerId),
+    scheduleTemplates: [],
+  });
+  const intervals: MinuteInterval[] = [];
+  projection.occurrences
+    // A date-only event (no clock times) is a zero-length point in the canonical projection, not a block:
+    // it is not busy time here (explicit, instead of leaning on NaN arithmetic).
+    .filter((occurrence) => occurrence.source.backingKind === 'month-event' && occurrence.busy
+      && PLACEMENT_CLOCK.test(occurrence.start.time) && PLACEMENT_CLOCK.test(occurrence.end.time))
+    .forEach((occurrence) => addCrossDateInterval({
+      dates: params.dates,
+      startDate: occurrence.start.date,
+      startTime: placementTimeFromMinutes(minutesFromPlacementTime(occurrence.start.time) - EXISTING_PLAN_BUFFER_MINUTES),
+      endDate: occurrence.end.date,
+      endTime: placementTimeFromMinutes(minutesFromPlacementTime(occurrence.end.time) + EXISTING_PLAN_BUFFER_MINUTES),
+      target: intervals,
+    }));
+  return intervals;
+}
+
 function timetableIntervals(params: {
   templates: readonly ScheduleTemplate[];
   termId?: string;
@@ -152,12 +192,15 @@ export function buildPlacementBusyIntervals(params: {
   input: GenericSchedulerInput;
   dates: readonly string[];
   plans: readonly Plan[];
+  ownerId?: string;
+  monthEvents?: readonly MonthEvent[];
   scheduleTemplates: readonly ScheduleTemplate[];
   timetableTermId?: string;
 }): MinuteInterval[] {
   return [
     ...hardConstraintIntervals({ input: params.input, dates: params.dates }),
     ...existingPlanIntervals(params.plans, params.dates),
+    ...monthEventIntervals({ ownerId: params.ownerId, monthEvents: params.monthEvents, dates: params.dates }),
     ...timetableIntervals({
       templates: params.scheduleTemplates,
       termId: params.timetableTermId,
