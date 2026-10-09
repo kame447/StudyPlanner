@@ -488,6 +488,18 @@ describe('H-release: a blocking free-form question has a deterministic end state
     expect((decision.communication as Json).uncertaintyReleased).toEqual({ quote: Q, nothingRead: true });
     expect(JSON.stringify(third.calls.filter(call => call.kind === 'renderer').pop()?.messages)).toContain('uncertaintyReleased: The app states');
   });
+  it('「このまま進めて」 as a bare act bound to the task releases under the new question text (T2 message pinned, combined with the consultation)', async () => {
+    const { conversation, second, third } = await toThirdTurn('ack_task', {}, 'このまま進めて');
+    expect(second.result?.message).toContain(`「${Q}」について、まだ決まっていない点があります。決まっていれば教えてください。このまま進めてよければ、そう伝えてください。その点はここでは決めきれないので、希望があればそのまま条件として教えてください。`);
+    const decision = second.calls.filter(call => call.kind === 'renderer').pop()?.payload?.applicationDecision as Json;
+    expect((decision.communication as Json).questionPurposes).toEqual(['confirm_open_point']);
+    const meaning = String((decision.purposeMeanings as Json).confirm_open_point);
+    expect(meaning).toContain('Never say the point was answered or that the plan can work');
+    expect(meaning).not.toMatch(/feasible|will work/);
+    expect(uncertainties(conversation)).toEqual([]);
+    expect(third.result?.draftCandidates.length).toBeGreaterThan(0);
+    expect(third.result?.message).toContain(RELEASED);
+  });
   it('the no-delta release rides the existing bounded no-op retry (3 semantic reads, no extra call)', async () => {
     const { third } = await toThirdTurn('ack_task', {}, 'うん、それで');
     expect(third.calls.filter(call => call.kind === 'semantic_generic')).toHaveLength(3);
@@ -565,7 +577,9 @@ describe('H-release: a blocking free-form question has a deterministic end state
       expect(third.result?.draftCandidates).toEqual([]);
       expect(third.result?.message).toContain(RELEASED);
       expect(third.result?.message).not.toContain('仮予定を作りました');
-      expect(third.result?.message).toContain('意味を一つに決められませんでした');
+      // The second (free-form) question is the neutral open-point invitation, not an ambiguity claim.
+      expect(third.result?.message).toContain('まだ決まっていない点があります。決まっていれば教えてください。このまま進めてよければ、そう伝えてください。');
+      expect(third.result?.message).not.toContain('意味を一つに決められませんでした');
     });
     it('no capacity follows: the release is stated beside the shortfall, no plan is claimed', async () => {
       const { third } = await toThirdTurn('capacity');

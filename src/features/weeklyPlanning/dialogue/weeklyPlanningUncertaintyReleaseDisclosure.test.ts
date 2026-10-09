@@ -11,7 +11,7 @@ describe('weeklyPlanningUncertaintyReleaseText', () => {
     expect(weeklyPlanningUncertaintyReleaseText({ quote: 'あ'.repeat(200) })).toBe(`「${'あ'.repeat(80)}…」については未確定のまま進めます。`);
   });
   it('falls back to a generic sentence without a quote, never claiming resolution', () => {
-    for (const quote of [null, undefined, '  ']) expect(weeklyPlanningUncertaintyReleaseText({ quote })).toBe('未確定の点は未確定のまま進めます。');
+    for (const quote of [null, undefined, '  ']) expect(weeklyPlanningUncertaintyReleaseText({ quote })).toBe('未確定の点を残したまま進めます。');
   });
   it('a release that applied nothing says so (a dropped condition is never silent)', () => {
     expect(weeklyPlanningUncertaintyReleaseText({ quote: 'Q', nothingRead: true }))

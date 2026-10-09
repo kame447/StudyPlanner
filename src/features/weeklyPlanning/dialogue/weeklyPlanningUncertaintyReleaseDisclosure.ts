@@ -7,7 +7,7 @@
  * words this.
  */
 const QUOTE_LIMIT = 80;
-const GENERIC = '未確定の点は未確定のまま進めます。';
+const GENERIC = '未確定の点を残したまま進めます。';
 const NOTHING_READ = 'この返事からは新しい条件を読み取っていません。条件があれば、あらためて教えてください。';
 
 export function weeklyPlanningUncertaintyReleaseText(release: { quote: string | null | undefined; nothingRead?: boolean }): string {

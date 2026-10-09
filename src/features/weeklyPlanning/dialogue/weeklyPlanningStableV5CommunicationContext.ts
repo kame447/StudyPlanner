@@ -1,3 +1,4 @@
+import { isKnownWeeklyPlanningUncertaintyFieldV5 } from '../semantic/weeklyPlanningSemanticUncertaintyResolutionV5';
 import type {
   WeeklyPlanningInteractionOutcome,
   WeeklyPlanningTurnCommunicationFacts,
@@ -127,6 +128,13 @@ export function questionPurposesForStableV5Dialogue(params: {
     && intent.resolutionKind === 'semantic_clarification'
     && intent.ambiguityField === 'work_breakdown') {
     return ['identify_which_work_and_how_much'];
+  }
+  // A free-form open point (interaction): not an ambiguity to resolve, but a point the user may state or let go.
+  if (intent?.kind === 'resolution_question'
+    && intent.resolutionKind === 'semantic_clarification'
+    && typeof intent.ambiguityField === 'string'
+    && !isKnownWeeklyPlanningUncertaintyFieldV5(intent.ambiguityField)) {
+    return ['confirm_open_point'];
   }
   if (intent?.kind === 'learning_strategy_proposal') return ['decide_on_study_method_suggestion'];
   return params.questionCode ? purposesForQuestionCode(params.questionCode) : [];

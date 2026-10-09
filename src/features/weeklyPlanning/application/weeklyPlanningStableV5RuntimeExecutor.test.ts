@@ -702,10 +702,32 @@ describe('Stable V5 runtime executor', () => {
       },
     });
     expect(result.message).toContain('数学のワークが、古典も…20ページくらい');
-    expect(result.message).toContain('この部分だけ');
+    // Interaction, free-form field: no ambiguity claim; the point is open and the user may state it or let it go.
+    expect(result.message).toContain('について、まだ決まっていない点があります。決まっていれば教えてください。このまま進めてよければ、そう伝えてください。');
+    expect(result.message).not.toContain('意味を一つに決められませんでした');
     expect(result.message).not.toContain('数学を20ページ');
     expect(result.message).not.toContain('古典を20ページ');
     expect(result.draftCandidates).toEqual([]);
+  });
+
+  it.each([
+    ['legacy_v5', 'workload_target'],
+    ['interaction_v1', 'quantityRole'],
+  ] as const)('%s with field %s keeps the ambiguity wording byte-identical (legacy and known fields)', async (architecture, field) => {
+    const ambiguous = document();
+    ambiguous.tasks = [];
+    ambiguous.planningWindow = null;
+    ambiguous.uncertainties = [{
+      localId: 'uncertainty-1', targetLocalId: 'document', field,
+      reason: 'quantity target has multiple plausible readings', sourceText: '数学のワークが、古典も…20ページくらい',
+    }];
+    normalizeMock.mockResolvedValueOnce(acceptedResult(ambiguous));
+    const result = await executeWeeklyPlanningStableV5RuntimeTurn({
+      previousState: undefined, messages: [], userText: '数学のワークが、古典も…20ページくらい', selectedDate: '2026-08-08', userId: 'owner-1',
+      plans: [], scheduleTemplates: [], conversationId: `conversation-${architecture}-${field}`, traceRequestId: `request-${architecture}-${field}`,
+      conversationArchitecture: architecture,
+    });
+    expect(result.message).toBe('「数学のワークが、古典も…20ページくらい」の意味を一つに決められませんでした。この部分だけ、もう少し具体的に教えてください。');
   });
 
   it('turns a normalization rejection into a typed recovery outcome without any prose of its own', async () => {

@@ -113,6 +113,7 @@ const QUESTION_PURPOSE_MEANINGS: Readonly<Record<WeeklyPlanningStableV5QuestionP
   find_more_work_or_constraints: 'anything else to study or any schedule to consider; the requested study is already finished',
   identify_which_work_and_how_much: 'which material or part the stated amount refers to and how big it is, so the right work is scheduled in the right amount',
   resolve_unclear_detail: 'which meaning was intended for a detail that can be read in more than one way, so the wrong thing is not scheduled',
+  confirm_open_point: 'a point the user mentioned is still open; the user may state it, or tell the plan to go ahead as it is. Never say the point was answered or that the plan can work',
   set_planning_period: 'which days the plan should cover',
   choose_one_planning_period: 'which of the mentioned periods to plan for',
   tell_plan_amount_from_remaining_total: 'whether the amount is what to do in this plan or everything that remains, because that changes how much is scheduled',

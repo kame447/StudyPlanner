@@ -52,6 +52,7 @@ export const WEEKLY_PLANNING_STABLE_V5_QUESTION_PURPOSES = [
   'find_more_work_or_constraints',
   'identify_which_work_and_how_much',
   'resolve_unclear_detail',
+  'confirm_open_point',
   'set_planning_period',
   'choose_one_planning_period',
   'tell_plan_amount_from_remaining_total',

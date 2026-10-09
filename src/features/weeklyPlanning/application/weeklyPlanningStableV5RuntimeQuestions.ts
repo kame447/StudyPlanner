@@ -3,6 +3,7 @@ import type { WeeklyPlanningFactGraphV5, WorkloadFactV5 } from '../semantic/week
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import { projectWeeklyPlanningStatedTimeBudgetGraphV5 } from '../semantic/weeklyPlanningStatedTimeBudgetProjectionV5';
 import type { WeeklyPlanningStableQuestionV5 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
+import { isKnownWeeklyPlanningUncertaintyFieldV5 } from '../semantic/weeklyPlanningSemanticUncertaintyResolutionV5';
 import { conversationArchitecturePolicy, type WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 import { scheduleCommunicationIntent, type WeeklyPlanningScheduleCommunicationIntent } from './weeklyPlanningFixedEventOnlyInteraction';
 
@@ -353,6 +354,12 @@ function semanticUncertaintyQuestion(
   const sourceText = uncertainty
     ? questionSourceExcerpt(uncertainty.source.sourceText)
     : '';
+  // Interaction, free-form field: the point is open (it may be a consultation or a feasibility question, not an
+  // ambiguity), and the user may state it or let the plan go ahead as it is (the release the lifecycle provides).
+  if (uncertainty && conversationArchitecturePolicy(architecture).interactionOutcome
+    && !isKnownWeeklyPlanningUncertaintyFieldV5(uncertainty.field)) {
+    return `${sourceText ? `「${sourceText}」について、` : ''}まだ決まっていない点があります。決まっていれば教えてください。このまま進めてよければ、そう伝えてください。`;
+  }
   if (!sourceText) {
     return '意味を一つに決められない条件があります。曖昧な部分だけ、もう少し具体的に教えてください。';
   }

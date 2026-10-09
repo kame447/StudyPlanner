@@ -182,4 +182,17 @@ describe('question purpose codes', () => {
       }
     }
   });
+
+  it('a free-form open point gets the confirm_open_point purpose; known fields and a missing field keep their purposes', () => {
+    const intent = (ambiguityField: string | null) => ({
+      kind: 'resolution_question' as const, resolutionKind: 'semantic_clarification' as const, targetFactId: 'u',
+      requestedInformation: ['clarify_ambiguous_meaning' as const], allowedChoices: [], knownAmount: null, knownUnitLabel: null, ambiguityField, ambiguityReason: 'r',
+    });
+    const purposes = (ambiguityField: string | null) => questionPurposesForStableV5Dialogue({ questionCode: 'semantic_uncertainty', questionIntent: intent(ambiguityField) });
+    expect(purposes('one_day_completion_feasibility')).toEqual(['confirm_open_point']);
+    expect(purposes('material_identity')).toEqual(['resolve_unclear_detail']);
+    expect(purposes('amount')).toEqual(['resolve_unclear_detail']);
+    expect(purposes('work_breakdown')).toEqual(['identify_which_work_and_how_much']);
+    expect(purposes(null)).toEqual(['resolve_unclear_detail']);
+  });
 });
