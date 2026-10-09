@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { startupTiming } from '../lib/startupTiming';
-import startupVideo from '../assets/laplans_blackhole_1080x1920.mp4';
-import startupPoster from '../assets/laplans-startup-poster.jpg';
-import startupStill from '../assets/laplans-startup-still.jpg';
+import startupVideo from '../assets/laplance_blackhole_1080x1920.mp4';
+import startupPoster from '../assets/laplance-startup-poster.jpg';
+import startupStill from '../assets/laplance-startup-still.jpg';
 import { StartupVideo, type StartupVideoOutcome } from './StartupVideo';
 import { StudyPlannerLogo } from './StudyPlannerLogo';
 import { useRootStartupReady } from './RootStartupReadyContext';
