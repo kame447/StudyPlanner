@@ -756,3 +756,19 @@ Method: `vite build --sourcemap` of `ea0d871a` and of the fork point `22847120`.
     - One false fail, by design: a reply that says 「など」 without the count of further items now fails the literal check.
     - Recorded as a **smoke gate**, not a measured rate. Any re-tuning needs another fresh set.
   - Typecheck is clean and the 32 focused tests pass. The chain, the W4/W3 reruns and the live X4 check follow; the migration is accepted only after the live check.
+- **Gate for the waiting-amount fact `declared_amount_waiting`** (2026-10-10 00:34 JST, on the integrated verifier).
+  - **Held-out set:** fresh, written by the critic and never shown to the verifier's or the derivation's author. Two facts (120 minutes with a quote; 3 hours), 12 replies, two repeats each. Every reply passes the literal check, so the verifier alone decides.
+  - **Regression set:** the verifier author's 76-case corpus (4 facts, including one with no quote and one in hours, plus two-entry turns).
+  - **Result:** 0 false passes for the verifier alone and for the pipeline, 0 false fails, 0 nondeterministic cases, 0 errors, 100 calls. Recorded as a smoke gate.
+- **Test updates since:**
+  - test-only pins for the verdict key-set guard (wrong key, duplicated key);
+  - the exam-student browser test's scripted renderer now states the typed shortfall figures, and its scripted verifier accepts them (a declared limitation);
+  - its B3 check asserts the total and every unmet item's label and minutes on the visible reply, not the retired application sentence.
+- **Chain on `d8ea5043`:**
+  - verify: 7803 tests pass; all categories green;
+  - browser: 443 pass and 4 fail, all four failing on main as well;
+  - weekly-real: 10/10; legacy differential: 0;
+  - JavaScript bundle: 648.7 KiB gzip (+3.0 KiB; still over the cap).
+- **W4/W3 rerun #7:**
+  - unmodified W4 stops at the capacity turn in 4 tests, because the old scripted renderer omits the figures (a correct stop);
+  - with the updated doubles, W4 is 28/2 (B4 only) and W3 is 8/8.
