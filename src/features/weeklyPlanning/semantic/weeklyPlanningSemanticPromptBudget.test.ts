@@ -50,7 +50,7 @@ const GENERIC_POLICY_OVERHEAD_MAX_BYTES = 3_450;
 // 「平日」 into a task dateExpression in most failing first turns; the same rule names the
 // weekday-set representation (+140 B). Bound that addition separately; keep the
 // pre-existing policy/system ceilings intact.
-const INTERACTION_SESSION_RULE_MAX_BYTES = 450;
+const INTERACTION_SESSION_RULE_MAX_BYTES = 600;
 // Fixed-event-only loop (2026-10-08): exactly 100 B with separator for the two
 // AI-owned acts, interaction only. Legacy policy and baseline allowance stay intact.
 const INTERACTION_EVENT_ACTS_MAX_BYTES = 100;
@@ -217,6 +217,12 @@ describe('Stable V5 semantic prompt budget', () => {
     expect(byteLength(interaction.replace(`${rule.instruction}\n`, '')
       .replace(`\n${blocking.instruction}`, '')
       .replace(` ${WEEKLY_PLANNING_EVENT_ACT_INSTRUCTION_V5}`, ''))).toBeLessThanOrEqual(GENERIC_MEANING_POLICY_MAX_BYTES);
+  });
+
+  it('names the divided-total representation in the interaction policy only (live X5)', () => {
+    const sentence = 'Dividing a total across named periods is a split too';
+    expect(createWeeklyPlanningSemanticMeaningPolicyV5('interaction_v1')).toContain(sentence);
+    expect(createWeeklyPlanningSemanticMeaningPolicyV5('legacy_v5')).not.toContain(sentence);
   });
 
   it('keeps the always-on meaning policy compact', () => {
