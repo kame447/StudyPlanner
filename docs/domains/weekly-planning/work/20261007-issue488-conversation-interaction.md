@@ -736,3 +736,12 @@ Method: `vite build --sourcemap` of `ea0d871a` and of the fork point `22847120`.
 - **Fault injection.** The critic caught 12 of 12, including stop-binding, binding-dropped and commit-the-stop faults; a scan found no test passing on an unasserted stop. Mine caught 4 of 4 after the forbidden-claim pins.
 - **Cost:** one more AI call on each capacity-question turn (2 of 39 turns in each of live rounds 5 and 6, both in X4).
 - **Next:** the chain; W4/W3 with technical-stop and verifier-call counts; live X4 plus the full set. The migration is accepted only after the live check.
+- **Correction (2026-10-10 00:11 JST): the gate above did not hold, and slice 1 is withdrawn** (`50fc25ad` reverts the four slice commits, restoring the application's shortfall sentence).
+  - **Why the first run was weak (critic):** only 5 of its 16 expected-fail replies reached the verifier; the literal checks rejected the rest first.
+  - **Second run:** the verifier alone, twice each, on all 16 expected-fail replies plus 5 held-out replies the critic wrote before seeing any result (42 calls). All five were labelled fail beforehand, including one that drops 「ほか1件」.
+  - **Result:** all 16 corpus replies were rejected. Of the held-out replies, the swapped pairing, the hedged fit and the 「入れておきました」 claim were rejected. **Two passed in both repeats:** the plan total presented as the time of the unmet work, and the unmet count dropped.
+  - **What happens next:**
+    - the verifier is fixed without tuning on the held-out texts;
+    - the five held-out replies become regression cases;
+    - the next gate needs a fresh held-out set that the verifier's author has not seen;
+    - the result is recorded as a smoke gate, not a measured rate.
