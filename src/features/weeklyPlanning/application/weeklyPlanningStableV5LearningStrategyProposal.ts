@@ -18,6 +18,45 @@ export interface WeeklyPlanningLearningStrategyEffortFact {
   unitCode: string | null;
 }
 
+/**
+ * Optional-question lifecycle: a proposal carries no scheduler-required information (required
+ * details are asked by their own questions), so it ends when the user decides it or does not take
+ * it up in the turn after it was presented. A lapsed proposal keeps the persisted shape the state
+ * codec already accepts: it stays `pending` (no decision was made, nothing is claimed as declined)
+ * and its `decidedAtTurnId` names the turn that closed it. Model and renderer context omit it.
+ */
+export function isOpenLearningStrategyProposal(record: WeeklyPlanningLearningStrategyProposalRecord): boolean {
+  return record.status === 'pending' && record.decidedAtTurnId === null;
+}
+
+export function isLapsedLearningStrategyProposal(record: WeeklyPlanningLearningStrategyProposalRecord): boolean {
+  return record.status === 'pending' && record.decidedAtTurnId !== null;
+}
+
+/** A turn that explains, consults about or sets aside the question without a planning delta keeps it held. */
+function turnKeepsPresentedQuestionHeld(document: WeeklyPlanningSemanticDocumentV5): boolean {
+  const acts = document.conversationActs ?? [];
+  if (acts.some((act) => act.kind === 'ask_about_pending_question')) return true;
+  const hasPlanningContent = document.planningWindow !== null
+    || [document.tasks, document.relations, document.availabilityDeclarations, document.constraintSourceRequests,
+      document.userContextFacts, document.uncertainties, document.corrections, document.decisions]
+      .some((items) => (items?.length ?? 0) > 0);
+  return !hasPlanningContent && acts.some((act) =>
+    act.kind === 'consultation_request' || act.kind === 'topic_shift' || act.kind === 'resume_topic');
+}
+
+function lapseUndecidedPresentedProposal(params: {
+  records: WeeklyPlanningLearningStrategyProposalRecord[];
+  document: WeeklyPlanningSemanticDocumentV5;
+  turnId: string;
+  presentedProposalId: string | null;
+}): WeeklyPlanningLearningStrategyProposalRecord[] {
+  if (!params.presentedProposalId || turnKeepsPresentedQuestionHeld(params.document)) return params.records;
+  return params.records.map((record) => record.id === params.presentedProposalId && isOpenLearningStrategyProposal(record)
+    ? { ...record, decidedAtTurnId: params.turnId }
+    : record);
+}
+
 function stableHash(input: string): string {
   let hash = 2166136261;
   for (let index = 0; index < input.length; index += 1) {
@@ -79,7 +118,7 @@ function applyProposalDecisions(params: {
     // (Legacy architecture: any pending proposal may be decided, as before Issue #488.)
     if (params.restrictToPresentedProposal !== false && decision.target.publicId !== params.presentedProposalId) continue;
     const index = records.findIndex((record) => record.id === decision.target.publicId);
-    if (index < 0 || records[index].status !== 'pending') continue;
+    if (index < 0 || !isOpenLearningStrategyProposal(records[index])) continue;
     if (decision.decision === 'accept') {
       records[index] = { ...records[index], status: 'accepted', decidedAtTurnId: params.turnId };
     } else if (decision.decision === 'reject') {
@@ -229,6 +268,11 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
     presentedProposalId: params.presentedProposalId,
     restrictToPresentedProposal: params.restrictToPresentedProposal,
   });
+  if (params.restrictToPresentedProposal !== false) {
+    records = lapseUndecidedPresentedProposal({
+      records, document: params.document, turnId: params.turnId, presentedProposalId: params.presentedProposalId,
+    });
+  }
 
   const currentMemoryWorkload = memoryWorkloadFromCurrentMeaning(params);
   records = createInitialMemoryProposal({
@@ -256,7 +300,7 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
     ?? (decisionTargetProposalId
       ? records.find((record) => record.id === decisionTargetProposalId)?.workloadFactId ?? null
       : null)
-    ?? records.find((record) => record.status === 'pending')?.workloadFactId
+    ?? records.find(isOpenLearningStrategyProposal)?.workloadFactId
     ?? lastRecord?.workloadFactId
     ?? null;
   const relevant = relevantWorkloadFactId
@@ -269,7 +313,7 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
 
   return {
     records,
-    pendingProposal: relevant.find((record) => record.status === 'pending') ?? null,
+    pendingProposal: relevant.find(isOpenLearningStrategyProposal) ?? null,
     acceptedProposal: acceptedSpacedProposal ?? acceptedCalibrationProposal,
     acceptedSpacedProposal,
     acceptedCalibrationProposal,
