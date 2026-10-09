@@ -363,7 +363,8 @@ W4 RedFeynman (Sonnet 5.5, test-only) built it. The fixture has 15 events, 14 li
 **Can the system finish a usable weekly plan for this persona?** In the deterministic synthetic environment, it plans, saves and reloads 21 blocks with every collision, quantity, deadline and sleep constraint kept. By the canonical oracle it still fails the persona's daily-capacity caps and leaves the reserve day the heaviest (B4), so the answer is a qualified yes. Real-model understanding and Firestore persistence remain unverified.
 
 **Live sanity on code `2c1378a7` (real provider, preview only):**
-- A passes. It costs 4 calls, because the round-4b digit-rule audit now fires: a documented cost.
+- A passes, with 4 calls. The extra audit and re-read came from an ordinary literal-gap selection (model quoting variance). The round-4b digit rule cannot fire on a `create_plan` turn, because it is modification-route only.
 - D-T3 partially fails: the model omitted one task of 「どっちも夜」 (n=1), in the omission-detection family.
 - X5 fails: the model typed the stated 90-minute target as `scope_total`, so the app asks a progress question that repeats (n=1). X5 is now flaky, and a prompt-level fix would be provisional.
 - The semantic prompt is unchanged since round 4, so neither failure is a regression from B1–B3.
+- Capture caveat: the trace outbox accumulates earlier conversations across runs, so per-turn attribution uses the per-run fetch capture.
