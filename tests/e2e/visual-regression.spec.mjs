@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/startup-ready.mjs';
 import {
   clickPrimaryNav,
   installVisualGuards,

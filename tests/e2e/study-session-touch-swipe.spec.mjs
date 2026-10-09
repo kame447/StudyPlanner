@@ -174,22 +174,26 @@ test('aborting a drag during entry preserves its animation and settles without r
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await seedStudySession(page);
   await page.goto('/');
+  // Pause from creation: on a slow WebKit frame animationstart can be dispatched
+  // after the 280 ms animation has finished, when getAnimations() is already empty.
+  // Keep the production keyframes and duration; only fixture playback is paused.
+  const entryPause = await page.addStyleTag({ content: '.study-session-page { animation-play-state: paused !important; }' });
   await page.evaluate(() => {
     window.__studyEntryStarts = 0;
     document.addEventListener('animationstart', event => {
       if (event.animationName !== 'study-session-enter-from-right') return;
       window.__studyEntryStarts += 1;
-      const animation = event.target.getAnimations().find(item => item.animationName === event.animationName);
-      if (!animation) return;
-      // Freeze the real keyframes at a deterministic midpoint. Do not change
-      // their duration or depend on a runner completing within 280 ms.
-      animation.pause();
-      animation.currentTime = 140;
-      window.__studyEntry = { element: event.target, animation };
     }, { capture: true });
   });
   await page.getByRole('button', { name: '勉強を開始' }).click();
-  await expect.poll(() => page.evaluate(() => Boolean(window.__studyEntry))).toBe(true);
+  await expect.poll(() => page.evaluate(() => {
+    const element = document.querySelector('.study-session-page');
+    const animation = element?.getAnimations().find(item => item.animationName === 'study-session-enter-from-right');
+    if (!animation) return false;
+    animation.currentTime = 140;
+    window.__studyEntry = { element, animation };
+    return true;
+  })).toBe(true);
   const samples = await page.evaluate(() => {
     const { element, animation } = window.__studyEntry;
     const overlay = element.closest('.study-session-overlay');
@@ -256,10 +260,36 @@ test('aborting a drag during entry preserves its animation and settles without r
   await expect(ready).toBeVisible();
   await expect.poll(() => pane.evaluate(element => element.getAnimations().length)).toBe(0);
   expect(await page.evaluate(() => window.__studyEntryStarts)).toBe(1);
+  await entryPause.evaluate(element => element.remove());
   expect(await pane.evaluate(element => {
     const style = getComputedStyle(element);
     const matrix = new DOMMatrix(style.transform);
     return { x: matrix.m41, y: matrix.m42, scaleX: matrix.m11, scaleY: matrix.m22, opacity: Number(style.opacity) };
   })).toEqual({ x: 0, y: 0, scaleX: 1, scaleY: 1, opacity: 1 });
   expect(await ready.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+});
+
+test('released entry playback advances and naturally finishes without replacing its pane', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await seedStudySession(page); await page.goto('/');
+  const pause = await page.addStyleTag({ content: '.study-session-page { animation-play-state: paused !important; }' });
+  await page.getByRole('button', { name: '勉強を開始' }).click();
+  const pane = page.getByRole('dialog', { name: '学習を開始', exact: true }).locator('.study-session-page');
+  await expect.poll(() => pane.evaluate(element => {
+    const animation=element.getAnimations().find(item=>item.animationName==='study-session-enter-from-right');
+    if (!animation) return false;
+    animation.currentTime=0;
+    window.__naturalEntry={ element,animation,ended:0 };
+    animation.addEventListener('finish',()=>{ window.__naturalEntry.ended+=1; },{once:true});
+    return true;
+  })).toBe(true);
+  expect(await pane.evaluate(element=>Number(getComputedStyle(element).opacity))).toBe(0);
+  await pause.evaluate(element=>element.remove());
+  // Removing the fixture pause must resume the untouched production animation.
+  await expect.poll(()=>page.evaluate(()=>window.__naturalEntry.animation.currentTime)).toBeGreaterThan(0);
+  await expect.poll(()=>page.evaluate(()=>window.__naturalEntry.ended)).toBe(1);
+  expect(await pane.evaluate(element=>({ same:element===window.__naturalEntry.element,
+    state:window.__naturalEntry.animation.playState, time:window.__naturalEntry.animation.currentTime,
+    opacity:Number(getComputedStyle(element).opacity), remaining:element.getAnimations().length })))
+    .toEqual({ same:true,state:'finished',time:280,opacity:1,remaining:0 });
 });

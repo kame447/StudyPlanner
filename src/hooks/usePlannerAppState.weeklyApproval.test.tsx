@@ -14,6 +14,7 @@ const repositoryUpsertPlanMock = vi.hoisted(() => vi.fn());
 const approvalSavePlanMock = vi.hoisted(() => vi.fn());
 const approvalCompleteOperationMock = vi.hoisted(() => vi.fn(async () => undefined));
 const loadPlannerDataMock = vi.hoisted(() => vi.fn(async () => undefined));
+const projectPlanSaveMock = vi.hoisted(() => vi.fn(async (save: () => Promise<Plan>) => save()));
 const editorSavePlanDraftMock = vi.hoisted(() => vi.fn(async () => undefined));
 const showNoticeMock = vi.hoisted(() => vi.fn());
 const bootstrapSessionMock = vi.hoisted(() => vi.fn(async () => undefined));
@@ -87,6 +88,7 @@ vi.mock('./usePlannerDataState', () => ({
     isRecurringPlanEdit: false,
     pendingRecurringPlanAction: null,
     loadPlannerData: loadPlannerDataMock,
+    projectPlanSave: projectPlanSaveMock,
     resetPlannerData: stableNoop,
     setViewMode: stableNoop,
     openCreatePlan: stableNoop,
@@ -169,6 +171,7 @@ describe('usePlannerAppState weekly approval save', () => {
     approvalSavePlanMock.mockReset();
     approvalCompleteOperationMock.mockClear();
     loadPlannerDataMock.mockClear();
+    projectPlanSaveMock.mockClear();
     editorSavePlanDraftMock.mockClear();
     showNoticeMock.mockClear();
     bootstrapSessionMock.mockClear();
@@ -211,7 +214,8 @@ describe('usePlannerAppState weekly approval save', () => {
     });
 
     expect(result.id).toBe('persisted-plan-1');
-    expect(loadPlannerDataMock).toHaveBeenCalledWith('user-1');
+    expect(projectPlanSaveMock).toHaveBeenCalledTimes(1);
+    expect(loadPlannerDataMock).not.toHaveBeenCalled();
     expect(editorSavePlanDraftMock).not.toHaveBeenCalled();
     expect(showNoticeMock).not.toHaveBeenCalled();
     await act(async () => {

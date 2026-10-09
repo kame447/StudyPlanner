@@ -80,7 +80,7 @@ it('starts from an empty Home and persists an unplanned Actual without creating 
 it('class Home keeps an accessible schedule button while its primary action starts unplanned study', async () => {
   const classPlan = { ...futurePlan, sourceType: 'timetable' as const, title: '数学の授業' };
   await mount(classPlan);
-  const inspect = renderer!.root.findByProps({ className: 'home-next-title-action' });
+  const inspect = renderer!.root.findByProps({ className: 'home-plan-inspect' });
   expect(inspect.type).toBe('button');
   expect(inspect.props.type).toBe('button');
   expect(inspect.props['aria-label']).toContain('授業を確認');

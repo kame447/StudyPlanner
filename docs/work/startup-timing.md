@@ -4,13 +4,21 @@ Use `?startupTiming=1` on the application URL to opt into an in-memory diagnosti
 
 Rows contain only an anonymous sequence number, a fixed phase name, milliseconds from this page's monotonic performance clock, duration, and a pending/success/error/cancelled outcome. The recorder is capped at 80 rows and stops accepting new spans after the first visible Home observation. Existing pending spans may finish. No account IDs, schedule contents, request URLs, tokens, results, or raw error messages are retained. Startup timing is intentionally separate from AI conversation traces; it does not alter trace fields or retention.
 
+## Start from the existing app
+
+In the app, open Settings → Support and choose “起動を計測して再読み込み”. This explicitly reloads the same browsing context with `startupTiming=1`, which also works as an entry point for an already-installed Home Screen instance without creating another icon. The timing panel offers “計測を終了して再読み込み” to remove the recorder switch. The Support card offers that same stop action while the recorder is enabled.
+
+Both actions preserve the current origin, path, fragment and all other query parameters, including any explicit diagnostic comparison choices. Removing `startupTiming` disables those choices on the next document under the existing selector rules; their URL values remain present. Re-enabling timing can therefore reactivate previously supplied comparison choices. The button labels promise a recorder toggle, not resetting every diagnostic option. No diagnostic preference, recording, authentication or data is written by these controls. Existing leave-page warnings still apply; cancelling one keeps the control usable.
+
+A reload starts a new sample and does not recover timings from the previous document. This entry does not diagnose or speed up startup by itself, and a normal browser sample must not be substituted for a slow Home Screen instance.
+
 ## Interpretation
 
 - `splash-mounted`: first committed splash effect, not an exact pixel-render timestamp
 - `auth-session`, `consent`, `preferences`: observed pending intervals at the React boundaries. Resolution can lead to onboarding or a signed-out view; success does not mean consent was granted
 - `memory`: context repository initialization, including transaction wait
 - `profile`: authentication repository restore, including its profile read/required write
-- `plans`, `actuals`, `day-notes`, `month-events`, `todos`, `subjects`, `materials`, `templates`, `terms`, `periods`: separately measured repository calls. These already run in parallel; do not sum them to infer critical-path duration
+- `schedule-snapshot`, `actuals`, `day-notes`, `todos`, `subjects`, `materials`, `templates`, `terms`, `periods`: separately measured full-load repository calls. The schedule snapshot supplies Plan and MonthEvent projections together. These calls run in parallel; do not sum them to infer critical-path duration. `plans` / `month-events` remain recognized diagnostic phase names for narrower or older consumers
 - `timetable-write`: canonicalization persistence call after the initial reads, not the pure transformation's CPU time
 - `bootstrap`: profile plus planner initialization. Error outcomes preserve the existing error handling/release behavior
 - `home-visible`: first animation-frame observation of a connected, laid-out Home with no splash. It approximates first usable Home, not a browser paint or complete image/font load metric
@@ -29,6 +37,8 @@ Readiness belongs to the keyed authenticated session. The bootstrap also checks 
 
 The overlap removes a dependency, not the remaining consent/preferences and slowest-planner-read latency. Compare exact builds in the same authenticated browser; do not promise one-second startup from deferred tests or add overlapping durations.
 
+The active [Firestore read-load and startup investigation](../domains/client-runtime/work/20261008-firestore-read-load-and-startup.md) records separate synthetic gate timing, SDK logical calls and Emulator observations. Its synthetic cold/warm inputs are not an optimization comparison or real-network measurement. A stalled consent status can prevent planner reads from starting, so inspect earlier gates before attributing every long splash to Firestore data volume.
+
 ## Completed schedule-migration gate
 
 Firebase schedule authority now owns the rollout-capability check and current completed-marker decision in one place. Startup uses a server-only marker read. Only an existing current-version completed marker with `fromCache === false` and `hasPendingWrites === false` skips transactional acquisition. This reuses the domain completed-state predicate; it does not claim full schema/owner validation beyond the existing authority contract. The owner-scoped document path remains unchanged.
@@ -36,6 +46,8 @@ Firebase schedule authority now owns the rollout-capability check and current co
 Missing, migrating, cached/pending-write, metadata-less or unsupported snapshots still go through the existing transaction, including concurrent completion checks. Completed cutover is monotonic under current Rules; no Rules change or persistent client cache is introduced. Only permission denial from the marker capability read permits legacy rollout compatibility. Network/authentication failure and every subsequent transaction/backfill/query failure remain failures, not a reason to fall back to legacy data. The composition wrapper's redundant probe is removed.
 
 The verified mechanism is one clean completed-marker server read instead of a probe followed by a read-only transaction with its verify commit. Missing/migrating paths retain their existing atomic work. This is one shared per-owner gate for plans and month events, not two migrations. End-to-end duration still requires real-browser measurement; do not infer milliseconds from the operation count.
+
+The full-load canonical query is now recorded as `schedule-canonical-snapshot`, with both projections derived from that result. It sits inside `schedule-snapshot`; do not add nested spans as separate critical-path time or billable reads. Explicit subsequent loads still perform a fresh query. Single-projection callers can retain `schedule-canonical-plans` / `schedule-canonical-month-events`.
 
 ## Readiness is the performance target
 

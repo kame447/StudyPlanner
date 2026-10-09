@@ -164,9 +164,9 @@ it.each([false, true])('failed full read preserves valid DayNote acknowledgement
   let saving!: Promise<void>;
   await act(async () => { saving = state.saveDayNote(draft()); });
   await persisted.promise;
-  const get = boundary.repository.getPlans;
+  const get = boundary.repository.getScheduleSnapshot;
   let first = true;
-  boundary.repository.getPlans = async owner => {
+  boundary.repository.getScheduleSnapshot = async owner => {
     if (superseded && first) { first = false; const rows = await get(owner); await oldRead.promise; return rows; }
     throw new Error('full read failed');
   };

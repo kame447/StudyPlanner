@@ -71,7 +71,7 @@
   height: calc(100% - clamp(40px, 6dvh, 49px));
 }
 
-.home-dashboard-default .home-start-button {
+.home-dashboard-default .home-actions {
   bottom: clamp(7px, 1.1dvh, 10px);
   min-height: clamp(37px, 5.3dvh, 46px);
 }
@@ -174,10 +174,6 @@
     font-size: clamp(0.86rem, 2dvh, 0.96rem);
   }
 
-  .home-dashboard-default .home-date-unit {
-    font-size: clamp(0.57rem, 1.35dvh, 0.63rem);
-  }
-
   .home-dashboard-default .home-icon-button,
   .home-dashboard-default .home-avatar-button {
     width: 33px;
@@ -201,7 +197,7 @@
     font-size: 0.66rem;
   }
 
-  .home-dashboard-default .home-start-button {
+  .home-dashboard-default .home-actions {
     left: 14px;
     right: 14px;
     gap: 7px;

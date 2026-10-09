@@ -17,6 +17,7 @@ import {
 } from '../../lib/homeNextPlanVisual';
 import { DEFAULT_HOME_SCENE_PREFERENCES, type HomeScenePreferences } from '../../lib/homeScenePreferences';
 import { HomeScene } from './HomeScene';
+import { HomePlanTitle } from './HomePlanTitle';
 import { buildPlanOccurrenceKey } from '../../lib/planRecurrence';
 import type { Actual, Plan, StudyMaterial, TodoTask } from '../../types/domain';
 import { useStudySessionLauncher } from '../StudySessionView';
@@ -235,11 +236,7 @@ export function NextPlanSection({
         <p className="home-eyebrow">次の予定</p>
         {nextPlan ? (
           <>
-            <h1>{usesStartAction ? nextPlan.title : (
-              <button type="button" className="home-next-title-action" aria-label={`${nextPlanPresentation?.actionLabel ?? '予定を確認する'}: ${nextPlan.title}`} onClick={() => onOpenDay(nextPlan.date)}>
-                {nextPlan.title}<ChevronRight size={20} aria-hidden="true" />
-              </button>
-            )}</h1>
+            <HomePlanTitle key={nextPlan.id} title={nextPlan.title} />
             <div className="home-next-meta">
               <span><Clock aria-hidden="true" size={18} />{nextPlan.startTime} - {nextPlan.endTime}</span>
               <span>
@@ -250,6 +247,7 @@ export function NextPlanSection({
                 <Target aria-hidden="true" size={18} />
                 {nextPlanPresentation?.durationLabel} {formatMinutes(minutesBetween(nextPlan.startTime, nextPlan.endTime))}
               </span>
+
             </div>
           </>
         ) : (
@@ -261,6 +259,7 @@ export function NextPlanSection({
 
       <HomeScene kind={nextPlanVisual.kind} preferences={homeScenePreferences} plan={nextPlan} />
 
+      <div className="home-actions">
       <button
         className="home-start-button"
         type="button"
@@ -271,6 +270,12 @@ export function NextPlanSection({
         </span>
         勉強を開始
       </button>
+      {nextPlan && !usesStartAction && (
+        <button type="button" className="home-plan-inspect" aria-label={`${nextPlanPresentation?.actionLabel ?? '予定を確認する'}: ${nextPlan.title}`} onClick={() => onOpenDay(nextPlan.date)}>
+          {nextPlanPresentation?.semanticKind === 'class' ? '授業を確認' : '予定を確認'}
+        </button>
+      )}
+      </div>
     </section>
   );
 }

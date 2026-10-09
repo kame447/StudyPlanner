@@ -109,7 +109,7 @@ describe('scheduled student in the actual Home card', () => {
     expect(state()).toBe('entering');
     const title = renderer!.root.findByType('h1');
     expect(renderedText(title)).toBe('adjacent');
-    const titleAction = title.findByType('button');
+    const titleAction = renderer!.root.findByProps({ className: 'home-plan-inspect' });
     expect(titleAction.props.type).toBe('button');
     expect(titleAction.props['aria-label']).toBe('授業を確認する: adjacent');
     act(() => titleAction.props.onClick());

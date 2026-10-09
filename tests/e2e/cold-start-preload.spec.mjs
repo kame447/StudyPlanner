@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, installStartupSkip } from './support/startup-ready.mjs';
 
 // Use a real performance clock (no date-dependent assertions). A fresh Playwright
 // context has an empty HTTP cache. Reload reuses that context; record actual
@@ -72,6 +72,7 @@ for (const width of [1280, 390]) {
     // Seed only a synthetic local-repository owner; no credentials or cloud data.
     const homeContext = await browser.newContext({ viewport: { width, height: 900 } });
     const homePage = await homeContext.newPage();
+    await installStartupSkip(homePage);
     homePage.on('pageerror', error => errors.push(String(error)));
     try {
       await instrument(homePage, true);
@@ -84,9 +85,13 @@ for (const width of [1280, 390]) {
       await expect.poll(async () => (await timingRows()).some(row => row.phase === 'home-visible')).toBe(true);
       const diagnosticRows = await timingRows();
       expect(diagnosticRows.length).toBeLessThanOrEqual(80);
-      for (const phase of ['profile', 'plans', 'actuals', 'month-events', 'bootstrap', 'home-visible']) {
+      for (const phase of ['profile', 'schedule-snapshot', 'actuals', 'bootstrap', 'home-visible']) {
         expect(diagnosticRows.some(row => row.phase === phase && row.outcome === 'success')).toBe(true);
       }
+      // One combined full-load read owns both projections. Retain the
+      // startup completion/privacy checks without demanding retired spans.
+      expect(diagnosticRows.filter(row => row.phase === 'schedule-snapshot')).toHaveLength(1);
+      expect(diagnosticRows.filter(row => ['plans', 'month-events'].includes(row.phase))).toEqual([]);
       for (const row of diagnosticRows) {
         expect(Object.keys(row).sort()).toEqual(['durationMs', 'id', 'outcome', 'phase', 'startMs']);
         expect(Number.isFinite(row.startMs)).toBe(true);

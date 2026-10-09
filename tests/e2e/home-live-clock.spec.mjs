@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/startup-ready.mjs';
 
 async function seed(page, timestamp) {
   await page.addInitScript(({ timestamp }) => {
@@ -43,6 +43,7 @@ for (const { zone, offset } of [{ zone: 'Asia/Tokyo', offset: '+09:00' }, { zone
         await page.clock.install({ time: instant('07T16:50:00') });
         await seed(page, instant('07T16:50:00').toISOString());
         await page.goto('/');
+        await expect(page.locator('.home-main')).toBeVisible();
         await expect(nextTitle(page)).toHaveText('17時に終了');
         const before = await storedPlans(page);
         await page.clock.pauseAt(instant('07T16:59:59'));
@@ -85,6 +86,7 @@ for (const { zone, offset } of [{ zone: 'Asia/Tokyo', offset: '+09:00' }, { zone
         await page.clock.install({ time: instant('07T23:50:00') });
         await seed(page, instant('07T23:50:00').toISOString());
         await page.goto('/');
+        await expect(page.locator('.home-main')).toBeVisible();
         await expect(nextTitle(page)).toHaveText('前日の最後');
         const before = await storedPlans(page);
         await page.evaluate(() => {

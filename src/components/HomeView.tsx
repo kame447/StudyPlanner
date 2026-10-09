@@ -1,4 +1,5 @@
 import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
+import { useHomeTextReflow } from './home/useHomeTextReflow';
 import type { HomeScenePreferences } from '../lib/homeScenePreferences';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { buildHomeDashboardModel } from '../lib/homeDashboard';
@@ -143,6 +144,7 @@ export function HomeView({
     );
   }, [activeStudyMaterials]);
   const coreSectionsRef = useRef<HTMLDivElement | null>(null);
+  const homeTextSize = useHomeTextReflow(coreSectionsRef, isGettingStarted);
   const materialProbeRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const layoutRelaxationRef = useRef<HomeLayoutRelaxation>(emptyLayoutRelaxation());
   const [supplementalMaterialRows, setSupplementalMaterialRows] = useState<number | null>(null);
@@ -184,6 +186,8 @@ export function HomeView({
         ) {
           return;
         }
+
+        if (dashboardElement.dataset.contentScroll === 'true') return;
 
         const chromeViewportKey = `${window.innerWidth}x${window.innerHeight}`;
         let chromeLocked = header.dataset.homeChromeViewport === chromeViewportKey;
@@ -521,6 +525,7 @@ export function HomeView({
       window.visualViewport?.removeEventListener('resize', restartMeasurement);
     };
   }, [
+    homeTextSize,
     dashboard.todayPlans.length,
     dashboard.upcomingPlans.length,
     isGettingStarted,

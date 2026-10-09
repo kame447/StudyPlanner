@@ -1,0 +1,84 @@
+{
+  "copied_at_utc": "2026-10-08T11:57:39+00:00",
+  "records": [
+    {
+      "source": "/tmp/laplans-video-full-verification/before.json",
+      "saved": "before.json",
+      "source_sha256": "8cd088386f13a5338d2039ddf0e33a56399c5285003952458bfd16d9918642cf",
+      "saved_sha256": "8cd088386f13a5338d2039ddf0e33a56399c5285003952458bfd16d9918642cf",
+      "change": "byte-identical"
+    },
+    {
+      "source": "/tmp/laplans-video-full-verification/after.json",
+      "saved": "after.json",
+      "source_sha256": "8bdd8884e2141855546afcc7bd3614933e83889a8c621ab8dd47d97706ade55e",
+      "saved_sha256": "8bdd8884e2141855546afcc7bd3614933e83889a8c621ab8dd47d97706ade55e",
+      "change": "byte-identical"
+    },
+    {
+      "source": "/tmp/laplans-video-full-verification/comparison.json",
+      "saved": "comparison.json",
+      "source_sha256": "bd0f728447c39793eed1ebe1dcbd5a9da7fdd7d7deea372840546d1bc09b2b68",
+      "saved_sha256": "bd0f728447c39793eed1ebe1dcbd5a9da7fdd7d7deea372840546d1bc09b2b68",
+      "change": "byte-identical"
+    },
+    {
+      "source": "/tmp/laplans-video-full-verification/execution-environment.json",
+      "saved": "execution-environment.json",
+      "source_sha256": "7d3c96434f29f28a6390391de3951fa34576c10fe2eee083b8ff02fa1d2e712d",
+      "saved_sha256": "7d3c96434f29f28a6390391de3951fa34576c10fe2eee083b8ff02fa1d2e712d",
+      "change": "byte-identical"
+    },
+    {
+      "source": "/tmp/laplans-video-full-verification/bundle-budget.json",
+      "saved": "bundle-budget.json",
+      "source_sha256": "46df5011c70e048d97d7af56214ea07a8fb040dc330ceb02f092b6a392fb0d62",
+      "saved_sha256": "46df5011c70e048d97d7af56214ea07a8fb040dc330ceb02f092b6a392fb0d62",
+      "change": "byte-identical"
+    },
+    {
+      "source": "/tmp/laplans-video-full-verification/worker-generated-identity.json",
+      "saved": "worker-generated-identity.json",
+      "source_sha256": "7931e0b33fb94e83364a1775cc39250ef28d411e1b0968a2d80cf4aabadb18ef",
+      "saved_sha256": "7931e0b33fb94e83364a1775cc39250ef28d411e1b0968a2d80cf4aabadb18ef",
+      "change": "byte-identical"
+    },
+    {
+      "source": "/tmp/laplans-video-full-verification/run.log",
+      "saved": "run.log",
+      "source_sha256": "6ff991dbdf20f32cead9b03635a7c8c4521e16fa221854615e7c780de67ee7b8",
+      "saved_sha256": "6ff991dbdf20f32cead9b03635a7c8c4521e16fa221854615e7c780de67ee7b8",
+      "change": "byte-identical"
+    },
+    {
+      "source": "/tmp/laplans-video-full-verification/budget.log",
+      "saved": "budget.log",
+      "source_sha256": "c3c428ebcf39016e5d9efdaf0a7e42e224f51fa560296ab9e5e2187c00e19367",
+      "saved_sha256": "c3c428ebcf39016e5d9efdaf0a7e42e224f51fa560296ab9e5e2187c00e19367",
+      "change": "byte-identical"
+    },
+    {
+      "source": "/tmp/laplans-video-full-verification/verify.exit",
+      "saved": "verify.exit",
+      "source_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "saved_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "change": "byte-identical"
+    },
+    {
+      "source": "/tmp/laplans-video-full-verification/budget.exit",
+      "saved": "budget.exit",
+      "source_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "saved_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "change": "byte-identical"
+    },
+    {
+      "source": "/tmp/laplans-video-full-verification/verify.log",
+      "source_sha256": "949b1e15a80e546c39969f5b15de9aca0cc27d6e28616d6798b4651e3ed651a6",
+      "ansi_stripped_source": "/tmp/laplans-video-full-verification/verify.clean.log",
+      "ansi_stripped_source_sha256": "375e8c0d6a2edf269ac3302a01546a2fdfb4c231563454abca4c3eb888b79197",
+      "saved": "verify.log",
+      "saved_sha256": "2116aa4495c4ae7412c98ff4daddcaef1e276a0c11b94caa8116a3cfde6985e9",
+      "change": "ANSI control sequences removed; one trailing space removed from Vite reporter line 5120; final newlines normalized to one; no log lines removed"
+    }
+  ]
+}

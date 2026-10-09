@@ -3,7 +3,7 @@ import { createStartupSessionScope, type StartupSessionCapability, type StartupS
 import { retireStartupPreviewCache } from '../lib/retiredStartupPreviewCache';
 import { PlannerAppBootstrap } from './PlannerAppBootstrap';
 import { startupTiming } from '../lib/startupTiming';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import App from '../App';
 import { UserPlanningContextProvider } from '../features/userPlanningContext/UserPlanningContextContext';
 import {
@@ -19,7 +19,7 @@ import { InitialPrivacyConsentScreen } from './InitialPrivacyConsentScreen';
 import { InitialWeekStartPreferenceScreen } from './InitialWeekStartPreferenceScreen';
 import { RootManagedAuthenticationProvider } from './RootManagedAuthenticationContext';
 import { RootStartupReadyProvider } from './RootStartupReadyContext';
-import { SplashScreen } from './SplashScreen';
+import { StartupSurface } from './StartupSurface';
 
 function useStartupWait(phase: 'auth-session' | 'consent' | 'preferences', pending: boolean, failed = false) {
   const finish = useRef<ReturnType<typeof startupTiming.begin> | null>(null);
@@ -30,33 +30,22 @@ function useStartupWait(phase: 'auth-session' | 'consent' | 'preferences', pendi
   useEffect(() => () => { finish.current?.('cancelled'); finish.current = null; }, [phase]);
 }
 
-function StartupSurface({
-  children,
-  loading,
-}: PropsWithChildren<{ loading: boolean }>) {
-  return (
-    <>
-      <div style={loading ? { display: 'none' } : undefined}>
-        {children}
-      </div>
-      {loading ? <SplashScreen fixedLight /> : null}
-    </>
-  );
-}
-
 interface StartupPresentation { loading: boolean }
 
 const ignoreEarlyBootstrapReady = () => {};
+const readyPresentation: StartupPresentation = { loading: false };
 function ConsentedStudyPlannerApp({
   authSession,
   userId,
   startupScope,
   onStartupReady,
+  onStartupPending,
 }: {
   authSession: AuthSessionService;
   userId: string;
   startupScope: StartupSessionCapability;
   onStartupReady: () => void;
+  onStartupPending: () => void;
 }) {
   const personalization = useWeeklyPlanningPersonalizationProfile(userId);
   const finishProfileObservation = useStartupProfileObservation({
@@ -69,11 +58,13 @@ function ConsentedStudyPlannerApp({
   }, [finishProfileObservation, onStartupReady]);
   useStartupWait('preferences', personalization.loading, Boolean(personalization.error));
 
-  useEffect(() => {
-    if (!personalization.loading && !personalization.profile?.weekStartsOn) {
+  useLayoutEffect(() => {
+    if (personalization.loading) {
+      onStartupPending();
+    } else if (!personalization.profile?.weekStartsOn) {
       finishStartup();
     }
-  }, [finishStartup, personalization.loading, personalization.profile?.weekStartsOn]);
+  }, [finishStartup, onStartupPending, personalization.loading, personalization.profile?.weekStartsOn]);
 
   if (personalization.loading) {
     return null;
@@ -84,6 +75,7 @@ function ConsentedStudyPlannerApp({
     return (
       <InitialWeekStartPreferenceScreen
         error={personalization.error}
+        readFailed={personalization.readFailed}
         onSave={personalization.setWeekStartsOn}
         onRetry={personalization.refresh}
         onSignOut={async () => {
@@ -119,24 +111,27 @@ function AuthenticatedStudyPlannerApp({
   userId,
   startupScope,
   onStartupReady,
+  onStartupPending,
 }: {
   authSession: AuthSessionService;
   userId: string;
   startupScope: StartupSessionCapability;
   onStartupReady: () => void;
+  onStartupPending: () => void;
 }) {
   const policy = useWeeklyPlanningTracePolicy(userId);
   useStartupWait('consent', policy.status === 'loading', policy.status === 'unavailable');
 
-  useEffect(() => {
-    if (
-      policy.status !== 'loading'
-      && policy.status !== 'accepted'
+  useLayoutEffect(() => {
+    if (policy.status === 'loading') {
+      onStartupPending();
+    } else if (
+      policy.status !== 'accepted'
       && policy.status !== 'disabled'
     ) {
       onStartupReady();
     }
-  }, [onStartupReady, policy.status]);
+  }, [onStartupPending, onStartupReady, policy.status]);
 
   if (policy.status === 'accepted') {
     return (
@@ -145,6 +140,7 @@ function AuthenticatedStudyPlannerApp({
         userId={userId}
         startupScope={startupScope}
         onStartupReady={onStartupReady}
+        onStartupPending={onStartupPending}
       />
     );
   }
@@ -202,6 +198,8 @@ export function StudyPlannerAppRoot({
     setPresentation((previous) => previous?.session === session && previous.value === value
       ? previous : { session, value });
   }, [session]);
+  const markUnauthenticatedReady = useCallback(() => presentStartup(readyPresentation), [presentStartup]);
+  const isCurrentSession = useCallback(() => currentSession.current === session, [session]);
   const authenticatedUserId = session.userId;
   useStartupWait('auth-session', authenticatedUserId === undefined);
 
@@ -238,10 +236,10 @@ export function StudyPlannerAppRoot({
 
   const currentPresentation = presentation?.session === session ? presentation.value : null;
   const loading = authenticatedUserId === undefined
-    || (typeof authenticatedUserId === 'string' && (currentPresentation?.loading ?? true));
+    || (currentPresentation?.loading ?? true);
   return (
-    <StartupSurface loading={loading}>
-      {authenticatedUserId === null ? <RootManagedUnauthenticatedApp />
+    <StartupSurface loading={loading} isCurrent={isCurrentSession}>
+      {authenticatedUserId === null ? <RootStartupReadyProvider onReady={markUnauthenticatedReady}><RootManagedUnauthenticatedApp /></RootStartupReadyProvider>
         : typeof authenticatedUserId === 'string' ? (
           <AuthenticatedStartup key={JSON.stringify([authenticatedUserId, session.epoch])}
             authSession={authSession} userId={authenticatedUserId} startupScope={session.scope} onPresentation={presentStartup} />
@@ -256,11 +254,12 @@ function AuthenticatedStartup({ authSession, userId, startupScope, onPresentatio
 }) {
   const [ready, setReady] = useState(false);
   const markReady = useCallback(() => setReady(true), []);
+  const markPending = useCallback(() => setReady(false), []);
   const presentation = useMemo<StartupPresentation>(() => ({ loading: !ready }), [ready]);
   useLayoutEffect(() => { onPresentation(presentation); }, [onPresentation, presentation]);
   return (
     <RootStartupReadyProvider onReady={markReady}>
-      <AuthenticatedStudyPlannerApp authSession={authSession} userId={userId} startupScope={startupScope} onStartupReady={markReady} />
+      <AuthenticatedStudyPlannerApp authSession={authSession} userId={userId} startupScope={startupScope} onStartupReady={markReady} onStartupPending={markPending} />
     </RootStartupReadyProvider>
   );
 }

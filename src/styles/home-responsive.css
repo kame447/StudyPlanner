@@ -68,10 +68,6 @@
   font-size: 0.98rem;
 }
 
-.home-date-unit {
-  font-size: 0.65rem;
-}
-
 /* Narrow phones keep the same two-column attention layout. */
 @media (max-width: 380px) {
   .home-alert-grid {

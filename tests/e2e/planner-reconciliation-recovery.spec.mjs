@@ -554,7 +554,7 @@ test('failed Plan Undo preserves a queued MonthEvent through rollback and real r
   }
 });
 
-// The 13 existing cases stay unchanged. Full refresh admits its ten queued
+// Full refresh admits its nine queued
 // getters before the actual Undo click in this same browser task. No read or
 // restore gate creates the race; only the later targeted Todo read is failed.
 test('Plan Undo repairs all linked projections after an older full refresh; retry is read-only mobile-dark', async ({ page }) => {
@@ -600,7 +600,7 @@ test('Plan Undo repairs all linked projections after an older full refresh; retr
     button.click();
     return refreshing.then(() => admitted);
   });
-  expect(admitted).toEqual(['getPlans', 'getActuals', 'getDayNotes', 'getMonthEvents', 'getTodos',
+  expect(admitted).toEqual(['getScheduleSnapshot', 'getActuals', 'getDayNotes', 'getTodos',
     'getStudySubjects', 'getStudyMaterials', 'getScheduleTemplates', 'getTimetableTerms', 'getTimetablePeriods']);
   await expect.poll(async () => (await hookSnapshot(page)).recovery?.phase).toBe('failed');
   await expect(retry(page)).toBeVisible();
@@ -614,7 +614,7 @@ test('Plan Undo repairs all linked projections after an older full refresh; retr
   const failedCalls = afterFailure.calls.slice(before.calls.length);
   expect(failedCalls.filter(call => call.phase === 'failed')).toEqual([{ method: 'getTodos', phase: 'failed' }]);
   expect(failedCalls.filter(call => call.method === 'restorePlanWithDependents' && call.phase === 'returned')).toHaveLength(1);
-  expect(calledMethods(afterFailure).slice(calledMethods(before).length, calledMethods(before).length + 11))
+  expect(calledMethods(afterFailure).slice(calledMethods(before).length, calledMethods(before).length + admitted.length + 1))
     .toEqual([...admitted, 'restorePlanWithDependents']);
   expect(writeMethods(afterFailure).slice(writeMethods(before).length))
     .toEqual(['restorePlanWithDependents', 'applyTimetableMutation']);

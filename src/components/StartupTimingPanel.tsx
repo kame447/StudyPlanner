@@ -3,6 +3,7 @@ import { startupProfileObservation } from '../lib/startupProfileObservation';
 import { startupFirestoreTransport } from '../lib/startupFirestoreTransport';
 import { useEffect, useSyncExternalStore } from 'react';
 import { startupTiming } from '../lib/startupTiming';
+import { StartupTimingButton } from './StartupTimingButton';
 
 export function StartupTimingPanel() {
   const rows = useSyncExternalStore(startupTiming.subscribe, startupTiming.getSnapshot, startupTiming.getSnapshot);
@@ -36,6 +37,7 @@ export function StartupTimingPanel() {
     <p>Firestore比較設定: {startupFirestoreTransport}（この起動のみ）</p>
     <p>Profile比較設定: {startupProfileObservation}（この起動のみ）</p>
     <p>Marker比較設定: {startupMarkerObservation}（この起動のみ）</p>
+    <StartupTimingButton enabled />
     <pre>{JSON.stringify(rows, null, 2)}</pre>
   </details>;
 }

@@ -47,18 +47,18 @@ async function inspectRecordLayout(record) {
   });
 }
 
-async function seed(page, { kind = 'empty', material = false, dark = false } = {}) {
-  await page.addInitScript(({ kind, material, date, dark }) => {
+async function seed(page, { kind = 'empty', material = false, dark = false, title, planDate = E2E_TODAY } = {}) {
+  await page.addInitScript(({ kind, material, date, dark, title }) => {
     localStorage.setItem('study-planner-theme-mode', dark ? 'dark' : 'light');
     const user = { id: 'unplanned-user', email: 'unplanned@example.test', username: 'Study', avatar: '', createdAt: new Date().toISOString() };
-    const plan = { id: 'next-plan', seriesId: 'next-plan', userId: user.id, title: kind === 'class' ? '数学の授業' : '予定の学習', subject: '数学', type: 'study', date, startTime: '11:00', endTime: '12:00', memo: '', repeat: 'none', repeatUntil: null, excludedDates: [], recurrenceRules: [], sourceType: kind === 'class' ? 'timetable' : 'manual', createdAt: user.createdAt, updatedAt: user.createdAt };
+    const plan = { id: 'next-plan', seriesId: 'next-plan', userId: user.id, title: title ?? (kind === 'class' ? '数学の授業' : '予定の学習'), subject: '数学', type: 'study', date, startTime: '11:00', endTime: '12:00', memo: '', repeat: 'none', repeatUntil: null, excludedDates: [], recurrenceRules: [], sourceType: kind === 'class' ? 'timetable' : 'manual', createdAt: user.createdAt, updatedAt: user.createdAt };
     localStorage.setItem('studyplanner.users', JSON.stringify([user]));
     localStorage.setItem('studyplanner.session', user.id);
     localStorage.setItem('studyplanner.plans', JSON.stringify(kind === 'empty' ? [] : [plan]));
     localStorage.setItem('studyplanner.actuals', '[]');
     localStorage.setItem('studyplanner.todos.v1', '[]');
     localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify(material ? [{ id: 'book', userId: user.id, name: '数学の本', subjectId: 'math', subjectName: '数学', status: 'active', paceEnabled: true, progressUnit: 'page', currentUnit: 10, totalUnits: 100, createdAt: user.createdAt, updatedAt: user.createdAt }] : []));
-  }, { kind, material, date: E2E_TODAY, dark });
+  }, { kind, material, date: planDate, dark, title });
 }
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
@@ -232,14 +232,24 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
   });
 }
 
-test('class title remains keyboard-operable while Home starts unrelated study', async ({ page }) => {
+test('class inspection remains separate from reading its title and starting unrelated study', async ({ page }) => {
   await seed(page, { kind: 'class', material: true });
   await page.goto('/');
+  const before = await page.evaluate(() => localStorage.getItem('studyplanner.plans'));
+  await page.getByRole('button', { name: '数学の授業', exact: true }).click();
+  const titleDialog = page.getByRole('dialog', { name: '予定名の全文', exact: true });
+  await expect(titleDialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(titleDialog).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '数学の授業', exact: true })).toBeFocused();
   const inspect = page.getByRole('button', { name: '授業を確認する: 数学の授業', exact: true });
+  expect(await inspect.evaluate(element => getComputedStyle(element).minHeight)).toBe('44px');
+  expect(await inspect.evaluate(element => Math.round(element.getBoundingClientRect().height))).toBeGreaterThanOrEqual(44);
   await inspect.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: '学習を開始', exact: true })).toHaveCount(0);
   await expect(page.locator('.home-next-card')).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem('studyplanner.plans'))).toBe(before);
   await page.getByRole('button', { name: 'ホーム', exact: true }).click();
   await page.getByRole('button', { name: /勉強を開始/ }).click();
   await expect(page.getByRole('combobox', { name: '学習内容', exact: true })).toHaveCount(0);
@@ -272,3 +282,49 @@ test('a next study offers a visible choice before recording unrelated learning',
   await expect(page.getByRole('dialog', { name: '学習を記録', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]'))).toEqual([expect.objectContaining({ planId: null, title: '別の学習' })]);
 });
+
+
+for (const [width, height] of [[320, 844], [390, 667], [768, 710], [1280, 844]]) for (const scale of [100, 200]) {
+  test(`class title, inspection and unplanned start remain separate at ${width}x${height} / ${scale}%`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height });
+    const title = '数学の授業の詳しい説明'.repeat(8);
+    await seed(page, { kind: 'class', title });
+    await page.goto('/');
+    await expect(page.locator('.home-next-card')).toBeVisible();
+    if (scale === 200) await page.addStyleTag({ content: ':root { font-size:200%!important; }' });
+    const fullTitle = page.getByRole('button', { name: title, exact: true });
+    const inspect = page.getByRole('button', { name: `授業を確認する: ${title}`, exact: true });
+    const start = page.locator('.home-start-button');
+    const saved = await page.evaluate(() => localStorage.getItem('studyplanner.plans'));
+    await inspect.scrollIntoViewIfNeeded();
+    await expect.poll(() => inspect.evaluate(element => {
+      const a=element.getBoundingClientRect(), b=document.querySelector('.home-start-button').getBoundingClientRect();
+      const c=document.querySelector('.home-plan-title').getBoundingClientRect();
+      const meta=document.querySelector('.home-next-meta').getBoundingClientRect();
+      const separate=a.left >= b.right+2 || a.top >= b.bottom+2;
+      return { tap:Math.round(a.height) >= 44 && Math.round(b.height) >= 44, titleAbove:c.bottom <= Math.min(a.top,b.top)+1, separated:separate, metadataAbove:meta.bottom <= Math.min(a.top,b.top)-2,
+        within:a.left >= -1 && a.right <= document.documentElement.clientWidth+1 };
+    })).toEqual({ tap:true, titleAbove:true, separated:true, metadataAbove:true, within:true });
+    if (scale === 100) {
+      expect(await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight + 1)).toBe(true);
+      expect(await page.locator('.home-core-sections').evaluate(element => element.getBoundingClientRect().bottom <= document.querySelector('.primary-bottom-nav').getBoundingClientRect().top + 1)).toBe(true);
+    }
+    console.log('Home action geometry', await page.evaluate(() => Object.fromEntries(['.home-next-card','.home-next-meta','.home-start-button','.home-plan-inspect'].map(s=>{const r=document.querySelector(s).getBoundingClientRect();return [s,{x:r.x,y:r.y,width:r.width,height:r.height}]}))));
+    await page.screenshot({ path:info.outputPath(`home-actions-${width}-${scale}.png`) });
+    await inspect.click({ trial:true });
+    await fullTitle.scrollIntoViewIfNeeded(); await fullTitle.click();
+    const dialog=page.getByRole('dialog', { name:'予定名の全文',exact:true });
+    await expect(dialog).toContainText(title);
+    await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(fullTitle).toBeFocused();
+    await inspect.scrollIntoViewIfNeeded(); await inspect.focus(); await page.keyboard.press('Enter');
+    await expect(page.locator('.home-next-card')).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name:'学習を開始',exact:true })).toHaveCount(0);
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.plans'))).toBe(saved);
+    await page.getByRole('button', { name:'ホーム',exact:true }).click();
+    await start.scrollIntoViewIfNeeded(); await start.click();
+    const ready=page.getByRole('dialog', {name:'学習を開始',exact:true});
+    await expect(ready).toBeVisible();
+    await expect(ready.getByRole('combobox', {name:'学習内容',exact:true})).toHaveCount(0);
+    await attachScreen(page, info, `separate-actions-${width}-${scale}`);
+  });
+}

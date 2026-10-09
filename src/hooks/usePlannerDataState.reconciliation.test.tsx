@@ -157,9 +157,9 @@ it('audit failed refresh does not revoke an otherwise valid acknowledgment', asy
   await mount(); const {persisted,response}=holdFirstResponse('upsertActualWithMaterialProgress');
   let done!: Promise<void>; await act(async()=>{done=state.saveStandaloneActual(draftFor(),STANDALONE.id);});
   await persisted.promise;
-  const original=boundary.repository.getPlans; boundary.repository.getPlans=async()=>{throw new Error('read failure');};
+  const original=boundary.repository.getScheduleSnapshot; boundary.repository.getScheduleSnapshot=async()=>{throw new Error('read failure');};
   await act(async()=>{await expect(state.loadPlannerData('owner')).rejects.toThrow('read failure');});
-  boundary.repository.getPlans=original;
+  boundary.repository.getScheduleSnapshot=original;
   await act(async()=>{response.resolve();await done;});
   await expectPersistedProjection('failed reads have not replaced the acknowledged state');
 });
@@ -195,11 +195,11 @@ it.each([false,true])('audit late acknowledgment preserves disjoint newer post-r
 it('audit superseded load and newer failed load do not revoke acknowledgment',async()=>{
   await mount();const {persisted,response}=holdFirstResponse('upsertActualWithMaterialProgress');
   let saving!:Promise<void>;await act(async()=>{saving=state.saveStandaloneActual(draftFor(),STANDALONE.id);});await persisted.promise;
-  const original=boundary.repository.getPlans;const loadGate=deferred();let calls=0;
-  boundary.repository.getPlans=async(owner)=>{if(++calls===1){const saved=await original(owner);await loadGate.promise;return saved;}throw new Error('newer load failed');};
+  const original=boundary.repository.getScheduleSnapshot;const loadGate=deferred();let calls=0;
+  boundary.repository.getScheduleSnapshot=async(owner)=>{if(++calls===1){const saved=await original(owner);await loadGate.promise;return saved;}throw new Error('newer load failed');};
   let oldLoad!:Promise<void>;await act(async()=>{oldLoad=state.loadPlannerData('owner');});
   await act(async()=>{await expect(state.loadPlannerData('owner')).rejects.toThrow('newer load failed');});
-  await act(async()=>{loadGate.resolve();await oldLoad;});boundary.repository.getPlans=original;
+  await act(async()=>{loadGate.resolve();await oldLoad;});boundary.repository.getScheduleSnapshot=original;
   await act(async()=>{response.resolve();await saving;});
   await expectPersistedProjection('neither attempted load installed a newer snapshot');
 });
@@ -408,7 +408,7 @@ it('a retained initial auth load callback survives mutation-scope recreation wit
   const getActuals = vi.spyOn(boundary.repository, 'getActuals');
   const getMaterials = vi.spyOn(boundary.repository, 'getStudyMaterials');
   const gate = deferred();
-  hold('getPlans', gate);
+  hold('getScheduleSnapshot', gate);
   let load!: Promise<void>;
   await act(async () => {
     harnessOwner = 'owner';
@@ -484,10 +484,10 @@ it('stable target failure remains latched across a successful disjoint ordinary 
 it('successful targeted repair leaves failed full health stale and the full success timestamp unchanged', async () => {
   const old = await staleActualAcknowledgment();
   const fullStamp = state.plannerDataAvailability.lastSuccessfulAt;
-  const getPlans = boundary.repository.getPlans;
-  const plans = vi.spyOn(boundary.repository, 'getPlans').mockRejectedValueOnce(new Error('full unavailable'));
+  const getScheduleSnapshot = boundary.repository.getScheduleSnapshot;
+  const plans = vi.spyOn(boundary.repository, 'getScheduleSnapshot').mockRejectedValueOnce(new Error('full unavailable'));
   await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow('full unavailable'); });
-  plans.mockImplementation(getPlans);
+  plans.mockImplementation(getScheduleSnapshot);
   const reads = vi.spyOn(boundary.repository, 'getActuals');
   await act(async () => { old.response.resolve(); await old.done; });
   expect(reads).toHaveBeenCalledTimes(1);
@@ -544,11 +544,11 @@ it.each([false, true])('unmount suppresses in-flight target completion and notic
 
 it.each(['reset', 'owner change', 'A-B-A', 'unmount'] as const)('retained full retry cannot issue reads after %s', async expiry => {
   await mount();
-  const getPlans = boundary.repository.getPlans;
-  const plans = vi.spyOn(boundary.repository, 'getPlans').mockRejectedValueOnce(new Error('full unavailable'));
+  const getScheduleSnapshot = boundary.repository.getScheduleSnapshot;
+  const plans = vi.spyOn(boundary.repository, 'getScheduleSnapshot').mockRejectedValueOnce(new Error('full unavailable'));
   await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow('full unavailable'); });
   const retry = state.retryPlannerData;
-  plans.mockImplementation(getPlans);
+  plans.mockImplementation(getScheduleSnapshot);
   if (expiry === 'reset') await act(async () => { state.resetPlannerData(); });
   else if (expiry === 'unmount') unmount();
   else {
@@ -692,7 +692,7 @@ it('render-time readiness is true after initial acceptance and after same-turn r
 it.each([false, true])('full refresh overlapping a writer start and settlement creates and repairs a fresh concern, writerSuccess=%s', async success => {
   const storage = await mount();
   const fullGate = deferred();
-  hold('getPlans', fullGate);
+  hold('getScheduleSnapshot', fullGate);
   let load!: Promise<void>;
   await act(async () => { load = state.loadPlannerData('owner'); });
   const writeGate = deferred();
@@ -885,11 +885,11 @@ it.each(['move', 'plan-update', 'plan-create'] as const)(
   'repairs %s completed while a captured full read is still pending',
   async operation => {
     await mount();
-    const original = boundary.repository.getPlans;
+    const original = boundary.repository.getScheduleSnapshot;
     const captured = deferred();
     const release = deferred();
     let first = true;
-    boundary.repository.getPlans = async owner => {
+    boundary.repository.getScheduleSnapshot = async owner => {
       const snapshot = await original(owner);
       if (first) { first = false; captured.resolve(); await release.promise; }
       return snapshot;

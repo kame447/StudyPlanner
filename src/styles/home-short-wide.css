@@ -44,10 +44,6 @@
     font-size: 0.98rem;
   }
 
-  .home-dashboard-default .home-date-unit {
-    font-size: 0.65rem;
-  }
-
   .home-dashboard-default .home-top-actions {
     gap: 4px;
   }
@@ -103,7 +99,7 @@
     height: 14px;
   }
 
-  .home-dashboard-default .home-start-button {
+  .home-dashboard-default .home-actions {
     left: 14px;
     right: 14px;
     bottom: 7px;
