@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   checkShownQuestionPurposeV5, createShownQuestionPurposeCheckMessagesV5, createShownQuestionPurposeCheckV5, parseShownQuestionPurposeV5,
-  permitsBareBudgetPromotionV5, SHOWN_QUESTION_PURPOSE_CHECK_REQUEST_MAX_BYTES,
+  permitsBareBudgetPromotionV5, SHOWN_QUESTION_PURPOSE_CHECK_MAX_COMPLETION_TOKENS, SHOWN_QUESTION_PURPOSE_CHECK_REQUEST_MAX_BYTES,
 } from './weeklyPlanningShownQuestionPurposeCheck';
 
 const client = (reply: string | Error) => ({ createChatCompletion: vi.fn(async () => { if (reply instanceof Error) throw reply; return reply; }) });
@@ -49,5 +49,8 @@ describe('shown-question purpose check (S3a v2)', () => {
     const request = (c.createChatCompletion.mock.calls[0] as unknown as [{ responseFormat: { json_schema: { name: string } }; purpose: string }])[0];
     expect(request.responseFormat.json_schema.name).toBe('weekly_planning_shown_question_purpose_v5');
     expect(request.purpose).toBe('weekly_planning_semantic_normalizer');
+    // The budget includes reasoning tokens (observed up to 264): it must stay well above them or the call ends empty.
+    expect(SHOWN_QUESTION_PURPOSE_CHECK_MAX_COMPLETION_TOKENS).toBeGreaterThanOrEqual(512);
+    expect((request as unknown as { maxCompletionTokens: number }).maxCompletionTokens).toBe(SHOWN_QUESTION_PURPOSE_CHECK_MAX_COMPLETION_TOKENS);
   });
 });

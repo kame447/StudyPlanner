@@ -15,7 +15,8 @@ import type {
 export type ShownQuestionPurposeV5 = 'progress' | 'plan' | 'other';
 export type ShownQuestionPurposeCheckResultV5 = ShownQuestionPurposeV5 | 'unavailable';
 
-export const SHOWN_QUESTION_PURPOSE_CHECK_MAX_COMPLETION_TOKENS = 24;
+/** The completion budget INCLUDES the reasoning tokens of the reasoning model (observed 150-264 for tiny enum outputs): a small cap would end the call empty and read as `unavailable`. */
+export const SHOWN_QUESTION_PURPOSE_CHECK_MAX_COMPLETION_TOKENS = 512;
 /** Own cap for this request (no existing cap is raised). */
 export const SHOWN_QUESTION_PURPOSE_CHECK_REQUEST_MAX_BYTES = 1_400;
 const MAX_QUESTION_CHARS = 600;
