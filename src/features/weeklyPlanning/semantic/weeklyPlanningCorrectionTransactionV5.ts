@@ -8,6 +8,17 @@ import type {
   WeeklyPlanningFactGraphV5,
 } from './weeklyPlanningFactGraphV5';
 
+const migratedDependents = new WeakMap<object, string[]>();
+
+/**
+ * Efforts this transaction's dependent migration superseded because their workload was replaced. A later correction of the
+ * same turn that names one of them applies to the migrated fact (x9a); nothing else does. Kept off the result's shape:
+ * the transaction output is frozen byte-for-byte by an existing test.
+ */
+export function migratedDependentFactIdsOfTransactionV5(result: object): readonly string[] {
+  return migratedDependents.get(result) ?? [];
+}
+
 export const WEEKLY_PLANNING_CORRECTION_TRANSACTION_VERSION_V5 =
   'weekly-planning-correction-transaction-v5' as const;
 
@@ -102,7 +113,7 @@ export function applyWeeklyPlanningCorrectionTransactionV5(params: {
       supersededByFactId: null,
     };
   });
-  return {
+  const applied: WeeklyPlanningCorrectionTransactionResultV5 = {
     ...result,
     transactionVersion: WEEKLY_PLANNING_CORRECTION_TRANSACTION_VERSION_V5,
     graph: {
@@ -120,4 +131,6 @@ export function applyWeeklyPlanningCorrectionTransactionV5(params: {
       { kind: 'correction_intent', id: params.correctionIntentFactId },
     ],
   };
+  migratedDependents.set(applied, prepared.superseded.map((entry) => entry.id));
+  return applied;
 }

@@ -1,5 +1,6 @@
 import {
   applyWeeklyPlanningCorrectionTransactionV5,
+  migratedDependentFactIdsOfTransactionV5,
 } from './weeklyPlanningCorrectionTransactionV5';
 import {
   applyWeeklyPlanningFactLifecycleOperationV5,
@@ -379,7 +380,14 @@ function rebaseReplacement(params: {
       correctionId: correction.id,
     });
     if (orphanError) errors.push(orphanError);
-    if (replacement.targetFactId !== target.targetFactId) {
+    // The replacement effort hangs from the workload that ANOTHER correction of this turn installs in place of the replaced
+    // effort's own workload (「合計60分に、1回30分」: workload 90→60 and its session 45→30): it already targets the right
+    // fact; rebasing it onto the replaced workload would hang it from a superseded one (x9a).
+    const hangsFromReplacementOfTargetWorkload = replacement.targetFactId !== target.targetFactId
+      && graph.correctionIntents.some((other) => other.id !== correction.id && other.operation === 'replace'
+        && other.replacementFactId === replacement.targetFactId
+        && (other.target.factId ?? other.target.publicId) === target.targetFactId);
+    if (replacement.targetFactId !== target.targetFactId && !hangsFromReplacementOfTargetWorkload) {
       if (!params.addedIds.has(replacement.targetFactId)) {
         errors.push(
           `replacement-support-not-created-in-turn:${correction.id}:${replacement.targetFactId}`,
@@ -392,7 +400,7 @@ function rebaseReplacement(params: {
       ...graph,
       effortEstimates: graph.effortEstimates.map((fact) =>
         fact.id === replacement.id
-          ? { ...fact, taskId: target.taskId, targetFactId: target.targetFactId }
+          ? { ...fact, taskId: target.taskId, ...(hangsFromReplacementOfTargetWorkload ? {} : { targetFactId: target.targetFactId }) }
           : fact),
     };
   } else if (targetKind === 'temporal_constraint') {
@@ -582,7 +590,16 @@ export function applyWeeklyPlanningCanonicalCorrectionsV5(params: {
   const added: WeeklyPlanningFactDiffEntryV5[] = [];
   const superseded: WeeklyPlanningFactDiffEntryV5[] = [];
   const removed: WeeklyPlanningFactDiffEntryV5[] = [];
+  // Efforts that an earlier correction's dependent migration superseded in THIS transaction -> the fact they migrated to.
+  const migrated = new Map<string, string>();
   for (const correctionId of correctionIds) {
+    const intent = graph.correctionIntents.find((fact) => fact.id === correctionId);
+    const retargetTo = intent?.target.factId ? migrated.get(intent.target.factId) : undefined;
+    if (retargetTo) {
+      // A correction whose target was superseded by a dependent migration earlier in this transaction applies to the migrated
+      // fact (x9a). A target superseded in an earlier turn, or by anything else, is not in the map and is rejected as before.
+      graph = resolveCorrectionTargetInGraph({ graph, correctionIntentFactId: correctionId, targetFactId: retargetTo });
+    }
     const result = applyWeeklyPlanningCorrectionTransactionV5({
       graph,
       expectedRevision: graph.revision,
@@ -591,6 +608,10 @@ export function applyWeeklyPlanningCanonicalCorrectionsV5(params: {
     });
     if (result.status === 'rejected') return reject(params.originalGraph, result.errors);
     graph = result.graph;
+    for (const oldId of migratedDependentFactIdsOfTransactionV5(result)) {
+      const to = graph.factLifecycles.find((entry) => entry.factId === oldId)?.supersededByFactId;
+      if (to) migrated.set(oldId, to);
+    }
     added.push(...result.added);
     superseded.push(...result.superseded);
     removed.push(...result.removed);

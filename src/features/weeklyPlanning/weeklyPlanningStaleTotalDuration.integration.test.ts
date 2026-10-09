@@ -61,7 +61,6 @@ function install(on: On, withTotal = true): void {
 }
 const open = () => createScriptedConversation({ provider, architecture: 'interaction_v1', weekStartDate: '2026-10-05', now: () => '2026-10-07T09:00:00.000Z' });
 
-const UNCHANGED = '今の仮予定は変えていません。';
 const blocks = (r: { result: { draftCandidates?: unknown[] } | null }) => (r.result?.draftCandidates ?? [])
   .map(c => { const b = c as { date?: string; startTime?: string; endTime?: string; durationMinutes?: number }; return `${b.date} ${b.startTime}-${b.endTime} ${b.durationMinutes}`; }).sort();
 
@@ -93,18 +92,16 @@ describe('X5g: a task-level total_duration 90 beside the corrected target worklo
     expect(blocks(control)).toEqual(shown);
   });
 
-  it('with the session effort on the workload the turn is rejected by dependent migration (known X5c residual): disclosed recover, nothing changes', async () => {
+  it('with the session effort on the workload, correcting the workload and the session together now applies (x9a; was the X5c disclosed-recover residual)', async () => {
     install('workload', true);
     const conv = open();
-    const first = await conv.submit(T1);
+    await conv.submit(T1);
     const second = await conv.submit(T2);
     const view = createWeeklyPlanningActiveSchedulerGraphViewV5(conv.graph()!);
-    const results = second.debugTrace.filter(e => e.stage === 'runtime_semantic_result_received').map(e => JSON.stringify(e.data)).join('|');
-    expect(results).toContain('target-fact-not-active');
-    expect(second.result?.interactionOutcome?.kind).toBe('recover');
-    expect(second.result?.message).toContain(UNCHANGED);
-    expect(view.workloads.map(w => w.amount)).toEqual([90]);
-    expect(blocks(second)).toEqual([]);
-    expect(conv.getState().previewCandidates?.length).toBe(blocks(first).length);
+    expect(second.result?.interactionOutcome?.kind).toBe('apply');
+    expect(view.workloads.map(w => w.amount)).toEqual([60]);
+    expect(view.effortEstimates.filter(e => e.kind === 'session_duration').map(e => e.minutes)).toEqual([30]);
+    expect(blocks(second)).toHaveLength(2);
+    expect(blocks(second).every(b => b.endsWith(' 30'))).toBe(true);
   });
 });
