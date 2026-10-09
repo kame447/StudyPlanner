@@ -66,9 +66,7 @@ export interface WeeklyPlanningTurnExecutionInput {
 export type WeeklyPlanningTurnFailureCode =
   | 'stable_v5_provider_failure'
   | 'stable_v5_normalization_rejected'
-  | 'stable_v5_canonicalization_rejected'
-  /** P2: the AI-written reply could not be verified against its typed facts after one regeneration. */
-  | 'stable_v5_dialogue_verification_failed';
+  | 'stable_v5_canonicalization_rejected';
 
 export interface WeeklyPlanningTurnFailureDiagnostics {
   attemptCount: number;

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import './application/weeklyPlanningStableV5InstrumentedRuntimeExecutor';
-import { createScriptedConversation, resetScriptedConversationRuntime, scriptedRendererReply, type ScriptedProviderCall } from './testUtils/weeklyPlanningScriptedConversationHarness';
+import { createScriptedConversation, resetScriptedConversationRuntime } from './testUtils/weeklyPlanningScriptedConversationHarness';
 import { BULK, DECLINE, OVERLOAD, examBusyPlans, installExamOverloadProvider } from './testUtils/weeklyPlanningExamOverloadFixture';
 
 /*
@@ -39,6 +39,14 @@ describe('B3: the capacity question carries the unmet work', () => {
     expect(typeof shortfall.requiredMinutes).toBe('number');
     expect((shortfall.unmetWork as Json[]).length).toBeGreaterThan(0);
   });
+  it('the user reads an application-owned sentence with the figures', async () => {
+    const { turn } = await overloadTurn();
+    expect(turn.result?.message).toMatch(/入りきらなかった作業/);
+    expect(turn.result?.message).not.toMatch(/60分・約60分/);
+    expect(turn.result?.message).not.toMatch(/足りない|不足/);
+    expect(turn.result?.message).toMatch(/合計[\d,]+分/);
+    expect(turn.result?.message).toMatch(/物理・力学（\d+問・約\d+分）/);
+  });
   it('legacy_v5 stays without the fact and the sentence', async () => {
     const { turn } = await overloadTurn('legacy_v5');
     expect(turn.result?.message ?? '').not.toMatch(/入りきらなかった作業/);
@@ -48,26 +56,18 @@ describe('B3: the capacity question carries the unmet work', () => {
 
 describe('B3: the AI-rendered reply', () => {
   const ASK = 'いくつかの作業が今の期間に入りきりませんでした。期間を延ばすか、量を減らすか、使える時間を増やせるか、どれがよいですか？';
-  it('the renderer is told to state the figures; a faithful AI reply is shown as AI text with no fixed sentence appended (P2: verified)', async () => {
-    const mustConvey = (call: ScriptedProviderCall) => (((call.payload?.applicationDecision as Json)?.communication as Json)?.mustConvey as Json[] | undefined)?.[0] as
-      { requiredMinutes: number; unmet: Array<{ label: string; minutes: number }> } | undefined;
-    provider = installExamOverloadProvider(30, false, false, (call) => {
-      const fact = mustConvey(call);
-      return scriptedRendererReply(call, fact
-        ? `${ASK}${fact.unmet.map(item => `${item.label}（約${item.minutes}分）`).join('、')}が入らず、必要な時間は合計${fact.requiredMinutes}分です。`
-        : 'わかりました。');
-    });
+  it('is followed by the application sentence, and the renderer is told not to state figures', async () => {
+    provider = installExamOverloadProvider(30, false, false, ASK);
     const conv = createScriptedConversation({ provider, plans: examBusyPlans, architecture: 'interaction_v1', weekStartDate: '2026-10-12', now: () => '2026-10-09T09:00:00.000Z' });
     await conv.submit(BULK);
     await conv.submit(DECLINE);
     const turn = await conv.submit(OVERLOAD);
-    expect(turn.result?.failure).toBeUndefined();
     expect(turn.result?.responseSource).toBe('ai');
     expect(turn.result?.message.startsWith(ASK)).toBe(true);
-    expect(turn.result?.message).toMatch(/合計\d+分です。$/);
-    expect(turn.result?.message).not.toMatch(/\n\n入りきらなかった作業: /);
+    expect(turn.result?.message).toMatch(/\n\n入りきらなかった作業: .*今回の計画に必要な時間は合計[\d,]+分です。$/);
     const renderer = turn.calls.filter(call => call.kind === 'renderer').pop()!;
-    expect(JSON.stringify(renderer.messages)).toContain('mustConvey shortfall: In your own words');
+    const request = JSON.stringify(renderer.messages);
+    expect(request).toContain('capacityShortfall: The app states the unmet work');
   });
   it('the capacity fact exists only on the capacity question', async () => {
     provider = installExamOverloadProvider(30);

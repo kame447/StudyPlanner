@@ -263,9 +263,7 @@ function interactionCommunicationInstructions(
     ...(communication.uncertaintyReleased
       ? ['uncertaintyReleased: The app states that one open point stays unconfirmed beside your reply. Do not say it was settled, confirmed or resolved, and do not restate it.']
       : []),
-    ...(communication.mustConvey?.some((entry) => entry.code === 'shortfall')
-      ? ['mustConvey shortfall: In your own words say the work did not all fit, state requiredMinutes and each unmet item with its label and minutes exactly as given (moreCount more if above zero), then ask the question. Do not say the plan fits, is complete, saved or applied. The reply is verified against these figures.']
-      : communication.capacityShortfall
+    ...(communication.capacityShortfall
       ? ['capacityShortfall: The app states the unmet work and its amounts after your reply. Do not state amounts, minutes or a shortfall yourself; say the work did not all fit and ask the question.']
       : []),
     ...(communication.previewDisclosure

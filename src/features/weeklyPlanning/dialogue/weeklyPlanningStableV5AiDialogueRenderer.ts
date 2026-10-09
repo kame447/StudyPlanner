@@ -40,13 +40,6 @@ export {
   createWeeklyPlanningStableV5DialogueStateSummary,
 } from './weeklyPlanningStableV5DialoguePrompt';
 
-import {
-  createReplyVerifierMessages,
-  evaluateReplyVerifierResponse,
-  literalRequirementFailures,
-  WEEKLY_PLANNING_REPLY_VERIFIER_RESPONSE_FORMAT,
-} from './weeklyPlanningReplyVerification';
-import type { WeeklyPlanningMustConveyEntry } from './weeklyPlanningMustConvey';
 import { bindWeeklyPlanningDialogueActionToken } from './weeklyPlanningDialogueActionToken';
 
 import { hasUnverifiedWeeklyPlanningPreviewConstraints } from './weeklyPlanningPreviewConstraintClaims';
@@ -119,41 +112,6 @@ const INTERACTION_GROUNDING_ACK_REPAIR_INSTRUCTION = [
   '最終textをその短いACK本文から始め、そのあとapplicationDecision.communication.goalの内容を続けてください。',
 ].join('');
 
-/** P2: the one regeneration after a failed verification; carries the typed verdict, never application prose. */
-function verificationRepairInstruction(failure: unknown): string {
-  return `The previous reply did not convey the required facts accurately (verification: ${JSON.stringify(failure)}). Rewrite it so it states every mustConvey figure and label exactly as given, and makes none of the forbidden claims. Keep the rest of the contract.`;
-}
-
-type ReplyVerification =
-  | { ok: true }
-  | { ok: false; kind: 'failed'; detail: unknown }
-  | { ok: false; kind: 'unavailable' };
-
-/** V3 (literal) then V2 (independent verifier call). Unclear is never a pass. */
-async function verifyReply(params: {
-  client: OpenAiCompatibleClient;
-  text: string;
-  entries: readonly WeeklyPlanningMustConveyEntry[];
-}): Promise<ReplyVerification> {
-  const literal = literalRequirementFailures(params.text, params.entries);
-  if (literal.length > 0) return { ok: false, kind: 'failed', detail: { literal } };
-  try {
-    const raw = await params.client.createChatCompletion({
-      messages: createReplyVerifierMessages({ entries: params.entries, text: params.text }),
-      temperature: 0,
-      responseFormat: WEEKLY_PLANNING_REPLY_VERIFIER_RESPONSE_FORMAT,
-      purpose: 'weekly_planning_renderer',
-    });
-    const verdict = evaluateReplyVerifierResponse(raw, params.entries);
-    if (verdict.ok) return { ok: true };
-    return verdict.reason === 'malformed'
-      ? { ok: false, kind: 'unavailable' }
-      : { ok: false, kind: 'failed', detail: { failedCodes: verdict.failedCodes, forbidden: verdict.forbidden } };
-  } catch {
-    return { ok: false, kind: 'unavailable' };
-  }
-}
-
 function rendererPromptTraceContext(prompt: {
   systemPrompt: string;
   userPrompt: string;
@@ -208,34 +166,8 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
           { role: 'user', content: prompt.userPrompt },
         ];
         const initial = await requestDialogueRender({ client, input: bound.input, responseFormat: bound.responseFormat, messages: baseMessages });
-        const mustConvey = interaction ? input.communication?.mustConvey ?? [] : [];
-        /** P2: verify a rendered reply; one regeneration only while the shared repair slot is unused. */
-        const verified = async (
-          candidate: WeeklyPlanningStableV5DialogueRenderResult,
-          repairUsed: boolean,
-        ): Promise<WeeklyPlanningStableV5DialogueRenderResult> => {
-          if (candidate.status !== 'rendered' || mustConvey.length === 0) return candidate;
-          const first = await verifyReply({ client, text: candidate.text, entries: mustConvey });
-          if (first.ok) return candidate;
-          if (first.kind === 'unavailable') return { status: 'fallback', reason: 'verification_unavailable', rawResponse: candidate.rawResponse };
-          if (repairUsed) return { status: 'fallback', reason: 'verification_failed', rawResponse: candidate.rawResponse };
-          rememberWeeklyPlanningDialogueRendererPromptContext(input.actionId, {
-            ...promptContext,
-            repair: { reason: 'verification_failed', instruction: verificationRepairInstruction(first.detail) },
-          });
-          const rewritten = await requestDialogueRender({
-            client,
-            input: bound.input,
-            responseFormat: bound.responseFormat,
-            messages: [...baseMessages, { role: 'user', content: verificationRepairInstruction(first.detail) }],
-          });
-          if (rewritten.status !== 'rendered') return rewritten;
-          const second = await verifyReply({ client, text: rewritten.text, entries: mustConvey });
-          if (second.ok) return rewritten;
-          return { status: 'fallback', reason: second.kind === 'unavailable' ? 'verification_unavailable' : 'verification_failed', rawResponse: rewritten.rawResponse };
-        };
         if (initial.status !== 'fallback') {
-          return await verified(initial, false);
+          return initial;
         }
         const neutralConstraintRepair = interaction
           && hasUnverifiedWeeklyPlanningPreviewConstraints(input.communication?.previewConstraintSatisfaction);
@@ -270,7 +202,7 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
         });
         // Awaited inside the try: a failed repair dispatch (provider error, exhausted pool or
         // an outage-gated renderer) must end in the deterministic fallback, never reject.
-        return await verified(await requestDialogueRender({
+        return await requestDialogueRender({
           client,
           input: bound.input,
           responseFormat: bound.responseFormat,
@@ -278,7 +210,7 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
             ...baseMessages,
             { role: 'user', content: repairInstruction },
           ],
-        }), true);
+        });
       } catch (error) {
         return {
           status: 'fallback',

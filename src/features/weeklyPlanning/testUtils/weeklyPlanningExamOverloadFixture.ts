@@ -1,6 +1,6 @@
 import type { Plan } from '../../../types/domain';
 import {
-  installScriptedWeeklyPlanningProvider, scriptedRendererReply, type ScriptedProviderCall, type ScriptedProviderReply,
+  installScriptedWeeklyPlanningProvider, scriptedRendererReply, type ScriptedProviderCall,
 } from './weeklyPlanningScriptedConversationHarness';
 
 // Synthetic exam-student overload scenario (copy of the B1 test's fixture so other tests can reuse it;
@@ -103,20 +103,9 @@ function overload(summary: Json): Json {
     recurrence: [], durableContextSignals: [], sourceText: '物理をさらに120問増やす' }] });
 }
 
-/** A verifier that accepts every required code (the honest default); fault tests script their own. */
-export function acceptingReplyVerifierReply(call: ScriptedProviderCall): string {
-  const required = (call.payload?.required as Array<{ code: string }> | undefined) ?? [];
-  return JSON.stringify({ verdicts: required.map(item => ({ code: item.code, verdict: 'stated_accurately' })), forbidden: [] });
-}
-
-export function installExamOverloadProvider(
-  initialMath: number, mathLast = false, mathSecond = false,
-  rendererText: string | ((call: ScriptedProviderCall) => ScriptedProviderReply) = 'わかりました。',
-  verifier: (call: ScriptedProviderCall) => ScriptedProviderReply = acceptingReplyVerifierReply,
-) {
+export function installExamOverloadProvider(initialMath: number, mathLast = false, mathSecond = false, rendererText = 'わかりました。') {
   return installScriptedWeeklyPlanningProvider((call: ScriptedProviderCall) => {
-    if (call.kind === 'reply_verifier') return verifier(call);
-    if (call.kind === 'renderer') return typeof rendererText === 'function' ? rendererText(call) : scriptedRendererReply(call, rendererText);
+    if (call.kind === 'renderer') return scriptedRendererReply(call, rendererText);
     if (call.kind === 'semantic_focused_authorization') return JSON.stringify({ decision: 'fallback' });
     if (call.kind === 'semantic_focused_contextual') return JSON.stringify({ decision: 'fallback', effortTarget: null, effortMeasurement: null, minutes: null, precision: null, quantityRole: null });
     if (call.schemaName === 'weekly_planning_focused_material_answer_v5') return JSON.stringify({ decision: 'fallback', label: null, registeredChoice: null, workloadChoice: null, effortKind: null, minutes: null, precision: null, sourceText: null, effortSourceText: null });
