@@ -467,4 +467,25 @@ W4 RedFeynman (Sonnet 5.5, test-only) built it. The fixture has 15 events, 14 li
   - r1 T3 failed, with a disclosure: the first reading was a shell, and the re-read and the repair both mis-referenced ids, so the reply was 「その変更は使えませんでした…今の仮予定は変えていません」.
   - r2 T3 passed: Wed 17:00–18:15.
   - An empty first reading did not recur, so x6's live path is still unexercised.
-  - Observation (prompt-level, provisional): in r2 T2 the renderer said 「今回の量なら一日分として収まる見込みです」 although the consultation was deferred.
+  - Observation: see the deferred-consultation wording residual below.
+
+**x7: a nested fact that targets its own task's public id (`6c23a105`, `167751ca`).**
+- The live failure: H r1 on `80af22a3`. The re-read's only invalid reference was a constraint whose `targetLocalId` was its own containing task's `existingPublicId`. The single repair then broke the effort reference, so the turn failed with a disclosure.
+- The fix: the existing interaction-only raw projection, already bridging an effort to its accepted workload, now also rewrites a nested constraint, effort or recurrence that targets its own containing task to that task's localId. That referent is the only one possible. Another task's id, an absent task or a component stays invalid and still goes to the repair. It is a projection, not a repair: only a diagnostic is recorded, and the ledger is untouched.
+- Before and after (scripted): the live shape went from a disclosed recover (3 calls, repair spent) to applied (2 calls); the first-reading variant from a recover to applied (1 call). Another task's id is repaired in both versions.
+- Fault injection: projection off, 6 failures; widened to any task id, 3.
+- Chain on `167751ca`: verify passes 7,715 tests; every category is green; browser 438 pass and 9 fail, all also failing on main; weekly-real 10/10; legacy unchanged.
+
+**Live H on `167751ca` (2 runs).**
+- r1 T3: both readings were a bare task shell (the model dropped 「水曜の夜にまとめて」 twice), so the plan stayed unchanged. **For the first time live, the drop was disclosed:** the bubble ends with 「この返事からは新しい条件を読み取っていません。条件があれば、あらためて教えてください。」 (`nothingRead=true`). On `fd6a29fd` the same drop showed only 「候補はそのままです」.
+- r2 T3: passed, Wed 17:00–18:15.
+- **H T3 over 6 live runs** (`fd6a29fd` ×2, `80af22a3` ×2, `167751ca` ×2): 3 passed and 3 failed, with these causes:
+  - an empty reading, now re-read and disclosed (x6);
+  - a self-reference rejected, now projected (x7);
+  - a model drop, now disclosed.
+- No run asked a blocking question at T2, so the free-form release path is still unexercised live.
+
+**Residual: deferred-consultation wording (prompt-level).** The renderer instruction for `consultationDeferred` says to give no verdict, feasibility or numeric judgement, and not to say "cannot judge". In 4 of the 6 live T2 replies the model broke it:
+- 「…判断できません」 once;
+- 「…収まる見込みです」 or a minute figure three times.
+The statements agree with the preview, so no false plan is claimed. A deterministic check of free text would need text matching, so this stays a prompt-compliance residual.
