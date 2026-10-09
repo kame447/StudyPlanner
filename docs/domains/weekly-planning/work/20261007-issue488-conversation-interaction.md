@@ -670,3 +670,28 @@ Method: `vite build --sourcemap` of `ea0d871a` and of the fork point `22847120`.
   - They stay until a verified replacement exists. Removing them first would bring back the falsehoods the owner forbids.
   - x11 (an app question asking the planned total) is **halted** as superseded.
   - A read-only fixed-text inventory (normal path versus failure-only, with call conditions) and a design proposal for verified AI-written text are assigned. The critic builds an independent inventory for comparison.
+
+**Parent policy for verified AI-written dialogue** (2026-10-09; the user re-confirmed comments #10 v2 and #11 in chat).
+- **Audit baseline.** MistyFabre's read-only inventory, which I verified:
+  - the normal path has exactly **8 app-appended notices**, at `weeklyPlanningStableV5TurnDialogue.ts:549-568`;
+  - `RuntimeQuestions` and fallback texts appear only on the failure path in interaction mode;
+  - but **which question is asked, and for what purpose, is chosen deterministically** (`StableDialoguePolicy` priority order, then `DialogueContext` intent, then `CommunicationContext` purposes). The renderer only words it, so the content is fixed;
+  - the pending question persists no purpose, the next answer binds by task identity only, and the stated-time-budget projection promotes a task-level `total_duration` to a target.
+- **P1:** on the normal path every user-visible sentence is AI-written from structured context. Fixed text is used only for a technical stop, is minimal, and claims nothing about the plan.
+- **P2:** each turn carries typed `mustConvey` and `mustNotClaim`. The reply is verified by a typed envelope, deterministic literal checks (numbers, ids and user quotes, with no Japanese parsing) and an independent verifier for semantic facts. Failure leads to one regeneration, then a technical stop. The notices migrate fact by fact, and each appender is removed only after its replacement passes RED/GREEN, fault injection (an omitting or contradicting renderer must never pass) and a live check.
+- **P3:**
+  - The app supplies structured planning needs: missing information, calendar-known availability, accepted and rejected facts with their sources, and candidate drafts.
+  - The AI chooses to ask, offer choices or propose, and declares a typed purpose. The app validates it and holds it on the pending question.
+  - The next answer binds within that purpose; a mismatch leads to confirmation. Per-day, per-week and total stay distinct.
+- **P4:** validators, the trust boundary, the approval and save boundary, legacy, and the gates stay as they are.
+- **Assigned (design notes first, no production edits):** MistyFabre owns P3 and the F flow, with a codec analysis for holding the purpose. BrightLavoisier owns the P2 verification and the notice migration. Shared files go to the parent as hunks.
+
+**Acceptance criteria for this redesign:**
+1. A normal-path reply contains no app-appended fixed sentence.
+2. Every typed safety fact of the turn is conveyed and verified. A missing or contradicted fact is never a pass: it ends in regeneration, then a technical stop.
+3. No false claim of saved, applied, complete or constraints met.
+4. No question has a fixed order or template. Nothing the calendar knows is asked, the total is never asked first, and examples are not used as patterns.
+5. The pending question holds its purpose, and a mismatched answer is never promoted.
+6. F, from a vague intent and multi-turn on the real provider, reaches a concrete proposal with few questions, with no invented amount, with changes accepted midway, and with the preview consistent with the accepted facts. The approve/save boundary is safe.
+7. Tests judge purpose, interpretation and final plan, not exact strings.
+8. Gates run on the exact code, and the validators are not relaxed.
