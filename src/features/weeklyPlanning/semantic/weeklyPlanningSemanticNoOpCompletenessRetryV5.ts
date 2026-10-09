@@ -4,7 +4,7 @@ import { filterActiveWeeklyPlanningFactsV5 } from './weeklyPlanningFactLifecycle
 import { createWeeklyPlanningSemanticRepairMessagesV5 } from './weeklyPlanningSemanticRepairPromptV5';
 import { validateWeeklyPlanningSemanticRepairPreservationV5 } from './weeklyPlanningSemanticRepairPreservationV5';
 import { markWeeklyPlanningSemanticRepairConsumedV5, weeklyPlanningSemanticRepairConsumedV5 } from './weeklyPlanningSemanticRepairLedgerV5';
-import { hasTaskSemanticPayloadV5, isEmptyReadingV5 } from './weeklyPlanningEmptyReadingV5';
+import { hasTaskSemanticPayloadV5, isCreationAuthorizationReadingV5, isEmptyReadingV5 } from './weeklyPlanningEmptyReadingV5';
 import { weeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 import {
   conversationArchitecturePolicy,
@@ -306,6 +306,9 @@ export function isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5(params: 
   // accepted task yet carries nothing for it); a bare empty reply stays a valid no-op there.
   if (!hasMachinePendingQuestion(params.publicStateSummary)) {
     if (!actAware || !hasAcceptedTask(params.publicStateSummary)) return false;
+    // A task-less creation-authorization reading (the typed "go ahead and create it") carries its meaning in the intent.
+    // This exception is for the no-pending path only: under a pending question eligibility is unchanged.
+    if (params.document.tasks.length === 0 && isCreationAuthorizationReadingV5(params.document)) return false;
   }
   // A self-sufficient conversational act is a valid complete result with an empty planning delta; only a bare
   // answer act without any delta is a contradiction worth a bounded retry (the typed definition shared with `nothingRead`).

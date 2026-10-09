@@ -395,7 +395,7 @@ describe('H-release: a blocking free-form question has a deterministic end state
   const Q = 'あとこれって1日でまとめて読んでも平気？';
   const L1 = `${H.T1}。英語の本も10ページ読む。1ページ3分`;
   type Variant = 'placement_task' | 'placement_uncertainty' | 'ack_task' | 'ack_uncertainty' | 'other_target' | 'rate_only'
-    | 'unbound' | 're_declare' | 'two_uncertainties' | 'replayed_constraint' | 'capacity' | 'noact' | 'empty_consult';
+    | 'unbound' | 're_declare' | 'two_uncertainties' | 'replayed_constraint' | 'capacity' | 'noact' | 'empty_consult' | 'goahead_create';
   const uncertaintyOf = (extra: Json = {}): Json => ({ localId: 'u-one-day', targetLocalId: 'paper', field: 'one_day_completion_feasibility',
     reason: '1日でまとめて読めるか', sourceText: Q, ...extra });
   function installLoop(variant: Variant, o: { flag?: boolean; field?: string; architecture?: WeeklyPlanningConversationArchitecture; consultOther?: boolean } = {}) {
@@ -442,6 +442,7 @@ describe('H-release: a blocking free-form question has a deterministic end state
       const answer = (target: string | null) => ({ kind: 'answer_pending_question', targetPublicId: target });
       switch (variant) {
         case 'noact': return emptyDocument({}, architecture);
+        case 'goahead_create': return emptyDocument({ planningIntent: 'create_plan' }, architecture);
         case 'empty_consult': return emptyDocument({ conversationActs: [{ kind: 'consultation_request', targetPublicId: taskId }] }, architecture);
         case 'ack_task': return emptyDocument({ conversationActs: [answer(taskId)] }, architecture);
         case 'ack_uncertainty': return emptyDocument({ conversationActs: [answer(uncertaintyId)] }, architecture);
@@ -515,6 +516,14 @@ describe('H-release: a blocking free-form question has a deterministic end state
       expect(third.result?.message).toContain(`${RELEASED}${NOTHING_READ}`);
       expect(third.calls.filter(call => call.kind === 'semantic_generic')).toHaveLength(3);
       expect(third.calls.filter(call => call.kind === 'renderer')).toHaveLength(1);
+    });
+    it('a go-ahead read as an empty create_plan intent (critic: goahead-create) is re-read and released too, with the nothing-read sentence once', async () => {
+      const { conversation, third } = await toThirdTurn('goahead_create', {}, 'このまま作って');
+      expect(uncertainties(conversation)).toEqual([]);
+      expect(third.result?.draftCandidates.length).toBeGreaterThan(0);
+      expect(third.result?.message).toContain(`${RELEASED}${NOTHING_READ}`);
+      expect(third.result?.message?.split(NOTHING_READ).length).toBe(2);
+      expect(third.calls.filter(call => call.kind === 'semantic_generic')).toHaveLength(3);
     });
     it('another act with an empty reading (a consultation) keeps the question open', async () => {
       const { conversation, third } = await toThirdTurn('empty_consult', {}, 'あと、それって大丈夫？');

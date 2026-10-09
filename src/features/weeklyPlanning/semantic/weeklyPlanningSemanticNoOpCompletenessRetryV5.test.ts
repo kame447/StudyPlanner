@@ -170,6 +170,21 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     })).toBe(false);
   });
 
+  it.each([
+    // architecture, pending question, planningIntent -> eligible (identical to a4dd115e except the intended interaction row)
+    ['legacy_v5', true, 'update_plan', true], ['legacy_v5', true, 'create_plan', true],
+    ['legacy_v5', false, 'update_plan', false], ['legacy_v5', false, 'create_plan', false],
+    ['interaction_v1', true, 'update_plan', true], ['interaction_v1', true, 'create_plan', true],
+    ['interaction_v1', false, 'update_plan', true], // intended x6 change (was false): an entirely empty reading is re-read
+    ['interaction_v1', false, 'create_plan', false], // a task-less creation authorization carries its meaning in the intent
+  ] as const)('eligibility table (%s, pending=%s, %s) is %s for an empty reading', (architecture, pending, planningIntent, expected) => {
+    const base = publicStateSummary();
+    const summary = pending ? base : { ...base, pendingQuestion: null };
+    expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
+      document: { ...existingTaskShell(), tasks: [], planningIntent } as never, publicStateSummary: summary, conversationArchitecture: architecture,
+    })).toBe(expected);
+  });
+
   it('uses a focused typed route to recover a task temporal side contribution', async () => {
     const fake = fakeClient([
       JSON.stringify(existingTaskShell()),

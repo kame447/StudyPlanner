@@ -29,10 +29,7 @@ export function hasTaskSemanticPayloadV5(document: WeeklyPlanningSemanticDocumen
 }
 
 export function hasNoDeltaAnywhereV5(document: WeeklyPlanningSemanticDocumentV5): boolean {
-  // An explicit `create_plan` intent is the model's typed creation-authorization reading (the user said go ahead and make
-  // it): it is meaning the application acts on, not an empty reading, even with no task payload.
-  return document.planningIntent !== 'create_plan'
-    && document.planningWindow === null
+  return document.planningWindow === null
     && document.relations.length === 0
     && document.availabilityDeclarations.length === 0
     && document.constraintSourceRequests.length === 0
@@ -46,3 +43,18 @@ export function hasNoDeltaAnywhereV5(document: WeeklyPlanningSemanticDocumentV5)
 export function isEmptyReadingV5(document: WeeklyPlanningSemanticDocumentV5): boolean {
   return hasNoDeltaAnywhereV5(document) && !hasSelfSufficientConversationActV5(document.conversationActs);
 }
+
+/**
+ * An explicit `create_plan` intent is the model's typed creation-authorization reading (the user said go ahead and make
+ * it). The shared predicates above stay intent-agnostic (they define "no delta"); this exception applies ONLY where a
+ * reading is claimed to carry nothing: the no-pending-question re-read eligibility and the `nothingRead` fact.
+ */
+export function isCreationAuthorizationReadingV5(document: WeeklyPlanningSemanticDocumentV5): boolean {
+  return document.planningIntent === 'create_plan';
+}
+
+/** The turn fact: the final reading is empty AND is not a creation authorization (no claim on one). */
+export function isNothingReadV5(document: WeeklyPlanningSemanticDocumentV5): boolean {
+  return isEmptyReadingV5(document) && !isCreationAuthorizationReadingV5(document);
+}
+
