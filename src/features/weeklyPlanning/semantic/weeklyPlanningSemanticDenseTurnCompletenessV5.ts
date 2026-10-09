@@ -211,11 +211,12 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     interactionCompletenessAuditRuns.add(params.run);
   }
   const abstain = (reason: WeeklyPlanningSemanticCompletenessAbstentionV5['reason'], step: 'audit' | 'retry') => {
-    if (!evidenceCoverageEligibility) return;
+    // Every selecting route records its abstention: literal coverage, the size-gated dense audit and the
+    // post-no-op recheck (the last two have no coverage measure).
     recordWeeklyPlanningStableV5DebugTrace({
       requestId: params.run.input.traceRequestId,
       stage: 'semantic_evidence_coverage_abstained',
-      data: { route: evidenceCoverageEligibility.route, reason, step },
+      data: { route: evidenceCoverageEligibility?.route ?? 'dense_turn_completeness_audit', reason, step },
     });
   };
 
