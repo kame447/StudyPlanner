@@ -65,5 +65,6 @@ it('keeps ordinary lazy-route loading static and theme-compatible', () => {
   act(() => { renderer = create(<SplashScreen />); });
   expect(renderer!.root.findAllByType(StartupVideo)).toHaveLength(0);
   expect(renderer!.root.findByType('main').props.className).toBe('loading-screen splash-screen');
-  expect(renderer!.root.findByType('img').props.alt).toBe('Study Planner');
+  expect(renderer!.root.findByType('img').props.src).toContain('laplans-wordmark.jpeg');
+  expect(renderer!.root.findByType('img').props.alt).toBe('Laplans');
 });

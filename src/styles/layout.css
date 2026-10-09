@@ -245,7 +245,6 @@
   height: 114px;
   width: auto;
   max-width: min(520px, 100%);
-  object-fit: contain;
   flex-shrink: 0;
 }
 

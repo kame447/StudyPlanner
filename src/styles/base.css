@@ -290,12 +290,18 @@ button {
   width: min(960px, 100%);
 }
 
+.brand-logo-image,
+.splash-screen__logo {
+  aspect-ratio: 3.1;
+  object-fit: cover;
+  object-position: 50% 58%;
+}
+
 .splash-screen__logo {
   width: min(920px, 92vw);
   max-width: 100%;
   height: auto;
   display: block;
-  object-fit: contain;
   filter: drop-shadow(0 20px 44px rgba(31, 43, 43, 0.08));
   animation: splash-fade-in 0.55s ease;
 }
