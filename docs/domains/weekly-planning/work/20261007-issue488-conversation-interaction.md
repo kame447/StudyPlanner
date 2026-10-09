@@ -255,3 +255,68 @@ Judged by the user's standard: a passing scenario is a provisional confirmation.
   - no idempotency owner;
   - uncommitted context carry-over (ACs 3 and 7);
   - save → reload through real persistence has not been run, because no JDK is installed for the Firestore emulator. The in-memory synthetic save/restore passes.
+
+## Round 4: Claude-only team, root causes for the round-3 failures (2026-10-09)
+The user directed a Claude-only round: Opus orchestrates and audits, and Sonnet workers implement with fixed file ownership. Codex was not used. Base `e6fdfc6c`. Integration is local commits only.
+
+Workers (all Sonnet 5.5):
+- MistyFabre: question lifecycle (X1, X2, X3, H).
+- BrightLavoisier: content and reply truthfulness (E, B T4, D T3, X5, wording).
+- FrostyLangmuir: synthetic save → reload E2E.
+
+Every delivery was independently audited with probes and fault injection before integration. Two audit findings were fixed before integration:
+- the X2 lapse fired on an empty reading;
+- the D T3 directive did not fire for the live empty-quote errors.
+
+### What the code now does, and how each change is classified
+| Live failure | Change | Classification |
+| --- | --- | --- |
+| X1: the decline is ignored and the question loops | A typed decline closes the optional invitation for any all-non-study plan, and takes precedence over the manual-entry handoff. A fixed commitment is not asked about progress | Root-cause for the invitation path. The wording is provisional (prompt) |
+| X2: an optional proposal blocks the preview forever | A presented proposal lapses when the next turn applies a plan change without deciding it. It is truthful in persisted and model-visible state | Root-cause for the optional-proposal path |
+| X3: `work_breakdown` never resolves | It shares one structural-evidence predicate with free-form fields. The B negatives stay | Root-cause for the predicate divergence. The loop family stays provisional (see residuals) |
+| H: a consultation became a blocking question | Interaction uncertainties carry a model-declared `blocksPlanning`, honoured only for free-form fields | Root-cause in design. Provisional until live H passes and B/X3 do not regress |
+| E: 「903時間」 | Titles take a trustworthy unit: clock units from the code; digit-bearing labels get the canonical label. Shared fix | Root-cause for clock units and digit echoes. Kanji numerals are a residual |
+| B T4: a dropped material statement is reported as "unchanged" | Typed content discarded by binding, with an empty or invalid re-read, is an unusable message | Root-cause for the false claim. The content is still not taken in |
+| D T3: restated accepted facts with stale or empty quotes | The single repair is told not to restate a bound accepted entity | Root-cause for the repair stage. Provisional overall |
+| X5: a split across named periods is lost | Interaction policy: a total divided across named periods is a split (session duration and one window per period) | Provisional (model compliance) |
+| X5/D wording | Typed renderer instructions: no split echo for a one-block preview, no feasibility judgement in a recovery | Provisional (prompt) |
+
+### The three categories required by the Issue policy
+- **Faults that can now be detected.** Each item below is a real-controller scripted test, and each fails when its fix is reverted:
+  - a proposal or invitation that never ends;
+  - a structure question answered by new content, versus replay, rate or shell negatives;
+  - a free-form consultation uncertainty, versus known-field controls;
+  - amount and unit echoes in titles at all four title sites;
+  - an "unchanged" claim after a discarded description;
+  - a repair request that lacks the no-restatement directive for the live error shape;
+  - a placed split.
+
+  The synthetic save E2E fails on each of these, verified by injecting the fault:
+  - a dropped block;
+  - a shifted block;
+  - duplicates on reload;
+  - a lost retry.
+- **Duplication and maintenance burden reduced.**
+  - One structural-evidence predicate and one known-uncertainty-field constant replace two diverging copies.
+  - One unit-display helper replaces four ad hoc title compositions.
+  - The save E2E reuses the full-App harness and the production local repository. It adds no new harness framework and no fixture fault modes; faults were temporary mutations.
+- **Real E2E confirmation.** Pending: the live A–H/EV/X1–X5 round on the integrated head is next.
+  - The save half was confirmed only as a **synthetic isolated save E2E** (not Firestore, not online). It passes 8/8 on desktop and mobile on the branch.
+  - The counting run used a scratch, uncommitted merge with origin/main `5e19b3ed`, because #546 changed the save/reload read path.
+
+### Residuals (unresolved)
+- **Model-dependent or prompt-only:**
+  - a free-form uncertainty that means material can be waived by the model's flag;
+  - D T3's first-reading restatement is the model's (the fix is for the repair stage only);
+  - the D wording, the X5 echo and the X5 split all depend on model compliance.
+- **Question lifecycle:**
+  - a required structure question has no end state when the user cannot give structure;
+  - a lapsed proposal cannot be re-offered on request;
+  - an advisory point that is not a consultation is not mentioned.
+- **No-op retry:**
+  - every acknowledgement shell costs one re-read call (an acknowledgement act would remove it);
+  - the binding's discard set is duplicated in the no-op check;
+  - the activity kind is not compared.
+- **Titles:** kanji-numeral unit echoes.
+- **Save evidence:** the in-flight double approval is not exercised through a write gate; real Firestore persistence remains unrun.
+- **Pending user decision:** whether to merge origin/main into the integration branch (a local merge was denied by the permission classifier), and the JS/CSS bundle caps.
