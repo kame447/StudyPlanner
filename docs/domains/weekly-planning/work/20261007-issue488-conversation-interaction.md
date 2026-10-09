@@ -314,6 +314,7 @@ Every delivery was independently audited with probes and fault injection before 
   - a lapsed proposal cannot be re-offered on request;
   - an advisory point that is not a consultation is not mentioned.
 - **No-op retry:**
+  - **silent loss:** a content-bearing message that the model reads as a shell identical to the accepted state is still reported as unchanged. It cannot be told apart from an acknowledgement until a typed acknowledgement/no-change act exists;
   - every acknowledgement shell costs one re-read call (an acknowledgement act would remove it);
   - the binding's discard set is duplicated in the no-op check;
   - the activity kind is not compared.
