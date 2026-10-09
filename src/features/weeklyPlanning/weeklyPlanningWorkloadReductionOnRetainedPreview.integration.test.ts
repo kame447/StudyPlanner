@@ -31,13 +31,14 @@ const task = (o: { id: string; title: string; kind: string; workloads: Json[]; e
 const BULK = '来週の受験勉強をまとめて計画して。数学は微積の問題を30問（1問6分くらい）、英語は長文を4本（1本35分）と英単語を140個（25個で30分くらい）、物理の力学を20問（1問6分）、化学の有機を2章（1章60分）、現代文の記述を3題（1題40分）、古文の敬語を60分、日本史の文化史を90分、小論文を1本90分で進めたい。数学は金曜まで、それ以外は日曜まで。分けられる勉強は1回30〜60分にして、塾・部活・授業とか既存の予定を避けて、無理のないところへいい感じに分散して。';
 const DECLINE = '英単語は暗記向きの提案はいらないです。そのまま予定を作ってください';
 const COMBINED = '数学は20問に減らして、英語長文は土日にまとめたい。ほかの科目はそのままで。';
+const OVERLOAD = '物理をさらに120問（1問6分）増やす。来週中に全部やりたい。';
 const DOWN = '数学は20問に減らして。ほかの科目はそのままで。';
 
-function bulk(mathProblems: number): Json {
+function bulk(mathProblems: number, mathLast = false): Json {
   const sun = (d: string) => [deadline(d, '2026-10-18', 'それ以外は日曜まで')];
   const split = (d: string) => effort(d, 'session_duration', 60, 'session', '1回30〜60分');
   const perUnit = (d: string, m: number, t: string) => [effort(d, 'session_duration', m, 'session', t)];
-  return empty({ planningIntent: 'create_plan', planningWindow: nextWeek, tasks: [
+  const doc = empty({ planningIntent: 'create_plan', planningWindow: nextWeek, tasks: [
     task({ id: 'math-calculus', title: '数学・微積', kind: 'problem_solving', sourceText: '数学は微積の問題を30問（1問6分くらい）',
       workloads: [workload('math-calculus', mathProblems, 'problem', '問', '30問')],
       efforts: [effort('math-calculus', 'duration_per_unit', 6, 'problem', '1問6分くらい'), split('math-calculus')],
@@ -65,6 +66,9 @@ function bulk(mathProblems: number): Json {
       workloads: [workload('essay', 1, 'custom', '本', '1本')],
       efforts: [effort('essay', 'duration_per_unit', 90, 'custom', '1本90分')], deadlines: sun('essay') }),
   ] });
+  if (!mathLast) return doc;
+  const [math, ...others] = doc.tasks as Json[];
+  return { ...doc, tasks: [...others, math] };
 }
 
 function down(summary: Json): Json {
@@ -94,16 +98,24 @@ function combined(summary: Json): Json {
       dateExpression: '2026-10-17/2026-10-18', namedTimePeriod: null, startTime: null, endTime: null, precision: 'exact', sourceText: '英語長文は土日にまとめたい' }] }] };
 }
 
-function install(initialMath: number): void {
+function overload(summary: Json): Json {
+  const physics = ((summary.tasks as Json[]) ?? []).find(t => t.title === '物理・力学')!;
+  return empty({ tasks: [{ localId: `follow-${physics.publicId}`, existingPublicId: physics.publicId, decompositionStatus: 'atomic', category: 'study',
+    title: '物理・力学', study: null, workloads: [workload('physics-extra', 120, 'problem', '問', '120問増やす')], effortEstimates: [], temporalConstraints: [],
+    recurrence: [], durableContextSignals: [], sourceText: '物理をさらに120問増やす' }] });
+}
+
+function install(initialMath: number, mathLast = false): void {
   provider = installScriptedWeeklyPlanningProvider((call: ScriptedProviderCall) => {
     if (call.kind === 'renderer') return scriptedRendererReply(call, 'わかりました。');
     if (call.kind === 'semantic_focused_authorization') return JSON.stringify({ decision: 'fallback' });
     if (call.kind === 'semantic_focused_contextual') return JSON.stringify({ decision: 'fallback', effortTarget: null, effortMeasurement: null, minutes: null, precision: null, quantityRole: null });
     if (call.schemaName === 'weekly_planning_focused_material_answer_v5') return JSON.stringify({ decision: 'fallback', label: null, registeredChoice: null, workloadChoice: null, effortKind: null, minutes: null, precision: null, sourceText: null, effortSourceText: null });
     const text = String(call.payload?.userText ?? '');
-    if (text === BULK) return JSON.stringify(bulk(initialMath));
+    if (text === BULK) return JSON.stringify(bulk(initialMath, mathLast));
     if (text === DECLINE) return JSON.stringify(decline((call.payload?.publicStateSummary ?? {}) as Json));
     if (text === COMBINED) return JSON.stringify(combined((call.payload?.publicStateSummary ?? {}) as Json));
+    if (text === OVERLOAD) return JSON.stringify(overload((call.payload?.publicStateSummary ?? {}) as Json));
     if (text === DOWN) return JSON.stringify(down((call.payload?.publicStateSummary ?? {}) as Json));
     throw new Error(`unscripted: ${text}`);
   });
@@ -150,5 +162,24 @@ describe('B1: workload reduction on a retained preview', () => {
     expect(mathAmounts(conv)).toEqual([20]);
     expect(second.result?.interactionOutcome?.kind).not.toBe('recover');
     expect(second.result?.draftCandidates.length).toBeGreaterThan(0);
+  });
+
+  it('the tight-deadline task listed LAST in the first request still gets a preview (deadline-aware retry)', async () => {
+    install(20, true);
+    const conv = open();
+    await conv.submit(BULK);
+    const first = await conv.submit(DECLINE);
+    expect(first.result?.draftCandidates.length).toBeGreaterThan(0);
+    expect(first.result?.draftCandidates.filter(c => /数学/.test(c.title)).length).toBeGreaterThan(0);
+  });
+
+  it('a genuinely infeasible overload (+120 problems) still claims insufficient capacity', async () => {
+    install(30);
+    const conv = open();
+    await conv.submit(BULK);
+    expect((await conv.submit(DECLINE)).result?.draftCandidates.length).toBeGreaterThan(0);
+    const overloaded = await conv.submit(OVERLOAD);
+    expect(overloaded.result?.draftCandidates.length).toBe(0);
+    expect(conv.getState().intakeState?.lastQuestionContext?.targetSlot).toBe('stable_v5:insufficient_capacity');
   });
 });

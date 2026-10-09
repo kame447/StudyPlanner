@@ -331,4 +331,16 @@ describe('generic weekly planning work item compiler', () => {
 
     expect(first.items.map((item) => item.id)).toEqual(second.items.map((item) => item.id));
   });
+
+  it('orders items by task canonical order whatever order the workload facts were created in (stable within a task)', () => {
+    const graph = createGraph();
+    const reversed = { ...graph, workloads: [...graph.workloads].reverse() };
+    const taskIndex = new Map(graph.tasks.map((task, index) => [task.id, index]));
+    const items = compileGenericPlanningWorkItems(reversed).items;
+    const indices = items.map((item) => taskIndex.get(item.taskId) as number);
+    expect(indices).toEqual([...indices].sort((left, right) => left - right));
+    const sameTask = graph.workloads.filter((workload) => workload.taskId === graph.workloads[0].taskId).map((workload) => workload.id).reverse();
+    expect(items.filter((item) => item.taskId === graph.workloads[0].taskId).map((item) => item.workloadFactId)).toEqual(sameTask);
+  });
 });
+

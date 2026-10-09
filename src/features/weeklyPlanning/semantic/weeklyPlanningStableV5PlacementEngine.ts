@@ -40,6 +40,32 @@ export interface WeeklyPlanningStableV5PreviewSchedulerResult {
 
 const DEFAULT_BREAK_MINUTES = 10;
 
+function itemHardDeadline(item: GenericPlanningWorkItem, input: GenericSchedulerInput): string | null {
+  const ends = input.hardDateBounds
+    .filter((bound) => bound.taskId === item.taskId && bound.endDate !== null
+      && [item.taskId, item.workloadFactId, item.componentId].includes(bound.targetFactId))
+    .map((bound) => bound.endDate as string);
+  return ends.length > 0 ? ends.sort()[0] : null;
+}
+
+/** Earliest hard deadline first; items without one keep the canonical order after them (stable). */
+export function deadlineFirstOrder(
+  items: readonly GenericPlanningWorkItem[],
+  input: GenericSchedulerInput,
+): GenericPlanningWorkItem[] {
+  return items
+    .map((item, index) => ({ item, index, deadline: itemHardDeadline(item, input) }))
+    .sort((left, right) => {
+      if (left.deadline !== right.deadline) {
+        if (left.deadline === null) return 1;
+        if (right.deadline === null) return -1;
+        return left.deadline.localeCompare(right.deadline);
+      }
+      return left.index - right.index;
+    })
+    .map((entry) => entry.item);
+}
+
 function isPastRecurringOccurrence(params: {
   item: GenericPlanningWorkItem;
   graph: WeeklyPlanningPlacementGraphViewV5;
@@ -90,7 +116,7 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
     };
   }
 
-  const context: WeeklyPlanningPlacementRuntimeContextV5 = {
+  const buildContext = (): WeeklyPlanningPlacementRuntimeContextV5 => ({
     input: params.input,
     graph: params.graph,
     dates,
@@ -122,38 +148,49 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
       0,
     ),
     namedTimePeriods: params.namedTimePeriods,
-  };
-  const taskPositions = workItemGroupPositions(
-    movableWorkItems,
-    (item) => item.taskId,
-  );
-  const taskOrdinals = taskOrdinalMapV5(
-    movableWorkItems.map((item) => item.taskId),
-  );
+  });
   const fixedEnds = fixedTaskPlacementEnds(params.input);
-  const candidates: WeeklyDraftCandidate[] = [];
-  const unscheduledWorkItemIds: string[] = [];
 
-  for (const item of movableWorkItems) {
-    const scheduled = scheduleWeeklyPlanningWorkItemV5({
-      context,
-      item,
-      taskPosition: taskPositions.get(item.id) ?? { index: 0, count: 1 },
-      taskOrdinal: taskOrdinals.get(item.taskId) ?? 0,
-      fixedEnds,
-      globalCandidates: candidates,
-      globalNotBefore: params.notBefore,
-    });
-    if (scheduled.failedWorkItemId) {
-      unscheduledWorkItemIds.push(scheduled.failedWorkItemId);
-      rollbackPlacementCandidates({
-        candidates: scheduled.candidates,
-        busy: context.busy,
-        dayLoads: context.dayLoads,
+  const placeInOrder = (ordered: readonly GenericPlanningWorkItem[]) => {
+    const context = buildContext();
+    const taskPositions = workItemGroupPositions(ordered, (item) => item.taskId);
+    const taskOrdinals = taskOrdinalMapV5(ordered.map((item) => item.taskId));
+    const placed: WeeklyDraftCandidate[] = [];
+    const failed: string[] = [];
+    for (const item of ordered) {
+      const scheduled = scheduleWeeklyPlanningWorkItemV5({
+        context,
+        item,
+        taskPosition: taskPositions.get(item.id) ?? { index: 0, count: 1 },
+        taskOrdinal: taskOrdinals.get(item.taskId) ?? 0,
+        fixedEnds,
+        globalCandidates: placed,
+        globalNotBefore: params.notBefore,
       });
-      continue;
+      if (scheduled.failedWorkItemId) {
+        failed.push(scheduled.failedWorkItemId);
+        rollbackPlacementCandidates({
+          candidates: scheduled.candidates,
+          busy: context.busy,
+          dayLoads: context.dayLoads,
+        });
+        continue;
+      }
+      placed.push(...scheduled.candidates);
     }
-    candidates.push(...scheduled.candidates);
+    return { candidates: placed, unscheduledWorkItemIds: failed };
+  };
+
+  let { candidates, unscheduledWorkItemIds } = placeInOrder(movableWorkItems);
+  if (unscheduledWorkItemIds.length > 0) {
+    // Greedy placement is order dependent: before claiming insufficient capacity, retry once with the
+    // earliest hard deadline first (ties keep the canonical order), so a feasible plan is not refused
+    // only because its tight-deadline task was listed last.
+    const retried = placeInOrder(deadlineFirstOrder(movableWorkItems, params.input));
+    if (retried.unscheduledWorkItemIds.length === 0) {
+      candidates = retried.candidates;
+      unscheduledWorkItemIds = retried.unscheduledWorkItemIds;
+    }
   }
 
   if (unscheduledWorkItemIds.length > 0) {

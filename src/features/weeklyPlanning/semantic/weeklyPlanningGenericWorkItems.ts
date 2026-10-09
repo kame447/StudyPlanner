@@ -345,6 +345,9 @@ export function compileGenericPlanningWorkItems(
     });
   }
 
+  // Canonical order: the plan is a function of the accepted state, not of which turn created a workload fact.
+  const taskOrder = new Map(graph.tasks.map((task, index) => [task.id, index]));
+  items.sort((left, right) => (taskOrder.get(left.taskId) ?? 0) - (taskOrder.get(right.taskId) ?? 0));
   const blocking = issues.some((issue) => issue.blocking);
   return {
     items,
