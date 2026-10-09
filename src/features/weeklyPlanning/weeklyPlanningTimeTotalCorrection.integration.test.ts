@@ -185,6 +185,19 @@ describe('X5-T2: a correction of an accepted time total', () => {
     expect(second.result?.draftCandidates.length).toBe(2);
   });
 
+  it('D2: a reading the normalizer accepts but canonicalization rejects is disclosed as not applied, with the state unchanged', async () => {
+    install('stub', false, 'task');
+    const conv = open();
+    await conv.submit(T1);
+    const before = structuredClone(conv.graph()!);
+    const second = await conv.submit(T2B);
+    const rejected = second.debugTrace.filter(e => e.stage === 'runtime_semantic_result_received').map(e => JSON.stringify(e.data)).join('|');
+    expect(rejected).toContain('"status":"canonicalization_rejected"');
+    expect(second.result?.failure?.code).toBe('stable_v5_canonicalization_rejected');
+    expect(second.result?.communicationFacts?.planningDetailsNotApplied).toBe(true);
+    expect(conv.graph()).toEqual(before);
+  });
+
   it('control (unchanged path): an identical restatement of the accepted total is matched by binding and still rejected as before, disclosed', async () => {
     install('stub', false, 'task');
     const conv = open();
