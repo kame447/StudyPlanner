@@ -519,7 +519,7 @@ Integration HEAD for app code: `167751ca` (docs since then only). E2E is **not c
 **Representative paths:**
 - **Exam student:** W4 is 28/2. Both failures are B4: the persona's daily caps are not given to the product, so they are a product decision, not a user-stated constraint.
 - **Fixed events only:** X1 and EV pass live.
-- **Normal study:** A, F and G pass live.
+- **Normal study:** A and G pass live. **F fails** (question/answer meaning mismatch: owner's comment #10; x11 assigned).
 - **Mixed input:** D fails live, with a disclosure (model drop).
 - **Date and quantity corrections:** C and X5 fail live, with a disclosure (dangling replacements; X5f is blocked on the directive-cap decision).
 - **Re-question loops:** H passes in 4 of the last 7 runs, and each failure cause is fixed or disclosed. X2 fails silently (x8 in progress). X3 passes.
@@ -642,3 +642,15 @@ Method: `vite build --sourcemap` of `ea0d871a` and of the fork point `22847120`.
   - Renderer wording for a deferred consultation still varies; this is prompt-level.
 - **Inconclusive:** X4. 「金曜までに」 at Friday 22:58 leaves only tonight, so the capacity question is consistent with the run time.
 - **Same session, scripted and mock evidence on `ea0d871a`:** W4 is 28/2 (B4 only), W3 is 8/8, and the call counts are identical to the previous head. The chain is green except 8 browser failures, all baseline.
+
+**Correction (owner's Issue #488 comment #10, 2026-10-09): F is a failure, not a pass.**
+- **What went wrong:** in F, the app asked about **past progress**: 「卒研は、今どのくらいまで終わっていますか？」 in round 5, 「今の進み具合は、だいたい何割くらいですか？」 in round 6. It then promoted the reply 「合計2時間くらい」 to the **future** 2-hour target without confirmation. A preview existing is not the user's meaning acquired.
+- **Corrected strict counts:** round 5 is **6/14**, and round 6 is **8/14**.
+- **Root cause, from the code:** `stableV5MissingSchedulableWorkQuestion` always asks a progress question (`existing_target_progress`, a completion percentage when there is no `scope_total`), even for an unbounded task where planning needs the future amount for the window. The next answer's binding does not check the presented question's typed purpose.
+- **Assigned as x11:**
+  - typed question purposes;
+  - the first question asks for the future amount;
+  - no promotion of an answer whose meaning does not match the presented purpose (confirm instead);
+  - the owner's regressions (a) to (d), plus the original F script pinned as the pre-fix failure;
+  - then a real-provider re-check.
+- **Same family, seen live earlier:** X5 r3 asked 「今、どのくらい進んでいますか？」 after a workload was lost.
