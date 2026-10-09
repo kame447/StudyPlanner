@@ -84,12 +84,12 @@ const activeOf = (conv: ReturnType<typeof open>) => {
   const active = new Set(g.factLifecycles.filter(l => l.status === 'active').map(l => l.factId));
   return { workloads: g.workloads.filter(w => active.has(w.id)).map(w => w.amount), deadlines: g.temporalConstraints.filter(t => active.has(t.id) && t.kind === 'deadline').length };
 };
-async function run(script: Script, architecture: 'interaction_v1' | 'legacy_v5' = 'interaction_v1') {
+async function run(script: Script, architecture: 'interaction_v1' | 'legacy_v5' = 'interaction_v1', userText: string = T2) {
   const seen = install(script, architecture);
   const conv = open(architecture);
   await conv.submit(T1);
   const before = seen.length;
-  const turn = await conv.submit(T2);
+  const turn = await conv.submit(userText);
   return { conv, turn, calls: seen.slice(before) };
 }
 
@@ -162,4 +162,38 @@ describe('x9b: dangling workload replacement ids are recovered by a focused repa
     expect(bytes).toBeGreaterThan(0);
     expect(bytes).toBeLessThanOrEqual(FOCUSED_REPLACEMENT_FACT_REPAIR_REQUEST_MAX_BYTES);
   });
+
+  // x9c (live round 6 H T2): the reading carries NO task entry at all, only the dangling workload correction and a consultation act.
+  const T2H = 'あ、やっぱり25ページで。あとこれって1日でまとめて読んでも平気？';
+  const noTaskEntry = (ids: { taskId: string; workload: string }) => empty({
+    corrections: [{ localId: 'c1', target: { kind: 'workload', publicId: ids.workload, localId: null, mention: null }, operation: 'replace', replacementLocalId: 'workload_25pages', sourceText: 'やっぱり25ページで' }],
+    conversationActs: [{ kind: 'consultation_request', targetPublicId: ids.taskId }] });
+  const GROUNDED_25 = { replacements: [{ localId: 'workload_25pages', decision: 'provided', quantityRole: 'target', amount: 25, unitCode: 'page', unitLabel: 'ページ', sourceText: '25ページ' }] };
+
+  it('x9c RED (live H T2): no task entry, the dangling correction of an accepted workload and a consultation act → the focused recovery adds the task shell; 25 pages applied and the consultation is still handled', async () => {
+    const { conv, turn, calls } = await run({ initial: noTaskEntry, focused: GROUNDED_25 }, 'interaction_v1', T2H);
+    expect(calls.slice(0, 2)).toEqual(['semantic_document', 'focused_replacement_fact_repair']);
+    expect(turn.result?.interactionOutcome?.kind).toBe('apply');
+    expect(activeOf(conv).workloads).toEqual([25]);
+    expect(turn.result?.interactionOutcome).toMatchObject({ consultationDeferred: true });
+    // Composed outcome (same as x9b): the audit is eligible on this route (the consultation question is an uncovered 21-code-point span);
+    // it finds nothing, and the recovered-document disclosure is stated beside the consultation reply (conservative: no typed quote ties
+    // the span to the consultation act, so it is not assumed to be covered by it).
+    expect(calls).toEqual(['semantic_document', 'focused_replacement_fact_repair', 'dense_turn_completeness_audit', 'renderer']);
+    expect(turn.result?.message).toContain('25ページですね');
+    expect(turn.result?.message).toContain('その点はここでは決めきれない');
+    expect(turn.result?.communicationFacts?.possibleCompletenessOmission).toBe(true);
+  });
+
+  it('x9c legacy_v5 control: the same shape keeps the generic repair (no focused call)', async () => {
+    const { calls } = await run({ initial: noTaskEntry, focused: GROUNDED_25 }, 'legacy_v5', T2H);
+    expect(calls).not.toContain('focused_replacement_fact_repair');
+  });
+
+  it('x9c: a task entry bound to ANOTHER task (nothing bound to the workload\'s task) keeps the generic repair', async () => {
+    const { calls } = await run({ initial: i => empty({ corrections: [{ localId: 'c1', target: { kind: 'workload', publicId: i.workload, localId: null, mention: null }, operation: 'replace', replacementLocalId: 'workload_25pages', sourceText: 'やっぱり25ページで' }],
+      tasks: [task({ existingPublicId: 'wpf_task_other', sourceText: T2H })] }), focused: GROUNDED_25 }, 'interaction_v1', T2H);
+    expect(calls).not.toContain('focused_replacement_fact_repair');
+  });
 });
+

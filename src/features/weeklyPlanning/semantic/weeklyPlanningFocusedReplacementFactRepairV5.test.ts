@@ -31,6 +31,7 @@ describe('focused replacement-fact repair (x9b): candidate, request, merge', () 
     const f = accepted();
     const candidates = readFocusedReplacementFactRepairCandidatesV5({ rawResponse: raw(f), validationErrors: [dangling(0, 'pages20')], committedGraph: f.graph });
     expect(candidates).toEqual([{ localId: 'pages20', correctionIndex: 0, correctionQuote: 'やっぱり20ページにして', taskIndex: 0,
+      task: { id: f.taskId, title: '文献', category: 'study' },
       replaces: { amount: 30, unitCode: 'page', unitLabel: 'ページ', quantityRole: 'target', perOccurrence: false, periodExpression: null } }]);
   });
 
@@ -88,4 +89,45 @@ describe('focused replacement-fact repair (x9b): candidate, request, merge', () 
     expect(parseFocusedReplacementFactRepairDecisionV5(JSON.stringify({ replacements: [{ localId: 'x' }] }))).toBeNull();
     expect(parseFocusedReplacementFactRepairDecisionV5(JSON.stringify(provided()))?.replacements).toHaveLength(1);
   });
+
+  describe('no task entry at all (x9c, live round 6 H T2)', () => {
+    const noTasks = (f: ReturnType<typeof accepted>, over: Json = {}) => JSON.stringify({ corrections: [{ localId: 'c1', target: { kind: 'workload', publicId: f.workloadId, localId: null, mention: null },
+      operation: 'replace', replacementLocalId: 'workload_25pages', sourceText: 'やっぱり25ページで', ...over }], tasks: [], conversationActs: [{ kind: 'consultation_request', targetPublicId: f.taskId }] });
+    it('is a candidate with taskIndex -1 when the replaced workload belongs to one accepted task', () => {
+      const f = accepted();
+      expect(readFocusedReplacementFactRepairCandidatesV5({ rawResponse: noTasks(f), validationErrors: [dangling(0, 'workload_25pages')], committedGraph: f.graph }))
+        .toEqual([expect.objectContaining({ localId: 'workload_25pages', taskIndex: -1, task: { id: f.taskId, title: '文献', category: 'study' } })]);
+    });
+    it('merges the existing-entity shell (bound by existingPublicId, grounded by the correction quote) carrying only the recovered workload', () => {
+      const f = accepted();
+      const candidates = readFocusedReplacementFactRepairCandidatesV5({ rawResponse: noTasks(f), validationErrors: [dangling(0, 'workload_25pages')], committedGraph: f.graph })!;
+      const merged = JSON.parse(applyFocusedReplacementFactRepairV5({ rawResponse: noTasks(f), candidates, decision: { replacements: [{ localId: 'workload_25pages', decision: 'provided',
+        quantityRole: 'target', amount: 25, unitCode: 'page', unitLabel: 'ページ', sourceText: '25ページ' }] } })!);
+      expect(merged.tasks).toHaveLength(1);
+      expect(merged.tasks[0]).toMatchObject({ existingPublicId: f.taskId, title: '文献', category: 'study', sourceText: 'やっぱり25ページで', effortEstimates: [], temporalConstraints: [], recurrence: [] });
+      expect(merged.tasks[0].workloads).toEqual([expect.objectContaining({ localId: 'workload_25pages', amount: 25, unitCode: 'page' })]);
+      expect(merged.conversationActs).toEqual(JSON.parse(noTasks(f)).conversationActs);
+    });
+    it('stays a generic repair when the dangling workloads belong to SEVERAL accepted tasks and there is no task entry (nothing to choose between)', () => {
+      const task = (localId: string, title: string): Json => ({ localId, category: 'study', title, study: { purpose: 'self_study', contextLabel: null, components: [] },
+        workloads: [workload(`${localId}-amt`)], effortEstimates: [], temporalConstraints: [], recurrence: [], sourceText: `${title}を30ページ` });
+      const result = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({ graph: createEmptyWeeklyPlanningFactGraphV5(),
+        document: { schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5, planningIntent: 'create_plan', planningWindow: null, tasks: [task('a', '文献'), task('b', '英語')] as never,
+          relations: [], availabilityDeclarations: [], constraintSourceRequests: [], uncertainties: [], corrections: [], decisions: [] } as WeeklyPlanningSemanticDocumentV5,
+        context: { conversationId: 'focused-replacement-two', turnId: 'turn-1', expectedRevision: 0 } });
+      if (result.status !== 'applied') throw new Error('setup rejected');
+      const correction = (localId: string, publicId: string, replacementLocalId: string) => ({ localId, target: { kind: 'workload', publicId, localId: null, mention: null },
+        operation: 'replace', replacementLocalId, sourceText: '変更' });
+      const rawResponse = JSON.stringify({ tasks: [], corrections: [correction('c1', result.localToFactId['a-amt'], 'new_a'), correction('c2', result.localToFactId['b-amt'], 'new_b')] });
+      expect(readFocusedReplacementFactRepairCandidatesV5({ rawResponse, validationErrors: [dangling(0, 'new_a'), dangling(1, 'new_b')], committedGraph: result.graph })).toBeNull();
+    });
+    it('stays a generic repair when task entries exist but none is bound to the workload\'s task, or when the target task cannot be determined', () => {
+      const f = accepted();
+      const other = JSON.stringify({ ...JSON.parse(noTasks(f)), tasks: [{ localId: 'x', existingPublicId: 'wpf_task_other', workloads: [] }] });
+      expect(readFocusedReplacementFactRepairCandidatesV5({ rawResponse: other, validationErrors: [dangling(0, 'workload_25pages')], committedGraph: f.graph })).toBeNull();
+      expect(readFocusedReplacementFactRepairCandidatesV5({ rawResponse: noTasks(f, { target: { kind: 'workload', publicId: 'wpf_workload_none', localId: null, mention: null } }),
+        validationErrors: [dangling(0, 'workload_25pages')], committedGraph: f.graph })).toBeNull();
+    });
+  });
 });
+
