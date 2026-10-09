@@ -39,7 +39,19 @@ const providerCalls = [];
 const providerFailures = [];
 const semanticRequests = [];
 const rendererRequests = [];
+const verifierRequests = [];
 const originalFetch = window.fetch.bind(window);
+// Scripted renderer: the campaign double, plus (P2) a sentence that states every required typed figure and label.
+function scriptedRendererReply(payload) {
+  const reply = JSON.parse(campaignRendererReply(payload));
+  const shortfall = (payload.applicationDecision?.communication?.mustConvey ?? []).find(entry => entry.code === 'shortfall');
+  if (shortfall) {
+    const items = shortfall.unmet.map(item => `${item.label}（${item.minutes}分）`).join('、');
+    const more = shortfall.moreCount > 0 ? `ほか${shortfall.moreCount}件` : '';
+    reply.text += `入りきらなかった作業は${items}${more}です。今回の計画に必要な時間は合計${shortfall.requiredMinutes}分です。`;
+  }
+  return JSON.stringify(reply);
+}
 window.fetch = async (input, init) => {
   const url = input instanceof Request ? input.url : String(input);
   if (!url.startsWith('https://weekly-exam.invalid/')) return originalFetch(input, init);
@@ -50,7 +62,12 @@ window.fetch = async (input, init) => {
     let content;
     if (schemaName === 'weekly_planning_stable_v5_dialogue_response') {
       rendererRequests.push(campaignPayload(request));
-      content = campaignRendererReply(campaignPayload(request));
+      content = scriptedRendererReply(campaignPayload(request));
+    } else if (schemaName === 'weekly_planning_reply_verifier_v1') {
+      // Declared limitation: the scripted verifier accepts a reply that the scripted renderer built from the typed facts.
+      const user = JSON.parse(request.messages.find(message => message.role === 'user').content);
+      verifierRequests.push(user);
+      content = JSON.stringify({ verdicts: user.required.map(fact => ({ key: fact.key, verdict: 'stated_accurately' })), forbidden: [] });
     }
     else if (schemaName === 'weekly_planning_focused_contextual_answer_v5') {
       content = JSON.stringify({ decision: 'fallback', effortTarget: null, effortMeasurement: null, minutes: null, precision: null, quantityRole: null });
@@ -71,6 +88,6 @@ window.fetch = async (input, init) => {
     throw error;
   }
 };
-window.__examHarness = { providerCalls, providerFailures, semanticRequests, rendererRequests };
+window.__examHarness = { providerCalls, providerFailures, semanticRequests, rendererRequests, verifierRequests };
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
