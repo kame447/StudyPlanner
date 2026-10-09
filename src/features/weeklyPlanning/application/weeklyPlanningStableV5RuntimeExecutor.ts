@@ -51,6 +51,8 @@ import { isKnownWeeklyPlanningUncertaintyFieldV5 } from '../semantic/weeklyPlann
 import { releasedUncertaintiesOfTurnV5 } from '../semantic/weeklyPlanningSemanticUncertaintyReleaseV5';
 import { summarizeWeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
 import { isNothingReadV5 } from '../semantic/weeklyPlanningEmptyReadingV5';
+import { ignoredRateForMissingEffortQuestionV5 } from '../semantic/weeklyPlanningIgnoredRateDisclosureV5';
+import { rateUnitProjectedFromRepairsV5 } from '../semantic/weeklyPlanningRateUnitProjectionFactV5';
 
 export type {
   ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
@@ -80,6 +82,7 @@ function communicationFacts(params: {
   planningDetailsNotApplied: boolean;
   possibleCompletenessOmission: boolean;
   nothingRead?: boolean;
+  rateUnitProjected?: WeeklyPlanningTurnCommunicationFacts['rateUnitProjected'];
   omittedWork: WeeklyPlanningPreviewOmittedWork[] | null;
   consultationRequested: boolean;
   releasedUncertainties?: ReturnType<typeof releasedUncertaintiesOfTurnV5>;
@@ -128,6 +131,13 @@ function communicationFacts(params: {
     planningDetailsNotApplied: params.planningDetailsNotApplied,
     ...(params.possibleCompletenessOmission ? { possibleCompletenessOmission: true } : {}),
     ...(params.nothingRead ? { nothingRead: true } : {}),
+    ...(params.rateUnitProjected ? { rateUnitProjected: params.rateUnitProjected } : {}),
+    ...(code === 'missing_effort_estimate'
+      ? (() => {
+          const ignoredRate = ignoredRateForMissingEffortQuestionV5({ view: params.evaluation.activeGraph, workloadFactId: context?.topicId });
+          return ignoredRate ? { ignoredRate } : {};
+        })()
+      : {}),
     ...(capacityShortfall ? { capacityShortfall } : {}),
     // The selected question is a free-form open point on the very task the consultation act targets: the question
     // already invites the user's condition, so the generic "not decided here" notice would ask for it twice.
@@ -211,6 +221,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   const possibleCompletenessOmission = semantic.normalization.completenessAbstention !== undefined;
   // The final accepted reading is entirely empty (no delta, no act the renderer answers): the application says nothing
   // was read. Only under an accepted plan or a pending question; a first-turn greeting has its own clarify reply.
+  const rateUnitProjected = rateUnitProjectedFromRepairsV5(semantic.normalization.diagnostics.algorithmicRepairs) ?? undefined;
   const nothingRead = semantic.normalization.document !== null && semantic.normalization.document !== undefined
     && isNothingReadV5(semantic.normalization.document)
     && (semantic.graph.tasks.length > 0 || Boolean(input.previousState?.lastQuestionContext));
@@ -243,6 +254,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
               planningDetailsNotApplied,
               possibleCompletenessOmission,
               nothingRead,
+              rateUnitProjected,
               omittedWork: null,
               consultationRequested: interactionPlan.acts.consultation,
               releasedUncertainties,
@@ -294,6 +306,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
             planningDetailsNotApplied,
             possibleCompletenessOmission,
             nothingRead,
+            rateUnitProjected,
             omittedWork: provisionalCapacity ? provisionalCapacity.omittedWork : null,
             consultationRequested: interactionPlan!.acts.consultation,
             releasedUncertainties,
