@@ -19,7 +19,6 @@ export default defineConfig({
     '**/weekly-real-scenarios.spec.mjs',
     // Likewise: full-App harness with its own provider-double server/config (port 4187).
     '**/weekly-real-save-reload*.spec.mjs',
-    // Likewise: exam-student persona harness (port 4188).
     '**/weekly-real-exam-student*.spec.mjs',
   ],
   fullyParallel: false,

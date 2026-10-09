@@ -16,7 +16,7 @@ const externalRequests = [];
 test.beforeEach(async ({ page }) => { externalRequests.length = 0; await installGuards(page, externalRequests); });
 test.afterEach(async () => { expect(externalRequests, 'no request may leave loopback').toEqual([]); });
 
-const CAPTURES = path.join(process.cwd(), 'artifacts/weekly-real-exam-student/captures');
+const CAPTURES = path.join(process.cwd(), 'artifacts/weekly-real-exam-student-captures');
 function capture(testInfo, name, value) {
   fs.mkdirSync(CAPTURES, { recursive: true });
   fs.writeFileSync(path.join(CAPTURES, `${testInfo.project.name}-${name}.json`), JSON.stringify(value, null, 1));
