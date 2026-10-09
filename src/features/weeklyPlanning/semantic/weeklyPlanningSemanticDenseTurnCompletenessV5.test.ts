@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
 import {
   createDenseTurnCompletenessAuditMessagesV5,
+  WEEKLY_PLANNING_AUDIT_CONSULTATION_INSTRUCTION_V5,
   createDenseTurnCompletenessRetryMessagesV5,
   denseTurnCompletenessAuditEligibleV5,
   parseDenseTurnCompletenessAuditDecisionV5,
@@ -73,6 +74,16 @@ describe('Stable V5 dense-turn semantic completeness audit', () => {
     expect(messages[0]?.content).toMatch(/assessment\/mock-exam scores/i);
     expect(messages[0]?.content).toContain('not textbook completion');
     expect(messages[1]?.content).toContain('candidateDocument');
+  });
+
+  it('interaction audits state that a consultation request is not a missing proposition; legacy bytes are unchanged', () => {
+    const base = { userText: '数学を進めたい。これって平気？'.repeat(30), candidateDocument: candidateDocument() };
+    const legacy = createDenseTurnCompletenessAuditMessagesV5(base)[0]!.content;
+    const interaction = createDenseTurnCompletenessAuditMessagesV5({ ...base, interaction: true })[0]!.content;
+    expect(legacy).not.toContain(WEEKLY_PLANNING_AUDIT_CONSULTATION_INSTRUCTION_V5);
+    expect(interaction).toBe(`${legacy}\n${WEEKLY_PLANNING_AUDIT_CONSULTATION_INSTRUCTION_V5}`);
+    // Budget: 146 B + separator on the audit system prompt, interaction only.
+    expect(new TextEncoder().encode(`\n${WEEKLY_PLANNING_AUDIT_CONSULTATION_INSTRUCTION_V5}`).byteLength).toBeLessThanOrEqual(160);
   });
 
   it('treats an explicit daily total as supported capacity without inventing clocks', () => {

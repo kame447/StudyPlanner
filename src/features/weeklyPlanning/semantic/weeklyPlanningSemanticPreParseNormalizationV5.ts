@@ -265,6 +265,23 @@ function normalizeAdvisoryUncertaintiesV5(rawResponse: string): RawNormalization
 }
 
 /**
+ * Literal quotes of the uncertainties the advisory stage did not commit. The reading accounted for those
+ * spans (they are consultation-like open points), so literal evidence coverage credits them even though
+ * no fact exists; a quote that is not a literal span of the user text earns nothing there anyway.
+ */
+export function advisoryUncertaintySourceTextsV5(rawResponse: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(rawResponse);
+    if (!isRecord(parsed) || !Array.isArray(parsed.uncertainties)) return [];
+    return parsed.uncertainties.flatMap((entry) => isRecord(entry) && entry.blocksPlanning === false
+      && !isKnownWeeklyPlanningUncertaintyFieldV5(entry.field) && typeof entry.sourceText === 'string' && entry.sourceText
+      ? [entry.sourceText] : []);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Stable V5 provider-output normalization boundary.
  *
  * Keep the ordered list explicit. A new provider-output rewrite must be added

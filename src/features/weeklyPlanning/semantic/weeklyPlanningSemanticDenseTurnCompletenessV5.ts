@@ -1,3 +1,4 @@
+import { advisoryUncertaintySourceTextsV5 } from './weeklyPlanningSemanticPreParseNormalizationV5';
 import {
   applyValidatedRegisteredMaterialBudgetCompletionV5,
   parseRegisteredMaterialBudgetCompletionV5,
@@ -72,6 +73,14 @@ const AUDIT_SYSTEM_PROMPT = [
   'For complete, missingFacts must be an empty array.',
 ].join('\n');
 
+/**
+ * Interaction audits only (legacy bytes unchanged). Live round 4 H-T2: the audit listed the user's own
+ * feasibility question as a missing "uncertainty" although the document carried it as a typed
+ * consultation_request, and the unavoidable no-op re-read produced a false possible-omission notice.
+ */
+export const WEEKLY_PLANNING_AUDIT_CONSULTATION_INSTRUCTION_V5 =
+  'A request for advice or feasibility is covered by a consultation_request in candidateDocument.conversationActs; it is not a missing proposition.';
+
 export interface DenseTurnCompletenessAuditDecisionV5 {
   decision: 'complete' | 'incomplete';
   missingFacts: string[];
@@ -89,9 +98,13 @@ export function createDenseTurnCompletenessAuditMessagesV5(params: {
   userText: string;
   candidateDocument: WeeklyPlanningSemanticDocumentV5;
   evidenceCoverageEligibility?: WeeklyPlanningSemanticEvidenceCoverageV5;
+  /** Interaction architecture: adds the consultation sentence. Absent keeps the legacy prompt bytes. */
+  interaction?: boolean;
 }): ChatMessage[] {
   return [
-    { role: 'system', content: AUDIT_SYSTEM_PROMPT },
+    { role: 'system', content: params.interaction
+      ? `${AUDIT_SYSTEM_PROMPT}\n${WEEKLY_PLANNING_AUDIT_CONSULTATION_INSTRUCTION_V5}`
+      : AUDIT_SYSTEM_PROMPT },
     {
       role: 'user',
       content: JSON.stringify({
@@ -191,6 +204,7 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     && conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs
     ? measureWeeklyPlanningSemanticEvidenceCoverageV5({
         userText: params.run.input.userText, document: params.initialDocument,
+        additionalSourceTexts: advisoryUncertaintySourceTextsV5(params.initialResponse),
         ...(taskModification ? { boundedNumericSourceTexts: true, committedGraph: params.run.input.committedGraph } : {}),
       })
     : undefined;
@@ -277,6 +291,7 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     userText: params.run.input.userText,
     candidateDocument: params.initialDocument,
     evidenceCoverageEligibility,
+    interaction: retentionFloor,
   });
   const budgetLabels = conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs
     && ['create_plan', 'update_plan'].includes(params.initialDocument.planningIntent)
