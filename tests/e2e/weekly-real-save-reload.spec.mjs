@@ -234,7 +234,9 @@ test.describe('synthetic isolated save E2E (not Firestore, not online)', () => {
     // The approved draft must not be offered for another approval after reload.
     await expect(page.getByRole('button', { name: 'この内容で保存' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'この内容で仮予定にする' })).toHaveCount(0);
-    expect((await expectDurable(page, preview)).map(row => row.id)).toEqual(saved.map(row => row.id));
+    const afterReload = await expectDurable(page, preview);
+    expect(afterReload.map(row => row.id)).toEqual(saved.map(row => row.id));
+    await expectViewsMatch(page, afterReload);
   });
 
   test('a double submit is one turn and a resend after save creates no record without a new approval', async ({ page }, testInfo) => {
@@ -301,6 +303,6 @@ test.describe('synthetic isolated save E2E (not Firestore, not online)', () => {
     await expectViewsMatch(page, saved);
     await page.reload();
     await expect(nav(page)).toBeVisible();
-    await expectDurable(page, preview);
+    await expectViewsMatch(page, await expectDurable(page, preview));
   });
 });
