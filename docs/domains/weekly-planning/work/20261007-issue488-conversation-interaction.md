@@ -804,3 +804,14 @@ Method: `vite build --sourcemap` of `ea0d871a` and of the fork point `22847120`.
 - No new fixed sentence; legacy unchanged (oracle 0).
 - Typecheck is clean, and the weeklyPlanning suite passes (4282 tests).
 - F is still not claimed: choosing between a question and a proposal is S3.
+
+**D2 and D1 integrated** (`24958ae0`, `3da44e00`, `f5c017d5`; BrightLavoisier; the critic confirmed the rebase is line-identical to the audited and gated commits).
+- **D2:**
+  - A dangling replacement of a deadline or window is recovered by one focused call, run only after the generic repair still dangles.
+  - A rejected reading that carries planning content now sets `planningDetailsNotApplied` whatever the route: normalizer rejection or canonicalization rejection (both pinned).
+- **D1:**
+  - When the unmet work is the whole plan, stating the total once is accurate.
+  - The writer is told to state the facts naturally, with no listing pressure.
+  - Gate: the critic's held-out v3 set (single item, all unmet, further items) gave 0 false passes and 0 false fails; the over-relaxation guard held.
+- Typecheck is clean and the weeklyPlanning suite passes (4296 tests).
+- **Verification chain on `87df7c31`:** verify (7872), the categories and weekly-real all passed. The browser step was invalid: another project's preview server held port 4173, and the configuration reuses an existing server. A rerun on a free port is under way.
