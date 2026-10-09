@@ -13,7 +13,7 @@ type Json = Record<string, unknown>;
 let provider: ReturnType<typeof installScriptedWeeklyPlanningProvider>;
 afterEach(() => { provider?.restore(); resetScriptedConversationRuntime(); });
 
-const TEXT = '来週、物理の問題集を15問やりたい。物理は1問6分くらい';
+const TEXT = '来週、物理の問題集を15問やりたい。物理は1問6分くらい。参考書を10ページ読む';
 const empty = (o: Json = {}): Json => ({ schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'create_plan', planningWindow: null,
   tasks: [], relations: [], availabilityDeclarations: [], constraintSourceRequests: [], userContextFacts: [], uncertainties: [],
   corrections: [], decisions: [], conversationActs: [], ...o });
@@ -41,25 +41,100 @@ function install(document: Json, architecture: 'interaction_v1' | 'legacy_v5' = 
   });
 }
 const open = (architecture: 'interaction_v1' | 'legacy_v5' = 'interaction_v1') => createScriptedConversation({ provider, architecture, weekStartDate: '2026-10-12', now: () => '2026-10-08T00:00:00.000Z' });
-const doc = (workloads: Json[], estimateTarget: string, unitCode: string, extra: Json = {}) => empty({ planningWindow: nextWeek, tasks: [task({ workloads,
-  effortEstimates: [rate(estimateTarget, unitCode)], ...extra })] });
+const doc = (workloads: Json[], estimateTarget: string, unitCode: string, extra: Json = {}, minutes = 6) => empty({ planningWindow: nextWeek, tasks: [task({ workloads,
+  effortEstimates: [{ ...rate(estimateTarget, unitCode), minutes }], ...extra })] });
 const minutesOf = (turn: { result: { draftCandidates: Array<{ durationMinutes?: number }> } | null }) =>
   (turn.result?.draftCandidates ?? []).reduce((sum, candidate) => sum + (candidate.durationMinutes ?? 0), 0);
 
+const PROJECTED = '「物理は1問6分くらい」は、問あたり6分として使いました。';
+const slot = (conv: ReturnType<typeof open>) => conv.getState().intakeState?.lastQuestionContext?.targetSlot ?? null;
+const allocated = (turn: { result: { communicationFacts?: unknown } | null }) =>
+  ((turn.result?.communicationFacts as { allocationBreakdown?: { estimatedMinutes: number } } | undefined)?.allocationBreakdown?.estimatedMinutes) ?? null;
+
 describe('x8: a per-unit rate typed with a clock unitCode (live round 5 X2)', () => {
-  it('control: the same rate typed with the workload\'s own unit gives a preview of 15 x 6 = 90 minutes and no question', async () => {
+  it('control: the same rate typed with the workload\'s own unit gives a preview of 15 x 6 = 90 minutes, no question and no rate sentence', async () => {
     install(doc([workload('amt', 15, 'problem', '問', '15問')], 'amt', 'problem'));
     const turn = await open().submit(TEXT);
     expect(turn.result?.draftCandidates.length).toBeGreaterThan(0);
     expect(minutesOf(turn)).toBeGreaterThanOrEqual(90);
+    expect(turn.result?.message).not.toContain('あたり6分として使いました');
+    expect(turn.result?.message).not.toContain('合わなかったため');
   });
 
-  it('RED (live): the rate typed with unitCode minute is taken for the problem workload: preview, no missing_effort_estimate question', async () => {
+  it('live X2 (a): the rate typed with unitCode minute is used as 6 minutes per problem, the app says so once, no rate question; later turns do not re-ask', async () => {
     install(doc([workload('amt', 15, 'problem', '問', '15問')], 'amt', 'minute'));
     const conv = open();
     const turn = await conv.submit(TEXT);
-    expect(conv.getState().intakeState?.lastQuestionContext?.targetSlot ?? null).not.toBe('stable_v5:missing_effort_estimate');
+    expect(slot(conv)).not.toBe('stable_v5:missing_effort_estimate');
     expect(turn.result?.draftCandidates.length).toBeGreaterThan(0);
     expect(minutesOf(turn)).toBeGreaterThanOrEqual(90);
+    expect(allocated(turn)).toBe(90);
+    expect(turn.result?.communicationFacts?.rateUnitProjected).toEqual({ quote: '物理は1問6分くらい', minutes: 6, unitLabel: '問' });
+    expect(turn.result?.message).toContain(PROJECTED);
+    expect((turn.result?.message ?? '').split(PROJECTED).length).toBe(2);
+    expect(turn.result?.message).not.toContain('合わなかったため');
+  });
+
+  it('the hour variant ({6, hour}) is the same live phrasing pattern: 6 minutes per problem, disclosed', async () => {
+    install(doc([workload('amt', 15, 'problem', '問', '15問')], 'amt', 'hour'));
+    const conv = open();
+    const turn = await conv.submit(TEXT);
+    expect(slot(conv)).not.toBe('stable_v5:missing_effort_estimate');
+    expect(allocated(turn)).toBe(90);
+    expect(turn.result?.message).toContain(PROJECTED);
+  });
+
+  it('a task-level target with exactly one workload is projected too (disclosed)', async () => {
+    install(doc([workload('amt', 15, 'problem', '問', '15問')], 'phys', 'minute'));
+    const conv = open();
+    const turn = await conv.submit(TEXT);
+    expect(slot(conv)).not.toBe('stable_v5:missing_effort_estimate');
+    expect(turn.result?.message).toContain(PROJECTED);
+  });
+
+  it('DOCUMENTED RESIDUAL (mis-encoding {60, hour} on {10, page}, 「1時間で10ページ」): the plan shows 600 minutes AND the interpretation is stated, so it is visible and correctable', async () => {
+    install(doc([workload('amt', 10, 'page', 'ページ', '10ページ')], 'amt', 'hour', {}, 60));
+    const conv = open();
+    const turn = await conv.submit(TEXT);
+    expect(slot(conv)).not.toBe('stable_v5:missing_effort_estimate');
+    expect(allocated(turn)).toBe(600);
+    expect(turn.result?.message).toContain('「物理は1問6分くらい」は、ページあたり60分として使いました。');
+  });
+
+  it('a non-clock mismatch ({5, page} on {15, problem}) is untouched: the app asks for the rate and says the given one could not be used', async () => {
+    install(doc([workload('amt', 15, 'problem', '問', '15問')], 'amt', 'page', {}, 5));
+    const conv = open();
+    const turn = await conv.submit(TEXT);
+    expect(slot(conv)).toBe('stable_v5:missing_effort_estimate');
+    expect(turn.result?.communicationFacts?.rateUnitProjected).toBeUndefined();
+    expect(turn.result?.communicationFacts?.ignoredRate).toEqual({ quote: '物理は1問6分くらい', unit: '問' });
+    expect(turn.result?.message).toContain('「物理は1問6分くらい」は、この作業の単位（問）と合わなかったため使えませんでした。');
+    expect((turn.result?.message ?? '').split('合わなかったため').length).toBe(2);
+  });
+
+  it('critic shape 1: a clock rate on a task with several workloads is ambiguous, untouched, and disclosed as not usable', async () => {
+    install(doc([workload('amt', 15, 'problem', '問', '15問'), workload('amt2', 10, 'page', 'ページ', '10ページ')], 'phys', 'minute'));
+    const conv = open();
+    const turn = await conv.submit(TEXT);
+    expect(slot(conv)).toBe('stable_v5:missing_effort_estimate');
+    expect(turn.result?.communicationFacts?.rateUnitProjected).toBeUndefined();
+    expect(turn.result?.message).toContain('合わなかったため使えませんでした');
+  });
+
+  it('a clock-unit workload ({30, minute} with a clock rate) is untouched and carries no rate sentence', async () => {
+    install(doc([workload('amt', 30, 'minute', '分', '30分')], 'amt', 'minute'));
+    const turn = await open().submit(TEXT);
+    expect(turn.result?.communicationFacts?.rateUnitProjected).toBeUndefined();
+    expect(turn.result?.message).not.toContain('あたり6分として使いました');
+    expect(turn.result?.message).not.toContain('合わなかったため');
+  });
+
+  it('legacy_v5 control: the live X2 shape is unchanged (the rate is still re-asked, no rate sentence)', async () => {
+    install(doc([workload('amt', 15, 'problem', '問', '15問')], 'amt', 'minute'), 'legacy_v5');
+    const conv = open('legacy_v5');
+    const turn = await conv.submit(TEXT);
+    expect(slot(conv)).toBe('stable_v5:missing_effort_estimate');
+    expect(turn.result?.communicationFacts?.rateUnitProjected).toBeUndefined();
+    expect(turn.result?.message).not.toContain('あたり6分として使いました');
   });
 });

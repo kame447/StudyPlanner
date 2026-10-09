@@ -113,6 +113,10 @@ export interface WeeklyPlanningTurnCommunicationFacts {
    * that nothing was read in its own sentence, once per turn; the renderer never words it.
    */
   nothingRead?: boolean;
+  /** A per-unit rate typed with a clock unit was used as minutes per counted unit (x8); the application states it, once. */
+  rateUnitProjected?: { quote: string; minutes: number; unitLabel: string };
+  /** An accepted per-unit rate could not be used (unit mismatch) while the app re-asks for it (x8); stated by the application, once. */
+  ignoredRate?: { quote: string; unit: string };
 }
 
 export function emptyWeeklyPlanningTurnCommunicationFacts(): WeeklyPlanningTurnCommunicationFacts {

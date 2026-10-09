@@ -402,6 +402,8 @@ function communicationFactsProjection(value: Record<string, unknown>): Record<st
     planningDetailsNotApplied: value.planningDetailsNotApplied === true,
     ...(value.possibleCompletenessOmission === true ? { possibleCompletenessOmission: true } : {}),
     ...(value.nothingRead === true ? { nothingRead: true } : {}),
+    ...(isRecord(value.rateUnitProjected) ? { rateUnitProjected: { quote: stringValue(value.rateUnitProjected.quote), minutes: numberValue(value.rateUnitProjected.minutes), unitLabel: stringValue(value.rateUnitProjected.unitLabel) } } : {}),
+    ...(isRecord(value.ignoredRate) ? { ignoredRate: { quote: stringValue(value.ignoredRate.quote), unit: stringValue(value.ignoredRate.unit) } } : {}),
     ...(isRecord(value.capacityShortfall)
       ? { capacityShortfall: {
           requiredMinutes: numberValue(value.capacityShortfall.requiredMinutes),

@@ -16,6 +16,7 @@ import { communicationContextForStableV5Dialogue } from './weeklyPlanningStableV
 import { retainedPreviewCommunicationForStableV5Dialogue } from './weeklyPlanningRetainedPreviewCommunication';
 import { composeWeeklyPlanningInteractionFallbackText, WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT, WEEKLY_PLANNING_RETAINED_PREVIEW_UNCHANGED_TEXT } from './weeklyPlanningInteractionFallbackText';
 import { weeklyPlanningReleaseAndNothingReadText } from './weeklyPlanningNothingReadDisclosure';
+import { weeklyPlanningRateNotices } from './weeklyPlanningRateDisclosure';
 import { weeklyPlanningCapacityShortfallText } from './weeklyPlanningCapacityShortfallDisclosure';
 import { weeklyPlanningPreviewConstraintDisclosureText, weeklyPlanningPreviewOmissionDisclosureText } from './weeklyPlanningPreviewOmissionDisclosure';
 import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
@@ -561,7 +562,8 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     ? WEEKLY_PLANNING_POSSIBLE_OMISSION_TEXT : null;
   // The release sentence and the nothing-read sentence are one block, with the latter rendered once per turn.
   const releaseNotice = weeklyPlanningReleaseAndNothingReadText(renderInput.communication) || null;
-  const finalMessage = [disclosedMessage, retainedPreviewNotice, omissionNotice, releaseNotice].filter(Boolean).join('\n\n');
+  const rateNotice = weeklyPlanningRateNotices(renderInput.communication) || null;
+  const finalMessage = [disclosedMessage, retainedPreviewNotice, omissionNotice, releaseNotice, rateNotice].filter(Boolean).join('\n\n');
   const dialogueRendererTrace = createWeeklyPlanningAiRenderedDialogueTrace({
     actionId: currentActionId,
     actionKind,

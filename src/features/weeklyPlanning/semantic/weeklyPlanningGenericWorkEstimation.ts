@@ -39,12 +39,27 @@ function resolvedEstimate(params: {
 
 export function effortEstimateTargetsWorkload(
   estimate: EffortEstimateFact,
-  workload: WorkloadFact,
+  workload: Pick<WorkloadFact, 'id' | 'taskId' | 'componentId'>,
 ): boolean {
   return estimate.taskId === workload.taskId
     && (estimate.targetFactId === workload.id
       || estimate.targetFactId === workload.taskId
       || estimate.targetFactId === workload.componentId);
+}
+
+/** One predicate for "this per-unit rate applies to this workload" (estimation and the ignored-rate disclosure share it). */
+export function perUnitEstimateAppliesToWorkload(estimate: EffortEstimateFact, workload: Pick<WorkloadFact, 'unitCode'>): boolean {
+  return estimate.kind === 'duration_per_unit' && estimate.unitCode === workload.unitCode;
+}
+
+/** Accepted per-unit rates aimed at the workload (or its task/component) that cannot apply because their unit differs. */
+export function unitMismatchedPerUnitEstimates(
+  workload: Pick<WorkloadFact, 'id' | 'taskId' | 'componentId' | 'unitCode'>,
+  estimates: ReadonlyArray<EffortEstimateFact>,
+): EffortEstimateFact[] {
+  return estimates.filter((estimate) => estimate.kind === 'duration_per_unit'
+    && effortEstimateTargetsWorkload(estimate, workload)
+    && !perUnitEstimateAppliesToWorkload(estimate, workload));
 }
 
 function intrinsicEstimate(workload: WorkloadFact): GenericWorkItemEstimateResolution | null {
@@ -69,8 +84,7 @@ function directEstimate(params: {
 }): GenericWorkItemEstimateResolution {
   const matching = params.estimates.filter((estimate) =>
     effortEstimateTargetsWorkload(estimate, params.workload));
-  const perUnit = matching.filter((estimate) =>
-    estimate.kind === 'duration_per_unit' && estimate.unitCode === params.workload.unitCode);
+  const perUnit = matching.filter((estimate) => perUnitEstimateAppliesToWorkload(estimate, params.workload));
   if (perUnit.length === 1) {
     return resolvedEstimate({
       estimatedMinutes: perUnit[0].minutes * params.workload.amount,

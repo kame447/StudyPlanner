@@ -1,6 +1,8 @@
 import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './weeklyPlanningActiveSchedulerGraphViewV5';
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
+import type { SemanticWorkloadUnitCode } from './weeklyPlanningSemanticDocument';
+import { workloadUnitDisplayV5 } from './weeklyPlanningWorkloadQuantityLabelV5';
 import type { WeeklyPlanningSemanticCanonicalizationResultV5 } from './weeklyPlanningSemanticCanonicalizerV5';
 
 const record = (value: unknown): Record<string, unknown> | null => typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -15,12 +17,12 @@ const bindingSignature = (task: Record<string, unknown>, estimate: Record<string
 export function projectWeeklyPlanningExistingWorkloadRateReferenceV5(params: {
   rawResponse: string; graph?: WeeklyPlanningFactGraphV5;
 }): { rawResponse: string; repairs: string[] } {
-  if (!params.graph) return { rawResponse: params.rawResponse, repairs: [] };
   let document: Record<string, unknown> | null;
   try { document = record(JSON.parse(params.rawResponse)); } catch { return { rawResponse: params.rawResponse, repairs: [] }; }
   if (!document) return { rawResponse: params.rawResponse, repairs: [] };
-  const graph = createWeeklyPlanningActiveSchedulerGraphViewV5(params.graph);
-  const repairs: string[] = [];
+  const graph = params.graph ? createWeeklyPlanningActiveSchedulerGraphViewV5(params.graph) : null;
+  const repairs: string[] = projectClockUnitRates(document, graph);
+  if (!graph) return { rawResponse: repairs.length ? JSON.stringify(document) : params.rawResponse, repairs };
   const allEstimates = records(document.tasks).flatMap(task => records(task.effortEstimates));
   for (const task of records(document.tasks)) {
     if (!graph.tasks.some((fact) => fact.id === task.existingPublicId) || typeof task.localId !== 'string') continue;
@@ -73,6 +75,62 @@ function declaredLocalIds(value: unknown, into = new Set<string>()): Set<string>
     }
   }
   return into;
+}
+
+const CLOCK_UNITS = ['minute', 'hour'];
+/** Diagnostic prefix; the payload is [taskLocalId, effortLocalId, fromUnit, toUnit, quote, minutes, unitLabel]. */
+export const CLOCK_UNIT_RATE_PROJECTED_PREFIX = 'clock-unit-rate-projected:';
+
+/**
+ * A `duration_per_unit` rate typed with a CLOCK unitCode (live round 5 X2: 「1問6分」 read as {6, unitCode 'minute'} for a
+ * `problem` workload) is the unit OF the duration, not of the counted work: "minutes per minute" is not a per-unit rate, so
+ * when the rate's target resolves to exactly ONE non-clock workload the rate takes that workload's unitCode (the estimate
+ * ignores a rate whose unit differs from its workload's and the app re-asked for it). Targets: a workload or component
+ * localId of the same task entry, the entry's task (exactly one workload in total: this entry's plus the accepted task's), or an
+ * accepted workload's public id. Anything ambiguous - several workloads, a clock-unit workload, a non-clock mismatch, an unresolved
+ * target - is left untouched. Diagnostic only; never a repair.
+ *
+ * KNOWN RESIDUAL (recorded, pinned by a test): the projection assumes `minutes` is per counted unit, as in the live X2. A
+ * mis-encoding whose value is per CLOCK unit - e.g. 「1時間で10ページ」 as {minutes: 60, unitCode 'hour'} - is projected to 60 minutes
+ * per page: a wrong plan instead of the old re-ask, and nothing typed tells the two apart.
+ */
+function projectClockUnitRates(
+  document: Record<string, unknown>,
+  graph: ReturnType<typeof createWeeklyPlanningActiveSchedulerGraphViewV5> | null,
+): string[] {
+  const repairs: string[] = [];
+  type Unit = Record<string, unknown> | { unitCode: unknown; unitLabel: unknown };
+  const unitOf = (value: Unit) => value as { unitCode?: unknown; unitLabel?: unknown };
+  const nonClock = (unitCode: unknown): unitCode is string => typeof unitCode === 'string' && unitCode.length > 0 && !CLOCK_UNITS.includes(unitCode);
+  for (const task of records(document.tasks)) {
+    if (typeof task.localId !== 'string') continue;
+    const components = records(record(task.study)?.components);
+    const acceptedWorkloads = graph && typeof task.existingPublicId === 'string'
+      ? graph.workloads.filter((fact) => fact.taskId === task.existingPublicId) : [];
+    const ownWorkloads = [...records(task.workloads), ...components.flatMap((component) => records(component.workloads))];
+    for (const estimate of records(task.effortEstimates)) {
+      if (estimate.kind !== 'duration_per_unit' || typeof estimate.unitCode !== 'string' || !CLOCK_UNITS.includes(estimate.unitCode)) continue;
+      const target = estimate.targetLocalId;
+      if (typeof target !== 'string') continue;
+      let units: Unit[] | null = null;
+      const localTarget = ownWorkloads.filter((workload) => workload.localId === target);
+      const accepted = graph ? graph.workloads.filter((fact) => fact.id === target && fact.taskId === task.existingPublicId) : [];
+      const component = components.find((candidate) => candidate.localId === target);
+      if (localTarget.length === 1 && accepted.length === 0) units = [localTarget[0]];
+      else if (accepted.length === 1 && localTarget.length === 0) units = [accepted[0]];
+      else if (component) units = records(component.workloads);
+      else if (target === task.localId) units = [...ownWorkloads, ...acceptedWorkloads];
+      if (!units || units.length !== 1 || !nonClock(unitOf(units[0]).unitCode)) continue;
+      // The disclosure needs a trustworthy unit wording and the user's own quote: without them the rate stays a re-ask.
+      const unit = unitOf(units[0]);
+      const unitLabel = typeof unit.unitLabel === 'string' ? workloadUnitDisplayV5(unit.unitCode as SemanticWorkloadUnitCode, unit.unitLabel) : null;
+      const quote = typeof estimate.sourceText === 'string' ? estimate.sourceText.trim() : '';
+      if (!unitLabel || !quote || typeof estimate.minutes !== 'number') continue;
+      repairs.push(`${CLOCK_UNIT_RATE_PROJECTED_PREFIX}${JSON.stringify([task.localId, estimate.localId, estimate.unitCode, unit.unitCode, quote, estimate.minutes, unitLabel])}`);
+      estimate.unitCode = unit.unitCode;
+    }
+  }
+  return repairs;
 }
 
 /**

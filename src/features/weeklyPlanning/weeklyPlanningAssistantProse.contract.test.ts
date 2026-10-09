@@ -67,6 +67,7 @@ const PROSE_REGISTRY: Readonly<Record<string, ProseCategory>> = {
   'dialogue/weeklyPlanningCapacityShortfallDisclosure.ts': 'interaction_authoritative_disclosure',
   'dialogue/weeklyPlanningUncertaintyReleaseDisclosure.ts': 'interaction_authoritative_disclosure',
   'dialogue/weeklyPlanningNothingReadDisclosure.ts': 'interaction_authoritative_disclosure',
+  'dialogue/weeklyPlanningRateDisclosure.ts': 'interaction_authoritative_disclosure',
   'application/weeklyPlanningStableV5RuntimeQuestions.ts': 'interaction_emergency_shared',
   'dialogue/weeklyPlanningStableV5TurnDialogue.ts': 'interaction_emergency_shared',
   'application/weeklyPlanningStableV5GroundingFlow.ts': 'interaction_emergency_shared',

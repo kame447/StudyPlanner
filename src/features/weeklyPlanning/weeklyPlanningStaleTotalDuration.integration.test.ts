@@ -78,6 +78,9 @@ describe('X5g: a task-level total_duration 90 beside the corrected target worklo
     const facts = second.result?.communicationFacts as { allocationBreakdown?: { allocatedMinutes: number; marginMinutes: number }; previewDisclosure?: unknown } | undefined;
     expect(facts?.allocationBreakdown).toMatchObject({ allocatedMinutes: 60, marginMinutes: 0 });
     expect(facts?.previewDisclosure ?? null).toBeNull();
+    // x8: an effort ignored WITHOUT causing a question (the inert stale total_duration) carries no rate sentence.
+    expect(second.result?.message).not.toContain('合わなかったため');
+    expect(second.result?.message).not.toContain('として使いました');
     const shown = blocks(second);
     expect(shown).toHaveLength(2);
     expect(shown.every(b => b.endsWith(' 30'))).toBe(true);

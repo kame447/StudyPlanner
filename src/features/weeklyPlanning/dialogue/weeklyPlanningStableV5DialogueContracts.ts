@@ -115,6 +115,9 @@ export interface WeeklyPlanningStableV5CommunicationContext {
   uncertaintyReleased?: { quote: string | null; nothingRead: boolean };
   /** The final reading was entirely empty; the application states it once beside the reply. */
   nothingRead?: boolean;
+  /** x8: the typed rate facts; the application states each beside the reply, the renderer never words them. */
+  rateUnitProjected?: { quote: string; minutes: number; unitLabel: string };
+  ignoredRate?: { quote: string; unit: string };
 }
 
 export interface WeeklyPlanningStableV5DialogueConversationTurn {
