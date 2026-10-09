@@ -7,12 +7,15 @@ export const STARTUP_PHASES = [
   'schedule-marker-read', 'schedule-marker-complete', 'schedule-marker-unavailable',
   'schedule-migration-acquire', 'schedule-legacy-read', 'schedule-migration-backfill',
   'schedule-migration-complete-write', 'schedule-canonical-snapshot', 'schedule-canonical-plans', 'schedule-canonical-month-events',
-  'timetable-write', 'bootstrap', 'home-visible',
+  'timetable-write', 'bootstrap', 'startup-wait-ended', 'intro-complete', 'home-visible',
 ] as const;
 export type StartupPhase = typeof STARTUP_PHASES[number];
+export const STARTUP_INTRO_OUTCOMES = ['ended', 'skipped', 'reduced-motion', 'autoplay-blocked', 'media-error', 'stalled'] as const;
+export type StartupIntroOutcome = typeof STARTUP_INTRO_OUTCOMES[number];
 type Outcome = 'pending' | 'success' | 'error' | 'cancelled';
 export interface StartupTimingRow {
   id: number; phase: StartupPhase; startMs: number; durationMs: number | null; outcome: Outcome;
+  introOutcome?: StartupIntroOutcome;
 }
 const EMPTY: readonly StartupTimingRow[] = [];
 export function createStartupTimingRecorder(enabled: boolean, now: () => number) {
@@ -23,11 +26,13 @@ export function createStartupTimingRecorder(enabled: boolean, now: () => number)
   const listeners = new Set<() => void>();
   const clock = () => { try { const value = now(); return Number.isFinite(value) ? Math.max(0, value) : 0; } catch { return 0; } };
   const notify = () => listeners.forEach(listener => { try { listener(); } catch { /* Diagnostics cannot fail startup. */ } });
-  const begin = (phase: StartupPhase) => {
+  const begin = (phase: StartupPhase, introOutcome?: StartupIntroOutcome) => {
     if (!enabled || closed || rows.length >= 80 || !STARTUP_PHASES.includes(phase)) return (_outcome?: Exclude<Outcome, 'pending'>) => {};
     const id = ++sequence;
     const startMs = clock();
-    rows = [...rows, { id, phase, startMs, durationMs: null, outcome: 'pending' }];
+    rows = [...rows, { id, phase, startMs, durationMs: null, outcome: 'pending',
+      ...(introOutcome ? { introOutcome } : {}),
+    }];
     notify();
     let finished = false;
     return (outcome: Exclude<Outcome, 'pending'> = 'success') => {
@@ -39,7 +44,12 @@ export function createStartupTimingRecorder(enabled: boolean, now: () => number)
   };
   return {
     enabled,
-    begin,
+    begin: (phase: StartupPhase) => begin(phase),
+    markIntroComplete(reason: StartupIntroOutcome) {
+      if (!STARTUP_INTRO_OUTCOMES.includes(reason) || points.has('intro-complete')) return;
+      points.add('intro-complete');
+      begin('intro-complete', reason)();
+    },
     markOnce(phase: StartupPhase) {
       if (points.has(phase)) return;
       points.add(phase);

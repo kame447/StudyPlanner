@@ -140,7 +140,7 @@ export function AppSettingsDialog({ open, onClose, ...generalProps }: AppSetting
                         />
                       </label>
                       <p className="detail-note">
-                        種類を選ぶ必要はありません。AIが意味を整理し、保存先はLaplans側で判断します。
+                        種類を選ぶ必要はありません。AIが意味を整理し、保存先はLaplance側で判断します。
                       </p>
                       {editorError ? <p className="settings-inline-error" role="alert">{editorError}</p> : null}
                       <div className="memory-editor-actions">

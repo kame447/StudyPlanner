@@ -8,7 +8,7 @@ const icons = [
   { rel: 'apple-touch-icon', size: 180, sha256: '780d048c816789c7218468ab04678f2ba29a70828208e2ce2a74b0745cbe2e04' },
 ];
 
-describe('Laplans application icons', () => {
+describe('Laplance application icons', () => {
   it.each(icons)('declares and ships the supplied symbol for $rel at $size pixels', ({ rel, size, sha256 }) => {
     const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
     const href = `/icons/laplans-${size}.png`;

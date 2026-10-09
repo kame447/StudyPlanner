@@ -1171,8 +1171,46 @@ test('native Todo Undo crossing a full read repairs without replay mobile-dark',
   expect((await hookSnapshot(page)).todos).toEqual(restored);
 });
 
+test('first unread DayNote save during full read fails closed on hydration failure mobile-dark', async ({ page }) => {
+  await boot(page, cases.find(item => item.label === 'mobile' && item.theme === 'dark'));
+  expect((await hookSnapshot(page)).dayNotes).toBeNull();
+  const readNotes = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.dayNotes') ?? '[]'));
+  const originalNotes = await readNotes();
+  const noteWrites = async () => writeMethods(await repoSnapshot(page)).filter(method => method === 'upsertDayNote');
+  await page.evaluate(date => {
+    const refreshing = window.__plannerRecoveryHook.refresh();
+    window.__plannerRecoveryRepository.failNextDayNoteRead();
+    window.__plannerRecoveryHook.startDayNote({ date, memo: '初回取得後だけ保存するメモ' });
+    return refreshing;
+  }, E2E_TODAY);
+  // The first save has settled as a rejection, not a pending mutation waiting on itself.
+  await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saving)).toBe(false);
+  expect(await page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(false);
+  expect(await page.evaluate(() => window.__plannerRecoveryHook.saveError)).toContain('日次メモを読み込めませんでした');
+  expect((await hookSnapshot(page)).recovery?.phase).toBe('failed');
+  expect((await hookSnapshot(page)).ready).toBe(false);
+  expect(await noteWrites()).toEqual([]);
+  expect((await durableWrites(page)).filter(write => write.key === 'studyplanner.dayNotes')).toEqual([]);
+  expect(await readNotes()).toEqual(originalNotes);
+  await retry(page).click();
+  await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
+  expect(await noteWrites()).toEqual([]);
+  expect(await readNotes()).toEqual(originalNotes);
+  // Recovery is read-only. A fresh explicit save, not replay, is required.
+  await page.evaluate(date => window.__plannerRecoveryHook.startDayNote({ date, memo: '初回取得後だけ保存するメモ' }), E2E_TODAY);
+  await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(true);
+  expect(await page.evaluate(() => window.__plannerRecoveryHook.saveError)).toBeNull();
+  expect(await noteWrites()).toEqual(['upsertDayNote']);
+  expect(await readNotes()).toEqual([expect.objectContaining({ quickMemo: '初回取得後だけ保存するメモ' })]);
+});
+
 test('native DayNote save crossing full read recovers without resave mobile-dark', async ({ page }, testInfo) => {
   await boot(page, cases.find(item => item.label === 'mobile' && item.theme === 'dark'));
+  // This race covers editing an already-hydrated note snapshot. Cold bootstrap
+  // deliberately leaves notes unread; explicit use establishes the original precondition.
+  expect((await hookSnapshot(page)).dayNotes).toBeNull();
+  await page.evaluate(() => window.__plannerRecoveryHook.loadDayNotes());
+  await expect.poll(async () => (await hookSnapshot(page)).dayNotes).toEqual([]);
   await navigate(page, 'AI計画');
   await composer(page).fill(TEXT);
   await page.evaluate(date => {
@@ -1207,7 +1245,9 @@ test('native DayNote save crossing full read recovers without resave mobile-dark
   await page.evaluate(() => window.__plannerRecoveryRepository.preserveNextReload());
   await page.reload();
   await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
-  expect((await hookSnapshot(page)).dayNotes).toEqual(saved);
+  expect((await hookSnapshot(page)).dayNotes).toBeNull();
+  await page.evaluate(() => window.__plannerRecoveryHook.loadDayNotes());
+  await expect.poll(async () => (await hookSnapshot(page)).dayNotes).toEqual(saved);
 });
 
 test('native timetable class save crossing full read recovers without resave mobile-dark', async ({ page }, testInfo) => {

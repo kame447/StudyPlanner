@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { startupTiming } from '../lib/startupTiming';
-import splashLogo from '../assets/laplans-wordmark.jpeg';
-import startupVideo from '../assets/laplans_blackhole_1080x1920.mp4';
-import startupPoster from '../assets/laplans-startup-poster.jpg';
-import startupStill from '../assets/laplans-startup-still.jpg';
+import startupVideo from '../assets/laplance_blackhole_1080x1920.mp4';
+import startupPoster from '../assets/laplance-startup-poster.jpg';
+import startupStill from '../assets/laplance-startup-still.jpg';
 import { StartupVideo, type StartupVideoOutcome } from './StartupVideo';
+import { LaplanceLogo } from './LaplanceLogo';
 import { useRootStartupReady } from './RootStartupReadyContext';
 
 export function SplashScreen({ fixedLight = false, canSkip = false, videoOutcome = null, onVideoComplete }: {
@@ -26,12 +26,12 @@ export function SplashScreen({ fixedLight = false, canSkip = false, videoOutcome
       aria-label="アプリ起動中"
     >
       <div className="splash-screen__inner">
-        {playIntro && videoOutcome ? <img src={startupStill} alt="Laplans" className="startup-video__still" /> : playIntro ? (
+        {playIntro && videoOutcome ? <img src={startupStill} alt="Laplance" className="startup-video__still" /> : playIntro ? (
           <StartupVideo src={startupVideo} poster={startupPoster} canSkip={canSkip} onComplete={onVideoComplete}>
-            <img src={startupStill} alt="Laplans" className="startup-video__still" />
+            <img src={startupStill} alt="Laplance" className="startup-video__still" />
           </StartupVideo>
         ) : (
-          <img src={splashLogo} alt="Laplans" className="splash-screen__logo" />
+          <LaplanceLogo />
         )}
         <p className="splash-screen__message" role="status">{playIntro && canSkip ? '準備できました' : 'アプリを準備しています...'}</p>
       </div>

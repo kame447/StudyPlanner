@@ -107,7 +107,7 @@ export function AdminApp({
             <div className="admin-console-brand">
               <span className="admin-console-brand-mark" aria-hidden="true">L</span>
               <div>
-                <strong>Laplans</strong>
+                <strong>Laplance</strong>
                 <small>Admin Console</small>
               </div>
             </div>
