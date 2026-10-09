@@ -392,3 +392,47 @@ describe('container redundancy helpers (X5d/X5e)', () => {
     });
   });
 });
+
+describe('x9a: retargeting a correction to the migrated fact (typed, same transaction only)', () => {
+  const holder = (localId: string, workloadLocalId: string, hours: number, efforts: Array<{ localId: string; target: string; minutes: number }>): SemanticTaskV5 => ({
+    ...task(localId, '数学', workloadLocalId, hours),
+    effortEstimates: efforts.map((effort) => ({ localId: effort.localId, targetLocalId: effort.target, kind: 'session_duration' as const,
+      minutes: effort.minutes, unitCode: null, precision: 'approximate' as const, sourceText: '1回分' })),
+  });
+  const correction = (localId: string, kind: 'workload' | 'effort_estimate', publicId: string, replacementLocalId: string) => ({
+    localId, target: { kind, publicId, localId: null, mention: null }, operation: 'replace' as const, replacementLocalId, sourceText: '変更',
+  });
+  const setup = () => {
+    const first = canonicalize({ document: document({ tasks: [holder('task-old', 'workload-old', 3, [{ localId: 'effort-old', target: 'workload-old', minutes: 45 }])] }),
+      conversationId: 'conversation-x9a', turnId: 'turn-1' });
+    return { first, workloadId: first.localToFactId['workload-old'], effortId: first.localToFactId['effort-old'] };
+  };
+  const apply = (first: ReturnType<typeof canonicalize>, corrections: ReturnType<typeof correction>[], tasks: SemanticTaskV5[]) => {
+    const second = canonicalize({ graph: first.graph, document: document({ tasks, corrections }), conversationId: 'conversation-x9a', turnId: 'turn-2' });
+    return applyWeeklyPlanningCanonicalCorrectionsV5({ originalGraph: first.graph, canonicalization: second, operationKeyPrefix: 'conversation-x9a:turn-2' });
+  };
+
+  it('a correction of the effort that the workload correction\'s migration superseded applies to the migrated fact (both orders)', () => {
+    for (const order of ['workload-first', 'effort-first'] as const) {
+      const { first, workloadId, effortId } = setup();
+      const corrections = [correction('c1', 'workload', workloadId, 'workload-new'), correction('c2', 'effort_estimate', effortId, 'effort-new')];
+      const applied = apply(first, order === 'workload-first' ? corrections : [...corrections].reverse(),
+        [holder('task-new', 'workload-new', 1, [{ localId: 'effort-new', target: 'workload-new', minutes: 30 }])]);
+      expect(applied.status, order).toBe('applied');
+      const active = activeIds(applied.graph);
+      const efforts = applied.graph.effortEstimates.filter((fact) => active.has(fact.id));
+      const workloads = applied.graph.workloads.filter((fact) => active.has(fact.id));
+      expect(efforts.map((fact) => fact.minutes), order).toEqual([30]);
+      expect(workloads.map((fact) => fact.amount), order).toEqual([1]);
+      expect(efforts[0].targetFactId, order).toBe(workloads[0].id);
+    }
+  });
+
+  it('only a migration of this transaction retargets: a target superseded by another correction of the same turn stays rejected', () => {
+    const { first, effortId } = setup();
+    const applied = apply(first, [correction('c2', 'effort_estimate', effortId, 'effort-new'), correction('c2b', 'effort_estimate', effortId, 'effort-new2')],
+      [holder('task-new', 'workload-new', 1, [{ localId: 'effort-new', target: 'workload-new', minutes: 30 }, { localId: 'effort-new2', target: 'workload-new', minutes: 20 }])]);
+    expect(applied.status).toBe('rejected');
+    expect(applied.errors.join('|')).toContain('not-active');
+  });
+});

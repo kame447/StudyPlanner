@@ -48,7 +48,9 @@ const c2 = (ids: Ids): Json => ({ localId: 'c2', target: target('effort_estimate
 const replacements = (): Json => ({ workloads: [minutes('amt2', 60, '合計60分')], effortEstimates: [session('each2', 'amt2', 30, '合計60分')] });
 
 let captured: Ids | null = null;
-function install(t2: (ids: Ids) => Json, t3?: (ids: Ids) => Json) {
+function install(t2: (ids: Ids) => Json, t3?: (ids: Ids) => Json, architecture: 'interaction_v1' | 'legacy_v5' = 'interaction_v1') {
+  const wire = (document: Json): string => JSON.stringify(architecture === 'legacy_v5'
+    ? Object.fromEntries(Object.entries(document).filter(([key]) => key !== 'conversationActs')) : document);
   captured = null;
   provider = installScriptedWeeklyPlanningProvider((call: ScriptedProviderCall) => {
     if (call.kind === 'renderer') return scriptedRendererReply(call, 'わかりました。');
@@ -57,13 +59,13 @@ function install(t2: (ids: Ids) => Json, t3?: (ids: Ids) => Json) {
     if (call.schemaName === 'weekly_planning_focused_material_answer_v5') return JSON.stringify({ decision: 'fallback', label: null, registeredChoice: null, workloadChoice: null, effortKind: null, minutes: null, precision: null, sourceText: null, effortSourceText: null });
     const text = String(call.payload?.userText ?? '');
     const summary = (call.payload?.publicStateSummary ?? {}) as Json;
-    if (text === T1) return JSON.stringify(t1());
-    if (text === T2) { captured = idsOf(summary); return JSON.stringify(t2(captured)); }
-    if (text === T3 && t3) return JSON.stringify(t3(captured!));
+    if (text === T1) return wire(t1());
+    if (text === T2) { captured = idsOf(summary); return wire(t2(captured)); }
+    if (text === T3 && t3) return wire(t3(captured!));
     throw new Error(`unscripted: ${text}`);
   });
 }
-const open = () => createScriptedConversation({ provider, architecture: 'interaction_v1', weekStartDate: '2026-10-05', now: () => '2026-10-07T09:00:00.000Z' });
+const open = (architecture: 'interaction_v1' | 'legacy_v5' = 'interaction_v1') => createScriptedConversation({ provider, architecture, weekStartDate: '2026-10-05', now: () => '2026-10-07T09:00:00.000Z' });
 const live = (ids: Ids) => empty({ corrections: [c1(ids), c2(ids)], tasks: [shell(ids, replacements())] });
 const reversed = (ids: Ids) => empty({ corrections: [c2(ids), c1(ids)], tasks: [shell(ids, replacements())] });
 const view = (conv: ReturnType<typeof open>) => createWeeklyPlanningActiveSchedulerGraphViewV5(conv.graph()!);
@@ -119,4 +121,18 @@ describe('x9a: a correction whose target was superseded by a dependent migration
     expect(second.result?.interactionOutcome?.kind).toBe('recover');
     expect(sessions(conv).map(e => e.minutes)).toEqual([45]);
   });
+
+  // EXPLICIT SHARED FIX: the canonical correction path is shared with legacy_v5, and the old legacy outcome depended on the
+  // ORDER of the corrections (workload-first was a recover, effort-first applied). Same-turn corrections are now order-independent
+  // across a dependent migration in both architectures. The legacy oracle has no such scenario, so it stays at 0 differing leaves.
+  it.each([['live order (workload, then effort)', live], ['reversed order (effort, then workload)', reversed]] as const)('legacy_v5 (shared fix): %s applies 60 / 30', async (_name, reading) => {
+    install(reading, undefined, 'legacy_v5');
+    const conv = open('legacy_v5');
+    await conv.submit(T1);
+    await conv.submit(T2);
+    expect(view(conv).workloads.map(w => w.amount)).toEqual([60]);
+    expect(sessions(conv).map(e => e.minutes)).toEqual([30]);
+    expect(sessions(conv)[0].targetFactId).toBe(view(conv).workloads[0].id);
+  });
 });
+
