@@ -41,6 +41,7 @@ import {
   recordWeeklyPlanningStableV5DebugTrace,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
 import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
+import { runShownQuestionPurposeCheckV5, type ShownQuestionPurposeCheckV5 } from './weeklyPlanningShownQuestionPurposeV5';
 import { guardAnswerAgainstHeldPurposeV5, settleDeclaredAmountsV5, type HeldQuestionPurposeV5 } from './weeklyPlanningAnswerPurposeGuardV5';
 import { dropReReleasedUncertaintiesV5 } from './weeklyPlanningSemanticUncertaintyReleaseV5';
 import {
@@ -66,6 +67,8 @@ export interface WeeklyPlanningSemanticPipelineInputV5
   externalSources?: ExternalConstraintSourceSnapshot[];
   /** The purpose of the pending question as the renderer was told (interaction only; never sent to the model). */
   heldQuestionPurpose?: { purpose: HeldQuestionPurposeV5; ownerTaskId: string } | null;
+  /** Interaction only: judges the shown question text before a bare time budget is promoted to a plan target. */
+  shownQuestionPurposeCheck?: ShownQuestionPurposeCheckV5;
 }
 
 export type WeeklyPlanningSemanticPipelineStatusV5 =
@@ -281,6 +284,33 @@ export function createWeeklyPlanningSemanticPipelineV5(
             ...(normalization.diagnostics.algorithmicRepairs ?? []),
             `answer-purpose-mismatch-declared:${guarded.demoted}`,
           ];
+        }
+        // An amount (a bare role-less budget or a target workload) answering an amount question no demoting purpose is held for:
+        // a focused check of the shown question text sets the purpose for this turn. `plan` holds nothing and the answer binds;
+        // `progress`, `other` or an unavailable check demote it to a declared, role-unresolved fact (completed and remaining stay).
+        const amountTarget = !held && pendingQuestion?.questionCode === 'missing_schedulable_work' ? pendingQuestion.targetFactId : null;
+        const ownerTaskId = amountTarget
+          ? (graph.tasks.find((task) => task.id === amountTarget)?.id
+            ?? graph.components.find((component) => component.id === amountTarget)?.taskId ?? null)
+          : null;
+        const unverified = ownerTaskId
+          ? guardAnswerAgainstHeldPurposeV5({ graph, document: normalization.document, held: { purpose: 'current_progress', ownerTaskId } })
+          : null;
+        if (unverified && unverified.demoted > 0) {
+          const shown = [...(input.recentConversation ?? [])].reverse().find((message) => message.role === 'assistant')?.content ?? null;
+          const purpose = await runShownQuestionPurposeCheckV5(input.shownQuestionPurposeCheck, shown);
+          if (purpose !== 'plan') {
+            normalization.document.tasks = unverified.document.tasks;
+            normalization.diagnostics.algorithmicRepairs = [
+              ...(normalization.diagnostics.algorithmicRepairs ?? []),
+              `answer-purpose-unverified-declared:${unverified.demoted}:${purpose}`,
+            ];
+          } else {
+            normalization.diagnostics.algorithmicRepairs = [
+              ...(normalization.diagnostics.algorithmicRepairs ?? []),
+              'answer-purpose-plan-verified',
+            ];
+          }
         }
         // A typed restatement of a declared amount with its role (the later answer to the held role confirmation) settles it.
         const settledDeclared = settleDeclaredAmountsV5({

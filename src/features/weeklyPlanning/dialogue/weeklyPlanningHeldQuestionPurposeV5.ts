@@ -1,7 +1,7 @@
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningStableV5DialogueProjection } from '../semantic/weeklyPlanningStableV5DialogueProjection';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
-import type { HeldQuestionPurposeV5 } from '../semantic/weeklyPlanningAnswerPurposeGuardV5';
+import { parseHeldQuestionPurposeIntentV5, type HeldQuestionPurposeV5 } from '../semantic/weeklyPlanningAnswerPurposeGuardV5';
 import { questionIntentForStableV5Dialogue, questionTargetForStableV5Dialogue } from './weeklyPlanningStableV5DialogueContext';
 
 /**
@@ -35,4 +35,23 @@ export function heldQuestionPurposeFromRendererIntentV5(params: {
   const ownerTaskId = active.tasks.find((task) => task.id === pending.targetFactId)?.id
     ?? active.components.find((component) => component.id === pending.targetFactId)?.taskId ?? null;
   return ownerTaskId ? { purpose: 'current_progress', ownerTaskId } : null;
+}
+
+/**
+ * The purpose the renderer DECLARED for the question it wrote (P3 S3a), read back from the pending question's persisted intent
+ * (`purpose:<enum>`). Only the purposes that demote a plan answer are held; the owner is the pending question's own target (an
+ * application fact, never the declaration). Union with the application-derived purpose, never an upgrade: the guard only demotes.
+ */
+export function heldQuestionPurposeFromDeclaredIntentV5(params: {
+  graph: WeeklyPlanningFactGraphV5;
+  pendingQuestion: { targetFactId: string | null } | null | undefined;
+  intent: string | null | undefined;
+}): { purpose: HeldQuestionPurposeV5; ownerTaskId: string } | null {
+  const purpose = parseHeldQuestionPurposeIntentV5(params.intent);
+  const target = params.pendingQuestion?.targetFactId;
+  if (!purpose || !target) return null;
+  const active = createWeeklyPlanningActiveSchedulerGraphViewV5(params.graph);
+  const ownerTaskId = active.tasks.find((task) => task.id === target)?.id
+    ?? active.components.find((component) => component.id === target)?.taskId ?? null;
+  return ownerTaskId ? { purpose, ownerTaskId } : null;
 }

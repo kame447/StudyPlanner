@@ -63,6 +63,7 @@ import {
 import {
   createWeeklyPlanningStableV5DialogueProjection,
 } from '../semantic/weeklyPlanningStableV5DialogueProjection';
+import { heldQuestionPurposeIntentV5 } from '../semantic/weeklyPlanningAnswerPurposeGuardV5';
 import type { WeeklyPlanningQuestionPresentationContent } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningDialogueRendererTrace } from '../trace/weeklyPlanningDialogueRendererTrace';
 import type {
@@ -637,8 +638,13 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     rendered,
     finalMessage,
   });
+  // P3 S3a: the validated declared purpose of the amount question is held on the question context (the reply asked it).
+  const heldResult = rendered.askedPurpose && !aside && params.result.state.lastQuestionContext
+    ? { ...params.result, state: { ...params.result.state, lastQuestionContext: {
+        ...params.result.state.lastQuestionContext, intent: heldQuestionPurposeIntentV5(rendered.askedPurpose) } } }
+    : params.result;
   const result = withAssistantMessage({
-    result: params.result,
+    result: heldResult,
     message: finalMessage,
     responseSource: 'ai',
     dialogueRendererTrace,

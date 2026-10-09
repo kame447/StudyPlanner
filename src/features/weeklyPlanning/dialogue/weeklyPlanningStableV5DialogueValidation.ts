@@ -518,6 +518,14 @@ export function parseWeeklyPlanningStableV5DialogueRendererResponse(
     return { status: 'fallback', reason: 'action_contract_mismatch', rawResponse };
   }
 
+  // P3 S3a: an amount question offered purpose options must declare exactly one of them (checked, never trusted for binding).
+  const askedPurposeOptions = conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome
+    ? input.communication?.askedPurposeOptions : undefined;
+  const askedPurpose = askedPurposeOptions?.find((option) => option === parsed.askedPurpose);
+  if (askedPurposeOptions?.length && !askedPurpose) {
+    return { status: 'fallback', reason: 'invalid_asked_purpose', rawResponse };
+  }
+
   const consultation = conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome
     ? input.communication?.consultation : undefined;
   if (consultation && (
@@ -541,5 +549,5 @@ export function parseWeeklyPlanningStableV5DialogueRendererResponse(
     return { status: 'fallback', reason: validationError, rawResponse };
   }
 
-  return { status: 'rendered', text, rawResponse };
+  return { status: 'rendered', text, rawResponse, ...(askedPurpose ? { askedPurpose } : {}) };
 }

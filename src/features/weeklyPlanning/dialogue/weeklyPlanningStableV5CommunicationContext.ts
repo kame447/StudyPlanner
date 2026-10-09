@@ -6,12 +6,13 @@ import type {
   WeeklyPlanningTurnCommunicationFacts,
 } from '../application/weeklyPlanningInteractionOutcome';
 import type { WeeklyPlanningStableQuestionV5 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
-import type {
-  WeeklyPlanningStableV5CommunicationContext,
-  WeeklyPlanningStableV5CommunicationGoal,
-  WeeklyPlanningStableV5DialogueActionKind,
-  WeeklyPlanningStableV5DialogueQuestionIntent,
-  WeeklyPlanningStableV5QuestionPurpose,
+import {
+  WEEKLY_PLANNING_STABLE_V5_ASKED_PURPOSES,
+  type WeeklyPlanningStableV5CommunicationContext,
+  type WeeklyPlanningStableV5CommunicationGoal,
+  type WeeklyPlanningStableV5DialogueActionKind,
+  type WeeklyPlanningStableV5DialogueQuestionIntent,
+  type WeeklyPlanningStableV5QuestionPurpose,
 } from './weeklyPlanningStableV5DialogueContracts';
 
 /**
@@ -231,6 +232,11 @@ export function communicationContextForStableV5Dialogue(params: {
     ...(mustConvey.length > 0 ? { mustConvey } : {}),
     ...(params.facts?.planningNeeds?.length ? { planningNeeds: params.facts.planningNeeds } : {}),
     ...(params.facts?.calendarFree?.length ? { calendarFree: params.facts.calendarFree } : {}),
+    // P3 S3a: the amount question the AI chooses declares its purpose; the calendar already answers available time.
+    ...(askQuestion && params.actionKind === 'question' && params.questionCode === 'missing_schedulable_work'
+      ? { askedPurposeOptions: WEEKLY_PLANNING_STABLE_V5_ASKED_PURPOSES.filter((purpose) =>
+          !(purpose === 'available_time' && params.facts?.calendarFree?.length)) }
+      : {}),
     ...(params.facts?.openPointCoversConsultation && askQuestion ? { openPointCoversConsultation: true } : {}),
     ...(params.facts?.uncertaintyReleased ? { uncertaintyReleased: { quote: params.facts.uncertaintyReleased.quote, nothingRead: params.facts.uncertaintyReleased.nothingRead } } : {}),
     previewDisclosure: params.actionKind === 'preview_ready'

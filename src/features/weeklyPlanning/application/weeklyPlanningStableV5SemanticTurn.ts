@@ -1,4 +1,5 @@
-import { heldQuestionPurposeFromRendererIntentV5 } from '../dialogue/weeklyPlanningHeldQuestionPurposeV5';
+import { createShownQuestionPurposeCheckV5 } from '../dialogue/weeklyPlanningShownQuestionPurposeCheck';
+import { heldQuestionPurposeFromDeclaredIntentV5, heldQuestionPurposeFromRendererIntentV5 } from '../dialogue/weeklyPlanningHeldQuestionPurposeV5';
 import { readWeeklyPlanningPendingQuestionV5 } from '../semantic/weeklyPlanningPendingQuestionV5';
 import { getAiConfig, getAiConfigValidationMessage } from '../../../lib/aiConfig';
 import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
@@ -233,10 +234,21 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     schedulerContext: initialSchedulerContext,
     conversationArchitecture: architecturePolicy.architecture,
     ...(architecturePolicy.freshPendingQuestionBinding
+      ? { shownQuestionPurposeCheck: createShownQuestionPurposeCheckV5(withWeeklyPlanningTurnDispatchBudget(
+          createOpenAiCompatibleClient(aiConfig),
+          getWeeklyPlanningTurnDispatchBudget(input.traceRequestId),
+          'semantic',
+        )) }
+      : {}),
+    ...(architecturePolicy.freshPendingQuestionBinding
       ? { heldQuestionPurpose: heldQuestionPurposeFromRendererIntentV5({
           graph: runtimeSession.graph,
           pendingQuestion: readWeeklyPlanningPendingQuestionV5(stateSummary),
           registeredMaterials: stateSummary.registeredMaterials,
+        }) ?? heldQuestionPurposeFromDeclaredIntentV5({
+          graph: runtimeSession.graph,
+          pendingQuestion: readWeeklyPlanningPendingQuestionV5(stateSummary),
+          intent: pendingQuestionPresentation.status === 'fresh' ? pendingQuestionPresentation.questionContext.intent : null,
         }) }
       : {}),
   });

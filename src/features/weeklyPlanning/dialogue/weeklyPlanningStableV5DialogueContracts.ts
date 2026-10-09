@@ -80,6 +80,21 @@ export type WeeklyPlanningStableV5QuestionPurpose =
   typeof WEEKLY_PLANNING_STABLE_V5_QUESTION_PURPOSES[number];
 
 /**
+ * P3 S3a: the purpose of an amount question the renderer chooses, declared in the typed reply envelope (no extra call). The
+ * application validates it (membership in the options it offered), holds it on the pending question and only DEMOTES against it.
+ */
+export const WEEKLY_PLANNING_STABLE_V5_ASKED_PURPOSES = [
+  'current_progress',
+  'planned_amount',
+  'available_time',
+  'per_session_length',
+  'wish',
+  'days',
+  'open_point',
+] as const;
+export type WeeklyPlanningStableV5AskedPurpose = typeof WEEKLY_PLANNING_STABLE_V5_ASKED_PURPOSES[number];
+
+/**
  * Typed communication context of one reply (interaction architecture only). Deterministic
  * code decides WHAT has to be communicated; the renderer decides HOW to say it.
  */
@@ -118,6 +133,8 @@ export interface WeeklyPlanningStableV5CommunicationContext {
   planningNeeds?: PlanningNeedV5[];
   /** Free time per day of the period; the reply must not ask what this already answers. */
   calendarFree?: CalendarFreeDayV5[];
+  /** P3 S3a: the typed purposes the amount question this reply asks may declare (envelope field `askedPurpose`). */
+  askedPurposeOptions?: WeeklyPlanningStableV5AskedPurpose[];
   /** The presented question already invites the user's condition for the consulted task. */
   openPointCoversConsultation?: boolean;
   uncertaintyReleased?: { quote: string | null; nothingRead: boolean };
@@ -373,13 +390,17 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   /** P2: the reply failed verification against the typed mustConvey facts after the one regeneration (technical stop). */
   | 'verification_failed'
   /** P2: the verification itself could not be completed (dispatch refused, provider error, malformed verdict): technical stop, never a pass. */
-  | 'verification_unavailable';
+  | 'verification_unavailable'
+  /** P3 S3a: the declared question purpose is missing or not among the options the application offered; repair once. */
+  | 'invalid_asked_purpose';
 
 export type WeeklyPlanningStableV5DialogueRenderResult =
   | {
       status: 'rendered';
       text: string;
       rawResponse: string;
+      /** The validated declared purpose of the amount question (only when the options were offered). */
+      askedPurpose?: WeeklyPlanningStableV5AskedPurpose;
     }
   | {
       status: 'fallback';
@@ -465,3 +486,25 @@ export const WEEKLY_PLANNING_CONSULTATION_DIALOGUE_RESPONSE_FORMAT: JsonSchemaRe
     },
   },
 };
+
+/** P3 S3a: the reply envelope with the typed question purpose (interaction amount questions only). */
+export function withAskedPurposeResponseFormat(
+  base: JsonSchemaResponseFormat,
+  options: readonly WeeklyPlanningStableV5AskedPurpose[],
+): JsonSchemaResponseFormat {
+  const schema = base.json_schema.schema;
+  return {
+    ...base,
+    json_schema: {
+      ...base.json_schema,
+      schema: {
+        ...schema,
+        required: [...(schema.required as string[]), 'askedPurpose'],
+        properties: {
+          ...(schema.properties as JsonSchemaObject),
+          askedPurpose: { type: 'string', enum: [...options] },
+        },
+      },
+    },
+  };
+}

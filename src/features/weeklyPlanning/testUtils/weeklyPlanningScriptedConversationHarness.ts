@@ -42,7 +42,7 @@ export type ScriptedProviderCallKind =
   | 'renderer'
   /** P2: the independent reply verifier (`weekly_planning_reply_verifier_v1`). */
   | 'reply_verifier'
-  /** S3a v2: the focused purpose check of a shown assistant question (`weekly_planning_shown_question_purpose_v5`). */
+  /** P3 S3a v2: the focused check of the shown question text (`weekly_planning_shown_question_purpose_v5`). */
   | 'shown_question_purpose'
   | 'other';
 
@@ -92,7 +92,7 @@ function lastUserPayload(messages: Array<{ role: string; content: string }>): Re
 
 export function installScriptedWeeklyPlanningProvider(
   respond: (call: ScriptedProviderCall) => ScriptedProviderReply | Promise<ScriptedProviderReply>,
-  options: { completenessAudit?: 'complete' | 'scripted' } = {},
+  options: { completenessAudit?: 'complete' | 'scripted'; shownQuestionPurpose?: 'plan' | 'scripted' } = {},
 ): { calls: ScriptedProviderCall[]; restore(): void } {
   const calls: ScriptedProviderCall[] = [];
   vi.stubEnv('VITE_AI_PROVIDER', 'openai');
@@ -123,7 +123,10 @@ export function installScriptedWeeklyPlanningProvider(
     const reply = call.schemaName === 'weekly_planning_dense_turn_completeness_audit_v5'
       && options.completenessAudit !== 'scripted'
       ? JSON.stringify({ decision: 'complete', missingFacts: [] })
-      : await respond(call);
+      : call.kind === 'shown_question_purpose' && options.shownQuestionPurpose !== 'scripted'
+        // Scenarios that do not script the check treat the shown question as a plan question (the pre-check behaviour).
+        ? JSON.stringify({ purpose: 'plan' })
+        : await respond(call);
     if (typeof reply !== 'string') {
       if (reply.failure === 'network') throw new TypeError('fetch failed: issue488 fixture network outage');
       return new Response(JSON.stringify({ error: { message: 'fixture outage' } }), {
@@ -170,6 +173,8 @@ export function scriptedRendererReply(call: ScriptedProviderCall, text: string):
     actionKind: decision.actionKind ?? 'status',
     questionCode: decision.questionCode ?? null,
     groundingAcknowledgement: null,
+    // P3 S3a: an amount question declares its purpose; the neutral declaration holds nothing (it never demotes).
+    ...(call.schemaProperties.includes('askedPurpose') ? { askedPurpose: 'open_point' } : {}),
     text,
   });
 }

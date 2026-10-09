@@ -269,6 +269,9 @@ function interactionCommunicationInstructions(
     ...(communication.calendarFree?.length
       ? ['calendarFree: free minutes per day already known from the calendar; never ask for availability it answers. planningNeeds lists what the plan still needs, in no fixed order; you may propose an amount from calendarFree instead of asking.']
       : []),
+    ...(communication.askedPurposeOptions?.length
+      ? ['askedPurpose: pick what your question asks.']
+      : []),
     ...(communication.uncertaintyReleased
       ? ['uncertaintyReleased: The app states that one open point stays unconfirmed beside your reply. Do not say it was settled, confirmed or resolved, and do not restate it.']
       : []),

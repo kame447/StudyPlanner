@@ -14,10 +14,13 @@ import type { SemanticWorkloadV5, WeeklyPlanningSemanticDocumentV5 } from './wee
  * `declared` (role-unresolved) clock workload, so the existing typed role confirmation asks whether it is the amount to do
  * or the amount already done. Nothing is promoted or lost.
  */
-export type HeldQuestionPurposeV5 = 'current_progress';
+export type HeldQuestionPurposeV5 = 'current_progress' | 'per_session_length';
 
 const PURPOSE_INTENT_PREFIX = 'purpose:';
-const HELD_PURPOSES: ReadonlySet<string> = new Set<HeldQuestionPurposeV5>(['current_progress']);
+const HELD_PURPOSES: ReadonlySet<string> = new Set<HeldQuestionPurposeV5>(['current_progress', 'per_session_length']);
+
+/** Persisted form of a declared purpose (S3a): `purpose:<enum>` on the pending question's intent. */
+export const heldQuestionPurposeIntentV5 = (purpose: string): string => `${PURPOSE_INTENT_PREFIX}${purpose}`;
 
 /** Forward-compatible reader for a persisted `intent` of the form `purpose:<enum>` (unknown values yield null). */
 export function parseHeldQuestionPurposeIntentV5(intent: string | null | undefined): HeldQuestionPurposeV5 | null {

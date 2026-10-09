@@ -13,6 +13,7 @@ import {
 import {
   WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
   WEEKLY_PLANNING_CONSULTATION_DIALOGUE_RESPONSE_FORMAT,
+  withAskedPurposeResponseFormat,
   type WeeklyPlanningStableV5DialogueRenderInput,
   type WeeklyPlanningStableV5DialogueRenderResult,
   type WeeklyPlanningStableV5DialogueRenderer,
@@ -102,6 +103,9 @@ const UNGROUNDED_TEXT_REPAIR_INSTRUCTION = [
   '日付と時刻は、ユーザーの言葉・Fact・空き時間として渡された値だけから述べてください。時刻は24時間表記（例: 20時から21時）で書き、「夜8時」のような言い方は避けてください。',
   '「1時間ずつ」のような時間の長さはそのまま使って構いません。候補の件数や実行していない操作を述べないでください。',
 ].join('');
+
+/** Interaction architecture: the declared question purpose was missing or not one of the offered options. */
+const INVALID_ASKED_PURPOSE_REPAIR_INSTRUCTION = 'askedPurposeは、applicationDecision.communication.askedPurposeOptionsのうち、あなたの質問が実際に尋ねている目的を一つだけ選んでください。';
 
 /** Legacy architecture (verbatim pre-#488): the renderer reads the raw message to decide. */
 const LEGACY_REPEATED_QUESTION_REPAIR_INSTRUCTION = [
@@ -201,9 +205,13 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
     async render(input) {
       try {
         const interaction = conversationArchitecturePolicy(input.conversationArchitecture).interactionOutcome;
-        const responseFormat = interaction && input.communication?.consultation
+        const baseFormat = interaction && input.communication?.consultation
           ? WEEKLY_PLANNING_CONSULTATION_DIALOGUE_RESPONSE_FORMAT
           : WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT;
+        const askedPurposeOptions = interaction ? input.communication?.askedPurposeOptions : undefined;
+        const responseFormat = askedPurposeOptions?.length
+          ? withAskedPurposeResponseFormat(baseFormat, askedPurposeOptions)
+          : baseFormat;
         const bound = interaction ? bindWeeklyPlanningDialogueActionToken(input, responseFormat)
           : { input, responseFormat, actionBinding: null };
         const prompt = createWeeklyPlanningStableV5DialoguePrompt(bound.input);
@@ -268,7 +276,9 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
                 : GROUNDING_ACK_REPAIR_INSTRUCTION)
             : initial.reason === 'internal_process_text'
               ? INTERNAL_PROCESS_REPAIR_INSTRUCTION
-              : initial.reason === 'missing_question'
+              : interaction && initial.reason === 'invalid_asked_purpose'
+                ? INVALID_ASKED_PURPOSE_REPAIR_INSTRUCTION
+                : initial.reason === 'missing_question'
                 ? MISSING_QUESTION_REPAIR_INSTRUCTION
                 : initial.reason === 'preview_claim_without_preview'
                   ? PREVIEW_CLAIM_REPAIR_INSTRUCTION

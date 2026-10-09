@@ -28,5 +28,8 @@ export function coverageDocument(complete = false, variant: 'A' | 'C' = 'A'): We
 }
 
 export function coverageRendererReply(call: ScriptedProviderCall): string {
-  return campaignRendererReply(call.payload ?? {});
+  const reply = campaignRendererReply(call.payload ?? {});
+  // P3 S3a: an amount question declares its purpose; the neutral declaration holds nothing (it never demotes).
+  return call.schemaProperties.includes('askedPurpose')
+    ? JSON.stringify({ ...JSON.parse(reply), askedPurpose: 'open_point' }) : reply;
 }
