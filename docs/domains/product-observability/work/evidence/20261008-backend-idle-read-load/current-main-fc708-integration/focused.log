@@ -1,0 +1,31 @@
+
+ RUN  v3.2.7 <INTEGRATION_WORKTREE>
+
+ ✓ workers/ai-proxy/src/traceWorker.scheduledSubrequestBudget.test.ts (10 tests) 1135ms
+stderr | src/components/StudyPlannerAppRoot.parallelStartup.test.tsx > video error cannot release memory or planner gates and leaves static loading until both settle
+[Firebase Config] Missing required environment variables: [
+  'VITE_FIREBASE_API_KEY',
+  'VITE_FIREBASE_AUTH_DOMAIN',
+  'VITE_FIREBASE_PROJECT_ID',
+  'VITE_FIREBASE_APP_ID'
+]
+
+ ✓ src/components/StudyPlannerAppRoot.parallelStartup.test.tsx (38 tests) 813ms
+ ✓ workers/ai-proxy/src/productObservabilityActiveUserSnapshot.test.ts (16 tests) 1266ms
+   ✓ ProductObservabilityActiveUserSnapshotService > keeps a near-limit publish below 10 MiB and rejects an oversized publish first  632ms
+ ✓ src/components/StudyPlannerAppRoot.test.tsx (29 tests) 228ms
+ ✓ src/App.plannerDataRecovery.test.tsx (9 tests) 196ms
+ ✓ workers/ai-proxy/src/productObservabilityStore.test.ts (11 tests) 101ms
+ ✓ src/components/StartupVideo.test.tsx (21 tests) 113ms
+ ✓ src/components/MonthEventDialog.persistence.test.tsx (7 tests) 230ms
+ ✓ workers/ai-proxy/src/productObservabilityRetention.test.ts (14 tests) 21ms
+ ✓ workers/ai-proxy/src/productObservabilityRollup.actorDates.test.ts (4 tests) 79ms
+ ✓ scripts/preview-media-response.test.mjs (22 tests) 28ms
+ ✓ src/components/StartupSurface.test.tsx (8 tests) 29ms
+ ✓ src/components/SplashScreen.test.tsx (7 tests) 41ms
+ ✓ workers/ai-proxy/src/workerSubrequestBudget.test.ts (1 test) 13ms
+
+ Test Files  14 passed (14)
+      Tests  197 passed (197)
+   Start at  22:55:00
+   Duration  13.09s (transform 1.88s, setup 0ms, collect 3.97s, tests 4.29s, environment 3ms, prepare 1.40s)

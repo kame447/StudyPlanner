@@ -1,0 +1,25 @@
+Listing tests:
+  [chromium] › laplans-startup-video.spec.mjs:87:3 › plays the supplied clip inline and allows a ready touch skip at 390px
+  [chromium] › laplans-startup-video.spec.mjs:87:3 › plays the supplied clip inline and allows a ready touch skip at 1280px
+  [chromium] › laplans-startup-video.spec.mjs:123:1 › pending authentication and data disable skip and ignore touch, click and keyboard input
+  [chromium] › laplans-startup-video.spec.mjs:157:3 › keyboard Enter skips only after the application is ready
+  [chromium] › laplans-startup-video.spec.mjs:157:3 › keyboard Space skips only after the application is ready
+  [chromium] › laplans-startup-video.spec.mjs:157:3 › keyboard Escape skips only after the application is ready
+  [chromium] › laplans-startup-video.spec.mjs:172:1 › actual video completion keeps the final Laplans frame while data remains pending
+  [chromium] › laplans-startup-video.spec.mjs:184:1 › Pages-style full-body 200 delivery completes the video while startup data remains pending
+  [chromium] › laplans-startup-video.spec.mjs:227:1 › ready application preserves the playing video until its real nine-second end
+  [chromium] › laplans-startup-video.spec.mjs:244:1 › standalone App keeps exactly one video after readiness until real completion
+  [chromium] › laplans-startup-video.spec.mjs:263:1 › hidden playback pauses past the stall limit and resumes the same video after readiness
+  [chromium] › laplans-startup-video.spec.mjs:295:1 › reduced motion presents the final frame and makes no video request
+  [chromium] › laplans-startup-video.spec.mjs:307:1 › video transfer observer detects a deliberately downloaded MP4 under reduced motion
+  [chromium] › laplans-startup-video.spec.mjs:331:1 › blocked autoplay falls back without trapping startup
+  [chromium] › laplans-startup-video.spec.mjs:342:1 › a failed media request falls back without releasing pending startup data
+  [chromium] › laplans-startup-video.spec.mjs:359:1 › visible playback with no progress falls back without releasing pending startup data
+  [chromium] › month-event-range.spec.mjs:131:3 › multi-day month events › saves one date range and paints one continuous bar across covered cells
+  [chromium] › month-event-range.spec.mjs:197:3 › multi-day month events › editing an event into another month keeps selection, keyboard navigation and views aligned
+  [chromium] › month-event-range.spec.mjs:253:5 › multi-day month events › keeps October visible after edit of a May-anchored recurring event
+  [chromium] › month-event-range.spec.mjs:253:5 › multi-day month events › keeps October visible after single-delete of a May-anchored recurring event
+  [chromium] › month-event-range.spec.mjs:253:5 › multi-day month events › keeps October visible after future-delete of a May-anchored recurring event
+  [chromium] › month-event-range.spec.mjs:302:3 › multi-day month events › keeps new and edited event input after save failure and allows retry
+  [chromium] › month-event-range.spec.mjs:367:3 › multi-day month events › repeated multi-day occurrences stay continuous instead of falling back to daily pills
+Total: 23 tests in 2 files
