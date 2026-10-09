@@ -44,7 +44,7 @@ beforeEach(async () => {
     requestAnimationFrame: () => 0, cancelAnimationFrame: () => {},
     matchMedia: () => ({ matches: false }), setTimeout, clearTimeout,
   });
-  browserDocument = Object.assign(new EventTarget(), { visibilityState: 'visible', fonts: { ready: Promise.resolve() },
+  browserDocument = Object.assign(new EventTarget(), { documentElement: { dataset: {} }, visibilityState: 'visible', fonts: { ready: Promise.resolve() },
     body: { style: { overflow: '', overscrollBehavior: '' } } });
   vi.stubGlobal('window', browserWindow); vi.stubGlobal('document', browserDocument);
   vi.stubGlobal('HTMLElement', class {}); vi.stubGlobal('localStorage', storage);

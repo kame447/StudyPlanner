@@ -25,7 +25,9 @@ if (!localStorage.getItem('startup-gates-seeded')) {
   }));
   localStorage.setItem('startup-gates-seeded', 'true');
 }
-await createLocalWeeklyPlanningPersonalizationRepository().setWeekStartsOn(ownerId, 'monday');
+if (new URLSearchParams(location.search).get('weekStart') !== 'missing') {
+  await createLocalWeeklyPlanningPersonalizationRepository().setWeekStartsOn(ownerId, 'monday');
+}
 // Opt-in synthetic read failure; the production hook/root own retry and readiness.
 if (new URLSearchParams(location.search).get('preferenceWait') === '1') {
   const local = createLocalWeeklyPlanningPersonalizationRepository();

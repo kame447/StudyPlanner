@@ -30,6 +30,7 @@ import { useWeeklyPlanningApplication } from './features/weeklyPlanning/applicat
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useMonthTimetablePreference } from './hooks/useMonthTimetablePreference';
 import { useThemePreference } from './hooks/useThemePreference';
+import { AppearanceProvider, useAppAppearance } from './components/AppearanceProvider';
 import {
   hasStoredAppAccessGrant,
   isAppAccessGateEnabled,
@@ -88,7 +89,7 @@ type PrimarySurface = 'home' | 'ai-planning' | 'workspace';
 const SCHEDULE_VIEW_MODES = new Set<ViewMode>(['month', 'week', 'day', 'todo']);
 
 export default function App({ state, onReady }: { state?: PlannerAppSnapshot; onReady?: () => void } = {}) {
-  return state ? <AppContent state={state} onReady={onReady} /> : <StandaloneApp />;
+  return <AppearanceProvider>{state ? <AppContent state={state} onReady={onReady} /> : <StandaloneApp />}</AppearanceProvider>;
 }
 
 const ignoreStandaloneReady = () => {};
@@ -127,6 +128,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   const primaryBottomNavRef = useRef<HTMLElement | null>(null);
   const { themeMode, setThemeMode, themePalette, setThemePalette } =
     useThemePreference();
+  const appearancePreference = useAppAppearance();
   const {
     booting,
     user,
@@ -745,6 +747,9 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         showMonthTimetable={monthTimetablePreference.showTimetable}
         onChangeMonthTimetable={monthTimetablePreference.setShowTimetable}
         monthTimetableError={monthTimetablePreference.error}
+        appearance={appearancePreference.appearance}
+        onChangeAppearance={appearancePreference.setAppearance}
+        appearanceError={appearancePreference.error}
         themeMode={themeMode}
         themePalette={themePalette}
         onChangeTheme={setThemeMode}
