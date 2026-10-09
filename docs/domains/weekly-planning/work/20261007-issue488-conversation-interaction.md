@@ -547,3 +547,22 @@ Integration HEAD for app code: `167751ca` (docs since then only). E2E is **not c
   - (a) a measured, justified cap change before merge;
   - (b) a reduction in Stage 3 (for example, removing the legacy architecture's shipped duplicate paths or production-only debug projections), which is a large refactor and therefore deferred until E2E works;
   - (c) both.
+
+**x8: a per-unit rate the estimate ignored (`6a84bb6b`, `4676aa63`, parent `71a80196`).**
+- **Cause:** validation accepted a `duration_per_unit` whose unitCode did not match its workload, and estimation then ignored it without a word. The app re-asked for the rate (live round 5, X2).
+- **Invariant (root-cause):** when the app re-asks for a rate that it accepted but could not use because of its unit, it says so, quoting the user's own words: 「「…」は、この作業の単位（問）と合わなかったため使えませんでした。」. A predicate shared with estimation decides this.
+- **Projection (provisional, never silent):** a rate typed with a clock unit and exactly one counted workload as its target is used as minutes per counted unit, and the app always states it: 「「物理は1問6分くらい」は、問あたり6分として使いました。」. That makes a wrong reading visible and correctable. The 「1時間で10ページ」 mis-encoding is pinned with its sentence.
+- **Audit:**
+  - a projection replaced by a repair that drops the rate makes no false claim;
+  - fault injection fails 7 tests with the projection off, 8 when it is silent, and 3 with the disclosure off;
+  - W4 is 28/2 and W3 8/8, with identical call counts.
+- **Chain on `71a80196`:**
+  - verify passes 7,738 tests; every category is green;
+  - browser: 439 pass and 8 fail, all also failing on main;
+  - weekly-real: 10/10;
+  - legacy differential: unchanged;
+  - bundle: JS +3.2 KiB raw.
+- **Live on `71a80196`:**
+  - X2 passed 2 of 2: the rate was used, and a preview came at T2 with physics at 105 min. The model typed the unit correctly both times, so the projection did not run.
+  - H passed 1 of 1.
+- **Residual:** a repair that drops the user's rate entirely still leads to a re-ask with no notice. That is the repair-drop class, separate from the ignored-rate class.
