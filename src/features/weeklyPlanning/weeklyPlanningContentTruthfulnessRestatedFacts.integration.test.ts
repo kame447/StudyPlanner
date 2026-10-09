@@ -58,6 +58,22 @@ describe('a repair of restated accepted facts is told to return only the current
     expect(result.diagnostics.repairAttempted).toBe(true);
   });
 
+  it('interaction: the live shape — empty quotes on restated accepted tasks — gets the directive too', async () => {
+    const calls: Array<{ messages: Array<{ role: string; content: string }> }> = [];
+    const emptyQuotes = wrap([task('task-a', '読み物', { sourceText: '', ...change('task-a') }),
+      task('task-b', 'ノート', { sourceText: '', ...change('task-b') })]);
+    const repaired = wrap([task('task-a', '読み物', change('task-a')), task('task-b', 'ノート', change('task-b'))]);
+    const client = { async createChatCompletion(input: { messages: Array<{ role: string; content: string }> }) {
+      calls.push(input);
+      return calls.length === 1 ? emptyQuotes : repaired;
+    } } as unknown as OpenAiCompatibleClient;
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText, publicStateSummary: summary, conversationArchitecture: 'interaction_v1' });
+    expect(calls).toHaveLength(2);
+    expect(calls[1].messages[calls[1].messages.length - 1].content).toContain('Do not restate');
+    expect(result.status).toBe('accepted');
+  });
+
   it('legacy: the repair message is the historical one', async () => {
     const { calls } = await run('legacy_v5');
     expect(calls[1]?.messages[calls[1].messages.length - 1].content ?? '').not.toContain('Do not restate');

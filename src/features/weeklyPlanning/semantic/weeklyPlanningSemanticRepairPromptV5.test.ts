@@ -243,6 +243,16 @@ describe('repair of a restated accepted fact (live D T3)', () => {
     expect(create(restated('task-accepted'), errors)).toContain('Do not restate');
   });
 
+  it('fires for the live empty-quote shape (no suffix) and for nested workload paths', () => {
+    const live = ['document.tasks[0].sourceText', 'document.tasks[1].sourceText'];
+    const response = JSON.stringify({ tasks: [
+      { existingPublicId: 'task-a', sourceText: '', workloads: [] }, { existingPublicId: 'task-b', sourceText: '', workloads: [] }] });
+    expect(create(response, live)).toContain('Do not restate');
+    expect(create(restated('task-accepted'), ['document.tasks[0].workloads[0].sourceText'])).toContain('Do not restate');
+    expect(create(restated(null), live)).not.toContain('Do not restate');
+    expect(create(response, live, 'legacy_v5')).not.toContain('Do not restate');
+  });
+
   it('adds nothing for an unbound entity, for unrelated errors, or in legacy', () => {
     expect(create(restated(null), errors)).not.toContain('Do not restate');
     expect(create(restated('task-accepted'), ['document.tasks[0].localId:required'])).not.toContain('Do not restate');

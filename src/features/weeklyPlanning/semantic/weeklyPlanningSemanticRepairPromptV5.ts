@@ -11,10 +11,10 @@ const PRESERVE_VALID_MEANING_CLAUSE =
 const CANONICAL_DATE_REMINDER =
   'Any dateExpression you write must be canonical: YYYY-MM-DD, YYYY-MM-DD/YYYY-MM-DD, today/tomorrow/this_week/next_week, weekday:<english-weekday>, or custom:<text> only when none applies.';
 
-const UNGROUNDED_SOURCE_PATH = /^document\.tasks\[(\d+)\](?:\.[A-Za-z]+(?:\[\d+\])?)*\.sourceText:not-grounded-in-current-user-text$/;
+const UNGROUNDED_SOURCE_PATH = /^document\.tasks\[(\d+)\](?:\.[A-Za-z]+(?:\[\d+\])?)*\.sourceText(?::.*)?$/;
 
 /**
- * Whether a rejected quote sits under a task the invalid response bound to an accepted fact
+ * Whether a rejected quote (empty — reported without a suffix — or ungrounded) sits under a task the invalid response bound to an accepted fact
  * (existingPublicId). Typed structure of the response only: the model restated an accepted
  * entity instead of returning just the current turn's changes (live D T3).
  */
@@ -79,7 +79,7 @@ function repairDirectivesForErrors(
   if (conversationArchitecturePolicy(architecture).semanticConversationActs
     && ungroundedQuoteUnderAcceptedTask(errors, invalidResponse)) {
     // Live D T3: both the reading and its repair restated accepted facts with empty or stale quotes.
-    directives.push('A rejected quote sits under an accepted entity bound by existingPublicId. Do not restate it: keep its title/category/label/role exactly as in publicStateSummary, omit its unchanged accepted workloads, efforts and constraints, and return only the facts currentUserText adds or changes, each quoted from currentUserText.');
+    directives.push('A rejected or empty quote sits under an accepted entity bound by existingPublicId. Do not restate it: keep its title/category/label/role exactly as in publicStateSummary, omit its unchanged accepted workloads, efforts and constraints, and return only the facts currentUserText adds or changes, each quoted from currentUserText.');
   }
   const selfReferentialUncertainty = errors.some((error) =>
     error.includes('document.uncertainties')
