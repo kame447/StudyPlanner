@@ -721,3 +721,18 @@ Method: `vite build --sourcemap` of `ea0d871a` and of the fork point `22847120`.
   - a separate verifier purpose (needs a worker deploy);
   - UI-label tokens inside AI text;
   - the duplicate-submission message.
+
+**P2 slice 1: the capacity shortfall is AI-written and verified** (integrated 2026-10-10 00:03–00:08 JST: `3a5c0cdd`, `67d3ad67`, `9d236e09`, `e45fea8a`; BrightLavoisier).
+- **What changed:**
+  - On the capacity question, the reply states the figures and the unmet work in its own words, and the app's shortfall sentence is no longer appended. The typed fact is `mustConvey: shortfall`.
+  - The reply is checked by deterministic number and label checks (thousands separators, full-width digits, 時間/分/半 equivalence) and then by an independent verifier call on the existing renderer purpose. The verifier gets the defined fact and a defined forbidden-claim list (`plan_fits`, `plan_complete`, `saved`).
+  - On failure, the single repair slot regenerates once. A second failure is a **technical stop**: a controlled failure that keeps the turn-start state, discards the staged turn, re-binds the turn-start question, and shows one constant that says only that the message was not taken and asks for a resend.
+  - Legacy is unchanged.
+- **Gate (agreed with the critic: no notice that depends on the verifier is retired before a real-provider adversarial corpus run).**
+  - The corpus is synthetic and labelled: 25 replies for one fixture fact (correct 5, paraphrased 4, omitted 5, contradicted 6, vague/partial 5), run twice through the production pipeline, plus the verifier alone on the omitted set. That was 33 real-provider calls on the authorized preview account, with credentials kept in the browser.
+  - **Result: 0 false passes, 0 false fails, 0 nondeterministic cases, 0 errors.** The five contradicted replies that pass the literal checks (「全部入りました」, 「無理なく収まりました」, only one item unmet, 「保存しました…追加済み」, 「不足はありません」) were all rejected by the verifier in both runs. The verifier alone also rejected all five omitted replies.
+  - **Limits:** a single fixture fact, and no vague reply that carries every figure and label (the literal checks caught every vague case).
+  - **Process note:** the commits were integrated about two minutes before this result. No chain, rerun or live run happened in between (critic MAJOR, accepted).
+- **Fault injection.** The critic caught 12 of 12, including stop-binding, binding-dropped and commit-the-stop faults; a scan found no test passing on an unasserted stop. Mine caught 4 of 4 after the forbidden-claim pins.
+- **Cost:** one more AI call on each capacity-question turn (2 of 39 turns in each of live rounds 5 and 6, both in X4).
+- **Next:** the chain; W4/W3 with technical-stop and verifier-call counts; live X4 plus the full set. The migration is accepted only after the live check.
