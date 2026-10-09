@@ -4,6 +4,7 @@ import type {
   WeeklyPlanningGenericSchedulerGraphView,
 } from './weeklyPlanningGenericSchedulerInput';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
+import { workloadUnitDisplayV5 } from './weeklyPlanningWorkloadQuantityLabelV5';
 import {
   bufferedWeeklyPlanningEstimateMinutes,
 } from './weeklyPlanningEffortAllocation';
@@ -142,7 +143,7 @@ function sessionizeItem(params: {
     return {
       ...params.item,
       id: `${params.item.id}:accepted-memory-session:${index + 1}`,
-      label: `${label} ${displayQuantity(quantityAmount)}${params.item.quantity.unitLabel}（${index + 1}/${durations.length}）`,
+      label: `${label} ${displayQuantity(quantityAmount)}${workloadUnitDisplayV5(params.item.quantity.unitCode, params.item.quantity.unitLabel)}（${index + 1}/${durations.length}）`,
       quantity: {
         ...params.item.quantity,
         amount: quantityAmount,

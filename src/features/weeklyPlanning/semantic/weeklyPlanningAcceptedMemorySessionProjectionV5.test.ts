@@ -135,4 +135,52 @@ describe('accepted memory session projection', () => {
     });
     expect(result).toEqual(compilation());
   });
+  describe('session titles state a clock quantity from the typed unit', () => {
+    function clockFixture(unitCode: 'minute' | 'hour', unitLabel: string, amount: number, sessionMinutes: number) {
+      const sourceGraph = graph();
+      sourceGraph.workloads = [{ ...sourceGraph.workloads[0], amount, unitCode, unitLabel }];
+      sourceGraph.effortEstimates = [{ ...sourceGraph.effortEstimates[0], minutes: sessionMinutes }];
+      const sourceCompilation = compilation();
+      const sourceItem = sourceCompilation.input!.movableWorkItems[0];
+      sourceCompilation.input!.movableWorkItems[0] = {
+        ...sourceItem,
+        label: `英単語 ${amount}${unitLabel}`,
+        quantity: { ...sourceItem.quantity, amount, unitCode, unitLabel, ordinalRange: null },
+        estimatedMinutes: unitCode === 'hour' ? amount * 60 : amount,
+        baseEstimatedMinutes: unitCode === 'hour' ? amount * 60 : amount,
+      };
+      return applyAcceptedMemorySessionProjectionV5({
+        compilation: sourceCompilation, graph: sourceGraph,
+        acceptedSpacedProposal: proposal('spaced_memory_practice'),
+        acceptedCalibrationProposal: null,
+      }).input!.movableWorkItems;
+    }
+
+    it('never appends a free-text phrase such as 3時間 to a minute amount (live E: 903時間)', () => {
+      const items = clockFixture('minute', '3時間', 180, 90);
+      expect(items.length).toBeGreaterThan(1);
+      items.forEach((item, index) => {
+        expect(item.label).toBe(`英単語 ${item.quantity.amount}分（${index + 1}/${items.length}）`);
+      });
+      expect(items.map((item) => item.label).join('')).not.toContain('903');
+    });
+
+    it('states an hour amount in 時間 whatever wording the model kept', () => {
+      const items = clockFixture('hour', 'h', 3, 90);
+      items.forEach((item, index) => {
+        expect(item.label).toBe(`英単語 ${item.quantity.amount}時間（${index + 1}/${items.length}）`);
+      });
+    });
+
+    it('keeps the model wording for non-clock units', () => {
+      const items = clockFixture('minute', '分', 60, 20);
+      expect(items[0].label).toMatch(/分（1\//);
+      const words = applyAcceptedMemorySessionProjectionV5({
+        compilation: compilation(), graph: graph(),
+        acceptedSpacedProposal: proposal('spaced_memory_practice'),
+        acceptedCalibrationProposal: null,
+      }).input!.movableWorkItems;
+      expect(words[0].label).toMatch(/^英単語 \d+語（1\/7）$/);
+    });
+  });
 });
