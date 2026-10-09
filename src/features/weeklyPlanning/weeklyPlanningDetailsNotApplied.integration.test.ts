@@ -40,11 +40,12 @@ function install(rendererText: string | null) {
     }
     const consult = { kind: 'consultation_request', targetPublicId: taskId };
     if (text === T2) {
-      // A planning delta that is invalid in every read and that no focused repair covers (a workload whose amount is not a positive number), plus the
-      // consultation act that carries the turn: the live H T2 outcome (delta rejected, conversation-only route). The live
-      // dangling-replacement shape applies after x9b/x9c, so this pin deliberately uses a shape that stays rejected.
+      // The live H T2 reading after x9b/x9c, with an EFFORT replacement whose replacement local id is declared nowhere
+      // (x9b/x9c cover workload replacements only): every read stays invalid, the planning delta is rejected and the
+      // consultation act carries the turn.
       return JSON.stringify(doc({
-        tasks: [paper(taskId!, { sourceText: 'やっぱり25ページで', workloads: [amount(-25, '25ページ')] })],
+        tasks: [paper(taskId!, { sourceText: 'やっぱり25ページで', workloads: [amount(25, '25ページ')] })],
+        corrections: [{ localId: 'c', target: { kind: 'effort_estimate', publicId: 'wpf_effort_dangling', localId: null, mention: null }, operation: 'replace', replacementLocalId: 'rate-missing', sourceText: 'やっぱり25ページで' }],
         conversationActs: [consult],
       }));
     }
