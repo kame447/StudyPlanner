@@ -815,3 +815,21 @@ Method: `vite build --sourcemap` of `ea0d871a` and of the fork point `22847120`.
   - Gate: the critic's held-out v3 set (single item, all unmet, further items) gave 0 false passes and 0 false fails; the over-relaxation guard held.
 - Typecheck is clean and the weeklyPlanning suite passes (4296 tests).
 - **Verification chain on `87df7c31`:** verify (7872), the categories and weekly-real all passed. The browser step was invalid: another project's preview server held port 4173, and the configuration reuses an existing server. A rerun on a free port is under way.
+
+**P3 S3a and S3a v2 integrated** (`ec2d816b`, `f8f04e82`, `14a6d826`, `c502e104`, `dc891a9b`, plus a legacy pin `36c7a6bd`; MistyFabre and BrightLavoisier; critic audits PASS).
+- **S3a, the asked-purpose envelope:**
+  - On amount questions (interaction only), the renderer declares `askedPurpose` from the options the app offers. `available_time` is not offered while the calendar is known.
+  - An invalid declaration gets one repair and then the existing fallback.
+  - A valid one is held in `intent` (`purpose:<enum>`) and only ever demotes.
+  - Declarations never reach a reader.
+- **S3a v2, the shown-question purpose check:**
+  - It applies when no demoting purpose is held and an amount (a bare budget or a target) answers a pending amount question.
+  - One focused call classifies the question text the user saw as `progress`, `plan` or `other`. Only `plan` lets the amount bind as a plan target. Anything else, including the check being unavailable, makes it declared, followed by one role confirmation.
+  - The completion budget is 512 tokens, because reasoning tokens count against it.
+- **Gate history:**
+  - **First gate failed:** 7 false `plan` on availability, per-day capacity, days and identity questions.
+  - **Fix:** the definition was rewritten in general terms.
+  - **Re-gate passed on a fresh critic held-out set:** 0 false `plan`, 0 missed plan questions, 0 unavailable, 40/40 exact over two repeats.
+  - **Residual:** the regression sets show 2 false `plan` in the "how many days" class (「週に何日くらい…」, 「何日くらいに分けて…」). This is accepted as low risk, because an amount given there is naturally a plan amount, unlike progress or availability answers.
+- **The role confirmation for a demoted amount** offers "amount for this plan" or "already done", plus "remaining" only when a scope total exists. Legacy keeps the original pair.
+- Typecheck is clean and the weeklyPlanning suite passes (4335 tests).
