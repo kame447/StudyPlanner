@@ -25,6 +25,7 @@ import {
   planWeeklyPlanningInteraction,
   upcomingQuestionCodesForInteraction,
 } from './weeklyPlanningInteractionDecision';
+import { capacityShortfallFromPreview } from './weeklyPlanningCapacityShortfall';
 import type {
   WeeklyPlanningPreviewOmittedWork,
   WeeklyPlanningTurnCommunicationFacts,
@@ -83,6 +84,11 @@ function communicationFacts(params: {
 }): WeeklyPlanningTurnCommunicationFacts {
   const context = params.output.state.lastQuestionContext;
   const code = decodeWeeklyPlanningStableV5QuestionSlot(context?.targetSlot);
+  const capacityShortfall = capacityShortfallFromPreview({
+    preview: params.preview,
+    schedulerInput: params.schedulerInput,
+    taskTitleById: new Map(params.evaluation.activeGraph.tasks.map((task) => [task.id, task.title])),
+  });
   return {
     allocationBreakdown: summarizeWeeklyPlanningAllocationBreakdown(params.output.draftCandidates),
     ...(params.schedulerInput && params.output.draftCandidates.length > 0
@@ -112,6 +118,7 @@ function communicationFacts(params: {
     }),
     planningDetailsNotApplied: params.planningDetailsNotApplied,
     ...(params.possibleCompletenessOmission ? { possibleCompletenessOmission: true } : {}),
+    ...(capacityShortfall ? { capacityShortfall } : {}),
     previewDisclosure: params.omittedWork
       ? { omittedWork: params.omittedWork }
       : null,
