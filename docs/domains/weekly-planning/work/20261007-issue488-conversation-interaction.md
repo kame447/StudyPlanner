@@ -625,3 +625,20 @@ Method: `vite build --sourcemap` of `ea0d871a` and of the fork point `22847120`.
 - **R5. Move eager weekly-planning imports out of the startup chunk.** This improves startup but does not change the total-JS budget, so it is not counted as a reduction.
 
 **Assessment:** R1–R3 together are about −60 to −100 KB raw against a +169,928 B raw overage, and the gzip overage is +50,213 B. Without R4, or a measured and justified budget decision by the user, the gap does not close. The gate stays failing and attributed to this Issue.
+
+**Live round 6 (`ea0d871a`, all 14 scenarios, scripts verbatim, preview only; run Friday 10/09, 22:50–23:00 JST): 9 of 14 pass.**
+- **Pass:** A, B, C, E, F, G, X1, X3, X5. B T4 took in 「青チャート」 as a material, so the reply 「青チャートですね」 is true.
+- **Fail, disclosed:**
+  - D T3: both readings were bare task shells. The model dropped 「1回1時間くらいで2回に分けたい。どっちも夜がいい」 (which task is meant is ambiguous). Nothing-read was shown.
+  - X2 T3: the model dropped 「物理は木曜日までに」. Nothing-read was shown, and the plan already meets the wish (physics on Tuesday).
+- **Fail, silent:** H T2.
+  - The 25-page correction's replacement fact was missing from a reading with no task entry, so x9b did not take it and the generic repair failed.
+  - A `consultation_request` act sent the turn down the conversation-only route.
+  - The app recorded `planningDetailsNotApplied: true`, but on the AI-rendered path only the renderer prompt carries that fact, and the reply did not say it.
+  - T3 planned the old 30 pages.
+  - Assigned: x10 makes the disclosure app-owned; x9c extends the recovery to a reading with no task entry when the target task is unambiguous.
+- **Wording:**
+  - EV T4 「特にない」 got 「…今日はこれで大丈夫です。この返事からは新しい条件を読み取っていません。条件があれば…」. That is true but awkward after a decline (minor).
+  - Renderer wording for a deferred consultation still varies; this is prompt-level.
+- **Inconclusive:** X4. 「金曜までに」 at Friday 22:58 leaves only tonight, so the capacity question is consistent with the run time.
+- **Same session, scripted and mock evidence on `ea0d871a`:** W4 is 28/2 (B4 only), W3 is 8/8, and the call counts are identical to the previous head. The chain is green except 8 browser failures, all baseline.
