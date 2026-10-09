@@ -24,7 +24,7 @@ const CENSUS_ATTEMPT_STAGES: Readonly<Record<string, SemanticDispatchStage>> = {
   initial: 'initial', repair: 'repair', dense_completeness_retry: 'retry',
   completeness_retry: 'retry', completeness_retry_final: 'retry', dense_completeness_audit: 'audit',
   focused_task_temporal_side_contribution: 'focused', focused_user_context_date_repair: 'repair',
-  focused_planning_window_repair: 'repair', focused_temporal_scope_repair: 'repair',
+  focused_planning_window_repair: 'repair', focused_temporal_scope_repair: 'repair', focused_replacement_fact_repair: 'repair',
 };
 
 export function semanticNormalizerByteLength(value: unknown): number {

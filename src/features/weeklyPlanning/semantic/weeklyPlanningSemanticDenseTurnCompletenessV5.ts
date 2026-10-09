@@ -186,6 +186,38 @@ function completenessAuditFailureResult(params: {
   return result;
 }
 
+/**
+ * The typed evidence-coverage eligibility of a document for the current turn (interaction only; undefined for a
+ * size-gated dense turn or legacy). One owner for the audit selection and for the x9b recovered-document disclosure.
+ */
+export function measureInteractionEvidenceCoverageEligibilityV5(params: {
+  run: WeeklyPlanningSemanticNormalizerRunV5;
+  document: WeeklyPlanningSemanticDocumentV5;
+  initialResponse: string;
+}): { evidenceCoverageEligibility: ReturnType<typeof measureWeeklyPlanningSemanticEvidenceCoverageV5> | undefined; taskModification: boolean } {
+  const dense = denseTurnCompletenessAuditEligibleV5(params.run.input.userText);
+  const interaction = conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs;
+  const taskModification = !dense
+    && interaction
+    && hasWeeklyPlanningEvidenceCoverageTaskModificationV5({
+      document: params.document, committedGraph: params.run.input.committedGraph,
+    });
+  let evidenceCoverageEligibility = !dense && interaction
+    ? measureWeeklyPlanningSemanticEvidenceCoverageV5({
+        userText: params.run.input.userText, document: params.document,
+        additionalSourceTexts: advisoryUncertaintySourceTextsV5(params.initialResponse),
+        ...(taskModification ? { boundedNumericSourceTexts: true, committedGraph: params.run.input.committedGraph } : {}),
+      })
+    : undefined;
+  if (evidenceCoverageEligibility?.eligible) evidenceCoverageEligibility = {
+    ...evidenceCoverageEligibility,
+    eligible: hasWeeklyPlanningEvidenceCoverageMissingEffortV5({
+      document: params.document, committedGraph: params.run.input.committedGraph,
+    }) || taskModification,
+  };
+  return { evidenceCoverageEligibility, taskModification };
+}
+
 export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
   run: WeeklyPlanningSemanticNormalizerRunV5;
   baseMessages: ChatMessage[];
@@ -195,25 +227,9 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
 }): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
   const initialAlgorithmicRepairs = [...params.run.algorithmicRepairs];
   const dense = denseTurnCompletenessAuditEligibleV5(params.run.input.userText);
-  const taskModification = !dense
-    && conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs
-    && hasWeeklyPlanningEvidenceCoverageTaskModificationV5({
-      document: params.initialDocument, committedGraph: params.run.input.committedGraph,
-    });
-  let evidenceCoverageEligibility = !dense
-    && conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs
-    ? measureWeeklyPlanningSemanticEvidenceCoverageV5({
-        userText: params.run.input.userText, document: params.initialDocument,
-        additionalSourceTexts: advisoryUncertaintySourceTextsV5(params.initialResponse),
-        ...(taskModification ? { boundedNumericSourceTexts: true, committedGraph: params.run.input.committedGraph } : {}),
-      })
-    : undefined;
-  if (evidenceCoverageEligibility?.eligible) evidenceCoverageEligibility = {
-    ...evidenceCoverageEligibility,
-    eligible: hasWeeklyPlanningEvidenceCoverageMissingEffortV5({
-      document: params.initialDocument, committedGraph: params.run.input.committedGraph,
-    }) || taskModification,
-  };
+  const { evidenceCoverageEligibility } = measureInteractionEvidenceCoverageEligibilityV5({
+    run: params.run, document: params.initialDocument, initialResponse: params.initialResponse,
+  });
   if (evidenceCoverageEligibility) recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.run.input.traceRequestId,
     stage: 'semantic_evidence_coverage_eligibility',

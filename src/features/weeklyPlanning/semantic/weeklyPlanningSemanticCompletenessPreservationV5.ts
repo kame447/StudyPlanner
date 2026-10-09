@@ -8,7 +8,9 @@ import { normalizeWeeklyPlanningEvidenceTextV5 } from './weeklyPlanningCurrentTu
 export interface WeeklyPlanningSemanticCompletenessAbstentionV5 {
   reason: 'initial_facts_not_preserved' | 'repair_budget_consumed'
     | 'provider_failure' | 'malformed_audit_response' | 'dispatch_budget_exhausted'
-    | 'omission_not_taken_in';
+    | 'omission_not_taken_in'
+    /** x9b: a focused-recovery document left a typed uncovered span in the user's text after the audit. */
+    | 'recovered_text_not_covered';
   /** Unset for a refused or unrepairable re-read; set when the audit or re-read could not run. */
   step?: 'audit' | 'retry';
 }

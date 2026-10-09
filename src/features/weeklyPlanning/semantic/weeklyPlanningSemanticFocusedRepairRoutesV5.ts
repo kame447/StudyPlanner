@@ -24,6 +24,18 @@ import {
   parseFocusedUserContextDateRepairDecisionV5,
   readFocusedUserContextDateRepairCandidateV5,
 } from './weeklyPlanningFocusedUserContextDateRepairV5';
+import {
+  FOCUSED_REPLACEMENT_FACT_REPAIR_MAX_COMPLETION_TOKENS,
+  FOCUSED_REPLACEMENT_FACT_REPAIR_RESPONSE_FORMAT_V5,
+  applyFocusedReplacementFactRepairV5,
+  createFocusedReplacementFactRepairMessagesV5,
+  markFocusedReplacementRecoveredV5,
+  parseFocusedReplacementFactRepairDecisionV5,
+  readFocusedReplacementFactRepairCandidatesV5,
+} from './weeklyPlanningFocusedReplacementFactRepairV5';
+import { measureInteractionEvidenceCoverageEligibilityV5, tryWeeklyPlanningDenseTurnCompletenessRetryV5 } from './weeklyPlanningSemanticDenseTurnCompletenessV5';
+import { createWeeklyPlanningSemanticBaseMessagesV5 } from './weeklyPlanningSemanticPromptAssemblyV5';
+import { conversationArchitecturePolicy } from '../weeklyPlanningConversationArchitecture';
 import type { WeeklyPlanningSemanticNormalizerResultV5 } from './weeklyPlanningSemanticNormalizerContractsV5';
 import {
   focusedRepairCalendarContextV5,
@@ -397,6 +409,116 @@ async function tryFocusedTemporalScopeRepairRouteV5(params: {
   return result;
 }
 
+/**
+ * x9b: the focused recovery of dangling workload replacement ids (live round 5 C T2). It consumes the turn's single repair in
+ * place of the generic one. The recovered document then goes through the same evidence-coverage audit as any accepted reading
+ * (the deadline 「金曜日までに」 the readings dropped can still be recovered), and a recovered document whose coverage stays
+ * eligible after that audit is DISCLOSED as possibly incomplete: a disclosure only, never a gate and never a change of meaning.
+ */
+async function tryFocusedReplacementFactRepairRouteV5(params: {
+  run: WeeklyPlanningSemanticNormalizerRunV5;
+  initialResponse: string;
+  initialValidation: SemanticValidationResultV5;
+}): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
+  if (!conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs) return null;
+  const candidates = readFocusedReplacementFactRepairCandidatesV5({
+    rawResponse: params.initialResponse, validationErrors: params.initialValidation.errors, committedGraph: params.run.input.committedGraph,
+  });
+  if (!candidates) return null;
+
+  const messages = createFocusedReplacementFactRepairMessagesV5({ userText: params.run.input.userText, candidates });
+  const request = {
+    messages,
+    temperature: 0,
+    responseFormat: FOCUSED_REPLACEMENT_FACT_REPAIR_RESPONSE_FORMAT_V5,
+    purpose: 'weekly_planning_semantic_normalizer' as const,
+    maxCompletionTokens: FOCUSED_REPLACEMENT_FACT_REPAIR_MAX_COMPLETION_TOKENS,
+  };
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.run.input.traceRequestId,
+    stage: 'semantic_orchestrator_route',
+    severity: 'warn',
+    data: {
+      route: 'focused_replacement_fact_repair_candidate',
+      meaningOwner: 'ai',
+      deterministicResponsibilities: [
+        'route_from_exact_dangling_replacement_errors',
+        'merge_only_the_named_replacement_workloads',
+        'revalidate_complete_document',
+      ],
+      initialValidationErrors: params.initialValidation.errors,
+      requestBytes: semanticNormalizerByteLength(request),
+    },
+  });
+
+  let response: string;
+  try {
+    markWeeklyPlanningSemanticRepairConsumedV5(params.run);
+    response = await params.run.callTracked(request, 'focused_replacement_fact_repair');
+  } catch (error) {
+    return providerFailureResult(params.run, params.initialValidation.errors, error);
+  }
+  const decision = parseFocusedReplacementFactRepairDecisionV5(response);
+  const merged = decision ? applyFocusedReplacementFactRepairV5({ rawResponse: params.initialResponse, candidates, decision }) : null;
+  if (!merged) {
+    return rejectedResult(params.run, [
+      ...params.initialValidation.errors.map((value) => `initial:${value}`),
+      'repair:focused-replacement-fact:invalid-response',
+    ]);
+  }
+  const validation = validateWeeklyPlanningSemanticResponseV5(merged, validationState(params.run));
+  params.run.addAlgorithmicRepairs(validation.algorithmicRepairs);
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.run.input.traceRequestId,
+    stage: 'semantic_validation_result',
+    severity: validation.document ? 'info' : 'error',
+    data: {
+      attempt: 'focused_replacement_fact_repair', accepted: Boolean(validation.document), errors: validation.errors,
+      algorithmicRepairs: validation.algorithmicRepairs, parsedDocument: validation.parsedDocument,
+    },
+  });
+  if (!validation.document) {
+    return rejectedResult(params.run, [
+      ...params.initialValidation.errors.map((value) => `initial:${value}`),
+      ...validation.errors.map((value) => `repair:${value}`),
+    ]);
+  }
+
+  const recovered = validation.document;
+  const accepted: WeeklyPlanningSemanticNormalizerResultV5 = {
+    status: 'accepted',
+    document: recovered,
+    diagnostics: params.run.diagnostics({
+      attemptCount: 2, repairAttempted: true, validationErrors: params.initialValidation.errors, providerError: null,
+    }),
+  };
+  params.run.recordDecision(accepted, { route: 'focused_replacement_fact_repair' });
+  // The same evidence-coverage audit as any accepted reading: the turn's uncovered part (live: the deadline) may still be recovered.
+  const audited = await tryWeeklyPlanningDenseTurnCompletenessRetryV5({
+    run: params.run,
+    baseMessages: createWeeklyPlanningSemanticBaseMessagesV5(params.run.input),
+    initialResponse: JSON.stringify(recovered),
+    initialDocument: recovered,
+    semanticRepairConsumed: () => weeklyPlanningSemanticRepairConsumedV5(params.run),
+  });
+  const outcome = audited ?? accepted;
+  if (outcome.status !== 'accepted' || !outcome.document) return outcome;
+  markFocusedReplacementRecoveredV5(outcome);
+  if (outcome.completenessAbstention) return outcome;
+  // Safeguard (disclosure only): the audit finished (complete, or nothing could be taken in) and the FINAL document of a recovered
+  // turn still leaves a typed uncovered span in the user's text.
+  const { evidenceCoverageEligibility } = measureInteractionEvidenceCoverageEligibilityV5({
+    run: params.run, document: outcome.document, initialResponse: JSON.stringify(outcome.document),
+  });
+  if (!evidenceCoverageEligibility?.eligible) return outcome;
+  recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.run.input.traceRequestId,
+    stage: 'semantic_evidence_coverage_abstained',
+    data: { route: evidenceCoverageEligibility.route, reason: 'recovered_text_not_covered', step: 'audit' },
+  });
+  return { ...outcome, completenessAbstention: { reason: 'recovered_text_not_covered' } };
+}
+
 export async function tryFocusedSemanticRepairRouteV5(params: {
   run: WeeklyPlanningSemanticNormalizerRunV5;
   initialResponse: string;
@@ -424,6 +546,9 @@ export async function tryFocusedSemanticRepairRouteV5(params: {
     initialValidation: params.initialValidation,
   });
   if (planningWindowResult) return planningWindowResult;
+
+  const replacementFactResult = await tryFocusedReplacementFactRepairRouteV5(params);
+  if (replacementFactResult) return replacementFactResult;
 
   return tryFocusedTemporalScopeRepairRouteV5(params);
 }
