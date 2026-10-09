@@ -14,6 +14,9 @@ export interface AppSettingsGeneralProps {
   onChangeHomeSceneStyle?: (style: HomeSceneStyle) => void;
   onChangeHomeSceneMotion?: (animated: boolean) => void;
   homeSceneError?: string | null;
+  showDayTimetable?: boolean;
+  onChangeDayTimetable?: (value: boolean) => void;
+  dayTimetableError?: string | null;
   showMonthTimetable?: boolean;
   onChangeMonthTimetable?: (value: boolean) => void;
   monthTimetableError?: string | null;
@@ -34,6 +37,7 @@ export function AppSettingsGeneral({
   appearance = 'standard', onChangeAppearance, appearanceError,
   homeScenePreferences = DEFAULT_HOME_SCENE_PREFERENCES,
   onChangeHomeSceneStyle, onChangeHomeSceneMotion, homeSceneError,
+  showDayTimetable = true, onChangeDayTimetable, dayTimetableError,
   showMonthTimetable = true, onChangeMonthTimetable, monthTimetableError,
   themeMode, themePalette, onChangeTheme, onChangeThemePalette,
 }: AppSettingsGeneralProps) {
@@ -123,6 +127,22 @@ export function AppSettingsGeneral({
             このブラウザに、ユーザーごとに保存されます。</p>
         </details>
         {monthTimetableError ? <p className="settings-inline-error settings-group-note" role="alert">{monthTimetableError}</p> : null}
+      </div> : null}
+      {onChangeDayTimetable ? <div className="settings-row-block">
+        <div className="settings-row">
+          <span className="settings-field-label" id="day-timetable-label"><CalendarDays aria-hidden="true" size={21} />日カレンダーに時間割を表示</span>
+          <div className="settings-segments" role="group" aria-labelledby="day-timetable-label" aria-describedby="day-timetable-description">
+            <button type="button" aria-pressed={showDayTimetable} onClick={() => onChangeDayTimetable(true)}>表示する</button>
+            <button type="button" aria-pressed={!showDayTimetable} onClick={() => onChangeDayTimetable(false)}>表示しない</button>
+          </div>
+        </div>
+        <details className="settings-help">
+          <summary>表示される授業について</summary>
+          <p id="day-timetable-description">時間割から自動表示する授業を、日カレンダーに表示します。
+            オフにしても、予定として保存した授業や記録は残ります。月・週表示やAIの空き時間判定は変わりません。
+            このブラウザに、ユーザーごとに保存されます。</p>
+        </details>
+        {dayTimetableError ? <p className="settings-inline-error settings-group-note" role="alert">{dayTimetableError}</p> : null}
       </div> : null}
       <div className="settings-row-block">
         <div className="settings-row">

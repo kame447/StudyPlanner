@@ -29,6 +29,7 @@ import { ScheduleToolbar } from './components/ScheduleToolbar';
 import { useWeeklyPlanningApplication } from './features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
 import { useMonthTimetablePreference } from './hooks/useMonthTimetablePreference';
+import { useTimetableDisplayPreference } from './hooks/useTimetableDisplayPreference';
 import { useThemePreference } from './hooks/useThemePreference';
 import { AppearanceProvider, useAppAppearance } from './components/AppearanceProvider';
 import {
@@ -200,6 +201,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     setEditorDraft,
   } = state;
   const monthTimetablePreference = useMonthTimetablePreference(user?.id);
+  const dayTimetablePreference = useTimetableDisplayPreference('day', user?.id);
   const homeScenePreference = useHomeScenePreference();
   const {
     term: activeTimetableTerm,
@@ -562,6 +564,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
 
             {viewMode === 'day' ? (
               <DayView
+                showTimetable={dayTimetablePreference.showTimetable}
                 selectedDate={selectedDate}
                 userId={user.id}
                 plans={plans}
@@ -744,6 +747,9 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         onChangeHomeSceneMotion={homeScenePreference.setAnimated}
         homeSceneError={homeScenePreference.error}
         open={settingsNavigation.isOpen}
+        showDayTimetable={dayTimetablePreference.showTimetable}
+        onChangeDayTimetable={dayTimetablePreference.setShowTimetable}
+        dayTimetableError={dayTimetablePreference.error}
         showMonthTimetable={monthTimetablePreference.showTimetable}
         onChangeMonthTimetable={monthTimetablePreference.setShowTimetable}
         monthTimetableError={monthTimetablePreference.error}
