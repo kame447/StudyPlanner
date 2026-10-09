@@ -65,8 +65,8 @@ async function expectRealCompletion(page) {
   const ended = await page.evaluate(() => window.__laplansEnded);
   expect(ended).toBeDefined();
   expect(ended.trusted).toBe(true);
-  expect(ended.time).toBeCloseTo(9, 1);
-  expect(ended.duration).toBeCloseTo(9, 1);
+  expect(ended.time).toBeCloseTo(5, 1);
+  expect(ended.duration).toBeCloseTo(5, 1);
   return ended;
 }
 
@@ -77,7 +77,7 @@ async function expectUnloaded(media) {
 
 async function expectStaticLoading(page) {
   await expect(page.locator('video')).toHaveCount(0);
-  await expect(page.getByRole('img', { name: 'Laplans', exact: true })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Laplance', exact: true })).toBeVisible();
   await expect(page.getByRole('main', { name: 'アプリ起動中', exact: true })).toBeVisible();
   await expect(page.getByRole('status')).toContainText('アプリを準備しています...');
   await expect(page.locator('.home-main:visible')).toHaveCount(0);
@@ -221,7 +221,7 @@ for (const key of ['Enter', 'Space', 'Escape']) {
   });
 }
 
-test('actual video completion keeps the final Laplans frame while data remains pending', async ({ page }) => {
+test('actual video completion keeps the final Laplance frame while data remains pending', async ({ page }) => {
   await boot(page);
   await startPlanner(page);
   await expect.poll(() => page.locator('video').evaluate(node => node.currentTime)).toBeGreaterThan(0);
@@ -235,7 +235,7 @@ test('actual video completion keeps the final Laplans frame while data remains p
 
 test('Pages-style full-body 200 delivery completes the video while startup data remains pending', async ({ page }, testInfo) => {
   const { readFile } = await import('node:fs/promises');
-  const clip = await readFile(new globalThis.URL('../../src/assets/laplans_blackhole_1080x1920.mp4', import.meta.url));
+  const clip = await readFile(new globalThis.URL('../../src/assets/laplance_blackhole_1080x1920.mp4', import.meta.url));
   const deliveries = [];
   let ended;
   let rangeProbe;
@@ -257,7 +257,7 @@ test('Pages-style full-body 200 delivery completes the video while startup data 
     await observeEnded(page.locator('video'));
     ended = await expectRealCompletion(page);
     expect(deliveries.length).toBeGreaterThan(0);
-    expect(deliveries.every(delivery => delivery.status === 200 && delivery.bytes === 1_628_755)).toBe(true);
+    expect(deliveries.every(delivery => delivery.status === 200 && delivery.bytes === 839_108)).toBe(true);
     await expectStaticLoading(page);
 
     // Linux WebKit can request the native video without a Range header. Test
@@ -268,7 +268,7 @@ test('Pages-style full-body 200 delivery completes the video while startup data 
       return { status: response.status, type: response.headers.get('content-type'),
         contentRange: response.headers.get('content-range'), size: (await response.arrayBuffer()).byteLength };
     }, deliveries[0].url);
-    expect(rangeProbe).toEqual({ status: 200, type: 'video/mp4', contentRange: null, size: 1_628_755 });
+    expect(rangeProbe).toEqual({ status: 200, type: 'video/mp4', contentRange: null, size: 839_108 });
     expect(deliveries.some(delivery => delivery.range === 'bytes=0-63')).toBe(true);
     await expectStaticLoading(page);
   } finally {
@@ -276,7 +276,7 @@ test('Pages-style full-body 200 delivery completes the video while startup data 
   }
 });
 
-test('ready application preserves the playing video until its real nine-second end', async ({ page }) => {
+test('ready application preserves the playing video until its real five-second end', async ({ page }) => {
   await boot(page);
   const video = page.locator('video');
   await expect.poll(() => video.evaluate(node => node.currentTime)).toBeGreaterThan(0);
@@ -284,7 +284,7 @@ test('ready application preserves the playing video until its real nine-second e
   await observeEnded(video);
   await readyPlanner(page);
   const readyTime = await media.evaluate(node => node.currentTime);
-  expect(readyTime).toBeLessThan(9);
+  expect(readyTime).toBeLessThan(5);
   expect(await media.evaluate(node => node === document.querySelector('video') && !node.paused && !node.ended)).toBe(true);
   await expect.poll(() => media.evaluate(node => node.currentTime)).toBeGreaterThan(readyTime);
   await expect(page.locator('.home-main:visible')).toHaveCount(0);
@@ -374,7 +374,7 @@ test('video transfer observer detects a deliberately downloaded MP4 under reduce
     const response = await fetch(url, { cache: 'no-store' });
     return { ok: response.ok, type: response.headers.get('content-type'), size: (await response.arrayBuffer()).byteLength };
   }, assetUrl.href);
-  expect(downloaded).toEqual({ ok: true, type: 'video/mp4', size: 1_628_755 });
+  expect(downloaded).toEqual({ ok: true, type: 'video/mp4', size: 839_108 });
   expect(transfers.requests).not.toEqual([]);
   await expect.poll(() => transfers.responses.length).toBeGreaterThan(0);
   await expectStaticLoading(page);
