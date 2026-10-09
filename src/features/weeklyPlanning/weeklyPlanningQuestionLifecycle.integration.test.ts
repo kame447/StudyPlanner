@@ -307,6 +307,70 @@ describe('X3 negatives: only the matching dimension retires a required question 
   });
 });
 
+const H = {
+  T1: '来週、レポートの文献を30ページ読む。1ページ3分くらい',
+  T2: 'あ、やっぱり25ページで、1ページ3分のまま。あとこれって1日でまとめて読んでも平気？',
+  T3: 'じゃあ水曜の夜にまとめて',
+};
+
+describe('H: a consultation is not a blocking uncertainty unless the model declares that it blocks', () => {
+  function installH(blocksPlanning: boolean | undefined, architecture: WeeklyPlanningConversationArchitecture = 'interaction_v1') {
+    install((text, call) => {
+      const [taskId] = summaryTaskIds(call);
+      if (text === H.T1) {
+        return emptyDocument({
+          planningIntent: 'create_plan', planningWindow: nextWeek,
+          tasks: [studyTask({ localId: 'paper', title: 'レポートの文献', activityKind: 'reading', sourceText: '文献を30ページ読む',
+            workloads: [workload('paper-amount', 30, 'page', 'ページ', '30ページ')],
+            effortEstimates: [perUnit('paper-rate', 'paper-amount', 3, 'page', '1ページ3分')] })],
+        }, architecture);
+      }
+      if (text === H.T2) {
+        return emptyDocument({
+          tasks: [studyTask({ localId: 'paper', existingPublicId: taskId, title: 'レポートの文献', activityKind: 'reading', sourceText: 'やっぱり25ページで',
+            workloads: [workload('paper-amount-2', 25, 'page', 'ページ', '25ページ')],
+            effortEstimates: [perUnit('paper-rate-2', 'paper-amount-2', 3, 'page', '1ページ3分')] })],
+          uncertainties: [{ localId: 'u-one-day', targetLocalId: 'paper', field: 'one_day_completion_feasibility',
+            reason: '1日でまとめて読めるか', sourceText: 'あとこれって1日でまとめて読んでも平気？',
+            ...(blocksPlanning === undefined ? {} : { blocksPlanning }) }],
+          conversationActs: [{ kind: 'consultation_request', targetPublicId: taskId }],
+        }, architecture);
+      }
+      return emptyDocument({
+        tasks: [studyTask({ localId: 'paper', existingPublicId: taskId, title: 'レポートの文献', activityKind: 'reading', sourceText: '水曜の夜にまとめて',
+          temporalConstraints: [preferredNight('paper-night', 'paper', '水曜の夜にまとめて')] })],
+        conversationActs: [{ kind: 'answer_pending_question', targetPublicId: taskId }],
+      }, architecture);
+    });
+  }
+
+  it('blocksPlanning:false creates no question or block: the consultation is honoured and the preview is updated', async () => {
+    installH(false);
+    const conversation = open();
+    const first = await conversation.submit(H.T1);
+    expect(first.result?.draftCandidates.length).toBeGreaterThan(0);
+    const second = await conversation.submit(H.T2);
+    expect(second.result?.failure).toBeUndefined();
+    expect(createWeeklyPlanningActiveSchedulerGraphViewV5(conversation.graph()!).uncertainties).toEqual([]);
+    expect(questionSlot(conversation)).not.toBe('stable_v5:semantic_uncertainty');
+    expect(second.result?.draftCandidates.length).toBeGreaterThan(0);
+    const third = await conversation.submit(H.T3);
+    expect(third.result?.failure).toBeUndefined();
+    expect(third.result?.draftCandidates.length).toBeGreaterThan(0);
+  });
+
+  it.each([true, undefined])('control: blocksPlanning=%s keeps the uncertainty blocking (the flag is the switch)', async flag => {
+    installH(flag);
+    const conversation = open();
+    await conversation.submit(H.T1);
+    const second = await conversation.submit(H.T2);
+    expect(second.result?.failure).toBeUndefined();
+    expect(createWeeklyPlanningActiveSchedulerGraphViewV5(conversation.graph()!).uncertainties).toHaveLength(1);
+    expect(questionSlot(conversation)).toBe('stable_v5:semantic_uncertainty');
+    expect(second.result?.draftCandidates).toEqual([]);
+  });
+});
+
 const X1 = {
   T1: '来週の予定を整理したい。火曜と木曜は17時から20時までバイトが入ってる',
   T2: '勉強の予定は今回はいらない。それだけ',

@@ -104,6 +104,12 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     retentionReason: 'Clause independence, corrections, and proposal decisions are discourse semantics; deterministic lifecycle code applies them only after the model identifies them.',
     instruction: 'Interpret clauses independently. Corrections emit replacement facts + replacementLocalId. Availability changes target.kind=availability_declaration + exact publicId; additions do not. Preserve facts. Decisions only when explicit and only with a resolved publicId or current-turn localId; otherwise emit uncertainty. Pending proposal decisions target kind=proposal and exact publicId.',
   },
+  {
+    id: 'uncertainty_blocking',
+    retentionBasis: 'semantic_scope_boundary',
+    retentionReason: 'Whether an open point must be answered before scheduling is a semantic judgement; deterministic code only enforces the declared flag through question lifecycle.',
+    instruction: 'uncertainties[].blocksPlanning is true only when the plan cannot be scheduled correctly without the answer. A request for advice or feasibility is a consultation_request act, not an uncertainty.',
+  },
 ] as const satisfies readonly {
   id: string;
   retentionBasis: WeeklyPlanningSemanticRuleRetentionBasisV5;
@@ -121,7 +127,8 @@ export function createWeeklyPlanningSemanticMeaningPolicyV5(
   const includeConversationActs = conversationArchitecturePolicy(architecture).semanticConversationActs;
   return WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5
     .filter((rule) => includeConversationActs
-      || (rule.id !== 'conversation_acts' && rule.id !== 'session_split_and_shared_preference'))
+      || (rule.id !== 'conversation_acts' && rule.id !== 'session_split_and_shared_preference'
+        && rule.id !== 'uncertainty_blocking'))
     .map((rule) => rule.instruction)
     .join('\n');
 }

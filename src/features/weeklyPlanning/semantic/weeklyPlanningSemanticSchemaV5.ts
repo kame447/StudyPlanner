@@ -256,6 +256,19 @@ const uncertaintySchema = objectSchema(
   },
 );
 
+/** Interaction architecture only: the model declares whether the open point blocks scheduling. */
+const interactionUncertaintySchema = objectSchema(
+  ['localId', 'targetLocalId', 'field', 'reason', 'sourceText', 'blocksPlanning'],
+  {
+    localId: stringSchema,
+    targetLocalId: stringSchema,
+    field: stringSchema,
+    reason: stringSchema,
+    ...sourceTextProperty,
+    blocksPlanning: { type: 'boolean' },
+  },
+);
+
 const semanticReferenceSchema = objectSchema(
   ['kind', 'publicId', 'localId', 'mention'],
   {
@@ -391,7 +404,7 @@ function buildRootSchema(options: { conversationActs: boolean }) {
     constraintSourceRequests: arraySchema(constraintSourceRequestSchema),
     userContextFacts: arraySchema(userContextFactSchema),
     ...(options.conversationActs ? { conversationActs: arraySchema(conversationActSchema) } : {}),
-    uncertainties: arraySchema(uncertaintySchema),
+    uncertainties: arraySchema(options.conversationActs ? interactionUncertaintySchema : uncertaintySchema),
     corrections: arraySchema(correctionSchema),
     decisions: arraySchema(decisionSchema),
   });

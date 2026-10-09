@@ -54,6 +54,9 @@ const INTERACTION_SESSION_RULE_MAX_BYTES = 450;
 // Fixed-event-only loop (2026-10-08): exactly 100 B with separator for the two
 // AI-owned acts, interaction only. Legacy policy and baseline allowance stay intact.
 const INTERACTION_EVENT_ACTS_MAX_BYTES = 100;
+// Issue #488 H: the model declares whether an open point blocks scheduling (interaction only).
+// Rule sentence 196 B incl. separator; the schema adds one boolean property per uncertainty.
+const INTERACTION_BLOCKING_RULE_MAX_BYTES = 200;
 const FOCUSED_AUTHORIZATION_REQUEST_MAX_BYTES = 1_800;
 // The focused response schema now carries target and measurement as separate
 // typed axes. Keep enough room for that contract while still requiring this
@@ -208,14 +211,19 @@ describe('Stable V5 semantic prompt budget', () => {
       .toBe('c6e2d94e52fb9665f53fcb8e1e62edfddb485f36b4998df9644cd2ea224577cb');
     expect(byteLength(` ${WEEKLY_PLANNING_EVENT_ACT_INSTRUCTION_V5}`)).toBeLessThanOrEqual(INTERACTION_EVENT_ACTS_MAX_BYTES);
     expect(legacy).not.toContain(WEEKLY_PLANNING_EVENT_ACT_INSTRUCTION_V5);
+    const blocking = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(rule => rule.id === 'uncertainty_blocking')!;
+    expect(byteLength(`${blocking.instruction}\n`)).toBeLessThanOrEqual(INTERACTION_BLOCKING_RULE_MAX_BYTES);
+    expect(legacy).not.toContain(blocking.instruction);
     expect(byteLength(interaction.replace(`${rule.instruction}\n`, '')
+      .replace(`\n${blocking.instruction}`, '')
       .replace(` ${WEEKLY_PLANNING_EVENT_ACT_INSTRUCTION_V5}`, ''))).toBeLessThanOrEqual(GENERIC_MEANING_POLICY_MAX_BYTES);
   });
 
   it('keeps the always-on meaning policy compact', () => {
     const policy = createWeeklyPlanningSemanticMeaningPolicyV5();
     expect(byteLength(policy)).toBeLessThanOrEqual(
-      GENERIC_MEANING_POLICY_MAX_BYTES + INTERACTION_SESSION_RULE_MAX_BYTES + INTERACTION_EVENT_ACTS_MAX_BYTES,
+      GENERIC_MEANING_POLICY_MAX_BYTES + INTERACTION_SESSION_RULE_MAX_BYTES + INTERACTION_EVENT_ACTS_MAX_BYTES
+        + INTERACTION_BLOCKING_RULE_MAX_BYTES,
     );
     expect(
       WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.some(

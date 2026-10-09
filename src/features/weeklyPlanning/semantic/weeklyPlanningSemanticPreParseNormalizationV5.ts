@@ -40,6 +40,7 @@ import {
 
 export const WEEKLY_PLANNING_SEMANTIC_PRE_PARSE_NORMALIZATION_STAGE_IDS_V5 = [
   'empty_semantic_delta_envelope',
+  'advisory_uncertainty',
   'planning_window_wire',
   'task_decomposition_uncertainty',
   'copied_user_context_delta',
@@ -77,6 +78,10 @@ Record<
   empty_semantic_delta_envelope: {
     category: 'representation_repair',
     owningInvariant: 'an explicitly empty provider delta has one canonical Stable V5 no-change representation',
+  },
+  advisory_uncertainty: {
+    category: 'semantic_invariant_derivation',
+    owningInvariant: 'an open point the semantic owner declared non-blocking is not a planning fact: it creates no question, block or persisted field',
   },
   planning_window_wire: {
     category: 'canonicalization_bridge',
@@ -220,6 +225,41 @@ function normalizeEmptySemanticDeltaEnvelopeV5(
 }
 
 /**
+ * Interaction architecture: `blocksPlanning:false` uncertainties are dropped before any other stage
+ * (so no later invariant derives from them), and the flag is removed from the kept ones. Applies to
+ * every field uniformly; an absent flag keeps the uncertainty blocking. A non-boolean flag is left in
+ * place so validation rejects it. Legacy documents have no flag and are untouched.
+ */
+function normalizeAdvisoryUncertaintiesV5(rawResponse: string): RawNormalizationResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawResponse);
+  } catch {
+    return { rawResponse, repairs: [] };
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.uncertainties)
+    || !parsed.uncertainties.some((entry) => isRecord(entry) && 'blocksPlanning' in entry)) {
+    return { rawResponse, repairs: [] };
+  }
+  let dropped = 0;
+  const uncertainties = parsed.uncertainties
+    .filter((entry) => {
+      const advisory = isRecord(entry) && entry.blocksPlanning === false;
+      if (advisory) dropped += 1;
+      return !advisory;
+    })
+    .map((entry) => {
+      if (!isRecord(entry) || entry.blocksPlanning !== true) return entry;
+      const { blocksPlanning: _blocks, ...rest } = entry;
+      return rest;
+    });
+  return {
+    rawResponse: JSON.stringify({ ...parsed, uncertainties }),
+    repairs: dropped > 0 ? [`advisory-uncertainty-not-committed:${dropped}`] : [],
+  };
+}
+
+/**
  * Stable V5 provider-output normalization boundary.
  *
  * Keep the ordered list explicit. A new provider-output rewrite must be added
@@ -257,6 +297,9 @@ export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
     normalizeEmptySemanticDeltaEnvelopeV5(value, {
       conversationActs: params.semanticConversationActs ?? true,
     }));
+  if (params.semanticConversationActs ?? true) {
+    applyStage('advisory_uncertainty', (value) => normalizeAdvisoryUncertaintiesV5(value));
+  }
   applyStage('planning_window_wire', (value) =>
     normalizePlanningWindowCanonicalRawV5(value));
   applyStage('task_decomposition_uncertainty', (value) =>
