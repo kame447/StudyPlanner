@@ -108,6 +108,11 @@ export interface WeeklyPlanningTurnCommunicationFacts {
   /** The presented question is a free-form open point on the task the consultation targets (it already invites the condition). */
   openPointCoversConsultation?: boolean;
   uncertaintyReleased?: { quote: string | null; count: number; ids: string[]; nothingRead: boolean };
+  /**
+   * The final reading of the turn was entirely empty (no delta, no act the renderer answers). The application states
+   * that nothing was read in its own sentence, once per turn; the renderer never words it.
+   */
+  nothingRead?: boolean;
 }
 
 export function emptyWeeklyPlanningTurnCommunicationFacts(): WeeklyPlanningTurnCommunicationFacts {

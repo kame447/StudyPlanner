@@ -139,22 +139,34 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     })).toBe(false);
   });
 
-  it('without a pending question, re-reads only an act-less shell response after an accepted plan (interaction)', () => {
+  it('without a pending question, re-reads an act-less shell or an entirely empty response after an accepted plan (interaction)', () => {
     const summary = { ...publicStateSummary(), pendingQuestion: null };
     // Historical comparison: no pending question, no retry.
     expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
       document: existingTaskShell(), publicStateSummary: summary, conversationArchitecture: 'legacy_v5',
     })).toBe(false);
+    expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
+      document: { ...existingTaskShell(), tasks: [] }, publicStateSummary: summary, conversationArchitecture: 'legacy_v5',
+    })).toBe(false);
     // Live D on fa6347e6: task shells only for a split/evening request after the preview.
     expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
       document: existingTaskShell(), publicStateSummary: summary, conversationArchitecture: 'interaction_v1',
     })).toBe(true);
-    // A bare empty reply (「うん」) or one before any accepted task stays a valid no-op.
+    // Live H r1 on fd6a29fd (x6): an entirely empty reading for a placement is re-read too (it was a valid no-op before).
     expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
       document: { ...existingTaskShell(), tasks: [] }, publicStateSummary: summary, conversationArchitecture: 'interaction_v1',
-    })).toBe(false);
+    })).toBe(true);
+    // Before any accepted task there is nothing to contradict: stays a valid no-op.
     expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
       document: existingTaskShell(), publicStateSummary: { ...summary, tasks: [] }, conversationArchitecture: 'interaction_v1',
+    })).toBe(false);
+    // A typed self-sufficient act, or an explicit create_plan authorization, is meaning the application answers: no re-read.
+    expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
+      document: { ...existingTaskShell(), tasks: [], conversationActs: [{ kind: 'topic_shift', targetPublicId: null }] },
+      publicStateSummary: summary, conversationArchitecture: 'interaction_v1',
+    })).toBe(false);
+    expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
+      document: { ...existingTaskShell(), tasks: [], planningIntent: 'create_plan' }, publicStateSummary: summary, conversationArchitecture: 'interaction_v1',
     })).toBe(false);
   });
 

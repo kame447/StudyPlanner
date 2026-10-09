@@ -382,7 +382,8 @@ describe('Issue #488 B: aside and resume', () => {
     expect(shortReply.calls.some((call) => call.kind === 'semantic_focused_contextual')).toBe(false);
     const generic = shortReply.calls.find((call) => call.kind === 'semantic_generic');
     expect(summaryOf(generic!).pendingQuestion).toBeNull();
-    expect(shortReply.calls.filter((call) => call.kind === 'semantic_generic')).toHaveLength(1);
+    // An entirely empty reading under an accepted plan is re-read once (x6, live H r1): initial + one re-read.
+    expect(shortReply.calls.filter((call) => call.kind === 'semantic_generic')).toHaveLength(2);
     expect(effortMinutesFor(conversation, english.topicId)).toEqual([]);
     // An ordinary act-free turn: the reply still carries no app-internal wording.
     expect(latestAssistant(conversation).content).not.toMatch(INTERNAL_PROCESS_WORDING);

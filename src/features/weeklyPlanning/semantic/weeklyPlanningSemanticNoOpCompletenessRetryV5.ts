@@ -4,7 +4,7 @@ import { filterActiveWeeklyPlanningFactsV5 } from './weeklyPlanningFactLifecycle
 import { createWeeklyPlanningSemanticRepairMessagesV5 } from './weeklyPlanningSemanticRepairPromptV5';
 import { validateWeeklyPlanningSemanticRepairPreservationV5 } from './weeklyPlanningSemanticRepairPreservationV5';
 import { markWeeklyPlanningSemanticRepairConsumedV5, weeklyPlanningSemanticRepairConsumedV5 } from './weeklyPlanningSemanticRepairLedgerV5';
-import { hasSelfSufficientConversationActV5 } from './weeklyPlanningConversationActsV5';
+import { hasTaskSemanticPayloadV5, isEmptyReadingV5 } from './weeklyPlanningEmptyReadingV5';
 import { weeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 import {
   conversationArchitecturePolicy,
@@ -90,24 +90,6 @@ function hasAcceptedTask(summary: Record<string, unknown> | undefined): boolean 
   return Array.isArray(summary?.tasks) && summary.tasks.length > 0;
 }
 
-function hasTaskSemanticPayload(document: WeeklyPlanningSemanticDocumentV5): boolean {
-  return document.tasks.some((task) => {
-    if (!task.existingPublicId) return true;
-    if (
-      task.workloads.length > 0
-      || task.effortEstimates.length > 0
-      || task.temporalConstraints.length > 0
-      || task.recurrence.length > 0
-      || (task.durableContextSignals?.length ?? 0) > 0
-    ) return true;
-
-    return (task.study?.components ?? []).some((component) =>
-      !component.existingPublicId
-      || component.workloads.length > 0
-      || (component.durableContextSignals?.length ?? 0) > 0);
-  });
-}
-
 function acceptedPriorNoOpResult(params: {
   run: WeeklyPlanningSemanticNormalizerRunV5;
   document: WeeklyPlanningSemanticDocumentV5;
@@ -144,7 +126,7 @@ function invalidRetryMayCarryChange(parsed: unknown): boolean {
   if (doc.planningWindow || ['relations', 'availabilityDeclarations', 'constraintSourceRequests', 'userContextFacts',
     'uncertainties', 'corrections', 'decisions'].some(nonEmpty)) return true;
   try {
-    return hasTaskSemanticPayload({ tasks: (doc.tasks as Array<Record<string, unknown>>).map((task) => ({
+    return hasTaskSemanticPayloadV5({ tasks: (doc.tasks as Array<Record<string, unknown>>).map((task) => ({
       workloads: [], effortEstimates: [], temporalConstraints: [], recurrence: [], durableContextSignals: [], ...task,
     })) } as unknown as WeeklyPlanningSemanticDocumentV5);
   } catch {
@@ -239,7 +221,6 @@ async function repairInvalidCompletenessRetry(params: {
       document: repaired.document!,
       publicStateSummary: params.run.input.publicStateSummary,
       conversationArchitecture: params.run.input.conversationArchitecture,
-      rereadAfterContradiction: true,
     });
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.run.input.traceRequestId,
@@ -317,39 +298,18 @@ export function isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5(params: 
   document: WeeklyPlanningSemanticDocumentV5;
   publicStateSummary?: Record<string, unknown>;
   conversationArchitecture?: WeeklyPlanningConversationArchitecture;
-  /**
-   * Judging the re-read that follows a contradiction: the first reading already named an
-   * accepted task, so a re-read that carries no delta and no self-sufficient act is still a
-   * contradiction even though it names no task (the first-reading gate below does not apply).
-   */
-  rereadAfterContradiction?: boolean;
 }): boolean {
   const actAware = conversationArchitecturePolicy(params.conversationArchitecture).actAwareNoOpRetry;
-  // Interaction: once a plan is accepted, an empty delta without any conversational act is as
-  // suspicious as one under a pending question (live D on fa6347e6 returned only task shells
-  // for 「1回1時間くらいで2回に分けたい。どっちも夜がいい」 and reported the preview unchanged).
-  const document = params.document;
-  // Without a pending question only a response that names accepted tasks yet carries nothing
-  // for them is re-read; a bare empty reply (「うん」, thanks) stays a valid no-op.
-  if (!hasMachinePendingQuestion(params.publicStateSummary)
-    && !(actAware && hasAcceptedTask(params.publicStateSummary)
-      && (document.tasks.length > 0 || params.rereadAfterContradiction))) return false;
-  // A typed non-mutating conversational act (explain / aside / resume / consultation) is a
-  // valid complete result with an empty planning delta. Re-asking the model for "missing"
-  // content would only waste dispatches; only a bare answer act without any delta is a
-  // contradiction worth a bounded retry.
-  if (actAware && hasSelfSufficientConversationActV5(document.conversationActs)) return false;
-  if (
-    document.planningWindow
-    || document.relations.length > 0
-    || document.availabilityDeclarations.length > 0
-    || document.constraintSourceRequests.length > 0
-    || (document.userContextFacts?.length ?? 0) > 0
-    || document.uncertainties.length > 0
-    || document.corrections.length > 0
-    || document.decisions.length > 0
-  ) return false;
-  return !hasTaskSemanticPayload(document);
+  // Interaction: once a plan is accepted, an empty reading is as suspicious as one under a pending question: live D
+  // (fa6347e6) returned only task shells and live H r1 (fd6a29fd) an entirely empty reading for a Wednesday-night
+  // placement, and both reported the preview unchanged. Legacy keeps its narrower gate (a response that names an
+  // accepted task yet carries nothing for it); a bare empty reply stays a valid no-op there.
+  if (!hasMachinePendingQuestion(params.publicStateSummary)) {
+    if (!actAware || !hasAcceptedTask(params.publicStateSummary)) return false;
+  }
+  // A self-sufficient conversational act is a valid complete result with an empty planning delta; only a bare
+  // answer act without any delta is a contradiction worth a bounded retry (the typed definition shared with `nothingRead`).
+  return isEmptyReadingV5(params.document);
 }
 
 async function tryFocusedTaskTemporalSideContributionV5(params: {
@@ -607,8 +567,7 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
           document: validation.document,
           publicStateSummary: params.run.input.publicStateSummary,
           conversationArchitecture: params.run.input.conversationArchitecture,
-          rereadAfterContradiction: true,
-        })
+            })
       : false;
     const shouldRetryAgain = retryIndex + 1 < retryLimit && (!validation.document || stillNoOp);
 

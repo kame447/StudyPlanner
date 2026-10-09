@@ -401,6 +401,7 @@ function communicationFactsProjection(value: Record<string, unknown>): Record<st
     upcomingQuestionCodes: compactUnknown(value.upcomingQuestionCodes),
     planningDetailsNotApplied: value.planningDetailsNotApplied === true,
     ...(value.possibleCompletenessOmission === true ? { possibleCompletenessOmission: true } : {}),
+    ...(value.nothingRead === true ? { nothingRead: true } : {}),
     ...(isRecord(value.capacityShortfall)
       ? { capacityShortfall: {
           requiredMinutes: numberValue(value.capacityShortfall.requiredMinutes),

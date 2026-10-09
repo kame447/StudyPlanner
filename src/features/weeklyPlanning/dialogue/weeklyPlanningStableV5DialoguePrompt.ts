@@ -245,6 +245,8 @@ function interactionCommunicationInstructions(
       ? ['alternativeRequiresAdoption=true: This trial differs from the current preview. Never name/offer the promotion control; invite the user to say if they want to adopt it.'] : []),
     ...(communication.possibleCompletenessOmission
       ? ['possibleCompletenessOmission=true: Never say everything was taken in; the application states the possible omission beside your reply.'] : []),
+    ...(communication.nothingRead
+      ? ['nothingRead=true: Nothing was read from the reply; the application states it beside yours. Never say it was taken in or the plan changed.'] : []),
     ...(communication.statusReason === 'fixed_event_manual_entry'
       ? [`fixed_event_manual_entry: この固定予定はここでは追加・保存できない。一度だけ既存の「${ADD_SCHEDULE_CONTROL_LABEL}」から入力できると案内する。受け取った時刻等は空き時間の参考情報であり登録結果ではない。追加質問はしない。`] : []),
     ...(communication.statusReason === 'no_additional_work'

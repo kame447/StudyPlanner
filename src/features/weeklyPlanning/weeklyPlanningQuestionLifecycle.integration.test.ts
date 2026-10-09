@@ -484,6 +484,9 @@ describe('H-release: a blocking free-form question has a deterministic end state
     expect(uncertainties(conversation)).toEqual([]);
     expect(third.result?.draftCandidates.length).toBeGreaterThan(0);
     expect(third.result?.message).toContain(`${RELEASED}${NOTHING_READ}`);
+    // x6: the empty reading also sets the turn-level nothingRead fact; the sentence is still rendered exactly once.
+    expect(third.result?.message?.split(NOTHING_READ).length).toBe(2);
+    expect(third.result?.communicationFacts?.nothingRead).toBe(true);
     expect(third.result?.message).not.toContain('仮予定を作りました');
     expect(third.result?.communicationFacts?.uncertaintyReleased).toMatchObject({ quote: Q, count: 1, nothingRead: true });
     const decision = third.calls.filter(call => call.kind === 'renderer').pop()?.payload?.applicationDecision as Json;

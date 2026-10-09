@@ -91,7 +91,9 @@ it.each(['legacy', 'empty', 'covered_by_temporal'] as const)('R27 scope control 
   const result = await createWeeklyPlanningSemanticNormalizerV5({ async createChatCompletion(request) {
     const name = request.responseFormat?.json_schema.name ?? ''; calls.push(name); expect(name).toBe(GENERIC); return JSON.stringify(wire);
   } }).normalize(input);
-  expect(result.status).toBe('accepted'); expect(calls).toEqual([GENERIC]);
+  expect(result.status).toBe('accepted');
+  // An entirely empty reading under an accepted plan is re-read once (x6, live H r1); the other scenarios carry content.
+  expect(calls).toEqual(scenario === 'empty' ? [GENERIC, GENERIC] : [GENERIC]);
 });
 
 let provider: ReturnType<typeof installScriptedWeeklyPlanningProvider> | undefined;

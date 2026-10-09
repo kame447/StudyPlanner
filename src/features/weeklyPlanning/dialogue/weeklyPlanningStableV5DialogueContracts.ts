@@ -113,6 +113,8 @@ export interface WeeklyPlanningStableV5CommunicationContext {
   /** The presented question already invites the user's condition for the consulted task. */
   openPointCoversConsultation?: boolean;
   uncertaintyReleased?: { quote: string | null; nothingRead: boolean };
+  /** The final reading was entirely empty; the application states it once beside the reply. */
+  nothingRead?: boolean;
 }
 
 export interface WeeklyPlanningStableV5DialogueConversationTurn {

@@ -130,6 +130,11 @@ beforeEach(async () => {
         const deferred = deferredGeneric;
         if (deferred) { deferredGeneric = undefined; deferred.started.resolve(); return deferred.response.promise; }
         if (genericOutcome === 'unavailable') return Response.json({ error: 'fixture generic unavailable' }, { status: 503 });
+        // A completeness re-read (an entirely empty reading under an accepted plan, x6) names the exact userText in its
+        // instruction: the model reads an acknowledgement as empty again.
+        if (body.messages.some(message => message.content.includes('The exact current userText to interpret is'))) {
+          return completion(JSON.stringify({ ...initialSemantic(), planningIntent: 'discuss', planningWindow: null, tasks: [] }));
+        }
         return completion(genericOutcome === 'repair-exhausted' ? (genericRequests.length === 1 ? 'not-json' : '{}') : JSON.stringify(responseDocument));
       }
       if (schema === DIALOGUE_SCHEMA) {

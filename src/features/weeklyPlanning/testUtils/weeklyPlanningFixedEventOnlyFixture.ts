@@ -1,4 +1,4 @@
-import { createScriptedConversation, installScriptedWeeklyPlanningProvider, scriptedRendererReply, type ScriptedConversation, type ScriptedProviderCall } from './weeklyPlanningScriptedConversationHarness';
+import { createScriptedConversation, installScriptedWeeklyPlanningProvider, scriptedRendererReply, scriptedSemanticUserText, type ScriptedConversation, type ScriptedProviderCall } from './weeklyPlanningScriptedConversationHarness';
 import type { WeeklyPlanningConversationArchitecture } from '../weeklyPlanningConversationArchitecture';
 
 export const FIXED_EVENT_TURNS = ['明日の予定を立てたい', 'やっぱり今日にして', '今日10:30〜12:00は部活があるから、その予定を入れておいて', '特にない', 'ない'];
@@ -56,7 +56,7 @@ export function installFixedEventConversation(options: {
     });
     if (call.kind === 'semantic_focused_authorization') return JSON.stringify({ decision: 'fallback' });
     if (call.kind === 'semantic_focused_contextual') return JSON.stringify({ decision: 'fallback', effortTarget: null, effortMeasurement: null, minutes: null, precision: null, quantityRole: null });
-    const text = call.payload?.userText;
+    const text = scriptedSemanticUserText(call);
     let document: Json;
     if (text === FIXED_EVENT_TURNS[0] || text === FIXED_EVENT_TURNS[1]) {
       const today = text === FIXED_EVENT_TURNS[1];

@@ -140,6 +140,22 @@ export function installScriptedWeeklyPlanningProvider(
 }
 
 /** Echoes the renderer contract so the AI-rendered branch is exercised with a fixed text. */
+/**
+ * The user text a semantic call interprets: the payload's `userText`, or - for a completeness re-read, whose payload
+ * carries none - the exact userText quoted in its retry instruction message.
+ */
+export function scriptedSemanticUserText(call: ScriptedProviderCall): string | undefined {
+  const fromPayload = call.payload?.userText;
+  if (typeof fromPayload === 'string') return fromPayload;
+  for (const message of [...call.messages].reverse()) {
+    const match = /The exact current userText to interpret is ("(?:[^"\\]|\\.)*")/.exec(message.content);
+    if (match) {
+      try { return JSON.parse(match[1]) as string; } catch { return undefined; }
+    }
+  }
+  return undefined;
+}
+
 export function scriptedRendererReply(call: ScriptedProviderCall, text: string): string {
   const decision = isRecord(call.payload?.applicationDecision) ? call.payload.applicationDecision : {};
   return JSON.stringify({

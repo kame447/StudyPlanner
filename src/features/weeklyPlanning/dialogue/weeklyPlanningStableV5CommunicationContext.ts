@@ -201,6 +201,7 @@ export function communicationContextForStableV5Dialogue(params: {
       : null,
     planningDetailsNotApplied: params.facts?.planningDetailsNotApplied === true,
     ...(params.facts?.possibleCompletenessOmission === true ? { possibleCompletenessOmission: true } : {}),
+    ...(params.facts?.nothingRead === true ? { nothingRead: true } : {}),
     consultationDeferred: params.outcome?.consultationDeferred === true,
     ...(params.outcome?.consultationDeferred === true
       ? { consultation: params.facts?.consultation ?? null }
