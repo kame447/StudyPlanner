@@ -42,9 +42,9 @@ export function createShownQuestionPurposeCheckMessagesV5(questionText: string):
       content: [
         'Classify the single question an assistant asked a user while planning study time. Read only the question text.',
         'progress: it asks how much the user has ALREADY done or finished (past progress, completed amount, how far along they are).',
-        'plan: it asks how much the user WANTS or PLANS to do or spend from now on (a planned amount, the scope to schedule, a goal, or a time budget to schedule).',
-        'other: anything else, including questions about when, how long each session lasts, how often, deadlines, preferences, yes/no confirmations, or a question that mixes purposes or is unclear.',
-        'When unsure, answer other.',
+        'plan: it asks how much work or time the user WANTS to put into THIS task from now on: the amount they plan to do, the scope, a goal, or a total time budget for the task.',
+        'other: everything else. In particular these are other: free time or availability (how much time the user can set aside, per-day or per-evening capacity, which time slots are free); when to study or which days; how long each session lasts or how often; which work or material it is or how large the material is; deadlines; yes/no confirmations; anything unclear.',
+        'If the question mixes purposes, or you are unsure, answer other.',
       ].join(' '),
     },
     { role: 'user', content: JSON.stringify({ question: questionText.slice(0, MAX_QUESTION_CHARS) }) },

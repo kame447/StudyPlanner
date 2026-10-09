@@ -13,7 +13,11 @@ describe('shown-question purpose check (S3a v2)', () => {
     expect(JSON.parse(messages[1].content)).toEqual({ question: Q });
     expect(messages[1].content).not.toContain('validationErrors');
     expect(new TextEncoder().encode(JSON.stringify({ messages })).byteLength).toBeLessThanOrEqual(SHOWN_QUESTION_PURPOSE_CHECK_REQUEST_MAX_BYTES);
-    expect(messages[0].content).toContain('When unsure, answer other');
+    const system = messages[0].content;
+    expect(system).toContain('answer other');
+    // The classes the gate showed were read as plan: each is named as `other`, in general terms.
+    for (const phrase of ['free time or availability', 'per-day or per-evening capacity', 'which days', 'how long each session lasts', 'which work or material it is', 'deadlines']) expect(system).toContain(phrase);
+    expect(system).toContain('total time budget for the task');
   });
   it.each(['progress', 'plan', 'other'] as const)('returns the enum %s from a strict answer', async (purpose) => {
     const c = client(JSON.stringify({ purpose }));
