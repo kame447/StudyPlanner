@@ -53,16 +53,35 @@ for (const [width,height] of [[360,640],[390,844],[412,915],[430,932],[768,1024]
     await actions(page); expect(await page.evaluate(()=>localStorage.getItem('studyplanner.plans'))).toBe(saved);
   });
 }
-for(const [width,height] of [[360,800],[768,1024],[1280,800]]) {
-  test(`${width}px enlarged text and font-only recovery after rotation`, async({page},info)=>{
-    await page.setViewportSize({width,height}); await seed(page); await page.goto('/'); await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
-    const style=await page.addStyleTag({content:':root {font-size:200%!important}'});
-    const home=page.locator('.home-main > .home-dashboard-default'); await actions(page); await expect(home).toHaveAttribute('data-content-scroll','true');
-    await separated(page); await actions(page); await page.screenshot({path:info.outputPath('text200.png')});
-    expect(await page.evaluate(()=>document.documentElement.scrollHeight<=document.documentElement.clientHeight+1)).toBe(true);
-    await page.setViewportSize({width:390,height:844}); await separated(page); await actions(page);
-    await style.evaluate(e=>e.remove()); await expect(home).not.toHaveAttribute('data-content-scroll','true');
+async function checkEnlargedText(page, info, width, height, rotate) {
+  await page.setViewportSize({ width, height });
+  await seed(page); await page.goto('/');
+  const home = page.locator('.home-main > .home-dashboard-default');
+  await expect(home).toBeVisible();
+  const style = await page.addStyleTag({ content: ':root {font-size:200%!important}' });
+  await actions(page); await expect(home).toHaveAttribute('data-content-scroll', 'true');
+  await separated(page); await actions(page);
+  await page.screenshot({ path: info.outputPath('text200.png') });
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight + 1)).toBe(true);
+  if (rotate) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    // Confirm the CSS layout viewport really changed before claiming rotation coverage.
+    await expect.poll(() => page.evaluate(() => document.documentElement.clientWidth)).toBe(390);
     await separated(page); await actions(page);
+  }
+  await style.evaluate(element => element.remove());
+  await expect(home).not.toHaveAttribute('data-content-scroll', 'true');
+  await separated(page); await actions(page);
+}
+
+for (const [width, height] of [[360, 800], [768, 1024], [1280, 800]]) {
+  test(`${width}px enlarged text and font-only recovery at the same viewport`, async ({ page }, info) => {
+    await checkEnlargedText(page, info, width, height, false);
+  });
+  test(`${width}px rotation preserves enlarged text and font-only recovery`, async ({ page, browserName }, info) => {
+    test.skip(browserName === 'webkit' && info.project.use.isMobile === true,
+      'WebKit mobile setViewportSize leaves the CSS viewport unchanged, reproduced in minimal HTML; real-device rotation remains unverified.');
+    await checkEnlargedText(page, info, width, height, true);
   });
 }
 
