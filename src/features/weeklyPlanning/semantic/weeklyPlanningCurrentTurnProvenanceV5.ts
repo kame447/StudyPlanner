@@ -10,6 +10,7 @@ import {
   type WeeklyPlanningFactGraphV5,
   type WorkloadFactV5,
 } from './weeklyPlanningFactGraphV5';
+import { restatesAcceptedWorkload } from './weeklyPlanningExistingEntityBindingV5';
 import { filterActiveWeeklyPlanningFactsV5 } from './weeklyPlanningFactLifecycleV5';
 
 export const WEEKLY_PLANNING_CURRENT_TURN_PROVENANCE_VERSION_V5 =
@@ -343,15 +344,20 @@ function restatesCommittedUserWorkloadV5(params: {
 
   const normalizedSource = normalizedEvidenceText(workload.sourceText);
   if (!normalizedSource) return false;
-  return filterActiveWeeklyPlanningFactsV5(graph, graph.workloads).some((fact) =>
+  const activeWorkloads = filterActiveWeeklyPlanningFactsV5(graph, graph.workloads);
+  const quotesCommittedSource = (fact: WorkloadFactV5) => isUserUtteranceSourcedV5(fact.source)
+    && sourceTextMatchesChannelV5(normalizedSource, normalizedEvidenceText(fact.source.sourceText));
+  if (activeWorkloads.some((fact) =>
     fact.taskId === task.existingPublicId
     && fact.componentId === componentId
     && sameCommittedWorkloadValueV5(workload, fact)
-    && isUserUtteranceSourcedV5(fact.source)
-    && sourceTextMatchesChannelV5(
-      normalizedSource,
-      normalizedEvidenceText(fact.source.sourceText),
-    ));
+    && quotesCommittedSource(fact))) return true;
+  // A task-level restatement of the one accepted workload that sits on a component of the task
+  // (live H-T3): same restatement rule as the entity binding, exactly one match.
+  if (component) return false;
+  const matches = activeWorkloads.filter((fact) =>
+    fact.taskId === task.existingPublicId && restatesAcceptedWorkload(workload, fact));
+  return matches.length === 1 && quotesCommittedSource(matches[0]);
 }
 
 export function validateWeeklyPlanningCurrentTurnProvenanceV5(params: {

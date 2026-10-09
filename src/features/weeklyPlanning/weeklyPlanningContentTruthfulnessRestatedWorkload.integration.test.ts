@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import './application/weeklyPlanningStableV5InstrumentedRuntimeExecutor';
+import { restatesAcceptedWorkload } from './semantic/weeklyPlanningExistingEntityBindingV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import {
   createScriptedConversation, installScriptedWeeklyPlanningProvider, resetScriptedConversationRuntime,
@@ -76,6 +77,30 @@ function installComponent(t3: (taskId: string, componentId: string) => Json): vo
   });
 }
 
+describe('restatesAcceptedWorkload: exact core, null-tolerant nullable fields', () => {
+  const fact = { quantityRole: 'target', amount: 25, unitCode: 'page', unitLabel: 'ページ', rangeStart: null, rangeEnd: null,
+    perOccurrence: false, periodExpression: null } as never;
+  const semantic = (o: Json = {}) => ({ localId: 'x', quantityRole: 'target', amount: 25, unitCode: 'page', unitLabel: 'p.', rangeStart: null,
+    rangeEnd: null, perOccurrence: false, periodExpression: null, sourceText: '', ...o }) as never;
+  it('binds an identical restatement whatever its unitLabel', () => {
+    expect(restatesAcceptedWorkload(semantic(), fact)).toBe(true);
+  });
+  it.each([
+    ['per-day restating a total', { perOccurrence: true }, {}],
+    ['total restating a per-day', {}, { perOccurrence: true }],
+    ['different amount', { amount: 30 }, {}],
+    ['different unit', { unitCode: 'problem' }, {}],
+    ['different role', { quantityRole: 'remaining' }, {}],
+    ['a different range', { rangeStart: '30', rangeEnd: '40' }, { rangeStart: '1', rangeEnd: '25' }],
+    ['a stated period vs none accepted', { periodExpression: 'daily' }, {}],
+  ] as const)('does not bind: %s', (_name, restated, accepted) => {
+    expect(restatesAcceptedWorkload(semantic(restated), { ...(fact as object), ...accepted } as never)).toBe(false);
+  });
+  it('binds a null range / period restating an accepted one', () => {
+    expect(restatesAcceptedWorkload(semantic(), { ...(fact as object), rangeStart: '1', rangeEnd: '25', periodExpression: 'weekly' } as never)).toBe(true);
+  });
+});
+
 describe('H-T3: an identical restated workload keeps the accepted fact and its rate', () => {
   it('live shape: bound task, identical workload without existingPublicId → rate kept, preview kept', async () => {
     install(liveT3);
@@ -87,9 +112,6 @@ describe('H-T3: an identical restated workload keeps the accepted fact and its r
     const before = createWeeklyPlanningActiveSchedulerGraphViewV5(conversation.graph()!);
     const third = await conversation.submit(T.T3);
     const after = createWeeklyPlanningActiveSchedulerGraphViewV5(conversation.graph()!);
-    console.log(JSON.stringify({ before: before.workloads.map(w => [w.id, w.amount]), after: after.workloads.map(w => [w.id, w.amount]),
-      efforts: after.effortEstimates.map(e => [e.kind, e.minutes, e.targetFactId]), q: conversation.getState().intakeState?.lastQuestionContext?.targetSlot,
-      failure: third.result?.failure, outcome: third.result?.interactionOutcome }));
     expect(after.workloads.filter(w => w.amount === 25)).toHaveLength(1);
     expect(after.workloads.map(w => w.id)).toEqual(before.workloads.map(w => w.id));
     expect(conversation.getState().intakeState?.lastQuestionContext?.targetSlot).not.toBe('stable_v5:missing_effort_estimate');
@@ -105,9 +127,10 @@ describe('H-T3: an identical restated workload keeps the accepted fact and its r
     const before = createWeeklyPlanningActiveSchedulerGraphViewV5(conversation.graph()!);
     const third = await conversation.submit(T.T3);
     const after = createWeeklyPlanningActiveSchedulerGraphViewV5(conversation.graph()!);
-    console.log(JSON.stringify({ before: before.workloads.map(w => [w.id, w.amount, w.componentId]), after: after.workloads.map(w => [w.id, w.amount, w.componentId]),
-      efforts: after.effortEstimates.map(e => [e.kind, e.minutes, e.targetFactId]), q: conversation.getState().intakeState?.lastQuestionContext?.targetSlot }));
-    expect(after.workloads.filter(w => w.amount === 25)).toHaveLength(1);
+    expect(after.workloads.map(w => w.id)).toEqual(before.workloads.map(w => w.id));
+    expect(after.effortEstimates.filter(e => e.kind === 'duration_per_unit' && e.targetFactId === after.workloads[0].id)).toHaveLength(1);
+    expect(after.effortEstimates.some(e => e.kind === 'session_duration' && e.minutes === 75)).toBe(true);
+    expect(third.result?.interactionOutcome?.kind).not.toBe('recover');
     expect(conversation.getState().intakeState?.lastQuestionContext?.targetSlot).not.toBe('stable_v5:missing_effort_estimate');
     expect(third.result?.draftCandidates.length).toBeGreaterThan(0);
   });

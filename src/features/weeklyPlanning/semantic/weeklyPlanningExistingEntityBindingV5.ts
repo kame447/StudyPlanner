@@ -143,6 +143,25 @@ function workloadCandidates(params: {
   return structural.filter((candidate) => safeCustomUnitLabelFallback(params.semantic, candidate));
 }
 
+/**
+ * A task-level restatement of an accepted workload that lives on one of the task's components
+ * (live H-T3: the accepted 25-page workload was on a material component, the restatement had no
+ * component). Component placement and unitLabel are presentation; role, perOccurrence, amount and
+ * unit code must match exactly, and the nullable period/range fields only tolerate a null on the
+ * restatement side (an unstated period never contradicts a stated one, a different one does).
+ */
+export function restatesAcceptedWorkload(semantic: SemanticWorkloadV5, fact: WorkloadFactV5): boolean {
+  const nullableAgrees = (restated: string | null, accepted: string | null) =>
+    restated === null || restated === accepted;
+  return semantic.quantityRole === fact.quantityRole
+    && semantic.perOccurrence === fact.perOccurrence
+    && semantic.amount === fact.amount
+    && (exactUnitMatch(semantic, fact) || safeCustomUnitLabelFallback(semantic, fact))
+    && nullableAgrees(semantic.periodExpression, fact.periodExpression)
+    && nullableAgrees(semantic.rangeStart, fact.rangeStart)
+    && nullableAgrees(semantic.rangeEnd, fact.rangeEnd);
+}
+
 export function resolveWeeklyPlanningExistingEntityGraphBindingsV5(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   graph: WeeklyPlanningFactGraphV5;
@@ -201,6 +220,8 @@ export function resolveWeeklyPlanningExistingEntityGraphBindingsV5(params: {
     semantic: SemanticWorkloadV5;
     taskId: string | null;
     componentId: string | null;
+    /** Declared directly on the task (not inside any component of the response). */
+    taskLevel?: boolean;
   }): void => {
     if (!paramsForWorkload.taskId) return;
     const exactIdCandidate = workloads.get(paramsForWorkload.semantic.localId);
@@ -220,6 +241,21 @@ export function resolveWeeklyPlanningExistingEntityGraphBindingsV5(params: {
           componentId: paramsForWorkload.componentId,
           activeWorkloads: active.workloads,
         });
+    if (candidates.length === 0 && paramsForWorkload.taskLevel) {
+      // Exactly one accepted workload of the bound task (on any of its components) restated.
+      const restated = active.workloads.filter((candidate) =>
+        candidate.taskId === paramsForWorkload.taskId
+        && candidate.componentId !== null
+        && restatesAcceptedWorkload(paramsForWorkload.semantic, candidate));
+      const total = active.workloads.filter((candidate) =>
+        candidate.taskId === paramsForWorkload.taskId
+        && restatesAcceptedWorkload(paramsForWorkload.semantic, candidate));
+      if (restated.length === 1 && total.length === 1 && !boundFactIds.has(restated[0].id)) {
+        boundFactIds.add(restated[0].id);
+        workloadFactIdByLocalId[paramsForWorkload.semantic.localId] = restated[0].id;
+      }
+      return;
+    }
     if (candidates.length === 0) return;
     if (candidates.length > 1) {
       errors.push(
@@ -239,7 +275,7 @@ export function resolveWeeklyPlanningExistingEntityGraphBindingsV5(params: {
   for (const task of params.document.tasks) {
     const resolvedTaskId = taskFactIdByLocalId[task.localId] ?? null;
     for (const workload of task.workloads) {
-      bindWorkload({ semantic: workload, taskId: resolvedTaskId, componentId: null });
+      bindWorkload({ semantic: workload, taskId: resolvedTaskId, componentId: null, taskLevel: true });
     }
     for (const component of task.study?.components ?? []) {
       const resolvedComponentId = componentFactIdByLocalId[component.localId] ?? null;
