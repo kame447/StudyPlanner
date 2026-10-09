@@ -317,6 +317,12 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
   describe('an accepted plan and a reading that never carries the message (interaction, live B T4)', () => {
     const noPending = () => ({ ...publicStateSummary(), pendingQuestion: null });
     const emptyReading = () => ({ ...existingTaskShell(), tasks: [] });
+    // Live B T4: the shell carries a study context label the typed facts cannot hold.
+    const describedShell = () => {
+      const value = existingTaskShell();
+      value.tasks[0].study = { purpose: 'research', activityKind: 'writing', contextLabel: '青チャート', components: [] };
+      return value;
+    };
     const run = (responses: string[], conversationArchitecture: 'interaction_v1' | 'legacy_v5' = 'interaction_v1') => {
       const fake = fakeClient(responses);
       return createWeeklyPlanningSemanticNormalizerV5(fake.client).normalize({
@@ -325,7 +331,7 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     };
 
     it('treats a valid empty re-read with no act as an unusable message, not an unchanged plan', async () => {
-      const { result, calls } = await run([JSON.stringify(existingTaskShell()), JSON.stringify(emptyReading())]);
+      const { result, calls } = await run([JSON.stringify(describedShell()), JSON.stringify(emptyReading())]);
       expect(calls).toHaveLength(2);
       expect(result.status).toBe('rejected');
       expect(result.document).toBeNull();
@@ -333,18 +339,24 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
 
     it('treats an invalid re-read that carries no planning content the same way', async () => {
       const { result } = await run([
-        JSON.stringify(existingTaskShell()),
+        JSON.stringify(describedShell()),
         JSON.stringify({ schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5, tasks: [] }),
       ]);
       expect(result.status).toBe('rejected');
     });
 
+    it('keeps the unchanged plan for a bare acknowledgement shell whose re-read is empty (no description was lost)', async () => {
+      const { result } = await run([JSON.stringify(existingTaskShell()), JSON.stringify(emptyReading())]);
+      expect(result.status).toBe('accepted');
+      expect(result.document).toEqual(existingTaskShell());
+    });
+
     it('still accepts a re-read that carries a delta or a self-sufficient act', async () => {
-      const delta = await run([JSON.stringify(existingTaskShell()), JSON.stringify(recoveredDeadline())]);
+      const delta = await run([JSON.stringify(describedShell()), JSON.stringify(recoveredDeadline())]);
       expect(delta.result.status).toBe('accepted');
       expect(delta.result.document?.tasks[0].temporalConstraints).toHaveLength(1);
       const aside = await run([
-        JSON.stringify(existingTaskShell()),
+        JSON.stringify(describedShell()),
         JSON.stringify({ ...emptyReading(), conversationActs: [{ kind: 'topic_shift', targetPublicId: null }] }),
       ]);
       expect(aside.result.status).toBe('accepted');

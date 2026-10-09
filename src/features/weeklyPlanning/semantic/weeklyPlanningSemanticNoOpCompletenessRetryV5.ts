@@ -147,6 +147,26 @@ function invalidRetryMayCarryChange(parsed: unknown): boolean {
   }
 }
 
+/**
+ * Whether the first (contradictory) reading described something about an accepted task that no
+ * typed planning fact carries: a non-empty study context label (the public state never shows one,
+ * so it is not an echo) or a changed title/category. Typed shape only, never text. Such a message
+ * had content the reading could not encode; a bare shell has none.
+ */
+function initialReadingCarriesUnappliedDescription(
+  document: WeeklyPlanningSemanticDocumentV5,
+  publicStateSummary: Record<string, unknown> | undefined,
+): boolean {
+  const accepted = Array.isArray(publicStateSummary?.tasks)
+    ? (publicStateSummary.tasks as Array<Record<string, unknown>>) : [];
+  return document.tasks.some((task) => {
+    if (!task.existingPublicId) return false;
+    if ((task.study?.contextLabel ?? '').trim().length > 0) return true;
+    const bound = accepted.find((candidate) => candidate.publicId === task.existingPublicId);
+    return Boolean(bound) && (bound?.title !== task.title || bound?.category !== task.category);
+  });
+}
+
 function rejectedNoOpRetryResult(params: {
   run: WeeklyPlanningSemanticNormalizerRunV5;
   attemptCount: number;
@@ -532,15 +552,16 @@ export async function tryWeeklyPlanningSemanticNoOpCompletenessRetryV5(params: {
 
     if (!shouldRetryAgain
       && conversationArchitecturePolicy(params.run.input.conversationArchitecture).semanticConversationActs
-      && (pendingQuestion
-        ? !validation.document && invalidRetryMayCarryChange(validation.parsedDocument ?? validation.providerDocument ?? null)
-        : true)) {
+      && ((!validation.document
+          && invalidRetryMayCarryChange(validation.parsedDocument ?? validation.providerDocument ?? null))
+        || (!pendingQuestion && initialReadingCarriesUnappliedDescription(
+          params.initialDocument, params.run.input.publicStateSummary)))) {
       // The first reading was a schema-valid contradiction (it pointed at the plan but carried no
-      // change) and the re-read did not recover the meaning: it is invalid, or valid yet carries
-      // neither a delta nor a self-sufficient act. Accepting the empty reading would report the
-      // plan as unchanged while the message went unused, so the turn is an unusable message
-      // instead: nothing applied, recovery wording, no promotion. Under a pending question the
-      // fallback to the initial reading stays (a readable, content-free invalid re-read keeps it).
+      // change) and the re-read that should have recovered the meaning is invalid or empty.
+      // Accepting the empty reading would report the plan as unchanged while the message went
+      // unused, so the turn is an unusable message instead: nothing applied, recovery wording,
+      // no promotion. A bare reading with no description at all (an acknowledgement such as
+      // 「お任せします」) keeps the unchanged plan: nothing suggests content was lost.
       return rejectedNoOpRetryResult({
         run: params.run,
         attemptCount,

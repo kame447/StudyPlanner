@@ -23,6 +23,7 @@ const BASE = { schemaVersion: 'weekly-planning-semantic-v5', planningWindow: nul
 async function secondTurn(params: {
   architecture: WeeklyPlanningConversationArchitecture;
   reread: Json;
+  contextLabel?: string | null;
 }) {
   let turn2 = false;
   let semanticCalls = 0;
@@ -36,7 +37,7 @@ async function secondTurn(params: {
     const tasks = (call.payload!.publicStateSummary as Json).tasks as Json[];
     return JSON.stringify({ ...BASE, planningIntent: 'update_plan',
       tasks: [{ localId: 'shell', existingPublicId: tasks[0].publicId, decompositionStatus: 'atomic', category: 'study',
-        title: 'アルゴリズムイントロダクション', study: { purpose: 'self_study', activityKind: 'unknown', contextLabel: '青チャート', components: [] },
+        title: 'アルゴリズムイントロダクション', study: { purpose: 'self_study', activityKind: 'unknown', contextLabel: params.contextLabel === undefined ? '青チャート' : params.contextLabel, components: [] },
         workloads: [], effortEstimates: [], temporalConstraints: [], recurrence: [], durableContextSignals: [],
         sourceText: '青チャートのこと' }],
       conversationActs: [] });
@@ -66,6 +67,11 @@ describe('a re-read that carries nothing is an unusable message, never an unchan
   it('a self-sufficient act in the re-read still carries the turn', async () => {
     const { result } = await secondTurn({ architecture: 'interaction_v1',
       reread: { ...EMPTY, conversationActs: [{ kind: 'topic_shift', targetPublicId: null }] } });
+    expect(result.result?.interactionOutcome?.kind).not.toBe('recover');
+  });
+
+  it('a bare acknowledgement shell (nothing described) keeps the unchanged plan', async () => {
+    const { result } = await secondTurn({ architecture: 'interaction_v1', reread: EMPTY, contextLabel: null });
     expect(result.result?.interactionOutcome?.kind).not.toBe('recover');
   });
 
