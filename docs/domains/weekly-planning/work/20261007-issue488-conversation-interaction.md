@@ -368,3 +368,15 @@ W4 RedFeynman (Sonnet 5.5, test-only) built it. The fixture has 15 events, 14 li
 - X5 fails: the model typed the stated 90-minute target as `scope_total`, so the app asks a progress question that repeats (n=1). X5 is now flaky, and a prompt-level fix would be provisional.
 - The semantic prompt is unchanged since round 4, so neither failure is a regression from B1–B3.
 - Capture caveat: the trace outbox accumulates earlier conversations across runs, so per-turn attribution uses the per-run fetch capture.
+
+**X5 follow-up (code `ef57d18a`, then `87df2e6a`):**
+- **The first-turn misreading.** On `2c1378a7`, X5 had read the stated 90 minutes as `scope_total`.
+  - Fix: a cap-neutral rewording of the split instruction, "total" → "target" (+3 B, provisional).
+  - Live T1 then passed 3/3.
+- **A new second-turn failure, in the correction path.** One correction replaced the workload, and another replaced its session length, with an effort that targeted the new workload. The new workload was pruned as a "support stub", leaving no work and causing a progress question.
+  - Fix: a correction's own replacement fact is never pruned (`CanonicalCorrectionApplicationV5`). Root-cause for that shape.
+  - The r2 shape (replacement ids that dangle) is a disclosed safe failure. It is model variance.
+- **Live result on `87df2e6a`:** X5 passed **3/3 on both turns** (2×45, then 2×30). The fixed shape occurred once (r3) and passed.
+- **Residuals:**
+  - a correction targeting an effort that a dependent migration superseded in the same turn;
+  - a stale `total_duration` left beside a corrected target workload.
