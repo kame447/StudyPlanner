@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { startupTiming } from '../lib/startupTiming';
-import splashLogo from '../assets/studyplanner-logo.png';
+import splashLogo from '../assets/laplans-wordmark.jpeg';
 import startupVideo from '../assets/laplans_blackhole_1080x1920.mp4';
 import startupPoster from '../assets/laplans-startup-poster.jpg';
 import startupStill from '../assets/laplans-startup-still.jpg';
@@ -31,7 +31,7 @@ export function SplashScreen({ fixedLight = false, canSkip = false, videoOutcome
             <img src={startupStill} alt="Laplans" className="startup-video__still" />
           </StartupVideo>
         ) : (
-          <img src={splashLogo} alt="Study Planner" className="splash-screen__logo" />
+          <img src={splashLogo} alt="Laplans" className="splash-screen__logo" />
         )}
         <p className="splash-screen__message" role="status">{playIntro && canSkip ? '準備できました' : 'アプリを準備しています...'}</p>
       </div>

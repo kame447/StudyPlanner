@@ -1,9 +1,9 @@
-import logoImage from "../assets/studyplanner-logo.png";
+import logoImage from "../assets/laplans-wordmark.jpeg";
 
 export function StudyPlannerLogo() {
   return (
-    <div className="brand-lockup" aria-label="Study Planner">
-      <img src={logoImage} alt="Study Planner" className="brand-logo-image" />
+    <div className="brand-lockup" aria-label="Laplans">
+      <img src={logoImage} alt="Laplans" className="brand-logo-image" />
     </div>
   );
 }
