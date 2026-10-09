@@ -187,6 +187,9 @@ describe('X2 boundaries', () => {
     // The first request is the model context; a later repair request only echoes the model's own answer.
     expect(JSON.stringify(generic[0].messages)).not.toContain(lapsedId);
     expect(proposals(conversation)[0]).toMatchObject({ status: 'pending', decidedAtTurnId: expect.any(String) });
+    // The scripted accept is not applied: no record is accepted, and no state or draft reports acceptance.
+    expect(proposals(conversation).every(record => record.status !== 'accepted')).toBe(true);
+    expect(third.result?.state.learningStrategyProposalRecords?.every(record => record.status !== 'accepted')).toBe(true);
   });
 
   it('legacy_v5 keeps the pending gate (no lapse)', async () => {
