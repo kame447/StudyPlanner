@@ -430,7 +430,9 @@ export async function buildWorkerBundle({ cases, preSend, dispatchesPerTurn = PR
   assert.ok(Array.isArray(cases));
   const source = createPairedWorkerSource({ root: ROOT, cases: null, digest: null, expiresAt: null,
     providerDispatchesPerTurn: dispatchesPerTurn, preSend, dataModule: SEGMENT_DATA_MODULE });
-  const output = await build({ stdin: { contents: source, resolveDir: ROOT, loader: 'ts' }, bundle: true, format: 'esm',
+  // Pin module-path comments as well as resolution; esbuild otherwise uses
+  // the process cwd, making approval-bound code bytes depend on the caller.
+  const output = await build({ stdin: { contents: source, resolveDir: ROOT, loader: 'ts' }, absWorkingDir: ROOT, bundle: true, format: 'esm',
     platform: 'browser', conditions: ['workerd', 'worker', 'browser'], external: ['cloudflare:*', 'node:*', SEGMENT_DATA_MODULE],
     write: false, logLevel: 'silent', minify: false, legalComments: 'none' });
   const code = output.outputFiles[0].text;
