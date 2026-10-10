@@ -11,6 +11,8 @@ export type AiPlanningChatResult = { readonly status: 'saved' } | { readonly sta
 interface ChatSessionPorts {
   isCurrent(): boolean;
   isBusy(): boolean;
+  isApplicationStateReady?(): boolean;
+  initializeApplicationState?(): boolean;
   exportSnapshot(includeEmpty: boolean): Snapshot | null;
   prepareImport(snapshot: Snapshot): (() => void) | null;
   prepareNew(): (() => void) | null;
@@ -27,7 +29,7 @@ function immutableIndex(value: AiPlanningChatIndex): AiPlanningChatIndex {
 export function createAiPlanningChatSession(ownerId: string, ports: ChatSessionPorts) {
   let index: AiPlanningChatIndex | undefined;
   let hadStoredIndex = false;
-  let phase: 'uninitialized' | 'ready' | 'index-unavailable' | 'snapshot-unavailable' = 'uninitialized';
+  let phase: 'uninitialized' | 'ready' | 'index-unavailable' | 'snapshot-unavailable' | 'state-unavailable' = 'uninitialized';
   const unavailableIndex = immutableIndex({ version: 1, activeChatId: '', chats: [] });
   let result: AiPlanningChatResult | null = null;
   let dirty = false;
@@ -42,7 +44,8 @@ export function createAiPlanningChatSession(ownerId: string, ports: ChatSessionP
     }
     return index;
   }
-  function initializationBlocked() { return phase === 'index-unavailable' || phase === 'snapshot-unavailable'; }
+  function initializationBlocked() { return phase === 'index-unavailable' || phase === 'snapshot-unavailable'
+    || phase === 'state-unavailable' || ports.isApplicationStateReady?.() === false; }
   function guard(): AiPlanningChatResult | null {
     if (!ports.isCurrent()) return { status: 'blocked', reason: 'owner-changed' };
     return ports.isBusy() ? { status: 'blocked', reason: 'busy' } : null;
@@ -83,6 +86,9 @@ export function createAiPlanningChatSession(ownerId: string, ports: ChatSessionP
     if (phase === 'ready') return result ?? { status: 'saved' };
     const current = currentIndex(true);
     if (!index) return fail('index-unavailable');
+    if (ports.initializeApplicationState?.() === false) {
+      phase = 'state-unavailable'; return fail('initialization-unavailable');
+    }
     const active = current.chats.find((chat) => chat.id === current.activeChatId)!;
     const snapshot = loadAiPlanningChatSnapshot(ownerId, active);
     if (snapshot) {

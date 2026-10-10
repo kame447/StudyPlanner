@@ -46,7 +46,6 @@ import {
 } from './weeklyPlanningApprovalLedgerStorage';
 import {
   resetWeeklyPlanningApplicationSession,
-  restoreWeeklyPlanningApplicationSession,
   synchronizeWeeklyPlanningApplicationSession,
 } from './weeklyPlanningSessionLifecycle';
 import {
@@ -158,7 +157,7 @@ export function useWeeklyPlanningApplication({
     return () => { if (committedRequestInput.current === requestInput) committedRequestInput.current = null; };
   }, [requestInput]);
 
-  const { planningState, dispatchPlanningAction, getPlanningState } = useWeeklyPlanningState(
+  const { planningState, dispatchPlanningAction, getPlanningState, isPlanningStateReady, retryPlanningStateLoad, getLoadedSessionSnapshot } = useWeeklyPlanningState(
     ownerId,
     selectedDate,
     weekStartsOn,
@@ -174,36 +173,43 @@ export function useWeeklyPlanningApplication({
     operations: loadWeeklyPlanningApprovalOperations(ownerId),
   }));
 
-  if (!controllerSessionRef.current) {
-    const restored = restoreWeeklyPlanningApplicationSession(
-      ownerId,
-      planningState.weekStartDate,
-    );
-    controllerSessionRef.current = createWeeklyPlanningControllerSession(
-      ownerId,
-      planningState.weekStartDate,
-      restored?.conversationId,
-    );
+  function bindLoadedApplicationState(): void {
+    const current = getPlanningState();
+    const restored = getLoadedSessionSnapshot();
+    if (restored) hydrateWeeklyPlanningStableV5RuntimeSession({
+      ownerId, weekStartDate: restored.weekStartDate, conversationId: restored.conversationId,
+      graph: restored.graph, updatedAt: Date.parse(restored.savedAt),
+    });
+    const session = controllerSessionRef.current;
+    if (session) resetWeeklyPlanningControllerSession(session, ownerId, current.weekStartDate, restored?.conversationId);
+    else controllerSessionRef.current = createWeeklyPlanningControllerSession(ownerId, current.weekStartDate, restored?.conversationId);
+    // Bind even when a previously unavailable owner changes to a ready empty one;
+    // an effect with an unchanged week anchor may not run again after that render.
+    bindWeeklyPlanningStableV5RuntimeSessionScope({ ownerId, weekStartDate: current.weekStartDate,
+      conversationId: controllerSessionRef.current!.conversationId });
   }
+
+  if (!controllerSessionRef.current && isPlanningStateReady()) bindLoadedApplicationState();
 
   const dispatchAndPersist = useCallback((action: WeeklyPlanningAction): PlanningState => {
     const next = dispatchPlanningAction(action);
-    if (action.type !== 'commit_turn') {
+    if (isPlanningStateReady() && action.type !== 'commit_turn') {
       saveOwnedWeeklyPlanningState(ownerId, next);
     }
     return next;
-  }, [dispatchPlanningAction, ownerId]);
+  }, [dispatchPlanningAction, isPlanningStateReady, ownerId]);
 
   useEffect(() => {
     const session = controllerSessionRef.current;
-    if (!session) return;
+    if (!session || !isPlanningStateReady()) return;
+    if (session.ownerId !== ownerId) bindLoadedApplicationState();
     synchronizeWeeklyPlanningApplicationSession({
       session,
       ownerId,
-      weekStartDate: planningState.weekStartDate,
+      weekStartDate: getPlanningState().weekStartDate,
     });
     saveOwnedWeeklyPlanningState(ownerId, getPlanningState());
-  }, [getPlanningState, ownerId, planningState.weekStartDate]);
+  }, [getPlanningState, isPlanningStateReady, ownerId, planningState.weekStartDate]);
 
   useEffect(() => {
     if (approvalLedger.ownerId === ownerId) return;
@@ -235,7 +241,7 @@ export function useWeeklyPlanningApplication({
   function getModuleRecoveryBinding(): AiPlanningModuleRecoveryBinding | null {
     const session = controllerSessionRef.current;
     const current = getPlanningState();
-    if (!userId || !applicationActiveRef.current || chatRef.current?.session !== chat
+    if (!isPlanningStateReady() || !userId || !applicationActiveRef.current || chatRef.current?.session !== chat
       || session?.ownerId !== ownerId || chat.requiresInitialization
       || current.pendingTurn || current.pendingApproval || current.approvalRecovery) return null;
     return { ownerId, chatId: chat.index.activeChatId, conversationId: session.conversationId,
@@ -359,7 +365,7 @@ export function useWeeklyPlanningApplication({
   function prepareNewConversation(): (() => void) | null {
     const session = controllerSessionRef.current;
     const current = getPlanningState();
-    if (!session || current.pendingTurn || current.pendingApproval) return null;
+    if (!isPlanningStateReady() || !session || current.pendingTurn || current.pendingApproval) return null;
     const next = createWeeklyPlanningControllerSession(ownerId, current.weekStartDate);
     if (getWeeklyPlanningStableV5RuntimeSession(next.conversationId)) return null;
     return () => {
@@ -379,7 +385,7 @@ export function useWeeklyPlanningApplication({
   ): WeeklyPlanningStableV5PersistedSession | null {
     const session = controllerSessionRef.current;
     const current = getPlanningState();
-    if (!session || current.pendingTurn || current.pendingApproval) return null;
+    if (!isPlanningStateReady() || !session || current.pendingTurn || current.pendingApproval) return null;
     const runtime = getWeeklyPlanningStableV5RuntimeSession(session.conversationId);
     if (!runtime || runtime.ownerId !== ownerId) return null;
     const preparation = prepareWeeklyPlanningStableV5Checkpoint({
@@ -405,7 +411,7 @@ export function useWeeklyPlanningApplication({
   function prepareConversationSnapshot(value: unknown): (() => void) | null {
     const session = controllerSessionRef.current;
     const current = getPlanningState();
-    if (!session || current.pendingTurn || current.pendingApproval) return null;
+    if (!isPlanningStateReady() || !session || current.pendingTurn || current.pendingApproval) return null;
     const snapshot = validateWeeklyPlanningStableV5SessionSnapshot(value, ownerId);
     if (!snapshot) return null;
     const existing = getWeeklyPlanningStableV5RuntimeSession(snapshot.conversationId);
@@ -446,15 +452,24 @@ export function useWeeklyPlanningApplication({
     return true;
   }
 
+  function initializeApplicationState(): boolean {
+    if (isPlanningStateReady()) return true;
+    if (!retryPlanningStateLoad()) return false;
+    bindLoadedApplicationState();
+    return true;
+  }
+
   const [chatRevision, setChatRevision] = useState(0);
-  const chatPortsRef = useRef({ ownerId, exportConversationSnapshot, prepareConversationSnapshot, prepareNewConversation, getPlanningState });
-  chatPortsRef.current = { ownerId, exportConversationSnapshot, prepareConversationSnapshot, prepareNewConversation, getPlanningState };
+  const chatPortsRef = useRef({ ownerId, exportConversationSnapshot, prepareConversationSnapshot, prepareNewConversation, getPlanningState, isPlanningStateReady, initializeApplicationState });
+  chatPortsRef.current = { ownerId, exportConversationSnapshot, prepareConversationSnapshot, prepareNewConversation, getPlanningState, isPlanningStateReady, initializeApplicationState };
   const chatRef = useRef<{ ownerId: string; generation: symbol; session: AiPlanningChatSession } | null>(null);
   if (!chatRef.current || chatRef.current.ownerId !== ownerId) {
     const generation = Symbol('chat-owner-session');
     chatRef.current = { ownerId, generation, session: createAiPlanningChatSession(ownerId, {
       isCurrent: () => applicationActiveRef.current && chatPortsRef.current.ownerId === ownerId && chatRef.current?.generation === generation,
       isBusy: () => Boolean(chatPortsRef.current.getPlanningState().pendingTurn || chatPortsRef.current.getPlanningState().pendingApproval),
+      isApplicationStateReady: () => chatPortsRef.current.isPlanningStateReady(),
+      initializeApplicationState: () => chatPortsRef.current.initializeApplicationState(),
       exportSnapshot: (includeEmpty) => chatPortsRef.current.exportConversationSnapshot({ includeEmpty }),
       prepareImport: (snapshot) => chatPortsRef.current.prepareConversationSnapshot(snapshot),
       prepareNew: () => chatPortsRef.current.prepareNewConversation(),

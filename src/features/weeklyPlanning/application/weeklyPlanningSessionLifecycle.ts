@@ -1,3 +1,4 @@
+import { canRestoreOwnedWeeklyPlanningSession } from '../weeklyPlanningOwnedStorage';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
 import {
   resetWeeklyPlanningControlledSession,
@@ -17,6 +18,7 @@ import {
 } from './weeklyPlanningStableV5SessionStorage';
 
 export interface WeeklyPlanningSessionLifecycleServices {
+  canRestorePersistedSession: typeof canRestoreOwnedWeeklyPlanningSession;
   loadPersistedSession: typeof loadWeeklyPlanningStableV5PersistedSession;
   hydrateRuntimeSession: typeof hydrateWeeklyPlanningStableV5RuntimeSession;
   bindRuntimeSessionScope: typeof bindWeeklyPlanningStableV5RuntimeSessionScope;
@@ -28,6 +30,7 @@ export interface WeeklyPlanningSessionLifecycleServices {
 }
 
 const defaultServices: WeeklyPlanningSessionLifecycleServices = {
+  canRestorePersistedSession: canRestoreOwnedWeeklyPlanningSession,
   loadPersistedSession: loadWeeklyPlanningStableV5PersistedSession,
   hydrateRuntimeSession: hydrateWeeklyPlanningStableV5RuntimeSession,
   bindRuntimeSessionScope: bindWeeklyPlanningStableV5RuntimeSessionScope,
@@ -53,6 +56,7 @@ export function restoreWeeklyPlanningApplicationSession(
   weekStartDate: string,
   services: WeeklyPlanningSessionLifecycleServices = defaultServices,
 ): WeeklyPlanningStableV5PersistedSession | null {
+  if (!services.canRestorePersistedSession(ownerId)) return null;
   const persisted = services.loadPersistedSession({ ownerId, weekStartDate });
   if (!persisted) return null;
   services.hydrateRuntimeSession({

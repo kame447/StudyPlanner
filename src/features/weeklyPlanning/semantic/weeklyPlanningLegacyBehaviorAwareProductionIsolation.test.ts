@@ -150,6 +150,8 @@ function targetsLegacyCluster(
 }
 
 describe('legacy behavior-aware production isolation', () => {
+  // Functional whole-source safety scan: observed 2.9s isolated and 7.0s in the full suite.
+  // This finite runner budget preserves the complete scan; it is not a performance guarantee.
   it('has no runtime import edge from outside the isolated behavior-aware cluster', () => {
     const allSources = sourceFiles(SRC_ROOT);
     const productionSources = allSources.filter(
@@ -179,5 +181,5 @@ describe('legacy behavior-aware production isolation', () => {
 
     expect(runtimeEdges).toEqual([]);
     expect(new Set(typeOnlyEdges)).toEqual(EXPECTED_TYPE_ONLY_EDGES);
-  });
+  }, 15_000);
 });

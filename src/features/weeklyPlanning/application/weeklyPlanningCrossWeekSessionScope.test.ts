@@ -20,6 +20,7 @@ import {
 
 function lifecycleServices(): WeeklyPlanningSessionLifecycleServices {
   return {
+    canRestorePersistedSession: vi.fn(() => true),
     loadPersistedSession: vi.fn(() => null),
     hydrateRuntimeSession: vi.fn(),
     bindRuntimeSessionScope: vi.fn(),
