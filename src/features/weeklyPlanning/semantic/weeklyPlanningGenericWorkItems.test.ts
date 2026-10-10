@@ -331,4 +331,18 @@ describe('generic weekly planning work item compiler', () => {
 
     expect(first.items.map((item) => item.id)).toEqual(second.items.map((item) => item.id));
   });
+
+  it('uses task order while preserving the relative order of two workloads within the same task', () => {
+    const graph = createGraph();
+    const extraExamWorkload = { ...graph.workloads[0], id: 'workload-extra-exam' };
+    graph.workloads = [graph.workloads[2], graph.workloads[1], extraExamWorkload, graph.workloads[0]];
+    const original = structuredClone(graph);
+    const result = compileGenericPlanningWorkItems(graph);
+
+    expect(result.readiness).toBe('ready');
+    expect(result.items.map((item) => item.workloadFactId)).toEqual([
+      'workload-extra-exam', 'workload-exam-years', 'workload-problems', 'workload-cleaning',
+    ]);
+    expect(graph).toEqual(original);
+  });
 });
