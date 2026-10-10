@@ -4,6 +4,8 @@ import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
 import { listCalendarDatesInclusive } from './weeklyPlanningCalendarResolver';
 import type { WeeklyPlanningPlacementGraphViewV5 } from './weeklyPlanningPlacementGraphViewV5';
+import { hardDateBoundForTargetV5 } from './weeklyPlanningResolvedTemporalConstraintsV5';
+import { orderGenericSchedulerWorkItemsByRelationsV5 } from './weeklyPlanningSchedulerRelationOrderingV5';
 import {
   buildHardAvailableWindowsByDate,
   buildPlacementBusyIntervals,
@@ -88,7 +90,7 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
     };
   }
 
-  const context: WeeklyPlanningPlacementRuntimeContextV5 = {
+  const buildContext = (): WeeklyPlanningPlacementRuntimeContextV5 => ({
     input: params.input,
     graph: params.graph,
     dates,
@@ -118,40 +120,70 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
       0,
     ),
     namedTimePeriods: params.namedTimePeriods,
-  };
-  const taskPositions = workItemGroupPositions(
-    movableWorkItems,
-    (item) => item.taskId,
-  );
-  const taskOrdinals = taskOrdinalMapV5(
-    movableWorkItems.map((item) => item.taskId),
-  );
-  const fixedEnds = fixedTaskPlacementEnds(params.input);
-  const candidates: WeeklyDraftCandidate[] = [];
-  const unscheduledWorkItemIds: string[] = [];
+  });
+  const placeInOrder = (items: readonly GenericPlanningWorkItem[]) => {
+    const context = buildContext();
+    const taskPositions = workItemGroupPositions(items, (item) => item.taskId);
+    const taskOrdinals = taskOrdinalMapV5(items.map((item) => item.taskId));
+    const fixedEnds = fixedTaskPlacementEnds(params.input);
+    const candidates: WeeklyDraftCandidate[] = [];
+    const unscheduledWorkItemIds: string[] = [];
 
-  for (const item of movableWorkItems) {
-    const scheduled = scheduleWeeklyPlanningWorkItemV5({
-      context,
-      item,
-      taskPosition: taskPositions.get(item.id) ?? { index: 0, count: 1 },
-      taskOrdinal: taskOrdinals.get(item.taskId) ?? 0,
-      fixedEnds,
-      globalCandidates: candidates,
-      globalNotBefore: params.notBefore,
-    });
-    if (scheduled.failedWorkItemId) {
-      unscheduledWorkItemIds.push(scheduled.failedWorkItemId);
-      rollbackPlacementCandidates({
-        candidates: scheduled.candidates,
-        busy: context.busy,
-        dayLoads: context.dayLoads,
+    for (const item of items) {
+      const scheduled = scheduleWeeklyPlanningWorkItemV5({
+        context,
+        item,
+        taskPosition: taskPositions.get(item.id) ?? { index: 0, count: 1 },
+        taskOrdinal: taskOrdinals.get(item.taskId) ?? 0,
+        fixedEnds,
+        globalCandidates: candidates,
+        globalNotBefore: params.notBefore,
       });
-      continue;
+      if (scheduled.failedWorkItemId) {
+        unscheduledWorkItemIds.push(scheduled.failedWorkItemId);
+        rollbackPlacementCandidates({
+          candidates: scheduled.candidates,
+          busy: context.busy,
+          dayLoads: context.dayLoads,
+        });
+        continue;
+      }
+      candidates.push(...scheduled.candidates);
     }
-    candidates.push(...scheduled.candidates);
+    return { candidates, unscheduledWorkItemIds };
+  };
+
+  let placed = placeInOrder(movableWorkItems);
+  if (placed.unscheduledWorkItemIds.length > 0) {
+    const deadlineOrder = movableWorkItems
+      .map((item, index) => ({
+        item,
+        index,
+        deadline: hardDateBoundForTargetV5({
+          bounds: params.input.hardDateBounds ?? [],
+          taskId: item.taskId,
+          targetFactId: item.componentId ?? item.taskId,
+        })?.endDate ?? null,
+      }))
+      .sort((left, right) => {
+        if (left.deadline === right.deadline) return left.index - right.index;
+        if (!left.deadline) return 1;
+        if (!right.deadline) return -1;
+        return left.deadline.localeCompare(right.deadline);
+      })
+      .map(({ item }) => item);
+    // Deadlines may change the tie-break, never accepted relation precedence.
+    const retryOrder = orderGenericSchedulerWorkItemsByRelationsV5({
+      items: deadlineOrder,
+      relations: params.input.relations,
+    });
+    if (retryOrder.some((item, index) => item.id !== movableWorkItems[index].id)) {
+      const retry = placeInOrder(retryOrder);
+      if (retry.unscheduledWorkItemIds.length === 0) placed = retry;
+    }
   }
 
+  const { candidates, unscheduledWorkItemIds } = placed;
   if (unscheduledWorkItemIds.length > 0) {
     return {
       schedulerVersion: WEEKLY_PLANNING_STABLE_V5_PREVIEW_SCHEDULER_VERSION,

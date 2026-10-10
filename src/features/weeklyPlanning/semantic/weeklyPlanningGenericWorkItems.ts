@@ -344,6 +344,9 @@ export function compileGenericPlanningWorkItems(
     });
   }
 
+  const taskOrder = new Map(graph.tasks.map((task, index) => [task.id, index]));
+  items.sort((left, right) => taskOrder.get(left.taskId)! - taskOrder.get(right.taskId)!);
+
   const blocking = issues.some((issue) => issue.blocking);
   return {
     items,

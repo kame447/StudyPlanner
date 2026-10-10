@@ -1,7 +1,7 @@
 # Weekly Planning Scheduling Policy
 
 Status: canonical / current Stable V5 scheduling behavior
-Updated: 2026-09-01
+Updated: 2026-10-10
 
 References:
 - [Current contract](../architecture/current-contract-v5.md)
@@ -75,6 +75,14 @@ current Stable V5はnormal daysの平均負荷をtargetとして用い、通常�
 これはhard capacityではなく**tunable scheduling policy**である。deadline、availability、explicit date/preference等のharder evidenceより優先しない。
 
 「必ず完全な6等分」することはproduct invariantではない。現在の原則は、normal daysへ現実的に分散し、reserve capacityを可能な限り保持することである。
+
+## Bounded recovery from placement-order failure
+
+The ordinary placement attempt retains the compiled work-item order. If it places all work, its result is kept without deadline-based reoptimization. Only after a failed attempt may placement try one different order: stable priority by the already compiled hard end for the item's component or task, followed by the existing relation-ordering owner. Accepted before/after/sequence/dependency and priority relations remain authoritative. Missing or start-only bounds are not deadlines.
+
+Each attempt starts with fresh busy intervals, daily loads and candidates, using the same accepted input, horizon, availability, quantity and request-time boundary. A retry replaces the first result only when all work is placed. If it also fails, the first attempt's partial candidates and unscheduled identities are retained under the existing partial-output contract. This bounded search is not a complete feasibility solver, and failure does not prove that every possible ordering is impossible.
+
+Separately, work-item compilation follows the supplied active task order while preserving the relative order of workloads within each task. Replacing a workload may append a new fact to graph history; that historical append must not move its task behind another task. The compiler sorts only its newly created item array and retains workload IDs, amounts and provenance. It does not reorder or rewrite the accepted graph.
 
 ## Explicit daily study capacity
 

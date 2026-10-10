@@ -6,6 +6,15 @@ import {
 import {
   prepareWeeklyPlanningTraceServerWrite,
 } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
+import { executeWeeklyPlanningStableV5Preview } from '../application/weeklyPlanningStableV5PreviewExecution';
+import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
+import {
+  createEmptyWeeklyPlanningFactGraphV5,
+  type WeeklyPlanningFactGraphV5,
+} from '../semantic/weeklyPlanningFactGraphV5';
+import type { GenericSchedulerInput } from '../semantic/weeklyPlanningGenericSchedulerInput';
+import { compileGenericPlanningWorkItems } from '../semantic/weeklyPlanningGenericWorkItems';
+import { createWeeklyPlanningPlacementGraphViewV5 } from '../semantic/weeklyPlanningPlacementGraphViewV5';
 import {
   createMemoryStorageHarness,
   installWeeklyPlanningTestStorage,
@@ -17,6 +26,10 @@ import {
 } from './weeklyPlanningStableV5TraceRuntime';
 import { listWeeklyPlanningTraceOutboxItems } from './weeklyPlanningTraceOutbox';
 import { setWeeklyPlanningTraceRepositoryForTests } from './weeklyPlanningTraceRepository';
+import {
+  takeWeeklyPlanningStableV5DebugTrace,
+  type WeeklyPlanningStableV5DebugTraceEvent,
+} from './weeklyPlanningStableV5DebugTrace';
 import type {
   WeeklyPlanningTraceEntry,
   WeeklyPlanningTraceRepository,
@@ -92,7 +105,7 @@ function previewEvent() {
   };
 }
 
-function traceInput(requestId: string, events: ReturnType<typeof previewEvent>[]) {
+function traceInput(requestId: string, events: WeeklyPlanningStableV5DebugTraceEvent[]) {
   return {
     userId: USER_ID,
     conversationId: CONVERSATION_ID,
@@ -130,6 +143,126 @@ afterEach(() => {
 });
 
 describe('provisional capacity preview trace persistence gate', () => {
+  it('persists actual deadline-rescued candidates through outbox retry and bounded Worker preparation', async () => {
+    const dates = ['2026-09-07', '2026-09-08'];
+    const taskIds = ['task-flexible', 'task-urgent'];
+    const source = {
+      conversationId: CONVERSATION_ID, turnId: 'turn-rescue', semanticLocalId: 'capacity-rescue',
+      sourceText: '二つの作業を各60分、後者は月曜までに進めたい', origin: 'user' as const,
+    };
+    const graph: WeeklyPlanningFactGraphV5 = {
+      ...createEmptyWeeklyPlanningFactGraphV5(),
+      revision: 1,
+      tasks: taskIds.map((id) => ({
+        id, category: 'study', title: id, source, createdRevision: 1,
+      })),
+      workloads: taskIds.map((taskId) => ({
+        id: `workload-${taskId}`, taskId, componentId: null, quantityRole: 'target',
+        amount: 60, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null, source, createdRevision: 1,
+      })),
+      factLifecycles: taskIds.flatMap((id) => [id, `workload-${id}`]).map((factId) => ({
+        factId, status: 'active', createdRevision: 1, terminalRevision: null, supersededByFactId: null,
+      })),
+    };
+    const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
+    const work = compileGenericPlanningWorkItems(activeGraph);
+    expect(work.readiness).toBe('ready');
+    expect(work.items.map((item) => item.taskId)).toEqual(taskIds);
+    const schedulerInput: GenericSchedulerInput = {
+      version: 'weekly-planning-generic-scheduler-input-v2', graphRevision: 1, ownerId: USER_ID,
+      horizon: { startDate: dates[0], endDate: dates[1], timeZone: 'Asia/Tokyo', planningWindowFactIds: [] },
+      movableWorkItems: work.items,
+      fixedTaskReservations: [], taskDateEligibilities: [], sourceSelections: [], relations: [],
+      preferredPlacements: [], sourceFactRefs: work.items.flatMap((item) => item.sourceFactRefs),
+      hardDateBounds: [{
+        taskId: 'task-urgent', targetFactId: 'task-urgent', startDate: null,
+        endDate: dates[0], sourceFactIds: ['deadline-urgent'],
+      }],
+      dailyCapacityLimits: dates.map((date) => ({ date, maxMinutes: 60, sourceFactIds: [`cap:${date}`] })),
+      availabilityWindows: dates.map((date) => ({
+        id: `available:${date}`, kind: 'available', start: { date, time: '09:00' },
+        end: { date, time: '10:00' }, timeZone: 'Asia/Tokyo', constraintLevel: 'hard',
+        sourceKind: 'user_declaration', sourceRef: `available:${date}`, ownerId: USER_ID, graphRevision: 1,
+      })),
+    };
+    const requestId = `${CONVERSATION_ID}:request:rescue`;
+    const preview = executeWeeklyPlanningStableV5Preview({
+      input: { plans: [], scheduleTemplates: [], traceRequestId: requestId },
+      graph: createWeeklyPlanningPlacementGraphViewV5(activeGraph),
+      schedulerInput,
+      requestContext: {
+        startedAtIso: '2026-09-07T00:00:00.000Z', timeZone: 'Asia/Tokyo',
+        currentDate: dates[0], currentTime: '09:00', notBeforeDate: dates[0], notBeforeTime: '09:00',
+        weekStartsOn: 'monday',
+      },
+    });
+    expect(preview.status).toBe('ready');
+    expect(preview.unscheduledWorkItemIds).toEqual([]);
+    expect(preview.candidates.map(({ date, field, durationMinutes }) => ({ date, field, durationMinutes }))).toEqual([
+      { date: dates[0], field: 'task-urgent', durationMinutes: 60 },
+      { date: dates[1], field: 'task-flexible', durationMinutes: 60 },
+    ]);
+    const events = takeWeeklyPlanningStableV5DebugTrace(requestId);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      stage: 'runtime_preview_scheduler_evaluated',
+      data: { status: 'ready', candidateCount: 2, unscheduledCount: 0, candidates: preview.candidates },
+    });
+    const sentinel = 'future-capacity-rescue-field';
+    const oversized = 'oversized-capacity-rescue-'.repeat(4_000);
+    const event = {
+      ...events[0],
+      data: {
+        ...(events[0].data as Record<string, unknown>),
+        candidates: preview.candidates.map((candidate, index) => ({
+          ...candidate,
+          ...(index === 0 ? { oversizedFutureField: oversized } : { futureCapacityField: sentinel }),
+        })),
+      },
+    };
+    const harness = repositoryHarness();
+    harness.failNext();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    const first = {
+      ...traceInput(requestId, [event]), previewCount: 2,
+      userText: source.sourceText, assistantMessage: '月曜と火曜に60分ずつ配置しました。',
+    };
+    await recordWeeklyPlanningStableV5TurnTrace(first);
+    expect(harness.writes).toHaveLength(0);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: USER_ID, conversationId: CONVERSATION_ID })).toHaveLength(1);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace({ ...first, requestId: `${requestId}:next`, debugTraceEvents: [] });
+    expect(harness.writes).toHaveLength(2);
+    const replayed = harness.writes[0];
+    expect(replayed.entries).toHaveLength(1);
+    expect(replayed.entries[0].requestId).toBe(requestId);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: USER_ID, conversationId: CONVERSATION_ID })).toEqual([]);
+    expect(measureWeeklyPlanningTraceJsonBytes(replayed.entries[0])).toBeLessThanOrEqual(
+      WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes,
+    );
+    const prepared = prepareWeeklyPlanningTraceServerWrite({
+      session: replayed.session as unknown as Record<string, unknown>,
+      entries: replayed.entries as unknown as Record<string, unknown>[],
+    }, subject, canonicalIds, '2026-09-07T00:00:00.000Z');
+    expect(prepared.entries).toHaveLength(1);
+    for (const entry of [replayed.entries[0], prepared.entries[0]]) {
+      const serialized = JSON.stringify(entry);
+      expect(serialized).toContain('"status":"ready"');
+      expect(serialized).toContain('"candidateCount":2');
+      expect(serialized).toContain('"unscheduledCount":0');
+      expect(serialized).toContain(sentinel);
+      expect(serialized).toContain('"traceTruncated":true');
+      expect(serialized).not.toContain(oversized);
+      for (const value of [...dates, ...taskIds, ...work.items.flatMap((item) => item.sourceFactRefs)]) {
+        expect(serialized).toContain(value);
+      }
+    }
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(
+      WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes,
+    );
+  });
+
   it('survives outbox retry and Worker preparation while minimizing transient scheduler identifiers', async () => {
     const harness = repositoryHarness();
     harness.failNext();
