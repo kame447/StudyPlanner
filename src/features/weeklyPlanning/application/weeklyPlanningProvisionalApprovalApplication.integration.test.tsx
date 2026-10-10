@@ -126,6 +126,139 @@ afterEach(() => {
 });
 
 describe('provisional allocation through application and approval persistence', () => {
+  it('persists the computed standard quantity title through actual approval and bounded diagnostics', async () => {
+    const storage = createMemoryStorageHarness();
+    restoreWindow = installWeeklyPlanningTestStorage(storage.storage);
+    const repository = createLocalPlannerRepository(storage.storage);
+    const save = vi.fn(async (draft: PlanDraft) => repository.upsertPlan(createPlanFromDraft(draft)));
+    const ref = createRef<WeeklyPlanningApplication>();
+    const props: UseWeeklyPlanningApplicationInput = {
+      userId: OWNER, selectedDate: WEEK_START, plans: [], scheduleTemplates: [],
+      isPlannerDataSnapshotCurrent: () => true, plannerDataAvailability: createReadyPlannerDataAvailability(OWNER),
+      saveWeeklyApprovedPlan: save,
+    };
+    const mount = async () => { await act(async () => { renderer = create(<Harness ref={ref} {...props} />); }); };
+    const reload = async () => {
+      await act(async () => { renderer!.unmount(); }); renderer = undefined;
+      resetWeeklyPlanningStableV5RuntimeSessionsForTest(); clearWeeklyPlanningSessionRuntime();
+      await mount();
+    };
+    const document = workloadDocument();
+    document.tasks[0].sourceText = '数学の教材を20問進めたい';
+    Object.assign(document.tasks[0].workloads[0], {
+      amount: 20, unitCode: 'problem', unitLabel: '20問', sourceText: '数学の教材を20問進めたい',
+    });
+    document.tasks[0].effortEstimates = [{ localId: 'per-problem', targetLocalId: 'workload',
+      kind: 'duration_per_unit', minutes: 3, unitCode: 'problem', precision: 'exact', sourceText: '1問3分' }];
+    const userText = '8月17日から23日で数学の教材を20問進めたい。1問3分です';
+    const validation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(document), { currentUserText: userText });
+    expect(validation.errors).toEqual([]); expect(validation.document).not.toBeNull();
+    // External normalization is substituted, as in this suite; generated scheduling,
+    // checkpoint, approval, local repository and diagnostic persistence are real.
+    normalizeMock.mockResolvedValueOnce(accepted(validation.document!));
+    const debug = vi.spyOn(debugTrace, 'recordWeeklyPlanningStableV5DebugTrace');
+    await mount();
+    await act(async () => { expect((await ref.current!.submitTurn(userText)).accepted).toBe(true); });
+    const previewAssistantMessage = ref.current!.state.messages[ref.current!.state.messages.length - 1]?.content;
+    const checkpoint = loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK_START })!;
+    expect(checkpoint.graph.workloads).toEqual([expect.objectContaining({ amount: 20, unitCode: 'problem', unitLabel: '20問' })]);
+    expect(checkpoint.graph.effortEstimates).toEqual([expect.objectContaining({ kind: 'duration_per_unit', minutes: 3 })]);
+    const graph = structuredClone(checkpoint.graph);
+    const candidates = structuredClone(ref.current!.state.previewCandidates!);
+    // 20×3=60 raw minutes, 10% buffer, existing 5-minute rounding =>70.
+    expect(candidates).toEqual([expect.objectContaining({ title: '数学の教材 20問', durationMinutes: 70, estimatedMinutes: 70 })]);
+    expect(checkpoint.planningState.previewCandidates).toEqual(candidates);
+    expect(save).not.toHaveBeenCalled();
+    const blocks = createWeeklyDraftBlocksFromPreviewCandidates({ candidates, userId: OWNER, createdAt: new Date().toISOString() });
+    await act(async () => { ref.current!.createDraftBlocks(blocks); });
+    await reload();
+    expect(ref.current!.pendingDraftBlocks).toEqual(blocks);
+    expect(ref.current!.pendingDraftBlocks[0].title).toBe('数学の教材 20問');
+    expect(getWeeklyPlanningStableV5RuntimeSession(checkpoint.conversationId)?.graph).toEqual(graph);
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => { await ref.current!.approveDraftBlocks(); });
+    expect(save).toHaveBeenCalledTimes(1);
+    const plans = await createLocalPlannerRepository(storage.storage).getPlans(OWNER);
+    expect(plans).toEqual([expect.objectContaining({ title: '数学の教材 20問',
+      date: candidates[0].date, startTime: candidates[0].startTime, endTime: candidates[0].endTime })]);
+    await reload();
+    expect(await createLocalPlannerRepository(storage.storage).getPlans(OWNER)).toEqual(plans);
+    expect(getWeeklyPlanningStableV5RuntimeSession(checkpoint.conversationId)?.graph).toEqual(graph);
+    await act(async () => { await ref.current!.approveDraftBlocks(); });
+    expect(save).toHaveBeenCalledTimes(1); expect(normalizeMock).toHaveBeenCalledTimes(1);
+
+    const generated = debug.mock.calls.map(([event]) => event)
+      .filter((event) => event.stage === 'runtime_preview_scheduler_evaluated');
+    expect(generated).toHaveLength(1); debug.mockRestore();
+    const event = generated[0];
+    expect(event.requestId).toBeTruthy();
+    if (!event.requestId) throw new Error('actual request ID missing');
+    const data = structuredClone(event.data) as { result: { candidates: Array<Record<string, unknown>> } };
+    expect(data.result.candidates).toEqual(candidates);
+    data.result.candidates[0].futureQuantityLabelSentinel = 'quantity-label-sentinel';
+    resetWeeklyPlanningStableV5TraceRuntimeForTest(); vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
+    const writes: Array<{ session: WeeklyPlanningTraceSession; entries: WeeklyPlanningTraceEntry[] }> = [];
+    let fail = true;
+    setWeeklyPlanningTraceRepositoryForTests({
+      async upsertSession() {},
+      async appendEntries(params) { if (fail) { fail = false; throw new Error('injected quantity-label append failure'); } writes.push(structuredClone(params)); },
+      async listSessions() { return []; }, async listSessionsForAdmin() { return []; },
+      async archiveSessionForAdmin() {}, async getSession() { return null; }, async listEntries() { return []; },
+    });
+    debugTrace.clearWeeklyPlanningStableV5DebugTrace(event.requestId);
+    debugTrace.recordWeeklyPlanningStableV5DebugTrace({ ...event, data });
+    const traceInput = { userId: OWNER, conversationId: checkpoint.conversationId, requestId: event.requestId,
+      userText, assistantMessage: previewAssistantMessage,
+      outcome: 'preview_ready', previewCount: 1,
+      debugTraceEvents: debugTrace.takeWeeklyPlanningStableV5DebugTrace(event.requestId) };
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput);
+    expect(writes).toEqual([]);
+    const pending = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: checkpoint.conversationId });
+    expect(pending).toHaveLength(1); expect(pending[0].input).toEqual(traceInput);
+    expect(JSON.parse(storage.storage.getItem('studyplanner.weeklyPlanning.trace.outbox.v1')!).items[0].input).toEqual(traceInput);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput); // flush exact persisted request, then deduplicate it
+    expect(writes).toHaveLength(1);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: checkpoint.conversationId })).toEqual([]);
+    const expected = { ...candidates[0], futureQuantityLabelSentinel: 'quantity-label-sentinel' };
+    const normal = writes[0].entries[0];
+    expect(normal).toMatchObject({ kind: 'turn_diagnostic', requestId: event.requestId,
+      logicalConversationId: checkpoint.conversationId,
+      constraintContext: { scheduler: { preview: { representativeCandidates: [expected] } } } });
+    expect(measureWeeklyPlanningTraceJsonBytes(normal)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const prepare = (write: typeof writes[number]) => prepareWeeklyPlanningTraceServerWrite({
+      session: { ...write.session }, entries: write.entries.map((entry) => ({ ...entry })),
+    }, { token: `wpt_${'d'.repeat(43)}`, epoch: '103' }, {
+      sessionId: 'weekly-trace-523e4567-e89b-52d3-a456-426614174000', logicalConversationId: checkpoint.conversationId,
+    }, new Date().toISOString());
+    const prepared = prepare(writes[0]);
+    expect(prepared.entries).toHaveLength(1);
+    expect(prepared.entries[0]).toMatchObject({ kind: 'turn_diagnostic', requestId: event.requestId,
+      constraintContext: { scheduler: { preview: { representativeCandidates: [expected] } } } });
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+
+    // Stress the same generated candidate only with an unknown large extension.
+    // This uses a distinct diagnostic ID, not an invented second planning turn.
+    data.result.candidates[0].futureLargeEvidence = `HEAD-${'あ'.repeat(8000)}-TAIL`;
+    const largeId = `${event.requestId}:quantity-label-size-probe`;
+    debugTrace.recordWeeklyPlanningStableV5DebugTrace({ ...event, requestId: largeId, data });
+    await recordWeeklyPlanningStableV5TurnTrace({ ...traceInput, requestId: largeId,
+      debugTraceEvents: debugTrace.takeWeeklyPlanningStableV5DebugTrace(largeId) });
+    expect(writes).toHaveLength(2);
+    const large = writes[1].entries[0];
+    if (large.kind !== 'turn_diagnostic') throw new Error('large turn diagnostic missing');
+    const bounded = large.constraintContext.scheduler?.preview?.representativeCandidates[0];
+    expect(bounded).toMatchObject({ traceTruncated: true, originalBytes: expect.any(Number),
+      jsonHead: expect.stringContaining(JSON.stringify(candidates[0].title)) });
+    expect(large).toMatchObject({ requestId: largeId, logicalConversationId: checkpoint.conversationId });
+    expect(measureWeeklyPlanningTraceJsonBytes(large)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const preparedLarge = prepare(writes[1]);
+    expect(preparedLarge.entries).toHaveLength(1);
+    expect(preparedLarge.entries[0]).toMatchObject({ kind: 'turn_diagnostic', requestId: largeId,
+      constraintContext: { scheduler: { preview: { representativeCandidates: [bounded] } } } });
+    expect(measureWeeklyPlanningTraceJsonBytes(preparedLarge.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+  });
+
   it('admits one real missing-effort question under same-tick and in-flight double submit', async () => {
     const storage = createMemoryStorageHarness();
     restoreWindow = installWeeklyPlanningTestStorage(storage.storage);

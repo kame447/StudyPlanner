@@ -82,6 +82,32 @@ function proposal(kind: 'spaced_memory_practice' | 'calibrate_memory_pace'): Wee
 }
 
 describe('accepted memory session projection', () => {
+  it.each(['220語', '語'])('keeps count labels truthful through accepted session projection: %s', (unitLabel) => {
+    const sourceGraph = graph();
+    const sourceCompilation = compilation();
+    sourceGraph.workloads[0].unitLabel = unitLabel;
+    sourceCompilation.input!.movableWorkItems[0].quantity.unitLabel = unitLabel;
+    sourceCompilation.input!.movableWorkItems[0].label = `英単語 220${unitLabel}`;
+    const before = structuredClone({ sourceGraph, sourceCompilation });
+    const result = applyAcceptedMemorySessionProjectionV5({
+      compilation: sourceCompilation, graph: sourceGraph,
+      acceptedSpacedProposal: proposal('spaced_memory_practice'), acceptedCalibrationProposal: null,
+    });
+    const items = result.input!.movableWorkItems;
+    expect(items).toHaveLength(7);
+    expect(items.map((item) => item.quantity.amount)).toEqual([32, 32, 32, 31, 31, 31, 31]);
+    expect(items.map((item) => item.estimatedMinutes)).toEqual([20, 20, 20, 20, 20, 20, 20]);
+    expect(items.every((item) => item.quantity.unitCode === 'word' && item.quantity.unitLabel === unitLabel)).toBe(true);
+    for (const item of items) {
+      expect(item).toMatchObject({ calibrationMultiplier: 1,
+        roundingStepMinutes: 15, estimateBasis: 'observed_pace' });
+      expect(item.baseEstimatedMinutes).toBeCloseTo(OBSERVED_220_WORD_ESTIMATE_MINUTES / 7);
+    }
+    expect({ sourceGraph, sourceCompilation }).toEqual(before);
+    expect(items.map((item) => item.label)).toEqual([32, 32, 32, 31, 31, 31, 31]
+      .map((amount, index) => `英単語 ${amount}語（${index + 1}/7）`));
+  });
+
   it('keeps the 125.7-minute observation-derived estimate until buffering and full-session allocation', () => {
     expect(OBSERVED_220_WORD_ESTIMATE_MINUTES).toBeCloseTo(125.7142857);
     const result = applyAcceptedMemorySessionProjectionV5({

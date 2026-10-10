@@ -4,6 +4,7 @@ import {
   type WeeklyPlanningFactGraph,
 } from './weeklyPlanningFactGraph';
 import { compileGenericPlanningWorkItems } from './weeklyPlanningGenericWorkItems';
+import { validateWeeklyPlanningWorkloadValuesV5 } from './weeklyPlanningQuantitativeValueValidatorV5';
 import { createEmptyWeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './weeklyPlanningActiveSchedulerGraphViewV5';
 import { projectWeeklyPlanningStatedTimeBudgetGraphV5 } from './weeklyPlanningStatedTimeBudgetProjectionV5';
@@ -192,6 +193,45 @@ function createGraph(): WeeklyPlanningFactGraph {
 }
 
 describe('generic weekly planning work item compiler', () => {
+  it.each([
+    { unitCode: 'custom', unitLabel: 'A4用紙', expected: '問題集 20A4用紙' },
+    { unitCode: 'problem', unitLabel: '題', expected: '問題集 20題' },
+    { unitCode: 'problem', unitLabel: '２０問', expected: '問題集 20問' },
+  ] as const)('preserves custom and clean aliases, canonicalizes numeric standard labels: $unitLabel', ({ unitCode, unitLabel, expected }) => {
+    const graph = createGraph();
+    Object.assign(graph.workloads.find((fact) => fact.id === 'workload-problems')!, { unitCode, unitLabel });
+    graph.effortEstimates.find((fact) => fact.id === 'estimate-problem')!.unitCode = unitCode;
+    const before = structuredClone(graph);
+    const result = compileGenericPlanningWorkItems(graph);
+    expect(result.issues).toEqual([]);
+    const item = result.items.find((candidate) => candidate.workloadFactId === 'workload-problems');
+    expect(item).toMatchObject({ quantity: { amount: 20, unitCode, unitLabel }, baseEstimatedMinutes: 200, estimatedMinutes: 225 });
+    expect(graph).toEqual(before);
+    expect(item?.label).toBe(expected);
+  });
+
+  it.each([
+    { name: 'clock wording echo', id: 'workload-cleaning', amount: 60, unitCode: 'minute', unitLabel: '1時間', label: '掃除 60分', base: 60, allocated: 60 },
+    { name: 'clean clock unit', id: 'workload-cleaning', amount: 60, unitCode: 'minute', unitLabel: '分', label: '掃除 60分', base: 60, allocated: 60 },
+    { name: 'count wording echo', id: 'workload-problems', amount: 20, unitCode: 'problem', unitLabel: '20問', label: '問題集 20問', base: 200, allocated: 225 },
+    { name: 'clean count unit', id: 'workload-problems', amount: 20, unitCode: 'problem', unitLabel: '問', label: '問題集 20問', base: 200, allocated: 225 },
+  ] as const)('displays the typed quantity without echoing its free unit label: $name', ({ id, amount, unitCode, unitLabel, label, base, allocated }) => {
+    const graph = createGraph();
+    const workload = graph.workloads.find((fact) => fact.id === id)!;
+    Object.assign(workload, { amount, unitCode, unitLabel });
+    const errors: string[] = [];
+    validateWeeklyPlanningWorkloadValuesV5({ ...workload }, 'workload', errors);
+    expect(errors).toEqual([]);
+    const before = structuredClone(graph);
+    const result = compileGenericPlanningWorkItems(graph);
+    expect(result.issues).toEqual([]);
+    const item = result.items.find((candidate) => candidate.workloadFactId === id);
+    expect(item).toMatchObject({ quantity: { amount, unitCode, unitLabel },
+      baseEstimatedMinutes: base, estimatedMinutes: allocated });
+    expect(graph).toEqual(before);
+    expect(item?.label).toBe(label);
+  });
+
   it('treats exam_year as one ordinary workload unit and buffers inferred effort', () => {
     const result = compileGenericPlanningWorkItems(createGraph());
     const item = result.items.find((candidate) =>

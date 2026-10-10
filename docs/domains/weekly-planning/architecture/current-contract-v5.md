@@ -96,6 +96,12 @@ Important consequences:
 
 For consultation questions containing calculable quantities, deterministic calculation remains the numeric authority. An answer model may explain a computed result but must not silently replace application-owned arithmetic with its own value.
 
+### Computed workload quantity titles
+
+Generated workload titles display the computed amount using the accepted typed unit; for standard units, the supported numeric-label forms below must not duplicate the displayed amount. Minute/hour workloads use the canonical `分`/`時間` display unit. For other standard units, an ASCII or full-width decimal digit in the label selects that unit code’s canonical display label. Clean standard aliases and custom-unit labels remain unchanged, including digits that carry custom-unit information. This display-only projection does not parse a replacement amount or infer language meaning; non-clock labels containing only kanji numerals are not normalized by this boundary.
+
+The compiler, ordinary range/session distribution and accepted memory-session projection share the same unit-display helper. Amounts, actual range offsets, quantity roles, graph facts, effort/calibration and occupied minutes remain with their existing owners. The computed candidate title passes through existing draft/checkpoint and Plan persistence; this adds no allocation ledger or stored schema. Normal-sized generated scheduler diagnostics retain the same title through the trace outbox and Worker boundary. Oversized diagnostic values retain bounded evidence with explicit truncation metadata; this does not promise complete oversized candidate retention.
+
 ### Accepted task-total duration
 
 An active, accepted task-level `total_duration` may provide scheduler-facing minute work when that task has no workload at any component/quantity role and no hard task `fixed_interval`. All applicable positive finite task totals must agree; conflicting totals stay unresolved. Existing workload/progress ownership remains authoritative when any workload exists. A component total or `session_duration` alone is not task-total work. Deciding whether natural language describes future total work, past progress, per-day availability or session length remains semantic interpretation; formal acceptance alone does not prove that interpretation correct.
