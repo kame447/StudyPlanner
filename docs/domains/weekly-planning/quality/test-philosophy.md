@@ -1,7 +1,7 @@
 # 週間計画 AI テスト方針
 
 Status: canonical
-Updated: 2026-10-03
+Updated: 2026-10-08
 
 References:
 - [Human Grounding Policy](../policies/human-grounding.md)
@@ -194,3 +194,26 @@ targeted regression
 Issue #246では実装前に [Learning Consultation and Advice Contract](../spec/learning-consultation-and-advice.md) のpre-implementation gateを先に満たす。
 
 Security/adversarial evaluationではdirect/stored injection、provenance、durable poisoning、Unicode/delimiter、nonsense/no-op、numerical abuse、authorization boundaryをattack surfaceとして扱う。consultation導入後はretrieved material/context injection、advice-to-action escalation、stale proposal replayもattack surfaceへ含める。
+
+
+## Generated-test oracle and guarantee-transfer contract
+
+property-based testingは固定回帰・実接続・実モデル評価の全面的な代替ではない。少数の有限条件は全列挙し、値・構造の広がりは生成し、非同期の順序は小さい独立モデルと制御した完了順で検査する。「網羅」は列挙した集合、状態、深さ、制御した境界の範囲に限って表明する。
+
+安全性だけでなく、現行契約が保証する正の前進性を検査する。配置可能性を構成上保証した入力では必要な予定が作られ、受理されるべき操作では期待状態が変化する。空出力、全拒否、常時pending、全データ削除で通るpropertyを十分な保証としない。任意の部分配置での時間保存と、単純な実行可能族での配置成立は分ける。heuristic schedulerへ一般的な最適性を新規に要求しない。
+
+oracleはproductionの戻り値から受理可否を逆算したり、production validatorで通った入力だけを正例にしたりしない。独立した小さい仕様表・参照モデル・入力構成から期待結果を定める。round-trip一致だけでは両側が同じ誤変換をする故障を見逃すため、元入力の意味の保存も直接検査する。expected stateや副作用の期待値を共有helperへ隠してproductionと同時に書き換えない。
+
+preview/承認/保存/restoreはoperation identityとrevisionを保った列で検査する。durable commitとack受信、表示更新と永続化、同一operationのretryと新しいユーザー操作を区別する。owner切替、取消、stale preview、応答消失、途中失敗、ledger喪失を含む。一方、client-runtimeのread authorityやbackendの複数client保証を週間計画の別モデルで再定義しない。
+
+既知の反例と有限の重要分岐を必須examplesまたは明示列挙で残し、固定seedの短い検査と記録可能な探索runを併用する。空配列、preconditionによる大量skip、実行されない分岐で試行数だけを満たさない。成功/拒否、境界値、same/different identity、commit前後など必要な探索クラスが実際に通った証拠を残す。
+
+反例の再現にはseed/pathだけでなく、必要なcommandsのreplayPath、操作列、制御した非同期境界、Git内容、installed dependency identity、実行環境を記録する。未記録の最新版ライブラリに置き換えて同じseedだけを再実行しても同一証拠とは扱わない。秘密情報や実ユーザーの会話をartifactへ無条件に残さない。
+
+テストの統合・削除前に、旧契約、実production入口、検証境界、移管先、残す代表例、代表故障を対応付ける。元実装で成功し、空出力/no-op/owner fence欠落/二重保存など対象の故障で失敗することを確認する。新検査のgreenだけでは保証移管は完了しない。件数や行数の削減自体を完了条件にしない。
+
+raw Japaneseの言い換えを意味等価だと自動認定しない。typed documentの安全性と実Jev/Lunaの意味評価を分け、既存のgold/holdout/予算境界を維持する。ブラウザの入力・focus・touch・module load、Worker/Firestore、trace/outbox/size/privacyなど、その境界を実際に通る検査も残す。
+
+実行頻度と最終full verificationは[AGENTS.md](../../../../AGENTS.md#verification-cadence)を正とし、時間だけの省略規則や全リポジトリmutationの常時実行を追加しない。導入済みのfast-checkとlocked Vitest/Stryker構成を先に活用し、実測した費用と故障検出能力で予算を決める。
+
+この方針の観測根拠は[2026-10-08監査](../../../archive/audits/20261008-property-based-test-audit.md)、現在の移行作業は[Issue #382](https://github.com/kame447/StudyPlanner/issues/382)を参照する。文書の追加は生成的検査の移行完了やproduction保証の拡大を意味しない。
