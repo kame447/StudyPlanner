@@ -1,7 +1,7 @@
 # Repository tooling operations runbook
 
 Status: current repository-wide operational guide
-Updated: 2026-10-08
+Updated: 2026-10-10
 
 This document stores durable operational knowledge about repository tooling, GitHub/CI integration failures, recurring tool limitations, and verified workarounds.
 
@@ -163,6 +163,14 @@ After checking the current head and original job steps/logs, use one normal reru
 Verified recovery: initial job `112958816536` was canceled during Chromium installation; build and visual tests were skipped. One same-head job rerun produced replacement job `112970535796`, where installation, production build and visual regression all succeeded. The visual-test portion reported `4 passed (15.2s)`; that is not the total installation/job duration. Original cancellation remains canceled evidence.
 
 Permissions/preconditions: the existing repository CI action must be authorized, and the logs must establish a pre-test installation stall. Do not apply this classification to an assertion failure, timeout inside the tested behavior, flaky test result or unknown error. Do not change browser/test/quality guards to manufacture success. No temporary workflow or repository file was introduced, so no cleanup was needed.
+
+### Prebuilt cross-browser setup instead of repeated apt installation
+
+Setup verified on 2026-10-10 in [PR #575](https://github.com/kame447/StudyPlanner/pull/575), head `ba7b3dd7c6433b971a2344ef112bea4ad9fdb420`, [Matrix run 38070641994](https://github.com/kame447/StudyPlanner/actions/runs/38070641994). The cross-browser jobs use the [official Playwright container](https://playwright.dev/docs/ci#via-containers), `mcr.microsoft.com/playwright:v1.64.0-noble`, with non-root UID 1001. The isolated `@playwright/test` install remains necessary and must match the image version. Remove the redundant browser/OS-dependency installation only in jobs that actually use this image; the unchanged visual job still needs its own Chromium installation.
+
+The earlier [mobile job 113959448876](https://github.com/kame447/StudyPlanner/actions/runs/37971528653/job/113959448876) spent 16m52s downloading 116 MB of apt archives; the entire browser/OS-install step took about 17m41s. It eventually started tests, then exhausted the 25-minute job budget partway through. The network/mirror cause remains unknown. In the new mobile job `114267156178`, container initialization took 27s and job start to test start took 58s, including checkout, Node/npm, application dependencies, runner installation and build. This is a historical comparison across different commits/runners, not an identical-source benchmark or a promise of fixed future latency.
+
+All four new containers reached their real browser tests; the Chromium job completed 68 tests with one pre-existing conditional skip and successfully uploaded artifacts and saved the npm cache. Setup success alone is not full acceptance: require the final four project results, aggregate gate, visual and applicable CI results recorded in PR #575. Preserve test selection, assertions, retries, timeouts and failure propagation. New hosted jobs still download/start fresh containers; this is not a persistent shared test machine. No new secret, elevated workflow permission, custom cache service or temporary cleanup workflow is required. Update image and runner pins together and revalidate when upgrading.
 
 ## Miniflare requests sample `cf` metadata during Worker type generation
 
