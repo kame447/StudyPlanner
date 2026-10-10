@@ -29,6 +29,13 @@ export function createWeeklyPlanningActiveSchedulerGraphViewV5(
     ...activeAvailabilityDeclarations.filter((declaration) => declaration.kind === 'capacity'),
   ];
 
+  // Older writers could supersede a window without retiring its question. Keep
+  // persisted evidence readable, but do not let that dangling question schedule.
+  const activeWindowIds = new Set(filterActiveWeeklyPlanningFactsV5(graph, graph.planningWindows).map(window => window.id));
+  const windowIds = new Set(graph.planningWindows.map(window => window.id));
+  const uncertainties = filterActiveWeeklyPlanningFactsV5(graph, graph.uncertainties).filter(need =>
+    !need.targetFactId || !windowIds.has(need.targetFactId) || activeWindowIds.has(need.targetFactId));
+
   return {
     revision: graph.revision,
     planningWindows: filterActiveWeeklyPlanningFactsV5(graph, graph.planningWindows),
@@ -44,7 +51,7 @@ export function createWeeklyPlanningActiveSchedulerGraphViewV5(
     taskDateRules: filterActiveWeeklyPlanningFactsV5(graph, graph.taskDateRules),
     recurrences: filterActiveWeeklyPlanningFactsV5(graph, graph.recurrences),
     relations: filterActiveWeeklyPlanningFactsV5(graph, graph.relations),
-    uncertainties: filterActiveWeeklyPlanningFactsV5(graph, graph.uncertainties),
+    uncertainties,
     availabilityDeclarations,
     constraintSourceRequests: filterActiveWeeklyPlanningFactsV5(
       graph,

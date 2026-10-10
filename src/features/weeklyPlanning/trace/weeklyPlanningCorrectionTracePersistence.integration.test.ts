@@ -1,3 +1,5 @@
+import { listWeeklyPlanningTraceOutboxItems } from './weeklyPlanningTraceOutbox';
+import { resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest } from './weeklyPlanningStableV5TraceRuntime';
 import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningSemanticPipelineV5 } from '../semantic/weeklyPlanningSemanticPipelineV5';
 import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5, type WeeklyPlanningSemanticDocumentV5 } from '../semantic/weeklyPlanningSemanticDocumentV5';
@@ -322,6 +324,93 @@ it('persists real explicit-window correction diagnostics through failure, retry 
       for (const key of ['fromRevision', 'toRevision', 'superseded', 'added', 'removed']) expect(serialized).toContain(`"${key}"`);
       expect(serialized).toContain(`"fromRevision":${canonical.diff!.fromRevision}`);
       expect(serialized).toContain(`"toRevision":${canonical.diff!.toRevision}`);
+    }
+  }
+});
+
+it.each(['role-rate', 'role-session', 'role-total', 'paired-session', 'paired-total', 'window-changed', 'window-identical', 'window-cross-kind'] as const)('persists actual %s correction identity through failed append, durable retry and Worker preparation', async scenario => {
+  const { runCorrectionIntegrityScenario } = await import('../testUtils/__tests__/weeklyPlanningCorrectionIntegrityFixture');
+  for (const oversized of [false, true]) {
+    repositoryState.failWrites = true;
+    repositoryState.attempts.length = 0;
+    repositoryState.successfulWrites.length = 0;
+    window.localStorage.clear();
+    resetWeeklyPlanningStableV5TraceRuntimeForTest();
+    const requestId = `integrity-trace-${scenario}-${oversized ? 'large' : 'small'}`;
+    beginWeeklyPlanningStableV5DebugTrace(requestId);
+    const { result, originalGraph } = await runCorrectionIntegrityScenario(scenario, canonicalIds.logicalConversationId, requestId);
+    expect(result.canonicalization?.status, result.canonicalization?.errors.join('|')).toBe('applied');
+    const canonical = result.canonicalization!;
+    const activeIds = new Set(result.graph.factLifecycles.filter(entry => entry.status === 'active').map(entry => entry.factId));
+    const activeEfforts = result.graph.effortEstimates.filter(fact => activeIds.has(fact.id));
+    const activeWorkloads = result.graph.workloads.filter(fact => activeIds.has(fact.id));
+    if (scenario.startsWith('role-') || scenario.startsWith('paired-')) {
+      expect(canonical.diff!.superseded).toContainEqual({ kind: 'workload', id: 'work' });
+      expect(activeWorkloads).toHaveLength(1);
+      expect(activeWorkloads[0]).toMatchObject({ quantityRole: 'target', amount: scenario.startsWith('paired-') ? 10 : 20 });
+      if (scenario === 'role-total') {
+        expect(canonical.diff!.removed).toContainEqual({ kind: 'effort_estimate', id: 'pace' });
+        expect(activeEfforts).toEqual([]);
+      } else {
+        expect(scenario === 'paired-total' ? canonical.diff!.removed : canonical.diff!.superseded).toContainEqual({ kind: 'effort_estimate', id: 'pace' });
+        expect(activeEfforts).toEqual([expect.objectContaining({ targetFactId: activeWorkloads[0].id, minutes: scenario.startsWith('paired-') ? 2 : 3 })]);
+        expect(canonical.diff!.added).toContainEqual({ kind: 'effort_estimate', id: activeEfforts[0].id });
+      }
+    } else {
+      const oldWindow = originalGraph.planningWindows[0];
+      const need = originalGraph.uncertainties[0];
+      expect(canonical.diff!.superseded).toContainEqual({ kind: 'planning_window', id: oldWindow.id });
+      const currentWindow = result.graph.planningWindows.find(fact => activeIds.has(fact.id))!;
+      expect(canonical.diff!.added).toContainEqual({ kind: 'planning_window', id: currentWindow.id });
+      if (scenario === 'window-changed') expect(canonical.diff!.removed).toContainEqual({ kind: 'uncertainty', id: need.id });
+      else {
+        expect(activeIds.has(need.id)).toBe(true);
+        expect(result.graph.uncertainties.find(fact => fact.id === need.id)?.targetFactId).toBe(currentWindow.id);
+        expect(canonical.diff!.removed).not.toContainEqual({ kind: 'uncertainty', id: need.id });
+      }
+    }
+    const events = takeWeeklyPlanningStableV5DebugTrace(requestId);
+    const canonicalEvents = events.filter(entry => entry.stage === 'semantic_canonicalization_evaluated');
+    const event = canonicalEvents[canonicalEvents.length - 1]!;
+    expect(event).toBeDefined();
+    const data = event.data as Record<string, unknown>;
+    data.adoptedOperations = { ...(data.adoptedOperations as Record<string, unknown>), futureIntegritySentinel: { retained: true },
+      ...(oversized ? { futureLargePayload: 'x'.repeat(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes * 2) } : {}) };
+    data.inputCanonicalization = { graph: { privateGraphPayload: 'never-persist-private-graph' } };
+    data.resultingCanonicalization = { graph: { privateGraphPayload: 'never-persist-private-graph' } };
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput({ requestId, debugTraceEvents: events }));
+    expect(repositoryState.successfulWrites).toHaveLength(0);
+    const queued = listWeeklyPlanningTraceOutboxItems({ userId: 'trace-user', conversationId: canonicalIds.logicalConversationId });
+    expect(queued).toHaveLength(1);
+    expect(queued[0].input.requestId).toBe(requestId);
+    expect(JSON.stringify(queued[0].input.debugTraceEvents)).toContain('futureIntegritySentinel');
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    repositoryState.failWrites = false;
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput({ requestId: `${requestId}-retry`, debugTraceEvents: [] }));
+    expect(repositoryState.successfulWrites).toHaveLength(2);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: 'trace-user', conversationId: canonicalIds.logicalConversationId })).toEqual([]);
+    const retried = repositoryState.successfulWrites[0];
+    const { observedAt: originalObservedAt, ...originalEntry } = repositoryState.attempts[0].entries[0];
+    const { observedAt: retriedObservedAt, ...retriedEntry } = retried.entries[0];
+    expect(retriedEntry).toEqual(originalEntry);
+    expect(Date.parse(String(retriedObservedAt))).toBeGreaterThanOrEqual(Date.parse(String(originalObservedAt)));
+    expect(measureWeeklyPlanningTraceJsonBytes(retried.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const prepared = prepareWeeklyPlanningTraceServerWrite(retried, subject, canonicalIds, '2026-10-10T00:00:00Z');
+    expect(prepared.entries).toHaveLength(1);
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    const serialized = JSON.stringify(prepared.entries[0]);
+    expect(serialized).not.toContain('never-persist-private-graph');
+    expect(serialized).not.toContain('"graph":');
+    if (oversized) {
+      expect(retried.entries[0]).toMatchObject({ diagnostics: { truncation: { applied: true } } });
+      expect(serialized).toContain('truncation');
+    } else {
+      expect(serialized).toContain('futureIntegritySentinel');
+      expect(prepared.entries[0]).toMatchObject({ decision: { stateDiff: canonical.diff } });
+      const affectedIds = [...canonical.diff!.added, ...canonical.diff!.superseded, ...canonical.diff!.removed].map(entry => entry.id);
+      for (const id of affectedIds) expect(serialized).toContain(id);
+      expect(canonical.diff!.fromRevision).toBe(originalGraph.revision);
+      expect(canonical.diff!.toRevision).toBe(result.graph.revision);
     }
   }
 });
