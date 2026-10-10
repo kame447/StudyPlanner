@@ -1,4 +1,10 @@
 import type { PlanningState } from '../types';
+import {
+  clearWeeklyPlanningStorageSnapshot,
+  hasActiveConversationState,
+  prepareWeeklyPlanningStorageMutation,
+  type WeeklyPlanningStorageSnapshot,
+} from '../weeklyPlanningStorageRetention';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import {
   largestWeeklyPlanningStableV5Checkpoint,
@@ -16,6 +22,21 @@ export type {
 
 function storageKey(ownerId: string, weekStartDate: string): string {
   return `studyplanner.weeklyPlanning.stableV5.${ownerId}.${weekStartDate}`;
+}
+
+export function getWeeklyPlanningStableV5StorageSnapshot(ownerId: string, weekStartDate: string): WeeklyPlanningStorageSnapshot {
+  return {
+    ownerId, weekStartDate, kind: 'stable_v5', key: storageKey(ownerId, weekStartDate),
+    read: raw => {
+      const session = parseWeeklyPlanningStableV5PersistedSession({ raw, ownerId, weekStartDate });
+      if (!session) return null;
+      const state = session.planningState;
+      return {
+        conversationId: session.conversationId, savedAt: session.savedAt,
+        active: session.graph.revision > 0 || hasActiveConversationState(state),
+      };
+    },
+  };
 }
 
 function writeCheckpointWithQuotaFallback(params: {
@@ -49,29 +70,33 @@ function writeCheckpointWithQuotaFallback(params: {
   }
 }
 
+export type WeeklyPlanningStableV5SessionRead =
+  | { status: 'ready'; session: import('./weeklyPlanningStableV5SessionCodec').WeeklyPlanningStableV5PersistedSession | null }
+  | { status: 'unavailable' };
+
+export function readWeeklyPlanningStableV5PersistedSession(params: {
+  ownerId: string;
+  weekStartDate: string;
+}): WeeklyPlanningStableV5SessionRead {
+  if (typeof window === 'undefined') return { status: 'ready', session: null };
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(storageKey(params.ownerId, params.weekStartDate));
+  } catch {
+    return { status: 'unavailable' };
+  }
+  if (raw === null) return { status: 'ready', session: null };
+  const persisted = parseWeeklyPlanningStableV5PersistedSession({ raw, ...params });
+  if (!persisted) prepareWeeklyPlanningStorageMutation(getWeeklyPlanningStableV5StorageSnapshot(params.ownerId, params.weekStartDate));
+  return { status: 'ready', session: persisted };
+}
+
 export function loadWeeklyPlanningStableV5PersistedSession(params: {
   ownerId: string;
   weekStartDate: string;
 }): import('./weeklyPlanningStableV5SessionCodec').WeeklyPlanningStableV5PersistedSession | null {
-  if (typeof window === 'undefined') return null;
-  const key = storageKey(params.ownerId, params.weekStartDate);
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return null;
-    const persisted = parseWeeklyPlanningStableV5PersistedSession({
-      raw,
-      ownerId: params.ownerId,
-      weekStartDate: params.weekStartDate,
-    });
-    if (!persisted) {
-      window.localStorage.removeItem(key);
-      return null;
-    }
-    return persisted;
-  } catch {
-    window.localStorage.removeItem(key);
-    return null;
-  }
+  const read = readWeeklyPlanningStableV5PersistedSession(params);
+  return read.status === 'ready' ? read.session : null;
 }
 
 export function saveWeeklyPlanningStableV5PersistedSession(params: {
@@ -85,9 +110,9 @@ export function saveWeeklyPlanningStableV5PersistedSession(params: {
   const key = storageKey(params.ownerId, params.weekStartDate);
   const preparation = prepareWeeklyPlanningStableV5Checkpoint(params);
   if (preparation.status === 'invalid') return false;
+  if (!prepareWeeklyPlanningStorageMutation(getWeeklyPlanningStableV5StorageSnapshot(params.ownerId, params.weekStartDate))) return false;
   if (preparation.status === 'empty') {
-    window.localStorage.removeItem(key);
-    return true;
+    return clearWeeklyPlanningStorageSnapshot(getWeeklyPlanningStableV5StorageSnapshot(params.ownerId, params.weekStartDate));
   }
 
   return writeCheckpointWithQuotaFallback({
@@ -104,13 +129,8 @@ export function saveWeeklyPlanningStableV5PersistedSession(params: {
 export function clearWeeklyPlanningStableV5PersistedSession(params: {
   ownerId: string;
   weekStartDate: string;
-}): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.removeItem(storageKey(params.ownerId, params.weekStartDate));
-  } catch {
-    // localStorage is best effort; the in-memory session is cleared independently.
-  }
+}): boolean {
+  return clearWeeklyPlanningStorageSnapshot(getWeeklyPlanningStableV5StorageSnapshot(params.ownerId, params.weekStartDate));
 }
 
 export function getWeeklyPlanningStableV5SessionStorageKeyForTest(
