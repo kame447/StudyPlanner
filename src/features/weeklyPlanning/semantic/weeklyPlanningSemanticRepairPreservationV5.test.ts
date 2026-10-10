@@ -184,4 +184,41 @@ describe('Stable V5 targeted semantic repair preservation', () => {
       'repair:semantic-repair-preservation:representation-only repair changed unrelated semantic facts',
     );
   });
+  it.each([false, true])('keeps the existing preservation guard when legacy userContextFacts is omitted: drop facts=%s', async (dropFacts) => {
+    const initial = document({ canonicalWindow: true, clockAsCustomPeriod: true });
+    delete initial.userContextFacts;
+    const initialRaw = JSON.stringify(initial);
+    const initialValidation = validateWeeklyPlanningSemanticResponseV5(initialRaw, { currentUserText: USER_TEXT });
+    expect(initialValidation.parsedDocument).not.toBeNull();
+    expect(initialValidation.errors).toEqual([
+      'availabilityDeclarations[a1]: explicit clock text must use startTime/endTime with namedTimePeriod=null; do not encode clock times as a custom namedTimePeriod.',
+    ]);
+    const repaired = document({ canonicalWindow: true,
+      ...(dropFacts ? { includeTask: false, includeAvailability: false, planningIntent: 'unknown' as const } : {}) });
+    delete repaired.userContextFacts;
+    expect(validateWeeklyPlanningSemanticResponseV5(JSON.stringify(repaired), { currentUserText: USER_TEXT }).errors).toEqual([]);
+    const responses = [initialRaw, JSON.stringify(repaired)];
+    const requests: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]> = [];
+    const client: OpenAiCompatibleClient = { async createChatCompletion(request) {
+      requests.push(structuredClone(request));
+      const response = responses.shift(); if (!response) throw new Error('unexpected additional compatibility repair call');
+      return response;
+    } };
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({ userText: USER_TEXT });
+    expect(requests.map(request => request.responseFormat?.json_schema.name)).toEqual([
+      'weekly_planning_semantic_document_v5', 'weekly_planning_semantic_document_v5',
+    ]);
+    expect(result.diagnostics).toMatchObject({ attemptCount: 2, repairAttempted: true });
+    expect(initialRaw).toBe(JSON.stringify(initial));
+    if (dropFacts) {
+      expect(result.status).toBe('rejected'); expect(result.document).toBeNull();
+      expect(result.diagnostics.validationErrors).toContain(
+        'repair:semantic-repair-preservation:representation-only repair changed unrelated semantic facts');
+    } else {
+      expect(result.status).toBe('accepted');
+      expect(result.document?.tasks[0].study?.components[0].workloads[0].amount).toBe(220);
+      expect(result.document?.availabilityDeclarations[0]).toMatchObject({ namedTimePeriod: null, startTime: '18:00', endTime: '20:00' });
+    }
+  });
+
 });

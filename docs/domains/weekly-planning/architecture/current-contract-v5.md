@@ -61,6 +61,16 @@ A schema-shaped but invalid value must not become accepted state merely because 
 
 `prepareWeeklyPlanningStableV5Checkpoint` validates the graph before traversing or encoding it. Checkpoint reading routes through the graph parser before hydration, so saved input is revalidated rather than trusted as previously accepted. Validation covers stored historical facts too; filtering removed/superseded facts for scheduling is a separate step. Regression tests use canonical writers and real checkpoint preparation/save/load, preserving valid historical representations while rejecting malformed values. These entry gates complement downstream fail-closed scheduler checks; they do not replace them.
 
+## Registered bookshelf references
+
+The current owner-filtered Bookshelf snapshot remains external context, with ownership and plan-local quantity governed by [material metadata](../../external-integrations/spec/material-metadata.md#92-週間計画での登録済み教材利用). A registered material ID is not a canonical task/component ID and does not import stored total/completed progress as a new planning fact.
+
+When a provider places one exact, uniquely registered material ID in a new task/component reference, the application may clear that external reference into the ordinary creation path only under its narrow typed identity/label contract. A first task requires no accepted task; an additional material of an accepted task requires no existing material and evidence in that component's own current-turn source. Existing canonical bindings take precedence. Ambiguous registry/reference use, wrong labels and unsupported existing mutations retain ordinary validation errors. All schema, evidence, current-turn provenance and reference validation still run before a canonical graph commit; quantity, role and unit are unchanged.
+
+Pending-answer copy repair must preserve a non-exact token known in the current owner-visible bookshelf namespace rather than overwrite it with the pending canonical task/component. This does not grant that external token canonical authority or classify every unknown token as a material. Canonical exact anchors and the existing one-corrupted-side repair remain effective; raw local-ID shadow is a separate boundary.
+
+For a representation-only semantic repair, compare both provider documents after the same pre-parse normalization and before post-parse projection, so deterministic projection is not mistaken for a provider mutation. If either provider comparison envelope is unavailable, retain the existing parsed/validated comparison pair. The comparison envelope never authorizes acceptance: the repaired document must still pass every normal validator. This does not add a model call or broaden which semantic changes are repairable.
+
 ## Time semantics
 
 Natural-language time meaning belongs to AI; calendar arithmetic and scheduler-facing temporal compilation belong to the deterministic application.
