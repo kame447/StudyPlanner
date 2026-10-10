@@ -52,6 +52,7 @@ export interface RecordAiRequestMetricParams {
   nowMs?: number;
   onError?: (error: unknown) => void;
   decision?: AiRequestMetricPayload['decision'];
+  providerCompletion?: AiRequestMetricPayload['providerCompletion'];
 }
 
 const MIN_IDENTITY_SECRET_LENGTH = 32;
@@ -159,6 +160,7 @@ export async function recordAiRequestMetricBestEffort(
     estimatedCostMicros: params.decision?.reportedCostUsd != null
       ? Math.round(params.decision.reportedCostUsd * 1_000_000) : pricing.estimatedCostMicros,
     ...(params.decision ? { decision: params.decision } : {}),
+    ...(params.providerCompletion ? { providerCompletion: params.providerCompletion } : {}),
   };
 
   try {
