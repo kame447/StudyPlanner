@@ -1,3 +1,4 @@
+import type { WeeklyPlanningFixedEventCommunicationFacts } from '../application/weeklyPlanningFixedEventOnlyInteraction';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
 
 export type WeeklyPlanningStableV5DialogueActionKind =
@@ -188,7 +189,7 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   communication?: {
     goal: 'ask_question' | 'explain_question' | 'acknowledge_aside' | 'resume_question' | 'present_preview' | 'acknowledge';
     askQuestion: boolean;
-  };
+  } & Partial<WeeklyPlanningFixedEventCommunicationFacts>;
   actionId: string;
   currentUserMessage: string;
   recentConversation: WeeklyPlanningStableV5DialogueConversationTurn[];

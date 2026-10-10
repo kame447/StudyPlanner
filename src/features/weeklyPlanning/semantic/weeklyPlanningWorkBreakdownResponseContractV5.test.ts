@@ -161,7 +161,7 @@ describe('Stable V5 work breakdown response contract', () => {
     })).toEqual([]);
   });
   it('exempts only self-sufficient act-only turns while retaining the pending-target blocking policy', () => {
-    for (const kind of ['ask_about_pending_question', 'topic_shift', 'resume_topic'] as const) {
+    for (const kind of ['ask_about_pending_question', 'topic_shift', 'resume_topic', 'decline_additional_work', 'request_event_registration'] as const) {
       const onlyAct = { ...document([]), conversationActs: [{ kind, targetPublicId: null }] };
       expect(validate(onlyAct)).toEqual([]);
       const otherTask = { ...onlyAct, tasks: [task({ localId: 'other', existingPublicId: 'task-other' })] };

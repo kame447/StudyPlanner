@@ -72,7 +72,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'conversation_act',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Explanation, topic changes and returns are additive utterance meaning; formal question priority and state remain application-owned.',
-    instruction: 'conversationActs are additive, non-mutating meaning: answer_pending_question needs a planning delta; ask_about_pending_question asks why/what the current question means; topic_shift changes topic; resume_topic returns to one. targetPublicId is an existing task/component or null. Plain planning has []. Preserve independent facts; acts grant no authorization.',
+    instruction: 'conversationActs: additive/non-mutating. answer_pending_question needs planning delta; ask_about_pending_question: why/what current question means; topic_shift: change topic; resume_topic: return. decline_additional_work declines optional work, never required details. request_event_registration: explicit fixed-event registration; manual guidance only, never create/save. targetPublicId: existing task/component or null. Plain planning: []. Keep independent facts; no authority.',
   },
   {
     id: 'explicit_recurrence_sources',

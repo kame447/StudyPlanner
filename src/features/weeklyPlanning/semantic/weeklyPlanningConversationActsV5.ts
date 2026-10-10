@@ -1,6 +1,7 @@
 /** Additive current-turn conversation meaning; no planning or approval authority. */
 export const WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5 = [
   'answer_pending_question', 'ask_about_pending_question', 'topic_shift', 'resume_topic',
+  'decline_additional_work', 'request_event_registration',
 ] as const;
 export type WeeklyPlanningConversationActKindV5 = typeof WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5[number];
 export interface SemanticConversationActV5 {
@@ -15,7 +16,8 @@ export interface WeeklyPlanningConversationActExtractionV5 {
 }
 export function hasSelfSufficientConversationActV5(acts: readonly SemanticConversationActV5[] | undefined): boolean {
   return (acts ?? []).some(act => act.kind === 'ask_about_pending_question'
-    || act.kind === 'topic_shift' || act.kind === 'resume_topic');
+    || act.kind === 'topic_shift' || act.kind === 'resume_topic'
+    || act.kind === 'decline_additional_work' || act.kind === 'request_event_registration');
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
