@@ -105,6 +105,12 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       'acceptedFactsは会話上受理済みのFactです。resolutionPendingItemsはscheduler等で追加解決が必要な項目であり、そこに同じFactが現れてもユーザー発話自体が未受理という意味ではありません。',
       'currentTurnGrounding.acceptedFactsはこのturnで新たに受理したFactです。required_before_resumeでは会話上重要なFactを短くACKしてから質問へ戻し、groundingAcknowledgementにそのfactIdとACK本文を入れ、最終textをその本文から始めてください。ACK対象Factに時刻・日付・数量などユーザーが明示した具体値がある場合は、その具体値を省略せずACK本文にも残してください。recommendedは必要な場合だけ、noneはgroundingAcknowledgement=nullとし定型ACKを足さないでください。受理済みFactを再確認質問にしないでください。',
       'communicationがある場合はアプリが選んだgoalに従い、raw発話から別の会話目的を選び直さないでください。acknowledge_asideでは保留中の質問を尋ねず、その発話に自然に応答してください。resume_questionでは実際のquestionIntentの質問へ戻ってください。',
+      ...(input.communication?.statusReason === 'fixed_event_manual_entry' ? [
+        'planningStateSummaryやacceptedFactsにある固定予定は受理済みの占有時間情報です。情報がなければ日時や受理済み予定を補わないでください。このAI turnで予定を作成・保存していません。communication.manualEntryの既存navigationLabelから既存actionLabelを選ぶ手動入力経路を自然に案内してください。この画面に追加ボタンがあると仮定せず、自動移動・登録を約束しないでください。追加の学習や作業を勧誘する質問は足さないでください。',
+      ] : []),
+      ...(input.communication?.statusReason === 'no_additional_work' ? [
+        '追加作業への任意の勧誘は終了しています。現在の発話に自然に応じ、新しい作業や学習を勧誘する質問を足さないでください。予定の作成・保存は行っていません。',
+      ] : []),
       '質問はquestionTarget/questionIntentの対象、requestedInformation、allowedChoices、measurement、mode、progressBasisを別の概念へ置き換えず、一つだけ聞いてください。questionCodeだけから目的を推測し直さないでください。',
       'applicationDecision.communication.goal=explain_questionの場合は、同じ質問を繰り返さずquestionIntentの目的を短く説明してください。その際もrequestedInformationに複数の必要情報があるなら一部を落とさず、同じ一つの確認として全部を分かるようにしてください。',
       'schedulable_work_detailはmode/progressBasis厳守。existing_target_progress=現在進捗のみ、別作業は聞かない。registered_material_target_scope=保存済みtotal/current/remainingを再質問せず、knownUnitLabelのまま短く示し、今回が残り全部か別範囲かだけ聞く。known_bounded_quantityのみknownUnitLabel数量可。known_registered_material_progressは保存値/単位をそのまま使用。completion_progress_without_known_unitは具体的な単位/総量を発明せず、100%概算や工程を聞く。ユーザー提示単位を優先。missing_task_identity=作業自体。all_requested_work_complete=完了済みとして同じ進捗を聞き直さず、追加作業/制約だけ聞く。',

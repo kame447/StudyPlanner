@@ -145,6 +145,14 @@ See [Human Grounding Policy](../policies/human-grounding.md).
 
 Consultation must not be implemented by sending the user through the normal planning slot-question sequence. When Issue #246 is implemented, the consultation contract owns which missing information is material to a useful recommendation; only recommendation-changing/blocking gaps should trigger targeted questions.
 
+## Fixed-event-only closure and manual entry
+
+Validated fixed commitments constrain planning; they are not savable event candidates. When existing compilation proves that only resolved fixed commitments remain, the application ends the optional missing-work invitation instead of repeatedly asking for study work. The additive typed acts `request_event_registration` and `decline_additional_work` express the user's intent; they grant no create, preview, approval or save authority. An explicit renewed registration request may repeat the manual-entry handoff. Declining additional work closes only an optional invitation. Unresolved required dates/windows, blocking uncertainty, movable study work and pending proposal questions retain their existing owners and priority.
+
+The existing route supplies turn-local communication facts: either the fixed-event manual-entry reason with the existing `予定` → `予定を追加` labels and `eventCreatedByTurn:false`, or a no-additional-work reason. The renderer writes a natural reply from these facts; successful text is not replaced by a fixed suffix or interpreted with keywords. It must not claim an event was saved or that a new button/automatic navigation exists in the AI view. The current technical fallback remains available on renderer failure. The user's later explicit entry and Save in the existing manual UI remain the event-creation boundary.
+
+Ordinary ask, topic-shift and resume acts retain their existing question-identity and freshness rules, including unresolved named resumes. Independent planning facts still pass normal validation and canonical application. This unit adds no comparison mode, consultation/advice lifecycle, what-if flow, architecture selector, persisted presentation authority or new provider dispatch route or budget.
+
 ## Proposal / readiness / scheduler
 
 A proposal is not a command.

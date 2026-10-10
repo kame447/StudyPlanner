@@ -286,7 +286,8 @@ function createRenderInput(params: {
   const previewPromotionControlLabel = params.result.state.status === 'draft_ready'
     ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL
     : null;
-  const fallbackText = params.result.interactionOutcome?.kind === 'aside'
+  const fallbackText = params.result.communicationFacts
+    || params.result.interactionOutcome?.kind === 'aside'
     ? ASIDE_RENDERER_TECHNICAL_STOP : fallbackTextForStableV5TypedIntent({
     applicationText: params.result.message,
     questionIntent,
@@ -302,10 +303,11 @@ function createRenderInput(params: {
     currentQuestionCode: params.questionCode,
   });
   return {
-    ...(params.result.interactionOutcome ? { communication: {
-      goal: params.result.interactionOutcome.kind === 'aside' ? 'acknowledge_aside' as const
-        : params.result.interactionOutcome.kind === 'explain_pending_question' ? 'explain_question' as const
-        : params.result.interactionOutcome.kind === 'resume_pending_question' ? 'resume_question' as const
+    ...(params.result.interactionOutcome || params.result.communicationFacts ? { communication: {
+      ...params.result.communicationFacts,
+      goal: params.result.interactionOutcome?.kind === 'aside' ? 'acknowledge_aside' as const
+        : params.result.interactionOutcome?.kind === 'explain_pending_question' ? 'explain_question' as const
+        : params.result.interactionOutcome?.kind === 'resume_pending_question' ? 'resume_question' as const
         : params.actionKind === 'question' ? 'ask_question' as const
         : params.actionKind === 'preview_ready' ? 'present_preview' as const : 'acknowledge' as const,
       askQuestion: params.actionKind === 'question',

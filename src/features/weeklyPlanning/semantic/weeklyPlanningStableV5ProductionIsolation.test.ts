@@ -35,6 +35,8 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/c5LocalSelection/evaluationHarness.testUtils.ts',
   // G: pure typed acts/current question selection, with no provider, storage or lifecycle side effects.
   'application/weeklyPlanningInteractionDecision.ts',
+  // I: pure read-only active graph/compiler facts to turn-local handoff reason; no mutation, provider or storage.
+  'application/weeklyPlanningFixedEventOnlyInteraction.ts',
   'application/weeklyPlanningApprovalRuntimeLookup.ts',
   'application/weeklyPlanningSessionLifecycle.ts',
   'application/weeklyPlanningStableV5GraphStaging.ts',

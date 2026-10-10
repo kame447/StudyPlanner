@@ -6,6 +6,7 @@ import type {
   StudyMaterial,
   TimetableTerm,
 } from '../../types/domain';
+import type { WeeklyPlanningFixedEventCommunicationFacts } from './application/weeklyPlanningFixedEventOnlyInteraction';
 import type { WeeklyPlanningTurnRequestContext } from './application/weeklyPlanningTemporalContext';
 import type {
   PlanningIntakeState,
@@ -84,6 +85,8 @@ export type WeeklyPlanningInteractionOutcome = {
 
 export interface WeeklyPlanningTurnExecutionResult {
   interactionOutcome?: WeeklyPlanningInteractionOutcome;
+  /** Turn-local terminal explanation; grants no event creation or save authority. */
+  communicationFacts?: WeeklyPlanningFixedEventCommunicationFacts;
   state: PlanningIntakeState;
   message: string;
   draftCandidates: WeeklyDraftCandidate[];

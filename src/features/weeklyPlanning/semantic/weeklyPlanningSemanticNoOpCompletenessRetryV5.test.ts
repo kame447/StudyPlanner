@@ -306,7 +306,7 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
     });
   });
   it('skips missing-answer retries for self-sufficient acts but not an empty answer act', () => {
-    for (const kind of ['ask_about_pending_question', 'topic_shift', 'resume_topic', 'answer_pending_question'] as const) {
+    for (const kind of ['ask_about_pending_question', 'topic_shift', 'resume_topic', 'decline_additional_work', 'request_event_registration', 'answer_pending_question'] as const) {
       const value = { ...existingTaskShell(), tasks: [], conversationActs: [{ kind, targetPublicId: null }] };
       expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
         document: value, publicStateSummary: publicStateSummary(),

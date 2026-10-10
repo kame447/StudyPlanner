@@ -84,6 +84,12 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     input,
     graph: semantic.graph,
     evaluation: routingEvaluation,
+    declinedAdditionalWork: semantic.normalization.document?.conversationActs?.some(
+      act => act.kind === 'decline_additional_work',
+    ) ?? false,
+    requestedEventRegistration: semantic.normalization.document?.conversationActs?.some(
+      act => act.kind === 'request_event_registration',
+    ) ?? false,
   });
   if (responseRoute.kind === 'respond') {
     const output = withProvisionalTimeboxState({

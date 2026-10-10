@@ -3,6 +3,7 @@ import type { GenericSchedulerInput } from '../semantic/weeklyPlanningGenericSch
 import type { WeeklyPlanningStableV5PreviewSchedulerResult } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
+import { fixedEventCommunicationFacts, fixedEventOnlyInteractionStatus } from './weeklyPlanningFixedEventOnlyInteraction';
 import { evaluateWeeklyPlanningInsufficientCapacityProposalV5 } from './weeklyPlanningStableV5CapacityProposal';
 import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
 import { withStableV5GroundingProposal } from './weeklyPlanningStableV5GroundingFlow';
@@ -84,6 +85,8 @@ function routeBeforePreview(params: {
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
   graph: WeeklyPlanningFactGraphV5;
   evaluation: WeeklyPlanningStableV5PlanningEvaluation;
+  declinedAdditionalWork?: boolean;
+  requestedEventRegistration?: boolean;
 }): WeeklyPlanningStableV5PrePreviewRoute {
   const { input, graph, evaluation } = params;
   const {
@@ -168,6 +171,40 @@ function routeBeforePreview(params: {
       },
       output,
       severity: 'warn',
+    });
+    return respond(output);
+  }
+
+  const fixedEventStatus = fixedEventOnlyInteractionStatus({
+    graph,
+    compilation,
+    semanticChanged,
+    previousQuestionSlot: input.previousState?.lastQuestionContext?.targetSlot,
+    declinedAdditionalWork: params.declinedAdditionalWork ?? false,
+    requestedEventRegistration: params.requestedEventRegistration ?? false,
+    previousOptionalInvitationClosed: input.previousState?.status === 'needs_scope'
+      && !input.previousState.lastQuestionContext,
+  });
+  if (fixedEventStatus) {
+    const output: WeeklyPlanningTurnExecutionResult = {
+      ...projectStableV5CompatibilityOutput({
+        previousState: input.previousState,
+        userText: input.userText,
+        message: '',
+        draftCandidates: [],
+        authorized: false,
+        groundingRecords,
+        repairAgenda: repairDecision.agenda,
+        learningStrategyProposalRecords: learningStrategyProposals.records,
+      }),
+      communicationFacts: fixedEventCommunicationFacts(fixedEventStatus),
+    };
+    traceRuntimeBranch({
+      requestId: input.traceRequestId,
+      branch: fixedEventStatus,
+      basis: { compilationStatus: compilation.status,
+        fixedTaskCount: schedulerInput?.fixedTaskReservations.length ?? 0 },
+      output,
     });
     return respond(output);
   }
