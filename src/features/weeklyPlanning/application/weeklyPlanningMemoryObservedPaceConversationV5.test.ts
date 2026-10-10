@@ -1,3 +1,4 @@
+import { createPresentedWeeklyPlanningConversation } from '../testUtils/__tests__/weeklyPlanningPresentedConversation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Actual, Plan } from '../../../types/domain';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
@@ -7,7 +8,6 @@ import {
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeExecutor';
 import {
-  finalizeWeeklyPlanningStableV5RuntimeGraph,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from './weeklyPlanningStableV5RuntimeSession';
 
@@ -26,7 +26,7 @@ vi.mock('../semantic/weeklyPlanningSemanticNormalizerV5', () => ({
   createWeeklyPlanningSemanticNormalizerV5: () => ({ normalize: normalizeMock }),
 }));
 
-import { executeWeeklyPlanningStableV5RuntimeTurn } from './weeklyPlanningStableV5InstrumentedRuntimeExecutor';
+let conversation: ReturnType<typeof createPresentedWeeklyPlanningConversation>;
 
 const ownerId = 'owner-memory-returning';
 
@@ -149,21 +149,18 @@ function input(params: {
   };
 }
 
-function finalize(conversationId: string, requestId: string): void {
-  finalizeWeeklyPlanningStableV5RuntimeGraph({ ownerId, conversationId, requestId });
-}
-
 describe('Stable V5 returning memorization learner', () => {
   beforeEach(() => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     normalizeMock.mockReset();
+    conversation = createPresentedWeeklyPlanningConversation();
   });
 
   it('uses observed pace, adds safety buffer, asks current session length, and skips cold-start calibration', async () => {
     const conversationId = 'memory-observed-returning';
     normalizeMock.mockResolvedValueOnce(acceptedResult(memoryDocument()));
     const firstId = `${conversationId}:1`;
-    const first = await executeWeeklyPlanningStableV5RuntimeTurn(input({
+    const first = await conversation.run(input({
       conversationId, requestId: firstId, userText: '来週、英単語220語を覚えたい',
     }));
     expect(first.draftCandidates).toEqual([]);
@@ -171,11 +168,10 @@ describe('Stable V5 returning memorization learner', () => {
       (record) => record.kind === 'spaced_memory_practice',
     );
     expect(spacing?.status).toBe('pending');
-    finalize(conversationId, firstId);
 
     normalizeMock.mockResolvedValueOnce(acceptedResult(decisionDocument(spacing!.id)));
     const secondId = `${conversationId}:2`;
-    const second = await executeWeeklyPlanningStableV5RuntimeTurn(input({
+    const second = await conversation.run(input({
       conversationId, requestId: secondId, previousState: first.state, userText: 'それで',
     }));
     expect(second.draftCandidates).toEqual([]);
@@ -183,10 +179,9 @@ describe('Stable V5 returning memorization learner', () => {
     expect(second.state.learningStrategyProposalRecords?.some(
       (record) => record.kind === 'calibrate_memory_pace',
     )).toBe(false);
-    finalize(conversationId, secondId);
 
     normalizeMock.mockResolvedValueOnce(acceptedResult(durationDocument()));
-    const third = await executeWeeklyPlanningStableV5RuntimeTurn(input({
+    const third = await conversation.run(input({
       conversationId, requestId: `${conversationId}:3`, previousState: second.state,
       userText: '20分くらい',
     }));

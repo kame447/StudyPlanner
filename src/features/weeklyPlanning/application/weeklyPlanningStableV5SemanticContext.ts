@@ -2,6 +2,7 @@ import {
   userPlanningContextPromptSelectionV2,
 } from '../../userPlanningContext/userPlanningContextPromptSelectionV2';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
+import { resolveWeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
 import {
   decodeWeeklyPlanningStableV5QuestionSlot,
 } from '../intake/weeklyPlanningStableV5QuestionSlot';
@@ -95,17 +96,23 @@ export function createStableV5SemanticPublicStateSummary(params: {
   graph: WeeklyPlanningFactGraphV5;
   messages: readonly WeeklyPlanningMessage[];
   previousState?: PlanningIntakeState;
+  inputStateRevision?: number;
   ownerId?: string;
   currentDate?: string;
   userText?: string;
   studyMaterials?: readonly StudyMaterial[];
 }): Record<string, unknown> {
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(params.graph);
+  const questionFreshness = resolveWeeklyPlanningQuestionPresentationFreshness({
+    previousState: params.previousState, inputStateRevision: params.inputStateRevision,
+    messages: params.messages, graphRevision: params.graph.revision,
+  });
   return {
     runtime: 'weekly-planning-stable-v5',
     graphRevision: params.graph.revision,
     previousCompatibilityStatus: params.previousState?.status ?? null,
-    pendingQuestion: pendingQuestionFromState(params.previousState, params.graph.revision),
+    pendingQuestion: questionFreshness.status === 'fresh'
+      ? pendingQuestionFromState(params.previousState, params.graph.revision) : null,
     learningStrategyProposals: learningStrategyProposalsFromState(params.previousState),
     groundingRecords: (params.previousState?.groundingRecords ?? [])
       .filter((record) => record.status !== 'rejected')

@@ -16,6 +16,7 @@ export interface WeeklyPlanningStableV5RecordedFailure {
   canonicalizationErrors: string[];
   providerErrorCategory: 'provider_error' | null;
   traceCode: string;
+  providerDispatch?: { count: number; anyFailure: boolean; complete: boolean };
 }
 
 const MAX_RECORDED_FAILURES = 128;
@@ -100,6 +101,8 @@ export function recordWeeklyPlanningStableV5FailureDiagnostics(params: {
     canonicalizationErrors,
     providerErrorCategory,
     traceCode: traceParts.join('|'),
+    ...(params.diagnostics.providerDispatch
+      ? { providerDispatch: { ...params.diagnostics.providerDispatch } } : {}),
   });
   trimRegistry();
 }

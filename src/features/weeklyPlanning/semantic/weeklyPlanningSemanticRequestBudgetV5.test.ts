@@ -1,3 +1,4 @@
+import { WeeklyPlanningSemanticNormalizerRunV5 } from './weeklyPlanningSemanticNormalizerRunV5';
 import { describe, expect, it } from 'vitest';
 import {
   AI_PROXY_CHAT_REQUEST_LIMITS,
@@ -83,5 +84,42 @@ describe('Stable V5 AI proxy request budget', () => {
     expect(call.maxCompletionTokens).toBeLessThanOrEqual(
       AI_PROXY_CHAT_REQUEST_LIMITS.maxOutputTokens,
     );
+  });
+});
+
+describe('recovery dispatch census at the common normalizer client boundary', () => {
+  const diagnostics = (run: WeeklyPlanningSemanticNormalizerRunV5) => run.diagnostics({
+    attemptCount: 1, repairAttempted: false, validationErrors: [], providerError: null,
+  }).providerDispatch;
+
+  it('counts direct focused calls and tracked semantic/repair calls in one invocation', async () => {
+    const run = new WeeklyPlanningSemanticNormalizerRunV5({
+      createChatCompletion: async () => '{}',
+    }, { userText: '確認' });
+    await run.client.createChatCompletion({ messages: [] });
+    await run.callGeneric([], 'initial');
+    await run.callGeneric([], 'repair');
+    expect(diagnostics(run)).toEqual({ count: 3, anyFailure: false, complete: true });
+  });
+
+  it('keeps an earlier provider failure closed even after a later successful dispatch', async () => {
+    let calls = 0;
+    const run = new WeeklyPlanningSemanticNormalizerRunV5({
+      async createChatCompletion() { if (++calls === 1) throw new Error('offline'); return '{}'; },
+    }, { userText: '確認' });
+    await expect(run.client.createChatCompletion({ messages: [] })).rejects.toThrow('offline');
+    await run.callGeneric([], 'initial');
+    expect(diagnostics(run)).toEqual({ count: 2, anyFailure: true, complete: true });
+  });
+
+  it('does not certify counts while any concurrent provider request remains unsettled', async () => {
+    let resolve!: (value: string) => void;
+    const run = new WeeklyPlanningSemanticNormalizerRunV5({
+      createChatCompletion: () => new Promise<string>((done) => { resolve = done; }),
+    }, { userText: '確認' });
+    const pending = run.client.createChatCompletion({ messages: [] });
+    expect(diagnostics(run)).toEqual({ count: 1, anyFailure: false, complete: false });
+    resolve('{}'); await pending;
+    expect(diagnostics(run)).toEqual({ count: 1, anyFailure: false, complete: true });
   });
 });

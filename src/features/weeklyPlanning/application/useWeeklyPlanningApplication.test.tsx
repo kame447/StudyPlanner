@@ -22,6 +22,7 @@ import * as sessionCodec from './weeklyPlanningStableV5SessionCodec';
 import * as compatibilityStorage from '../weeklyPlanningStorage';
 import { saveWeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionStorage';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
+import { resolveWeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
 import type { WeeklyPreviewMetadata } from '../planning/weeklyPlanningApprovalTypes';
 import {
   clearWeeklyPlanningSessionRuntime,
@@ -169,6 +170,139 @@ describe('useWeeklyPlanningApplication', () => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     clearWeeklyPlanningSessionRuntime();
     restoreWindow();
+  });
+
+  // The executor is this suite's existing boundary fixture. Actual generation and finite
+  // verification are covered by the scripted-provider integration suite, not claimed here.
+  async function presentRecoveryQuestion(app: RenderedApplicationHarness) {
+    await act(async () => { expect(app.ref.current!.chat.initialize().status).toBe('saved'); });
+    const seed = app.ref.current!.exportConversationSnapshot({ includeEmpty: true })!;
+    const source = { conversationId: seed.conversationId, turnId: 'accepted-seed',
+      semanticLocalId: 'task', sourceText: '英単語20語', origin: 'user' as const };
+    seed.graph = { ...seed.graph, revision: 3,
+      tasks: [{ id: 'task-english', category: 'study', title: '英単語', source, createdRevision: 1 }],
+      workloads: [{ id: 'workload-english', taskId: 'task-english', componentId: null, quantityRole: 'target',
+        amount: 20, unitCode: 'word', unitLabel: '語', rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null, source: { ...source, semanticLocalId: 'workload' }, createdRevision: 1 }],
+      factLifecycles: ['task-english', 'workload-english'].map(factId => ({ factId, status: 'active' as const,
+        createdRevision: 1, terminalRevision: null, supersededByFactId: null })),
+    };
+    await act(async () => { expect(app.ref.current!.loadConversationSnapshot(seed)).toBe(true); });
+    const content = { responseSource: 'ai' as const, currentTurnGrounding: 'none' as const,
+      selfRepairNotice: false, groundingContext: { proposed: 0, contested: 0 }, previewPromotionControl: false };
+    executeWeeklyPlanningTurnMock.mockResolvedValueOnce({
+      ...turnResult('英単語20語'), stableV5Graph: seed.graph, responseSource: 'ai',
+      state: { ...turnResult('英単語20語').state, status: 'revision_pending', questions: ['合計時間を教えてください。'],
+        lastQuestionContext: { kind: 'missing', targetSlot: 'stable_v5:missing_effort_estimate',
+          intent: 'total_duration', topicId: 'workload-english' } },
+      message: '英単語20語には、合計でどのくらい時間がかかりますか？', questionPresentationContent: content,
+    } satisfies WeeklyPlanningTurnExecutionResult);
+    await act(async () => { expect((await app.ref.current!.submitTurn('英単語20語')).accepted).toBe(true); });
+    const before = structuredClone(app.ref.current!.state);
+    expect(resolveWeeklyPlanningQuestionPresentationFreshness({ previousState: before.intakeState,
+      inputStateRevision: before.revision, messages: before.messages, graphRevision: seed.graph.revision }).status).toBe('fresh');
+    const message = '今回の変更はまだ反映していません。英単語20語に必要な合計時間は何分ほどですか？';
+    const recoveryResult: WeeklyPlanningTurnExecutionResult = {
+      ...turnResult('UNAPPLIED-RECOVERY-INPUT'), message, responseSource: 'ai',
+      questionPresentationContent: content,
+      recoveryPresentation: { question: { graphRevision: seed.graph.revision,
+        previousAssistantMessageId: before.intakeState!.lastQuestionContext!.presentation!.assistantMessageId } },
+      failure: { code: 'stable_v5_normalization_rejected', userMessage: message, traceCode: 'hook-recovery-fixture',
+        diagnostics: { attemptCount: 2, repairAttempted: true, validationErrorCategories: ['invalid_json'], providerErrorCategory: null } },
+    };
+    return { before, graph: seed.graph, recoveryResult };
+  }
+
+  it('restores a saved recovery question after a selected-body read fault without losing its actual presentation', async () => {
+    const first = await renderApplicationHarness();
+    const { before, graph, recoveryResult } = await presentRecoveryQuestion(first);
+    executeWeeklyPlanningTurnMock.mockResolvedValueOnce(recoveryResult);
+    await act(async () => { expect((await first.ref.current!.submitTurn('200語に変更')).accepted).toBe(true); });
+    const expected = structuredClone(first.ref.current!.state);
+    const newMessage = expected.messages[expected.messages.length - 1];
+    expect(newMessage.content).toBe(recoveryResult.message);
+    expect(expected.intakeState?.sourceTurns).toEqual(before.intakeState?.sourceTurns);
+    expect(expected.intakeState?.lastQuestionContext?.presentation?.assistantMessageId).toBe(newMessage.id);
+    expect(expected.intakeState?.lastQuestionContext?.presentation?.assistantMessageId)
+      .not.toBe(before.intakeState?.lastQuestionContext?.presentation?.assistantMessageId);
+    expect(first.ref.current!.exportConversationSnapshot()?.graph).toEqual(graph);
+    await act(async () => { expect(first.ref.current!.chat.checkpoint().status).toBe('saved'); });
+    const stableKey = getWeeklyPlanningStableV5SessionStorageKeyForTest('user-1', '2026-07-13');
+    const indexKey = 'studyplanner.weeklyPlanning.activeSession.user-1';
+    const raw = storageHarness.values.get(stableKey)!;
+    const index = storageHarness.values.get(indexKey);
+    expect(JSON.parse(raw).planningState.intakeState.lastQuestionContext.presentation.assistantMessageId).toBe(newMessage.id);
+    await first.unmount(); resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+    const read = storageHarness.storage.getItem.bind(storageHarness.storage);
+    let observedFault = false;
+    storageHarness.storage.getItem = key => {
+      if (key === stableKey) { observedFault = true; throw new Error('recovered checkpoint temporarily unavailable'); }
+      return read(key);
+    };
+    const writes = vi.spyOn(storageHarness.storage, 'setItem');
+    const second = await renderApplicationHarness();
+    try {
+      expect(observedFault).toBe(true);
+      await act(async () => { expect(second.ref.current!.chat.initialize().status).toBe('blocked'); });
+      expect(second.ref.current!.exportConversationSnapshot({ includeEmpty: true })).toBeNull();
+      expect(second.ref.current!.chat.checkpoint().status).toBe('blocked');
+      await act(async () => { expect((await second.ref.current!.submitTurn('全部で60分')).accepted).toBe(false); });
+      expect(executeWeeklyPlanningTurnMock).toHaveBeenCalledTimes(2);
+      expect(writes.mock.calls.filter(([key]) => key === stableKey || key === indexKey)).toEqual([]);
+      expect(storageHarness.values.get(stableKey)).toBe(raw);
+      expect(storageHarness.values.get(indexKey)).toBe(index);
+      storageHarness.storage.getItem = read;
+      await act(async () => { expect(second.ref.current!.chat.retry().status).toBe('saved'); });
+      const restored = second.ref.current!.state;
+      expect(executeWeeklyPlanningTurnMock).toHaveBeenCalledTimes(2);
+      expect(restored.revision).toBe(expected.revision);
+      expect(restored.messages).toEqual(expected.messages);
+      expect(restored.intakeState?.lastQuestionContext).toEqual(expected.intakeState?.lastQuestionContext);
+      expect(second.ref.current!.exportConversationSnapshot()?.graph).toEqual(graph);
+      expect(resolveWeeklyPlanningQuestionPresentationFreshness({ previousState: restored.intakeState,
+        inputStateRevision: restored.revision, messages: restored.messages, graphRevision: graph.revision }).status).toBe('fresh');
+    } finally { storageHarness.storage.getItem = read; writes.mockRestore(); await second.unmount(); }
+  });
+
+  it('rejects a late recovery receipt after owner B becomes unavailable without saving it to either owner', async () => {
+    const app = await renderApplicationHarness();
+    const { recoveryResult } = await presentRecoveryQuestion(app);
+    await act(async () => { expect(app.ref.current!.chat.checkpoint().status).toBe('saved'); });
+    const ownerB = 'user-2'; const weekStartDate = '2026-07-13';
+    expect(saveWeeklyPlanningStableV5PersistedSession({ ownerId: ownerB, weekStartDate, conversationId: 'owner-b',
+      graph: { ...createEmptyWeeklyPlanningFactGraphV5(), revision: 7 }, planningState: {
+        ...createInitialPlanningState(weekStartDate), messages: [{ id: 'owner-b:turn:1:user', role: 'user',
+          content: 'Owner B retained work', createdAt: '2026-07-14T00:00:00Z' }],
+      } })).toBe(true);
+    const bIndexKey = `studyplanner.weeklyPlanning.activeSession.${ownerB}`;
+    storageHarness.values.set(bIndexKey, JSON.stringify({ version: 1, ownerId: ownerB, weekStartDate, conversationId: 'owner-b' }));
+    const protectedKeys = ['user-1', ownerB].flatMap(owner => [
+      getWeeklyPlanningStableV5SessionStorageKeyForTest(owner, weekStartDate), `studyplanner.weeklyPlanning.activeSession.${owner}`,
+    ]);
+    const saved = protectedKeys.map(key => [key, storageHarness.values.get(key)] as const);
+    const delayed = createDeferred<WeeklyPlanningTurnExecutionResult>();
+    let observedInput: WeeklyPlanningTurnExecutionInput | undefined;
+    executeWeeklyPlanningTurnMock.mockImplementationOnce((input: WeeklyPlanningTurnExecutionInput) => {
+      observedInput = input; return delayed.promise;
+    });
+    let submission!: Promise<WeeklyPlanningTurnSubmissionResult>;
+    await act(async () => { submission = app.ref.current!.submitTurn('200語に変更'); await Promise.resolve(); });
+    expect(observedInput?.isCurrentTurn?.()).toBe(true);
+    const read = storageHarness.storage.getItem.bind(storageHarness.storage);
+    storageHarness.storage.getItem = key => { if (key === bIndexKey) throw new Error('owner B unavailable'); return read(key); };
+    const writes = vi.spyOn(storageHarness.storage, 'setItem');
+    try {
+      await app.update({ userId: ownerB });
+      await act(async () => { expect(app.ref.current!.chat.initialize().status).toBe('blocked'); });
+      expect(observedInput?.isCurrentTurn?.()).toBe(false);
+      expect(app.ref.current!.exportConversationSnapshot({ includeEmpty: true })).toBeNull();
+      await act(async () => { delayed.resolve(recoveryResult); expect((await submission).accepted).toBe(false); });
+      expect(app.ref.current!.state.messages).toEqual([]);
+      expect(app.ref.current!.state.intakeState?.lastQuestionContext).toBeUndefined();
+      expect(executeWeeklyPlanningTurnMock).toHaveBeenCalledTimes(2);
+      expect(writes.mock.calls.filter(([key]) => protectedKeys.includes(key))).toEqual([]);
+      for (const [key, raw] of saved) expect(storageHarness.values.get(key)).toBe(raw);
+    } finally { storageHarness.storage.getItem = read; writes.mockRestore(); await app.unmount(); }
   });
 
   it.each(['single', 'stable-retained', 'compatibility-retained', 'compatibility-retained-index-read-failure', 'compatibility-retained-initial-index-read-failure'] as const)('does not revive a deleted chat after opaque-format recovery (%s)', async collision => {

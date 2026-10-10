@@ -1,3 +1,4 @@
+import { createPresentedWeeklyPlanningConversation } from '../testUtils/__tests__/weeklyPlanningPresentedConversation';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createActualFromDraft, createPlanFromDraft } from '../../../domain/planner';
 import { scheduleEventFromPlan, scheduleEventToPlan } from '../../../domain/scheduleEvent';
@@ -24,9 +25,7 @@ import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExe
 import { createInitialPlanningState, weeklyPlanningReducer } from '../weeklyPlanningReducer';
 import { approveWeeklyPlanningDraftBlocks } from './weeklyPlanningApprovalApplication';
 import {
-  finalizeWeeklyPlanningStableV5RuntimeGraph,
   getWeeklyPlanningStableV5RuntimeSession,
-  getWeeklyPlanningStableV5StagedGraph,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from './weeklyPlanningStableV5RuntimeSession';
 
@@ -47,7 +46,7 @@ vi.mock('../semantic/weeklyPlanningSemanticNormalizerV5', () => ({
   createWeeklyPlanningSemanticNormalizerV5: () => ({ normalize: normalizeMock }),
 }));
 
-import { executeWeeklyPlanningStableV5RuntimeTurn } from './weeklyPlanningStableV5InstrumentedRuntimeExecutor';
+let conversation: ReturnType<typeof createPresentedWeeklyPlanningConversation>;
 
 const OWNER = 'owner-allocation-contract';
 const WEEK_START = '2026-08-17';
@@ -135,7 +134,7 @@ async function runTurn(params: {
 }) {
   const requestId = `${params.conversationId}:${params.turn}`;
   normalizeMock.mockResolvedValueOnce(params.response);
-  const result = await executeWeeklyPlanningStableV5RuntimeTurn({
+  const result = await conversation.run({
     previousState: params.previousState, messages: [], userText: params.userText,
     selectedDate: WEEK_START, userId: OWNER, plans: [], scheduleTemplates: [],
     conversationId: params.conversationId, traceRequestId: requestId,
@@ -145,12 +144,8 @@ async function runTurn(params: {
       notBeforeTime: '09:00', weekStartsOn: 'monday',
     },
   });
-  expect(getWeeklyPlanningStableV5StagedGraph({
-    ownerId: OWNER, conversationId: params.conversationId, requestId,
-  }), result.message).not.toBeNull();
-  finalizeWeeklyPlanningStableV5RuntimeGraph({
-    ownerId: OWNER, conversationId: params.conversationId, requestId,
-  });
+  expect(result.failure, result.message).toBeUndefined();
+  expect(getWeeklyPlanningStableV5RuntimeSession(params.conversationId)?.graph).toEqual(result.stableV5Graph);
   return result;
 }
 
@@ -202,6 +197,7 @@ function ordinaryActual(plan: Plan, durationMinutes: number) {
 
 beforeEach(() => {
   normalizeMock.mockReset();
+  conversation = createPresentedWeeklyPlanningConversation();
   resetWeeklyPlanningStableV5RuntimeSessionsForTest();
   resetWeeklyPlanningStableV5DebugTraceForTest();
 });

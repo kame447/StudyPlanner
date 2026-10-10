@@ -4,6 +4,7 @@ import {
   questionIntentForStableV5Dialogue,
   questionTargetForStableV5Dialogue,
   requiredLabelsForStableV5Dialogue,
+  recoveryQuestionEvidenceForStableV5Dialogue,
 } from './weeklyPlanningStableV5DialogueContext';
 
 const planningInformation = {
@@ -201,5 +202,49 @@ describe('Stable V5 dialogue context', () => {
       targetFactId: null,
       includePreviewPromotionControl: true,
     })).toEqual(['この内容で仮予定にする']);
+  });
+});
+
+describe('bounded recovery question identity evidence', () => {
+  function evidence(taskLabel = '数学', componentLabel = '第1章', fault = '') {
+    const target = { id: 'workload', taskId: 'task', componentId: 'component',
+      amount: 30, unitCode: 'page', unitLabel: 'ページ', periodExpression: '今週', perOccurrence: false };
+    const information = {
+      tasks: fault === 'missing_owner' ? [] : [{ id: 'task', title: taskLabel }],
+      components: [{ id: 'component', taskId: fault === 'cross_owner' ? 'other' : 'task',
+        parentComponentId: fault === 'cycle' ? 'component' : null, label: componentLabel }],
+      workloads: [target], planningWindows: [{ id: 'window', start: '2026-10-05', end: '2026-10-11' }],
+      taskDateRules: fault === 'too_many' ? Array.from({ length: 13 }, (_, i) => ({
+        id: `rule-${i}`, taskId: 'task', dateExpression: '2026-10-06' })) : [],
+    };
+    return recoveryQuestionEvidenceForStableV5Dialogue({ planningInformation: information,
+      questionTarget: { fact: target }, questionIntent: null });
+  }
+
+  it.each([['数学', '英語', '第1章', '第1章'], ['数学', '数学', '第1章', '第2章']])(
+    'distinguishes equal quantities across task/component identities (%s/%s)', (leftTask, rightTask, leftComponent, rightComponent) => {
+      const left = evidence(leftTask, leftComponent); const right = evidence(rightTask, rightComponent);
+      expect(left).not.toBeNull(); expect(right).not.toBeNull(); expect(left).not.toEqual(right);
+      expect(left?.labels).toEqual(expect.arrayContaining([leftTask, leftComponent]));
+      expect(right?.labels).toEqual(expect.arrayContaining([rightTask, rightComponent]));
+      expect(left?.facts).toEqual(expect.arrayContaining([
+        expect.objectContaining({ collection: 'planningWindows', fact: expect.objectContaining({ start: '2026-10-05' }) }),
+        expect.objectContaining({ collection: 'workloads', fact: expect.objectContaining({ amount: 30, periodExpression: '今週' }) }),
+      ]));
+    });
+
+  it.each(['missing_owner', 'cross_owner', 'cycle', 'too_many'])('fails closed instead of truncating identity after %s', (fault) => {
+    expect(evidence('数学', '第1章', fault)).toBeNull();
+  });
+  it('fails closed when a required label cannot fit intact', () => {
+    expect(evidence('数学'.repeat(100))).toBeNull();
+  });
+  it('does not choose one of two inconsistent canonical question targets', () => {
+    const target = { id: 'quantity-a', taskId: 'task', amount: 30, unitLabel: 'ページ' };
+    expect(recoveryQuestionEvidenceForStableV5Dialogue({
+      planningInformation: { tasks: [{ id: 'task', title: '数学' }], workloads: [target] },
+      questionTarget: { fact: target },
+      questionIntent: { targetFactId: 'quantity-b' },
+    })).toBeNull();
   });
 });
