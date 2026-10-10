@@ -215,7 +215,7 @@ function resolveDeclarationDates(params: {
       });
       return [];
     }
-    const expressionDates = listCalendarDatesInclusive(
+    const expressionDates = resolution.dates ?? listCalendarDatesInclusive(
       resolution.range.start,
       resolution.range.end,
     ) ?? [];

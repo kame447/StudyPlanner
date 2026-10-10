@@ -205,7 +205,7 @@ describe('weekly planning temporal context', () => {
     })).toEqual({ startDate: '2026-08-16', endDate: '2026-08-22' });
   });
 
-  it('reuses a previously proposed absolute range instead of shifting the same relative fact on a later date', () => {
+  it.each(['proposed', 'rejected'] as const)('uses only non-rejected frozen grounding on a later request date (%s)', (status) => {
     const laterRequestContext = createWeeklyPlanningTurnRequestContext({
       startedAtIso: '2026-08-18T05:55:00.000Z',
       timeZone: 'Asia/Tokyo',
@@ -220,14 +220,16 @@ describe('weekly planning temporal context', () => {
         id: 'grounding:window-1:2026-08-17:2026-08-23',
         targetFactId: 'window-1',
         interpretationKind: 'relative_date_resolution',
-        status: 'proposed',
+        status,
         sourceExpression: 'next_week',
         startDate: '2026-08-17',
         endDate: '2026-08-23',
         proposedAtTurnId: 'request-1',
         acceptedAtTurnId: null,
       }],
-    })).toEqual({ startDate: '2026-08-17', endDate: '2026-08-23' });
+    })).toEqual(status === 'rejected'
+      ? { startDate: '2026-08-24', endDate: '2026-08-30' }
+      : { startDate: '2026-08-17', endDate: '2026-08-23' });
   });
 
   it('uses selectedDate only as the fallback seed when the user has no planning window', () => {

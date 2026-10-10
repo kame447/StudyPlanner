@@ -21,6 +21,8 @@
  * - docs/ai/tasks/20260803-weekly-planning-ai-semantic-ownership-reset.md
  * - docs/ai/audits/20260803-weekly-planning-semantic-ownership-phase0-phase1.md
  */
+import { areWeeklyPlanningJsonValuesEqual } from './weeklyPlanningJsonValueEquality';
+
 export const WEEKLY_PLANNING_DUPLICATE_WORKLOAD_NORMALIZATION_V5 =
   'weekly-planning-duplicate-workload-normalization-v5' as const;
 
@@ -33,20 +35,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function canonicalValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalValue);
-  if (!isRecord(value)) return value;
-  return Object.fromEntries(
-    Object.keys(value)
-      .sort()
-      .map((key) => [key, canonicalValue(value[key])]),
-  );
-}
-
-function equalValue(left: unknown, right: unknown): boolean {
-  return JSON.stringify(canonicalValue(left)) === JSON.stringify(canonicalValue(right));
-}
-
 function semanticWorkloadValue(workload: Record<string, unknown>): Record<string, unknown> {
   const { localId: _localId, ...semanticValue } = workload;
   return semanticValue;
@@ -56,7 +44,7 @@ function equalWorkloadMeaning(
   left: Record<string, unknown>,
   right: Record<string, unknown>,
 ): boolean {
-  return equalValue(semanticWorkloadValue(left), semanticWorkloadValue(right));
+  return areWeeklyPlanningJsonValuesEqual(semanticWorkloadValue(left), semanticWorkloadValue(right));
 }
 
 function workloadsFromComponents(task: Record<string, unknown>): Record<string, unknown>[] {

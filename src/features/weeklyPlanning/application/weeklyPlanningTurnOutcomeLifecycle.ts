@@ -118,6 +118,7 @@ export function createWeeklyPlanningTurnOutcomeLifecycle(
         ownerId: params.ownerId,
         pending: params.pending,
         userText: params.userText,
+        ...(params.result ? { result: params.result } : {}),
         error: params.error,
         assistantMessage: params.assistantMessage,
       });

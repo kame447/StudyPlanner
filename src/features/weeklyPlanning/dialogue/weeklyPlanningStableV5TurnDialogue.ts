@@ -1,6 +1,13 @@
+import { AI_PROXY_CHAT_REQUEST_LIMITS, measureJsonUtf8Bytes } from '../../../../shared/aiProxyContract';
+import { createWeeklyPlanningStableV5PreviewEvidence } from './weeklyPlanningStableV5PreviewEvidence';
 import { getAiConfig } from '../../../lib/aiConfig';
+import { getWeeklyPlanningStableV5RuntimeSession } from '../application/weeklyPlanningStableV5RuntimeSession';
+import { stableV5MissingSchedulableWorkQuestion } from '../application/weeklyPlanningStableV5RuntimeQuestions';
+import { resolveWeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
+import { createOpenAiCompatibleChatRequestPayload } from '../../../services/ai/openAiCompatibleClient';
 import {
   createAiWeeklyPlanningStableV5DialogueRenderer,
+  createWeeklyPlanningStableV5DialogueRequest,
   type WeeklyPlanningStableV5DialogueActionKind,
   type WeeklyPlanningStableV5DialogueRenderInput,
 } from './weeklyPlanningStableV5AiDialogueRenderer';
@@ -15,6 +22,7 @@ import {
   questionIntentForStableV5Dialogue,
   questionTargetForStableV5Dialogue,
   requiredLabelsForStableV5Dialogue,
+  recoveryQuestionEvidenceForStableV5Dialogue,
   WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL,
 } from './weeklyPlanningStableV5DialogueContext';
 import {
@@ -47,6 +55,9 @@ import type {
 export { createWeeklyPlanningSystemDialogueRendererTrace } from './weeklyPlanningStableV5TurnDialogueTrace';
 
 const RECENT_TURN_LIMIT = 4;
+
+export const WEEKLY_PLANNING_RECOVERY_TECHNICAL_STOP =
+  '返信を作れませんでした。今回の内容は計画へ反映していません。少し待ってからもう一度送信してください。';
 
 function questionCode(result: WeeklyPlanningTurnExecutionResult): string | null {
   return decodeWeeklyPlanningStableV5QuestionSlot(
@@ -112,6 +123,7 @@ function withAssistantMessage(params: {
     : params.result.state;
   const {
     questionPresentationContent: _unrenderedContent,
+    recoveryPresentation: _unverifiedRecovery,
     ...result
   } = params.result;
   return {
@@ -272,6 +284,7 @@ function createRenderInput(params: {
     questionTarget,
     planningInformation,
     effortMeasurement: params.result.state.lastQuestionContext?.intent ?? null,
+    sessionPartitionIssue: params.result.sessionPartitionIssue,
   });
   const previewPromotionControlLabel = params.result.state.status === 'draft_ready'
     ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL
@@ -290,7 +303,7 @@ function createRenderInput(params: {
     previousQuestionCode,
     currentQuestionCode: params.questionCode,
   });
-  return {
+  const renderInput: WeeklyPlanningStableV5DialogueRenderInput = {
     actionId: params.actionId,
     currentUserMessage: params.input.userText,
     recentConversation: params.input.messages
@@ -310,7 +323,21 @@ function createRenderInput(params: {
     }),
     fallbackText: withSelfRepairNotice(fallbackText, params.notice),
     previewCount: params.result.draftCandidates.length,
+    ...(params.actionKind === 'preview_ready' ? { previewEvidence: createWeeklyPlanningStableV5PreviewEvidence({
+      result: params.result, conversationId: params.input.conversationId,
+    }) } : {}),
   };
+  if (renderInput.previewEvidence?.status === 'available') {
+    const request = createWeeklyPlanningStableV5DialogueRequest(renderInput);
+    const payload = createOpenAiCompatibleChatRequestPayload(getAiConfig(), request);
+    const messages = request.messages;
+    if (measureJsonUtf8Bytes(payload) > AI_PROXY_CHAT_REQUEST_LIMITS.maxRequestBodyBytes
+      || messages.some(message => message.content.length > AI_PROXY_CHAT_REQUEST_LIMITS.maxMessageContentLength)
+      || messages.reduce((sum, message) => sum + message.content.length, 0) > AI_PROXY_CHAT_REQUEST_LIMITS.maxTotalMessageContentLength) {
+      renderInput.previewEvidence = { status: 'unavailable', reason: 'request_budget' };
+    }
+  }
+  return renderInput;
 }
 
 export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
@@ -432,4 +459,108 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     preservedQuestionContext: result.state.lastQuestionContext ?? null,
   });
   return result;
+}
+
+/** Failure-only presentation. The graph/state used here are retained evidence, never a commit. */
+export async function renderWeeklyPlanningStableV5RecoveryMessage(params: {
+  input: WeeklyPlanningTurnExecutionInput;
+  result: WeeklyPlanningTurnExecutionResult;
+}): Promise<WeeklyPlanningTurnExecutionResult> {
+  const { input } = params;
+  const session = getWeeklyPlanningStableV5RuntimeSession(input.conversationId);
+  const canDispatchRecovery = () => input.isCurrentTurn?.() === true
+    && session?.ownerId === input.userId
+    && getWeeklyPlanningStableV5RuntimeSession(input.conversationId)?.ownerId === input.userId
+    && getWeeklyPlanningStableV5RuntimeSession(input.conversationId)?.graph.revision === session.graph.revision;
+  if (!session || !canDispatchRecovery()) return params.result;
+  const freshness = resolveWeeklyPlanningQuestionPresentationFreshness({
+    previousState: input.previousState, inputStateRevision: input.inputStateRevision,
+    messages: input.messages, graphRevision: session.graph.revision,
+  });
+  const retained = { ...params.result, state: input.previousState ?? params.result.state,
+    stableV5Graph: session.graph };
+  const retainedCode = freshness.status === 'fresh' ? questionCode(retained) : null;
+  const currentActionId = actionId({ traceRequestId: input.traceRequestId,
+    actionKind: retainedCode ? 'question' : 'status', questionCode: retainedCode });
+  const candidate = createRenderInput({ input, result: retained, notice: null,
+    actionKind: retainedCode ? 'question' : 'status', questionCode: retainedCode,
+    actionId: currentActionId });
+  if (freshness.status === 'fresh' && retainedCode) {
+    const originalTarget = freshness.questionContext.topicId;
+    if (originalTarget !== undefined && candidate.questionTarget?.fact.id !== originalTarget) return params.result;
+    if (retainedCode === 'missing_schedulable_work') {
+      const currentQuestion = stableV5MissingSchedulableWorkQuestion(session.graph);
+      if ((currentQuestion.targetFactId ?? undefined) !== originalTarget
+        || currentQuestion.intent !== freshness.questionContext.intent) return params.result;
+    } else if (originalTarget === undefined
+      && retainedCode !== 'invalid_planning_horizon' && retainedCode !== 'ambiguous_planning_window') {
+      return params.result;
+    }
+    if (retainedCode === 'quantity_role_unresolved' && candidate.questionTarget?.collection !== 'workloads') return params.result;
+    if (retainedCode === 'semantic_uncertainty' && candidate.questionTarget?.collection !== 'uncertainties') return params.result;
+    if (retainedCode === 'learning_strategy_proposal') {
+      const proposals = (input.previousState?.learningStrategyProposalRecords ?? [])
+        .filter((proposal) => proposal.id === freshness.questionContext.actionId && proposal.status === 'pending');
+      const proposal = proposals.length === 1 ? proposals[0] : null;
+      if (!proposal || candidate.questionTarget?.collection !== 'workloads'
+        || candidate.questionIntent?.kind !== 'learning_strategy_proposal'
+        || proposal.workloadFactId !== originalTarget
+        || candidate.questionIntent.targetFactId !== originalTarget
+        || proposal.taskId !== candidate.questionTarget.fact.taskId) return params.result;
+    }
+  }
+  // A stale or irreconstructible question is never recovered from old assistant prose.
+  const asksRetainedQuestion = freshness.status === 'fresh' && candidate.questionIntent != null;
+  const questionEvidence = asksRetainedQuestion ? recoveryQuestionEvidenceForStableV5Dialogue(candidate) : undefined;
+  if (asksRetainedQuestion && !questionEvidence) return params.result;
+  const renderInput: WeeklyPlanningStableV5DialogueRenderInput = {
+    ...candidate,
+    planningInformation: candidate.planningInformation ? { ...candidate.planningInformation,
+      groundingRecords: [], selfRepairNotice: null } : null,
+    actionKind: asksRetainedQuestion ? 'question' : 'status',
+    questionCode: asksRetainedQuestion ? retainedCode : null,
+    questionIntent: asksRetainedQuestion ? candidate.questionIntent : null,
+    questionTarget: asksRetainedQuestion ? candidate.questionTarget : null,
+    currentTurnGrounding: { mode: 'none', acceptedFacts: [] },
+    previewPromotionControlLabel: null,
+    requiredLabels: candidate.requiredLabels.filter((label) => label !== WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL),
+    fallbackText: '', previewCount: 0,
+    recovery: { planningDetailsNotApplied: true, acceptedStateUnchanged: true,
+      retainedPreviewUnchanged: (input.retainedPreviewCount ?? 0) > 0 },
+    ...(questionEvidence ? { recoveryQuestionEvidence: questionEvidence } : {}),
+  };
+  recordWeeklyPlanningDialogueRendererRequestV5({ requestId: input.traceRequestId, input: renderInput });
+  const rendered = await createAiWeeklyPlanningStableV5DialogueRenderer(getAiConfig(), undefined,
+    { canDispatchRecovery }).render(renderInput);
+  recordWeeklyPlanningDialogueRendererResponseV5({ requestId: input.traceRequestId,
+    actionId: currentActionId, rendered, selfRepairNotice: null });
+  if (rendered.status !== 'rendered' || rendered.recoveryVerified !== true || !canDispatchRecovery()) {
+    // Keep the failed attempt trace (including verifier), but never its candidate question.
+    return { ...params.result, dialogueRendererTrace: {
+      ...createWeeklyPlanningSystemDialogueRendererTrace(params.result.message),
+      actionId: currentActionId, actionKind: renderInput.actionKind, questionCode: renderInput.questionCode,
+      request: { purpose: 'weekly_planning_renderer', requiredLabels: renderInput.requiredLabels,
+        fallbackText: '', previewCount: 0 },
+      response: { status: 'fallback',
+        reason: rendered.status === 'fallback' ? rendered.reason : 'recovery_no_longer_current',
+        rawResponse: rendered.rawResponse,
+        renderedText: rendered.status === 'rendered' ? rendered.text : null },
+    } };
+  }
+  const output = withAssistantMessage({ result: params.result, message: rendered.text, responseSource: 'ai',
+    dialogueRendererTrace: createWeeklyPlanningAiRenderedDialogueTrace({
+      actionId: currentActionId, actionKind: renderInput.actionKind,
+      questionCode: renderInput.questionCode, renderInput, rendered, finalMessage: rendered.text,
+    }),
+  });
+  return {
+    ...output,
+    recoveryPresentation: { question: asksRetainedQuestion && freshness.status === 'fresh'
+      ? { graphRevision: session.graph.revision, previousAssistantMessageId: freshness.presentation.assistantMessageId }
+      : null },
+    ...(asksRetainedQuestion && freshness.status === 'fresh' ? {
+      questionPresentationContent: { responseSource: 'ai' as const, currentTurnGrounding: 'none' as const,
+        selfRepairNotice: false, groundingContext: { proposed: 0, contested: 0 }, previewPromotionControl: false },
+    } : {}),
+  };
 }

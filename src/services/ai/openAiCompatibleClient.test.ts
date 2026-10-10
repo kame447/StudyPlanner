@@ -1,7 +1,9 @@
+import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../shared/aiProxyContract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createOpenAiCompatibleClient,
+  createOpenAiCompatibleChatRequestPayload,
   resetOpenAiCompatibleClientRequestBudgetForTest,
 } from './openAiCompatibleClient';
 import {
@@ -392,5 +394,42 @@ describe('openAiCompatibleClient model routing', () => {
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(init.signal).toBeInstanceOf(AbortSignal);
     expect(init.signal).toMatchObject({ aborted: false });
+  });
+});
+
+
+describe('request payload preparation remains identical to transmitted bodies', () => {
+  it.each([
+    ...[false, true].flatMap(proxy => ['gpt-5.4-mini', 'gpt-5.6-luna'].flatMap(model =>
+      [undefined, 800].map(maxCompletionTokens => ({ proxy, model, maxCompletionTokens })))),
+  ])('preserves $proxy/$model/max=$maxCompletionTokens including the exact byte boundary', async ({ proxy, model, maxCompletionTokens }) => {
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(proxy);
+    vi.mocked(getCloudflareAiProxyUrl).mockReturnValue('https://proxy.example/chat/completions');
+    vi.mocked(getFirebaseAuth).mockReturnValue({
+      currentUser: { getIdToken: async () => 'id-token' },
+    } as unknown as ReturnType<typeof getFirebaseAuth>);
+    const actualConfig = { ...config, model };
+    const messages = [{ role: 'user' as const, content: '' }];
+    const responseFormat = { type: 'json_schema' as const, json_schema: { name: 'fixture', schema: { type: 'object' } } };
+    // Independent pre-extraction wire oracle, including absent rather than null fields.
+    const expected = {
+      ...(proxy ? { purpose: 'weekly_planning_renderer' } : { model }),
+      ...(proxy || model !== 'gpt-5.6-luna' ? { temperature: 0.4 } : {}),
+      messages, response_format: responseFormat,
+      ...(maxCompletionTokens === undefined ? {} : { max_completion_tokens: maxCompletionTokens }),
+    };
+    // Keep this serializer probe precisely at the shared body boundary. This does
+    // not assert Worker admission: the Worker has a separate per-message limit.
+    messages[0].content = 'x'.repeat(AI_PROXY_CHAT_REQUEST_LIMITS.maxRequestBodyBytes - new TextEncoder().encode(JSON.stringify(expected)).byteLength);
+    const input = { messages, temperature: 0.4, responseFormat, purpose: 'weekly_planning_renderer' as const, maxCompletionTokens };
+    const prepared = createOpenAiCompatibleChatRequestPayload(actualConfig, input);
+    expect(JSON.stringify(prepared)).toBe(JSON.stringify(expected));
+    expect(new TextEncoder().encode(JSON.stringify(prepared)).byteLength).toBe(AI_PROXY_CHAT_REQUEST_LIMITS.maxRequestBodyBytes);
+    expect(prepared).not.toHaveProperty('apiKey');
+    expect(prepared).not.toHaveProperty('headers');
+    const fetchMock = mockFetchOnce(proxy ? { content: 'ok' } : { choices: [{ message: { content: 'ok' } }] });
+    await expect(createOpenAiCompatibleClient(actualConfig).createChatCompletion(input)).resolves.toBe('ok');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((fetchMock.mock.calls[0][1] as { body: string }).body).toBe(JSON.stringify(expected));
   });
 });

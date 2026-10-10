@@ -2,7 +2,7 @@ import type {
   PlanType,
   WeeklyPlanningMemoryPaceObservationSourceV1,
 } from '../../types/domain';
-import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
+import type { PlanningIntakeState, WeeklyPlanningQuestionPresentation } from './intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningEstimateMetadataV1 } from './personalization/weeklyPlanningEstimateCalibration';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type {
@@ -118,7 +118,7 @@ export interface PlanningState {
 export type WeeklyPlanningAction =
   | { type: 'load_state'; state: PlanningState }
   | { type: 'set_week_anchor'; weekStartDate: string }
-  | { type: 'add_draft_blocks'; blocks: WeeklyPlanDraftBlock[] }
+  | { type: 'add_draft_blocks'; blocks: WeeklyPlanDraftBlock[]; replace?: boolean }
   | { type: 'remove_draft_block'; blockId: string }
   | { type: 'remove_draft_blocks'; blockIds: string[] }
   | { type: 'clear_draft_blocks' }
@@ -142,12 +142,15 @@ export type WeeklyPlanningAction =
       assistantMessage: WeeklyPlanningMessage;
       draftCandidates?: WeeklyDraftCandidate[];
       preservePreviewCandidates?: boolean;
+      /** Transient publication intent from the actual Stable execution result; never persisted. */
+      stablePublicationScope?: { ownerId: string; conversationId: string };
       c5Commit?: import('./application/c5LocalSelection/contracts').C5ReducerCommit;
     }
   | {
       type: 'fail_turn';
       pending: WeeklyPlanningPendingTurn;
       assistantMessage: WeeklyPlanningMessage;
+      questionPresentation?: WeeklyPlanningQuestionPresentation;
     }
   | { type: 'cancel_turn'; pending: WeeklyPlanningPendingTurn }
   | { type: 'begin_approval'; pending: WeeklyPlanningPendingApproval }

@@ -1,3 +1,5 @@
+import { reconcileWeeklyPlanningHistoricalWindowQuestionsV5 } from './weeklyPlanningPlanningWindowReconciliationV5';
+import { weeklyPlanningIntroducedActiveFactReferenceErrorsV5 } from './weeklyPlanningActiveFactReferenceInvariantV5';
 import { enforceSingleActivePlanningWindowV5 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
 import {
   applyWeeklyPlanningCanonicalCorrectionsExtendedV5 as applyWeeklyPlanningCanonicalCorrectionsV5,
@@ -257,10 +259,27 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
     canonicalization: boundedProjectedCanonicalization,
     operationKeyPrefix: params.operationKeyPrefix,
   });
-  const canonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
+  const collapsedCanonicalization = collapseWeeklyPlanningNoOpCanonicalizationV5({
     originalGraph: params.originalGraph,
     canonicalization: workBreakdownCleanedCanonicalization,
   });
+  let canonicalization = reconcileWeeklyPlanningHistoricalWindowQuestionsV5({
+    originalGraph: params.originalGraph,
+    canonicalization: collapsedCanonicalization,
+  });
+  // All accepted paths converge here, after every lifecycle writer has run.
+  if (canonicalization.status === 'applied') {
+    const errors = weeklyPlanningIntroducedActiveFactReferenceErrorsV5({
+      originalGraph: params.originalGraph, graph: canonicalization.graph,
+    });
+    if (errors.length) canonicalization = {
+      ...canonicalization, status: 'rejected', graph: params.originalGraph, diff: null,
+      errors: errors.map(error => `active-reference-invariant:${error}`),
+    };
+  }
+  if (canonicalization.status === 'rejected') {
+    canonicalization = { ...canonicalization, graph: params.originalGraph, diff: null };
+  }
   return {
     entityBindingApplication,
     boundCanonicalization,

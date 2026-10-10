@@ -1,7 +1,7 @@
 # Weekly Planning Scheduling Policy
 
 Status: canonical / current Stable V5 scheduling behavior
-Updated: 2026-09-01
+Updated: 2026-10-10
 
 References:
 - [Current contract](../architecture/current-contract-v5.md)
@@ -45,6 +45,17 @@ hard date boundsはrecurrence expansionだけでなくordinary movable workに�
 複数hard boundsが矛盾する、またはhard bounds適用後にeligible dateが存在しない場合は、制約を弱めて予定を作るのではなくfail closedする。
 
 このhorizon導出・date clippingを変更するときは、scheduler input compilation、recurrence/ordinary placement、task/component scopeのregressionを同じ変更で確認する。
+
+## Movable-work hard clock bounds
+
+accepted hard `earliest_start` の `startTime`、`latest_end` の `endTime` は、named periodや逆側のclockを伴わない片端型に限り、対象task/componentの各配置へ適用する。
+
+- 日付なしは、既存date eligibility内の各配置に同じclock境界を適用する。recurrenceの有無で新しいworkや量を作らない。
+- 日付ありは、既存hard date clippingを保ち、解決済み境界日だけclockを適用する。earliest以後の日やlatest以前の日を毎日同じclockへ制限しない。日付を解決できる `deadline` / `endTime` も同じ終了境界を使う。
+- taskの境界はcomponentへ継承し、component固有境界はsiblingへ漏らさない。preferred searchと通常searchの両方で同じ制限を満たす。既存global availability、busy、daily capacity、request-time `notBefore` は維持する。
+- 交差後の空windowを「制約なし」と扱わず、配置不能なら既存capacity policyへ返す。数学的な全日maskから新しい利用可能時間を作らない。hardnessが未確定なら既存質問経路で解決を求める。
+
+日付なしdeadline、日付付きnamed-only境界、逆側の余分なclockを含むshapeは、この限定対応でも残る既存の未対応形である。固定予約と片端clockの相互矛盾検査も別の未完了境界であり、任意のtyped hard-clock条件を安全に扱えるとは宣言しない。Issue #488の全体release判断ではこれらの残差を維持する。
 
 ## Current seven-day distribution baseline
 
@@ -98,6 +109,8 @@ schedulerは作業の意味構造を勝手に作らない。
 - breakdownが計画結果へ影響する場合はsemantic/dialogue layerで解決する
 
 current schedulerのsession chunking定数は実装policyであり、作業のatomicityより強くない。
+
+受理済みの明示session上限に対する既知の整数content単位のgroupingは、[current contractのExplicit accepted session bounds](../architecture/current-contract-v5.md#explicit-accepted-session-bounds)に従う限定例外とする。数量・元のbase・校正後costを保ち、余裕だけを上限内で調整する。未知の意味やatomicityをraw textから推論する許可ではない。
 
 ## Progress and target basis
 

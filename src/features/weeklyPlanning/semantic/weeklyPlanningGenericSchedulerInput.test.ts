@@ -1,3 +1,6 @@
+import { createEmptyWeeklyPlanningFactGraphV5, type WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
+import { validateWeeklyPlanningFactGraphValueV5 } from './weeklyPlanningFactGraphValidatorV5';
+import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './weeklyPlanningActiveSchedulerGraphViewV5';
 import { describe, expect, it } from 'vitest';
 import {
   createEmptyWeeklyPlanningFactGraphV2,
@@ -447,4 +450,75 @@ describe('generic weekly planning scheduler input', () => {
       code: 'ambiguous_planning_window',
     }));
   });
+  it.each([
+    { amount: 20, pace: 3, cap: null, quantities: [20], bases: [60], durations: [70], margin: 10 },
+    { amount: 20, pace: 3, cap: 30, quantities: [10, 10], bases: [30, 30], durations: [30, 30], margin: 0 },
+    { amount: 40, pace: 2, cap: 30, quantities: [14, 13, 13], bases: [28, 26, 26], durations: [30, 30, 30], margin: 10 },
+    // Ordinary buffered allocation is540, but the accepted cap needs only480
+    // whole-unit sessions. Buffered minutes must not become the count authority.
+    { amount: 480, pace: 1, cap: null, quantities: [480], bases: [480], durations: [540], margin: 60 },
+    { amount: 480, pace: 1, cap: 1, quantities: Array(480).fill(1), bases: Array(480).fill(1), durations: Array(480).fill(1), margin: 0 },
+  ])('conserves $amount questions at $pace minutes with accepted cap $cap', ({ amount, pace, cap, quantities, bases, durations, margin }) => {
+    // Accepted typed facts only. This does not test natural-language interpretation.
+    const taskId = 'task-content'; const workloadId = 'workload-content';
+    const canonical: WeeklyPlanningFactGraphV5 = {
+      ...createEmptyWeeklyPlanningFactGraphV5(), revision: 1,
+      tasks: [{ id: taskId, category: 'study', title: '問題演習', source: source('task-content', '問題演習'), createdRevision: 1 }],
+      workloads: [{ ...baseGraph().workloads[0], id: workloadId, taskId,
+        amount, unitCode: 'problem', unitLabel: '問', rangeStart: '1', rangeEnd: String(amount),
+        source: source('workload-content', `${amount}問`),
+      }],
+      effortEstimates: [
+        { id: 'pace-content', taskId, targetFactId: workloadId, kind: 'duration_per_unit', minutes: pace,
+          unitCode: 'problem', precision: 'exact', source: source('pace-content', `1問${pace}分`), createdRevision: 1 },
+        ...(cap === null ? [] : [{ id: 'cap-content', taskId, targetFactId: taskId, kind: 'session_duration' as const,
+          minutes: cap, unitCode: 'session' as const, precision: 'exact' as const,
+          source: source('cap-content', `1回${cap}分以内`), createdRevision: 1 }]),
+      ],
+    };
+    canonical.factLifecycles = [...canonical.tasks, ...canonical.workloads, ...canonical.effortEstimates]
+      .map((fact) => ({ factId: fact.id, status: 'active', createdRevision: 1, terminalRevision: null, supersededByFactId: null }));
+    expect(validateWeeklyPlanningFactGraphValueV5(canonical).errors).toEqual([]);
+    const before = structuredClone(canonical);
+    const result = compileGenericSchedulerInput({ graph: createWeeklyPlanningActiveSchedulerGraphViewV5(canonical), context: context(), estimateCalibrationMultiplier: 1 });
+    expect(result.status).toBe('ready');
+    const items = result.input!.movableWorkItems;
+    expect(items).toHaveLength(quantities.length);
+    expect(items.map((item) => item.quantity.amount)).toEqual(quantities);
+    expect(items.map((item) => item.baseEstimatedMinutes)).toEqual(bases);
+    expect(items.map((item) => item.estimatedMinutes)).toEqual(durations);
+    expect(items.reduce((sum, item) => sum + item.quantity.amount, 0)).toBe(amount);
+    expect(items.reduce((sum, item) => sum + (item.baseEstimatedMinutes ?? 0), 0)).toBe(amount * pace);
+    expect(items.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0) - (item.baseEstimatedMinutes ?? 0), 0)).toBe(margin);
+    let next = 1;
+    items.forEach((item) => {
+      expect(Number.isInteger(item.quantity.amount)).toBe(true);
+      expect(item.quantity.ordinalRange).toEqual({ start: next, end: next + item.quantity.amount - 1 });
+      expect(item.quantity.actualRange).toEqual({ start: String(next), end: String(next + item.quantity.amount - 1) });
+      expect(item.estimatedMinutes).toBeGreaterThanOrEqual(item.quantity.amount * pace);
+      expect(item.sourceFactRefs).toEqual(expect.arrayContaining([taskId, workloadId, 'pace-content']));
+      if (cap !== null) {
+        expect(item.estimatedMinutes).toBeLessThanOrEqual(cap);
+        expect(item.sourceFactRefs).toContain('cap-content');
+      }
+      next += item.quantity.amount;
+    });
+    expect(next).toBe(amount + 1);
+    expect(canonical).toEqual(before);
+  });
+
+  it('withholds all compiler input when an accepted cap cannot fit the clock precision', () => {
+    const graph = baseGraph();
+    graph.effortEstimates.push({ id: 'subminute-cap', taskId: 'task-study', targetFactId: 'task-study',
+      kind: 'session_duration', minutes: 0.5, unitCode: 'session', precision: 'exact', source: source('cap', '1回0.5分以内'), createdRevision: 1 });
+    const before = structuredClone(graph);
+    const result = compileGenericSchedulerInput({ graph, context: context() });
+    expect(result).toMatchObject({ status: 'needs_resolution', input: null, issues: expect.arrayContaining([{
+      domain: 'work_item', code: 'session_partition_unfulfillable', blocking: true, factId: 'subminute-cap',
+      matchingSessionDurationFactIds: ['subminute-cap'],
+      details: expect.objectContaining({ reason: 'cap_below_clock_precision', taskId: 'task-study', requestedSessionMinutes: 0.5, sessionMinuteLimit: 0 }),
+    }]) });
+    expect(graph).toEqual(before); // No partial fixed reservation or uncapped movable item is exposed.
+  });
+
 });

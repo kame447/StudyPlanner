@@ -2,6 +2,7 @@ import type { GenericSchedulerInputCompilationResult } from '../semantic/weeklyP
 import type { WeeklyPlanningFactGraphV5, WorkloadFactV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import type { WeeklyPlanningStableQuestionV5 } from '../semantic/weeklyPlanningStableDialoguePolicyV5';
+import { projectWeeklyPlanningStatedTimeBudgetGraphV5 } from '../semantic/weeklyPlanningStatedTimeBudgetProjectionV5';
 
 const QUESTION_SOURCE_EXCERPT_LIMIT = 80;
 
@@ -117,7 +118,9 @@ export function stableV5MissingSchedulableWorkQuestion(
   targetFactId: string | null;
   intent: WeeklyPlanningStableV5MissingWorkIntent;
 } {
-  const active = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
+  const active = projectWeeklyPlanningStatedTimeBudgetGraphV5(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(graph),
+  );
   const taskTitles = active.tasks.map((task) => task.title.trim()).filter(Boolean);
   const lifecycleByFactId = new Map(
     graph.factLifecycles.map((entry) => [entry.factId, entry] as const),
@@ -379,6 +382,7 @@ export function renderStableV5RuntimeQuestion(
       return missingEffortQuestion(graph, question);
     case 'ambiguous_effort_estimate':
       return `${label}の所要時間が複数あります。今回使う見積りを一つ教えてください。`;
+    case 'availability_outside_planning_window':
     case 'missing_availability_date_scope':
       return 'その空き時間または予定を入れられない時間は、どの日に適用しますか？';
     case 'missing_time_bounds':
@@ -398,6 +402,9 @@ export function renderStableV5RuntimeQuestion(
     case 'orphan_relation_task':
     case 'self_relation':
       return 'タスクの順序関係を確認できませんでした。どの予定を先にするか教えてください。';
+    // The renderer receives the precise typed date intent; technical fallback stays generic.
+    case 'hard_date_bound_outside_planning_window':
+    case 'preferred_date_outside_planning_window':
     default:
       return `${label}について、予定作成に必要な条件をもう少し具体的に教えてください。`;
   }

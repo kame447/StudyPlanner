@@ -101,7 +101,7 @@ function resolveRuleDates(params: {
     return null;
   }
 
-  const dates = listCalendarDatesInclusive(
+  const dates = resolution.dates ?? listCalendarDatesInclusive(
     resolution.range.start,
     resolution.range.end,
   ) ?? [];

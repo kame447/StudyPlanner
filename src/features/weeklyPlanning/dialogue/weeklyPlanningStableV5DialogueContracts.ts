@@ -1,3 +1,4 @@
+import type { WeeklyPlanningSessionPartitionIssueV5 } from '../semantic/weeklyPlanningSchedulerWorkDistributionV5';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
 
 export type WeeklyPlanningStableV5DialogueActionKind =
@@ -58,6 +59,8 @@ export type WeeklyPlanningStableV5DialogueResolutionKind =
   | 'quantity_role'
   | 'effort_estimate_choice'
   | 'availability_date_scope'
+  | 'temporal_date_scope'
+  | 'preferred_date_scope'
   | 'time_bounds'
   | 'named_time_period_bounds'
   | 'commitment_date_scope'
@@ -65,7 +68,9 @@ export type WeeklyPlanningStableV5DialogueResolutionKind =
   | 'task_date_rule_conflict'
   | 'constraint_source_choice'
   | 'task_relation_reference'
-  | 'task_relation_self_reference';
+  | 'task_relation_self_reference'
+  | 'session_partition_constraints'
+  | 'session_partition_generation_limit';
 
 export type WeeklyPlanningStableV5DialogueRequestedInformation =
   | 'clarify_ambiguous_meaning'
@@ -74,6 +79,8 @@ export type WeeklyPlanningStableV5DialogueRequestedInformation =
   | 'quantity_role'
   | 'choose_effort_estimate'
   | 'availability_date_scope'
+  | 'applicable_start_or_deadline_date'
+  | 'preferred_date'
   | 'start_and_end_time'
   | 'named_time_period_start_and_end'
   | 'commitment_date'
@@ -81,7 +88,11 @@ export type WeeklyPlanningStableV5DialogueRequestedInformation =
   | 'allowed_or_excluded_date_rule'
   | 'constraint_source'
   | 'identify_relation_endpoints'
-  | 'distinct_relation_endpoints';
+  | 'distinct_relation_endpoints'
+  | 'session_bound_or_indivisible_unit'
+  | 'scope_within_generation_limit'
+  | 'supported_whole_unit_quantity'
+  | 'supported_range_partition';
 
 export type WeeklyPlanningStableV5DialogueResolutionChoice =
   | 'plan_target_amount'
@@ -102,6 +113,7 @@ export interface WeeklyPlanningStableV5DialogueResolutionQuestionIntent {
   knownUnitLabel: string | null;
   ambiguityField: string | null;
   ambiguityReason: string | null;
+  sessionPartitionIssue?: WeeklyPlanningSessionPartitionIssueV5;
 }
 
 export interface WeeklyPlanningStableV5DialogueSpacedPracticeProposalIntent {
@@ -183,6 +195,40 @@ export interface WeeklyPlanningStableV5DialogueCurrentTurnGrounding {
   acceptedFacts: WeeklyPlanningStableV5DialogueGroundingFact[];
 }
 
+/** Observations of this turn's candidates, never approval or constraint-fulfillment authority. */
+export type WeeklyPlanningStableV5PreviewEvidence =
+  | { status: 'unavailable'; reason: 'missing_graph' | 'retained_preview' | 'invalid_candidates' | 'request_budget' }
+  | {
+      status: 'available';
+      graphRevision: number;
+      phase: 'generated_preview';
+      constraintEvaluation: 'not_evaluated';
+      summary: {
+        scope: 'all_candidates';
+        candidateCount: number;
+        totalDurationMinutes: number;
+        minDurationMinutes: number;
+        maxDurationMinutes: number;
+        earliestStartTime: string;
+        latestEndTime: string;
+      };
+      details: {
+        coverage: 'complete' | 'partial';
+        omittedCount: number;
+        candidates: Array<{
+          candidateKey: string;
+          taskId: string;
+          workItemKey: string;
+          date: string;
+          startTime: string;
+          endTime: string;
+          durationMinutes: number;
+          approvalStatus: 'unapproved';
+          sourceFactRefs: string[];
+        }>;
+      };
+    };
+
 export interface WeeklyPlanningStableV5DialogueRenderInput {
   actionId: string;
   currentUserMessage: string;
@@ -197,6 +243,18 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   requiredLabels: string[];
   fallbackText: string;
   previewCount: number;
+  /** A failed semantic turn accepted no new facts. Never inferred from rendered text. */
+  recovery?: {
+    planningDetailsNotApplied: true;
+    acceptedStateUnchanged: true;
+    retainedPreviewUnchanged: boolean;
+  };
+  /** Complete bounded identity/scope evidence, shared by recovery generation and verification. */
+  recoveryQuestionEvidence?: {
+    facts: WeeklyPlanningStableV5DialogueQuestionTarget[];
+    labels: string[];
+  };
+  previewEvidence?: WeeklyPlanningStableV5PreviewEvidence;
 }
 
 export type WeeklyPlanningStableV5DialogueFallbackReason =
@@ -208,13 +266,15 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   | 'grounding_contract_mismatch'
   | 'unsafe_text'
   | 'ungrounded_text'
-  | 'repeated_question_text';
+  | 'repeated_question_text'
+  | 'recovery_verification_failed';
 
 export type WeeklyPlanningStableV5DialogueRenderResult =
   | {
       status: 'rendered';
       text: string;
       rawResponse: string;
+      recoveryVerified?: true;
     }
   | {
       status: 'fallback';

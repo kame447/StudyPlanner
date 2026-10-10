@@ -40,6 +40,9 @@ import {
   decideWeeklyPlanningStableRepairPolicyV5,
 } from '../semantic/weeklyPlanningStableRepairPolicyV5';
 import {
+  projectWeeklyPlanningStatedTimeBudgetGraphV5,
+} from '../semantic/weeklyPlanningStatedTimeBudgetProjectionV5';
+import {
   createStableV5ExternalConstraintSources,
 } from './weeklyPlanningStableV5ExternalSources';
 import {
@@ -61,6 +64,7 @@ import type {
 import {
   createWeeklyPlanningSchedulerContext,
   resolveWeeklyPlanningPlanningHorizon,
+  resolveWeeklyPlanningAcceptedPlanningWindow,
 } from './weeklyPlanningTemporalContext';
 
 type SuccessfulSemanticTurn = Extract<
@@ -137,23 +141,12 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
   const { input, semanticTurn } = params;
   const { requestContext, runtimeSession, semantic } = semanticTurn;
   const semanticDiff = semantic.canonicalization?.diff ?? undefined;
-  const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
-  const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
+  const activeGraph = projectWeeklyPlanningStatedTimeBudgetGraphV5(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph),
+  );
+  const preliminaryAcceptedPlanningWindow = resolveWeeklyPlanningAcceptedPlanningWindow({
     graph: activeGraph,
-    currentDate: requestContext.currentDate,
-    weekStartsOn: requestContext.weekStartsOn,
-  });
-  const resolvedTemporalConstraints = resolveWeeklyPlanningTemporalConstraintsV5({
-    graph: activeGraph,
-    currentDate: requestContext.currentDate,
-    weekStartsOn: requestContext.weekStartsOn,
-    resolvedDateExpressions,
-  });
-  const preliminaryHorizon = resolveWeeklyPlanningPlanningHorizon({
-    graph: activeGraph,
-    selectedDate: input.selectedDate,
     requestContext,
-    resolvedTemporalConstraints,
     groundingRecords: input.previousState?.groundingRecords,
   });
   const continuationAccepted = stableV5RelevantContinuationAccepted({
@@ -164,20 +157,40 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     previousRecords: input.previousState?.groundingRecords ?? [],
     previousGraph: runtimeSession.graph,
     nextGraph: semantic.graph,
-    resolvedHorizon: preliminaryHorizon,
+    // Grounding belongs only to an active window; a UI fallback cannot create a record.
+    resolvedHorizon: preliminaryAcceptedPlanningWindow,
     currentTurnId: input.traceRequestId,
     continuationAccepted,
+  });
+  const acceptedPlanningWindow = resolveWeeklyPlanningAcceptedPlanningWindow({
+    graph: activeGraph,
+    requestContext,
+    groundingRecords,
+  });
+  const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
+    graph: activeGraph,
+    planningWindow: acceptedPlanningWindow,
+    currentDate: requestContext.currentDate,
+    weekStartsOn: requestContext.weekStartsOn,
+  });
+  const resolvedTemporalConstraints = resolveWeeklyPlanningTemporalConstraintsV5({
+    graph: activeGraph,
+    currentDate: requestContext.currentDate,
+    weekStartsOn: requestContext.weekStartsOn,
+    resolvedDateExpressions,
   });
   const horizon = resolveWeeklyPlanningPlanningHorizon({
     graph: activeGraph,
     selectedDate: input.selectedDate,
     requestContext,
     resolvedTemporalConstraints,
+    acceptedPlanningWindow,
     groundingRecords,
   });
   const schedulerContext = createWeeklyPlanningSchedulerContext({
     ownerId: input.userId,
     horizon,
+    acceptedPlanningWindow,
     requestContext,
   });
   const externalSources = createStableV5ExternalConstraintSources({

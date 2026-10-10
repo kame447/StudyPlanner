@@ -1,3 +1,6 @@
+import type { WeeklyPlanningSessionPartitionIssueV5 } from '../semantic/weeklyPlanningSchedulerWorkDistributionV5';
+import type { WeeklyPlanningStableV5DialogueResolutionQuestionIntent } from './weeklyPlanningStableV5DialogueContracts';
+
 export const WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL = 'この内容で仮予定にする';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -123,6 +126,71 @@ export function questionTargetForStableV5Dialogue(params: {
     if (fact) return { collection, fact };
   }
   return null;
+}
+
+/** Follow canonical references, not labels. Never truncate away question identity. */
+export function recoveryQuestionEvidenceForStableV5Dialogue(
+  input: {
+    planningInformation: Record<string, unknown> | null;
+    questionTarget?: { fact: Record<string, unknown> } | null;
+    questionIntent?: { targetFactId: string | null } | null;
+  },
+) {
+  const collections = [...QUESTION_TARGET_COLLECTIONS, 'planningWindows', 'relations'];
+  const labels: string[] = [];
+  const visited = new Set<string>();
+  const visiting = new Set<string>();
+  const find = (id: string) => {
+    const matches = collections.flatMap((collection) => recordArray(input.planningInformation, collection)
+      .filter((fact) => fact.id === id).map((fact) => ({ collection, fact })));
+    return matches.length === 1 ? matches[0] : null;
+  };
+  const facts: Array<NonNullable<ReturnType<typeof find>>> = [];
+  const add = (id: string): boolean => {
+    if (visiting.has(id)) return false;
+    if (visited.has(id)) return true;
+    const entry = find(id);
+    if (!entry || facts.length >= 12) return false;
+    const { collection, fact } = entry;
+    if (collection === 'tasks' || collection === 'components') {
+      const label = normalizedLabel(collection === 'tasks' ? fact.title : fact.label);
+      if (!label) return false;
+      labels.push(label);
+    }
+    if (typeof fact.componentId === 'string' && typeof fact.taskId === 'string'
+      && find(fact.componentId)?.fact.taskId !== fact.taskId) return false;
+    if ((collection === 'components' || collection === 'workloads') && typeof fact.taskId !== 'string') return false;
+    if (fact.taskId != null && (typeof fact.taskId !== 'string' || find(fact.taskId)?.collection !== 'tasks')) return false;
+    if (fact.componentId != null && (typeof fact.componentId !== 'string' || find(fact.componentId)?.collection !== 'components')) return false;
+    if (fact.parentComponentId != null && (typeof fact.parentComponentId !== 'string'
+      || find(fact.parentComponentId)?.collection !== 'components'
+      || find(fact.parentComponentId)?.fact.taskId !== fact.taskId)) return false;
+    visiting.add(id); visited.add(id); facts.push(entry);
+    for (const key of ['taskId', 'componentId', 'parentComponentId', 'targetFactId', 'fromTaskId', 'toTaskId']) {
+      const reference = fact[key];
+      if (reference !== undefined && reference !== null
+        && (typeof reference !== 'string' || !add(reference))) return false;
+    }
+    visiting.delete(id);
+    return true;
+  };
+  const projectedTarget = input.questionTarget?.fact.id;
+  const intendedTarget = input.questionIntent?.targetFactId;
+  if (projectedTarget != null && intendedTarget != null && projectedTarget !== intendedTarget) return null;
+  const target = projectedTarget ?? intendedTarget;
+  if (target !== undefined && target !== null && (typeof target !== 'string' || !add(target))) return null;
+  // Global planning windows and scope constraints belonging to this target chain
+  // disambiguate equal amounts/labels over different periods. Never include unrelated tasks.
+  const ownerIds = new Set(visited);
+  for (const collection of ['planningWindows', 'temporalConstraints', 'taskDateRules', 'recurrences']) {
+    for (const fact of recordArray(input.planningInformation, collection)) {
+      const relevant = collection === 'planningWindows'
+        || [fact.taskId, fact.targetFactId].some((id) => typeof id === 'string' && ownerIds.has(id));
+      if (relevant && (typeof fact.id !== 'string' || !add(fact.id))) return null;
+    }
+  }
+  const evidence = { facts, labels: [...new Set(labels)] };
+  return new TextEncoder().encode(JSON.stringify(evidence)).byteLength <= 8 * 1024 ? evidence : null;
 }
 
 function quantityRole(value: unknown): 'declared' | 'target' | 'remaining' | 'completed' | 'unknown' {
@@ -328,8 +396,13 @@ function resolutionIntent(params: {
       };
     case 'ambiguous_effort_estimate':
       return { ...base, resolutionKind: 'effort_estimate_choice' as const, requestedInformation: ['choose_effort_estimate'] as const };
+    case 'availability_outside_planning_window':
     case 'missing_availability_date_scope':
       return { ...base, resolutionKind: 'availability_date_scope' as const, requestedInformation: ['availability_date_scope'] as const };
+    case 'hard_date_bound_outside_planning_window':
+      return { ...base, resolutionKind: 'temporal_date_scope' as const, requestedInformation: ['applicable_start_or_deadline_date'] as const };
+    case 'preferred_date_outside_planning_window':
+      return { ...base, resolutionKind: 'preferred_date_scope' as const, requestedInformation: ['preferred_date'] as const };
     case 'missing_time_bounds':
     case 'invalid_time_interval':
       return { ...base, resolutionKind: 'time_bounds' as const, requestedInformation: ['start_and_end_time'] as const };
@@ -363,13 +436,42 @@ function resolutionIntent(params: {
   }
 }
 
+function sessionPartitionIntent(
+  issue: WeeklyPlanningSessionPartitionIssueV5,
+): WeeklyPlanningStableV5DialogueResolutionQuestionIntent | null {
+  const base = { kind: 'resolution_question' as const, targetFactId: issue.factId,
+    allowedChoices: [], knownAmount: issue.details.quantityAmount,
+    knownUnitLabel: issue.details.workUnitLabel, ambiguityField: null, ambiguityReason: null,
+    sessionPartitionIssue: issue };
+  switch (issue.details.reason) {
+    case 'ambiguous_session_duration':
+      return { ...base, resolutionKind: 'effort_estimate_choice', requestedInformation: ['choose_effort_estimate'] };
+    case 'cap_below_clock_precision':
+    case 'indivisible_unit_exceeds_cap':
+      return { ...base, resolutionKind: 'session_partition_constraints', requestedInformation: ['session_bound_or_indivisible_unit'] };
+    case 'generation_limit':
+      return { ...base, resolutionKind: 'session_partition_generation_limit', requestedInformation: ['scope_within_generation_limit'] };
+    case 'unsupported_quantity_partition':
+      return { ...base, resolutionKind: 'session_partition_constraints', requestedInformation: ['supported_whole_unit_quantity'] };
+    case 'unsupported_actual_range':
+      return { ...base, resolutionKind: 'session_partition_constraints', requestedInformation: ['supported_range_partition'] };
+    default:
+      return null;
+  }
+}
+
 export function questionIntentForStableV5Dialogue(params: {
   questionCode: string | null;
   questionTarget: ReturnType<typeof questionTargetForStableV5Dialogue>;
   planningInformation?: Record<string, unknown> | null;
   effortMeasurement?: string | null;
+  sessionPartitionIssue?: WeeklyPlanningSessionPartitionIssueV5;
 }) {
   const fact = params.questionTarget?.fact;
+
+  if (params.questionCode === 'session_partition_unfulfillable' && params.sessionPartitionIssue) {
+    return sessionPartitionIntent(params.sessionPartitionIssue);
+  }
 
   if (params.questionCode === 'missing_schedulable_work') {
     if (

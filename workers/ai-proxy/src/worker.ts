@@ -6,6 +6,7 @@ import { DEFAULT_ALLOWED_CHAT_MODELS, resolveChatModel } from './modelPolicy';
 import {
   AI_PROXY_CHAT_REQUEST_LIMITS,
   getUtf8ByteLength,
+  projectOpenAiCompletionMetadata,
   resolveOpenAiChatTemperature,
 } from '../../../shared/aiProxyContract';
 import {
@@ -698,7 +699,7 @@ async function handleChatRequest(
     return dispatchFocusedAuthorization({
       provider: providers?.authorization,
       context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder),
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder, observationContext),
       respond: (decision) => jsonResponse(request, env, 200, {
         content: JSON.stringify({ decision }),
         decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
@@ -710,7 +711,7 @@ async function handleChatRequest(
     return dispatchFocusedContextual({
       provider: providers?.contextual,
       context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder),
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder, observationContext),
       respond: (decision) => jsonResponse(request, env, 200, {
         content: JSON.stringify(decision),
         decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
@@ -722,7 +723,7 @@ async function handleChatRequest(
     return dispatchTemporalScopeRepair({
       provider: providers?.temporal,
       context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder),
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder, observationContext),
       respond: (decision) => jsonResponse(request, env, 200, {
         content: JSON.stringify(decision),
         decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
@@ -734,19 +735,20 @@ async function handleChatRequest(
     return dispatchUserContextRouting({
       provider: providers?.userContext,
       context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder),
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder, observationContext),
       respond: (decision) => jsonResponse(request, env, 200, {
         content: JSON.stringify(decision),
         decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
       }, { 'X-StudyPlanner-AI-Provider': 'openrouter' }),
     });
   }
-  return fetchChatCompletion(request, env, payload, modelResolution.model, undefined, semanticRecorder);
+  return fetchChatCompletion(request, env, payload, modelResolution.model, undefined, semanticRecorder, observationContext);
 }
 
 async function fetchChatCompletion(
   request: Request, env: Env, payload: ChatCompletionRequest, model: string, signal?: AbortSignal,
   dispatchRecorder?: SemanticRequestRecorder,
+  observationContext?: AiProxyObservationContext,
 ): Promise<Response> {
   const openAiBaseUrl = (env.OPENAI_BASE_URL?.trim() || 'https://api.openai.com/v1')
     .replace(/\/$/, '');
@@ -757,6 +759,17 @@ async function fetchChatCompletion(
   const providerFetch = dispatchRecorder?.providerFetch('openai', model === 'gpt-5.6-luna' ? 'luna' : 'other',
     dispatchRecorder.snapshot().dispatches.some((dispatch) => dispatch.family === 'jev' && dispatch.stage !== 'shadow')
       ? 'fallback' : dispatchRecorder.snapshot().stage) ?? fetch;
+  // Observe the same resolved limit sent below; do not change the request policy.
+  const maxCompletionTokens = getChatOutputTokenLimit(payload);
+  const completionBudget = {
+    requestedMaxCompletionTokens: typeof payload.max_completion_tokens === 'number'
+      && Number.isFinite(payload.max_completion_tokens)
+      ? payload.max_completion_tokens : payload.max_tokens,
+    effectiveMaxCompletionTokens: maxCompletionTokens,
+  };
+  if (observationContext) {
+    observationContext.providerCompletion = projectOpenAiCompletionMetadata(completionBudget);
+  }
   const upstreamResponse = await providerFetch(`${openAiBaseUrl}/chat/completions`, {
     method: 'POST',
     ...(signal ? { signal } : {}),
@@ -769,7 +782,7 @@ async function fetchChatCompletion(
       ...(upstreamTemperature === undefined ? {} : { temperature: upstreamTemperature }),
       messages: payload.messages,
       response_format: payload.response_format,
-      max_completion_tokens: getChatOutputTokenLimit(payload),
+      max_completion_tokens: maxCompletionTokens,
     }),
   });
   const upstreamText = await upstreamResponse.text();
@@ -783,6 +796,11 @@ async function fetchChatCompletion(
       choices?: Array<{ message?: { content?: string | null } }>;
       usage?: unknown;
     };
+    if (observationContext) {
+      observationContext.providerCompletion = projectOpenAiCompletionMetadata({
+        ...completionBudget, response: upstreamJson,
+      });
+    }
     const content = upstreamJson.choices?.[0]?.message?.content?.trim();
     if (!content) {
       return jsonResponse(request, env, 502, {

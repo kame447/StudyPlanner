@@ -36,6 +36,47 @@ const MAX_MESSAGE_CONTENT_LENGTH = 20_000;
 const MAX_DRAFT_BLOCKS = 500;
 const MAX_PREVIEW_CANDIDATES = 500;
 
+export interface WeeklyPlanningStableCollectionCounts {
+  draftBlocks?: number;
+  previewCandidates?: number;
+  recoveryBlocks?: number;
+  recoveryOperationItems?: number;
+}
+
+export interface WeeklyPlanningStableCollectionLimit {
+  collection: keyof WeeklyPlanningStableCollectionCounts;
+  actualCount: number;
+  limit: number;
+}
+
+/** The live admission boundary and Stable codec share these per-collection limits. */
+export function findWeeklyPlanningStableCollectionLimit(
+  counts: WeeklyPlanningStableCollectionCounts,
+): WeeklyPlanningStableCollectionLimit | null {
+  const limits: Required<WeeklyPlanningStableCollectionCounts> = {
+    draftBlocks: MAX_DRAFT_BLOCKS,
+    previewCandidates: MAX_PREVIEW_CANDIDATES,
+    recoveryBlocks: MAX_DRAFT_BLOCKS,
+    recoveryOperationItems: MAX_DRAFT_BLOCKS,
+  };
+  for (const collection of Object.keys(limits) as Array<keyof typeof limits>) {
+    const actualCount = counts[collection];
+    if (actualCount !== undefined && actualCount > limits[collection]) {
+      return { collection, actualCount, limit: limits[collection] };
+    }
+  }
+  return null;
+}
+
+/** Application publication rejection, not a provider or semantic-normalization failure. */
+export class WeeklyPlanningStableCollectionLimitError extends Error {
+  constructor(readonly detail: WeeklyPlanningStableCollectionLimit) {
+    const label = detail.collection === 'previewCandidates' ? '候補' : '仮予定';
+    super(`この会話の${label}は${detail.limit}件までです（${detail.actualCount}件）。件数を減らして再試行してください。`);
+    this.name = 'WeeklyPlanningStableCollectionLimitError';
+  }
+}
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
@@ -807,14 +848,16 @@ export function isPersistedWeeklyPlanningState(
       || isNonNegativeInteger(value.conversationRequestSequence))
     && (typeof value.mode === 'string' && MODES.has(value.mode))
     && Array.isArray(value.draftBlocks)
-    && (!stable || value.draftBlocks.length <= MAX_DRAFT_BLOCKS)
+    && (!stable || !findWeeklyPlanningStableCollectionLimit({ draftBlocks: value.draftBlocks.length }))
     && value.draftBlocks.every(validBlock)
     && (value.approvalRecovery === undefined || (isWeeklyPlanningApprovalRecovery(
       value.approvalRecovery, value.draftBlocks as PlanningState['draftBlocks'], value.weekStartDate, validBlock)
-      && (!stable || (value.approvalRecovery.blocks.length <= MAX_DRAFT_BLOCKS
-        && value.approvalRecovery.operation.items.length <= MAX_DRAFT_BLOCKS))))
+      && (!stable || !findWeeklyPlanningStableCollectionLimit({
+        recoveryBlocks: value.approvalRecovery.blocks.length,
+        recoveryOperationItems: value.approvalRecovery.operation.items.length,
+      }))))
     && Array.isArray(value.previewCandidates)
-    && (!stable || value.previewCandidates.length <= MAX_PREVIEW_CANDIDATES)
+    && (!stable || !findWeeklyPlanningStableCollectionLimit({ previewCandidates: value.previewCandidates.length }))
     && value.previewCandidates.every((candidate) => stable
       ? isPreviewCandidateStableV5(candidate, stable.graphRevision) : isPreviewCandidate(candidate))
     && Array.isArray(value.messages)

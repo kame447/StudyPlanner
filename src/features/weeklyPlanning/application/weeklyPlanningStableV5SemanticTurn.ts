@@ -28,6 +28,7 @@ import {
 import {
   createWeeklyPlanningSchedulerContext,
   resolveWeeklyPlanningPlanningHorizon,
+  resolveWeeklyPlanningAcceptedPlanningWindow,
   type WeeklyPlanningTurnRequestContext,
 } from './weeklyPlanningTemporalContext';
 import {
@@ -107,8 +108,14 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
   const activeSchedulerGraphBefore = createWeeklyPlanningActiveSchedulerGraphViewV5(
     runtimeSession.graph,
   );
+  const acceptedPlanningWindowBefore = resolveWeeklyPlanningAcceptedPlanningWindow({
+    graph: activeSchedulerGraphBefore,
+    requestContext,
+    groundingRecords: input.previousState?.groundingRecords,
+  });
   const resolvedDateExpressionsBefore = resolveWeeklyPlanningDateExpressionsV5({
     graph: activeSchedulerGraphBefore,
+    planningWindow: acceptedPlanningWindowBefore,
     currentDate: requestContext.currentDate,
     weekStartsOn: requestContext.weekStartsOn,
   });
@@ -123,6 +130,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     selectedDate: input.selectedDate,
     requestContext,
     resolvedTemporalConstraints: resolvedTemporalConstraintsBefore,
+    acceptedPlanningWindow: acceptedPlanningWindowBefore,
     groundingRecords: input.previousState?.groundingRecords,
   });
   const recentConversation = input.messages
@@ -133,6 +141,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     messages: input.messages,
     previousState: input.previousState,
     ownerId: input.userId,
+    inputStateRevision: input.inputStateRevision,
     currentDate: requestContext.currentDate,
     userText: input.userText,
     studyMaterials: input.studyMaterials ?? [],
@@ -140,6 +149,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
   const initialSchedulerContext = createWeeklyPlanningSchedulerContext({
     ownerId: input.userId,
     horizon: fallbackHorizon,
+    acceptedPlanningWindow: acceptedPlanningWindowBefore,
     requestContext,
   });
   recordWeeklyPlanningStableV5DebugTrace({

@@ -8,7 +8,11 @@ import {
 import type { AiChatPurpose } from '../../lib/aiModelPolicy';
 import type { FocusedDecisionContext } from '../../../shared/focusedContextualDecision';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
-import { resolveOpenAiChatTemperature } from '../../../shared/aiProxyContract';
+import {
+  projectOpenAiCompletionMetadata,
+  resolveOpenAiChatTemperature,
+  type ProviderCompletionMetadata,
+} from '../../../shared/aiProxyContract';
 import {
   recordOpenAiCompatibleRequestMetric,
   utf8ByteLength,
@@ -235,6 +239,7 @@ function recordRequestMetric(params: {
   responseContent?: string | null;
   usage?: ChatCompletionUsage | null;
   startedAtMs: number;
+  providerCompletion?: ProviderCompletionMetadata;
 }): void {
   if (!shouldCaptureEvalMetrics()) return;
   recordOpenAiCompatibleRequestMetric({
@@ -251,6 +256,7 @@ function recordRequestMetric(params: {
     completionTokens: params.usage?.completion_tokens ?? null,
     totalTokens: params.usage?.total_tokens ?? null,
     durationMs: Math.max(0, Date.now() - params.startedAtMs),
+    ...(params.providerCompletion ? { providerCompletion: params.providerCompletion } : {}),
   });
 }
 
@@ -306,6 +312,35 @@ export interface OpenAiCompatibleClient {
   }): Promise<string>;
 }
 
+/** Builds only the payload; credentials, headers and transport side effects stay in the client. */
+export function createOpenAiCompatibleChatRequestPayload(
+  config: Pick<OpenAiCompatibleClientConfig, 'provider' | 'model'>,
+  input: Parameters<OpenAiCompatibleClient['createChatCompletion']>[0],
+) {
+  const { semanticCensus, decisionContext, messages, temperature = 0.2, responseFormat, purpose, maxCompletionTokens } = input;
+  if (usesCloudflareOpenAiProxy({ provider: config.provider ?? 'openai' })) {
+    return {
+      ...(parseSemanticCensusJoin(semanticCensus) ? { semanticCensus: parseSemanticCensusJoin(semanticCensus) } : {}),
+      ...(decisionContext ? { decisionContext } : {}),
+      ...(purpose ? { purpose } : { model: config.model }),
+      temperature,
+      messages,
+      response_format: responseFormat,
+      ...(maxCompletionTokens === undefined ? {} : { max_completion_tokens: maxCompletionTokens }),
+    };
+  }
+  const directModel = evalSemanticModel(purpose, messages) ?? config.model;
+  const directTemperature = resolveOpenAiChatTemperature(directModel, temperature);
+  const payload: ChatCompletionRequest = {
+    model: directModel,
+    ...(directTemperature === undefined ? {} : { temperature: directTemperature }),
+    messages,
+    response_format: responseFormat,
+    ...(maxCompletionTokens === undefined ? {} : { max_completion_tokens: maxCompletionTokens }),
+  };
+  return payload;
+}
+
 export function createOpenAiCompatibleClient(
   config: OpenAiCompatibleClientConfig,
 ): OpenAiCompatibleClient {
@@ -337,17 +372,9 @@ export function createOpenAiCompatibleClient(
 
         const idToken = await firebaseAuth.currentUser.getIdToken();
 
-        const proxyBody = {
-          ...(parseSemanticCensusJoin(semanticCensus) ? { semanticCensus: parseSemanticCensusJoin(semanticCensus) } : {}),
-          ...(decisionContext ? { decisionContext } : {}),
-          ...(purpose ? { purpose } : { model: config.model }),
-          temperature,
-          messages,
-          response_format: responseFormat,
-          ...(maxCompletionTokens === undefined
-            ? {}
-            : { max_completion_tokens: maxCompletionTokens }),
-        };
+        const proxyBody = createOpenAiCompatibleChatRequestPayload(config, {
+          semanticCensus, decisionContext, messages, temperature, responseFormat, purpose, maxCompletionTokens,
+        });
         const requestBody = JSON.stringify(proxyBody);
         const logModel = purpose ? `purpose:${purpose}` : config.model;
 
@@ -430,19 +457,16 @@ export function createOpenAiCompatibleClient(
 
       const semanticRepair = isSemanticRepairRequest(purpose, messages);
       const directModel = evalSemanticModel(purpose, messages) ?? config.model;
-      const directTemperature = resolveOpenAiChatTemperature(directModel, temperature);
-      const payload: ChatCompletionRequest = {
-        model: directModel,
-        ...(directTemperature === undefined ? {} : { temperature: directTemperature }),
-        messages,
-        response_format: responseFormat,
-        ...(maxCompletionTokens === undefined
-          ? {}
-          : { max_completion_tokens: maxCompletionTokens }),
-      };
+      const payload = createOpenAiCompatibleChatRequestPayload(config, {
+        semanticCensus, decisionContext, messages, temperature, responseFormat, purpose, maxCompletionTokens,
+      });
       const requestBody = JSON.stringify(payload);
       claimProcessAiRequestBudget();
       const startedAtMs = Date.now();
+      let providerCompletion = projectOpenAiCompletionMetadata({
+        requestedMaxCompletionTokens: maxCompletionTokens,
+        effectiveMaxCompletionTokens: payload.max_completion_tokens,
+      });
       try {
         const result = await runFetchWithTimeout(
           `${config.baseUrl.replace(/\/$/, '')}/chat/completions`,
@@ -461,6 +485,11 @@ export function createOpenAiCompatibleClient(
             }
 
             const data = (await response.json()) as ChatCompletionResponse;
+            providerCompletion = projectOpenAiCompletionMetadata({
+              response: data,
+              requestedMaxCompletionTokens: maxCompletionTokens,
+              effectiveMaxCompletionTokens: payload.max_completion_tokens,
+            });
             const content = data.choices?.[0]?.message?.content?.trim();
 
             if (!content) {
@@ -492,6 +521,7 @@ export function createOpenAiCompatibleClient(
           responseContent: result.content,
           usage: result.usage,
           startedAtMs,
+          providerCompletion,
         });
         return result.content;
       } catch (error) {
@@ -503,6 +533,7 @@ export function createOpenAiCompatibleClient(
           status: 'failure',
           requestBody,
           startedAtMs,
+          providerCompletion,
         });
         throw error;
       }

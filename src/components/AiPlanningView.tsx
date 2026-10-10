@@ -164,11 +164,13 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
       generatedBlocks,
       editedPreviewBlocks,
     );
-    if (pendingDraftBlocks.length > 0) {
-      application.clearDraftBlocks();
+    setPreviewError('');
+    try {
+      application.createDraftBlocks(blocks, { replace: true });
+      persistActiveChatSnapshot();
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : '仮予定を作成できませんでした。');
     }
-    application.createDraftBlocks(blocks);
-    persistActiveChatSnapshot();
   }
 
   async function saveDrafts(editedPreviewBlocks: WeeklyPlanDraftBlock[]) {
@@ -179,6 +181,10 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
       return;
     }
 
+    if (editedPreviewBlocks.length === 0) {
+      setPreviewError('保存する仮予定がありません。');
+      return;
+    }
     setPreviewError('');
     try {
       const edited = applyEditedPreviewPositions(
@@ -186,8 +192,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
         editedPreviewBlocks,
       );
       if (edited.changed) {
-        application.clearDraftBlocks();
-        application.createDraftBlocks(edited.blocks);
+        application.createDraftBlocks(edited.blocks, { replace: true });
       }
       await application.approveDraftBlocks();
       persistActiveChatSnapshot();

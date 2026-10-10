@@ -1,4 +1,5 @@
 import type { AiChatPurpose } from '../../lib/aiModelPolicy';
+import type { ProviderCompletionMetadata } from '../../../shared/aiProxyContract';
 
 export interface OpenAiCompatibleRequestMetric {
   sequence: number;
@@ -13,6 +14,7 @@ export interface OpenAiCompatibleRequestMetric {
   completionTokens: number | null;
   totalTokens: number | null;
   durationMs: number;
+  providerCompletion?: ProviderCompletionMetadata;
 }
 
 const MAX_METRICS = 100;

@@ -82,7 +82,19 @@ describe('weekly planning scheduler date-expression ownership', () => {
     );
     const resolutions = callsTo(planningEvaluation, 'resolveWeeklyPlanningDateExpressionsV5');
     expect(resolutions).toHaveLength(1);
-    expect(inputReferences(resolutions[0])).toMatchObject({ graph: 'activeGraph' });
+    expect(inputReferences(resolutions[0])).toMatchObject({
+      graph: 'activeGraph', planningWindow: 'acceptedPlanningWindow',
+    });
+    const grounding = callsTo(planningEvaluation, 'reconcileWeeklyPlanningGroundingRecordsV5');
+    const acceptedWindows = callsTo(planningEvaluation, 'resolveWeeklyPlanningAcceptedPlanningWindow');
+    expect(grounding).toHaveLength(1);
+    expect(acceptedWindows).toHaveLength(2);
+    expect(inputReferences(acceptedWindows[1])).toMatchObject({ graph: 'activeGraph', groundingRecords: 'groundingRecords' });
+    expect(acceptedWindows[1].getStart()).toBeGreaterThan(grounding[0].getStart());
+    expect(resolutions[0].getStart()).toBeGreaterThan(acceptedWindows[1].getStart());
+    const schedulerContexts = callsTo(planningEvaluation, 'createWeeklyPlanningSchedulerContext');
+    expect(schedulerContexts).toHaveLength(1);
+    expect(inputReferences(schedulerContexts[0])).toMatchObject({ acceptedPlanningWindow: 'acceptedPlanningWindow' });
     const declaration = resolutions[0].parent;
     expect(ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name)
       ? declaration.name.text : null).toBe('resolvedDateExpressions');

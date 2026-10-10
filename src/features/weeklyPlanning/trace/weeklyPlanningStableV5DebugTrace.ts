@@ -258,6 +258,7 @@ function schedulerResultProjection(value: unknown): Record<string, unknown> {
     availabilityWindowCount: availabilityWindows.length,
     fixedTaskReservationCount: fixedTaskReservations.length,
     sourceSelectionCount: sourceSelections.length,
+    hardClockBounds: compactUnknown(input.hardClockBounds),
   };
 }
 
@@ -331,6 +332,7 @@ function schedulerProjection(data: Record<string, unknown>): Record<string, unkn
       status: stringValue(compilation.status),
       issueCount: Array.isArray(compilation.issues) ? compilation.issues.length : 0,
       issues: issueProjection(compilation.issues),
+      hardClockBounds: compactUnknown(record(compilation.input).hardClockBounds),
     },
     dialogue: {
       status: stringValue(dialogue.status),

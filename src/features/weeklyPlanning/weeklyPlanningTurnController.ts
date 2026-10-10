@@ -1,6 +1,7 @@
+import { WeeklyPlanningStableCollectionLimitError } from './weeklyPlanningStateCodec';
 import { createDialogueTurnEnvelope } from './dialogue/weeklyPlanningDialogueOrchestrator';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
-import { bindWeeklyPlanningQuestionPresentation } from './intake/weeklyPlanningQuestionPresentation';
+import { bindWeeklyPlanningQuestionPresentation, resolveWeeklyPlanningQuestionPresentationFreshness } from './intake/weeklyPlanningQuestionPresentation';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type {
   PlanningState,
@@ -338,6 +339,9 @@ export async function submitWeeklyPlanningControlledTurn(
     const committed = params.dispatch({
       type: 'commit_turn',
       pending,
+      ...(executionResult.stableV5Graph ? {
+        stablePublicationScope: { ownerId: params.ownerId, conversationId: pending.conversationId },
+      } : {}),
       intakeState: (() => {
         // The existing application ledger survives every ordinary turn/question replacement.
         // An execution result (including AI output) cannot introduce or erase consumption.
@@ -412,12 +416,32 @@ export async function submitWeeklyPlanningControlledTurn(
     const controlledFailure = error instanceof WeeklyPlanningControlledSemanticFailure;
     const message = controlledFailure
       ? error.userMessage
-      : '週間計画の会話状態を更新できませんでした。';
+      : error instanceof WeeklyPlanningStableCollectionLimitError
+        ? error.message
+        : '週間計画の会話状態を更新できませんでした。';
     const assistantMessage = createTurnMessage(envelope, 'assistant', message, now());
+    const recovery = failedResult?.recoveryPresentation?.question;
+    const previousPresentation = recovery ? resolveWeeklyPlanningQuestionPresentationFreshness({
+      previousState: snapshot.intakeState, inputStateRevision: pending.baseRevision,
+      messages: snapshot.messages, graphRevision: recovery.graphRevision,
+    }) : null;
+    const questionPresentation = recovery && controlledFailure
+      && failedResult?.responseSource === 'ai'
+      && failedResult.questionPresentationContent?.responseSource === 'ai'
+      && previousPresentation?.status === 'fresh'
+      && recovery.previousAssistantMessageId === previousPresentation.presentation.assistantMessageId
+      && snapshot.intakeState
+      ? bindWeeklyPlanningQuestionPresentation({
+          state: snapshot.intakeState, content: failedResult.questionPresentationContent,
+          turnId: envelope.turnId, assistantMessageId: assistantMessage.id,
+          planningStateRevision: pending.baseRevision + 2, graphRevision: recovery.graphRevision,
+        }).lastQuestionContext?.presentation
+      : undefined;
     const failedState = params.dispatch({
       type: 'fail_turn',
       pending,
       assistantMessage,
+      ...(questionPresentation ? { questionPresentation } : {}),
     });
     await runBestEffort(() => params.onFailedTurn?.({
       snapshot,

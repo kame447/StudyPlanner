@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
-import { buildPlacementWindowsByDate } from './weeklyPlanningStableV5PlacementAvailability';
+import {
+  buildHardAvailableWindowsByDate,
+  buildPlacementWindowsByDate,
+} from './weeklyPlanningStableV5PlacementAvailability';
 
 function input(): GenericSchedulerInput {
   return {
@@ -48,4 +51,38 @@ describe('Stable V5 explicit hard availability ownership', () => {
     expect(windows.get('2026-09-09')).toEqual([{ start: 21 * 60, end: 23 * 60 }]);
     expect(windows.get('2026-09-10')).toEqual([{ start: 9 * 60, end: 22 * 60 }]);
   });
+
+  it.each([
+    {
+      label: 'cross-midnight interval', endDate: '2026-09-10', endTime: '02:00',
+      notBefore: undefined,
+      first: [{ start: 1320, end: 1440 }], second: [{ start: 0, end: 120 }],
+    },
+    {
+      label: 'cross-midnight interval clipped by request time', endDate: '2026-09-10', endTime: '02:00',
+      notBefore: { date: '2026-09-10', time: '01:00' },
+      first: [], second: [{ start: 60, end: 120 }],
+    },
+    {
+      label: 'same-day 24:00 endpoint', endDate: '2026-09-09', endTime: '24:00',
+      notBefore: undefined,
+      first: [{ start: 1320, end: 1440 }], second: undefined,
+    },
+  ])('uses the same explicit boundary for base and preferred placement: $label', (sample) => {
+    const schedulerInput = input();
+    schedulerInput.availabilityWindows[0].start.time = '22:00';
+    schedulerInput.availabilityWindows[0].end = { date: sample.endDate, time: sample.endTime };
+    const params = {
+      input: schedulerInput, dates: ['2026-09-09', '2026-09-10'], notBefore: sample.notBefore,
+    };
+    const hardWindows = buildHardAvailableWindowsByDate(params);
+    const baseWindows = buildPlacementWindowsByDate({
+      ...params, dayStartTime: '09:00', dayEndTime: '22:00',
+    });
+    expect(hardWindows.get('2026-09-09')).toEqual(sample.first);
+    expect(baseWindows.get('2026-09-09')).toEqual(sample.first);
+    expect(hardWindows.get('2026-09-10')).toEqual(sample.second);
+    expect(baseWindows.get('2026-09-10')).toEqual(sample.second ?? [{ start: 540, end: 1320 }]);
+  });
+
 });

@@ -210,6 +210,11 @@ export function weeklyPlanningReducer(
       return withMutation(state, {
         ...state,
         ...appendAssistantMessage(state, action.assistantMessage),
+        ...(action.questionPresentation && state.intakeState?.lastQuestionContext ? {
+          intakeState: { ...state.intakeState, lastQuestionContext: {
+            ...state.intakeState.lastQuestionContext, presentation: action.questionPresentation,
+          } },
+        } : {}),
         pendingTurn: undefined,
       });
 
@@ -261,11 +266,14 @@ export function weeklyPlanningReducer(
       });
 
     case 'add_draft_blocks': {
-      if (action.blocks.length === 0 || hasPendingRepairQuestion(state)) return state;
+      if ((!action.replace && action.blocks.length === 0) || hasPendingRepairQuestion(state)) return state;
+      if (action.replace && action.blocks.length === 0
+        && state.draftBlocks.length === 0 && (state.previewCandidates?.length ?? 0) === 0) return state;
       return withMutation(state, {
         ...state,
-        mode: 'awaiting_approval',
-        draftBlocks: [...getPendingDraftBlocks(state.draftBlocks), ...action.blocks],
+        mode: action.blocks.length > 0 ? 'awaiting_approval'
+          : state.messages.length > 0 || state.intakeState ? 'collecting_tasks' : 'idle',
+        draftBlocks: action.replace ? [...action.blocks] : [...getPendingDraftBlocks(state.draftBlocks), ...action.blocks],
         previewCandidates: [],
       });
     }

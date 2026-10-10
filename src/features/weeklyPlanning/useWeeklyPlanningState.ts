@@ -14,6 +14,7 @@ export function useWeeklyPlanningState(
   userId: string,
   selectedDate: string,
   weekStartsOn: WeeklyPlanningWeekStartsOn = 'monday',
+  admitTransition?: (current: PlanningState, next: PlanningState, action: WeeklyPlanningAction) => void,
 ) {
   const selectedWeekStartDate = useMemo(
     () => startOfWeeklyPlanningWeek(selectedDate, weekStartsOn),
@@ -54,9 +55,13 @@ export function useWeeklyPlanningState(
     const current = planningStateRef.current;
     if (ownerScopeRef.current !== userId || (!isPlanningStateReady() && action.type !== 'load_state')) return current;
     const next = weeklyPlanningReducer(current, action);
-    if (next !== current) replacePlanningState(next);
+    if (next !== current) {
+      // Check the exact, single reducer projection before publishing either ref or React state.
+      admitTransition?.(current, next, action);
+      replacePlanningState(next);
+    }
     return next;
-  }, [isPlanningStateReady, replacePlanningState, userId]);
+  }, [admitTransition, isPlanningStateReady, replacePlanningState, userId]);
 
   const getPlanningState = useCallback(() => planningStateRef.current, []);
   const getLoadedSessionSnapshot = useCallback(() => isPlanningStateReady() ? loadedSessionRef.current : null, [isPlanningStateReady]);

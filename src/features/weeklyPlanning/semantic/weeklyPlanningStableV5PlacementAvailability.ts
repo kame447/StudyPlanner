@@ -199,33 +199,9 @@ export function buildPlacementWindowsByDate(params: {
     notBefore: params.notBefore,
   })));
 
-  const hardAvailable = params.input.availabilityWindows.filter((window) =>
-    window.constraintLevel === 'hard'
-    && window.kind === 'available'
-    && window.start.date === window.end.date);
-  hardAvailable.forEach((window, windowIndex) => {
-    const start = minutesFromPlacementTime(window.start.time);
-    const end = minutesFromPlacementTime(window.end.time);
-    if (end <= start) {
-      result.set(window.start.date, []);
-      return;
-    }
-    const clipped = clampPlacementWindowsToNotBefore({
-      date: window.start.date,
-      windows: [{ start, end }],
-      notBefore: params.notBefore,
-    });
-    const previous = result.get(window.start.date);
-    const hasPriorHardWindow = hardAvailable
-      .slice(0, windowIndex)
-      .some((candidate) => candidate.start.date === window.start.date);
-    result.set(
-      window.start.date,
-      hasPriorHardWindow ? [...(previous ?? []), ...clipped] : clipped,
-    );
-  });
-  for (const [date, windows] of result) {
-    result.set(date, windows.sort((left, right) => left.start - right.start));
+  const hardAvailable = buildHardAvailableWindowsByDate(params);
+  for (const [date, windows] of hardAvailable) {
+    result.set(date, windows);
   }
   return result;
 }
@@ -240,22 +216,24 @@ export function buildHardAvailableWindowsByDate(params: {
   params.input.availabilityWindows
     .filter((window) =>
       window.constraintLevel === 'hard'
-      && window.kind === 'available'
-      && window.start.date === window.end.date
-      && dateSet.has(window.start.date))
+      && window.kind === 'available')
     .forEach((window) => {
-      const start = minutesFromPlacementTime(window.start.time);
-      const end = minutesFromPlacementTime(window.end.time);
-      if (end <= start) return;
-      const clipped = clampPlacementWindowsToNotBefore({
-        date: window.start.date,
-        windows: [{ start, end }],
-        notBefore: params.notBefore,
+      const intervals: MinuteInterval[] = [];
+      addCrossDateInterval({
+        dates: params.dates,
+        startDate: window.start.date, startTime: window.start.time,
+        endDate: window.end.date, endTime: window.end.time,
+        target: intervals,
       });
-      result.set(window.start.date, [
-        ...(result.get(window.start.date) ?? []),
-        ...clipped,
-      ]);
+      if (intervals.length === 0 && window.start.date === window.end.date && dateSet.has(window.start.date)) {
+        result.set(window.start.date, []);
+      }
+      for (const interval of intervals) {
+        const clipped = clampPlacementWindowsToNotBefore({
+          date: interval.date, windows: [{ start: interval.start, end: interval.end }], notBefore: params.notBefore,
+        });
+        result.set(interval.date, [...(result.get(interval.date) ?? []), ...clipped]);
+      }
     });
   for (const [date, windows] of result) {
     result.set(date, windows.sort((left, right) => left.start - right.start));

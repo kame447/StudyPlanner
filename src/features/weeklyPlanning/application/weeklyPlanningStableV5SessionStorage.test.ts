@@ -2,6 +2,9 @@ import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvai
 import { createElement } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { PlanningState } from '../types';
+import { findWeeklyPlanningStableCollectionLimit, isPersistedWeeklyPlanningState } from '../weeklyPlanningStateCodec';
+import { createWeeklyDraftApprovalOperation, deriveApprovalOperationStatus } from '../planning/weeklyPlanningApproval';
 import type { Plan } from '../../../types/domain';
 import {
   createMemoryStorageHarness,
@@ -189,6 +192,70 @@ describe('Stable V5 persisted runtime session', () => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     restoreWindow();
   });
+
+  it.each(['draftBlocks', 'previewCandidates', 'recoveryBlocks', 'recoveryOperationItems'] as const)(
+    'shares the Stable collection boundary with the real codec: %s', collection => {
+      const factGraph = graph();
+      for (const count of [500, 501]) {
+        const candidates = Array.from({ length: count }, (_, index) => ({
+          ...previewCandidate(factGraph), stableKey: `count-${index}`,
+        }));
+        const blocks = createWeeklyDraftBlocksFromPreviewCandidates({
+          candidates, userId: OWNER_ID, createdAt: '2026-07-23T08:00:00Z',
+        });
+        let state: PlanningState = { ...restoredState(), draftBlocks: [], previewCandidates: [] };
+        if (collection === 'draftBlocks') state.draftBlocks = blocks;
+        else if (collection === 'previewCandidates') state.previewCandidates = candidates;
+        else {
+          // One unresolved block; saved items still belong to the original operation.
+          const remaining = blocks[blocks.length - 1];
+          const operation = createWeeklyDraftApprovalOperation({ userId: OWNER_ID,
+            metadata: remaining.behaviorMetadata!.previewMetadata!, blocks,
+            now: '2026-07-23T08:00:00Z' });
+          operation.items = operation.items.map((item, index) => index === count - 1 ? item : {
+            ...item, status: 'saved', savedPlanId: `saved-${index}`, attemptCount: 1,
+          });
+          operation.status = deriveApprovalOperationStatus(operation.items);
+          state = { ...state, draftBlocks: [remaining], approvalRecovery: {
+            version: 1, weekStartDate: WEEK_START, operation,
+            blocks: collection === 'recoveryBlocks' ? blocks : [remaining],
+          } };
+        }
+        const counts = {
+          draftBlocks: state.draftBlocks.length, previewCandidates: state.previewCandidates!.length,
+          recoveryBlocks: state.approvalRecovery?.blocks.length ?? 0,
+          recoveryOperationItems: state.approvalRecovery?.operation.items.length ?? 0,
+        };
+        const issue = findWeeklyPlanningStableCollectionLimit(counts);
+        expect(issue).toEqual(count === 500 ? null : { collection, actualCount: 501, limit: 500 });
+        expect(isPersistedWeeklyPlanningState(state, { kind: 'stable_v5_session_v1',
+          ownerId: OWNER_ID, weekStartDate: WEEK_START, conversationId: CONVERSATION_ID,
+          graphRevision: factGraph.revision })).toBe(count === 500);
+        // Stable metadata is deliberately outside the compatibility wire contract.
+        expect(isPersistedWeeklyPlanningState(state, { kind: 'compat_v2' })).toBe(false);
+        const compatibilityBlock = (block: PlanningState['draftBlocks'][number]) => {
+          const { behaviorMetadata: _stableMetadata, ...plain } = block;
+          return plain;
+        };
+        const compatibilityState = { ...state,
+          draftBlocks: state.draftBlocks.map(compatibilityBlock),
+          previewCandidates: state.previewCandidates!.map(candidate => {
+            const { stableV5Metadata: _stableMetadata, ...plain } = candidate as ReturnType<typeof previewCandidate>;
+            return plain;
+          }),
+          ...(state.approvalRecovery ? { approvalRecovery: { ...state.approvalRecovery,
+            blocks: state.approvalRecovery.blocks.map(compatibilityBlock),
+          } } : {}),
+        };
+        // Preserve exact IDs/counts/recovery identity while using a genuinely valid v2 shape.
+        expect(compatibilityState.draftBlocks).toHaveLength(counts.draftBlocks);
+        expect(compatibilityState.previewCandidates).toHaveLength(counts.previewCandidates);
+        expect(compatibilityState.approvalRecovery?.blocks.length ?? 0).toBe(counts.recoveryBlocks);
+        expect(compatibilityState.approvalRecovery?.operation.items.length ?? 0).toBe(counts.recoveryOperationItems);
+        expect(isPersistedWeeklyPlanningState(compatibilityState, { kind: 'compat_v2' })).toBe(true);
+      }
+    },
+  );
 
   it('restores conversation and Fact Graph together after runtime memory is lost', () => {
     const { state, factGraph } = persistStateWithGraph();

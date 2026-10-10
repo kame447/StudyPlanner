@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { canonicalCandidateSerialization } from '../application/candidateSelection/canonical';
+import { areWeeklyPlanningJsonValuesEqual } from './weeklyPlanningJsonValueEquality';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import {
   normalizeExactDuplicateWorkloadPlacementV5,
@@ -97,6 +99,20 @@ describe('Stable V5 duplicate workload placement normalization', () => {
     ]);
   });
 
+  it('keeps exact duplicate ownership when nested object keys arrive in a different order', () => {
+    const taskCopy = { ...workload('workload-task'), futureEvidence: { start: 1, end: 2 } };
+    const componentCopy = Object.fromEntries(Object.entries({
+      ...workload('workload-component'), futureEvidence: { end: 2, start: 1 },
+    }).reverse());
+    const result = normalizeExactDuplicateWorkloadPlacementV5(response({
+      taskWorkloads: [taskCopy], componentWorkloads: [[componentCopy]],
+    }));
+
+    expect(JSON.parse(result.rawResponse).tasks[0].workloads).toEqual([]);
+    expect(JSON.parse(result.rawResponse).tasks[0].study.components[0].workloads).toEqual([componentCopy]);
+    expect(result.repairs).toEqual(['duplicate-workload-removed-from-task:task-1:workload-task']);
+  });
+
   it('accepts different-localId duplicate placement without a second provider request', async () => {
     const taskCopy = workload('workload-task');
     const componentCopy = workload('workload-component');
@@ -173,5 +189,31 @@ describe('Stable V5 duplicate workload placement normalization', () => {
       rawResponse: 'not-json',
       repairs: [],
     });
+  });
+});
+
+
+describe('active JSON equality preserves the previous preview comparator contract', () => {
+  it.each([
+    { name: 'nested object keys', left: { workloads: [{ id: 'work', future: { limit: 17, mode: 'exact' } }] },
+      right: { workloads: [{ future: { mode: 'exact', limit: 17 }, id: 'work' }] }, equal: true },
+    { name: 'array order', left: { workloads: [{ id: 'first' }, { id: 'second' }] },
+      right: { workloads: [{ id: 'second' }, { id: 'first' }] }, equal: false },
+    { name: 'unknown nested value', left: { workloads: [{ future: { limit: 17 } }] },
+      right: { workloads: [{ future: { limit: 18 } }] }, equal: false },
+    { name: 'undefined optional object field', left: { workloads: [{ id: 'work', optional: undefined }] },
+      right: { workloads: [{ id: 'work' }] }, equal: true },
+    { name: 'absent versus explicit null', left: { workloads: [{ id: 'work' }] },
+      right: { workloads: [{ id: 'work', optional: null }] }, equal: false },
+    { name: 'numeric-looking object keys', left: { future: { '10': 'ten', '02': 'two', '1': 'one' } },
+      right: { future: { '1': 'one', '02': 'two', '10': 'ten' } }, equal: true },
+    { name: 'exact strings', left: { tasks: [{ title: '数学' }] },
+      right: { tasks: [{ title: '数学 ' }] }, equal: false },
+  ])('$name', ({ left, right, equal }) => {
+    // The previous projector normalizes optional fields to valid graph JSON before comparing.
+    const previousEqual = canonicalCandidateSerialization(JSON.parse(JSON.stringify(left)))
+      === canonicalCandidateSerialization(JSON.parse(JSON.stringify(right)));
+    expect(previousEqual).toBe(equal);
+    expect(areWeeklyPlanningJsonValuesEqual(left, right)).toBe(previousEqual);
   });
 });

@@ -428,3 +428,37 @@ it('finalizes an explicit window correction through the semantic-uncertainty pat
   expect(createWeeklyPlanningActiveSchedulerGraphViewV5(result.graph).planningWindows).toEqual([expect.objectContaining({ value: 'today' })]);
   expect(result.graph.factLifecycles.find(entry => entry.factId === 'date-uncertainty')?.status).toBe('removed');
 });
+
+describe('pending window uncertainty has one typed lifecycle owner', () => {
+  it.each(['implicit', 'replace', 'modify'] as const)('carries or retires by payload for %s replacement', async (operation) => {
+    for (const shape of ['changed', 'identical', 'cross_kind', 'named_period'] as const) {
+      const initialDocument = document({ windowLocalId: 'old-window', sourceText: 'synthetic window', tasks: [] });
+      initialDocument.planningWindow!.value = 'tomorrow';
+      if (shape === 'named_period') initialDocument.planningWindow = { ...initialDocument.planningWindow!, kind: 'named_period', value: 'early October' };
+      const initial = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({ graph: createEmptyWeeklyPlanningFactGraphV5(), document: initialDocument,
+        context: { conversationId: 'window-owner', turnId: 'initial', expectedRevision: 0 } });
+      const graph = structuredClone(initial.graph);
+      const oldId = initial.localToFactId['old-window'];
+      graph.uncertainties.push({ id: 'need', targetFactId: oldId, field: 'opaque', reason: 'synthetic question', createdRevision: graph.revision, source: graph.planningWindows[0].source });
+      graph.factLifecycles.push({ factId: 'need', status: 'active', createdRevision: graph.revision, terminalRevision: null, supersededByFactId: null });
+      const next = document({ windowLocalId: 'new-window', sourceText: 'synthetic answer', tasks: [] });
+      if (shape === 'identical') next.planningWindow!.value = 'tomorrow';
+      if (shape === 'cross_kind') next.planningWindow = { ...next.planningWindow!, kind: 'absolute', value: '2026-10-11/2026-10-11', start: '2026-10-11', end: '2026-10-11' };
+      if (shape === 'named_period') next.planningWindow = { ...next.planningWindow!, kind: 'named_period', value: 'start of October' };
+      if (operation !== 'implicit') next.corrections = [{ localId: 'window-change', target: { kind: 'planning_window', publicId: oldId, localId: null, mention: null },
+        operation, replacementLocalId: 'new-window', sourceText: 'synthetic answer' }];
+      const before = JSON.stringify(graph);
+      const pipeline = createWeeklyPlanningSemanticPipelineV5({ normalize: async () => acceptedResult(next) });
+      const result = await pipeline.run({ graph, conversationId: 'window-owner', turnId: 'answer', expectedRevision: graph.revision,
+        userText: 'synthetic answer', recentConversation: [], publicStateSummary: {
+          pendingQuestion: { actionId: 'question', questionCode: 'semantic_uncertainty', targetFactId: 'need', graphRevision: graph.revision },
+        }, schedulerContext });
+      expect(result.canonicalization?.status, `${operation}/${shape}: ${result.canonicalization?.errors}`).toBe('applied');
+      expect(JSON.stringify(graph)).toBe(before);
+      const current = createWeeklyPlanningActiveSchedulerGraphViewV5(result.graph);
+      expect(current.planningWindows).toHaveLength(1);
+      expect(result.graph.factLifecycles.find(entry => entry.factId === 'need')?.status, `${operation}/${shape}`).toBe(shape === 'changed' ? 'removed' : 'active');
+      if (shape !== 'changed') expect(result.graph.uncertainties.find(fact => fact.id === 'need')?.targetFactId).toBe(current.planningWindows[0].id);
+    }
+  });
+});

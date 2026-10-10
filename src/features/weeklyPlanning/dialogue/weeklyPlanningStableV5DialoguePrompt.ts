@@ -96,6 +96,9 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       previewPromotionControlLabel: input.previewPromotionControlLabel ?? null,
       relevantLabels: input.requiredLabels,
       previewCount: input.previewCount,
+      ...(input.recovery ? { recovery: input.recovery } : {}),
+      ...(input.recoveryQuestionEvidence ? { recoveryQuestionEvidence: input.recoveryQuestionEvidence } : {}),
+      ...(input.previewEvidence ? { previewEvidence: input.previewEvidence } : {}),
     },
     request: [
       'applicationDecisionをsource of truthとして守り、自然な日本語を一つ返してください。preview_readyになる前は、予定・仮予定・計画への追加、登録、保存、反映、作成が完了または実行されると断言しないでください。',
@@ -106,7 +109,16 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       'schedulable_work_detailはmode/progressBasis厳守。existing_target_progress=現在進捗のみ、別作業は聞かない。registered_material_target_scope=保存済みtotal/current/remainingを再質問せず、knownUnitLabelのまま短く示し、今回が残り全部か別範囲かだけ聞く。known_bounded_quantityのみknownUnitLabel数量可。known_registered_material_progressは保存値/単位をそのまま使用。completion_progress_without_known_unitは具体的な単位/総量を発明せず、100%概算や工程を聞く。ユーザー提示単位を優先。missing_task_identity=作業自体。all_requested_work_complete=完了済みとして同じ進捗を聞き直さず、追加作業/制約だけ聞く。',
       'effort_measurementのmeasurementを変えないでください。duration_per_unit=1単位あたり、session_duration=1回、total_duration=全体です。',
       'resolution_questionのquantity_roleではplan_target_amount=今回この計画で進めたい量、remaining_total_amount=現在残っている全体量です。全体量対1回分など別の軸へ変えないでください。task_relation_referenceは関係の両端にあるタスクを特定するための質問であり、順序の承認、登録、予定への反映、新規タスク追加を求めないでください。task_relation_self_referenceは同一タスク同士になっている関係を修復するため、異なる二つの対象を聞いてください。',
+      ...(input.previewEvidence ? ['previewEvidence contains observed candidates, separate from acceptedFacts (requests). Its summary covers all candidates; details cover only the stated subset. constraintEvaluation=not_evaluated never means conditions are fulfilled. Describe only the observations provided, do not infer exact session lengths from a requested cap, work completed from occupied minutes, or save/approval from preview existence. Unavailable evidence supports no candidate detail claim.'] : []),
       'previewPromotionControlLabelがあれば候補は生成済みです。その操作を案内してください。groundingContextのproposedは短く示し確認質問を足さず、contestedは断言しないでください。',
+      ...(input.recovery ? [
+        '復帰ではgroundingContextの追加説明や候補の操作案内はせず、復帰の事実と一つの確認だけにしてください。recoveryQuestionEvidenceのID参照とtask/componentの名前・単位・期間scopeを守り、同じ量の別対象へ質問を移さないでください。',
+        '今回は新しい内容を計画へ反映していません。recoveryの事実を自然な言葉で短く伝え、acceptedFactsを今受け取った情報のようにACKしないでください。内部処理・JSON・検証の説明は不要です。',
+        'retainedPreviewUnchanged=trueなら以前の候補はそのままという事実も伝え、候補を作成・変更・承認・保存したと述べないでください。falseなら候補の有無を推測しないでください。',
+        input.actionKind === 'question'
+          ? 'まだ確認が必要なのはquestionIntentの同じ一問です。目的を必要に応じて説明し、実際にその対象・必要情報を尋ねてください。宣言だけや別の質問へ置き換えないでください。'
+          : '安全に引き継げる質問はありません。新しい対象や条件を決めつけず、今回伝えたいことを一つだけ言い換えてもらう確認をしてください。',
+      ] : []),
     ].join(''),
   });
 

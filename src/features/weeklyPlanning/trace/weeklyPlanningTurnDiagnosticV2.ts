@@ -628,6 +628,12 @@ function schedulerSummary(
     ),
     externalSources: sourceSummaries(runtime, tracker),
     compilationStatus: stringValue(compilation.status),
+    hardClockBounds: boundedUnknown(
+      compilation.hardClockBounds ?? null,
+      NORMAL_LIMITS.unknownBytes,
+      tracker,
+      'constraintContext.scheduler.hardClockBounds',
+    ),
     issues: issueSummaries(runtime, tracker),
     dialogueStatus: stringValue(dialogue.status),
     selectedQuestionCode: stringValue(record(runtime.dialogue).selectedQuestionCode)
@@ -708,6 +714,17 @@ function firstProviderError(
     if (found) return found;
   }
   return null;
+}
+
+function failedNormalizerDispatch(
+  events: readonly WeeklyPlanningStableV5DebugTraceEvent[],
+): WeeklyPlanningTraceTurnDiagnosticEntry['diagnostics']['providerDispatch'] {
+  const failure = record(latestEventData(events, 'turn_executor_result_projected').recordedFailure);
+  const usage = record(failure.providerDispatch);
+  if (typeof usage.count !== 'number' || !Number.isSafeInteger(usage.count) || usage.count < 0
+    || typeof usage.anyFailure !== 'boolean' || typeof usage.complete !== 'boolean') return undefined;
+  // No raw diagnostics, request identifiers, or future metadata crosses this finite projection.
+  return { count: usage.count, anyFailure: usage.anyFailure, complete: usage.complete };
 }
 
 function durationMs(events: readonly WeeklyPlanningStableV5DebugTraceEvent[]): number | null {
@@ -1033,6 +1050,7 @@ export function createWeeklyPlanningTurnDiagnosticV2(
     ?? stringValue(branch.branch)
     ?? input.outcome;
   const error = firstError(events, tracker, input.errorCode);
+  const providerDispatch = failedNormalizerDispatch(events);
   const acceptedSource = canonicalizationBranch === 'contextual_answer_binding' ? 'parser' : 'ai';
   const rejected = rejectedOperations({
     validations,
@@ -1125,6 +1143,7 @@ export function createWeeklyPlanningTurnDiagnosticV2(
       previewCount: input.previewCount,
       stale: input.outcome === 'discarded_stale'
         || input.errorCode === 'stale_async_result_discarded',
+      ...(providerDispatch ? { providerDispatch } : {}),
       truncation: metadata(tracker),
     },
   };

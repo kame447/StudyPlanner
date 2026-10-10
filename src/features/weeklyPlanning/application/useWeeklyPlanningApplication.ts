@@ -23,6 +23,10 @@ import type {
   WeeklyPlanningMessage,
 } from '../types';
 import { useWeeklyPlanningState } from '../useWeeklyPlanningState';
+import {
+  findWeeklyPlanningStableCollectionLimit,
+  WeeklyPlanningStableCollectionLimitError,
+} from '../weeklyPlanningStateCodec';
 import type { WeeklyPlanningTurnSubmissionResult } from '../weeklyPlanningTurnExecutor';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
 import {
@@ -108,7 +112,7 @@ export interface WeeklyPlanningApplication {
   startConversation: () => void;
   exportConversationSnapshot: (options?: { includeEmpty?: boolean }) => WeeklyPlanningStableV5PersistedSession | null;
   loadConversationSnapshot: (snapshot: unknown) => boolean;
-  createDraftBlocks: (blocks: WeeklyPlanDraftBlock[]) => void;
+  createDraftBlocks: (blocks: WeeklyPlanDraftBlock[], options?: { replace?: boolean }) => void;
   removePreviewCandidate: (candidateId: string) => void;
   removeDraftBlock: (blockId: string) => void;
   clearDraftBlocks: () => void;
@@ -157,12 +161,42 @@ export function useWeeklyPlanningApplication({
     return () => { if (committedRequestInput.current === requestInput) committedRequestInput.current = null; };
   }, [requestInput]);
 
+  const controllerSessionRef = useRef<WeeklyPlanningControllerSession | null>(null);
+  const admitTransition = useCallback((current: PlanningState, next: PlanningState, action: WeeklyPlanningAction) => {
+    if (action.type === 'commit_turn') {
+      const scope = action.stablePublicationScope;
+      if (!scope) return;
+      const session = controllerSessionRef.current;
+      if (scope.ownerId !== ownerId || session?.ownerId !== ownerId
+        || scope.conversationId !== session.conversationId
+        || scope.conversationId !== action.pending.conversationId
+        || session.weekStartDate !== current.weekStartDate) {
+        throw new Error('現在の会話と一致しない結果です。再試行してください。');
+      }
+    } else if (action.type === 'add_draft_blocks' || action.type === 'begin_approval') {
+      // Typed provenance selects the Stable contract, even without a runtime. It is not
+      // permission to approve: existing owner/conversation/mixed-metadata guards still apply.
+      // Inspect retained + incoming content only after the reducer's append/replace choice.
+      const blocks = [...next.draftBlocks, ...(next.approvalRecovery?.blocks ?? [])];
+      if (!blocks.some(block => block.status === 'draft'
+        && block.behaviorMetadata?.compatibility.candidateSource === 'stable_v5')) return;
+    } else return;
+
+    const issue = findWeeklyPlanningStableCollectionLimit({
+      // Match checkpoint compaction: approved/discarded history is not persisted as drafts.
+      draftBlocks: next.draftBlocks.filter(block => block.status === 'draft').length,
+      previewCandidates: next.previewCandidates?.length ?? 0,
+      recoveryBlocks: next.approvalRecovery?.blocks.length ?? 0,
+      recoveryOperationItems: next.approvalRecovery?.operation.items.length ?? 0,
+    });
+    if (issue) throw new WeeklyPlanningStableCollectionLimitError(issue);
+  }, [ownerId]);
   const { planningState, dispatchPlanningAction, getPlanningState, isPlanningStateReady, retryPlanningStateLoad, getLoadedSessionSnapshot } = useWeeklyPlanningState(
     ownerId,
     selectedDate,
     weekStartsOn,
+    admitTransition,
   );
-  const controllerSessionRef = useRef<WeeklyPlanningControllerSession | null>(null);
   const applicationActiveRef = useRef(true);
   useLayoutEffect(() => {
     applicationActiveRef.current = true;
@@ -505,7 +539,7 @@ export function useWeeklyPlanningApplication({
     startConversation,
     exportConversationSnapshot,
     loadConversationSnapshot,
-    createDraftBlocks: (blocks) => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'add_draft_blocks', blocks }); },
+    createDraftBlocks: (blocks, options) => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'add_draft_blocks', blocks, replace: options?.replace }); },
     removePreviewCandidate: (candidateId) => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'remove_preview_candidate', candidateId }); },
     removeDraftBlock: (blockId) => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'remove_draft_block', blockId }); },
     clearDraftBlocks: () => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'clear_draft_blocks' }); },

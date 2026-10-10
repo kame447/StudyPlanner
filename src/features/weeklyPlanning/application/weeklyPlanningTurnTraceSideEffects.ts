@@ -175,18 +175,24 @@ export function recordFailedWeeklyPlanningApplicationTurn(params: {
   ownerId: string;
   pending: WeeklyPlanningPendingTurn;
   userText: string;
+  result?: WeeklyPlanningTurnExecutionResult;
   error: unknown;
   assistantMessage: WeeklyPlanningMessage;
 }, services: WeeklyPlanningTurnTraceSideEffectServices = defaultTraceServices): Promise<void> | null {
   const range = stableV5PlanningRange(params.pending.conversationId, services);
-  const debugTraceEvents = debugTraceEventsForPersistence(params.pending.requestId, false);
+  const dialogueRendererTrace = params.result ? rendererTraceForPersistence(params.result) : undefined;
+  const verifiedRecovery = params.result?.recoveryPresentation !== undefined
+    && params.result.responseSource === 'ai'
+    && params.result.message === params.assistantMessage.content;
+  const debugTraceEvents = debugTraceEventsForPersistence(params.pending.requestId, Boolean(dialogueRendererTrace));
   return services.recordTurnTrace({
     userId: params.ownerId,
     conversationId: params.pending.conversationId,
     requestId: params.pending.requestId,
     userText: params.userText,
     assistantMessage: params.assistantMessage.content,
-    responseSource: 'system',
+    responseSource: verifiedRecovery ? 'ai' : 'system',
+    ...(dialogueRendererTrace ? { dialogueRendererTrace } : {}),
     outcome: 'failed',
     debugTraceEvents,
     previewCount: 0,

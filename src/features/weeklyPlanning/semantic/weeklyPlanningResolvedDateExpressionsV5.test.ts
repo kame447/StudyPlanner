@@ -77,4 +77,38 @@ describe('weekly planning resolved date expressions', () => {
       range: null,
     });
   });
+
+  it.each([false, true])('shares canonical preferred weekdays only with an accepted range (accepted=%s)', (accepted) => {
+    const resolved = resolveWeeklyPlanningDateExpressionsV5({
+      graph: {
+        temporalConstraints: [{ id: 'task-preferred', kind: 'preferred_window', constraintLevel: 'soft', dateExpression: 'weekday:friday' }],
+        availabilityDeclarations: [{ id: 'plan-preferred', kind: 'preferred', constraintLevel: 'soft', recurrenceKind: null, dateExpression: 'weekday:friday' }],
+      },
+      currentDate: '2026-10-08',
+      planningWindow: accepted ? { startDate: '2026-10-12', endDate: '2026-10-23' } : null,
+    });
+    expect(resolved.referenceDate).toBe('2026-10-08');
+    for (const fact of resolved.facts) {
+      expect(fact.range).toEqual(accepted
+        ? { start: '2026-10-16', end: '2026-10-23' }
+        : { start: '2026-10-09', end: '2026-10-09' });
+      expect(fact.dates).toEqual(accepted ? ['2026-10-16', '2026-10-23'] : undefined);
+    }
+  });
+
+  it.each([
+    { expression: '2026-10-09', recurrenceKind: null, kind: 'preferred', constraintLevel: 'soft', start: '2026-10-09', end: '2026-10-09' },
+    { expression: 'tomorrow', recurrenceKind: null, kind: 'preferred', constraintLevel: 'soft', start: '2026-10-09', end: '2026-10-09' },
+    { expression: 'next_week', recurrenceKind: null, kind: 'preferred', constraintLevel: 'soft', start: '2026-10-12', end: '2026-10-18' },
+    { expression: 'weekday:friday', recurrenceKind: 'weekly', kind: 'preferred', constraintLevel: 'soft', start: '2026-10-09', end: '2026-10-09' },
+    { expression: 'weekday:friday', recurrenceKind: null, kind: 'available', constraintLevel: 'hard', start: '2026-10-09', end: '2026-10-09' },
+  ])('preserves request grounding for $expression / $recurrenceKind / $constraintLevel availability', (sample) => {
+    const resolved = resolveWeeklyPlanningDateExpressionsV5({
+      graph: { availabilityDeclarations: [{ id: 'availability', dateExpression: sample.expression, ...sample }] },
+      currentDate: '2026-10-08', planningWindow: { startDate: '2026-10-12', endDate: '2026-10-23' },
+    });
+    expect(resolved.facts[0].range).toEqual({ start: sample.start, end: sample.end });
+    expect(resolved.facts[0].dates).toBeUndefined();
+  });
+
 });

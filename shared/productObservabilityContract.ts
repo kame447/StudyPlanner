@@ -86,6 +86,7 @@ export interface AiRequestMetricPayload {
   cachedTokens: number | null;
   cacheWriteTokens?: number | null;
   reasoningTokens?: number | null;
+  providerCompletion?: import('./aiProxyContract').ProviderCompletionMetadata;
   durationMs: number;
   requestBytes: number;
   responseBytes: number | null;

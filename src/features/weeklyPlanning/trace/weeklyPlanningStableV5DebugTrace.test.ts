@@ -76,6 +76,9 @@ describe('Stable V5 debug trace collector', () => {
       availabilityWindows: [],
       fixedTaskReservations: [],
       sourceSelections: [],
+      hardClockBounds: [{ taskId: 'task-clock', targetFactId: 'component-clock', sourceFactId: 'clock-fact',
+        kind: 'earliest_start', minute: 1200, anchorDate: null,
+        futureClockField: 'future-clock-sentinel', oversizedClockField: 'clock-extra'.repeat(2_000) }],
     };
 
     recordWeeklyPlanningStableV5DebugTrace({
@@ -114,6 +117,13 @@ describe('Stable V5 debug trace collector', () => {
       expect(serialized).not.toContain('task-999');
       expect(serialized).not.toContain('work-499');
     }
+    const compiled = events[0].data as { result: { hardClockBounds: unknown } };
+    expect(compiled.result.hardClockBounds).toEqual([expect.objectContaining({
+      taskId: 'task-clock', targetFactId: 'component-clock', sourceFactId: 'clock-fact',
+      kind: 'earliest_start', minute: 1200, anchorDate: null, futureClockField: 'future-clock-sentinel',
+      oversizedClockField: expect.stringContaining('[trace truncated]'),
+    })]);
+    expect(JSON.stringify(compiled.result.hardClockBounds)).not.toContain('clock-extra'.repeat(2_000));
     expect(events[0]?.data).not.toHaveProperty('input');
     expect(events[1]?.data).not.toHaveProperty('graph');
     expect(events[2]?.data).not.toHaveProperty('canonicalization.graph');

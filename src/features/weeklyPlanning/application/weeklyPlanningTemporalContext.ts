@@ -8,7 +8,7 @@ import {
   resolveCanonicalDateExpression,
 } from '../semantic/weeklyPlanningCalendarResolver';
 import type { RecurrenceFact } from '../semantic/weeklyPlanningFactGraph';
-import type { GenericSchedulerInputContext } from '../semantic/weeklyPlanningGenericSchedulerInput';
+import type { GenericSchedulerInputContext, WeeklyPlanningAcceptedPlanningWindow } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import {
   isWeeklyPlanningCalendarExpandableRecurrenceV5,
 } from '../semantic/weeklyPlanningRecurrenceCalendarV5';
@@ -244,12 +244,52 @@ function frozenGroundingRange(params: {
     : null;
 }
 
+/** Only an accepted graph window can supply date-scope authority, never the UI fallback. */
+export function resolveWeeklyPlanningAcceptedPlanningWindow(params: {
+  graph: WeeklyPlanningTemporalGraphView;
+  requestContext: WeeklyPlanningTurnRequestContext;
+  groundingRecords?: readonly WeeklyPlanningGroundingRecord[];
+  /** A prior preview needs explicit/frozen evidence, never a new interpretation from today's clock. */
+  requireEstablishedRange?: boolean;
+}): WeeklyPlanningAcceptedPlanningWindow | null {
+  const windows = activePlanningWindows(params.graph);
+  if (windows.length !== 1) return null;
+  const window = windows[0];
+  if (window.start && window.end) {
+    if (
+      isValidCalendarDate(window.start)
+      && isValidCalendarDate(window.end)
+      && window.start <= window.end
+    ) {
+      return { factId: window.id, startDate: window.start, endDate: window.end };
+    }
+    return null;
+  }
+
+  const frozen = frozenGroundingRange({
+    windowId: window.id,
+    groundingRecords: params.groundingRecords,
+  });
+  if (frozen) return { factId: window.id, ...frozen };
+  if (params.requireEstablishedRange) return null;
+
+  const resolution = resolveCanonicalDateExpression({
+    expression: window.value.trim(),
+    currentDate: params.requestContext.currentDate,
+    weekStartsOn: params.requestContext.weekStartsOn,
+  });
+  return resolution.status === 'resolved'
+    ? { factId: window.id, startDate: resolution.range.start, endDate: resolution.range.end }
+    : null;
+}
+
 export function resolveWeeklyPlanningPlanningHorizon(params: {
   graph: WeeklyPlanningTemporalGraphView;
   selectedDate: string;
   requestContext: WeeklyPlanningTurnRequestContext;
   resolvedTemporalConstraints: WeeklyPlanningResolvedTemporalConstraintsV5;
   groundingRecords?: readonly WeeklyPlanningGroundingRecord[];
+  acceptedPlanningWindow?: WeeklyPlanningAcceptedPlanningWindow | null;
 }): { startDate: string; endDate: string } | null {
   const windows = activePlanningWindows(params.graph);
   if (windows.length > 1) return null;
@@ -260,42 +300,23 @@ export function resolveWeeklyPlanningPlanningHorizon(params: {
       resolvedTemporalConstraints: params.resolvedTemporalConstraints,
     });
   }
-
-  const window = windows[0];
-  if (window.start && window.end) {
-    if (
-      isValidCalendarDate(window.start)
-      && isValidCalendarDate(window.end)
-      && window.start <= window.end
-    ) {
-      return { startDate: window.start, endDate: window.end };
-    }
-    return null;
-  }
-
-  const frozen = frozenGroundingRange({
-    windowId: window.id,
-    groundingRecords: params.groundingRecords,
-  });
-  if (frozen) return frozen;
-
-  const resolution = resolveCanonicalDateExpression({
-    expression: window.value.trim(),
-    currentDate: params.requestContext.currentDate,
-    weekStartsOn: params.requestContext.weekStartsOn,
-  });
-  return resolution.status === 'resolved'
-    ? { startDate: resolution.range.start, endDate: resolution.range.end }
+  const accepted = params.acceptedPlanningWindow === undefined
+    ? resolveWeeklyPlanningAcceptedPlanningWindow(params)
+    : params.acceptedPlanningWindow;
+  return accepted?.factId === windows[0].id
+    ? { startDate: accepted.startDate, endDate: accepted.endDate }
     : null;
 }
 
 export function createWeeklyPlanningSchedulerContext(params: {
   ownerId: string;
   horizon: { startDate: string; endDate: string } | null;
+  acceptedPlanningWindow?: WeeklyPlanningAcceptedPlanningWindow | null;
   requestContext: WeeklyPlanningTurnRequestContext;
 }): GenericSchedulerInputContext {
   return {
     ownerId: params.ownerId,
+    acceptedPlanningWindow: params.acceptedPlanningWindow ?? null,
     currentDate: params.requestContext.currentDate,
     weekStartsOn: params.requestContext.weekStartsOn,
     planningStartDate: params.horizon?.startDate ?? '',

@@ -1,3 +1,4 @@
+import type { WeeklyPlanningSessionPartitionIssueV5 } from './semantic/weeklyPlanningSchedulerWorkDistributionV5';
 import type {
   Actual,
   MonthEvent,
@@ -46,12 +47,16 @@ export interface WeeklyPlanningTurnExecutionInput {
   requestContext?: WeeklyPlanningTurnRequestContext;
   /** PlanningState.revision at turn start; binds the previous question presentation. */
   inputStateRevision?: number;
+  /** Live controller ownership/cancellation guard; absent callers cannot start recovery AI. */
+  isCurrentTurn?: () => boolean;
+  retainedPreviewCount?: number;
 }
 
 export type WeeklyPlanningTurnFailureCode =
   | 'stable_v5_provider_failure'
   | 'stable_v5_normalization_rejected'
-  | 'stable_v5_canonicalization_rejected';
+  | 'stable_v5_canonicalization_rejected'
+  | 'stable_v5_scheduler_input_rejected';
 
 export interface WeeklyPlanningTurnFailureDiagnostics {
   attemptCount: number;
@@ -81,6 +86,8 @@ export interface WeeklyPlanningTurnExecutionResult {
   preserveExistingPreview?: boolean;
   stableV5Graph?: WeeklyPlanningFactGraphV5;
   failure?: WeeklyPlanningTurnFailure;
+  /** Current compilation evidence only; never an additional persisted planning authority. */
+  sessionPartitionIssue?: WeeklyPlanningSessionPartitionIssueV5;
   responseSource?: WeeklyPlanningTraceResponseSource;
   dialogueRendererTrace?: WeeklyPlanningDialogueRendererTrace;
   observability?: WeeklyPlanningTurnObservability;
@@ -89,6 +96,10 @@ export interface WeeklyPlanningTurnExecutionResult {
    * question. The turn controller binds it to the committed assistant message.
    */
   questionPresentationContent?: WeeklyPlanningQuestionPresentationContent;
+  /** Produced only after recovery wording passed the independent finite-contract check. */
+  recoveryPresentation?: {
+    question: { graphRevision: number; previousAssistantMessageId: string } | null;
+  };
 }
 
 export interface WeeklyPlanningTurnSubmissionResult {

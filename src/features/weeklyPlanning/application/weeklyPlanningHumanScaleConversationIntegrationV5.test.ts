@@ -1,3 +1,5 @@
+import { resolveWeeklyPlanningQuestionPresentationFreshness, withoutWeeklyPlanningQuestionPresentation } from '../intake/weeklyPlanningQuestionPresentation';
+import { createPresentedWeeklyPlanningConversation } from '../testUtils/__tests__/weeklyPlanningPresentedConversation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
@@ -8,7 +10,7 @@ import {
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeExecutor';
 import {
-  finalizeWeeklyPlanningStableV5RuntimeGraph,
+  getWeeklyPlanningStableV5RuntimeSession,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from './weeklyPlanningStableV5RuntimeSession';
 
@@ -283,15 +285,20 @@ vi.mock('../../../lib/aiConfig', () => ({
     apiKey: 'test-key',
   }),
   getAiConfigValidationMessage: () => undefined,
+  getCloudflareAiProxyUrl: () => null,
+  usesCloudflareOpenAiProxy: () => false,
 }));
-vi.mock('../../../services/ai/openAiCompatibleClient', () => ({
+vi.mock('../../../services/ai/openAiCompatibleClient', async () => ({
+  ...await vi.importActual<typeof import('../../../services/ai/openAiCompatibleClient')>(
+    '../../../services/ai/openAiCompatibleClient',
+  ),
   createOpenAiCompatibleClient: () => ({ createChatCompletion: vi.fn() }),
 }));
 vi.mock('../semantic/weeklyPlanningSemanticNormalizerV5', () => ({
   createWeeklyPlanningSemanticNormalizerV5: () => ({ normalize: normalizeMock }),
 }));
 
-import { executeWeeklyPlanningStableV5RuntimeTurn } from './weeklyPlanningStableV5InstrumentedRuntimeExecutor';
+let conversation: ReturnType<typeof createPresentedWeeklyPlanningConversation>;
 
 const requestContext = {
   startedAtIso: '2026-08-12T00:00:00.000Z',
@@ -338,17 +345,12 @@ async function runTwoTurnPlanningConversation(params: {
 }) {
   normalizeMock.mockResolvedValueOnce(acceptedResult(params.planningDocument));
   const firstRequestId = `${params.conversationId}:request:1`;
-  const first = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+  const first = await conversation.run(turnInput({
     conversationId: params.conversationId,
     userText: params.firstUserText,
     traceRequestId: firstRequestId,
   }));
   expect(first.state.draftGenerationIntent).toBe('user_authorized');
-  finalizeWeeklyPlanningStableV5RuntimeGraph({
-    ownerId: 'owner-human-scale',
-    conversationId: params.conversationId,
-    requestId: firstRequestId,
-  });
 
   const answerDocument = params.answerDirection
     ? directionalDurationAnswerDocument({
@@ -357,7 +359,7 @@ async function runTwoTurnPlanningConversation(params: {
       })
     : durationAnswerDocument(params.answerMinutes);
   normalizeMock.mockResolvedValueOnce(acceptedResult(answerDocument));
-  const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+  const second = await conversation.run(turnInput({
     conversationId: params.conversationId,
     previousState: first.state,
     userText: `${params.answerMinutes}分くらい`,
@@ -383,6 +385,7 @@ describe('Stable V5 human-scale conversation integration', () => {
   beforeEach(() => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     normalizeMock.mockReset();
+    conversation = createPresentedWeeklyPlanningConversation();
   });
 
   it('proposes spaced memory practice before asking for a duration', async () => {
@@ -396,7 +399,7 @@ describe('Stable V5 human-scale conversation integration', () => {
       activityKind: 'memorization_retrieval',
     })));
 
-    const first = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+    const first = await conversation.run(turnInput({
       conversationId,
       userText: '8月17日から23日で英単語220語を覚える予定を作りたい',
       traceRequestId: `${conversationId}:request:1`,
@@ -427,24 +430,19 @@ describe('Stable V5 human-scale conversation integration', () => {
       sourceText: '英単語220語',
       activityKind: 'memorization_retrieval',
     })));
-    const first = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+    const first = await conversation.run(turnInput({
       conversationId,
       userText: '8月17日から23日で英単語220語を覚える予定を作りたい',
       traceRequestId: firstRequestId,
     }));
     const proposalId = first.state.learningStrategyProposalRecords?.[0]?.id;
     expect(proposalId).toBeTruthy();
-    finalizeWeeklyPlanningStableV5RuntimeGraph({
-      ownerId: 'owner-human-scale',
-      conversationId,
-      requestId: firstRequestId,
-    });
 
     normalizeMock.mockResolvedValueOnce(acceptedResult(proposalDecisionDocument({
       proposalId: proposalId!,
       decision: 'accept',
     })));
-    const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+    const second = await conversation.run(turnInput({
       conversationId,
       previousState: first.state,
       userText: 'それでお願いします',
@@ -548,4 +546,36 @@ describe('Stable V5 human-scale conversation integration', () => {
       0,
     )).toBe(360);
   });
+  it.each(['unbound', 'stale'] as const)('does not attach a short duration to an %s question', async (presentation) => {
+    const conversationId = `human-scale-${presentation}`;
+    normalizeMock.mockResolvedValueOnce(acceptedResult(planningDocument({
+      title: '数学', amount: 40, unitCode: 'problem', unitLabel: '問', sourceText: '数学40問',
+    })));
+    const first = await conversation.run(turnInput({
+      conversationId, userText: '8月17日から23日で数学40問を進める予定を作りたい', traceRequestId: 'first',
+    }));
+    const state = conversation.getState();
+    const workloadId = first.stableV5Graph!.workloads[0].id;
+    expect(resolveWeeklyPlanningQuestionPresentationFreshness({
+      previousState: state.intakeState, inputStateRevision: state.revision,
+      messages: state.messages, graphRevision: first.stableV5Graph!.revision,
+    }).status).toBe('fresh');
+    if (presentation === 'unbound') {
+      conversation.dispatch({ type: 'load_state', state: { ...state, intakeState: {
+        ...state.intakeState!, lastQuestionContext: withoutWeeklyPlanningQuestionPresentation(state.intakeState!.lastQuestionContext),
+      } } });
+    } else {
+      conversation.dispatch({ type: 'set_last_assistant_message', message: '別の案内を表示しました。' });
+    }
+    normalizeMock.mockResolvedValueOnce(acceptedResult(durationAnswerDocument(8)));
+    const second = await conversation.run(turnInput({ conversationId, userText: '8分くらい', traceRequestId: 'second' }));
+    expect(normalizeMock.mock.calls[1][0].publicStateSummary.pendingQuestion).toBeNull();
+    expect(second.state.status).not.toBe('draft_ready');
+    expect(second.draftCandidates).toEqual([]);
+    const acceptedGraph = getWeeklyPlanningStableV5RuntimeSession(conversationId)?.graph;
+    expect(acceptedGraph).toBeDefined();
+    expect(acceptedGraph!.workloads.find((workload) => workload.id === workloadId)).toEqual(first.stableV5Graph!.workloads[0]);
+    expect(acceptedGraph!.effortEstimates.filter((effort) => effort.targetFactId === workloadId)).toEqual([]);
+  });
+
 });

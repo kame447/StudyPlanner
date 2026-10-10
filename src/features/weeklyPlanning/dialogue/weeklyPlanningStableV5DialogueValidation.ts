@@ -309,6 +309,7 @@ function validateRenderedText(
     return 'repeated_question_text';
   }
 
+  const previewEvidence = input.previewEvidence?.status === 'available' ? input.previewEvidence : null;
   const groundingInformation = JSON.stringify({
     currentUserMessage: input.currentUserMessage,
     recentConversation: input.recentConversation,
@@ -316,10 +317,18 @@ function validateRenderedText(
     requiredLabels: input.requiredLabels,
     previewPromotionControlLabel: input.previewPromotionControlLabel ?? null,
     previewCount: input.previewCount,
+    actualPreviewValues: previewEvidence ? {
+      earliestStartTime: previewEvidence.summary.earliestStartTime,
+      latestEndTime: previewEvidence.summary.latestEndTime,
+      candidates: previewEvidence.details.candidates.map(({ date, startTime, endTime }) => ({ date, startTime, endTime })),
+    } : null,
   });
-  const groundedDateExpressions = groundedDateExpressionsFromPlanningInformation(
-    input.planningInformation,
-  );
+  const groundedDateExpressions = [
+    ...groundedDateExpressionsFromPlanningInformation(input.planningInformation),
+    ...groundedDateExpressionsFromPlanningInformation({
+      planningWindows: previewEvidence?.details.candidates.map(candidate => ({ value: candidate.date })) ?? [],
+    }),
+  ];
   if (
     addsUnsupportedExpression(text, groundingInformation, CLOCK_EXPRESSION)
     || addsUnsupportedExpression(

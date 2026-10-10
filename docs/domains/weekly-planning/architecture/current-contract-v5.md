@@ -1,7 +1,7 @@
 # weeklyPlanning current contract v5
 
 Status: canonical / Stable V5 production baseline
-Updated: 2026-10-05
+Updated: 2026-10-10
 
 References:
 - [Domain index](../README.md)
@@ -73,6 +73,10 @@ For accepted active date constraints used by movable-work placement, the applica
 
 Unresolved or contradictory hard date constraints fail closed at scheduler-input compilation rather than being silently weakened.
 
+Supported one-sided movable-work clocks are derived from the same accepted active graph and resolved-date snapshot, with original source/target identity. Placement intersects per-item windows without mutating shared availability or reinterpreting temporal meaning; the supported shapes and remaining gaps are specified in [scheduling policy](../policies/scheduling.md#movable-work-hard-clock-bounds).
+
+Provisional work may be introduced after temporal resolution. When both resolved-date and temporal snapshots are explicitly supplied, compilation reapplies the existing hard-bound materializer to current active targets before contradiction checks, using the supplied resolved dates. It neither re-resolves dates at the new request clock nor persists a second semantic state. A standalone temporal snapshot retains its frozen contract; it does not authorize date reinterpretation or general target rematerialization.
+
 A consultation answer may suggest a date, but an AI-generated suggested date is not an accepted temporal fact. It becomes scheduler-relevant only after explicit user adoption and normal Stable V5 binding/lifecycle processing.
 
 ## Quantity roles
@@ -95,6 +99,14 @@ Important consequences:
 - open-ended work must not receive an invented total merely to make arithmetic or scheduling easier.
 
 For consultation questions containing calculable quantities, deterministic calculation remains the numeric authority. An answer model may explain a computed result but must not silently replace application-owned arithmetic with its own value.
+
+### Accepted task-total duration
+
+An active, accepted task-level `total_duration` may provide scheduler-facing minute work when that task has no workload at any component/quantity role and no hard task `fixed_interval`. All applicable positive finite task totals must agree; conflicting totals stay unresolved. Existing workload/progress ownership remains authoritative when any workload exists. A component total or `session_duration` alone is not task-total work. Deciding whether natural language describes future total work, past progress, per-day availability or session length remains semantic interpretation; formal acceptance alone does not prove that interpretation correct.
+
+This is a transient compilation view, not another Fact Graph or persisted quantity. Its derived workload key is internal identity only. The view carries explicit graph-revision/task/accepted-effort origin IDs, and the work-item compiler validates those roots before emitting work. Canonical source references and estimate-source IDs retain every agreeing active effort fact; a synthetic workload key must not masquerade as a canonical fact. For tagged derived work, missing, duplicate, foreign, stale or value-mismatched derivation evidence blocks compilation. The accepted minute total keeps intrinsic-duration allocation, without estimate buffer or calibration inflation.
+
+Preview/draft checkpoint metadata retains the real source references. Final approval keeps the existing current-revision checks and operation/block identity. Ordinary Plan/ScheduleEvent persistence does not acquire direct Fact Graph source references or a new allocation ledger through this projection. Session-length placement and natural-language explanation remain separate responsibilities.
 
 ## Work decomposition / atomicity
 
@@ -123,9 +135,25 @@ Rules:
 - unknown/needs-breakdown is not permission to infer splittability from raw task text or subject keywords.
 - when work structure is required for a safe/meaningful plan, the semantic/dialogue boundary resolves it before scheduler use.
 
+### Explicit accepted session bounds
+
+An active typed `session_duration` is an upper bound on occupied session minutes, not a replacement for total work cost. Workload scope takes precedence over its exact component, then task scope. More than one fact at the winning scope remains unresolved, including identical restatements; the separate task-total agreement rule is not imported here. Active-view construction owns lifecycle filtering.
+
+For known integer content units (page, problem, word, lesson, chapter, section, exam_year), an explicit bound permits grouping whole accepted units using their existing effort basis. This does not reclassify arbitrary unknown/custom work as splittable or create semantic task decomposition. Genuine atomic work, including mock exams, is not divided. Time quantities already typed splittable may be chunked within the bound while conserving their requested quantity and existing allocated minutes.
+
+The partition owns both generated count and emitted slices. It preserves quantity/range offsets and uncalibrated base, applies calibration once, respects each slice's calibrated cost floor, and retains optional buffer/rounding margin only within the minimum feasible whole-unit grouping. Thus20×3minutes with cap30 occupies60minutes in2sessions;40×2 with cap30 may retain90minutes in3sessions. Occupied-minus-base is not pure optional margin when calibration differs from1. Minute-precision event bounds floor fractional caps rather than round upward.
+
+Impossible or ambiguous partitions withhold compiler input. The existing 512 generated-session safety bound applies to actual partition count; it is not the Stable checkpoint 500-item admission limit or a universal Plan limit. No persisted allocation ledger or Plan schema change is required.
+
+The partition result carries ephemeral typed recovery evidence from the same resolved arithmetic: reason, winning scope and matching estimate IDs, accepted quantity/range, requested cap and, where available, the minimum indivisible cost or required session count. The existing dialogue intent passes that evidence to the ordinary AI renderer without recalculating the graph or adding a model call. Competing caps request estimate selection; minute-precision, indivisible cost, unsupported quantity/range and generation-limit conditions request an appropriate condition or scope revision while retaining accepted meaning. A valid named range is not an internal failure merely because this partitioner cannot split it. Successful AI text is not supplemented with fixed fallback speech.
+
+Invalid internal cap/cost/arithmetic instead returns a controlled system failure. The controller discards the staged graph and preserves the previously committed graph, preview and drafts, including their checkpoint. Its `accepted: true` return means that the user turn was received, not that graph mutation succeeded. The failure result and reason-bearing trace code identify the rejected calculation; only a finite reason is embedded in the trace code, never user text, unit labels or IDs.
+
 ## Fact Graph / lifecycle
 
 Canonical commit is atomic. Validation failure leaves accepted state unchanged. Correction/replacement/supersession is explicit lifecycle; no-op does not create an unnecessary revision.
+
+The final semantic commit rejects newly introduced active operational references to inactive facts, using source fact, target fact and source property as identity. Exact inherited historical references remain readable; persisted-value validation does not run this write rule or rewrite stored evidence. Workload replacements, including contextual quantity-role answers, share the established dependent policy: carry compatible per-unit/session estimates, invalidate amount-dependent total estimates, and reject unsupported dependencies. Only dependent migration or retirement performed in the current correction transaction may satisfy a second explicit correction of that same accepted target, once; older terminal targets remain invalid. Workload corrections retain accepted task/component ownership; they do not install task or material renames. An unbound replacement container with a distinct title, study purpose, material label or meaningful child is rejected atomically rather than applied or silently pruned. Identity-neutral temporary containers may still be retired, preserving terminal effort provenance and its original task reference as required by the saved-reference contract. Planning-window questions have one typed lifecycle owner: identical values carry, changed values of the same canonical kind retire, and cross-kind or changed free-text named periods carry as unresolved. Historical window-question repair runs only on an accepted write and fails atomically if its retained replacement chain is unsafe.
 
 Derived facts remain derivations with source/basis. A correction to their basis must not leave stale derived truth active.
 
@@ -163,16 +191,26 @@ Issue #246 extends the same proposal principle to AI-generated study advice. Adv
 
 ## Pending question presentation binding
 
-The pending question (`lastQuestionContext`) is application state; the assistant text that shows it is presentation only. When a Stable V5 turn commits a message that presents a pending question, the turn controller binds that question to the committed assistant message: turn ID, message ID, the planning-state revision after the commit, the committed graph revision, and the machine-known accompaniments the renderer was given with it (response source, current-turn grounding mode, self-repair notice, counts of proposed/contested grounding interpretations, preview promotion control). The binding is written only through the accepted commit and is replaced or removed by every later commit.
+The pending question (`lastQuestionContext`) is application state; the assistant text that shows it is presentation only. When a Stable V5 turn commits a message that presents a pending question, the turn controller binds that question to the committed assistant message: turn ID, message ID, the planning-state revision after the commit, the committed graph revision, and the machine-known accompaniments the renderer was given with it (response source, current-turn grounding mode, self-repair notice, counts of proposed/contested grounding interpretations, preview promotion control). The binding is written only through the accepted ordinary commit or the limited failed-turn presentation transition described below. A later transition cannot carry an old binding forward as evidence that a new message presented the question.
 
-A later turn may treat the pending question as the one the user is replying to only when the binding is `fresh`: the turn-start planning-state revision equals the bound revision (no failed turn, approval message, appended message, edit or clear happened in between), the latest message is the bound assistant message, and the graph revision is unchanged. A missing binding (sessions saved before binding existed), a malformed binding, or any mismatch fails closed. Freshness says only that the question context is still the one committed with the latest message; the consumer must still re-validate that its target (for example a proposal) is active and unsuperseded. Two limits are part of the contract:
+A later turn may treat the pending question as the one the user is replying to only when the binding is `fresh`: the turn-start planning-state revision equals the bound revision (no intervening failed turn, approval message, appended message, edit or clear since that presentation; a verified recovery must create a new presentation binding), the latest message is the bound assistant message, and the graph revision is unchanged. A missing binding (sessions saved before binding existed), a malformed binding, or any mismatch fails closed. Freshness says only that the question context is still the one committed with the latest message; the consumer must still re-validate that its target (for example a proposal) is active and unsuperseded. Two limits are part of the contract:
 
-- Presentation evidence. With `responseSource: deterministic_fallback` the application's typed question text was shown. With `ai` the renderer echoed this question's typed action contract and passed validation, but whether its free text actually asks the question is not verified, and must not be inferred from the text with regex or keywords. A consumer that depends on the text having asked the question must treat the rendered text as untrusted context and cover non-presenting renders in its evaluation.
+- Presentation evidence. With `responseSource: deterministic_fallback` the application's typed question text was shown. On the ordinary accepted path, with `ai` the renderer echoed this question's typed action contract and passed validation, but whether its free text actually asks the question is not verified, and must not be inferred from the text with regex or keywords. A consumer that depends on the text having asked the question must treat the rendered text as untrusted context and cover non-presenting renders in its evaluation.
 - Scope. Freshness is local to the planning state held by the submitting client. It does not detect a newer checkpoint written by another tab or device; that is the existing last-writer boundary of the conversation store, not something the binding resolves.
 
 
 
 The binding is not semantic input. It is excluded from the semantic model's public state summary and from renderer input, and it grants no approval, save, scheduler or lifecycle authority.
+
+### Bounded structured-failure recovery
+
+A rejected structured semantic result does not change accepted facts, graph revision, preview candidates, accepted intake facts or save authority. When every dispatch in that normalizer invocation is observed, completed and successful at the provider boundary (count 1–6, with no earlier provider failure), recovery may use the existing renderer for one freely generated reply and one finite verification, without regeneration. This is a bound on that normalizer invocation plus recovery, not a new global turn budget. Unknown/incomplete dispatch evidence, provider failure or an invalidated turn allows no new recovery dispatch; the live owner/conversation/revision guard is checked again before verification and adoption. Ordinary successful rendering and its existing repair contract remain unchanged.
+
+The finite check compares typed non-application/unchanged-state obligations and, when a retained question exists, its active target and task/component ownership where applicable, plus unit and period scope with the generated reply. Legitimate targetless questions retain their existing code-specific rules. Missing/removed/cross-owner targets, inconsistent proposal references, malformed or non-affirmative verdicts, and stale receipts fail closed. This same-provider second opinion is not an absolute guarantee of semantic correctness. No regex or fixed normal-response suffix establishes correspondence.
+
+Only a verified reply that actually re-presents the same fresh retained question may carry a typed recovery receipt into the existing failed lifecycle. The controller revalidates the previous presentation identity and binds that retained question to the newly committed assistant message and state revision; it never adopts the failed graph or intake. A technical stop, a generic recovery without a retained question, or an unverified/stale result cannot rebind the old question. The same binding/codec freshness rules apply after reload and on the next turn.
+
+Recovery requests, responses and finite diagnostics use the existing renderer trace, privacy, size/truncation, outbox/retry and Worker preparation gates. Private presentation identifiers remain excluded from semantic/renderer inputs and trace data.
 
 ## Availability
 

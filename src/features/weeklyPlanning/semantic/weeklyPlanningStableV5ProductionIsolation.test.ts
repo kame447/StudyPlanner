@@ -60,8 +60,12 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'chat/aiPlanningChatStore.ts',
   'dialogue/weeklyPlanningStableV5AiDialogueRenderer.ts',
   'dialogue/weeklyPlanningStableV5CurrentTurnGrounding.ts',
+  // E: typed partition issue to existing dialogue intent; no reinterpretation or mutation.
+  'dialogue/weeklyPlanningStableV5DialogueContext.ts',
   'dialogue/weeklyPlanningStableV5DialoguePrompt.ts',
   'dialogue/weeklyPlanningStableV5DialogueValidation.ts',
+  // J: bounded current-candidate observations; no scheduler, provider, approval or storage calls.
+  'dialogue/weeklyPlanningStableV5PreviewEvidence.ts',
   'dialogue/weeklyPlanningStableV5TurnDialogue.ts',
   'dialogue/weeklyPlanningStableV5TurnDialogueTrace.ts',
   'trace/weeklyPlanningStableV5TraceRuntime.ts',

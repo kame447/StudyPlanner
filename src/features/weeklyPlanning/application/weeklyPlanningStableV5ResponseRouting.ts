@@ -1,5 +1,5 @@
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
-import type { GenericSchedulerInput } from '../semantic/weeklyPlanningGenericSchedulerInput';
+import type { GenericSchedulerInput, GenericSchedulerInputIssue } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import type { WeeklyPlanningStableV5PreviewSchedulerResult } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
@@ -98,6 +98,34 @@ function routeBeforePreview(params: {
     authorized,
   } = evaluation;
   const schedulerInput = compilation.input;
+  const partitionIssues = compilation.issues.filter((issue): issue is Extract<
+    GenericSchedulerInputIssue, { code: 'session_partition_unfulfillable' }
+  > => issue.code === 'session_partition_unfulfillable');
+  // Invalid arithmetic is an internal processing failure, not ambiguous user meaning.
+  const internalPartitionIssue = partitionIssues.find((issue) => [
+    'invalid_session_duration', 'missing_partition_cost',
+    'unsafe_partition_arithmetic',
+  ].includes(issue.details.reason));
+  if (internalPartitionIssue) {
+    const message = '時間と量の計算を安全に完了できなかったため、今回の変更は反映していません。';
+    const output = projectStableV5CompatibilityOutput({
+      previousState: input.previousState, userText: input.userText,
+      message, draftCandidates: [], authorized: false,
+    });
+    output.state = { ...output.state, status: 'revision_pending',
+      draftGenerationIntent: 'not_requested', shouldCreateDraft: false };
+    output.sessionPartitionIssue = internalPartitionIssue;
+    output.failure = {
+      code: 'stable_v5_scheduler_input_rejected', userMessage: message,
+      traceCode: `session_partition_internal_${internalPartitionIssue.details.reason}`,
+      diagnostics: { attemptCount: 0, repairAttempted: false,
+        validationErrorCategories: [internalPartitionIssue.details.reason], providerErrorCategory: null },
+    };
+    output.responseSource = 'system';
+    traceRuntimeBranch({ requestId: input.traceRequestId, branch: 'session_partition_internal_failure',
+      basis: { issue: internalPartitionIssue }, output, severity: 'error' });
+    return respond(output);
+  }
 
   if (learningStrategyProposals.pendingProposal) {
     const proposal = learningStrategyProposals.pendingProposal;
@@ -129,9 +157,13 @@ function routeBeforePreview(params: {
   }
 
   if (dialogue.status === 'ask_question') {
+    const partitionIssue = dialogue.question.code === 'session_partition_unfulfillable'
+      ? partitionIssues.find((issue) => issue.factId === dialogue.question.factId)
+      : undefined;
     const sessionDurationQuestion = dialogue.question.effortMeasurement === 'session_duration';
-    const renderedQuestion = sessionDurationQuestion
-      ? ''
+    const renderedQuestion = partitionIssue
+      ? '指定された条件では予定を配分できませんでした。条件を見直して、もう一度お試しください。'
+      : sessionDurationQuestion ? ''
       : renderStableV5RuntimeQuestion(graph, dialogue.question);
     const message = sessionDurationQuestion
       ? ''
@@ -155,6 +187,7 @@ function routeBeforePreview(params: {
       repairAgenda: repairDecision.agenda,
       learningStrategyProposalRecords: learningStrategyProposals.records,
     });
+    if (partitionIssue) output.sessionPartitionIssue = partitionIssue;
     traceRuntimeBranch({
       requestId: input.traceRequestId,
       branch: 'ask_question',

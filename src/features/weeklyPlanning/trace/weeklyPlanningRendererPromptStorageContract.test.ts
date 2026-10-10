@@ -1,4 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import { prepareWeeklyPlanningTraceServerWrite } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
+import { renderWeeklyPlanningStableV5AssistantMessage } from '../dialogue/weeklyPlanningStableV5TurnDialogue';
+import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
+import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import {
   WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
   measureWeeklyPlanningTraceJsonBytes,
@@ -24,6 +29,17 @@ import type {
   WeeklyPlanningTraceRepository,
   WeeklyPlanningTraceSession,
 } from './weeklyPlanningTraceTypes';
+
+const completion = vi.hoisted(() => vi.fn<OpenAiCompatibleClient['createChatCompletion']>());
+vi.mock('../../../lib/aiConfig', () => ({
+  getAiConfig: () => ({ provider: 'openai', baseUrl: 'https://example.invalid/v1', model: 'test', apiKey: 'test-key' }),
+  getAiConfigValidationMessage: () => undefined,
+  usesCloudflareOpenAiProxy: () => false,
+}));
+vi.mock('../../../services/ai/openAiCompatibleClient', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../services/ai/openAiCompatibleClient')>(),
+  createOpenAiCompatibleClient: () => ({ createChatCompletion: completion }),
+}));
 
 const FUTURE_FIELD_SENTINEL = 'renderer-prompt-field-added-after-trace-contract';
 
@@ -115,11 +131,13 @@ describe('renderer prompt trace storage contract', () => {
     restoreStorage = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
     resetWeeklyPlanningStableV5TraceRuntimeForTest();
     resetWeeklyPlanningDialogueRendererPromptContextsForTest();
+    completion.mockReset();
   });
 
   afterEach(() => {
     resetWeeklyPlanningStableV5TraceRuntimeForTest();
     resetWeeklyPlanningDialogueRendererPromptContextsForTest();
+    completion.mockReset();
     setWeeklyPlanningTraceRepositoryForTests(undefined);
     restoreStorage?.();
     restoreStorage = undefined;
@@ -206,5 +224,114 @@ describe('renderer prompt trace storage contract', () => {
     expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes,
     );
+  });
+});
+
+// The routing suite owns the real compiler/scheduler producer oracle. These rows
+// isolate that output's actual renderer request and the durable diagnostic boundary.
+async function actualPreviewTrace() {
+  const conversationId = 'weekly-conversation-123e4567-e89b-52d3-a456-426614174000';
+  const requestId = `${conversationId}:request:1`;
+  const graph = createEmptyWeeklyPlanningFactGraphV5();
+  graph.revision = 1;
+  graph.tasks = [{ id: 'task', category: 'study', title: '数学', createdRevision: 1,
+    source: { conversationId, turnId: requestId, semanticLocalId: 'task', sourceText: 'synthetic', origin: 'user' } }];
+  graph.factLifecycles = [{ factId: 'task', status: 'active', createdRevision: 1,
+    terminalRevision: null, supersededByFactId: null }];
+  completion.mockReset().mockImplementation(async request => {
+    const payload = JSON.parse(request.messages[1].content);
+    return JSON.stringify({ actionId: payload.actionId, actionKind: 'preview_ready', questionCode: null,
+      groundingAcknowledgement: null, text: '候補を確認して、「この内容で仮予定にする」を選択してください。' });
+  });
+  const candidate = { stableKey: 'candidate', date: '2026-08-24', startTime: '09:00', endTime: '10:10',
+    durationMinutes: 70, estimatedMinutes: 70, title: '数学', field: '数学', year: 2026,
+    source: 'weekly_exam_prep' as const, approvalStatus: 'unapproved' as const, workItemKey: 'work',
+    stableV5Metadata: { runtime: 'stable_v5' as const, conversationId, graphRevision: 1, taskId: 'task',
+      sourceFactRefs: ['task'], planType: 'study' as const } };
+  const result = await renderWeeklyPlanningStableV5AssistantMessage({
+    input: { messages: [], userText: '候補を確認します。', selectedDate: '2026-08-19', userId: 'owner-1',
+      plans: [], scheduleTemplates: [], conversationId, traceRequestId: requestId },
+    result: { state: { ...createInitialPlanningIntakeState(), status: 'draft_ready' },
+      message: '候補を確認してください。', stableV5Graph: graph, draftCandidates: [candidate] },
+  });
+  expect(completion).toHaveBeenCalledTimes(1);
+  expect(result.responseSource).toBe('ai');
+  const messages = completion.mock.calls[0][0].messages;
+  const payload = JSON.parse(messages[1].content);
+  // Independent numeric oracle before durable equality checks. Baseline should fail here.
+  expect(payload.applicationDecision.previewEvidence).toMatchObject({ status: 'available', graphRevision: 1,
+    constraintEvaluation: 'not_evaluated', summary: { candidateCount: 1, totalDurationMinutes: 70,
+      minDurationMinutes: 70, maxDurationMinutes: 70, earliestStartTime: '09:00', latestEndTime: '10:10' } });
+  const trace = boundWeeklyPlanningDialogueRendererTraceForTransport(result.dialogueRendererTrace!);
+  const context = trace.request!.promptContext as { messages: typeof messages; requestBytes: number };
+  expect(context.messages).toEqual(messages);
+  return { userId: 'owner-1', conversationId, requestId, userText: '候補を確認します。',
+    assistantMessage: result.message, responseSource: result.responseSource!, dialogueRendererTrace: trace,
+    outcome: 'preview_ready', previewCount: 1, debugTraceEvents: [], messages, context };
+}
+
+describe('actual preview evidence renderer request persistence', () => {
+  beforeEach(() => {
+    restoreStorage = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
+    resetWeeklyPlanningStableV5TraceRuntimeForTest();
+    resetWeeklyPlanningDialogueRendererPromptContextsForTest();
+    completion.mockReset();
+  });
+  afterEach(() => {
+    resetWeeklyPlanningStableV5TraceRuntimeForTest();
+    resetWeeklyPlanningDialogueRendererPromptContextsForTest();
+    completion.mockReset();
+    setWeeklyPlanningTraceRepositoryForTests(undefined);
+    restoreStorage?.(); restoreStorage = undefined;
+  });
+
+  it.each([false, true])('retains the actual sent observations through outbox and Worker, oversized=%s', async oversized => {
+    const harness = createRepositoryHarness();
+    harness.failNext();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    const actual = await actualPreviewTrace();
+    const { messages, context, ...first } = actual;
+    const promptContext = { ...context, futurePreviewEvidenceSentinel: FUTURE_FIELD_SENTINEL,
+      ...(oversized ? { oversizedFutureEvidence: 'あ'.repeat(80_000) } : {}) };
+    first.dialogueRendererTrace.request!.promptContext = promptContext;
+    // Bound the deliberately injected future diagnostic field before durable enqueue,
+    // exactly as normal trace transport does; do not overflow the outbox with raw240KiB.
+    first.dialogueRendererTrace = boundWeeklyPlanningDialogueRendererTraceForTransport(first.dialogueRendererTrace);
+    await recordWeeklyPlanningStableV5TurnTrace(first);
+    expect(harness.writes).toHaveLength(0);
+    const pending = listWeeklyPlanningTraceOutboxItems({ userId: first.userId, conversationId: first.conversationId });
+    expect(pending).toHaveLength(1);
+    if (!oversized) expect(pending[0].input.dialogueRendererTrace?.request?.promptContext).toMatchObject({
+      messages, futurePreviewEvidenceSentinel: FUTURE_FIELD_SENTINEL,
+    });
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace({ ...first, requestId: `${first.conversationId}:request:2`,
+      dialogueRendererTrace: undefined });
+    expect(harness.writes).toHaveLength(2);
+    const replayed = harness.writes[0];
+    expect(replayed.entries[0].requestId).toBe(first.requestId);
+    const persisted = promptContextFromEntry(replayed.entries[0]);
+    if (oversized) expect(persisted).toMatchObject({ traceTruncated: true, originalBytes: expect.any(Number) });
+    else expect(persisted).toEqual(promptContext);
+    expect(measureWeeklyPlanningTraceJsonBytes(replayed.entries[0]))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: first.userId, conversationId: first.conversationId })).toEqual([]);
+    const prepared = prepareWeeklyPlanningTraceServerWrite({ session: replayed.session as unknown as Record<string, unknown>,
+      entries: replayed.entries as unknown as Record<string, unknown>[] },
+      { token: `wpt_${'d'.repeat(43)}`, epoch: '103' },
+      { sessionId: 'weekly-trace-123e4567-e89b-52d3-a456-426614174000', logicalConversationId: first.conversationId },
+      '2026-10-10T10:00:00.000Z');
+    expect(prepared.entries).toHaveLength(1);
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0]))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    const preparedText = JSON.stringify(prepared.entries[0]);
+    if (oversized) {
+      expect(preparedText).toContain('traceTruncated');
+      expect(preparedText).not.toContain('あ'.repeat(80_000));
+    } else {
+      const workerContext = ((prepared.entries[0].diagnostics as Record<string, unknown>)
+        .dialogueRenderer as WeeklyPlanningDialogueRendererTrace).request?.promptContext;
+      expect(workerContext).toEqual(promptContext);
+    }
   });
 });
