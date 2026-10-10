@@ -346,16 +346,18 @@ it('persists real explicit-window correction diagnostics through failure, retry 
 });
 
 const EXACT_REFERENCE_TEXT = '数学は合計30分です。英語は前のままです。';
+const LOCAL_PENDING_REFERENCE_TEXT = '英語は1回30分です。数学はまだ分かりません。';
 const EXACT_REFERENCE_SENTINEL = 'future-h2-exact-reference-safe-field';
 const TRANSPORT_ONLY_CREDENTIAL = 'synthetic-h2-transport-only';
 const EXACT_REFERENCE_WEEK = '2026-10-11';
 
-function exactReferenceTraceFixture() {
+function exactReferenceTraceFixture(localPending = false) {
+  const userText = localPending ? LOCAL_PENDING_REFERENCE_TEXT : EXACT_REFERENCE_TEXT;
   const task = (localId: string, title: string): WeeklyPlanningSemanticDocumentV5['tasks'][number] => ({
     localId, existingPublicId: null, category: 'study', decompositionStatus: 'atomic', title,
     study: { purpose: 'self_study', activityKind: 'reading', contextLabel: null, components: [] },
     workloads: [], effortEstimates: [], temporalConstraints: [], recurrence: [],
-    durableContextSignals: [], sourceText: EXACT_REFERENCE_TEXT,
+    durableContextSignals: [], sourceText: userText,
   });
   const workload = (localId: string, amount: number) => ({ localId, quantityRole: 'target' as const,
     amount, unitCode: 'page' as const, unitLabel: 'ページ', rangeStart: null, rangeEnd: null,
@@ -375,21 +377,25 @@ function exactReferenceTraceFixture() {
     context: { conversationId: canonicalIds.logicalConversationId, turnId: 'exact-setup', expectedRevision: 0 },
   });
   if (setup.status !== 'applied') throw new Error(setup.errors.join(','));
-  const ownId = setup.localToFactId['setup-math'];
+  const ownId = setup.localToFactId[localPending ? 'setup-english' : 'setup-math'];
   const a = setup.localToFactId['setup-a'];
-  const b = setup.localToFactId['setup-b'];
+  const b = setup.localToFactId[localPending ? 'setup-c' : 'setup-b'];
   expect([ownId, a, b].every(Boolean)).toBe(true);
-  const shell = task('reply-task', '数学');
+  const shell = task('reply-task', localPending ? '英語' : '数学');
   shell.existingPublicId = ownId;
-  shell.effortEstimates = [{ localId: 'reply-effort', targetLocalId: b, kind: 'total_duration',
-    minutes: 30, unitCode: null, precision: 'exact', sourceText: EXACT_REFERENCE_TEXT }];
+  if (localPending) shell.workloads = [workload('reply-workload', 9)];
+  shell.effortEstimates = [{ localId: 'reply-effort', targetLocalId: localPending ? 'reply-workload' : b,
+    kind: localPending ? 'session_duration' : 'total_duration',
+    minutes: 30, unitCode: localPending ? 'session' : null, precision: 'exact', sourceText: userText }];
   const adopted = { ...base(), tasks: [shell] };
   const discarded = structuredClone(adopted);
+  discarded.tasks[0].existingPublicId = setup.localToFactId['setup-math'];
+  discarded.tasks[0].workloads = [];
   discarded.tasks[0].effortEstimates[0].targetLocalId = a;
   discarded.tasks[0].temporalConstraints = [{ localId: 'invalid-temporal', targetLocalId: 'undeclared-target',
     kind: 'deadline', constraintLevel: 'hard', dateExpression: '2026-10-17', namedTimePeriod: null,
-    startTime: null, endTime: null, precision: 'exact', sourceText: EXACT_REFERENCE_TEXT }];
-  return { graph: setup.graph, ownId, a, b, adopted, discarded };
+    startTime: null, endTime: null, precision: 'exact', sourceText: userText }];
+  return { graph: setup.graph, ownId, a, b, adopted, discarded, userText };
 }
 
 function checkpointExactReference(graph: ReturnType<typeof exactReferenceTraceFixture>['graph']) {
@@ -404,14 +410,19 @@ function checkpointExactReference(graph: ReturnType<typeof exactReferenceTraceFi
   return restored!.graph;
 }
 
-async function generatedExactReferenceTurn(oversized = false) {
-  const fixture = exactReferenceTraceFixture();
+async function generatedExactReferenceTurn(oversized = false, localPending = false) {
+  const fixture = exactReferenceTraceFixture(localPending);
   const graph = checkpointExactReference(fixture.graph);
   const before = structuredClone(graph);
   const initialRaw = JSON.stringify(fixture.discarded);
   const compact = JSON.stringify(fixture.adopted);
   const acceptedRaw = oversized ? `{${' '.repeat(6_000)}${compact.slice(1)}` : compact;
-  const scripted = [initialRaw, acceptedRaw];
+  const fallbackRaw = JSON.stringify({ decision: 'fallback', effortTarget: null, effortMeasurement: null,
+    minutes: null, precision: null, quantityRole: null });
+  const rawResponses = localPending ? [fallbackRaw, acceptedRaw] : [initialRaw, acceptedRaw];
+  const attempts = localPending ? ['focused_contextual_answer', 'initial'] : ['initial', 'repair'];
+  const acceptedAttempt = localPending ? 'initial' : 'repair';
+  const scripted = [...rawResponses];
   const requests: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]> = [];
   const bodies: Record<string, unknown>[] = [];
   const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -426,22 +437,30 @@ async function generatedExactReferenceTurn(oversized = false) {
     model: 'gpt-5.4-mini', apiKey: TRANSPORT_ONLY_CREDENTIAL });
   const delegate = client.createChatCompletion.bind(client);
   client.createChatCompletion = async request => { requests.push(structuredClone(request)); return delegate(request); };
-  const requestId = `h2-exact-reference-${oversized ? 'large' : 'small'}`;
+  const requestId = `h2-exact-reference-${localPending ? 'local-pending-' : ''}${oversized ? 'large' : 'small'}`;
   beginWeeklyPlanningStableV5DebugTrace(requestId);
   const result = await createWeeklyPlanningSemanticPipelineV5(createWeeklyPlanningSemanticNormalizerV5(client)).run({
     graph, conversationId: canonicalIds.logicalConversationId, turnId: requestId, expectedRevision: graph.revision,
-    userText: EXACT_REFERENCE_TEXT,
+    userText: fixture.userText,
+    ...(localPending ? { publicStateSummary: { pendingQuestion: { actionId: 'ask-trace-a',
+      questionCode: 'missing_effort_estimate' as const, targetFactId: fixture.a,
+      graphRevision: graph.revision, effortMeasurement: 'total_duration' as const } } } : {}),
     schedulerContext: { ownerId: 'trace-user', currentDate: '2026-10-10', planningStartDate: EXACT_REFERENCE_WEEK,
       planningEndDate: '2026-10-17', timeZone: 'Asia/Tokyo' },
   });
   expect(result.normalization.status, JSON.stringify(result.normalization.diagnostics)).toBe('accepted');
   expect(result.canonicalization?.status).toBe('applied');
   expect(result.normalization.document).toEqual(fixture.adopted);
-  expect(result.normalization.diagnostics.validationErrors).toEqual(['document.tasks[0].temporalConstraints[0].targetLocalId']);
+  expect(result.normalization.diagnostics.validationErrors).toEqual(localPending ? [] : ['document.tasks[0].temporalConstraints[0].targetLocalId']);
   expect(graph).toEqual(before);
-  expect(transport).toHaveBeenCalledTimes(2);
+  expect(transport).toHaveBeenCalledTimes(attempts.length);
   expect(scripted).toEqual([]);
-  expect(requests[1].messages).toContainEqual({ role: 'assistant', content: initialRaw });
+  if (localPending) {
+    expect(requests[0].responseFormat?.json_schema.name).toBe('weekly_planning_focused_contextual_answer_v5');
+    expect(requests[1].responseFormat?.json_schema.name).toBe('weekly_planning_semantic_document_v5');
+  } else {
+    expect(requests[1].messages).toContainEqual({ role: 'assistant', content: initialRaw });
+  }
   bodies.forEach((body, index) => {
     expect(body.messages).toEqual(requests[index].messages);
     expect(body.response_format).toEqual(requests[index].responseFormat);
@@ -450,16 +469,18 @@ async function generatedExactReferenceTurn(oversized = false) {
   const events = takeWeeklyPlanningStableV5DebugTrace(requestId);
   expect(JSON.stringify(events)).not.toContain(TRANSPORT_ONLY_CREDENTIAL);
   const requestEvents = events.filter(event => event.stage === 'semantic_provider_request');
-  expect(requestEvents).toHaveLength(2);
+  expect(requestEvents).toHaveLength(attempts.length);
   requestEvents.forEach((event, index) => {
-    expect(event.data).toMatchObject({ attempt: index === 0 ? 'initial' : 'repair',
+    expect(event.data).toMatchObject({ attempt: attempts[index],
       requestBytes: measureWeeklyPlanningTraceJsonBytes(requests[index]) });
   });
-  const initial = events.find(event => event.stage === 'semantic_validation_result'
-    && (event.data as { attempt?: string }).attempt === 'initial');
-  expect(initial?.data).toMatchObject({ accepted: false, errors: ['document.tasks[0].temporalConstraints[0].targetLocalId'] });
+  if (!localPending) {
+    const initial = events.find(event => event.stage === 'semantic_validation_result'
+      && (event.data as { attempt?: string }).attempt === 'initial');
+    expect(initial?.data).toMatchObject({ accepted: false, errors: ['document.tasks[0].temporalConstraints[0].targetLocalId'] });
+  }
   const accepted = events.find(event => event.stage === 'semantic_validation_result'
-    && (event.data as { attempt?: string }).attempt === 'repair');
+    && (event.data as { attempt?: string }).attempt === acceptedAttempt);
   expect(accepted).toBeDefined();
   const acceptedData = accepted!.data as { accepted: boolean; parsedDocument: Record<string, unknown> };
   expect(acceptedData.accepted).toBe(true);
@@ -473,20 +494,21 @@ async function generatedExactReferenceTurn(oversized = false) {
   expect(restored.components).toEqual(graph.components);
   expect(restored.temporalConstraints).toEqual([]);
   expect(restored.effortEstimates).toEqual([expect.objectContaining({
-    taskId: fixture.ownId, targetFactId: fixture.b, kind: 'total_duration', minutes: 30, unitCode: null,
-    source: expect.objectContaining({ turnId: requestId, semanticLocalId: 'reply-effort', sourceText: EXACT_REFERENCE_TEXT }),
+    taskId: fixture.ownId, targetFactId: fixture.b, kind: localPending ? 'session_duration' : 'total_duration',
+    minutes: 30, unitCode: localPending ? 'session' : null,
+    source: expect.objectContaining({ turnId: requestId, semanticLocalId: 'reply-effort', sourceText: fixture.userText }),
   })]);
   expect(restored.workloads.map(workload => {
     if (workload.quantityRole !== 'target') throw new Error('exact-reference trace fixture requires target quantities');
     return effortEstimateTargetsWorkload(restored.effortEstimates[0], { ...workload, quantityRole: workload.quantityRole });
   }))
     .toEqual(restored.workloads.map(workload => workload.id === fixture.b));
-  return { fixture, result, events, initialRaw, acceptedRaw, requestId, requests };
+  return { fixture, result, events, initialRaw, acceptedRaw, requestId, requests, attempts, rawResponses, acceptedAttempt };
 }
 
 async function persistGeneratedExactReference(turn: Awaited<ReturnType<typeof generatedExactReferenceTurn>>) {
   const input = { ...traceInput({ requestId: turn.requestId, debugTraceEvents: turn.events }),
-    userText: EXACT_REFERENCE_TEXT, assistantMessage: '条件を確認しました。', outcome: turn.result.status };
+    userText: turn.fixture.userText, assistantMessage: '条件を確認しました。', outcome: turn.result.status };
   await recordWeeklyPlanningStableV5TurnTrace(input);
   expect(repositoryState.attempts).toHaveLength(1);
   expect(repositoryState.successfulWrites).toHaveLength(0);
@@ -567,4 +589,41 @@ it('keeps an oversized real accepted-reference turn with explicit partial-eviden
   expect(JSON.stringify(entry.diagnostics.truncation)).toContain('aiInterpreter.structuredResults[1].structuredResult');
   expect(JSON.stringify(stored)).not.toContain('x'.repeat(48 * 1024));
   // Exact final graph targeting was checked separately; truncated trace is partial.
+});
+
+
+it.each([false, true])('persists explicit local B/session with pending A/total through retry and Worker (oversized=%s)', async oversized => {
+  const turn = await generatedExactReferenceTurn(oversized, true);
+  const { entry, stored } = await persistGeneratedExactReference(turn);
+  expect(entry.aiInterpreter.input.requests.map(request => request.attempt)).toEqual(turn.attempts);
+  entry.aiInterpreter.input.requests.forEach((request, index) => {
+    expect(request.requestBytes).toBe(measureWeeklyPlanningTraceJsonBytes(turn.requests[index]));
+    expect(request.purpose).toBe(turn.requests[index].purpose);
+    expect(request.maxCompletionTokens).toBe(turn.requests[index].maxCompletionTokens);
+  });
+  expect(entry.aiInterpreter.rawResponses.map(response => response.attempt)).toEqual(turn.attempts);
+  expect(entry.aiInterpreter.structuredResults).toHaveLength(1);
+  expect(entry.aiInterpreter.input.planningStateSummary).toMatchObject({ pendingQuestion: {
+    targetFactId: turn.fixture.a, effortMeasurement: 'total_duration',
+  } });
+  const raw = entry.aiInterpreter.rawResponses.find(response => response.attempt === turn.acceptedAttempt)!;
+  const accepted = entry.aiInterpreter.structuredResults.find(result => result.attempt === turn.acceptedAttempt && result.accepted)!;
+  expect(accepted.errors).toEqual([]);
+  if (!oversized) {
+    turn.rawResponses.forEach((text, index) => expect(entry.aiInterpreter.rawResponses[index]).toMatchObject({ text, truncated: false }));
+    expect(JSON.parse(raw.text).tasks[0]).toMatchObject({ existingPublicId: turn.fixture.ownId,
+      workloads: [expect.objectContaining({ localId: 'reply-workload' })],
+      effortEstimates: [expect.objectContaining({ targetLocalId: 'reply-workload', kind: 'session_duration' })] });
+    expect(accepted.structuredResult).toEqual({ ...turn.result.normalization.document, futureExactReferenceField: EXACT_REFERENCE_SENTINEL });
+  } else {
+    expect(raw).toMatchObject({ truncated: true, originalBytes: new TextEncoder().encode(turn.acceptedRaw).byteLength,
+      checksum: expect.stringMatching(/^fnv1a32:/) });
+    expect(raw.text).toContain('trace head-tail');
+    expect(accepted.structuredResult).toMatchObject({ traceTruncated: true, originalBytes: expect.any(Number),
+      checksum: expect.stringMatching(/^fnv1a32:/) });
+    expect(entry.diagnostics.truncation).toMatchObject({ applied: true });
+    expect(JSON.stringify(entry.diagnostics.truncation)).toContain('aiInterpreter.rawResponses[1].text');
+    expect(JSON.stringify(entry.diagnostics.truncation)).toContain('aiInterpreter.structuredResults[0].structuredResult');
+    expect(JSON.stringify(stored)).not.toContain('x'.repeat(48 * 1024));
+  }
 });

@@ -282,7 +282,7 @@ function exactWorkload(localId: string, amount: number, sourceText: string): Exa
     rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null, sourceText,
   };
 }
-function exactFixture() {
+function exactFixture(duplicateOtherWorkload = false) {
   const own = exactTask('setup-math', '数学');
   own.sourceText = '数学の12ページと18ページを進めます';
   own.workloads = [
@@ -292,6 +292,7 @@ function exactFixture() {
   const other = exactTask('setup-english', '英語');
   other.sourceText = '英語の9ページを進めます';
   other.workloads = [exactWorkload('setup-c', 9, '英語の9ページ')];
+  if (duplicateOtherWorkload) other.workloads.push(exactWorkload('setup-d', 9, '英語の別の9ページ'));
   const accepted = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
     graph: createEmptyWeeklyPlanningFactGraphV5(), document: exactDocument([own, other]),
     context: { conversationId: EXACT_CONVERSATION, turnId: 'setup', expectedRevision: 0 },
@@ -304,7 +305,9 @@ function exactFixture() {
     if (!factId) throw new Error(`missing fixture ID: ${localId}`);
     return factId;
   };
-  expect(graph.workloads.map(fact => fact.unitCode)).toEqual(['page', 'page', 'page']);
+  expect(graph.workloads.map(fact => fact.unitCode)).toEqual(
+    duplicateOtherWorkload ? ['page', 'page', 'page', 'page'] : ['page', 'page', 'page'],
+  );
   expect(graph.components).toEqual([]);
   return { graph, own: id('setup-math'), other: id('setup-english'), a: id('setup-a'), b: id('setup-b'), c: id('setup-c') };
 }
@@ -550,7 +553,7 @@ function exactPendingQuestion(f: ExactFixture) {
   return { actionId: 'ask-exact-a', questionCode: 'missing_effort_estimate' as const,
     targetFactId: f.a, graphRevision: f.graph.revision, effortMeasurement: 'total_duration' as const };
 }
-async function runPendingDurationReading(f: ExactFixture, document: WeeklyPlanningSemanticDocumentV5, turnId: string) {
+async function runPendingDurationReading(f: ExactFixture, document: WeeklyPlanningSemanticDocumentV5, turnId: string, userText = EXACT_TEXT) {
   const before = structuredClone(f.graph);
   const documentBefore = structuredClone(document);
   const fallback = JSON.stringify({ decision: 'fallback', effortTarget: null, effortMeasurement: null,
@@ -572,7 +575,7 @@ async function runPendingDurationReading(f: ExactFixture, document: WeeklyPlanni
   };
   const result = await createWeeklyPlanningSemanticPipelineV5(createWeeklyPlanningSemanticNormalizerV5(client)).run({
     graph: f.graph, conversationId: EXACT_CONVERSATION, turnId, expectedRevision: f.graph.revision,
-    userText: EXACT_TEXT, publicStateSummary: { pendingQuestion: exactPendingQuestion(f) },
+    userText, publicStateSummary: { pendingQuestion: exactPendingQuestion(f) },
     schedulerContext: { ownerId: 'exact-workload-owner', currentDate: '2026-10-10',
       planningStartDate: '2026-10-11', planningEndDate: '2026-10-17', timeZone: 'Asia/Tokyo' },
   });
@@ -804,5 +807,237 @@ describe('Stable V5 raw local-reference authority before duplicate cleanup', () 
     expect(JSON.stringify(document)).toBe(raw);
     // This assertion concerns this raw input only; externally cleaned JSON is
     // a different input and is not claimed to be an idempotent rejected replay.
+  });
+});
+
+// H2 local-reference discriminator. Reuse exactFixture's canonical-writer graph.
+// For this pair A=f.a/task=f.own and B=f.c/task=f.other; f.b remains an untouched sibling.
+const LOCAL_OTHER_TEXT = '英語は1回30分です。数学はまだ分かりません。';
+
+function otherTaskLocalDurationReading(f: ExactFixture) {
+  const document = replayReading(f, f.c, 'session_duration');
+  const task = document.tasks[0];
+  task.existingPublicId = f.other;
+  task.title = '英語';
+  task.sourceText = LOCAL_OTHER_TEXT;
+  task.effortEstimates[0].sourceText = LOCAL_OTHER_TEXT;
+  return document;
+}
+
+function expectOtherTaskSessionDuration(
+  result: Awaited<ReturnType<typeof runDurationReadings>>['result'],
+  f: ExactFixture,
+  expectedDocument: WeeklyPlanningSemanticDocumentV5,
+) {
+  const evidence = JSON.stringify({
+    normalization: result.normalization,
+    canonicalization: result.canonicalization,
+    efforts: result.graph.effortEstimates,
+    expected: { taskId: f.other, targetFactId: f.c, kind: 'session_duration' },
+    pending: { taskId: f.own, targetFactId: f.a, kind: 'total_duration' },
+  }, null, 2);
+  expect(result.normalization.status, evidence).toBe('accepted');
+  expect(result.normalization.document, evidence).toEqual(expectedDocument);
+  expect(result.canonicalization?.status, evidence).toBe('applied');
+  expect(result.graph.tasks, evidence).toEqual(f.graph.tasks);
+  expect(result.graph.workloads, evidence).toEqual(f.graph.workloads);
+  expect(result.graph.components, evidence).toEqual(f.graph.components);
+  expect(result.graph.temporalConstraints, evidence).toEqual(f.graph.temporalConstraints);
+  expect(result.graph.revision, evidence).toBe(f.graph.revision + 1);
+  expect(result.graph.effortEstimates, evidence).toEqual([
+    expect.objectContaining({
+      taskId: f.other, targetFactId: f.c, kind: 'session_duration', minutes: 30,
+      unitCode: 'session', precision: 'exact',
+      source: expect.objectContaining({ semanticLocalId: 'reply-effort', sourceText: LOCAL_OTHER_TEXT, origin: 'user' }),
+    }),
+  ]);
+  expect(result.canonicalization?.localToFactId['reply-task'], evidence).toBe(f.other);
+  expect(result.canonicalization?.localToFactId['replayed-workload'], evidence).toBe(f.c);
+  expect(result.canonicalization?.diff?.added, evidence).toEqual([
+    { kind: 'effort_estimate', id: result.graph.effortEstimates[0].id },
+  ]);
+  const reloaded = parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph));
+  expect(reloaded.errors, evidence).toEqual([]);
+  expect(reloaded.graph, evidence).toEqual(result.graph);
+}
+
+describe('Stable V5 explicit local workload identity versus pending answer identity', () => {
+  it('establishes the valid other-task local B/session control without a pending question', async () => {
+    const f = exactFixture();
+    const document = otherTaskLocalDurationReading(f);
+    const { result, calls } = await runDurationReadings({
+      graph: f.graph, documents: [document], turnId: 'other-task-no-pending', userText: LOCAL_OTHER_TEXT,
+    });
+    expect(calls).toHaveLength(1);
+    expect(result.normalization.diagnostics).toMatchObject({ attemptCount: 1, repairAttempted: false });
+    expectOtherTaskSessionDuration(result, f, document);
+  });
+
+  it('preserves explicit other-task B/session for a one-value local versus external representation pair while A/total is pending', async () => {
+    const f = exactFixture();
+    const local = otherTaskLocalDurationReading(f);
+    const external = structuredClone(local);
+    external.tasks[0].effortEstimates[0].targetLocalId = f.c;
+    const reverted = structuredClone(external);
+    reverted.tasks[0].effortEstimates[0].targetLocalId = 'replayed-workload';
+    expect(reverted).toEqual(local);
+    expect(local.tasks[0].existingPublicId).toBe(f.other);
+    expect(local.tasks[0].existingPublicId).not.toBe(f.own);
+    expect(local.tasks[0].workloads).toHaveLength(1);
+    expect(local.tasks[0].workloads[0].localId).toBe('replayed-workload');
+    expect(external.tasks[0].workloads.every(workload => workload.localId !== f.c)).toBe(true);
+
+    // Same graph, pending target, turn identity, user evidence and provider route.
+    // No extra independent delta is inserted to bypass contextual routing.
+    const externalRun = await runPendingDurationReading(f, external, 'other-task-pair', LOCAL_OTHER_TEXT);
+    const localRun = await runPendingDurationReading(f, local, 'other-task-pair', LOCAL_OTHER_TEXT);
+    for (const attempt of [externalRun, localRun]) {
+      expect(attempt.calls.map(call => call.responseFormat?.json_schema.name)).toEqual([
+        'weekly_planning_focused_contextual_answer_v5', 'weekly_planning_semantic_document_v5',
+      ]);
+      expect(attempt.result.normalization.diagnostics).toMatchObject({ repairAttempted: false });
+    }
+    // External is checked first so a local mismatch cannot disguise a broken positive control.
+    expectOtherTaskSessionDuration(externalRun.result, f, external);
+    expectOtherTaskSessionDuration(localRun.result, f, local);
+    expect(localRun.result.graph).toEqual(externalRun.result.graph);
+    expect(localRun.result.scheduler).toEqual(externalRun.result.scheduler);
+  });
+
+  it('keeps an unqualified local task-shell answer on pending A/total', async () => {
+    const f = exactFixture();
+    const document = durationReading(f, 'reply-task');
+    const task = document.tasks[0];
+    task.existingPublicId = null;
+    task.title = '直前の質問対象';
+    task.sourceText = '30分です';
+    task.effortEstimates[0].sourceText = '30分です';
+    const { result, calls } = await runPendingDurationReading(f, document, 'unqualified-pending-control', '30分です');
+    expect(calls).toHaveLength(2);
+    expect(result.normalization.status, JSON.stringify(result.normalization, null, 2)).toBe('accepted');
+    expect(result.normalization.document).toEqual(document);
+    expect(result.canonicalization?.status).toBe('applied');
+    expect(result.graph.tasks).toEqual(f.graph.tasks);
+    expect(result.graph.workloads).toEqual(f.graph.workloads);
+    expect(result.graph.effortEstimates).toEqual([expect.objectContaining({
+      taskId: f.own, targetFactId: f.a, kind: 'total_duration', minutes: 30, unitCode: null,
+      source: expect.objectContaining({ semanticLocalId: 'contextual-effort-answer', sourceText: '30分です' }),
+    })]);
+    expect(result.graph.revision).toBe(f.graph.revision + 1);
+    expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph)).graph).toEqual(result.graph);
+  });
+});
+
+describe('Stable V5 qualified local workload canonical-binding controls', () => {
+  it('rejects ambiguous existing B workloads instead of projecting their value onto pending A', async () => {
+    const f = exactFixture(true);
+    const document = otherTaskLocalDurationReading(f);
+    const { result, calls } = await runPendingDurationReading(f, document, 'ambiguous-local-b', LOCAL_OTHER_TEXT);
+    expect(calls).toHaveLength(2);
+    expect(result.normalization.status, JSON.stringify(result.normalization, null, 2)).toBe('accepted');
+    expect(result.normalization.document).toEqual(document);
+    expect(result.status).toBe('canonicalization_rejected');
+    expect(result.canonicalization?.errors.some(error => error.startsWith('existing-workload-binding-ambiguous:replayed-workload:'))).toBe(true);
+    expect(result.canonicalization?.diff).toBeNull();
+    expect(result.graph).toEqual(f.graph);
+  });
+
+  it('keeps a genuinely new B workload new instead of guessing an existing or pending target', async () => {
+    const f = exactFixture();
+    const document = otherTaskLocalDurationReading(f);
+    const userText = '英語に23ページを追加し、1回30分です。数学はまだ分かりません。';
+    document.tasks[0].sourceText = userText;
+    document.tasks[0].workloads[0].amount = 23;
+    document.tasks[0].workloads[0].sourceText = userText;
+    document.tasks[0].effortEstimates[0].sourceText = userText;
+    const { result, calls } = await runPendingDurationReading(f, document, 'new-local-b', userText);
+    expect(calls).toHaveLength(2);
+    expect(result.normalization.status, JSON.stringify(result.normalization, null, 2)).toBe('accepted');
+    expect(result.normalization.document).toEqual(document);
+    expect(result.canonicalization?.status).toBe('applied');
+    const target = result.canonicalization?.localToFactId['replayed-workload'];
+    expect(target).toBeTruthy();
+    expect(f.graph.workloads.map(workload => workload.id)).not.toContain(target);
+    expect(result.graph.tasks).toEqual(f.graph.tasks);
+    expect(result.graph.workloads.slice(0, f.graph.workloads.length)).toEqual(f.graph.workloads);
+    expect(result.graph.workloads).toHaveLength(f.graph.workloads.length + 1);
+    expect(result.graph.workloads[result.graph.workloads.length - 1]).toMatchObject({ id: target, taskId: f.other, amount: 23, unitCode: 'page' });
+    expect(result.graph.effortEstimates).toEqual([expect.objectContaining({
+      taskId: f.other, targetFactId: target, kind: 'session_duration', minutes: 30, unitCode: 'session',
+      source: expect.objectContaining({ semanticLocalId: 'reply-effort', sourceText: userText }),
+    })]);
+    expect(result.graph.revision).toBe(f.graph.revision + 1);
+    expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph)).graph).toEqual(result.graph);
+  });
+
+  it('rejects an invalid explicit B owner rather than treating it as an unqualified pending answer', async () => {
+    const f = exactFixture();
+    const document = otherTaskLocalDurationReading(f);
+    const userText = '英語の9ページは1回30分です。数学はまだ分かりません。';
+    document.tasks[0].existingPublicId = 'missing-task';
+    document.tasks[0].sourceText = userText;
+    document.tasks[0].workloads[0].sourceText = userText;
+    document.tasks[0].effortEstimates[0].sourceText = userText;
+    const { result, calls } = await runPendingDurationReading(f, document, 'invalid-local-owner', userText);
+    expect(calls).toHaveLength(2);
+    expect(result.normalization.status, JSON.stringify(result.normalization, null, 2)).toBe('accepted');
+    expect(result.normalization.document).toEqual(document);
+    expect(result.status).toBe('canonicalization_rejected');
+    expect(result.canonicalization?.errors).toContain('existing-task-binding-not-active:reply-task:missing-task');
+    expect(result.canonicalization?.diff).toBeNull();
+    expect(result.graph).toEqual(f.graph);
+  });
+});
+
+
+describe('Stable V5 exact pending restatement eligibility', () => {
+  it.each([['session_duration', 'session'], ['total_duration', 'page']] as const)(
+    'preserves explicit local A/%s with unit %s instead of coercing pending A/total', async (kind, unitCode) => {
+    const f = exactFixture();
+    const document = replayReading(f, f.a, kind);
+    document.tasks[0].effortEstimates[0].unitCode = unitCode;
+    const userText = '数学は30分です。';
+    document.tasks[0].study = { purpose: 'unknown', activityKind: 'unknown', contextLabel: null, components: [] };
+    document.tasks[0].sourceText = userText;
+    document.tasks[0].effortEstimates[0].sourceText = userText;
+    const { result, calls } = await runPendingDurationReading(f, document, 'same-a-different-measurement', userText);
+    expect(calls).toHaveLength(2);
+    expect(result.normalization.status, JSON.stringify(result.normalization)).toBe('accepted');
+    expect(result.normalization.document).toEqual(document);
+    expect(result.canonicalization?.status).toBe('applied');
+    expect(result.canonicalization?.localToFactId['replayed-workload']).toBe(f.a);
+    expect(result.graph.workloads).toEqual(f.graph.workloads);
+    expect(result.graph.effortEstimates).toEqual([expect.objectContaining({
+      taskId: f.own, targetFactId: f.a, kind, minutes: 30, unitCode,
+      source: expect.objectContaining({ semanticLocalId: 'reply-effort', sourceText: userText }),
+    })]);
+    expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph)).graph).toEqual(result.graph);
+  });
+
+  it('retains an extra declared workload beside an otherwise exact pending A/total answer', async () => {
+    const f = exactFixture();
+    const document = replayReading(f, f.a, 'total_duration');
+    const userText = '数学は合計30分です。さらに23ページを追加します。';
+    document.tasks[0].study = { purpose: 'unknown', activityKind: 'unknown', contextLabel: null, components: [] };
+    document.tasks[0].sourceText = userText;
+    document.tasks[0].effortEstimates[0].sourceText = userText;
+    document.tasks[0].workloads.push(exactWorkload('extra-local-workload', 23, userText));
+    const { result, calls } = await runPendingDurationReading(f, document, 'same-a-extra-workload', userText);
+    expect(calls).toHaveLength(2);
+    expect(result.normalization.status, JSON.stringify(result.normalization)).toBe('accepted');
+    expect(result.normalization.document).toEqual(document);
+    expect(result.canonicalization?.status).toBe('applied');
+    expect(result.canonicalization?.localToFactId['replayed-workload']).toBe(f.a);
+    const addedId = result.canonicalization?.localToFactId['extra-local-workload'];
+    expect(addedId).toBeTruthy();
+    expect(f.graph.workloads.map(workload => workload.id)).not.toContain(addedId);
+    expect(result.graph.workloads.slice(0, f.graph.workloads.length)).toEqual(f.graph.workloads);
+    expect(result.graph.workloads).toHaveLength(f.graph.workloads.length + 1);
+    expect(result.graph.workloads.find(workload => workload.id === addedId)).toMatchObject({ taskId: f.own, amount: 23, unitCode: 'page' });
+    expect(result.graph.effortEstimates).toEqual([expect.objectContaining({
+      taskId: f.own, targetFactId: f.a, kind: 'total_duration', minutes: 30, unitCode: null,
+      source: expect.objectContaining({ semanticLocalId: 'reply-effort', sourceText: userText }),
+    })]);
+    expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph)).graph).toEqual(result.graph);
   });
 });

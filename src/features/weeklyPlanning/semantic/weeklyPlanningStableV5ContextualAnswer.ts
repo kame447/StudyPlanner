@@ -1,4 +1,7 @@
-import { resolveWeeklyPlanningExactWorkloadEffortTargetV5 } from './weeklyPlanningExistingEntityBindingV5';
+import {
+  requiresWeeklyPlanningExplicitLocalWorkloadEffortBindingV5,
+  resolveWeeklyPlanningExactWorkloadEffortTargetV5,
+} from './weeklyPlanningExistingEntityBindingV5';
 import {
   createActiveLifecycleEntriesV5,
 } from './weeklyPlanningFactLifecycleV5';
@@ -159,6 +162,8 @@ function isMinimalWorkloadContextualReply(
       resolveWeeklyPlanningExactWorkloadEffortTargetV5({
         document: input.document, task, estimate, graph: input.graph,
       }) !== null))
+    && !(input.pendingQuestion.questionCode === 'missing_effort_estimate'
+      && requiresWeeklyPlanningExplicitLocalWorkloadEffortBindingV5(input))
     && input.document.relations.length === 0
     && input.document.availabilityDeclarations.length === 0
     && input.document.constraintSourceRequests.length === 0
