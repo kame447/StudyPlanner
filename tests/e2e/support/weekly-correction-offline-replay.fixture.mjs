@@ -91,6 +91,58 @@ test('offline recorded checkpoint: actual App chat, v2 preview, explicit local s
     await preview(page).getByRole('button', { name: '閉じる', exact: true }).click({ timeout: uiTimeout(page) });
     await expect(preview(page)).toHaveCount(0, { timeout: uiTimeout(page) });
     await inspectPreview(page, candidates, scenario, evidenceDir, observations);
+    // Require all natural initial/reopened captures to carry the new stability proof.
+    const settled = observations.filter(row => row.kind === 'preview-stability');
+    expect(settled.map(({ scenario: id, width }) => ({ scenario: id, width }))).toEqual([
+      { scenario: `${scenario.id}-initial`, width: 1280 }, { scenario: `${scenario.id}-initial`, width: 390 },
+      { scenario: scenario.id, width: 1280 }, { scenario: scenario.id, width: 390 },
+    ]);
+    for (const row of settled) {
+      expect(row.stableFrames).toBe(3);
+      expect(row.allAncestorOpacities.every(value => value === 1)).toBe(true);
+      expect(row.measuredRectangles).toBeGreaterThan(candidates.length);
+    }
+    // Same-value opacity isolates finite animation state from changing rect/opacity.
+    // The test waits for natural completion; it never finishes a production animation.
+    const finiteProbe = await preview(page).evaluateHandle(root => root.animate(
+      [{ opacity: 1 }, { opacity: 1 }], { duration: 1_000, fill: 'forwards' },
+    ));
+    try {
+      const before = await finiteProbe.evaluate(animation => ({ pending: animation.pending, state: animation.playState }));
+      expect(before.pending || before.state === 'running').toBe(true);
+      await waitForPreviewStability(page, { id: 'offline-preview-finite-control' }, 390, observations);
+      expect(await finiteProbe.evaluate(animation => animation.playState)).toBe('finished');
+      expect(observations.at(-1).finiteAnimationCount).toBeGreaterThan(0);
+      observations.push({ kind: 'offline-finite-animation-natural-completion', before, after: 'finished' });
+    } finally {
+      await finiteProbe.evaluate(animation => animation.cancel());
+      await finiteProbe.dispose();
+    }
+    // A paused finite animation with unchanged geometry must fail under a shorter
+    // existing-style turn budget, without changing the enclosing case deadline.
+    const pausedProbe = await preview(page).evaluateHandle(async root => {
+      const animation = root.animate([{ opacity: 1 }, { opacity: 1 }], { duration: 1_000, fill: 'forwards' });
+      animation.pause();
+      await animation.ready;
+      return animation;
+    });
+    const previousTurnDeadline = budget.turnDeadline;
+    const pausedStarted = Date.now();
+    let pausedError = null;
+    try {
+      expect(await pausedProbe.evaluate(animation => animation.playState)).toBe('paused');
+      budget.turnDeadline = Math.min(budget.deadline, pausedStarted + 200);
+      try { await waitForPreviewStability(page, { id: 'offline-preview-paused-control' }, 390, observations); }
+      catch (error) { pausedError = error; }
+      expect(pausedError?.name).toBe('TimeoutError');
+      expect(Date.now() - pausedStarted).toBeLessThan(2_000);
+      expect(observations.some(row => row.kind === 'preview-stability' && row.scenario === 'offline-preview-paused-control')).toBe(false);
+      observations.push({ kind: 'offline-paused-animation-rejected', errorName: pausedError.name, elapsedMs: Date.now() - pausedStarted });
+    } finally {
+      budget.turnDeadline = previousTurnDeadline;
+      await pausedProbe.evaluate(animation => animation.cancel());
+      await pausedProbe.dispose();
+    }
     await saveAndReload(page, candidates, observations, scenario);
     // Explicit negative control: routeWebSocket must close this before any server connection.
     const deniedSocket = await page.evaluate(() => new Promise(resolve => {

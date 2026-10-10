@@ -504,6 +504,50 @@ async function inspectRendererAdoption(page, snapshot, receipts, text, scenario,
   await page.screenshot({ path: path.join(evidenceDir, `${scenario.id}-turn-${snapshot.planningState.messages.filter(row => row.role === 'user').length}.png`), fullPage: true, timeout: uiTimeout(page, 2_000) });
 }
 
+// Visibility alone accepts an entering sheet. Observe its natural settled state before
+// measuring or capturing it; keep this wait inside the existing case/turn deadline.
+async function waitForPreviewStability(page, scenario, width, observations) {
+  const handle = await page.waitForFunction(state => {
+    // waitForFunction evaluates once immediately; count only later animation-frame polls.
+    if (!state.started) { state.started = true; return false; }
+    const root = document.querySelector('.ai-planning-preview-dialog-v2[role="dialog"][aria-label="計画プレビュー"]');
+    if (!root?.isConnected || document.fonts.status !== 'loaded') {
+      state.previous = null; state.stableFrames = 0;
+      return false;
+    }
+    const ancestors = [];
+    for (let element = root; element; element = element.parentElement) ancestors.push(element);
+    const animations = new Set(root.getAnimations({ subtree: true }));
+    for (const element of ancestors) for (const animation of element.getAnimations()) animations.add(animation);
+    const finite = [...animations].filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime));
+    const styles = ancestors.map(element => getComputedStyle(element));
+    state.finiteAnimationCount = Math.max(state.finiteAnimationCount, finite.length);
+    if (finite.some(animation => animation.pending || !['finished', 'idle'].includes(animation.playState))
+      || styles.some(style => style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) !== 1)) {
+      state.previous = null; state.stableFrames = 0;
+      return false;
+    }
+    const measured = [root, ...root.querySelectorAll('.ai-planning-week-header, .ai-planning-week-body, .ai-planning-day-column, .ai-planning-time-axis > span, .ai-planning-draft-block')];
+    const rectangles = measured.map(element => {
+      const rect = element.getBoundingClientRect();
+      return [rect.x, rect.y, rect.width, rect.height];
+    });
+    if (rectangles.some(rect => rect.some(value => !Number.isFinite(value)) || rect[2] <= 0 || rect[3] <= 0)) {
+      state.previous = null; state.stableFrames = 0;
+      return false;
+    }
+    const signature = JSON.stringify(rectangles);
+    state.stableFrames = signature === state.previous ? state.stableFrames + 1 : 1;
+    state.previous = signature;
+    if (state.stableFrames < 3) return false;
+    return { stableFrames: state.stableFrames, finiteAnimationCount: state.finiteAnimationCount,
+      measuredRectangles: rectangles.length, dialogRect: rectangles[0], allAncestorOpacities: styles.map(style => Number(style.opacity)),
+      animationPolicy: 'natural finite completion; no animation fast-forward or fixed delay' };
+  }, { started: false, previous: null, stableFrames: 0, finiteAnimationCount: 0 }, { polling: 'raf', timeout: uiTimeout(page) });
+  try { observations.push({ kind: 'preview-stability', scenario: scenario.id, width, ...(await handle.jsonValue()) }); }
+  finally { await handle.dispose(); }
+}
+
 // The real visible calendar columns and hour markers form an independent DOM oracle.
 async function inspectPreview(page, candidates, scenario, evidenceDir, observations) {
   await captureUiEvidence(page, scenario, 'before-preview', evidenceDir, observations);
@@ -514,6 +558,7 @@ async function inspectPreview(page, candidates, scenario, evidenceDir, observati
     .toHaveAttribute('aria-selected', 'true', { timeout: uiTimeout(page) });
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 844 });
+    await waitForPreviewStability(page, scenario, width, observations);
     const dom = await preview(page).evaluate(root => {
       const labels = [...root.querySelectorAll('.ai-planning-week-header > div strong')].map(el => el.textContent);
       const columns = [...root.querySelectorAll('.ai-planning-week-body > .ai-planning-day-column')];
