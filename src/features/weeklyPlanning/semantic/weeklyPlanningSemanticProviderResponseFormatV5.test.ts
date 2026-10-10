@@ -99,4 +99,17 @@ describe('Stable V5 provider representation schema', () => {
     expect(availabilityDayItems.enum).not.toContain('tuesday');
     expect(recurrenceDayItems.enum).not.toContain('tuesday');
   });
+  it('offers only the four ordinary additive acts without provider-authored resolution authority', () => {
+    const acts = record(rootProperties().conversationActs);
+    const item = record(acts.items);
+    const properties = record(item.properties);
+    expect(acts).toMatchObject({ type: 'array' });
+    expect(item.additionalProperties).toBe(false);
+    expect(item.required).toEqual(['kind', 'targetPublicId']);
+    expect(Object.keys(properties).sort()).toEqual(['kind', 'targetPublicId']);
+    expect(record(properties.kind).enum).toEqual([
+      'answer_pending_question', 'ask_about_pending_question', 'topic_shift', 'resume_topic',
+    ]);
+  });
+
 });

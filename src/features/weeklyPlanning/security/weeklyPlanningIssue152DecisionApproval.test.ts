@@ -73,9 +73,10 @@ function decisionDocument(ids: string[]): WeeklyPlanningSemanticDocumentV5 {
 }
 
 describe('Issue #152 V09 proposal decision application boundary', () => {
-  it('documents application of all typed collective decisions (semantic-owned; see Luna B V09)', () => {
+  it('applies a typed decision only to the proposal that was the presented question (Issue #488)', () => {
     const previous = [proposal('proposal-a', 'work-a'), proposal('proposal-b', 'work-b')];
     const result = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      presentedProposalId: 'proposal-a',
       previousState: intakeState(previous),
       document: decisionDocument(['proposal-a', 'proposal-b']),
       localToFactId: {},
@@ -83,7 +84,11 @@ describe('Issue #152 V09 proposal decision application boundary', () => {
       graphRevision: 2,
       turnId: 'turn-2',
     });
-    expect(result.records.filter((record) => record.status === 'accepted')).toHaveLength(2);
+    // A collective utterance cannot settle a proposal the user was never shown; it
+    // stays pending until its own question is presented.
+    expect(result.records.filter((record) => record.status === 'accepted').map((record) => record.id))
+      .toEqual(['proposal-a']);
+    expect(result.records.find((record) => record.id === 'proposal-b')?.status).toBe('pending');
   });
 
   it('documents proposal reference validation does not bind side decisions to pendingQuestion (semantic-owned; see Luna B V09)', () => {

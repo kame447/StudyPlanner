@@ -77,7 +77,13 @@ export interface WeeklyPlanningTurnObservability {
   unscheduledCount: number | null;
 }
 
+/** Turn-local application outcome; never persisted as a planning authority. */
+export type WeeklyPlanningInteractionOutcome = {
+  kind: 'apply' | 'explain_pending_question' | 'aside' | 'resume_pending_question';
+};
+
 export interface WeeklyPlanningTurnExecutionResult {
+  interactionOutcome?: WeeklyPlanningInteractionOutcome;
   state: PlanningIntakeState;
   message: string;
   draftCandidates: WeeklyDraftCandidate[];

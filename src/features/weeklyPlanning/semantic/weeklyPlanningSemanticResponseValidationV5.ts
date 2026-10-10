@@ -1,3 +1,4 @@
+import { resolveWeeklyPlanningConversationActTargetsV5, type SemanticConversationActV5 } from './weeklyPlanningConversationActsV5';
 import {
   validateWeeklyPlanningCorrectionTargetReferencesV5,
   validateWeeklyPlanningRawCorrectionTargetReferencesV5,
@@ -60,6 +61,8 @@ export interface WeeklyPlanningSemanticResponseValidationInputV5 {
 }
 
 export interface WeeklyPlanningSemanticValidationAttemptV5 {
+  conversationActs?: SemanticConversationActV5[];
+  conversationActDiagnostics?: string[];
   document: WeeklyPlanningSemanticDocumentV5 | null;
   parsedDocument: WeeklyPlanningSemanticDocumentV5 | null;
   errors: string[];
@@ -94,6 +97,10 @@ export function validateWeeklyPlanningSemanticResponseV5(
   const parsed = parseWeeklyPlanningSemanticDocumentV5(
     preParseNormalization.rawResponse,
   );
+  const actTargets = parsed.conversationActs
+    ? resolveWeeklyPlanningConversationActTargetsV5({ acts: parsed.conversationActs, publicStateSummary: input.publicStateSummary }) : null;
+  const actEvidence = actTargets ? { conversationActs: actTargets.acts,
+    conversationActDiagnostics: [...(parsed.conversationActDiagnostics ?? []), ...actTargets.diagnostics] } : {};
   if (!parsed.document) {
     const errors = uniqueErrors([
       ...parsed.errors,
@@ -107,6 +114,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
       }),
       errors,
       algorithmicRepairs: preParseNormalization.repairs,
+      ...actEvidence,
     };
   }
 
@@ -115,7 +123,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
     ...preParseNormalization.repairs,
     ...normalized.repairs,
   ];
-  const document = normalized.document;
+  const document = actTargets ? { ...normalized.document, conversationActs: actTargets.acts } : normalized.document;
   const errors = [
     ...validateWeeklyPlanningSemanticNumericSafetyV5(document),
     ...planningWindowCanonicalValueErrors(
@@ -157,5 +165,29 @@ export function validateWeeklyPlanningSemanticResponseV5(
     parsedDocument: document,
     errors,
     algorithmicRepairs,
+    ...actEvidence,
+  };
+}
+
+/** Planning is fully revalidated; only separately resolved prior evidence may survive internal serialization. */
+export function revalidateWeeklyPlanningInternalSemanticDocumentV5(params: {
+  document: WeeklyPlanningSemanticDocumentV5;
+  resolvedConversationActs: readonly SemanticConversationActV5[];
+  input: WeeklyPlanningSemanticResponseValidationInputV5;
+}): WeeklyPlanningSemanticValidationAttemptV5 {
+  if (params.document.conversationActs === undefined && params.resolvedConversationActs.length === 0) {
+    return validateWeeklyPlanningSemanticResponseV5(JSON.stringify(params.document), params.input);
+  }
+  const { conversationActs: _untrustedBaselineActs, ...planningDocument } = params.document;
+  const validation = validateWeeklyPlanningSemanticResponseV5(
+    JSON.stringify({ ...planningDocument, conversationActs: [] }), params.input);
+  const resolved = resolveWeeklyPlanningConversationActTargetsV5({
+    acts: params.resolvedConversationActs, publicStateSummary: params.input.publicStateSummary,
+  });
+  return { ...validation,
+    document: validation.document ? { ...validation.document, conversationActs: resolved.acts } : null,
+    parsedDocument: validation.parsedDocument ? { ...validation.parsedDocument, conversationActs: resolved.acts } : null,
+    conversationActs: resolved.acts,
+    conversationActDiagnostics: [...(validation.conversationActDiagnostics ?? []), ...resolved.diagnostics],
   };
 }

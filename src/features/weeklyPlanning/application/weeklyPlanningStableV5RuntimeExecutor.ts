@@ -1,3 +1,4 @@
+import { planWeeklyPlanningInteraction, classifyWeeklyPlanningInteraction } from './weeklyPlanningInteractionDecision';
 import {
   withWeeklyPlanningProvisionalTimeboxStateV5,
 } from '../intake/weeklyPlanningProvisionalTimeboxStateV5';
@@ -70,10 +71,19 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     semanticTurn,
   });
 
+  const interactionPlan = planWeeklyPlanningInteraction({
+    acts: semantic.normalization.document?.conversationActs, graph: semantic.graph, evaluation,
+    explainedQuestion: semanticTurn.pendingQuestionPresentation.status === 'fresh'
+      ? semanticTurn.pendingQuestionPresentation.questionContext : null,
+  });
+  const routingEvaluation = interactionPlan.dialogueQuestionOverride ? { ...evaluation,
+    dialogue: { ...evaluation.dialogue, status: 'ask_question' as const,
+      question: interactionPlan.dialogueQuestionOverride, previewEligible: false as const },
+  } : evaluation;
   const responseRoute = weeklyPlanningStableV5ResponseRouter.beforePreview({
     input,
     graph: semantic.graph,
-    evaluation,
+    evaluation: routingEvaluation,
   });
   if (responseRoute.kind === 'respond') {
     const output = withProvisionalTimeboxState({
@@ -83,6 +93,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     return {
       ...output,
       observability: semanticObservability,
+      interactionOutcome: classifyWeeklyPlanningInteraction({ plan: interactionPlan, output,
+        previousQuestion: input.previousState?.lastQuestionContext, presentation: semanticTurn.pendingQuestionPresentation }),
     };
   }
 
@@ -112,6 +124,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   });
   return {
     ...output,
+    interactionOutcome: { kind: 'apply' },
     observability: {
       repairUsed: semantic.normalization.diagnostics.repairAttempted,
       schedulerVersion: preview.schedulerVersion,

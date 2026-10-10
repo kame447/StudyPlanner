@@ -51,6 +51,8 @@ When a validated turn explicitly corrects a planning window, canonical staging m
 
 Provider failure, malformed output, validation failure or repair failure does not authorize legacy-parser fallback. Semantic repair is at most once where this contract permits it.
 
+Both the initial dialogue-renderer request and its single existing repair remain inside the adapter's provider-error boundary. A rejected repair request returns the existing provider-error fallback result instead of escaping as an unhandled promise rejection; no additional call or recovery permission is granted.
+
 ## Acceptance and recovery validation
 
 Provider deltas and persisted Fact Graphs use different envelopes. `weeklyPlanningSemanticBaseValidatorV5.ts` and its extension wrapper own provider keys, local IDs, evidence, references and cross-field semantic checks. `weeklyPlanningFactGraphValidatorV5.ts` owns saved graph IDs, provenance, revision, lifecycle and references. Do not validate a saved fact by pretending it is an entire provider object, or require provider-only fields on historical saved facts.
@@ -156,6 +158,8 @@ application candidate
 ```
 
 Unaccepted proposals do not affect scheduling. Readiness, question necessity, authoritative occupied sources, placement and feasibility are application decisions.
+
+A learning-strategy proposal decision changes status only when its exact proposal ID matches the fresh presented question, using the existing turn-start presentation result. A collective decision cannot settle another pending proposal that was not the fresh presented question; that proposal stays pending until its own question is presented. Other known proposal IDs remain valid semantic references, and an explicit decision on B is never redirected to A. This boundary grants no preview approval or save authority and does not prescribe which question comes next. Active/unsuperseded target validation remains a separate responsibility.
 
 When the resulting Stable V5 planning horizon is exactly seven days, scheduling uses six normal placement days plus a seventh reserve day and prioritizes normal days before reserve. The default/fallback horizon is not an unconditional seven-day cap: applicable hard temporal bounds can require a longer usable horizon, and the scheduler still enforces the compiled hard bounds across that horizon. Detailed horizon, balancing and scoring behavior is owned by current scheduler policy, not semantic truth.
 

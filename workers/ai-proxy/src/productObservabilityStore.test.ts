@@ -124,6 +124,53 @@ function createStore(firestore: MemoryFirestore) {
 }
 
 describe('ProductObservabilityStore', () => {
+  it('keeps bounded completion metadata inside existing immutable metric retention', async () => {
+    const firestore = new MemoryFirestore();
+    const store = createStore(firestore);
+    const providerCompletion = {
+      finishReason: 'length' as const, refusalPresent: false,
+      requestedMaxCompletionTokens: 6400, effectiveMaxCompletionTokens: 4096,
+      reasoningTokens: null, textTokens: null,
+    };
+    const params = {
+      firebaseUid: 'private-completion-owner', requestId: 'completion-metric-baseline',
+      occurredAt: '2026-08-28T00:00:00.000Z', appVersion: 'test',
+      payload: { ...validAiMetricPayload(), providerCompletion },
+    };
+    await store.storeAiRequestMetric(params);
+    const firstSize = firestore.documents.size;
+    await store.storeAiRequestMetric(params);
+    const entries = [...firestore.documents.entries()].filter(([path]) => path.startsWith('observability_events/'));
+    expect(entries).toHaveLength(1);
+    expect(firestore.documents.size).toBe(firstSize);
+    const event = entries[0][1];
+    expect(event.actorSubjectId).toMatch(/^actor-/);
+    expect(Date.parse(event.expireAt as string) - Date.parse(event.observedAt as string)).toBe(90 * 86400_000);
+    expect(event.payload).toMatchObject({ providerCompletion });
+    expect(JSON.stringify([...firestore.documents.entries()])).not.toContain('private-completion-owner');
+  });
+
+  it('rejects private or malformed completion metadata before writing actor or metric data', async () => {
+    const valid = { finishReason: 'stop', refusalPresent: null,
+      requestedMaxCompletionTokens: null, effectiveMaxCompletionTokens: 800,
+      reasoningTokens: null, textTokens: null };
+    for (const providerCompletion of [
+      { ...valid, refusalText: 'private-refusal-sentinel' },
+      { ...valid, finishReason: 'private-finish-sentinel' },
+      { ...valid, reasoningTokens: -1 },
+    ]) {
+      const firestore = new MemoryFirestore();
+      const store = createStore(firestore);
+      const params = {
+        firebaseUid: 'private-completion-owner', requestId: 'completion-invalid-baseline',
+        occurredAt: '2026-08-28T00:00:00.000Z', appVersion: 'test',
+        payload: { ...validAiMetricPayload(), providerCompletion },
+      };
+      await expect(store.storeAiRequestMetric(params)).rejects.toThrow();
+      expect(firestore.documents.size).toBe(0);
+    }
+  });
+
   it('persists census using existing pseudonymous identity, immutable ingestion and 90-day deletion contract', async () => {
     const firestore = new MemoryFirestore(); const store = createStore(firestore);
     const event = { version: 1, kind: 'start', domain: 'weekly-planning', turnId: crypto.randomUUID(), occurredAt: '2026-08-28T00:00:00.000Z', metadata: projectSemanticCensusMetadata(null) };

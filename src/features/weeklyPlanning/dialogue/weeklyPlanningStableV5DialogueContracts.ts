@@ -184,6 +184,11 @@ export interface WeeklyPlanningStableV5DialogueCurrentTurnGrounding {
 }
 
 export interface WeeklyPlanningStableV5DialogueRenderInput {
+  /** Application-selected conversation goal, not a second interpretation of raw text. */
+  communication?: {
+    goal: 'ask_question' | 'explain_question' | 'acknowledge_aside' | 'resume_question' | 'present_preview' | 'acknowledge';
+    askQuestion: boolean;
+  };
   actionId: string;
   currentUserMessage: string;
   recentConversation: WeeklyPlanningStableV5DialogueConversationTurn[];

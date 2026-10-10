@@ -68,10 +68,14 @@ function applyProposalDecisions(params: {
   previousRecords: readonly WeeklyPlanningLearningStrategyProposalRecord[];
   document: WeeklyPlanningSemanticDocumentV5;
   turnId: string;
+  presentedProposalId: string | null;
 }): WeeklyPlanningLearningStrategyProposalRecord[] {
   const records = params.previousRecords.map((record) => ({ ...record }));
   for (const decision of params.document.decisions) {
     if (decision.target.kind !== 'proposal' || !decision.target.publicId) continue;
+    // Only the proposal the user was actually shown (a fresh presented question) can be
+    // decided; any other pending record waits until its own question is presented.
+    if (decision.target.publicId !== params.presentedProposalId) continue;
     const index = records.findIndex((record) => record.id === decision.target.publicId);
     if (index < 0 || records[index].status !== 'pending') continue;
     if (decision.decision === 'accept') {
@@ -207,6 +211,8 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
   workloadSupersessions?: Readonly<Record<string, string>>;
   graphRevision: number;
   turnId: string;
+  /** Proposal id of the fresh presented question, or null when none is fresh. */
+  presentedProposalId: string | null;
 }): WeeklyPlanningLearningStrategyProposalEvaluation {
   const rebasedPreviousRecords = rebaseProposalWorkloadReferences({
     records: params.previousState?.learningStrategyProposalRecords ?? [],
@@ -216,6 +222,7 @@ export function evaluateWeeklyPlanningLearningStrategyProposalsV5(params: {
     previousRecords: rebasedPreviousRecords,
     document: params.document,
     turnId: params.turnId,
+    presentedProposalId: params.presentedProposalId,
   });
 
   const currentMemoryWorkload = memoryWorkloadFromCurrentMeaning(params);

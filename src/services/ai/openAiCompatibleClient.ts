@@ -8,7 +8,11 @@ import {
 import type { AiChatPurpose } from '../../lib/aiModelPolicy';
 import type { FocusedDecisionContext } from '../../../shared/focusedContextualDecision';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
-import { resolveOpenAiChatTemperature } from '../../../shared/aiProxyContract';
+import {
+  projectOpenAiCompletionMetadata,
+  resolveOpenAiChatTemperature,
+  type ProviderCompletionMetadata,
+} from '../../../shared/aiProxyContract';
 import {
   recordOpenAiCompatibleRequestMetric,
   utf8ByteLength,
@@ -235,6 +239,7 @@ function recordRequestMetric(params: {
   responseContent?: string | null;
   usage?: ChatCompletionUsage | null;
   startedAtMs: number;
+  providerCompletion?: ProviderCompletionMetadata;
 }): void {
   if (!shouldCaptureEvalMetrics()) return;
   recordOpenAiCompatibleRequestMetric({
@@ -251,6 +256,7 @@ function recordRequestMetric(params: {
     completionTokens: params.usage?.completion_tokens ?? null,
     totalTokens: params.usage?.total_tokens ?? null,
     durationMs: Math.max(0, Date.now() - params.startedAtMs),
+    ...(params.providerCompletion ? { providerCompletion: params.providerCompletion } : {}),
   });
 }
 
@@ -443,6 +449,10 @@ export function createOpenAiCompatibleClient(
       const requestBody = JSON.stringify(payload);
       claimProcessAiRequestBudget();
       const startedAtMs = Date.now();
+      let providerCompletion = projectOpenAiCompletionMetadata({
+        requestedMaxCompletionTokens: maxCompletionTokens,
+        effectiveMaxCompletionTokens: payload.max_completion_tokens,
+      });
       try {
         const result = await runFetchWithTimeout(
           `${config.baseUrl.replace(/\/$/, '')}/chat/completions`,
@@ -461,6 +471,11 @@ export function createOpenAiCompatibleClient(
             }
 
             const data = (await response.json()) as ChatCompletionResponse;
+            providerCompletion = projectOpenAiCompletionMetadata({
+              response: data,
+              requestedMaxCompletionTokens: maxCompletionTokens,
+              effectiveMaxCompletionTokens: payload.max_completion_tokens,
+            });
             const content = data.choices?.[0]?.message?.content?.trim();
 
             if (!content) {
@@ -492,6 +507,7 @@ export function createOpenAiCompatibleClient(
           responseContent: result.content,
           usage: result.usage,
           startedAtMs,
+          providerCompletion,
         });
         return result.content;
       } catch (error) {
@@ -503,6 +519,7 @@ export function createOpenAiCompatibleClient(
           status: 'failure',
           requestBody,
           startedAtMs,
+          providerCompletion,
         });
         throw error;
       }
