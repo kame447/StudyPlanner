@@ -1,0 +1,254 @@
+# DESIGN ONLY / UNAPPLIED / UNEXECUTED. All placeholders must be reviewed after authorization.
+# Publish this temporary file alone as a direct child of the verified source. Never rerun it.
+name: Issue 488 Preview Offline Once
+
+on:
+  push:
+    branches: ['fix/issue488-preview-stability']
+    paths: ['.github/workflows/issue488-preview-offline-once.yml']
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_SHA: 'f7e01ef8c26f5e8c1e3480e11943c527e22de463'
+  SOURCE_TREE: 'a5209d0d57de692f3a81d4f2b83c38bc3f1896c8'
+  WORKFLOW_PATH: '.github/workflows/issue488-preview-offline-once.yml'
+
+concurrency:
+  group: issue488-preview-offline-once
+  cancel-in-progress: false
+
+jobs:
+  verify_source:
+    permissions:
+      contents: read
+      actions: read
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.repository == 'kame447/StudyPlanner' &&
+          github.repository_id == '1202727586' &&
+          github.repository_owner == 'kame447' &&
+          github.actor == 'kame447' && github.actor_id == '76802107' &&
+          github.triggering_actor == 'kame447' &&
+          github.ref == 'refs/heads/fix/issue488-preview-stability' &&
+          github.run_attempt == 1 &&
+          github.event.created == false && github.event.deleted == false &&
+          github.event.forced == false }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      OPENAI_API_KEY: ''
+      VITE_AI_API_KEY: ''
+      VITE_CLOUDFLARE_AI_PROXY_URL: ''
+      STUDYPLANNER_CORRECTION_REAL_API: '0'
+      STUDYPLANNER_TEMPORAL_REAL_API: '0'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify the one-file direct-child event before any source execution
+        id: event_guard
+        env:
+          EXECUTING_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EXECUTING_WORKFLOW_REF: ${{ github.workflow_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_EVENT_NAME" = push
+          test "$GITHUB_REPOSITORY" = kame447/StudyPlanner
+          test "$GITHUB_REPOSITORY_ID" = 1202727586
+          test "$GITHUB_REPOSITORY_OWNER" = kame447
+          test "$GITHUB_ACTOR" = kame447
+          test "$GITHUB_ACTOR_ID" = 76802107
+          test "$GITHUB_TRIGGERING_ACTOR" = kame447
+          test "$GITHUB_REF" = refs/heads/fix/issue488-preview-stability
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$EXECUTING_WORKFLOW_SHA" = "$GITHUB_SHA"
+          test "$EXECUTING_WORKFLOW_REF" = "$GITHUB_REPOSITORY/$WORKFLOW_PATH@$GITHUB_REF"
+          jq -e --arg source "$SOURCE_SHA" --arg event "$GITHUB_SHA" '
+            .before == $source and .after == $event and
+            .created == false and .deleted == false and .forced == false and
+            .repository.full_name == "kame447/StudyPlanner" and
+            .repository.id == 1202727586 and
+            .sender.login == "kame447" and .sender.id == 76802107
+          ' "$GITHUB_EVENT_PATH" > /dev/null
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git show -s --format=%P "$GITHUB_SHA")" = "$SOURCE_SHA"
+          test "$(git rev-parse "${SOURCE_SHA}^{tree}")" = "$SOURCE_TREE"
+          test "$(git diff-tree --no-commit-id --name-status --no-renames -r "$SOURCE_SHA" "$GITHUB_SHA")" = "$(printf 'A\t%s' "$WORKFLOW_PATH")"
+          test "$(git ls-tree "$GITHUB_SHA" -- "$WORKFLOW_PATH" | awk '{print $1, $2}')" = '100644 blob'
+          test -z "$(git status --porcelain)"
+      - name: Check out the immutable reviewed product source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install locked application without a model credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$SOURCE_TREE"
+          test ! -e "$WORKFLOW_PATH"
+          test -z "$(git status --porcelain)"
+          test -z "$OPENAI_API_KEY"
+          test -z "$VITE_AI_API_KEY"
+          sha256sum package.json package-lock.json > "$RUNNER_TEMP/verify-source-manifests.sha256"
+          npm ci
+          sha256sum -c "$RUNNER_TEMP/verify-source-manifests.sha256"
+      - name: Fresh app and Worker types, full ordinary tests and production build
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset DEBUG PWDEBUG
+          npm run verify
+      - name: Install the same pinned browser tools without a provider credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$OPENAI_API_KEY"
+          test -z "$VITE_AI_API_KEY"
+          npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+          ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
+          sha256sum -c "$RUNNER_TEMP/verify-source-manifests.sha256"
+      - name: Retrieve the one fixed recorded artifact with no credential forwarding
+        id: recorded_fixture
+        timeout-minutes: 2
+        env:
+          ARTIFACT_READ_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          python3 - <<'PY'
+          import hashlib, io, json, os, pathlib, stat, urllib.error, urllib.parse, urllib.request, zipfile
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, request, fp, code, message, headers, new_url): return None
+          try:
+              opener = urllib.request.build_opener(NoRedirect)
+              request = urllib.request.Request('https://api.github.com/repos/kame447/StudyPlanner/actions/artifacts/11672665266/zip',
+                  headers={'Authorization': 'Bearer ' + os.environ['ARTIFACT_READ_TOKEN'], 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+              try:
+                  opener.open(request, timeout=15)
+                  raise RuntimeError('Expected a signed artifact redirect')
+              except urllib.error.HTTPError as response:
+                  if response.code != 302: raise RuntimeError('Artifact unavailable') from None
+                  location = response.headers.get('Location', '')
+              target = urllib.parse.urlparse(location)
+              if target.scheme != 'https' or target.username or target.password or target.port not in (None, 443) or not target.hostname or not target.hostname.endswith('.blob.core.windows.net'):
+                  raise RuntimeError('Unexpected artifact destination')
+              # New request: no GitHub Authorization header, and no further redirect is allowed.
+              with opener.open(urllib.request.Request(location), timeout=15) as response:
+                  if response.status != 200: raise RuntimeError('Artifact read failed')
+                  archive = response.read(8_324)
+              if len(archive) != 8_323 or hashlib.sha256(archive).hexdigest() != 'dc53e5df8a5b480fd6d9c3da8e875475eda7623019134e3e3a92ea224f1cf265':
+                  raise RuntimeError('Archive digest mismatch')
+              expected = {
+                  'weekly-correction-real-api/evidence/observations.json': (35511, '34876646a37f92e17ad62a47ba722cc59737b03d99f8445baa00e9590156157d'),
+                  'weekly-correction-real-api/evidence/source-provenance.json': (414, '088daf3eddac2bf85ddc4953af44258602c5f836384848e29db1398bc3c66d66'),
+                  'weekly-temporal-real-api/evidence/source-provenance.json': (414, '088daf3eddac2bf85ddc4953af44258602c5f836384848e29db1398bc3c66d66'),
+              }
+              with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
+                  entries = zipped.infolist()
+                  if len(entries) != 3 or {row.filename for row in entries} != set(expected): raise RuntimeError('Unexpected archive paths')
+                  contents = {}
+                  for row in entries:
+                      size, digest = expected[row.filename]
+                      if row.file_size != size or not stat.S_ISREG(row.external_attr >> 16): raise RuntimeError('Unexpected archive member type or size')
+                      value = zipped.read(row)
+                      if hashlib.sha256(value).hexdigest() != digest: raise RuntimeError('Member digest mismatch')
+                      contents[row.filename] = value
+              # Never extract archive-controlled paths. Write only this fixed observation filename.
+              output = pathlib.Path(os.environ['RUNNER_TEMP']) / 'issue488-recorded'
+              output.mkdir(exist_ok=False)
+              (output / 'observations.json').write_bytes(contents['weekly-correction-real-api/evidence/observations.json'])
+              evidence = pathlib.Path('artifacts/weekly-offline-ui/evidence'); evidence.mkdir(parents=True, exist_ok=True)
+              (evidence / 'recorded-artifact-identity.json').write_text(json.dumps({'runId':38057573433,'artifactId':11672665266,
+                  'archiveSha256':hashlib.sha256(archive).hexdigest(),'observationsSha256':expected['weekly-correction-real-api/evidence/observations.json'][1]})+'\n')
+          except Exception:
+              raise SystemExit('Recorded artifact unavailable or invalid; offline execution is blocked.') from None
+          PY
+      - name: Replay the recorded checkpoint in the actual App with no provider credential
+        id: offline_ui
+        timeout-minutes: 7
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset DEBUG PWDEBUG
+          test -z "$OPENAI_API_KEY"
+          test -z "$VITE_AI_API_KEY"
+          UI="$RUNNER_TEMP/issue488-offline-ui"
+          mkdir -p "$UI/home" "$UI/tmp" "$UI/playwright-cache"
+          PW="$PWD/tests/e2e/node_modules"
+          CHROMIUM="$(node -e 'process.stdout.write(require("./tests/e2e/node_modules/playwright-core/lib/coreBundle.js").registry.registry.findExecutable("chromium-headless-shell").executablePath())')"
+          BROWSERS_PATH="$(node -e 'process.stdout.write(require("./tests/e2e/node_modules/playwright-core/lib/coreBundle.js").registry.registryDirectory)')"
+          node - "$CHROMIUM" <<'JS'
+          const fs = require('node:fs'), crypto = require('node:crypto'), cp = require('node:child_process');
+          const playwrightVersion = require('./tests/e2e/node_modules/@playwright/test/package.json').version;
+          if (playwrightVersion !== '1.64.0') throw new Error('Unexpected Playwright version');
+          const manifest = require('./tests/e2e/node_modules/playwright-core/browsers.json');
+          const expected = manifest.browsers.find(row => row.name === 'chromium-headless-shell');
+          const executable = process.argv[2];
+          const actual = cp.execFileSync(executable, ['--version'], { encoding: 'utf8' }).trim();
+          if (!expected || !actual.includes(expected.browserVersion)) throw new Error('Installed Chromium differs from the pinned Playwright manifest');
+          const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
+          fs.writeFileSync('artifacts/weekly-offline-ui/evidence/browser-identity.json', JSON.stringify({playwrightVersion,
+            chromium: expected, executable, actualVersion: actual, binarySha256: sha256(fs.readFileSync(executable)),
+            browserManifestSha256: sha256(fs.readFileSync('tests/e2e/node_modules/playwright-core/browsers.json'))}, null, 2));
+          JS
+          python3 tests/e2e/support/prepare-weekly-correction-offline-replay.py \
+            --root "$PWD" --output "$UI/inputs" --playwright "$PW" \
+            --artifact "$RUNNER_TEMP/issue488-recorded/observations.json" \
+            --expected-spec-sha 66a5c8c8cf627a521a4e2f20d72a6f461c0063a623cf28e95ab182d289a1cd74
+          # Only this explicit environment reaches Node, Vite and Chromium. No GitHub/provider token is inherited.
+          set +e
+          env -i PATH="$PATH" HOME="$UI/home" TMPDIR="$UI/tmp" PWTEST_CACHE_DIR="$UI/playwright-cache" \
+            CI=1 TZ=Asia/Tokyo WRANGLER_SEND_METRICS=false PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_PATH" \
+            node "$PW/playwright/cli.js" test --config="$UI/inputs/offline-replay.config.mjs" \
+            > artifacts/weekly-offline-ui/evidence/browser.log 2>&1
+          status=$?
+          set -e
+          if test -d "$UI/inputs/evidence"; then cp -a "$UI/inputs/evidence/." artifacts/weekly-offline-ui/evidence/; fi
+          cp "$UI/inputs/preparation-manifest.json" artifacts/weekly-offline-ui/evidence/
+          test "$status" -eq 0
+          jq -e '.stats.expected == 2 and .stats.unexpected == 0 and .stats.flaky == 0 and .stats.skipped == 0' \
+            artifacts/weekly-offline-ui/evidence/playwright-report.json > /dev/null
+          jq -e '.failure == null and .requests == [] and any(.observations[]; .kind == "offline-replay-completed" and .modelCalls == 0) and any(.observations[]; .kind == "offline-external-websocket-denied" and .event == "closed" and .code == 1008)' \
+            artifacts/weekly-offline-ui/evidence/offline-observations.json > /dev/null
+          jq -e '
+            [.observations[] | select(.kind == "preview-stability" and (.scenario == "offline-recorded-first-turn-initial" or .scenario == "offline-recorded-first-turn"))] as $settled |
+            ($settled | map({scenario, width})) == [
+              {"scenario":"offline-recorded-first-turn-initial","width":1280}, {"scenario":"offline-recorded-first-turn-initial","width":390},
+              {"scenario":"offline-recorded-first-turn","width":1280}, {"scenario":"offline-recorded-first-turn","width":390}
+            ] and all($settled[]; .stableFrames == 3 and .measuredRectangles > 2 and all(.allAncestorOpacities[]; . == 1)) and
+            any(.observations[]; .kind == "offline-finite-animation-natural-completion" and .after == "finished" and (.before.pending == true or .before.state == "running")) and
+            any(.observations[]; .kind == "offline-paused-animation-rejected" and .errorName == "TimeoutError" and .elapsedMs < 2000)
+          ' artifacts/weekly-offline-ui/evidence/offline-observations.json > /dev/null
+      - name: Preserve offline UI evidence, including failure diagnostics
+        if: ${{ always() && steps.recorded_fixture.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: weekly-preview-stability-offline-source-${{ env.SOURCE_SHA }}-event-${{ github.sha }}
+          path: artifacts/weekly-offline-ui/evidence/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Require the same immutable source after verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$SOURCE_TREE"
+          test ! -e "$WORKFLOW_PATH"
+          test -z "$(git status --porcelain)"
+          sha256sum -c "$RUNNER_TEMP/verify-source-manifests.sha256"
