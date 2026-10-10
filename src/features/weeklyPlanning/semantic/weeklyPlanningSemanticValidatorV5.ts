@@ -1,3 +1,5 @@
+import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
+import { resolveWeeklyPlanningExactWorkloadEffortTargetV5 } from './weeklyPlanningExistingEntityBindingV5';
 import { validateWeeklyPlanningAvailabilityCapacityValuesV5, validateWeeklyPlanningAvailabilityAbsenceValuesV5 } from './weeklyPlanningAvailabilityValueValidatorV5';
 import {
   USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1,
@@ -46,6 +48,11 @@ import {
  * selected semantic kinds; code verifies structure and consistency of those
  * structured claims.
  */
+export interface WeeklyPlanningSemanticReferenceContextV5 {
+  committedGraph?: WeeklyPlanningFactGraphV5;
+  blockedLocalIds?: ReadonlySet<string>;
+}
+
 export interface WeeklyPlanningSemanticValidationResultV5 {
   document: WeeklyPlanningSemanticDocumentV5 | null;
   errors: string[];
@@ -78,6 +85,7 @@ function workloadIdsInTask(task: Record<string, unknown>): Set<string> {
 function isValidWorkloadEffortTargetError(
   error: string,
   value: Record<string, unknown>,
+  context: WeeklyPlanningSemanticReferenceContextV5,
 ): boolean {
   const match = /^document\.tasks\[(\d+)]\.effortEstimates\[(\d+)]\.targetLocalId$/.exec(error);
   if (!match || !Array.isArray(value.tasks)) return false;
@@ -87,7 +95,12 @@ function isValidWorkloadEffortTargetError(
   const estimate = task.effortEstimates[Number(match[2])];
   if (!isRecord(estimate) || typeof estimate.targetLocalId !== 'string') return false;
 
-  return workloadIdsInTask(task).has(estimate.targetLocalId);
+  return workloadIdsInTask(task).has(estimate.targetLocalId)
+    || (context.committedGraph !== undefined
+      && resolveWeeklyPlanningExactWorkloadEffortTargetV5({
+        document: value, task, estimate, graph: context.committedGraph,
+        blockedLocalIds: context.blockedLocalIds,
+      }) !== null);
 }
 
 function isNoAdditionalConstraintDeclaration(value: unknown): value is Record<string, unknown> {
@@ -375,6 +388,7 @@ function validateUserContextFacts(
 
 export function validateWeeklyPlanningSemanticValueV5(
   value: unknown,
+  context: WeeklyPlanningSemanticReferenceContextV5 = {},
 ): WeeklyPlanningSemanticValidationResultV5 {
   if (!isRecord(value)) return validateBaseSemanticValueV5(value);
 
@@ -384,7 +398,7 @@ export function validateWeeklyPlanningSemanticValueV5(
   const baseWeeklyValue = stripSemanticExtensions(weeklyValue);
   const base = validateBaseSemanticValueV5(baseWeeklyValue);
   const baseErrors = base.errors.filter(
-    (error) => !isValidWorkloadEffortTargetError(error, baseWeeklyValue),
+    (error) => !isValidWorkloadEffortTargetError(error, value, context),
   );
   const baseLocalIds = collectLocalIds(baseWeeklyValue);
   const existingPublicIdErrors = validateExistingPublicIds(weeklyValue);
@@ -422,6 +436,7 @@ export function validateWeeklyPlanningSemanticValueV5(
 
 export function parseWeeklyPlanningSemanticDocumentV5(
   content: string,
+  context: WeeklyPlanningSemanticReferenceContextV5 = {},
 ): WeeklyPlanningSemanticValidationResultV5 {
   let value: unknown;
   try {
@@ -429,5 +444,5 @@ export function parseWeeklyPlanningSemanticDocumentV5(
   } catch {
     return { document: null, errors: ['document:invalid-json'] };
   }
-  return validateWeeklyPlanningSemanticValueV5(value);
+  return validateWeeklyPlanningSemanticValueV5(value, context);
 }

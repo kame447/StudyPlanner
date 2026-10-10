@@ -260,3 +260,53 @@ export function resolveWeeklyPlanningExistingEntityGraphBindingsV5(params: {
     errors,
   };
 }
+
+/** Reserve every local-ID token before representation cleanup can remove it. */
+export function collectWeeklyPlanningLocalReferenceTokensV5(value: unknown): Set<string> {
+  const ids = new Set<string>();
+  const pending: unknown[] = [value];
+  while (pending.length > 0) {
+    const entry = pending.pop();
+    if (Array.isArray(entry)) pending.push(...entry);
+    else if (isRecord(entry)) {
+      for (const [key, child] of Object.entries(entry)) {
+        if (key === 'localId' && typeof child === 'string') ids.add(child);
+        else pending.push(child);
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Resolve only an explicit external workload reference in this document.
+ * Local tokens always win; diagnostics and pending questions are not authority.
+ */
+export function resolveWeeklyPlanningExactWorkloadEffortTargetV5(params: {
+  document: unknown;
+  task: unknown;
+  estimate: unknown;
+  graph: WeeklyPlanningFactGraphV5;
+  blockedLocalIds?: ReadonlySet<string>;
+}): WorkloadFactV5 | null {
+  const { task, estimate, graph } = params;
+  if (!isRecord(task) || !isRecord(estimate)
+    || typeof task.existingPublicId !== 'string'
+    || typeof estimate.targetLocalId !== 'string'
+    || (estimate.kind !== 'total_duration' && estimate.kind !== 'session_duration')
+    || params.blockedLocalIds?.has(estimate.targetLocalId)
+    || collectWeeklyPlanningLocalReferenceTokensV5(params.document).has(estimate.targetLocalId)) return null;
+
+  // The new external-reference path requires explicit active lifecycle entries.
+  const active = new Set(graph.factLifecycles?.filter(entry => entry.status === 'active')
+    .map(entry => entry.factId) ?? []);
+  const owner = graph.tasks.find(candidate => candidate.id === task.existingPublicId);
+  if (!owner || !active.has(owner.id)) return null;
+  const workload = graph.workloads.find(candidate => candidate.id === estimate.targetLocalId);
+  if (!workload || workload.taskId !== owner.id || !active.has(workload.id)) return null;
+  if (workload.componentId !== null) {
+    const component = graph.components.find(candidate => candidate.id === workload.componentId);
+    if (!component || component.taskId !== owner.id || !active.has(component.id)) return null;
+  }
+  return workload;
+}

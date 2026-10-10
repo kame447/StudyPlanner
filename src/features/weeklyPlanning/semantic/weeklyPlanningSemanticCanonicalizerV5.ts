@@ -1,3 +1,4 @@
+import { resolveWeeklyPlanningExactWorkloadEffortTargetV5 } from './weeklyPlanningExistingEntityBindingV5';
 import {
   createEmptyWeeklyPlanningFactGraphV5,
   WEEKLY_PLANNING_FACT_GRAPH_VERSION_V5,
@@ -180,7 +181,7 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV5(params: {
     };
   }
 
-  const validation = validateWeeklyPlanningSemanticValueV5(params.document);
+  const validation = validateWeeklyPlanningSemanticValueV5(params.document, { committedGraph: graph });
   if (!validation.document) return rejected(validation.errors);
   const document = validation.document;
   // Proposal acceptance belongs to the application/UI approval boundary, not
@@ -366,10 +367,13 @@ export function canonicalizeWeeklyPlanningSemanticDocumentV5(params: {
 
   const effortEstimates = document.tasks.flatMap((task) =>
     task.effortEstimates.map((estimate) => {
+      const externalTarget = resolveWeeklyPlanningExactWorkloadEffortTargetV5({
+        document, task, estimate, graph,
+      });
       const fact = {
         id: requireFactId(estimate.localId),
-        taskId: requireFactId(task.localId),
-        targetFactId: requireFactId(estimate.targetLocalId),
+        taskId: externalTarget?.taskId ?? requireFactId(task.localId),
+        targetFactId: externalTarget?.id ?? requireFactId(estimate.targetLocalId),
         kind: estimate.kind,
         minutes: estimate.minutes,
         unitCode: estimate.unitCode,
