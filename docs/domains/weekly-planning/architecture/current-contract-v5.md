@@ -96,6 +96,14 @@ Important consequences:
 
 For consultation questions containing calculable quantities, deterministic calculation remains the numeric authority. An answer model may explain a computed result but must not silently replace application-owned arithmetic with its own value.
 
+### Accepted task-total duration
+
+An active, accepted task-level `total_duration` may provide scheduler-facing minute work when that task has no workload at any component/quantity role and no hard task `fixed_interval`. All applicable positive finite task totals must agree; conflicting totals stay unresolved. Existing workload/progress ownership remains authoritative when any workload exists. A component total or `session_duration` alone is not task-total work. Deciding whether natural language describes future total work, past progress, per-day availability or session length remains semantic interpretation; formal acceptance alone does not prove that interpretation correct.
+
+This is a transient compilation view, not another Fact Graph or persisted quantity. Its derived workload key is internal identity only. The view carries explicit graph-revision/task/accepted-effort origin IDs, and the work-item compiler validates those roots before emitting work. Canonical source references and estimate-source IDs retain every agreeing active effort fact; a synthetic workload key must not masquerade as a canonical fact. For tagged derived work, missing, duplicate, foreign, stale or value-mismatched derivation evidence blocks compilation. The accepted minute total keeps intrinsic-duration allocation, without estimate buffer or calibration inflation.
+
+Preview/draft checkpoint metadata retains the real source references. Final approval keeps the existing current-revision checks and operation/block identity. Ordinary Plan/ScheduleEvent persistence does not acquire direct Fact Graph source references or a new allocation ledger through this projection. Session-length placement and natural-language explanation remain separate responsibilities.
+
 ## Work decomposition / atomicity
 
 Task decomposition is typed semantic state, not a scheduler guess.

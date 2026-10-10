@@ -2,6 +2,19 @@ import { createRef, forwardRef, useImperativeHandle } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPlanFromDraft } from '../../../domain/planner';
+import type { PlanDraft } from '../../../types/domain';
+import { createLocalPlannerRepository } from '../../../repositories/createLocalPlannerRepository';
+import { validateWeeklyPreviewApproval } from '../planning/weeklyPlanningApproval';
+import { resolveWeeklyPlanningApprovalRuntime } from './weeklyPlanningApprovalRuntimeResolver';
+import { loadWeeklyPlanningApprovalOperations } from './weeklyPlanningApprovalLedgerStorage';
+import { validateWeeklyPlanningSemanticResponseV5 } from '../semantic/weeklyPlanningSemanticResponseValidationV5';
+import { createWeeklyPlanningSemanticPublicStateSummaryV5 } from '../semantic/weeklyPlanningSemanticPublicStateV5';
+import * as debugTrace from '../trace/weeklyPlanningStableV5DebugTrace';
+import { recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5TraceRuntimeForTest, resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest } from '../trace/weeklyPlanningStableV5TraceRuntime';
+import { listWeeklyPlanningTraceOutboxItems } from '../trace/weeklyPlanningTraceOutbox';
+import type { WeeklyPlanningTraceEntry, WeeklyPlanningTraceSession } from '../trace/weeklyPlanningTraceTypes';
+import { WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS, measureWeeklyPlanningTraceJsonBytes } from '../../../../shared/weeklyPlanningTraceContract';
+import { prepareWeeklyPlanningTraceServerWrite } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
 import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import { createDeferred, createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import { parseWeeklyPlanningPlanSourceId, WEEKLY_PLANNING_PLAN_SOURCE_TYPE } from '../planning/weeklyPlanningPlanProvenance';
@@ -15,7 +28,7 @@ import { resetWeeklyPlanningStableV5DebugTraceForTest } from '../trace/weeklyPla
 import { useWeeklyPlanningApplication, type WeeklyPlanningApplication, type UseWeeklyPlanningApplicationInput } from './useWeeklyPlanningApplication';
 import { createWeeklyPlanningApprovalMemoryState, createMemoryWeeklyPlanningApprovalPlanRepository } from './weeklyPlanningApprovalMemoryRepository';
 import { getWeeklyPlanningStableV5RuntimeSession, resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './weeklyPlanningStableV5RuntimeSession';
-import { getWeeklyPlanningStableV5SessionStorageKeyForTest } from './weeklyPlanningStableV5SessionStorage';
+import { getWeeklyPlanningStableV5SessionStorageKeyForTest, loadWeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionStorage';
 import type { WeeklyPlanningTurnSubmissionResult } from '../weeklyPlanningTurnExecutionTypes';
 import type { WeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionCodec';
 
@@ -108,6 +121,7 @@ afterEach(() => {
   resetWeeklyPlanningStableV5DebugTraceForTest();
   clearWeeklyPlanningSessionRuntime();
   setWeeklyPlanningTraceRepositoryForTests(undefined);
+  resetWeeklyPlanningStableV5TraceRuntimeForTest(); vi.restoreAllMocks();
   vi.unstubAllEnvs(); vi.useRealTimers();
 });
 
@@ -271,4 +285,208 @@ describe('provisional allocation through application and approval persistence', 
     await act(async () => { await ref.current!.approveDraftBlocks(); });
     expect(database.metrics.planWrites).toBe(1); expect(normalizeMock).toHaveBeenCalledTimes(2);
   });
+  it('keeps accepted task-total roots through replacement, checkpoint, explicit approval and trace persistence', async () => {
+    const storage = createMemoryStorageHarness();
+    restoreWindow = installWeeklyPlanningTestStorage(storage.storage);
+    const repository = createLocalPlannerRepository(storage.storage);
+    const save = vi.fn(async (draft: PlanDraft) => repository.upsertPlan(createPlanFromDraft(draft)));
+    const ref = createRef<WeeklyPlanningApplication>();
+    const props: UseWeeklyPlanningApplicationInput = {
+      userId: OWNER, selectedDate: WEEK_START, plans: [], scheduleTemplates: [],
+      isPlannerDataSnapshotCurrent: () => true, plannerDataAvailability: createReadyPlannerDataAvailability(OWNER),
+      saveWeeklyApprovedPlan: save,
+    };
+    const mount = async () => { await act(async () => { renderer = create(<Harness ref={ref} {...props} />); }); };
+    const readCheckpoint = () => loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK_START })!;
+    const reload = async () => {
+      await act(async () => { renderer!.unmount(); }); renderer = undefined;
+      resetWeeklyPlanningStableV5RuntimeSessionsForTest(); clearWeeklyPlanningSessionRuntime();
+      await mount();
+    };
+    const debug = vi.spyOn(debugTrace, 'recordWeeklyPlanningStableV5DebugTrace');
+    await mount();
+    const firstDocument = workloadDocument();
+    firstDocument.tasks[0].workloads = [];
+    firstDocument.tasks[0].sourceText = '数学の教材を合計60分進めたい';
+    firstDocument.tasks[0].effortEstimates = [{
+      localId: 'total-60', targetLocalId: 'task', kind: 'total_duration', minutes: 60,
+      unitCode: null, precision: 'exact', sourceText: '合計60分',
+    }];
+    const firstText = '8月17日から23日で数学の教材を合計60分進めたい';
+    const firstValidation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(firstDocument), { currentUserText: firstText });
+    expect(firstValidation.errors).toEqual([]);
+    expect(firstValidation.document).not.toBeNull();
+    normalizeMock.mockResolvedValueOnce(accepted(firstValidation.document!));
+    await act(async () => { expect((await ref.current!.submitTurn(firstText)).accepted).toBe(true); });
+    const first = readCheckpoint();
+    expect(first).not.toBeNull();
+    const taskId = first.graph.tasks[0].id;
+    const oldBudget = first.graph.effortEstimates[0];
+    expect(first.graph.workloads).toEqual([]);
+    expect(first.planningState.previewCandidates).toEqual([expect.objectContaining({
+      durationMinutes: 60, stableV5Metadata: expect.objectContaining({ sourceFactRefs: [taskId, oldBudget.id] }),
+    })]);
+    const oldBlocks = createWeeklyDraftBlocksFromPreviewCandidates({
+      candidates: ref.current!.state.previewCandidates!, userId: OWNER, createdAt: new Date().toISOString(),
+    });
+    await act(async () => { ref.current!.createDraftBlocks(oldBlocks); });
+    await reload();
+    expect(getWeeklyPlanningStableV5RuntimeSession(first.conversationId)?.graph).toEqual(first.graph);
+    expect(ref.current!.pendingDraftBlocks).toEqual(oldBlocks);
+    expect(ref.current!.pendingDraftBlocks[0].behaviorMetadata?.sourceFactRefs).toEqual([taskId, oldBudget.id]);
+    expect(save).not.toHaveBeenCalled();
+    expect(await repository.getPlans(OWNER)).toEqual([]);
+
+    const correction = structuredClone(firstDocument);
+    correction.planningIntent = 'update_plan'; correction.planningWindow = null;
+    correction.tasks[0].existingPublicId = taskId;
+    correction.tasks[0].sourceText = '数学の教材を合計90分進めたい';
+    correction.tasks[0].effortEstimates = [{ ...firstDocument.tasks[0].effortEstimates[0],
+      localId: 'total-90', minutes: 90, sourceText: '合計90分',
+    }];
+    correction.corrections = [{
+      localId: 'replace-total', target: { kind: 'effort_estimate', publicId: oldBudget.id, localId: null, mention: '合計60分' },
+      operation: 'replace', replacementLocalId: 'total-90', sourceText: '合計60分ではなく90分',
+    }];
+    const secondText = '合計60分ではなく90分。数学の教材を合計90分進めたい';
+    const committedGraph = getWeeklyPlanningStableV5RuntimeSession(first.conversationId)!.graph;
+    const correctionValidation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(correction), {
+      currentUserText: secondText, committedGraph,
+      publicStateSummary: createWeeklyPlanningSemanticPublicStateSummaryV5(undefined, committedGraph),
+    });
+    expect(correctionValidation.errors).toEqual([]);
+    expect(correctionValidation.document).not.toBeNull();
+    normalizeMock.mockResolvedValueOnce(accepted(correctionValidation.document!));
+    await act(async () => { expect((await ref.current!.submitTurn(secondText)).accepted).toBe(true); });
+    const second = readCheckpoint();
+    const active = new Set(second.graph.factLifecycles.filter((fact) => fact.status === 'active').map((fact) => fact.factId));
+    const newBudget = second.graph.effortEstimates.find((fact) => active.has(fact.id))!;
+    expect(newBudget).toMatchObject({ taskId, targetFactId: taskId, minutes: 90 });
+    expect(newBudget.id).not.toBe(oldBudget.id);
+    expect(second.graph.factLifecycles.find((fact) => fact.factId === oldBudget.id))
+      .toMatchObject({ status: 'superseded', supersededByFactId: newBudget.id });
+    expect(second.graph.workloads).toEqual([]);
+    expect(second.planningState.previewCandidates).toEqual([expect.objectContaining({
+      durationMinutes: 90, stableV5Metadata: expect.objectContaining({
+        graphRevision: second.graph.revision, taskId, sourceFactRefs: [taskId, newBudget.id],
+      }),
+    })]);
+    const staleGuard = validateWeeklyPreviewApproval({
+      blocks: oldBlocks, currentStateRevision: second.graph.revision, userId: OWNER, proposalRecords: [],
+      runtimeSnapshot: resolveWeeklyPlanningApprovalRuntime({ blocks: oldBlocks, userId: OWNER }).runtimeSnapshot,
+    });
+    expect(staleGuard).toMatchObject({ allowed: false, attempt: { kind: 'stale_preview_approval_attempt' } });
+    await act(async () => {
+      await expect(ref.current!.approveDraftBlocks()).rejects.toThrow('現在の条件と一致しない仮予定');
+    });
+    expect(save).not.toHaveBeenCalled();
+    // Current main retains previously promoted drafts across a correction. The
+    // user explicitly discards them; this E test does not invent a C auto-replace.
+    await act(async () => { oldBlocks.forEach((block) => ref.current!.removeDraftBlock(block.id)); });
+    expect(ref.current!.pendingDraftBlocks).toEqual([]);
+    const blocks = createWeeklyDraftBlocksFromPreviewCandidates({
+      candidates: ref.current!.state.previewCandidates!, userId: OWNER, createdAt: new Date().toISOString(),
+    });
+    await act(async () => { ref.current!.createDraftBlocks(blocks); });
+    await reload();
+    expect(ref.current!.pendingDraftBlocks).toEqual(blocks);
+    expect(ref.current!.pendingDraftBlocks[0].behaviorMetadata?.sourceFactRefs).toEqual([taskId, newBudget.id]);
+    expect(getWeeklyPlanningStableV5RuntimeSession(second.conversationId)?.graph).toEqual(second.graph);
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => { await ref.current!.approveDraftBlocks(); });
+    expect(save).toHaveBeenCalledTimes(1);
+    const operations = loadWeeklyPlanningApprovalOperations(OWNER);
+    expect(operations).toEqual([expect.objectContaining({
+      status: 'completed', conversationId: second.conversationId, previewStateRevision: second.graph.revision,
+      items: [expect.objectContaining({ sourceDraftBlockId: blocks[0].id, status: 'saved' })],
+    })]);
+    const restoredPlans = await createLocalPlannerRepository(storage.storage).getPlans(OWNER);
+    expect(restoredPlans).toEqual([expect.objectContaining({
+      userId: OWNER, title: blocks[0].title, date: blocks[0].date,
+      startTime: blocks[0].startTime, endTime: blocks[0].endTime,
+    })]);
+    expect(parseWeeklyPlanningPlanSourceId(restoredPlans[0].sourceId)).toEqual({
+      approvalOperationId: operations[0].approvalOperationId, sourceDraftBlockId: blocks[0].id,
+    });
+    expect(JSON.parse(storage.storage.getItem('studyplanner.scheduleEvents.v1')!)).toEqual([
+      expect.objectContaining({ id: `plan:${restoredPlans[0].id}`, provenance: expect.objectContaining({ sourceId: restoredPlans[0].sourceId }) }),
+    ]);
+    expect(readWeeklyPlanningEstimateMetadata(restoredPlans[0])).toBeNull();
+    // Existing Plan schema retains the operation/block link, not direct fact refs.
+    await reload();
+    expect(loadWeeklyPlanningApprovalOperations(OWNER)).toEqual(operations);
+    expect(ref.current!.pendingDraftBlocks).toEqual([]);
+    await act(async () => { await ref.current!.approveDraftBlocks(); });
+    expect(save).toHaveBeenCalledTimes(1);
+
+    const generated = debug.mock.calls.map(([event]) => event)
+      .filter((event) => event.stage === 'runtime_preview_scheduler_evaluated');
+    expect(generated).toHaveLength(2);
+    debug.mockRestore();
+    resetWeeklyPlanningStableV5TraceRuntimeForTest();
+    vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
+    const writes: Array<{ session: WeeklyPlanningTraceSession; entries: WeeklyPlanningTraceEntry[] }> = [];
+    let fail = true;
+    setWeeklyPlanningTraceRepositoryForTests({
+      async upsertSession() {},
+      async appendEntries(params) { if (fail) { fail = false; throw new Error('injected lineage append failure'); } writes.push(structuredClone(params)); },
+      async listSessions() { return []; }, async listSessionsForAdmin() { return []; },
+      async archiveSessionForAdmin() {}, async getSession() { return null; }, async listEntries() { return []; },
+    });
+    // Replay the actual generated diagnostic, adding only a future diagnostic
+    // extension. Do not replace its candidates or manufacture expected roots.
+    const persistPreview = async (index: number, oversized = false) => {
+      const requestId = `${second.conversationId}:lineage:${index}:${oversized}`;
+      const data = structuredClone(generated[index].data) as { result: { candidates: Array<Record<string, unknown>> } };
+      data.result.candidates[0].futureTaskTotalSentinel = 'task-total-lineage-sentinel';
+      if (oversized) data.result.candidates[0].futureLargeEvidence = `HEAD-${'あ'.repeat(8000)}-TAIL`;
+      debugTrace.recordWeeklyPlanningStableV5DebugTrace({ requestId, stage: 'runtime_preview_scheduler_evaluated', data });
+      await recordWeeklyPlanningStableV5TurnTrace({
+        userId: OWNER, conversationId: second.conversationId, requestId,
+        userText: index === 0 ? firstText : secondText, assistantMessage: '仮予定候補を確認してください。',
+        outcome: 'preview_ready', previewCount: 1,
+        debugTraceEvents: debugTrace.takeWeeklyPlanningStableV5DebugTrace(requestId),
+      });
+    };
+    await persistPreview(0);
+    expect(writes).toEqual([]);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: second.conversationId })).toHaveLength(1);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await persistPreview(1);
+    expect(writes).toHaveLength(2);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: second.conversationId })).toEqual([]);
+    for (const [index, write] of writes.entries()) {
+      const entry = write.entries[0];
+      expect(entry.kind).toBe('turn_diagnostic');
+      if (entry.kind !== 'turn_diagnostic') throw new Error('missing turn diagnostic');
+      expect(entry.constraintContext.scheduler?.preview?.representativeCandidates).toEqual([
+        expect.objectContaining({ stableV5Metadata: expect.objectContaining({
+          sourceFactRefs: [taskId, index === 0 ? oldBudget.id : newBudget.id],
+        }), futureTaskTotalSentinel: 'task-total-lineage-sentinel' }),
+      ]);
+      expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+      const prepared = prepareWeeklyPlanningTraceServerWrite({
+        session: { ...write.session }, entries: write.entries.map((value) => ({ ...value })),
+      }, { token: `wpt_${'d'.repeat(43)}`, epoch: '103' }, {
+        sessionId: 'weekly-trace-523e4567-e89b-52d3-a456-426614174000', logicalConversationId: second.conversationId,
+      }, new Date().toISOString());
+      expect(JSON.stringify(prepared.entries[0])).toContain(index === 0 ? oldBudget.id : newBudget.id);
+      expect(JSON.stringify(prepared.entries[0])).toContain('task-total-lineage-sentinel');
+      expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    }
+    await persistPreview(1, true);
+    expect(writes).toHaveLength(3);
+    const oversized = writes[2];
+    expect(JSON.stringify(oversized.entries[0])).toContain('traceTruncated');
+    expect(measureWeeklyPlanningTraceJsonBytes(oversized.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const preparedLarge = prepareWeeklyPlanningTraceServerWrite({
+      session: { ...oversized.session }, entries: oversized.entries.map((value) => ({ ...value })),
+    }, { token: `wpt_${'d'.repeat(43)}`, epoch: '103' }, {
+      sessionId: 'weekly-trace-523e4567-e89b-52d3-a456-426614174000', logicalConversationId: second.conversationId,
+    }, new Date().toISOString());
+    expect(preparedLarge.entries).toHaveLength(1);
+    expect(JSON.stringify(preparedLarge.entries[0])).toContain('traceTruncated');
+    expect(measureWeeklyPlanningTraceJsonBytes(preparedLarge.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+  });
+
 });
