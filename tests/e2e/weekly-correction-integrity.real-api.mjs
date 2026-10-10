@@ -37,11 +37,61 @@ const TEMPORAL_CASES = Object.freeze([
 ]);
 const CASES = TEMPORAL ? TEMPORAL_CASES : CORRECTION_CASES;
 const nav = page => page.getByRole('navigation', { name: '主要ナビゲーション' });
-const composer = page => page.locator('.ai-planning-composer textarea');
+const planningView = page => page.getByRole('region', { name: 'AI計画', exact: true });
+const composer = page => planningView(page).getByPlaceholder('予定や目標を入力...', { exact: true });
+const assistantMessages = page => planningView(page).locator(
+  '.ai-planning-conversation .ai-planning-message-row.assistant .ai-planning-bubble:not(.ai-planning-typing)',
+);
 const preview = page => page.getByRole('dialog', { name: '計画プレビュー', exact: true });
 const digest = value => createHash('sha256').update(value).digest('hex');
 const sort = rows => [...rows].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 const pick = row => ({ title: row.title, date: row.date, startTime: row.startTime, endTime: row.endTime });
+
+// These are UI operation ceilings inside the existing case/turn budgets, not new allowance.
+const pageBudgets = new WeakMap();
+function uiTimeout(page, ceiling = 5_000) {
+  const budget = pageBudgets.get(page);
+  if (!budget) throw new Error('UI budget was not installed.');
+  const remaining = Math.min(budget.deadline, budget.turnDeadline ?? Infinity) - Date.now();
+  if (remaining <= 0) throw new Error('Approved UI case/turn budget exhausted.');
+  return Math.min(ceiling, remaining);
+}
+function guardDeadline(context, deadline, fail, message) {
+  const timer = setTimeout(() => {
+    fail(message);
+    // Interrupt even protocol/evaluate waits; no work may outlive the approved deadline.
+    void context.close().catch(() => {});
+  }, Math.max(0, deadline - Date.now()));
+  return () => clearTimeout(timer);
+}
+async function captureUiEvidence(page, scenario, stage, evidenceDir, observations) {
+  const captured = { kind: 'ui-diagnostic', scenario: scenario.id, stage };
+  observations.push(captured);
+  let timer;
+  try {
+    const timeout = uiTimeout(page, 2_000);
+    captured.dom = await Promise.race([
+      page.evaluate(() => {
+        const root = document.querySelector('section.ai-planning-view[aria-label="AI計画"]');
+        const visible = element => Boolean(element.getClientRects().length)
+          && getComputedStyle(element).visibility !== 'hidden';
+        const messages = [...(root?.querySelectorAll('.ai-planning-message-row.assistant .ai-planning-bubble') ?? [])];
+        return { planningViewPresent: Boolean(root), planningViewVisible: Boolean(root && visible(root)),
+          assistantCount: messages.length, assistantTail: messages.slice(-4).map(element => ({
+            text: element.textContent.slice(0, 2_048), truncated: element.textContent.length > 2_048,
+            visible: visible(element), typing: element.classList.contains('ai-planning-typing'),
+          })), dialogs: [...document.querySelectorAll('[role="dialog"][aria-label="計画プレビュー"]')]
+            .slice(0, 2).map(element => ({ visible: visible(element), v2: element.classList.contains('ai-planning-preview-dialog-v2') })) };
+      }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Diagnostic DOM unavailable.')), timeout); }),
+    ]);
+  } catch { captured.domUnavailable = true; } finally { clearTimeout(timer); }
+  try {
+    const filename = `${scenario.id}-${stage}.png`;
+    await page.screenshot({ path: path.join(evidenceDir, filename), fullPage: false, timeout: uiTimeout(page, 2_000) });
+    captured.screenshot = filename;
+  } catch { captured.screenshotUnavailable = true; }
+}
 
 async function checkpoint(page) {
   return page.evaluate(owner => {
@@ -221,9 +271,9 @@ function acceptedTemporalDates(snapshot, startDate, endDate) {
 async function assertNoPreviewApproval(page, snapshot) {
   expect(snapshot.planningState.previewCandidates, 'accepted unresolved correction invalidates the old preview').toEqual([]);
   expect(snapshot.planningState.draftBlocks).toEqual([]);
-  await expect(page.getByRole('button', { name: '計画プレビューを確認', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'この内容で仮予定にする', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'この内容で保存', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '計画プレビューを確認', exact: true })).toHaveCount(0, { timeout: uiTimeout(page) });
+  await expect(page.getByRole('button', { name: 'この内容で仮予定にする', exact: true })).toHaveCount(0, { timeout: uiTimeout(page) });
+  await expect(page.getByRole('button', { name: 'この内容で保存', exact: true })).toHaveCount(0, { timeout: uiTimeout(page) });
   expect(await plans(page)).toEqual([]);
 }
 async function temporalConversation({ page, first, scenario, submit, evidenceDir, observations }) {
@@ -241,8 +291,8 @@ async function temporalConversation({ page, first, scenario, submit, evidenceDir
   const initialCandidates = assertCandidateIntegrity(first, TEMPORAL_WORK, [],
     row => row.date === '2026-08-28' && row.startTime >= '20:00' && row.endTime <= '22:00');
   await inspectPreview(page, initialCandidates, { id: `${scenario.id}-initial` }, evidenceDir, observations);
-  await preview(page).getByRole('button', { name: '閉じる', exact: true }).click();
-  await expect(preview(page)).toHaveCount(0);
+  await preview(page).getByRole('button', { name: '閉じる', exact: true }).click({ timeout: uiTimeout(page) });
+  await expect(preview(page)).toHaveCount(0, { timeout: uiTimeout(page) });
   let final = await submit(scenario.correction);
   expect(final.conversationId).toBe(first.conversationId);
   expect(final.graph.revision).toBeGreaterThan(first.graph.revision);
@@ -391,6 +441,7 @@ async function inspectRendererAdoption(page, snapshot, receipts, text, scenario,
   const sequence = snapshot.planningState.conversationRequestSequence;
   expect(Number.isSafeInteger(sequence) && sequence > 0).toBe(true);
   const requestId = `${snapshot.conversationId}:request:${sequence}`;
+  await captureUiEvidence(page, scenario, `turn-${sequence}-before-adoption`, evidenceDir, observations);
   let observation;
   await expect.poll(async () => {
     observation = await page.evaluate(({ ownerId, conversationId, requestId, text }) => {
@@ -412,12 +463,16 @@ async function inspectRendererAdoption(page, snapshot, receipts, text, scenario,
         responseSource: queued.responseSource } : null;
     }, { ownerId: OWNER, conversationId: snapshot.conversationId, requestId, text });
     return Boolean(observation);
-  }).toBe(true);
+  }, { timeout: uiTimeout(page) }).toBe(true);
   const renderer = observation.renderer;
   const assistant = snapshot.planningState.messages.at(-1).content;
   const captured = { kind: 'renderer-observation', scenario: scenario.id, ...observation, assistant };
   observations.push(captured);
-  captured.visibleAssistantText = await page.locator('.weekly-planning-chat-message--assistant p').last().innerText();
+  await expect(planningView(page)).toBeVisible({ timeout: uiTimeout(page) });
+  await expect(assistantMessages(page), 'every committed assistant message has its actual non-typing bubble')
+    .toHaveCount(snapshot.planningState.messages.filter(row => row.role === 'assistant').length, { timeout: uiTimeout(page) });
+  await expect(assistantMessages(page).last()).toBeVisible({ timeout: uiTimeout(page) });
+  captured.visibleAssistantText = await assistantMessages(page).last().innerText({ timeout: uiTimeout(page) });
   expect(renderer.actionId?.startsWith(`stable-v5:${requestId}:`), 'renderer must belong to the same committed request').toBe(true);
   expect(renderer.decision, 'coverage incomplete: captured renderer decision must show actual AI adoption')
     .toMatchObject({ branch: 'ai_rendered', responseSource: 'ai', finalMessage: assistant });
@@ -443,16 +498,20 @@ async function inspectRendererAdoption(page, snapshot, receipts, text, scenario,
         assistantMessageId: latest.id, planningStateRevision: snapshot.planningState.revision,
         graphRevision: snapshot.graph.revision, content: { responseSource: 'ai' } });
   }
-  await expect(page.locator('.weekly-planning-chat-message--assistant p').last()).toHaveText(assistant);
+  await expect(assistantMessages(page).last()).toHaveText(assistant, { timeout: uiTimeout(page) });
   observations.push({ kind: 'renderer-adoption', scenario: scenario.id, requestId: observation.requestId, storage: observation.storage,
     renderer, providerOrdinal: adopted.ordinal, assistant, naturalness: 'requires human artifact review' });
-  await page.screenshot({ path: path.join(evidenceDir, `${scenario.id}-turn-${snapshot.planningState.messages.filter(row => row.role === 'user').length}.png`), fullPage: true });
+  await page.screenshot({ path: path.join(evidenceDir, `${scenario.id}-turn-${snapshot.planningState.messages.filter(row => row.role === 'user').length}.png`), fullPage: true, timeout: uiTimeout(page, 2_000) });
 }
 
 // The real visible calendar columns and hour markers form an independent DOM oracle.
 async function inspectPreview(page, candidates, scenario, evidenceDir, observations) {
-  await page.getByRole('button', { name: '計画プレビューを確認', exact: true }).click();
-  await expect(preview(page)).toBeVisible();
+  await captureUiEvidence(page, scenario, 'before-preview', evidenceDir, observations);
+  await page.getByRole('button', { name: '計画プレビューを確認', exact: true }).click({ timeout: uiTimeout(page) });
+  await expect(preview(page)).toBeVisible({ timeout: uiTimeout(page) });
+  await expect(preview(page)).toHaveClass(/ai-planning-preview-dialog-v2/, { timeout: uiTimeout(page) });
+  await expect(preview(page).getByRole('tab', { name: '全体', exact: true }))
+    .toHaveAttribute('aria-selected', 'true', { timeout: uiTimeout(page) });
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 844 });
     const dom = await preview(page).evaluate(root => {
@@ -489,32 +548,32 @@ async function inspectPreview(page, candidates, scenario, evidenceDir, observati
       expect(block.height).toBeGreaterThanOrEqual(Math.max(12, (minutes(candidate.endTime) - minutes(candidate.startTime)) * pixelsPerMinute) - 1);
     }
     observations.push({ kind: 'preview-dom', scenario: scenario.id, width, dom });
-    await page.screenshot({ path: path.join(evidenceDir, `${scenario.id}-${width}.png`), fullPage: true });
+    await page.screenshot({ path: path.join(evidenceDir, `${scenario.id}-${width}.png`), fullPage: true, timeout: uiTimeout(page, 2_000) });
   }
 }
 
 async function saveAndReload(page, candidates, observations, scenario) {
   expect(await plans(page), 'no save before explicit approval').toEqual([]);
   await assertNoImplicitPlanWrites(page, observations, scenario, 'before-promotion');
-  await preview(page).getByRole('button', { name: 'この内容で仮予定にする', exact: true }).click();
+  await preview(page).getByRole('button', { name: 'この内容で仮予定にする', exact: true }).click({ timeout: uiTimeout(page) });
   const approve = preview(page).getByRole('button', { name: 'この内容で保存', exact: true });
-  await expect(approve).toBeEnabled();
+  await expect(approve).toBeEnabled({ timeout: uiTimeout(page) });
   expect(await plans(page), 'promotion is not approval and cannot persist plans').toEqual([]);
   await assertNoImplicitPlanWrites(page, observations, scenario, 'after-promotion-before-approval');
   await approve.evaluate(button => { button.click(); button.click(); });
-  await expect(preview(page)).toHaveCount(0);
-  await expect.poll(async () => (await plans(page)).length).toBe(candidates.length);
+  await expect(preview(page)).toHaveCount(0, { timeout: uiTimeout(page) });
+  await expect.poll(async () => (await plans(page)).length, { timeout: uiTimeout(page) }).toBe(candidates.length);
   const saved = await plans(page);
   expect(new Set(saved.map(row => row.id)).size).toBe(saved.length);
   expect(sort(saved.map(pick))).toEqual(sort(candidates.map(pick)));
   await page.evaluate(() => sessionStorage.setItem('studyplanner.e2e.preserve-next-reload', 'true'));
-  await page.reload();
-  await expect(nav(page)).toBeVisible();
+  await page.reload({ timeout: uiTimeout(page, 30_000) });
+  await expect(nav(page)).toBeVisible({ timeout: uiTimeout(page) });
   expect(sort(await plans(page))).toEqual(sort(saved));
-  await nav(page).getByRole('button', { name: 'AI計画', exact: true }).click();
-  await expect(composer(page)).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'この内容で保存', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'この内容で仮予定にする', exact: true })).toHaveCount(0);
+  await nav(page).getByRole('button', { name: 'AI計画', exact: true }).click({ timeout: uiTimeout(page) });
+  await expect(composer(page)).toBeEnabled({ timeout: uiTimeout(page) });
+  await expect(page.getByRole('button', { name: 'この内容で保存', exact: true })).toHaveCount(0, { timeout: uiTimeout(page) });
+  await expect(page.getByRole('button', { name: 'この内容で仮予定にする', exact: true })).toHaveCount(0, { timeout: uiTimeout(page) });
   observations.push({ kind: 'local-save-reload', scenario: scenario.id, saved });
 }
 
@@ -546,8 +605,9 @@ test('two bounded real-model conversations through the production App', async ({
   try {
     expect(CASES).toHaveLength(LIMITS.cases);
     for (const scenario of CASES) {
-      const scenarioState = { calls: 0, turns: 0, deadline: Date.now() + LIMITS.caseMs };
+      const scenarioState = { calls: 0, turns: 0, deadline: Date.now() + LIMITS.caseMs, turnDeadline: null };
       const context = await newFixedClockContext(browser, { viewport: { width: 1280, height: 844 }, serviceWorkers: 'block' });
+      const cancelCaseDeadline = guardDeadline(context, scenarioState.deadline, fail, 'Approved case time budget exhausted.');
       await context.route('**/*', async route => {
         const incoming = route.request();
         const url = new URL(incoming.url());
@@ -569,7 +629,7 @@ test('two bounded real-model conversations through the production App', async ({
           || body.response_format?.type !== 'json_schema' || typeof body.response_format?.json_schema?.name !== 'string'
           || typeof raw !== 'string' || Buffer.byteLength(raw) > 262_144) {
           fail('Unexpected production request shape or stopped run; provider forwarding refused.');
-        } else if (state.calls >= LIMITS.calls || scenarioState.calls >= LIMITS.callsPerCase || Date.now() >= scenarioState.deadline) {
+        } else if (state.calls >= LIMITS.calls || scenarioState.calls >= LIMITS.callsPerCase || Date.now() >= Math.min(scenarioState.deadline, scenarioState.turnDeadline ?? Infinity)) {
           fail('Approved provider request/time budget exhausted; checkpoint is incomplete.');
         }
         if (state.failure) return route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":{"code":"evaluation_stopped"}}' });
@@ -589,7 +649,7 @@ test('two bounded real-model conversations through the production App', async ({
           // Preserve the production payload byte-for-byte. Only destination/auth differ.
           const response = await api.post(PROVIDER_API, { data: raw, headers: {
             'Content-Type': 'application/json', Authorization: `Bearer ${key}`,
-          }, timeout: Math.max(1, Math.min(LIMITS.requestMs, scenarioState.deadline - Date.now())), maxRetries: 0, maxRedirects: 0 });
+          }, timeout: Math.max(1, Math.min(LIMITS.requestMs, scenarioState.deadline - Date.now(), (scenarioState.turnDeadline ?? Infinity) - Date.now())), maxRetries: 0, maxRedirects: 0 });
           receipt.status = response.status();
           if (!response.ok()) {
             // Never return/log arbitrary auth error text (it may contain credential fragments).
@@ -614,10 +674,13 @@ test('two bounded real-model conversations through the production App', async ({
       let page;
       try {
         page = await context.newPage();
-        await page.goto(HARNESS);
-        await expect(nav(page)).toBeVisible();
-        await nav(page).getByRole('button', { name: 'AI計画', exact: true }).click();
-        await expect(composer(page)).toBeEnabled();
+        pageBudgets.set(page, scenarioState);
+        page.setDefaultTimeout(5_000);
+        page.setDefaultNavigationTimeout(30_000);
+        await page.goto(HARNESS, { timeout: uiTimeout(page, 30_000) });
+        await expect(nav(page)).toBeVisible({ timeout: uiTimeout(page) });
+        await nav(page).getByRole('button', { name: 'AI計画', exact: true }).click({ timeout: uiTimeout(page) });
+        await expect(composer(page)).toBeEnabled({ timeout: uiTimeout(page) });
         expect(await plans(page)).toEqual([]);
         const submit = async text => {
           check();
@@ -625,25 +688,29 @@ test('two bounded real-model conversations through the production App', async ({
             throw new Error('Approved user-turn/time budget exhausted; no extra turn is allowed.');
           }
           state.turns += 1; scenarioState.turns += 1;
-          const callsBefore = state.calls;
-          await composer(page).fill(text);
-          await composer(page).press('Enter');
-          await expect.poll(async () => {
+          scenarioState.turnDeadline = Math.min(scenarioState.deadline, Date.now() + LIMITS.turnMs);
+          const cancelTurnDeadline = guardDeadline(context, scenarioState.turnDeadline, fail, 'Approved turn time budget exhausted.');
+          try {
+            const callsBefore = state.calls;
+            await composer(page).fill(text, { timeout: uiTimeout(page) });
+            await composer(page).press('Enter', { timeout: uiTimeout(page) });
+            await expect.poll(async () => {
+              check();
+              const snap = await checkpoint(page);
+              const messages = snap?.planningState?.messages;
+              return state.calls > callsBefore && Array.isArray(messages)
+                && messages.filter(row => row.role === 'user').at(-1)?.content === text
+                && messages.at(-1)?.role === 'assistant' && await composer(page).isEnabled();
+            }, { timeout: uiTimeout(page, LIMITS.turnMs) }).toBe(true);
             check();
             const snap = await checkpoint(page);
-            const messages = snap?.planningState?.messages;
-            return state.calls > callsBefore && Array.isArray(messages)
-              && messages.filter(row => row.role === 'user').at(-1)?.content === text
-              && messages.at(-1)?.role === 'assistant' && await composer(page).isEnabled();
-          }, { timeout: Math.max(1, Math.min(LIMITS.turnMs, scenarioState.deadline - Date.now())) }).toBe(true);
-          check();
-          const snap = await checkpoint(page);
-          state.observations.push({ kind: 'observed-checkpoint', scenario: scenario.id, turn: scenarioState.turns, checkpoint: snap });
-          requireGraph(snap);
-          await inspectRendererAdoption(page, snap, state.receipts.slice(callsBefore), text, scenario, evidenceDir, state.observations);
-          expect(await plans(page), 'conversation and preview never save implicitly').toEqual([]);
-          await assertNoImplicitPlanWrites(page, state.observations, scenario, `turn-${scenarioState.turns}`);
-          return snap;
+            state.observations.push({ kind: 'observed-checkpoint', scenario: scenario.id, turn: scenarioState.turns, checkpoint: snap });
+            requireGraph(snap);
+            await inspectRendererAdoption(page, snap, state.receipts.slice(callsBefore), text, scenario, evidenceDir, state.observations);
+            expect(await plans(page), 'conversation and preview never save implicitly').toEqual([]);
+            await assertNoImplicitPlanWrites(page, state.observations, scenario, `turn-${scenarioState.turns}`);
+            return snap;
+          } finally { cancelTurnDeadline(); scenarioState.turnDeadline = null; }
         };
         const first = await submit(scenario.initial ?? INITIAL);
         let firstCandidates;
@@ -655,8 +722,8 @@ test('two bounded real-model conversations through the production App', async ({
         } else {
           firstCandidates = assertExpectedFacts(first, { amount: 20, pace: 3, session: 30, durations: [30, 30], start: '2026-08-24', end: '2026-08-30' });
           await inspectPreview(page, firstCandidates, { id: `${scenario.id}-initial` }, evidenceDir, state.observations);
-          await preview(page).getByRole('button', { name: '閉じる', exact: true }).click();
-          await expect(preview(page)).toHaveCount(0);
+          await preview(page).getByRole('button', { name: '閉じる', exact: true }).click({ timeout: uiTimeout(page) });
+          await expect(preview(page)).toHaveCount(0, { timeout: uiTimeout(page) });
           final = await submit(scenario.correction);
         }
         if (scenario.id === 'paired-workload-effort') state.observations.push({ kind: 'correction-seams', scenario: scenario.id, ...assertPairedCorrectionSeam(first, final) });
@@ -709,22 +776,18 @@ test('two bounded real-model conversations through the production App', async ({
         state.outcome = 'failed';
         fail('Correction oracle or UI acceptance failed; inspect captured synthetic evidence.');
         if (page) {
+          await captureUiEvidence(page, scenario, `turn-${scenarioState.turns}-failure`, evidenceDir, state.observations);
           try {
             const captured = { kind: 'failure-checkpoint', scenario: scenario.id, turn: scenarioState.turns };
             state.observations.push(captured);
             captured.checkpoint = await checkpoint(page);
-            captured.visibleAssistantText = await page.locator('.weekly-planning-chat-message--assistant p').allTextContents();
+            captured.visibleAssistantText = await assistantMessages(page).allTextContents();
           } catch {
             state.observations.push({ kind: 'failure-capture-unavailable', scenario: scenario.id, turn: scenarioState.turns });
           }
-          try {
-            await page.screenshot({ path: path.join(evidenceDir, `${scenario.id}-turn-${scenarioState.turns}-failure.png`), fullPage: true });
-          } catch {
-            state.observations.push({ kind: 'failure-screenshot-unavailable', scenario: scenario.id, turn: scenarioState.turns });
-          }
         }
         throw error;
-      } finally { await context.close(); }
+      } finally { cancelCaseDeadline(); await context.close(); }
     }
     check();
     expect(state.externalRequests).toEqual([]);
