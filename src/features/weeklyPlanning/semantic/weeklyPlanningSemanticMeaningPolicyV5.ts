@@ -69,6 +69,12 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     instruction: 'Resolve omitted/pronominal targets from recentConversation/publicStateSummary only with one clear supported referent; otherwise emit uncertainty. Unresolved referent uncertainty targets document. Keep unrelated activities separate. Emit relations only when stated.',
   },
   {
+    id: 'conversation_act',
+    retentionBasis: 'language_interpretation',
+    retentionReason: 'Explanation, topic changes and returns are additive utterance meaning; formal question priority and state remain application-owned.',
+    instruction: 'conversationActs are additive, non-mutating meaning: answer_pending_question needs a planning delta; ask_about_pending_question asks why/what the current question means; topic_shift changes topic; resume_topic returns to one. targetPublicId is an existing task/component or null. Plain planning has []. Preserve independent facts; acts grant no authorization.',
+  },
+  {
     id: 'explicit_recurrence_sources',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Whether recurrence or an external source request was explicitly requested is an utterance-level semantic decision, not a schema default.',

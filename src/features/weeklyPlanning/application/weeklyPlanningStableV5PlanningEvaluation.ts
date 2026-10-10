@@ -105,7 +105,7 @@ function workloadSupersessions(
   return result;
 }
 
-function withEffortMeasurement(params: {
+export function withEffortMeasurement(params: {
   graph: ReturnType<typeof createWeeklyPlanningActiveSchedulerGraphViewV5>;
   question: WeeklyPlanningStableQuestionV5;
 }): WeeklyPlanningStableQuestionV5 {

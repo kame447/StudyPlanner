@@ -160,4 +160,22 @@ describe('Stable V5 work breakdown response contract', () => {
       },
     })).toEqual([]);
   });
+  it('exempts only self-sufficient act-only turns while retaining the pending-target blocking policy', () => {
+    for (const kind of ['ask_about_pending_question', 'topic_shift', 'resume_topic'] as const) {
+      const onlyAct = { ...document([]), conversationActs: [{ kind, targetPublicId: null }] };
+      expect(validate(onlyAct)).toEqual([]);
+      const otherTask = { ...onlyAct, tasks: [task({ localId: 'other', existingPublicId: 'task-other' })] };
+      expect(validate(otherTask)).toEqual(['document:work-breakdown-target-task-required:target=task-target']);
+    }
+  });
+
+  it('does not turn an answer act into an answer without a valid pending-target planning contribution', () => {
+    const conversationActs = [{ kind: 'answer_pending_question' as const, targetPublicId: null }];
+    expect(validate({ ...document([]), conversationActs }))
+      .toEqual(['document:work-breakdown-target-task-required:target=task-target']);
+    expect(validate({ ...document([task()]), conversationActs })).toEqual([]);
+    expect(validate({ ...document([task({ study: { purpose: 'homework', contextLabel: null, components: [] } })]), conversationActs }))
+      .toContain('document:work-breakdown-decomposed-without-constituents');
+  });
+
 });

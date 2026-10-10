@@ -51,6 +51,8 @@ import type {
 export { createWeeklyPlanningSystemDialogueRendererTrace } from './weeklyPlanningStableV5TurnDialogueTrace';
 
 const RECENT_TURN_LIMIT = 4;
+// Failure-only wording: accepted planning may already be staged, so make no non-application claim.
+const ASIDE_RENDERER_TECHNICAL_STOP = '返信を作れませんでした。少し待ってからもう一度送信してください。';
 
 export const WEEKLY_PLANNING_RECOVERY_TECHNICAL_STOP =
   '返信を作れませんでした。今回の内容は計画へ反映していません。少し待ってからもう一度送信してください。';
@@ -114,7 +116,7 @@ function withAssistantMessage(params: {
   dialogueRendererTrace: WeeklyPlanningDialogueRendererTrace;
   questionPresentationContent?: WeeklyPlanningQuestionPresentationContent;
 }): WeeklyPlanningTurnExecutionResult {
-  const state = params.result.state.questions.length > 0
+  const state = params.result.interactionOutcome?.kind !== 'aside' && params.result.state.questions.length > 0
     ? { ...params.result.state, questions: [params.message] }
     : params.result.state;
   const {
@@ -128,7 +130,7 @@ function withAssistantMessage(params: {
     message: params.message,
     responseSource: params.responseSource,
     dialogueRendererTrace: params.dialogueRendererTrace,
-    ...(params.questionPresentationContent && state.lastQuestionContext
+    ...(params.result.interactionOutcome?.kind !== 'aside' && params.questionPresentationContent && state.lastQuestionContext
       ? { questionPresentationContent: params.questionPresentationContent }
       : {}),
   };
@@ -284,7 +286,8 @@ function createRenderInput(params: {
   const previewPromotionControlLabel = params.result.state.status === 'draft_ready'
     ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL
     : null;
-  const fallbackText = fallbackTextForStableV5TypedIntent({
+  const fallbackText = params.result.interactionOutcome?.kind === 'aside'
+    ? ASIDE_RENDERER_TECHNICAL_STOP : fallbackTextForStableV5TypedIntent({
     applicationText: params.result.message,
     questionIntent,
   });
@@ -299,6 +302,14 @@ function createRenderInput(params: {
     currentQuestionCode: params.questionCode,
   });
   return {
+    ...(params.result.interactionOutcome ? { communication: {
+      goal: params.result.interactionOutcome.kind === 'aside' ? 'acknowledge_aside' as const
+        : params.result.interactionOutcome.kind === 'explain_pending_question' ? 'explain_question' as const
+        : params.result.interactionOutcome.kind === 'resume_pending_question' ? 'resume_question' as const
+        : params.actionKind === 'question' ? 'ask_question' as const
+        : params.actionKind === 'preview_ready' ? 'present_preview' as const : 'acknowledge' as const,
+      askQuestion: params.actionKind === 'question',
+    } } : {}),
     actionId: params.actionId,
     currentUserMessage: params.input.userText,
     recentConversation: params.input.messages
@@ -344,9 +355,13 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
     return result;
   }
 
+  // Render-only projection; withAssistantMessage retains the router-projected pending question, never the aside text.
+  const renderResult = params.result.interactionOutcome?.kind === 'aside'
+    ? { ...params.result, state: { ...params.result.state, lastQuestionContext: undefined, questions: [] } }
+    : params.result;
   const notice = selfRepairNotice(params);
-  const actionKind = dialogueActionKind(params.result);
-  const currentQuestionCode = questionCode(params.result);
+  const actionKind = dialogueActionKind(renderResult);
+  const currentQuestionCode = questionCode(renderResult);
   const currentActionId = actionId({
     traceRequestId: params.input.traceRequestId,
     actionKind,
@@ -354,6 +369,7 @@ export async function renderWeeklyPlanningStableV5AssistantMessage(params: {
   });
   const renderInput = createRenderInput({
     ...params,
+    result: renderResult,
     notice,
     actionKind,
     questionCode: currentQuestionCode,

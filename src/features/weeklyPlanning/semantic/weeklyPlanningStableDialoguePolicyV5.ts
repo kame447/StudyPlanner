@@ -86,17 +86,25 @@ function normalizeQuestion(
   };
 }
 
+/** Blocking questions share the policy's existing stable ordering; the first remains its default. */
+export function listWeeklyPlanningStableBlockingQuestionsV5(
+  compilation: GenericSchedulerInputCompilationResult,
+): WeeklyPlanningStableQuestionV5[] {
+  return compilation.issues
+    .filter((issue) => issue.blocking)
+    .sort((left, right) => issueKey(left).localeCompare(issueKey(right)))
+    .map(normalizeQuestion);
+}
+
 export function decideWeeklyPlanningStableDialogueV5(
   compilation: GenericSchedulerInputCompilationResult,
 ): WeeklyPlanningStableDialogueDecisionV5 {
-  const blocking = compilation.issues
-    .filter((issue) => issue.blocking)
-    .sort((left, right) => issueKey(left).localeCompare(issueKey(right)));
-  if (blocking.length > 0) {
+  const [first] = listWeeklyPlanningStableBlockingQuestionsV5(compilation);
+  if (first) {
     return {
       policyVersion: WEEKLY_PLANNING_STABLE_DIALOGUE_POLICY_VERSION_V5,
       status: 'ask_question',
-      question: normalizeQuestion(blocking[0]),
+      question: first,
       previewEligible: false,
     };
   }
