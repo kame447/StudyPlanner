@@ -77,11 +77,33 @@ export class WeeklyPlanningSemanticNormalizerRunV5 {
   readonly requestBytes: number[] = [];
   readonly responseLengths: number[] = [];
   readonly algorithmicRepairs: string[] = [];
+  readonly client: OpenAiCompatibleClient;
+  private providerDispatchCount = 0;
+  private providerDispatchFailed = false;
+  private pendingProviderDispatches = 0;
 
   constructor(
-    readonly client: OpenAiCompatibleClient,
+    client: OpenAiCompatibleClient,
     readonly input: WeeklyPlanningSemanticNormalizerInputV5,
-  ) {}
+  ) {
+    // Focused routes sometimes call run.client directly rather than callTracked.
+    // Count at their shared client boundary; diagnostic attemptCount is not a census.
+    this.client = {
+      ...client,
+      createChatCompletion: async (request) => {
+        this.providerDispatchCount += 1;
+        this.pendingProviderDispatches += 1;
+        try {
+          return await client.createChatCompletion(request);
+        } catch (error) {
+          this.providerDispatchFailed = true;
+          throw error;
+        } finally {
+          this.pendingProviderDispatches -= 1;
+        }
+      },
+    };
+  }
 
   async callGeneric(
     messages: ChatMessage[],
@@ -156,6 +178,8 @@ export class WeeklyPlanningSemanticNormalizerRunV5 {
       validationErrors: params.validationErrors,
       algorithmicRepairs: [...new Set(this.algorithmicRepairs)],
       providerError: params.providerError,
+      providerDispatch: { count: this.providerDispatchCount, anyFailure: this.providerDispatchFailed,
+        complete: this.pendingProviderDispatches === 0 },
     };
   }
 

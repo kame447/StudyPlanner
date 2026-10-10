@@ -52,6 +52,7 @@ export interface ExecuteWeeklyPlanningTurnRuntimeParams {
   timetableTerms?: TimetableTerm[];
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
+  isCurrentTurn?: () => boolean;
 }
 
 export interface WeeklyPlanningTurnRuntimeGateway {
@@ -96,6 +97,8 @@ export function createWeeklyPlanningTurnRuntimeGateway(
         weekStartsOn: requestContext.weekStartsOn,
         requestContext,
         inputStateRevision: params.pending.baseRevision,
+        isCurrentTurn: params.isCurrentTurn,
+        retainedPreviewCount: params.snapshot.previewCandidates?.length ?? 0,
       });
     },
   };

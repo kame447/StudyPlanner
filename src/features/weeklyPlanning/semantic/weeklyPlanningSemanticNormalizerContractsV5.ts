@@ -26,6 +26,8 @@ export interface WeeklyPlanningSemanticNormalizerDiagnosticsV5 {
   validationErrors: string[];
   algorithmicRepairs?: string[];
   providerError: string | null;
+  /** All calls through this normalizer's client, including focused routes. */
+  providerDispatch?: { count: number; anyFailure: boolean; complete: boolean };
 }
 
 export type WeeklyPlanningContextualDirectiveV5 = {
