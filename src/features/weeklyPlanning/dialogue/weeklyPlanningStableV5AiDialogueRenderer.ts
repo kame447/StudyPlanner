@@ -199,7 +199,7 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
             ? GROUNDING_ACK_REPAIR_INSTRUCTION
             : null;
         if (!repairInstruction) return initial;
-        return requestDialogueRender({
+        return await requestDialogueRender({
           client,
           input,
           messages: [
