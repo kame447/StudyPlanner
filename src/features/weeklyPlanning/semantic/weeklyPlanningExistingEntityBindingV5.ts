@@ -2,6 +2,7 @@ import type {
   SemanticWorkloadV5,
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
+import type { WeeklyPlanningPendingQuestionV5 } from './weeklyPlanningPendingQuestionV5';
 import type {
   WeeklyPlanningFactGraphV5,
   WorkloadFactV5,
@@ -259,4 +260,110 @@ export function resolveWeeklyPlanningExistingEntityGraphBindingsV5(params: {
     workloadFactIdByLocalId,
     errors,
   };
+}
+
+/** Only a complete single-answer restatement may retain contextual projection.
+ * Extra declarations or semantic payload require ordinary canonicalization. */
+function isSingleWorkloadEffortRestatement(document: WeeklyPlanningSemanticDocumentV5): boolean {
+  if (document.planningIntent !== 'update_plan' || document.planningWindow !== null
+    || document.tasks.length !== 1 || document.relations.length > 0
+    || document.availabilityDeclarations.length > 0 || document.constraintSourceRequests.length > 0
+    || (document.userContextFacts?.length ?? 0) > 0 || document.uncertainties.length > 0
+    || document.corrections.length > 0 || document.decisions.length > 0) return false;
+  const task = document.tasks[0];
+  if (task.effortEstimates.length !== 1 || task.temporalConstraints.length > 0
+    || task.recurrence.length > 0 || (task.durableContextSignals?.length ?? 0) > 0
+    || (task.decompositionStatus !== undefined && task.decompositionStatus !== 'atomic')) return false;
+  if (!task.study) return task.workloads.length === 1;
+  // Existing-task normalization may fill a neutral unknown study wrapper.
+  if (task.study.purpose !== 'unknown' || task.study.contextLabel !== null
+    || (task.study.activityKind !== undefined && task.study.activityKind !== 'unknown')) return false;
+  if (task.study.components.length === 0) return task.workloads.length === 1;
+  if (task.workloads.length !== 0 || task.study.components.length !== 1) return false;
+  const component = task.study.components[0];
+  return typeof component.existingPublicId === 'string' && component.existingPublicId.length > 0
+    && component.parentLocalId === null && component.workloads.length === 1
+    && (component.durableContextSignals?.length ?? 0) === 0;
+}
+
+/** Explicit local efforts require ordinary binding unless that same formal owner
+ * proves a single pending answer would preserve its target, kind and unit exactly.
+ * New/ambiguous/invalid bindings and independent payload never authorize a guess. */
+export function requiresWeeklyPlanningExplicitLocalWorkloadEffortBindingV5(params: {
+  document: WeeklyPlanningSemanticDocumentV5;
+  graph: WeeklyPlanningFactGraphV5;
+  pendingQuestion: Pick<WeeklyPlanningPendingQuestionV5, 'targetFactId' | 'effortMeasurement'>;
+}): boolean {
+  const { document, graph, pendingQuestion } = params;
+  const qualified = document.tasks.flatMap(task => {
+    if (typeof task.existingPublicId !== 'string' || task.existingPublicId.length === 0) return [];
+    const localWorkloadIds = new Set([
+      ...task.workloads,
+      ...(task.study?.components ?? []).flatMap(component => component.workloads),
+    ].map(workload => workload.localId));
+    return task.effortEstimates.filter(estimate =>
+      (estimate.kind === 'total_duration' || estimate.kind === 'session_duration')
+      && localWorkloadIds.has(estimate.targetLocalId)).map(estimate => ({ task, estimate }));
+  });
+  if (qualified.length === 0) return false;
+  if (!isSingleWorkloadEffortRestatement(document)) return true;
+  const bindings = resolveWeeklyPlanningExistingEntityGraphBindingsV5({ document, graph });
+  if (bindings.errors.length > 0) return true;
+  return qualified.some(({ task, estimate }) => {
+    const id = bindings.workloadFactIdByLocalId[estimate.targetLocalId];
+    const target = graph.workloads.find(workload => workload.id === id);
+    return !target || bindings.taskFactIdByLocalId[task.localId] !== target.taskId
+      || target.id !== pendingQuestion.targetFactId || estimate.kind !== pendingQuestion.effortMeasurement
+      || estimate.unitCode !== (pendingQuestion.effortMeasurement === 'total_duration' ? null : target.unitCode);
+  });
+}
+
+/** Reserve every local-ID token before representation cleanup can remove it. */
+export function collectWeeklyPlanningLocalReferenceTokensV5(value: unknown): Set<string> {
+  const ids = new Set<string>();
+  const pending: unknown[] = [value];
+  while (pending.length > 0) {
+    const entry = pending.pop();
+    if (Array.isArray(entry)) pending.push(...entry);
+    else if (isRecord(entry)) {
+      for (const [key, child] of Object.entries(entry)) {
+        if (key === 'localId' && typeof child === 'string') ids.add(child);
+        else pending.push(child);
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Resolve only an explicit external workload reference in this document.
+ * Local tokens always win; diagnostics and pending questions are not authority.
+ */
+export function resolveWeeklyPlanningExactWorkloadEffortTargetV5(params: {
+  document: unknown;
+  task: unknown;
+  estimate: unknown;
+  graph: WeeklyPlanningFactGraphV5;
+  blockedLocalIds?: ReadonlySet<string>;
+}): WorkloadFactV5 | null {
+  const { task, estimate, graph } = params;
+  if (!isRecord(task) || !isRecord(estimate)
+    || typeof task.existingPublicId !== 'string'
+    || typeof estimate.targetLocalId !== 'string'
+    || (estimate.kind !== 'total_duration' && estimate.kind !== 'session_duration')
+    || params.blockedLocalIds?.has(estimate.targetLocalId)
+    || collectWeeklyPlanningLocalReferenceTokensV5(params.document).has(estimate.targetLocalId)) return null;
+
+  // The new external-reference path requires explicit active lifecycle entries.
+  const active = new Set(graph.factLifecycles?.filter(entry => entry.status === 'active')
+    .map(entry => entry.factId) ?? []);
+  const owner = graph.tasks.find(candidate => candidate.id === task.existingPublicId);
+  if (!owner || !active.has(owner.id)) return null;
+  const workload = graph.workloads.find(candidate => candidate.id === estimate.targetLocalId);
+  if (!workload || workload.taskId !== owner.id || !active.has(workload.id)) return null;
+  if (workload.componentId !== null) {
+    const component = graph.components.find(candidate => candidate.id === workload.componentId);
+    if (!component || component.taskId !== owner.id || !active.has(component.id)) return null;
+  }
+  return workload;
 }

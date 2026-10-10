@@ -11,6 +11,7 @@ import type {
 } from './weeklyPlanningSemanticDocumentV5';
 import {
   parseWeeklyPlanningSemanticDocumentV5,
+  type WeeklyPlanningSemanticReferenceContextV5,
 } from './weeklyPlanningSemanticValidatorV5';
 
 const AVAILABILITY_REFERENCE_KIND = 'availability_declaration';
@@ -71,19 +72,20 @@ function restoreDocumentCorrectionKinds(params: {
 
 export function parseWeeklyPlanningSemanticDocumentWithAvailabilityCorrectionsV5(
   rawResponse: string,
+  context: WeeklyPlanningSemanticReferenceContextV5 = {},
 ): ReturnType<typeof parseWeeklyPlanningSemanticDocumentV5> {
   let parsedRaw: unknown;
   try {
     parsedRaw = JSON.parse(rawResponse) as unknown;
   } catch {
-    return parseWeeklyPlanningSemanticDocumentV5(rawResponse);
+    return parseWeeklyPlanningSemanticDocumentV5(rawResponse, context);
   }
   const compatibility = transformCorrectionTargets(
     parsedRaw,
     AVAILABILITY_REFERENCE_KIND,
     BASE_COMPATIBILITY_REFERENCE_KIND,
   );
-  const parsed = parseWeeklyPlanningSemanticDocumentV5(JSON.stringify(compatibility.value));
+  const parsed = parseWeeklyPlanningSemanticDocumentV5(JSON.stringify(compatibility.value), context);
   if (!parsed.document) return parsed;
   return {
     ...parsed,

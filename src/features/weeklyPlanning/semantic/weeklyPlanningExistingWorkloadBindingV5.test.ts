@@ -1,4 +1,12 @@
+import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemanticResponseValidationV5';
 import { describe, expect, it } from 'vitest';
+import { evaluateWeeklyPlanningStableV5ContextualAnswer } from './weeklyPlanningStableV5ContextualAnswer';
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import { createWeeklyPlanningSemanticNormalizerV5 } from './weeklyPlanningSemanticNormalizerV5';
+import { createWeeklyPlanningSemanticPipelineV5 } from './weeklyPlanningSemanticPipelineV5';
+import { applyWeeklyPlanningFactLifecycleOperationV5 } from './weeklyPlanningFactLifecycleEngineV5';
+import { parseWeeklyPlanningFactGraphV5, serializeWeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphValidatorV5';
+import { effortEstimateTargetsWorkload } from './weeklyPlanningGenericWorkEstimation';
 import {
   applyWeeklyPlanningExistingEntityBindingsV5,
 } from './weeklyPlanningExistingEntityBindingApplicationV5';
@@ -238,5 +246,798 @@ describe('Stable V5 existing workload binding', () => {
         targetFactId: 'workload-public',
       }),
     ]);
+  });
+});
+
+// H2(1): exact workload references are selected with the final accepted reading.
+// No component restatement, inferred quantity, clock-unit rate conversion or stubbed acceptance.
+type ExactDurationKind = 'total_duration' | 'session_duration';
+type ExactTask = WeeklyPlanningSemanticDocumentV5['tasks'][number];
+type ExactWorkload = ExactTask['workloads'][number];
+const DURATION_KINDS = ['total_duration', 'session_duration'] as const;
+const EXACT_TEXT = '数学は合計30分、1回30分です。英語は前のままです。';
+const EXACT_CONVERSATION = 'exact-workload-final-reading';
+const EXACT_TARGET_ERROR = 'document.tasks[0].effortEstimates[0].targetLocalId';
+const INVALID_INITIAL_ERROR = 'document.tasks[0].temporalConstraints[0].targetLocalId';
+
+function exactDocument(tasks: ExactTask[]): WeeklyPlanningSemanticDocumentV5 {
+  return {
+    schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
+    planningIntent: 'update_plan', planningWindow: null, tasks,
+    relations: [], availabilityDeclarations: [], constraintSourceRequests: [],
+    userContextFacts: [], uncertainties: [], corrections: [], decisions: [],
+  };
+}
+function exactTask(localId: string, title: string): ExactTask {
+  return {
+    localId, existingPublicId: null, decompositionStatus: 'atomic', category: 'study', title,
+    study: { purpose: 'self_study', activityKind: 'reading', contextLabel: null, components: [] },
+    workloads: [], effortEstimates: [], temporalConstraints: [], recurrence: [],
+    durableContextSignals: [], sourceText: EXACT_TEXT,
+  };
+}
+function exactWorkload(localId: string, amount: number, sourceText: string): ExactWorkload {
+  return {
+    localId, quantityRole: 'target', amount, unitCode: 'page', unitLabel: 'ページ',
+    rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null, sourceText,
+  };
+}
+function exactFixture(duplicateOtherWorkload = false) {
+  const own = exactTask('setup-math', '数学');
+  own.sourceText = '数学の12ページと18ページを進めます';
+  own.workloads = [
+    exactWorkload('setup-a', 12, '数学の12ページ'),
+    exactWorkload('setup-b', 18, '18ページ'),
+  ];
+  const other = exactTask('setup-english', '英語');
+  other.sourceText = '英語の9ページを進めます';
+  other.workloads = [exactWorkload('setup-c', 9, '英語の9ページ')];
+  if (duplicateOtherWorkload) other.workloads.push(exactWorkload('setup-d', 9, '英語の別の9ページ'));
+  const accepted = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
+    graph: createEmptyWeeklyPlanningFactGraphV5(), document: exactDocument([own, other]),
+    context: { conversationId: EXACT_CONVERSATION, turnId: 'setup', expectedRevision: 0 },
+  });
+  if (accepted.status !== 'applied') throw new Error(accepted.errors.join(','));
+  const graph = accepted.graph;
+  expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(graph)).graph).toEqual(graph);
+  const id = (localId: string) => {
+    const factId = accepted.localToFactId[localId];
+    if (!factId) throw new Error(`missing fixture ID: ${localId}`);
+    return factId;
+  };
+  expect(graph.workloads.map(fact => fact.unitCode)).toEqual(
+    duplicateOtherWorkload ? ['page', 'page', 'page', 'page'] : ['page', 'page', 'page'],
+  );
+  expect(graph.components).toEqual([]);
+  return { graph, own: id('setup-math'), other: id('setup-english'), a: id('setup-a'), b: id('setup-b'), c: id('setup-c') };
+}
+type ExactFixture = ReturnType<typeof exactFixture>;
+
+function durationReading(f: ExactFixture, targetLocalId: string, kind: ExactDurationKind = 'total_duration') {
+  const task = exactTask('reply-task', '数学');
+  task.existingPublicId = f.own;
+  task.effortEstimates = [{
+    localId: 'reply-effort', targetLocalId, kind, minutes: 30,
+    unitCode: kind === 'session_duration' ? 'session' : null, precision: 'exact', sourceText: EXACT_TEXT,
+  }];
+  return exactDocument([task]);
+}
+function replayReading(f: ExactFixture, workloadId: string, kind: ExactDurationKind = 'total_duration') {
+  const fact = f.graph.workloads.find(item => item.id === workloadId);
+  if (!fact) throw new Error('missing fixture workload');
+  const document = durationReading(f, 'replayed-workload', kind);
+  document.tasks[0].workloads = [exactWorkload('replayed-workload', fact.amount, fact.source.sourceText)];
+  return document;
+}
+function invalidInitial(f: ExactFixture, workloadId: string) {
+  const document = durationReading(f, workloadId);
+  // A reference error is not a representation-only repair. The effort's entire
+  // identity/value/quote stays identical across attempts; only its target changes.
+  document.tasks[0].temporalConstraints = [{
+    localId: 'invalid-constraint', targetLocalId: 'undeclared-target', kind: 'deadline',
+    constraintLevel: 'hard', dateExpression: '2026-10-17', namedTimePeriod: null,
+    startTime: null, endTime: null, precision: 'exact', sourceText: EXACT_TEXT,
+  }];
+  return document;
+}
+async function runDurationReadings(params: {
+  graph: WeeklyPlanningFactGraphV5; documents: WeeklyPlanningSemanticDocumentV5[];
+  turnId: string; userText?: string;
+}) {
+  const graphBefore = structuredClone(params.graph);
+  const documentsBefore = structuredClone(params.documents);
+  const rawResponses = params.documents.map(value => JSON.stringify(value));
+  const calls: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]> = [];
+  const client: OpenAiCompatibleClient = {
+    async createChatCompletion(request) {
+      calls.push(structuredClone(request));
+      const raw = rawResponses[calls.length - 1];
+      if (raw === undefined) throw new Error('unexpected extra provider call in exact-workload fixture');
+      return raw;
+    },
+  };
+  const result = await createWeeklyPlanningSemanticPipelineV5(
+    createWeeklyPlanningSemanticNormalizerV5(client),
+  ).run({
+    graph: params.graph, conversationId: EXACT_CONVERSATION, turnId: params.turnId,
+    expectedRevision: params.graph.revision, userText: params.userText ?? EXACT_TEXT,
+    schedulerContext: { ownerId: 'exact-workload-owner', currentDate: '2026-10-10',
+      planningStartDate: '2026-10-11', planningEndDate: '2026-10-17', timeZone: 'Asia/Tokyo' },
+  });
+  expect(params.graph).toEqual(graphBefore);
+  expect(params.documents).toEqual(documentsBefore);
+  expect(calls.length).toBeLessThanOrEqual(2);
+  expect(calls.map(call => call.responseFormat?.json_schema.name)).toEqual(
+    calls.map(() => 'weekly_planning_semantic_document_v5'),
+  );
+  expect(calls.every(call => call.purpose === 'weekly_planning_semantic_normalizer')).toBe(true);
+  if (calls.length === 2) {
+    expect(calls[1].messages).toContainEqual({ role: 'assistant', content: rawResponses[0] });
+  }
+  return { result, calls };
+}
+function expectAcceptedExactTarget(params: {
+  result: Awaited<ReturnType<typeof runDurationReadings>>['result'];
+  original: WeeklyPlanningFactGraphV5; targetFactId: string; kind?: ExactDurationKind;
+}) {
+  const { result, original, targetFactId } = params;
+  // Never let a rejected final candidate or an accepted-normalizer stub stand in
+  // for the final adoption boundary before checking canonical scope.
+  expect(result.normalization.status, JSON.stringify(result.normalization.diagnostics, null, 2)).toBe('accepted');
+  expect(result.normalization.document).not.toBeNull();
+  expect(result.normalization.document?.tasks).toHaveLength(1);
+  expect(result.normalization.document?.tasks[0].effortEstimates).toEqual([
+    expect.objectContaining({ localId: 'reply-effort', kind: params.kind ?? 'total_duration',
+      minutes: 30, unitCode: params.kind === 'session_duration' ? 'session' : null,
+      precision: 'exact', sourceText: EXACT_TEXT }),
+  ]);
+  expect(result.canonicalization?.status).toBe('applied');
+  expect(result.graph.workloads).toEqual(original.workloads);
+  expect(result.graph.tasks).toEqual(original.tasks);
+  expect(result.graph.components).toEqual([]);
+  expect(result.graph.temporalConstraints).toEqual([]);
+  expect(result.graph.revision).toBe(original.revision + 1);
+  const reloaded = parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph));
+  expect(reloaded.errors).toEqual([]);
+  expect(reloaded.graph).toEqual(result.graph);
+  expect(reloaded.graph?.effortEstimates).toEqual([
+    expect.objectContaining({ taskId: original.tasks[0].id, targetFactId,
+      kind: params.kind ?? 'total_duration', minutes: 30,
+      unitCode: params.kind === 'session_duration' ? 'session' : null,
+      source: expect.objectContaining({ semanticLocalId: 'reply-effort', sourceText: EXACT_TEXT, origin: 'user' }) }),
+  ]);
+  expect(result.canonicalization?.diff?.added).toEqual([
+    { kind: 'effort_estimate', id: result.graph.effortEstimates[0].id },
+  ]);
+  const effort = result.graph.effortEstimates[0];
+  expect(original.workloads.map(workload => {
+    if (workload.quantityRole !== 'target') throw new Error('exact-workload fixture requires target quantities');
+    return effortEstimateTargetsWorkload(effort, { ...workload, quantityRole: workload.quantityRole });
+  })).toEqual(
+    original.workloads.map(workload => workload.taskId === effort.taskId
+      && (workload.id === targetFactId || workload.taskId === targetFactId)),
+  );
+}
+
+// Intended-contract baseline: the four public-ID acceptance rows are expected
+// to be red on cb3167. Preserve and classify actual failures; do not preclaim results.
+describe('Stable V5 final-reading exact workload reference boundary', () => {
+  it.each(DURATION_KINDS)('keeps the existing local replay control for %s', async kind => {
+    const f = exactFixture();
+    const document = replayReading(f, f.a, kind);
+    const { result, calls } = await runDurationReadings({ graph: f.graph, documents: [document], turnId: `local-${kind}` });
+    expectAcceptedExactTarget({ result, original: f.graph, targetFactId: f.a, kind });
+    expect(calls).toHaveLength(1);
+    expect(result.normalization.document?.tasks[0].effortEstimates[0].targetLocalId).toBe('replayed-workload');
+    expect(result.canonicalization?.localToFactId['replayed-workload']).toBe(f.a);
+  });
+
+  it.each(DURATION_KINDS)('accepts an exact active public workload target without importing quantity for %s', async kind => {
+    const f = exactFixture();
+    const document = durationReading(f, f.a, kind);
+    const { result, calls } = await runDurationReadings({ graph: f.graph, documents: [document, document], turnId: `public-${kind}` });
+    expectAcceptedExactTarget({ result, original: f.graph, targetFactId: f.a, kind });
+    expect(calls).toHaveLength(1);
+    expect(result.normalization.diagnostics).toMatchObject({ attemptCount: 1, repairAttempted: false });
+    expect(result.normalization.document?.tasks[0].workloads).toEqual([]);
+  });
+
+  it.each(['a-to-b', 'b-to-a'] as const)('uses only the adopted exact target after invalid %s', async direction => {
+    const f = exactFixture();
+    const [discarded, adopted] = direction === 'a-to-b' ? [f.a, f.b] : [f.b, f.a];
+    const first = invalidInitial(f, discarded);
+    // Existing repair-to-local shape is the main-positive control before the
+    // new public-ID representation. Both carry the very same intended target.
+    const control = await runDurationReadings({ graph: f.graph,
+      documents: [first, replayReading(f, adopted)], turnId: `repair-local-${direction}` });
+    expectAcceptedExactTarget({ result: control.result, original: f.graph, targetFactId: adopted });
+    expect(control.calls).toHaveLength(2);
+    const { result, calls } = await runDurationReadings({ graph: f.graph,
+      documents: [first, durationReading(f, adopted)], turnId: `repair-public-${direction}` });
+    expectAcceptedExactTarget({ result, original: f.graph, targetFactId: adopted });
+    expect(calls).toHaveLength(2);
+    expect(result.normalization.diagnostics).toMatchObject({ attemptCount: 2, repairAttempted: true });
+    expect(result.normalization.diagnostics.validationErrors).toContain(INVALID_INITIAL_ERROR);
+    expect(result.normalization.document?.tasks[0].workloads).toEqual([]);
+    expect(result.graph.effortEstimates[0].targetFactId).not.toBe(discarded);
+  });
+
+  it('does not narrow a final task-wide reading using an invalid earlier exact citation', async () => {
+    const f = exactFixture();
+    const final = durationReading(f, 'reply-task');
+    const clean = await runDurationReadings({ graph: f.graph, documents: [final], turnId: 'clean-task-wide' });
+    const repaired = await runDurationReadings({ graph: f.graph,
+      documents: [invalidInitial(f, f.a), final], turnId: 'repaired-task-wide' });
+    for (const attempt of [clean, repaired]) {
+      expectAcceptedExactTarget({ result: attempt.result, original: f.graph, targetFactId: f.own });
+      expect(attempt.result.normalization.document?.tasks[0].effortEstimates[0].targetLocalId).toBe('reply-task');
+    }
+    expect(clean.calls).toHaveLength(1);
+    expect(repaired.calls).toHaveLength(2);
+    expect(repaired.result.normalization.document).toEqual(clean.result.normalization.document);
+    expect(repaired.result.normalization.diagnostics.validationErrors).toContain(INVALID_INITIAL_ERROR);
+  });
+
+  it.each(['unknown', 'foreign-workload', 'foreign-kind', 'removed', 'foreign-local-collision'] as const)(
+    'keeps %s targets rejected on both real attempts', async boundary => {
+      const f = exactFixture();
+      let graph = f.graph;
+      const target = boundary === 'unknown' ? 'unknown-workload'
+        : boundary === 'foreign-workload' ? f.c : boundary === 'foreign-kind' ? f.other : f.a;
+      if (boundary === 'removed') {
+        const removed = applyWeeklyPlanningFactLifecycleOperationV5({ graph, expectedRevision: graph.revision,
+          operation: { operationKey: 'remove-exact-a', kind: 'remove', targetFactId: f.a } });
+        expect(removed.status).toBe('applied');
+        graph = removed.graph;
+        expect(createWeeklyPlanningActiveSchedulerGraphViewV5(graph).workloads.some(item => item.id === f.a)).toBe(false);
+        expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(graph)).graph).toEqual(graph);
+      }
+      const document = durationReading(f, target);
+      if (boundary === 'foreign-local-collision') {
+        const declaration = exactTask(f.a, '英語');
+        declaration.existingPublicId = f.other;
+        document.tasks.push(declaration);
+      }
+      const { result, calls } = await runDurationReadings({ graph, documents: [document, document], turnId: `reject-${boundary}` });
+      expect(calls).toHaveLength(2);
+      expect(result.status).toBe('normalization_rejected');
+      expect(result.normalization.document).toBeNull();
+      expect(result.normalization.diagnostics.validationErrors).toContain(`initial:${EXACT_TARGET_ERROR}`);
+      expect(result.normalization.diagnostics.validationErrors).toContain(`repair:${EXACT_TARGET_ERROR}`);
+      expect(result.canonicalization).toBeNull();
+      expect(result.graph).toEqual(graph);
+    },
+  );
+
+  it('preserves a valid declared workload local ID instead of rebinding its spelling to an old public ID', async () => {
+    const f = exactFixture();
+    const document = durationReading(f, f.a);
+    const quote = '数学に23ページを追加します。';
+    document.tasks[0].workloads = [exactWorkload(f.a, 23, quote)];
+    const { result, calls } = await runDurationReadings({ graph: f.graph,
+      documents: [document], turnId: 'valid-local-collision', userText: `${EXACT_TEXT}${quote}` });
+    expect(result.normalization.status).toBe('accepted');
+    expect(result.canonicalization?.status).toBe('applied');
+    expect(calls).toHaveLength(1);
+    const newId = result.canonicalization?.localToFactId[f.a];
+    expect(newId).toBeTruthy();
+    expect(newId).not.toBe(f.a);
+    expect(result.graph.workloads).toHaveLength(f.graph.workloads.length + 1);
+    expect(result.graph.workloads.slice(0, f.graph.workloads.length)).toEqual(f.graph.workloads);
+    expect(result.graph.workloads.find(fact => fact.id === newId)?.amount).toBe(23);
+    expect(result.graph.effortEstimates).toEqual([expect.objectContaining({ targetFactId: newId, minutes: 30 })]);
+    expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph)).graph).toEqual(result.graph);
+  });
+
+  it('commits neither candidate when an exact citation is followed by an invalid repair', async () => {
+    const f = exactFixture();
+    const final = durationReading(f, f.b);
+    final.tasks[0].effortEstimates[0].minutes = -1;
+    const { result, calls } = await runDurationReadings({ graph: f.graph,
+      documents: [invalidInitial(f, f.a), final], turnId: 'neither-accepted' });
+    expect(calls).toHaveLength(2);
+    expect(result.status).toBe('normalization_rejected');
+    expect(result.normalization.document).toBeNull();
+    expect(result.normalization.diagnostics.validationErrors).toContain(`initial:${INVALID_INITIAL_ERROR}`);
+    expect(result.normalization.diagnostics.validationErrors.some(error => error.startsWith('repair:') && error.includes('.minutes'))).toBe(true);
+    expect(result.canonicalization).toBeNull();
+    expect(result.graph).toEqual(f.graph);
+  });
+});
+
+const PENDING_REFERENCE_CASES = [
+  { name: 'explicit B total while A is pending', key: 'b', kind: 'total_duration' },
+  { name: 'explicit A session while total is pending', key: 'a', kind: 'session_duration' },
+] as const;
+function exactPendingQuestion(f: ExactFixture) {
+  return { actionId: 'ask-exact-a', questionCode: 'missing_effort_estimate' as const,
+    targetFactId: f.a, graphRevision: f.graph.revision, effortMeasurement: 'total_duration' as const };
+}
+async function runPendingDurationReading(f: ExactFixture, document: WeeklyPlanningSemanticDocumentV5, turnId: string, userText = EXACT_TEXT) {
+  const before = structuredClone(f.graph);
+  const documentBefore = structuredClone(document);
+  const fallback = JSON.stringify({ decision: 'fallback', effortTarget: null, effortMeasurement: null,
+    minutes: null, precision: null, quantityRole: null });
+  const raw = JSON.stringify(document);
+  const responses = [fallback, raw, raw]; // Last raw is the existing single generic repair on main.
+  const calls: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]> = [];
+  const client: OpenAiCompatibleClient = {
+    async createChatCompletion(request) {
+      calls.push(structuredClone(request));
+      const index = calls.length - 1;
+      const expectedSchema = index === 0 ? 'weekly_planning_focused_contextual_answer_v5'
+        : 'weekly_planning_semantic_document_v5';
+      if (request.responseFormat?.json_schema.name !== expectedSchema || responses[index] === undefined) {
+        throw new Error(`unexpected pending fixture request ${index}: ${request.responseFormat?.json_schema.name}`);
+      }
+      return responses[index];
+    },
+  };
+  const result = await createWeeklyPlanningSemanticPipelineV5(createWeeklyPlanningSemanticNormalizerV5(client)).run({
+    graph: f.graph, conversationId: EXACT_CONVERSATION, turnId, expectedRevision: f.graph.revision,
+    userText, publicStateSummary: { pendingQuestion: exactPendingQuestion(f) },
+    schedulerContext: { ownerId: 'exact-workload-owner', currentDate: '2026-10-10',
+      planningStartDate: '2026-10-11', planningEndDate: '2026-10-17', timeZone: 'Asia/Tokyo' },
+  });
+  expect(f.graph).toEqual(before);
+  expect(document).toEqual(documentBefore);
+  expect(calls.length).toBeLessThanOrEqual(3);
+  expect(calls[0]?.responseFormat?.json_schema.name).toBe('weekly_planning_focused_contextual_answer_v5');
+  expect(calls.slice(1).map(call => call.responseFormat?.json_schema.name)).toEqual(
+    calls.slice(1).map(() => 'weekly_planning_semantic_document_v5'),
+  );
+  if (calls.length === 3) expect(calls[2].messages).toContainEqual({ role: 'assistant', content: raw });
+  return { result, calls };
+}
+
+describe('Stable V5 explicit workload references at the pending-value binder boundary', () => {
+  it('preserves the existing local task-shell short-answer binding to pending A', async () => {
+    const f = exactFixture();
+    const { result, calls } = await runPendingDurationReading(f, durationReading(f, 'reply-task'), 'pending-local-control');
+    expect(result.normalization.status).toBe('accepted');
+    expect(result.normalization.document?.tasks[0].effortEstimates[0]).toMatchObject({
+      targetLocalId: 'reply-task', kind: 'total_duration', minutes: 30, unitCode: null,
+    });
+    expect(calls).toHaveLength(2);
+    expect(result.canonicalization?.status).toBe('applied');
+    expect(result.graph.workloads).toEqual(f.graph.workloads);
+    expect(result.graph.effortEstimates).toEqual([expect.objectContaining({
+      taskId: f.own, targetFactId: f.a, kind: 'total_duration', minutes: 30, unitCode: null,
+      source: expect.objectContaining({ semanticLocalId: 'contextual-effort-answer', sourceText: EXACT_TEXT }),
+    })]);
+    expect(result.graph.revision).toBe(f.graph.revision + 1);
+    expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph)).graph).toEqual(result.graph);
+  });
+
+  it.each(PENDING_REFERENCE_CASES)('retains $name through actual generic adoption and canonical binding', async ({ key, kind, name }) => {
+    const f = exactFixture();
+    const target = f[key];
+    const { result, calls } = await runPendingDurationReading(f, durationReading(f, target, kind), name);
+    // Main rejects before this point; after reference admission, this is the
+    // end-to-end oracle that the prospective direct-owner rows cannot replace.
+    expectAcceptedExactTarget({ result, original: f.graph, targetFactId: target, kind });
+    expect(result.normalization.document?.tasks[0].effortEstimates[0].targetLocalId).toBe(target);
+    expect(calls.map(call => call.responseFormat?.json_schema.name)).toEqual([
+      'weekly_planning_focused_contextual_answer_v5', 'weekly_planning_semantic_document_v5',
+    ]);
+    expect(result.graph.effortEstimates[0].source.semanticLocalId).toBe('reply-effort');
+  });
+
+  it.each(PENDING_REFERENCE_CASES)('does not let the value-only owner consume $name', ({ key, kind, name }) => {
+    const f = exactFixture();
+    const before = structuredClone(f.graph);
+    const document = durationReading(f, f[key], kind);
+    // Prospective owner-unit boundary only. This is deliberately NOT a fake
+    // normalizer accepted result, nor proof that main admits this public target.
+    const evaluation = evaluateWeeklyPlanningStableV5ContextualAnswer({
+      graph: f.graph, document, pendingQuestion: exactPendingQuestion(f),
+      conversationId: EXACT_CONVERSATION, turnId: `owner-${name}`, expectedRevision: f.graph.revision,
+      userText: EXACT_TEXT,
+    });
+    expect(f.graph).toEqual(before);
+    expect(evaluation.status, JSON.stringify({ status: evaluation.status, reason: evaluation.reason,
+      actualEfforts: evaluation.result?.graph.effortEstimates }, null, 2)).toBe('not_contextual');
+    expect(evaluation.result).toBeNull();
+  });
+});
+
+function nestedExactFixture() {
+  const own = exactTask('nested-math', '数学');
+  own.decompositionStatus = 'decomposed';
+  own.sourceText = '数学教材の12ページと18ページを進めます';
+  own.workloads = [exactWorkload('nested-b', 18, '18ページ')];
+  own.study!.components = [{
+    localId: 'nested-component', existingPublicId: null, parentLocalId: null,
+    role: 'material', label: '数学教材', workloads: [exactWorkload('nested-a', 12, '数学教材の12ページ')],
+    durableContextSignals: [], sourceText: '数学教材',
+  }];
+  const other = exactTask('nested-english', '英語');
+  other.workloads = [exactWorkload('nested-c', 9, '英語の9ページ')];
+  const setup = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
+    document: exactDocument([own, other]),
+    context: { conversationId: EXACT_CONVERSATION, turnId: 'nested-setup', expectedRevision: 0 },
+  });
+  if (setup.status !== 'applied') throw new Error(setup.errors.join(','));
+  expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(setup.graph)).graph).toEqual(setup.graph);
+  const id = (localId: string) => {
+    const value = setup.localToFactId[localId];
+    if (!value) throw new Error(`missing nested fixture ID: ${localId}`);
+    return value;
+  };
+  return { graph: setup.graph, own: id('nested-math'), other: id('nested-english'),
+    a: id('nested-a'), b: id('nested-b'), c: id('nested-c'), component: id('nested-component') };
+}
+
+function nestedReplayReading(f: ReturnType<typeof nestedExactFixture>) {
+  const document = durationReading(f, 'nested-replayed-workload');
+  const fact = f.graph.workloads.find(item => item.id === f.a)!;
+  document.tasks[0].decompositionStatus = 'decomposed';
+  document.tasks[0].study!.components = [{
+    localId: 'nested-replayed-component', existingPublicId: f.component, parentLocalId: null,
+    role: 'material', label: '数学教材', workloads: [exactWorkload('nested-replayed-workload', fact.amount, fact.source.sourceText)],
+    durableContextSignals: [], sourceText: '数学教材',
+  }];
+  return document;
+}
+
+function expectNoActiveEffortReferencesTerminalOwner(graph: WeeklyPlanningFactGraphV5) {
+  const active = new Set(graph.factLifecycles.filter(entry => entry.status === 'active').map(entry => entry.factId));
+  for (const effort of graph.effortEstimates.filter(item => active.has(item.id))) {
+    expect(active.has(effort.taskId)).toBe(true);
+    expect(active.has(effort.targetFactId)).toBe(true);
+    const workload = graph.workloads.find(item => item.id === effort.targetFactId);
+    if (workload?.componentId) expect(active.has(workload.componentId)).toBe(true);
+  }
+  expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(graph)).graph).toEqual(graph);
+}
+
+describe('Stable V5 exact workload references across the existing correction transaction', () => {
+  it('retains a direct nested workload target without restating or relocating its component', async () => {
+    const f = nestedExactFixture();
+    const document = durationReading(f, f.a);
+    const { result, calls } = await runDurationReadings({ graph: f.graph, documents: [document, document], turnId: 'nested-exact' });
+    expect(result.normalization.status, JSON.stringify(result.normalization.diagnostics, null, 2)).toBe('accepted');
+    expect(result.canonicalization?.status).toBe('applied');
+    expect(calls).toHaveLength(1);
+    expect(result.graph.tasks).toEqual(f.graph.tasks);
+    expect(result.graph.components).toEqual(f.graph.components);
+    expect(result.graph.workloads).toEqual(f.graph.workloads);
+    expect(result.graph.effortEstimates).toEqual([expect.objectContaining({ taskId: f.own, targetFactId: f.a, kind: 'total_duration' })]);
+    expectNoActiveEffortReferencesTerminalOwner(result.graph);
+  });
+
+  it.each(['workload', 'task', 'component'] as const)('rolls back removing the exact target or its %s owner with active dependents', async targetKind => {
+    const f = nestedExactFixture();
+    const targetId = targetKind === 'workload' ? f.a : targetKind === 'task' ? f.own : f.component;
+    const correctionText = '数学教材の指定対象を削除します';
+    for (const [representation, document] of [
+      ['local-control', nestedReplayReading(f)], ['exact-public', durationReading(f, f.a)],
+    ] as const) {
+      document.corrections = [{ localId: 'remove-exact-owner', operation: 'remove',
+        target: { kind: targetKind, publicId: targetId, localId: null, mention: null },
+        replacementLocalId: null, sourceText: correctionText }];
+      const { result } = await runDurationReadings({ graph: f.graph, documents: [document, document],
+        turnId: `remove-${targetKind}-${representation}`, userText: `${EXACT_TEXT} ${correctionText}` });
+      expect(result.normalization.status, JSON.stringify(result.normalization.diagnostics, null, 2)).toBe('accepted');
+      expect(result.canonicalization?.status).toBe('rejected');
+      expect(result.canonicalization?.errors).toEqual([expect.stringContaining(`target-has-active-dependents:${targetId}:`)]);
+      expect(result.canonicalization?.diff).toBeNull();
+      expect(result.graph).toEqual(f.graph);
+      expectNoActiveEffortReferencesTerminalOwner(result.graph);
+    }
+  });
+
+  it.each(DURATION_KINDS)('keeps the existing %s dependent policy when the referenced workload is replaced in the same turn', async kind => {
+    const f = exactFixture();
+    const correctionText = '数学の12ページを23ページに変更します';
+    for (const [representation, document] of [
+      ['local-control', replayReading(f, f.a, kind)], ['exact-public', durationReading(f, f.a, kind)],
+    ] as const) {
+      document.tasks[0].workloads.push(exactWorkload('replacement-workload', 23, correctionText));
+      document.corrections = [{ localId: 'replace-exact-workload', operation: 'replace',
+        target: { kind: 'workload', publicId: f.a, localId: null, mention: null },
+        replacementLocalId: 'replacement-workload', sourceText: correctionText }];
+      const { result } = await runDurationReadings({ graph: f.graph, documents: [document, document],
+        turnId: `replace-${kind}-${representation}`, userText: `${EXACT_TEXT} ${correctionText}` });
+      expect(result.normalization.status, JSON.stringify(result.normalization.diagnostics, null, 2)).toBe('accepted');
+      expect(result.canonicalization?.status, JSON.stringify(result.canonicalization?.errors)).toBe('applied');
+      const replacementId = result.canonicalization!.localToFactId['replacement-workload'];
+      const initialEffortId = result.canonicalization!.localToFactId['reply-effort'];
+      expect(result.graph.factLifecycles).toContainEqual(expect.objectContaining({ factId: f.a, status: 'superseded', supersededByFactId: replacementId }));
+      expect(result.graph.workloads.find(item => item.id === replacementId)).toMatchObject({ taskId: f.own, amount: 23, unitCode: 'page' });
+      const active = createWeeklyPlanningActiveSchedulerGraphViewV5(result.graph);
+      expect(active.workloads.some(item => item.id === f.a)).toBe(false);
+      expect(active.workloads.some(item => item.id === replacementId)).toBe(true);
+      expect(result.graph.factLifecycles.find(entry => entry.factId === initialEffortId)?.status).toBe(kind === 'total_duration' ? 'removed' : 'superseded');
+      if (kind === 'total_duration') expect(active.effortEstimates).toEqual([]);
+      else expect(active.effortEstimates).toEqual([expect.objectContaining({
+        taskId: f.own, targetFactId: replacementId, kind: 'session_duration', minutes: 30,
+        // Existing CorrectionTransaction carry policy assigns the replacement unit.
+        unitCode: 'page', source: expect.objectContaining({ sourceText: EXACT_TEXT }),
+      })]);
+      expectNoActiveEffortReferencesTerminalOwner(result.graph);
+    }
+  });
+});
+
+
+describe('Stable V5 direct canonicalizer full-document collision boundary', () => {
+  it('rejects a user-context local ID shadowing the external workload without throwing or committing', () => {
+    const f = exactFixture();
+    const document = durationReading(f, f.a);
+    document.userContextFacts = [{ localId: f.a, kind: 'concern', label: '数学', value: '数学',
+      dateExpression: null, sourceText: EXACT_TEXT }];
+    const before = structuredClone(f.graph);
+    const docBefore = structuredClone(document);
+    const result = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
+      graph: f.graph, document,
+      context: { conversationId: EXACT_CONVERSATION, turnId: 'context-local-shadow',
+        expectedRevision: f.graph.revision, userText: EXACT_TEXT },
+    });
+    expect(result.status).toBe('rejected');
+    expect(result.errors).toContain(EXACT_TARGET_ERROR);
+    expect(result.graph).toEqual(before);
+    expect(result.diff).toBeNull();
+    expect(f.graph).toEqual(before);
+    expect(document).toEqual(docBefore);
+  });
+});
+
+
+describe('Stable V5 raw local-reference authority before duplicate cleanup', () => {
+  it('does not revive an erased declared workload local ID as an external public target', () => {
+    const f = exactFixture();
+    const document = durationReading(f, f.a);
+    const duplicate = exactWorkload(f.a, 12, '数学の12ページ');
+    document.tasks[0].workloads = [duplicate];
+    document.tasks[0].decompositionStatus = 'decomposed';
+    document.tasks[0].study!.components = [{ localId: 'collision-component', existingPublicId: null,
+      parentLocalId: null, role: 'material', label: '数学教材',
+      workloads: [{ ...duplicate, localId: 'kept-nested-workload' }],
+      durableContextSignals: [], sourceText: '数学教材' }];
+    const raw = JSON.stringify(document);
+    const attempt = validateWeeklyPlanningSemanticResponseV5(raw, {
+      committedGraph: f.graph, currentUserText: `${EXACT_TEXT} 数学教材の12ページ`,
+    });
+    // The actual pre-parse owner removed the declaring task-level workload.
+    expect(attempt.algorithmicRepairs).toContain(`duplicate-workload-removed-from-task:reply-task:${f.a}`);
+    expect(attempt.errors).toContain(EXACT_TARGET_ERROR);
+    expect(attempt.parsedDocument).toBeNull();
+    expect(attempt.document).toBeNull();
+    expect(JSON.stringify(document)).toBe(raw);
+    // This assertion concerns this raw input only; externally cleaned JSON is
+    // a different input and is not claimed to be an idempotent rejected replay.
+  });
+});
+
+// H2 local-reference discriminator. Reuse exactFixture's canonical-writer graph.
+// For this pair A=f.a/task=f.own and B=f.c/task=f.other; f.b remains an untouched sibling.
+const LOCAL_OTHER_TEXT = '英語は1回30分です。数学はまだ分かりません。';
+
+function otherTaskLocalDurationReading(f: ExactFixture) {
+  const document = replayReading(f, f.c, 'session_duration');
+  const task = document.tasks[0];
+  task.existingPublicId = f.other;
+  task.title = '英語';
+  task.sourceText = LOCAL_OTHER_TEXT;
+  task.effortEstimates[0].sourceText = LOCAL_OTHER_TEXT;
+  return document;
+}
+
+function expectOtherTaskSessionDuration(
+  result: Awaited<ReturnType<typeof runDurationReadings>>['result'],
+  f: ExactFixture,
+  expectedDocument: WeeklyPlanningSemanticDocumentV5,
+) {
+  const evidence = JSON.stringify({
+    normalization: result.normalization,
+    canonicalization: result.canonicalization,
+    efforts: result.graph.effortEstimates,
+    expected: { taskId: f.other, targetFactId: f.c, kind: 'session_duration' },
+    pending: { taskId: f.own, targetFactId: f.a, kind: 'total_duration' },
+  }, null, 2);
+  expect(result.normalization.status, evidence).toBe('accepted');
+  expect(result.normalization.document, evidence).toEqual(expectedDocument);
+  expect(result.canonicalization?.status, evidence).toBe('applied');
+  expect(result.graph.tasks, evidence).toEqual(f.graph.tasks);
+  expect(result.graph.workloads, evidence).toEqual(f.graph.workloads);
+  expect(result.graph.components, evidence).toEqual(f.graph.components);
+  expect(result.graph.temporalConstraints, evidence).toEqual(f.graph.temporalConstraints);
+  expect(result.graph.revision, evidence).toBe(f.graph.revision + 1);
+  expect(result.graph.effortEstimates, evidence).toEqual([
+    expect.objectContaining({
+      taskId: f.other, targetFactId: f.c, kind: 'session_duration', minutes: 30,
+      unitCode: 'session', precision: 'exact',
+      source: expect.objectContaining({ semanticLocalId: 'reply-effort', sourceText: LOCAL_OTHER_TEXT, origin: 'user' }),
+    }),
+  ]);
+  expect(result.canonicalization?.localToFactId['reply-task'], evidence).toBe(f.other);
+  expect(result.canonicalization?.localToFactId['replayed-workload'], evidence).toBe(f.c);
+  expect(result.canonicalization?.diff?.added, evidence).toEqual([
+    { kind: 'effort_estimate', id: result.graph.effortEstimates[0].id },
+  ]);
+  const reloaded = parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph));
+  expect(reloaded.errors, evidence).toEqual([]);
+  expect(reloaded.graph, evidence).toEqual(result.graph);
+}
+
+describe('Stable V5 explicit local workload identity versus pending answer identity', () => {
+  it('establishes the valid other-task local B/session control without a pending question', async () => {
+    const f = exactFixture();
+    const document = otherTaskLocalDurationReading(f);
+    const { result, calls } = await runDurationReadings({
+      graph: f.graph, documents: [document], turnId: 'other-task-no-pending', userText: LOCAL_OTHER_TEXT,
+    });
+    expect(calls).toHaveLength(1);
+    expect(result.normalization.diagnostics).toMatchObject({ attemptCount: 1, repairAttempted: false });
+    expectOtherTaskSessionDuration(result, f, document);
+  });
+
+  it('preserves explicit other-task B/session for a one-value local versus external representation pair while A/total is pending', async () => {
+    const f = exactFixture();
+    const local = otherTaskLocalDurationReading(f);
+    const external = structuredClone(local);
+    external.tasks[0].effortEstimates[0].targetLocalId = f.c;
+    const reverted = structuredClone(external);
+    reverted.tasks[0].effortEstimates[0].targetLocalId = 'replayed-workload';
+    expect(reverted).toEqual(local);
+    expect(local.tasks[0].existingPublicId).toBe(f.other);
+    expect(local.tasks[0].existingPublicId).not.toBe(f.own);
+    expect(local.tasks[0].workloads).toHaveLength(1);
+    expect(local.tasks[0].workloads[0].localId).toBe('replayed-workload');
+    expect(external.tasks[0].workloads.every(workload => workload.localId !== f.c)).toBe(true);
+
+    // Same graph, pending target, turn identity, user evidence and provider route.
+    // No extra independent delta is inserted to bypass contextual routing.
+    const externalRun = await runPendingDurationReading(f, external, 'other-task-pair', LOCAL_OTHER_TEXT);
+    const localRun = await runPendingDurationReading(f, local, 'other-task-pair', LOCAL_OTHER_TEXT);
+    for (const attempt of [externalRun, localRun]) {
+      expect(attempt.calls.map(call => call.responseFormat?.json_schema.name)).toEqual([
+        'weekly_planning_focused_contextual_answer_v5', 'weekly_planning_semantic_document_v5',
+      ]);
+      expect(attempt.result.normalization.diagnostics).toMatchObject({ repairAttempted: false });
+    }
+    // External is checked first so a local mismatch cannot disguise a broken positive control.
+    expectOtherTaskSessionDuration(externalRun.result, f, external);
+    expectOtherTaskSessionDuration(localRun.result, f, local);
+    expect(localRun.result.graph).toEqual(externalRun.result.graph);
+    expect(localRun.result.scheduler).toEqual(externalRun.result.scheduler);
+  });
+
+  it('keeps an unqualified local task-shell answer on pending A/total', async () => {
+    const f = exactFixture();
+    const document = durationReading(f, 'reply-task');
+    const task = document.tasks[0];
+    task.existingPublicId = null;
+    task.title = '直前の質問対象';
+    task.sourceText = '30分です';
+    task.effortEstimates[0].sourceText = '30分です';
+    const { result, calls } = await runPendingDurationReading(f, document, 'unqualified-pending-control', '30分です');
+    expect(calls).toHaveLength(2);
+    expect(result.normalization.status, JSON.stringify(result.normalization, null, 2)).toBe('accepted');
+    expect(result.normalization.document).toEqual(document);
+    expect(result.canonicalization?.status).toBe('applied');
+    expect(result.graph.tasks).toEqual(f.graph.tasks);
+    expect(result.graph.workloads).toEqual(f.graph.workloads);
+    expect(result.graph.effortEstimates).toEqual([expect.objectContaining({
+      taskId: f.own, targetFactId: f.a, kind: 'total_duration', minutes: 30, unitCode: null,
+      source: expect.objectContaining({ semanticLocalId: 'contextual-effort-answer', sourceText: '30分です' }),
+    })]);
+    expect(result.graph.revision).toBe(f.graph.revision + 1);
+    expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph)).graph).toEqual(result.graph);
+  });
+});
+
+describe('Stable V5 qualified local workload canonical-binding controls', () => {
+  it('rejects ambiguous existing B workloads instead of projecting their value onto pending A', async () => {
+    const f = exactFixture(true);
+    const document = otherTaskLocalDurationReading(f);
+    const { result, calls } = await runPendingDurationReading(f, document, 'ambiguous-local-b', LOCAL_OTHER_TEXT);
+    expect(calls).toHaveLength(2);
+    expect(result.normalization.status, JSON.stringify(result.normalization, null, 2)).toBe('accepted');
+    expect(result.normalization.document).toEqual(document);
+    expect(result.status).toBe('canonicalization_rejected');
+    expect(result.canonicalization?.errors.some(error => error.startsWith('existing-workload-binding-ambiguous:replayed-workload:'))).toBe(true);
+    expect(result.canonicalization?.diff).toBeNull();
+    expect(result.graph).toEqual(f.graph);
+  });
+
+  it('keeps a genuinely new B workload new instead of guessing an existing or pending target', async () => {
+    const f = exactFixture();
+    const document = otherTaskLocalDurationReading(f);
+    const userText = '英語に23ページを追加し、1回30分です。数学はまだ分かりません。';
+    document.tasks[0].sourceText = userText;
+    document.tasks[0].workloads[0].amount = 23;
+    document.tasks[0].workloads[0].sourceText = userText;
+    document.tasks[0].effortEstimates[0].sourceText = userText;
+    const { result, calls } = await runPendingDurationReading(f, document, 'new-local-b', userText);
+    expect(calls).toHaveLength(2);
+    expect(result.normalization.status, JSON.stringify(result.normalization, null, 2)).toBe('accepted');
+    expect(result.normalization.document).toEqual(document);
+    expect(result.canonicalization?.status).toBe('applied');
+    const target = result.canonicalization?.localToFactId['replayed-workload'];
+    expect(target).toBeTruthy();
+    expect(f.graph.workloads.map(workload => workload.id)).not.toContain(target);
+    expect(result.graph.tasks).toEqual(f.graph.tasks);
+    expect(result.graph.workloads.slice(0, f.graph.workloads.length)).toEqual(f.graph.workloads);
+    expect(result.graph.workloads).toHaveLength(f.graph.workloads.length + 1);
+    expect(result.graph.workloads[result.graph.workloads.length - 1]).toMatchObject({ id: target, taskId: f.other, amount: 23, unitCode: 'page' });
+    expect(result.graph.effortEstimates).toEqual([expect.objectContaining({
+      taskId: f.other, targetFactId: target, kind: 'session_duration', minutes: 30, unitCode: 'session',
+      source: expect.objectContaining({ semanticLocalId: 'reply-effort', sourceText: userText }),
+    })]);
+    expect(result.graph.revision).toBe(f.graph.revision + 1);
+    expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph)).graph).toEqual(result.graph);
+  });
+
+  it('rejects an invalid explicit B owner rather than treating it as an unqualified pending answer', async () => {
+    const f = exactFixture();
+    const document = otherTaskLocalDurationReading(f);
+    const userText = '英語の9ページは1回30分です。数学はまだ分かりません。';
+    document.tasks[0].existingPublicId = 'missing-task';
+    document.tasks[0].sourceText = userText;
+    document.tasks[0].workloads[0].sourceText = userText;
+    document.tasks[0].effortEstimates[0].sourceText = userText;
+    const { result, calls } = await runPendingDurationReading(f, document, 'invalid-local-owner', userText);
+    expect(calls).toHaveLength(2);
+    expect(result.normalization.status, JSON.stringify(result.normalization, null, 2)).toBe('accepted');
+    expect(result.normalization.document).toEqual(document);
+    expect(result.status).toBe('canonicalization_rejected');
+    expect(result.canonicalization?.errors).toContain('existing-task-binding-not-active:reply-task:missing-task');
+    expect(result.canonicalization?.diff).toBeNull();
+    expect(result.graph).toEqual(f.graph);
+  });
+});
+
+
+describe('Stable V5 exact pending restatement eligibility', () => {
+  it.each([['session_duration', 'session'], ['total_duration', 'page']] as const)(
+    'preserves explicit local A/%s with unit %s instead of coercing pending A/total', async (kind, unitCode) => {
+    const f = exactFixture();
+    const document = replayReading(f, f.a, kind);
+    document.tasks[0].effortEstimates[0].unitCode = unitCode;
+    const userText = '数学は30分です。';
+    document.tasks[0].study = { purpose: 'unknown', activityKind: 'unknown', contextLabel: null, components: [] };
+    document.tasks[0].sourceText = userText;
+    document.tasks[0].effortEstimates[0].sourceText = userText;
+    const { result, calls } = await runPendingDurationReading(f, document, 'same-a-different-measurement', userText);
+    expect(calls).toHaveLength(2);
+    expect(result.normalization.status, JSON.stringify(result.normalization)).toBe('accepted');
+    expect(result.normalization.document).toEqual(document);
+    expect(result.canonicalization?.status).toBe('applied');
+    expect(result.canonicalization?.localToFactId['replayed-workload']).toBe(f.a);
+    expect(result.graph.workloads).toEqual(f.graph.workloads);
+    expect(result.graph.effortEstimates).toEqual([expect.objectContaining({
+      taskId: f.own, targetFactId: f.a, kind, minutes: 30, unitCode,
+      source: expect.objectContaining({ semanticLocalId: 'reply-effort', sourceText: userText }),
+    })]);
+    expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph)).graph).toEqual(result.graph);
+  });
+
+  it('retains an extra declared workload beside an otherwise exact pending A/total answer', async () => {
+    const f = exactFixture();
+    const document = replayReading(f, f.a, 'total_duration');
+    const userText = '数学は合計30分です。さらに23ページを追加します。';
+    document.tasks[0].study = { purpose: 'unknown', activityKind: 'unknown', contextLabel: null, components: [] };
+    document.tasks[0].sourceText = userText;
+    document.tasks[0].effortEstimates[0].sourceText = userText;
+    document.tasks[0].workloads.push(exactWorkload('extra-local-workload', 23, userText));
+    const { result, calls } = await runPendingDurationReading(f, document, 'same-a-extra-workload', userText);
+    expect(calls).toHaveLength(2);
+    expect(result.normalization.status, JSON.stringify(result.normalization)).toBe('accepted');
+    expect(result.normalization.document).toEqual(document);
+    expect(result.canonicalization?.status).toBe('applied');
+    expect(result.canonicalization?.localToFactId['replayed-workload']).toBe(f.a);
+    const addedId = result.canonicalization?.localToFactId['extra-local-workload'];
+    expect(addedId).toBeTruthy();
+    expect(f.graph.workloads.map(workload => workload.id)).not.toContain(addedId);
+    expect(result.graph.workloads.slice(0, f.graph.workloads.length)).toEqual(f.graph.workloads);
+    expect(result.graph.workloads).toHaveLength(f.graph.workloads.length + 1);
+    expect(result.graph.workloads.find(workload => workload.id === addedId)).toMatchObject({ taskId: f.own, amount: 23, unitCode: 'page' });
+    expect(result.graph.effortEstimates).toEqual([expect.objectContaining({
+      taskId: f.own, targetFactId: f.a, kind: 'total_duration', minutes: 30, unitCode: null,
+      source: expect.objectContaining({ semanticLocalId: 'reply-effort', sourceText: userText }),
+    })]);
+    expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph)).graph).toEqual(result.graph);
   });
 });
