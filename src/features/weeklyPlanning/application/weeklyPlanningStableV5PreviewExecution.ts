@@ -13,7 +13,7 @@ import type { WeeklyPlanningTurnRequestContext } from './weeklyPlanningTemporalC
 export function executeWeeklyPlanningStableV5Preview(params: {
   input: Pick<
     ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
-    'plans' | 'scheduleTemplates' | 'timetableTermId' | 'traceRequestId'
+    'plans' | 'monthEvents' | 'scheduleTemplates' | 'timetableTermId' | 'traceRequestId'
   >;
   graph: WeeklyPlanningPlacementGraphViewV5;
   schedulerInput: GenericSchedulerInput;
@@ -24,6 +24,7 @@ export function executeWeeklyPlanningStableV5Preview(params: {
     input: params.schedulerInput,
     graph: params.graph,
     plans: params.input.plans,
+    monthEvents: params.input.monthEvents,
     scheduleTemplates: params.input.scheduleTemplates,
     timetableTermId: params.input.timetableTermId,
     notBefore: {
