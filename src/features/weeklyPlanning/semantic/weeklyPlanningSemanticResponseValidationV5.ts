@@ -86,6 +86,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
   const preParseNormalization = normalizeWeeklyPlanningSemanticPreParseV5({
     rawResponse,
     publicStateSummary: input.publicStateSummary,
+    committedGraph: input.committedGraph,
   });
   const rawCorrectionErrors = validateWeeklyPlanningRawCorrectionTargetReferencesV5(
     preParseNormalization.rawResponse,
