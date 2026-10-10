@@ -1,0 +1,313 @@
+# DESIGN ONLY / UNAPPLIED / UNEXECUTED. All placeholders must be reviewed after authorization.
+# Publish this temporary file alone as a direct child of the verified source. Never rerun it.
+name: Issue 488 Four Case UI Once
+
+on:
+  push:
+    branches: ['integration/issue488-a-c-e-r0']
+    paths: ['.github/workflows/issue488-four-case-ui-once.yml']
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_SHA: '066b03912319849172d768d0e5da50773aedd34e'
+  SOURCE_TREE: '48d33f02c1b6c51b1410ba9ad0ba5c6ad7629355'
+  WORKFLOW_PATH: '.github/workflows/issue488-four-case-ui-once.yml'
+
+concurrency:
+  group: issue488-four-case-ui-once
+  cancel-in-progress: false
+
+jobs:
+  verify_source:
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.repository == 'kame447/StudyPlanner' &&
+          github.repository_id == '1202727586' &&
+          github.repository_owner == 'kame447' &&
+          github.actor == 'kame447' && github.actor_id == '76802107' &&
+          github.triggering_actor == 'kame447' &&
+          github.ref == 'refs/heads/integration/issue488-a-c-e-r0' &&
+          github.run_attempt == 1 &&
+          github.event.created == false && github.event.deleted == false &&
+          github.event.forced == false }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      OPENAI_API_KEY: ''
+      VITE_AI_API_KEY: ''
+      VITE_CLOUDFLARE_AI_PROXY_URL: ''
+      STUDYPLANNER_CORRECTION_REAL_API: '0'
+      STUDYPLANNER_TEMPORAL_REAL_API: '0'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify the one-file direct-child event before any source execution
+        id: event_guard
+        env:
+          EXECUTING_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EXECUTING_WORKFLOW_REF: ${{ github.workflow_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_EVENT_NAME" = push
+          test "$GITHUB_REPOSITORY" = kame447/StudyPlanner
+          test "$GITHUB_REPOSITORY_ID" = 1202727586
+          test "$GITHUB_REPOSITORY_OWNER" = kame447
+          test "$GITHUB_ACTOR" = kame447
+          test "$GITHUB_ACTOR_ID" = 76802107
+          test "$GITHUB_TRIGGERING_ACTOR" = kame447
+          test "$GITHUB_REF" = refs/heads/integration/issue488-a-c-e-r0
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$EXECUTING_WORKFLOW_SHA" = "$GITHUB_SHA"
+          test "$EXECUTING_WORKFLOW_REF" = "$GITHUB_REPOSITORY/$WORKFLOW_PATH@$GITHUB_REF"
+          jq -e --arg source "$SOURCE_SHA" --arg event "$GITHUB_SHA" '
+            .before == $source and .after == $event and
+            .created == false and .deleted == false and .forced == false and
+            .repository.full_name == "kame447/StudyPlanner" and
+            .repository.id == 1202727586 and
+            .sender.login == "kame447" and .sender.id == 76802107
+          ' "$GITHUB_EVENT_PATH" > /dev/null
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git show -s --format=%P "$GITHUB_SHA")" = "$SOURCE_SHA"
+          test "$(git rev-parse "${SOURCE_SHA}^{tree}")" = "$SOURCE_TREE"
+          test "$(git diff-tree --no-commit-id --name-status --no-renames -r "$SOURCE_SHA" "$GITHUB_SHA")" = "$(printf 'A\t%s' "$WORKFLOW_PATH")"
+          test "$(git ls-tree "$GITHUB_SHA" -- "$WORKFLOW_PATH" | awk '{print $1, $2}')" = '100644 blob'
+          test -z "$(git status --porcelain)"
+      - name: Check out the immutable reviewed product source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install locked application without a model credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$SOURCE_TREE"
+          test ! -e "$WORKFLOW_PATH"
+          test -z "$(git status --porcelain)"
+          test -z "$OPENAI_API_KEY"
+          test -z "$VITE_AI_API_KEY"
+          sha256sum package.json package-lock.json > "$RUNNER_TEMP/verify-source-manifests.sha256"
+          npm ci
+          sha256sum -c "$RUNNER_TEMP/verify-source-manifests.sha256"
+      - name: Fresh app and Worker types, full ordinary tests and production build
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset DEBUG PWDEBUG
+          npm run verify
+      - name: Require the same immutable source after verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$SOURCE_TREE"
+          test ! -e "$WORKFLOW_PATH"
+          test -z "$(git status --porcelain)"
+          sha256sum -c "$RUNNER_TEMP/verify-source-manifests.sha256"
+
+  four-case-ui:
+    needs: verify_source
+    if: >-
+      ${{ needs.verify_source.result == 'success' && github.event_name == 'push' &&
+          github.repository == 'kame447/StudyPlanner' &&
+          github.repository_id == '1202727586' &&
+          github.repository_owner == 'kame447' &&
+          github.actor == 'kame447' && github.actor_id == '76802107' &&
+          github.triggering_actor == 'kame447' &&
+          github.ref == 'refs/heads/integration/issue488-a-c-e-r0' &&
+          github.run_attempt == 1 &&
+          github.event.created == false && github.event.deleted == false &&
+          github.event.forced == false }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify the one-file direct-child event before any source execution
+        id: event_guard
+        env:
+          EXECUTING_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EXECUTING_WORKFLOW_REF: ${{ github.workflow_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_EVENT_NAME" = push
+          test "$GITHUB_REPOSITORY" = kame447/StudyPlanner
+          test "$GITHUB_REPOSITORY_ID" = 1202727586
+          test "$GITHUB_REPOSITORY_OWNER" = kame447
+          test "$GITHUB_ACTOR" = kame447
+          test "$GITHUB_ACTOR_ID" = 76802107
+          test "$GITHUB_TRIGGERING_ACTOR" = kame447
+          test "$GITHUB_REF" = refs/heads/integration/issue488-a-c-e-r0
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$EXECUTING_WORKFLOW_SHA" = "$GITHUB_SHA"
+          test "$EXECUTING_WORKFLOW_REF" = "$GITHUB_REPOSITORY/$WORKFLOW_PATH@$GITHUB_REF"
+          jq -e --arg source "$SOURCE_SHA" --arg event "$GITHUB_SHA" '
+            .before == $source and .after == $event and
+            .created == false and .deleted == false and .forced == false and
+            .repository.full_name == "kame447/StudyPlanner" and
+            .repository.id == 1202727586 and
+            .sender.login == "kame447" and .sender.id == 76802107
+          ' "$GITHUB_EVENT_PATH" > /dev/null
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git show -s --format=%P "$GITHUB_SHA")" = "$SOURCE_SHA"
+          test "$(git rev-parse "${SOURCE_SHA}^{tree}")" = "$SOURCE_TREE"
+          test "$(git diff-tree --no-commit-id --name-status --no-renames -r "$SOURCE_SHA" "$GITHUB_SHA")" = "$(printf 'A\t%s' "$WORKFLOW_PATH")"
+          test "$(git ls-tree "$GITHUB_SHA" -- "$WORKFLOW_PATH" | awk '{print $1, $2}')" = '100644 blob'
+          test -z "$(git status --porcelain)"
+      - name: Check out the immutable reviewed product source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install locked application and existing isolated browser tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$SOURCE_TREE"
+          test ! -e "$WORKFLOW_PATH"
+          test -z "$(git status --porcelain)"
+          sha256sum package.json package-lock.json > "$RUNNER_TEMP/four-case-ui-manifests.sha256"
+          npm ci
+          npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+          sha256sum -c "$RUNNER_TEMP/four-case-ui-manifests.sha256"
+          ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
+      - name: Collect A without a credential
+        env:
+          STUDYPLANNER_CORRECTION_REAL_API: '1'
+          STUDYPLANNER_TEMPORAL_REAL_API: '0'
+        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.planner-recovery.config.mjs --list
+      - name: Collect C without a credential
+        env:
+          STUDYPLANNER_CORRECTION_REAL_API: '1'
+          STUDYPLANNER_TEMPORAL_REAL_API: '1'
+        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.planner-recovery.config.mjs --list
+      - name: Recheck the exact source and record separate event provenance
+        id: source_guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$SOURCE_TREE"
+          test ! -e "$WORKFLOW_PATH"
+          test -z "$(git status --porcelain)"
+          sha256sum -c "$RUNNER_TEMP/four-case-ui-manifests.sha256"
+          mkdir -p artifacts/weekly-correction-real-api/evidence artifacts/weekly-temporal-real-api/evidence
+          jq -n --arg source "$SOURCE_SHA" --arg tree "$(git rev-parse HEAD^{tree})" \
+            --arg event "$GITHUB_SHA" --arg workflow "$GITHUB_WORKFLOW_SHA" \
+            --arg run "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg repository "$GITHUB_REPOSITORY" --arg ref "$GITHUB_REF" \
+            '{source_sha:$source,source_tree:$tree,event_sha:$event,workflow_sha:$workflow,
+              run_id:$run,run_attempt:$attempt,repository:$repository,ref:$ref,
+              provenance_only:true}' \
+            > artifacts/weekly-correction-real-api/evidence/source-provenance.json
+          cp artifacts/weekly-correction-real-api/evidence/source-provenance.json artifacts/weekly-temporal-real-api/evidence/source-provenance.json
+      - name: Run A once, at most two cases / six turns / sixteen calls
+        id: bounded_a
+        env:
+          STUDYPLANNER_CORRECTION_REAL_API: '1'
+          STUDYPLANNER_TEMPORAL_REAL_API: '0'
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TZ: Asia/Tokyo
+          WRANGLER_SEND_METRICS: 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$OPENAI_API_KEY"
+          unset DEBUG PWDEBUG VITE_AI_API_KEY VITE_CLOUDFLARE_AI_PROXY_URL
+          ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.planner-recovery.config.mjs
+      - name: Require complete A evidence and unchanged source before C
+        id: allow_c
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$SOURCE_TREE"
+          test ! -e "$WORKFLOW_PATH"
+          test -z "$(git status --porcelain)"
+          sha256sum -c "$RUNNER_TEMP/four-case-ui-manifests.sha256"
+          jq -e '
+            .profile == "correction-ui" and .outcome == "passed" and .failure == null and
+            .limits.cases == 2 and .limits.calls == 16 and .limits.turns == 6 and
+            .calls > 0 and .calls <= 16 and .turns > 0 and .turns <= 6 and
+            (.receipts | length) == .calls and .externalRequests == [] and
+            ([.completedCases[].id] == ["paired-workload-effort", "pending-window-date"])
+          ' artifacts/weekly-correction-real-api/evidence/observations.json > /dev/null
+      - name: Run C once, after complete A, at most two cases / six turns / sixteen calls
+        id: bounded_c
+        env:
+          STUDYPLANNER_CORRECTION_REAL_API: '1'
+          STUDYPLANNER_TEMPORAL_REAL_API: '1'
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TZ: Asia/Tokyo
+          WRANGLER_SEND_METRICS: 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$OPENAI_API_KEY"
+          unset DEBUG PWDEBUG VITE_AI_API_KEY VITE_CLOUDFLARE_AI_PROXY_URL
+          ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.planner-recovery.config.mjs
+      - name: Verify the two fixed profiles and aggregate evidence ceiling
+        id: aggregate_evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$SOURCE_TREE"
+          test ! -e "$WORKFLOW_PATH"
+          test -z "$(git status --porcelain)"
+          sha256sum -c "$RUNNER_TEMP/four-case-ui-manifests.sha256"
+          jq -e -s '
+            length == 2 and
+            .[0].profile == "correction-ui" and .[1].profile == "temporal-ui" and
+            all(.[]; .outcome == "passed" and .failure == null and
+              .limits.cases == 2 and .limits.calls == 16 and .limits.turns == 6 and
+              .calls > 0 and .calls <= 16 and .turns > 0 and .turns <= 6 and
+              (.receipts | length) == .calls and .externalRequests == []) and
+            ([.[0].completedCases[].id] == ["paired-workload-effort", "pending-window-date"]) and
+            ([.[1].completedCases[].id] == ["task-weekday-scope-repair", "plan-weekday-to-overnight-hard"]) and
+            (map(.calls) | add) <= 32 and (map(.turns) | add) <= 12
+          ' artifacts/weekly-correction-real-api/evidence/observations.json \
+            artifacts/weekly-temporal-real-api/evidence/observations.json > /dev/null
+          jq -s --arg source "$SOURCE_SHA" --arg event "$GITHUB_SHA" '
+            {source_sha:$source,event_sha:$event,profiles:map({profile,calls,turns,completedCases}),
+              total_calls:(map(.calls)|add),total_turns:(map(.turns)|add),
+              human_explanation_and_visual_review:"required"}
+          ' artifacts/weekly-correction-real-api/evidence/observations.json \
+            artifacts/weekly-temporal-real-api/evidence/observations.json \
+            > artifacts/weekly-correction-real-api/evidence/aggregate-provenance.json
+      - name: Upload only redacted observations and separate source provenance
+        if: ${{ always() && steps.source_guard.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: weekly-four-case-ui-source-${{ env.SOURCE_SHA }}-event-${{ github.sha }}
+          path: |
+            artifacts/weekly-correction-real-api/evidence/
+            artifacts/weekly-temporal-real-api/evidence/
+          if-no-files-found: ignore
+          retention-days: 14
