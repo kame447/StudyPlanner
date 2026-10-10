@@ -1,3 +1,14 @@
+import { recordWeeklyPlanningStableV5DebugTrace, takeWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
+import type { StudyMaterial, PlanDraft } from '../../../types/domain';
+import { createPlanFromDraft } from '../../../domain/planner';
+import { createLocalPlannerRepository } from '../../../repositories/createLocalPlannerRepository';
+import { loadWeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionStorage';
+import { loadWeeklyPlanningApprovalOperations } from './weeklyPlanningApprovalLedgerStorage';
+import { createNoopWeeklyPlanningTraceRepository } from '../trace/weeklyPlanningTraceRepository';
+import { recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5TraceRuntimeForTest, resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest } from '../trace/weeklyPlanningStableV5TraceRuntime';
+import { listWeeklyPlanningTraceOutboxItems } from '../trace/weeklyPlanningTraceOutbox';
+import { WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS, measureWeeklyPlanningTraceJsonBytes } from '../../../../shared/weeklyPlanningTraceContract';
+import { prepareWeeklyPlanningTraceServerWrite } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
 import { createRef, forwardRef, useImperativeHandle } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -47,6 +58,7 @@ let started: ReturnType<typeof createDeferred<void>>;
 let responseDocument: WeeklyPlanningSemanticDocumentV5;
 const gateway = () => vi.spyOn(weeklyPlanningTurnRuntimeGateway, 'execute'); // Call through to the real executor.
 function resetRuntime() {
+  resetWeeklyPlanningStableV5TraceRuntimeForTest();
   resetWeeklyPlanningStableV5RuntimeSessionsForTest(); clearWeeklyPlanningSessionRuntime();
   resetUserPlanningContextRuntimeForTestV1(); resetWeeklyPlanningStableV5DebugTraceForTest();
   resetOpenAiCompatibleClientRequestBudgetForTest(); setWeeklyPlanningTraceRepositoryForTests(undefined);
@@ -233,4 +245,225 @@ it('consumes real Worker Jev-to-Luna fallback through focused authorization befo
   }
   await act(async () => { await ref.current!.approveDraftBlocks(); });
   expect(database.metrics.planWrites).toBe(candidates.length);
+});
+
+it.each(['preview', 'draft'] as const)('binds the current owner bookshelf through one real acceptance and preserves %s on provider failure', async retained => {
+  const userText = '8月17日から23日で金フレ20語を1語2分で計画してください';
+  const shelf: StudyMaterial = {
+    id: 'gold-phrase', userId: OWNER, name: '金フレ', aliases: ['金フレ'],
+    subjectId: 'english', subjectName: '英語', status: 'active', paceEnabled: true,
+    progressUnit: 'word', totalUnits: 1000, currentUnit: 200, targetDate: '2026-08-23',
+    createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-15T00:00:00Z',
+  };
+  const studyMaterials = [shelf, { ...shelf, id: 'foreign-shelf', userId: 'another-owner', name: '非所有教材' }];
+  const materialBefore = structuredClone(studyMaterials);
+  const document = semantic();
+  document.tasks[0] = {
+    ...document.tasks[0], title: '金フレ', existingPublicId: null,
+    sourceText: '金フレ20語を1語2分', workloads: [],
+    study: { purpose: 'self_study', contextLabel: '金フレ', components: [{
+      localId: 'material', existingPublicId: shelf.id, parentLocalId: null,
+      role: 'material', label: '金フレ', sourceText: '金フレ20語',
+      workloads: [{ ...document.tasks[0].workloads[0], unitCode: 'word', unitLabel: '語', sourceText: '金フレ20語' }],
+    }] },
+    effortEstimates: [{ ...document.tasks[0].effortEstimates[0], unitCode: 'word', sourceText: '1語2分' }],
+  };
+  responseDocument = document;
+  const rawProviderResponse = JSON.stringify(document);
+  const spy = gateway();
+  const storage = createMemoryStorageHarness(); restoreStorage = installWeeklyPlanningTestStorage(storage.storage);
+  const planRepository = createLocalPlannerRepository(storage.storage);
+  const save = vi.fn(async (draft: PlanDraft) => planRepository.upsertPlan(createPlanFromDraft(draft)));
+  const ref = createRef<WeeklyPlanningApplication>();
+  const renderMaterial = async () => {
+    const plans = await planRepository.getPlans(OWNER);
+    await act(async () => { renderer = create(<Harness ref={ref} userId={OWNER} selectedDate={WEEK}
+      plans={plans} studyMaterials={studyMaterials} scheduleTemplates={[]}
+      isPlannerDataSnapshotCurrent={() => true} plannerDataAvailability={createReadyPlannerDataAvailability(OWNER)}
+      saveWeeklyApprovedPlan={save} />); });
+  };
+  const reloadMaterial = async () => {
+    await act(async () => { renderer!.unmount(); }); renderer = undefined;
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest(); clearWeeklyPlanningSessionRuntime();
+    await renderMaterial();
+  };
+  const checkpoint = () => loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK })!;
+  const traceRepository = createNoopWeeklyPlanningTraceRepository();
+  const append = vi.spyOn(traceRepository, 'appendEntries').mockRejectedValueOnce(new Error('material trace append failed'));
+  setWeeklyPlanningTraceRepositoryForTests(traceRepository);
+  vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
+  await renderMaterial();
+  await act(async () => { expect((await ref.current!.submitTurn(userText)).accepted).toBe(true); });
+  expect(calls.map(call => call.schema)).toEqual([
+    'weekly_planning_semantic_document_v5', 'weekly_planning_stable_v5_dialogue_response',
+  ]);
+  expect(semanticCount).toBe(1); expect(JSON.stringify(responseDocument)).toBe(rawProviderResponse);
+  const execution = await spy.mock.results[0].value;
+  expect(execution.failure).toBeUndefined(); expect(execution.responseSource).toBe('ai');
+  const pending = spy.mock.calls[0][0].pending;
+  const request = calls[0].body;
+  for (const message of request.messages) expect(new TextEncoder().encode(message.content).byteLength).toBeLessThanOrEqual(20_000);
+  const providerInput = JSON.parse(request.messages[request.messages.length - 1].content);
+  expect(providerInput.publicStateSummary.registeredMaterials).toEqual([
+    expect.objectContaining({ materialId: shelf.id, name: shelf.name, remainingUnits: 800 }),
+  ]);
+  expect(JSON.stringify(providerInput)).not.toContain('foreign-shelf');
+  const graph = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
+  expect(graph.tasks).toHaveLength(1); expect(graph.components).toHaveLength(1);
+  expect(graph.workloads).toHaveLength(1); expect(graph.effortEstimates).toHaveLength(1);
+  expect(graph.appliedTurnKeys).toHaveLength(1);
+  expect(graph.components[0]).toMatchObject({ taskId: graph.tasks[0].id, role: 'material', label: '金フレ' });
+  expect(graph.workloads[0]).toMatchObject({ taskId: graph.tasks[0].id, componentId: graph.components[0].id,
+    quantityRole: 'target', amount: 20, unitCode: 'word' });
+  expect(graph.effortEstimates[0]).toMatchObject({ targetFactId: graph.workloads[0].id, minutes: 2 });
+  const factIds = graph.factLifecycles.map(fact => fact.factId);
+  expect(factIds).not.toContain(shelf.id); expect(factIds).not.toContain('foreign-shelf');
+  const roots = [graph.tasks[0].id, graph.components[0].id, graph.workloads[0].id, graph.effortEstimates[0].id];
+  const candidates = structuredClone(ref.current!.state.previewCandidates!);
+  expect(candidates).toEqual([expect.objectContaining({ title: '金フレ 20語', durationMinutes: 45,
+    stableV5Metadata: expect.objectContaining({ sourceFactRefs: roots }) })]);
+  expect(measureWeeklyPlanningTraceJsonBytes(candidates[0])).toBeLessThanOrEqual(1_000);
+  expect(measureWeeklyPlanningTraceJsonBytes(providerInput.publicStateSummary)).toBeLessThanOrEqual(3_000);
+  expect(new TextEncoder().encode(rawProviderResponse).byteLength).toBeLessThanOrEqual(4_000);
+  expect(checkpoint().graph).toEqual(graph); expect(checkpoint().planningState.previewCandidates).toEqual(candidates);
+  expect(save).not.toHaveBeenCalled(); expect(await planRepository.getPlans(OWNER)).toEqual([]);
+
+  // The real controller generated this trace. The failed append's actual input
+  // is read from persistent outbox storage, not a reconstructed semantic event.
+  expect(append).toHaveBeenCalledTimes(1);
+  const queued = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: pending.conversationId });
+  expect(queued).toHaveLength(1); expect(queued[0].input.requestId).toBe(pending.requestId);
+  const persistedOutbox = JSON.parse(storage.storage.getItem('studyplanner.weeklyPlanning.trace.outbox.v1')!);
+  expect(persistedOutbox.items).toEqual(queued);
+  expect(queued[0].input.debugTraceEvents).toContainEqual(expect.objectContaining({
+    stage: 'semantic_provider_request', data: expect.objectContaining({
+      attempt: 'initial', request: expect.objectContaining({ messages: request.messages }),
+    }),
+  }));
+  expect(queued[0].input.debugTraceEvents).toContainEqual(expect.objectContaining({
+    stage: 'semantic_canonicalization_evaluated', data: expect.objectContaining({
+      result: { status: 'applied' }, localReferenceResolution: expect.objectContaining({
+        task: graph.tasks[0].id, material: graph.components[0].id, work: graph.workloads[0].id,
+      }),
+    }),
+  }));
+  resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+  const reread = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: pending.conversationId });
+  expect(reread).toEqual(persistedOutbox.items);
+  await recordWeeklyPlanningStableV5TurnTrace(reread[0].input);
+  expect(append).toHaveBeenCalledTimes(2);
+  expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: pending.conversationId })).toEqual([]);
+  const expectedDiagnostic = {
+    kind: 'turn_diagnostic', requestId: pending.requestId, logicalConversationId: pending.conversationId,
+    aiInterpreter: {
+      input: { planningStateSummary: expect.objectContaining({ registeredMaterials: providerInput.publicStateSummary.registeredMaterials }) },
+      rawResponses: [expect.objectContaining({ attempt: 'initial', text: rawProviderResponse, truncated: false })],
+      structuredResults: [expect.objectContaining({ attempt: 'initial', accepted: true, errors: [] })],
+    },
+    decision: { finalOperations: [expect.objectContaining({ added: expect.arrayContaining([
+      { kind: 'component', id: graph.components[0].id }, { kind: 'workload', id: graph.workloads[0].id },
+    ]) })] },
+    constraintContext: { scheduler: { preview: { candidateCount: 1, representativeCandidates: [
+      expect.objectContaining({ title: candidates[0].title, stableV5Metadata: expect.objectContaining({ sourceFactRefs: roots }) }),
+    ] } } },
+  };
+  for (const [write] of append.mock.calls) {
+    expect(write.entries).toHaveLength(1); expect(write.entries[0]).toMatchObject(expectedDiagnostic);
+    expect(measureWeeklyPlanningTraceJsonBytes(write.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const prepared = prepareWeeklyPlanningTraceServerWrite({ session: { ...write.session }, entries: write.entries.map(entry => ({ ...entry })) },
+      { token: `wpt_${'b'.repeat(43)}`, epoch: '101' }, {
+        sessionId: 'weekly-trace-223e4567-e89b-52d3-a456-426614174000', logicalConversationId: pending.conversationId,
+      }, new Date().toISOString());
+    expect(prepared.entries).toHaveLength(1); expect(prepared.entries[0]).toMatchObject(expectedDiagnostic);
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+  }
+  // Derive transport-extension probes from the real generated input event.
+  // Only future fields are added; these are not additional planning/provider turns.
+  const actualInputEvent = reread[0].input.debugTraceEvents!.find(event => event.stage === 'semantic_pipeline_input');
+  expect(actualInputEvent).toBeDefined();
+  for (const oversized of [false, true]) {
+    const requestId = `${pending.requestId}:material-extension:${oversized}`;
+    const data = structuredClone(actualInputEvent!.data) as {
+      publicStateSummary: { registeredMaterials: Array<Record<string, unknown>> };
+    };
+    data.publicStateSummary.registeredMaterials[0].futureRegisteredMaterialField = 'material-projection-future-sentinel';
+    if (oversized) data.publicStateSummary.registeredMaterials[0].futureOversizedMaterialFields = [
+      'HEAD-' + 'あ'.repeat(8000) + '-TAIL', 'HEAD-' + 'あ'.repeat(8000) + '-TAIL',
+    ];
+    recordWeeklyPlanningStableV5DebugTrace({ requestId, stage: actualInputEvent!.stage, data });
+    const [projectedEvent] = takeWeeklyPlanningStableV5DebugTrace(requestId);
+    expect(projectedEvent.stage).toBe(actualInputEvent!.stage);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...reread[0].input, requestId,
+      debugTraceEvents: reread[0].input.debugTraceEvents!.map(event => event === actualInputEvent
+        ? { ...event, data: projectedEvent.data } : event),
+    });
+    const write = append.mock.calls[append.mock.calls.length - 1][0];
+    const expectedSummary = oversized
+      ? expect.objectContaining({ traceTruncated: true, originalBytes: expect.any(Number),
+        jsonHead: expect.any(String), jsonTail: expect.any(String) })
+      : expect.objectContaining({ registeredMaterials: [expect.objectContaining({ materialId: shelf.id,
+        futureRegisteredMaterialField: 'material-projection-future-sentinel' })] });
+    const expected = { ...expectedDiagnostic, requestId,
+      aiInterpreter: { ...expectedDiagnostic.aiInterpreter, input: { planningStateSummary: expectedSummary } },
+    };
+    expect(write.entries[0]).toMatchObject(expected);
+    if (oversized) {
+      expect(write.entries[0]).toMatchObject({ diagnostics: { truncation: { applied: true,
+        fields: expect.arrayContaining(['aiInterpreter.input.planningStateSummary']) } } });
+      expect(JSON.stringify(write.entries[0])).not.toContain('あ'.repeat(8000));
+    }
+    expect(measureWeeklyPlanningTraceJsonBytes(write.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const prepared = prepareWeeklyPlanningTraceServerWrite({ session: { ...write.session }, entries: write.entries.map(entry => ({ ...entry })) },
+      { token: `wpt_${'b'.repeat(43)}`, epoch: '101' }, {
+        sessionId: 'weekly-trace-223e4567-e89b-52d3-a456-426614174000', logicalConversationId: pending.conversationId,
+      }, new Date().toISOString());
+    expect(prepared.entries).toHaveLength(1); expect(prepared.entries[0]).toMatchObject(expected);
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+  }
+  expect(append).toHaveBeenCalledTimes(4);
+  // Deep validated component payloads have the existing collector depth bound;
+  // raw provider output + actual canonical diff/roots prove projection instead.
+  await reloadMaterial();
+  expect(ref.current!.state.previewCandidates).toEqual(candidates); expect(checkpoint().graph).toEqual(graph);
+  const blocks = createWeeklyDraftBlocksFromPreviewCandidates({ candidates, userId: OWNER, createdAt: new Date().toISOString() });
+  if (retained === 'draft') await act(async () => { ref.current!.createDraftBlocks(blocks); });
+  const previewBefore = structuredClone(ref.current!.state.previewCandidates);
+  const draftsBefore = structuredClone(ref.current!.pendingDraftBlocks);
+  const intakeBefore = structuredClone(ref.current!.state.intakeState);
+  expect(previewBefore).toEqual(retained === 'draft' ? [] : candidates);
+  expect(draftsBefore).toEqual(retained === 'draft' ? blocks : []);
+  mode = 'network'; calls = []; semanticCount = 0;
+  await act(async () => { expect(await ref.current!.submitTurn(userText)).toEqual({ accepted: true, draftCandidates: [] }); });
+  const failure = await spy.mock.results[1].value;
+  expect(failure.failure).toMatchObject({ code: 'stable_v5_provider_failure', diagnostics: { attemptCount: 1, repairAttempted: false } });
+  expect(calls.map(call => call.schema)).toEqual(['weekly_planning_semantic_document_v5']);
+  expect(ref.current!.state.intakeState).toEqual(intakeBefore);
+  expect(ref.current!.exportConversationSnapshot()!.graph).toEqual(graph);
+  expect(ref.current!.state.previewCandidates).toEqual(previewBefore); expect(ref.current!.pendingDraftBlocks).toEqual(draftsBefore);
+  expect(checkpoint().graph).toEqual(graph); expect(save).not.toHaveBeenCalled();
+  expect(await planRepository.getPlans(OWNER)).toEqual([]);
+  await reloadMaterial();
+  expect(checkpoint().graph).toEqual(graph);
+  expect(ref.current!.state.previewCandidates).toEqual(previewBefore); expect(ref.current!.pendingDraftBlocks).toEqual(draftsBefore);
+  if (retained === 'preview') await act(async () => { ref.current!.createDraftBlocks(blocks); });
+  expect(ref.current!.pendingDraftBlocks[0].behaviorMetadata?.sourceFactRefs).toEqual(roots);
+  expect(ref.current!.approvalAvailability.kind).toBe('eligible');
+  await act(async () => { await ref.current!.approveDraftBlocks(); });
+  expect(save).toHaveBeenCalledTimes(1);
+  const plans = await createLocalPlannerRepository(storage.storage).getPlans(OWNER);
+  expect(plans).toEqual([expect.objectContaining({ userId: OWNER, title: candidates[0].title,
+    date: candidates[0].date, startTime: candidates[0].startTime, endTime: candidates[0].endTime,
+    sourceType: WEEKLY_PLANNING_PLAN_SOURCE_TYPE })]);
+  const operations = loadWeeklyPlanningApprovalOperations(OWNER);
+  expect(operations).toEqual([expect.objectContaining({ status: 'completed', conversationId: pending.conversationId,
+    items: [expect.objectContaining({ sourceDraftBlockId: blocks[0].id, status: 'saved' })] })]);
+  expect(parseWeeklyPlanningPlanSourceId(plans[0].sourceId)).toEqual({ approvalOperationId: operations[0].approvalOperationId, sourceDraftBlockId: blocks[0].id });
+  expect(JSON.parse(storage.storage.getItem('studyplanner.scheduleEvents.v1')!)).toEqual([
+    expect.objectContaining({ id: `plan:${plans[0].id}`, provenance: expect.objectContaining({ sourceId: plans[0].sourceId }) }),
+  ]);
+  await reloadMaterial();
+  expect(ref.current!.pendingDraftBlocks).toEqual([]); expect(checkpoint().graph).toEqual(graph);
+  expect(await createLocalPlannerRepository(storage.storage).getPlans(OWNER)).toEqual(plans);
+  await act(async () => { await ref.current!.approveDraftBlocks(); });
+  expect(save).toHaveBeenCalledTimes(1); expect(studyMaterials).toEqual(materialBefore);
 });

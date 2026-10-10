@@ -68,9 +68,13 @@ export async function runGenericSemanticRepairRouteV5(params: {
     },
   );
   params.run.addAlgorithmicRepairs(repairedValidation.algorithmicRepairs);
+  // Compare provider shapes only as a pair. Legacy omitted optional fields can
+  // prevent raw reading; retain the existing parsed/validated guard in that case.
+  const comparisonDocuments = params.initialValidation.providerDocument && repairedValidation.providerDocument
+    ? { initialDocument: params.initialValidation.providerDocument, repairedDocument: repairedValidation.providerDocument }
+    : { initialDocument: params.initialValidation.parsedDocument, repairedDocument: repairedValidation.document };
   const preservationErrors = validateWeeklyPlanningSemanticRepairPreservationV5({
-    initialDocument: params.initialValidation.parsedDocument,
-    repairedDocument: repairedValidation.document,
+    ...comparisonDocuments,
     initialErrors: params.initialValidation.errors,
   });
   recordWeeklyPlanningStableV5DebugTrace({

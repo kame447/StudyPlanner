@@ -91,9 +91,14 @@ export function normalizePendingQuestionEntityBindingsV5(params: {
       .map((value) => value.publicId)
       .filter((value): value is string => typeof value === 'string'),
   );
+  // The current owner-scoped bookshelf is a distinct, known ID namespace.
+  // Preserve its token for ordinary validation; it is not copy corruption.
+  const knownMaterialIds = new Set(recordArray(state?.registeredMaterials)
+    .map((value) => value.materialId)
+    .filter((value): value is string => typeof value === 'string'));
   if (
-    (!taskExact && knownTaskIds.has(task.existingPublicId))
-    || (!componentExact && knownComponentIds.has(component.existingPublicId))
+    (!taskExact && (knownTaskIds.has(task.existingPublicId) || knownMaterialIds.has(task.existingPublicId)))
+    || (!componentExact && (knownComponentIds.has(component.existingPublicId) || knownMaterialIds.has(component.existingPublicId)))
   ) {
     return { rawResponse: params.rawResponse, repairs: [] };
   }
