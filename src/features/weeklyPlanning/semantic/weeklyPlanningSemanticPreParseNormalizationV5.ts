@@ -1,3 +1,5 @@
+import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
+import { normalizeWeeklyPlanningTaskSelfReferenceV5 } from './weeklyPlanningTaskSelfReferenceNormalizationV5';
 import {
   normalizeContainingTaskComponentParentV5,
 } from './weeklyPlanningComponentParentNormalizationV5';
@@ -40,6 +42,7 @@ import {
 
 export const WEEKLY_PLANNING_SEMANTIC_PRE_PARSE_NORMALIZATION_STAGE_IDS_V5 = [
   'empty_semantic_delta_envelope',
+  'task_self_reference',
   'planning_window_wire',
   'task_decomposition_uncertainty',
   'copied_user_context_delta',
@@ -77,6 +80,10 @@ Record<
   empty_semantic_delta_envelope: {
     category: 'representation_repair',
     owningInvariant: 'an explicitly empty provider delta has one canonical Stable V5 no-change representation',
+  },
+  task_self_reference: {
+    category: 'representation_repair',
+    owningInvariant: 'a nested fact may represent its exact active containing task public ID by that entry local ID only when no declared local ID collides',
   },
   planning_window_wire: {
     category: 'canonicalization_bridge',
@@ -226,6 +233,7 @@ function normalizeEmptySemanticDeltaEnvelopeV5(rawResponse: string): RawNormaliz
 export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
   rawResponse: string;
   publicStateSummary?: Record<string, unknown>;
+  committedGraph?: WeeklyPlanningFactGraphV5;
 }): WeeklyPlanningSemanticPreParseNormalizationResultV5 {
   let rawResponse = params.rawResponse;
   const repairs: string[] = [];
@@ -249,6 +257,11 @@ export function normalizeWeeklyPlanningSemanticPreParseV5(params: {
 
   applyStage('empty_semantic_delta_envelope', (value) =>
     normalizeEmptySemanticDeltaEnvelopeV5(value));
+  applyStage('task_self_reference', (value) =>
+    normalizeWeeklyPlanningTaskSelfReferenceV5({
+      rawResponse: value,
+      committedGraph: params.committedGraph,
+    }));
   applyStage('planning_window_wire', (value) =>
     normalizePlanningWindowCanonicalRawV5(value));
   applyStage('task_decomposition_uncertainty', (value) =>
