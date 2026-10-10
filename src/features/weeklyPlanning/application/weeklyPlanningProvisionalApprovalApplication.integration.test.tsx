@@ -1,3 +1,6 @@
+import * as graphStaging from './weeklyPlanningStableV5GraphStaging';
+import { validateWeeklyPlanningSemanticResponseV5 } from '../semantic/weeklyPlanningSemanticResponseValidationV5';
+import { createWeeklyPlanningSemanticPublicStateSummaryV5 } from '../semantic/weeklyPlanningSemanticPublicStateV5';
 import { createRef, forwardRef, useImperativeHandle } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -271,4 +274,107 @@ describe('provisional allocation through application and approval persistence', 
     await act(async () => { await ref.current!.approveDraftBlocks(); });
     expect(database.metrics.planWrites).toBe(1); expect(normalizeMock).toHaveBeenCalledTimes(2);
   });
+  it.each(['preview', 'draft'] as const)('discards a real staged turn on an invalid occupied clock while retaining the prior %s state', async (retainedState) => {
+    const storage = createMemoryStorageHarness();
+    restoreWindow = installWeeklyPlanningTestStorage(storage.storage);
+    const database = createWeeklyPlanningApprovalMemoryState();
+    const repository = createMemoryWeeklyPlanningApprovalPlanRepository(database);
+    const ref = createRef<WeeklyPlanningApplication>();
+    const props: UseWeeklyPlanningApplicationInput = {
+      userId: OWNER, selectedDate: WEEK_START, plans: [], scheduleTemplates: [],
+      isPlannerDataSnapshotCurrent: () => true, plannerDataAvailability: createReadyPlannerDataAvailability(OWNER),
+      saveWeeklyApprovedPlan: repository.saveApprovedPlan,
+      completeWeeklyApprovalOperation: repository.completeOperation,
+    };
+    const initial = workloadDocument();
+    const initialText = '8月17日から23日で数学の教材を60分進めたい';
+    initial.tasks[0].sourceText = '数学の教材を60分進めたい';
+    initial.tasks[0].workloads[0] = {
+      ...initial.tasks[0].workloads[0], amount: 60, unitCode: 'minute', unitLabel: '分',
+      sourceText: initial.tasks[0].sourceText,
+    };
+    const initialValidation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(initial), { currentUserText: initialText });
+    expect(initialValidation.errors).toEqual([]);
+    if (!initialValidation.document) throw new Error('initial duration document must be accepted');
+    normalizeMock.mockResolvedValueOnce(accepted(initialValidation.document));
+    await act(async () => { renderer = create(<Harness ref={ref} {...props} />); });
+    await act(async () => { expect((await ref.current!.submitTurn(initialText)).accepted).toBe(true); });
+    const preview = structuredClone(ref.current!.state.previewCandidates!);
+    expect(preview).toHaveLength(1);
+    expect(preview[0]).toMatchObject({ durationMinutes: 60, estimatedMinutes: 60 });
+    const blocks = createWeeklyDraftBlocksFromPreviewCandidates({ candidates: preview, userId: OWNER, createdAt: new Date().toISOString() });
+    if (retainedState === 'draft') {
+      await act(async () => { ref.current!.createDraftBlocks(blocks); });
+    }
+    // Promotion consumes the preview; exercise each real prior state separately.
+    const retainedPreview = retainedState === 'preview' ? preview : [];
+    const retainedDrafts = retainedState === 'draft' ? blocks : [];
+    expect(ref.current!.state.previewCandidates).toEqual(retainedPreview);
+    expect(ref.current!.pendingDraftBlocks).toEqual(retainedDrafts);
+    const key = getWeeklyPlanningStableV5SessionStorageKeyForTest(OWNER, WEEK_START);
+    const before = JSON.parse(storage.values.get(key)!) as WeeklyPlanningStableV5PersistedSession;
+    expect(before.graph.tasks).toHaveLength(1);
+    expect(before.planningState.previewCandidates).toEqual(retainedPreview);
+    expect(before.planningState.draftBlocks).toEqual(retainedDrafts);
+
+    const next = structuredClone(initialValidation.document);
+    const nextText = '8月17日から23日で英語の教材も60分進めたい';
+    next.tasks[0].localId = 'english-task';
+    next.tasks[0].title = '英語の教材';
+    next.tasks[0].sourceText = '英語の教材も60分進めたい';
+    if (next.tasks[0].study) next.tasks[0].study.contextLabel = next.tasks[0].title;
+    next.tasks[0].workloads[0].localId = 'english-workload';
+    next.tasks[0].workloads[0].sourceText = next.tasks[0].sourceText;
+    const nextValidation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(next), {
+      currentUserText: nextText, committedGraph: before.graph,
+      publicStateSummary: createWeeklyPlanningSemanticPublicStateSummaryV5(undefined, before.graph),
+    });
+    expect(nextValidation.errors).toEqual([]);
+    if (!nextValidation.document) throw new Error('new independent duration task must be accepted');
+    normalizeMock.mockResolvedValueOnce(accepted(nextValidation.document));
+    props.monthEvents = [{
+      id: 'private-invalid-clock-event', userId: OWNER, date: WEEK_START,
+      title: 'PRIVATE_TIMED_EVENT', startTime: '09:00', endTime: '09:99',
+      repeat: 'none', repeatUntil: null, excludedDates: [], url: '', memo: 'PRIVATE_MEMO',
+      checklist: [], locationTags: [], createdAt: '2026-08-16T00:00:00.000Z', updatedAt: '2026-08-16T00:00:00.000Z',
+    }];
+    await act(async () => { renderer!.update(<Harness ref={ref} {...props} />); });
+    const stage = vi.spyOn(graphStaging, 'stageWeeklyPlanningStableV5Graph');
+    try {
+      await act(async () => {
+        await expect(ref.current!.submitTurn(nextText))
+          .rejects.toThrow(new RangeError('Invalid timed schedule occurrence clock'));
+      });
+      expect(normalizeMock).toHaveBeenCalledTimes(2);
+      expect(stage).toHaveBeenCalledTimes(1);
+      const staged = stage.mock.calls[0]?.[0];
+      if (!staged) throw new Error('the actual turn must have staged before placement failed');
+      expect(staged.graph.revision).toBeGreaterThan(before.graph.revision);
+      expect(staged.graph.tasks).toEqual(expect.arrayContaining([expect.objectContaining({ title: '英語の教材' })]));
+      const turnKey = staged.graph.appliedTurnKeys[staged.graph.appliedTurnKeys.length - 1];
+      expect(turnKey.startsWith(`${before.conversationId}:`)).toBe(true);
+      const requestId = turnKey.slice(`${before.conversationId}:`.length);
+      expect(graphStaging.readWeeklyPlanningStableV5StagedGraph({ conversationId: before.conversationId, requestId })).toBeNull();
+      expect(getWeeklyPlanningStableV5RuntimeSession(before.conversationId)?.graph).toEqual(before.graph);
+      expect(ref.current!.state.pendingTurn).toBeUndefined();
+      expect(ref.current!.state.previewCandidates).toEqual(retainedPreview);
+      expect(ref.current!.pendingDraftBlocks).toEqual(retainedDrafts);
+      const failed = JSON.parse(storage.values.get(key)!) as WeeklyPlanningStableV5PersistedSession;
+      expect(failed.graph).toEqual(before.graph);
+      expect(failed.planningState.previewCandidates).toEqual(retainedPreview);
+      expect(failed.planningState.draftBlocks).toEqual(retainedDrafts);
+      expect(database.metrics).toEqual({ planWrites: 0, itemWrites: 0, operationWrites: 0 });
+      await act(async () => { renderer!.unmount(); }); renderer = undefined;
+      resetWeeklyPlanningStableV5RuntimeSessionsForTest(); clearWeeklyPlanningSessionRuntime();
+      await act(async () => { renderer = create(<Harness ref={ref} {...props} />); });
+      expect(getWeeklyPlanningStableV5RuntimeSession(before.conversationId)?.graph).toEqual(before.graph);
+      expect(ref.current!.state.previewCandidates).toEqual(retainedPreview);
+      expect(ref.current!.pendingDraftBlocks).toEqual(retainedDrafts);
+      expect(database.metrics).toEqual({ planWrites: 0, itemWrites: 0, operationWrites: 0 });
+      expect(normalizeMock).toHaveBeenCalledTimes(2);
+    } finally {
+      stage.mockRestore();
+    }
+  });
+
 });
