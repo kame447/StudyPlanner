@@ -13,7 +13,8 @@ const EXTERNAL_DESTINATION = /https?:\/\/|www\.|(?<![a-z0-9.-])(?:[a-z0-9](?:[a-
 // attacker phrases. A renderer question/status/preview cannot perform them.
 const APPLICATION_MUTATION_OUTCOME = /(?:保存|作成|登録|追加|削除|承認|反映|確定|適用|スケジュール)(?:を|が|は|も)?(?:しました|されました|いたしました|しています|できました|完了(?:しました|しています)?|済み(?:です|でした)?)/;
 const SENSITIVE_VALUE = /(?:パスワード|暗証番号|秘密情報|APIキー|アクセストークン|口座番号|クレジットカード)/i;
-const CLOCK_EXPRESSION = /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:午前|午後)?\s*(?:[01]?\d|2[0-3])\s*時(?:\s*(?:[0-5]?\d\s*分|半))?/g;
+// Keep malformed separators/precision in the token; never accept only a valid prefix.
+const CLOCK_EXPRESSION = /(?<!\d)(?:午前|午後)?\s*\d+(?:[.．]+\d+)*(?:[:：]+\d{2,}(?:[:：]\d*|[.．]\d+|分|秒|半)*|\s*時(?:\s*(?:\d+(?:[.．]\d+)?\s*(?:分|秒)|半|[:：]\d*|[.．]\d+))*)/g;
 const DATE_EXPRESSION = /(?:今日|明日|明後日|今週|来週|週末)|\d{1,2}\s*月\s*\d{1,2}\s*日/g;
 const PREVIEW_COUNT_EXPRESSION = /(\d+)\s*件/g;
 const EXECUTION_VERB = '(?:作ります|作成します|追加します|登録します|保存します|組みます|反映します|入れます|入れました|入れておきます)';
@@ -108,26 +109,21 @@ function expressions(value: string, pattern: RegExp): string[] {
 
 function clockMinutes(value: string): number | null {
   const compact = value.replace(/\s+/g, '').replace('：', ':');
-  const colon = /^(\d{1,2}):(\d{2})$/.exec(compact);
-  if (colon) {
-    const hour = Number(colon[1]);
-    const minute = Number(colon[2]);
-    return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59
-      ? hour * 60 + minute
-      : null;
-  }
-
+  const colon = /^(午前|午後)?(\d{1,2}):(\d{2})$/.exec(compact);
   const japanese = /^(午前|午後)?(\d{1,2})時(?:(\d{1,2})分|半)?$/.exec(compact);
-  if (!japanese) return null;
-  let hour = Number(japanese[2]);
-  const minute = japanese[3] !== undefined
-    ? Number(japanese[3])
-    : compact.endsWith('半')
-      ? 30
-      : 0;
-  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
-  if (japanese[1] === '午前' && hour === 12) hour = 0;
-  if (japanese[1] === '午後' && hour < 12) hour += 12;
+  const parsed = colon ?? japanese;
+  if (!parsed) return null;
+  const meridiem = parsed[1];
+  let hour = Number(parsed[2]);
+  const minute = parsed[3] !== undefined
+    ? Number(parsed[3])
+    : compact.endsWith('半') ? 30 : 0;
+  // Calendar day-end is distinct from the following day's midnight.
+  if (!meridiem && hour === 24 && minute === 0) return 24 * 60;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59
+    || (meridiem && hour > 12)) return null;
+  if (meridiem === '午前' && hour === 12) hour = 0;
+  if (meridiem === '午後' && hour < 12) hour += 12;
   return hour * 60 + minute;
 }
 
@@ -169,6 +165,13 @@ function addsUnsupportedExpression(
   pattern: RegExp,
   additionalAllowedValues: readonly string[] = [],
 ): boolean {
+  if (pattern === CLOCK_EXPRESSION) {
+    const allowedMinutes = new Set(clockValues(groundingInformation));
+    return [...rendered.matchAll(CLOCK_EXPRESSION)].some((match) => {
+      const minutes = clockMinutes(match[0]);
+      return minutes === null || !allowedMinutes.has(minutes);
+    });
+  }
   const allowed = new Set(expressions(groundingInformation, pattern));
   for (const value of additionalAllowedValues) {
     for (const expression of expressions(value, pattern)) {
