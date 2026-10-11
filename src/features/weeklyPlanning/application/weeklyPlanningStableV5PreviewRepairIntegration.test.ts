@@ -1,3 +1,6 @@
+import type { MonthEvent } from '../../../types/domain';
+import { renderWeeklyPlanningStableV5AssistantMessage } from '../dialogue/weeklyPlanningStableV5TurnDialogue';
+import { boundWeeklyPlanningDialogueRendererTraceForTransport } from '../trace/weeklyPlanningDialogueRendererTrace';
 import { validateWeeklyPlanningSemanticResponseV5 } from '../semantic/weeklyPlanningSemanticResponseValidationV5';
 import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import { takeWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
@@ -16,7 +19,7 @@ import {
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeExecutor';
 import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './weeklyPlanningStableV5RuntimeSession';
 
-const { normalizeMock } = vi.hoisted(() => ({ normalizeMock: vi.fn() }));
+const { normalizeMock, rendererClientMock } = vi.hoisted(() => ({ normalizeMock: vi.fn(), rendererClientMock: vi.fn() }));
 
 function acceptedResult(document: WeeklyPlanningSemanticDocumentV5) {
   return {
@@ -150,7 +153,7 @@ vi.mock('../../../lib/aiConfig', () => ({
   getAiConfigValidationMessage: () => undefined,
 }));
 vi.mock('../../../services/ai/openAiCompatibleClient', () => ({
-  createOpenAiCompatibleClient: () => ({ createChatCompletion: vi.fn() }),
+  createOpenAiCompatibleClient: () => ({ createChatCompletion: rendererClientMock }),
 }));
 vi.mock('../semantic/weeklyPlanningSemanticNormalizerV5', () => ({
   createWeeklyPlanningSemanticNormalizerV5: () => ({ normalize: normalizeMock }),
@@ -186,10 +189,24 @@ function turnInput(
   };
 }
 
+function existingEvent(overrides: Partial<MonthEvent> = {}): MonthEvent {
+  return { id: 'existing-event-grounding', userId: 'owner-preview-repair', date: '2026-08-21',
+    title: 'Existing appointment', startTime: '19:00', endTime: '20:00', repeat: 'none', repeatUntil: null,
+    excludedDates: [], url: '', memo: '', checklist: [], locationTags: [],
+    createdAt: requestContext.startedAtIso, updatedAt: requestContext.startedAtIso, ...overrides };
+}
+function existingSourceDocument(): WeeklyPlanningSemanticDocumentV5 {
+  const document = initialPreviewDocument();
+  document.constraintSourceRequests = [{ localId: 'existing-source', kind: 'existing_plans',
+    selector: 'active', requestedAction: 'use', sourceText: '既存予定' }];
+  return document;
+}
+
 describe('Stable V5 repair-safe preview integration', () => {
   beforeEach(() => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     normalizeMock.mockReset();
+    rendererClientMock.mockReset();
   });
 
   it('keeps the previous preview visible but non-promotable across unresolved repair turns', async () => {
@@ -228,6 +245,24 @@ describe('Stable V5 repair-safe preview integration', () => {
     expect(stillRepairing.state.status).toBe('revision_pending');
     expect(stillRepairing.state.shouldCreateDraft).toBe(false);
   });
+  it.each(['empty', 'unselected', 'foreign', 'invalid'] as const)(
+    'does not invent acquired existing-schedule evidence for %s input', async mode => {
+      const document = existingSourceDocument();
+      if (mode === 'unselected') document.constraintSourceRequests[0].requestedAction = 'stop_using';
+      const userText = '8月17日から23日で数学30ページ。1ページ5分くらい。既存予定';
+      const validation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(document), { currentUserText: userText });
+      expect(validation.errors).toEqual([]);
+      normalizeMock.mockResolvedValueOnce(acceptedResult(validation.document!));
+      const monthEvents = mode === 'empty' ? [] : [existingEvent(mode === 'foreign'
+        ? { userId: 'foreign-owner' } : mode === 'invalid' ? { startTime: '25:00' } : {})];
+      const result = await executeWeeklyPlanningStableV5RuntimeTurn({
+        ...turnInput({ userText, traceRequestId: `request-grounding-${mode}` }), monthEvents,
+      });
+      expect(result.existingScheduleGrounding).toBeUndefined();
+      expect(result.state).not.toHaveProperty('existingScheduleGrounding');
+    },
+  );
+
   it('persists actual hard-clock runtime diagnostics through outbox retry and Worker preparation', async () => {
     vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
     const conversationId = 'weekly-conversation-733e4567-e89b-42d3-a456-426614174010';
@@ -255,7 +290,7 @@ describe('Stable V5 repair-safe preview integration', () => {
     resetWeeklyPlanningStableV5TraceRuntimeForTest();
     setWeeklyPlanningTraceRepositoryForTests(createRemoteWeeklyPlanningTraceRepository(api));
     try {
-      const document = initialPreviewDocument();
+      const document = existingSourceDocument();
       document.tasks[0].workloads[0].amount = 12;
       document.tasks[0].temporalConstraints = [{
         localId: 'temporal-1', targetLocalId: 'task-math',
@@ -265,7 +300,7 @@ describe('Stable V5 repair-safe preview integration', () => {
         namedTimePeriod: null, startTime: '20:00', endTime: null,
         precision: 'exact', sourceText: '8月21日は20時以降',
       }];
-      const userText = '8月17日から23日で数学12ページ。1ページ5分くらい。8月21日は20時以降。';
+      const userText = '8月17日から23日で数学12ページ。1ページ5分くらい。8月21日は20時以降。既存予定';
       document.tasks[0].sourceText = '数学12ページ。1ページ5分くらい';
       document.tasks[0].workloads[0].sourceText = '数学12ページ';
       const validation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(document), { currentUserText: userText });
@@ -273,9 +308,8 @@ describe('Stable V5 repair-safe preview integration', () => {
       // External interpretation is substituted; validation, pipeline, runtime/placement and trace owners are real.
       normalizeMock.mockResolvedValueOnce(acceptedResult(validation.document!));
       const traceRequestId = `${conversationId}:request:1`;
-      const result = await executeWeeklyPlanningStableV5RuntimeTurn({
-        ...turnInput({ userText, traceRequestId }), conversationId,
-      });
+      const input = { ...turnInput({ userText, traceRequestId }), conversationId, monthEvents: [existingEvent()] };
+      const result = await executeWeeklyPlanningStableV5RuntimeTurn(input);
       expect(result.draftCandidates).toHaveLength(1);
       const acceptedGraph = result.stableV5Graph!;
       expect(acceptedGraph.workloads[0]).toMatchObject({ amount: 12, unitCode: 'page' });
@@ -283,6 +317,28 @@ describe('Stable V5 repair-safe preview integration', () => {
       expect(acceptedGraph.workloads[0].amount! * acceptedGraph.effortEstimates[0].minutes).toBe(60);
       // Existing 1.1 safety buffer and five-minute upward rounding: 60 -> 66 -> 70.
       expect(result.draftCandidates[0]).toMatchObject({ date: '2026-08-21', startTime: '20:00', endTime: '21:10', durationMinutes: 70 });
+      const evidence = result.existingScheduleGrounding;
+      expect(evidence).toEqual({ graphRevision: result.stableV5Graph!.revision,
+        sourceId: 'studyplanner-existing-plans', requestFactId: result.stableV5Graph!.constraintSourceRequests[0].id,
+        occupiedEventIds: ['existing-event-grounding'] });
+      expect(result.state).not.toHaveProperty('existingScheduleGrounding');
+      const renderedText = '保存済みの予定と重ならない候補を作成しました。「この内容で仮予定にする」を押してください。';
+      rendererClientMock.mockImplementationOnce(async request => {
+        const payload = JSON.parse(request.messages[request.messages.length - 1].content);
+        expect(payload.applicationDecision.existingScheduleGrounding).toEqual(evidence);
+        return JSON.stringify({ actionId: payload.actionId, actionKind: 'preview_ready', questionCode: null,
+          groundingAcknowledgement: null, text: renderedText });
+      });
+      const rendered = await renderWeeklyPlanningStableV5AssistantMessage({ input, result });
+      expect(rendererClientMock).toHaveBeenCalledTimes(1);
+      expect(rendered.responseSource).toBe('ai');
+      expect(rendered.message).toBe(renderedText);
+      const rendererTrace = boundWeeklyPlanningDialogueRendererTraceForTransport(rendered.dialogueRendererTrace!);
+      const promptContext = rendererTrace.request!.promptContext as Record<string, unknown>;
+      expect(promptContext.existingScheduleGrounding).toEqual(evidence);
+      const delivered = rendererClientMock.mock.calls[0][0];
+      expect(promptContext.messages).toEqual(delivered.messages);
+      (promptContext.existingScheduleGrounding as Record<string, unknown>).futureGroundingField = 'future-existing-schedule';
       const events = takeWeeklyPlanningStableV5DebugTrace(traceRequestId);
       const evaluation = events.find((event) => event.stage === 'runtime_scheduler_dialogue_evaluated');
       expect(evaluation).toBeDefined();
@@ -299,7 +355,7 @@ describe('Stable V5 repair-safe preview integration', () => {
       compilation.hardClockBounds![0].futureClockField = 'future-hard-clock-field';
       const first = {
         userId, conversationId, requestId: traceRequestId, userText,
-        assistantMessage: result.message, responseSource: 'ai' as const,
+        assistantMessage: rendered.message, responseSource: 'ai' as const, dialogueRendererTrace: rendererTrace,
         outcome: 'scheduler_ready',
         previewCount: result.draftCandidates.length, debugTraceEvents: events,
       };
@@ -312,6 +368,7 @@ describe('Stable V5 repair-safe preview integration', () => {
       setWeeklyPlanningTraceRepositoryForTests(createRemoteWeeklyPlanningTraceRepository(api));
       const oversized = structuredClone(first);
       oversized.requestId = `${conversationId}:request:2`;
+      (oversized.dialogueRendererTrace.request!.promptContext as Record<string, unknown>).futureLargeGroundingField = 'existing-schedule-extension'.repeat(10_000);
       const largeEvaluation = oversized.debugTraceEvents.find((event) => event.stage === evaluation!.stage)!;
       (largeEvaluation.data as { resolvedHorizon: Record<string, unknown> }).resolvedHorizon.futureLargeScopeField = 'temporal-extension'.repeat(10_000);
       (largeEvaluation.data as { compilation: { hardClockBounds: Array<Record<string, unknown>> } })
@@ -336,6 +393,11 @@ describe('Stable V5 repair-safe preview integration', () => {
           const serialized = JSON.stringify(persisted);
           if (index === 0) {
             expect(serialized).toContain('future-temporal-scope-field');
+            expect(serialized).toContain('future-existing-schedule');
+            expect(serialized).toContain('existing-event-grounding');
+            const renderer = (persisted as { diagnostics: { dialogueRenderer: typeof rendererTrace } }).diagnostics.dialogueRenderer;
+            expect(renderer.response.renderedText).toBe(renderedText);
+            expect(renderer.decision.finalMessage).toBe(renderedText);
             expect(serialized).toContain('2026-08-21');
             const diagnostic = persisted as { constraintContext: { scheduler?: { hardClockBounds?: unknown } } };
             expect(diagnostic.constraintContext.scheduler?.hardClockBounds).toEqual([
@@ -344,6 +406,7 @@ describe('Stable V5 repair-safe preview integration', () => {
           } else {
             expect(serialized).toMatch(/traceProjectionTruncated|traceTruncated|truncated/u);
             expect(serialized).not.toContain('temporal-extension'.repeat(10_000));
+            expect(serialized).not.toContain('existing-schedule-extension'.repeat(10_000));
             const diagnostic = persisted as { constraintContext: { scheduler?: { hardClockBounds?: unknown } } };
             expect(diagnostic.constraintContext.scheduler?.hardClockBounds).toMatchObject({ traceTruncated: true });
             expect(serialized).not.toContain('hard-clock-extension'.repeat(10_000));

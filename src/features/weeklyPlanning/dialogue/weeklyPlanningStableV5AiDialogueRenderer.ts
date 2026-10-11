@@ -53,12 +53,15 @@ const GROUNDING_ACK_REPAIR_INSTRUCTION = [
 function rendererPromptTraceContext(prompt: {
   systemPrompt: string;
   userPrompt: string;
-}): Record<string, unknown> {
+}, input: WeeklyPlanningStableV5DialogueRenderInput): Record<string, unknown> {
   const messages = [
     { role: 'system', content: prompt.systemPrompt },
     { role: 'user', content: prompt.userPrompt },
   ];
   return {
+    ...(input.existingScheduleGrounding
+      ? { existingScheduleGrounding: input.existingScheduleGrounding }
+      : {}),
     messages,
     requestBytes: new TextEncoder().encode(JSON.stringify(messages)).byteLength,
   };
@@ -167,7 +170,7 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
     async render(input) {
       try {
         const prompt = createWeeklyPlanningStableV5DialoguePrompt(input);
-        const promptContext = rendererPromptTraceContext(prompt);
+        const promptContext = rendererPromptTraceContext(prompt, input);
         rememberWeeklyPlanningDialogueRendererPromptContext(
           input.actionId,
           promptContext,

@@ -98,6 +98,9 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       previewCount: input.previewCount,
       ...(input.recovery ? { recovery: input.recovery } : {}),
       ...(input.recoveryQuestionEvidence ? { recoveryQuestionEvidence: input.recoveryQuestionEvidence } : {}),
+      ...(input.existingScheduleGrounding
+        ? { existingScheduleGrounding: input.existingScheduleGrounding }
+        : {}),
     },
     request: [
       'applicationDecisionをsource of truthとして守り、自然な日本語を一つ返してください。preview_readyになる前は、予定・仮予定・計画への追加、登録、保存、反映、作成が完了または実行されると断言しないでください。',
