@@ -200,7 +200,7 @@ Recovery requests, responses and finite diagnostics use the existing renderer tr
 
 ## Availability
 
-Existing StudyPlanner plans and timetable are authoritative busy sources in current production. Accepted hard availability/life constraints and the request-time `notBefore` boundary reduce candidate space; preferences/personalization do not create free time.
+Existing StudyPlanner plans, owned timed MonthEvents and timetable are authoritative busy sources in current production. Accepted hard availability/life constraints and the request-time `notBefore` boundary reduce candidate space; preferences/personalization do not create free time.
 
 Required-source failure is not equivalent to a successfully loaded empty source. Sleep end does not necessarily imply study-available start.
 

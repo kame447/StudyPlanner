@@ -1,4 +1,4 @@
-import type { Plan, ScheduleTemplate } from '../../../types/domain';
+import type { MonthEvent, Plan, ScheduleTemplate } from '../../../types/domain';
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
@@ -60,6 +60,7 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
   input: GenericSchedulerInput;
   graph: WeeklyPlanningPlacementGraphViewV5;
   plans?: readonly Plan[];
+  monthEvents?: readonly MonthEvent[];
   scheduleTemplates?: readonly ScheduleTemplate[];
   timetableTermId?: string;
   dayStartTime?: string;
@@ -108,6 +109,7 @@ export function scheduleWeeklyPlanningStableV5Preview(params: {
       input: params.input,
       dates,
       plans: params.plans ?? [],
+      monthEvents: params.monthEvents,
       scheduleTemplates: params.scheduleTemplates ?? [],
       timetableTermId: params.timetableTermId,
     }),
