@@ -1,3 +1,4 @@
+import { workloadUnitDisplayV5 } from './weeklyPlanningWorkloadQuantityLabelV5';
 import type {
   EffortEstimateFact,
   PlanningTaskFact,
@@ -20,11 +21,24 @@ export type { GenericWorkItemEstimateBasis } from './weeklyPlanningGenericWorkEs
 
 export const GENERIC_WORK_ITEM_VERSION = 'weekly-planning-generic-work-item-v1' as const;
 
-export type GenericWorkloadFact = WorkloadFact | (Omit<WorkloadFact, 'quantityRole'> & {
+export type GenericWorkloadFact = (WorkloadFact | (Omit<WorkloadFact, 'quantityRole'> & {
   quantityRole: 'scope_total';
-});
+})) & {
+  /** Scheduler-view derivation only; never a canonical workload fact. */
+  derivationKind?: 'task_total_duration';
+};
+
+export interface GenericTaskTotalDurationSource {
+  kind: 'task_total_duration';
+  derivedWorkloadId: string;
+  taskId: string;
+  graphRevision: number;
+  effortEstimateFactIds: readonly string[];
+}
 
 export interface WeeklyPlanningGenericWorkGraphView {
+  readonly revision?: number;
+  readonly derivedWorkloadSources?: ReadonlyArray<GenericTaskTotalDurationSource>;
   readonly tasks: ReadonlyArray<PlanningTaskFact>;
   readonly components: ReadonlyArray<StudyComponentFact>;
   readonly workloads: ReadonlyArray<GenericWorkloadFact>;
@@ -54,6 +68,7 @@ export interface GenericPlanningWorkItem {
   id: string;
   taskId: string;
   componentId: string | null;
+  /** Scheduler-view lookup key; canonical authority is carried by sourceFactRefs. */
   workloadFactId: string;
   label: string;
   quantityRole: WorkloadFact['quantityRole'];
@@ -80,6 +95,7 @@ export type GenericWorkItemIssueCode =
   | 'non_integral_discrete_amount'
   | 'invalid_actual_range'
   | 'orphan_workload'
+  | 'invalid_derived_workload_source'
   | 'scope_total_workload_skipped'
   | 'completed_workload_skipped'
   | 'remaining_workload_skipped_for_target';
@@ -165,7 +181,8 @@ function buildLabel(params: {
   const range = params.workload.rangeStart && params.workload.rangeEnd
     ? `（${params.workload.rangeStart}〜${params.workload.rangeEnd}）`
     : '';
-  return `${label} ${params.workload.amount}${params.workload.unitLabel}${range}`;
+  const unit = workloadUnitDisplayV5(params.workload.unitCode, params.workload.unitLabel);
+  return `${label} ${params.workload.amount}${unit}${range}`;
 }
 
 function ordinalRange(workload: WorkloadFact): GenericWorkItemQuantity['ordinalRange'] {
@@ -188,15 +205,49 @@ function sourceFactRefs(params: {
   workload: WorkloadFact;
   estimate: GenericWorkItemEstimateResolution;
   relatedWorkloadFactIds?: ReadonlyArray<string>;
+  derivedFromTaskTotal?: boolean;
 }): string[] {
   return [
     params.workload.taskId,
     ...(params.workload.componentId ? [params.workload.componentId] : []),
-    params.workload.id,
+    ...(params.derivedFromTaskTotal ? [] : [params.workload.id]),
     ...(params.relatedWorkloadFactIds ?? []),
     ...params.estimate.sourceWorkloadFactIds,
     ...params.estimate.sourceFactIds,
   ];
+}
+
+function taskTotalDurationSource(
+  graph: WeeklyPlanningGenericWorkGraphView,
+  workload: GenericWorkloadFact,
+): { status: 'canonical' | 'invalid' } | { status: 'derived'; effortEstimateFactIds: string[] } {
+  const sources = (graph.derivedWorkloadSources ?? [])
+    .filter((source) => source.derivedWorkloadId === workload.id);
+  if (!workload.derivationKind && sources.length === 0) return { status: 'canonical' };
+  const source = sources[0];
+  if (workload.derivationKind !== 'task_total_duration' || sources.length !== 1
+    || source.kind !== 'task_total_duration' || source.taskId !== workload.taskId
+    || source.graphRevision !== graph.revision || !Number.isInteger(source.graphRevision)
+    || workload.quantityRole !== 'target' || workload.componentId !== null
+    || workload.unitCode !== 'minute' || workload.perOccurrence
+    || workload.rangeStart !== null || workload.rangeEnd !== null
+    || workload.periodExpression !== null
+    || graph.workloads.some((other) => other.taskId === workload.taskId && other.id !== workload.id)) {
+    return { status: 'invalid' };
+  }
+  // Resolve the typed evidence in this active graph, not by the synthetic key's
+  // spelling. The mapping carries IDs only; accepted estimates own the minutes.
+  const budgets = graph.effortEstimates.filter((estimate) =>
+    estimate.taskId === workload.taskId && estimate.targetFactId === workload.taskId
+    && estimate.kind === 'total_duration' && Number.isFinite(estimate.minutes) && estimate.minutes > 0);
+  const ids = budgets.map((budget) => budget.id).sort();
+  const sourceIds = [...source.effortEstimateFactIds].sort();
+  if (ids.length === 0 || ids.length !== sourceIds.length
+    || ids.some((id, index) => id !== sourceIds[index])
+    || budgets.some((budget) => budget.minutes !== workload.amount)) {
+    return { status: 'invalid' };
+  }
+  return { status: 'derived', effortEstimateFactIds: ids };
 }
 
 export function compileGenericPlanningWorkItems(
@@ -215,6 +266,11 @@ export function compileGenericPlanningWorkItems(
     const component = candidate.componentId ? components.get(candidate.componentId) ?? null : null;
     if (!task || (candidate.componentId && !component)) {
       issues.push({ code: 'orphan_workload', workloadFactId: candidate.id, blocking: true });
+      continue;
+    }
+    const derivedSource = taskTotalDurationSource(graph, candidate);
+    if (derivedSource.status === 'invalid') {
+      issues.push({ code: 'invalid_derived_workload_source', workloadFactId: candidate.id, blocking: true });
       continue;
     }
     if (candidate.quantityRole === 'scope_total') {
@@ -270,11 +326,14 @@ export function compileGenericPlanningWorkItems(
       issues.push({ code: 'invalid_actual_range', workloadFactId: workload.id, blocking: true });
     }
 
-    const estimate = resolveGenericWorkItemEstimate({
+    const resolvedEstimate = resolveGenericWorkItemEstimate({
       workload,
       workloads: planningWorkloads,
       estimates: graph.effortEstimates,
     });
+    const estimate = derivedSource.status === 'derived'
+      ? { ...resolvedEstimate, sourceFactIds: derivedSource.effortEstimateFactIds }
+      : resolvedEstimate;
     if (estimate.ambiguous) {
       issues.push({
         code: 'ambiguous_effort_estimate',
@@ -340,6 +399,7 @@ export function compileGenericPlanningWorkItems(
         workload,
         estimate,
         relatedWorkloadFactIds,
+        derivedFromTaskTotal: derivedSource.status === 'derived',
       }),
     });
   }

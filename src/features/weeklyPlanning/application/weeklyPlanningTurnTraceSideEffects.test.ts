@@ -245,4 +245,19 @@ describe('weeklyPlanningTurnTraceSideEffects', () => {
       compatibilityState: expect.anything(),
     }));
   });
+
+  it.each([false, true])('attributes failed-turn wording to AI only with a recovery receipt (verified=%s)', async (verified) => {
+    const services = createServices();
+    const message = '今回は反映せず、以前の候補を残しています。何を予定に入れたいですか？';
+    await recordFailedWeeklyPlanningApplicationTurn({ ownerId: 'user-1', pending, userText: 'それは',
+      error: new Error('semantic rejection'),
+      assistantMessage: { id: 'assistant', role: 'assistant', content: message, createdAt: pending.startedAt },
+      result: { state: createInitialPlanningIntakeState(), message, draftCandidates: [], responseSource: 'ai',
+        ...(verified ? { recoveryPresentation: { question: null } } : {}) },
+    }, services);
+    expect(services.recordTurnTrace).toHaveBeenCalledWith(expect.objectContaining({
+      responseSource: verified ? 'ai' : 'system', assistantMessage: message, outcome: 'failed',
+    }));
+  });
+
 });

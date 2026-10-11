@@ -1,3 +1,4 @@
+import { workloadUnitDisplayV5 } from './weeklyPlanningWorkloadQuantityLabelV5';
 import type {
   PlanningTaskFact,
   RecurrenceFact,
@@ -158,6 +159,7 @@ function distributedSlices(params: {
   }
 
   const label = displayTargetLabel(params.graph, params.item);
+  const unit = workloadUnitDisplayV5(params.item.quantity.unitCode, params.item.quantity.unitLabel);
   const explicitRange = numericActualRange(params.item);
   const sourceOrdinalStart = params.item.quantity.ordinalRange?.start ?? 1;
   const aggregateAllocatedMinutes = params.item.estimatedMinutes ?? 0;
@@ -174,8 +176,8 @@ function distributedSlices(params: {
         }
       : null;
     const rangeLabel = actualRange
-      ? `${actualRange.start}〜${actualRange.end}${params.item.quantity.unitLabel}`
-      : `${ordinalStart}〜${ordinalEnd}${params.item.quantity.unitLabel}`;
+      ? `${actualRange.start}〜${actualRange.end}${unit}`
+      : `${ordinalStart}〜${ordinalEnd}${unit}`;
     const durationMinutes = durations[index];
     const baseEstimatedMinutes = params.item.baseEstimatedMinutes === null
       || params.item.baseEstimatedMinutes === undefined
@@ -186,7 +188,7 @@ function distributedSlices(params: {
     return {
       ...params.item,
       id: `${params.item.id}:daily:${index + 1}`,
-      label: `${label} ${quantity}${params.item.quantity.unitLabel}（${rangeLabel}）`,
+      label: `${label} ${quantity}${unit}（${rangeLabel}）`,
       quantity: {
         ...params.item.quantity,
         amount: quantity,
@@ -231,6 +233,7 @@ function executionPolicySlices(params: {
   if (chunks.length <= 1) return [params.item];
 
   const label = displayTargetLabel(params.graph, params.item);
+  const unit = workloadUnitDisplayV5(params.item.quantity.unitCode, params.item.quantity.unitLabel);
   const totalQuantity = params.item.quantity.amount;
   let consumedMinutes = 0;
   return chunks.map((durationMinutes, index) => {
@@ -258,7 +261,7 @@ function executionPolicySlices(params: {
     return {
       ...params.item,
       id: `${params.item.id}:session:${index + 1}`,
-      label: `${label} ${quantityLabel}${params.item.quantity.unitLabel}（${index + 1}/${chunks.length}）`,
+      label: `${label} ${quantityLabel}${unit}（${index + 1}/${chunks.length}）`,
       quantity: {
         ...params.item.quantity,
         amount: displayQuantity,
