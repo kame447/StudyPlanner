@@ -263,7 +263,10 @@ describe('Stable V5 repair-safe preview integration', () => {
     },
   );
 
-  it('persists actual hard-clock runtime diagnostics through outbox retry and Worker preparation', async () => {
+  it.each([
+    '保存済みの予定と重ならない候補を作成しました。',
+    '計画案を作成しました。保存はまだ行いません。',
+  ])('persists actual hard-clock runtime diagnostics through outbox retry and Worker preparation: %s', async claim => {
     vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
     const conversationId = 'weekly-conversation-733e4567-e89b-42d3-a456-426614174010';
     const userId = 'owner-preview-repair';
@@ -323,7 +326,7 @@ describe('Stable V5 repair-safe preview integration', () => {
         sourceId: 'studyplanner-existing-plans', requestFactId: result.stableV5Graph!.constraintSourceRequests[0].id,
         occupiedEventIds: ['existing-event-grounding'] });
       expect(result.state).not.toHaveProperty('existingScheduleGrounding');
-      const renderedText = '保存済みの予定と重ならない候補を作成しました。「この内容で仮予定にする」を押してください。';
+      const renderedText = `${claim}「この内容で仮予定にする」を押してください。`;
       rendererClientMock.mockImplementationOnce(async request => {
         const payload = JSON.parse(request.messages[request.messages.length - 1].content);
         expect(payload.applicationDecision.existingScheduleGrounding).toEqual(evidence);
