@@ -1,8 +1,10 @@
 import type { TaskRelationFact } from './weeklyPlanningFactGraph';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
 
+type SchedulerTaskRelation = Pick<TaskRelationFact, 'kind' | 'fromTaskId' | 'toTaskId'>;
+
 function relationEdge(
-  relation: TaskRelationFact,
+  relation: SchedulerTaskRelation,
 ): { before: string; after: string } | null {
   switch (relation.kind) {
     case 'before':
@@ -19,7 +21,7 @@ function relationEdge(
 
 export function orderGenericSchedulerWorkItemsByRelationsV5(params: {
   items: readonly GenericPlanningWorkItem[];
-  relations: readonly TaskRelationFact[];
+  relations: readonly SchedulerTaskRelation[];
 }): GenericPlanningWorkItem[] {
   if (params.items.length <= 1 || params.relations.length === 0) return [...params.items];
 
