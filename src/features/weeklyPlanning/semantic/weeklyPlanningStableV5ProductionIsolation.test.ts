@@ -33,6 +33,8 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/c5LocalSelection/controller.testUtils.ts',
   // Test-only: isolated paired graph packets; production imports prohibited by dormantArchitecture.test.
   'application/c5LocalSelection/evaluationHarness.testUtils.ts',
+  // G: pure typed acts/current question selection, with no provider, storage or lifecycle side effects.
+  'application/weeklyPlanningInteractionDecision.ts',
   'application/weeklyPlanningApprovalRuntimeLookup.ts',
   'application/weeklyPlanningSessionLifecycle.ts',
   'application/weeklyPlanningStableV5GraphStaging.ts',

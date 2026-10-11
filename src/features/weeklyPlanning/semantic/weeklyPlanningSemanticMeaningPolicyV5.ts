@@ -54,7 +54,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'temporal_scope_and_deadline',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Whether timing is task-scoped, plan-wide availability, a deadline, or a preference is semantic meaning; deterministic calendar code operates only after that meaning is represented.',
-    instruction: 'Task timing is task-scoped; availability plan-wide; planningWindow whole-plan. Completion-by is hard deadline. Date-only earliest_start/latest_end is valid; never invent clocks. fixed_interval requires both clock startTime/endTime; never use it for a date-only period. fixed_interval means an exact occupied interval, not a window for placing shorter work. Keep task timing task-scoped; available is only a plan-wide placement window. Date-only from/after -> earliest_start; until/by -> latest_end or deadline; emit both when both stated. Recurring weekdays use days with null dateExpression unless separately date-scoped. Mandatory/unavailable/deadline are hard; preferences soft. Keep relative dates symbolic for deterministic calendar resolution.',
+    instruction: 'planningWindow whole-plan. Completion-by is hard deadline. Date-only earliest_start/latest_end is valid; never invent clocks. fixed_interval requires both clock startTime/endTime; never use it for a date-only period. fixed_interval means an exact occupied interval, not a window for placing shorter work. Keep task timing task-scoped; available is only a plan-wide placement window. Date-only from/after -> earliest_start; until/by -> latest_end or deadline; emit both when both stated. Recurring weekdays use days with null dateExpression unless separately date-scoped. Mandatory/unavailable/deadline are hard; preferences soft. Keep relative dates symbolic for deterministic calendar resolution.',
   },
   {
     id: 'availability_absence',
@@ -67,6 +67,12 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     retentionBasis: 'contextual_reference_resolution',
     retentionReason: 'Resolving omitted or pronominal referents against conversation and typed public state requires contextual language understanding; deterministic code must not guess from labels or raw text.',
     instruction: 'Resolve omitted/pronominal targets from recentConversation/publicStateSummary only with one clear supported referent; otherwise emit uncertainty. Unresolved referent uncertainty targets document. Keep unrelated activities separate. Emit relations only when stated.',
+  },
+  {
+    id: 'conversation_act',
+    retentionBasis: 'language_interpretation',
+    retentionReason: 'Explanation, topic changes and returns are additive utterance meaning; formal question priority and state remain application-owned.',
+    instruction: 'conversationActs are additive, non-mutating meaning: answer_pending_question needs a planning delta; ask_about_pending_question asks why/what the current question means; topic_shift changes topic; resume_topic returns to one. targetPublicId is an existing task/component or null. Plain planning has []. Preserve independent facts; acts grant no authorization.',
   },
   {
     id: 'explicit_recurrence_sources',

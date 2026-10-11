@@ -1,7 +1,7 @@
 # Weekly Planning Stable V5 semantic ownership boundary
 
 Status: canonical semantic ownership contract
-Updated: 2026-08-30
+Updated: 2026-10-10
 Integration base: the semantic rule contract inventory merged from PR #142, with scheduler-facing temporal ownership refined by PR #204.
 
 This document narrows the ownership boundary already stated in `weekly-planning-dialogue-architecture-v5.md`. The goal is to prevent application-internal decisions from drifting into the LLM layer while also avoiding deterministic re-interpretation of raw user text.
@@ -54,6 +54,18 @@ For planned Issue #246, deterministic application also owns:
 - persistence, recovery, preview, approval and save boundaries.
 
 The answer model may generate learning strategy prose and structured recommendation candidates, but it does not own formal acceptance, promotion or schedule mutation.
+
+## Ordinary conversation acts
+
+The semantic delta may carry four additive ordinary acts: answering the pending question, asking what/why it means, shifting topic, and resuming a topic. These are interpretation evidence, not permission to mutate planning, accept a proposal, generate a preview or save. Independent planning facts in a mixed turn still pass the complete existing validation and canonical transaction. An answer act without a valid planning contribution does not answer a machine question. An act-only exception does not exempt a B-only planning contribution from the existing pending-A work-breakdown contract.
+
+The provider supplies only the act kind and an existing task/component public reference or null. For a resume act whose emitted reference is unavailable, reference resolution records rejected-target evidence; provider-authored resolution metadata is rejected. Targetless/null resume and a rejected named target remain distinct. Interpreting an unknown natural-language name remains AI-owned: deterministic code does not infer it from Japanese text. The semantic layer may express unresolved meaning as uncertainty. If the model instead incorrectly emits a valid-looking null target, these reference guards alone cannot detect that interpretation error; correct referent interpretation remains an actual-model acceptance requirement.
+
+The application may select an existing active, non-deferred question from these validated acts. The actual router retains proposal and preview priority. Explanation and named resume require the actual routed question's existing finite identity to agree: code, canonical target, effort intent, estimate target, question basis and action identity. Turn-local selection is not a new persisted authority. The existing question-presentation owner still decides whether a displayed question is fresh enough for a later short answer.
+
+An aside keeps the current graph-derived pending question and values, without inserting aside prose into its machine question or binding the aside as a question. The router may regenerate current question wording; old AI text is not restored over an accepted correction. If aside rendering fails after a valid planning contribution commits, the bounded technical failure message must not claim that contribution was unapplied. Semantic rejection retains the existing R0 recovery and rollback contract.
+
+The renderer consumes this typed communication goal rather than independently classifying explanation intent from raw text. Normal replies remain AI-rendered. No conversation mode, new act authority in PlanningState, the Fact Graph or Plan, advice lifecycle, budget-completion feature or alternate semantic runtime is introduced by these four acts. Diagnostic/outbox traces retain the actual request and bounded act/goal evidence under the existing size and explicit-truncation contract; they are not a second planning state.
 
 ## Consultation routing boundary — planned Issue #246
 
