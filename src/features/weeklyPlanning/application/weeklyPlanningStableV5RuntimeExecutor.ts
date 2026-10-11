@@ -1,3 +1,4 @@
+import { planWeeklyPlanningInteraction, classifyWeeklyPlanningInteraction } from './weeklyPlanningInteractionDecision';
 import {
   withWeeklyPlanningProvisionalTimeboxStateV5,
 } from '../intake/weeklyPlanningProvisionalTimeboxStateV5';
@@ -70,10 +71,25 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     semanticTurn,
   });
 
+  const interactionPlan = planWeeklyPlanningInteraction({
+    acts: semantic.normalization.document?.conversationActs, graph: semantic.graph, evaluation,
+    explainedQuestion: semanticTurn.pendingQuestionPresentation.status === 'fresh'
+      ? semanticTurn.pendingQuestionPresentation.questionContext : null,
+  });
+  const routingEvaluation = interactionPlan.dialogueQuestionOverride ? { ...evaluation,
+    dialogue: { ...evaluation.dialogue, status: 'ask_question' as const,
+      question: interactionPlan.dialogueQuestionOverride, previewEligible: false as const },
+  } : evaluation;
   const responseRoute = weeklyPlanningStableV5ResponseRouter.beforePreview({
     input,
     graph: semantic.graph,
-    evaluation,
+    evaluation: routingEvaluation,
+    declinedAdditionalWork: semantic.normalization.document?.conversationActs?.some(
+      act => act.kind === 'decline_additional_work',
+    ) ?? false,
+    requestedEventRegistration: semantic.normalization.document?.conversationActs?.some(
+      act => act.kind === 'request_event_registration',
+    ) ?? false,
   });
   if (responseRoute.kind === 'respond') {
     const output = withProvisionalTimeboxState({
@@ -83,6 +99,8 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     return {
       ...output,
       observability: semanticObservability,
+      interactionOutcome: classifyWeeklyPlanningInteraction({ plan: interactionPlan, output,
+        previousQuestion: input.previousState?.lastQuestionContext, presentation: semanticTurn.pendingQuestionPresentation }),
     };
   }
 
@@ -110,8 +128,33 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     output: routedOutput,
     evaluation,
   });
+  const compiled = evaluation.compilation.input;
+  const selection = compiled?.sourceSelections.find((entry) =>
+    entry.kind === 'existing_plans' && entry.status === 'selected'
+    && entry.ownerId === input.userId && entry.graphRevision === semantic.graph.revision);
+  const source = evaluation.externalSources.find((entry) =>
+    entry.kind === 'existing_plans' && entry.status === 'success'
+    && entry.ownerId === input.userId && entry.activeSourceId === selection?.sourceId);
+  const occupiedEventIds = source?.status === 'success'
+    ? [...new Set((compiled?.availabilityWindows ?? []).filter((window) =>
+        window.kind === 'occupied' && window.sourceKind === 'existing_plan'
+        && window.constraintLevel === 'hard' && window.ownerId === input.userId
+        && window.graphRevision === semantic.graph.revision
+        && source.events.some((event) => event.eventId === window.sourceRef
+          && event.ownerId === input.userId && event.constraintLevel === 'hard'))
+      .map((window) => window.sourceRef))]
+    : [];
   return {
     ...output,
+    interactionOutcome: { kind: 'apply' },
+    ...(output.draftCandidates.length > 0 && selection?.sourceId && occupiedEventIds.length > 0
+      ? { existingScheduleGrounding: {
+          graphRevision: semantic.graph.revision,
+          sourceId: selection.sourceId,
+          requestFactId: selection.requestFactId,
+          occupiedEventIds,
+        } }
+      : {}),
     observability: {
       repairUsed: semantic.normalization.diagnostics.repairAttempted,
       schedulerVersion: preview.schedulerVersion,

@@ -1,3 +1,4 @@
+import { hasSelfSufficientConversationActV5 } from './weeklyPlanningConversationActsV5';
 import type {
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
@@ -29,6 +30,19 @@ export function readWeeklyPlanningPendingWorkBreakdownTargetPublicIdV5(
     : null;
 }
 
+function hasNoPlanningContent(document: WeeklyPlanningSemanticDocumentV5): boolean {
+  return document.planningIntent !== 'create_plan'
+    && document.planningWindow === null
+    && document.tasks.length === 0
+    && document.relations.length === 0
+    && document.availabilityDeclarations.length === 0
+    && document.constraintSourceRequests.length === 0
+    && (document.userContextFacts?.length ?? 0) === 0
+    && document.uncertainties.length === 0
+    && document.corrections.length === 0
+    && document.decisions.length === 0;
+}
+
 export function validateWeeklyPlanningWorkBreakdownResponseContractV5(params: {
   document: WeeklyPlanningSemanticDocumentV5;
   publicStateSummary?: Record<string, unknown>;
@@ -37,6 +51,7 @@ export function validateWeeklyPlanningWorkBreakdownResponseContractV5(params: {
     params.publicStateSummary,
   );
   if (!targetPublicId) return [];
+  if (hasSelfSufficientConversationActV5(params.document.conversationActs) && hasNoPlanningContent(params.document)) return [];
 
   const errors: string[] = [];
   const targetEntries = params.document.tasks

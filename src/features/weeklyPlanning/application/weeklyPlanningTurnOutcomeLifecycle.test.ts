@@ -137,6 +137,7 @@ describe('weeklyPlanningTurnOutcomeLifecycle', () => {
     expect(effects.recordFailedTurn).toHaveBeenCalledWith(expect.objectContaining({
       ownerId: 'owner-1',
       error,
+      result: executionResult,
     }));
     expect(effects.saveOwnedState.mock.invocationCallOrder[0]).toBeLessThan(
       effects.recordFailedOutcome.mock.invocationCallOrder[0],

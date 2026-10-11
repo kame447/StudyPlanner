@@ -1,3 +1,4 @@
+import { sanitizeWeeklyPlanningConversationActsV5, type SemanticConversationActV5 } from './weeklyPlanningConversationActsV5';
 import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import { resolveWeeklyPlanningExactWorkloadEffortTargetV5 } from './weeklyPlanningExistingEntityBindingV5';
 import { validateWeeklyPlanningAvailabilityCapacityValuesV5, validateWeeklyPlanningAvailabilityAbsenceValuesV5 } from './weeklyPlanningAvailabilityValueValidatorV5';
@@ -54,6 +55,8 @@ export interface WeeklyPlanningSemanticReferenceContextV5 {
 }
 
 export interface WeeklyPlanningSemanticValidationResultV5 {
+  conversationActs?: SemanticConversationActV5[];
+  conversationActDiagnostics?: string[];
   document: WeeklyPlanningSemanticDocumentV5 | null;
   errors: string[];
 }
@@ -393,7 +396,7 @@ export function validateWeeklyPlanningSemanticValueV5(
   if (!isRecord(value)) return validateBaseSemanticValueV5(value);
 
   const weeklyValue = Object.fromEntries(
-    Object.entries(value).filter(([key]) => key !== 'userContextFacts'),
+    Object.entries(value).filter(([key]) => key !== 'userContextFacts' && key !== 'conversationActs'),
   );
   const baseWeeklyValue = stripSemanticExtensions(weeklyValue);
   const base = validateBaseSemanticValueV5(baseWeeklyValue);
@@ -411,6 +414,8 @@ export function validateWeeklyPlanningSemanticValueV5(
     value.userContextFacts ?? [],
     collectLocalIds(weeklyValue),
   );
+  const actExtraction = 'conversationActs' in value
+    ? sanitizeWeeklyPlanningConversationActsV5(value.conversationActs) : null;
   const structuralErrors = [
     ...baseErrors,
     ...existingPublicIdErrors,
@@ -422,7 +427,7 @@ export function validateWeeklyPlanningSemanticValueV5(
     ...contextErrors,
   ];
   const document = structuralErrors.length === 0
-    ? value as unknown as WeeklyPlanningSemanticDocumentV5
+    ? (actExtraction ? { ...value, conversationActs: actExtraction.acts } : value) as unknown as WeeklyPlanningSemanticDocumentV5
     : null;
   const consistencyErrors = document
     ? validateWeeklyPlanningUserContextConsistencyV5(document)
@@ -431,6 +436,7 @@ export function validateWeeklyPlanningSemanticValueV5(
   return {
     document: errors.length === 0 ? document : null,
     errors,
+    ...(actExtraction ? { conversationActs: actExtraction.acts, conversationActDiagnostics: actExtraction.diagnostics } : {}),
   };
 }
 

@@ -1,3 +1,4 @@
+import { resolveWeeklyPlanningQuestionPresentationFreshness, type WeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
 import { getAiConfig, getAiConfigValidationMessage } from '../../../lib/aiConfig';
 import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import {
@@ -38,6 +39,7 @@ import {
 export type WeeklyPlanningStableV5SemanticTurnResult =
   | {
       status: 'success';
+      pendingQuestionPresentation: WeeklyPlanningQuestionPresentationFreshness;
       requestContext: WeeklyPlanningTurnRequestContext;
       runtimeSession: WeeklyPlanningStableV5RuntimeSession;
       semantic: WeeklyPlanningSemanticPipelineResultV5;
@@ -103,6 +105,10 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     ownerId: input.userId,
     conversationId: input.conversationId,
   });
+  const pendingQuestionPresentation = resolveWeeklyPlanningQuestionPresentationFreshness({
+    previousState: input.previousState, inputStateRevision: input.inputStateRevision,
+    messages: input.messages, graphRevision: runtimeSession.graph.revision,
+  });
   const activeWindowsBefore = activeStableV5PlanningWindows(runtimeSession.graph);
   const activeSchedulerGraphBefore = createWeeklyPlanningActiveSchedulerGraphViewV5(
     runtimeSession.graph,
@@ -133,6 +139,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     messages: input.messages,
     previousState: input.previousState,
     ownerId: input.userId,
+    inputStateRevision: input.inputStateRevision,
     currentDate: requestContext.currentDate,
     userText: input.userText,
     studyMaterials: input.studyMaterials ?? [],
@@ -235,6 +242,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
 
   return {
     status: 'success',
+    pendingQuestionPresentation,
     requestContext,
     runtimeSession,
     semantic,

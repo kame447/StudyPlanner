@@ -156,13 +156,12 @@ export function isRepresentationOnlySemanticRepairV5(
       REPRESENTATION_ONLY_ERROR_PATTERNS.some((pattern) => pattern.test(error)));
 }
 
-export function readWeeklyPlanningRepresentationRepairBaselineV5(params: {
-  rawResponse: string;
-  validationErrors: readonly string[];
-}): WeeklyPlanningSemanticDocumentV5 | null {
-  if (!isRepresentationOnlySemanticRepairV5(params.validationErrors)) return null;
+/** The provider's document as written (after pre-parse normalization), before validation. */
+export function readWeeklyPlanningSemanticProviderDocumentV5(
+  rawResponse: string,
+): WeeklyPlanningSemanticDocumentV5 | null {
   try {
-    const value = JSON.parse(params.rawResponse) as unknown;
+    const value = JSON.parse(rawResponse) as unknown;
     if (!isRecord(value)) return null;
     if (value.schemaVersion !== WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5) return null;
     if (typeof value.planningIntent !== 'string') return null;
@@ -172,6 +171,14 @@ export function readWeeklyPlanningRepresentationRepairBaselineV5(params: {
   } catch {
     return null;
   }
+}
+
+export function readWeeklyPlanningRepresentationRepairBaselineV5(params: {
+  rawResponse: string;
+  validationErrors: readonly string[];
+}): WeeklyPlanningSemanticDocumentV5 | null {
+  if (!isRepresentationOnlySemanticRepairV5(params.validationErrors)) return null;
+  return readWeeklyPlanningSemanticProviderDocumentV5(params.rawResponse);
 }
 
 export function validateWeeklyPlanningSemanticRepairPreservationV5(params: {

@@ -1,3 +1,4 @@
+import type { WeeklyPlanningExistingScheduleGrounding } from './dialogue/weeklyPlanningStableV5DialogueContracts';
 import type {
   Actual,
   MonthEvent,
@@ -6,6 +7,7 @@ import type {
   StudyMaterial,
   TimetableTerm,
 } from '../../types/domain';
+import type { WeeklyPlanningFixedEventCommunicationFacts } from './application/weeklyPlanningFixedEventOnlyInteraction';
 import type { WeeklyPlanningTurnRequestContext } from './application/weeklyPlanningTemporalContext';
 import type {
   PlanningIntakeState,
@@ -46,6 +48,9 @@ export interface WeeklyPlanningTurnExecutionInput {
   requestContext?: WeeklyPlanningTurnRequestContext;
   /** PlanningState.revision at turn start; binds the previous question presentation. */
   inputStateRevision?: number;
+  /** Live controller ownership/cancellation guard; absent callers cannot start recovery AI. */
+  isCurrentTurn?: () => boolean;
+  retainedPreviewCount?: number;
 }
 
 export type WeeklyPlanningTurnFailureCode =
@@ -74,11 +79,21 @@ export interface WeeklyPlanningTurnObservability {
   unscheduledCount: number | null;
 }
 
+/** Turn-local application outcome; never persisted as a planning authority. */
+export type WeeklyPlanningInteractionOutcome = {
+  kind: 'apply' | 'explain_pending_question' | 'aside' | 'resume_pending_question';
+};
+
 export interface WeeklyPlanningTurnExecutionResult {
+  interactionOutcome?: WeeklyPlanningInteractionOutcome;
+  /** Turn-local terminal explanation; grants no event creation or save authority. */
+  communicationFacts?: WeeklyPlanningFixedEventCommunicationFacts;
   state: PlanningIntakeState;
   message: string;
   draftCandidates: WeeklyDraftCandidate[];
   preserveExistingPreview?: boolean;
+  /** Ephemeral renderer evidence; never an approval or persisted planning state. */
+  existingScheduleGrounding?: WeeklyPlanningExistingScheduleGrounding;
   stableV5Graph?: WeeklyPlanningFactGraphV5;
   failure?: WeeklyPlanningTurnFailure;
   responseSource?: WeeklyPlanningTraceResponseSource;
@@ -89,6 +104,10 @@ export interface WeeklyPlanningTurnExecutionResult {
    * question. The turn controller binds it to the committed assistant message.
    */
   questionPresentationContent?: WeeklyPlanningQuestionPresentationContent;
+  /** Produced only after recovery wording passed the independent finite-contract check. */
+  recoveryPresentation?: {
+    question: { graphRevision: number; previousAssistantMessageId: string } | null;
+  };
 }
 
 export interface WeeklyPlanningTurnSubmissionResult {

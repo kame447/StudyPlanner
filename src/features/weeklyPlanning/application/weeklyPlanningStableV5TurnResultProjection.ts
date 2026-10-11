@@ -1,6 +1,8 @@
 import {
   createWeeklyPlanningSystemDialogueRendererTrace,
   renderWeeklyPlanningStableV5AssistantMessage,
+  renderWeeklyPlanningStableV5RecoveryMessage,
+  WEEKLY_PLANNING_RECOVERY_TECHNICAL_STOP,
 } from '../dialogue/weeklyPlanningStableV5TurnDialogue';
 import {
   takeWeeklyPlanningStableV5FailureDiagnostics,
@@ -46,13 +48,17 @@ async function projectSuccessfulTurn(params: {
   return projectedResult;
 }
 
-function projectFailedTurn(params: {
+async function projectFailedTurn(params: {
   input: WeeklyPlanningTurnExecutionInput;
   result: WeeklyPlanningTurnExecutionResult;
   recordedFailure: WeeklyPlanningStableV5RecordedFailure;
-}): WeeklyPlanningTurnExecutionResult {
-  const projectedResult: WeeklyPlanningTurnExecutionResult = {
-    ...params.result,
+}): Promise<WeeklyPlanningTurnExecutionResult> {
+  // Failure output is whitelisted: old presentation metadata is not evidence about
+  // this technical stop, and no failed graph/draft can become a commit candidate.
+  let projectedResult: WeeklyPlanningTurnExecutionResult = {
+    message: WEEKLY_PLANNING_RECOVERY_TECHNICAL_STOP,
+    draftCandidates: [],
+    preserveExistingPreview: true,
     state: {
       ...params.result.state,
       status: 'revision_pending',
@@ -64,7 +70,7 @@ function projectFailedTurn(params: {
     },
     failure: {
       code: FAILURE_CODE_BY_STATUS[params.recordedFailure.status],
-      userMessage: params.result.message,
+      userMessage: WEEKLY_PLANNING_RECOVERY_TECHNICAL_STOP,
       traceCode: params.recordedFailure.traceCode,
       diagnostics: {
         attemptCount: params.recordedFailure.attemptCount,
@@ -74,7 +80,7 @@ function projectFailedTurn(params: {
       },
     },
     responseSource: 'system',
-    dialogueRendererTrace: createWeeklyPlanningSystemDialogueRendererTrace(params.result.message),
+    dialogueRendererTrace: createWeeklyPlanningSystemDialogueRendererTrace(WEEKLY_PLANNING_RECOVERY_TECHNICAL_STOP),
     observability: {
       repairUsed: params.recordedFailure.repairAttempted,
       schedulerVersion: params.result.observability?.schedulerVersion ?? null,
@@ -82,6 +88,22 @@ function projectFailedTurn(params: {
       unscheduledCount: params.result.observability?.unscheduledCount ?? null,
     },
   };
+  const usage = params.recordedFailure.providerDispatch;
+  // Scope: this normalizer + its recovery, not a new global turn pool. Focused routes
+  // are included by the shared normalizer client wrapper. Unknown counts fail closed.
+  const recoveryAllowed = params.recordedFailure.status !== 'provider_failure'
+    && params.recordedFailure.providerErrorCategory === null
+    && usage !== undefined && usage.anyFailure === false && usage.complete === true
+    && Number.isSafeInteger(usage.count) && usage.count > 0 && usage.count <= 6
+    && params.input.isCurrentTurn?.() === true;
+  if (recoveryAllowed) {
+    projectedResult = await renderWeeklyPlanningStableV5RecoveryMessage({
+      input: params.input, result: projectedResult,
+    });
+    projectedResult = { ...projectedResult, failure: {
+      ...projectedResult.failure!, userMessage: projectedResult.message,
+    } };
+  }
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.input.traceRequestId,
     stage: 'turn_executor_result_projected',
@@ -93,6 +115,9 @@ function projectFailedTurn(params: {
         projectedStatus: 'revision_pending',
         questionsCleared: true,
         draftAuthorizationCleared: true,
+        recoveryAllowed,
+        normalizerDispatchCount: usage?.count ?? null,
+        recoveryDispatchCeiling: 2,
       },
       recordedFailure: params.recordedFailure,
       originalResult: params.result,
