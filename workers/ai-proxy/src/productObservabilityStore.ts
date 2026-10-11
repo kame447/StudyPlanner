@@ -14,6 +14,7 @@ import {
   type FirestoreServiceAccountEnv,
 } from './firestoreServiceAccountClient';
 import { parseSemanticCensusEvent } from '../../../shared/semanticTurnCensus';
+import { isProviderCompletionMetadata } from '../../../shared/aiProxyContract';
 
 export interface ProductObservabilityEnv extends FirestoreServiceAccountEnv {
   OBSERVABILITY_IDENTITY_SECRET?: string;
@@ -311,6 +312,12 @@ export class ProductObservabilityStore {
     payload: AiRequestMetricPayload;
   }): Promise<void> {
     validateDecisionMetric(params.payload);
+    if (params.payload.providerCompletion !== undefined
+      && (params.payload.operationKind !== 'chat_completion'
+        || params.payload.provider !== 'openai'
+        || !isProviderCompletionMetadata(params.payload.providerCompletion))) {
+      throw new Error('Provider completion telemetry is invalid.');
+    }
     const actorSubjectId = await this.resolveActorSubjectId(params.firebaseUid);
     const observedAt = this.now().toISOString();
     const event: StoredObservabilityEvent<AiRequestMetricPayload> = {

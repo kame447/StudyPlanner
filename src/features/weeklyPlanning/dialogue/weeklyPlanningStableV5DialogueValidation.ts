@@ -202,7 +202,30 @@ function claimsUnexecutedAction(
   text: string,
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): boolean {
-  const narrative = safetyNarrative(text, input);
+  let narrative = safetyNarrative(text, input);
+  const hasPreview = input.actionKind === 'preview_ready' && input.previewCount > 0
+    && Boolean(input.previewPromotionControlLabel)
+    && text.includes(input.previewPromotionControlLabel!);
+  if (hasPreview) {
+    // This bounded relation references the schedule actually used for placement.
+    // It does not license a saved-candidate copula, saved-plan creation, or any
+    // other result predicate. Unknown reference constructions still fail closed.
+    if (input.existingScheduleGrounding?.occupiedEventIds.length) {
+      narrative = narrative.replace(
+        /(^|[。！？!?\n])(\s*)保存済みの予定(?=と重ならない候補(?:\s*\d+\s*件(?:を)?|を(?:\s*\d+\s*件)?)?\s*作成しました)/gu,
+        '$1$2〈既存予定〉',
+      );
+    }
+    // Creation of the presented draft is already evidenced. Only its direct
+    // object is exempt; another object or a destination is not that draft.
+    narrative = narrative.replace(
+      /(?:候補(?:\s*\d+\s*件(?:を)?|を(?:\s*\d+\s*件)?)?|(?:仮予定|予定|計画)を)\s*作成しました/gu,
+      (claim, offset: number, whole: string) => {
+        const clause = whole.slice(0, offset).split(/[。、！？!?\n]/u).pop() ?? '';
+        return /[にへで]/u.test(clause) ? claim : claim.replace('作成しました', '〈候補提示〉');
+      },
+    );
+  }
   // A question only exempts the action predicate it directly follows. A later
   // question in the same sentence cannot excuse an earlier completion claim.
   const sentences = narrative.match(/[^。！？!?\n]+[。！？!?\n]?/g) ?? [];
