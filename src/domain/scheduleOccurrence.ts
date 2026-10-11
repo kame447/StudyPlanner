@@ -115,10 +115,16 @@ function normalizePlanEndPoint(
 function normalizeMonthEventEndPoint(
   occurrenceStartDate: string,
   spanDays: number,
+  startTime: string,
   endTime: string,
 ): ScheduleOccurrencePoint {
   const endDate = addDays(occurrenceStartDate, spanDays);
-  return endTime === '24:00'
+  // Same-date timed entries use the editor's end-role 00:00 (=24:00).
+  // An explicit later end date already identifies its midnight boundary.
+  // Keep the legacy 00:00-to-00:00 all-day shape unchanged.
+  const endsAtDayBoundary = endTime === '24:00'
+    || (spanDays === 0 && endTime === '00:00' && startTime !== '00:00');
+  return endsAtDayBoundary
     ? { date: addDays(endDate, 1), time: '00:00' }
     : { date: endDate, time: endTime };
 }
@@ -303,7 +309,7 @@ function monthEventOccurrences(params: {
           // ScheduleEvent can explicitly project busy=false through this adapter.
           busy: event.busy ?? true,
           start,
-          end: normalizeMonthEventEndPoint(candidateDate, spanDays, event.endTime),
+          end: normalizeMonthEventEndPoint(candidateDate, spanDays, event.startTime, event.endTime),
           source,
           planSourceType: 'manual',
         };
