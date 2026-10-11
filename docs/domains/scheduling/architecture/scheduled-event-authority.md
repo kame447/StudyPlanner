@@ -77,6 +77,8 @@ recurrence、excluded date、multi-day span、24:00 / 日跨ぎの意味はconsu
 - compatibility MonthEvent recurrence / exclusion / multi-day spanはMonthEvent helperからoccurrenceへ展開する。
 - downstream consumerは展開済みoccurrenceのstart/endを基準にする。
 
+同一日付の時刻付きMonthEventで開始時刻が`00:00`ではない場合、終了`00:00`は同日の`24:00`と同じ翌日`00:00`の排他的終端へ投影する。明示した後日の`endDate`と終了`00:00`はその日時を保持し、さらに1日を足さない。canonical occurrenceは半開区間であり、終端に接するだけの日には重ならない。consumer固有の配置bufferは既存の別契約に従う。投影は保存済みの日付・時刻・source identityを書き換えない。既存の終日表現とbusy/freeの扱いはこの時刻付き境界修正とは別に維持する。
+
 Phase 3はpersistence authorityを変えたが、既存recurrenceの意味を変更するmigrationではない。
 
 ## Category, kind, busy are separate
