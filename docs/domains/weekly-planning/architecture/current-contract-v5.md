@@ -63,6 +63,16 @@ A schema-shaped but invalid value must not become accepted state merely because 
 
 `prepareWeeklyPlanningStableV5Checkpoint` validates the graph before traversing or encoding it. Checkpoint reading routes through the graph parser before hydration, so saved input is revalidated rather than trusted as previously accepted. Validation covers stored historical facts too; filtering removed/superseded facts for scheduling is a separate step. Regression tests use canonical writers and real checkpoint preparation/save/load, preserving valid historical representations while rejecting malformed values. These entry gates complement downstream fail-closed scheduler checks; they do not replace them.
 
+## Registered bookshelf references
+
+The current owner-filtered Bookshelf snapshot remains external context, with ownership and plan-local quantity governed by [material metadata](../../external-integrations/spec/material-metadata.md#92-週間計画での登録済み教材利用). A registered material ID is not a canonical task/component ID and does not import stored total/completed progress as a new planning fact.
+
+When a provider places one exact, uniquely registered material ID in a new task/component reference, the application may clear that external reference into the ordinary creation path only under its narrow typed identity/label contract. A first task requires no accepted task; an additional material of an accepted task requires no existing material and evidence in that component's own current-turn source. Existing canonical bindings take precedence. Ambiguous registry/reference use, wrong labels and unsupported existing mutations retain ordinary validation errors. All schema, evidence, current-turn provenance and reference validation still run before a canonical graph commit; quantity, role and unit are unchanged.
+
+Pending-answer copy repair must preserve a non-exact token known in the current owner-visible bookshelf namespace rather than overwrite it with the pending canonical task/component. This does not grant that external token canonical authority or classify every unknown token as a material. Canonical exact anchors and the existing one-corrupted-side repair remain effective; raw local-ID shadow is a separate boundary.
+
+For a representation-only semantic repair, compare both provider documents after the same pre-parse normalization and before post-parse projection, so deterministic projection is not mistaken for a provider mutation. If either provider comparison envelope is unavailable, retain the existing parsed/validated comparison pair. The comparison envelope never authorizes acceptance: the repaired document must still pass every normal validator. This does not add a model call or broaden which semantic changes are repairable.
+
 ## Time semantics
 
 Natural-language time meaning belongs to AI; calendar arithmetic and scheduler-facing temporal compilation belong to the deterministic application.
@@ -97,6 +107,20 @@ Important consequences:
 - open-ended work must not receive an invented total merely to make arithmetic or scheduling easier.
 
 For consultation questions containing calculable quantities, deterministic calculation remains the numeric authority. An answer model may explain a computed result but must not silently replace application-owned arithmetic with its own value.
+
+### Computed workload quantity titles
+
+Generated workload titles display the computed amount using the accepted typed unit; for standard units, the supported numeric-label forms below must not duplicate the displayed amount. Minute/hour workloads use the canonical `分`/`時間` display unit. For other standard units, an ASCII or full-width decimal digit in the label selects that unit code’s canonical display label. Clean standard aliases and custom-unit labels remain unchanged, including digits that carry custom-unit information. This display-only projection does not parse a replacement amount or infer language meaning; non-clock labels containing only kanji numerals are not normalized by this boundary.
+
+The compiler, ordinary range/session distribution and accepted memory-session projection share the same unit-display helper. Amounts, actual range offsets, quantity roles, graph facts, effort/calibration and occupied minutes remain with their existing owners. The computed candidate title passes through existing draft/checkpoint and Plan persistence; this adds no allocation ledger or stored schema. Normal-sized generated scheduler diagnostics retain the same title through the trace outbox and Worker boundary. Oversized diagnostic values retain bounded evidence with explicit truncation metadata; this does not promise complete oversized candidate retention.
+
+### Accepted task-total duration
+
+An active, accepted task-level `total_duration` may provide scheduler-facing minute work when that task has no workload at any component/quantity role and no hard task `fixed_interval`. All applicable positive finite task totals must agree; conflicting totals stay unresolved. Existing workload/progress ownership remains authoritative when any workload exists. A component total or `session_duration` alone is not task-total work. Deciding whether natural language describes future total work, past progress, per-day availability or session length remains semantic interpretation; formal acceptance alone does not prove that interpretation correct.
+
+This is a transient compilation view, not another Fact Graph or persisted quantity. Its derived workload key is internal identity only. The view carries explicit graph-revision/task/accepted-effort origin IDs, and the work-item compiler validates those roots before emitting work. Canonical source references and estimate-source IDs retain every agreeing active effort fact; a synthetic workload key must not masquerade as a canonical fact. For tagged derived work, missing, duplicate, foreign, stale or value-mismatched derivation evidence blocks compilation. The accepted minute total keeps intrinsic-duration allocation, without estimate buffer or calibration inflation.
+
+Preview/draft checkpoint metadata retains the real source references. Final approval keeps the existing current-revision checks and operation/block identity. Ordinary Plan/ScheduleEvent persistence does not acquire direct Fact Graph source references or a new allocation ledger through this projection. Session-length placement and natural-language explanation remain separate responsibilities.
 
 ## Work decomposition / atomicity
 
@@ -198,7 +222,7 @@ Recovery requests, responses and finite diagnostics use the existing renderer tr
 
 ## Availability
 
-Existing StudyPlanner plans and timetable are authoritative busy sources in current production. Accepted hard availability/life constraints and the request-time `notBefore` boundary reduce candidate space; preferences/personalization do not create free time.
+Existing StudyPlanner plans, owned timed MonthEvents and timetable are authoritative busy sources in current production. Accepted hard availability/life constraints and the request-time `notBefore` boundary reduce candidate space; preferences/personalization do not create free time.
 
 Required-source failure is not equivalent to a successfully loaded empty source. Sleep end does not necessarily imply study-available start.
 

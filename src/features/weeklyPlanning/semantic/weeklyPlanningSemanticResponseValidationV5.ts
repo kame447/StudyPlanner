@@ -6,6 +6,7 @@ import {
 import {
   validateWeeklyPlanningCurrentTurnProvenanceV5,
 } from './weeklyPlanningCurrentTurnProvenanceV5';
+import { projectWeeklyPlanningRegisteredMaterialReferencesV5 } from './weeklyPlanningRegisteredMaterialReferenceProjectionV5';
 import {
   validateWeeklyPlanningDecisionTargetReferencesV5,
 } from './weeklyPlanningDecisionReferenceValidationV5';
@@ -20,6 +21,7 @@ import {
 } from './weeklyPlanningRecurrenceConsistencyV5';
 import {
   readWeeklyPlanningRepresentationRepairBaselineV5,
+  readWeeklyPlanningSemanticProviderDocumentV5,
 } from './weeklyPlanningSemanticRepairPreservationV5';
 import {
   validateWeeklyPlanningWorkBreakdownResponseContractV5,
@@ -65,6 +67,8 @@ export interface WeeklyPlanningSemanticValidationAttemptV5 {
   conversationActDiagnostics?: string[];
   document: WeeklyPlanningSemanticDocumentV5 | null;
   parsedDocument: WeeklyPlanningSemanticDocumentV5 | null;
+  /** Pre-projection provider shape for repair comparison only; never an accepted planning delta. */
+  providerDocument?: WeeklyPlanningSemanticDocumentV5 | null;
   errors: string[];
   algorithmicRepairs: string[];
 }
@@ -89,7 +93,9 @@ export function validateWeeklyPlanningSemanticResponseV5(
   const preParseNormalization = normalizeWeeklyPlanningSemanticPreParseV5({
     rawResponse,
     publicStateSummary: input.publicStateSummary,
+    committedGraph: input.committedGraph,
   });
+  const providerDocument = readWeeklyPlanningSemanticProviderDocumentV5(preParseNormalization.rawResponse);
   const rawCorrectionErrors = validateWeeklyPlanningRawCorrectionTargetReferencesV5(
     preParseNormalization.rawResponse,
     input.publicStateSummary,
@@ -114,16 +120,22 @@ export function validateWeeklyPlanningSemanticResponseV5(
       }),
       errors,
       algorithmicRepairs: preParseNormalization.repairs,
+      providerDocument,
       ...actEvidence,
     };
   }
 
   const normalized = canonicalizeWeeklyPlanningSemanticRepresentationV5(parsed.document);
+  const materialReferences = projectWeeklyPlanningRegisteredMaterialReferencesV5({
+    document: normalized.document,
+    publicStateSummary: input.publicStateSummary,
+  });
   const algorithmicRepairs = [
     ...preParseNormalization.repairs,
     ...normalized.repairs,
+    ...materialReferences.repairs,
   ];
-  const document = actTargets ? { ...normalized.document, conversationActs: actTargets.acts } : normalized.document;
+  const document = actTargets ? { ...materialReferences.document, conversationActs: actTargets.acts } : materialReferences.document;
   const errors = [
     ...validateWeeklyPlanningSemanticNumericSafetyV5(document),
     ...planningWindowCanonicalValueErrors(
@@ -163,6 +175,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
   return {
     document: errors.length === 0 ? document : null,
     parsedDocument: document,
+    providerDocument,
     errors,
     algorithmicRepairs,
     ...actEvidence,

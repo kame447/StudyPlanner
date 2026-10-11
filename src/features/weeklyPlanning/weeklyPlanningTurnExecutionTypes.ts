@@ -1,3 +1,4 @@
+import type { WeeklyPlanningExistingScheduleGrounding } from './dialogue/weeklyPlanningStableV5DialogueContracts';
 import type {
   Actual,
   MonthEvent,
@@ -91,6 +92,8 @@ export interface WeeklyPlanningTurnExecutionResult {
   message: string;
   draftCandidates: WeeklyDraftCandidate[];
   preserveExistingPreview?: boolean;
+  /** Ephemeral renderer evidence; never an approval or persisted planning state. */
+  existingScheduleGrounding?: WeeklyPlanningExistingScheduleGrounding;
   stableV5Graph?: WeeklyPlanningFactGraphV5;
   failure?: WeeklyPlanningTurnFailure;
   responseSource?: WeeklyPlanningTraceResponseSource;

@@ -128,9 +128,33 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     output: routedOutput,
     evaluation,
   });
+  const compiled = evaluation.compilation.input;
+  const selection = compiled?.sourceSelections.find((entry) =>
+    entry.kind === 'existing_plans' && entry.status === 'selected'
+    && entry.ownerId === input.userId && entry.graphRevision === semantic.graph.revision);
+  const source = evaluation.externalSources.find((entry) =>
+    entry.kind === 'existing_plans' && entry.status === 'success'
+    && entry.ownerId === input.userId && entry.activeSourceId === selection?.sourceId);
+  const occupiedEventIds = source?.status === 'success'
+    ? [...new Set((compiled?.availabilityWindows ?? []).filter((window) =>
+        window.kind === 'occupied' && window.sourceKind === 'existing_plan'
+        && window.constraintLevel === 'hard' && window.ownerId === input.userId
+        && window.graphRevision === semantic.graph.revision
+        && source.events.some((event) => event.eventId === window.sourceRef
+          && event.ownerId === input.userId && event.constraintLevel === 'hard'))
+      .map((window) => window.sourceRef))]
+    : [];
   return {
     ...output,
     interactionOutcome: { kind: 'apply' },
+    ...(output.draftCandidates.length > 0 && selection?.sourceId && occupiedEventIds.length > 0
+      ? { existingScheduleGrounding: {
+          graphRevision: semantic.graph.revision,
+          sourceId: selection.sourceId,
+          requestFactId: selection.requestFactId,
+          occupiedEventIds,
+        } }
+      : {}),
     observability: {
       repairUsed: semantic.normalization.diagnostics.repairAttempted,
       schedulerVersion: preview.schedulerVersion,

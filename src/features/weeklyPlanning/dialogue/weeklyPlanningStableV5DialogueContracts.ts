@@ -184,6 +184,14 @@ export interface WeeklyPlanningStableV5DialogueCurrentTurnGrounding {
   acceptedFacts: WeeklyPlanningStableV5DialogueGroundingFact[];
 }
 
+/** Read-only evidence from this turn's selected, successfully compiled schedule. */
+export interface WeeklyPlanningExistingScheduleGrounding {
+  graphRevision: number;
+  sourceId: string;
+  requestFactId: string;
+  occupiedEventIds: string[];
+}
+
 export interface WeeklyPlanningStableV5DialogueRenderInput {
   /** Application-selected conversation goal, not a second interpretation of raw text. */
   communication?: {
@@ -195,6 +203,7 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   recentConversation: WeeklyPlanningStableV5DialogueConversationTurn[];
   planningInformation: Record<string, unknown> | null;
   currentTurnGrounding?: WeeklyPlanningStableV5DialogueCurrentTurnGrounding | null;
+  existingScheduleGrounding?: WeeklyPlanningExistingScheduleGrounding;
   actionKind: WeeklyPlanningStableV5DialogueActionKind;
   questionCode: string | null;
   questionTarget?: WeeklyPlanningStableV5DialogueQuestionTarget | null;

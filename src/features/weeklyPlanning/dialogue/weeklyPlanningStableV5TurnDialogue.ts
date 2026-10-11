@@ -319,6 +319,9 @@ function createRenderInput(params: {
       .map(({ role, content }) => ({ role, content })),
     planningInformation,
     currentTurnGrounding,
+    ...(params.result.existingScheduleGrounding
+      ? { existingScheduleGrounding: params.result.existingScheduleGrounding }
+      : {}),
     actionKind: params.actionKind,
     questionCode: params.questionCode,
     questionTarget,
