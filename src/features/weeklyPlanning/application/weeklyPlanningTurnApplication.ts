@@ -18,6 +18,7 @@ import type {
 } from '../weeklyPlanningTurnExecutionTypes';
 import {
   submitWeeklyPlanningControlledTurn,
+  isSameWeeklyPlanningPendingTurn,
   type WeeklyPlanningControllerSession,
 } from '../weeklyPlanningTurnController';
 import {
@@ -107,6 +108,11 @@ export function submitWeeklyPlanningApplicationTurn(
         timetableTerms: params.timetableTerms,
         weekStartsOn: params.weekStartsOn,
         timeZone: params.timeZone,
+        isCurrentTurn: () => params.session.ownerId === params.userId
+          && params.session.conversationId === pending.conversationId
+          && params.getState().weekStartDate === pending.weekStartDate
+          && params.getState().revision === pending.baseRevision + 1
+          && isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending),
       });
     },
     onStartedTurn({ pending }) {

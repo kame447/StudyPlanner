@@ -197,6 +197,17 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   requiredLabels: string[];
   fallbackText: string;
   previewCount: number;
+  /** A failed semantic turn accepted no new facts. Never inferred from rendered text. */
+  recovery?: {
+    planningDetailsNotApplied: true;
+    acceptedStateUnchanged: true;
+    retainedPreviewUnchanged: boolean;
+  };
+  /** Complete bounded identity/scope evidence, shared by recovery generation and verification. */
+  recoveryQuestionEvidence?: {
+    facts: WeeklyPlanningStableV5DialogueQuestionTarget[];
+    labels: string[];
+  };
 }
 
 export type WeeklyPlanningStableV5DialogueFallbackReason =
@@ -208,13 +219,15 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   | 'grounding_contract_mismatch'
   | 'unsafe_text'
   | 'ungrounded_text'
-  | 'repeated_question_text';
+  | 'repeated_question_text'
+  | 'recovery_verification_failed';
 
 export type WeeklyPlanningStableV5DialogueRenderResult =
   | {
       status: 'rendered';
       text: string;
       rawResponse: string;
+      recoveryVerified?: true;
     }
   | {
       status: 'fallback';
