@@ -1,3 +1,5 @@
+import { loadWeeklyPlanningRuntimeModule } from './weeklyPlanningRuntimeModule';
+import * as failureDiagnostics from '../semantic/weeklyPlanningStableV5FailureDiagnostics';
 import { createRef, forwardRef, useImperativeHandle } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -42,20 +44,22 @@ function semantic(): WeeklyPlanningSemanticDocumentV5 {
 interface RequestBody { messages: Array<{ role: string; content: string }>; response_format?: { json_schema?: { name?: string } } }
 interface RequestRecord { schema: string; body: RequestBody; signal: AbortSignal | null | undefined }
 let renderer: ReactTestRenderer | undefined; let restoreStorage: (() => void) | undefined;
-let calls: RequestRecord[]; let mode: 'valid' | 'repair' | 'exhausted' | 'timeout' | 'network'; let semanticCount: number;
+let calls: RequestRecord[]; let mode: 'valid' | 'repair' | 'exhausted' | 'timeout' | 'network' | 'repair_network'; let semanticCount: number;
 let started: ReturnType<typeof createDeferred<void>>;
 let responseDocument: WeeklyPlanningSemanticDocumentV5;
+let recoveryVerdict: 'yes' | 'no';
+const RECOVERY_TEXT = '今回の内容は計画へ反映していません。これまでの内容と前の候補はそのままです。今回伝えたいことをもう少し詳しく教えてもらえますか？';
 const gateway = () => vi.spyOn(weeklyPlanningTurnRuntimeGateway, 'execute'); // Call through to the real executor.
 function resetRuntime() {
   resetWeeklyPlanningStableV5RuntimeSessionsForTest(); clearWeeklyPlanningSessionRuntime();
   resetUserPlanningContextRuntimeForTestV1(); resetWeeklyPlanningStableV5DebugTraceForTest();
   resetOpenAiCompatibleClientRequestBudgetForTest(); setWeeklyPlanningTraceRepositoryForTests(undefined);
 }
-beforeEach(() => {
+beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] }); vi.setSystemTime('2026-08-16T00:00:00Z');
   vi.stubEnv('VITE_AI_PROVIDER', 'openai'); vi.stubEnv('VITE_AI_BASE_URL', 'https://provider.fixture.test/v1');
   vi.stubEnv('VITE_AI_MODEL', 'fixture'); vi.stubEnv('VITE_AI_API_KEY', 'fixture-key'); vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'false');
-  resetRuntime(); responseDocument = semantic(); calls = []; mode = 'valid'; semanticCount = 0; started = createDeferred<void>();
+  resetRuntime(); recoveryVerdict = 'yes'; responseDocument = semantic(); calls = []; mode = 'valid'; semanticCount = 0; started = createDeferred<void>();
   vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     expect(String(url)).toBe('https://provider.fixture.test/v1/chat/completions');
     const body = JSON.parse(String(init?.body)) as RequestBody; const schema = body.response_format?.json_schema?.name ?? '';
@@ -63,12 +67,12 @@ beforeEach(() => {
     let content: string;
     if (schema.includes('weekly_planning_semantic')) {
       semanticCount += 1;
-      if (mode === 'network') throw new TypeError('Failed to fetch');
+      if (mode === 'network' || (mode === 'repair_network' && semanticCount === 2)) throw new TypeError('Failed to fetch');
       if (mode === 'timeout') {
         const signal = init?.signal; expect(signal).toBeDefined(); started.resolve();
         return new Promise<Response>((_resolve, reject) => signal!.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true }));
       }
-      content = mode === 'exhausted' ? (semanticCount === 1 ? 'not-json' : '{}')
+      content = mode === 'exhausted' || mode === 'repair_network' ? (semanticCount === 1 ? 'not-json' : '{}')
         : mode === 'repair' && semanticCount === 1 ? 'not-json' : JSON.stringify(responseDocument);
     } else if (schema === 'weekly_planning_focused_authorization_v5') {
       content = JSON.stringify({ decision: 'create_plan' });
@@ -76,11 +80,23 @@ beforeEach(() => {
       const prompt = JSON.parse(body.messages[body.messages.length - 1].content);
       const decision = prompt.applicationDecision;
       content = JSON.stringify({ actionId: prompt.actionId, actionKind: decision.actionKind, questionCode: decision.questionCode,
-        groundingAcknowledgement: null, text: `内容を確認してください。${decision.previewPromotionControlLabel ?? ''}` });
+        groundingAcknowledgement: null, text: decision.recovery ? RECOVERY_TEXT : `内容を確認してください。${decision.previewPromotionControlLabel ?? ''}` });
+    } else if (schema === 'weekly_planning_recovery_verdict') {
+      const prompt = JSON.parse(body.messages[body.messages.length - 1].content);
+      content = JSON.stringify({ actionId: prompt.actionId, questionMatches: 'yes',
+        planningDetailsNotApplied: 'yes', acceptedStateUnchanged: 'yes', retainedPreviewUnchanged: 'yes',
+        noUnsupportedClaims: recoveryVerdict });
     } else { throw new Error(`Unexpected provider schema: ${schema}`); }
     return new Response(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }),
       { status: 200, headers: { 'content-type': 'application/json' } });
   }));
+  // This suite measures provider/preview/save behavior; code-load retry has its own tests.
+  // Configure the real runtime's environment and transport before loading it, without a turn.
+  const codeLoadStartedAt = performance.now();
+  await loadWeeklyPlanningRuntimeModule();
+  expect(fetch).not.toHaveBeenCalled();
+  expect(calls).toEqual([]);
+  console.info('[ProviderBoundary fixture] runtime code ready', { elapsedMs: performance.now() - codeLoadStartedAt, providerCalls: calls.length });
 });
 afterEach(() => {
   act(() => renderer?.unmount()); renderer = undefined; restoreStorage?.(); restoreStorage = undefined;
@@ -127,7 +143,15 @@ it('repairs an invalid HTTP completion through the real normalizer before produc
   const execution = await spy.mock.results[0].value; expect(execution.failure).toBeUndefined(); expect(execution.observability?.repairUsed).toBe(true);
   expect(ref.current!.state.previewCandidates!.length).toBeGreaterThan(0); unsaved();
 });
-it.each(['exhausted', 'timeout', 'network'] as const)('preserves accepted preview after %s and admits a later healthy turn', async failureMode => {
+it.each([
+  { failureMode: 'exhausted', verdict: 'yes' },
+  { failureMode: 'exhausted', verdict: 'no' },
+  { failureMode: 'timeout', verdict: 'yes' },
+  { failureMode: 'network', verdict: 'yes' },
+  { failureMode: 'repair_network', verdict: 'yes' },
+] as const)('preserves accepted preview after $failureMode / recovery verdict $verdict and admits a later healthy turn', async ({ failureMode, verdict }) => {
+  recoveryVerdict = verdict;
+  const recordedFailures = vi.spyOn(failureDiagnostics, 'recordWeeklyPlanningStableV5FailureDiagnostics');
   const spy = gateway(); const { ref, submit, unsaved } = await mount(); await submit(); unsaved();
   const graph = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
   const intake = structuredClone(ref.current!.state.intakeState); const preview = structuredClone(ref.current!.state.previewCandidates);
@@ -141,11 +165,46 @@ it.each(['exhausted', 'timeout', 'network'] as const)('preserves accepted previe
   } else result = await submit();
   if (failureMode === 'network') expect(calls[0].signal?.aborted).toBe(false);
   const providerFailure = failureMode !== 'exhausted';
+  const expectedAttempts = failureMode === 'exhausted' || failureMode === 'repair_network' ? 2 : 1;
   expect(result.accepted).toBe(true); expect(result.draftCandidates).toEqual([]);
   const execution = await spy.mock.results[1].value;
   expect(execution.failure).toMatchObject({ code: providerFailure ? 'stable_v5_provider_failure' : 'stable_v5_normalization_rejected',
-    diagnostics: { attemptCount: providerFailure ? 1 : 2, repairAttempted: !providerFailure } });
-  expect(semanticCount).toBe(providerFailure ? 1 : 2); expect(calls.some(call => call.schema.includes('dialogue'))).toBe(false);
+    diagnostics: { attemptCount: expectedAttempts, repairAttempted: expectedAttempts === 2 } });
+  expect(semanticCount).toBe(expectedAttempts);
+  expect(recordedFailures).toHaveBeenCalledTimes(1);
+  const recorded = recordedFailures.mock.calls[0][0];
+  expect(recorded.status).toBe(providerFailure ? 'provider_failure' : 'normalization_rejected');
+  expect(recorded.diagnostics.providerDispatch).toEqual({
+    count: expectedAttempts, anyFailure: providerFailure, complete: true,
+  });
+  if (providerFailure) {
+    expect(recorded.diagnostics.providerError).not.toBeNull();
+    expect(calls.map(call => call.schema)).toEqual(Array(expectedAttempts).fill('weekly_planning_semantic_document_v5'));
+    expect(execution.responseSource).toBe('system');
+    expect(execution.recoveryPresentation).toBeUndefined();
+  } else {
+    expect(recorded.diagnostics.providerError).toBeNull();
+    expect(calls.map(call => call.schema)).toEqual([
+      'weekly_planning_semantic_document_v5', 'weekly_planning_semantic_document_v5',
+      'weekly_planning_stable_v5_dialogue_response', 'weekly_planning_recovery_verdict',
+    ]);
+    const generatedFor = JSON.parse(calls[2].body.messages[calls[2].body.messages.length - 1].content);
+    const obligations = { planningDetailsNotApplied: true, acceptedStateUnchanged: true, retainedPreviewUnchanged: true };
+    expect(generatedFor.applicationDecision).toMatchObject({
+      actionKind: 'status', questionCode: null, recovery: obligations,
+    });
+    expect(JSON.parse(calls[3].body.messages[calls[3].body.messages.length - 1].content)).toEqual({
+      actionId: generatedFor.actionId, recovery: obligations, question: null, text: RECOVERY_TEXT,
+    });
+    expect(execution.responseSource).toBe(verdict === 'yes' ? 'ai' : 'system');
+    if (verdict === 'yes') {
+      expect(execution.message).toBe(RECOVERY_TEXT);
+      expect(execution.recoveryPresentation).toEqual({ question: null });
+    } else {
+      expect(execution.message).not.toBe(RECOVERY_TEXT);
+      expect(execution.recoveryPresentation).toBeUndefined();
+    }
+  }
   expect(ref.current!.state.pendingTurn).toBeUndefined(); expect(ref.current!.state.intakeState).toEqual(intake); expect(ref.current!.state.previewCandidates).toEqual(preview);
   expect(ref.current!.exportConversationSnapshot()!.graph).toEqual(graph); unsaved();
   mode = 'valid'; semanticCount = 0; responseDocument = { ...semantic(), planningIntent: 'discuss', planningWindow: null, tasks: [] };

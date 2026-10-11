@@ -1,3 +1,4 @@
+import { bindWeeklyPlanningQuestionPresentation } from '../intake/weeklyPlanningQuestionPresentation';
 import { describe, expect, it } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
@@ -90,8 +91,12 @@ describe('Stable V5 semantic public-state question binding', () => {
 
     const summary = createStableV5SemanticPublicStateSummary({
       graph,
-      messages: [],
-      previousState,
+      messages: [{ id: 'question:assistant', role: 'assistant', content: '表示済みの質問', createdAt: '2026-10-10T00:00:00Z' }],
+      inputStateRevision: 8,
+      previousState: bindWeeklyPlanningQuestionPresentation({ state: previousState,
+        turnId: 'question', assistantMessageId: 'question:assistant', planningStateRevision: 8,
+        graphRevision: graph.revision, content: { responseSource: 'ai', currentTurnGrounding: 'none',
+          selfRepairNotice: false, groundingContext: { proposed: 0, contested: 0 }, previewPromotionControl: false } }),
     });
 
     expect(summary.pendingQuestion).toEqual({
@@ -130,8 +135,12 @@ describe('Stable V5 semantic public-state question binding', () => {
 
     const summary = createStableV5SemanticPublicStateSummary({
       graph,
-      messages: [],
-      previousState,
+      messages: [{ id: 'question:assistant', role: 'assistant', content: '表示済みの質問', createdAt: '2026-10-10T00:00:00Z' }],
+      inputStateRevision: 8,
+      previousState: bindWeeklyPlanningQuestionPresentation({ state: previousState,
+        turnId: 'question', assistantMessageId: 'question:assistant', planningStateRevision: 8,
+        graphRevision: graph.revision, content: { responseSource: 'ai', currentTurnGrounding: 'none',
+          selfRepairNotice: false, groundingContext: { proposed: 0, contested: 0 }, previewPromotionControl: false } }),
     });
 
     expect(summary.pendingQuestion).toEqual({
@@ -164,8 +173,12 @@ describe('Stable V5 semantic public-state question binding', () => {
 
     const summary = createStableV5SemanticPublicStateSummary({
       graph,
-      messages: [],
-      previousState,
+      messages: [{ id: 'question:assistant', role: 'assistant', content: '表示済みの質問', createdAt: '2026-10-10T00:00:00Z' }],
+      inputStateRevision: 8,
+      previousState: bindWeeklyPlanningQuestionPresentation({ state: previousState,
+        turnId: 'question', assistantMessageId: 'question:assistant', planningStateRevision: 8,
+        graphRevision: graph.revision, content: { responseSource: 'ai', currentTurnGrounding: 'none',
+          selfRepairNotice: false, groundingContext: { proposed: 0, contested: 0 }, previewPromotionControl: false } }),
     });
 
     expect(summary.pendingQuestion).toEqual({
@@ -215,16 +228,18 @@ describe('Stable V5 semantic public-state question presentation exclusion', () =
 
     const boundSummary = createStableV5SemanticPublicStateSummary({
       graph,
-      messages: [],
+      messages: [{ id: 'turn-presentation-sentinel:assistant', role: 'assistant', content: '表示済みの質問', createdAt: '2026-10-10T00:00:00Z' }],
+      inputStateRevision: 8,
       previousState: bound,
     });
 
-    // The binding is application-owned freshness evidence; semantic interpretation is unchanged.
-    expect(boundSummary).toEqual(createStableV5SemanticPublicStateSummary({
+    // Application-owned freshness gates pendingQuestion; private binding IDs stay excluded.
+    expect(boundSummary.pendingQuestion).not.toBeNull();
+    expect(createStableV5SemanticPublicStateSummary({
       graph,
       messages: [],
       previousState: unbound,
-    }));
+    }).pendingQuestion).toBeNull();
     expect(JSON.stringify(boundSummary)).not.toContain('turn-presentation-sentinel');
   });
 });

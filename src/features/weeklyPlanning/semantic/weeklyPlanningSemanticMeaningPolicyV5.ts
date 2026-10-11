@@ -54,7 +54,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'temporal_scope_and_deadline',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Whether timing is task-scoped, plan-wide availability, a deadline, or a preference is semantic meaning; deterministic calendar code operates only after that meaning is represented.',
-    instruction: 'Task timing is task-scoped; availability plan-wide; planningWindow whole-plan. Completion-by is hard deadline. Date-only earliest_start/latest_end is valid; never invent clocks. fixed_interval requires both clock startTime/endTime; never use it for a date-only period. Date-only from/after -> earliest_start; until/by -> latest_end or deadline; emit both when both stated. Recurring weekdays use days with null dateExpression unless separately date-scoped. Mandatory/unavailable/deadline are hard; preferences soft. Keep relative dates symbolic for deterministic calendar resolution.',
+    instruction: 'Task timing is task-scoped; availability plan-wide; planningWindow whole-plan. Completion-by is hard deadline. Date-only earliest_start/latest_end is valid; never invent clocks. fixed_interval requires both clock startTime/endTime; never use it for a date-only period. fixed_interval means an exact occupied interval, not a window for placing shorter work. Keep task timing task-scoped; available is only a plan-wide placement window. Date-only from/after -> earliest_start; until/by -> latest_end or deadline; emit both when both stated. Recurring weekdays use days with null dateExpression unless separately date-scoped. Mandatory/unavailable/deadline are hard; preferences soft. Keep relative dates symbolic for deterministic calendar resolution.',
   },
   {
     id: 'availability_absence',
