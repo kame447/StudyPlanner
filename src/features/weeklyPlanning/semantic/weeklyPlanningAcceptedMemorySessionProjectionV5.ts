@@ -1,3 +1,4 @@
+import { workloadUnitDisplayV5 } from './weeklyPlanningWorkloadQuantityLabelV5';
 import type { WeeklyPlanningLearningStrategyProposalRecord } from '../intake/weeklyPlanningIntakeTypes';
 import type {
   GenericSchedulerInputCompilationResult,
@@ -132,6 +133,7 @@ function sessionizeItem(params: {
   const quantities = allocateQuantity(params.item.quantity.amount, durations);
   const totalAllocatedMinutes = durations.reduce((sum, duration) => sum + duration, 0);
   const label = targetLabel(params.graph, params.item);
+  const unit = workloadUnitDisplayV5(params.item.quantity.unitCode, params.item.quantity.unitLabel);
 
   return durations.map((durationMinutes, index) => {
     const quantityAmount = quantities[index] ?? 0;
@@ -142,7 +144,7 @@ function sessionizeItem(params: {
     return {
       ...params.item,
       id: `${params.item.id}:accepted-memory-session:${index + 1}`,
-      label: `${label} ${displayQuantity(quantityAmount)}${params.item.quantity.unitLabel}（${index + 1}/${durations.length}）`,
+      label: `${label} ${displayQuantity(quantityAmount)}${unit}（${index + 1}/${durations.length}）`,
       quantity: {
         ...params.item.quantity,
         amount: quantityAmount,
