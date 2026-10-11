@@ -29,6 +29,9 @@ describe('evidenced candidate creation is separate from application mutations', 
     // The actual draft plus promotion control evidences creation, not storage.
     '候補1件を作成しました。予定を作成しました。',
     '候補として予定を作成しました。',
+    '計画案を作成しました。保存はまだ行いません。',
+    '予定案を作成しました。',
+    '仮予定案を作成しました。',
     '候補1件を作成しましたが、予定を作成しました。',
     '予定として候補1件を作成しました。',
   ])('accepts creation of the actual preview candidate: %s', text => {
@@ -42,6 +45,9 @@ describe('evidenced candidate creation is separate from application mutations', 
     '候補1件を作成しました、予定を保存しました。',
     '仮予定の候補を保存しました。',
     '教材を作成しました。',
+    '計画案を作成しました。予定を保存しました。',
+    '計画案を承認しました。',
+    '外部カレンダーに計画案を作成しました。',
     '外部カレンダーに候補を作成しました。',
     '仮予定の候補を作成しました。日付を確定しました。',
   ])('still rejects an unevidenced mutation: %s', text => {
@@ -59,6 +65,12 @@ describe('evidenced candidate creation is separate from application mutations', 
   it('does not grant an unsupported date in an otherwise valid candidate sentence', () => {
     expect(render('明日の仮予定の候補を作成しました。'))
       .toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
+  });
+  it('keeps proposal-noun creation gated by actual candidates and the promotion control', () => {
+    for (const overrides of [{ previewCount: 0 }, { actionKind: 'question' as const }, { previewPromotionControlLabel: undefined }]) {
+      expect(render('計画案を作成しました。', input(overrides)))
+        .toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
+    }
   });
   it('grounds an existing-schedule reference without claiming the new candidate is saved', () => {
     const evidenced = input({ existingScheduleGrounding: {
