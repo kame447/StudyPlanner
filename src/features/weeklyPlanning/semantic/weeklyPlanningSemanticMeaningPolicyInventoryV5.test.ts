@@ -120,6 +120,12 @@ describe('Stable V5 semantic meaning-rule inventory', () => {
     expect(temporalRule?.instruction).toContain(
       'Date-only from/after -> earliest_start; until/by -> latest_end or deadline',
     );
+    expect(temporalRule?.instruction).toContain(
+      'fixed_interval means an exact occupied interval, not a window for placing shorter work',
+    );
+    expect(temporalRule?.instruction).toContain(
+      'Keep task timing task-scoped; available is only a plan-wide placement window',
+    );
   });
 
   it('keeps recurring weekday encoding separate from an unrelated date expression', () => {

@@ -4,6 +4,7 @@ import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInpu
 import type { WeeklyPlanningPlacementGraphViewV5 } from './weeklyPlanningPlacementGraphViewV5';
 import {
   hardDateBoundForTargetV5,
+  weeklyPlanningTemporalConstraintAppliesToTargetV5,
 } from './weeklyPlanningResolvedTemporalConstraintsV5';
 import {
   preferredTaskDistributedDateV5,
@@ -105,6 +106,50 @@ function datesWithinDailyCapacity(params: {
   });
 }
 
+function workItemClockWindows(params: {
+  context: WeeklyPlanningPlacementRuntimeContextV5;
+  item: GenericPlanningWorkItem;
+  dates: readonly string[];
+}): Pick<WeeklyPlanningPlacementRuntimeContextV5, 'windowsByDate' | 'hardAvailableByDate'> & {
+  dateOnlyHardAvailableByDate: Map<string, PlacementWindow[]>;
+} {
+  const bounds = (params.context.input.hardClockBounds ?? []).filter((bound) =>
+    weeklyPlanningTemporalConstraintAppliesToTargetV5({
+      constraintTaskId: bound.taskId, constraintTargetFactId: bound.targetFactId,
+      taskId: params.item.taskId, targetFactId: params.item.componentId ?? params.item.taskId,
+    }));
+  if (bounds.length === 0) return {
+    windowsByDate: params.context.windowsByDate, hardAvailableByDate: params.context.hardAvailableByDate,
+    dateOnlyHardAvailableByDate: params.context.hardAvailableByDate,
+  };
+  const windowsByDate = new Map(params.context.windowsByDate);
+  const hardAvailableByDate = new Map(params.context.hardAvailableByDate);
+  const dateOnlyHardAvailableByDate = new Map(params.context.hardAvailableByDate);
+  for (const date of params.dates) {
+    const applicable = bounds.filter((bound) => bound.anchorDate === null || bound.anchorDate === date);
+    if (applicable.length === 0) continue;
+    let lower = 0;
+    let upper = 24 * 60;
+    for (const bound of applicable) {
+      if (bound.kind === 'earliest_start') lower = Math.max(lower, bound.minute);
+      else upper = Math.min(upper, bound.minute);
+    }
+    const intersect = (windows: readonly PlacementWindow[]): PlacementWindow[] => windows.flatMap((window) => {
+      const start = Math.max(window.start, lower);
+      const end = Math.min(window.end, upper);
+      return end > start ? [{ start, end }] : [];
+    });
+    windowsByDate.set(date, intersect(params.context.windowsByDate.get(date) ?? []));
+    // An empty entry is a hard prohibition. Absence means no global hard availability.
+    const originalHard = params.context.hardAvailableByDate.get(date);
+    const hardWindows = intersect(originalHard ?? [{ start: 0, end: 24 * 60 }]);
+    hardAvailableByDate.set(date, hardWindows);
+    // Only a synthetic restriction needs base windows; explicit hard availability remains authoritative.
+    dateOnlyHardAvailableByDate.set(date, originalHard === undefined ? windowsByDate.get(date)! : hardWindows);
+  }
+  return { windowsByDate, hardAvailableByDate, dateOnlyHardAvailableByDate };
+}
+
 function findWorkItemSlot(params: {
   context: WeeklyPlanningPlacementRuntimeContextV5;
   item: GenericPlanningWorkItem;
@@ -125,23 +170,28 @@ function findWorkItemSlot(params: {
     item: params.item,
     dates: capacitySafeDates,
   });
-  const preferredSlot = explicitPreferences.length > 0
-    ? findPreferredPlacementSlot({
-        placements: explicitPreferences,
-        duration: params.duration,
-        windowsByDate: params.context.windowsByDate,
-        hardAvailableByDate: params.context.hardAvailableByDate,
-        busy: params.context.busy,
-        breakMinutes: params.context.breakMinutes,
-        notBefore: params.notBefore,
-        preferLongSegment: params.preferLongSegment,
-        restrictToBaseWindows: false,
-      })
-    : null;
-  return preferredSlot ?? findPlacementSlot({
+  const windows = workItemClockWindows({
+    context: params.context, item: params.item, dates: capacitySafeDates,
+  });
+  for (const preference of explicitPreferences) {
+    const preferredSlot = findPreferredPlacementSlot({
+      placements: [preference],
+      duration: params.duration,
+      windowsByDate: windows.windowsByDate,
+      // A date-only preference cannot turn a restriction into newly available hours.
+      hardAvailableByDate: preference.window ? windows.hardAvailableByDate : windows.dateOnlyHardAvailableByDate,
+      busy: params.context.busy,
+      breakMinutes: params.context.breakMinutes,
+      notBefore: params.notBefore,
+      preferLongSegment: params.preferLongSegment,
+      restrictToBaseWindows: false,
+    });
+    if (preferredSlot) return preferredSlot;
+  }
+  return findPlacementSlot({
     dates: capacitySafeDates,
     duration: params.duration,
-    windowsByDate: params.context.windowsByDate,
+    windowsByDate: windows.windowsByDate,
     busy: params.context.busy,
     breakMinutes: params.context.breakMinutes,
     notBefore: params.notBefore,

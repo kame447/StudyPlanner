@@ -68,6 +68,41 @@ function decomposedGraph() {
 }
 
 describe('Stable V5 missing schedulable work question', () => {
+  // Same accepted task scope; a session length alone must not become total work.
+  // Natural-language role selection remains the semantic/K boundary's responsibility.
+  it.each(['minute_target', 'task_total_duration', 'session_duration'] as const)(
+    'checks missing work from %s without changing the accepted graph',
+    (representation) => {
+      const graph = decomposedGraph();
+      if (representation === 'minute_target') {
+        graph.workloads = [{
+          id: 'task-time-target', taskId: 'task-project', componentId: null,
+          quantityRole: 'target', amount: 60, unitCode: 'minute', unitLabel: '分',
+          rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null,
+          source, createdRevision: 4,
+        }];
+      } else {
+        graph.effortEstimates = [{
+          id: 'task-duration', taskId: 'task-project', targetFactId: 'task-project',
+          kind: representation === 'task_total_duration' ? 'total_duration' : 'session_duration',
+          minutes: 60, unitCode: null, precision: 'exact', source, createdRevision: 4,
+        }];
+      }
+      graph.factLifecycles.push({
+        factId: representation === 'minute_target' ? 'task-time-target' : 'task-duration',
+        status: 'active', createdRevision: 4, terminalRevision: null, supersededByFactId: null,
+      });
+      const accepted = structuredClone(graph);
+
+      const question = stableV5MissingSchedulableWorkQuestion(graph);
+
+      expect(question.targetFactId).toBe(
+        representation === 'session_duration' ? 'component-concrete-a' : null,
+      );
+      expect(graph).toEqual(accepted);
+    },
+  );
+
   it('asks about one concrete post-breakdown component and persists its exact target', () => {
     const question = stableV5MissingSchedulableWorkQuestion(decomposedGraph());
 
@@ -172,7 +207,7 @@ describe('Stable V5 missing schedulable work question', () => {
     expect(question.targetFactId).toBe('material');
   });
 
-  it('asks open-ended progress when only completed evidence exists without a fixed total', () => {
+  it.each([false, true])('asks progress with completed work, recorded duration=%s, and no future target', (hasRecordedDuration) => {
     const graph = createEmptyWeeklyPlanningFactGraphV5();
     graph.tasks = [{ id: 'task-slides', category: 'study', title: '発表スライド', source, createdRevision: 1 }];
     graph.workloads = [{
@@ -185,12 +220,25 @@ describe('Stable V5 missing schedulable work question', () => {
       { factId: 'task-slides', status: 'active', createdRevision: 1, terminalRevision: null, supersededByFactId: null },
       { factId: 'completed-pages', status: 'active', createdRevision: 2, terminalRevision: null, supersededByFactId: null },
     ];
+    if (hasRecordedDuration) {
+      graph.effortEstimates = [{
+        id: 'recorded-duration', taskId: 'task-slides', targetFactId: 'task-slides',
+        kind: 'total_duration', minutes: 60, unitCode: null, precision: 'exact',
+        source, createdRevision: 2,
+      }];
+      graph.factLifecycles.push({
+        factId: 'recorded-duration', status: 'active', createdRevision: 2,
+        terminalRevision: null, supersededByFactId: null,
+      });
+    }
+    const accepted = structuredClone(graph);
 
     const question = stableV5MissingSchedulableWorkQuestion(graph);
 
     expect(question.targetFactId).toBe('task-slides');
     expect(question.message).toContain('100%');
     expect(question.message).not.toContain('全5ページ');
+    expect(graph).toEqual(accepted);
   });
 
   it('uses an explicit fixed total scope as the progress basis but not as schedulable work', () => {
