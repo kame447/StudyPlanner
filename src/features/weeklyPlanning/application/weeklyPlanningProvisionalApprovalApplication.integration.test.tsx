@@ -10,8 +10,6 @@ import { createLocalPlannerRepository } from '../../../repositories/createLocalP
 import { validateWeeklyPreviewApproval } from '../planning/weeklyPlanningApproval';
 import { resolveWeeklyPlanningApprovalRuntime } from './weeklyPlanningApprovalRuntimeResolver';
 import { loadWeeklyPlanningApprovalOperations } from './weeklyPlanningApprovalLedgerStorage';
-import { validateWeeklyPlanningSemanticResponseV5 } from '../semantic/weeklyPlanningSemanticResponseValidationV5';
-import { createWeeklyPlanningSemanticPublicStateSummaryV5 } from '../semantic/weeklyPlanningSemanticPublicStateV5';
 import * as debugTrace from '../trace/weeklyPlanningStableV5DebugTrace';
 import { recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5TraceRuntimeForTest, resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest } from '../trace/weeklyPlanningStableV5TraceRuntime';
 import { listWeeklyPlanningTraceOutboxItems } from '../trace/weeklyPlanningTraceOutbox';
