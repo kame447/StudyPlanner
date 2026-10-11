@@ -628,6 +628,12 @@ function schedulerSummary(
     ),
     externalSources: sourceSummaries(runtime, tracker),
     compilationStatus: stringValue(compilation.status),
+    hardClockBounds: boundedUnknown(
+      compilation.hardClockBounds ?? null,
+      NORMAL_LIMITS.unknownBytes,
+      tracker,
+      'constraintContext.scheduler.hardClockBounds',
+    ),
     issues: issueSummaries(runtime, tracker),
     dialogueStatus: stringValue(dialogue.status),
     selectedQuestionCode: stringValue(record(runtime.dialogue).selectedQuestionCode)
