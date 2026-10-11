@@ -166,6 +166,54 @@ describe('Stable V5 dialogue renderer validation', () => {
     }
   });
 
+  it('grounds registration noun modifiers by current material identity and exact display names', () => {
+    for (const actionKind of ['status', 'question'] as const) {
+      const renderInput = input({ actionKind, questionCode: actionKind === 'question' ? 'quantity_role_unresolved' : null,
+        currentUserMessage: '教材を使いたいです。', requiredLabels: [],
+        planningInformation: { registeredMaterials: [
+          { materialId: 'registered-b', name: '教材B', catalogTitle: '正式教材名', aliases: ['英語演習'] },
+        ] },
+      });
+      for (const noun of ['教材B', '正式教材名', '英語演習', '「教材B」', '『英語演習』', '"正式教材名"']) {
+        const text = `登録済みの${noun}で演習を進めたいのですね。`;
+        expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text), renderInput), text)
+          .toMatchObject({ status: 'rendered' });
+      }
+    }
+  });
+
+  it('requires a current registered identity rather than user wording or another fact label', () => {
+    for (const registeredMaterials of [undefined, [], [{ materialId: 'other', name: '教材C' }],
+      [{ name: '教材B' }], [{ materialId: '', name: '教材B' }],
+      [{ materialId: 'registered-b', name: '\u200b', aliases: ['\u200d'] }]]) {
+      const renderInput = input({ actionKind: 'status', questionCode: null,
+        currentUserMessage: '登録済みの教材Bを使いたいです。', requiredLabels: ['教材B'],
+        planningInformation: { tasks: [{ title: '教材B' }], components: [{ label: '教材B' }], registeredMaterials },
+      });
+      for (const text of ['登録済みの教材Bで演習を進めたいのですね。', '登録済みのはじめての英語で進めたいのですね。']) {
+        expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+          response(renderInput, text), renderInput,
+        )).toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
+      }
+    }
+  });
+
+  it('retains ungrounded names, finite mutations, other attributes, and mixed-sentence operations', () => {
+    const renderInput = input({ actionKind: 'status', questionCode: null, requiredLabels: [],
+      planningInformation: { registeredMaterials: [{ materialId: 'registered-b', name: '教材B',
+        aliases: ['危険な保存しました教材'] }] },
+    });
+    for (const text of ['登録済みの教材Cで進めます。', '登録済みの教材B改訂で進めます。',
+      '登録済みの教材B2で進めます。', '教材Bを登録しました。', '教材Bは登録済みです。',
+      '保存済みの教材Bで進めます。', '登録済みの教材Bを保存しました。',
+      '登録済みの教材Bで進めます。予定を保存しました。',
+      '登録済みの教材Bで進め、予定を登録しました。',
+      '登録済みの危険な保存しました教材で進めます。']) {
+      expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text), renderInput), text)
+        .toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
+    }
+  });
+
   it('rejects an identical repeat of the most recent assistant question', () => {
     const previousQuestion = '院試の第2分野について、今回進めたい量ですか？';
     const renderInput = input({

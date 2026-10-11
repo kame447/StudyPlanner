@@ -76,12 +76,41 @@ function withoutGroundedQuotedData(
   });
 }
 
+function withoutGroundedRegistrationModifiers(
+  text: string,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): string {
+  const materials = input.planningInformation?.registeredMaterials;
+  if (!Array.isArray(materials)) return text;
+  const labels = materials.flatMap((material) => {
+    if (!isRecord(material) || typeof material.materialId !== 'string'
+      || material.materialId.trim().length === 0) return [];
+    return [material.name, material.catalogTitle,
+      ...(Array.isArray(material.aliases) ? material.aliases : [])]
+      .filter((label): label is string => typeof label === 'string' && label.trim().length > 0)
+      .map(normalizeSafetyText)
+      .filter((label) => label.trim().length > 0);
+  });
+  // Registration is an existing attribute only for a noun grounded in the
+  // current owner-filtered registry. It does not evidence any new operation.
+  // Remove only the modifier; other predicates in the noun or sentence remain.
+  return text.replace(/登録済みの/gu, (modifier, offset: number, whole: string) => {
+    const following = whole.slice(offset + modifier.length);
+    const groundedNoun = labels.some((label) =>
+      [label, `「${label}」`, `『${label}』`, `"${label}"`].some((noun) =>
+        following.startsWith(noun)
+        && /^(?:$|[\s。、，,.!?！？:：;；]|[をがはもにへとでの]|から|まで)/u.test(following.slice(noun.length))));
+    return groundedNoun ? '〈登録教材参照〉' : modifier;
+  });
+}
+
 function safetyNarrative(
   text: string,
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): string {
   const normalized = normalizeSafetyText(text);
-  const withoutQuotes = withoutGroundedQuotedData(normalized, input);
+  const withoutReferences = withoutGroundedRegistrationModifiers(normalized, input);
+  const withoutQuotes = withoutGroundedQuotedData(withoutReferences, input);
   const fallback = normalizeSafetyText(input.fallbackText);
   let narrative = fallback.length > 0 ? withoutQuotes.split(fallback).join('') : withoutQuotes;
   for (const fact of input.currentTurnGrounding?.acceptedFacts ?? []) {
