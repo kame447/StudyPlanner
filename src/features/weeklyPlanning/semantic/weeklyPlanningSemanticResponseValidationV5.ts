@@ -1,3 +1,4 @@
+import { resolveWeeklyPlanningConversationActTargetsV5, type SemanticConversationActV5 } from './weeklyPlanningConversationActsV5';
 import {
   validateWeeklyPlanningCorrectionTargetReferencesV5,
   validateWeeklyPlanningRawCorrectionTargetReferencesV5,
@@ -5,10 +6,12 @@ import {
 import {
   validateWeeklyPlanningCurrentTurnProvenanceV5,
 } from './weeklyPlanningCurrentTurnProvenanceV5';
+import { projectWeeklyPlanningRegisteredMaterialReferencesV5 } from './weeklyPlanningRegisteredMaterialReferenceProjectionV5';
 import {
   validateWeeklyPlanningDecisionTargetReferencesV5,
 } from './weeklyPlanningDecisionReferenceValidationV5';
 import {
+  collectWeeklyPlanningLocalReferenceTokensV5,
   validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5,
 } from './weeklyPlanningExistingEntityBindingV5';
 import {
@@ -19,6 +22,7 @@ import {
 } from './weeklyPlanningRecurrenceConsistencyV5';
 import {
   readWeeklyPlanningRepresentationRepairBaselineV5,
+  readWeeklyPlanningSemanticProviderDocumentV5,
 } from './weeklyPlanningSemanticRepairPreservationV5';
 import {
   validateWeeklyPlanningWorkBreakdownResponseContractV5,
@@ -60,8 +64,12 @@ export interface WeeklyPlanningSemanticResponseValidationInputV5 {
 }
 
 export interface WeeklyPlanningSemanticValidationAttemptV5 {
+  conversationActs?: SemanticConversationActV5[];
+  conversationActDiagnostics?: string[];
   document: WeeklyPlanningSemanticDocumentV5 | null;
   parsedDocument: WeeklyPlanningSemanticDocumentV5 | null;
+  /** Pre-projection provider shape for repair comparison only; never an accepted planning delta. */
+  providerDocument?: WeeklyPlanningSemanticDocumentV5 | null;
   errors: string[];
   algorithmicRepairs: string[];
 }
@@ -83,17 +91,28 @@ export function validateWeeklyPlanningSemanticResponseV5(
   rawResponse: string,
   input: WeeklyPlanningSemanticResponseValidationInputV5,
 ): WeeklyPlanningSemanticValidationAttemptV5 {
+  let blockedLocalIds: ReadonlySet<string> = new Set();
+  try {
+    blockedLocalIds = collectWeeklyPlanningLocalReferenceTokensV5(JSON.parse(rawResponse));
+  } catch { /* The parser below retains the existing invalid-JSON rejection. */ }
   const preParseNormalization = normalizeWeeklyPlanningSemanticPreParseV5({
     rawResponse,
     publicStateSummary: input.publicStateSummary,
+    committedGraph: input.committedGraph,
   });
+  const providerDocument = readWeeklyPlanningSemanticProviderDocumentV5(preParseNormalization.rawResponse);
   const rawCorrectionErrors = validateWeeklyPlanningRawCorrectionTargetReferencesV5(
     preParseNormalization.rawResponse,
     input.publicStateSummary,
   );
   const parsed = parseWeeklyPlanningSemanticDocumentV5(
     preParseNormalization.rawResponse,
+    { committedGraph: input.committedGraph, blockedLocalIds },
   );
+  const actTargets = parsed.conversationActs
+    ? resolveWeeklyPlanningConversationActTargetsV5({ acts: parsed.conversationActs, publicStateSummary: input.publicStateSummary }) : null;
+  const actEvidence = actTargets ? { conversationActs: actTargets.acts,
+    conversationActDiagnostics: [...(parsed.conversationActDiagnostics ?? []), ...actTargets.diagnostics] } : {};
   if (!parsed.document) {
     const errors = uniqueErrors([
       ...parsed.errors,
@@ -107,15 +126,22 @@ export function validateWeeklyPlanningSemanticResponseV5(
       }),
       errors,
       algorithmicRepairs: preParseNormalization.repairs,
+      providerDocument,
+      ...actEvidence,
     };
   }
 
   const normalized = canonicalizeWeeklyPlanningSemanticRepresentationV5(parsed.document);
+  const materialReferences = projectWeeklyPlanningRegisteredMaterialReferencesV5({
+    document: normalized.document,
+    publicStateSummary: input.publicStateSummary,
+  });
   const algorithmicRepairs = [
     ...preParseNormalization.repairs,
     ...normalized.repairs,
+    ...materialReferences.repairs,
   ];
-  const document = normalized.document;
+  const document = actTargets ? { ...materialReferences.document, conversationActs: actTargets.acts } : materialReferences.document;
   const errors = [
     ...validateWeeklyPlanningSemanticNumericSafetyV5(document),
     ...planningWindowCanonicalValueErrors(
@@ -155,7 +181,32 @@ export function validateWeeklyPlanningSemanticResponseV5(
   return {
     document: errors.length === 0 ? document : null,
     parsedDocument: document,
+    providerDocument,
     errors,
     algorithmicRepairs,
+    ...actEvidence,
+  };
+}
+
+/** Planning is fully revalidated; only separately resolved prior evidence may survive internal serialization. */
+export function revalidateWeeklyPlanningInternalSemanticDocumentV5(params: {
+  document: WeeklyPlanningSemanticDocumentV5;
+  resolvedConversationActs: readonly SemanticConversationActV5[];
+  input: WeeklyPlanningSemanticResponseValidationInputV5;
+}): WeeklyPlanningSemanticValidationAttemptV5 {
+  if (params.document.conversationActs === undefined && params.resolvedConversationActs.length === 0) {
+    return validateWeeklyPlanningSemanticResponseV5(JSON.stringify(params.document), params.input);
+  }
+  const { conversationActs: _untrustedBaselineActs, ...planningDocument } = params.document;
+  const validation = validateWeeklyPlanningSemanticResponseV5(
+    JSON.stringify({ ...planningDocument, conversationActs: [] }), params.input);
+  const resolved = resolveWeeklyPlanningConversationActTargetsV5({
+    acts: params.resolvedConversationActs, publicStateSummary: params.input.publicStateSummary,
+  });
+  return { ...validation,
+    document: validation.document ? { ...validation.document, conversationActs: resolved.acts } : null,
+    parsedDocument: validation.parsedDocument ? { ...validation.parsedDocument, conversationActs: resolved.acts } : null,
+    conversationActs: resolved.acts,
+    conversationActDiagnostics: [...(validation.conversationActDiagnostics ?? []), ...resolved.diagnostics],
   };
 }

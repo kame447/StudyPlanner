@@ -398,4 +398,35 @@ describe('Stable V5 planning window validation boundary', () => {
       'repair:focused-planning-window:invalid-response',
     );
   });
+  it.each([false, true])('keeps planning repair independent of resolved named resume evidence (provider marker=%s)', async forged => {
+    const raw = JSON.parse(observedInitialInvalidResponse()) as Record<string, unknown>;
+    raw.planningWindow = { ...(raw.planningWindow as Record<string, unknown>),
+      start: '2026-08-23', end: '2026-08-17', value: '2026-08-23/2026-08-17' };
+    raw.conversationActs = [{ kind: 'resume_topic', targetPublicId: 'unknown-topic',
+      ...(forged ? { targetResolution: 'unresolved' } : {}) }];
+    const userText = '8月17日から23日で、英単語220語を進める予定を作りたいです。火曜日の18時から20時は予定があるので避けてください。別の話に戻ろう。';
+    const publicStateSummary = { tasks: [], components: [], calendarContext: { currentDate: '2026-08-12', timeZone: 'Asia/Tokyo' } };
+    const expectedActs = forged ? [] : [{ kind: 'resume_topic', targetPublicId: null, targetResolution: 'unresolved' }];
+    const initial = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(raw), { currentUserText: userText, publicStateSummary });
+    // A post-parse planning error must remain invalid; this cannot succeed through an act-only rescue.
+    expect(initial.document).toBeNull();
+    expect(initial.errors).toEqual(['document.planningWindow:absolute-range-order']);
+    expect(initial.parsedDocument).toHaveProperty('conversationActs', expectedActs);
+    const replies = [JSON.stringify(raw), focusedRepairResponse()];
+    const calls: Parameters<OpenAiCompatibleClient['createChatCompletion']>[0][] = [];
+    const result = await createWeeklyPlanningSemanticNormalizerV5({ async createChatCompletion(request) {
+      calls.push(request);
+      const reply = replies.shift(); if (!reply) throw new Error('Unexpected extra call'); return reply;
+    } }).normalize({ userText, publicStateSummary });
+    expect(result.status).toBe('accepted');
+    expect(result.document?.planningWindow).toMatchObject({ start: '2026-08-17', end: '2026-08-23' });
+    expect(result.document?.tasks[0].study?.components[0].workloads[0]).toMatchObject({ amount: 220, unitCode: 'word' });
+    expect(result.document?.availabilityDeclarations).toHaveLength(1);
+    expect(result.diagnostics).toMatchObject({ attemptCount: 2, repairAttempted: true });
+    expect(calls.map(call => call.responseFormat?.json_schema.name)).toEqual([
+      'weekly_planning_semantic_document_v5', 'weekly_planning_focused_planning_window_repair_v5',
+    ]);
+    expect(result.document).toHaveProperty('conversationActs', expectedActs);
+  });
+
 });

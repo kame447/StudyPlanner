@@ -116,6 +116,7 @@ function compilation(): GenericSchedulerInputCompilationResult {
 describe('Stable V5 learning proposal workload supersession', () => {
   it('keeps accepted spacing and calibration decisions on the replacement workload', () => {
     const result = evaluateWeeklyPlanningLearningStrategyProposalsV5({
+      presentedProposalId: null,
       previousState: previousState(),
       document: correctionDocument(),
       localToFactId: {

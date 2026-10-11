@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { parseWeeklyPlanningStableV5DialogueRendererResponse } from './weeklyPlanningStableV5DialogueValidation';
 import type { AiConfig } from '../../../lib/aiConfig';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import {
@@ -239,6 +240,39 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
     expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
   });
 
+  it('contains a provider rejection on the one repeated-question repair', async () => {
+    const previousQuestion = '英単語は1回分にどれくらい時間がかかりますか？';
+    const renderInput = input({ recentConversation: [{ role: 'assistant', content: previousQuestion }] });
+    const before = structuredClone(renderInput);
+    const raw = response(renderInput, previousQuestion);
+    // Valid JSON can violate the existing repeat contract; arbitrary malformed
+    // JSON does not enter this repair path and would be the wrong discriminator.
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(raw, renderInput))
+      .toEqual({ status: 'fallback', reason: 'repeated_question_text', rawResponse: raw });
+    const providerError = new Error('synthetic second renderer dispatch rejection');
+    const createChatCompletion = vi.fn<OpenAiCompatibleClient['createChatCompletion']>()
+      .mockResolvedValueOnce(raw).mockRejectedValueOnce(providerError);
+    const outcome = await createAiWeeklyPlanningStableV5DialogueRenderer(config, { createChatCompletion })
+      .render(renderInput).then(
+        (value) => ({ status: 'resolved' as const, value }),
+        (error: unknown) => ({ status: 'rejected' as const, error }),
+      );
+    // These route facts are observed before the expected-red fallback assertion.
+    expect(createChatCompletion).toHaveBeenCalledTimes(2);
+    expect(createChatCompletion.mock.calls.map(([request]) => request.purpose))
+      .toEqual(['weekly_planning_renderer', 'weekly_planning_renderer']);
+    expect(createChatCompletion.mock.calls[0]?.[0].responseFormat)
+      .toEqual(WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT);
+    expect(createChatCompletion.mock.calls[1]?.[0].messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'user', content: expect.stringContaining('直前と異なる自然な表現') }),
+    ]));
+    await expect(createChatCompletion.mock.results[1]?.value).rejects.toBe(providerError);
+    expect(renderInput).toEqual(before);
+    expect(outcome).toEqual({ status: 'resolved', value: {
+      status: 'fallback', reason: 'provider_error', rawResponse: null,
+    } });
+  });
+
   it('maps provider failures to a renderer fallback without changing the application decision', async () => {
     const client: OpenAiCompatibleClient = {
       createChatCompletion: vi.fn(async () => {
@@ -253,5 +287,79 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
       reason: 'provider_error',
       rawResponse: null,
     });
+  });
+});
+
+describe('failure-only recovery verification inside the existing two-call ceiling', () => {
+  const recoveryInput = () => input({
+    recoveryQuestionEvidence: { facts: [
+      { collection: 'tasks', fact: { id: 'task-1', title: '英単語' } },
+      { collection: 'workloads', fact: { id: 'workload-1', taskId: 'task-1', amount: 20, unitLabel: '語' } },
+    ], labels: ['英単語'] },
+    recovery: { planningDetailsNotApplied: true, acceptedStateUnchanged: true, retainedPreviewUnchanged: true },
+    questionIntent: { kind: 'effort_measurement', measurement: 'total_duration',
+      quantityRole: 'target', targetFactId: 'workload-1', amount: 20, unitCode: null, unitLabel: '語' },
+  });
+  const text = '今回はまだ反映していません。以前の候補はそのままです。英単語を終えるのに合計で何分くらいかかりますか？';
+  const verdict = (actionId: string) => ({ actionId, questionMatches: 'yes', planningDetailsNotApplied: 'yes',
+    acceptedStateUnchanged: 'yes', retainedPreviewUnchanged: 'yes', noUnsupportedClaims: 'yes' });
+
+  it('generates free wording and independently checks the finite obligations once', async () => {
+    const renderInput = recoveryInput();
+    const call = vi.fn().mockResolvedValueOnce(response(renderInput, text))
+      .mockResolvedValueOnce(JSON.stringify(verdict(renderInput.actionId)));
+    const result = await createAiWeeklyPlanningStableV5DialogueRenderer(config,
+      { createChatCompletion: call }, { canDispatchRecovery: () => true }).render(renderInput);
+    expect(result).toMatchObject({ status: 'rendered', text, recoveryVerified: true });
+    expect(call).toHaveBeenCalledTimes(2);
+    const check = call.mock.calls[1][0];
+    expect(check.purpose).toBe('weekly_planning_renderer');
+    expect(JSON.parse(check.messages[1].content)).toEqual({ actionId: renderInput.actionId,
+      recovery: renderInput.recovery, question: { code: renderInput.questionCode,
+        intent: renderInput.questionIntent, identityEvidence: renderInput.recoveryQuestionEvidence }, text });
+  });
+
+  it.each(['questionMatches', 'planningDetailsNotApplied', 'acceptedStateUnchanged',
+    'retainedPreviewUnchanged', 'noUnsupportedClaims'])('rejects missing or unclear obligation %s without regeneration', async (field) => {
+    const renderInput = recoveryInput();
+    const call = vi.fn().mockResolvedValueOnce(response(renderInput, text))
+      .mockResolvedValueOnce(JSON.stringify({ ...verdict(renderInput.actionId), [field]: 'unclear' }));
+    expect(await createAiWeeklyPlanningStableV5DialogueRenderer(config,
+      { createChatCompletion: call }, { canDispatchRecovery: () => true }).render(renderInput))
+      .toMatchObject({ status: 'fallback', reason: 'recovery_verification_failed' });
+    expect(call).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['malformed', 'wrong_action', 'provider_throw'])('stops on verifier %s without a third call', async (failure) => {
+    const renderInput = recoveryInput();
+    const call = vi.fn().mockResolvedValueOnce(response(renderInput, text));
+    if (failure === 'provider_throw') call.mockRejectedValueOnce(new Error('offline'));
+    else call.mockResolvedValueOnce(failure === 'malformed' ? '{' : JSON.stringify(verdict('other-action')));
+    expect(await createAiWeeklyPlanningStableV5DialogueRenderer(config,
+      { createChatCompletion: call }, { canDispatchRecovery: () => true }).render(renderInput))
+      .toMatchObject({ status: 'fallback' });
+    expect(call).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['provider_throw', 'invalid_candidate', 'cancelled_after_generation'])('makes no verification call after %s', async (failure) => {
+    const renderInput = recoveryInput();
+    let current = true;
+    const call = vi.fn(async () => {
+      if (failure === 'provider_throw') throw new Error('offline');
+      if (failure === 'invalid_candidate') return '{';
+      current = false;
+      return response(renderInput, text);
+    });
+    expect(await createAiWeeklyPlanningStableV5DialogueRenderer(config,
+      { createChatCompletion: call }, { canDispatchRecovery: () => current }).render(renderInput))
+      .toMatchObject({ status: 'fallback' });
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires a live current-turn guard before any recovery call', async () => {
+    const call = vi.fn();
+    expect(await createAiWeeklyPlanningStableV5DialogueRenderer(config,
+      { createChatCompletion: call }).render(recoveryInput())).toMatchObject({ status: 'fallback' });
+    expect(call).not.toHaveBeenCalled();
   });
 });

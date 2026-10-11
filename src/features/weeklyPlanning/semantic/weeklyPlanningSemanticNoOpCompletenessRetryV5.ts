@@ -1,3 +1,4 @@
+import { hasSelfSufficientConversationActV5 } from './weeklyPlanningConversationActsV5';
 import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
@@ -127,6 +128,7 @@ export function isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5(params: 
   publicStateSummary?: Record<string, unknown>;
 }): boolean {
   if (!hasMachinePendingQuestion(params.publicStateSummary)) return false;
+  if (hasSelfSufficientConversationActV5(params.document.conversationActs)) return false;
   const document = params.document;
   if (
     document.planningWindow

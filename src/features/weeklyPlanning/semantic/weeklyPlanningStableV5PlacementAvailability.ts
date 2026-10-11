@@ -1,6 +1,8 @@
+import { createScheduleOccurrenceProjection } from '../../../domain/scheduleOccurrence';
+import { doesMonthEventOccurOnDate } from '../../../lib/monthEvents';
 import { getRecurrenceWeekday } from '../../../lib/planRecurrence';
 import { buildTimetableImportCandidates } from '../../../lib/timetableImport';
-import type { Plan, ScheduleTemplate } from '../../../types/domain';
+import type { MonthEvent, Plan, ScheduleTemplate } from '../../../types/domain';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
 import type { WeeklyPlanningPlacementNotBeforeV5 } from './weeklyPlanningStableV5PlacementPolicy';
 
@@ -20,6 +22,7 @@ export const DEFAULT_PLACEMENT_DAY_END = '22:00';
 
 const EXISTING_PLAN_BUFFER_MINUTES = 10;
 const MINUTES_PER_DAY = 24 * 60;
+const PLACEMENT_CLOCK = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 
 export function minutesFromPlacementTime(time: string): number {
   if (time === '24:00') return MINUTES_PER_DAY;
@@ -94,6 +97,60 @@ function existingPlanIntervals(
   });
 }
 
+function monthEventIntervals(params: {
+  ownerId: string;
+  monthEvents?: readonly MonthEvent[];
+  dates: readonly string[];
+}): MinuteInterval[] {
+  if (!params.monthEvents?.length || params.dates.length === 0) return [];
+  const dates = [...params.dates].sort();
+  const projection = createScheduleOccurrenceProjection({
+    ownerId: params.ownerId,
+    startDate: dates[0],
+    endDate: dates[dates.length - 1],
+    plans: [],
+    monthEvents: params.monthEvents.filter((event) => {
+      // Match the existing editor's all-day representations without deciding
+      // their deferred busy/free policy in the ordinary timed-event path.
+      const allDay = event.startTime === '00:00'
+        && (event.endTime === '24:00' || event.endTime === '23:59' || event.endTime === '00:00');
+      if (event.userId !== params.ownerId || event.busy === false || allDay
+        || !params.dates.some((date) => doesMonthEventOccurOnDate(event, date))) return false;
+      // Check raw clocks before the canonical projection's overlap filter can
+      // discard invalid occupied data. Calendar membership uses its same helper.
+      if (!PLACEMENT_CLOCK.test(event.startTime)
+        || !(PLACEMENT_CLOCK.test(event.endTime) || event.endTime === '24:00')) {
+        throw new RangeError('Invalid timed schedule occurrence clock');
+      }
+      return true;
+    }),
+    scheduleTemplates: [],
+  });
+  const intervals: MinuteInterval[] = [];
+  for (const occurrence of projection.occurrences) {
+    if (!occurrence.busy) continue;
+    if (!PLACEMENT_CLOCK.test(occurrence.start.time)
+      || !PLACEMENT_CLOCK.test(occurrence.end.time)) {
+      throw new RangeError('Invalid timed schedule occurrence clock');
+    }
+    // Recurrence, exclusions, multi-day spans and 24:00 normalization belong
+    // to the canonical projection. Only apply the existing placement buffer.
+    addCrossDateInterval({
+      dates: params.dates,
+      startDate: occurrence.start.date,
+      startTime: placementTimeFromMinutes(
+        minutesFromPlacementTime(occurrence.start.time) - EXISTING_PLAN_BUFFER_MINUTES,
+      ),
+      endDate: occurrence.end.date,
+      endTime: placementTimeFromMinutes(
+        minutesFromPlacementTime(occurrence.end.time) + EXISTING_PLAN_BUFFER_MINUTES,
+      ),
+      target: intervals,
+    });
+  }
+  return intervals;
+}
+
 function timetableIntervals(params: {
   templates: readonly ScheduleTemplate[];
   termId?: string;
@@ -152,12 +209,18 @@ export function buildPlacementBusyIntervals(params: {
   input: GenericSchedulerInput;
   dates: readonly string[];
   plans: readonly Plan[];
+  monthEvents?: readonly MonthEvent[];
   scheduleTemplates: readonly ScheduleTemplate[];
   timetableTermId?: string;
 }): MinuteInterval[] {
   return [
     ...hardConstraintIntervals({ input: params.input, dates: params.dates }),
     ...existingPlanIntervals(params.plans, params.dates),
+    ...monthEventIntervals({
+      ownerId: params.input.ownerId,
+      monthEvents: params.monthEvents,
+      dates: params.dates,
+    }),
     ...timetableIntervals({
       templates: params.scheduleTemplates,
       termId: params.timetableTermId,

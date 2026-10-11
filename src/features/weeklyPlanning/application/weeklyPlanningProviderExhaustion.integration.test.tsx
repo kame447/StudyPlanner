@@ -1,3 +1,4 @@
+import { loadWeeklyPlanningRuntimeModule } from './weeklyPlanningRuntimeModule';
 import { createRef, forwardRef, useImperativeHandle } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -145,6 +146,20 @@ beforeEach(async () => {
     // swallow a failed fixture assertion and turn it into a passing fallback.
     throw new Error('Unexpected fixture request');
   }));
+  // Provider/save recovery is measured below; load the real code without executing a turn.
+  // Keep transport installed first, and retain all evidence if loading has a side effect.
+  const codeLoadStartedAt = performance.now();
+  await loadWeeklyPlanningRuntimeModule();
+  expect(fetch).not.toHaveBeenCalled();
+  expect(proxyRequests).toEqual([]);
+  expect(jevRequests).toEqual([]);
+  expect(providerOrder).toEqual([]);
+  expect(genericRequests).toEqual([]);
+  expect(unexpectedRequests).toEqual([]);
+  console.info('[ProviderExhaustion fixture] runtime code ready', {
+    elapsedMs: performance.now() - codeLoadStartedAt,
+    providerCalls: providerOrder.length,
+  });
 });
 afterEach(() => {
   act(() => renderer?.unmount()); renderer = undefined; restoreStorage?.(); restoreStorage = undefined;
