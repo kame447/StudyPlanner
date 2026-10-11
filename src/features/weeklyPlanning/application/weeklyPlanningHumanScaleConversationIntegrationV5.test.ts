@@ -1,3 +1,16 @@
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import { WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS, measureWeeklyPlanningTraceJsonBytes } from '../../../../shared/weeklyPlanningTraceContract';
+import { prepareWeeklyPlanningTraceServerWrite } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
+import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
+import { hydrateWeeklyPlanningStableV5RuntimeSession } from './weeklyPlanningStableV5RuntimeSession';
+import { loadWeeklyPlanningStableV5PersistedSession, saveWeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionStorage';
+import { takeWeeklyPlanningStableV5DebugTrace, resetWeeklyPlanningStableV5DebugTraceForTest } from '../trace/weeklyPlanningStableV5DebugTrace';
+import { recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5TraceRuntimeForTest, resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest } from '../trace/weeklyPlanningStableV5TraceRuntime';
+import { listWeeklyPlanningTraceOutboxItems } from '../trace/weeklyPlanningTraceOutbox';
+import { setWeeklyPlanningTraceRepositoryForTests } from '../trace/weeklyPlanningTraceRepository';
+import type { WeeklyPlanningTraceRepository, WeeklyPlanningTraceSession, WeeklyPlanningTraceEntry } from '../trace/weeklyPlanningTraceTypes';
+import { validateWeeklyPlanningSemanticResponseV5 } from '../semantic/weeklyPlanningSemanticResponseValidationV5';
+import type { WeeklyPlanningSemanticNormalizerInputV5 } from '../semantic/weeklyPlanningSemanticNormalizerContractsV5';
 import { resolveWeeklyPlanningQuestionPresentationFreshness, withoutWeeklyPlanningQuestionPresentation } from '../intake/weeklyPlanningQuestionPresentation';
 import { createPresentedWeeklyPlanningConversation } from '../testUtils/__tests__/weeklyPlanningPresentedConversation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -376,6 +389,121 @@ function candidateSourceFactRefs(candidate: unknown): string[] {
     : [];
 }
 
+
+// Validate the provider-shaped document against the runtime's actual public
+// state and graph before supplying it to the existing typed normalizer fixture.
+function queueValidatedProposalDocument(document: WeeklyPlanningSemanticDocumentV5) {
+  normalizeMock.mockImplementationOnce(async (input: WeeklyPlanningSemanticNormalizerInputV5) => {
+    const validation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(document), {
+      currentUserText: input.userText,
+      supplementalContext: input.supplementalContext,
+      selectedStarterTarget: input.selectedStarterTarget,
+      recentConversation: input.recentConversation,
+      publicStateSummary: input.publicStateSummary,
+      committedGraph: input.committedGraph,
+    });
+    expect(validation.errors).toEqual([]);
+    expect(validation.document).not.toBeNull();
+    return acceptedResult(validation.document!);
+  });
+}
+
+async function createFreshProposalAWithPendingB(conversationId: string) {
+  queueValidatedProposalDocument(planningDocument({
+    title: '英単語', amount: 220, unitCode: 'word', unitLabel: '語',
+    sourceText: '英単語220語', activityKind: 'memorization_retrieval',
+  }));
+  const first = await conversation.run(turnInput({
+    conversationId, userText: '8月17日から23日で英単語220語を覚える予定を作りたい',
+    traceRequestId: `${conversationId}:create-b`,
+  }));
+  const proposalB = first.state.learningStrategyProposalRecords?.[0];
+  expect(proposalB).toMatchObject({ status: 'pending', decidedAtTurnId: null });
+  const secondDocument = planningDocument({
+    title: '歴史用語', amount: 80, unitCode: 'word', unitLabel: '語',
+    sourceText: '歴史用語80語', activityKind: 'memorization_retrieval',
+  });
+  secondDocument.planningIntent = 'update_plan';
+  secondDocument.planningWindow = null;
+  queueValidatedProposalDocument(secondDocument);
+  const second = await conversation.run(turnInput({
+    conversationId, userText: '歴史用語80語を覚える予定も追加してください',
+    traceRequestId: `${conversationId}:create-a`,
+  }));
+  const records = second.state.learningStrategyProposalRecords ?? [];
+  expect(records).toHaveLength(2);
+  expect(records.every((record) => record.status === 'pending' && record.decidedAtTurnId === null)).toBe(true);
+  const proposalA = records.find((record) => record.id !== proposalB!.id)!;
+  expect(proposalA).toBeDefined();
+  expect(proposalA.workloadFactId).not.toBe(proposalB!.workloadFactId);
+  for (const id of [proposalA.workloadFactId, proposalB!.workloadFactId]) {
+    expect(second.stableV5Graph!.factLifecycles.find((entry) => entry.factId === id)?.status).toBe('active');
+  }
+  const state = conversation.getState();
+  expect(resolveWeeklyPlanningQuestionPresentationFreshness({
+    previousState: state.intakeState, inputStateRevision: state.revision,
+    messages: state.messages, graphRevision: second.stableV5Graph!.revision,
+  }).status).toBe('fresh');
+  expect(state.intakeState?.lastQuestionContext).toMatchObject({
+    targetSlot: 'stable_v5:learning_strategy_proposal', actionId: proposalA.id,
+    topicId: proposalA.workloadFactId,
+  });
+  return { proposalA, proposalB: proposalB!, graph: second.stableV5Graph! };
+}
+
+function explicitProposalDecisions(ids: string[], sourceText: string): WeeklyPlanningSemanticDocumentV5 {
+  const document = proposalDecisionDocument({ proposalId: ids[0], decision: 'accept' });
+  document.decisions = ids.map((id, index) => ({
+    ...document.decisions[0], localId: `explicit-proposal-${index}`,
+    target: { kind: 'proposal', publicId: id, localId: null, mention: null }, sourceText,
+  }));
+  return document;
+}
+
+function proposalTraceRepository() {
+  type Write = { session: WeeklyPlanningTraceSession; entries: WeeklyPlanningTraceEntry[] };
+  const attempts: Write[] = [];
+  const writes: Write[] = [];
+  let failNext = true;
+  const repository: WeeklyPlanningTraceRepository = {
+    async upsertSession() {},
+    async appendEntries(write) {
+      attempts.push(structuredClone(write));
+      if (failNext) { failNext = false; throw new Error('injected proposal trace append failure'); }
+      writes.push(structuredClone(write));
+    },
+    async listSessions() { return []; }, async listSessionsForAdmin() { return []; },
+    async archiveSessionForAdmin() {}, async getSession() { return null; }, async listEntries() { return []; },
+  };
+  return { repository, attempts, writes };
+}
+
+function proposalTraceInput(params: {
+  conversationId: string; requestId: string; userText: string;
+  result: Awaited<ReturnType<typeof conversation.run>>;
+  events: ReturnType<typeof takeWeeklyPlanningStableV5DebugTrace>;
+}) {
+  return {
+    userId: 'owner-human-scale', conversationId: params.conversationId,
+    requestId: params.requestId, userText: params.userText,
+    assistantMessage: params.result.message, responseSource: params.result.responseSource,
+    outcome: params.result.state.status, previewCount: params.result.draftCandidates.length,
+    debugTraceEvents: params.events,
+  };
+}
+
+// Bounded summaries may retain explicit head/tail fragments instead of an object.
+// Match each complete serialized record in a retained fragment, never infer identity
+// from separate occurrences of an ID and status or reconstruct omitted bytes.
+function expectProposalRecordsInStoredSummary(value: unknown, records: unknown[]) {
+  const bounded = value as { traceTruncated?: boolean; jsonHead?: string; jsonTail?: string };
+  const fragments = bounded?.traceTruncated
+    ? [bounded.jsonHead ?? '', bounded.jsonTail ?? ''] : [JSON.stringify(value)];
+  for (const record of records) {
+    expect(fragments.some((fragment) => fragment.includes(JSON.stringify(record)))).toBe(true);
+  }
+}
+
 describe('Stable V5 human-scale conversation integration', () => {
   beforeEach(() => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
@@ -571,6 +699,241 @@ describe('Stable V5 human-scale conversation integration', () => {
     expect(acceptedGraph).toBeDefined();
     expect(acceptedGraph!.workloads.find((workload) => workload.id === workloadId)).toEqual(first.stableV5Graph!.workloads[0]);
     expect(acceptedGraph!.effortEstimates.filter((effort) => effort.targetFactId === workloadId)).toEqual([]);
+  });
+
+  it('accepts the exact fresh displayed proposal A without granting save authority', async () => {
+    const conversationId = 'proposal-presentation-positive-a';
+    const { proposalA, proposalB } = await createFreshProposalAWithPendingB(conversationId);
+    const userText = '今表示された歴史用語の提案を採用します';
+    queueValidatedProposalDocument(explicitProposalDecisions([proposalA.id], userText));
+    const result = await conversation.run(turnInput({ conversationId, userText, traceRequestId: 'accept-a' }));
+    expect(result.state.learningStrategyProposalRecords?.find((record) => record.id === proposalA.id))
+      .toMatchObject({ status: 'accepted' });
+    expect(result.state.learningStrategyProposalRecords?.find((record) => record.id === proposalB.id))
+      .toMatchObject({ status: 'pending', decidedAtTurnId: null });
+    expect(result.state.shouldSavePlan).toBe(false);
+    expect(result.draftCandidates).toEqual([]);
+  });
+
+  it('leaves valid pending B undecided when collective A and B decisions follow fresh displayed A', async () => {
+    const conversationId = 'proposal-presentation-collective';
+    const { proposalA, proposalB } = await createFreshProposalAWithPendingB(conversationId);
+    const userText = '歴史用語と英単語の両方の提案を採用します';
+    queueValidatedProposalDocument(explicitProposalDecisions([proposalA.id, proposalB.id], userText));
+    const result = await conversation.run(turnInput({ conversationId, userText, traceRequestId: 'accept-collective' }));
+    const publicState = normalizeMock.mock.calls[2][0].publicStateSummary;
+    expect(publicState.pendingQuestion.actionId).toBe(proposalA.id);
+    expect(publicState.learningStrategyProposals.map((record: { publicId: string }) => record.publicId))
+      .toEqual(expect.arrayContaining([proposalA.id, proposalB.id]));
+    expect(result.state.learningStrategyProposalRecords?.filter((record) => record.status === 'accepted')
+      .map((record) => record.id)).toEqual([proposalA.id]);
+    expect(result.state.learningStrategyProposalRecords?.find((record) => record.id === proposalB.id))
+      .toMatchObject({ status: 'pending', decidedAtTurnId: null });
+    expect(result.state.shouldSavePlan).toBe(false);
+  });
+
+  it('does not redirect an explicit B-only proposal decision to fresh displayed A or settle B', async () => {
+    const conversationId = 'proposal-presentation-explicit-b';
+    const { proposalA, proposalB } = await createFreshProposalAWithPendingB(conversationId);
+    const userText = '英単語の提案だけ採用します';
+    queueValidatedProposalDocument(explicitProposalDecisions([proposalB.id], userText));
+    const result = await conversation.run(turnInput({ conversationId, userText, traceRequestId: 'accept-b-only' }));
+    const acceptedReading = await normalizeMock.mock.results[2].value;
+    expect(acceptedReading.document.decisions.map((decision: { target: { publicId: string } }) => decision.target.publicId))
+      .toEqual([proposalB.id]);
+    expect(result.state.learningStrategyProposalRecords?.find((record) => record.id === proposalA.id))
+      .toMatchObject({ status: 'pending', decidedAtTurnId: null });
+    expect(result.state.learningStrategyProposalRecords?.find((record) => record.id === proposalB.id))
+      .toMatchObject({ status: 'pending', decidedAtTurnId: null });
+    expect(result.state.shouldSavePlan).toBe(false);
+  });
+
+  it.each(['unbound', 'stale', 'no_question'] as const)('does not settle a known proposal A through an %s presentation', async (presentation) => {
+    const conversationId = `proposal-presentation-${presentation}`;
+    const { proposalA, proposalB, graph } = await createFreshProposalAWithPendingB(conversationId);
+    const state = conversation.getState();
+    if (presentation === 'unbound' || presentation === 'no_question') {
+      conversation.dispatch({ type: 'load_state', state: { ...state, intakeState: {
+        ...state.intakeState!, lastQuestionContext: presentation === 'no_question' ? undefined
+          : withoutWeeklyPlanningQuestionPresentation(state.intakeState!.lastQuestionContext),
+      } } });
+    } else {
+      conversation.dispatch({ type: 'set_last_assistant_message', message: '別の案内を表示しました。' });
+    }
+    const changedState = conversation.getState();
+    expect(resolveWeeklyPlanningQuestionPresentationFreshness({
+      previousState: changedState.intakeState, inputStateRevision: changedState.revision,
+      messages: changedState.messages, graphRevision: graph.revision,
+    }).status).toBe(presentation);
+    const userText = '歴史用語の提案を採用します';
+    queueValidatedProposalDocument(explicitProposalDecisions([proposalA.id], userText));
+    const result = await conversation.run(turnInput({ conversationId, userText, traceRequestId: 'accept-without-freshness' }));
+    expect(normalizeMock.mock.calls[2][0].publicStateSummary.pendingQuestion).toBeNull();
+    for (const id of [proposalA.id, proposalB.id]) {
+      expect(result.state.learningStrategyProposalRecords?.find((record) => record.id === id))
+        .toMatchObject({ status: 'pending', decidedAtTurnId: null });
+    }
+    expect(result.state.shouldSavePlan).toBe(false);
+  });
+
+  it.each([false, true])('persists the actual proposal decision and reloaded continuation through outbox and Worker (oversized=%s)', async (oversized) => {
+    const conversationId = `weekly-conversation-823e4567-e89b-52d3-a456-42661417400${oversized ? '1' : '0'}`;
+    const previousTraceEnabled = import.meta.env.VITE_WEEKLY_PLANNING_TRACE_ENABLED;
+    vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
+    const storage = createMemoryStorageHarness();
+    const restoreStorage = installWeeklyPlanningTestStorage(storage.storage);
+    const harness = proposalTraceRepository();
+    resetWeeklyPlanningStableV5TraceRuntimeForTest();
+    resetWeeklyPlanningStableV5DebugTraceForTest();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    try {
+      const { proposalA, proposalB } = await createFreshProposalAWithPendingB(conversationId);
+      const userText = '歴史用語と英単語の両方の提案を採用します';
+      const document = explicitProposalDecisions([proposalA.id, proposalB.id], userText);
+      const actual = await vi.importActual<typeof import('../semantic/weeklyPlanningSemanticNormalizerV5')>('../semantic/weeklyPlanningSemanticNormalizerV5');
+      const createChatCompletion = vi.fn<OpenAiCompatibleClient['createChatCompletion']>(async () => JSON.stringify(document));
+      const normalizer = actual.createWeeklyPlanningSemanticNormalizerV5({ createChatCompletion });
+      normalizeMock.mockImplementationOnce((input: WeeklyPlanningSemanticNormalizerInputV5) => normalizer.normalize(input));
+      const decided = await conversation.run(turnInput({ conversationId, userText, traceRequestId: 'trace-proposal-decision' }));
+      const accepted = await normalizeMock.mock.results[2].value;
+      expect(accepted.status).toBe('accepted');
+      expect(accepted.document.decisions.map((decision: { target: { publicId: string } }) => decision.target.publicId))
+        .toEqual([proposalA.id, proposalB.id]);
+      expect(createChatCompletion).toHaveBeenCalledTimes(1);
+      expect(decided.state.learningStrategyProposalRecords?.find((record) => record.id === proposalA.id))
+        .toMatchObject({ status: 'accepted' });
+      expect(decided.state.learningStrategyProposalRecords?.find((record) => record.id === proposalB.id))
+        .toMatchObject({ status: 'pending', decidedAtTurnId: null });
+      expect(decided.state.shouldSavePlan).toBe(false);
+      const decisionRequestId = normalizeMock.mock.calls[2][0].traceRequestId!;
+      const decisionEvents = takeWeeklyPlanningStableV5DebugTrace(decisionRequestId);
+      const requestEvents = decisionEvents.filter((event) => event.stage === 'semantic_provider_request');
+      expect(requestEvents).toHaveLength(1);
+      const sentRequest = createChatCompletion.mock.calls[0][0];
+      const requestEvent = requestEvents[0].data as {
+        requestBytes: number; request: { messages: unknown[]; purpose: string; maxCompletionTokens: number };
+      };
+      expect(requestEvent).toMatchObject({
+        requestBytes: new TextEncoder().encode(JSON.stringify(sentRequest)).byteLength,
+        request: { purpose: sentRequest.purpose, maxCompletionTokens: sentRequest.maxCompletionTokens },
+      });
+      // The last message is this bounded fixture's actual user/context payload.
+      expect(requestEvent.request.messages[requestEvent.request.messages.length - 1]).toEqual(sentRequest.messages[sentRequest.messages.length - 1]);
+      expect(decisionEvents.some((event) => event.stage === 'semantic_validation_result'
+        && (event.data as { accepted?: boolean }).accepted)).toBe(true);
+      await recordWeeklyPlanningStableV5TurnTrace(proposalTraceInput({
+        conversationId, requestId: decisionRequestId, userText, result: decided, events: decisionEvents,
+      }));
+      expect(harness.writes).toHaveLength(0);
+      expect(listWeeklyPlanningTraceOutboxItems({ userId: 'owner-human-scale', conversationId })).toHaveLength(1);
+
+      // The third-turn result is committed locally, saved by the real checkpoint
+      // codec, re-read from storage and rehydrated before the fourth turn begins.
+      const committed = conversation.getState();
+      const committedRecords = structuredClone(committed.intakeState!.learningStrategyProposalRecords);
+      expect(saveWeeklyPlanningStableV5PersistedSession({
+        ownerId: 'owner-human-scale', weekStartDate: committed.weekStartDate,
+        conversationId, graph: decided.stableV5Graph!, planningState: committed,
+      })).toBe(true);
+      expect(storage.values.size).toBeGreaterThan(0);
+      resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+      resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+      const restored = loadWeeklyPlanningStableV5PersistedSession({
+        ownerId: 'owner-human-scale', weekStartDate: committed.weekStartDate,
+      });
+      expect(restored).not.toBeNull();
+      expect(restored!.planningState.intakeState?.learningStrategyProposalRecords).toEqual(committedRecords);
+      expect(restored!.graph).toEqual(decided.stableV5Graph);
+      hydrateWeeklyPlanningStableV5RuntimeSession(restored!);
+      conversation.dispatch({ type: 'load_state', state: restored!.planningState });
+
+      const continuationText = '状況を確認しました';
+      const continuation = proposalDecisionDocument({ proposalId: proposalA.id, decision: 'accept' });
+      continuation.decisions = [];
+      queueValidatedProposalDocument(continuation);
+      const continued = await conversation.run(turnInput({
+        conversationId, userText: continuationText, traceRequestId: 'trace-proposal-continuation',
+      }));
+      expect((await normalizeMock.mock.results[3].value).document.decisions).toEqual([]);
+      expect(continued.state.learningStrategyProposalRecords).toEqual(committedRecords);
+      expect(continued.state.shouldSavePlan).toBe(false);
+      const summary = normalizeMock.mock.calls[3][0].publicStateSummary!;
+      const summaryRecords = summary.learningStrategyProposals as Array<{ publicId: string; status: string }>;
+      expect(summaryRecords).toEqual(expect.arrayContaining([
+        expect.objectContaining({ publicId: proposalA.id, status: 'accepted' }),
+        expect.objectContaining({ publicId: proposalB.id, status: 'pending' }),
+      ]));
+      const continuationRequestId = normalizeMock.mock.calls[3][0].traceRequestId!;
+      const continuationEvents = takeWeeklyPlanningStableV5DebugTrace(continuationRequestId);
+      const pipelineInput = continuationEvents.find((event) => event.stage === 'semantic_pipeline_input')!;
+      expect(pipelineInput).toBeDefined();
+      const data = pipelineInput.data as { publicStateSummary: Record<string, unknown> };
+      expect(data.publicStateSummary.learningStrategyProposals).toEqual(summaryRecords);
+      data.publicStateSummary.futureProposalTraceSentinel = 'proposal-continuation-sentinel';
+      if (oversized) data.publicStateSummary.futureLargeValue = 'あ'.repeat(20_000);
+      await recordWeeklyPlanningStableV5TurnTrace(proposalTraceInput({
+        conversationId, requestId: continuationRequestId, userText: continuationText,
+        result: continued, events: continuationEvents,
+      }));
+      expect(harness.writes).toHaveLength(2);
+      expect(listWeeklyPlanningTraceOutboxItems({ userId: 'owner-human-scale', conversationId })).toEqual([]);
+      const firstAttempt = harness.attempts[0].entries[0];
+      const replayed = harness.writes[0].entries[0];
+      const { observedAt: firstObserved, ...originalContent } = firstAttempt;
+      const { observedAt: replayedObserved, ...replayedContent } = replayed;
+      expect(replayedContent).toEqual(originalContent);
+      expect(Date.parse(replayedObserved!)).toBeGreaterThanOrEqual(Date.parse(firstObserved!));
+      const stored = harness.writes.map((write) => {
+        expect(write.entries).toHaveLength(1);
+        expect(measureWeeklyPlanningTraceJsonBytes(write.entries[0]))
+          .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+        const prepared = prepareWeeklyPlanningTraceServerWrite({
+          session: write.session as unknown as Record<string, unknown>,
+          entries: write.entries as unknown as Record<string, unknown>[],
+        }, { token: `wpt_${'f'.repeat(43)}`, epoch: '105' }, {
+          sessionId: conversationId.replace('weekly-conversation-', 'weekly-trace-'),
+          logicalConversationId: conversationId,
+        }, '2026-10-10T00:00:00.000Z');
+        expect(prepared.entries).toHaveLength(1);
+        expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0]))
+          .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+        const serialized = JSON.stringify(prepared.entries[0]);
+        expect(serialized).not.toContain('planningStateRevision');
+        expect(serialized).not.toContain('assistantMessageId');
+        return prepared.entries[0];
+      });
+      expect(stored[0]).toMatchObject({ requestId: decisionRequestId, aiInterpreter: {
+        input: { requests: expect.any(Array) },
+        structuredResults: expect.arrayContaining([expect.objectContaining({ accepted: true,
+          structuredResult: expect.objectContaining({ decisions: expect.arrayContaining([
+            expect.objectContaining({ target: expect.objectContaining({ publicId: proposalA.id }) }),
+            expect.objectContaining({ target: expect.objectContaining({ publicId: proposalB.id }) }),
+          ]) }),
+        })]),
+      } });
+      const decisionDiagnostic = stored[0] as { aiInterpreter: { input: { requests: unknown[] } } };
+      expect(decisionDiagnostic.aiInterpreter.input.requests).toHaveLength(1);
+      expect(decisionDiagnostic.aiInterpreter.input.requests[0]).toMatchObject({
+        purpose: requestEvent.request.purpose, requestBytes: requestEvent.requestBytes,
+        maxCompletionTokens: requestEvent.request.maxCompletionTokens,
+      });
+      const continuationDiagnostic = stored[1] as { aiInterpreter: { input: { planningStateSummary: unknown } }; diagnostics: { truncation?: { applied: boolean; fields: string[] } } };
+      if (oversized) {
+        expect(continuationDiagnostic.diagnostics.truncation?.applied).toBe(true);
+        expect(continuationDiagnostic.diagnostics.truncation?.fields)
+          .toContain('aiInterpreter.input.planningStateSummary');
+        expect(JSON.stringify(stored[1])).not.toContain('あ'.repeat(20_000));
+      } else {
+        expectProposalRecordsInStoredSummary(continuationDiagnostic.aiInterpreter.input.planningStateSummary, summaryRecords);
+        expect(JSON.stringify(stored[1])).toContain('proposal-continuation-sentinel');
+      }
+    } finally {
+      setWeeklyPlanningTraceRepositoryForTests(undefined);
+      resetWeeklyPlanningStableV5TraceRuntimeForTest();
+      resetWeeklyPlanningStableV5DebugTraceForTest();
+      restoreStorage();
+      vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', previousTraceEnabled);
+    }
   });
 
 });

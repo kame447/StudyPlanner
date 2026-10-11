@@ -305,4 +305,17 @@ describe('Stable V5 schema-valid no-op completeness retry', () => {
       json_schema: { name: 'weekly_planning_focused_task_temporal_side_contribution_v5' },
     });
   });
+  it('skips missing-answer retries for self-sufficient acts but not an empty answer act', () => {
+    for (const kind of ['ask_about_pending_question', 'topic_shift', 'resume_topic', 'answer_pending_question'] as const) {
+      const value = { ...existingTaskShell(), tasks: [], conversationActs: [{ kind, targetPublicId: null }] };
+      expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
+        document: value, publicStateSummary: publicStateSummary(),
+      })).toBe(kind === 'answer_pending_question');
+    }
+    expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({
+      document: { ...recoveredDeadline(), conversationActs: [{ kind: 'answer_pending_question', targetPublicId: null }] },
+      publicStateSummary: publicStateSummary(),
+    })).toBe(false);
+  });
+
 });
