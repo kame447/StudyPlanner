@@ -316,7 +316,8 @@ describe('Stable V5 repair-safe preview integration', () => {
       expect(acceptedGraph.effortEstimates[0]).toMatchObject({ kind: 'duration_per_unit', minutes: 5 });
       expect(acceptedGraph.workloads[0].amount! * acceptedGraph.effortEstimates[0].minutes).toBe(60);
       // Existing 1.1 safety buffer and five-minute upward rounding: 60 -> 66 -> 70.
-      expect(result.draftCandidates[0]).toMatchObject({ date: '2026-08-21', startTime: '20:00', endTime: '21:10', durationMinutes: 70 });
+      // Existing appointment ends at 20:00; preserve the source's 10-minute busy buffer plus 10-minute placement break.
+      expect(result.draftCandidates[0]).toMatchObject({ date: '2026-08-21', startTime: '20:20', endTime: '21:30', durationMinutes: 70 });
       const evidence = result.existingScheduleGrounding;
       expect(evidence).toEqual({ graphRevision: result.stableV5Graph!.revision,
         sourceId: 'studyplanner-existing-plans', requestFactId: result.stableV5Graph!.constraintSourceRequests[0].id,
