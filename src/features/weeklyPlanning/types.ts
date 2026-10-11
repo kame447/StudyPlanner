@@ -2,7 +2,7 @@ import type {
   PlanType,
   WeeklyPlanningMemoryPaceObservationSourceV1,
 } from '../../types/domain';
-import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
+import type { PlanningIntakeState, WeeklyPlanningQuestionPresentation } from './intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningEstimateMetadataV1 } from './personalization/weeklyPlanningEstimateCalibration';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type {
@@ -148,6 +148,7 @@ export type WeeklyPlanningAction =
       type: 'fail_turn';
       pending: WeeklyPlanningPendingTurn;
       assistantMessage: WeeklyPlanningMessage;
+      questionPresentation?: WeeklyPlanningQuestionPresentation;
     }
   | { type: 'cancel_turn'; pending: WeeklyPlanningPendingTurn }
   | { type: 'begin_approval'; pending: WeeklyPlanningPendingApproval }

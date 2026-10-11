@@ -278,4 +278,24 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
     }));
     expect(store.getState().pendingTurn).toBeUndefined();
   });
+
+  it.each(['cancel', 'owner_change', 'revision_change'])('passes a live recovery guard that closes after %s', async (change) => {
+    const { params, store } = baseParams();
+    const services = createServices();
+    let before: boolean | undefined;
+    let after: boolean | undefined;
+    services.runtimeGateway.execute = async (input) => {
+      before = input.isCurrentTurn?.();
+      if (change === 'cancel') store.dispatch({ type: 'cancel_turn', pending: input.pending });
+      if (change === 'owner_change') params.session.ownerId = 'other-user';
+      if (change === 'revision_change') store.dispatch({ type: 'load_state',
+        state: { ...store.getState(), revision: store.getState().revision + 1 } });
+      after = input.isCurrentTurn?.();
+      return { state: createInitialPlanningIntakeState(), message: '終了', draftCandidates: [] };
+    };
+    await submitWeeklyPlanningApplicationTurn(params, services);
+    expect(before).toBe(true);
+    expect(after).toBe(false);
+  });
+
 });

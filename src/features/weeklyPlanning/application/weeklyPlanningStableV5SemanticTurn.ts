@@ -133,6 +133,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
     messages: input.messages,
     previousState: input.previousState,
     ownerId: input.userId,
+    inputStateRevision: input.inputStateRevision,
     currentDate: requestContext.currentDate,
     userText: input.userText,
     studyMaterials: input.studyMaterials ?? [],

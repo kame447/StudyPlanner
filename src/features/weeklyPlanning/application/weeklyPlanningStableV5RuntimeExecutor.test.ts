@@ -3,6 +3,7 @@ import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
   type WeeklyPlanningSemanticDocumentV5,
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
+import { validateWeeklyPlanningSemanticResponseV5 } from '../semantic/weeklyPlanningSemanticResponseValidationV5';
 import {
   resetWeeklyPlanningStableV5DebugTraceForTest,
   takeWeeklyPlanningStableV5DebugTrace,
@@ -400,11 +401,31 @@ describe('Stable V5 runtime executor', () => {
     );
   });
 
-  it('runs structured semantic normalization through deterministic preview placement', async () => {
+  // The normalizer is mocked: these rows compare accepted typed representations,
+  // not AI interpretation of past progress, per-day amounts or session length.
+  it.each(['minute_target', 'task_total_duration'] as const)('places accepted %s work without persisting projection', async (representation) => {
+    const userText = '7月27日に部屋の掃除を1時間する予定を作って';
+    const semanticDocument = document();
+    if (representation === 'task_total_duration') {
+      semanticDocument.tasks[0].workloads = [];
+      semanticDocument.tasks[0].effortEstimates = [{
+        localId: 'total-duration-1', targetLocalId: 'task-1', kind: 'total_duration',
+        minutes: 60, unitCode: null, precision: 'exact',
+        sourceText: '部屋の掃除を1時間する',
+      }];
+    }
+    // Exercise main's schema/evidence/value acceptance before the mocked provider
+    // result; formal validity does not prove that AI chose the intended meaning.
+    const validation = validateWeeklyPlanningSemanticResponseV5(
+      JSON.stringify(semanticDocument), { currentUserText: userText },
+    );
+    expect(validation.errors).toEqual([]);
+    expect(validation.document).not.toBeNull();
+    normalizeMock.mockResolvedValueOnce(acceptedResult(validation.document!));
     const result = await executeWeeklyPlanningStableV5RuntimeTurn({
       previousState: undefined,
       messages: [],
-      userText: '7月27日に部屋の掃除を1時間する予定を作って',
+      userText,
       selectedDate: '2026-07-27',
       userId: 'owner-1',
       plans: [],
@@ -412,6 +433,23 @@ describe('Stable V5 runtime executor', () => {
       conversationId: 'conversation-1',
       traceRequestId: 'request-1',
     });
+
+    const stagedGraph = getWeeklyPlanningStableV5StagedGraph({
+      ownerId: 'owner-1', conversationId: 'conversation-1', requestId: 'request-1',
+    });
+    expect(stagedGraph).not.toBeNull();
+    if (representation === 'task_total_duration') {
+      expect(stagedGraph!.workloads).toEqual([]);
+      expect(stagedGraph!.effortEstimates).toEqual([expect.objectContaining({
+        kind: 'total_duration', minutes: 60, targetFactId: stagedGraph!.tasks[0].id,
+        source: expect.objectContaining({ sourceText: '部屋の掃除を1時間する' }),
+      })]);
+    } else {
+      expect(stagedGraph!.workloads).toEqual([expect.objectContaining({
+        quantityRole: 'target', amount: 60, unitCode: 'minute',
+      })]);
+      expect(stagedGraph!.effortEstimates).toEqual([]);
+    }
 
     expect(result.message).toContain('1件の仮予定候補');
     expect(result.state).toMatchObject({
@@ -424,9 +462,20 @@ describe('Stable V5 runtime executor', () => {
       date: '2026-07-27',
       startTime: '09:00',
       endTime: '10:00',
+      durationMinutes: 60,
       title: '部屋の掃除 60分',
     });
 
+    const expectedRefs = [
+      stagedGraph!.tasks[0].id,
+      ...(representation === 'task_total_duration'
+        ? stagedGraph!.effortEstimates.map((fact) => fact.id)
+        : stagedGraph!.workloads.map((fact) => fact.id)),
+    ];
+    expect(result.draftCandidates[0]).toMatchObject({ stableV5Metadata: {
+      taskId: stagedGraph!.tasks[0].id, graphRevision: stagedGraph!.revision,
+      sourceFactRefs: expectedRefs,
+    } });
     const events = takeWeeklyPlanningStableV5DebugTrace('request-1');
     expect(events).toEqual(expect.arrayContaining([
       expect.objectContaining({ stage: 'runtime_configuration_evaluated' }),
@@ -446,6 +495,9 @@ describe('Stable V5 runtime executor', () => {
           status: 'ready',
           candidateCount: 1,
           unscheduledCount: 0,
+          candidates: [expect.objectContaining({ stableV5Metadata: expect.objectContaining({
+            sourceFactRefs: expectedRefs,
+          }) })],
         }),
       }),
       expect.objectContaining({
