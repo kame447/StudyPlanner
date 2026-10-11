@@ -158,6 +158,7 @@ export interface WeeklyPlanningTraceSchedulerSummary {
   selectedDate: string | null;
   timeZone: string | null;
   planningHorizon: unknown;
+  hardClockBounds?: unknown;
   externalSources: WeeklyPlanningTraceSchedulerSourceSummary[];
   compilationStatus: string | null;
   issues: WeeklyPlanningTraceSchedulerIssueSummary[];

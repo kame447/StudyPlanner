@@ -16,6 +16,7 @@ import type {
   WeeklyPlanningSchedulerHardDateBoundV5,
 } from './weeklyPlanningResolvedTemporalConstraintsV5';
 import { scheduleWeeklyPlanningStableV5Preview } from './weeklyPlanningStableV5PreviewScheduler';
+import { scheduleWeeklyPlanningWorkItemV5, type WeeklyPlanningPlacementRuntimeContextV5 } from './weeklyPlanningStableV5WorkItemPlacement';
 
 function source(id: string) {
   return {
@@ -166,6 +167,32 @@ function placementGraph(params: Parameters<typeof graph>[0]) {
 }
 
 describe('Stable V5 hard date bound placement', () => {
+  it.each(['none', 'other-target', 'other-date', 'matching'] as const)(
+    'preserves explicit hard availability outside base windows for a date-only preference (clock=%s)', scope => {
+      const input = schedulerInput();
+      input.preferredPlacements = [{ taskId: 'task-1', targetFactId: 'task-1',
+        dates: ['2026-08-17'], window: null, sourceFactId: 'date-preference' }];
+      input.hardClockBounds = scope === 'none' ? [] : [{ taskId: 'task-1',
+        targetFactId: scope === 'other-target' ? 'another-component' : 'task-1',
+        sourceFactId: 'clock-1', kind: 'earliest_start', minute: 20 * 60,
+        anchorDate: scope === 'other-date' ? '2026-08-18' : null }];
+      // This exported owner accepts independent base/hard maps; neither may be substituted for the other.
+      const context: WeeklyPlanningPlacementRuntimeContextV5 = {
+        input, graph: placementGraph({ constraints: [] }), dates: ['2026-08-17'],
+        windowsByDate: new Map([['2026-08-17', [{ start: 9 * 60, end: 22 * 60 }]]]),
+        hardAvailableByDate: new Map([['2026-08-17', [{ start: 23 * 60, end: 24 * 60 }]]]),
+        busy: [], dayLoads: new Map(), breakMinutes: 0, totalMovableMinutes: 60,
+      };
+      const original = structuredClone({ input, windows: context.windowsByDate, hard: context.hardAvailableByDate });
+      const result = scheduleWeeklyPlanningWorkItemV5({ context, item: input.movableWorkItems[0],
+        taskPosition: { index: 0, count: 1 }, taskOrdinal: 0, fixedEnds: new Map(), globalCandidates: [] });
+      expect(result.failedWorkItemId).toBeNull();
+      expect(result.candidates).toHaveLength(1);
+      expect(result.candidates[0]).toMatchObject({ date: '2026-08-17', startTime: '23:00', endTime: '24:00' });
+      expect({ input, windows: context.windowsByDate, hard: context.hardAvailableByDate }).toEqual(original);
+    },
+  );
+
   it('never places ordinary movable work after a compiled hard deadline', () => {
     const scheduled = scheduleWeeklyPlanningStableV5Preview({
       input: schedulerInput({

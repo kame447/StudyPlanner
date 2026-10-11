@@ -37,6 +37,16 @@ export interface WeeklyPlanningResolvedHardDateBoundV5 {
   sourceFactIds: string[];
 }
 
+/** A restriction on existing placements, never a source of available time or occurrences. */
+export interface WeeklyPlanningResolvedHardClockBoundV5 {
+  taskId: string;
+  targetFactId: string;
+  sourceFactId: string;
+  kind: 'earliest_start' | 'latest_end' | 'deadline';
+  minute: number;
+  anchorDate: string | null;
+}
+
 export type WeeklyPlanningResolvedPreferredDateScopeV5 =
   | { kind: 'all' }
   | { kind: 'range'; startDate: string; endDate: string }
@@ -57,6 +67,7 @@ export interface WeeklyPlanningResolvedTemporalConstraintsV5 {
   referenceDate: string;
   weekStartsOn: CalendarWeekStartsOn;
   hardDateBounds: WeeklyPlanningResolvedHardDateBoundV5[];
+  hardClockBounds: WeeklyPlanningResolvedHardClockBoundV5[];
   preferredWindows: WeeklyPlanningResolvedPreferredWindowV5[];
 }
 
@@ -215,6 +226,47 @@ function clockMinute(value: string): number | null {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
+function resolveHardClockBounds(params: {
+  graph: WeeklyPlanningTemporalConstraintGraphViewV5;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
+}): WeeklyPlanningResolvedHardClockBoundV5[] {
+  const bounds: WeeklyPlanningResolvedHardClockBoundV5[] = [];
+  for (const constraint of params.graph.temporalConstraints) {
+    if (constraint.constraintLevel !== 'hard'
+      || (constraint.kind !== 'earliest_start'
+        && constraint.kind !== 'latest_end' && constraint.kind !== 'deadline')) continue;
+    // C2 handles only an explicit one-sided clock. Other accepted shapes remain a documented release gap;
+    // do not partially reinterpret a named period or the opposite endpoint as this supported shape.
+    if (constraint.namedTimePeriod !== null
+      || (constraint.kind === 'earliest_start' ? constraint.endTime !== null : constraint.startTime !== null)) continue;
+    const clock = constraint.kind === 'earliest_start' ? constraint.startTime : constraint.endTime;
+    if (!clock) continue;
+    const minute = clockMinute(clock);
+    if (minute === null) continue;
+    const anchorDate = resolvedHardConstraintDate({
+      constraint, resolvedDateExpressions: params.resolvedDateExpressions,
+    });
+    // An unresolved supplied date must not become an every-day restriction.
+    if (constraint.dateExpression && !anchorDate) continue;
+    if (constraint.kind === 'deadline' && !anchorDate) continue;
+    // Preserve the accepted target even before work is produced (e.g. a provisional timebox).
+    bounds.push({ taskId: constraint.taskId, targetFactId: constraint.targetFactId,
+      sourceFactId: constraint.id, kind: constraint.kind, minute, anchorDate });
+  }
+  return bounds;
+}
+
+/** Re-apply existing interpretations to current scheduler targets; never resolve calendar expressions here. */
+export function materializeWeeklyPlanningHardTemporalBoundsV5(params: {
+  graph: WeeklyPlanningTemporalConstraintGraphViewV5;
+  resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
+}): Pick<WeeklyPlanningResolvedTemporalConstraintsV5, 'hardDateBounds' | 'hardClockBounds'> {
+  return {
+    hardDateBounds: resolveHardDateBounds(params),
+    hardClockBounds: resolveHardClockBounds(params),
+  };
+}
+
 function preferredWindow(params: {
   constraint: WeeklyPlanningTemporalConstraintGraphViewV5['temporalConstraints'][number];
   namedTimePeriods: Partial<Record<string, { startTime: string; endTime: string }>>;
@@ -299,10 +351,7 @@ export function resolveWeeklyPlanningTemporalConstraintsV5(params: {
   return {
     referenceDate: resolvedDateExpressions.referenceDate,
     weekStartsOn: resolvedDateExpressions.weekStartsOn,
-    hardDateBounds: resolveHardDateBounds({
-      graph: params.graph,
-      resolvedDateExpressions,
-    }),
+    ...materializeWeeklyPlanningHardTemporalBoundsV5({ graph: params.graph, resolvedDateExpressions }),
     preferredWindows: resolvePreferredWindows({
       graph: params.graph,
       resolvedDateExpressions,

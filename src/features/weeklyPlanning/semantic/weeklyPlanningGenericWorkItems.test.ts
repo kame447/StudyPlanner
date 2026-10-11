@@ -4,6 +4,11 @@ import {
   type WeeklyPlanningFactGraph,
 } from './weeklyPlanningFactGraph';
 import { compileGenericPlanningWorkItems } from './weeklyPlanningGenericWorkItems';
+import { validateWeeklyPlanningWorkloadValuesV5 } from './weeklyPlanningQuantitativeValueValidatorV5';
+import { createEmptyWeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
+import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './weeklyPlanningActiveSchedulerGraphViewV5';
+import { projectWeeklyPlanningStatedTimeBudgetGraphV5 } from './weeklyPlanningStatedTimeBudgetProjectionV5';
+import { calibrateGenericPlanningWorkItemsV5 } from './weeklyPlanningGenericWorkItemCalibrationV5';
 
 function createGraph(): WeeklyPlanningFactGraph {
   const graph = createEmptyWeeklyPlanningFactGraph();
@@ -188,6 +193,45 @@ function createGraph(): WeeklyPlanningFactGraph {
 }
 
 describe('generic weekly planning work item compiler', () => {
+  it.each([
+    { unitCode: 'custom', unitLabel: 'A4用紙', expected: '問題集 20A4用紙' },
+    { unitCode: 'problem', unitLabel: '題', expected: '問題集 20題' },
+    { unitCode: 'problem', unitLabel: '２０問', expected: '問題集 20問' },
+  ] as const)('preserves custom and clean aliases, canonicalizes numeric standard labels: $unitLabel', ({ unitCode, unitLabel, expected }) => {
+    const graph = createGraph();
+    Object.assign(graph.workloads.find((fact) => fact.id === 'workload-problems')!, { unitCode, unitLabel });
+    graph.effortEstimates.find((fact) => fact.id === 'estimate-problem')!.unitCode = unitCode;
+    const before = structuredClone(graph);
+    const result = compileGenericPlanningWorkItems(graph);
+    expect(result.issues).toEqual([]);
+    const item = result.items.find((candidate) => candidate.workloadFactId === 'workload-problems');
+    expect(item).toMatchObject({ quantity: { amount: 20, unitCode, unitLabel }, baseEstimatedMinutes: 200, estimatedMinutes: 225 });
+    expect(graph).toEqual(before);
+    expect(item?.label).toBe(expected);
+  });
+
+  it.each([
+    { name: 'clock wording echo', id: 'workload-cleaning', amount: 60, unitCode: 'minute', unitLabel: '1時間', label: '掃除 60分', base: 60, allocated: 60 },
+    { name: 'clean clock unit', id: 'workload-cleaning', amount: 60, unitCode: 'minute', unitLabel: '分', label: '掃除 60分', base: 60, allocated: 60 },
+    { name: 'count wording echo', id: 'workload-problems', amount: 20, unitCode: 'problem', unitLabel: '20問', label: '問題集 20問', base: 200, allocated: 225 },
+    { name: 'clean count unit', id: 'workload-problems', amount: 20, unitCode: 'problem', unitLabel: '問', label: '問題集 20問', base: 200, allocated: 225 },
+  ] as const)('displays the typed quantity without echoing its free unit label: $name', ({ id, amount, unitCode, unitLabel, label, base, allocated }) => {
+    const graph = createGraph();
+    const workload = graph.workloads.find((fact) => fact.id === id)!;
+    Object.assign(workload, { amount, unitCode, unitLabel });
+    const errors: string[] = [];
+    validateWeeklyPlanningWorkloadValuesV5({ ...workload }, 'workload', errors);
+    expect(errors).toEqual([]);
+    const before = structuredClone(graph);
+    const result = compileGenericPlanningWorkItems(graph);
+    expect(result.issues).toEqual([]);
+    const item = result.items.find((candidate) => candidate.workloadFactId === id);
+    expect(item).toMatchObject({ quantity: { amount, unitCode, unitLabel },
+      baseEstimatedMinutes: base, estimatedMinutes: allocated });
+    expect(graph).toEqual(before);
+    expect(item?.label).toBe(label);
+  });
+
   it('treats exam_year as one ordinary workload unit and buffers inferred effort', () => {
     const result = compileGenericPlanningWorkItems(createGraph());
     const item = result.items.find((candidate) =>
@@ -331,4 +375,80 @@ describe('generic weekly planning work item compiler', () => {
 
     expect(first.items.map((item) => item.id)).toEqual(second.items.map((item) => item.id));
   });
+
+  it('derives minute work from every agreeing active task total without inventing fact authority', () => {
+    const task = createGraph().tasks.find((fact) => fact.id === 'task-cleaning')!;
+    const canonical = {
+      ...createEmptyWeeklyPlanningFactGraphV5(), revision: 2, tasks: [task],
+      effortEstimates: ['budget-a', 'budget-b', 'budget-old'].map((id) => ({
+        id, taskId: task.id, targetFactId: task.id, kind: 'total_duration' as const,
+        minutes: id === 'budget-old' ? 90 : 60, unitCode: null, precision: 'exact' as const,
+        source: { ...task.source, semanticLocalId: id }, createdRevision: 1,
+      })),
+      factLifecycles: [task.id, 'budget-a', 'budget-b', 'budget-old'].map((factId) => ({
+        factId, status: factId === 'budget-old' ? 'superseded' as const : 'active' as const,
+        createdRevision: 1, terminalRevision: factId === 'budget-old' ? 2 : null,
+        supersededByFactId: factId === 'budget-old' ? 'budget-a' : null,
+      })),
+    };
+    const original = structuredClone(canonical);
+    const projected = projectWeeklyPlanningStatedTimeBudgetGraphV5(
+      createWeeklyPlanningActiveSchedulerGraphViewV5(canonical),
+    );
+    const result = compileGenericPlanningWorkItems(projected);
+    expect(result.readiness).toBe('ready');
+    expect(result.issues).toEqual([]);
+    expect(result.items).toEqual([expect.objectContaining({
+      quantity: expect.objectContaining({ amount: 60, unitCode: 'minute' }),
+      estimatedMinutes: 60, baseEstimatedMinutes: 60, estimateBasis: 'intrinsic_duration',
+      sourceFactRefs: [task.id, 'budget-a', 'budget-b'],
+      estimateSourceFactIds: ['budget-a', 'budget-b'], estimateSourceWorkloadFactIds: [],
+    })]);
+    expect(calibrateGenericPlanningWorkItemsV5({ items: result.items, calibrationMultiplier: 1.5 }))
+      .toEqual(result.items);
+    expect(canonical).toEqual(original);
+    expect(compileGenericPlanningWorkItems(projectWeeklyPlanningStatedTimeBudgetGraphV5({
+      ...createWeeklyPlanningActiveSchedulerGraphViewV5(canonical),
+      effortEstimates: [...createWeeklyPlanningActiveSchedulerGraphViewV5(canonical).effortEstimates].reverse(),
+    })).items).toEqual(result.items);
+    const unschedulableViews = [
+      createWeeklyPlanningActiveSchedulerGraphViewV5({ ...canonical,
+        factLifecycles: canonical.factLifecycles.map((entry) => entry.factId === task.id
+          ? { ...entry, status: 'removed' as const, terminalRevision: 2 } : entry),
+      }),
+      { ...createWeeklyPlanningActiveSchedulerGraphViewV5(canonical),
+        effortEstimates: createWeeklyPlanningActiveSchedulerGraphViewV5(canonical).effortEstimates
+          .map((budget) => budget.id === 'budget-b' ? { ...budget, minutes: 90 } : budget),
+      },
+      { ...createWeeklyPlanningActiveSchedulerGraphViewV5(canonical), temporalConstraints: [{
+        id: 'fixed-clock', taskId: task.id, targetFactId: task.id, kind: 'fixed_interval' as const,
+        constraintLevel: 'hard' as const, dateExpression: '2026-07-27', namedTimePeriod: null,
+        startTime: '18:00', endTime: '19:00', precision: 'exact' as const,
+        source: task.source, createdRevision: 1,
+      }] },
+    ];
+    for (const view of unschedulableViews) {
+      expect(projectWeeklyPlanningStatedTimeBudgetGraphV5(view).workloads).toEqual([]);
+    }
+
+    // Each malformed derivation must fail closed, never relabel or drop its roots.
+    const invalidViews = [
+      { ...projected, derivedWorkloadSources: [] },
+      { ...projected, revision: projected.revision + 1 },
+      { ...projected, workloads: projected.workloads.map(({ derivationKind: _kind, ...workload }) => workload) },
+      { ...projected, derivedWorkloadSources: [...projected.derivedWorkloadSources!, ...projected.derivedWorkloadSources!] },
+      { ...projected, derivedWorkloadSources: projected.derivedWorkloadSources!.map((origin) =>
+        ({ ...origin, effortEstimateFactIds: ['budget-a', 'budget-old'] })) },
+      { ...projected, derivedWorkloadSources: projected.derivedWorkloadSources!.map((origin) =>
+        ({ ...origin, taskId: 'different-task' })) },
+    ];
+    for (const invalid of invalidViews) {
+      const rejected = compileGenericPlanningWorkItems(invalid);
+      expect(rejected.items).toEqual([]);
+      expect(rejected.issues).toEqual([expect.objectContaining({
+        code: 'invalid_derived_workload_source', blocking: true,
+      })]);
+    }
+  });
+
 });

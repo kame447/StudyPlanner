@@ -40,6 +40,9 @@ import {
   decideWeeklyPlanningStableRepairPolicyV5,
 } from '../semantic/weeklyPlanningStableRepairPolicyV5';
 import {
+  projectWeeklyPlanningStatedTimeBudgetGraphV5,
+} from '../semantic/weeklyPlanningStatedTimeBudgetProjectionV5';
+import {
   createStableV5ExternalConstraintSources,
 } from './weeklyPlanningStableV5ExternalSources';
 import {
@@ -137,7 +140,9 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
   const { input, semanticTurn } = params;
   const { requestContext, runtimeSession, semantic } = semanticTurn;
   const semanticDiff = semantic.canonicalization?.diff ?? undefined;
-  const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
+  const activeGraph = projectWeeklyPlanningStatedTimeBudgetGraphV5(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph),
+  );
   const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
     graph: activeGraph,
     currentDate: requestContext.currentDate,

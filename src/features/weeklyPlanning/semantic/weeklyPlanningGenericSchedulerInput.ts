@@ -61,9 +61,11 @@ import {
 } from './weeklyPlanningResolvedDateExpressionsV5';
 import {
   materializeWeeklyPlanningSchedulerPreferredPlacementsV5,
+  materializeWeeklyPlanningHardTemporalBoundsV5,
   resolveWeeklyPlanningTemporalConstraintsV5,
   weeklyPlanningTemporalConstraintAppliesToTargetV5,
   type WeeklyPlanningResolvedTemporalConstraintsV5,
+  type WeeklyPlanningResolvedHardClockBoundV5,
   type WeeklyPlanningSchedulerHardDateBoundV5,
   type WeeklyPlanningSchedulerPreferredPlacementV5,
 } from './weeklyPlanningResolvedTemporalConstraintsV5';
@@ -125,6 +127,7 @@ export interface GenericSchedulerInput {
   sourceSelections: ConstraintSourceSelectionFact[];
   relations: GenericSchedulerTaskRelation[];
   hardDateBounds: WeeklyPlanningSchedulerHardDateBoundV5[];
+  hardClockBounds?: WeeklyPlanningResolvedHardClockBoundV5[];
   preferredPlacements: WeeklyPlanningSchedulerPreferredPlacementV5[];
   sourceFactRefs: string[];
 }
@@ -326,6 +329,7 @@ function collectSourceFactRefs(params: {
   selections: ConstraintSourceSelectionFact[];
   relations: GenericSchedulerTaskRelation[];
   hardDateBounds: WeeklyPlanningSchedulerHardDateBoundV5[];
+  hardClockBounds: WeeklyPlanningResolvedHardClockBoundV5[];
   preferredPlacements: WeeklyPlanningSchedulerPreferredPlacementV5[];
 }): string[] {
   const refs = new Set<string>();
@@ -350,6 +354,7 @@ function collectSourceFactRefs(params: {
   for (const bound of params.hardDateBounds) {
     for (const ref of bound.sourceFactIds) refs.add(ref);
   }
+  for (const bound of params.hardClockBounds) refs.add(bound.sourceFactId);
   for (const preferred of params.preferredPlacements) refs.add(preferred.sourceFactId);
   return [...refs].sort();
 }
@@ -624,7 +629,7 @@ export function compileGenericSchedulerInput(params: {
     details: issue.details,
   })));
 
-  const resolvedTemporalConstraints = params.resolvedTemporalConstraints
+  const temporalSnapshot = params.resolvedTemporalConstraints
     ?? resolveWeeklyPlanningTemporalConstraintsV5({
       graph: params.graph,
       currentDate: params.context.currentDate,
@@ -632,6 +637,14 @@ export function compileGenericSchedulerInput(params: {
       namedTimePeriods: params.context.namedTimePeriods,
       resolvedDateExpressions,
     });
+  // Provisional work can be introduced after the shared snapshots were made.
+  // With the paired date snapshot, re-apply hard bounds to current active targets before issue checks.
+  // A standalone temporal snapshot must not have its dates reinterpreted using the current clock.
+  const resolvedTemporalConstraints = params.resolvedTemporalConstraints && params.resolvedDateExpressions
+    ? { ...temporalSnapshot, ...materializeWeeklyPlanningHardTemporalBoundsV5({
+        graph: params.graph, resolvedDateExpressions: params.resolvedDateExpressions,
+      }) }
+    : temporalSnapshot;
   issues.push(...temporalConstraintIssues({
     graph: params.graph,
     resolvedDateExpressions,
@@ -659,6 +672,7 @@ export function compileGenericSchedulerInput(params: {
     ...bound,
     sourceFactIds: [...bound.sourceFactIds],
   }));
+  const hardClockBounds = resolvedTemporalConstraints.hardClockBounds.map((bound) => ({ ...bound }));
   const preferredPlacements = materializeWeeklyPlanningSchedulerPreferredPlacementsV5({
     resolved: resolvedTemporalConstraints,
     dates: planningDates,
@@ -695,6 +709,7 @@ export function compileGenericSchedulerInput(params: {
     sourceSelections: availability.sourceSelections,
     relations,
     hardDateBounds,
+    hardClockBounds,
     preferredPlacements,
     sourceFactRefs: collectSourceFactRefs({
       graph: params.graph,
@@ -706,6 +721,7 @@ export function compileGenericSchedulerInput(params: {
       selections: availability.sourceSelections,
       relations,
       hardDateBounds,
+      hardClockBounds,
       preferredPlacements,
     }),
   };
