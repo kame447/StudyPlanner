@@ -36,8 +36,13 @@ function repairDirectivesForErrors(errors: string[]): string[] {
     && error.includes('.targetLocalId:self-reference'));
   if (selfReferentialUncertainty) {
     directives.push('Never target an uncertainty at its own localId. If the referent is unresolved, use targetLocalId=document; otherwise target the supported fact localId.');
-  } else if (errors.some((error) => error.includes('targetLocalId'))) {
-    directives.push('Use a fresh localId declared in this response as targetLocalId; never use a public Fact ID there.');
+  } else if (errors.some((error) =>
+    error.startsWith('document.uncertainties[') && error.includes('.targetLocalId'))) {
+    directives.push('For uncertainty.targetLocalId, use a fresh localId declared in this response for the supported fact, or document for an unresolved referent; never use a public Fact ID for uncertainty.');
+  }
+  if (errors.some((error) => error.includes('targetLocalId')
+    && !error.startsWith('document.uncertainties['))) {
+    directives.push('Fix each other rejected targetLocalId using a declared same-task target. Only effortEstimates with total_duration/session_duration may instead use an exact active workload publicId under an explicitly bound active task; declared localIds take precedence. Other targetLocalId fields use declared localIds.');
   }
   if (errors.some((error) => error.includes('.replacementLocalId:unknown:'))) {
     directives.push('Declare missing replacement facts in a schema-valid task/component; keep valid fields. Set correction.replacementLocalId to each fresh localId. Use exact existingPublicIds for accepted parent identity.');
