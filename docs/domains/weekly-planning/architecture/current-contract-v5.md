@@ -63,6 +63,16 @@ A schema-shaped but invalid value must not become accepted state merely because 
 
 `prepareWeeklyPlanningStableV5Checkpoint` validates the graph before traversing or encoding it. Checkpoint reading routes through the graph parser before hydration, so saved input is revalidated rather than trusted as previously accepted. Validation covers stored historical facts too; filtering removed/superseded facts for scheduling is a separate step. Regression tests use canonical writers and real checkpoint preparation/save/load, preserving valid historical representations while rejecting malformed values. These entry gates complement downstream fail-closed scheduler checks; they do not replace them.
 
+## Registered bookshelf references
+
+The current owner-filtered Bookshelf snapshot remains external context, with ownership and plan-local quantity governed by [material metadata](../../external-integrations/spec/material-metadata.md#92-週間計画での登録済み教材利用). A registered material ID is not a canonical task/component ID and does not import stored total/completed progress as a new planning fact.
+
+When a provider places one exact, uniquely registered material ID in a new task/component reference, the application may clear that external reference into the ordinary creation path only under its narrow typed identity/label contract. A first task requires no accepted task; an additional material of an accepted task requires no existing material and evidence in that component's own current-turn source. Existing canonical bindings take precedence. Ambiguous registry/reference use, wrong labels and unsupported existing mutations retain ordinary validation errors. All schema, evidence, current-turn provenance and reference validation still run before a canonical graph commit; quantity, role and unit are unchanged.
+
+Pending-answer copy repair must preserve a non-exact token known in the current owner-visible bookshelf namespace rather than overwrite it with the pending canonical task/component. This does not grant that external token canonical authority or classify every unknown token as a material. Canonical exact anchors and the existing one-corrupted-side repair remain effective; raw local-ID shadow is a separate boundary.
+
+For a representation-only semantic repair, compare both provider documents after the same pre-parse normalization and before post-parse projection, so deterministic projection is not mistaken for a provider mutation. If either provider comparison envelope is unavailable, retain the existing parsed/validated comparison pair. The comparison envelope never authorizes acceptance: the repaired document must still pass every normal validator. This does not add a model call or broaden which semantic changes are repairable.
+
 ## Time semantics
 
 Natural-language time meaning belongs to AI; calendar arithmetic and scheduler-facing temporal compilation belong to the deterministic application.
@@ -158,6 +168,14 @@ Defer/pass-over is not silent deletion of uncertainty and does not convert it in
 See [Human Grounding Policy](../policies/human-grounding.md).
 
 Consultation must not be implemented by sending the user through the normal planning slot-question sequence. When Issue #246 is implemented, the consultation contract owns which missing information is material to a useful recommendation; only recommendation-changing/blocking gaps should trigger targeted questions.
+
+## Fixed-event-only closure and manual entry
+
+Validated fixed commitments constrain planning; they are not savable event candidates. When existing compilation proves that only resolved fixed commitments remain, the application ends the optional missing-work invitation instead of repeatedly asking for study work. The additive typed acts `request_event_registration` and `decline_additional_work` express the user's intent; they grant no create, preview, approval or save authority. An explicit renewed registration request may repeat the manual-entry handoff. Declining additional work closes only an optional invitation. Unresolved required dates/windows, blocking uncertainty, movable study work and pending proposal questions retain their existing owners and priority.
+
+The existing route supplies turn-local communication facts: either the fixed-event manual-entry reason with the existing `予定` → `予定を追加` labels and `eventCreatedByTurn:false`, or a no-additional-work reason. The renderer writes a natural reply from these facts; successful text is not replaced by a fixed suffix or interpreted with keywords. It must not claim an event was saved or that a new button/automatic navigation exists in the AI view. The current technical fallback remains available on renderer failure. The user's later explicit entry and Save in the existing manual UI remain the event-creation boundary.
+
+Ordinary ask, topic-shift and resume acts retain their existing question-identity and freshness rules, including unresolved named resumes. Independent planning facts still pass normal validation and canonical application. This unit adds no comparison mode, consultation/advice lifecycle, what-if flow, architecture selector, persisted presentation authority or new provider dispatch route or budget.
 
 ## Proposal / readiness / scheduler
 

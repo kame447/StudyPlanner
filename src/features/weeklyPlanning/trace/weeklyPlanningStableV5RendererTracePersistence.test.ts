@@ -241,7 +241,9 @@ describe('Stable V5 renderer trace persistence', () => {
     const calls: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]> = [];
     const input: WeeklyPlanningStableV5DialogueRenderInput = {
       actionId: 'stable-v5:recovery-trace:missing_schedulable_work', currentUserMessage: 'それは',
-      recentConversation: [], planningInformation: null, actionKind: 'question',
+      recentConversation: [], planningInformation: { availabilityDeclarations: [
+        { kind: 'available', startTime: '09:00', endTime: '12:00' },
+      ], registeredMaterials: [{ materialId: 'registered-b', name: '教材B', aliases: [] }] }, actionKind: 'question',
       questionCode: 'missing_schedulable_work', questionTarget: null,
       questionIntent: { kind: 'schedulable_work_detail', mode: 'missing_task_identity', targetFactId: null,
         progressBasis: null, knownUnitCode: null, knownUnitLabel: null, requestedInformation: ['task_identity'] },
@@ -249,7 +251,7 @@ describe('Stable V5 renderer trace persistence', () => {
       recoveryQuestionEvidence: { facts: [], labels: [] },
       recovery: { planningDetailsNotApplied: true, acceptedStateUnchanged: true, retainedPreviewUnchanged: true },
     };
-    const text = '今回はまだ反映していません。以前の候補はそのままです。何を予定に入れたいですか？';
+    const text = '今回はまだ反映していません。以前の候補はそのままです。登録済みの教材Bで、9:00から12:00の間に何を予定に入れたいですか？';
     const raw = JSON.stringify({ actionId: input.actionId, actionKind: 'question',
       questionCode: input.questionCode, groundingAcknowledgement: null, text });
     const checkRaw = JSON.stringify({ actionId: input.actionId, questionMatches: 'yes',
@@ -262,6 +264,11 @@ describe('Stable V5 renderer trace persistence', () => {
     ).render(input);
     expect(result).toMatchObject({ status: 'rendered', recoveryVerified: true });
     expect(calls).toHaveLength(2);
+    expect(calls[0].messages[1].content).toContain('"startTime":"09:00"');
+    expect(raw).toContain('9:00');
+    expect(calls[0].messages[1].content).toContain('"materialId":"registered-b"');
+    expect(calls[0].messages[1].content).toContain('"name":"教材B"');
+    expect(raw).toContain('登録済みの教材B');
     const trace = boundWeeklyPlanningDialogueRendererTraceForTransport({
       ...rendererTrace('rendered'), actionId: input.actionId, questionCode: input.questionCode,
       response: { status: 'rendered', reason: null, rawResponse: raw, renderedText: text },
@@ -306,6 +313,7 @@ describe('Stable V5 renderer trace persistence', () => {
     expect(harness.writes).toHaveLength(2);
     const retried = harness.writes[0];
     expect(diagnosticEntry(retried.entries).assistantOutput.responseSource).toBe('ai');
+    expect(diagnosticEntry(retried.entries).diagnostics.dialogueRenderer?.response?.rawResponse).toBe(raw);
     const serialized = JSON.stringify(retried.entries[0]);
     expect(serialized).toContain('futureRecoverySentinel');
     expect(serialized).toContain('providerDispatch');
@@ -331,6 +339,7 @@ describe('Stable V5 renderer trace persistence', () => {
     }, subject, canonicalIds, '2026-10-10T00:00:00.000Z');
     expect(prepared.entries).toHaveLength(1);
     expect(JSON.stringify(prepared.entries[0])).toContain('futureRecoverySentinel');
+    expect(JSON.stringify(prepared.entries[0])).toContain('登録済みの教材B');
     expect(JSON.stringify(prepared.entries[0])).not.toContain('omit-private-dispatch-sentinel');
     expect((prepared.entries[0].diagnostics as Record<string, unknown>).providerDispatch).toEqual({
       count: 1, anyFailure: false, complete: true });
