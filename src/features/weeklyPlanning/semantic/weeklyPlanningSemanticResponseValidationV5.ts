@@ -1,3 +1,4 @@
+import { validateWeeklyPlanningMaterialIdentityAnswerV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 import { resolveWeeklyPlanningConversationActTargetsV5, type SemanticConversationActV5 } from './weeklyPlanningConversationActsV5';
 import {
   validateWeeklyPlanningCorrectionReplacementKindsV5,
@@ -156,6 +157,9 @@ export function validateWeeklyPlanningSemanticResponseV5(
       input.publicStateSummary,
     ),
     ...validateWeeklyPlanningCorrectionReplacementKindsV5(document),
+    ...validateWeeklyPlanningMaterialIdentityAnswerV5({
+      graph: input.committedGraph, document, currentUserText: input.currentUserText, supplementalContext: input.supplementalContext,
+    }),
     ...validateWeeklyPlanningDecisionTargetReferencesV5(
       document,
       input.publicStateSummary,
