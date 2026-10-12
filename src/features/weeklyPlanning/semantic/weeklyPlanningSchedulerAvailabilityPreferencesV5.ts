@@ -8,7 +8,7 @@ function clockMinutes(time: string): number {
 }
 
 /**
- * Plan-wide preferences have already been calendar-resolved by availability.
+ * Plan-wide preferred and soft available windows are calendar-resolved by availability.
  * Project those intervals onto each work target so the existing safe slot search
  * can rank them alongside task-scoped preferences without reinterpreting facts.
  */
@@ -22,7 +22,8 @@ export function materializeWeeklyPlanningAvailabilityPreferencesV5(params: {
     const targetFactId = item.componentId ?? item.taskId;
     targets.set(targetFactId, { taskId: item.taskId, targetFactId });
   }
-  return params.windows.filter((window) => window.kind === 'preferred').flatMap((window) =>
+  return params.windows.filter((window) => window.kind === 'preferred'
+    || (window.kind === 'available' && window.constraintLevel === 'soft')).flatMap((window) =>
     params.dates.flatMap((date) => {
       if (date < window.start.date || date > window.end.date) return [];
       const startMinute = date === window.start.date ? clockMinutes(window.start.time) : 0;

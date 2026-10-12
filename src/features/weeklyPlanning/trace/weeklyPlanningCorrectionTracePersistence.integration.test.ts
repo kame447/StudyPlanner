@@ -691,14 +691,18 @@ function checkpointRoundtrip(graph: ReturnType<typeof selfReferenceFixture>['gra
   return restored!.graph;
 }
 
-async function generatedSelfReferenceTurn(mode: 'self' | 'local' | 'repair', oversized = false) {
+async function generatedSelfReferenceTurn(mode: 'self' | 'local' | 'repair' | 'date_repair', oversized = false) {
   const fixture = selfReferenceFixture(mode === 'local' ? 'local' : 'self');
   const graph = checkpointRoundtrip(fixture.graph);
   const before = structuredClone(graph);
   const compact = JSON.stringify(fixture.document);
   // Internal whitespace survives the real client's trim(), unlike trailing padding.
   const acceptedRaw = oversized ? `{${' '.repeat(6_000)}${compact.slice(1)}` : compact;
-  const scripted = mode === 'repair' ? ['not-json', acceptedRaw] : [acceptedRaw];
+  const dateRepairInitial = structuredClone(fixture.document);
+  dateRepairInitial.tasks[0].temporalConstraints[0].dateExpression = '明日';
+  const isRepair = mode === 'repair' || mode === 'date_repair';
+  const scripted = mode === 'date_repair' ? [JSON.stringify(dateRepairInitial), acceptedRaw]
+    : mode === 'repair' ? ['not-json', acceptedRaw] : [acceptedRaw];
   const requests: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]> = [];
   const bodies: Record<string, unknown>[] = [];
   const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -731,7 +735,7 @@ async function generatedSelfReferenceTurn(mode: 'self' | 'local' | 'repair', ove
   expect(result.normalization.status).toBe('accepted');
   expect(result.canonicalization?.status).toBe('applied');
   expect(graph).toEqual(before);
-  expect(transport).toHaveBeenCalledTimes(mode === 'repair' ? 2 : 1);
+  expect(transport).toHaveBeenCalledTimes(isRepair ? 2 : 1);
   expect(scripted).toEqual([]);
   bodies.forEach((body, index) => {
     expect(body.messages).toEqual(requests[index].messages);
@@ -740,7 +744,7 @@ async function generatedSelfReferenceTurn(mode: 'self' | 'local' | 'repair', ove
   });
   const events = takeWeeklyPlanningStableV5DebugTrace(requestId);
   expect(JSON.stringify(events)).not.toContain(TRANSPORT_ONLY_CREDENTIAL);
-  const attempt = mode === 'repair' ? 'repair' : 'initial';
+  const attempt = isRepair ? 'repair' : 'initial';
   const requestEvents = events.filter(event => event.stage === 'semantic_provider_request');
   expect(requestEvents).toHaveLength(requests.length);
   requestEvents.forEach((event, index) => {
@@ -902,6 +906,28 @@ it('saves a generated self-reference turn with explicit raw and structured trunc
   expect(JSON.stringify(entry.diagnostics.truncation)).toContain('aiInterpreter.structuredResults[0].structuredResult');
   expect(JSON.stringify(stored)).not.toContain('x'.repeat(48 * 1024));
   // Truncated raw/document evidence is explicitly partial, not a claim of complete target reconstruction.
+});
+
+
+it.each([false, true])('persists actual validator-addressed date repair through outbox and Worker (oversized=%s)', async oversized => {
+  resetSelfReferenceWorld();
+  const turn = await generatedSelfReferenceTurn('date_repair', oversized);
+  expect(turn.result.normalization.diagnostics).toMatchObject({ attemptCount: 2, repairAttempted: true });
+  expect(turn.result.graph.temporalConstraints[0].dateExpression).toBe('tomorrow');
+  const { entry, stored } = await persistGeneratedSelfReference(turn);
+  expect(entry.aiInterpreter.input.requests.map(request => request.attempt)).toEqual(['initial', 'repair']);
+  expect(entry.aiInterpreter.rawResponses[0].text).toContain('明日');
+  expect(entry.aiInterpreter.structuredResults[0]).toMatchObject({ attempt: 'initial', accepted: false });
+  expect(JSON.stringify(entry.aiInterpreter)).toContain('canonical-expression');
+  const accepted = entry.aiInterpreter.structuredResults.find(result => result.attempt === 'repair' && result.accepted)!;
+  if (oversized) {
+    expect(accepted.structuredResult).toMatchObject({ traceTruncated: true });
+    expect(entry.diagnostics.truncation).toMatchObject({ applied: true });
+    expect(JSON.stringify(stored)).not.toContain('x'.repeat(48 * 1024));
+  } else {
+    expect(accepted.structuredResult).toEqual({ ...turn.expectedParsed, futureSelfReferenceTraceField: SELF_REFERENCE_SENTINEL });
+    expect(JSON.stringify(stored)).toContain(SELF_REFERENCE_SENTINEL);
+  }
 });
 
 it.each(['role-rate', 'role-session', 'role-total', 'paired-session', 'paired-total', 'window-changed', 'window-identical', 'window-cross-kind'] as const)('persists actual %s correction identity through failed append, durable retry and Worker preparation', async scenario => {
