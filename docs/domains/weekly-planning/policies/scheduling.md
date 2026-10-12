@@ -141,6 +141,16 @@ Plan-wide の `preferred` と soft `available` は同じ既存順位付けへ投
 - personalization unavailable/failed時はsafe deterministic baselineへ戻る
 - preferenceはfree timeを新設しない
 
+## Estimated effort and allocated time
+
+作業量とペースから求めた基準見積もりと、実際に確保した候補時間を区別する。既存の見積もり配分policyは、適用されるペース補正・見積もり余裕・切り上げを所有し、既存予定の前後に置く衝突回避bufferとは別である。この表示は再配分や再度の余裕加算を行わない。
+
+候補とdraftのoptional `allocationBreakdown`は、基準見積もり・ペース補正後・policyの余裕込み中間値・実確保時間、および実確保と基準見積もりの非負差分（0未満は0）を保持する。`bufferedMinutes`は要求/見積もり段階の値であり、`allocatedMinutes`以下であるとは限らない。例えば上限適用後の基準60分/実確保60分を投影した内訳は、buffered66分・実余裕0分を保持する。これは内訳の段階区分であり、session分割/上限処理をこの表示ownerへ移すものではない。
+
+preview card/sheetの時刻・合計は実確保時間を用い、有効で実durationと一致する内訳が全候補に揃う場合だけ集計する。正の実余裕があるとき「見積もり1時間＋余裕10分」のように基準と差分を表示する。内訳欠落・編集後の不一致・実余裕0では理由を推測して表示しない。時間そのものを作業量にする既存intrinsic-duration配分も変更しない。
+
+この内訳は未承認previewとdraftの保存/checkpointを通過する表示情報であり、Plan/StoredScheduleEventの保存schemaへ追加しない。現共通state codecはoptional数値・理由・差分整合を検査し、内訳のない旧データも受理する。新fieldを知らない旧実行中アプリの読取互換性まで保証するものではない。実生成内訳のtrace保存は、既存の容量制限・persistent outbox/retry・Worker・未知field・明示truncationの契約に従う。
+
 ## Change rule
 
 scheduler policyを変更するときは、少なくとも次を確認する。
