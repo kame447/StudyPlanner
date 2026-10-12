@@ -1,3 +1,5 @@
+import { finalizeWeeklyPlanningSemanticCanonicalizationV5 } from './weeklyPlanningSemanticCommitV5';
+import { canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
 import fc from 'fast-check';
 import { parseWeeklyPlanningFactGraphV5, serializeWeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphValidatorV5';
 import { validateWeeklyPlanningSemanticValueV5 } from './weeklyPlanningSemanticValidatorV5';
@@ -374,5 +376,79 @@ describe('contextual effort identity and unit preservation', () => {
     expect(result?.graph.effortEstimates).toEqual(initial.effortEstimates);
     expect(result?.diff?.added).toEqual([]);
     expect(initial).toEqual(before);
+  });
+});
+
+
+describe('quantity-role questions preserve independent semantic details', () => {
+  it('falls through to ordinary canonicalization without changing the declared workload or another task', () => {
+    const initial = graph({ quantityRole: 'declared', workloadCount: 2 });
+    const before = structuredClone(initial);
+    const document = answerDocument({ minutes: 30 });
+    Object.assign(document.tasks[0], {
+      existingPublicId: 'task-2', title: initial.tasks[1].title,
+      study: { purpose: 'unknown', contextLabel: null, components: [] },
+    });
+    const input = {
+      graph: initial, document,
+      pendingQuestion: pendingQuestion({ code: 'quantity_role_unresolved', targetFactId: 'workload-2' }),
+      conversationId: 'conversation-1', turnId: 'turn-2', expectedRevision: initial.revision,
+      userText: 'An independent total duration; the quantity role remains unresolved.',
+    };
+    expect(validateWeeklyPlanningSemanticValueV5(document).errors).toEqual([]);
+    expect(evaluateWeeklyPlanningStableV5ContextualAnswer(input)).toMatchObject({
+      status: 'incompatible', reason: 'quantity_role_not_grounded_in_user_text',
+    });
+    expect(applyWeeklyPlanningStableV5ContextualAnswer(input)).toBeNull();
+    const baseCanonicalization = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
+      graph: initial, document, context: input,
+    });
+    const { canonicalization: result } = finalizeWeeklyPlanningSemanticCanonicalizationV5({
+      originalGraph: initial, document, baseCanonicalization,
+      contextualAnswer: false, questionCode: input.pendingQuestion.questionCode,
+      operationKeyPrefix: `${input.conversationId}:${input.turnId}`,
+    });
+    expect(result.status).toBe('applied');
+    expect(result.graph.effortEstimates).toEqual([
+      expect.objectContaining({ taskId: 'task-2', targetFactId: 'task-2', kind: 'total_duration', minutes: 30 }),
+    ]);
+    expect(result.graph.tasks).toEqual(before.tasks);
+    expect(result.graph.workloads).toEqual(before.workloads);
+    for (const lifecycle of before.factLifecycles) {
+      expect(result.graph.factLifecycles.find(entry => entry.factId === lifecycle.factId)).toEqual(lifecycle);
+    }
+    expect(result.diff?.removed).toEqual([]);
+    expect(result.diff?.superseded).toEqual([]);
+    expect(initial).toEqual(before);
+  });
+
+  it('still rejects an unavailable quantity-role target before allowing independent details', () => {
+    const initial = graph({ quantityRole: 'declared' });
+    const result = applyWeeklyPlanningStableV5ContextualAnswer({
+      graph: initial, document: answerDocument({ minutes: 30 }),
+      pendingQuestion: pendingQuestion({ code: 'quantity_role_unresolved', targetFactId: 'missing-workload' }),
+      conversationId: 'conversation-1', turnId: 'turn-2', expectedRevision: 1,
+      userText: 'The typed target is unavailable.',
+    });
+    expect(result).toMatchObject({ status: 'rejected', graph: initial, diff: null,
+      errors: ['contextual-answer-target-unavailable:quantity_role_unresolved:missing-workload'] });
+  });
+
+  it('does not broaden the escape to an unanswered duration question', () => {
+    const initial = graph({ quantityRole: 'target' });
+    const input = {
+      graph: initial, document: answerDocument({ quantityRole: 'target' }),
+      pendingQuestion: pendingQuestion({ code: 'missing_effort_estimate' }),
+      conversationId: 'conversation-1', turnId: 'turn-2', expectedRevision: 1,
+      userText: 'No duration was provided.',
+    };
+    expect(evaluateWeeklyPlanningStableV5ContextualAnswer(input)).toMatchObject({
+      status: 'incompatible', reason: 'duration_not_grounded_in_user_text',
+    });
+    const result = applyWeeklyPlanningStableV5ContextualAnswer(input);
+    expect(result?.status).toBe('applied');
+    expect(result?.diff).toMatchObject({ added: [], removed: [], superseded: [] });
+    expect(result?.graph.effortEstimates).toEqual(initial.effortEstimates);
+    expect(result?.graph.workloads).toEqual(initial.workloads);
   });
 });
