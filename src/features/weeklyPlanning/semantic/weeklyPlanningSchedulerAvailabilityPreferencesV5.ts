@@ -1,0 +1,38 @@
+import type { AvailabilityWindowFact } from './weeklyPlanningAvailabilityResolver';
+import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
+import type { WeeklyPlanningSchedulerPreferredPlacementV5 } from './weeklyPlanningResolvedTemporalConstraintsV5';
+
+function clockMinutes(time: string): number {
+  const [hour, minute] = time.split(':').map(Number);
+  return hour * 60 + minute;
+}
+
+/**
+ * Plan-wide preferences have already been calendar-resolved by availability.
+ * Project those intervals onto each work target so the existing safe slot search
+ * can rank them alongside task-scoped preferences without reinterpreting facts.
+ */
+export function materializeWeeklyPlanningAvailabilityPreferencesV5(params: {
+  windows: readonly AvailabilityWindowFact[];
+  items: readonly GenericPlanningWorkItem[];
+  dates: readonly string[];
+}): WeeklyPlanningSchedulerPreferredPlacementV5[] {
+  const targets = new Map<string, { taskId: string; targetFactId: string }>();
+  for (const item of params.items) {
+    const targetFactId = item.componentId ?? item.taskId;
+    targets.set(targetFactId, { taskId: item.taskId, targetFactId });
+  }
+  return params.windows.filter((window) => window.kind === 'preferred').flatMap((window) =>
+    params.dates.flatMap((date) => {
+      if (date < window.start.date || date > window.end.date) return [];
+      const startMinute = date === window.start.date ? clockMinutes(window.start.time) : 0;
+      const endMinute = date === window.end.date ? clockMinutes(window.end.time) : 1440;
+      if (endMinute <= startMinute) return [];
+      return [...targets.values()].map((target) => ({
+        ...target,
+        dates: [date],
+        window: { startMinute, endMinute },
+        sourceFactId: window.sourceRef,
+      }));
+    }));
+}

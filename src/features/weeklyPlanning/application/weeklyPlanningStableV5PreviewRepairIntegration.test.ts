@@ -264,9 +264,10 @@ describe('Stable V5 repair-safe preview integration', () => {
   );
 
   it.each([
-    '保存済みの予定と重ならない候補を作成しました。',
-    '計画案を作成しました。保存はまだ行いません。',
-  ])('persists actual hard-clock runtime diagnostics through outbox retry and Worker preparation: %s', async claim => {
+    { claim: '保存済みの予定と重ならない候補を作成しました。', acceptedWeekdayPreference: false },
+    { claim: '計画案を作成しました。保存はまだ行いません。', acceptedWeekdayPreference: false },
+    { claim: '計画案を作成しました。保存はまだ行いません。', acceptedWeekdayPreference: true },
+  ])('persists actual hard-clock runtime diagnostics through outbox retry and Worker preparation: $claim', async ({ claim, acceptedWeekdayPreference }) => {
     vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
     const conversationId = 'weekly-conversation-733e4567-e89b-42d3-a456-426614174010';
     const userId = 'owner-preview-repair';
@@ -303,7 +304,21 @@ describe('Stable V5 repair-safe preview integration', () => {
         namedTimePeriod: null, startTime: '20:00', endTime: null,
         precision: 'exact', sourceText: '8月21日は20時以降',
       }];
-      const userText = '8月17日から23日で数学12ページ。1ページ5分くらい。8月21日は20時以降。既存予定';
+      if (acceptedWeekdayPreference) {
+        // Original C1 responsibility: the accepted future window owns this canonical weekday.
+        // The preference is already typed and calendar-resolved; no text parsing is exercised here.
+        document.tasks[0].temporalConstraints[0].dateExpression = 'weekday:friday';
+        document.tasks[0].temporalConstraints[0].sourceText = '金曜日は20時以降';
+        document.availabilityDeclarations = [{
+          localId: 'preferred-evening', kind: 'preferred', dateExpression: '2026-08-21',
+          namedTimePeriod: null, startTime: '21:00', endTime: '23:00', recurrenceKind: null,
+          days: [], constraintLevel: 'soft', capacityMinutes: null,
+          sourceText: 'できれば8月21日の21時から23時',
+        }];
+      }
+      const userText = acceptedWeekdayPreference
+        ? '8月17日から23日で数学12ページ。1ページ5分くらい。金曜日は20時以降。できれば8月21日の21時から23時。既存予定'
+        : '8月17日から23日で数学12ページ。1ページ5分くらい。8月21日は20時以降。既存予定';
       document.tasks[0].sourceText = '数学12ページ。1ページ5分くらい';
       document.tasks[0].workloads[0].sourceText = '数学12ページ';
       const validation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(document), { currentUserText: userText });
@@ -320,7 +335,15 @@ describe('Stable V5 repair-safe preview integration', () => {
       expect(acceptedGraph.workloads[0].amount! * acceptedGraph.effortEstimates[0].minutes).toBe(60);
       // Existing 1.1 safety buffer and five-minute upward rounding: 60 -> 66 -> 70.
       // Existing appointment ends at 20:00; preserve the source's 10-minute busy buffer plus 10-minute placement break.
-      expect(result.draftCandidates[0]).toMatchObject({ date: '2026-08-21', startTime: '20:20', endTime: '21:30', durationMinutes: 70 });
+      expect(result.draftCandidates[0]).toMatchObject({ date: '2026-08-21',
+        startTime: acceptedWeekdayPreference ? '21:00' : '20:20',
+        endTime: acceptedWeekdayPreference ? '22:10' : '21:30', durationMinutes: 70 });
+      if (acceptedWeekdayPreference) {
+        expect(acceptedGraph.temporalConstraints[0].dateExpression).toBe('weekday:friday');
+        expect(acceptedGraph.availabilityDeclarations[0]).toMatchObject({
+          kind: 'preferred', dateExpression: '2026-08-21', startTime: '21:00', endTime: '23:00', constraintLevel: 'soft',
+        });
+      }
       const evidence = result.existingScheduleGrounding;
       expect(evidence).toEqual({ graphRevision: result.stableV5Graph!.revision,
         sourceId: 'studyplanner-existing-plans', requestFactId: result.stableV5Graph!.constraintSourceRequests[0].id,
@@ -344,6 +367,13 @@ describe('Stable V5 repair-safe preview integration', () => {
       expect(promptContext.messages).toEqual(delivered.messages);
       (promptContext.existingScheduleGrounding as Record<string, unknown>).futureGroundingField = 'future-existing-schedule';
       const events = takeWeeklyPlanningStableV5DebugTrace(traceRequestId);
+      const previewEvent = events.find((event) => event.stage === 'runtime_preview_scheduler_evaluated');
+      const previewData = previewEvent?.data as { candidates: Array<Record<string, unknown>> } | undefined;
+      if (acceptedWeekdayPreference) {
+        expect(previewData?.candidates).toEqual(result.draftCandidates);
+        previewData!.candidates[0].futureC1PreferredField = 'future-c1-preferred-candidate';
+        expect(measureWeeklyPlanningTraceJsonBytes(previewData!.candidates[0])).toBeLessThanOrEqual(1_000);
+      }
       const evaluation = events.find((event) => event.stage === 'runtime_scheduler_dialogue_evaluated');
       expect(evaluation).toBeDefined();
       const horizon = (evaluation!.data as { resolvedHorizon: Record<string, unknown> }).resolvedHorizon;
@@ -373,6 +403,11 @@ describe('Stable V5 repair-safe preview integration', () => {
       const oversized = structuredClone(first);
       oversized.requestId = `${conversationId}:request:2`;
       (oversized.dialogueRendererTrace.request!.promptContext as Record<string, unknown>).futureLargeGroundingField = 'existing-schedule-extension'.repeat(10_000);
+      if (acceptedWeekdayPreference) {
+        const largePreview = oversized.debugTraceEvents.find((event) => event.stage === previewEvent!.stage)!;
+        (largePreview.data as { candidates: Array<Record<string, unknown>> })
+          .candidates[0].futureLargePreferredField = 'c1-preferred-extension'.repeat(10_000);
+      }
       const largeEvaluation = oversized.debugTraceEvents.find((event) => event.stage === evaluation!.stage)!;
       (largeEvaluation.data as { resolvedHorizon: Record<string, unknown> }).resolvedHorizon.futureLargeScopeField = 'temporal-extension'.repeat(10_000);
       (largeEvaluation.data as { compilation: { hardClockBounds: Array<Record<string, unknown>> } })
@@ -403,6 +438,13 @@ describe('Stable V5 repair-safe preview integration', () => {
             expect(renderer.response.renderedText).toBe(renderedText);
             expect(renderer.decision.finalMessage).toBe(renderedText);
             expect(serialized).toContain('2026-08-21');
+            if (acceptedWeekdayPreference) {
+              const preview = (persisted as { constraintContext: { scheduler: { preview: { representativeCandidates: unknown[] } } } })
+                .constraintContext.scheduler.preview;
+              expect(preview.representativeCandidates).toEqual([
+                { ...result.draftCandidates[0], futureC1PreferredField: 'future-c1-preferred-candidate' },
+              ]);
+            }
             const diagnostic = persisted as { constraintContext: { scheduler?: { hardClockBounds?: unknown } } };
             expect(diagnostic.constraintContext.scheduler?.hardClockBounds).toEqual([
               { ...expectedClockBounds![0], futureClockField: 'future-hard-clock-field' },
@@ -414,6 +456,12 @@ describe('Stable V5 repair-safe preview integration', () => {
             const diagnostic = persisted as { constraintContext: { scheduler?: { hardClockBounds?: unknown } } };
             expect(diagnostic.constraintContext.scheduler?.hardClockBounds).toMatchObject({ traceTruncated: true });
             expect(serialized).not.toContain('hard-clock-extension'.repeat(10_000));
+            if (acceptedWeekdayPreference) {
+              const preview = (persisted as { constraintContext: { scheduler: { preview: { representativeCandidates: unknown[] } } } })
+                .constraintContext.scheduler.preview;
+              expect(preview.representativeCandidates).toEqual([expect.objectContaining({ traceTruncated: true })]);
+              expect(serialized).not.toContain('c1-preferred-extension'.repeat(10_000));
+            }
           }
         }
       }
