@@ -484,7 +484,7 @@ export function createOpenAiCompatibleClient(
 
             return { content, usage: data.usage ?? null };
           },
-          observesSemantic ? recorder?.providerFetch('openai', directModel === 'gpt-5.6-luna' ? 'luna' : 'other') : undefined,
+          observesSemantic ? recorder?.providerFetch('openai', (directModel === 'gpt-5.6-luna' || directModel === 'gpt-6-luna') ? 'luna' : 'other') : undefined,
         );
 
         if (shouldCaptureEvalUsage()) {

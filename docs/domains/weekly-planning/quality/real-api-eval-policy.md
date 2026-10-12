@@ -1,7 +1,7 @@
 # Weekly Planning real-API evaluation policy
 
 Status: supporting quality policy
-Updated: 2026-09-26
+Updated: 2026-10-12
 
 Parent test policy: [test-philosophy.md](test-philosophy.md)
 
@@ -9,7 +9,9 @@ This document defines the default evaluation cadence for Stable V5 weekly-planni
 
 ## Principle
 
-Real `gpt-5.6-luna` evaluation is a required correctness tool, not a substitute for deterministic tests. Use the cheapest deterministic layer that can reject a defect, then use real-model runs where nondeterminism, semantic interpretation, natural-language realization, or model/application contract adherence must be observed.
+Real `gpt-6-luna` evaluation is a required correctness tool, not a substitute for deterministic tests. Use the cheapest deterministic layer that can reject a defect, then use real-model runs where nondeterminism, semantic interpretation, natural-language realization, or model/application contract adherence must be observed.
+
+Historical evaluation artifacts and preregistered comparisons retain their original model and pricing contracts. A model migration does not relabel that evidence or re-register a frozen evaluation.
 
 Do not treat one successful model response as proof of correctness. Real-model results must be repeated and, for merge gates, transcripts and Fact Graph state must be manually reviewed.
 

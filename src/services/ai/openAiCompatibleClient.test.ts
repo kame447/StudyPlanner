@@ -190,27 +190,44 @@ describe('openAiCompatibleClient model routing', () => {
     expect(body).not.toHaveProperty('purpose');
   });
 
-  it('omits temperature on the direct Luna path while preserving it for other models', async () => {
-    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
-    const fetchMock = mockFetchOnce({ choices: [{ message: { content: 'ok' } }] });
+  it.each(['gpt-5.6-luna', 'gpt-6-luna'])(
+    'preserves the structured direct %s request and omits custom temperature', async (model) => {
+      vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
+      const fetchMock = mockFetchOnce({ choices: [{ message: { content: 'ok' } }] });
 
-    const lunaClient = createOpenAiCompatibleClient({
-      ...config,
-      model: 'gpt-5.6-luna',
-    });
-    await lunaClient.createChatCompletion({
-      messages: [{ role: 'user', content: 'luna' }],
-      temperature: 0,
-    });
-    expect(lastRequestBody(fetchMock)).not.toHaveProperty('temperature');
+      const lunaClient = createOpenAiCompatibleClient({
+        ...config,
+        model,
+      });
+      const responseFormat = {
+        type: 'json_schema' as const,
+        json_schema: {
+          name: 'model_migration_contract',
+          strict: true,
+          schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'], additionalProperties: false },
+        },
+      };
+      await lunaClient.createChatCompletion({
+        messages: [{ role: 'user', content: 'luna' }],
+        temperature: 0,
+        responseFormat,
+        maxCompletionTokens: 3_200,
+      });
+      expect(lastRequestBody(fetchMock)).toEqual({
+        model,
+        messages: [{ role: 'user', content: 'luna' }],
+        response_format: responseFormat,
+        max_completion_tokens: 3_200,
+      });
 
-    const miniClient = createOpenAiCompatibleClient(config);
-    await miniClient.createChatCompletion({
-      messages: [{ role: 'user', content: 'mini' }],
-      temperature: 0,
-    });
-    expect(lastRequestBody(fetchMock).temperature).toBe(0);
-  });
+      const miniClient = createOpenAiCompatibleClient(config);
+      await miniClient.createChatCompletion({
+        messages: [{ role: 'user', content: 'mini' }],
+        temperature: 0,
+      });
+      expect(lastRequestBody(fetchMock).temperature).toBe(0);
+    },
+  );
 
   it('preserves bounded structured provider diagnostics for a rejected direct request', async () => {
     vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);

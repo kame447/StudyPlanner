@@ -17,7 +17,7 @@ describe('AI proxy request observer', () => {
       provider: 'openai',
       purpose: 'weekly_planning_semantic_normalizer',
       phase: 'initial',
-      model: 'gpt-5.6-luna',
+      model: 'gpt-6-luna',
     });
   });
 
@@ -27,7 +27,7 @@ describe('AI proxy request observer', () => {
       provider: 'openai',
       purpose: 'weekly_planning_attachment',
       phase: 'single',
-      model: 'gpt-5.6-luna',
+      model: 'gpt-6-luna',
     });
     expect(describeAiProxyOperation('/planning-transcription', null, {
       OPENAI_TRANSCRIPTION_MODEL: 'gpt-test-transcribe',

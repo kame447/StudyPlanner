@@ -6,7 +6,7 @@
 // model は、呼び出し側で必ず allowlist(ALLOWED_CHAT_MODELS)に含まれることを
 // 検証してから OpenAI へ送る(purpose 由来でも allowlist をバイパスしない)。
 
-const INTERNAL_OPENAI_MODEL = 'gpt-5.6-luna';
+const INTERNAL_OPENAI_MODEL = 'gpt-6-luna';
 
 export const AI_CHAT_PURPOSE_MODELS: Record<string, string> = {
   weekly_planning_interpreter: INTERNAL_OPENAI_MODEL,
