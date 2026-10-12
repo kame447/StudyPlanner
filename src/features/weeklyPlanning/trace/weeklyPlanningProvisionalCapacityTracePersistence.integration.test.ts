@@ -7,6 +7,10 @@ import {
   prepareWeeklyPlanningTraceServerWrite,
 } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
 import { executeWeeklyPlanningStableV5Preview } from '../application/weeklyPlanningStableV5PreviewExecution';
+import { projectWeeklyPlanningProvisionalCapacityPreviewV5 } from '../application/weeklyPlanningStableV5ProvisionalCapacityPreview';
+import type { WeeklyPlanningStableV5PlanningEvaluation } from '../application/weeklyPlanningStableV5PlanningEvaluation';
+import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from '../application/weeklyPlanningStableV5RuntimeContracts';
+import type { WeeklyPlanningStableV5PreviewSchedulerResult } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import {
   createEmptyWeeklyPlanningFactGraphV5,
@@ -267,7 +271,37 @@ describe('provisional capacity preview trace persistence gate', () => {
     const harness = repositoryHarness();
     harness.failNext();
     setWeeklyPlanningTraceRepositoryForTests(harness.repository);
-    const first = traceInput(`${CONVERSATION_ID}:request:1`, [previewEvent()]);
+    const event = previewEvent();
+    const requestId = `${CONVERSATION_ID}:request:1`;
+    const projected = projectWeeklyPlanningProvisionalCapacityPreviewV5({
+      input: {
+        userText: '空き時間の中で数学を英語より優先して暫定配分してください。',
+        traceRequestId: requestId,
+      } as ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
+      evaluation: {
+        provisionalTimeboxProjection: { source: 'current_directive' },
+        compilation: { status: 'ready', input: {
+          movableWorkItems: [{ id: 'item-english-daily', taskId: 'task-english', label: '英語' }],
+          relations: [{ factId: 'priority-math-english', kind: 'priority_over',
+            fromTaskId: 'task-math', toTaskId: 'task-english' }],
+        } },
+        activeGraph: { tasks: [{ id: 'task-english', title: '英語' }] },
+        groundingRecords: [], repairDecision: { agenda: [] },
+        learningStrategyProposals: { records: [] }, dialogue: { status: 'ready_for_preview' },
+      } as unknown as WeeklyPlanningStableV5PlanningEvaluation,
+      preview: {
+        schedulerVersion: event.data.schedulerVersion, status: 'insufficient_capacity',
+        candidates: event.data.result.candidates,
+        unscheduledWorkItemIds: event.data.result.unscheduledWorkItems,
+      } as unknown as WeeklyPlanningStableV5PreviewSchedulerResult,
+    });
+    expect(projected?.responseSource).toBe('system');
+    expect(projected?.message).toContain('英語は容量不足のため候補に入れていません。');
+    expect(projected?.message).not.toContain('英語の一部');
+    const first = {
+      ...traceInput(requestId, [event, ...takeWeeklyPlanningStableV5DebugTrace(requestId)]),
+      assistantMessage: projected!.message, responseSource: projected!.responseSource!,
+    };
 
     await recordWeeklyPlanningStableV5TurnTrace(first);
 
@@ -290,7 +324,7 @@ describe('provisional capacity preview trace persistence gate', () => {
     expect(replayedEntry.requestId).toBe(first.requestId);
     expect(serialized).toContain('insufficient_capacity');
     expect(serialized).toContain('"unscheduledCount":1');
-    expect(serialized).toContain('英語の一部を外した仮予定');
+    expect(serialized).toContain('英語は容量不足のため候補に入れていません。');
     expect(serialized).toContain('task-math');
     expect(serialized).toContain('keep-provisional-capacity-sentinel');
     expect(serialized).toContain('"traceTruncated":true');
@@ -315,7 +349,7 @@ describe('provisional capacity preview trace persistence gate', () => {
     expect(prepared.entries).toHaveLength(1);
     const preparedSerialized = JSON.stringify(prepared.entries[0]);
     expect(preparedSerialized).toContain('"unscheduledCount":1');
-    expect(preparedSerialized).toContain('英語の一部を外した仮予定');
+    expect(preparedSerialized).toContain('英語は容量不足のため候補に入れていません。');
     expect(preparedSerialized).toContain('keep-provisional-capacity-sentinel');
     expect(preparedSerialized).toContain('"traceTruncated":true');
     expect(preparedSerialized).not.toContain('item-english-daily');
