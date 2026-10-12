@@ -30,10 +30,12 @@ export interface WeeklyPlanningInteractionPlan {
   /** The exact open, non-deferred compiler question selected for the named topic.
    * Turn-local evidence only; the router may still select a higher-priority question. */
   targetQuestion: WeeklyPlanningStableQuestionV5 | null;
+  planningChanged: boolean;
   readonly acts: {
     ask: boolean;
     shift: boolean;
     resume: boolean;
+    consultation: boolean;
   };
 }
 
@@ -101,6 +103,7 @@ export function planWeeklyPlanningInteraction(params: {
     ask: acts.some((act) => act.kind === 'ask_about_pending_question'),
     shift: acts.some((act) => act.kind === 'topic_shift'),
     resume: acts.some((act) => act.kind === 'resume_topic'),
+    consultation: acts.some((act) => act.kind === 'consultation_request'),
   };
   const { dialogue, compilation } = params.evaluation;
   let override: WeeklyPlanningStableQuestionV5 | null = null;
@@ -154,6 +157,7 @@ export function planWeeklyPlanningInteraction(params: {
     resumeTargetStatus,
     targetQuestion,
     acts: flags,
+    planningChanged: params.evaluation.semanticChanged,
   };
 }
 
@@ -220,6 +224,8 @@ export function classifyWeeklyPlanningInteraction(params: {
   const hasPreview = params.output.draftCandidates.length > 0
     || params.output.preserveExistingPreview === true;
   const apply: WeeklyPlanningInteractionOutcome = { kind: 'apply' };
+  if (acts.consultation && !params.plan.planningChanged && !acts.ask && !acts.resume && !acts.shift
+    && params.output.draftCandidates.length === 0) return { kind: 'aside' };
   if (hasPreview) return apply;
 
   // "Resume" is only truthful when the presented question belongs to the named topic (or
