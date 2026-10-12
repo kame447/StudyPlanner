@@ -1,3 +1,4 @@
+import { projectWeeklyPlanningPreviewConstraintSatisfaction } from './weeklyPlanningPreviewConstraintSatisfaction';
 import { planWeeklyPlanningInteraction, classifyWeeklyPlanningInteraction } from './weeklyPlanningInteractionDecision';
 import {
   withWeeklyPlanningProvisionalTimeboxStateV5,
@@ -147,6 +148,13 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   return {
     ...output,
     interactionOutcome: { kind: 'apply' },
+    ...(output.draftCandidates.length > 0 && !output.preserveExistingPreview
+      ? { previewConstraintSatisfaction: projectWeeklyPlanningPreviewConstraintSatisfaction({
+          graph: evaluation.activeGraph,
+          schedulerInput: responseRoute.schedulerInput,
+          candidates: output.draftCandidates,
+        }) }
+      : {}),
     ...(output.draftCandidates.length > 0 && selection?.sourceId && occupiedEventIds.length > 0
       ? { existingScheduleGrounding: {
           graphRevision: semantic.graph.revision,

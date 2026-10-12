@@ -153,3 +153,13 @@ scheduler policyを変更するときは、少なくとも次を確認する。
 6. deterministic regressionがcurrent behaviorを固定しているか
 
 古いtask文書をcurrent ruleとして復活させず、現在も必要な原則だけをこのpolicyへ統合する。
+
+## Explicit content session length precedes margin
+
+Accepted session duration is resolved by workload, then component, then task scope. Conflicting selected facts remain unresolved. An explicit cap precedes ordinary whole-content distribution and estimation margin: allocate each integer unit's real effort first, preserve all quantities and ranges, then share only the margin that fits the cap. This applies to integer page/problem/word/lesson/chapter/section/exam_year/custom quantities. Minute/hour/session use their existing time/count paths; mock exams remain atomic and fractional custom quantities are not rounded into whole units.
+
+For20 problems×3 minutes with session30, the actual result is30+30 minutes with10+10 problems. An indivisible unit above the cap, atomic work, or bounded fallback retains its real effort and selected cap source. The actual new candidates determine satisfied/not_satisfied/not_evaluated. Missing identity/provenance cannot establish satisfaction; incomplete coverage, duration mismatch or a computable cap violation is not_satisfied. The current renderer receives this typed result and explains it naturally without deriving scheduling truth from prose.
+
+Original minute precision is retained: explicit time slices round to at least one minute; content caps floor to at least one minute. The diagnostic compares actual duration to the unrounded accepted cap. No new fractional-minute policy is implied. Renderer failure with an unmet/unevaluated condition uses the existing technical-stop message while preserving candidate state and explicit approval authority.
+
+The generated-session guard512 and Stable checkpoint array limit500 remain distinct existing contracts. Before ordinary publication, the application checks the reducer-projected state and returned graph against the existing Stable shape authority. Failure retains the prior graph/preview/draft/context through the existing rollback path. Compatibility-only persistence, byte compaction and physical storage/quota behavior retain their existing owners.
