@@ -573,13 +573,16 @@ describe('question presentation binding across the turn commit boundary', () => 
     for (const kind of ['explain', 'resume'] as const) {
       const plan: WeeklyPlanningInteractionPlan = { dialogueQuestionOverride: null,
         resumeTargetStatus: kind === 'resume' ? 'active' : 'not_named',
+        planningChanged: false,
         targetQuestion: kind === 'resume' ? { domain: 'work_item', code: 'missing_effort_estimate',
           factId: question.topicId ?? null, effortMeasurement: 'total_duration',
           details: { estimateForWorkloadFactId: 'remaining-work', questionBasis: 'completed_workload_total' } } : null,
-        acts: { ask: kind === 'explain', resume: kind === 'resume', shift: false } };
+        acts: { ask: kind === 'explain', resume: kind === 'resume', shift: false, consultation: false } };
       const classify = (actual: typeof question) => classifyWeeklyPlanningInteraction({ plan,
         output: presentingResult({ state: { ...intakeState(), lastQuestionContext: actual } }),
         previousQuestion: question, presentation });
+      expect(classify({ ...question }).kind).toBe(kind === 'explain' ? 'explain_pending_question' : 'resume_pending_question');
+      plan.acts.consultation = true;
       expect(classify({ ...question }).kind).toBe(kind === 'explain' ? 'explain_pending_question' : 'resume_pending_question');
       const changes: Array<Partial<typeof question>> = [
         { targetSlot: 'stable_v5:quantity_role_unresolved' }, { topicId: 'other-work' },

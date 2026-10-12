@@ -1,4 +1,5 @@
-import { materialIdentityDocument, MATERIAL_IDENTITY_TEXT } from '../testUtils/__tests__/weeklyPlanningMaterialIdentityFixture';
+import { isWeeklyPlanningFactActiveV5 } from '../semantic/weeklyPlanningFactLifecycleV5';
+import { materialIdentityDocument, materialIdentityEffortFixture, MATERIAL_IDENTITY_TEXT } from '../testUtils/__tests__/weeklyPlanningMaterialIdentityFixture';
 import { classifyWeeklyPlanningApprovalAvailability } from './weeklyPlanningApprovalAvailability';
 import { createUserConfirmedPlanningContextRecordV1, hydrateUserPlanningContextSnapshotV1, exportUserPlanningContextSnapshotV1 } from '../../userPlanningContext/userPlanningContextSpace';
 import { createEmptyUserPlanningContextSnapshotV1 } from '../../userPlanningContext/userPlanningContextTypes';
@@ -616,4 +617,51 @@ it('versions an explicit material correction through the real app, invalidates s
   await act(async () => { await ref.current!.approveDraftBlocks(); });
   expect(save).toHaveBeenCalledTimes(freshBlocks.length);
   expect(exportUserPlanningContextSnapshotV1({ ownerId: OWNER, currentDate: '2026-08-16' })).toEqual(contextBefore);
+});
+
+
+it('keeps an unrelated required need through simultaneous identity/detail, App checkpoint reload and zero save', async () => {
+  const { ref, database, submit, unsaved } = await mount();
+  const setupText = `${USER_TEXT}。教材は数学の問題集です。教材名と合計時間と進める範囲は要確認です`;
+  const task = responseDocument.tasks[0];
+  task.study!.components = [{ localId: 'material', existingPublicId: null, parentLocalId: null,
+    role: 'material', label: '数学の問題集', workloads: task.workloads, sourceText: '教材は数学の問題集です' }];
+  task.workloads = [];
+  responseDocument.uncertainties = [
+    { localId: 'material-need', targetLocalId: 'material', field: 'material_identity', reason: '教材名を確認', sourceText: '教材名と合計時間と進める範囲は要確認です' },
+    { localId: 'effort-need', targetLocalId: 'material', field: 'total_duration', reason: '合計時間を確認', sourceText: '教材名と合計時間と進める範囲は要確認です' },
+    { localId: 'unrelated-need', targetLocalId: 'material', field: 'unrelated', reason: '進める範囲を確認', sourceText: '教材名と合計時間と進める範囲は要確認です' },
+  ];
+  expect((await submit(setupText)).accepted).toBe(true);
+  const before = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
+  const oldMaterial = before.components.find(fact => fact.role === 'material')!;
+  const need = (field: string) => before.uncertainties.find(fact => fact.field === field)!;
+  unsaved(); expect(ref.current!.state.previewCandidates ?? []).toEqual([]);
+  const fixture = materialIdentityEffortFixture(); responseDocument = fixture.document;
+  responseDocument.tasks[0].existingPublicId = before.tasks[0].id;
+  responseDocument.tasks[0].title = before.tasks[0].title;
+  responseDocument.tasks[0].study!.components[0].existingPublicId = oldMaterial.id;
+  responseDocument.corrections[0].target.publicId = oldMaterial.id;
+  expect((await submit(fixture.userText)).accepted).toBe(true);
+  const after = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
+  const replacement = after.components.find(fact => fact.role === 'material' && isWeeklyPlanningFactActiveV5(after, fact.id))!;
+  expect(replacement.id).not.toBe(oldMaterial.id);
+  expect(isWeeklyPlanningFactActiveV5(after, need('material_identity').id)).toBe(false);
+  expect(isWeeklyPlanningFactActiveV5(after, need('total_duration').id)).toBe(false);
+  expect(isWeeklyPlanningFactActiveV5(after, need('unrelated').id)).toBe(true);
+  expect(after.uncertainties.find(fact => fact.id === need('unrelated').id)).toEqual({ ...need('unrelated'), targetFactId: replacement.id });
+  expect(after.effortEstimates).toContainEqual(expect.objectContaining({ targetFactId: replacement.id, kind: 'total_duration', minutes: 60 }));
+  expect(after.workloads).toEqual(before.workloads.map(fact => ({ ...fact, componentId: replacement.id })));
+  expect(ref.current!.state.previewCandidates ?? []).toEqual([]); unsaved();
+  expect(loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK })?.graph).toEqual(after);
+  await act(async () => { renderer!.unmount(); }); renderer = undefined;
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest(); clearWeeklyPlanningSessionRuntime();
+  const repository = createMemoryWeeklyPlanningApprovalPlanRepository(database);
+  await act(async () => { renderer = create(<Harness ref={ref} userId={OWNER} selectedDate={WEEK} plans={[]} scheduleTemplates={[]}
+    isPlannerDataSnapshotCurrent={() => true} plannerDataAvailability={createReadyPlannerDataAvailability(OWNER)}
+    saveWeeklyApprovedPlan={repository.saveApprovedPlan} completeWeeklyApprovalOperation={repository.completeOperation} />); });
+  expect(ref.current!.exportConversationSnapshot()!.graph).toEqual(after);
+  expect(ref.current!.state.previewCandidates ?? []).toEqual([]);
+  expect(ref.current!.pendingDraftBlocks).toEqual([]);
+  await act(async () => { await ref.current!.approveDraftBlocks(); }); unsaved();
 });
