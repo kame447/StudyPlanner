@@ -80,6 +80,31 @@ beforeEach(() => {
 afterEach(() => { resetWeeklyPlanningStableV5RuntimeSessionsForTest(); resetWeeklyPlanningStableV5TraceRuntimeForTest(); resetWeeklyPlanningDialogueRendererPromptContextsForTest(); setWeeklyPlanningTraceRepositoryForTests(undefined); restore?.(); vi.restoreAllMocks(); });
 
 describe('allocation evidence from the new preview to the current renderer', () => {
+  it('passes two real session candidates as blocks in one preview without creating alternatives or save authority', async () => {
+    const prepared = fixture('minute');
+    prepared.input.userText = '8月24日に数学の教材を60分、1回30分で予定を作って。';
+    prepared.document.tasks[0].effortEstimates = [{ localId: 'cap', targetLocalId: 'task', kind: 'session_duration',
+      minutes: 30, unitCode: 'session', precision: 'exact', sourceText: '1回30分' }];
+    accept(prepared.document, prepared.input.userText);
+    const run = { input: prepared.input, result: await executeWeeklyPlanningStableV5RuntimeTurn(prepared.input) };
+    const before = structuredClone(run.result);
+    expect(before.draftCandidates.map(candidate => candidate.durationMinutes)).toEqual([30, 30]);
+    expect(new Set(before.draftCandidates.map(candidate => candidate.stableKey)).size).toBe(2);
+    expect(before.state.shouldSavePlan).toBe(false);
+    const text = `数学の教材の候補2件を作成しました。「${CONTROL}」から確認できます。`;
+    completion.mockImplementation(async request => response(request, text));
+    const rendered = await renderWeeklyPlanningStableV5AssistantMessage(run);
+    const prompt = JSON.parse(completion.mock.calls[0][0].messages[1].content);
+    expect(prompt.applicationDecision.previewCount).toBe(2);
+    expect(prompt.request).toContain('previewCount counts blocks in ONE preview');
+    expect(prompt.request).toContain('候補N件, never N個/つのプレビュー or N案');
+    expect(prompt.applicationDecision.previewPromotionControlLabel).toBe(CONTROL);
+    expect(rendered.responseSource).toBe('ai'); expect(rendered.message).toBe(text);
+    expect(rendered.draftCandidates).toEqual(before.draftCandidates);
+    expect(rendered.state).toEqual(before.state); expect(rendered.stableV5Graph).toEqual(before.stableV5Graph);
+    expect(completion).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['page', 'minute'] as const)('matches the actual %s candidate and UI summary without changing approval or state', async unit => {
     const run = await execute(unit); const before = structuredClone(run.result);
     const expected = summarizeWeeklyPlanningAllocationBreakdown(before.draftCandidates);
@@ -181,6 +206,7 @@ describe('allocation evidence from the new preview to the current renderer', () 
     const context = remembered.mock.calls.find(([actionId]) => actionId === trace.actionId)?.[1] as Record<string, unknown>;
     expect(context).toBeDefined();
     expect(context.messages).toEqual(completion.mock.calls[0][0].messages);
+    expect(JSON.parse(completion.mock.calls[0][0].messages[1].content).request).toContain('previewCount counts blocks in ONE preview');
     expect(JSON.parse(completion.mock.calls[0][0].messages[1].content).applicationDecision.allocationBreakdown).toEqual(allocation(run.result));
     trace.request!.promptContext = { futureAllocationSentinel: { preserved: true }, ...context, ...(large ? { largeFutureAllocation: 'allocation-data'.repeat(30_000) } : {}) };
     const writes: Array<{ session: WeeklyPlanningTraceSession; entries: WeeklyPlanningTraceEntry[] }> = [];

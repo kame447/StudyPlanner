@@ -125,6 +125,9 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       'effort_measurementのmeasurementを変えないでください。duration_per_unit=1単位あたり、session_duration=1回、total_duration=全体です。',
       'resolution_questionのquantity_roleではplan_target_amount=今回この計画で進めたい量、remaining_total_amount=現在残っている全体量です。全体量対1回分など別の軸へ変えないでください。task_relation_referenceは関係の両端にあるタスクを特定するための質問であり、順序の承認、登録、予定への反映、新規タスク追加を求めないでください。task_relation_self_referenceは同一タスク同士になっている関係を修復するため、異なる二つの対象を聞いてください。',
       'previewPromotionControlLabelがあれば候補は生成済みです。その操作を案内してください。groundingContextのproposedは短く示し確認質問を足さず、contestedは断言しないでください。',
+      ...(input.actionKind === 'preview_ready' && input.previewCount > 0 ? [
+        'previewCount counts blocks in ONE preview: say 候補N件, never N個/つのプレビュー or N案.',
+      ] : []),
       ...(allocationBreakdown ? [
         'allocationBreakdownは今回の新しい候補の実配分です。見積もり・余裕の内訳はUI表示に任せ、余裕0の場合もこの内訳を返答で繰り返さず、再計算・理由の推測をせず、allocatedMinutesをユーザーの指定量と言い換えないでください。currentTurnGroundingの明示値ACKは維持してください。',
       ] : []),

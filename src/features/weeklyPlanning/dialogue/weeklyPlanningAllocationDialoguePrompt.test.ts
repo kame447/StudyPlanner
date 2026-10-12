@@ -12,6 +12,26 @@ function input(): WeeklyPlanningStableV5DialogueRenderInput & { allocationBreakd
     actionKind: 'preview_ready', questionCode: null, requiredLabels: [], fallbackText: '', previewCount: 1, allocationBreakdown: breakdown };
 }
 describe('allocation disclosure request boundary', () => {
+  it.each([1, 2, 3])('counts %i scheduled blocks within one preview, not alternative plans', previewCount => {
+    const value = { ...input(), previewCount };
+    const before = structuredClone(value);
+    const payload = JSON.parse(createWeeklyPlanningStableV5DialoguePrompt(value).userPrompt);
+    expect(payload.applicationDecision.previewCount).toBe(previewCount);
+    expect(payload.request).toContain('previewCount counts blocks in ONE preview');
+    expect(payload.request).toContain('候補N件, never N個/つのプレビュー or N案');
+    expect(payload.request).toContain('previewPromotionControlLabel');
+    expect(value).toEqual(before);
+    const withoutAllocation = JSON.parse(createWeeklyPlanningStableV5DialoguePrompt({ ...value, allocationBreakdown: undefined }).userPrompt);
+    expect(withoutAllocation.request).toContain('previewCount counts blocks in ONE preview');
+  });
+  it.each(['question', 'status', 'empty_preview'] as const)('does not present a new preview count for %s', mode => {
+    const value = input();
+    if (mode === 'empty_preview') value.previewCount = 0;
+    else value.actionKind = mode;
+    const payload = JSON.parse(createWeeklyPlanningStableV5DialoguePrompt(value).userPrompt);
+    expect(payload.request).not.toContain('previewCount counts blocks in ONE preview');
+  });
+
   it('keeps the optional numeric evidence compact without weakening factual ACK or promotion', () => {
     const withEvidence = createWeeklyPlanningStableV5DialoguePrompt(input());
     const without = createWeeklyPlanningStableV5DialoguePrompt({ ...input(), allocationBreakdown: undefined } as WeeklyPlanningStableV5DialogueRenderInput);
