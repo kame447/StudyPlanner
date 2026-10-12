@@ -162,6 +162,19 @@ describe('Stable V5 contextual ID boundary', () => {
     expect(systemPrompt).toContain('pendingQuestion binds only actual answers to its exact target');
     expect(systemPrompt).toContain('cannot suppress other explicit contributions');
     expect(systemPrompt).not.toContain('fresh localIds');
+    expect(systemPrompt).toContain('Only total_duration/session_duration may instead use an exact active workload publicId');
+    expect(systemPrompt).toContain('uncertainty.targetLocalId uses a declared fact localId');
+    expect(calls[1]?.responseFormat).toMatchObject({
+      json_schema: { schema: { properties: {
+        tasks: { items: { properties: { effortEstimates: { items: { properties: {
+          targetLocalId: { type: 'string', description: expect.stringContaining('declared localIds take precedence') },
+        } } } } } },
+        uncertainties: { items: { properties: {
+          targetLocalId: { type: 'string', description: expect.stringContaining('never a public Fact ID') },
+        } } },
+      } } },
+    });
+
 
     const repairMessages = calls[2]?.messages ?? [];
     const repairMessage = repairMessages[repairMessages.length - 1]?.content ?? '{}';
