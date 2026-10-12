@@ -126,9 +126,15 @@ open-ended workに架空のscope totalを作って分配しない。
 
 acceptedな生活制約・buffer・availabilityはtyped constraintとしてschedulerへ渡し、raw Japaneseや科目名から後段で推測しない。
 
+日付を跨ぐaccepted hard `available` intervalは、配置対象日ごとの区間へ展開し、通常配置とpreferred配置の両方で同じ境界を消費する。各日のrequest-time `notBefore` と既存occupied/unavailableの制約は保持する。これは宣言されたavailabilityの配置責務であり、終日MonthEventのbusy/free方針を変更しない。
+
 ## Preference and personalization
 
 preferred time、observed profile、learning-specific scoreは、hard availabilityを通過したsafe candidate集合の中でのみ順位付けに使う。
+
+Task/component の accepted `preferred_window` は、片側だけの明示 clock なら不足側を同日の `00:00` / `24:00` として解決する。clock を伴わない有効な date-only preference は保持する。日付表現・named time period・時刻区間・constraint level が未解決なら、work量がまだない場合も黙って捨てず、既存のblocking issue/question経路へ渡す。
+
+Plan-wide の `preferred` と soft `available` は同じ既存順位付けへ投影し、hard availabilityを広げない。単一のaccepted planning windowに対して、非反復のcanonical曜日が期間外となったこれらの宣言は、毎週へ読み替えず適用日を質問する。質問の意味は既存のtyped availability-date-scopeとしてrendererへ渡す。
 
 - explicit preference > inferred/observed tendency
 - current-week acceptanceをdurable preferenceへ自動昇格しない
@@ -157,3 +163,13 @@ scheduler policyを変更するときは、少なくとも次を確認する。
 6. deterministic regressionがcurrent behaviorを固定しているか
 
 古いtask文書をcurrent ruleとして復活させず、現在も必要な原則だけをこのpolicyへ統合する。
+
+## Explicit content session length precedes margin
+
+Accepted session duration is resolved by workload, then component, then task scope. Conflicting selected facts remain unresolved. An explicit cap precedes ordinary whole-content distribution and estimation margin: allocate each integer unit's real effort first, preserve all quantities and ranges, then share only the margin that fits the cap. This applies to integer page/problem/word/lesson/chapter/section/exam_year/custom quantities. Minute/hour/session use their existing time/count paths; mock exams remain atomic and fractional custom quantities are not rounded into whole units.
+
+For20 problems×3 minutes with session30, the actual result is30+30 minutes with10+10 problems. An indivisible unit above the cap, atomic work, or bounded fallback retains its real effort and selected cap source. The actual new candidates determine satisfied/not_satisfied/not_evaluated. Missing identity/provenance cannot establish satisfaction; incomplete coverage, duration mismatch or a computable cap violation is not_satisfied. The current renderer receives this typed result and explains it naturally without deriving scheduling truth from prose.
+
+Original minute precision is retained: explicit time slices round to at least one minute; content caps floor to at least one minute. The diagnostic compares actual duration to the unrounded accepted cap. No new fractional-minute policy is implied. Renderer failure with an unmet/unevaluated condition uses the existing technical-stop message while preserving candidate state and explicit approval authority.
+
+The generated-session guard512 and Stable checkpoint array limit500 remain distinct existing contracts. Before ordinary publication, the application checks the reducer-projected state and returned graph against the existing Stable shape authority. Failure retains the prior graph/preview/draft/context through the existing rollback path. Compatibility-only persistence, byte compaction and physical storage/quota behavior retain their existing owners.

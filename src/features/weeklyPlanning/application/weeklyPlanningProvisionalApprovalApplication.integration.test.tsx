@@ -748,4 +748,63 @@ describe('provisional allocation through application and approval persistence', 
     expect(measureWeeklyPlanningTraceJsonBytes(preparedLarge.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
   });
 
+  it.each([
+    { amount: 20, rate: 3, cap: 30, expected: [30, 30] },
+    { amount: 1, rate: 35, cap: 20, expected: [40] },
+  ])('keeps original cap outcomes through explicit approval and canonical reload ($amount/$cap)', async ({ amount, rate, cap, expected }) => {
+    const storage = createMemoryStorageHarness();
+    restoreWindow = installWeeklyPlanningTestStorage(storage.storage);
+    const repository = createLocalPlannerRepository(storage.storage);
+    const save = vi.fn(async (draft: PlanDraft) => repository.upsertPlan(createPlanFromDraft(draft)));
+    const ref = createRef<WeeklyPlanningApplication>();
+    const props: UseWeeklyPlanningApplicationInput = { userId: OWNER, selectedDate: WEEK_START, plans: [], scheduleTemplates: [],
+      isPlannerDataSnapshotCurrent: () => true, plannerDataAvailability: createReadyPlannerDataAvailability(OWNER), saveWeeklyApprovedPlan: save };
+    const mount = async () => { await act(async () => { renderer = create(<Harness ref={ref} {...props} />); }); };
+    const reload = async () => { await act(async () => { renderer!.unmount(); }); renderer = undefined;
+      resetWeeklyPlanningStableV5RuntimeSessionsForTest(); clearWeeklyPlanningSessionRuntime(); await mount(); };
+    const document = workloadDocument();
+    document.tasks[0].sourceText = `数学の教材を${amount}問進めたい`;
+    Object.assign(document.tasks[0].workloads[0], { amount, unitCode: 'problem', unitLabel: '問', sourceText: `${amount}問進めたい` });
+    document.tasks[0].effortEstimates = [
+      { localId: 'per-problem', targetLocalId: 'workload', kind: 'duration_per_unit', minutes: rate, unitCode: 'problem', precision: 'exact', sourceText: `1問${rate}分` },
+      { localId: 'cap', targetLocalId: 'task', kind: 'session_duration', minutes: cap, unitCode: 'session', precision: 'exact', sourceText: `1回${cap}分` },
+    ];
+    const userText = `8月17日から23日で数学の教材を${amount}問進めたい。1問${rate}分、1回${cap}分です`;
+    const validation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(document), { currentUserText: userText });
+    expect(validation.errors).toEqual([]); expect(validation.document).not.toBeNull();
+    normalizeMock.mockResolvedValueOnce(accepted(validation.document!));
+    await mount();
+    await act(async () => { expect((await ref.current!.submitTurn(userText)).accepted).toBe(true); });
+    const checkpoint = loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK_START })!;
+    const capId = checkpoint.graph.effortEstimates.find(fact => fact.kind === 'session_duration')!.id;
+    const candidates = structuredClone(ref.current!.state.previewCandidates!);
+    expect(candidates.map(candidate => candidate.durationMinutes)).toEqual(expected);
+    expect(candidates).toEqual(expected.map(() => expect.objectContaining({ stableV5Metadata: expect.objectContaining({
+      graphRevision: checkpoint.graph.revision, taskId: checkpoint.graph.tasks[0].id, sourceFactRefs: expect.arrayContaining([capId]),
+    }) })));
+    expect(checkpoint.planningState.previewCandidates).toEqual(candidates);
+    expect(save).not.toHaveBeenCalled(); expect(await repository.getPlans(OWNER)).toEqual([]);
+    const blocks = createWeeklyDraftBlocksFromPreviewCandidates({ candidates, userId: OWNER, createdAt: new Date().toISOString() });
+    await act(async () => { ref.current!.createDraftBlocks(blocks); });
+    await reload();
+    expect(ref.current!.pendingDraftBlocks).toEqual(blocks);
+    expect(getWeeklyPlanningStableV5RuntimeSession(checkpoint.conversationId)?.graph).toEqual(checkpoint.graph);
+    expect(save).not.toHaveBeenCalled();
+    // A computable unmet cap retains the original explicit-approval policy. The
+    // renderer failure path cannot silently create a new prohibition or save.
+    await act(async () => { await ref.current!.approveDraftBlocks(); });
+    expect(save).toHaveBeenCalledTimes(expected.length);
+    const plans = await createLocalPlannerRepository(storage.storage).getPlans(OWNER);
+    expect(plans).toHaveLength(expected.length);
+    for (const block of blocks) expect(plans).toEqual(expect.arrayContaining([expect.objectContaining({ title: block.title, date: block.date, startTime: block.startTime, endTime: block.endTime })]));
+    const operations = loadWeeklyPlanningApprovalOperations(OWNER);
+    expect(operations).toHaveLength(1); expect(operations[0].status).toBe('completed');
+    for (const plan of plans) expect(parseWeeklyPlanningPlanSourceId(plan.sourceId)).toEqual({ approvalOperationId: operations[0].approvalOperationId, sourceDraftBlockId: expect.any(String) });
+    await reload();
+    expect(await createLocalPlannerRepository(storage.storage).getPlans(OWNER)).toEqual(plans);
+    expect(getWeeklyPlanningStableV5RuntimeSession(checkpoint.conversationId)?.graph).toEqual(checkpoint.graph);
+    await act(async () => { await ref.current!.approveDraftBlocks(); });
+    expect(save).toHaveBeenCalledTimes(expected.length); expect(normalizeMock).toHaveBeenCalledTimes(1);
+  });
+
 });

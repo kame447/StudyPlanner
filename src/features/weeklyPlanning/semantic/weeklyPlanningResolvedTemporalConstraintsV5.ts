@@ -267,17 +267,19 @@ export function materializeWeeklyPlanningHardTemporalBoundsV5(params: {
   };
 }
 
-function preferredWindow(params: {
+/** Resolve typed time independently of whether schedulable work exists yet. */
+export function resolveWeeklyPlanningPreferredTimeWindowV5(params: {
   constraint: WeeklyPlanningTemporalConstraintGraphViewV5['temporalConstraints'][number];
-  namedTimePeriods: Partial<Record<string, { startTime: string; endTime: string }>>;
+  namedTimePeriods?: Partial<Record<string, { startTime: string; endTime: string }>>;
 }): WeeklyPlanningResolvedPreferredWindowV5['window'] | undefined {
   let startTime: string | null = null;
   let endTime: string | null = null;
-  if (params.constraint.startTime && params.constraint.endTime) {
-    startTime = params.constraint.startTime;
-    endTime = params.constraint.endTime;
+  if (params.constraint.startTime || params.constraint.endTime) {
+    // Typed one-sided bounds cover the rest of that day, as availability does.
+    startTime = params.constraint.startTime ?? '00:00';
+    endTime = params.constraint.endTime ?? '24:00';
   } else if (params.constraint.namedTimePeriod) {
-    const named = params.namedTimePeriods[params.constraint.namedTimePeriod];
+    const named = (params.namedTimePeriods ?? WEEKLY_PLANNING_NAMED_TIME_PERIODS_V5)[params.constraint.namedTimePeriod];
     if (!named) return undefined;
     startTime = named.startTime;
     endTime = named.endTime;
@@ -318,7 +320,7 @@ function resolvePreferredWindows(params: {
         resolvedDateExpressions: params.resolvedDateExpressions,
       });
       if (!dateScope) continue;
-      const window = preferredWindow({
+      const window = resolveWeeklyPlanningPreferredTimeWindowV5({
         constraint,
         namedTimePeriods: params.namedTimePeriods,
       });

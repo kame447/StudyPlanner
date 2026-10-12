@@ -99,6 +99,8 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       previewCount: input.previewCount,
       ...(input.recovery ? { recovery: input.recovery } : {}),
       ...(input.recoveryQuestionEvidence ? { recoveryQuestionEvidence: input.recoveryQuestionEvidence } : {}),
+      ...(input.actionKind === 'preview_ready' && input.previewConstraintSatisfaction
+        ? { previewConstraintSatisfaction: input.previewConstraintSatisfaction } : {}),
       ...(input.existingScheduleGrounding
         ? { existingScheduleGrounding: input.existingScheduleGrounding }
         : {}),
@@ -120,6 +122,9 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       'effort_measurementのmeasurementを変えないでください。duration_per_unit=1単位あたり、session_duration=1回、total_duration=全体です。',
       'resolution_questionのquantity_roleではplan_target_amount=今回この計画で進めたい量、remaining_total_amount=現在残っている全体量です。全体量対1回分など別の軸へ変えないでください。task_relation_referenceは関係の両端にあるタスクを特定するための質問であり、順序の承認、登録、予定への反映、新規タスク追加を求めないでください。task_relation_self_referenceは同一タスク同士になっている関係を修復するため、異なる二つの対象を聞いてください。',
       'previewPromotionControlLabelがあれば候補は生成済みです。その操作を案内してください。groundingContextのproposedは短く示し確認質問を足さず、contestedは断言しないでください。',
+      ...(input.actionKind === 'preview_ready' && input.previewConstraintSatisfaction?.length ? [
+        'previewConstraintSatisfactionは実際の今回の候補と受理済み1回の時間を照合した結果です。sourceFactIdの条件とtaskIdの対象を守り、not_satisfiedは受理した1回の時間を候補全体で満たしていないこと、not_evaluatedは満たしたと確認できないことを自然に伝えてください。条件を受理しただけで満たしたと述べず、超過・欠落などの原因や変更を推測しないでください。satisfied以外を満足扱いしないでください。',
+      ] : []),
       ...(input.recovery ? [
         '復帰ではgroundingContextの追加説明や候補の操作案内はせず、復帰の事実と一つの確認だけにしてください。recoveryQuestionEvidenceのID参照とtask/componentの名前・単位・期間scopeを守り、同じ量の別対象へ質問を移さないでください。',
         '今回は新しい内容を計画へ反映していません。recoveryの事実を自然な言葉で短く伝え、acceptedFactsを今受け取った情報のようにACKしないでください。内部処理・JSON・検証の説明は不要です。',
