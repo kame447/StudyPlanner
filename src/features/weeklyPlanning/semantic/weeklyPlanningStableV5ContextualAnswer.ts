@@ -1,4 +1,8 @@
 import {
+  requiresWeeklyPlanningExplicitLocalWorkloadEffortBindingV5,
+  resolveWeeklyPlanningExactWorkloadEffortTargetV5,
+} from './weeklyPlanningExistingEntityBindingV5';
+import {
   createActiveLifecycleEntriesV5,
 } from './weeklyPlanningFactLifecycleV5';
 import {
@@ -154,6 +158,12 @@ function isMinimalWorkloadContextualReply(
     && input.document.planningIntent !== 'create_plan'
     && input.document.planningWindow === null
     && hasOneContextualPayloadTask(input.document)
+    && !input.document.tasks.some(task => task.effortEstimates.some(estimate =>
+      resolveWeeklyPlanningExactWorkloadEffortTargetV5({
+        document: input.document, task, estimate, graph: input.graph,
+      }) !== null))
+    && !(input.pendingQuestion.questionCode === 'missing_effort_estimate'
+      && requiresWeeklyPlanningExplicitLocalWorkloadEffortBindingV5(input))
     && input.document.relations.length === 0
     && input.document.availabilityDeclarations.length === 0
     && input.document.constraintSourceRequests.length === 0
@@ -691,6 +701,12 @@ export function applyWeeklyPlanningStableV5ContextualAnswer(
   if (evaluation.status !== 'incompatible') return null;
   if (evaluation.reason === 'target_unavailable') {
     return rejectUnavailableTarget(input);
+  }
+  // Keep independent typed details without treating them as a quantity-role answer.
+  if (evaluation.reason === 'quantity_role_not_grounded_in_user_text'
+    && (containsResolvedSemanticDelta(input.document)
+      || (input.document.userContextFacts?.length ?? 0) > 0)) {
+    return null;
   }
   if (
     evaluation.reason === 'duration_not_grounded_in_user_text'

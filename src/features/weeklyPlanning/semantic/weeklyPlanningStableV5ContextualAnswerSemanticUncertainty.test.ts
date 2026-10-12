@@ -168,7 +168,7 @@ describe('Stable V5 semantic-uncertainty contextual answer', () => {
   });
 
   it('does not close the pending uncertainty when the same field remains on the same exact target', () => {
-    const evaluation = evaluateWeeklyPlanningStableV5ContextualAnswer({
+    const input = {
       graph: graphWithPendingBreakdown(),
       document: breakdownDocument({
         retainedUncertaintyField: 'work_breakdown',
@@ -179,12 +179,19 @@ describe('Stable V5 semantic-uncertainty contextual answer', () => {
       turnId: 'turn-2',
       expectedRevision: 2,
       userText: '内訳はまだ分かりません。',
-    });
+    };
+    const evaluation = evaluateWeeklyPlanningStableV5ContextualAnswer(input);
 
     expect(evaluation).toMatchObject({
       status: 'incompatible',
       reason: 'uncertainty_not_resolved',
       targetFactId: 'uncertainty-breakdown',
     });
+    const result = applyWeeklyPlanningStableV5ContextualAnswer(input);
+    expect(result?.status).toBe('applied');
+    expect(result?.diff).toMatchObject({ added: [], removed: [], superseded: [] });
+    expect(result?.graph.uncertainties).toEqual(input.graph.uncertainties);
+    expect(result?.graph.factLifecycles).toEqual(input.graph.factLifecycles);
+    expect(result?.graph.tasks).toEqual(input.graph.tasks);
   });
 });
