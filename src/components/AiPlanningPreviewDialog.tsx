@@ -13,6 +13,7 @@ import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
 import type { Plan } from '../types/domain';
 import { DragUndoRedoControls } from './DragUndoRedoControls';
 import { TimelineDragOverlay } from './TimelineDragOverlay';
+import { WeeklyPlanningAllocationSummary } from './WeeklyPlanningAllocationSummary';
 import {
   buildAiPlanningPreviewDatePages,
   clampAiPlanningPreviewPageIndex,
@@ -866,6 +867,7 @@ export function AiPlanningPreviewDialog({
           <div className="ai-planning-preview-total" aria-label="計画全体の集計">
             <span>全{editableBlocks.length}件</span>
             <span>合計 {Math.floor(totalMinutes / 60)}時間{totalMinutes % 60 > 0 ? `${totalMinutes % 60}分` : ''}</span>
+            <WeeklyPlanningAllocationSummary blocks={editableBlocks} />
           </div>
 
           {error ? <p className="ai-planning-preview-error" role="alert">{error}</p> : null}
