@@ -82,7 +82,7 @@ afterEach(() => { resetWeeklyPlanningStableV5RuntimeSessionsForTest(); resetWeek
 describe('allocation evidence from the new preview to the current renderer', () => {
   it('passes two real session candidates as blocks in one preview without creating alternatives or save authority', async () => {
     const prepared = fixture('minute');
-    prepared.input.userText = '8月24日に数学の教材を60分、1回30分で予定を作って。';
+    prepared.input.userText = '8月24日に数学の教材を60分進める。1回30分で予定を作って。';
     prepared.document.tasks[0].effortEstimates = [{ localId: 'cap', targetLocalId: 'task', kind: 'session_duration',
       minutes: 30, unitCode: 'session', precision: 'exact', sourceText: '1回30分' }];
     accept(prepared.document, prepared.input.userText);
