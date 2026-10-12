@@ -395,6 +395,7 @@ function resolutionIntent(params: {
       return { ...base, resolutionKind: 'effort_estimate_choice' as const, requestedInformation: ['choose_effort_estimate'] as const };
     case 'hard_date_bound_outside_planning_window':
       return { ...base, resolutionKind: 'temporal_date_scope' as const, requestedInformation: ['applicable_start_or_deadline_date'] as const };
+    case 'availability_outside_planning_window':
     case 'missing_availability_date_scope':
       return { ...base, resolutionKind: 'availability_date_scope' as const, requestedInformation: ['availability_date_scope'] as const };
     case 'missing_time_bounds':
