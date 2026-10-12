@@ -135,6 +135,10 @@ preferred time、observed profile、learning-specific scoreは、hard availabili
 - personalization unavailable/failed時はsafe deterministic baselineへ戻る
 - preferenceはfree timeを新設しない
 
+For a newly exposed preview, preference satisfaction is read-only evidence from the active graph, compiled preferred placements and actual candidates. Applicable windows are matched as alternatives against each work-item target. The reported status is joint across all applicable preference facts within the task and repeated for each participating source fact; it does not report independent component satisfaction, individual fact failure, or that every alternative was used. Current task/work-item identity, component provenance, graph revision, clock span and complete nonoverlapping allocated duration must agree. A misplaced or incomplete result is not satisfied; missing compilation, clock meaning or candidate provenance remains not evaluated. Accepted conditions alone never establish placement success.
+
+This evidence reuses the session-duration result's turn-local renderer path. The renderer distinguishes preferred date/time windows from per-session length and describes unmet or unverified conditions without inventing their cause. It does not allocate again, change accepted facts, authorize Save, add a fixed disclosure sentence or reinterpret user language. Preserved previews and ordinary question turns do not gain fresh success evidence. The existing technical presentation failure path remains available without changing candidate state. Window compilation and placement policy retain their existing owners.
+
 ## Change rule
 
 scheduler policyを変更するときは、少なくとも次を確認する。
