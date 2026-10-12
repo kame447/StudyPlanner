@@ -1,3 +1,4 @@
+import type { WeeklyPlanningPreviewConstraintSatisfaction } from '../application/weeklyPlanningPreviewConstraintSatisfaction';
 import type { WeeklyPlanningFixedEventCommunicationFacts } from '../application/weeklyPlanningFixedEventOnlyInteraction';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
 
@@ -204,6 +205,7 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   planningInformation: Record<string, unknown> | null;
   currentTurnGrounding?: WeeklyPlanningStableV5DialogueCurrentTurnGrounding | null;
   existingScheduleGrounding?: WeeklyPlanningExistingScheduleGrounding;
+  previewConstraintSatisfaction?: WeeklyPlanningPreviewConstraintSatisfaction[];
   actionKind: WeeklyPlanningStableV5DialogueActionKind;
   questionCode: string | null;
   questionTarget?: WeeklyPlanningStableV5DialogueQuestionTarget | null;

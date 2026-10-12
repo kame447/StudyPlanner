@@ -1,3 +1,4 @@
+import { assertWeeklyPlanningTurnCommitShape } from './application/weeklyPlanningTurnSideEffects';
 import { createDialogueTurnEnvelope } from './dialogue/weeklyPlanningDialogueOrchestrator';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
 import { bindWeeklyPlanningQuestionPresentation, resolveWeeklyPlanningQuestionPresentationFreshness } from './intake/weeklyPlanningQuestionPresentation';
@@ -335,7 +336,7 @@ export async function submitWeeklyPlanningControlledTurn(
       executionResult.message,
       now(),
     );
-    const committed = params.dispatch({
+    const commitAction: Extract<WeeklyPlanningAction, { type: 'commit_turn' }> = {
       type: 'commit_turn',
       pending,
       intakeState: (() => {
@@ -362,7 +363,12 @@ export async function submitWeeklyPlanningControlledTurn(
       assistantMessage,
       draftCandidates: executionResult.draftCandidates,
       preservePreviewCandidates: executionResult.preserveExistingPreview,
+    };
+    assertWeeklyPlanningTurnCommitShape({
+      ownerId: params.ownerId, pending, state: params.getState(),
+      action: commitAction, result: executionResult,
     });
+    const committed = params.dispatch(commitAction);
     const accepted = committed.pendingTurn === undefined
       && committed.weekStartDate === pending.weekStartDate
       && committed.revision === pending.baseRevision + 2;
