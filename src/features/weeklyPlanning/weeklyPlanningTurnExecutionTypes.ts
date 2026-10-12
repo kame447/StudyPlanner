@@ -1,4 +1,5 @@
 import type { WeeklyPlanningConsultationCommunication } from './application/weeklyPlanningConsultationCommunication';
+import type { WeeklyPlanningPreviewConstraintSatisfaction } from './application/weeklyPlanningPreviewConstraintSatisfaction';
 import type { WeeklyPlanningExistingScheduleGrounding } from './dialogue/weeklyPlanningStableV5DialogueContracts';
 import type {
   Actual,
@@ -97,6 +98,8 @@ export interface WeeklyPlanningTurnExecutionResult {
   preserveExistingPreview?: boolean;
   /** Ephemeral renderer evidence; never an approval or persisted planning state. */
   existingScheduleGrounding?: WeeklyPlanningExistingScheduleGrounding;
+  /** Read-only evidence about this turn's actual new preview, never save authority. */
+  previewConstraintSatisfaction?: WeeklyPlanningPreviewConstraintSatisfaction[];
   stableV5Graph?: WeeklyPlanningFactGraphV5;
   failure?: WeeklyPlanningTurnFailure;
   responseSource?: WeeklyPlanningTraceResponseSource;

@@ -91,7 +91,7 @@ describe('Stable V5 semantic repair prompt', () => {
     );
     expect(payload.requiredChanges).toHaveLength(1);
     expect(payload.requiredChanges?.[0]).toContain(
-      'Use a fresh localId declared in this response as targetLocalId',
+      'For uncertainty.targetLocalId, use a fresh localId declared in this response',
     );
     expect(payload.requiredChanges?.[0]).toContain(
       'Preserve unrelated supported current-turn facts',
@@ -116,8 +116,30 @@ describe('Stable V5 semantic repair prompt', () => {
       'Preserve unrelated supported current-turn facts',
     );
     expect(payload.requiredChanges?.join('\n')).not.toContain(
-      'Use a fresh localId declared in this response as targetLocalId',
+      'For uncertainty.targetLocalId, use a fresh localId declared in this response',
     );
+  });
+
+  it('scopes mixed reference repairs without banning the existing workload-effort exception', () => {
+    const messages = createWeeklyPlanningSemanticRepairMessagesV5({
+      baseMessages: [{ role: 'system', content: 'normalize' }],
+      invalidResponse: '{}',
+      validationErrors: [
+        'document.uncertainties[0].targetLocalId',
+        'document.tasks[0].effortEstimates[0].targetLocalId',
+        'document.tasks[0].temporalConstraints[0].targetLocalId',
+      ],
+    });
+    const changes = repairPayload(messages).requiredChanges ?? [];
+    expect(changes).toHaveLength(2);
+    expect(changes[0]).toContain('For uncertainty.targetLocalId');
+    expect(changes[0]).toContain('never use a public Fact ID for uncertainty');
+    expect(changes[0]).toContain('Preserve unrelated supported current-turn facts');
+    expect(changes[1]).toContain('Only effortEstimates with total_duration/session_duration');
+    expect(changes[1]).toContain('exact active workload publicId');
+    expect(changes[1]).toContain('explicitly bound active task');
+    expect(changes[1]).toContain('declared localIds take precedence');
+    expect(changes[1]).toContain('Other targetLocalId fields use declared localIds');
   });
 
   it('repairs rejected sourceText from exact current-turn evidence or removes the unsupported fact', () => {

@@ -1,5 +1,6 @@
 import { evaluateWeeklyPlanningConsultationAlternative } from './weeklyPlanningConsultationAlternativeEvaluation';
 import { consultationCommunicationForPlanning } from './weeklyPlanningConsultationCommunication';
+import { projectWeeklyPlanningPreviewConstraintSatisfaction } from './weeklyPlanningPreviewConstraintSatisfaction';
 import { planWeeklyPlanningInteraction, classifyWeeklyPlanningInteraction } from './weeklyPlanningInteractionDecision';
 import {
   withWeeklyPlanningProvisionalTimeboxStateV5,
@@ -164,6 +165,13 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     ...(consulting ? { consultation: consultationCommunicationForPlanning({
       compilation: evaluation.compilation, preview, preserveExistingPreview: output.preserveExistingPreview === true, alternativeEvidence,
     }) } : {}),
+    ...(output.draftCandidates.length > 0 && !output.preserveExistingPreview
+      ? { previewConstraintSatisfaction: projectWeeklyPlanningPreviewConstraintSatisfaction({
+          graph: evaluation.activeGraph,
+          schedulerInput: responseRoute.schedulerInput,
+          candidates: output.draftCandidates,
+        }) }
+      : {}),
     ...(output.draftCandidates.length > 0 && selection?.sourceId && occupiedEventIds.length > 0
       ? { existingScheduleGrounding: {
           graphRevision: semantic.graph.revision,

@@ -1,4 +1,5 @@
 import type { WeeklyPlanningConsultationCommunication } from '../application/weeklyPlanningConsultationCommunication';
+import type { WeeklyPlanningPreviewConstraintSatisfaction } from '../application/weeklyPlanningPreviewConstraintSatisfaction';
 import type { WeeklyPlanningFixedEventCommunicationFacts } from '../application/weeklyPlanningFixedEventOnlyInteraction';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
 
@@ -60,6 +61,7 @@ export type WeeklyPlanningStableV5DialogueResolutionKind =
   | 'quantity_role'
   | 'effort_estimate_choice'
   | 'availability_date_scope'
+  | 'temporal_date_scope'
   | 'time_bounds'
   | 'named_time_period_bounds'
   | 'commitment_date_scope'
@@ -76,6 +78,7 @@ export type WeeklyPlanningStableV5DialogueRequestedInformation =
   | 'quantity_role'
   | 'choose_effort_estimate'
   | 'availability_date_scope'
+  | 'applicable_start_or_deadline_date'
   | 'start_and_end_time'
   | 'named_time_period_start_and_end'
   | 'commitment_date'
@@ -208,6 +211,7 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   planningInformation: Record<string, unknown> | null;
   currentTurnGrounding?: WeeklyPlanningStableV5DialogueCurrentTurnGrounding | null;
   existingScheduleGrounding?: WeeklyPlanningExistingScheduleGrounding;
+  previewConstraintSatisfaction?: WeeklyPlanningPreviewConstraintSatisfaction[];
   actionKind: WeeklyPlanningStableV5DialogueActionKind;
   questionCode: string | null;
   questionTarget?: WeeklyPlanningStableV5DialogueQuestionTarget | null;
