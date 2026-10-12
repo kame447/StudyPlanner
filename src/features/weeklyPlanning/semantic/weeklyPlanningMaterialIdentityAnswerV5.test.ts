@@ -1,6 +1,8 @@
+import { createWeeklyPlanningSemanticPipelineV5 } from './weeklyPlanningSemanticPipelineV5';
+import { decideWeeklyPlanningStableDialogueV5, listWeeklyPlanningStableBlockingQuestionsV5 } from './weeklyPlanningStableDialoguePolicyV5';
 import { describe, expect, it, vi } from 'vitest';
 import * as lifecycleEngine from './weeklyPlanningFactLifecycleEngineV5';
-import { materialIdentityDocument as answer, materialIdentityState as state, materialIdentitySource as source, MATERIAL_IDENTITY_TEXT as text } from '../testUtils/__tests__/weeklyPlanningMaterialIdentityFixture';
+import { materialIdentityEffortFixture, materialIdentityDocument as answer, materialIdentityState as state, materialIdentitySource as source, MATERIAL_IDENTITY_TEXT as text } from '../testUtils/__tests__/weeklyPlanningMaterialIdentityFixture';
 import { canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
 import { finalizeWeeklyPlanningSemanticCanonicalizationV5 } from './weeklyPlanningSemanticCommitV5';
 import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemanticResponseValidationV5';
@@ -180,4 +182,113 @@ describe('schema-valid active reference closure', () => {
     expect(WEEKLY_PLANNING_COMPONENT_REFERENCE_FIELDS_V5.relations).toEqual([]);
     expect(weeklyPlanningMaterialIdentityAnswersV5(state(), answer('relabel'))).toEqual([]);
   });
+});
+
+async function runIdentityEffort(pending: 'u_effort' | 'u' | null,
+  fixture = materialIdentityEffortFixture(), turnId = 'identity-detail') {
+  const { graph, document, userText } = fixture;
+  const before = structuredClone(graph);
+  const result = await createWeeklyPlanningSemanticPipelineV5({ async normalize(input) {
+    const raw = JSON.stringify(document);
+    const validation = validateWeeklyPlanningSemanticResponseV5(raw, { currentUserText: input.userText,
+      committedGraph: input.committedGraph, publicStateSummary: input.publicStateSummary });
+    expect(validation.errors).toEqual([]);
+    expect(validation.document).not.toBeNull();
+    return { status: 'accepted', document: validation.document, diagnostics: {
+      schemaVersion: 'weekly-planning-semantic-v5', jsonSchemaName: 'weekly_planning_semantic_document_v5',
+      normalizerVersion: 'weekly-planning-semantic-normalizer-v5', attemptCount: 0, repairAttempted: false,
+      requestBytes: [], responseLengths: [raw.length], latencyMs: 0, validationErrors: [], providerError: null,
+      providerDispatch: { count: 0, anyFailure: false, complete: true },
+    } };
+  } }).run({ graph, conversationId: 'c', turnId, expectedRevision: graph.revision, userText,
+    publicStateSummary: pending ? { pendingQuestion: { actionId: 'ask-exact-need', questionCode: 'semantic_uncertainty',
+      targetFactId: pending, graphRevision: graph.revision } } : {},
+    schedulerContext: { ownerId: 'identity-detail-owner', currentDate: '2026-10-10',
+      planningStartDate: '2026-10-11', planningEndDate: '2026-10-17', timeZone: 'Asia/Tokyo' },
+  });
+  expect(graph).toEqual(before);
+  expect(result.canonicalization?.status, JSON.stringify(result.canonicalization?.errors)).toBe('applied');
+  expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph)).errors).toEqual([]);
+  return { result, before };
+}
+
+function expectIdentityEffortApplied(out: Awaited<ReturnType<typeof runIdentityEffort>>, hasEstimate = true, workload = false) {
+  const { result, before } = out;
+  const replacement = result.canonicalization!.localToFactId.material;
+  expect(replacement).not.toBe('m');
+  expect(result.graph.components.filter(fact => active(result.graph, fact.id))).toEqual([
+    expect.objectContaining({ id: replacement, label: '青チャート 数学III', taskId: 't' }),
+  ]);
+  expect(result.graph.factLifecycles.find(entry => entry.factId === 'm')).toMatchObject({ status: 'superseded', supersededByFactId: replacement });
+  expect(active(result.graph, 'u')).toBe(false);
+  expect(result.graph.correctionIntents.every(fact => !active(result.graph, fact.id))).toBe(true);
+  expect(result.graph.workloads).toEqual([{ ...before.workloads[0], componentId: replacement }]);
+  expect(result.graph.effortEstimates.find(fact => fact.id === 'pace')).toEqual(before.effortEstimates[0]);
+  if (hasEstimate) expect(result.graph.effortEstimates.find(fact => fact.id === result.canonicalization!.localToFactId.total))
+    .toMatchObject({ kind: 'total_duration', minutes: 60, targetFactId: workload ? 'w' : replacement, source: { turnId: 'identity-detail', origin: 'user' } });
+  expect(result.graph.uncertainties.find(fact => fact.id === 'other')).toEqual({ ...before.uncertainties.find(fact => fact.id === 'other'), targetFactId: replacement });
+  expect(active(result.graph, 'other')).toBe(true);
+  expect(result.scheduler?.status).toBe('needs_resolution');
+  expect(decideWeeklyPlanningStableDialogueV5(result.scheduler!)).toMatchObject({ status: 'ask_question', previewEligible: false });
+  return replacement;
+}
+
+describe('same-turn identity and independent required detail', () => {
+  it.each(['u_effort', 'u', null] as const)('resolves the exact component duration independently of pending=%s', async pending => {
+    const out = await runIdentityEffort(pending);
+    expectIdentityEffortApplied(out);
+    expect(active(out.result.graph, 'u_effort')).toBe(false);
+    expect(out.result.canonicalization!.diff!.removed).toContainEqual({ kind: 'uncertainty', id: 'u_effort' });
+    expect(listWeeklyPlanningStableBlockingQuestionsV5(out.result.scheduler!).some(question => question.factId === 'u_effort')).toBe(false);
+  });
+  it.each(['component', 'document'] as const)('keeps re-listed %s need and admits the independent exact detail', async relisted => {
+    const out = await runIdentityEffort('u_effort', materialIdentityEffortFixture({ relisted }));
+    const replacement = expectIdentityEffortApplied(out);
+    expect(active(out.result.graph, 'u_effort')).toBe(true);
+    expect(out.result.graph.uncertainties.find(fact => fact.id === 'u_effort')).toEqual({ ...out.before.uncertainties.find(fact => fact.id === 'u_effort'), targetFactId: replacement });
+    expect(listWeeklyPlanningStableBlockingQuestionsV5(out.result.scheduler!)).toContainEqual(expect.objectContaining({ factId: 'u_effort' }));
+  });
+  it('keeps the exact duration need when identity alone is corrected', async () => {
+    const out = await runIdentityEffort('u', materialIdentityEffortFixture({ includeEstimate: false }));
+    const replacement = expectIdentityEffortApplied(out, false);
+    expect(active(out.result.graph, 'u_effort')).toBe(true);
+    expect(out.result.graph.uncertainties.find(fact => fact.id === 'u_effort')).toEqual({ ...out.before.uncertainties.find(fact => fact.id === 'u_effort'), targetFactId: replacement });
+  });
+  it('resolves an unchanged exact workload duration in the same identity turn', async () => {
+    const out = await runIdentityEffort('u', materialIdentityEffortFixture({ target: 'workload' }));
+    expectIdentityEffortApplied(out, true, true);
+    expect(active(out.result.graph, 'u_effort')).toBe(false);
+  });
+  it('resolves a later detail bound to the accepted replacement identity', async () => {
+    const first = await runIdentityEffort('u', materialIdentityEffortFixture({ includeEstimate: false }));
+    const replacement = expectIdentityEffortApplied(first, false);
+    const fixture = materialIdentityEffortFixture();
+    fixture.graph = first.result.graph;
+    fixture.document.corrections = [];
+    fixture.document.tasks[0].study!.components[0].existingPublicId = replacement;
+    const second = await runIdentityEffort(null, fixture, 'later-detail');
+    expect(active(second.result.graph, 'u_effort')).toBe(false);
+    expect(second.result.graph.components.filter(fact => active(second.result.graph, fact.id))).toHaveLength(1);
+    expect(second.result.graph.effortEstimates.find(fact => fact.id === second.result.canonicalization!.localToFactId.total))
+      .toMatchObject({ targetFactId: replacement, minutes: 60 });
+  });
+});
+
+
+it('rolls back identity and independent detail if exact required-need cleanup fails', () => {
+  const fixture = materialIdentityEffortFixture();
+  const apply = lifecycleEngine.applyWeeklyPlanningFactLifecycleOperationV5;
+  const fault = vi.spyOn(lifecycleEngine, 'applyWeeklyPlanningFactLifecycleOperationV5').mockImplementation(params =>
+    params.operation.targetFactId === 'u_effort' ? {
+      engineVersion: lifecycleEngine.WEEKLY_PLANNING_FACT_LIFECYCLE_ENGINE_VERSION_V5,
+      status: 'rejected', graph: params.graph, superseded: [], removed: [], errors: ['injected-independent-need-cleanup-failure'],
+    } : apply(params));
+  try {
+    const out = run(fixture.document, fixture.graph, { userText: fixture.userText });
+    expect(out.validation.errors).toEqual([]);
+    expect(fault).toHaveBeenCalledWith(expect.objectContaining({ operation: expect.objectContaining({ kind: 'remove', targetFactId: 'u_effort' }) }));
+    expect(out.result?.status).toBe('rejected');
+    expect(out.result?.errors).toEqual(['work-breakdown-cleanup:injected-independent-need-cleanup-failure']);
+    expect(out.graph).toEqual(out.before);
+  } finally { fault.mockRestore(); }
 });

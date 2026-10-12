@@ -1,8 +1,9 @@
+import { canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5 } from '../semantic/weeklyPlanningSemanticCanonicalizerLifecycleV5';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createOpenAiCompatibleClient, resetOpenAiCompatibleClientRequestBudgetForTest, type OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import { createWeeklyPlanningSemanticNormalizerV5 } from '../semantic/weeklyPlanningSemanticNormalizerV5';
 import { createWeeklyPlanningSemanticPipelineV5 } from '../semantic/weeklyPlanningSemanticPipelineV5';
-import { materialIdentityDocument, materialIdentityState, MATERIAL_IDENTITY_TEXT } from '../testUtils/__tests__/weeklyPlanningMaterialIdentityFixture';
+import { materialIdentityDocument, materialIdentityState, materialIdentityEffortFixture, MATERIAL_IDENTITY_TEXT } from '../testUtils/__tests__/weeklyPlanningMaterialIdentityFixture';
 import { createMemoryStorageHarness } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import { loadWeeklyPlanningStableV5PersistedSession, saveWeeklyPlanningStableV5PersistedSession } from '../application/weeklyPlanningStableV5SessionStorage';
 import { createInitialPlanningState } from '../weeklyPlanningReducer';
@@ -42,8 +43,11 @@ beforeEach(() => {
 afterEach(() => { resetOpenAiCompatibleClientRequestBudgetForTest(); resetWeeklyPlanningStableV5TraceRuntimeForTest(); resetWeeklyPlanningStableV5DebugTraceForTest(); vi.unstubAllGlobals(); });
 
 describe('explicit material identity actual normalization and persistence boundaries', () => {
-  it.each([false, true])('retains generated identity evidence through reload, failed append, retry and Worker (oversized=%s)', async oversized => {
-    const graph = materialIdentityState();
+  it.each([{ oversized: false, independentDetail: false }, { oversized: true, independentDetail: false },
+    { oversized: false, independentDetail: true }, { oversized: true, independentDetail: true }])('retains generated identity evidence through reload, failed append, retry and Worker (%j)', async ({ oversized, independentDetail }) => {
+    const fixture = materialIdentityEffortFixture();
+    const graph = independentDetail ? fixture.graph : materialIdentityState();
+    const userText = independentDetail ? fixture.userText : MATERIAL_IDENTITY_TEXT;
     // Persisted sessions require every accepted fact to belong to this exact
     // conversation, including the fixture's historical facts.
     for (const facts of [graph.tasks, graph.components, graph.workloads, graph.effortEstimates, graph.temporalConstraints, graph.uncertainties]) {
@@ -52,7 +56,7 @@ describe('explicit material identity actual normalization and persistence bounda
     expect(saveWeeklyPlanningStableV5PersistedSession({ ownerId: owner, weekStartDate: week, conversationId: ids.logicalConversationId,
       graph, planningState: createInitialPlanningState(week) })).toBe(true);
     const before = structuredClone(graph);
-    const document = materialIdentityDocument();
+    const document = independentDetail ? fixture.document : materialIdentityDocument();
     const compact = JSON.stringify(document);
     const rawResponse = oversized ? `{${' '.repeat(6000)}${compact.slice(1)}` : compact;
     const requests: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]> = [];
@@ -71,7 +75,7 @@ describe('explicit material identity actual normalization and persistence bounda
     beginWeeklyPlanningStableV5DebugTrace(requestId);
     const result = await createWeeklyPlanningSemanticPipelineV5(createWeeklyPlanningSemanticNormalizerV5(client)).run({
       graph, conversationId: ids.logicalConversationId, turnId: requestId, expectedRevision: graph.revision,
-      userText: MATERIAL_IDENTITY_TEXT, publicStateSummary: { pendingQuestion: { actionId: 'ask-material', questionCode: 'semantic_uncertainty', targetFactId: 'u', graphRevision: graph.revision } },
+      userText, publicStateSummary: { pendingQuestion: { actionId: 'ask-material', questionCode: 'semantic_uncertainty', targetFactId: 'u', graphRevision: graph.revision } },
       schedulerContext: { ownerId: owner, currentDate: '2026-10-10', planningStartDate: week, planningEndDate: '2026-10-17', timeZone: 'Asia/Tokyo' },
     });
     expect(result.normalization.status, JSON.stringify(result.normalization.diagnostics)).toBe('accepted');
@@ -87,6 +91,12 @@ describe('explicit material identity actual normalization and persistence bounda
     expect(replacement).not.toBe('m');
     expect(isWeeklyPlanningFactActiveV5(result.graph, 'u')).toBe(false);
     expect(isWeeklyPlanningFactActiveV5(result.graph, 'other')).toBe(true);
+    if (independentDetail) {
+      expect(isWeeklyPlanningFactActiveV5(result.graph, 'u_effort')).toBe(false);
+      expect(result.graph.effortEstimates.find(fact => fact.id === canonical.localToFactId.total))
+        .toMatchObject({ kind: 'total_duration', minutes: 60, targetFactId: replacement });
+      expect(canonical.diff!.removed).toContainEqual({ kind: 'uncertainty', id: 'u_effort' });
+    }
     expect(result.scheduler?.issues.some(issue => issue.factId === 'u')).toBe(false);
     expect(result.scheduler?.issues.some(issue => issue.factId === 'other')).toBe(true);
     const events = takeWeeklyPlanningStableV5DebugTrace(requestId);
@@ -108,8 +118,11 @@ describe('explicit material identity actual normalization and persistence bounda
     expect(saveWeeklyPlanningStableV5PersistedSession({ ownerId: owner, weekStartDate: week, conversationId: ids.logicalConversationId, graph: result.graph, planningState: state })).toBe(true);
     const restored = loadWeeklyPlanningStableV5PersistedSession({ ownerId: owner, weekStartDate: week });
     expect(restored?.graph).toEqual(result.graph);
+    const repeated = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({ graph: restored!.graph, document,
+      context: { conversationId: ids.logicalConversationId, turnId: requestId, userText, expectedRevision: restored!.graph.revision } });
+    expect(repeated.status).toBe('duplicate'); expect(repeated.graph).toEqual(restored!.graph);
     expect(loadWeeklyPlanningStableV5PersistedSession({ ownerId: 'foreign', weekStartDate: week })).toBeNull();
-    const input = { userId: owner, conversationId: ids.logicalConversationId, requestId, userText: MATERIAL_IDENTITY_TEXT,
+    const input = { userId: owner, conversationId: ids.logicalConversationId, requestId, userText,
       assistantMessage: '別の確認を続けます。', responseSource: 'ai' as const, outcome: result.status, debugTraceEvents: events, previewCount: 0 };
     await recordWeeklyPlanningStableV5TurnTrace(input);
     expect(repository.writes).toHaveLength(0);
@@ -138,6 +151,7 @@ describe('explicit material identity actual normalization and persistence bounda
       expect(entry.aiInterpreter.rawResponses[0]).toMatchObject({ truncated: true, originalBytes: new TextEncoder().encode(rawResponse).byteLength, checksum: expect.stringMatching(/^fnv1a32:/) });
       expect(JSON.stringify(stored)).not.toContain('x'.repeat(48 * 1024));
     } else {
+      if (independentDetail) expect(stored).toMatchObject({ decision: { stateDiff: { removed: expect.arrayContaining([{ kind: 'uncertainty', id: 'u_effort' }]) } } });
       expect(entry.aiInterpreter.rawResponses[0]).toMatchObject({ text: rawResponse, truncated: false });
       expect(JSON.stringify(stored)).toContain(sentinel);
       expect(stored).toMatchObject({ decision: { stateDiff: {
