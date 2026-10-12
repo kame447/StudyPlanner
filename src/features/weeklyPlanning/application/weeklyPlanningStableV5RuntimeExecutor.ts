@@ -1,3 +1,4 @@
+import { summarizeWeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
 import { projectWeeklyPlanningPreviewConstraintSatisfaction } from './weeklyPlanningPreviewConstraintSatisfaction';
 import { planWeeklyPlanningInteraction, classifyWeeklyPlanningInteraction } from './weeklyPlanningInteractionDecision';
 import {
@@ -129,6 +130,9 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     output: routedOutput,
     evaluation,
   });
+  // Only candidates exposed by this turn own fresh allocation evidence.
+  const allocationBreakdown = output.preserveExistingPreview !== true
+    ? summarizeWeeklyPlanningAllocationBreakdown(output.draftCandidates) : null;
   const compiled = evaluation.compilation.input;
   const selection = compiled?.sourceSelections.find((entry) =>
     entry.kind === 'existing_plans' && entry.status === 'selected'
@@ -148,6 +152,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   return {
     ...output,
     interactionOutcome: { kind: 'apply' },
+    ...(allocationBreakdown ? { allocationBreakdown } : {}),
     ...(output.draftCandidates.length > 0 && !output.preserveExistingPreview
       ? { previewConstraintSatisfaction: projectWeeklyPlanningPreviewConstraintSatisfaction({
           graph: evaluation.activeGraph,

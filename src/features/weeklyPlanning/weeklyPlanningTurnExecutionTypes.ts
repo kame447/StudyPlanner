@@ -1,3 +1,4 @@
+import type { WeeklyPlanningAllocationBreakdown } from './semantic/weeklyPlanningAllocationBreakdown';
 import type { WeeklyPlanningPreviewConstraintSatisfaction } from './application/weeklyPlanningPreviewConstraintSatisfaction';
 import type { WeeklyPlanningExistingScheduleGrounding } from './dialogue/weeklyPlanningStableV5DialogueContracts';
 import type {
@@ -95,6 +96,8 @@ export interface WeeklyPlanningTurnExecutionResult {
   preserveExistingPreview?: boolean;
   /** Ephemeral renderer evidence; never an approval or persisted planning state. */
   existingScheduleGrounding?: WeeklyPlanningExistingScheduleGrounding;
+  /** Current new-preview display evidence; no planning, approval or save authority. */
+  allocationBreakdown?: WeeklyPlanningAllocationBreakdown;
   /** Read-only evidence about this turn's actual new preview, never save authority. */
   previewConstraintSatisfaction?: WeeklyPlanningPreviewConstraintSatisfaction[];
   stableV5Graph?: WeeklyPlanningFactGraphV5;

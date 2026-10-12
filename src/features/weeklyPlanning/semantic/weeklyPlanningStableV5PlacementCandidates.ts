@@ -4,6 +4,7 @@ import type {
 import type { WeeklyDraftCandidate } from '../scheduling/weeklyDraftCandidateGenerator';
 import type { WeeklyPlanningStableV5PreviewProvenance } from '../weeklyPlanningPreviewProvenance';
 import type { GenericPlanningWorkItem } from './weeklyPlanningGenericWorkItems';
+import { allocationBreakdownForWeeklyPlanningWorkItem } from './weeklyPlanningAllocationBreakdown';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
 import type { WeeklyPlanningPlacementGraphViewV5 } from './weeklyPlanningPlacementGraphViewV5';
 import {
@@ -104,6 +105,7 @@ export function createPlacementCandidate(params: {
       : {}),
   };
   const workItemKey = params.workItemKey ?? params.item.id;
+  const allocationBreakdown = allocationBreakdownForWeeklyPlanningWorkItem(params.item, params.duration);
   return {
     stableKey: `stable-v5:${params.input.graphRevision}:${workItemKey}:${params.chunkIndex}`,
     date: params.slot.date,
@@ -118,6 +120,8 @@ export function createPlacementCandidate(params: {
     approvalStatus: 'unapproved',
     workItemKey,
     stableV5Metadata: metadata,
+    // Keep existing provenance ahead of optional display data in bounded trace prefixes.
+    ...(allocationBreakdown ? { allocationBreakdown } : {}),
   } as WeeklyDraftCandidate;
 }
 

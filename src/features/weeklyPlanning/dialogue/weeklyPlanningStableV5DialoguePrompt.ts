@@ -75,6 +75,8 @@ export function createWeeklyPlanningStableV5DialogueStateSummary(
 export function createWeeklyPlanningStableV5DialoguePrompt(
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): { systemPrompt: string; userPrompt: string } {
+  const allocationBreakdown = input.actionKind === 'preview_ready' && input.previewCount > 0
+    ? input.allocationBreakdown : undefined;
   const systemPrompt = [
     'あなたは学習計画アプリの対話担当です。アプリが決めた意味と次の行為を変えず、継続中の相談として自然な日本語にしてください。',
     '入力にない具体情報は補わず、受理済みの情報を確認し直す質問も勝手に追加しないでください。',
@@ -97,6 +99,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       previewPromotionControlLabel: input.previewPromotionControlLabel ?? null,
       relevantLabels: input.requiredLabels,
       previewCount: input.previewCount,
+      ...(allocationBreakdown ? { allocationBreakdown } : {}),
       ...(input.recovery ? { recovery: input.recovery } : {}),
       ...(input.recoveryQuestionEvidence ? { recoveryQuestionEvidence: input.recoveryQuestionEvidence } : {}),
       ...(input.actionKind === 'preview_ready' && input.previewConstraintSatisfaction
@@ -122,6 +125,12 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       'effort_measurementのmeasurementを変えないでください。duration_per_unit=1単位あたり、session_duration=1回、total_duration=全体です。',
       'resolution_questionのquantity_roleではplan_target_amount=今回この計画で進めたい量、remaining_total_amount=現在残っている全体量です。全体量対1回分など別の軸へ変えないでください。task_relation_referenceは関係の両端にあるタスクを特定するための質問であり、順序の承認、登録、予定への反映、新規タスク追加を求めないでください。task_relation_self_referenceは同一タスク同士になっている関係を修復するため、異なる二つの対象を聞いてください。',
       'previewPromotionControlLabelがあれば候補は生成済みです。その操作を案内してください。groundingContextのproposedは短く示し確認質問を足さず、contestedは断言しないでください。',
+      ...(input.actionKind === 'preview_ready' && input.previewCount > 0 ? [
+        'previewCount counts blocks in ONE preview: say 候補N件, never N個/つのプレビュー or N案.',
+      ] : []),
+      ...(allocationBreakdown ? [
+        'allocationBreakdownは今回の新しい候補の実配分です。見積もり・余裕の内訳はUI表示に任せ、余裕0の場合もこの内訳を返答で繰り返さず、再計算・理由の推測をせず、allocatedMinutesをユーザーの指定量と言い換えないでください。currentTurnGroundingの明示値ACKは維持してください。',
+      ] : []),
       ...(input.actionKind === 'preview_ready' && input.previewConstraintSatisfaction?.length ? [
         'previewConstraintSatisfactionは実際の今回の候補と受理済み条件を照合した結果です。kindのsession_durationはsourceFactIdで示す1回の時間、preferred_windowは希望した日時・時間帯です。preferred_windowは各対象に適用される選択肢のいずれかに入るかを照合し、同じtaskIdの適用条件群と候補全体の共同結果を各sourceFactIdに記録しています。not_satisfiedでも各sourceFactIdの条件が個別に未達とは断定しないでください。satisfiedも各選択肢の日時をすべて使ったという意味ではありません。taskIdの対象を守り、not_satisfiedは該当する条件または条件群を候補全体で満たしていないこと、not_evaluatedは満たしたと確認できないことを自然に伝えてください。条件を受理しただけで満たしたと述べず、超過・欠落などの原因や変更を推測しないでください。satisfied以外を満足扱いしないでください。',
       ] : []),
