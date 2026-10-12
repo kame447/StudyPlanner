@@ -1,5 +1,6 @@
 import { resolveWeeklyPlanningConversationActTargetsV5, type SemanticConversationActV5 } from './weeklyPlanningConversationActsV5';
 import {
+  validateWeeklyPlanningCorrectionReplacementKindsV5,
   validateWeeklyPlanningCorrectionTargetReferencesV5,
   validateWeeklyPlanningRawCorrectionTargetReferencesV5,
 } from './weeklyPlanningCorrectionReferenceValidationV5';
@@ -11,6 +12,7 @@ import {
   validateWeeklyPlanningDecisionTargetReferencesV5,
 } from './weeklyPlanningDecisionReferenceValidationV5';
 import {
+  collectWeeklyPlanningLocalReferenceTokensV5,
   validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5,
 } from './weeklyPlanningExistingEntityBindingV5';
 import {
@@ -90,6 +92,10 @@ export function validateWeeklyPlanningSemanticResponseV5(
   rawResponse: string,
   input: WeeklyPlanningSemanticResponseValidationInputV5,
 ): WeeklyPlanningSemanticValidationAttemptV5 {
+  let blockedLocalIds: ReadonlySet<string> = new Set();
+  try {
+    blockedLocalIds = collectWeeklyPlanningLocalReferenceTokensV5(JSON.parse(rawResponse));
+  } catch { /* The parser below retains the existing invalid-JSON rejection. */ }
   const preParseNormalization = normalizeWeeklyPlanningSemanticPreParseV5({
     rawResponse,
     publicStateSummary: input.publicStateSummary,
@@ -102,6 +108,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
   );
   const parsed = parseWeeklyPlanningSemanticDocumentV5(
     preParseNormalization.rawResponse,
+    { committedGraph: input.committedGraph, blockedLocalIds },
   );
   const actTargets = parsed.conversationActs
     ? resolveWeeklyPlanningConversationActTargetsV5({ acts: parsed.conversationActs, publicStateSummary: input.publicStateSummary }) : null;
@@ -148,6 +155,7 @@ export function validateWeeklyPlanningSemanticResponseV5(
       document,
       input.publicStateSummary,
     ),
+    ...validateWeeklyPlanningCorrectionReplacementKindsV5(document),
     ...validateWeeklyPlanningDecisionTargetReferencesV5(
       document,
       input.publicStateSummary,

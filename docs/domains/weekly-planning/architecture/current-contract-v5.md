@@ -73,6 +73,8 @@ Pending-answer copy repair must preserve a non-exact token known in the current 
 
 For a representation-only semantic repair, compare both provider documents after the same pre-parse normalization and before post-parse projection, so deterministic projection is not mistaken for a provider mutation. If either provider comparison envelope is unavailable, retain the existing parsed/validated comparison pair. The comparison envelope never authorizes acceptance: the repaired document must still pass every normal validator. This does not add a model call or broaden which semantic changes are repairable.
 
+Canonical-date representation errors may permit only the validator-addressed `dateExpression` fields of availability declarations or task temporal constraints to change during that existing repair. Preserve the other semantic content and current-turn evidence; an unrelated date field is not repair authority. The repaired document still passes normal validation, including whether its new date representation is valid. This comparison exception neither interprets dates nor adds a repair call.
+
 ## Time semantics
 
 Natural-language time meaning belongs to AI; calendar arithmetic and scheduler-facing temporal compilation belong to the deterministic application.
