@@ -1,3 +1,4 @@
+import { weeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 import type {
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
@@ -97,7 +98,10 @@ export function applyWeeklyPlanningExistingEntityBindingsV5(params: {
     taskMap.set(temporaryId, existingId);
     localToFactId[localId] = existingId;
   }
+  const identityLocalIds = new Set(weeklyPlanningMaterialIdentityAnswersV5(params.originalGraph, params.document)
+    .map((answer) => answer.localId));
   for (const [localId, existingId] of Object.entries(bindings.componentFactIdByLocalId)) {
+    if (identityLocalIds.has(localId)) continue;
     const temporaryId = params.canonicalization.localToFactId[localId];
     if (!temporaryId) {
       const error = `missing-temporary-component-binding:${localId}`;
