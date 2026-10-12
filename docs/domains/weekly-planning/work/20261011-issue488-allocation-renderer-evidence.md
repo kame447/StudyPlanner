@@ -1,0 +1,31 @@
+# Issue488 allocation evidence in renderer input
+
+Status: active / corrected exact full, fresh types and build independently accepted; release gates pending.
+
+## Scope and canonical owner
+
+The responsibility is original `ef3d7a51` (`e901fa84`): carry the existing actual preview allocation summary into the current renderer and leave estimate/margin presentation to the existing UI. [Scheduling policy](../policies/scheduling.md#estimated-effort-and-allocated-time) owns the calculation stages, display and new-preview-only communication boundary. This checkpoint does not redefine them.
+
+Branch: `fix/issue488-allocation-renderer-evidence`. The historical base is unpublished display candidate `5448d7a7` / tree `5993e1fe`, based on main `62579b32`. After the inherited trace-order failure below, the planned publication dependency is corrected display-only `34a37181` / tree `aaeab4b1`, differing from 5448 only in one placement-candidate owner. Neither display source nor this extraction is main-adopted. The original display 181-test/type evidence applies only to its tested bytes and is not exact validation of the new parent; root coordinates its focused gate and eventual exact public CI. The tested pre-documentation candidate is `b0c6a85d` / tree `cc1723b1`, with five production owners and two test files. The test-only baseline is `0b9cdc14`, using unchanged display production.
+
+Existing runtime execution, turn dialogue, typed render input and prompt carry one optional ephemeral summary from this turn's actual new candidates. The existing summarizer and UI retain their ownership; incomplete/stale metadata omits the summary. The new field does not enter planning state, Fact Graph or Plan persistence. The prompt leaves derived estimates/margins to the UI, including zero margin, while retaining acknowledgement of the user's explicit input values and promotion-control guidance. It does not recalculate, invent margin reasons or equate allocated time with requested quantity.
+
+Consultation/what-if, session splitting, preferred-result evidence, unused-day spreading, a new estimate owner, UI/state/schema changes, fixed utterance appenders and extra model calls are outside this extraction.
+
+## Verification checkpoint and next gate
+
+The unchanged-production baseline ran 18 tests: 11 passed and 7 failed at missing actual-summary/request/prompt/trace assertions, with no schema/setup failure and unchanged inputs. The final `b0c6a85d` candidate passed 13 whole files / 110 tests, plus fresh app and Worker type stages, with all pre/post and phase identities unchanged. The runtime summary is `allocation-renderer-final-candidate-verification/terminal-summary.json` (SHA `3bc084ce`); independent terminal acceptance is recorded separately.
+
+The related controls cover current runtime, unchanged summary/UI, retained-preview exclusion, ordinary approval and actual request through bounded persistent trace/outbox/Worker. Pre-cap and calibration transport controls supply valid stage metadata at the real-preview boundary; they do not prove session or personalization integration. Scripted replies do not establish actual-model wording.
+
+The documentation-only `c496d04c` / tree `4175c116` then ran the first full: 7,027 tests passed and one existing oversized capacity-trace assertion failed; 801 files passed and one failed, with 45 skipped tests and one todo. Fresh type stages passed and all identities matched; the chained build was not reached. Preserve that terminal receipt `allocation-renderer-final-full-verification/full-terminal-receipt.json` (SHA `40dd89e0`). The test bypasses renderer execution. The inherited display code inserted optional allocation metadata before existing candidate provenance, moving a workload ID outside the bounded 1,000-byte trace prefix.
+
+The separate inherited correction is `4611d00c` / tree `e1981acd`: move only the optional allocation field after `stableV5Metadata` in `weeklyPlanningStableV5PlacementCandidates.ts`. Values, schema, trace size limits and test assertions stay unchanged. This sixth production owner is a necessary correction in the display dependency, not a sixth original ef3d renderer owner. Its exact parent-only counterpart is `34a37181`; the original 5448 checkout/payload remains preserved. Fixing only this child does not release the known-broken display base.
+
+The corrected display-only `34a37181` passed its whole two-test capacity-trace file; this is not a parent full/type/build claim. Corrected child `4611d00c` / tree `e1981acd` passed 14 whole files / 112 tests and fresh app/Worker type stages, with unchanged pre/post and phase identities. The runtime summary is `allocation-renderer-trace-corrected-verification/terminal-summary.json` (SHA `8f3cc0ad`), including parent trace receipt `5affdd2e`; independent terminal acceptance is recorded separately. The original full failure remains preserved.
+
+The documentation-only final source `03204ef6` / tree `6cb60d80` completed its second ordinary full at 2026-10-11 21:35:50 UTC: 7,028 tests / 802 files passed, with 45 skipped tests, one todo and 10 skipped files. Fresh app and Worker type stages and production build (7.40 seconds) passed; the process ended naturally with zero exit and all immutable inputs equal. The terminal receipt is `allocation-renderer-corrected-final-full-verification/full-terminal-receipt.json` (SHA `8fc329cc`). Independent terminal acceptance `a6cf2a16` confirms the source, ordered fresh type/full/build markers and unchanged inputs. This result does not replace the first c496 full failure.
+
+This full verifies the corrected display plus renderer composition at the stated tested pin. A subsequent checkpoint-only handoff pin must retain identical production/test/configuration inputs and does not imply another runtime execution. The display-only parent has its separate two-test trace proof; its own exact full/remote CI is not established by calling the child result a parent-only run. Root coordinates publication and current-base CI with the dependency distinction retained.
+
+Session/C1 composition, browser/App acceptance, actual-model wording and remote CI remain separate unverified gates. Root owns publication and merge decisions after current authorization and dependencies are reconciled; this local checkpoint creates no new Issue, PR or API reservation.

@@ -1,3 +1,4 @@
+import type { WeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
 import type { WeeklyPlanningFixedEventCommunicationFacts } from '../application/weeklyPlanningFixedEventOnlyInteraction';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
 
@@ -204,6 +205,8 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   planningInformation: Record<string, unknown> | null;
   currentTurnGrounding?: WeeklyPlanningStableV5DialogueCurrentTurnGrounding | null;
   existingScheduleGrounding?: WeeklyPlanningExistingScheduleGrounding;
+  /** Aggregate of actual new preview candidates, owned by the existing UI summary. */
+  allocationBreakdown?: WeeklyPlanningAllocationBreakdown;
   actionKind: WeeklyPlanningStableV5DialogueActionKind;
   questionCode: string | null;
   questionTarget?: WeeklyPlanningStableV5DialogueQuestionTarget | null;

@@ -322,6 +322,9 @@ function createRenderInput(params: {
     ...(params.result.existingScheduleGrounding
       ? { existingScheduleGrounding: params.result.existingScheduleGrounding }
       : {}),
+    ...(params.actionKind === 'preview_ready' && params.result.preserveExistingPreview !== true
+      && params.result.allocationBreakdown
+      ? { allocationBreakdown: params.result.allocationBreakdown } : {}),
     actionKind: params.actionKind,
     questionCode: params.questionCode,
     questionTarget,

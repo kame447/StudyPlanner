@@ -1,3 +1,4 @@
+import type { WeeklyPlanningAllocationBreakdown } from './semantic/weeklyPlanningAllocationBreakdown';
 import type { WeeklyPlanningExistingScheduleGrounding } from './dialogue/weeklyPlanningStableV5DialogueContracts';
 import type {
   Actual,
@@ -94,6 +95,8 @@ export interface WeeklyPlanningTurnExecutionResult {
   preserveExistingPreview?: boolean;
   /** Ephemeral renderer evidence; never an approval or persisted planning state. */
   existingScheduleGrounding?: WeeklyPlanningExistingScheduleGrounding;
+  /** Current new-preview display evidence; no planning, approval or save authority. */
+  allocationBreakdown?: WeeklyPlanningAllocationBreakdown;
   stableV5Graph?: WeeklyPlanningFactGraphV5;
   failure?: WeeklyPlanningTurnFailure;
   responseSource?: WeeklyPlanningTraceResponseSource;

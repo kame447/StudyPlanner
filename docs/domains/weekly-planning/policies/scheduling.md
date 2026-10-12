@@ -145,6 +145,8 @@ preview card/sheetの時刻・合計は実確保時間を用い、有効で実du
 
 この内訳は未承認previewとdraftの保存/checkpointを通過する表示情報であり、Plan/StoredScheduleEventの保存schemaへ追加しない。現共通state codecはoptional数値・理由・差分整合を検査し、内訳のない旧データも受理する。新fieldを知らない旧実行中アプリの読取互換性まで保証するものではない。実生成内訳のtrace保存は、既存の容量制限・persistent outbox/retry・Worker・未知field・明示truncationの契約に従う。
 
+今回新しく提示するpreviewでは、既存の同じ集計ownerから得た内訳をturn-localな説明根拠としてrendererへ渡す。有効な内訳が全候補に揃わない場合は渡さず、保持中の旧previewや質問turnを新しい配分結果として扱わない。rendererへの指示は見積もり・余裕の内訳を既存UI表示へ委ね、余裕0でもこの派生内訳を返答で繰り返さず、再計算や理由の推測、実確保時間をユーザー指定量と言い換えることを避ける。受理した明示値へのACKと既存の候補確認操作の案内は維持する。この配線は新たな計算・再配置・承認・保存権限や固定発話を作らず、planning state/Fact Graph/Planの保存形式も変更しない。実requestに入る内訳のtraceは既存の容量制限とoutbox/Workerの契約を使う。自然発話が指示に従うことはモデル受入で別に確認する。
+
 ## Change rule
 
 scheduler policyを変更するときは、少なくとも次を確認する。
