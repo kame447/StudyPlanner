@@ -126,9 +126,15 @@ open-ended workに架空のscope totalを作って分配しない。
 
 acceptedな生活制約・buffer・availabilityはtyped constraintとしてschedulerへ渡し、raw Japaneseや科目名から後段で推測しない。
 
+日付を跨ぐaccepted hard `available` intervalは、配置対象日ごとの区間へ展開し、通常配置とpreferred配置の両方で同じ境界を消費する。各日のrequest-time `notBefore` と既存occupied/unavailableの制約は保持する。これは宣言されたavailabilityの配置責務であり、終日MonthEventのbusy/free方針を変更しない。
+
 ## Preference and personalization
 
 preferred time、observed profile、learning-specific scoreは、hard availabilityを通過したsafe candidate集合の中でのみ順位付けに使う。
+
+Task/component の accepted `preferred_window` は、片側だけの明示 clock なら不足側を同日の `00:00` / `24:00` として解決する。clock を伴わない有効な date-only preference は保持する。日付表現・named time period・時刻区間・constraint level が未解決なら、work量がまだない場合も黙って捨てず、既存のblocking issue/question経路へ渡す。
+
+Plan-wide の `preferred` と soft `available` は同じ既存順位付けへ投影し、hard availabilityを広げない。単一のaccepted planning windowに対して、非反復のcanonical曜日が期間外となったこれらの宣言は、毎週へ読み替えず適用日を質問する。質問の意味は既存のtyped availability-date-scopeとしてrendererへ渡す。
 
 - explicit preference > inferred/observed tendency
 - current-week acceptanceをdurable preferenceへ自動昇格しない
