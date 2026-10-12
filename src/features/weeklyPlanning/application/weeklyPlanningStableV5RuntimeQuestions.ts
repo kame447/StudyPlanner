@@ -382,6 +382,7 @@ export function renderStableV5RuntimeQuestion(
       return missingEffortQuestion(graph, question);
     case 'ambiguous_effort_estimate':
       return `${label}の所要時間が複数あります。今回使う見積りを一つ教えてください。`;
+    case 'availability_outside_planning_window':
     case 'missing_availability_date_scope':
       return 'その空き時間または予定を入れられない時間は、どの日に適用しますか？';
     case 'hard_date_bound_outside_planning_window':
