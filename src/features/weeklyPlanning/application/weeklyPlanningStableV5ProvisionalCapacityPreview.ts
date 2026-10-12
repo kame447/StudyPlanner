@@ -17,6 +17,7 @@ import type {
 
 interface ProvisionalCapacityDecisionV5 {
   unscheduledTaskIds: string[];
+  partlyScheduledTaskIds: string[];
   priorityRelationFactIds: string[];
 }
 
@@ -68,6 +69,7 @@ function provisionalCapacityDecision(params: {
 
   return {
     unscheduledTaskIds,
+    partlyScheduledTaskIds: unscheduledTaskIds.filter((taskId) => scheduledTaskIds.has(taskId)),
     priorityRelationFactIds: [...acceptedRelations].sort(),
   };
 }
@@ -103,16 +105,20 @@ export function projectWeeklyPlanningProvisionalCapacityPreviewV5(params: {
   const schedulerInput = params.evaluation.compilation.input;
   if (!decision || !schedulerInput) return null;
 
-  const omittedLabels = taskLabels(
-    schedulerInput,
-    params.evaluation,
-    decision.unscheduledTaskIds,
-  );
-  const omittedText = omittedLabels.length > 0
-    ? `${omittedLabels.join('・')}の一部`
-    : '低優先度の作業の一部';
+  // Extent comes from candidate task identity, never from a display-label match.
+  const partlyScheduled = new Set(decision.partlyScheduledTaskIds);
+  const entirelyOmittedLabels = taskLabels(schedulerInput, params.evaluation,
+    decision.unscheduledTaskIds.filter((taskId) => !partlyScheduled.has(taskId)));
+  const partlyOmittedLabels = taskLabels(schedulerInput, params.evaluation,
+    decision.partlyScheduledTaskIds);
+  const omittedText = [
+    entirelyOmittedLabels.length > 0
+      ? `${entirelyOmittedLabels.join('・')}は容量不足のため候補に入れていません。` : '',
+    partlyOmittedLabels.length > 0
+      ? `${partlyOmittedLabels.join('・')}の一部は容量不足のため候補に入れていません。` : '',
+  ].join('') || '容量不足のため候補に入らなかった作業があります。';
   const message = withStableV5GroundingProposal({
-    message: `空き時間内で指定された優先順位に沿って${params.preview.candidates.length}件の仮予定候補を作りました。${omittedText}は容量不足のため候補に入れていません。内容を確認して、必要なら条件を修正してください。問題なければ下の「この内容で仮予定にする」ボタンを押してください。`,
+    message: `空き時間内で指定された優先順位に沿って${params.preview.candidates.length}件の仮予定候補を作りました。${omittedText}内容を確認して、必要なら条件を修正してください。問題なければ下の「この内容で仮予定にする」ボタンを押してください。`,
     records: params.evaluation.groundingRecords,
     currentTurnId: params.input.traceRequestId,
   });

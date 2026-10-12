@@ -188,10 +188,12 @@ describe('Stable V5 semantic-uncertainty contextual answer', () => {
       targetFactId: 'uncertainty-breakdown',
     });
     const result = applyWeeklyPlanningStableV5ContextualAnswer(input);
-    expect(result?.status).toBe('applied');
-    expect(result?.diff).toMatchObject({ added: [], removed: [], superseded: [] });
-    expect(result?.graph.uncertainties).toEqual(input.graph.uncertainties);
-    expect(result?.graph.factLifecycles).toEqual(input.graph.factLifecycles);
-    expect(result?.graph.tasks).toEqual(input.graph.tasks);
+    // The question remains unresolved, but the independently valid document
+    // must reach normal canonicalization rather than being consumed as empty.
+    expect(result).toBeNull();
+    expect(input.graph.uncertainties[0].id).toBe('uncertainty-breakdown');
+    expect(input.graph.factLifecycles).toContainEqual(expect.objectContaining({
+      factId: 'uncertainty-breakdown', status: 'active',
+    }));
   });
 });

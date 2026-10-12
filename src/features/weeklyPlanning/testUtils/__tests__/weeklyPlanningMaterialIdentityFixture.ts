@@ -23,3 +23,24 @@ export function materialIdentityDocument(shape: 'relabel' | 'reference' | 'addit
     relations: [], availabilityDeclarations: [], constraintSourceRequests: [], userContextFacts: [], uncertainties: [],
     corrections: shape === 'modify' || shape === 'replace_new' || shape === 'remove' ? [{ localId: 'correction', target: { kind: 'component', publicId: 'm', localId: null, mention: '数学の問題集' }, operation: shape === 'replace_new' ? 'replace' : shape, replacementLocalId: shape === 'remove' ? null : 'material', sourceText: ownText }] : [], decisions: [], conversationActs: [] };
 }
+
+/** Typed cross-boundary input: exact identity correction and an independent need. */
+export function materialIdentityEffortFixture(options: {
+  target?: 'component' | 'workload'; relisted?: 'component' | 'document'; includeEstimate?: boolean;
+} = {}) {
+  const graph = materialIdentityState();
+  const target = options.target === 'workload' ? 'w' : 'm';
+  graph.uncertainties.push({ id: 'u_effort', targetFactId: target, field: 'total_duration',
+    reason: '合計時間を確認', createdRevision: 1, source: materialIdentitySource });
+  graph.factLifecycles.push({ factId: 'u_effort', status: 'active', createdRevision: 1, terminalRevision: null, supersededByFactId: null });
+  const document = materialIdentityDocument();
+  const userText = `${MATERIAL_IDENTITY_TEXT}。${options.includeEstimate === false ? '合計時間はまだ未確定です' : 'この教材は合計60分です'}${options.relisted ? '。合計時間は要確認です' : ''}`;
+  document.tasks[0].sourceText = userText;
+  if (options.includeEstimate !== false) document.tasks[0].effortEstimates = [{ localId: 'total',
+    targetLocalId: options.target === 'workload' ? 'w' : 'material', kind: 'total_duration', minutes: 60,
+    unitCode: null, precision: 'exact', sourceText: 'この教材は合計60分です' }];
+  if (options.relisted) document.uncertainties.push({ localId: 'still-effort',
+    targetLocalId: options.relisted === 'document' ? 'document' : 'material', field: 'total_duration',
+    reason: '合計時間は要確認です', sourceText: '合計時間は要確認です' });
+  return { graph, document, userText };
+}
