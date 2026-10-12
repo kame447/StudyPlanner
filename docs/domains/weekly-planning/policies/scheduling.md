@@ -1,7 +1,7 @@
 # Weekly Planning Scheduling Policy
 
 Status: canonical / current Stable V5 scheduling behavior
-Updated: 2026-10-10
+Updated: 2026-10-11
 
 References:
 - [Current contract](../architecture/current-contract-v5.md)
@@ -83,6 +83,12 @@ The ordinary placement attempt retains the compiled work-item order. If it place
 Each attempt starts with fresh busy intervals, daily loads and candidates, using the same accepted input, horizon, availability, quantity and request-time boundary. A retry replaces the first result only when all work is placed. If it also fails, the first attempt's partial candidates and unscheduled identities are retained under the existing partial-output contract. This bounded search is not a complete feasibility solver, and failure does not prove that every possible ordering is impossible.
 
 Separately, work-item compilation follows the supplied active task order while preserving the relative order of workloads within each task. Replacing a workload may append a new fact to graph history; that historical append must not move its task behind another task. The compiler sorts only its newly created item array and retains workload IDs, amounts and provenance. It does not reorder or rewrite the accepted graph.
+
+## Provisional partial-preview disclosure
+
+Ordinary insufficient-capacity results remain all-or-nothing. A partial preview requires the existing provisional-timebox permission, retained safe candidates, fully resolved unscheduled item references, and an accepted priority relation from a scheduled task to every omitted task. The application owns this decision and its system message; rendering cannot change the omitted work or grant saving authority.
+
+The omission extent follows formal task identity. When an unscheduled task also has a candidate, the message says that part of its work was omitted; when it has no candidate, the message says the task was left out. Display-label matches do not determine this distinction. If no display label is available, the message only states that work was omitted. This disclosure changes neither the candidates nor the explicit approval/save boundary.
 
 ## Explicit daily study capacity
 
