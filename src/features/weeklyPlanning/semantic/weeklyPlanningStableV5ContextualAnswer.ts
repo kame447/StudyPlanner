@@ -720,6 +720,12 @@ export function applyWeeklyPlanningStableV5ContextualAnswer(
   if (evaluation.reason === 'target_unavailable') {
     return rejectUnavailableTarget(input);
   }
+  // Keep independent typed details without treating them as a quantity-role answer.
+  if (evaluation.reason === 'quantity_role_not_grounded_in_user_text'
+    && (containsResolvedSemanticDelta(input.document)
+      || (input.document.userContextFacts?.length ?? 0) > 0)) {
+    return null;
+  }
   if (
     evaluation.reason === 'duration_not_grounded_in_user_text'
     || evaluation.reason === 'quantity_role_not_grounded_in_user_text'

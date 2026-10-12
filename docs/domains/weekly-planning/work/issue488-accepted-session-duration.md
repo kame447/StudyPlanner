@@ -1,0 +1,19 @@
+# Issue488 accepted session duration extraction (local candidate)
+
+Original24aff8ea/ab3d2e6e/8de553d4 supply the existing workload→component→task session-size resolver, time/content splits and selected-fact provenance. Current label normalization and hard-clock/placement owners remain intact. The initial scheduler extraction did not change schema/model/paid-API behavior; the required typed disclosure adaptation is described below.
+
+An accepted500-minute workload with session1 minute and daily06–23 availability produces510 actual candidates after the existing15-minute allocation rounding. The extracted source publishes those candidates before Stable checkpoint shape validation rejects them, removing the prior checkpoint.495→495 saves/reloads;512→525 remains blocked by the existing512 computational guard. Both bounds have separate purposes: generation512 and Stable candidate/draft500. Neither is increased.
+
+The added ordinary-controller admission projects its existing commit action through the existing reducer, then calls the existing Stable checkpoint shape validator before actual dispatch. Invalid shape follows the existing error/rollback/fail path; successful dispatch is still once. Compatibility-only turns, direct compatibility saves, C5 dedicated transactions, byte-budget compaction and storage-quota handling keep their existing owners. This is shape admission, not a guarantee that a subsequent physical write succeeds.
+
+Verification is still in progress. Source-only cap examples and formal reachability probes are recorded separately; the revised guard must pass related tests/types and strong trace/save/reload/full gates before publication. The disclosure closure below retains the original fractional-minute arithmetic; its verification is pending, so this local commit is not a release-ready claim. Session display/allocation explanation is coordinated separately, without duplicate implementation.
+
+## Session-cap disclosure closure
+
+The original read-only session constraint projection is now connected to the current renderer: active accepted cap plus compiler-selected provenance is compared with the actual new candidates. It reports satisfied/not_satisfied/not_evaluated; preferred windows and allocation-display work remain separate. Candidate identity, revision, selected cap provenance, complete one-candidate-per-slice coverage, duration and clock span are checked. No rendered prose becomes scheduling authority.
+
+The current renderer receives the typed result and an instruction to naturally explain unmet or unevaluated caps without inventing their cause. No fixed disclosure sentence or output-vocabulary parser is added. On presentation failure, an unmet/unevaluated preview uses the existing technical-stop message rather than the generic preview-success fallback; candidate state and explicit Save authority are unchanged. Successful caps retain normal fallback behavior.
+
+Original fractional minute rounding remains unchanged. Actual duration is compared against the unrounded accepted cap, so unrepresentable or rounded-up requests cannot be labelled satisfied. This does not introduce a new minute-precision policy. Natural model disclosure, UI, full verification, and exact trace persistence remain pending until separately measured.
+
+The first disclosure scope measured137/140: three failures were a controller import-boundary violation and two test entry-point errors. Shape admission now lives in the existing application TurnSideEffects boundary; the isolation allowlist remains unchanged. Disclosure tests enter the instrumented runtime (which supplies the staged graph) and the ordinary committed-turn trace boundary (which bounds data before outbox insertion). Raw oversized outbox data is still refused. Original failures are retained as evidence, not hidden.

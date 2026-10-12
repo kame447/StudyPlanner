@@ -34,6 +34,8 @@ describe('evidenced candidate creation is separate from application mutations', 
     '仮予定案を作成しました。',
     '候補1件を作成しましたが、予定を作成しました。',
     '予定として候補1件を作成しました。',
+    'プレビューを作成しました。', '計画プレビューを作成しました。',
+    '計画のプレビューを作成しました。',
   ])('accepts creation of the actual preview candidate: %s', text => {
     expect(render(`1ページ3分くらいですね。${text}`)).toMatchObject({ status: 'rendered' });
   });
@@ -49,6 +51,9 @@ describe('evidenced candidate creation is separate from application mutations', 
     '計画案を承認しました。',
     '外部カレンダーに計画案を作成しました。',
     '外部カレンダーに候補を作成しました。',
+    '外部カレンダーに計画のプレビューを作成しました。',
+    '教材のプレビューを作成しました。',
+    '計画のプレビューを作成しました。予定を登録しました。',
     '仮予定の候補を作成しました。日付を確定しました。',
   ])('still rejects an unevidenced mutation: %s', text => {
     expect(render(text)).toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
@@ -68,8 +73,10 @@ describe('evidenced candidate creation is separate from application mutations', 
   });
   it('keeps proposal-noun creation gated by actual candidates and the promotion control', () => {
     for (const overrides of [{ previewCount: 0 }, { actionKind: 'question' as const }, { previewPromotionControlLabel: undefined }]) {
-      expect(render('計画案を作成しました。', input(overrides)))
-        .toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
+      for (const claim of ['計画案を作成しました。', '計画のプレビューを作成しました。']) {
+        expect(render(claim, input(overrides)))
+          .toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
+      }
     }
   });
   it('grounds an existing-schedule reference without claiming the new candidate is saved', () => {

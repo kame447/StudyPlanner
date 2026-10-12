@@ -10,8 +10,9 @@ import {
 import type {
   GenericPlanningWorkItem,
 } from './weeklyPlanningGenericWorkItems';
-import type {
-  GenericSchedulerInput,
+import {
+  compileGenericSchedulerInput,
+  type GenericSchedulerInput,
 } from './weeklyPlanningGenericSchedulerInput';
 import {
   createWeeklyPlanningPlacementGraphViewV5,
@@ -365,5 +366,60 @@ describe('Stable V5 preview scheduler', () => {
       endTime: '18:00',
       durationMinutes: 60,
     });
+  });
+});
+
+// Source responsibility: 2125b22e, plan-wide preference reaches actual placement.
+// Adapt its preference/hard-constraint controls to this suite's current fixture;
+// no source-wide conversation harness, provider call or new scheduling policy.
+describe('accepted plan-wide preferred availability reaches ordinary placement', () => {
+  it.each([
+    { name: 'rank the accepted evening preference', expectedStart: '20:00', busy: false, available: false, blocked: false },
+    { name: 'hard unavailable wins within the preferred period', expectedStart: '21:10', busy: true, available: false, blocked: false },
+    { name: 'soft preference never expands hard availability', expectedStart: '10:00', busy: false, available: true, blocked: false },
+    { name: 'blocked soft preference can fall back to ordinary free time', expectedStart: '09:00', busy: false, available: false, blocked: true },
+  ])('$name', ({ expectedStart, busy, available, blocked }) => {
+    const value = graph();
+    const source = value.tasks[0].source;
+    value.workloads = [{
+      id: 'c1-work', taskId: 'task-1', componentId: null, quantityRole: 'target',
+      amount: 45, unitCode: 'minute', unitLabel: '分', rangeStart: null, rangeEnd: null,
+      perOccurrence: false, periodExpression: null, source, createdRevision: 1,
+    }];
+    value.planningWindows = [{ id: 'c1-window', kind: 'absolute', value: '2026-07-27/2026-07-27',
+      start: '2026-07-27', end: '2026-07-27', source, createdRevision: 1 }];
+    const preference = {
+      id: 'c1-preferred', kind: 'preferred' as const, dateExpression: '2026-07-27',
+      namedTimePeriod: null, startTime: '20:00', endTime: '22:00', recurrenceKind: null,
+      days: [], constraintLevel: 'soft' as const, capacityMinutes: null, resolutionStatus: 'unresolved' as const, source, createdRevision: 1,
+    };
+    value.availabilityDeclarations = [preference];
+    if (busy || blocked) value.availabilityDeclarations.push({ ...preference, id: 'c1-unavailable',
+      kind: 'unavailable', constraintLevel: 'hard', endTime: blocked ? '22:00' : '21:00' });
+    if (available) value.availabilityDeclarations.push({ ...preference, id: 'c1-available',
+      kind: 'available', constraintLevel: 'hard', startTime: '10:00', endTime: '12:00' });
+    value.factLifecycles.push(active('c1-work'), active('c1-window'),
+      ...value.availabilityDeclarations.map(row => active(row.id)));
+    const frozen = JSON.stringify(value);
+    const compilation = compileGenericSchedulerInput({
+      graph: createWeeklyPlanningActiveSchedulerGraphViewV5(value),
+      context: { ownerId: 'owner-1', currentDate: '2026-07-26', planningStartDate: '2026-07-27',
+        planningEndDate: '2026-07-27', timeZone: 'Asia/Tokyo' },
+    });
+    expect(compilation.status).toBe('ready');
+    expect(compilation.issues).toEqual([]);
+    expect(compilation.input).not.toBeNull();
+    const input = compilation.input!;
+    expect(input.movableWorkItems).toHaveLength(1);
+    expect(input.movableWorkItems[0]).toMatchObject({ taskId: 'task-1', workloadFactId: 'c1-work', estimatedMinutes: 45 });
+    if (!available && !blocked) expect(input.preferredPlacements).toEqual([{
+      taskId: 'task-1', targetFactId: 'task-1', dates: ['2026-07-27'],
+      window: { startMinute: 1200, endMinute: 1320 }, sourceFactId: 'c1-preferred',
+    }]);
+    const result = scheduleWeeklyPlanningStableV5Preview({ input, graph: placementGraph(value), plans: [] });
+    expect(result.status).toBe('ready');
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]).toMatchObject({ date: '2026-07-27', startTime: expectedStart, durationMinutes: 45 });
+    expect(JSON.stringify(value)).toBe(frozen);
   });
 });

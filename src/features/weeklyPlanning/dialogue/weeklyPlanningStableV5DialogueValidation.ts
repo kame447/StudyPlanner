@@ -251,7 +251,7 @@ function claimsUnexecutedAction(
     // Creation of the presented draft is already evidenced. Only its direct
     // object is exempt; another object or a destination is not that draft.
     narrative = narrative.replace(
-      /(?:候補(?:\s*\d+\s*件(?:を)?|を(?:\s*\d+\s*件)?)?|(?:仮予定|予定|計画)(?:案)?を)\s*作成しました/gu,
+      /(?:候補(?:\s*\d+\s*件(?:を)?|を(?:\s*\d+\s*件)?)?|(?:仮予定|予定|計画)(?:案)?を|(?<![\p{L}\p{N}])(?:(?:仮予定|予定|計画)(?:の)?)?プレビューを)\s*作成しました/gu,
       (claim, offset: number, whole: string) => {
         const clause = whole.slice(0, offset).split(/[。、！？!?\n]/u).pop() ?? '';
         return /[にへで]/u.test(clause) ? claim : claim.replace('作成しました', '〈候補提示〉');

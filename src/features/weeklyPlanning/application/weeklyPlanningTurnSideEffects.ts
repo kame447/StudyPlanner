@@ -1,3 +1,7 @@
+import { weeklyPlanningReducer } from '../weeklyPlanningReducer';
+import { prepareWeeklyPlanningStableV5Checkpoint } from './weeklyPlanningStableV5SessionCodec';
+import type { PlanningState, WeeklyPlanningAction } from '../types';
+import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import {
   discardStagedUserPlanningContextV1,
   exportUserPlanningContextSnapshotV1,
@@ -151,3 +155,27 @@ export function createWeeklyPlanningTurnStagingLifecycle(
 }
 
 export const weeklyPlanningTurnStagingLifecycle = createWeeklyPlanningTurnStagingLifecycle();
+
+/** Reuse the Stable checkpoint's shape authority before ordinary candidate publication. */
+export function assertWeeklyPlanningTurnCommitShape(params: {
+  ownerId: string;
+  pending: WeeklyPlanningPendingTurn;
+  state: PlanningState;
+  action: Extract<WeeklyPlanningAction, { type: 'commit_turn' }>;
+  result: WeeklyPlanningTurnExecutionResult;
+}): void {
+  if (!params.result.stableV5Graph) return;
+  // The controller retains its synchronous stale-turn check and real dispatch.
+  // Only the projected shape is checked here; byte compaction/quota keep their owner.
+  const projectedState = weeklyPlanningReducer(params.state, params.action);
+  const preparation = prepareWeeklyPlanningStableV5Checkpoint({
+    ownerId: params.ownerId,
+    weekStartDate: params.pending.weekStartDate,
+    conversationId: params.pending.conversationId,
+    graph: params.result.stableV5Graph,
+    planningState: projectedState,
+  });
+  if (preparation.status === 'invalid') {
+    throw new Error('Stable V5 turn state violates its checkpoint shape contract.');
+  }
+}
