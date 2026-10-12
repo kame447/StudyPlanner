@@ -58,6 +58,17 @@ describe('evidenced candidate creation is separate from application mutations', 
   ])('still rejects an unevidenced mutation: %s', text => {
     expect(render(text)).toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
   });
+  it('distinguishes two scheduled blocks from two unsupported alternative plans', () => {
+    const twoBlocks = input({ previewCount: 2 });
+    expect(render('候補2件を作成しました。', twoBlocks)).toMatchObject({ status: 'rendered' });
+    // Captured case2 wording denotes two alternatives, not two blocks in one plan.
+    expect(render('計画のプレビューを2案作成しました。', twoBlocks))
+      .toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
+    expect(render('候補3件を作成しました。', twoBlocks))
+      .toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
+    expect(render('候補2件を保存しました。', twoBlocks))
+      .toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
+  });
   it('rejects an invented count and an empty preview', () => {
     expect(render('候補2件を作成しました。')).toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
     expect(render('仮予定の候補を作成しました。', input({ previewCount: 0 })))

@@ -31,7 +31,7 @@ raw user utterance + relevant conversation + typed machine state
 
 There is no production semantic rollback path to a legacy parser/interpreter/runtime selector.
 
-Issue #246 defines a planned pre-scheduling consultation/advice extension in [learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md). Until that runtime implementation is merged and verified, the flow above remains the production baseline. The requirement document must not be read as evidence that consultation routing or AdviceProposal state already exists in production.
+Issue #246 defines a planned pre-scheduling consultation/advice extension in [learning-consultation-and-advice.md](../spec/learning-consultation-and-advice.md). Until that runtime implementation is merged and verified, the flow above remains the production baseline. The requirement document must not be read as evidence that the general consultation/advice lifecycle or AdviceProposal state already exists in production. This planned general advice lifecycle is separate from the bounded read-only planning consultation below.
 
 ## Ownership
 
@@ -161,6 +161,14 @@ Derived facts remain derivations with source/basis. A correction to their basis 
 
 Planned consultation advice does not enter the canonical planning Fact Graph merely because an answer was generated. Advice remains advisory state until the user adopts a defined scope and deterministic promotion creates normal planning contributions.
 
+### Explicit material identity correction
+
+A material identity change is an explicitly represented component `modify`, not a different label on an ordinary reference. Eligibility requires one exact active material component under its exact active accepted task, a unique replacement bound to that component, and valid current-turn provenance. An open material-identity question alone, shared label characters, a registered-material UUID, or a new-component addition does not authorize an identity change. Other component replacement forms retain the existing unsupported-kind boundary.
+
+The eligible correction is one atomic canonical transaction. It preserves the new identity version through binding, supersedes the previous component, moves only schema-valid active references to the new version, and retains dependent IDs, values and provenance. Only the matching material-identity need and the exact correction are consumed. Other uncertainty content/status and unrelated task/material facts are retained. Active dependency references move in place; the original component and already-inactive reference records remain historical. This does not create separate versions of the dependent facts. Validation failure, stale revision or conflict leaves the accepted graph unchanged; retry does not create another version. Task-targeted date rules do not become component-targeted through this operation.
+
+The transaction changes planning-graph identity only. It does not rename a Bookshelf record, import saved progress, alter historical saved plans, infer a per-unit rate, or authorize preview approval or save. Existing preview, question, trace and persistence boundaries consume the validated new graph under their ordinary lifecycle rules. The old automatic bare-relabel policy, a focused material producer and an audit-authored budget writer are outside this boundary.
+
 ## Repair agenda / dialogue progression
 
 Not every uncertainty blocks the same boundary.
@@ -180,6 +188,18 @@ Validated fixed commitments constrain planning; they are not savable event candi
 The existing route supplies turn-local communication facts: either the fixed-event manual-entry reason with the existing `予定` → `予定を追加` labels and `eventCreatedByTurn:false`, or a no-additional-work reason. The renderer writes a natural reply from these facts; successful text is not replaced by a fixed suffix or interpreted with keywords. It must not claim an event was saved or that a new button/automatic navigation exists in the AI view. The current technical fallback remains available on renderer failure. The user's later explicit entry and Save in the existing manual UI remain the event-creation boundary.
 
 Ordinary ask, topic-shift and resume acts retain their existing question-identity and freshness rules, including unresolved named resumes. Independent planning facts still pass normal validation and canonical application. This unit adds no comparison mode, consultation/advice lifecycle, what-if flow, architecture selector, persisted presentation authority or new provider dispatch route or budget.
+
+## Bounded planning consultation
+
+The additive `consultation_request` act identifies a read-only discussion alongside the ordinary semantic delta. A consultation alone neither answers an outstanding machine question nor authorizes a new preview or save. Existing ask/resume/topic acts retain their finite identity and priority rules. Independent valid planning contributions and explicit planning requests continue through normal validation, canonical application and preview authorization.
+
+An optional proposed-day hypothesis has task or plan scope, one to seven canonical date expressions and evidence from the current user turn. Unknown targets, malformed proposals, multiple alternatives, unsupported component targets, missing planning details and out-of-horizon dates remain explicitly unevaluated; they cannot borrow an accepted plan's successful result. Deterministic code resolves already typed dates through the existing calendar owner. It never interprets dates or adoption intent from raw Japanese.
+
+The application evaluates a supported hypothesis with the existing scheduler on a clone of the current compiled input. It intersects the proposed days with accepted eligibility and preserves hard date/clock bounds, exclusions, capacity, fixed reservations, other tasks, request-time not-before and the existing Plan, timed MonthEvent and timetable inputs. The query does not install facts or replace the current preview. All-day MonthEvent busy/free policy remains with its existing owner and is unchanged.
+
+Turn-local consultation evidence distinguishes the accepted plan, a proposed-days evaluation and an older preview that was not rechecked. Compiler readiness and daily upper limits are not free-time or feasibility evidence. `fits` and `does_not_fit` describe only the evaluated conditions and horizon; missing evidence is `not_evaluated`. The renderer receives this typed scope and result, may ground date mentions only from evaluated alternatives, and must report a finite feasibility claim consistent with it. A contradictory claim or use of the existing preview-promotion control label for an unadopted alternative may use the existing single renderer repair; no extra verifier or provider route is introduced.
+
+For every unadopted proposed-days discussion, the reply withholds the existing preview promotion control. The hypothesis itself leaves retained candidates unchanged; a separate accepted planning delta may still regenerate them. Their approval control must not be presented as adopting the hypothetical arrangement. A later explicit change returns through ordinary semantic interpretation, canonical validation, readiness and preview; final approval and Save retain their existing owners. No new advice lifecycle, persisted hypothesis, general Issue #246 runtime, or fixed successful-response appender is introduced. The current trace/outbox/retry/Worker boundary records the actual requests and bounded evidence with explicit truncation.
 
 ## Proposal / readiness / scheduler
 

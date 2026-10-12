@@ -186,4 +186,30 @@ describe('Stable V5 provisional capacity preview policy', () => {
 
     expect(output).toBeNull();
   });
+
+  it.each(['all', 'part'] as const)('reports %s omission from task IDs without changing candidates or permission', (extent) => {
+    const input = runtimeInput();
+    const planning = evaluation('current_directive');
+    const scheduled = preview({ candidateTaskId: 'task-math', unscheduledWorkItemId: 'item-english' });
+    if (extent === 'part') {
+      planning.compilation.input!.movableWorkItems.push(workItem('item-english-scheduled', 'task-english'));
+      scheduled.candidates.push(candidate('task-english'));
+    }
+    const before = JSON.stringify({ input, planning, scheduled });
+    const output = projectWeeklyPlanningProvisionalCapacityPreviewV5({ input, evaluation: planning, preview: scheduled });
+
+    expect(output).not.toBeNull();
+    expect(output!.draftCandidates).toEqual(scheduled.candidates);
+    expect(output!.draftCandidates).toHaveLength(extent === 'all' ? 1 : 2);
+    expect(output!.state).toMatchObject({
+      status: 'draft_ready', draftGenerationIntent: 'user_authorized', shouldSavePlan: false,
+    });
+    expect(output!.responseSource).toBe('system');
+    expect(output!.message).toContain(extent === 'all'
+      ? '英語は容量不足のため候補に入れていません。'
+      : '英語の一部は容量不足のため候補に入れていません。');
+    if (extent === 'all') expect(output!.message).not.toContain('英語の一部');
+    expect(output!.message).toContain('この内容で仮予定にする');
+    expect(JSON.stringify({ input, planning, scheduled })).toBe(before);
+  });
 });

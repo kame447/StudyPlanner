@@ -37,6 +37,10 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/weeklyPlanningInteractionDecision.ts',
   // I: pure read-only active graph/compiler facts to turn-local handoff reason; no mutation, provider or storage.
   'application/weeklyPlanningFixedEventOnlyInteraction.ts',
+  // Bounded consultation: clone-only scheduler query; no provider, session, approval or save entry.
+  'application/weeklyPlanningConsultationAlternativeEvaluation.ts',
+  // Consultation projection: preview result type only; no execution or persisted advice authority.
+  'application/weeklyPlanningConsultationCommunication.ts',
   'application/weeklyPlanningApprovalRuntimeLookup.ts',
   'application/weeklyPlanningSessionLifecycle.ts',
   'application/weeklyPlanningStableV5GraphStaging.ts',
@@ -109,9 +113,15 @@ describe('Stable V5 production connection boundary', () => {
     for (const path of sourceFiles(WEEKLY_PLANNING_ROOT)) {
       const relativePath = normalizedRelative(path);
       if (isTestSource(relativePath)) continue;
+      const source = readFileSync(path, 'utf8');
+      // Shared identity packets belong to the existing test-only fixture boundary.
+      if ([...source.matchAll(STATIC_IMPORT_EXPRESSION)].some((match) =>
+        /(?:^|\/)weeklyPlanningMaterialIdentityFixture(?:\.ts)?$/.test(match[1]))) {
+        violations.push(`${relativePath}:test-only-material-identity-fixture`);
+      }
       if (relativePath.startsWith('semantic/')) continue;
 
-      const imports = importedStableModules(readFileSync(path, 'utf8'));
+      const imports = importedStableModules(source);
       if (imports.length === 0) continue;
       if (ALLOWED_PRODUCTION_IMPORTERS.has(relativePath)) {
         connectedImporters.add(relativePath);
@@ -122,5 +132,36 @@ describe('Stable V5 production connection boundary', () => {
 
     expect(violations).toEqual([]);
     expect(connectedImporters).toEqual(ALLOWED_PRODUCTION_IMPORTERS);
+  });
+});
+
+// These new connections are narrower than the runtime-wide importer permission.
+// Keep their complete dependency sets explicit so provider/storage/approval imports
+// cannot silently enter a read-only evaluation/projection owner.
+describe('bounded consultation dependency audit', () => {
+  it.each([
+    ['application/weeklyPlanningConsultationAlternativeEvaluation.ts', [
+      '../semantic/weeklyPlanningStableV5PlacementCandidates',
+      '../semantic/weeklyPlanningConversationActsV5',
+      '../semantic/weeklyPlanningGenericSchedulerInput',
+      '../semantic/weeklyPlanningPlacementGraphViewV5',
+      '../semantic/weeklyPlanningCalendarResolver',
+      '../semantic/weeklyPlanningCurrentTurnProvenanceV5',
+      '../semantic/weeklyPlanningStableV5PreviewScheduler',
+      './weeklyPlanningStableV5RuntimeContracts',
+      './weeklyPlanningTemporalContext',
+    ], './weeklyPlanningStableV5RuntimeContracts'],
+    ['application/weeklyPlanningConsultationCommunication.ts', [
+      './weeklyPlanningConsultationAlternativeEvaluation',
+      '../semantic/weeklyPlanningGenericSchedulerInput',
+      './weeklyPlanningStableV5PreviewExecution',
+    ], './weeklyPlanningStableV5PreviewExecution'],
+  ] as const)('keeps %s within its audited read-only imports', (file, expected, typeOnlyBoundary) => {
+    const source = readFileSync(join(WEEKLY_PLANNING_ROOT, file), 'utf8');
+    const imports = [...source.matchAll(STATIC_IMPORT_EXPRESSION)].map(match => match[1]);
+    expect(imports).toEqual([...expected]);
+    const typeImports = [...source.matchAll(/import\s+type\s+\{[^}]*\}\s+from\s+['"]([^'"]+)['"]/g)]
+      .map(match => match[1]);
+    expect(typeImports).toContain(typeOnlyBoundary);
   });
 });

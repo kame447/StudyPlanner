@@ -1,4 +1,5 @@
 import { prepareWeeklyPlanningWorkloadDependentsV5 } from './weeklyPlanningWorkloadDependentMigrationV5';
+import { hasWeeklyPlanningSemanticUncertaintyResolutionV5 } from './weeklyPlanningSemanticUncertaintyResolutionV5';
 import {
   requiresWeeklyPlanningExplicitLocalWorkloadEffortBindingV5,
   resolveWeeklyPlanningExactWorkloadEffortTargetV5,
@@ -612,7 +613,9 @@ export function evaluateWeeklyPlanningStableV5ContextualAnswer(
     }
     if (
       retainsPendingSemanticUncertainty(input, target)
-      || !containsResolvedSemanticDelta(input.document)
+      || !hasWeeklyPlanningSemanticUncertaintyResolutionV5({
+        graph: input.graph, document: input.document, uncertainty: target,
+      })
     ) {
       return {
         ...base,
@@ -720,8 +723,9 @@ export function applyWeeklyPlanningStableV5ContextualAnswer(
   if (evaluation.reason === 'target_unavailable') {
     return rejectUnavailableTarget(input);
   }
-  // Keep independent typed details without treating them as a quantity-role answer.
-  if (evaluation.reason === 'quantity_role_not_grounded_in_user_text'
+  // Keep independent typed details without treating them as an answer to the open need.
+  if ((evaluation.reason === 'quantity_role_not_grounded_in_user_text'
+      || evaluation.reason === 'uncertainty_not_resolved')
     && (containsResolvedSemanticDelta(input.document)
       || (input.document.userContextFacts?.length ?? 0) > 0)) {
     return null;
