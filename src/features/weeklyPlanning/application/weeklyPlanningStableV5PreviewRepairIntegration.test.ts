@@ -17,7 +17,7 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeExecutor';
-import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './weeklyPlanningStableV5RuntimeSession';
+import { finalizeWeeklyPlanningStableV5RuntimeGraph, resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './weeklyPlanningStableV5RuntimeSession';
 
 const { normalizeMock, rendererClientMock } = vi.hoisted(() => ({ normalizeMock: vi.fn(), rendererClientMock: vi.fn() }));
 
@@ -202,6 +202,95 @@ function existingSourceDocument(): WeeklyPlanningSemanticDocumentV5 {
   return document;
 }
 
+async function persistDateScopeQuestion(
+  input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
+  result: Awaited<ReturnType<typeof executeWeeklyPlanningStableV5RuntimeTurn>>,
+) {
+  rendererClientMock.mockImplementationOnce(async request => {
+    const payload = JSON.parse(request.messages[request.messages.length - 1].content);
+    expect(payload.applicationDecision.questionIntent).toMatchObject({
+      resolutionKind: 'availability_date_scope', requestedInformation: ['availability_date_scope'],
+    });
+    return JSON.stringify({ actionId: payload.actionId, actionKind: 'question',
+      questionCode: 'availability_outside_planning_window', groundingAcknowledgement: null,
+      text: 'その時間の希望は何日に適用しますか？' });
+  });
+  const rendered = await renderWeeklyPlanningStableV5AssistantMessage({ input, result });
+  expect(rendered.responseSource).toBe('ai');
+  expect(rendererClientMock).toHaveBeenCalledTimes(1);
+  const delivered = rendererClientMock.mock.calls[0][0];
+  const rendererTrace = boundWeeklyPlanningDialogueRendererTraceForTransport(rendered.dialogueRendererTrace!);
+  const context = rendererTrace.request!.promptContext as Record<string, unknown>;
+  expect(context.messages).toEqual(delivered.messages);
+  context.futureDateScopeQuestionField = 'future-date-scope-question';
+  const events = takeWeeklyPlanningStableV5DebugTrace(input.traceRequestId);
+  const evaluation = events.find(event => event.stage === 'runtime_scheduler_dialogue_evaluated')!;
+  expect(evaluation.data).toMatchObject({ dialogue: { selectedQuestionCode: 'availability_outside_planning_window' } });
+
+  vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
+  const restoreStorage = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
+  const conversationId = 'weekly-conversation-633e4567-e89b-42d3-a456-426614174010';
+  const canonicalIds = { sessionId: 'weekly-trace-633e4567-e89b-42d3-a456-426614174010', logicalConversationId: conversationId };
+  const writes: WeeklyPlanningTraceAppendInput[] = [];
+  let failuresRemaining = 2;
+  const api: WeeklyPlanningTraceApiClient = {
+    async getPolicyStatus() { return { policyVersion: 'test', accepted: true, acceptedAt: requestContext.startedAtIso }; },
+    async acceptPolicy() { return { policyVersion: 'test', accepted: true, acceptedAt: requestContext.startedAtIso }; },
+    async startSession() { return canonicalIds; },
+    async append(payload) { if (failuresRemaining-- > 0) throw new TypeError('injected question append failure'); writes.push(structuredClone(payload)); },
+    async deleteCurrentUserTrace() { return { deletedSessions: 0, deletedEntries: 0 }; },
+    async listAdminSessions() { return []; }, async listAdminEntries() { return []; }, async archiveAdminSession() {},
+  };
+  resetWeeklyPlanningStableV5TraceRuntimeForTest();
+  setWeeklyPlanningTraceRepositoryForTests(createRemoteWeeklyPlanningTraceRepository(api));
+  try {
+    const first = { userId: input.userId, conversationId, requestId: input.traceRequestId,
+      userText: input.userText, assistantMessage: rendered.message, responseSource: 'ai' as const,
+      dialogueRendererTrace: rendererTrace, debugTraceEvents: events, outcome: 'scheduler_needs_resolution', previewCount: 0 };
+    await recordWeeklyPlanningStableV5TurnTrace(first);
+    expect(writes).toEqual([]);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: input.userId, conversationId })).toHaveLength(1);
+    expect(JSON.parse(window.localStorage.getItem('studyplanner.weeklyPlanning.trace.outbox.v1')!).items[0].input).toEqual(first);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    setWeeklyPlanningTraceRepositoryForTests(createRemoteWeeklyPlanningTraceRepository(api));
+    const oversized = structuredClone(first);
+    oversized.requestId += ':oversized';
+    (oversized.dialogueRendererTrace.request!.promptContext as Record<string, unknown>).futureLargeDateScopeQuestionField = 'question-extension'.repeat(10_000);
+    await recordWeeklyPlanningStableV5TurnTrace(oversized);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: input.userId, conversationId })).toEqual([]);
+    expect(writes).toHaveLength(2);
+    for (const [index, write] of writes.entries()) {
+      const entry = write.entries[0];
+      if (entry.kind !== 'turn_diagnostic') throw new Error('expected question diagnostic');
+      expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+      const prepared = prepareWeeklyPlanningTraceServerWrite({
+        session: write.session as unknown as Record<string, unknown>, entries: [entry] as unknown as Record<string, unknown>[],
+      }, { token: 'wpt_' + 'd'.repeat(43), epoch: '108' }, canonicalIds, requestContext.startedAtIso);
+      expect(prepared.entries).toHaveLength(1);
+      expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+      for (const saved of [entry, prepared.entries[0]]) {
+        expect(saved).toMatchObject({ constraintContext: { scheduler: {
+          selectedQuestionCode: 'availability_outside_planning_window', preview: null,
+        } } });
+        const serialized = JSON.stringify(saved);
+        if (index === 0) {
+          expect(serialized).toContain('future-date-scope-question');
+          const renderer = (saved as { diagnostics: { dialogueRenderer: typeof rendererTrace } }).diagnostics.dialogueRenderer;
+          expect((renderer.request!.promptContext as Record<string, unknown>).messages).toEqual(delivered.messages);
+        } else {
+          expect(serialized).toMatch(/traceProjectionTruncated|traceTruncated|truncated/u);
+          expect(serialized).not.toContain('question-extension'.repeat(10_000));
+        }
+      }
+    }
+  } finally {
+    resetWeeklyPlanningStableV5TraceRuntimeForTest();
+    setWeeklyPlanningTraceRepositoryForTests(undefined);
+    restoreStorage();
+    vi.unstubAllEnvs();
+  }
+}
+
 describe('Stable V5 repair-safe preview integration', () => {
   beforeEach(() => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
@@ -263,11 +352,86 @@ describe('Stable V5 repair-safe preview integration', () => {
     },
   );
 
+  it.each(['preferred', 'available'] as const)('one date-scope answer resolves an out-of-period %s weekday in the actual runtime', async kind => {
+    const document = initialPreviewDocument();
+    document.tasks[0].workloads[0].amount = 12;
+    document.tasks[0].workloads[0].sourceText = '数学12ページ';
+    document.tasks[0].sourceText = '数学12ページ。1ページ5分くらい';
+    document.availabilityDeclarations = [{
+      localId: 'weekday-preference', kind, constraintLevel: 'soft',
+      dateExpression: 'weekday:friday', namedTimePeriod: null, startTime: '21:00', endTime: null,
+      recurrenceKind: null, days: [], capacityMinutes: null, sourceText: '金曜日は21時以降',
+    }];
+    const userText = '8月17日から23日で数学12ページ。1ページ5分くらい。金曜日は21時以降';
+    const validation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(document), { currentUserText: userText });
+    expect(validation.errors).toEqual([]);
+    normalizeMock.mockResolvedValueOnce(acceptedResult(validation.document!));
+    const firstInput = turnInput({ userText, traceRequestId: 'weekday-question' });
+    const first = await executeWeeklyPlanningStableV5RuntimeTurn(firstInput);
+    expect(first.draftCandidates).toEqual([]);
+    expect(first.state.shouldCreateDraft).toBe(false);
+    expect(first.state.lastQuestionContext?.targetSlot).toBe('stable_v5:availability_outside_planning_window');
+    const old = first.stableV5Graph!.availabilityDeclarations[0];
+    expect(old).toMatchObject({ dateExpression: 'weekday:friday', recurrenceKind: null, days: [] });
+    await persistDateScopeQuestion(firstInput, first);
+    finalizeWeeklyPlanningStableV5RuntimeGraph({ ownerId: firstInput.userId,
+      conversationId: firstInput.conversationId, requestId: firstInput.traceRequestId });
+
+    const answer = '8月21日の21時以降です';
+    const replacement = { ...document.availabilityDeclarations[0], localId: 'dated-preference',
+      dateExpression: '2026-08-21', sourceText: answer };
+    const corrected: WeeklyPlanningSemanticDocumentV5 = { ...document,
+      planningIntent: 'update_plan', planningWindow: null, tasks: [], availabilityDeclarations: [replacement],
+      corrections: [{ localId: 'fix-preference', target: { kind: 'availability_declaration',
+        publicId: old.id, localId: null, mention: null }, operation: 'replace',
+        replacementLocalId: replacement.localId, sourceText: answer }],
+    };
+    const correctedValidation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(corrected), { currentUserText: answer });
+    expect(correctedValidation.errors).toEqual([]);
+    normalizeMock.mockResolvedValueOnce(acceptedResult(correctedValidation.document!));
+    const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+      userText: answer, traceRequestId: 'weekday-answer', previousState: first.state,
+    }));
+    expect(second.state.lastQuestionContext).toBeUndefined();
+    expect(second.draftCandidates).toEqual([
+      expect.objectContaining({ date: '2026-08-21', startTime: '21:00', endTime: '22:10', durationMinutes: 70 }),
+    ]);
+    expect(second.stableV5Graph!.factLifecycles.find(fact => fact.factId === old.id)?.status).toBe('superseded');
+    expect(second.stableV5Graph!.tasks).toEqual(first.stableV5Graph!.tasks);
+    expect(firstInput.plans).toEqual([]);
+    expect(normalizeMock).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
-    { claim: '保存済みの予定と重ならない候補を作成しました。', acceptedWeekdayPreference: false },
-    { claim: '計画案を作成しました。保存はまだ行いません。', acceptedWeekdayPreference: false },
-    { claim: '計画案を作成しました。保存はまだ行いません。', acceptedWeekdayPreference: true },
-  ])('persists actual hard-clock runtime diagnostics through outbox retry and Worker preparation: $claim', async ({ claim, acceptedWeekdayPreference }) => {
+    { namedTimePeriod: 'night' as const, code: 'missing_schedulable_work' },
+    { namedTimePeriod: 'custom:late' as const, code: 'named_time_period_unresolved' },
+  ])('keeps missing-work and unresolved-time questions distinct for $namedTimePeriod', async ({ namedTimePeriod, code }) => {
+    const document = initialPreviewDocument();
+    Object.assign(document.tasks[0], { workloads: [], effortEstimates: [], decompositionStatus: 'atomic',
+      sourceText: '数学を進めたい', temporalConstraints: [{
+        localId: 'time-preference', targetLocalId: 'task-math', kind: 'preferred_window', constraintLevel: 'soft',
+        dateExpression: null, namedTimePeriod, startTime: null, endTime: null, precision: 'exact', sourceText: 'できれば夜',
+      }] });
+    const userText = '8月17日から23日で数学を進めたい。できれば夜';
+    const validation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(document), { currentUserText: userText });
+    expect(validation.errors).toEqual([]);
+    normalizeMock.mockResolvedValueOnce(acceptedResult(validation.document!));
+    const result = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+      userText, traceRequestId: 'no-work-preference',
+    }));
+    expect(result.draftCandidates).toEqual([]);
+    expect(result.state.lastQuestionContext?.targetSlot).toBe('stable_v5:' + code);
+    expect(result.stableV5Graph!.temporalConstraints[0].namedTimePeriod).toBe(namedTimePeriod);
+  });
+
+  it.each([
+    { claim: '保存済みの予定と重ならない候補を作成しました。', acceptedWeekdayPreference: false, temporalRepresentation: 'existing' },
+    { claim: '計画案を作成しました。保存はまだ行いません。', acceptedWeekdayPreference: false, temporalRepresentation: 'existing' },
+    { claim: '計画案を作成しました。保存はまだ行いません。', acceptedWeekdayPreference: true, temporalRepresentation: 'existing' },
+    ...['task_start_only', 'soft_available', 'hard_available'].map(temporalRepresentation => ({
+      claim: '計画案を作成しました。保存はまだ行いません。', acceptedWeekdayPreference: true, temporalRepresentation,
+    })),
+  ])('persists actual hard-clock runtime diagnostics through outbox retry and Worker preparation: $claim / $temporalRepresentation', async ({ claim, acceptedWeekdayPreference, temporalRepresentation }) => {
     vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
     const conversationId = 'weekly-conversation-733e4567-e89b-42d3-a456-426614174010';
     const userId = 'owner-preview-repair';
@@ -316,9 +480,24 @@ describe('Stable V5 repair-safe preview integration', () => {
           sourceText: 'できれば8月21日の21時から23時',
         }];
       }
-      const userText = acceptedWeekdayPreference
+      if (temporalRepresentation === 'task_start_only') {
+        document.tasks[0].temporalConstraints.push({
+          localId: 'preferred-task-clock', targetLocalId: 'task-math', kind: 'preferred_window',
+          constraintLevel: 'soft', dateExpression: '2026-08-21', namedTimePeriod: null,
+          startTime: '21:00', endTime: null, precision: 'exact', sourceText: 'できれば8月21日の21時以降',
+        });
+        document.availabilityDeclarations = [];
+      } else if (temporalRepresentation === 'soft_available' || temporalRepresentation === 'hard_available') {
+        Object.assign(document.availabilityDeclarations[0], { kind: 'available', endTime: null,
+          constraintLevel: temporalRepresentation === 'hard_available' ? 'hard' : 'soft',
+          sourceText: '8月21日の21時以降にできる',
+        });
+      }
+      let userText = acceptedWeekdayPreference
         ? '8月17日から23日で数学12ページ。1ページ5分くらい。金曜日は20時以降。できれば8月21日の21時から23時。既存予定'
         : '8月17日から23日で数学12ページ。1ページ5分くらい。8月21日は20時以降。既存予定';
+      if (temporalRepresentation === 'task_start_only') userText = userText.replace('できれば8月21日の21時から23時', 'できれば8月21日の21時以降');
+      if (temporalRepresentation.endsWith('_available')) userText = userText.replace('できれば8月21日の21時から23時', '8月21日の21時以降にできる');
       document.tasks[0].sourceText = '数学12ページ。1ページ5分くらい';
       document.tasks[0].workloads[0].sourceText = '数学12ページ';
       const validation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(document), { currentUserText: userText });
@@ -340,9 +519,17 @@ describe('Stable V5 repair-safe preview integration', () => {
         endTime: acceptedWeekdayPreference ? '22:10' : '21:30', durationMinutes: 70 });
       if (acceptedWeekdayPreference) {
         expect(acceptedGraph.temporalConstraints[0].dateExpression).toBe('weekday:friday');
-        expect(acceptedGraph.availabilityDeclarations[0]).toMatchObject({
-          kind: 'preferred', dateExpression: '2026-08-21', startTime: '21:00', endTime: '23:00', constraintLevel: 'soft',
-        });
+        if (temporalRepresentation === 'task_start_only') {
+          expect(acceptedGraph.temporalConstraints[1]).toMatchObject({ kind: 'preferred_window',
+            dateExpression: '2026-08-21', startTime: '21:00', endTime: null, constraintLevel: 'soft' });
+          expect(acceptedGraph.availabilityDeclarations).toEqual([]);
+        } else {
+          expect(acceptedGraph.availabilityDeclarations[0]).toMatchObject({
+            kind: temporalRepresentation === 'existing' ? 'preferred' : 'available',
+            dateExpression: '2026-08-21', startTime: '21:00', endTime: temporalRepresentation === 'existing' ? '23:00' : null,
+            constraintLevel: temporalRepresentation === 'hard_available' ? 'hard' : 'soft',
+          });
+        }
       }
       const evidence = result.existingScheduleGrounding;
       expect(evidence).toEqual({ graphRevision: result.stableV5Graph!.revision,
