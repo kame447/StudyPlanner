@@ -1,3 +1,4 @@
+import { weeklyPlanningConsultationAlternativeSchemaV5 } from './weeklyPlanningConsultationAlternativeV5';
 import { WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5 } from './weeklyPlanningConversationActsV5';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
 import { USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1 } from '../../userPlanningContext/userPlanningContextTypes';
@@ -351,8 +352,9 @@ const userContextFactSchema = objectSchema(
   },
 );
 
-const conversationActSchema = objectSchema(['kind', 'targetPublicId'], {
+const conversationActSchema = objectSchema(['kind', 'targetPublicId', 'placementAlternative'], {
   kind: enumSchema(WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5), targetPublicId: nullableStringSchema,
+  placementAlternative: weeklyPlanningConsultationAlternativeSchemaV5,
 });
 
 const rootSchema = objectSchema(

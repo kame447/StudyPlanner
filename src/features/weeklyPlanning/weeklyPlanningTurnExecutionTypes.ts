@@ -1,3 +1,4 @@
+import type { WeeklyPlanningConsultationCommunication } from './application/weeklyPlanningConsultationCommunication';
 import type { WeeklyPlanningExistingScheduleGrounding } from './dialogue/weeklyPlanningStableV5DialogueContracts';
 import type {
   Actual,
@@ -86,6 +87,8 @@ export type WeeklyPlanningInteractionOutcome = {
 
 export interface WeeklyPlanningTurnExecutionResult {
   interactionOutcome?: WeeklyPlanningInteractionOutcome;
+  /** Turn-local read-only evidence; not a proposal, preview or persistence authority. */
+  consultation?: WeeklyPlanningConsultationCommunication;
   /** Turn-local terminal explanation; grants no event creation or save authority. */
   communicationFacts?: WeeklyPlanningFixedEventCommunicationFacts;
   state: PlanningIntakeState;

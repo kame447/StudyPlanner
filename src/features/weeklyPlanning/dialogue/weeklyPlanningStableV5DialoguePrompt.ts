@@ -108,6 +108,13 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       'acceptedFactsは会話上受理済みのFactです。resolutionPendingItemsはscheduler等で追加解決が必要な項目であり、そこに同じFactが現れてもユーザー発話自体が未受理という意味ではありません。',
       'currentTurnGrounding.acceptedFactsはこのturnで新たに受理したFactです。required_before_resumeでは会話上重要なFactを短くACKしてから質問へ戻し、groundingAcknowledgementにそのfactIdとACK本文を入れ、最終textをその本文から始めてください。ACK対象Factに時刻・日付・数量などユーザーが明示した具体値がある場合は、その具体値を省略せずACK本文にも残してください。recommendedは必要な場合だけ、noneはgroundingAcknowledgement=nullとし定型ACKを足さないでください。受理済みFactを再確認質問にしないでください。',
       'communicationがある場合はアプリが選んだgoalに従い、raw発話から別の会話目的を選び直さないでください。acknowledge_asideでは保留中の質問を尋ねず、その発話に自然に応答してください。resume_questionでは実際のquestionIntentの質問へ戻ってください。',
+      ...(input.communication?.consultation ? [
+        'communication.consultationは読取専用の評価根拠です。日上限は空き時間ではありません。accepted_plan_onlyは受理済み条件だけ、proposed_daysはalternativeに示す対象・日付だけの仮説評価です。fits/does_not_fitはその条件と期間での結果であり、一般的な可能・不可能を意味しません。not_evaluatedは不足理由を説明し、未評価の条件を可能とも不可能とも断定しないでください。',
+        'feasibilityClaimはnone、またはこの評価根拠と同じfits/does_not_fitのみ。本文にも同じ評価範囲と確実性を保ってください。workEstimatesとdailyLimitsは根拠値のまま扱い、差を計算して自由時間としないでください。nextActionに沿って自然に応じ、必要な確認は一つまでにしてください。',
+        ...(input.communication.alternativeRequiresAdoption ? [
+          '提案日は未採用で、現在の候補には反映していません。旧候補の承認・保存操作を別案の採用手段として案内しないでください。別案を採用するか自然に確認し、明示された変更だけが通常の計画更新へ進みます。',
+        ] : []),
+      ] : []),
       ...(input.communication?.statusReason === 'fixed_event_manual_entry' ? [
         'planningStateSummaryやacceptedFactsにある固定予定は受理済みの占有時間情報です。情報がなければ日時や受理済み予定を補わないでください。このAI turnで予定を作成・保存していません。communication.manualEntryの既存navigationLabelから既存actionLabelを選ぶ手動入力経路を自然に案内してください。この画面に追加ボタンがあると仮定せず、自動移動・登録を約束しないでください。追加の学習や作業を勧誘する質問は足さないでください。',
       ] : []),

@@ -105,11 +105,11 @@ describe('Stable V5 provider representation schema', () => {
     const properties = record(item.properties);
     expect(acts).toMatchObject({ type: 'array' });
     expect(item.additionalProperties).toBe(false);
-    expect(item.required).toEqual(['kind', 'targetPublicId']);
-    expect(Object.keys(properties).sort()).toEqual(['kind', 'targetPublicId']);
+    expect(item.required).toEqual(['kind', 'targetPublicId', 'placementAlternative']);
+    expect(Object.keys(properties).sort()).toEqual(['kind', 'placementAlternative', 'targetPublicId']);
     expect(record(properties.kind).enum).toEqual([
       'answer_pending_question', 'ask_about_pending_question', 'topic_shift', 'resume_topic',
-      'decline_additional_work', 'request_event_registration',
+      'decline_additional_work', 'request_event_registration', 'consultation_request',
     ]);
   });
 

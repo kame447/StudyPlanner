@@ -1,3 +1,5 @@
+import { evaluatedWeeklyPlanningConsultationDates } from '../application/weeklyPlanningConsultationCommunication';
+import { WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL } from './weeklyPlanningStableV5DialogueContext';
 import {
   groundedDateExpressionsFromPlanningInformation,
 } from './weeklyPlanningDialogueDateGrounding';
@@ -356,6 +358,11 @@ function validateRenderedText(
     return 'unsafe_text';
   }
 
+  if (input.communication?.alternativeRequiresAdoption
+    && text.includes(WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL)) {
+    return 'unadopted_alternative_promotion';
+  }
+
   if (missesPreviewPromotionControl(text, input)) {
     return 'action_contract_mismatch';
   }
@@ -381,7 +388,8 @@ function validateRenderedText(
       text,
       groundingInformation,
       DATE_EXPRESSION,
-      groundedDateExpressions,
+      [...groundedDateExpressions, ...evaluatedWeeklyPlanningConsultationDates(input.communication?.consultation)
+        .map(date => { const [, month, day] = date.split('-'); return `${Number(month)}月${Number(day)}日`; })],
     )
     || hasIncorrectPreviewCount(text, input)
     || claimsUnexecutedAction(text, input)
@@ -421,6 +429,14 @@ export function parseWeeklyPlanningStableV5DialogueRendererResponse(
     || parsed.questionCode !== input.questionCode
   ) {
     return { status: 'fallback', reason: 'action_contract_mismatch', rawResponse };
+  }
+
+  const consultation = input.communication?.consultation;
+  if (consultation && (
+    !['none', 'fits', 'does_not_fit'].includes(String(parsed.feasibilityClaim))
+    || (parsed.feasibilityClaim !== 'none' && parsed.feasibilityClaim !== consultation.feasibility.status)
+  )) {
+    return { status: 'fallback', reason: 'unchecked_consultation_feasibility', rawResponse };
   }
 
   const text = parsed.text.replace(/\r\n/g, '\n').trim();
