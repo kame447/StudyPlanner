@@ -140,7 +140,7 @@ const effortEstimateSchema = objectSchema(
   ],
   {
     localId: stringSchema,
-    targetLocalId: stringSchema,
+    targetLocalId: { ...stringSchema, description: "Same-task task/component/workload localId. Only total_duration/session_duration may instead use an exact active workload publicId under an explicitly bound active task; declared localIds take precedence." },
     kind: enumSchema(['total_duration', 'duration_per_unit', 'session_duration']),
     minutes: numberSchema,
     unitCode: {
@@ -248,7 +248,7 @@ const uncertaintySchema = objectSchema(
   ['localId', 'targetLocalId', 'field', 'reason', 'sourceText'],
   {
     localId: stringSchema,
-    targetLocalId: stringSchema,
+    targetLocalId: { ...stringSchema, description: "A supported fact localId declared in this response, or document for an unresolved referent; never a public Fact ID or this uncertainty's own localId." },
     field: stringSchema,
     reason: stringSchema,
     ...sourceTextProperty,

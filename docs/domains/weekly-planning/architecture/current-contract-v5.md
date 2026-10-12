@@ -73,6 +73,8 @@ Pending-answer copy repair must preserve a non-exact token known in the current 
 
 For a representation-only semantic repair, compare both provider documents after the same pre-parse normalization and before post-parse projection, so deterministic projection is not mistaken for a provider mutation. If either provider comparison envelope is unavailable, retain the existing parsed/validated comparison pair. The comparison envelope never authorizes acceptance: the repaired document must still pass every normal validator. This does not add a model call or broaden which semantic changes are repairable.
 
+Canonical-date representation errors may permit only the validator-addressed `dateExpression` fields of availability declarations or task temporal constraints to change during that existing repair. Preserve the other semantic content and current-turn evidence; an unrelated date field is not repair authority. The repaired document still passes normal validation, including whether its new date representation is valid. This comparison exception neither interprets dates nor adds a repair call.
+
 ## Time semantics
 
 Natural-language time meaning belongs to AI; calendar arithmetic and scheduler-facing temporal compilation belong to the deterministic application.
@@ -156,6 +158,14 @@ Canonical commit is atomic. Validation failure leaves accepted state unchanged. 
 Derived facts remain derivations with source/basis. A correction to their basis must not leave stale derived truth active.
 
 Planned consultation advice does not enter the canonical planning Fact Graph merely because an answer was generated. Advice remains advisory state until the user adopts a defined scope and deterministic promotion creates normal planning contributions.
+
+### Explicit material identity correction
+
+A material identity change is an explicitly represented component `modify`, not a different label on an ordinary reference. Eligibility requires one exact active material component under its exact active accepted task, a unique replacement bound to that component, and valid current-turn provenance. An open material-identity question alone, shared label characters, a registered-material UUID, or a new-component addition does not authorize an identity change. Other component replacement forms retain the existing unsupported-kind boundary.
+
+The eligible correction is one atomic canonical transaction. It preserves the new identity version through binding, supersedes the previous component, moves only schema-valid active references to the new version, and retains dependent IDs, values and provenance. Only the matching material-identity need and the exact correction are consumed. Other uncertainty content/status and unrelated task/material facts are retained. Active dependency references move in place; the original component and already-inactive reference records remain historical. This does not create separate versions of the dependent facts. Validation failure, stale revision or conflict leaves the accepted graph unchanged; retry does not create another version. Task-targeted date rules do not become component-targeted through this operation.
+
+The transaction changes planning-graph identity only. It does not rename a Bookshelf record, import saved progress, alter historical saved plans, infer a per-unit rate, or authorize preview approval or save. Existing preview, question, trace and persistence boundaries consume the validated new graph under their ordinary lifecycle rules. The old automatic bare-relabel policy, a focused material producer and an audit-authored budget writer are outside this boundary.
 
 ## Repair agenda / dialogue progression
 

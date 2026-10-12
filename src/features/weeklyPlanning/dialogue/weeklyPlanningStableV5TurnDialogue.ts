@@ -286,7 +286,10 @@ function createRenderInput(params: {
   const previewPromotionControlLabel = params.result.state.status === 'draft_ready'
     ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL
     : null;
+  const previewConstraintSatisfaction = params.actionKind === 'preview_ready'
+    ? params.result.previewConstraintSatisfaction : undefined;
   const fallbackText = params.result.communicationFacts
+    || previewConstraintSatisfaction?.some(fact => fact.status !== 'satisfied')
     || params.result.interactionOutcome?.kind === 'aside'
     ? ASIDE_RENDERER_TECHNICAL_STOP : fallbackTextForStableV5TypedIntent({
     applicationText: params.result.message,
@@ -319,6 +322,7 @@ function createRenderInput(params: {
       .map(({ role, content }) => ({ role, content })),
     planningInformation,
     currentTurnGrounding,
+    ...(previewConstraintSatisfaction ? { previewConstraintSatisfaction } : {}),
     ...(params.result.existingScheduleGrounding
       ? { existingScheduleGrounding: params.result.existingScheduleGrounding }
       : {}),

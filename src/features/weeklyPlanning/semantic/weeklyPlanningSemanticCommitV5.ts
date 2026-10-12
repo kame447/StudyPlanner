@@ -1,3 +1,4 @@
+import { applyWeeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 import { enforceSingleActivePlanningWindowV5 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
 import {
   applyWeeklyPlanningCanonicalCorrectionsExtendedV5 as applyWeeklyPlanningCanonicalCorrectionsV5,
@@ -231,9 +232,15 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
         errors: [],
       };
   const boundCanonicalization = entityBindingApplication.canonicalization;
+  const identityCanonicalization = applyWeeklyPlanningMaterialIdentityAnswersV5({
+    originalGraph: params.originalGraph,
+    document: params.document,
+    canonicalization: boundCanonicalization,
+    operationKeyPrefix: params.operationKeyPrefix,
+  });
   const correctionResult = applyCanonicalCorrectionResult({
     originalGraph: params.originalGraph,
-    canonicalization: boundCanonicalization,
+    canonicalization: identityCanonicalization,
     operationKeyPrefix: params.operationKeyPrefix,
   });
   const progressReconciledCanonicalization = reconcileWeeklyPlanningProgressCorrectionsV5({

@@ -1,4 +1,5 @@
 import { summarizeWeeklyPlanningAllocationBreakdown } from '../semantic/weeklyPlanningAllocationBreakdown';
+import { projectWeeklyPlanningPreviewConstraintSatisfaction } from './weeklyPlanningPreviewConstraintSatisfaction';
 import { planWeeklyPlanningInteraction, classifyWeeklyPlanningInteraction } from './weeklyPlanningInteractionDecision';
 import {
   withWeeklyPlanningProvisionalTimeboxStateV5,
@@ -152,6 +153,13 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     ...output,
     interactionOutcome: { kind: 'apply' },
     ...(allocationBreakdown ? { allocationBreakdown } : {}),
+    ...(output.draftCandidates.length > 0 && !output.preserveExistingPreview
+      ? { previewConstraintSatisfaction: projectWeeklyPlanningPreviewConstraintSatisfaction({
+          graph: evaluation.activeGraph,
+          schedulerInput: responseRoute.schedulerInput,
+          candidates: output.draftCandidates,
+        }) }
+      : {}),
     ...(output.draftCandidates.length > 0 && selection?.sourceId && occupiedEventIds.length > 0
       ? { existingScheduleGrounding: {
           graphRevision: semantic.graph.revision,
