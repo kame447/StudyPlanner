@@ -109,9 +109,15 @@ describe('Stable V5 production connection boundary', () => {
     for (const path of sourceFiles(WEEKLY_PLANNING_ROOT)) {
       const relativePath = normalizedRelative(path);
       if (isTestSource(relativePath)) continue;
+      const source = readFileSync(path, 'utf8');
+      // Shared identity packets belong to the existing test-only fixture boundary.
+      if ([...source.matchAll(STATIC_IMPORT_EXPRESSION)].some((match) =>
+        /(?:^|\/)weeklyPlanningMaterialIdentityFixture(?:\.ts)?$/.test(match[1]))) {
+        violations.push(`${relativePath}:test-only-material-identity-fixture`);
+      }
       if (relativePath.startsWith('semantic/')) continue;
 
-      const imports = importedStableModules(readFileSync(path, 'utf8'));
+      const imports = importedStableModules(source);
       if (imports.length === 0) continue;
       if (ALLOWED_PRODUCTION_IMPORTERS.has(relativePath)) {
         connectedImporters.add(relativePath);
