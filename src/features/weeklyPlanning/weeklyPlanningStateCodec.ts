@@ -1,3 +1,4 @@
+import { isWeeklyPlanningAllocationBreakdown } from './semantic/weeklyPlanningAllocationBreakdown';
 import { isWeeklyPlanningApprovalRecovery } from './planning/weeklyPlanningApprovalRecovery';
 import {
   isDateWithinWindow,
@@ -248,7 +249,7 @@ function isDraftBlock(value: unknown): value is WeeklyPlanDraftBlock {
     || !hasOnlyKeys(value, [
       'id', 'userId', 'date', 'startTime', 'endTime', 'title', 'subject', 'type', 'label',
       'materialId', 'materialName', 'memo', 'source', 'status', 'userEdited',
-      'behaviorMetadata', 'createdAt', 'updatedAt',
+      'behaviorMetadata', 'createdAt', 'updatedAt', 'allocationBreakdown',
     ])) {
     return false;
   }
@@ -267,6 +268,7 @@ function isDraftBlock(value: unknown): value is WeeklyPlanDraftBlock {
     && value.source === 'ai'
     && value.status === 'draft'
     && typeof value.userEdited === 'boolean'
+    && (value.allocationBreakdown === undefined || isWeeklyPlanningAllocationBreakdown(value.allocationBreakdown))
     && (value.behaviorMetadata === undefined || isBehaviorMetadata(value.behaviorMetadata))
     && isTimestamp(value.createdAt)
     && isTimestamp(value.updatedAt);
@@ -276,7 +278,7 @@ function isPreviewCandidate(value: unknown): value is WeeklyDraftCandidate {
   if (!isRecord(value)
     || !hasOnlyKeys(value, [
       'stableKey', 'date', 'startTime', 'endTime', 'durationMinutes', 'title', 'field',
-      'year', 'estimatedMinutes', 'source', 'approvalStatus', 'workItemKey', 'behaviorMetadata',
+      'year', 'estimatedMinutes', 'source', 'approvalStatus', 'workItemKey', 'behaviorMetadata', 'allocationBreakdown',
     ])) {
     return false;
   }
@@ -292,6 +294,7 @@ function isPreviewCandidate(value: unknown): value is WeeklyDraftCandidate {
     && value.source === 'weekly_exam_prep'
     && value.approvalStatus === 'unapproved'
     && typeof value.workItemKey === 'string'
+    && (value.allocationBreakdown === undefined || isWeeklyPlanningAllocationBreakdown(value.allocationBreakdown))
     && (value.behaviorMetadata === undefined
       || isBehaviorAwarePreviewMetadata(value.behaviorMetadata));
 }
@@ -732,6 +735,7 @@ function isDraftBlockStableV5(value: unknown, ownerId: string, conversationId: s
     || typeof value.userEdited !== 'boolean'
     || !isTimestamp(value.createdAt)
     || !isTimestamp(value.updatedAt)
+    || (value.allocationBreakdown !== undefined && !isWeeklyPlanningAllocationBreakdown(value.allocationBreakdown))
   ) {
     return false;
   }
@@ -782,6 +786,7 @@ function isPreviewCandidateStableV5(value: unknown, graphRevision: number): bool
     && value.source === 'weekly_exam_prep'
     && value.approvalStatus === 'unapproved'
     && isNonEmptyString(value.workItemKey)
+    && (value.allocationBreakdown === undefined || isWeeklyPlanningAllocationBreakdown(value.allocationBreakdown))
     && isStableV5Metadata(value.stableV5Metadata, graphRevision);
 }
 

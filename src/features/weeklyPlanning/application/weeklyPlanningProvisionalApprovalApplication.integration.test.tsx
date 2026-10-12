@@ -169,12 +169,22 @@ describe('provisional allocation through application and approval persistence', 
     // 20×3=60 raw minutes, 10% buffer, existing 5-minute rounding =>70.
     expect(candidates).toEqual([expect.objectContaining({ title: '数学の教材 20問', durationMinutes: 70, estimatedMinutes: 70 })]);
     expect(checkpoint.planningState.previewCandidates).toEqual(candidates);
+    const allocation = { estimatedMinutes: 60, calibratedMinutes: 60, bufferedMinutes: 66,
+      allocatedMinutes: 70, marginMinutes: 10, reasons: ['estimate_margin', 'rounding'] };
+    expect(candidates[0].allocationBreakdown).toEqual(allocation);
+    // Restore the still-unapproved preview before promotion, not only the later draft.
+    await reload();
+    expect(ref.current!.state.previewCandidates).toEqual(candidates);
+    expect(loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK_START })!
+      .planningState.previewCandidates?.[0].allocationBreakdown).toEqual(allocation);
+    expect(getWeeklyPlanningStableV5RuntimeSession(checkpoint.conversationId)?.graph).toEqual(graph);
     expect(save).not.toHaveBeenCalled();
     const blocks = createWeeklyDraftBlocksFromPreviewCandidates({ candidates, userId: OWNER, createdAt: new Date().toISOString() });
     await act(async () => { ref.current!.createDraftBlocks(blocks); });
     await reload();
     expect(ref.current!.pendingDraftBlocks).toEqual(blocks);
     expect(ref.current!.pendingDraftBlocks[0].title).toBe('数学の教材 20問');
+    expect(ref.current!.pendingDraftBlocks[0].allocationBreakdown).toEqual(allocation);
     expect(getWeeklyPlanningStableV5RuntimeSession(checkpoint.conversationId)?.graph).toEqual(graph);
     expect(save).not.toHaveBeenCalled();
     await act(async () => { await ref.current!.approveDraftBlocks(); });
@@ -182,6 +192,13 @@ describe('provisional allocation through application and approval persistence', 
     const plans = await createLocalPlannerRepository(storage.storage).getPlans(OWNER);
     expect(plans).toEqual([expect.objectContaining({ title: '数学の教材 20問',
       date: candidates[0].date, startTime: candidates[0].startTime, endTime: candidates[0].endTime })]);
+    // Allocation is preview evidence; canonical Plan/StoredScheduleEvent schemas stay unchanged.
+    expect(save.mock.calls[0][0]).not.toHaveProperty('allocationBreakdown');
+    expect(plans[0]).not.toHaveProperty('allocationBreakdown');
+    const storedEvents = JSON.parse(storage.storage.getItem('studyplanner.scheduleEvents.v1')!);
+    expect(storedEvents).toHaveLength(1);
+    expect(storedEvents[0]).not.toHaveProperty('allocationBreakdown');
+    expect(storedEvents[0].plan).not.toHaveProperty('allocationBreakdown');
     await reload();
     expect(await createLocalPlannerRepository(storage.storage).getPlans(OWNER)).toEqual(plans);
     expect(getWeeklyPlanningStableV5RuntimeSession(checkpoint.conversationId)?.graph).toEqual(graph);
@@ -197,6 +214,10 @@ describe('provisional allocation through application and approval persistence', 
     const data = structuredClone(event.data) as { result: { candidates: Array<Record<string, unknown>> } };
     expect(data.result.candidates).toEqual(candidates);
     data.result.candidates[0].futureQuantityLabelSentinel = 'quantity-label-sentinel';
+    const allocationEvidence = { ...(data.result.candidates[0].allocationBreakdown as Record<string, unknown>),
+      futureAllocationField: 'allocation-evidence-sentinel' };
+    data.result.candidates[0].allocationBreakdown = allocationEvidence;
+    expect(measureWeeklyPlanningTraceJsonBytes(data.result.candidates[0])).toBeLessThanOrEqual(1_000);
     resetWeeklyPlanningStableV5TraceRuntimeForTest(); vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
     const writes: Array<{ session: WeeklyPlanningTraceSession; entries: WeeklyPlanningTraceEntry[] }> = [];
     let fail = true;
@@ -221,7 +242,8 @@ describe('provisional allocation through application and approval persistence', 
     await recordWeeklyPlanningStableV5TurnTrace(traceInput); // flush exact persisted request, then deduplicate it
     expect(writes).toHaveLength(1);
     expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: checkpoint.conversationId })).toEqual([]);
-    const expected = { ...candidates[0], futureQuantityLabelSentinel: 'quantity-label-sentinel' };
+    const expected = { ...candidates[0], allocationBreakdown: allocationEvidence,
+      futureQuantityLabelSentinel: 'quantity-label-sentinel' };
     const normal = writes[0].entries[0];
     expect(normal).toMatchObject({ kind: 'turn_diagnostic', requestId: event.requestId,
       logicalConversationId: checkpoint.conversationId,
