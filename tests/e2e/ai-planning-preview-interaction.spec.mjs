@@ -1,7 +1,7 @@
 import { expect, test } from './support/fixed-clock.mjs';
 
-async function seedMultiweekDraftPlan(page, { messageCount = 0 } = {}) {
-  await page.addInitScript(({ seededMessageCount }) => {
+async function seedMultiweekDraftPlan(page, { messageCount = 0, discloseAllocation = false } = {}) {
+  await page.addInitScript(({ seededMessageCount, discloseAllocation }) => {
     const now = new Date().toISOString();
     const today = new Date();
     const user = {
@@ -26,12 +26,17 @@ async function seedMultiweekDraftPlan(page, { messageCount = 0 } = {}) {
     const weekday = monday.getDay();
     monday.setDate(monday.getDate() + (weekday === 0 ? -6 : 1 - weekday));
     const weekStartDate = toIsoDate(monday);
-    const draftBlocks = Array.from({ length: 12 }, (_, index) => ({
+    const allocationBreakdown = {
+      estimatedMinutes: 60, calibratedMinutes: 60, bufferedMinutes: 66,
+      allocatedMinutes: 70, marginMinutes: 10, reasons: ['estimate_margin', 'rounding'],
+    };
+    const draftBlocks = Array.from({ length: discloseAllocation ? 1 : 12 }, (_, index) => ({
       id: `gold-${index + 1}`,
       userId: user.id,
       date: toIsoDate(addDays(today, index + 1)),
       startTime: '09:00',
-      endTime: '10:00',
+      endTime: discloseAllocation ? '10:10' : '10:00',
+      ...(discloseAllocation ? { allocationBreakdown } : {}),
       title: '金フレ 1時間',
       subject: 'TOEIC',
       type: 'study',
@@ -47,7 +52,8 @@ async function seedMultiweekDraftPlan(page, { messageCount = 0 } = {}) {
       date: block.date,
       startTime: block.startTime,
       endTime: block.endTime,
-      durationMinutes: 60,
+      durationMinutes: discloseAllocation ? 70 : 60,
+      ...(discloseAllocation ? { allocationBreakdown } : {}),
       title: block.title,
       field: block.subject,
       year: index + 1,
@@ -98,8 +104,25 @@ async function seedMultiweekDraftPlan(page, { messageCount = 0 } = {}) {
         conversationId: null,
       }),
     );
-  }, { seededMessageCount: messageCount });
+  }, { seededMessageCount: messageCount, discloseAllocation });
 }
+
+test('allocated estimate and margin remain visible without overflow at 390px', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedMultiweekDraftPlan(page, { discloseAllocation: true });
+  await page.goto('/');
+  await page.locator('.primary-bottom-nav button').first().click();
+  const cardSummary = page.locator('.ai-planning-plan-summary');
+  await expect(cardSummary.getByLabel('確保時間の内訳')).toContainText('10分');
+  await page.getByRole('button', { name: '計画プレビューを確認' }).click();
+  const dialog = page.getByRole('dialog', { name: '計画プレビュー' });
+  await expect(dialog.getByLabel('確保時間の内訳')).toContainText('1時間');
+  await expect(dialog.locator('.ai-planning-preview-total')).toContainText('1時間10分');
+  for (const locator of [cardSummary, dialog.locator('.ai-planning-preview-total')]) {
+    const metrics = await locator.evaluate((node) => ({ clientWidth: node.clientWidth, scrollWidth: node.scrollWidth }));
+    expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+  }
+});
 
 async function swipeSheetDown(sheet) {
   return sheet.evaluate((element) => {
