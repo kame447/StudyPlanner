@@ -5,6 +5,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const harnessDir = path.dirname(fileURLToPath(import.meta.url));
+// Dispatch-only actual-model checkpoint; never enabled in ordinary browser CI.
+const correctionRealApi = process.env.STUDYPLANNER_CORRECTION_REAL_API === '1';
 const repositoryRoot = path.resolve(harnessDir, '../../..');
 const turnApplicationSuffix = path.normalize(
   'src/features/weeklyPlanning/application/weeklyPlanningTurnApplication.ts',
@@ -41,7 +43,8 @@ const runtimeGatewayStubPlugin = {
       return path.resolve(harnessDir, 'planningImageAttachment.stub.js');
     }
     if (
-      source === './weeklyPlanningTurnRuntimeGateway'
+      !correctionRealApi
+      && source === './weeklyPlanningTurnRuntimeGateway'
       && normalizedImporter.endsWith(turnApplicationSuffix)
     ) {
       return runtimeGatewayStub;
@@ -54,7 +57,18 @@ export default defineConfig({
   root: harnessDir,
   plugins: [runtimeGatewayStubPlugin, react()],
   define: {
-    'import.meta.env.VITE_WEEKLY_PLANNING_TRACE_ENABLED': JSON.stringify('false'),
+    ...(correctionRealApi ? Object.fromEntries(Object.entries({
+      VITE_AI_PROVIDER: 'openai',
+      VITE_AI_BASE_URL: 'http://127.0.0.1:4174/__issue488_real_api/v1',
+      VITE_AI_MODEL: 'gpt-5.6-luna',
+      // A marker only. The real credential stays in the Node-side test process.
+      VITE_AI_API_KEY: 'synthetic-key-not-a-credential',
+      VITE_AI_MAX_PROCESS_REQUESTS: '16',
+      VITE_CLOUDFLARE_AI_PROXY_URL: '',
+    }).map(([key, value]) => [`import.meta.env.${key}`, JSON.stringify(value)])) : {}),
+    // Existing local trace records expose renderer adoption in the explicit synthetic profile.
+    // Empty Firebase config below keeps this observer off Firestore.
+    'import.meta.env.VITE_WEEKLY_PLANNING_TRACE_ENABLED': JSON.stringify(correctionRealApi ? 'true' : 'false'),
     // This synthetic harness must not inherit live Firebase/AI credentials.
     'import.meta.env.VITE_FIREBASE_API_KEY': JSON.stringify(''),
     'import.meta.env.VITE_FIREBASE_AUTH_DOMAIN': JSON.stringify(''),

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fc from 'fast-check';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { createGraphCheckpointAssertions } from '../testUtils/__tests__/weeklyPlanningGraphCheckpointAssertions';
@@ -162,7 +163,38 @@ it('retains terminal correction provenance but requires literal lifecycle status
     { localId: 'remove-new-effort', target: { kind: 'effort_estimate', publicId: null, localId: 'math-new-effort', mention: '追加の見積もり' },
       operation: 'remove', replacementLocalId: null, sourceText: '追加の見積もりは削除' },
   ];
-  const graph = commitCorrection(baseline, input, 'correction-turn');
+  const publicStateSummary = createWeeklyPlanningSemanticPublicStateSummaryV5(undefined, baseline);
+  expect(validateWeeklyPlanningExistingEntityBindingsAgainstPublicStateV5({ document: input, publicStateSummary })).toEqual([]);
+  expect(validateWeeklyPlanningCorrectionTargetReferencesV5(input, publicStateSummary)).toEqual([]);
+  const staged = canonical(input, baseline, 'correction-turn');
+  const finalize = (baseCanonicalization: typeof staged) => finalizeWeeklyPlanningSemanticCanonicalizationV5({
+    originalGraph: baseline, document: input, baseCanonicalization,
+    contextualAnswer: false, questionCode: null, operationKeyPrefix: 'correction-turn',
+  }).canonicalization;
+  const rejectedWrite = finalize(staged);
+  expect(rejectedWrite.status).toBe('rejected');
+  expect(rejectedWrite.graph).toBe(baseline);
+  expect(rejectedWrite.diff).toBeNull();
+  expect(rejectedWrite.errors.join('|')).toContain('replacement-container-not-installed');
+
+  // Retained-checkpoint fixture, not current public-write acceptance. Main 9f0e0911
+  // accepted these labels and then pruned the temporary containers. Reconstruct its
+  // lifecycle with neutral labels, then restore only the terminal historical labels.
+  // Same-name public writes require explicit bindings; no shared validator is skipped.
+  const historicalStaging = structuredClone(staged);
+  const temporaryTaskId = staged.localToFactId['math-new'];
+  const temporaryComponentId = staged.localToFactId['math-new-component'];
+  historicalStaging.graph.tasks.find(fact => fact.id === temporaryTaskId)!.title = baseline.tasks[0].title;
+  historicalStaging.graph.components.find(fact => fact.id === temporaryComponentId)!.label = baseline.components[0].label;
+  const historicalResult = finalize(historicalStaging);
+  expect(historicalResult.status, historicalResult.errors.join('|')).toBe('applied');
+  const graph = historicalResult.graph;
+  expect(graph.factLifecycles.find(entry => entry.factId === temporaryTaskId)!.status).toBe('removed');
+  expect(graph.factLifecycles.find(entry => entry.factId === temporaryComponentId)!.status).toBe('removed');
+  graph.tasks.find(fact => fact.id === temporaryTaskId)!.title = input.tasks[0].title;
+  graph.components.find(fact => fact.id === temporaryComponentId)!.label = input.tasks[0].study!.components[0].label;
+  // Frozen from the actual original input on immutable main, not this implementation.
+  expect(createHash('sha256').update(JSON.stringify(graph)).digest('hex')).toBe('e84fb3720d8452a7ade752d3aa06509c96b4fbbc856c307c721ca083973aa3a9');
   const historical = graph.effortEstimates.find(fact => fact.source.semanticLocalId === 'math-new-effort')!;
   const target = graph.workloads.find(fact => fact.id === historical.targetFactId)!;
   expect(historical.taskId).not.toBe(target.taskId);

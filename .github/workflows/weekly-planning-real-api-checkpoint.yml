@@ -11,10 +11,16 @@ on:
         options:
           - checkpoint
           - merge-gate
+          - correction-ui
       repetitions:
         description: 'Run 1-10 independent repetitions in parallel'
         required: true
         default: '3'
+        type: string
+      expected_head_sha:
+        description: 'Required only for correction-ui: reviewed full 40-hex commit SHA'
+        required: false
+        default: ''
         type: string
   pull_request:
     branches:
@@ -57,6 +63,10 @@ jobs:
           fi
           case "$profile" in
             checkpoint|merge-gate) ;;
+            correction-ui)
+              test "$GITHUB_EVENT_NAME" = workflow_dispatch
+              test "$repetitions" = 1
+              ;;
             *) echo "unsupported profile: $profile" >&2; exit 1 ;;
           esac
           case "$repetitions" in
@@ -73,7 +83,7 @@ jobs:
 
   real-api:
     needs: prepare
-    if: ${{ needs.prepare.outputs.should_run == 'true' }}
+    if: ${{ needs.prepare.outputs.should_run == 'true' && needs.prepare.outputs.profile != 'correction-ui' }}
     strategy:
       fail-fast: false
       matrix:
@@ -165,3 +175,61 @@ jobs:
           path: artifacts/weekly-planning-real-api/
           if-no-files-found: warn
           retention-days: 30
+
+
+  correction-ui:
+    needs: prepare
+    if: ${{ github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && needs.prepare.outputs.should_run == 'true' && needs.prepare.outputs.profile == 'correction-ui' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require the reviewed exact product commit before credential access
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test "$GITHUB_SHA" = "$EXPECTED_HEAD_SHA"
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install locked application and existing isolated browser tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          sha256sum package.json package-lock.json > /tmp/correction-ui-manifests.sha256
+          npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+          sha256sum -c /tmp/correction-ui-manifests.sha256
+          ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
+      - name: Collect the bounded synthetic scenarios without a credential
+        env:
+          STUDYPLANNER_CORRECTION_REAL_API: '1'
+        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.planner-recovery.config.mjs --list
+      - name: Run two real-model UI conversations with fixed call and time bounds
+        env:
+          STUDYPLANNER_CORRECTION_REAL_API: '1'
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TZ: Asia/Tokyo
+          WRANGLER_SEND_METRICS: 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$OPENAI_API_KEY"
+          unset DEBUG PWDEBUG VITE_AI_API_KEY VITE_CLOUDFLARE_AI_PROXY_URL
+          ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.planner-recovery.config.mjs
+      - name: Upload only redacted synthetic observations
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: weekly-correction-real-api-${{ github.sha }}
+          path: artifacts/weekly-correction-real-api/evidence/
+          if-no-files-found: ignore
+          retention-days: 14

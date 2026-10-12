@@ -1,3 +1,4 @@
+import { reconcileWeeklyPlanningWindowDependentsV5 } from './weeklyPlanningPlanningWindowDependentsV5';
 import {
   weeklyPlanningFactKindByIdV5,
 } from './weeklyPlanningFactLifecycleV5';
@@ -150,13 +151,6 @@ export function applyWeeklyPlanningFactLifecycleOperationV5(params: {
     ]);
   }
 
-  const activeDependents = activeDependentFactIds(graph, operation.targetFactId);
-  if (activeDependents.length > 0) {
-    return reject(graph, [
-      `target-has-active-dependents:${operation.targetFactId}:${activeDependents.join(',')}`,
-    ]);
-  }
-
   let replacementFactId: string | null = null;
   if (operation.kind === 'supersede') {
     if (operation.replacementFactId === operation.targetFactId) {
@@ -177,8 +171,18 @@ export function applyWeeklyPlanningFactLifecycleOperationV5(params: {
     replacementFactId = operation.replacementFactId;
   }
 
+  const windowDependents = targetKind === 'planning_window' && replacementFactId
+    ? reconcileWeeklyPlanningWindowDependentsV5({ graph, targetFactId: operation.targetFactId,
+        replacementFactId, terminalRevision: graph.revision + 1 })
+    : { graph, removed: [], errors: [] };
+  if (windowDependents.errors.length) return reject(graph, windowDependents.errors);
+  const activeDependents = activeDependentFactIds(windowDependents.graph, operation.targetFactId);
+  if (activeDependents.length > 0) return reject(graph, [
+    `target-has-active-dependents:${operation.targetFactId}:${activeDependents.join(',')}`,
+  ]);
+
   const nextRevision = graph.revision + 1;
-  const nextLifecycles = graph.factLifecycles.map((entry) => {
+  const nextLifecycles = windowDependents.graph.factLifecycles.map((entry) => {
     if (entry.factId !== operation.targetFactId) return entry;
     return {
       ...entry,
@@ -192,7 +196,7 @@ export function applyWeeklyPlanningFactLifecycleOperationV5(params: {
     engineVersion: WEEKLY_PLANNING_FACT_LIFECYCLE_ENGINE_VERSION_V5,
     status: 'applied',
     graph: {
-      ...graph,
+      ...windowDependents.graph,
       revision: nextRevision,
       appliedLifecycleOperationKeys: [
         ...graph.appliedLifecycleOperationKeys,
@@ -201,7 +205,7 @@ export function applyWeeklyPlanningFactLifecycleOperationV5(params: {
       factLifecycles: nextLifecycles,
     },
     superseded: operation.kind === 'supersede' ? [diffEntry] : [],
-    removed: operation.kind === 'remove' ? [diffEntry] : [],
+    removed: operation.kind === 'remove' ? [diffEntry] : windowDependents.removed,
     errors: [],
   };
 }
