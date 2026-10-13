@@ -802,7 +802,7 @@ export function BookshelfView({
               </label>
             </section>
             <p className="bookshelf-settings-note">
-              教材内構造を登録していても非表示にできます。非表示中も登録した項目は保持されます。
+              非表示中も登録した項目は保持されます。
             </p>
             <button
               className="primary-button"
