@@ -240,7 +240,12 @@ test.describe('multi-day month events', () => {
     await expect(selected).toBeFocused();
     await page.getByRole('tab', { name: '日', exact: true }).click();
     await expect(heading).toContainText(`${targetMonthLabel}${dates.startDay}日`);
-    await expect(page.getByText(title, { exact: true })).toBeVisible();
+    // The event also names its accent in the legend. Verify the actual event
+    // control, not an unscoped text match that can resolve to either surface.
+    const dayEvent = page.locator('.timeline-plan-block').filter({ hasText: title });
+    await expect(dayEvent).toHaveCount(1);
+    await expect(dayEvent.getByText(title, { exact: true })).toBeVisible();
+    await expect(dayEvent).toHaveAttribute('aria-label', new RegExp(`${title}、09:00から10:00`));
     await page.getByRole('tab', { name: '週', exact: true }).click();
     await expect(heading).toContainText(targetMonthLabel);
     await expect(page.locator('.schedule-week-view').getByText(title, { exact: true })).toBeVisible();

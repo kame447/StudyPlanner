@@ -50,11 +50,20 @@ function colors(monthEvents: MonthEvent[], date = DATE, plans: Plan[] = [], sche
   vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
   const home = render(<TodayScheduleSection dashboard={dashboard} studyMaterials={[]} onOpenDay={vi.fn()} onAddEntry={vi.fn()} />);
   return (title: string) => {
+    const weekNode = nodeWithClass(week.root, 'schedule-week-block', title)
+      ?? week.root.findAll(node => node.props['data-week-spanning-event'] === 'true' && node.props.title?.startsWith(title))[0];
+    if (!monthEvents.some(item => item.title === title)) {
+      expect(weekNode.props.style).toMatchObject({
+        '--weekly-draft-tone-bg': 'color-mix(in srgb, var(--schedule-event-color) 13%, #fff 87%)',
+        '--text': '#263238',
+        '--text-muted': '#52606d',
+      });
+    }
     const nodes = [
       nodeWithClass(grid.root, 'month-major-event-pill', title) ?? nodeWithClass(grid.root, 'month-range-segment', title),
       nodeWithClass(sheet.root, 'month-day-sheet-event', title),
       ...(monthEvents.some(item => item.title === title) ? [nodeWithClass(editor.root, 'month-event-timeline-item', title)] : []),
-      nodeWithClass(week.root, 'schedule-week-block', title) ?? week.root.findAll(node => node.props['data-week-spanning-event'] === 'true' && node.props.title?.startsWith(title))[0],
+      weekNode,
       nodeWithClass(day.root, 'timeline-plan-block', title) ?? day.root.findAll(node => node.props['data-day-spanning-event'] === 'true' && node.props.title?.startsWith(title))[0],
       nodeWithClass(home.root, 'home-schedule-row', title),
     ];

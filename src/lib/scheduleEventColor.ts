@@ -46,10 +46,15 @@ export function scheduleEventColorStyle(color: string): CSSProperties {
   } as CSSProperties;
 }
 
-export function scheduleEventWeekStyle(color: string): CSSProperties {
+export function scheduleEventWeekStyle(color: string, surface: 'theme' | 'pastel' = 'theme'): CSSProperties {
   return {
     ...scheduleEventColorStyle(color),
     '--weekly-draft-tone': 'var(--schedule-event-color)',
-    '--weekly-draft-tone-bg': 'var(--schedule-event-bg)',
+    // Existing study/class week blocks deliberately stay light in dark mode.
+    // Keep their semantic accent without replacing that readability contract.
+    '--weekly-draft-tone-bg': surface === 'pastel'
+      ? 'color-mix(in srgb, var(--schedule-event-color) 13%, #fff 87%)'
+      : 'var(--schedule-event-bg)',
+    ...(surface === 'pastel' ? { '--text': '#263238', '--text-muted': '#52606d' } : {}),
   } as CSSProperties;
 }
