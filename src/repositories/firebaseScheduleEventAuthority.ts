@@ -25,6 +25,7 @@ import {
   scheduleEventToMonthEvent,
   scheduleEventToPlan,
   type ScheduleEvent,
+  type ScheduleEventLegacyKind,
   type ScheduleEventMigrationCandidate,
   type ScheduleEventMigrationState,
 } from '../domain/scheduleEvent';
@@ -135,6 +136,21 @@ async function listByUserId<T extends { userId: string }>(
     query(collection(firestoreDb, collectionName), where('userId', '==', userId)),
   );
   return snapshot.docs.map((document) => mapSnapshot<T>(document));
+}
+
+async function listScheduleProjection(
+  firestoreDb: Firestore,
+  userId: string,
+  legacyKind: ScheduleEventLegacyKind,
+): Promise<ScheduleEvent[]> {
+  // Match the compatibility projection, not presentation kind/category. A
+  // non-study Plan is still a Plan; all historical/recurring rows remain eligible.
+  const snapshot = await getDocs(query(
+    collection(firestoreDb, SCHEDULE_EVENTS_COLLECTION),
+    where('userId', '==', userId),
+    where('provenance.legacy.kind', '==', legacyKind),
+  ));
+  return snapshot.docs.map((document) => mapSnapshot<ScheduleEvent>(document));
 }
 
 async function listActualsByPlanId(
@@ -477,10 +493,10 @@ export function createFirebaseScheduleEventAuthority(
 
     async getPlans(userId) {
       try {
-        return (await startupTiming.measure('schedule-canonical-plans', () => listByUserId<ScheduleEvent>(
+        return (await startupTiming.measure('schedule-canonical-plans', () => listScheduleProjection(
           firestoreDb,
-          SCHEDULE_EVENTS_COLLECTION,
           userId,
+          'plan',
         )))
           .map(scheduleEventToPlan)
           .filter((plan): plan is Plan => plan !== null);
@@ -493,10 +509,10 @@ export function createFirebaseScheduleEventAuthority(
 
     async getMonthEvents(userId) {
       try {
-        return (await startupTiming.measure('schedule-canonical-month-events', () => listByUserId<ScheduleEvent>(
+        return (await startupTiming.measure('schedule-canonical-month-events', () => listScheduleProjection(
           firestoreDb,
-          SCHEDULE_EVENTS_COLLECTION,
           userId,
+          'month-event',
         )))
           .map(scheduleEventToMonthEvent)
           .filter((event): event is NonNullable<typeof event> => event !== null);

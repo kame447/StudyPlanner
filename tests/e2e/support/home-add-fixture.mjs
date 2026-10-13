@@ -1,5 +1,5 @@
-export async function seedHomeAdd(page) {
-  await page.addInitScript(() => {
+export async function seedHomeAdd(page, { populated = false } = {}) {
+  await page.addInitScript(({ populated }) => {
     if (localStorage.getItem('home-touch-seeded')) return;
     const now = new Date().toISOString();
     const user = { id: 'home-touch-user', email: 'home-touch@example.test', username: 'Homeタッチ検証', avatar: '', createdAt: now };
@@ -13,8 +13,13 @@ export async function seedHomeAdd(page) {
       estimatedMinutes: 30, dueDate: null, dueTime: null, memo: '', status: 'open', scheduledPlanId: null,
       createdAt: now, updatedAt: now,
     }]));
+    if (populated) localStorage.setItem('studyplanner.plans', JSON.stringify([{
+      id: 'home-motion-plan', seriesId: 'home-motion-plan', userId: user.id, title: '動き確認の予定',
+      subject: '数学', type: 'study', date: new Date().toLocaleDateString('sv-SE'), startTime: '19:00', endTime: '20:00',
+      memo: '', repeat: 'none', repeatUntil: null, excludedDates: [], recurrenceRules: [], createdAt: now, updatedAt: now,
+    }]));
     localStorage.setItem('home-touch-seeded', 'true');
-  });
+  }, { populated });
 }
 
 export async function collectHomeAddActionEvents(page) {

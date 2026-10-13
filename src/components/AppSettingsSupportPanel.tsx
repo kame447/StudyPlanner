@@ -1,3 +1,4 @@
+import { PublicPageLink } from './PublicPageLink';
 import {
   ChevronRight,
   FileText,
@@ -14,31 +15,31 @@ export function AppSettingsSupportPanel() {
 
       <section className="assistant-settings-card support-section">
         <strong>ヘルプ</strong>
-        <a className="support-link-row" href="/contact">
+        <PublicPageLink className="support-link-row" href="/contact">
           <span className="support-link-main">
             <MessageSquare aria-hidden="true" size={20} strokeWidth={1.9} />
             <span>お問い合わせ</span>
           </span>
           <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
-        </a>
+        </PublicPageLink>
       </section>
 
       <section className="assistant-settings-card support-section">
         <strong>サービスについて</strong>
-        <a className="support-link-row" href="/terms">
+        <PublicPageLink className="support-link-row" href="/terms">
           <span className="support-link-main">
             <FileText aria-hidden="true" size={20} strokeWidth={1.9} />
             <span>利用規約</span>
           </span>
           <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
-        </a>
-        <a className="support-link-row" href="/privacy">
+        </PublicPageLink>
+        <PublicPageLink className="support-link-row" href="/privacy">
           <span className="support-link-main">
             <ShieldCheck aria-hidden="true" size={20} strokeWidth={1.9} />
             <span>プライバシーポリシー</span>
           </span>
           <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
-        </a>
+        </PublicPageLink>
         <div className="support-link-row support-link-row-static">
           <span className="support-link-main">
             <Info aria-hidden="true" size={20} strokeWidth={1.9} />

@@ -65,7 +65,7 @@ function Harness() {
   state = usePlannerDataState({ userId: 'owner-handoff', showNotice });
   const unused = async (): Promise<never> => { throw new Error('outside fixed-event handoff'); };
   const snapshot: PlannerAppSnapshot = {
-    ...state, user: { id: 'owner-handoff' } as User, booting: false, notice: null, dismissNotice() {},
+    ...state, user: { id: 'owner-handoff' } as User, booting: false, profileRestoreRecovery: null, retryProfileRestore: async () => undefined, notice: null, dismissNotice() {},
     signUpWithPassword: unused, signInWithPassword: unused, signInWithGoogle: unused,
     sendPasswordReset: unused, saveUserProfile: unused, signOut: unused,
     saveWeeklyApprovedPlan, completeWeeklyApprovalOperation,

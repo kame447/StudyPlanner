@@ -1,6 +1,6 @@
 import type { MaterialEditBaseline } from './useActualMutationAdmission';
 import type { ActualActionTarget } from './useActualMutationAdmission';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { PlannerMutationScopeExpiredError, usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
 import { createPlanFromDraft } from '../domain/planner';
 import type { PlannerDataAvailability, PlannerDataRecovery } from '../domain/plannerDataReadAuthority';
@@ -10,7 +10,7 @@ import {
   getWeeklyPlanningApprovalPlanRepository,
 } from '../features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository';
 import type { WeeklyDraftApprovalOperation } from '../features/weeklyPlanning/planning/weeklyPlanningApprovalTypes';
-import { useAuthSessionState } from './useAuthSessionState';
+import { useAuthSessionState, type ProfileRestoreRecovery } from './useAuthSessionState';
 import { useNoticeState, type NoticeState } from './useNoticeState';
 import { usePlannerDataState } from './usePlannerDataState';
 import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
@@ -44,6 +44,8 @@ import type {
 interface PlannerAppState {
   booting: boolean;
   user: User | null;
+  profileRestoreRecovery: ProfileRestoreRecovery;
+  retryProfileRestore: () => Promise<void>;
   plans: Plan[];
   actuals: Actual[];
   dayNotes: DayNote[] | null;
@@ -134,7 +136,7 @@ interface PlannerAppState {
   currentDayNote: DayNote | DayNoteDraft | null;
 }
 
-export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, onBootstrapSettled }: { noticeAutoDismiss?: boolean; expectedUserId?: string; onBootstrapSettled?: () => void } = {}): PlannerAppState {
+export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, onBootstrapSettled, isSessionCurrent }: { noticeAutoDismiss?: boolean; expectedUserId?: string; onBootstrapSettled?: () => void; isSessionCurrent?: () => boolean } = {}): PlannerAppState {
   const { notice, showNotice, dismissNotice } = useNoticeState(noticeAutoDismiss);
   const weeklyPlanningApprovalPlanRepository =
     getWeeklyPlanningApprovalPlanRepository();
@@ -142,13 +144,15 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     booting,
     user,
     bootstrapSession,
+    profileRestoreRecovery,
+    retryProfileRestore: retryProfileSession,
     signUpWithPassword: registerWithPassword,
     signInWithPassword: loginWithPassword,
     signInWithGoogle: loginWithGoogle,
     sendPasswordReset,
     saveUserProfile,
     signOut: signOutSession,
-  } = useAuthSessionState({ showNotice, expectedUserId, onBootstrapSettled });
+  } = useAuthSessionState({ showNotice, expectedUserId, onBootstrapSettled, isSessionCurrent });
   const {
     plans: storedPlans,
     actuals,
@@ -235,6 +239,8 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
   useEffect(() => {
     clearWeeklyApprovedPlanOverlay([]);
   }, [clearWeeklyApprovedPlanOverlay, user?.id]);
+
+  const retryProfileRestore = useCallback(() => retryProfileSession(bootstrapPlannerData), [retryProfileSession, bootstrapPlannerData]);
 
   useEffect(() => {
     void bootstrapSession(bootstrapPlannerData);
@@ -337,6 +343,8 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
   return {
     booting,
     user,
+    profileRestoreRecovery,
+    retryProfileRestore,
     plans,
     actuals,
     dayNotes,

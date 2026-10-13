@@ -73,7 +73,7 @@ it('excludes the provider-only projection while persisting contextual diagnostic
   const result = await normalizer.normalize(input);
   expect(result.status).toBe('accepted');
   expect(bodies).toHaveLength(1);
-  expect(bodies[0].state).toMatchObject({ questionCode: 'quantity_role_unresolved' });
+  expect(bodies[0].state).toMatchObject({ questionCode: 'quantity_role_unresolved', pendingQuestion: { target: { task: { title: '合成教材の演習' } } } });
   const events = takeWeeklyPlanningStableV5DebugTrace(input.traceRequestId);
   const trace = { userId: 'trace-owner', conversationId: 'weekly-conversation-423e4567-e89b-52d3-a456-426614174000',
     requestId: input.traceRequestId, userText: input.userText, assistantMessage: '診断用メッセージ',
@@ -91,6 +91,9 @@ it('excludes the provider-only projection while persisting contextual diagnostic
   expect(serialized).toContain('quantity_role_answer');
   expect(serialized).toContain('requestBytes');
   expect(serialized).not.toContain('decisionContext');
+  expect(serialized).not.toContain('componentChain');
+  expect(serialized).not.toContain('targetToken');
+  expect(serialized).not.toContain('sourceRevision');
   // Existing Luna prompt diagnostics include the original pending question.
   // The extra Jev envelope/projection and catalog remain excluded.
   expect(serialized).not.toContain('hasEstimateTarget');
@@ -103,5 +106,7 @@ it('excludes the provider-only projection while persisting contextual diagnostic
   { sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000', logicalConversationId: trace.conversationId }, '2026-10-04T00:00:00Z');
   expect(JSON.stringify(prepared.entries)).toContain('quantity_role_answer');
   expect(JSON.stringify(prepared.entries)).not.toContain('decisionContext');
+  expect(JSON.stringify(prepared.entries)).not.toContain('componentChain');
+  expect(JSON.stringify(prepared.entries)).not.toContain('targetToken');
   expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
 });

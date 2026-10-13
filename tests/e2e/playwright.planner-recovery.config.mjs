@@ -7,7 +7,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 // requires a prebuilt production preview. No production build is implied here.
 export default defineConfig({
   ...base,
-  testMatch: '**/planner-reconciliation-recovery.spec.mjs',
+  testMatch: ['**/planner-reconciliation-recovery.spec.mjs', '**/profile-restore-recovery.spec.mjs'],
   testIgnore: [],
   workers: 1,
   retries: 0,
