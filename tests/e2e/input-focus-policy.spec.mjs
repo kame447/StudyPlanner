@@ -95,6 +95,16 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
   // controls. Keep these statement-specific so new input focus in the same file
   // still fails this guard. Browser tests assert the actual heading/tab/button.
   const allowedFocusStatements = new Map([
+    // Arrow/Home/End navigation focuses only the sibling mode buttons.
+    ['src/components/StudySessionModePicker.tsx', new Set([
+      'event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-mode="${mode}"]`)?.focus();',
+    ])],
+    // User-opened settings focus their h1; Save/Back restore the launch button.
+    // Neither target is a text control; Pomodoro browser tests assert both.
+    ['src/components/StudySessionView.tsx', new Set([
+      "if (phase === 'settings') headingRef.current?.focus();",
+      'settingsButtonRef.current?.focus();',
+    ])],
     ['src/components/home/TodayScheduleAddMenu.tsx', new Set([
       'firstActionRef.current?.focus({ preventScroll: true });',
       'toggleRef.current?.focus({ preventScroll: true });',

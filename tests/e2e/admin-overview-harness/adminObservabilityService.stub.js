@@ -240,13 +240,20 @@ export async function getAdminObservabilityOverview() {
   };
 }
 
-export async function getAdminObservabilityUsers() {
+export async function getAdminObservabilityUsersPage() {
   maybeFail();
-  const overview = await getAdminObservabilityOverview();
   return {
     users: harnessState === 'empty' ? [] : users,
     nextCursor: null,
     enrichmentReady: true,
+  };
+}
+
+export async function getAdminObservabilityUsers() {
+  const page = await getAdminObservabilityUsersPage();
+  const overview = await getAdminObservabilityOverview();
+  return {
+    ...page,
     trend: {
       daily: overview.daily,
       activeUsers: overview.activeUsers,

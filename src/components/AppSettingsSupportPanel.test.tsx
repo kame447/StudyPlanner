@@ -7,11 +7,10 @@ vi.mock('../lib/startupTiming', () => ({ startupTiming: { get enabled() { return
 let renderer: ReactTestRenderer | undefined;
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; state.enabled = false; });
 
-it.each([false, true])('offers explicit local-only startup diagnostics and retains ordinary support: enabled=%s', enabled => {
+it.each([false, true])('keeps developer diagnostics out of ordinary support: enabled=%s', enabled => {
   state.enabled = enabled;
   act(() => { renderer = create(<AppSettingsSupportPanel />); });
-  expect(renderer!.root.findByType(StartupTimingButton).props.enabled).toBe(enabled);
-  const description = renderer!.root.findByProps({ 'aria-label': '起動時間の診断' });
-  expect(JSON.stringify(description.findByType('p').children)).toContain('外部送信・保存はしません');
+  expect(renderer!.root.findAllByType(StartupTimingButton)).toHaveLength(0);
+  expect(renderer!.root.findAllByProps({ 'aria-label': '起動時間の診断' })).toHaveLength(0);
   expect(renderer!.root.findAllByType('a').map(link => link.props.href)).toEqual(['/contact', '/terms', '/privacy']);
 });

@@ -3,7 +3,7 @@
  * Reuse the Home shell's responsive width and bottom-navigation contract while
  * keeping the persistent Home topbar above the chat.
  */
-.app-shell.home-app-shell:has(.ai-planning-view) {
+.app-shell.home-app-shell.ai-planning-active {
   position: fixed;
   top: var(--ai-planning-viewport-top, 0px);
   inset-inline: 0;
@@ -17,11 +17,11 @@
 
 /* The navigation shares the keyboard-safe shell instead of staying at the
  * layout viewport's bottom behind the keyboard. Keep all routes available. */
-.app-shell.home-app-shell:has(.ai-planning-view) > .primary-bottom-nav {
+.app-shell.home-app-shell.ai-planning-active > .primary-bottom-nav {
   position: absolute;
 }
 
-.home-main:has(.ai-planning-view) {
+.ai-planning-active > .home-main {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: clamp(6px, 0.8dvh, 9px);
@@ -207,11 +207,11 @@
 }
 
 @media (max-height: 760px) {
-  .app-shell.home-app-shell:has(.ai-planning-view) {
+  .app-shell.home-app-shell.ai-planning-active {
     padding-bottom: calc(var(--home-nav-height) + 7px + env(safe-area-inset-bottom, 0px));
   }
 
-  .home-main:has(.ai-planning-view) {
+  .ai-planning-active > .home-main {
     gap: 5px;
   }
 
