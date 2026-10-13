@@ -346,6 +346,49 @@ service cloud.firestore {
       allow delete: if isOwner(resource.data.userId);
     }
 
+    // Inquiry content is separate from telemetry and is never editable by clients.
+    match /support_inquiries/{inquiryId} {
+      // A missing receipt must be readable to perform a create-only transaction.
+      allow get: if isSignedIn() && (
+        resource == null || isOwner(resource.data.userId) || isAdmin()
+      );
+      allow list: if isAdmin()
+        && request.query.limit != null && request.query.limit <= 26;
+      allow create: if isSignedIn()
+        && inquiryId.matches('^[a-zA-Z0-9_-]{20,80}$')
+        && request.resource.data.keys().hasOnly([
+          'schemaVersion', 'userId', 'body', 'createdAt'
+        ])
+        && request.resource.data.schemaVersion == 1
+        && isOwner(request.resource.data.userId)
+        && request.resource.data.body is string
+        && request.resource.data.body.size() >= 1
+        && request.resource.data.body.size() <= 2000
+        && request.resource.data.body.matches('[\\s\\S]*[^\\s][\\s\\S]*')
+        && request.resource.data.createdAt == request.time
+        && getAfter(/databases/$(database)/documents/support_inquiry_limits/$(request.auth.uid))
+          .data.inquiryId == inquiryId
+        && getAfter(/databases/$(database)/documents/support_inquiry_limits/$(request.auth.uid))
+          .data.submittedAt == request.time;
+      allow update, delete: if false;
+    }
+
+    match /support_inquiry_limits/{userId} {
+      allow get: if isOwner(userId);
+      allow list, delete: if false;
+      allow create, update: if isOwner(userId)
+        && request.resource.data.keys().hasOnly(['inquiryId', 'submittedAt'])
+        && request.resource.data.inquiryId is string
+        && request.resource.data.inquiryId.matches('^[a-zA-Z0-9_-]{20,80}$')
+        && request.resource.data.submittedAt == request.time
+        && (resource == null || request.time >= resource.data.submittedAt + duration.value(60, 's'))
+        && !exists(/databases/$(database)/documents/support_inquiries/$(request.resource.data.inquiryId))
+        && getAfter(/databases/$(database)/documents/support_inquiries/$(request.resource.data.inquiryId))
+          .data.userId == userId
+        && getAfter(/databases/$(database)/documents/support_inquiries/$(request.resource.data.inquiryId))
+          .data.createdAt == request.time;
+    }
+
     match /weekly_planning_personalization_profiles/{userId} {
       allow read, create, update, delete: if isOwner(userId)
         && hasAcceptedWeeklyPlanningPolicy();
