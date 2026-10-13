@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { expect, test } from './support/fixed-clock.mjs';
 
 // Exercise the actual root/recovery/App and local repositories. Firebase write
 // semantics are covered by the real-repository Vitest cases, not duplicated here.
 test.use({ skipStartupVideo: false, reducedMotion: 'reduce' });
 const URL = 'http://127.0.0.1:4174/startup-gates.html?profileRecovery=1&cachedAuth=1';
+const logo = readFileSync(new globalThis.URL('../../public/icons/laplans-192.png', import.meta.url));
 const recovery = page => page.getByTestId('profile-restore-recovery');
 const retry = page => recovery(page).getByRole('button');
 
@@ -22,6 +24,9 @@ async function boot(page, { width = 390, mode = 'light', intro = false } = {}) {
     if (['127.0.0.1', 'localhost', '[::1]'].includes(hostname)) return route.continue();
     external.push(route.request().url()); return route.abort();
   });
+  // The test-only Vite root has no production public directory. Serve the exact
+  // shared logo bytes without changing global harness configuration or markup.
+  await page.route('http://127.0.0.1:4174/icons/laplans-192.png', route => route.fulfill({ contentType: 'image/png', body: logo }));
   await page.route('**/configureWeeklyPlanningTraceRepository.ts*', route => route.fulfill({ contentType: 'application/javascript', body: 'export function isWeeklyPlanningTraceFeatureEnabled() { return true; }' }));
   await page.route('**/useWeeklyPlanningTracePolicy.ts*', route => route.fulfill({ contentType: 'application/javascript', body: `
     export function useWeeklyPlanningTracePolicy() {
@@ -101,6 +106,7 @@ for (const width of [320, 390, 1280]) {
       const box = await retry(page).boundingBox();
       expect(box.width).toBeGreaterThanOrEqual(40); expect(box.height).toBeGreaterThanOrEqual(40);
       expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(width);
+      await expect.poll(() => recovery(page).locator('.brand-mark').evaluate(img => img.naturalWidth)).toBeGreaterThan(0);
       await testInfo.attach(`profile-recovery-${mode}-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
       await page.clock.fastForward(4000);
       await expect(recovery(page)).toBeVisible();

@@ -78,7 +78,7 @@ describe('traceWorker Firestore token sharing', () => {
   it('keeps 30-day admin overview below the Workers subrequest limit', async () => {
     const calls = await fetchOverview('2026-08-01', '2026-08-30');
 
-    expect(calls).toHaveLength(9);
+    expect(calls).toHaveLength(7);
     expect(calls.filter((url) => url === 'https://oauth2.googleapis.com/token')).toHaveLength(1);
     expect(calls.filter((url) => url.includes('identitytoolkit.googleapis.com'))).toHaveLength(1);
   });
@@ -86,7 +86,7 @@ describe('traceWorker Firestore token sharing', () => {
   it('keeps the 7-day admin overview at its expected request count', async () => {
     const calls = await fetchOverview('2026-08-24', '2026-08-30');
 
-    expect(calls).toHaveLength(9);
+    expect(calls).toHaveLength(7);
     expect(calls.filter((url) => url === 'https://oauth2.googleapis.com/token')).toHaveLength(1);
   });
 });

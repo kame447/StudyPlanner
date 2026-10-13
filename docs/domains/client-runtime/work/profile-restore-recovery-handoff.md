@@ -1,8 +1,17 @@
 # Authenticated profile restoration recovery — Issue #542
 
-Status: reviewed local candidate; unpublished. Publication and release gates are not complete.
+Status: Draft [PR #619](https://github.com/kame447/StudyPlanner/pull/619); a test-fixture asset correction and current-main integration are being verified. Root coordinates the eventual merge.
 
-## Scope and ownership
+## Publication checkpoint — 2026-10-13
+
+- First published HEAD `bbb6dacb2a9091d5abdc98ff68533669ff403da3` on main `840e7ae` matched verified tree `9a60afbc9ae51964b29779bc0a8c1f6843b1e4b7`. Its local combined focused 380 cases and full 7,837 cases passed with all 2,441 source inputs and 19,329 installed entries unchanged.
+- Exact-tree CI passed fresh types, all 7,837 tests, real demo Firestore Rules and build. Chromium passed 624 cases; mobile WebKit passed 220, including all eight recovery cases in each browser without retries. Desktop Matrix, visual, Admin and browser-quality checks passed. The four existing bundle failures match local metrics and remain separately accepted, with unchanged thresholds.
+- The sixteen recovery executions verified saved light/dark/ocean preferences, deferred profile/planner busy state, single-flight/repeat rejection, external sign-out and simulated intro ordering. The paused intro clock allowed normal pointer/actionability settlement; this remains a simulated gate test, not native video/performance evidence.
+- Screenshot review found the unchanged test Vite root did not serve the shared logo's `/icons/laplans-192.png`. Production public/build bytes match. The recovery spec now serves those exact production bytes at that one local fixture URL and requires positive image `naturalWidth` before screenshots. No shared Vite configuration or runtime markup changed. Old screenshots with a broken placeholder are not final visual acceptance.
+- This correction is combined with merged main `3c19e5560f161249fbc9208669ec08f60b11b9c8` (Admin overview snapshot). Its seven paths are retained unchanged. Final focused/full verification and the next exact-head browser/screenshots are pending; no separate interim head is published.
+- Current ownership is also recorded in [Issue #542](https://github.com/kame447/StudyPlanner/issues/542#issuecomment-6144566509). The original local-stage records below remain historical evidence. Do not close #542 or infer installed-PWA performance/pending-operation recovery from this work.
+
+## Original local-stage scope and ownership
 
 - Existing owner: https://github.com/kame447/StudyPlanner/issues/542
 - Local branch: `fix/profile-restore-recovery`; implementation base `cf725d088ab1249fe1da6fe7d40e6b9274fa61e4`.
@@ -35,7 +44,7 @@ Eight native browser cases extend the existing startup-gates harness through an 
 
 Source syntax/JSX transformation passed. All eight cases collect in the normal Chromium config, existing harness-only recovery runner and mobile-WebKit Matrix config. Browser execution remains unavailable. The intro clock/media controls test simulated gate ordering only, not native video playback or performance; its actionability/request-animation-frame settlement must be checked when browser execution is available. The original local commit `6ea615b6b8ccca86e3d8c7f72102b9ce954cbbd8` and its evidence are preserved; this is an additive correction.
 
-## Remaining release boundaries
+## Original local-stage release boundaries
 
 Local Chromium launch failed before any page execution because sockets are prohibited in this environment. Browser/visual/mobile and installed-PWA verification are not claimed. No further local browser attempts were made after the restriction was established.
 
