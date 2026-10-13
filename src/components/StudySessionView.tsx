@@ -8,6 +8,7 @@ import {
   Pause,
   Play,
   Square,
+  Settings2,
   TimerReset,
 } from 'lucide-react';
 import {
@@ -25,6 +26,10 @@ import { createStudySessionDraft, sessionCrossesLocalDate, type StudySessionRequ
 import {
   formatDurationDisplay,
   getElapsedMs,
+  createInitialTracker,
+  startTracker,
+  pauseTracker,
+  resumeTracker,
   type TrackerState,
 } from '../lib/actualTracking';
 import { minutesBetween } from '../lib/date';
@@ -33,6 +38,9 @@ import {
   getMaterialUnitLabel,
 } from '../lib/materialPace';
 import type { ActualDraft, Plan, StudyMaterial } from '../types/domain';
+import { createDefaultPomodoroSettings, getPomodoroCompletedAt, getPomodoroProgress, resolvePomodoroSettings, type PomodoroSettings, type ResolvedPomodoroSettings } from '../lib/pomodoroSession';
+import { StudySessionModePicker, type StudyMode } from './StudySessionModePicker';
+import { PomodoroSettingsView } from './PomodoroSettingsView';
 
 interface StudySessionProviderProps {
   userId: string;
@@ -42,12 +50,7 @@ interface StudySessionProviderProps {
 }
 
 type StudySessionLauncher = (request: StudySessionRequest) => void;
-type SessionPhase = 'timer' | 'record';
-type StudyMode = 'normal' | 'pomodoro';
-
-const POMODORO_FOCUS_MS = 25 * 60_000;
-const POMODORO_BREAK_MS = 5 * 60_000;
-const POMODORO_CYCLE_MS = POMODORO_FOCUS_MS + POMODORO_BREAK_MS;
+type SessionPhase = 'timer' | 'record' | 'settings';
 
 const StudySessionLaunchContext = createContext<StudySessionLauncher | null>(null);
 
@@ -148,14 +151,6 @@ function resolveMaterial(plan: Plan, materials: StudyMaterial[]): StudyMaterial 
   return materials.find((material) => material.name === materialName) ?? null;
 }
 
-function buildInitialTracker(): TrackerState {
-  return {
-    anchorMs: null,
-    runningFromMs: null,
-    elapsedBeforeMs: 0,
-  };
-}
-
 function StudySessionView({
   initialTarget,
   userId,
@@ -183,8 +178,17 @@ function StudySessionView({
   const [phase, setPhase] = useState<SessionPhase>('timer');
   const pageRef = useRef<HTMLDivElement>(null);
   const [studyMode, setStudyMode] = useState<StudyMode>('normal');
+  const [pomodoroSettings, setPomodoroSettings] = useState(createDefaultPomodoroSettings);
+  const activePomodoro = useRef<ResolvedPomodoroSettings | null>(null);
+  const pomodoroCompletedAt = useRef<number | null>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const restoreSettingsFocus = useRef(false);
+  const phaseRef = useRef<SessionPhase>('timer');
+  const settingsRevision = useRef(0);
+  const renderedSettingsRevision = settingsRevision.current;
   const [nowMs, setNowMs] = useState(initialNow);
-  const [tracker, setTracker] = useState<TrackerState>(buildInitialTracker);
+  const [tracker, setTracker] = useState<TrackerState>(createInitialTracker);
   const [recordDraft, setRecordDraft] = useState<ActualDraft | null>(null);
   const [progressInput, setProgressInput] = useState('');
   const [observationProgressInput, setObservationProgressInput] = useState('');
@@ -194,35 +198,29 @@ function StudySessionView({
 
   const plannedMinutes = plan ? Math.max(1, minutesBetween(plan.startTime, plan.endTime)) : null;
   const plannedMs = plannedMinutes === null ? null : plannedMinutes * 60_000;
-  const elapsedMs = getElapsedMs(tracker, nowMs);
+  const resolvedPomodoro = activePomodoro.current ?? resolvePomodoroSettings(pomodoroSettings, plannedMs);
+  const readyConfiguration = useRef({ mode: studyMode, pomodoro: resolvedPomodoro });
+  useLayoutEffect(() => {
+    readyConfiguration.current = { mode: studyMode, pomodoro: resolvedPomodoro };
+  }, [studyMode, resolvedPomodoro]);
+  const measuredElapsedMs = getElapsedMs(tracker, nowMs);
+  const pomodoroProgress = getPomodoroProgress(measuredElapsedMs, resolvedPomodoro);
+  const isPomodoroComplete = studyMode === 'pomodoro' && pomodoroProgress.isComplete;
+  const elapsedMs = studyMode === 'pomodoro' ? pomodoroProgress.elapsedMs : measuredElapsedMs;
   const isStarted = tracker.anchorMs !== null;
   const remainingMs = plannedMs === null ? null : Math.max(plannedMs - elapsedMs, 0);
   const normalProgressDegrees = plannedMs === null ? 0 : clampPercent((elapsedMs / plannedMs) * 100) * 3.6;
-
-  const pomodoroElapsedInCycle = elapsedMs % POMODORO_CYCLE_MS;
-  const pomodoroIsFocus = pomodoroElapsedInCycle < POMODORO_FOCUS_MS;
-  const pomodoroPhaseElapsedMs = pomodoroIsFocus
-    ? pomodoroElapsedInCycle
-    : pomodoroElapsedInCycle - POMODORO_FOCUS_MS;
-  const pomodoroPhaseDurationMs = pomodoroIsFocus
-    ? POMODORO_FOCUS_MS
-    : POMODORO_BREAK_MS;
-  const pomodoroPhaseRemainingMs = Math.max(
-    pomodoroPhaseDurationMs - pomodoroPhaseElapsedMs,
-    0,
-  );
-  const pomodoroProgressDegrees =
-    clampPercent((pomodoroPhaseElapsedMs / pomodoroPhaseDurationMs) * 100) * 3.6;
-  const totalPomodoroSets = plannedMs === null ? null : Math.max(1, Math.ceil(plannedMs / POMODORO_CYCLE_MS));
-  const currentPomodoroSet = Math.min(
-    totalPomodoroSets ?? Number.POSITIVE_INFINITY,
-    Math.floor(elapsedMs / POMODORO_CYCLE_MS) + 1,
-  );
-  const pomodoroPhaseLabel = pomodoroIsFocus ? '集中' : '休憩';
-  const pomodoroNextLabel = pomodoroIsFocus ? '休憩 5分' : '集中 25分';
+  const pomodoroIsFocus = pomodoroProgress.phase === 'focus';
+  const pomodoroPhaseRemainingMs = pomodoroProgress.phaseRemainingMs;
+  const totalPomodoroSets = resolvedPomodoro.totalSets;
+  const currentPomodoroSet = pomodoroProgress.currentSet;
+  const pomodoroPhaseLabel = isPomodoroComplete ? '完了' : pomodoroIsFocus ? '集中' : '休憩';
+  const pomodoroNextLabel = pomodoroIsFocus
+    ? `休憩 ${resolvedPomodoro.breakMs / 60_000}分`
+    : `集中 ${resolvedPomodoro.focusMs / 60_000}分`;
 
   const progressDegrees = studyMode === 'pomodoro'
-    ? pomodoroProgressDegrees
+    ? pomodoroProgress.progressDegrees
     : normalProgressDegrees;
   const material = plan ? resolveMaterial(plan, materials) : materials.find(item => item.id === unplannedMaterialId) ?? null;
   const sessionTitle = plan?.title ?? (unplannedTitle.trim() || '学習');
@@ -250,7 +248,7 @@ function StudySessionView({
   const ringStyle = {
     '--study-session-progress': `${progressDegrees}deg`,
   } as CSSProperties;
-  const dialogLabel = phase === 'record'
+  const dialogLabel = phase === 'settings' ? 'ポモドーロ設定' : phase === 'record'
     ? '学習を記録'
     : isStarted
       ? '学習中'
@@ -260,6 +258,11 @@ function StudySessionView({
   // Each screen starts at its own heading; edits and timer ticks retain reader position.
   useLayoutEffect(() => {
     if (pageRef.current) pageRef.current.scrollTop = 0;
+    if (phase === 'settings') headingRef.current?.focus();
+    else if (restoreSettingsFocus.current) {
+      restoreSettingsFocus.current = false;
+      settingsButtonRef.current?.focus();
+    }
   }, [phase]);
 
   useEffect(() => {
@@ -270,6 +273,13 @@ function StudySessionView({
   }, [phase, tracker.runningFromMs]);
 
   useEffect(() => {
+    if (isPomodoroComplete && tracker.runningFromMs !== null) {
+      pomodoroCompletedAt.current ??= getPomodoroCompletedAt(tracker, resolvedPomodoro, nowMs);
+      setTracker(current => ({ ...current, runningFromMs: null, elapsedBeforeMs: pomodoroProgress.elapsedMs }));
+    }
+  }, [isPomodoroComplete, tracker.runningFromMs, pomodoroProgress.elapsedMs]);
+
+  useEffect(() => {
     const previousBodyOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
@@ -278,43 +288,45 @@ function StudySessionView({
   }, []);
 
   function startTimer() {
-    if (started.current) return;
+    if (started.current || phaseRef.current !== 'timer') return;
     started.current = true;
+    if (readyConfiguration.current.mode === 'pomodoro') activePomodoro.current = readyConfiguration.current.pomodoro;
     const startedAt = Date.now();
     setNowMs(startedAt);
-    setTracker({
-      anchorMs: startedAt,
-      runningFromMs: startedAt,
-      elapsedBeforeMs: 0,
-    });
+    setTracker(current => startTracker(current, startedAt));
     setError('');
   }
 
   function pauseTimer() {
+    if (phaseRef.current !== 'timer') return;
     const pausedAt = Date.now();
     setNowMs(pausedAt);
-    setTracker((current) => ({
-      ...current,
-      runningFromMs: null,
-      elapsedBeforeMs: getElapsedMs(current, pausedAt),
-    }));
+    setTracker(current => {
+      if (activePomodoro.current) pomodoroCompletedAt.current ??= getPomodoroCompletedAt(current, activePomodoro.current, pausedAt);
+      const paused = pauseTracker(current, pausedAt);
+      return activePomodoro.current
+        ? { ...paused, elapsedBeforeMs: getPomodoroProgress(paused.elapsedBeforeMs, activePomodoro.current).elapsedMs }
+        : paused;
+    });
   }
 
   function resumeTimer() {
+    if (phaseRef.current !== 'timer') return;
     const resumedAt = Date.now();
     setNowMs(resumedAt);
-    setTracker((current) => ({
-      ...current,
-      anchorMs: current.anchorMs ?? resumedAt,
-      runningFromMs: resumedAt,
-    }));
+    setTracker(current => {
+      if (activePomodoro.current && getPomodoroProgress(getElapsedMs(current, resumedAt), activePomodoro.current).isComplete) return current;
+      return resumeTracker(current, resumedAt);
+    });
   }
 
   function finishTimer() {
-    if (tracker.anchorMs === null) return;
+    if (phaseRef.current !== 'timer' || tracker.anchorMs === null) return;
 
     const finishedAt = Date.now();
-    const finalElapsedMs = Math.max(getElapsedMs(tracker, finishedAt), 1000);
+    if (activePomodoro.current) pomodoroCompletedAt.current ??= getPomodoroCompletedAt(tracker, activePomodoro.current, finishedAt);
+    const measuredMs = getElapsedMs(tracker, finishedAt);
+    const finalElapsedMs = Math.max(activePomodoro.current ? getPomodoroProgress(measuredMs, activePomodoro.current).elapsedMs : measuredMs, 1000);
     const anchorMs = tracker.anchorMs;
     const storedDurationMs = Math.max(finalElapsedMs, 60_000);
     const draft = createStudySessionDraft(target, anchorMs, storedDurationMs, {
@@ -323,7 +335,7 @@ function StudySessionView({
     const hasNewMeasurement = recordedElapsedMs.current !== finalElapsedMs;
     recordedElapsedMs.current = finalElapsedMs;
     if (target.kind === 'unplanned' && hasNewMeasurement) {
-      setNeedsDateAdjustment(sessionCrossesLocalDate(anchorMs, storedDurationMs) || sessionCrossesLocalDate(anchorMs, finishedAt - anchorMs));
+      setNeedsDateAdjustment(sessionCrossesLocalDate(anchorMs, storedDurationMs) || sessionCrossesLocalDate(anchorMs, (pomodoroCompletedAt.current ?? finishedAt) - anchorMs));
     }
 
     setNowMs(finishedAt);
@@ -339,12 +351,39 @@ function StudySessionView({
         ? { ...current, actualStartTime: draft.actualStartTime, actualEndTime: draft.actualEndTime }
         : current;
     });
+    phaseRef.current = 'record';
     setPhase('record');
     setError('');
   }
 
+  function openSettings() {
+    if (started.current || phaseRef.current !== 'timer') return;
+    settingsRevision.current += 1;
+    phaseRef.current = 'settings';
+    setPhase('settings');
+  }
+
+  function closeSettings() {
+    settingsRevision.current += 1;
+    restoreSettingsFocus.current = true;
+    phaseRef.current = 'timer';
+    setPhase('timer');
+  }
+
+  function saveSettings(settings: PomodoroSettings) {
+    if (started.current || phaseRef.current !== 'settings' || settingsRevision.current !== renderedSettingsRevision) return;
+    readyConfiguration.current.pomodoro = resolvePomodoroSettings(settings, plannedMs);
+    setPomodoroSettings(settings);
+    closeSettings();
+  }
+
   function handleBack() {
+    if (phaseRef.current === 'settings') {
+      closeSettings();
+      return;
+    }
     if (phase === 'record') {
+      phaseRef.current = 'timer';
       setPhase('timer');
       setError('');
       return;
@@ -439,7 +478,7 @@ function StudySessionView({
           <button type="button" className="study-session-icon-button" onClick={handleBack} aria-label="戻る">
             <ArrowLeft size={24} aria-hidden="true" />
           </button>
-          <h1>{dialogLabel}</h1>
+          <h1 ref={headingRef} tabIndex={-1}>{dialogLabel}</h1>
           <span className="study-session-header-spacer" aria-hidden="true" />
         </header>
 
@@ -486,29 +525,12 @@ function StudySessionView({
                 ) : null}
               </div>
 
-              <div className="study-session-mode-section">
-                <div className="study-session-mode-picker" role="group" aria-label="学習方式">
-                  <button
-                    type="button"
-                    className={studyMode === 'normal' ? 'active' : ''}
-                    aria-pressed={studyMode === 'normal'}
-                    disabled={isStarted}
-                    onClick={() => setStudyMode('normal')}
-                  >
-                    <strong>通常タイマー</strong>
-                  </button>
-                  <button
-                    type="button"
-                    className={studyMode === 'pomodoro' ? 'active' : ''}
-                    aria-pressed={studyMode === 'pomodoro'}
-                    disabled={isStarted}
-                    onClick={() => setStudyMode('pomodoro')}
-                  >
-                    <strong>ポモドーロ</strong>
-                    <small>集中25分 + 休憩5分</small>
-                  </button>
-                </div>
-              </div>
+              <StudySessionModePicker value={studyMode} disabled={isStarted}
+                onChange={mode => {
+                  if (started.current || phaseRef.current !== 'timer') return;
+                  readyConfiguration.current.mode = mode;
+                  setStudyMode(mode);
+                }} />
 
               <div className="study-session-timer-ring" style={ringStyle} data-study-mode={studyMode}>
                 <div className="study-session-timer-inner">
@@ -518,7 +540,7 @@ function StudySessionView({
                         <span data-pomodoro-phase>{pomodoroPhaseLabel}</span>
                         <strong data-study-session-phase-remaining>{formatPomodoroTime(pomodoroPhaseRemainingMs)}</strong>
                       </div>
-                      <b>{currentPomodoroSet}{totalPomodoroSets === null ? '' : ` / ${totalPomodoroSets}`} セット ・ 次は {pomodoroNextLabel}</b>
+                      <b>{currentPomodoroSet}{totalPomodoroSets === null ? '' : ` / ${totalPomodoroSets}`} セット{isPomodoroComplete ? ' 完了' : ` ・ 次は ${pomodoroNextLabel}`}</b>
                     </>
                   ) : (
                     <>
@@ -532,13 +554,18 @@ function StudySessionView({
 
               {studyMode === 'pomodoro' ? (
                 <div className="study-session-pomodoro-status">
-                  <div className="study-session-pomodoro-flow" aria-label="ポモドーロの進行">
+                  {!isStarted ? (
+                    <button ref={settingsButtonRef} type="button" className="study-session-settings-button" onClick={openSettings} aria-label="集中と休憩の設定">
+                      <Settings2 size={17} aria-hidden="true" />
+                      {resolvedPomodoro.focusMs / 60_000}分 / {resolvedPomodoro.breakMs / 60_000}分 ・ {totalPomodoroSets === null ? '制限なし' : `${totalPomodoroSets}セット${pomodoroSettings.setCount === null ? '（目安）' : ''}`}
+                    </button>
+                  ) : isPomodoroComplete ? <strong role="status">全セット完了</strong> : <div className="study-session-pomodoro-flow" aria-label="ポモドーロの進行">
                     <span className={pomodoroIsFocus ? 'active' : ''}>集中</span>
                     <i aria-hidden="true">→</i>
                     <span className={!pomodoroIsFocus ? 'active' : ''}>休憩</span>
                     <i aria-hidden="true">→</i>
                     <span>集中</span>
-                  </div>
+                  </div>}
                   <small>休憩を含めて記録</small>
                   {isStarted ? <span className="study-session-total-elapsed">総経過 {formatDurationDisplay(elapsedMs)}</span> : null}
                 </div>
@@ -553,10 +580,11 @@ function StudySessionView({
                   <button
                     type="button"
                     className="study-session-control primary"
+                    disabled={isPomodoroComplete}
                     onClick={tracker.runningFromMs === null ? resumeTimer : pauseTimer}
                   >
                     {tracker.runningFromMs === null ? <Play size={22} aria-hidden="true" /> : <Pause size={22} aria-hidden="true" />}
-                    {tracker.runningFromMs === null ? '再開' : '一時停止'}
+                    {isPomodoroComplete ? '完了' : tracker.runningFromMs === null ? '再開' : '一時停止'}
                   </button>
                   <button type="button" className="study-session-control danger" onClick={finishTimer}>
                     <Square size={19} aria-hidden="true" />終了する
@@ -565,6 +593,8 @@ function StudySessionView({
               )}
             </section>
           </main>
+        ) : phase === 'settings' ? (
+          <PomodoroSettingsView initialSettings={pomodoroSettings} planned={plannedMs !== null} onSave={saveSettings} />
         ) : recordDraft ? (
           <main className="study-session-content study-session-record-view">
             <section className="study-session-card study-session-record-summary">

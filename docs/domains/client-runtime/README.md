@@ -30,6 +30,8 @@ The requirements document is the specification; the Issue is the work-state owne
 
 Other active client-runtime work:
 
+- [Pomodoro session settings](work/pomodoro-session-settings-handoff.md): per-session 25/5 or 50/10, optional finite sets, and mode transitions; local validation complete, browser/remote and new bundle-size acceptance still open.
+
 - [Laplance product-name migration](work/laplance-rebrand-handoff.md): 2026-10 brand rename; preserved infrastructure identifiers and user-approved startup media replacement.
 - [Complete the Laplans startup video](work/laplans-video-completion-handoff.md): the successor to merged PR #545, under Issue #483; readiness-gated skip and full playback by default.
 - [Laplans startup video](work/laplans-video-splash-handoff.md): isolated local presentation change under UI Issue #483; verification evidence and remaining browser/release gates are tracked in this one handoff.
