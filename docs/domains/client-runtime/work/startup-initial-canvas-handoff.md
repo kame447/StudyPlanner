@@ -1,6 +1,6 @@
 # Initial startup canvas
 
-Status: verified local candidate; native browser acceptance pending; not published.
+Status: Draft PR #622; cumulative local verification passed; exact-head native acceptance pending.
 Owner: UI Issue #483. Startup timing investigation #542 remains separate.
 Branch: `fix/startup-initial-canvas`.
 Base / initial HEAD: main `84b69b9b6a0810071e530509c5230fcc4a81d6bf`.
@@ -100,3 +100,55 @@ no passive timing diagnostic changes. No remote push, main change, merge,
 deploy or branch deletion was performed. Delete the branch after its eventual
 merge or explicit abandonment. The broader startup-latency investigation remains
 with #542 and does not become complete through this visual change.
+
+## Publication and cumulative verification checkpoint
+
+2026-10-13: PR publication and main integration after verification were approved.
+Draft PR #622 was published at remote `c636c28626aac341f7571b504e5c85b3026f6e06`,
+with tree `606cc260fd4a7ec91a21fa9bb91f79c0b46165f6` matching the local receipt.
+The earlier local-only/pending wording above records that checkpoint, not the
+current publication state. Main integration remains separately coordinated.
+
+The first native Chromium matrix passed all 14 new cases on their first attempt.
+All four empty-root screenshots (390/1280 px, stored light/dark) contain only
+RGB(6,9,20); light/dark Home screenshots show normal theme restoration. Core CI,
+Admin, visual regression and browser quality passed; bundle failures remained
+at the four known baseline limits.
+
+Firefox (82 passed, 4 failed, 1 skipped) and WebKit desktop (86 passed, 4 failed,
+1 skipped) reached both delayed-delivery canvas assertions, then timed out in
+`page.screenshot()` while the entry module was intentionally held. Firefox logs
+already report fonts loaded, so this is not diagnosed as a font-download failure.
+The screenshot is optional evidence collection, not a product assertion. Keep
+that pre-script pixel capture on Chromium only; preserve every delayed-CSS/script,
+video-entry, direct-route, reload and light/dark assertion on every engine. The
+post-load Home screenshots still execute on all engines. No skipped tests,
+timeout increase, product change or weakened assertion was introduced.
+
+The next snapshot normally merges final #621 local
+`1a1660cfe025c7483363dd9ddb78312dbb9b5478` / tree
+`ea398627d2f5530e76655208def0bbdc3e612a29`, including its exact focus-policy audit
+correction. It keeps both cross-browser suites and the reviewed #621
+profile-recovery tests. The only differences from #621 remain the six
+startup-owned files. Fresh cumulative verification and exact-head native reruns
+are required before claiming this combined snapshot is accepted.
+
+### Cumulative local result
+
+The combined #621 + initial-canvas + screenshot-harness snapshot passed fresh
+`npm run verify`: 7,913 tests / 850 files, 54 skipped / 1 todo / 11 skipped
+files, fresh non-incremental app/Worker checks and production build (5.30 s).
+Before/after 2,459 source files, 19,516 installed package files and generated
+Worker types match. Only this checkpoint changed after verification.
+
+All 46 external build files are byte-identical to the actual final #621 build
+for tree `ea398627d2f5530e76655208def0bbdc3e612a29`; only index.html differs.
+The combined bundle has the same four known failures as that #621 candidate;
+no limits changed. Combined cross-browser collection includes all 56 canvas
+cases and 28 public-navigation cases. Collection is not native execution.
+
+Publication uses a normal two-parent merge preserving #622 head `c636c286` and
+final #621 head `a1bedde869959662231b79218e03b743880be511`. The first Firefox/
+WebKit failures remain failed evidence; the corrected exact cumulative head must
+pass its own native jobs before merge. Main integration is owned by the release
+coordinator, not this implementation worker.

@@ -6,12 +6,13 @@ import { useHomeScenePreference } from './hooks/useHomeScenePreference';
 import { RootStartupReadyProvider, useRootStartupReady } from './components/RootStartupReadyContext';
 import { StartupSurface, useStartupContentVisible } from './components/StartupSurface';
 import type { PlannerAppSnapshot } from './components/PlannerAppBootstrap';
-import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { HomeScheduleView } from './components/HomeScheduleView';
 import { SplashScreen } from './components/SplashScreen';
 import { StudySessionProvider } from './components/StudySessionView';
-import { LegalPage } from './components/LegalPage';
+import { PublicPageBoundary } from './components/PublicPageBoundary';
+import { usePublicPageNavigation } from './components/PublicPageLink';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
 import { AppViewSwitcher } from './components/AppViewSwitcher';
 import type { BookshelfInitialAction } from './components/BookshelfView';
@@ -86,7 +87,7 @@ type PrimarySurface = 'home' | 'ai-planning' | 'workspace';
 const SCHEDULE_VIEW_MODES = new Set<ViewMode>(['month', 'week', 'day', 'todo']);
 
 export default function App({ state, onReady }: { state?: PlannerAppSnapshot; onReady?: () => void } = {}) {
-  return <AppearanceProvider>{state ? <AppContent state={state} onReady={onReady} /> : <StandaloneApp />}</AppearanceProvider>;
+  return <AppearanceProvider><PublicPageBoundary>{state ? <AppContent state={state} onReady={onReady} /> : <StandaloneApp />}</PublicPageBoundary></AppearanceProvider>;
 }
 
 const ignoreStandaloneReady = () => {};
@@ -94,9 +95,8 @@ function StandaloneApp() {
   const rootOwned = useRootStartupReady() !== null;
   const parentVisible = useStartupContentVisible();
   const [standaloneVisible, setStandaloneVisible] = useState(false);
-  const legal = ['/terms', '/privacy', '/contact'].includes(window.location.pathname);
-  const state = usePlannerAppState({ noticeAutoDismiss: rootOwned ? parentVisible : legal || standaloneVisible });
-  if (rootOwned || legal) return <AppContent state={state} />;
+  const state = usePlannerAppState({ noticeAutoDismiss: rootOwned ? parentVisible : standaloneVisible });
+  if (rootOwned) return <AppContent state={state} />;
   return <StartupSurface loading={state.booting} onVisibilityChange={setStandaloneVisible}>
     <RootStartupReadyProvider onReady={ignoreStandaloneReady}><AppContent state={state} /></RootStartupReadyProvider>
   </StartupSurface>;
@@ -217,11 +217,19 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     saveWeeklyApprovedPlan,
     completeWeeklyApprovalOperation,
   });
-  const currentPath = window.location.pathname;
+  const publicPageOpen = usePublicPageNavigation()?.isPublicPage ?? false;
+  const [presentedOwner, setPresentedOwner] = useState<string | null | undefined>(undefined);
+  useLayoutEffect(() => {
+    const owner = user?.id ?? null;
+    setPresentedOwner(previous => {
+      if (startupVisible && !booting && !publicPageOpen) return owner;
+      return previous === owner ? previous : undefined;
+    });
+  }, [startupVisible, booting, publicPageOpen, user?.id]);
   const hasPlannerDataRecovery = Boolean(user && plannerDataRecovery?.ownerId === user.id);
   const isHomeSurface = primarySurface === 'home';
   const isAiPlanningSurface = primarySurface === 'ai-planning';
-  const isActiveAiPlanningSurface = isAiPlanningSurface && visitedAiOwner === user?.id && !settingsNavigation.isOpen;
+  const isActiveAiPlanningSurface = isAiPlanningSurface && visitedAiOwner === user?.id && !settingsNavigation.isOpen && !publicPageOpen;
   const isWorkspaceSurface = primarySurface === 'workspace';
   const isScheduleSurface = isWorkspaceSurface && SCHEDULE_VIEW_MODES.has(viewMode);
   const activePrimaryNav: PrimaryNavItem = isHomeSurface
@@ -255,7 +263,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
           : 'home-primary-header';
 
   const canPreloadViews = startupVisible && !booting && Boolean(user)
-    && !['/terms', '/privacy', '/contact'].includes(currentPath)
+    && !publicPageOpen
     && isPlannerDataReadyForOwner(plannerDataAvailability, user?.id ?? '');
 
   useEffect(() => {
@@ -282,21 +290,9 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     setPendingMonthCreate(false);
   }, [isScheduleSurface, pendingMonthCreate, viewMode]);
 
-  if (currentPath === '/terms') {
-    return <LegalPage kind="terms" />;
-  }
-
-  if (currentPath === '/privacy') {
-    return <LegalPage kind="privacy" />;
-  }
-
-  if (currentPath === '/contact') {
-    return <LegalPage kind="contact" />;
-  }
-
   // Readiness hooks above keep running behind the intro, but layout/scene
   // descendants must first mount with visible geometry and a fresh lifetime.
-  if (!startupVisible) return null;
+  if (!startupVisible || (publicPageOpen && presentedOwner !== (user?.id ?? null))) return null;
 
   if (booting) {
     return <SplashScreen fixedLight />;

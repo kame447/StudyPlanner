@@ -1,3 +1,4 @@
+import { createAuthSessionService } from '../services/authSession';
 import { PlannerAppBootstrap } from './PlannerAppBootstrap';
 import { createStartupSessionScope } from '../lib/startupSessionScope';
 import { createFirebaseAuthRepository } from '../repositories/firebaseAuthRepository';
@@ -365,4 +366,88 @@ it.each([
   expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--accent', accent);
   expect(window.localStorage.getItem('study-planner-theme-mode')).toBe(mode);
   expect(window.localStorage.getItem('study-planner-theme-palette')).toBe('ocean');
+});
+
+
+function installPublicHistory(pathname = '/contact') {
+  const listeners = new Map<string, Set<() => void>>();
+  const location = { pathname };
+  const dispatch = (type: string) => { [...listeners.get(type) ?? []].forEach(listener => listener()); };
+  vi.stubGlobal('HTMLElement', class {});
+  Object.assign(window, { location,
+    history: { state: null, pushState: (_state: unknown, _title: string, path: string) => { location.pathname = path; } },
+    addEventListener: (type: string, listener: () => void) => {
+      if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type)!.add(listener);
+    },
+    removeEventListener: (type: string, listener: () => void) => listeners.get(type)?.delete(listener),
+    dispatchEvent: (event: Event) => dispatch(event.type),
+  });
+  vi.mocked(createAuthSessionService).mockReturnValue(fake.session);
+  return { pop(path: string) { location.pathname = path; dispatch('popstate'); }, listeners };
+}
+async function returnFromPublicPage() {
+  await act(async () => {
+    renderer!.root.findAllByType('a').find(link => link.props.href === '/')!.props.onClick({ button: 0, preventDefault: vi.fn() });
+    await microtasks();
+  });
+}
+
+it.each(['read', 'write'] as const)('composes direct contact, theme %s failure and retained profile recovery without duplicate startup', async failure => {
+  const history = installPublicHistory();
+  window.localStorage.setItem('study-planner-theme-mode', 'dark');
+  window.localStorage.setItem('study-planner-theme-palette', 'ocean');
+  const read = window.localStorage.getItem.bind(window.localStorage);
+  const write = window.localStorage.setItem.bind(window.localStorage);
+  const reads = vi.spyOn(window.localStorage, 'getItem').mockImplementation(key => {
+    if (failure === 'read' && key.startsWith('study-planner-theme-')) throw new Error('blocked theme read');
+    return read(key);
+  });
+  vi.spyOn(window.localStorage, 'setItem').mockImplementation((key, value) => {
+    if (failure === 'write' && key.startsWith('study-planner-theme-')) throw new Error('blocked theme write');
+    write(key, value);
+  });
+  fixture.profile.mockRejectedValueOnce(new Error('profile unavailable'));
+  await mount();
+  expect(fixture.profile).not.toHaveBeenCalled();
+  expect(snapshotSpy).not.toHaveBeenCalled(); expect(splash()).toBe(0);
+  expect(renderer!.root.findAllByType('h1').map(heading => heading.children.join(''))).toContain('お問い合わせ');
+  expect(document.documentElement.dataset.theme).toBe(failure === 'read' ? 'light' : 'dark');
+  expect(read('study-planner-theme-mode')).toBe('dark');
+  await returnFromPublicPage(); await release(memoryGate);
+  const retained = recovery();
+  expect(fixture.profile).toHaveBeenCalledOnce(); expect(snapshotSpy).not.toHaveBeenCalled();
+  const readsAfterRecovery = reads.mock.calls.length;
+  await act(async () => { history.pop('/contact'); await microtasks(); });
+  expect(recovery()).toBe(retained);
+  expect(renderer!.root.findByProps({ className: 'public-page-planner' }).props.hidden).toBe(true);
+  await returnFromPublicPage();
+  expect(recovery()).toBe(retained); expect(fixture.profile).toHaveBeenCalledOnce();
+  expect(reads).toHaveBeenCalledTimes(readsAfterRecovery);
+  expect(read('study-planner-theme-mode')).toBe('dark');
+});
+
+it('settles a pending recovery behind contact and revokes its old callback on hidden sign-out', async () => {
+  const history = installPublicHistory('/');
+  fixture.profile.mockRejectedValueOnce(new Error('profile unavailable'));
+  await mount(); await release(memoryGate);
+  const retainedRetry = retry().props.onClick;
+  const pending = deferred<User>(); fixture.profile.mockReturnValueOnce(pending.promise);
+  await act(async () => { retainedRetry(); retainedRetry(); await microtasks(); });
+  expect(fixture.profile).toHaveBeenCalledTimes(2);
+  await act(async () => { history.pop('/contact'); await microtasks(); });
+  await act(async () => { pending.resolve(owner('a')); await microtasks(); });
+  expect(recovery().props['aria-busy']).toBe(true);
+  expect(snapshotSpy).toHaveBeenCalledOnce();
+  await release(plannerGate);
+  expect(renderer!.root.findAllByProps({ 'data-testid': 'profile-restore-recovery' })).toHaveLength(0);
+  expect(fixture.content.mock.lastCall?.[0].user.id).toBe('a');
+  // The repository must reflect the same sign-out as the auth event.
+  fixture.profile.mockResolvedValue(null);
+  await act(async () => { fake.emit(null); await microtasks(); retainedRetry(); await microtasks(); });
+  expect(fixture.content.mock.lastCall?.[0].user).toBeNull();
+  await returnFromPublicPage();
+  expect(fixture.content.mock.lastCall?.[0].user).toBeNull();
+  expect(fixture.profile).toHaveBeenCalledTimes(3); // The ordinary signed-out bootstrap, never the stale retry.
+  act(() => renderer!.unmount()); renderer = undefined;
+  expect([...history.listeners.values()].every(listeners => listeners.size === 0)).toBe(true);
 });

@@ -58,7 +58,7 @@ async function expectThemeReleased(page, theme) {
 
 for (const width of [390, 1280]) {
   for (const theme of ['light', 'dark']) {
-    test(`delayed CSS and script keep the canvas dark, then release ${theme} Home at ${width}px`, async ({ page }, info) => {
+    test(`delayed CSS and script keep the canvas dark, then release ${theme} Home at ${width}px`, async ({ page, browserName }, info) => {
       await page.setViewportSize({ width, height: 844 });
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
@@ -87,7 +87,13 @@ for (const width of [390, 1280]) {
         await page.waitForFunction(() => [...document.querySelectorAll('link[rel="stylesheet"]')].every(link => link.sheet));
         await expect(page.locator('body')).toHaveCSS('margin', '0px');
         await expectInitialCanvas(page);
-        await info.attach(`empty-root-${theme}-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
+        // Firefox/WebKit screenshot capture waits while the entry module is held.
+        // Keep all pre-CSS/empty-root assertions on every engine; only this
+        // optional initial pixel artifact is Chromium-specific. Post-load Home
+        // screenshots below still run on every engine.
+        if (browserName === 'chromium') {
+          await info.attach(`empty-root-${theme}-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
+        }
         releaseScripts();
         await expect.poll(() => page.evaluate(() => window.__initialCanvasSplash)).not.toBeNull();
         expect(await page.evaluate(() => window.__initialCanvasSplash)).toEqual({
