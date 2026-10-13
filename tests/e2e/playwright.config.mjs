@@ -14,6 +14,7 @@ export default defineConfig({
     '**/admin-system-environment.spec.mjs',
     '**/support-inquiries.spec.mjs',
     '**/cross-browser-smoke.spec.mjs',
+    '**/home-add-mobile-motion.spec.mjs',
     '**/quality-gates.spec.mjs',
     '**/visual-regression.spec.mjs',
   ],

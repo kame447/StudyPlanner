@@ -31,6 +31,8 @@ for (const width of [390, 1280]) {
     await study.getByRole('button', { name: '保存', exact: true }).tap();
     await expect(study).toHaveCount(0);
     await expect(page.locator('.home-schedule-list')).toContainText('タッチで追加した学習');
+    await expect(row.locator('.home-add-toggle')).toHaveAttribute('aria-expanded', 'true');
+    await expect(row.getByRole('button', { name: '学習予定を追加', exact: true })).toBeFocused();
     await page.reload();
     await expect(page.locator('.home-schedule-list')).toContainText('タッチで追加した学習');
 
@@ -42,17 +44,20 @@ for (const width of [390, 1280]) {
     await expect(event).toBeVisible();
     await event.getByRole('button', { name: '閉じる', exact: true }).tap();
     await expect(event).toHaveCount(0);
-    await add.tap();
+    await expect(row.locator('.home-add-toggle')).toHaveAttribute('aria-expanded', 'true');
     await row.getByRole('button', { name: '学習予定を追加', exact: true }).tap();
     await expect(study).toBeVisible();
     await expect(study.getByPlaceholder('例: 英語課題 / 面接準備')).toHaveValue('');
     await study.getByRole('button', { name: '閉じる', exact: true }).tap();
     await expect(study).toHaveCount(0);
+    await expect(row.getByRole('button', { name: '学習予定を追加', exact: true })).toBeFocused();
+    await expect(row.getByRole('button')).toHaveCount(3);
+    await row.getByRole('button', { name: '予定の追加を閉じる', exact: true }).tap();
     await expect(add).toBeVisible();
   });
 }
 
-test('Home add still closes when Tab or ShiftTab moves focus outside', async ({ page }) => {
+test('Home add remains expanded when Tab or ShiftTab moves focus outside', async ({ page }) => {
   await seedHomeAdd(page);
   await page.goto('/');
   const add = page.getByRole('button', { name: '今日の予定に追加', exact: true });
@@ -73,11 +78,12 @@ test('Home add still closes when Tab or ShiftTab moves focus outside', async ({ 
   await expect(row.getByRole('button', { name: '予定を追加', exact: true })).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(page.locator('#home-add-focus-before')).toBeFocused();
-  await expect(add).toHaveAttribute('aria-expanded', 'false');
-  await add.tap();
+  await expect(row.locator('.home-add-toggle')).toHaveAttribute('aria-expanded', 'true');
   await row.getByRole('button', { name: '学習予定を追加', exact: true }).focus();
   await page.keyboard.press('Tab');
   await expect(page.locator('#home-add-focus-after')).toBeFocused();
-  await expect(add).toHaveAttribute('aria-expanded', 'false');
+  await expect(row.locator('.home-add-toggle')).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await row.getByRole('button', { name: '予定の追加を閉じる', exact: true }).press('Escape');
+  await expect(add).toHaveAttribute('aria-expanded', 'false');
 });

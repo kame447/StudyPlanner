@@ -1,117 +1,17 @@
 import { expect, test } from './support/fixed-clock.mjs';
-import { seedHomeAdd } from './support/home-add-fixture.mjs';
-import { waitForVisualReady } from './support/ui-regression.mjs';
+import { seedHome, finishMotion, verifyHomeAddMotion } from './support/home-add-motion-checks.mjs';
 
-async function seedHome(page, { appearance = 'standard', theme = 'light', palette = 'forest' } = {}) {
-  await seedHomeAdd(page);
-  await page.addInitScript(({ appearance, theme, palette }) => {
-    localStorage.setItem('study-planner-appearance', appearance);
-    localStorage.setItem('study-planner-theme-mode', theme);
-    localStorage.setItem('study-planner-theme-palette', palette);
-  }, { appearance, theme, palette });
-  await page.goto('/');
-  const row = page.getByRole('group', { name: '今日の予定の追加', exact: true });
-  await expect(row).toBeVisible();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-  await expect(page.locator('html')).toHaveAttribute('data-appearance', appearance);
-  expect(await page.evaluate(() => localStorage.getItem('study-planner-theme-palette'))).toBe(palette);
-  await row.scrollIntoViewIfNeeded();
-  if (appearance === 'pixel') {
-    await expect.poll(() => row.evaluate(element => getComputedStyle(element).fontFamily)).toContain('DotGothic16');
-    await page.evaluate(() => document.fonts.load('16px DotGothic16', '学習予定を追加'));
-  }
-  await waitForVisualReady(page, '.home-inline-add');
-  return row;
-}
-
-async function finishMotion(row) {
-  await row.evaluate(element => {
-    for (const animation of element.getAnimations({ subtree: true })) animation.finish();
-  });
-}
-
-// Advance the browser's real CSS transitions, rather than sleeping and merely
-// asserting the final state. Sampled controls retain their original hit boxes.
-async function toggleAtMidpoint(row) {
-  return row.evaluate(async element => {
-    const action = element.querySelector('.home-add-action');
-    const trigger = element.querySelector('.home-add-toggle');
-    const before = Number(getComputedStyle(action).opacity);
-    trigger.click();
-    await new Promise(requestAnimationFrame);
-    getComputedStyle(action).opacity;
-    const transitions = element.getAnimations({ subtree: true });
-    const fade = transitions.find(animation => animation.effect.target === action && animation.transitionProperty === 'opacity');
-    for (const animation of transitions) {
-      animation.pause();
-      animation.currentTime = Number(animation.effect.getTiming().duration) / 2;
-    }
-    return {
-      before,
-      opacity: Number(getComputedStyle(action).opacity),
-      fadeDuration: fade?.effect.getTiming().duration,
-      iconTransform: getComputedStyle(trigger.querySelector('svg')).transform,
-      disabled: action.disabled,
-      hidden: action.getAttribute('aria-hidden'),
-      expanded: trigger.getAttribute('aria-expanded'),
-    };
-  });
-}
-
-for (const width of [320, 1280]) {
-  test(`Home add transitions both ways and reverses without moving the row at ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 844 });
-    await page.emulateMedia({ reducedMotion: 'no-preference' });
-    const row = await seedHome(page);
-    const original = await row.boundingBox();
-    expect(await row.getByRole('button', { name: '今日の予定に追加', exact: true }).boundingBox()).toEqual(original);
-    const opening = await toggleAtMidpoint(row);
-    expect(opening.before).toBe(0);
-    expect(opening.fadeDuration).toBe(180);
-    expect(opening.opacity).toBeGreaterThan(0);
-    expect(opening.opacity).toBeLessThan(1);
-    expect(opening.disabled).toBe(false);
-    expect(opening.iconTransform).not.toBe('none');
-    expect(await row.boundingBox()).toEqual(original);
-    await finishMotion(row);
-    await expect(row.getByRole('button', { name: '予定を追加', exact: true })).toBeFocused();
-    const closing = await toggleAtMidpoint(row);
-    expect(closing.before).toBe(1);
-    expect(closing.opacity).toBeGreaterThan(0);
-    expect(closing.opacity).toBeLessThan(1);
-    expect(closing.disabled).toBe(true);
-    expect(closing.hidden).toBe('true');
-    await expect(row.getByRole('button')).toHaveCount(1);
-    const fadingActionsPassThrough = await row.evaluate(element => {
-      const trigger = element.querySelector('.home-add-toggle');
-      return Array.from(element.querySelectorAll('.home-add-action')).every(action => {
-        const box = action.getBoundingClientRect();
-        return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)?.closest('button') === trigger;
-      });
-    });
-    expect(fadingActionsPassThrough).toBe(true);
-    expect(await row.boundingBox()).toEqual(original);
-    // Reverse before closing finishes. The retained node continues from its
-    // current opacity instead of being removed/recreated at an endpoint.
-    const reversing = await toggleAtMidpoint(row);
-    expect(reversing.before).toBeGreaterThan(0);
-    expect(reversing.before).toBeLessThan(1);
-    expect(reversing.opacity).toBeGreaterThan(reversing.before);
-    expect(reversing.expanded).toBe('true');
-    await finishMotion(row);
-    await page.keyboard.press('Escape');
-    await finishMotion(row);
-    await expect(row.getByRole('button', { name: '今日の予定に追加', exact: true })).toBeFocused();
-    await expect(row.locator('.home-add-action').first()).toHaveCSS('opacity', '0');
-    await expect(row.locator('.home-add-action').first()).toHaveCSS('visibility', 'hidden');
-    expect(await row.boundingBox()).toEqual(original);
-    expect(await row.getByRole('button', { name: '今日の予定に追加', exact: true }).boundingBox()).toEqual(original);
+for (const [width, appearance, theme, count] of [
+  [320, 'standard', 'light', 0], [390, 'pixel', 'dark', 1], [1280, 'standard', 'dark', 1],
+]) {
+  test(`Home add transitions both ways and reverses without moving the row at ${width}px`, async ({ page }, testInfo) => {
+    await verifyHomeAddMotion(page, testInfo, { width, appearance, theme, count });
   });
 
   test(`Home add reduced motion is immediate at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    const row = await seedHome(page);
+    const row = await seedHome(page, { appearance, theme, count });
     for (const open of [true, false, true, false]) {
       const state = await row.evaluate(async element => {
         element.querySelector('.home-add-toggle').click();
@@ -119,9 +19,13 @@ for (const width of [320, 1280]) {
         await new Promise(requestAnimationFrame);
         const action = element.querySelector('.home-add-action');
         return { opacity: getComputedStyle(action).opacity, duration: getComputedStyle(action).transitionDuration,
-          animations: element.getAnimations({ subtree: true }).length, disabled: action.disabled };
+          animations: element.getAnimations({ subtree: true }).length, disabled: action.disabled,
+          width: element.querySelector('.home-add-toggle').getBoundingClientRect().width,
+          rowWidth: element.getBoundingClientRect().width, transform: getComputedStyle(action).transform };
       });
-      expect(state).toEqual({ opacity: open ? '1' : '0', duration: '0s', animations: 0, disabled: !open });
+      expect(state).toMatchObject({ opacity: open ? '1' : '0', duration: '0s', animations: 0, disabled: !open });
+      expect(state.width).toBe(open ? 44 : state.rowWidth);
+      if (open) expect(state.transform).toBe('matrix(1, 0, 0, 1, 0, 0)');
     }
   });
 }

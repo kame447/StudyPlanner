@@ -647,7 +647,7 @@ admin read の現行最大形は次のとおりである。`auth 3` は cold inv
 
 | Admin path | 最大入力 | 最大 external requests |
 | --- | --- | ---: |
-| Overview | 93日 | 9 |
+| Overview | 93日 | 7 |
 | AI/API | 93日 | 5 |
 | Planning | 93日 | 4 |
 | Users、enrichment ready | profile 25件 + 30日trend | 8 |
@@ -661,6 +661,8 @@ admin read の現行最大形は次のとおりである。`auth 3` は cold inv
 | System | 固定 probe | 6 |
 
 日付範囲と連番 entry は個別 GET の fan-out にせず、exact document name の Firestore `batchGet` を最大100件ずつ使用する。Firestore の `found` / `missing` は返却順を信用せず document name で要求順へ復元する。欠損日を隣の日付へずらさず、Overview の欠損日省略、Planning の0埋め、trace sequence / cursor の既存挙動を維持する。request body は Firestore の 10 MiB 上限未満であることを送信前に検査する。
+
+OverviewとUsers trendは、daily rollup・active-user window・rollup checkpointの共通snapshot readerを使う。Overviewの最大93日でも95文書を1回のcross-collection `batchGet`へまとめ、登録者数の最大3回のCOUNTは維持する。これはHTTP request数の集約であり、要求文書数やFirestore課金readの削減を意味しない。
 
 読み捨てる HTTP response body は status にかかわらず明示的に cancel または完全消費する。特に Firestore GET の 404、mutation の成功 body、non-2xx body を未処理のまま残さない。
 

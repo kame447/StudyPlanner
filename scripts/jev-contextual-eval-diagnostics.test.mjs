@@ -1,3 +1,5 @@
+import { createContextualPairedInput } from './jev-contextual-paired-input.ts';
+import { focusedContextualDecisionContextV5 } from '../src/features/weeklyPlanning/semantic/weeklyPlanningFocusedDecisionContextV5.ts';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { ERROR_BODY_BYTE_CAP, ERROR_BODY_TIMEOUT_MS, REQUEST_ID_LENGTH_CAP, emptyDispatchDiagnostics,
@@ -112,8 +114,10 @@ const wireJev = (result) => Response.json({ model: 'typesafe/jev-1.13', answers:
   contextual_answer: { type: 'choice', choice: result.decision, confidence: result.confidence, probabilities: result.probabilities },
   condition_change: { type: 'noul', noul: result.conditionChange }, independent_meaning: { type: 'noul', noul: result.independentMeaning } },
   usage: { input_tokens: 1, output_tokens: 1, cost: 0.000001 } }, { headers: { 'x-generation-id': 'gen-synthetic_1' } });
-const context = (questionCode) => ({ purpose: 'focused_contextual_answer', requestId: 'synthetic-context', inputRevision: 1, questionCode,
-  state: { currentUserText: '合成の回答', pendingQuestion: { targetQuantityRole: 'unknown', questionBasis: null, hasEstimateTarget: false } } });
+const context = (questionCode) => focusedContextualDecisionContextV5(createContextualPairedInput({
+  id: 'synthetic-context', userText: '合成の回答', taskTitle: '合成の課題', questionCode,
+  targetAmount: 14, unitCode: 'page', unitLabel: 'ページ',
+}, 'jevFirst'));
 
 describe('recomputed gate provenance and parity with actual dispatch', () => {
   it.each([
@@ -211,6 +215,28 @@ describe('eval-only dispatch records through the Unit 0 bundle', () => {
     expect(record.dispatches[0].evalDiagnostics.jev).toEqual({ choice: 'remaining', confidence: 0.999,
       selectedProbability: 0.9996, conditionChange: 0.001, independentMeaning: 0.001,
       gateRecomputedByHarness: { status: 'accepted', reason: 'none', decision: 'remaining', gateVersion: policy.CONTEXTUAL_GATE_VERSION } });
+  });
+  it('passes declared parent/range from a validated graph through the actual provider state', async () => {
+    const selected = { ...item, componentChain: [{ role: 'material', label: '合成問題集' }, { role: 'chapter', label: '演習1' }],
+      rangeStart: 'A', rangeEnd: 'K' };
+    const fetch = install(async () => wireJev(evaluated('remaining')));
+    const record = await run('jevFirst', selected);
+    expect(record.directRoleAccepted).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(body.state.pendingQuestion.target).toMatchObject({ task: { title: item.taskTitle },
+      componentChain: selected.componentChain, workload: { amount: 14, rangeStart: 'A', rangeEnd: 'K' } });
+    expect(body.state).not.toHaveProperty('committedGraph');
+    validateArm(record, selected, 'jevFirst', { preSend: true });
+  });
+  it('keeps a corpus case without a valid graph target ineligible and accounts the actual Luna send', async () => {
+    const fetch = install(async () => Response.json({ error: knownError }, { status: 400 }));
+    const record = await run('jevFirst', { ...item, targetAmount: undefined });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(record.dispatches.map(dispatch => dispatch.provider)).toEqual(['luna']);
+    expect(record.dispatches[0].evalDiagnostics.jev).toBe('notApplicable');
+    expect(record.directRoleAccepted).toBe(false);
+    validateArm(record, { ...item, targetAmount: undefined }, 'jevFirst', { preSend: true });
   });
   it('records notApplicable when absent decision context excludes Jev', async () => {
     const fetch = install(async () => Response.json({ error: knownError }, { status: 400 }));

@@ -25,15 +25,17 @@ it('keeps the study action alive through an internal pointerdown followed by nul
     group().props.onPointerDownCapture?.({ target, currentTarget: container, pointerId: 1, pointerType: 'touch' });
     group().props.onPointerDown?.({ target, currentTarget: container, pointerId: 1, pointerType: 'touch' });
   });
-  act(() => group().props.onBlur({ relatedTarget: null, currentTarget: container }));
+  act(() => group().props.onBlur?.({ relatedTarget: null, currentTarget: container }));
   const study = renderer!.root.findAllByType('button').find(button => button.props.id?.endsWith('-study'));
   expect(study, 'the pointer target must not unmount before its click').toBeDefined();
   expect(study!.props.disabled).not.toBe(true);
-  act(() => study!.props.onClick());
+  const selectedFocus = vi.fn();
+  act(() => study!.props.onClick({ currentTarget: { focus: selectedFocus } }));
+  expect(selectedFocus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
   expect(onAddEntry).toHaveBeenCalledExactlyOnceWith({ kind: 'study', date: '2026-10-13' });
 });
 
-it('does not turn an interrupted pointer gesture into an add, and still dismisses on a real outside focus', () => {
+it('does not turn an interrupted pointer gesture into an add or close on outside focus', () => {
   const onAddEntry = vi.fn();
   const target = new Node();
   const outside = new Node();
@@ -48,15 +50,14 @@ it('does not turn an interrupted pointer gesture into an add, and still dismisse
     group().props.onPointerDownCapture?.({ target, currentTarget: container, pointerId: 1, pointerType: 'touch' });
     group().props.onPointerDown?.({ target, currentTarget: container, pointerId: 1, pointerType: 'touch' });
   });
-  act(() => group().props.onBlur({ relatedTarget: null, currentTarget: container }));
+  act(() => group().props.onBlur?.({ relatedTarget: null, currentTarget: container }));
   act(() => {
     group().props.onPointerMove?.({ target, currentTarget: container, pointerId: 1, pointerType: 'touch', clientX: 500, clientY: 500 });
     group().props.onPointerCancel?.({ target, currentTarget: container, pointerId: 1, pointerType: 'touch' });
   });
   expect(onAddEntry).not.toHaveBeenCalled();
-  // Keyboard focus leaving (in either Tab direction) is a known outside target,
-  // unlike a browser dropping focus to the document during pointer activation.
-  act(() => group().props.onBlur({ relatedTarget: outside, currentTarget: container }));
-  expect(toggle().props['aria-expanded']).toBe(false);
+  // Leaving the row is not an explicit close, including after a cancelled touch.
+  act(() => group().props.onBlur?.({ relatedTarget: outside, currentTarget: container }));
+  expect(toggle().props['aria-expanded']).toBe(true);
   expect(onAddEntry).not.toHaveBeenCalled();
 });

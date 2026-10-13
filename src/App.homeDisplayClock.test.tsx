@@ -28,7 +28,7 @@ function Harness() {
   state = usePlannerDataState({ userId: 'owner', showNotice: () => {} });
   const unused = async (): Promise<never> => { throw new Error('outside display-clock test'); };
   const snapshot: PlannerAppSnapshot = {
-    ...state, user: { id: 'owner', username: 'Clock', email: 'clock@example.test', avatar: '', createdAt: '' }, booting: false, notice: null, dismissNotice() {},
+    ...state, user: { id: 'owner', username: 'Clock', email: 'clock@example.test', avatar: '', createdAt: '' }, booting: false, profileRestoreRecovery: null, retryProfileRestore: async () => undefined, notice: null, dismissNotice() {},
     signUpWithPassword: unused, signInWithPassword: unused, signInWithGoogle: unused,
     sendPasswordReset: unused, saveUserProfile: unused, signOut: unused,
     saveWeeklyApprovedPlan: unused, completeWeeklyApprovalOperation: unused,

@@ -151,10 +151,12 @@ export async function dispatchFocusedContextual(params: {
   /** Evaluation-harness hook only; production freshness is enforced by the client revision echo. */
   isHarnessContextCurrent?: () => boolean;
 }): Promise<Response> {
+  // Legacy context lacks the semantic target and is never an eligible Jev input.
+  if (params.context.purpose !== 'focused_contextual_answer_v2') return params.fallback();
+  const state = focusedContextualDecisionState(params.context);
+  if (!state) return params.fallback();
   const mode = contextualDecisionMode(params.env);
   if (mode === 'off') return params.fallback();
-  const state = focusedContextualDecisionState(params.context);
-  if (!state) return Response.json({ error: 'Invalid focused decision context.' }, { status: 400 });
   if (!params.provider && !params.env.OPENROUTER_API_KEY?.trim()) return params.fallback();
   const selected = mode === 'canary' && contextualCanarySelected(params.env, jevPurposeCanarySample('focused_contextual_answer', params.firebaseUid));
   if (mode === 'canary' && !selected) return params.fallback();

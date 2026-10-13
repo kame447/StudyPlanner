@@ -149,20 +149,47 @@ for (const width of [1280, 390, 320]) {
     await expect(homeAdd).toHaveAttribute('aria-expanded', 'false');
     await expect(homeAdd).toBeFocused();
     await homeAdd.click();
-    await page.getByRole('button', { name: '学習予定を追加', exact: true }).click();
+    const studyAction = page.getByRole('button', { name: '学習予定を追加', exact: true });
+    const homeCollapse = page.getByRole('button', { name: '予定の追加を閉じる', exact: true });
+    // Record the first visible commit before a deferred focus frame could run.
+    // Assert it only after Forward so the observation does not delay navigation.
+    await page.evaluate(() => {
+      window.__settingsReturnDialogMountFocus = null;
+      const observer = new MutationObserver(() => {
+        const dialog = document.querySelector('[role="dialog"][aria-label="予定・記録の追加"]');
+        if (!dialog || !dialog.getClientRects().length) return;
+        window.__settingsReturnDialogMountFocus = {
+          ownsFocus: document.activeElement === dialog,
+          activeTag: document.activeElement?.tagName,
+        };
+        observer.disconnect();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+    await studyAction.click();
     const addDialog = page.getByRole('dialog', { name: '予定・記録の追加', exact: true });
     await expect(addDialog).toBeVisible();
     await page.goForward(); await expect(settings).toBeVisible(); await expect(addDialog).toBeHidden();
+    expect(await page.evaluate(() => window.__settingsReturnDialogMountFocus)).toEqual({
+      ownsFocus: true, activeTag: 'FORM',
+    });
     await settings.getByRole('tab', { name: '設定', exact: true }).focus(); await page.keyboard.press('Tab');
     await expect(panel).toBeFocused();
     await page.keyboard.press('Escape');
     await settings.getByRole('button', { name: '戻る', exact: true }).click();
     await expect(addDialog).toBeVisible();
     await page.keyboard.press('Escape');
-    // The existing destination form closes through its button, unlike the inline chooser.
+    // Escape dismisses the visible dialog while retaining the Home action row.
+    await expect(addDialog).toHaveCount(0);
+    await expect(studyAction).toBeFocused();
+    await expect(homeCollapse).toHaveAttribute('aria-expanded', 'true');
+    // Retain the separate explicit button-dismissal path after the settings round trip.
+    await studyAction.click();
     await expect(addDialog).toBeVisible();
     await addDialog.getByRole('button', { name: '閉じる', exact: true }).click();
     await expect(addDialog).toHaveCount(0);
+    await expect(studyAction).toBeFocused();
+    await expect(homeCollapse).toHaveAttribute('aria-expanded', 'true');
     await menu.click(); await page.reload();
     await expect(page.getByRole('main', { name: 'アプリ設定' })).toBeVisible();
     await page.getByRole('button', { name: '戻る', exact: true }).click();

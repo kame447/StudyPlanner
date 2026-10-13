@@ -6,7 +6,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createPairedWorkerSource } from './jev-contextual-paired-runtime.mjs';
-import { validateArm } from './jev-contextual-paired-artifact.mjs';
+import { contextualArtifactCatalogVersion, validateArm } from './jev-contextual-paired-artifact.mjs';
 import { runtimeFingerprint, sha256, validateCorpus } from './jev-contextual-paired-eval.mjs';
 import { ARM_TOKEN_RESERVE_MS, ConsumptionLedger, PREREGISTERED_LIMITS, PREREGISTERED_PRICING, SEGMENT_TOKEN_LIFETIME_MS,
   EARLY_CONSECUTIVE_INFRA_FAILURES, FAILURE_RATE_MINIMUM_ATTEMPTS, TURN_TIMEOUT_MS, reservePerCallUsd, segmentCanHost, validateLimits,
@@ -341,6 +341,7 @@ export function validateR2Artifact(artifact, roster) {
   for (const hash of [artifact.runtimeSha256, artifact.policySha256]) assert.match(hash, /^[a-f0-9]{64}$/);
   assert.equal(artifact.expectedTurns, roster.cases.length * 2);
   const order = executionOrder(roster.cases.map((item) => item.id));
+  const catalogVersion = contextualArtifactCatalogVersion(artifact.pairs);
   const pairs = new Map();
   const index = new Map(roster.cases.map((item) => [item.id, item]));
   for (const pair of artifact.pairs) {
@@ -350,7 +351,7 @@ export function validateR2Artifact(artifact, roster) {
     assert.equal(pair.group, item.group);
     assert.deepEqual(pair.order, order[pair.position].arms);
     assert.equal(order[pair.position].caseId, pair.caseId, 'Pair is out of preregistered order.');
-    for (const arm of ARMS) if (pair[arm]) validateArm(pair[arm], item, arm, { preSend: true });
+    for (const arm of ARMS) if (pair[arm]) validateArm(pair[arm], item, arm, { preSend: true, catalogVersion });
     pairs.set(pair.caseId, pair);
   }
   const complete = roster.cases.every((item) => ARMS.every((arm) => pairs.get(item.id)?.[arm]?.observationComplete === true));

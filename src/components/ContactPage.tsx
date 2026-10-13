@@ -1,3 +1,4 @@
+import { PublicPageLink } from './PublicPageLink';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { INQUIRY_BODY_MAX_LENGTH, type InquirySubmission } from '../features/support/inquiry';
 import { createAuthSessionService, type AuthSessionService } from '../services/authSession';
@@ -95,7 +96,7 @@ export function ContactPage({ authSession: injectedAuthSession }: { authSession?
   return (
     <main className="legal-page-shell">
       <article className="legal-page-card">
-        <a className="legal-back-link" href="/">Laplanceへ戻る</a>
+        <PublicPageLink className="legal-back-link" href="/">Laplanceへ戻る</PublicPageLink>
         <header className="legal-page-header">
           <p className="eyebrow">Laplance</p>
           <h1>お問い合わせ</h1>
@@ -103,7 +104,7 @@ export function ContactPage({ authSession: injectedAuthSession }: { authSession?
         {!session.resolved ? <p role="status">ログイン状態を確認しています</p>
           : !authSession.available ? <p role="alert">現在、お問い合わせに接続できません。</p>
             : session.userId ? <InquiryForm key={session.userId} userId={session.userId} />
-              : <section><p>お問い合わせを送信するにはログインしてください。</p><a className="primary-button" href="/">ログイン画面へ</a></section>}
+              : <section><p>お問い合わせを送信するにはログインしてください。</p><PublicPageLink className="primary-button" href="/">ログイン画面へ</PublicPageLink></section>}
       </article>
     </main>
   );
