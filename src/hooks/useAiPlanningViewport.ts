@@ -1,12 +1,34 @@
-import { useLayoutEffect, type RefObject } from 'react';
+import { useLayoutEffect, useRef, type RefObject } from 'react';
 
 /** Keep the chat and composer together when a mobile keyboard resizes/pans
  * only the visual viewport. Do not scroll the document or move input focus. */
 export function useAiPlanningViewport(
   viewRef: RefObject<HTMLElement>,
   conversationRef: RefObject<HTMLElement>,
+  active = true,
 ): void {
+  const readerPosition = useRef<{ node: HTMLElement; top: number; followsEnd: boolean } | null>(null);
   useLayoutEffect(() => {
+    const conversation = conversationRef.current;
+    if (!active || !conversation) return;
+    const saved = readerPosition.current;
+    // Hidden completion can grow the transcript. Catch up only for someone who
+    // was following the end; an older-message reader keeps their exact place.
+    // This lifetime also applies when VisualViewport is unavailable.
+    if (saved?.node === conversation) {
+      conversation.scrollTop = saved.followsEnd ? conversation.scrollHeight : saved.top;
+    }
+    const rememberPosition = () => {
+      readerPosition.current = { node: conversation, top: conversation.scrollTop,
+        followsEnd: conversation.scrollHeight - conversation.clientHeight - conversation.scrollTop <= 2 };
+    };
+    rememberPosition();
+    conversation.addEventListener('scroll', rememberPosition, { passive: true });
+    return () => { conversation.removeEventListener('scroll', rememberPosition); };
+  }, [conversationRef, active]);
+
+  useLayoutEffect(() => {
+    if (!active) return;
     const viewport = window.visualViewport;
     const shell = viewRef.current?.closest<HTMLElement>('.app-shell.home-app-shell');
     if (!viewport || !shell) return;
@@ -54,5 +76,5 @@ export function useAiPlanningViewport(
         else shell.style.removeProperty(name);
       }
     };
-  }, [viewRef, conversationRef]);
+  }, [viewRef, conversationRef, active]);
 }

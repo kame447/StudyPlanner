@@ -1,4 +1,5 @@
 import { expect, test } from './support/fixed-clock.mjs';
+import { waitForVisualReady } from './support/ui-regression.mjs';
 
 async function seedHome(page) {
   await page.addInitScript(() => {
@@ -134,9 +135,26 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
   await seedHome(page);
   await page.goto('/');
   await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
+  await expect(page.locator('.primary-app-header')).toHaveAttribute(
+    'data-home-chrome-viewport', await page.evaluate(() => `${innerWidth}x${innerHeight}`),
+  );
+  await waitForVisualReady(page, '.home-main > .home-dashboard-default');
 
   const homeTopbarBox = await page.locator('.home-topbar').boundingBox();
   const homeNavBox = await page.locator('.primary-bottom-nav').boundingBox();
+  const homeContentBox = await page.locator('.home-main > .home-dashboard-default').boundingBox();
+  const expectInactiveAiSurface = async () => {
+    const ai = page.locator('.ai-planning-view');
+    await expect(ai).toHaveCount(1);
+    await expect(ai).toBeHidden();
+    await expect(page.getByRole('region', { name: 'AI計画', exact: true })).toHaveCount(0);
+    expect(await ai.boundingBox()).toBeNull();
+    await expect(page.locator('.app-shell')).not.toHaveCSS('position', 'fixed');
+    expect(await page.locator('.app-shell').evaluate(element => ({
+      height: element.style.getPropertyValue('--ai-planning-viewport-height'),
+      top: element.style.getPropertyValue('--ai-planning-viewport-top'),
+    }))).toEqual({ height: '', top: '' });
+  };
 
   await page.locator('.primary-bottom-nav button').first().click();
 
@@ -189,8 +207,13 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
 
   await page.locator('.home-top-actions .home-icon-button').last().click();
   await expect(page.locator('.app-settings-page')).toBeVisible();
-  await expect(page.locator('.ai-planning-view')).toBeHidden();
+  await expectInactiveAiSurface();
   await expect(page.locator('.primary-bottom-nav')).toBeHidden();
+  await page.goBack();
+  await expect(page.locator('.ai-planning-view')).toBeVisible();
+  await page.goForward();
+  await expect(page.locator('.app-settings-page')).toBeVisible();
+  await expectInactiveAiSurface();
   await page.locator('.app-settings-page').getByRole('button', { name: '戻る', exact: true }).click();
   await expect(page.locator('.ai-planning-view')).toBeVisible();
   await expect(page.locator('.primary-bottom-nav')).toBeVisible();
@@ -211,8 +234,22 @@ test('home AI planning entry opens the dedicated Stable V5 conversation surface'
   await page.locator('.my-page-modal .ghost-button').first().click();
 
   await page.locator('.primary-bottom-nav button').nth(2).click();
-  await expect(page.locator('.ai-planning-view')).toHaveCount(0);
+  await expectInactiveAiSurface();
   await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
+  await expect(async () => {
+    const returnedHomeBox = await page.locator('.home-main > .home-dashboard-default').boundingBox();
+    for (const dimension of ['x', 'y', 'width', 'height']) {
+      expect(returnedHomeBox?.[dimension]).toBeCloseTo(homeContentBox?.[dimension] ?? 0, 0);
+    }
+  }).toPass({ timeout: 5000 });
+  await expect(page.locator('.primary-bottom-nav button').nth(2)).toHaveAttribute('aria-current', 'page');
+  // Real clicks must reach Home/settings rather than the retained hidden layer.
+  await page.getByRole('button', { name: 'メニューを開く', exact: true }).click();
+  await expect(page.locator('.app-settings-page')).toBeVisible();
+  await expectInactiveAiSurface();
+  await page.locator('.app-settings-page').getByRole('button', { name: '戻る', exact: true }).click();
+  await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
+  await expectInactiveAiSurface();
 });
 
 test('multiweek AI plan keeps full totals, pages the timeline, and promotes every day on mobile', async ({ page }) => {

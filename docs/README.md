@@ -18,6 +18,7 @@
 - [Weekly planning](domains/weekly-planning/README.md) — Issue #246 の「学習相談 → AI助言 → user adoption → 既存planning」に関する planned requirement は [`learning-consultation-and-advice.md`](domains/weekly-planning/spec/learning-consultation-and-advice.md) が正本です（runtime 実装は未完了）。
 - [User context](domains/user-context/README.md) — アプリ全体の durable user context、semantic / episodic memory、retrieval、lifecycle / forget、会話への表出（conversation surfacing）。Current owner: Issue #294
 - [Client runtime](domains/client-runtime/README.md) — local planner read freshness / retry / consumer lease は [Planner read projection recovery](domains/client-runtime/architecture/planner-read-projection-recovery.md) が補足します。Issue #542 の [Firestore読取負荷・起動遅延の調査](domains/client-runtime/work/20261008-firestore-read-load-and-startup.md) は進行中の検証記録です
+- [Support inquiries](domains/support/README.md) — メールアドレスを使わないアプリ内問い合わせと管理者の閲覧。
 - [Reporting](domains/reporting/README.md)
 - [Product observability](domains/product-observability/README.md)
 - [External integrations](domains/external-integrations/README.md) — 書籍教材 metadata の正仕様は [`material-metadata.md`](domains/external-integrations/spec/material-metadata.md)。外部実行サービスの採否もこのdomainで扱い、各product domainのauthorityは移しません。

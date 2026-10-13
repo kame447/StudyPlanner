@@ -59,6 +59,13 @@ Reporting work:
 3. `src/lib/learningReport.ts` / `src/lib/learningReport.test.ts`
 4. `src/components/ReportView.tsx`
 
+Support inquiries work:
+
+1. `docs/domains/support/README.md`
+2. `src/features/support/inquiry.ts` / `src/services/inquiryService.ts`
+3. `src/components/ContactPage.tsx` / `src/components/AdminInquiriesPage.tsx`
+4. `firestore.rules` / `scripts/ci/firestore-inquiry-rules.mjs`
+
 Product observability / admin analytics work:
 
 1. `docs/domains/product-observability/README.md`

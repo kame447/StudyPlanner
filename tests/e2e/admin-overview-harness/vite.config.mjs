@@ -25,6 +25,12 @@ const observabilityStubPlugin = {
   enforce: 'pre',
   resolveId(source, importer) {
     const normalizedImporter = importer ? path.normalize(stripViteQuery(importer)) : '';
+    if (source === '../services/adminService' && normalizedImporter.endsWith(path.normalize('src/hooks/useAdminStatus.ts'))) {
+      return path.resolve(harnessDir, 'inquiryAdminService.stub.js');
+    }
+    if (source === '../services/inquiryService' && ['ContactPage.tsx', 'AdminInquiriesPage.tsx'].some((name) => normalizedImporter.endsWith(name))) {
+      return path.resolve(harnessDir, 'inquiryService.stub.js');
+    }
     if (
       source === '../services/adminObservabilityService'
       && observabilityConsumers.some((suffix) => normalizedImporter.endsWith(suffix))

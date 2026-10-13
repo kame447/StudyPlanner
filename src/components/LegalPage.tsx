@@ -1,3 +1,5 @@
+import { ContactPage } from './ContactPage';
+
 type LegalPageKind = 'terms' | 'privacy' | 'contact';
 
 interface LegalSection {
@@ -11,7 +13,7 @@ interface LegalPageContent {
   sections: LegalSection[];
 }
 
-const LEGAL_PAGE_CONTENT: Record<LegalPageKind, LegalPageContent> = {
+const LEGAL_PAGE_CONTENT: Record<Exclude<LegalPageKind, 'contact'>, LegalPageContent> = {
   terms: {
     title: '利用規約',
     lead:
@@ -231,26 +233,6 @@ const LEGAL_PAGE_CONTENT: Record<LegalPageKind, LegalPageContent> = {
       },
     ],
   },
-  contact: {
-    title: 'お問い合わせ',
-    lead:
-      'Laplanceに関するお問い合わせ、アカウント削除、データ削除のご依頼はこちらからご連絡ください。',
-    sections: [
-      {
-        title: 'お問い合わせ方法',
-        body: [
-          '現在は運営者が案内した連絡手段からお問い合わせください。',
-          'ご本人確認が必要な内容では、登録メールアドレスやアカウント情報の確認をお願いする場合があります。',
-        ],
-      },
-      {
-        title: '対象となる内容',
-        body: [
-          'サービスの不具合、使い方、利用規約やプライバシーポリシー、アカウント削除、データ削除に関するご相談を受け付けます。',
-        ],
-      },
-    ],
-  },
 };
 
 interface LegalPageProps {
@@ -258,6 +240,7 @@ interface LegalPageProps {
 }
 
 export function LegalPage({ kind }: LegalPageProps) {
+  if (kind === 'contact') return <ContactPage />;
   const content = LEGAL_PAGE_CONTENT[kind];
 
   return (

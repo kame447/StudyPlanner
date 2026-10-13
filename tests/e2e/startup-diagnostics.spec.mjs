@@ -37,50 +37,28 @@ const retainedState = page => page.evaluate(() => ({
 }));
 
 for (const width of [320, 390, 1280]) {
-  test(`starts and stops local diagnostics in the same app context at ${width}px`, async ({ page }, testInfo) => {
+  test(`ordinary support and query URLs keep developer diagnostics hidden at ${width}px`, async ({ page }, testInfo) => {
     await boot(page, width);
     const before = await retainedState(page);
     const originalUrl = page.url();
-    const settings = await openSupport(page);
-    const button = settings.getByRole('button', { name: startLabel, exact: true });
-    await expect(button).toBeVisible();
+    let settings = await openSupport(page);
+    await expect(settings.getByRole('button', { name: startLabel, exact: true })).toHaveCount(0);
+    await expect(settings.getByRole('button', { name: stopLabel, exact: true })).toHaveCount(0);
+    await expect(settings.getByRole('link', { name: 'お問い合わせ', exact: true })).toBeVisible();
     expect(await settings.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
-    await testInfo.attach(`startup-diagnostics-support-${width}`, { body: await settings.screenshot(), contentType: 'image/png' });
-    await button.click();
-    await expect(page).toHaveURL(originalUrl.replace('#kept', '&startupTiming=1#kept'));
+    await testInfo.attach(`ordinary-support-${width}`, { body: await settings.screenshot(), contentType: 'image/png' });
+    await page.goto(originalUrl.replace('#kept', '&startupTiming=1#kept'));
     await expect(page.locator('.home-main')).toBeVisible();
-    const panel = page.locator('details[aria-label="起動時間の診断"]');
-    await panel.locator('summary').click();
-    await expect(panel.locator('pre')).toContainText('home-visible');
-    await expect(panel).toContainText('外部送信・保存はしません');
+    await expect(page.getByLabel('起動時間の診断')).toHaveCount(0);
+    settings = await openSupport(page);
+    await expect(settings.getByRole('button', { name: startLabel, exact: true })).toHaveCount(0);
+    await expect(settings.getByRole('button', { name: stopLabel, exact: true })).toHaveCount(0);
     expect(await retainedState(page)).toEqual(before);
-    await testInfo.attach(`startup-diagnostics-panel-${width}`, { body: await panel.screenshot(), contentType: 'image/png' });
-    await panel.getByRole('button', { name: stopLabel, exact: true }).click();
-    await expect(page).toHaveURL(originalUrl);
+    await settings.getByRole('button', { name: '戻る', exact: true }).click();
     await expect(page.locator('.home-main')).toBeVisible();
-    await expect(panel).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator('.home-main')).toBeVisible();
+    await expect(page.getByLabel('起動時間の診断')).toHaveCount(0);
     expect(await retainedState(page)).toEqual(before);
   });
 }
-
-test('cancelling an ordinary leave-page confirmation keeps the diagnostic control usable', async ({ page }) => {
-  await boot(page, 390);
-  const settings = await openSupport(page);
-  await page.evaluate(() => {
-    window.__diagnosticLeaveGuard = event => { event.preventDefault(); event.returnValue = ''; };
-    addEventListener('beforeunload', window.__diagnosticLeaveGuard);
-  });
-  const button = settings.getByRole('button', { name: startLabel, exact: true });
-  const originalUrl = page.url();
-  const dialog = page.waitForEvent('dialog');
-  const click = button.click();
-  await (await dialog).dismiss();
-  await click;
-  await expect(page).toHaveURL(originalUrl);
-  await expect(button).toBeEnabled();
-  await expect(button).toHaveText(startLabel);
-  await page.evaluate(() => removeEventListener('beforeunload', window.__diagnosticLeaveGuard));
-  await button.click();
-  await expect(page).toHaveURL(originalUrl.replace('#kept', '&startupTiming=1#kept'));
-  await expect(page.locator('.home-main')).toBeVisible();
-});

@@ -12,6 +12,7 @@ export interface CandidateChoiceWireRequest {
     readonly question: { readonly id: string; readonly code: string };
     readonly target: { readonly kind: string; readonly id: string };
     readonly scope: ChoiceTuple;
+    readonly presentedQuestion?: string;
   };
   readonly menu: {
     readonly nodeId: string;
@@ -29,7 +30,7 @@ export interface CandidateChoiceDecisionContext {
   readonly purpose: 'candidate_choice';
   readonly request: CandidateChoiceWireRequest;
 }
-export const CANDIDATE_CHOICE_CATALOG_VERSION = 'complete-candidate-choice-2026-10-05-v1';
+export const CANDIDATE_CHOICE_CATALOG_VERSION = 'complete-candidate-choice-2026-10-13-v2';
 export const CANDIDATE_CHOICE_QUESTION_CODES = ['missing_effort_estimate', 'ambiguous_effort_estimate', 'quantity_role_unresolved', 'missing_time_bounds', 'invalid_time_interval', 'named_time_period_unresolved'] as const;
 export interface CandidateChoiceEvaluation {
   readonly status: 'evaluated';
@@ -73,10 +74,13 @@ export function isCandidateChoiceDecisionContext(v: unknown): v is CandidateChoi
   if (r.uninterpretedSpans !== undefined && (!Array.isArray(r.uninterpretedSpans) || r.uninterpretedSpans.length > 32
     || r.uninterpretedSpans.some(s => !record(s) || !exact(s, ['start', 'end']) || !integer(s.start) || !integer(s.end) || s.end <= s.start || s.end > (r.wholeUtterance as string).length))) return false;
   const c = r.context;
-  if (!record(c) || !exact(c, ['question', 'target', 'scope'])
+  if (!record(c) || !exact(c, ['question', 'target', 'scope', ...(c.presentedQuestion === undefined ? [] : ['presentedQuestion'])])
     || !record(c.question) || !exact(c.question, ['id', 'code']) || !text(c.question.id) || !text(c.question.code) || !(CANDIDATE_CHOICE_QUESTION_CODES as readonly string[]).includes(c.question.code)
     || !record(c.target) || !exact(c.target, ['kind', 'id']) || !text(c.target.kind) || !text(c.target.id)
-    || !record(c.scope) || !jsonValue(c.scope)) return false;
+    || !record(c.scope) || !jsonValue(c.scope)
+    || (c.presentedQuestion !== undefined && (typeof c.presentedQuestion !== 'string' || !c.presentedQuestion.trim()
+      || new TextEncoder().encode(c.presentedQuestion).length > 4000))
+    || (c.question.code === 'ambiguous_effort_estimate' && c.presentedQuestion === undefined)) return false;
   const m = r.menu;
   if (!record(m) || !exact(m, ['nodeId', 'depth', 'kind', 'options']) || !text(m.nodeId) || !integer(m.depth) || m.depth > 16
     || !['leaves', 'groups'].includes(String(m.kind)) || !Array.isArray(m.options) || m.options.length < 2 || m.options.length > 255) return false;

@@ -18,7 +18,7 @@ import { useExitMotion } from '../hooks/useExitMotion';
 import type { Plan } from '../types/domain';
 import { normalizeAiPlanningPreviewBlocks } from './aiPlanningPreviewPeriod';
 import { AiPlanningPreviewDialog } from './AiPlanningPreviewDialog';
-import { AiPlanningView as AiPlanningViewLegacy } from './AiPlanningViewLegacy';
+import { AiPlanningView as AiPlanningViewLegacy, type AiPlanningStarterCatalog } from './AiPlanningViewLegacy';
 import './AiPlanningPreviewDialog.css';
 import './AiPlanningPreviewDialogLayout.css';
 import './AiPlanningPreviewBottomSheet.css';
@@ -29,6 +29,8 @@ interface AiPlanningViewProps {
   userId: string;
   selectedDate: string;
   plans: Plan[];
+  active?: boolean;
+  starterCatalog?: AiPlanningStarterCatalog;
 }
 
 export function AiPlanningView(props: AiPlanningViewProps) {
@@ -36,12 +38,14 @@ export function AiPlanningView(props: AiPlanningViewProps) {
 }
 
 function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
-  const { application, userId, plans } = props;
+  const { application, userId, plans, active = true } = props;
   const { state, pendingDraftBlocks, approvalAvailability } = application;
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewError, setPreviewError] = useState('');
   const shellRef = useRef<HTMLDivElement | null>(null);
   const cancellationEpoch = useRef(0);
+  const presentationActive = useRef(active);
+  useLayoutEffect(() => { presentationActive.current = active; return () => { presentationActive.current = false; }; }, [active]);
   const { isExiting: isPreviewClosing, requestExit: requestClosePreview } =
     useExitMotion(() => setIsPreviewOpen(false));
   const previewCandidates = state.previewCandidates ?? [];
@@ -61,7 +65,9 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
     [hasLocalPreview, localPreviewBlocks, pendingDraftBlocks],
   );
   const isBusy = Boolean(state.pendingTurn || state.pendingApproval || application.chat.requiresInitialization);
-  const showingPreview = isPreviewOpen && allPreviewBlocks.length > 0;
+  const showingPreview = active && isPreviewOpen && allPreviewBlocks.length > 0;
+
+  useLayoutEffect(() => { if (!active) setIsPreviewOpen(false); }, [active]);
 
   useLayoutEffect(() => {
     if (!showingPreview) return;
@@ -123,6 +129,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
   }
 
   function openPreviewFromLegacySurface(event: ReactMouseEvent<HTMLDivElement>) {
+    if (!presentationActive.current) return;
     const target = event.target;
     if (!(target instanceof Element)) return;
     const trigger = target.closest('.ai-planning-preview-button');
@@ -135,7 +142,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
   }
 
   function removePreviewBlock(blockId: string) {
-    if (isBusy) return;
+    if (!presentationActive.current || isBusy) return;
     if (hasLocalPreview) {
       application.removePreviewCandidate(blockId);
     } else {
@@ -148,7 +155,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
   }
 
   function promotePreview(editedPreviewBlocks: WeeklyPlanDraftBlock[]) {
-    if (previewCandidates.length === 0 || editedPreviewBlocks.length === 0) return;
+    if (!presentationActive.current || previewCandidates.length === 0 || editedPreviewBlocks.length === 0) return;
     const blockIds = new Set(editedPreviewBlocks.map((block) => block.id));
     const candidates = previewCandidates.filter((candidate) =>
       blockIds.has(candidate.stableKey),
@@ -173,7 +180,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
 
   async function saveDrafts(editedPreviewBlocks: WeeklyPlanDraftBlock[]) {
     if (
-      pendingDraftBlocks.length === 0 ||
+      !presentationActive.current || pendingDraftBlocks.length === 0 ||
       approvalAvailability.kind !== 'eligible'
     ) {
       return;
@@ -205,7 +212,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
   }
 
   function cancelPendingTurn() {
-    if (!state.pendingTurn) return;
+    if (!presentationActive.current || !state.pendingTurn) return;
     const cancelled = application.cancelTurn();
     if (cancelled) {
       cancellationEpoch.current += 1;
@@ -240,6 +247,7 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
   return (
     <div
       ref={shellRef}
+      hidden={!active}
       className={`ai-planning-view-shell-v2 ${showingPreview ? 'is-preview-open' : ''}`}
       onClickCapture={openPreviewFromLegacySurface}
     >
