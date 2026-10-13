@@ -20,7 +20,11 @@ async function seedConversationAndViewport(page, withPreview = false) {
     window.__aiComposerViewport = {
       set(next, event = 'resize') {
         Object.assign(metrics, next);
-        viewport.dispatchEvent(new Event(event));
+        if (event) viewport.dispatchEvent(new Event(event));
+      },
+      visibility(state) {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+        document.dispatchEvent(new Event('visibilitychange'));
       },
     };
     const ownerId = 'ui-regression-user';
@@ -225,6 +229,65 @@ test.describe('AI conversation stays readable with a reduced visual viewport', (
     await changeViewport(page, { scale: 1, height: 844, offsetTop: 0 });
     await expectReadableLayout(page);
   });
+
+  for (const returnEvent of ['visibilitychange', 'pageshow']) {
+    for (const followsEnd of [true, false]) {
+      test(`restores full height after ${returnEvent} without resize (follows end: ${followsEnd})`, async ({ page, browserName, isMobile }, testInfo) => {
+        await seedConversationAndViewport(page); await page.goto('/');
+        await clickPrimaryNav(page, 'AI計画');
+        const input = page.locator('.ai-planning-composer textarea');
+        const conversation = page.locator('.ai-planning-conversation');
+        await expect(conversation.locator('.ai-planning-message-row')).toHaveCount(24);
+        await input.fill('別のアプリから戻っても下書きを保持');
+        await input.evaluate(element => element.blur());
+        await expect.poll(async () => (await readLayout(page)).endGap).toBeLessThanOrEqual(2);
+        if (!followsEnd) await scrollConversationToStart(page, conversation, { browserName, isMobile });
+        const before = await readLayout(page);
+
+        for (let cycle = 0; cycle < 2; cycle += 1) {
+          await changeViewport(page, { height: 430, offsetTop: 80 });
+          await expect.poll(async () => (await readLayout(page)).shell.height).toBe(430);
+          // Explicitly synthetic lifecycle/geometry ordering: the return signal
+          // arrives with the old keyboard size; metrics settle before paint and
+          // no resize follows. This is not a physical iOS app-switch test.
+          await page.evaluate(returnEvent => {
+            if (returnEvent === 'visibilitychange') {
+              window.__aiComposerViewport.visibility('hidden');
+              window.__aiComposerViewport.visibility('visible');
+            } else {
+              window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+            }
+            window.__aiComposerViewport.set({ height: 844, offsetTop: 0 }, null);
+          }, returnEvent);
+          await expect.poll(async () => (await readLayout(page)).shell.height).toBe(844);
+          await expectReadableLayout(page);
+          const after = await readLayout(page);
+          expect(Math.abs(after.nav.bottom - after.bottom)).toBeLessThanOrEqual(1);
+          expect(after.windowScroll).toBe(before.windowScroll);
+          if (followsEnd) expect(after.endGap).toBeLessThanOrEqual(2);
+          else expect(after.scrollTop).toBe(before.scrollTop);
+          await expect(input).toHaveValue('別のアプリから戻っても下書きを保持');
+          await expect(input).not.toBeFocused();
+        }
+        await testInfo.attach(`ai-viewport-return-${returnEvent}-${followsEnd}`, {
+          body: await page.screenshot(), contentType: 'image/png',
+        });
+
+        await clickPrimaryNav(page, 'ホーム');
+        await page.evaluate(async () => {
+          window.__aiComposerViewport.set({ height: 430, offsetTop: 80 }, null);
+          window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+          window.__aiComposerViewport.visibility('visible');
+          await new Promise(resolve => requestAnimationFrame(resolve));
+        });
+        expect(await page.locator('.app-shell').evaluate(element => ({
+          height: element.style.getPropertyValue('--ai-planning-viewport-height'),
+          top: element.style.getPropertyValue('--ai-planning-viewport-top'),
+        }))).toEqual({ height: '', top: '' });
+        await expect(page.locator('.app-shell')).not.toHaveCSS('position', 'fixed');
+      });
+    }
+  }
 
   test('respects the preview scroll lock while the viewport changes and releases both owners on close', async ({ page, browserName, isMobile }) => {
     await seedConversationAndViewport(page, true); await page.goto('/');
