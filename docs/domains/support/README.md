@@ -13,6 +13,10 @@ Support owns the authenticated `/contact` submission and read-only `/admin/inqui
 - Under no transaction contention, a new send performs two explicit document reads and two document writes; successful replay performs one explicit receipt read and no writes. A failed transaction adds at most one explicit reconciliation read. Rules perform additional dependent reads and transaction retries can add cost. Admin pages request at most 26 documents to show 25 and determine continuation; cursor timestamp precision and document ID ordering are preserved. There is no polling, full scan, count query, profile/email enrichment, automatic telemetry copy or extra global listener.
 - The inbox is read-only. Replies, ticket status, attachments, notifications and automatic account/data deletion are outside this feature. No automatic retention/deletion job is added; existing account/data handling obligations also apply to these inquiry records and cooldown records.
 
+## Public-page navigation
+
+Settings support links to contact/legal pages and their return links navigate within the current document. A started planner, its authenticated bootstrap, unsaved forms and active study session remain mounted while public pages are shown. Native Back/Forward preserves settings history. A direct public URL is accessible without planner startup; returning from that entry still goes through normal authentication, consent and profile gates. Direct public pages restore the saved theme using the same preference hook until the planner becomes its owner. Leaving an inquiry still disposes that form and never automatically resends a pending request.
+
 ## Rollout and verification
 
 Publish and verify the dedicated Firestore Rules before exposing the form. The existing WIF Rules deployment is the supported path; no new secret, backend service, custom index or migration is needed. A local/preview instance without Firebase does not pretend to submit messages.

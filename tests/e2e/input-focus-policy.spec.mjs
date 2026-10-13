@@ -119,6 +119,13 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     ['src/hooks/useSettingsNavigation.ts', new Set([
       'if (returnFocus.current?.isConnected) returnFocus.current.focus({ preventScroll: true });',
     ])],
+    // Public navigation initially focuses only its non-input return link.
+    // Back restores the user's previous focus only when that origin is visible;
+    // it does not choose a new input or restore focus to a hidden planner.
+    ['src/components/PublicPageBoundary.tsx', new Set([
+      "publicSurface.current?.querySelector<HTMLElement>('.legal-back-link')?.focus({ preventScroll: true });",
+      'if (target?.isConnected && target.getClientRects().length) target.focus({ preventScroll: true });',
+    ])],
   ]);
 
   for (const file of files) {
