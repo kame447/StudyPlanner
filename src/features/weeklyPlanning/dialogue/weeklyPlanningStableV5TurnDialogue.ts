@@ -283,12 +283,14 @@ function createRenderInput(params: {
     planningInformation,
     effortMeasurement: params.result.state.lastQuestionContext?.intent ?? null,
   });
-  const previewPromotionControlLabel = params.result.state.status === 'draft_ready'
+  const alternativeRequiresAdoption = params.result.consultation?.assessmentScope === 'proposed_days';
+  const previewPromotionControlLabel = !alternativeRequiresAdoption && params.result.state.status === 'draft_ready'
     ? WEEKLY_PLANNING_PREVIEW_PROMOTION_CONTROL_LABEL
     : null;
   const previewConstraintSatisfaction = params.actionKind === 'preview_ready'
     ? params.result.previewConstraintSatisfaction : undefined;
   const fallbackText = params.result.communicationFacts
+    || params.result.consultation
     || previewConstraintSatisfaction?.some(fact => fact.status !== 'satisfied')
     || params.result.interactionOutcome?.kind === 'aside'
     ? ASIDE_RENDERER_TECHNICAL_STOP : fallbackTextForStableV5TypedIntent({
@@ -306,8 +308,10 @@ function createRenderInput(params: {
     currentQuestionCode: params.questionCode,
   });
   return {
-    ...(params.result.interactionOutcome || params.result.communicationFacts ? { communication: {
+    ...(params.result.interactionOutcome || params.result.communicationFacts || params.result.consultation ? { communication: {
       ...params.result.communicationFacts,
+      ...(params.result.consultation ? { consultation: params.result.consultation } : {}),
+      ...(alternativeRequiresAdoption ? { alternativeRequiresAdoption: true as const } : {}),
       goal: params.result.interactionOutcome?.kind === 'aside' ? 'acknowledge_aside' as const
         : params.result.interactionOutcome?.kind === 'explain_pending_question' ? 'explain_question' as const
         : params.result.interactionOutcome?.kind === 'resume_pending_question' ? 'resume_question' as const
@@ -326,6 +330,9 @@ function createRenderInput(params: {
     ...(params.result.existingScheduleGrounding
       ? { existingScheduleGrounding: params.result.existingScheduleGrounding }
       : {}),
+    ...(params.actionKind === 'preview_ready' && params.result.preserveExistingPreview !== true
+      && params.result.allocationBreakdown
+      ? { allocationBreakdown: params.result.allocationBreakdown } : {}),
     actionKind: params.actionKind,
     questionCode: params.questionCode,
     questionTarget,

@@ -147,6 +147,9 @@ Plan-wide の `preferred` と soft `available` は同じ既存順位付けへ投
 - personalization unavailable/failed時はsafe deterministic baselineへ戻る
 - preferenceはfree timeを新設しない
 
+For a newly exposed preview, preference satisfaction is read-only evidence from the active graph, compiled preferred placements and actual candidates. Applicable windows are matched as alternatives against each work-item target. The reported status is joint across all applicable preference facts within the task and repeated for each participating source fact; it does not report independent component satisfaction, individual fact failure, or that every alternative was used. Current task/work-item identity, component provenance, graph revision, clock span and complete nonoverlapping allocated duration must agree. A misplaced or incomplete result is not satisfied; missing compilation, clock meaning or candidate provenance remains not evaluated. Accepted conditions alone never establish placement success.
+
+This evidence reuses the session-duration result's turn-local renderer path. The renderer distinguishes preferred date/time windows from per-session length and describes unmet or unverified conditions without inventing their cause. It does not allocate again, change accepted facts, authorize Save, add a fixed disclosure sentence or reinterpret user language. Preserved previews and ordinary question turns do not gain fresh success evidence. The existing technical presentation failure path remains available without changing candidate state. Window compilation and placement policy retain their existing owners.
 ## Estimated effort and allocated time
 
 作業量とペースから求めた基準見積もりと、実際に確保した候補時間を区別する。既存の見積もり配分policyは、適用されるペース補正・見積もり余裕・切り上げを所有し、既存予定の前後に置く衝突回避bufferとは別である。この表示は再配分や再度の余裕加算を行わない。
@@ -156,6 +159,10 @@ Plan-wide の `preferred` と soft `available` は同じ既存順位付けへ投
 preview card/sheetの時刻・合計は実確保時間を用い、有効で実durationと一致する内訳が全候補に揃う場合だけ集計する。正の実余裕があるとき「見積もり1時間＋余裕10分」のように基準と差分を表示する。内訳欠落・編集後の不一致・実余裕0では理由を推測して表示しない。時間そのものを作業量にする既存intrinsic-duration配分も変更しない。
 
 この内訳は未承認previewとdraftの保存/checkpointを通過する表示情報であり、Plan/StoredScheduleEventの保存schemaへ追加しない。現共通state codecはoptional数値・理由・差分整合を検査し、内訳のない旧データも受理する。新fieldを知らない旧実行中アプリの読取互換性まで保証するものではない。実生成内訳のtrace保存は、既存の容量制限・persistent outbox/retry・Worker・未知field・明示truncationの契約に従う。
+
+今回新しく提示するpreviewでは、既存の同じ集計ownerから得た内訳をturn-localな説明根拠としてrendererへ渡す。有効な内訳が全候補に揃わない場合は渡さず、保持中の旧previewや質問turnを新しい配分結果として扱わない。rendererへの指示は見積もり・余裕の内訳を既存UI表示へ委ね、余裕0でもこの派生内訳を返答で繰り返さず、再計算や理由の推測、実確保時間をユーザー指定量と言い換えることを避ける。受理した明示値へのACKと既存の候補確認操作の案内は維持する。この配線は新たな計算・再配置・承認・保存権限や固定発話を作らず、planning state/Fact Graph/Planの保存形式も変更しない。実requestに入る内訳のtraceは既存の容量制限とoutbox/Workerの契約を使う。自然発話が指示に従うことはモデル受入で別に確認する。
+
+このturnの `previewCount` は一つのpreviewを構成する予定項目数であり、相互に選択する代替案の数ではない。rendererには原本のこの入力契約を説明し、項目数を複数のプレビューやN案と読み替えさせない。新しいpreviewのない質問・statusには件数の提示指示を加えず、承認・保存の権限と既存の事実検証は変更しない。これは入力の意味説明であり、返答全体の固定文面や新たな比較UIを定めない。
 
 ## Change rule
 

@@ -1,12 +1,16 @@
+import { parseWeeklyPlanningConsultationAlternativeV5, type WeeklyPlanningConsultationAlternativeMeaningV5 } from './weeklyPlanningConsultationAlternativeV5';
+
 /** Additive current-turn conversation meaning; no planning or approval authority. */
 export const WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5 = [
   'answer_pending_question', 'ask_about_pending_question', 'topic_shift', 'resume_topic',
-  'decline_additional_work', 'request_event_registration',
+  'decline_additional_work', 'request_event_registration', 'consultation_request',
 ] as const;
 export type WeeklyPlanningConversationActKindV5 = typeof WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5[number];
 export interface SemanticConversationActV5 {
   kind: WeeklyPlanningConversationActKindV5;
   targetPublicId: string | null;
+  /** Read-only hypothetical days, never an accepted planning constraint. */
+  placementAlternative?: WeeklyPlanningConsultationAlternativeMeaningV5;
   /** Resolver-only evidence. The provider cannot supply this field. */
   targetResolution?: 'unresolved';
 }
@@ -17,7 +21,8 @@ export interface WeeklyPlanningConversationActExtractionV5 {
 export function hasSelfSufficientConversationActV5(acts: readonly SemanticConversationActV5[] | undefined): boolean {
   return (acts ?? []).some(act => act.kind === 'ask_about_pending_question'
     || act.kind === 'topic_shift' || act.kind === 'resume_topic'
-    || act.kind === 'decline_additional_work' || act.kind === 'request_event_registration');
+    || act.kind === 'decline_additional_work' || act.kind === 'request_event_registration'
+    || act.kind === 'consultation_request');
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -31,7 +36,7 @@ export function sanitizeWeeklyPlanningConversationActsV5(value: unknown): Weekly
   value.forEach((entry, index) => {
     const path = `conversationActs[${index}]`;
     if (!isRecord(entry)) { diagnostics.push(`${path}:dropped-not-object`); return; }
-    if (Object.keys(entry).some(key => key !== 'kind' && key !== 'targetPublicId')) {
+    if (Object.keys(entry).some(key => key !== 'kind' && key !== 'targetPublicId' && key !== 'placementAlternative')) {
       diagnostics.push(`${path}:dropped-unknown-key`); return;
     }
     if (!(WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5 as readonly unknown[]).includes(entry.kind)) {
@@ -41,8 +46,17 @@ export function sanitizeWeeklyPlanningConversationActsV5(value: unknown): Weekly
     if (!(target === null || target === undefined || (typeof target === 'string' && target.trim()))) {
       diagnostics.push(`${path}:dropped-malformed-target`); return;
     }
+    const alternative = entry.kind === 'consultation_request'
+      ? parseWeeklyPlanningConsultationAlternativeV5(entry.placementAlternative) : null;
+    if (entry.placementAlternative != null && !alternative) {
+      diagnostics.push(`${path}.placementAlternative:dropped-invalid-hypothesis`);
+    }
     acts.push({ kind: entry.kind as WeeklyPlanningConversationActKindV5,
-      targetPublicId: typeof target === 'string' ? target : null });
+      targetPublicId: typeof target === 'string' ? target : null,
+      ...(alternative ? { placementAlternative: alternative }
+        : entry.kind === 'consultation_request' && entry.placementAlternative != null
+          ? { placementAlternative: { unavailable: 'malformed' as const } } : {}),
+    });
   });
   return { acts, diagnostics };
 }
@@ -59,6 +73,7 @@ export function resolveWeeklyPlanningConversationActTargetsV5(params: {
     if (act.targetPublicId === null || known.has(act.targetPublicId)) return act;
     diagnostics.push(`conversationActs[${index}].targetPublicId:degraded-unknown-topic`);
     return { ...act, targetPublicId: null,
+      ...(act.placementAlternative ? { placementAlternative: { unavailable: 'unknown_target' as const } } : {}),
       ...(act.kind === 'resume_topic' ? { targetResolution: 'unresolved' as const } : {}) };
   });
   return { acts, diagnostics };
