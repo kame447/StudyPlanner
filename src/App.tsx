@@ -1,3 +1,4 @@
+import type { HomeAddEntry } from './components/home/TodayScheduleAddMenu';
 import { HomeDisplayClockProvider } from './components/home/HomeDisplayClockContext';
 import { useSettingsNavigation } from './hooks/useSettingsNavigation';
 import { HomeSceneAtmosphereProvider } from './components/home/HomeSceneAtmosphereContext';
@@ -110,7 +111,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   const settingsNavigation = useSettingsNavigation();
   const [quickEntry, setQuickEntry] = useState<{ ownerId: string; id: number; materialId?: string } | null>(null);
   const quickEntrySequence = useRef(0);
-  const [homeEntry, setHomeEntry] = useState<{ ownerId: string; id: number } | null>(null);
+  const [homeEntry, setHomeEntry] = useState<{ ownerId: string; id: number; entry: HomeAddEntry } | null>(null);
   const homeEntrySequence = useRef(0);
   const [monthCreateRequestId, setMonthCreateRequestId] = useState(0);
   const [pendingMonthCreate, setPendingMonthCreate] = useState(false);
@@ -469,9 +470,9 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
               primaryBottomNavRef={primaryBottomNavRef}
               onOpenAiPlanning={openAiPlanningSurface}
               onOpenSchedule={openScheduleSurface}
-              onAddEntry={() => {
+              onAddEntry={(entry) => {
                 closePlanEditor();
-                setHomeEntry({ ownerId: user.id, id: ++homeEntrySequence.current });
+                setHomeEntry({ ownerId: user.id, id: ++homeEntrySequence.current, entry });
               }}
               onOpenDay={(date) => {
                 setPrimarySurface('workspace');
@@ -688,7 +689,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
 
       {isHomeSurface && homeEntry?.ownerId === user.id ? (
         <Suspense fallback={null}>
-          <HomeAddFlow key={homeEntry.id} userId={user.id} plans={plans} actuals={actuals} materials={studyMaterials}
+          <HomeAddFlow key={homeEntry.id} entry={homeEntry.entry} userId={user.id} plans={plans} actuals={actuals} materials={studyMaterials}
             subjects={studySubjects} monthEvents={monthEvents}
             onClose={() => setHomeEntry((current) => current === homeEntry ? null : current)}
             onSaveTodo={saveTodo} onSavePlan={savePlanDraft} onSaveStandaloneActual={saveStandaloneActual}

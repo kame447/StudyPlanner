@@ -113,14 +113,14 @@
 .home-dashboard-default .home-schedule-row,
 .home-dashboard-default .home-schedule-empty {
   min-height: var(--home-fit-row-height);
-  padding-top: calc(clamp(4px, 0.65dvh, 7px) + var(--home-relax-schedule-side, 0px));
-  padding-bottom: calc(clamp(4px, 0.65dvh, 7px) + var(--home-relax-schedule-side, 0px));
+  --home-add-pad: calc(clamp(4px, 0.65dvh, 7px) + var(--home-relax-schedule-side, 0px));
+  padding-block: var(--home-add-pad);
 }
 
 .home-dashboard-default .home-schedule-add-row {
   min-height: clamp(32px, 4.5dvh, 40px);
-  padding-top: calc(clamp(3px, 0.45dvh, 5px) + var(--home-relax-schedule-side, 0px));
-  padding-bottom: calc(clamp(3px, 0.45dvh, 5px) + var(--home-relax-schedule-side, 0px));
+  --home-add-pad: calc(clamp(3px, 0.45dvh, 5px) + var(--home-relax-schedule-side, 0px));
+  padding-block: var(--home-add-pad);
 }
 
 .home-dashboard-default .home-alert-grid {
@@ -219,8 +219,8 @@
 
   .home-dashboard-default .home-schedule-row,
   .home-dashboard-default .home-schedule-empty {
-    padding-top: calc(3px + var(--home-relax-schedule-side, 0px));
-    padding-bottom: calc(3px + var(--home-relax-schedule-side, 0px));
+    --home-add-pad: calc(3px + var(--home-relax-schedule-side, 0px));
+    padding-block: var(--home-add-pad);
   }
 
   .home-dashboard-default .home-schedule-content {

@@ -131,9 +131,9 @@ export async function expectCompactHomeReachable(page, testInfo, name, { browser
   await page.screenshot({ path });
   await testInfo.attach(name, { path, contentType: 'image/png' });
   await add.click();
-  const chooser = page.getByRole('dialog', { name: '今日の予定に追加', exact: true });
+  const chooser = page.getByRole('group', { name: '今日の予定の追加', exact: true });
   await expect(chooser).toBeVisible();
-  await chooser.getByRole('button', { name: 'キャンセル', exact: true }).click();
-  await expect(chooser).toBeHidden();
+  await chooser.getByRole('button', { name: '予定の追加を閉じる', exact: true }).click();
+  await expect(add).toHaveAttribute('aria-expanded', 'false');
   await expectInsideBody(add);
 }
