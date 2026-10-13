@@ -1,3 +1,4 @@
+import { usePublicPageNavigation } from './PublicPageLink';
 import type { HomeAddEntry } from './home/TodayScheduleAddMenu';
 import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
 import { useHomeTextReflow } from './home/useHomeTextReflow';
@@ -120,6 +121,7 @@ export function HomeView({
   onOpenBookshelf,
   onOpenReport,
 }: HomeViewProps) {
+  const publicPageOpen = usePublicPageNavigation()?.isPublicPage ?? false;
   const now = useHomeDisplayClock();
   const dashboard = useMemo(
     () => buildHomeDashboardModel({ plans, actuals, todos, now }),
@@ -155,16 +157,20 @@ export function HomeView({
   }, [activeStudyMaterials, supplementalMaterialRows]);
 
   useEffect(() => {
+    if (publicPageOpen) return undefined;
     if (isGettingStarted) {
       setSupplementalMaterialRows(null);
       return undefined;
     }
 
+    let active = true;
     let frameId = 0;
     let convergencePass = 0;
     const measure = () => {
+      if (!active) return;
       window.cancelAnimationFrame(frameId);
       frameId = window.requestAnimationFrame(() => {
+        if (!active) return;
         const core = coreSectionsRef.current;
         const header = primaryHeaderRef.current;
         const nav = primaryBottomNavRef.current;
@@ -176,6 +182,7 @@ export function HomeView({
         const topbar = header?.querySelector<HTMLElement>('.home-topbar');
         if (
           !core ||
+          !core.getClientRects().length ||
           !header ||
           !nav ||
           !(dashboardElement instanceof HTMLElement) ||
@@ -521,11 +528,13 @@ export function HomeView({
     void document.fonts.ready.then(restartMeasurement, () => undefined);
 
     return () => {
+      active = false;
       window.cancelAnimationFrame(frameId);
       window.removeEventListener('resize', restartMeasurement);
       window.visualViewport?.removeEventListener('resize', restartMeasurement);
     };
   }, [
+    publicPageOpen,
     homeTextSize,
     dashboard.todayPlans.length,
     dashboard.upcomingPlans.length,

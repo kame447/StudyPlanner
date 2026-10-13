@@ -1,10 +1,10 @@
 # Narrow canonical schedule projection reads
 
-Status: locally verified candidate under Issue #542; not published
+Status: draft PR #623 under Issue #542; cumulative release-stack verification passed, updated-head public checks pending
 
 ## Ownership and base
 
-- Branch: `perf/schedule-projection-reads`; no remote branch or PR created.
+- Branch: `perf/schedule-projection-reads`; [draft PR #623](https://github.com/kame447/StudyPlanner/pull/623). The PR and Issue #542 own live publication/CI status.
 - Local base: `d0b030b047e1667e4695ed6f8b50c7bf5b13faa1`.
 - Verified GitHub main: `84b69b9b6a0810071e530509c5230fcc4a81d6bf`.
 - Both base trees: `032bf1e5f4924e6e3cf58a447b1f35d0ad8e4749`; local and GitHub commit identities are different.
@@ -25,7 +25,7 @@ These getters are reached by targeted recovery after overlapping reads/writes, n
 - Compare query/result document counts and projection contents on the same synthetic history; distinguish mock returned documents from actual billed reads.
 - Cover old/future, recurring/excluded/multi-day rows, colliding legacy IDs, owner separation, external edits, save/delete/reload, permission errors, migration and fallback.
 - Preserve full-snapshot reads and existing read-authority/reconciliation tests.
-- No remote publication or production writes are authorized.
+- The owner approved publication and eventual main integration on 2026-10-13. No production Firestore experiments or data writes are authorized.
 
 ## Measured result
 
@@ -69,4 +69,13 @@ A separate bounded harness reused the existing SDK transport observation and loo
 
 Local reproducible runner/client, SDK counts and hashed input report are retained with the implementation's verification artifacts (`run-emulator.mjs`, `emulator-projection.ts`, `emulator-report.json`). The report records v1.22.0, Firebase SDK 12.12.0, exact baseline/candidate source hashes, Rules hash and bundled harness inputs. Production billing, security-rule-dependent billing reads, actual deployed indexes and browser WebChannel behavior remain unmeasured.
 
-Next: an authorized publication decision. Independent source inspection confirmed that the query uses the same provenance predicate as both existing projection functions, with details validation preserved. Runtime/test files were unchanged after the exact-content full run; only this checkpoint and its domain-index link were updated. Real-world recovery frequency remains unknown; prioritize navigation/startup causes separately rather than presenting this as a global startup-read reduction.
+Independent source inspection confirmed that the query uses the same provenance predicate as both existing projection functions, with details validation preserved. Runtime/test files were unchanged after the exact-content full run; only this checkpoint and its domain-index link were updated. Real-world recovery frequency remains unknown; prioritize navigation/startup causes separately rather than presenting this as a global startup-read reduction.
+
+## Cumulative release-stack checkpoint (2026-10-13)
+
+- Original published head `9164f0bf8b0e7d0ed9f4a659a529d5d2c07a97f6` and local `13a884721c07c96c559e0d32a5ae42c8efce94a2` share tree `59e00b3a6c621107ae75fa9a4b02856860728b44`. Its public core/Rules, 628-test browser suite, browser matrix/visual and admin checks passed; quality had only the four already-approved bundle violations. These are historical results, not proof for the updated stack.
+- Integrated final #621/#622 through local #622 `8a476cde8324e58fd3c23272e05e242905c21969`, tree `b0266d2ae47718f2aeee824d790a0599740f9a9f`. Its content-identical remote parent is `18901ac890ac650cc873d205f630d5fe34256254`. The normal local merge preserves both parents, without conflict edits.
+- Exact verification input: local `5f00ab108963b7c0563956b015c41fab05d80853`, tree `ca0fa0b3d775c65b1c6beee06b3235c18b9c3bd0`. Fresh `npm run verify` with the documented loopback host and 2-worker/1-minimum limits exited 0: fresh app/Worker types, 7,919 passed /54 skipped /1 todo across 851 passing files, and production build (5.09 s). All 2,461 tracked/untracked inputs, 19,305 installed files, tool/environment identity and generated Worker types matched before/after.
+- Only this checkpoint changed after the cumulative full run. The production query and six read-regression tests are byte-identical to the original real-emulator-tested version. Against #622, the diff remains the same four read-optimization files.
+- Next: publish the exact verified content plus this documentation using a normal two-parent update, temporarily base #623 on `fix/startup-initial-canvas`, then follow updated-head core/Rules/browser/quality to terminal results. Main retarget/merge is coordinated only after #622 lands. The PR and Issue checkpoint record the final remote head/tree and checks.
+- Exit criteria: exact publication tree verified; required updated-head checks passed with only the existing approved budget exception; authorized main integration and post-merge identity checked. Recovery frequency and production billing remain unmeasured.
