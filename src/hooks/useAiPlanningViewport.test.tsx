@@ -16,10 +16,13 @@ function browser({ viewportAvailable = true, shellAvailable = true } = {}) {
   vi.stubGlobal('window', window);
   const values = new Map<string, { value: string; priority: string }>();
   let position = 0;
+  const scrollEvents = new EventTarget();
   const conversation = {
+    addEventListener: scrollEvents.addEventListener.bind(scrollEvents),
+    removeEventListener: scrollEvents.removeEventListener.bind(scrollEvents),
     clientHeight: 600, scrollHeight: 2000,
     get scrollTop() { return position; },
-    set scrollTop(value: number) { position = Math.max(0, Math.min(value, this.scrollHeight - this.clientHeight)); },
+    set scrollTop(value: number) { position = Math.max(0, Math.min(value, this.scrollHeight - this.clientHeight)); scrollEvents.dispatchEvent(new Event('scroll')); },
   };
   const style = {
     getPropertyValue: (name: string) => values.get(name)?.value ?? '',
@@ -35,10 +38,10 @@ function browser({ viewportAvailable = true, shellAvailable = true } = {}) {
   };
   const shell = { style };
   const view = { closest: () => shellAvailable ? shell : null };
-  function Probe() {
+  function Probe({ active = true }: { active?: boolean }) {
     const viewRef = useRef<HTMLElement>(null);
     const conversationRef = useRef<HTMLDivElement>(null);
-    useAiPlanningViewport(viewRef, conversationRef);
+    useAiPlanningViewport(viewRef, conversationRef, active);
     return <section ref={viewRef}><div ref={conversationRef} /></section>;
   }
   return {
@@ -48,6 +51,7 @@ function browser({ viewportAvailable = true, shellAvailable = true } = {}) {
         createNodeMock: node => node.type === 'section' ? view : conversation,
       }); });
     },
+    activate(active: boolean) { act(() => { renderer!.update(<Probe active={active} />); }); },
     change(next: Partial<typeof viewport>, event = 'resize') {
       Object.assign(viewport, next);
       act(() => { viewport.dispatchEvent(new Event(event)); });
@@ -128,6 +132,33 @@ describe('AI planning visual viewport', () => {
     act(() => { b.window.dispatchEvent(new Event('resize')); });
     expect(b.style.setProperty).not.toHaveBeenCalled();
     expect(b.style.removeProperty).not.toHaveBeenCalled();
+  });
+
+  it('releases viewport ownership while the mounted AI surface is inactive and reacquires current geometry', () => {
+    const b = browser(); b.mount(); b.change({ height: 430, offsetTop: 40 });
+    b.activate(false);
+    expect(b.values.has('--ai-planning-viewport-height')).toBe(false);
+    expect(b.values.has('--ai-planning-viewport-top')).toBe(false);
+    b.style.setProperty.mockClear();
+    b.change({ height: 700, offsetTop: 0 });
+    expect(b.style.setProperty).not.toHaveBeenCalled();
+    b.activate(true);
+    expect(b.style.getPropertyValue('--ai-planning-viewport-height')).toBe('700px');
+    expect(b.style.getPropertyValue('--ai-planning-viewport-top')).toBe('0px');
+  });
+
+  it.each([{ followsEnd: true, viewportAvailable: true }, { followsEnd: false, viewportAvailable: true },
+    { followsEnd: true, viewportAvailable: false }, { followsEnd: false, viewportAvailable: false }])
+  ('restores the visible reader bookmark after background growth: %j', ({ followsEnd, viewportAvailable }) => {
+    const b = browser({ viewportAvailable }); b.conversation.scrollTop = followsEnd ? 1400 : 340; b.mount();
+    b.activate(false);
+    // No hidden event can replace the last visible bookmark.
+    b.conversation.scrollHeight = 2600;
+    b.conversation.scrollTop = 0;
+    b.activate(true);
+    expect(b.conversation.scrollTop).toBe(followsEnd ? 2000 : 340);
+    b.activate(false); b.activate(true);
+    expect(b.conversation.scrollTop).toBe(followsEnd ? 2000 : 340);
   });
 
   it.each([
