@@ -17,7 +17,7 @@ async function seed(page, planned = false, longText = false) {
 async function openStart(page, scenario = 'planned', longText = false) {
   await seed(page, scenario !== 'unplanned', longText);
   await page.goto('/');
-  await page.getByRole('button', { name: '勉強を開始', exact: true }).click();
+  await page.getByRole('button', { name: /勉強を開始/ }).click();
   const ready = page.getByRole('dialog', { name: '学習を開始', exact: true });
   if (scenario === 'switched') await ready.getByRole('combobox', { name: '学習内容', exact: true }).selectOption('unplanned');
   await expect.poll(() => ready.locator('.study-session-page').evaluate(element => element.getAnimations().length)).toBe(0);
@@ -111,9 +111,7 @@ for (const viewport of [{ width: 667, height: 320 }, { width: 390, height: 320 }
   });
 }
 
-test('200 percent text keeps controls readable and reachable with vertical scroll', async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 568 });
-  const ready = await openStart(page, 'switched');
+async function expectLargeTextReachability(page, ready) {
   await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
   await ready.getByRole('button', { name: /ポモドーロ/ }).click();
   const start = ready.getByRole('button', { name: 'スタート', exact: true });
@@ -135,4 +133,34 @@ test('200 percent text keeps controls readable and reachable with vertical scrol
   expect(dimensions.clippedControls).toEqual([]);
   await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog', { name: '学習中', exact: true })).toBeVisible();
+}
+
+test('200 percent text keeps controls readable and reachable with vertical scroll', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  const ready = await openStart(page, 'switched');
+  await expectLargeTextReachability(page, ready);
 });
+
+for (const { viewport, theme } of [
+  { viewport: { width: 320, height: 568 }, theme: 'light' },
+  { viewport: { width: 390, height: 844 }, theme: 'dark' },
+]) {
+  test(`pixel study start fits ${viewport.width}x${viewport.height} (${theme}, both modes and enlarged text)`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.addInitScript(theme => {
+      localStorage.setItem('study-planner-appearance', 'pixel');
+      localStorage.setItem('study-planner-theme-mode', theme);
+    }, theme);
+    const ready = await openStart(page, 'switched');
+    await expect(page.locator('html')).toHaveAttribute('data-appearance', 'pixel');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await expect.poll(() => ready.locator('.study-session-page').evaluate(element => getComputedStyle(element).fontFamily)).toContain('DotGothic16');
+    await page.evaluate(() => document.fonts.ready);
+    expect(await page.evaluate(() => document.fonts.check('16px DotGothic16'))).toBe(true);
+    await expectInitialFit(ready);
+    await ready.getByRole('button', { name: /ポモドーロ/ }).click();
+    await expectInitialFit(ready);
+    await testInfo.attach(`Pixel start ${viewport.width}px ${theme}`, { body: await page.screenshot(), contentType: 'image/png' });
+    await expectLargeTextReachability(page, ready);
+  });
+}

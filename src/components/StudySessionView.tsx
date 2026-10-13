@@ -449,7 +449,7 @@ function StudySessionView({
               <div className={plan ? "study-session-setup has-plan" : "study-session-setup"}>
                 {isStarted ? <h2>{sessionTitle}</h2> : null}
                 {initialTarget.kind === 'planned' && !isStarted ? (
-                  <label className="study-session-target-choice"><span className="sr-only">学習内容</span>
+                  <label className="study-session-target-choice">
                     <select aria-label="学習内容" value={target.kind} onChange={event => { if (!started.current) setTarget(event.target.value === 'planned' ? initialTarget : { kind: 'unplanned', userId }); }}>
                       <option value="planned">この予定で学習: {initialTarget.plan.title}</option>
                       <option value="unplanned">予定にない学習</option>

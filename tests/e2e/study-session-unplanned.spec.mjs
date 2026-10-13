@@ -81,9 +81,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     const running = page.getByRole('dialog', { name: '学習中', exact: true });
     const pause = running.getByRole('button', { name: '一時停止', exact: true });
     await expect(pause).toBeVisible();
-    // The compact timer normally fits. A keyboard-height viewport exercises
+    // The compact timer can still fit at 320px tall. A smaller viewport exercises
     // the remaining scroll fallback and preserves the original reader-position contract.
-    await page.setViewportSize({ ...viewport, height: 320 });
+    await page.setViewportSize({ ...viewport, height: 240 });
     await running.locator('.study-session-page').evaluate(element => { element.scrollTop = 120; });
     await pause.focus();
     const readerScroll = await running.locator('.study-session-page').evaluate(element => element.scrollTop);
