@@ -1,6 +1,6 @@
 # Private inquiry photos
 
-Status: active implementation, production resources pending separate approval
+Status: draft PR #636, native verification in progress; production resources pending separate approval
 
 ## Ownership
 
@@ -40,3 +40,12 @@ The release base is the content of `4cb84f6b31143c7585b82212ee79c5d93521550d` (t
 The first full run failed three checks after 8,210 passing tests: static rendering lacked a server snapshot, and existing root/navigation tests needed isolated disposal of their retained default auth fixture plus the new keep-same-receipt navigation contract. The repair provides an auth-unresolved server snapshot (never private draft/owner content), makes explicit controller disposal release its retained factory entry, and updates route regressions to prove receipt retention without resend and late-result removal after hidden logout/same-owner login. Additional repeated receipt-read coalescing is tested. Focused repair checks pass; full verification is rerun on the repaired content. No failed check is counted as completion.
 
 The existing Jev wire-compatibility test generates `.cache/j1-old-worker` from immutable commit `070d25cbe14796aebb8168ac5425c93e3506df1c`. Its 217 extracted source files were byte-matched to that Git archive; this is a recorded test output, not an implementation change. Dependencies and generated Worker types stayed identical in the first full run. Final full/native/CI proof and production approvals remain open.
+
+## Published verification checkpoint — 2026-10-13 21:22 UTC
+
+- Draft PR: [#636](https://github.com/kame447/StudyPlanner/pull/636), same `feat/private-inquiry-photos` branch. The published `b3de44131207df3d552d1529fdd77bb0def34350` tree and CI test merge `3f4c89a16b9676e47645af2970342142d99f7006` both equal verified local `5318940e3221e050d23581ea4bab4874634a34eb`, tree `2d08b587e584bf7f5d35c32b538d2bc968d17ffd`.
+- Final local full verification passed 8,216 tests in 863 files, fresh app/Worker typechecks and production build. Before/after source, generated types and all 19,305 installed dependency files matched. A separate earlier retry was stopped for attempted Wrangler telemetry; the successful run used the installed CLI's documented process-only `DO_NOT_TRACK=1` and metrics/error-report disable settings, with zero telemetry dispatch. No global or repository telemetry settings changed.
+- Native [CI](https://github.com/kame447/StudyPlanner/actions/runs/38468845832) passed the same 8,216 tests, the real Firestore/Auth Emulator suite (including private descriptors, immutable slots, owner/admin access and shared cooldown), and build. [Admin native](https://github.com/kame447/StudyPlanner/actions/runs/38468846420) passed 57/57 including all four new photo cases. Normal Browser and cross-browser Matrix remain pending at this checkpoint.
+- UI Quality's bundle check fails the same four metrics already failing on the prior-four base. Native and same-installed-dependency local comparisons agree exactly: photo increment is JS +17,433 raw/+5,208 gzip bytes, CSS +682 raw/+124 gzip bytes. No threshold was increased; this failed gate remains explicit.
+- The initial Admin image fixture was only 1px, so its screenshots did not establish realistic photo sizing. Existing Admin cases now use a non-personal, generated 1080×1920 PNG with text, panels and a bottom marker. They assert decoded original dimensions, preserved aspect ratio, 80vh maximum height and horizontal containment, and capture the first card separately. Production code and Rules are unchanged by this follow-up. Collection remains 57; the fixture production build passes. New exact-head native execution and screenshot inspection are pending.
+- After the preceding four fixes merge, confirm that the PR diff contains only the 29 photo-responsibility files. Main merge remains held for production Rules approval. R2 creation/binding/access/billing and real-R2/production-auth/device validation are not performed or claimed.

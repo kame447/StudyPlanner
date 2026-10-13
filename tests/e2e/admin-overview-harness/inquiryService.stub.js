@@ -1,3 +1,5 @@
+import { syntheticPhotoFixture } from './inquiryAttachmentService.stub.js';
+
 const saved = new Map(JSON.parse(sessionStorage.getItem('fixture.inquiry.receipts') || '[]'));
 const queryParams = new URLSearchParams(window.location.search);
 window.__inquirySubmissions = [];
@@ -22,13 +24,14 @@ export async function listInquiries(cursor = null) {
   window.__inquiryReads.push(cursor);
   if (queryParams.get('state') === 'error' && window.__inquiryReads.length === 1) throw new Error('Fixture: unavailable');
   if (queryParams.get('state') === 'empty') return { items: [], nextCursor: null };
+  const photo = queryParams.has('photos') ? (await syntheticPhotoFixture()).descriptor : null;
   return {
     items: Array.from({ length: cursor ? 1 : 25 }, (_, index) => ({
       id: `00000000-0000-0000-0000-${String(index + (cursor ? 25 : 0)).padStart(12, '0')}`,
       userId: 'authenticated-owner-id',
       body: index === 0 ? '予定の保存について\n保存ボタンを押した後、元の画面に戻りました。\n' + '長いお問い合わせ内容'.repeat(30) : `お問い合わせ ${index + 1}`,
       createdAt: '2026-10-13T06:00:00.123Z',
-      ...(queryParams.has('photos') && index === 0 ? { attachments: [{ sha256: 'a'.repeat(64), contentType: 'image/png', byteLength: 70, width: 1, height: 1 }] } : {}),
+      ...(photo && index === 0 ? { attachments: [photo] } : {}),
     })),
     nextCursor: cursor ? null : { id: '00000000-0000-0000-0000-000000000024', seconds: 100, nanoseconds: 123 },
   };

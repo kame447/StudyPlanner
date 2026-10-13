@@ -118,9 +118,23 @@ for (const width of [375, 1440]) {
     await expect(page.getByRole('button', { name: '写真を開く' })).toBeVisible();
     expect(await page.evaluate(() => window.__inquiryPhotoReads.length)).toBe(0);
     await page.getByRole('button', { name: '写真を開く' }).click();
-    await expect(page.getByAltText('お問い合わせに添付された写真1')).toBeVisible();
+    const photo = page.getByAltText('お問い合わせに添付された写真1');
+    await expect(photo).toBeVisible();
+    await expect(photo).toHaveJSProperty('naturalWidth', 1080);
+    await expect(photo).toHaveJSProperty('naturalHeight', 1920);
+    const dimensions = await photo.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const parent = element.closest('.inquiry-admin-card').getBoundingClientRect();
+      return { width: bounds.width, height: bounds.height, left: bounds.left, right: bounds.right, parentLeft: parent.left, parentRight: parent.right };
+    });
+    expect(dimensions.height).toBeGreaterThan(400);
+    expect(dimensions.height).toBeLessThanOrEqual(900 * 0.8 + 1);
+    expect(dimensions.width / dimensions.height).toBeCloseTo(1080 / 1920, 2);
+    expect(dimensions.left).toBeGreaterThanOrEqual(dimensions.parentLeft);
+    expect(dimensions.right).toBeLessThanOrEqual(dimensions.parentRight);
     expect(await page.evaluate(() => window.__inquiryPhotoReads.length)).toBe(1);
     await checkLayout(page, `private-photo-admin-${width}`);
+    await page.locator('.inquiry-admin-card').first().screenshot({ path: path.join(artifactsDir, `private-photo-detail-${width}.png`) });
     await page.getByRole('button', { name: '写真を閉じる' }).click();
     await expect(page.getByAltText('お問い合わせに添付された写真1')).toHaveCount(0);
     await page.getByRole('button', { name: '写真を開く' }).click();
