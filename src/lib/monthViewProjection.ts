@@ -2,6 +2,7 @@ import {
   createScheduleOccurrenceProjection,
   type ScheduleOccurrence,
 } from '../domain/scheduleOccurrence';
+import { getScheduleOccurrenceColor } from './scheduleEventColor';
 import { addDays, getMonthGrid, minutesBetween } from './date';
 import { sortMonthEvents } from './monthEvents';
 import {
@@ -39,6 +40,7 @@ export interface MonthCellProjection extends MonthGridCell {
 export interface MonthPanelProjection {
   weeks: MonthCalendarWeek[];
   cells: MonthCellProjection[];
+  eventColors: ReadonlyMap<string, string>;
 }
 
 export function buildMonthGrid(monthDate: string): {
@@ -260,6 +262,7 @@ export function buildMonthPanelProjection({
 
   return {
     weeks,
+    eventColors: new Map(scheduleProjection.occurrences.map(occurrence => [occurrence.id, getScheduleOccurrenceColor(occurrence)])),
     cells: cells.map((cell) => ({
       ...cell,
       targetMinutes: studyPlanMinutesByDate.get(cell.date) ?? 0,
