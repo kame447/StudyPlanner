@@ -1,3 +1,14 @@
+/* Lesson dialogs own the viewport; the timetable's old drawer keeps nav space. */
+.timetable-modal-overlay.timetable-class-overlay {
+  display: flex; align-items: stretch; justify-content: flex-end;
+  z-index: var(--z-modal-overlay); padding: 0; scrollbar-gutter: auto;
+}
+:root .timetable-class-overlay > .modal-card.timetable-editor-modal {
+  width: min(460px, 100%); height: 100dvh; max-height: 100dvh;
+  margin: 0; border-radius: 0; background: #fff;
+  padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+}
+:root[data-theme='dark'] .timetable-class-overlay > .modal-card.timetable-editor-modal { background: #181f23; }
 /* Lesson detail and editor density belong to this surface only. */
 .timetable-class-detail .timetable-editor-heading h2 { overflow-wrap: anywhere; line-height: 1.35; }
 .timetable-class-detail .class-detail-body { display: flex; flex-direction: column; gap: 16px; }

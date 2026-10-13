@@ -1235,7 +1235,7 @@ export function TimetableView({
       /> : null}
 
       {draft ? (
-        <div className="overlay modal-overlay timetable-modal-overlay" onClick={closeEditor}>
+        <div className="overlay modal-overlay timetable-modal-overlay timetable-class-overlay" onClick={closeEditor}>
           <form
             className="modal-card timetable-editor-modal timetable-compact-editor"
             ref={editorDialogRef} tabIndex={-1}

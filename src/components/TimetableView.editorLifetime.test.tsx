@@ -18,7 +18,7 @@ it.each(['A', 'B'])('late save keeps a reopened %s editor, including the same ta
     let saving!: Promise<void>;
     await act(async () => { saving = renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); });
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ title: 'A' }), 'A');
-    act(() => renderer.root.findByProps({ className: 'overlay modal-overlay timetable-modal-overlay' }).props.onClick());
+    act(() => renderer.root.findByProps({ className: 'overlay modal-overlay timetable-modal-overlay timetable-class-overlay' }).props.onClick());
     open(target);
     if (target === 'B') act(() => titleInput().props.onChange({ target: { value: 'New draft' } }));
     await act(async () => { gate.resolve(); await saving; });
@@ -169,7 +169,7 @@ it('locks the deleting session without locking a reopened draft', async () => {
   });
   expect(editorControls().every(node => node.props.disabled === true)).toBe(true);
   expect(titleInput().props.value).toBe('A');
-  act(() => renderer.root.findByProps({ className: 'overlay modal-overlay timetable-modal-overlay' }).props.onClick());
+  act(() => renderer.root.findByProps({ className: 'overlay modal-overlay timetable-modal-overlay timetable-class-overlay' }).props.onClick());
   open('B');
   expect(editorControls().every(node => node.props.disabled !== true)).toBe(true);
   act(() => titleInput().props.onChange({ target: { value: 'Reopened B' } }));

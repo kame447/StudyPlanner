@@ -1,10 +1,10 @@
 # Class detail, attendance, and associated schedules
 
-Status: active local implementation
+Status: draft PR, visual correction under verification
 Updated: 2026-10-13
 Branch: `feat/class-detail-attendance`
 Base and initial HEAD: `98f3c324b5320d38294905c858ce1d2310209312`
-PR: not yet created. Branch/PR publication and verified main integration are approved; owner-only access for the new production attendance collection still requires the parent’s specific confirmation before merge triggers Rules deployment.
+PR: #635 (`feat/class-detail-attendance`), currently draft. Branch/PR publication and verified main integration are approved; owner-only access for the new production attendance collection still requires the parent’s specific confirmation before merge triggers Rules deployment.
 
 ## Request and scope
 
@@ -12,7 +12,7 @@ The user requested a clearer lesson editor, attendance management and lesson-rel
 
 ## Ownership and boundaries
 
-GitHub main, open PRs, related issues and all available branches were checked before implementation. No existing attendance implementation was found. PR #541 remains the owner of occurrence cancellation/Undo and day-timetable controls; those responsibilities are unchanged. Issue #483 is the existing small-UI umbrella, not an attendance persistence owner. This record owns this local feature until publication is authorized.
+GitHub main, open PRs, related issues and all available branches were checked before implementation. No existing attendance implementation was found. PR #541 remains the owner of occurrence cancellation/Undo and day-timetable controls; those responsibilities are unchanged. Issue #483 is the existing small-UI umbrella, not an attendance persistence owner. This record owns the feature and PR #635 verification.
 
 - Attendance is independent from study Actual records and cannot affect studied-time metrics.
 - One attendance record per authenticated owner, immutable lesson ID and date; status is correctable. Renaming a lesson must not lose records.
@@ -23,9 +23,9 @@ GitHub main, open PRs, related issues and all available branches were checked be
 
 ## Current checkpoint
 
-Resume ownership: the existing branch/worktree was reassigned on 2026-10-13 without discarding its dirty implementation. Remote exact-branch PR and attendance-title Issue searches found no duplicate. The next change addresses real calendar-date validation in Rules and routes related schedules through an explicit create boundary, followed by regression and available emulator/browser verification.
+Resume ownership: the existing branch/worktree was reassigned on 2026-10-13 without discarding its dirty implementation. Remote exact-branch PR and attendance-title Issue searches found no duplicate. Rules calendar validity and the explicit schedule-create boundary are implemented, tested, and accepted in parent review. The remaining work is native acceptance of the visual correction below and the production Rules merge gate.
 
-Feature commit: `bab069db`. Exact verified integration HEAD: `f98610b4ebdc6fb6c16f8ba1e835b5c0199110eb`, tree `0cb8278947e56c0808530a6d8661e4a4d4e0ea18`. It normally merges current main `782f3559` and the approved #626/#627/#629/#630 predecessor `341aa6f4`; the subject deletion/Undo fix is preserved. The only later change is this documentation checkpoint.
+Feature commit: `bab069db`. Initial full-verified integration HEAD: `f98610b4ebdc6fb6c16f8ba1e835b5c0199110eb`, tree `0cb8278947e56c0808530a6d8661e4a4d4e0ea18`. It normally merges main `782f3559` and the approved #626/#627/#629/#630 predecessor `341aa6f4`; the subject deletion/Undo fix is preserved. The subsequent Admin-only harness-routing correction and checkpoint were published as remote `3095bf320d1801d5dfe181a5de5dbf79b4242aee`, exact local/remote tree `d4d9e49fa3b673b738ee6748a6d03c4736d67614`. Native CI on that version passed fresh types, 8,197 tests, build and Rules. The visual correction below requires a new exact full and native run.
 
 Implementation:
 
@@ -38,8 +38,8 @@ Implementation:
 Verification at this checkpoint:
 
 - 13 focused files / 144 tests passed, including all 15 existing editor lifetime cases, new persistence/UI tests, and related schedule authority/timetable regressions. Command: `DEV_LAN_HOST=127.0.0.1 node node_modules/vitest/vitest.mjs run --config vite.config.mjs --configLoader native --maxWorkers=2 --minWorkers=1` with the 13 affected test paths. Evidence: `class-attendance-evidence-20261013/attendance-expanded.log` in the parent workspace.
-- App TypeScript check passed (`--noEmit --incremental`, per-worktree cache). Worker/full verification and production build are still pending.
-- Browser collection only: Chromium 58 cases across the new/affected three files; cross-browser 12 new scenarios. No real browser execution or rendered image verification has occurred. Collection used an available isolated Playwright 1.62.1 runner; canonical CI installs 1.64.0.
+- Initial App TypeScript check passed (`--noEmit --incremental`, per-worktree cache); the later fresh full result is below.
+- Initial browser collection: Chromium 58 cases across the new/affected three files; cross-browser 12 new scenarios. Collection began with isolated Playwright 1.62.1 and was repeated using canonical 1.64.0. Subsequent native execution and the visual-review failure are recorded below.
 - The new Rules script and E2E scripts pass `node --check`; `git diff --check` is clean.
 - The initial bounded offline lookup did not find Firebase tooling. A later shared-tooling inspection found existing Firebase CLI 15.33.0 and Firestore emulator 1.22.0. Using isolated demo-only configuration and normal permissions, the complete existing Rules entrypoint plus attendance passed (exit 0). Owner-denial, correction/history, calendar-month and leap-year validity were exercised; exact file hashes and command are in the evidence receipt. No dependency download, credentials or production deployment was needed.
 - Review fixes: related schedules now use a small explicit create operation through the existing persistence-result projection boundary. Normal and recurring global editors remain untouched, and the promise waits for durable save. Four regression cases plus the existing attendance suite passed: 4 files / 26 tests. App incremental TypeScript passed again.
@@ -48,8 +48,14 @@ Verification at this checkpoint:
 
 Final local verification: `npm run verify` passed (exit 0) on the exact integration HEAD/tree above: fresh app/Worker type checks, 8,197 passed / 54 skipped / 1 todo across 863 passed and 11 skipped files, and production build. The tracked inputs, 19,305 installed files, generated Worker runtime declarations and relevant environment inputs matched before/after. Existing compatibility tests generated an archive-only `.cache/j1-old-worker` output; that output is retained with evidence and is not part of the PR. Node 24.19.0 differs from CI Node 22.23.0, so native CI remains required. The post-integration create/subject/approval projection focused suite also passed (49 tests).
 
-Next: publish a draft PR to admit existing native CI, temporarily including the already approved predecessor dependency; then narrow the review base and confirm only the 30 feature files remain. Parent review accepted both review findings. Native browser acceptance and the parent’s production Rules confirmation remain gates before main integration.
+Next: publish the full-verified visual correction to the existing draft PR #635, inspect new native images and all required CI, and confirm the feature-only diff after the already approved predecessor reaches main. Parent review accepted both original review findings. Native browser acceptance and the parent’s production Rules confirmation remain gates before main integration.
 
 ## Exit criteria
 
 Focused unit/integration and owner-denial tests; canonical schedule reference roundtrip; new and edit flows; compact responsive CSS; exact-diff review. Root coordinates broad verify/build and browser verification. An unavailable browser or emulator is a verification blocker, never a passing result. Browser acceptance must be established in CI before release. Publication is approved; new production Rules access remains a separate merge gate.
+
+## Native visual review correction
+
+The first native Chromium/Firefox attendance scenarios passed, but image review found the inherited timetable drawer still used a translucent surface, reserved bottom-navigation space, and lowered the overlay to z-index 90. The new lesson detail/editor now has its own scoped overlay, uses the existing modal layer, an opaque theme-colored surface, and full viewport height with an independently scrolling body. No global navigation layer was changed. Native assertions now cover opacity, hit-tested coverage over navigation, contained scrolling, header actions, focus and Escape return in addition to persistence. The first images are evidence of the defect, not final visual acceptance. A new exact full run and native image review are required for this correction.
+
+Pre-publication review found that relative RGB without explicit alpha inherits the origin transparency. The final scoped surfaces instead use the exact existing light/dark surface RGB values as opaque hex colors, avoiding a newer-syntax dependency or translucent fallback. An in-progress full was intentionally stopped (exit 130) before changing its inputs; it is not final proof. The replacement run records a read-only exact content snapshot and disables Wrangler metrics and tracking.

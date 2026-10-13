@@ -45,7 +45,7 @@ export function TimetableClassDetail({ template, plans, attendanceRepository, on
       <span className="class-schedule-kind">{plan.type === 'deadline' ? '提出' : plan.type === 'mock-exam' ? '試験' : '予定'}</span>
     </li>)}</ul>;
   }
-  return <div className="overlay modal-overlay timetable-modal-overlay" onClick={onClose}>
+  return <div className="overlay modal-overlay timetable-modal-overlay timetable-class-overlay" onClick={onClose}>
     <section className="modal-card timetable-editor-modal timetable-class-detail" ref={dialogRef} tabIndex={-1}
       role="dialog" aria-modal="true" aria-label={`${template.title}の詳細`} onClick={event => event.stopPropagation()}>
       <header className="timetable-editor-header">
