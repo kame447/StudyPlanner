@@ -133,6 +133,7 @@
 .todo-edit-modal .todo-edit-field-pair {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
+  align-items: start;
   gap: 8px;
   min-width: 0;
 }
