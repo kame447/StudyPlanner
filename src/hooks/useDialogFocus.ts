@@ -59,7 +59,7 @@ export function useDialogFocus<T extends HTMLElement>(open: boolean, onClose: ()
       const last = focusable[focusable.length - 1];
       const active = document.activeElement;
 
-      if (event.shiftKey && (active === first || !dialog.contains(active))) {
+      if (event.shiftKey && (active === dialog || active === first || !dialog.contains(active))) {
         event.preventDefault();
         last.focus();
       } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {

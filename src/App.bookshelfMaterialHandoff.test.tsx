@@ -53,9 +53,13 @@ function Harness({ owner = 'owner-a' }: { owner?: string }) {
 }
 beforeEach(() => {
   const storage = new MemoryStorage();
-  vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: storage });
+  vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: storage,
+    requestAnimationFrame: vi.fn(() => 1), cancelAnimationFrame: vi.fn(),
+    addEventListener: vi.fn(), removeEventListener: vi.fn(),
+  });
+  vi.stubGlobal('HTMLElement', class {});
   vi.stubGlobal('localStorage', storage);
-  vi.stubGlobal('document', { documentElement: { dataset: {} }, body: { style: { overflow: '', overscrollBehavior: '' } } });
+  vi.stubGlobal('document', { activeElement: null, documentElement: { dataset: {} }, body: { style: { overflow: '', overscrollBehavior: '' } } });
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('network forbidden'); }));
   showNotice.mockClear();
 });

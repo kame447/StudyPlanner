@@ -47,7 +47,7 @@ it.each([true, false])('opens and collapses repeatedly inside the existing row (
     expect(toggle().props['aria-controls'].split(' ')).toEqual([action('schedule').props.id, action('study').props.id]);
     expect(renderer.root.findAllByType('button')).toHaveLength(3);
     expect(firstFocus).toHaveBeenCalledTimes(attempt + 1);
-    expect(listeners.has('pointerdown')).toBe(true);
+    expect(listeners.size).toBe(0);
     act(() => toggle().props.onClick());
     expect(toggleFocus).toHaveBeenCalledTimes(attempt + 1);
   }
@@ -55,19 +55,24 @@ it.each([true, false])('opens and collapses repeatedly inside the existing row (
   expect(listeners.size).toBe(0);
 });
 
-it.each(['schedule', 'study'])('selects %s once, restores the toggle and removes closed activity', (kind) => {
+it.each(['schedule', 'study'])('selects %s once and keeps both actions available until explicitly closed', (kind) => {
   mount();
   act(() => toggle().props.onClick());
-  act(() => action(kind).props.onClick());
+  const selectedFocus = vi.fn();
+  act(() => action(kind).props.onClick({ currentTarget: { focus: selectedFocus } }));
+  expect(selectedFocus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
+  expect(selectedFocus.mock.invocationCallOrder[0]).toBeLessThan(onAddEntry.mock.invocationCallOrder[0]);
   expect(onAddEntry).toHaveBeenCalledExactlyOnceWith({ kind, date: '2026-10-13' });
-  expect(toggleFocus).toHaveBeenCalledOnce();
-  expect(renderer.root.findAllByType('button').filter(button => !button.props.disabled)).toHaveLength(1);
-  for (const button of renderer.root.findAllByProps({ className: 'home-add-action' })) {
-    expect(button.props.disabled).toBe(true);
-    expect(button.props['aria-hidden']).toBe(true);
-  }
-  expect(toggle().props['aria-expanded']).toBe(false);
+  expect(toggleFocus).not.toHaveBeenCalled();
+  expect(renderer.root.findAllByType('button').filter(button => !button.props.disabled)).toHaveLength(3);
+  expect(toggle().props['aria-expanded']).toBe(true);
   expect(listeners.size).toBe(0);
+  act(() => renderer.update(<TodayScheduleAddMenu date="2026-10-13" empty={false} onAddEntry={onAddEntry} />));
+  expect(toggle().props['aria-expanded']).toBe(true);
+  expect(firstFocus).toHaveBeenCalledOnce();
+  act(() => toggle().props.onClick());
+  expect(toggle().props['aria-expanded']).toBe(false);
+  expect(toggleFocus).toHaveBeenCalledOnce();
 });
 
 it('Escape restores focus without opening a form; Tab is not trapped', () => {
@@ -85,23 +90,21 @@ it('Escape restores focus without opening a form; Tab is not trapped', () => {
   expect(onAddEntry).not.toHaveBeenCalled();
 });
 
-it('dismisses on outside pointer or focus leaving, without stealing outside focus', () => {
+it('keeps expansion on outside pointer and focus changes without stealing outside focus', () => {
   mount();
   act(() => toggle().props.onClick());
-  act(() => listeners.get('pointerdown')!({ target: new Node() } as unknown as Event));
-  expect(toggle().props['aria-expanded']).toBe(false);
-  expect(toggleFocus).not.toHaveBeenCalled();
-  act(() => toggle().props.onClick());
-  const group = renderer.root.findByProps({ role: 'group' });
-  act(() => group.props.onBlur({ currentTarget: { contains: () => true }, relatedTarget: {} }));
+  act(() => listeners.get('pointerdown')?.({ target: new Node() } as unknown as Event));
   expect(toggle().props['aria-expanded']).toBe(true);
-  act(() => group.props.onBlur({ currentTarget: { contains: () => false }, relatedTarget: {} }));
-  expect(toggle().props['aria-expanded']).toBe(false);
+  const group = renderer.root.findByProps({ role: 'group' });
+  for (const relatedTarget of [null, {}]) {
+    act(() => group.props.onBlur?.({ currentTarget: { contains: () => false }, relatedTarget }));
+    expect(toggle().props['aria-expanded']).toBe(true);
+  }
   expect(toggleFocus).not.toHaveBeenCalled();
   expect(onAddEntry).not.toHaveBeenCalled();
 });
 
-it('unmount removes the open listener and a new visit starts closed', () => {
+it('a new visit starts closed after unmounting an expanded row', () => {
   mount();
   act(() => toggle().props.onClick());
   act(() => renderer.unmount());

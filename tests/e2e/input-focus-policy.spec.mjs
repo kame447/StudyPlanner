@@ -108,6 +108,8 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     ['src/components/home/TodayScheduleAddMenu.tsx', new Set([
       'firstActionRef.current?.focus({ preventScroll: true });',
       'toggleRef.current?.focus({ preventScroll: true });',
+      // The selected HTMLButtonElement becomes the dialog's non-input return target.
+      'button.focus({ preventScroll: true });',
     ])],
     ['src/components/AppSettingsDialog.tsx', new Set([
       'titleRef.current?.focus({ preventScroll: true });',

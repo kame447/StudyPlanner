@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Pin } from 'lucide-react';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { minutesFromTime, timeFromMinutes } from '../lib/date';
 import { expandPlansForDate, getRecurrenceWeekday } from '../lib/planRecurrence';
 import { buildActualPlanLinkCandidates } from '../lib/actualPlanMatching';
@@ -108,6 +109,7 @@ function QuickEntryEditor({
   onSaveStandaloneActual,
   onSaveLinkedActual,
 }: QuickEntryModalProps) {
+  const { dialogRef } = useDialogFocus<HTMLFormElement>(true, onClose);
   const initialMaterial = materials.find((material) =>
     material.id === initialMaterialId && material.userId === userId && material.status !== 'archived');
   const [entryKind, setEntryKind] = useState<QuickEntryKind>('plan');
@@ -493,8 +495,10 @@ function QuickEntryEditor({
   return (
     <div className="overlay modal-overlay quick-entry-overlay" onClick={onClose}>
       <form
+        ref={dialogRef}
         className="modal-card quick-entry-modal"
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-label="予定・記録の追加"
         onClick={(event) => event.stopPropagation()}
