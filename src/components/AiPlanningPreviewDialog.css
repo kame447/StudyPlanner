@@ -1,3 +1,9 @@
+/* Retain the composer in memory without keeping an inactive surface in layout. */
+.ai-planning-view-shell-v2[hidden],
+.ai-planning-view[hidden] {
+  display: none !important;
+}
+
 .ai-planning-view-shell-v2 {
   display: contents;
 }
