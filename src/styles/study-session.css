@@ -2,16 +2,12 @@
   position: fixed;
   inset: 0;
   z-index: calc(var(--z-modal-content) + 40);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  background: var(--app-background);
   color: var(--text-primary);
 }
 
 .study-session-page {
   width: min(820px, 100%);
-  min-height: 100dvh;
-  margin: 0 auto;
+  margin: 0 0 0 auto;
   padding: 0 18px calc(28px + env(safe-area-inset-bottom, 0px));
 }
 
@@ -38,6 +34,7 @@
 }
 
 .study-session-icon-button {
+  box-shadow: none;
   width: 42px;
   height: 42px;
   display: grid;
@@ -65,7 +62,6 @@
   box-shadow: var(--shadow);
 }
 
-.study-session-primary-card,
 .study-session-record-summary,
 .study-session-record-card,
 .study-session-record-detail-card {
@@ -82,15 +78,15 @@
   font-weight: 800;
 }
 
-.study-session-eyebrow svg,
-.study-session-plan-meta svg {
+.study-session-eyebrow svg {
   color: var(--home-blue, var(--accent));
 }
 
-.study-session-primary-card h2,
 .study-session-record-summary h2 {
   margin: 0 0 18px;
   line-height: 1.05;
+  font-size: clamp(1.75rem, 6.5vw, 2.55rem);
+  letter-spacing: -0.025em;
 }
 
 .study-session-plan-meta {
@@ -103,7 +99,7 @@
   grid-template-columns: minmax(120px, 0.8fr) minmax(0, 1.2fr);
   gap: 14px;
   align-items: center;
-  min-height: 48px;
+  min-height: 42px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -130,23 +126,13 @@
   font-weight: 700;
 }
 
-.study-session-mode-badge {
-  width: max-content;
-  margin: 16px auto 0;
-  padding: 6px 14px;
-  border: 1px solid color-mix(in srgb, var(--home-blue, var(--accent)) 45%, transparent);
-  border-radius: 999px;
-  color: var(--home-blue, var(--accent));
-  font-size: 0.82rem;
-  font-weight: 900;
-}
-
 .study-session-timer-ring {
-  width: min(390px, 82vw);
+  width: min(260px, 30dvh, 100%);
   aspect-ratio: 1;
   display: grid;
   place-items: center;
-  margin: 12px auto 18px;
+  margin: 0 auto;
+  padding: 8px;
   border-radius: 50%;
   background: conic-gradient(
     var(--home-blue, var(--accent)) 0 var(--study-session-progress, 0deg),
@@ -160,47 +146,46 @@
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 8px;
+  gap: 6px;
+  padding: 10px;
   border-radius: 50%;
   background: var(--surface-strong);
   text-align: center;
 }
 
-.study-session-timer-inner > span {
+.study-session-timer-inner > span,
+.study-session-phase-clock > span {
   color: var(--text-muted);
   font-weight: 700;
 }
 
-.study-session-timer-inner > strong {
+.study-session-timer-inner strong {
   font-variant-numeric: tabular-nums;
-  font-size: clamp(2.45rem, 11vw, 4.9rem);
+  font-size: clamp(1.8rem, 8vw, 3.5rem);
   letter-spacing: -0.055em;
   line-height: 1;
 }
 
 .study-session-timer-inner > b {
-  padding: 7px 12px;
+  padding: 4px 8px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--home-blue, var(--accent)) 9%, transparent);
   color: var(--home-blue, var(--accent));
-  font-size: 0.92rem;
+  font-size: 0.75rem;
 }
 
 .study-session-controls {
   display: grid;
-  grid-template-columns: 1.15fr 0.95fr;
-  gap: 12px;
-}
-
-.study-session-control,
-.study-session-save-button {
-  min-height: 58px;
-  border-radius: 18px;
-  font: inherit;
-  font-weight: 900;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .study-session-control {
+  font: inherit;
+  font-weight: 900;
+  min-height: 48px;
+  margin: 0;
+  border-radius: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -211,6 +196,8 @@
 .study-session-save-button {
   border: 0;
   color: #fff;
+  background: var(--home-blue, #2c77d7);
+  box-shadow: none;
 }
 
 .study-session-control.danger {
@@ -219,40 +206,31 @@
   color: var(--danger);
 }
 
-.study-session-context-card {
-  padding: 4px 20px;
-}
-
-.study-session-context-row,
 .study-session-record-row {
   display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
   gap: 12px;
   align-items: center;
   min-height: 74px;
 }
 
-.study-session-context-row + .study-session-context-row {
-  border-top: 1px solid var(--border);
-}
-
-.study-session-context-row > span:last-child,
 .study-session-record-row > span:last-child {
   display: grid;
   gap: 2px;
   min-width: 0;
 }
 
-.study-session-context-row small,
 .study-session-record-row small {
   color: var(--text-muted);
 }
 
-.study-session-context-row strong,
 .study-session-record-row strong {
   overflow-wrap: anywhere;
 }
 
 .study-session-context-icon {
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
   color: var(--home-blue, var(--accent));
@@ -260,17 +238,6 @@
 
 .study-session-context-icon.material {
   color: #299c6f;
-}
-
-.study-session-helper {
-  margin: 0;
-  color: var(--text-muted);
-  text-align: center;
-  font-size: 0.86rem;
-}
-
-.study-session-plan-meta.compact > div {
-  min-height: 42px;
 }
 
 .study-session-actual-time {
@@ -445,6 +412,10 @@
 }
 
 .study-session-save-button {
+  font: inherit;
+  font-weight: 900;
+  min-height: 58px;
+  border-radius: 18px;
   width: 100%;
   margin-bottom: 4px;
 }
@@ -464,7 +435,6 @@
     padding-inline: 12px;
   }
 
-  .study-session-primary-card,
   .study-session-record-summary,
   .study-session-record-card,
   .study-session-record-detail-card {
@@ -475,14 +445,6 @@
     grid-template-columns: 110px minmax(0, 1fr);
     gap: 8px;
   }
-
-  .study-session-controls {
-    grid-template-columns: 1fr 0.92fr;
-  }
-
-  .study-session-timer-ring {
-    width: min(330px, 80vw);
-  }
 }
 
 @media (max-width: 360px) {
@@ -492,32 +454,178 @@
     padding: 8px 0;
   }
 
-  .study-session-controls,
   .study-session-segments,
   .study-session-time-adjust > div {
     grid-template-columns: 1fr;
-  }
-
-  .study-session-timer-inner > strong {
-    font-size: 2.35rem;
   }
 }
 
 .study-session-target-choice,
 .study-session-unplanned-setup label {
   display: grid;
-  gap: 8px;
+  gap: 4px;
   min-width: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 :is(.study-session-target-choice, .study-session-unplanned-setup) select {
   width: 100%;
   min-width: 0;
   min-height: 44px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface-strong);
   color: inherit;
   font: inherit;
+  font-size: 1rem;
+}
+
+/* Keep the start controls together. Long content, enlarged text and a visible
+   keyboard may still use the pane's existing scroll surface; never clip them. */
+.study-session-page[data-phase="timer"] {
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  scroll-padding-top: 76px;
+  scroll-padding-bottom: 16px;
+}
+
+.study-session-primary-card {
+  border-color: color-mix(in srgb, var(--border) 82%, transparent);
+  box-shadow: none;
+  display: grid;
+  gap: 12px;
+  padding: clamp(12px, 2.5vw, 20px);
+}
+
+.study-session-setup {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.study-session-primary-card h2 {
+  margin: 0;
+  font-size: clamp(1.25rem, 4.5vw, 1.75rem);
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.study-session-unplanned-setup {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.study-session-unplanned-setup input {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 1rem;
+}
+
+.study-session-plan-overview > div {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.study-session-details {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.study-session-details summary {
+  width: fit-content;
+  min-height: 44px;
+  align-content: center;
+  padding-block: 6px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.study-session-details dl {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 0;
+}
+
+.study-session-details dl > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+}
+
+.study-session-details dd {
+  margin: 0;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.study-session-phase-clock {
+  display: contents;
+}
+
+/* A shallow timer leaves room for inputs and actions on small phones and in
+   landscape. Its content can grow naturally when fonts or content are larger. */
+@media (max-height: 800px) {
+  .study-session-page[data-phase="timer"] .study-session-header {
+    min-height: 56px;
+    margin-bottom: 8px;
+    padding-top: max(6px, env(safe-area-inset-top, 0px));
+    padding-bottom: 6px;
+  }
+
+  .study-session-primary-card {
+    gap: 6px;
+  }
+
+  .study-session-timer-ring {
+    width: 100%;
+    aspect-ratio: auto;
+    min-height: 72px;
+    border-radius: 18px;
+    padding: 3px;
+  }
+
+  .study-session-timer-inner {
+    border-radius: 15px;
+    padding: 6px;
+    gap: 4px;
+  }
+
+  .study-session-timer-inner strong {
+    font-size: 2rem;
+  }
+
+  .study-session-timer-inner span {
+    line-height: 1.2;
+  }
+
+  .study-session-timer-ring[data-study-mode="pomodoro"] .study-session-timer-inner {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
+    column-gap: 8px;
+  }
+
+  .study-session-phase-clock {
+    display: grid;
+    gap: 4px;
+  }
+}
+
+.study-session-setup.has-plan {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.study-session-setup > :is(h2, .study-session-target-choice, .study-session-unplanned-setup),
+.study-session-setup > .study-session-details[open] {
+  grid-column: 1 / -1;
 }
