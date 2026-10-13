@@ -12,8 +12,19 @@ afterEach(() => {
 
 function browser({ viewportAvailable = true, shellAvailable = true } = {}) {
   const viewport = Object.assign(new EventTarget(), { height: 844, offsetTop: 0, scale: 1 });
-  const window = Object.assign(new EventTarget(), { visualViewport: viewportAvailable ? viewport : null });
+  const frames = new Map<number, FrameRequestCallback>();
+  let frameId = 0;
+  const window = Object.assign(new EventTarget(), {
+    visualViewport: viewportAvailable ? viewport : null,
+    requestAnimationFrame: vi.fn((callback: FrameRequestCallback) => {
+      frames.set(++frameId, callback);
+      return frameId;
+    }),
+    cancelAnimationFrame: vi.fn((id: number) => { frames.delete(id); }),
+  });
+  const document = Object.assign(new EventTarget(), { visibilityState: 'visible' });
   vi.stubGlobal('window', window);
+  vi.stubGlobal('document', document);
   const values = new Map<string, { value: string; priority: string }>();
   let position = 0;
   const scrollEvents = new EventTarget();
@@ -45,7 +56,16 @@ function browser({ viewportAvailable = true, shellAvailable = true } = {}) {
     return <section ref={viewRef}><div ref={conversationRef} /></section>;
   }
   return {
-    viewport, window, conversation, style, values,
+    viewport, window, conversation, style, values, frames,
+    visibility(state: 'hidden' | 'visible') {
+      document.visibilityState = state;
+      act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    },
+    pageShow() { act(() => { window.dispatchEvent(new Event('pageshow')); }); },
+    paint() {
+      const callbacks = [...frames.values()]; frames.clear();
+      act(() => { callbacks.forEach(callback => callback(0)); });
+    },
     mount() {
       act(() => { renderer = create(<Probe />, {
         createNodeMock: node => node.type === 'section' ? view : conversation,
@@ -60,6 +80,93 @@ function browser({ viewportAvailable = true, shellAvailable = true } = {}) {
 }
 
 describe('AI planning visual viewport', () => {
+  it.each(['visibility', 'pageshow'] as const)
+  ('remeasures on %s return without requiring a resize event', event => {
+    const b = browser(); b.mount(); b.change({ height: 430, offsetTop: 80 });
+    if (event === 'visibility') b.visibility('hidden');
+    Object.assign(b.viewport, { height: 844, offsetTop: 0 });
+    if (event === 'visibility') b.visibility('visible');
+    else b.pageShow(); // Restored pages need not deliver visibilitychange.
+    b.paint();
+    expect(b.style.getPropertyValue('--ai-planning-viewport-height')).toBe('844px');
+    expect(b.style.getPropertyValue('--ai-planning-viewport-top')).toBe('0px');
+  });
+
+  it('reads resume geometry at the next frame, after an event-time stale value', () => {
+    const b = browser(); b.mount(); b.change({ height: 430, offsetTop: 80 });
+    b.visibility('hidden'); b.visibility('visible');
+    // No subsequent resize is delivered after browser metrics settle.
+    Object.assign(b.viewport, { height: 844, offsetTop: 0 });
+    b.paint();
+    expect(b.style.getPropertyValue('--ai-planning-viewport-height')).toBe('844px');
+    expect(b.style.getPropertyValue('--ai-planning-viewport-top')).toBe('0px');
+  });
+
+  it.each([true, false])('preserves the reader on resume (follows end: %s)', followsEnd => {
+    const b = browser(); b.conversation.scrollTop = followsEnd ? 1400 : 340;
+    b.mount(); b.change({ height: 430, offsetTop: 80 });
+    b.visibility('hidden');
+    Object.assign(b.viewport, { height: 844, offsetTop: 0 });
+    b.visibility('visible'); b.paint();
+    expect(b.conversation.scrollTop).toBe(followsEnd ? 1400 : 340);
+  });
+
+  it('does not mistake a real keyboard or pinch zoom on return for stale geometry', () => {
+    const b = browser(); b.mount(); b.change({ height: 430, offsetTop: 80 });
+    b.visibility('hidden'); b.visibility('visible'); b.paint();
+    expect(b.style.getPropertyValue('--ai-planning-viewport-height')).toBe('430px');
+    b.visibility('hidden');
+    Object.assign(b.viewport, { height: 300, offsetTop: 140, scale: 1.5 });
+    b.visibility('visible'); b.paint();
+    expect(b.style.getPropertyValue('--ai-planning-viewport-height')).toBe('430px');
+    expect(b.style.getPropertyValue('--ai-planning-viewport-top')).toBe('80px');
+    b.change({ height: 844, offsetTop: 0, scale: 1 });
+    expect(b.style.getPropertyValue('--ai-planning-viewport-height')).toBe('844px');
+  });
+
+  it('coalesces repeated return signals into one read without polling', () => {
+    const b = browser(); b.mount(); b.style.setProperty.mockClear();
+    b.pageShow(); b.visibility('visible'); b.pageShow();
+    expect(b.frames.size).toBe(1);
+    expect(b.style.setProperty).not.toHaveBeenCalled();
+    Object.assign(b.viewport, { height: 700 });
+    b.paint();
+    expect(b.style.getPropertyValue('--ai-planning-viewport-height')).toBe('700px');
+    expect(b.frames.size).toBe(0);
+  });
+
+  it('cancels pending reads while hidden and ignores background geometry events', () => {
+    const b = browser(); b.mount(); b.pageShow();
+    b.visibility('hidden');
+    expect(b.frames.size).toBe(0);
+    b.style.setProperty.mockClear();
+    b.change({ height: 430, offsetTop: 80 }); b.pageShow(); b.paint();
+    expect(b.style.setProperty).not.toHaveBeenCalled();
+    expect(b.frames.size).toBe(0);
+    b.visibility('visible'); b.paint();
+    expect(b.style.getPropertyValue('--ai-planning-viewport-height')).toBe('430px');
+  });
+
+  it.each(['inactive', 'unmount'] as const)('releases lifecycle listeners and pending frames on %s', end => {
+    const b = browser(); b.mount(); b.pageShow();
+    expect(b.frames.size).toBe(1);
+    if (end === 'inactive') b.activate(false);
+    else { act(() => renderer!.unmount()); renderer = undefined; }
+    expect(b.frames.size).toBe(0);
+    b.style.setProperty.mockClear();
+    Object.assign(b.viewport, { height: 430 });
+    b.pageShow(); b.visibility('visible'); b.paint();
+    expect(b.frames.size).toBe(0);
+    expect(b.style.setProperty).not.toHaveBeenCalled();
+    expect(b.values.has('--ai-planning-viewport-height')).toBe(false);
+    if (end === 'inactive') {
+      b.activate(true);
+      expect(b.style.getPropertyValue('--ai-planning-viewport-height')).toBe('430px');
+      Object.assign(b.viewport, { height: 844 }); b.pageShow(); b.paint();
+      expect(b.style.getPropertyValue('--ai-planning-viewport-height')).toBe('844px');
+    }
+  });
+
   it('keeps the latest conversation end visible through keyboard resize, pan and dismissal', () => {
     const b = browser();
     b.conversation.scrollTop = 1400;
