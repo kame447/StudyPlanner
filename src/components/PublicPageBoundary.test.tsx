@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 import { createFakeAuthSession } from '../test/fakeAuthSession';
 import { createAuthSessionService } from '../services/authSession';
+import { getInquiryDraft } from '../services/inquiryDraft';
 import { submitInquiry } from '../services/inquiryService';
 import { AppSettingsSupportPanel } from './AppSettingsSupportPanel';
 import { PublicPageBoundary } from './PublicPageBoundary';
@@ -11,7 +12,8 @@ import { PublicPageLink, usePublicPageNavigation } from './PublicPageLink';
 
 vi.mock('../hooks/useThemePreference', () => ({ useThemePreference: vi.fn() }));
 vi.mock('../services/authSession', () => ({ createAuthSessionService: vi.fn() }));
-vi.mock('../services/inquiryService', () => ({ submitInquiry: vi.fn() }));
+vi.mock('../services/inquiryService', () => ({ submitInquiry: vi.fn(), recoverInquiryReceipt: vi.fn() }));
+vi.mock('../services/inquiryAttachmentService', () => ({ inquiryAttachmentsAvailable: vi.fn(async () => false), uploadInquiryAttachments: vi.fn() }));
 let renderer: ReactTestRenderer | undefined;
 let auth: ReturnType<typeof createFakeAuthSession>;
 const mounted = vi.fn();
@@ -66,7 +68,7 @@ beforeEach(() => {
   auth = createFakeAuthSession({ available: false });
   vi.mocked(createAuthSessionService).mockReturnValue(auth.session);
 });
-afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.unstubAllGlobals(); });
+afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; getInquiryDraft().dispose(); vi.unstubAllGlobals(); });
 
 describe('same-document public pages', () => {
   it('preserves the started planner and draft through settings, contact, Back, Forward and explicit return', () => {
@@ -104,7 +106,7 @@ describe('same-document public pages', () => {
     b.pop(1); expect(mounted).toHaveBeenCalledTimes(1);
   });
 
-  it('disposes contact draft and pending receipt on leave without replaying a send on Forward', async () => {
+  it('keeps the same pending contact receipt on leave and Forward without replaying a send', async () => {
     let finish!: (receipt: string) => void;
     vi.mocked(submitInquiry).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
     auth = createFakeAuthSession(); vi.mocked(createAuthSessionService).mockReturnValue(auth.session);
@@ -116,9 +118,25 @@ describe('same-document public pages', () => {
     await act(async () => { finish('old-receipt'); });
     b.pop(1);
     act(() => auth.emit({ id: 'user', requiresEmailVerification: false }));
+    expect(renderer!.root.findAllByType('textarea')).toHaveLength(0);
+    expect(submitInquiry).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(renderer!.toJSON())).toContain('old-receipt');
+  });
+
+  it('drops a hidden owner draft and late receipt after logout, including same-owner login again', async () => {
+    let finish!: (receipt: string) => void;
+    vi.mocked(submitInquiry).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    auth = createFakeAuthSession(); vi.mocked(createAuthSessionService).mockReturnValue(auth.session);
+    const b = browser(); mount(); click('/contact');
+    act(() => auth.emit({ id: 'user', requiresEmailVerification: false }));
+    act(() => renderer!.root.findByType('textarea').props.onChange({ target: { value: 'private draft' } }));
+    act(() => renderer!.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }));
+    click('/'); act(() => { auth.emit(null); auth.emit({ id: 'user', requiresEmailVerification: false }); });
+    await act(async () => { finish('old-receipt'); }); b.pop(1);
     expect(renderer!.root.findByType('textarea').props.value).toBe('');
     expect(submitInquiry).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(renderer!.toJSON())).not.toContain('old-receipt');
+    expect(JSON.stringify(renderer!.toJSON())).not.toContain('private draft');
   });
 
   it.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }, { defaultPrevented: true }])('preserves native anchor behavior for %j', event => {

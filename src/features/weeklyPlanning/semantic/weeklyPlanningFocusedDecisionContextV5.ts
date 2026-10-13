@@ -2,11 +2,8 @@ import {
   isFocusedAuthorizationDecisionContext,
   type FocusedAuthorizationDecisionContext,
 } from '../../../../shared/focusedAuthorizationDecision';
-import {
-  isFocusedContextualDecisionContext,
-  type FocusedContextualDecisionContext,
-} from '../../../../shared/focusedContextualDecision';
-import { focusedContextualTargetV5 } from './weeklyPlanningFocusedContextualAnswerV5';
+import type { BoundFocusedContextualDecisionContext } from '../../../../shared/focusedContextualDecision';
+import { createFocusedContextualBindingSnapshotV5 } from './weeklyPlanningFocusedContextualBindingV5';
 import { focusedAuthorizationEligibleV5 } from './weeklyPlanningFocusedAuthorizationV5';
 import type { WeeklyPlanningSemanticNormalizerInputV5 } from './weeklyPlanningSemanticNormalizerContractsV5';
 
@@ -29,22 +26,6 @@ export function focusedDecisionContextV5(
 
 export function focusedContextualDecisionContextV5(
   input: WeeklyPlanningSemanticNormalizerInputV5,
-): FocusedContextualDecisionContext | undefined {
-  const target = focusedContextualTargetV5(input);
-  if (!target) return undefined;
-  const context = {
-    purpose: 'focused_contextual_answer' as const,
-    requestId: input.traceRequestId,
-    inputRevision: target.graphRevision,
-    questionCode: target.questionCode,
-    state: {
-      currentUserText: input.userText,
-      pendingQuestion: {
-        targetQuantityRole: target.quantityRole,
-        questionBasis: target.questionBasis,
-        hasEstimateTarget: target.estimateForWorkload !== null,
-      },
-    },
-  };
-  return isFocusedContextualDecisionContext(context) ? context : undefined;
+): BoundFocusedContextualDecisionContext | undefined {
+  return createFocusedContextualBindingSnapshotV5(input)?.context;
 }

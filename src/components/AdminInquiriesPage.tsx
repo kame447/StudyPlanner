@@ -1,3 +1,4 @@
+import { InquiryPhotoViewer } from './InquiryPhotoViewer';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { InquiryCursor, InquiryPage } from '../features/support/inquiry';
 import { listInquiries } from '../services/inquiryService';
@@ -49,6 +50,7 @@ export function AdminInquiriesPage() {
             <header><h2>受付番号: {inquiry.id}</h2><time dateTime={inquiry.createdAt}>{new Date(inquiry.createdAt).toLocaleString('ja-JP')}</time></header>
             <p className="detail-note">ユーザーID: {inquiry.userId}</p>
             <p className="inquiry-admin-body">{inquiry.body}</p>
+            {!loading && !error && inquiry.attachments?.map((photo, slot) => <InquiryPhotoViewer key={`${inquiry.id}/${slot}`} receiptId={inquiry.id} slot={slot} photo={photo} />)}
           </article>
         ))}
       </div>

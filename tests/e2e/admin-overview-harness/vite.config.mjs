@@ -28,8 +28,11 @@ const observabilityStubPlugin = {
     if (source === '../services/adminService' && normalizedImporter.endsWith(path.normalize('src/hooks/useAdminStatus.ts'))) {
       return path.resolve(harnessDir, 'inquiryAdminService.stub.js');
     }
-    if (source === '../services/inquiryService' && ['ContactPage.tsx', 'AdminInquiriesPage.tsx'].some((name) => normalizedImporter.endsWith(name))) {
+    if ((source === '../services/inquiryService' && normalizedImporter.endsWith('AdminInquiriesPage.tsx')) || (source === './inquiryService' && normalizedImporter.endsWith('inquiryDraft.ts'))) {
       return path.resolve(harnessDir, 'inquiryService.stub.js');
+    }
+    if (['./inquiryAttachmentService', '../services/inquiryAttachmentService'].includes(source) && ['inquiryDraft.ts', 'InquiryPhotoPicker.tsx', 'InquiryPhotoViewer.tsx'].some((name) => normalizedImporter.endsWith(name))) {
+      return path.resolve(harnessDir, 'inquiryAttachmentService.stub.js');
     }
     if (
       source === '../services/adminObservabilityService'

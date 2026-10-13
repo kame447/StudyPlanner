@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Timestamp } from 'firebase/firestore';
-import { listInquiries, submitInquiry } from './inquiryService';
+import { listInquiries, submitInquiry, recoverInquiryReceipt } from './inquiryService';
 
 const mocks = vi.hoisted(() => ({
   uid: 'owner' as string | null,
@@ -146,5 +146,35 @@ describe('bounded admin inquiry reads', () => {
     await expect(listInquiries()).rejects.toThrow('permission-denied');
     mocks.getDocs.mockResolvedValueOnce({ docs: [{ id: 'bad', data: () => ({ body: 'bad' }) }] });
     await expect(listInquiries()).rejects.toThrow('読み取れません');
+  });
+});
+
+
+describe('immutable photo receipts and reload recovery', () => {
+  const descriptor = { sha256: 'a'.repeat(64), contentType: 'image/png' as const, byteLength: 100, width: 10, height: 10 };
+  const withPhotos = { ...submission, attachments: [descriptor] };
+  const saved = () => ({ ...savedReceipt(), schemaVersion: 2, attachments: [descriptor] });
+  it('stores metadata only and acknowledges exact-photo replay', async () => {
+    await submitInquiry('owner', withPhotos);
+    expect(mocks.set).toHaveBeenCalledWith(`support_inquiries/${submission.requestId}`, { ...saved(), createdAt: 'SERVER_TIMESTAMP' });
+    mocks.set.mockClear(); mocks.get.mockResolvedValue({ exists: () => true, data: saved });
+    await expect(submitInquiry('owner', withPhotos)).resolves.toBe(submission.requestId); expect(mocks.set).not.toHaveBeenCalled();
+  });
+  it('rejects replacement photos under an existing receipt', async () => {
+    mocks.get.mockResolvedValue({ exists: () => true, data: saved });
+    await expect(submitInquiry('owner', { ...withPhotos, attachments: [{ ...descriptor, sha256: 'b'.repeat(64) }] })).rejects.toThrow('一致');
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+  it('recovers accepted metadata without requiring a persisted body or any write', async () => {
+    mocks.getServer.mockResolvedValue({ exists: () => true, data: saved });
+    await expect(recoverInquiryReceipt('owner', submission.requestId, [descriptor])).resolves.toBe(true);
+    expect(mocks.set).not.toHaveBeenCalled(); expect(mocks.transaction).not.toHaveBeenCalled();
+    await expect(recoverInquiryReceipt('owner', submission.requestId, [{ ...descriptor, sha256: 'b'.repeat(64) }])).resolves.toBe(false);
+  });
+  it('differentiates a missing receipt from an offline read and rejects changed ownership', async () => {
+    await expect(recoverInquiryReceipt('owner', submission.requestId)).resolves.toBe(false);
+    mocks.getServer.mockRejectedValueOnce(new Error('offline'));
+    await expect(recoverInquiryReceipt('owner', submission.requestId)).rejects.toThrow('offline');
+    mocks.uid = 'other'; await expect(recoverInquiryReceipt('owner', submission.requestId)).rejects.toThrow('ログイン');
   });
 });

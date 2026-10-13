@@ -346,6 +346,29 @@ service cloud.firestore {
       allow delete: if isOwner(resource.data.userId);
     }
 
+    function validInquiryPhoto(photo) {
+      return photo is map
+        && photo.keys().hasOnly(['sha256', 'contentType', 'byteLength', 'width', 'height'])
+        && photo.sha256 is string && photo.sha256.matches('^[a-f0-9]{64}$')
+        && photo.contentType in ['image/jpeg', 'image/png']
+        && photo.byteLength is int && photo.byteLength > 0 && photo.byteLength <= 5242880
+        && photo.width is int && photo.width > 0 && photo.width <= 8192
+        && photo.height is int && photo.height > 0 && photo.height <= 8192
+        && photo.width * photo.height <= 24000000;
+    }
+
+    function validInquirySchema(data) {
+      return (data.schemaVersion == 1
+          && data.keys().hasOnly(['schemaVersion', 'userId', 'body', 'createdAt']))
+        || (data.schemaVersion == 2
+          && data.keys().hasOnly(['schemaVersion', 'userId', 'body', 'createdAt', 'attachments'])
+          && data.attachments is list
+          && data.attachments.size() >= 1 && data.attachments.size() <= 3
+          && validInquiryPhoto(data.attachments[0])
+          && (data.attachments.size() < 2 || validInquiryPhoto(data.attachments[1]))
+          && (data.attachments.size() < 3 || validInquiryPhoto(data.attachments[2])));
+    }
+
     // Inquiry content is separate from telemetry and is never editable by clients.
     match /support_inquiries/{inquiryId} {
       // A missing receipt must be readable to perform a create-only transaction.
@@ -356,10 +379,7 @@ service cloud.firestore {
         && request.query.limit != null && request.query.limit <= 26;
       allow create: if isSignedIn()
         && inquiryId.matches('^[a-zA-Z0-9_-]{20,80}$')
-        && request.resource.data.keys().hasOnly([
-          'schemaVersion', 'userId', 'body', 'createdAt'
-        ])
-        && request.resource.data.schemaVersion == 1
+        && validInquirySchema(request.resource.data)
         && isOwner(request.resource.data.userId)
         && request.resource.data.body is string
         && request.resource.data.body.size() >= 1

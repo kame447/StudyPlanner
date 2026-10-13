@@ -1,3 +1,4 @@
+import { handleInquiryAttachmentApi, isInquiryAttachmentPath, type InquiryAttachmentEnv } from './inquiryAttachmentApi';
 import {
   WEEKLY_PLANNING_TRACE_CONTRACT_VERSION,
   WEEKLY_PLANNING_TRACE_HEADERS,
@@ -223,6 +224,9 @@ export default {
     executionContext?: ExecutionContext,
   ): Promise<Response> {
     const pathname = new URL(request.url).pathname;
+    if (isInquiryAttachmentPath(pathname)) {
+      return handleInquiryAttachmentApi(request, env as unknown as InquiryAttachmentEnv);
+    }
     const adminBudget = isProductObservabilityAdminPath(pathname)
       ? new WorkerSubrequestBudget('fetch', pathname)
       : null;

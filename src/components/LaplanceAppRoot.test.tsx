@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import type { WeeklyPlanningPersonalizationProfileState } from '../features/weeklyPlanning/personalization/useWeeklyPlanningPersonalizationProfile';
 import type { WeeklyPlanningTracePolicyState } from '../features/weeklyPlanning/trace/useWeeklyPlanningTracePolicy';
+import { getInquiryDraft } from '../services/inquiryDraft';
 import { createAuthSessionService } from '../services/authSession';
 import { createFakeAuthSession } from '../test/fakeAuthSession';
 import { InitialPrivacyConsentScreen } from './InitialPrivacyConsentScreen';
@@ -93,6 +94,7 @@ describe('LaplanceAppRoot', () => {
 
   afterEach(() => {
     act(() => renderer?.unmount());
+    getInquiryDraft().dispose();
     vi.unstubAllGlobals();
   });
 
@@ -374,7 +376,7 @@ describe('LaplanceAppRoot', () => {
     expect(renderer.root.findByType(App)).toBe(app);
     expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(0);
     expect(fake.session.subscribe).toHaveBeenCalledTimes(2);
-    expect(fake.unsubscribe).toHaveBeenCalledTimes(1); // Only Contact ended.
+    expect(fake.unsubscribe).not.toHaveBeenCalled(); // The retained draft keeps its auth fence while hidden.
     expect(state.bootstrapMount).toHaveBeenCalledTimes(1);
     expect(state.bootstrapUnmount).not.toHaveBeenCalled();
   });

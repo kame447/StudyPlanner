@@ -1,3 +1,4 @@
+import { createBoundFocusedContextualContextFixtureV5, focusedContextualSourceMessagesFixtureV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningFocusedContextualBindingV5.testUtils';
 // Regression oracles for strict schemas, provider failures and correlation.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createOpenRouterDecisionProvider } from './openRouterDecisionProvider';
@@ -70,9 +71,7 @@ describe('decision port boundary regressions', () => {
   it('records contextual source drift as unavailable when the stale result uses Luna', async () => {
     vi.spyOn(console, 'info').mockImplementation(() => undefined);
     const result = await dispatchFocusedContextual({
-      context: { purpose: 'focused_contextual_answer', requestId: 'contextual-before', inputRevision: 7,
-        questionCode: 'quantity_role_unresolved', state: { currentUserText: 'private-input',
-          pendingQuestion: { targetQuantityRole: 'declared', questionBasis: null, hasEstimateTarget: false } } },
+      context: createBoundFocusedContextualContextFixtureV5({ requestId: 'contextual-before' }),
       env: { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100', JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE: 'canary', JEV_FOCUSED_CONTEXTUAL_ANSWER_CANARY_PERCENT: '100' },
       firebaseUid: 'fixture-owner', signal: new AbortController().signal,
       fallback: async () => new Response('luna-after-drift'), respond: () => new Response('must-not-use'),
