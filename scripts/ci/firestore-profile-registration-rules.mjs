@@ -1,4 +1,5 @@
 import process from 'node:process';
+import { verifyInquiryRules } from './firestore-inquiry-rules.mjs';
 import { deleteApp, initializeApp } from 'firebase/app';
 import {
   connectAuthEmulator,
@@ -327,6 +328,7 @@ try {
     scheduleEvent(owner.user.uid, 'foreign'),
   ));
 
+  await verifyInquiryRules({ owner, intruder, createContext, contexts, expectPermissionDenied, projectId, firestoreHost });
   console.log('Firestore profile and ScheduleEvent authority rules regression passed.');
 } finally {
   await Promise.all(contexts.map(({ app }) => deleteApp(app)));
