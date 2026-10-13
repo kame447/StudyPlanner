@@ -30,6 +30,8 @@ The requirements document is the specification; the Issue is the work-state owne
 
 Other active client-runtime work:
 
+- [Passive startup delivery timing](work/startup-delivery-timing-handoff.md): Issue #542; local-only pre-Splash diagnostics, with installed-device cause and publication still separate.
+
 - [Pomodoro session settings](work/pomodoro-session-settings-handoff.md): per-session 25/5 or 50/10, optional finite sets, and mode transitions; local validation complete, browser/remote and new bundle-size acceptance still open.
 - [AI navigation and diagnostic visibility](work/ai-navigation-diagnostics-handoff.md): owner-scoped retained presentation and operator-only diagnostic UI; local/browser/release evidence is tracked separately.
 
