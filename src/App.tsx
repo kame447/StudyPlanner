@@ -116,6 +116,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   const [monthCreateRequestId, setMonthCreateRequestId] = useState(0);
   const [pendingMonthCreate, setPendingMonthCreate] = useState(false);
   const [primarySurface, setPrimarySurface] = useState<PrimarySurface>('home');
+  const [visitedAiOwner, setVisitedAiOwner] = useState<string | null>(null);
   const [bookshelfInitialAction, setBookshelfInitialAction] =
     useState<BookshelfInitialAction>(null);
   const primaryHeaderRef = useRef<HTMLDivElement | null>(null);
@@ -220,6 +221,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   const hasPlannerDataRecovery = Boolean(user && plannerDataRecovery?.ownerId === user.id);
   const isHomeSurface = primarySurface === 'home';
   const isAiPlanningSurface = primarySurface === 'ai-planning';
+  const isActiveAiPlanningSurface = isAiPlanningSurface && visitedAiOwner === user?.id && !settingsNavigation.isOpen;
   const isWorkspaceSurface = primarySurface === 'workspace';
   const isScheduleSurface = isWorkspaceSurface && SCHEDULE_VIEW_MODES.has(viewMode);
   const activePrimaryNav: PrimaryNavItem = isHomeSurface
@@ -269,7 +271,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   }, [user?.id]);
 
   useEffect(() => { setHomeEntry(null); }, [user?.id, primarySurface]);
-  useEffect(() => { setQuickEntry(null); }, [user?.id]);
+  useEffect(() => { setQuickEntry(null); setVisitedAiOwner(null); }, [user?.id]);
 
   useEffect(() => {
     if (!pendingMonthCreate || !isScheduleSurface || viewMode !== 'month') {
@@ -319,6 +321,8 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   }
 
   function openAiPlanningSurface() {
+    if (!user) return;
+    setVisitedAiOwner(user.id);
     setPrimarySurface('ai-planning');
   }
 
@@ -376,7 +380,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
           ? isScheduleSurface
             ? 'app-shell schedule-workspace-shell'
             : 'app-shell'
-          : 'app-shell home-app-shell'
+          : `app-shell home-app-shell${isActiveAiPlanningSurface ? ' ai-planning-active' : ''}`
       }
     >
       <PrimaryAppHeader
@@ -488,9 +492,12 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
           </StudySessionProvider>
         ) : null}
 
-        {isAiPlanningSurface ? (
-          <Suspense fallback={<SplashScreen />}>
+        {visitedAiOwner === user.id ? (
+          <Suspense fallback={isAiPlanningSurface ? <p role="status">AI計画を開いています…</p> : null}>
             <AiPlanningView
+              key={user.id}
+              active={isActiveAiPlanningSurface}
+              starterCatalog={{ todos, materials: studyMaterials, ready: isPlannerDataReadyForOwner(plannerDataAvailability, user.id) }}
               application={weeklyPlanning}
               userId={user.id}
               selectedDate={selectedDate}

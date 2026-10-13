@@ -9,6 +9,7 @@ type IdleCapableWindow = Window & {
 };
 
 const primaryViewLoaders: readonly ModuleLoader[] = [
+  () => import('../components/AiPlanningView'),
   () => import('../components/WeekView'),
   () => import('../components/DayView'),
   () => import('../components/TodoView'),
