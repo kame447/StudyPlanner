@@ -6,6 +6,7 @@ import type { ProductObservabilityEnv } from '../productObservabilityStore';
 import type { FirestoreTokenProvider } from '../firestoreServiceAccountClient';
 import { createOpenRouterDecisionProvider } from './openRouterDecisionProvider';
 import type { DecisionEvaluation, DecisionProvider } from './decisionProvider';
+import { evaluateDecisionProviderSafely } from './decisionProvider';
 import {
   markJevExecution,
   type JevExecutionMode,
@@ -142,7 +143,7 @@ export async function dispatchFocusedAuthorization(params: {
   };
 
   if (mode === 'shadow') {
-    const evaluation = provider.evaluate(params.context.state);
+    const evaluation = evaluateDecisionProviderSafely(provider, params.context.state);
     const baseline = fallbackWithFailureMarker(
       params.fallback,
       mode,
@@ -150,7 +151,7 @@ export async function dispatchFocusedAuthorization(params: {
     ).then((response) => markJevExecution(response, mode));
     params.executionContext!.waitUntil(
       Promise.all([evaluation, baseline.then(baselineDecision, () => null)])
-        .then(([result, decision]) => record(result, decision)).catch(() => undefined),
+        .then(([result, decision]) => result.metadata ? record(result, decision) : undefined).catch(() => undefined),
     );
     return baseline;
   }
@@ -170,11 +171,12 @@ export async function dispatchFocusedAuthorization(params: {
     controller.abort();
   }, FOCUSED_REQUEST_TIMEOUT_MS);
   try {
-    const evaluation = await provider.evaluate(params.context.state, controller.signal);
+    const evaluation = await evaluateDecisionProviderSafely(provider, params.context.state, controller.signal);
     const gate: DecisionGate = params.isContextCurrent?.() === false
       ? { status: 'unavailable', reason: 'stale_context' }
-      : gateDecision(evaluation);
-    const metric = record(evaluation, null, gate).catch(() => undefined);
+      : evaluation.metadata ? gateDecision(evaluation)
+        : { status: 'unavailable', reason: evaluation.reason };
+    const metric = evaluation.metadata ? record(evaluation, null, gate).catch(() => undefined) : Promise.resolve();
     if (params.executionContext) params.executionContext.waitUntil(metric);
     else await metric;
     if (controller.signal.aborted) throw new Error('Focused authorization request cancelled or timed out.');

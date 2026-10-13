@@ -3,6 +3,7 @@ import {
   WEEKLY_PLANNING_TRACE_HEADERS,
   WEEKLY_PLANNING_TRACE_WORKER_REVISION,
 } from '../../../shared/weeklyPlanningTraceContract';
+import { safeProviderErrorMetadata } from './providerErrorMetadata';
 import {
   isObservableAiProxyPath,
   observeAiProxyRequest,
@@ -275,9 +276,9 @@ export default {
     const publicResponse = stripJevExecutionMarker(response);
 
     if (observationContext) {
-      const onError = (error: unknown) => console.warn('[AI Proxy] observability metric write failed', {
-        message: error instanceof Error ? error.message : String(error),
-      });
+      const onError = (error: unknown) => console.warn(
+        '[AI Proxy] observability metric write failed', safeProviderErrorMetadata(error),
+      );
       scheduleAiRequestMetric(
         executionContext,
         observeAiProxyRequest({

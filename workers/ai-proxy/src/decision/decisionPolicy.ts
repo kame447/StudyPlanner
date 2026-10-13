@@ -9,6 +9,12 @@ export const JEV_MODEL = {
 export const JEV_CATALOG_VERSION = 'focused-authorization-2026-09-27';
 export const JEV_GATE_VERSION = 'authorization-conservative-v2-tuning81';
 export const JEV_TIMEOUT_MS = 1_500;
+// External privacy routing is server-owned and applies to every purpose.
+// OpenRouter rejects requests when no route satisfies these requirements.
+export const JEV_PROVIDER_PREFERENCES = Object.freeze({
+  zdr: true,
+  data_collection: 'deny',
+} as const);
 export const FOCUSED_REQUEST_TIMEOUT_MS = 85_000;
 export const FOCUSED_AUTHORIZATION_GATE_THRESHOLDS = {
   strongAuxiliaryFallback: 0.9,

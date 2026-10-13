@@ -86,6 +86,7 @@ describe('AI proxy deployed worker request budget', () => {
       if (url.endsWith('/chat/completions')) {
         upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
         return new Response(JSON.stringify({
+          model: JSON.parse(String(init?.body)).model,
           choices: [{ message: { content: '{"ok":true}' } }],
           usage: OPENAI_USAGE,
         }), { status: 200 });
@@ -136,7 +137,7 @@ describe('AI proxy deployed worker request budget', () => {
     expect(response.headers.get('Cache-Control')).toBe('no-store');
   });
 
-  it('routes attachment requests to the default Luna and preserves provider usage', async () => {
+  it('routes attachment requests to GPT-6 Luna and preserves provider usage', async () => {
     const upstreamBodies: Array<Record<string, unknown>> = [];
     vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
@@ -148,6 +149,7 @@ describe('AI proxy deployed worker request budget', () => {
       if (url.endsWith('/chat/completions')) {
         upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
         return new Response(JSON.stringify({
+          model: JSON.parse(String(init?.body)).model,
           choices: [{ message: { content: '{"text":"教材 1章"}' } }],
           usage: OPENAI_USAGE,
         }), { status: 200 });
@@ -199,6 +201,7 @@ describe('AI proxy deployed worker request budget', () => {
       if (url.endsWith('/chat/completions')) {
         upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
         return new Response(JSON.stringify({
+          model: JSON.parse(String(init?.body)).model,
           choices: [{ message: { content: '{"ok":true}' } }],
         }), { status: 200 });
       }

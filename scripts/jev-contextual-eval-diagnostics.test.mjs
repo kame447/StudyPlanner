@@ -126,19 +126,25 @@ describe('recomputed gate provenance and parity with actual dispatch', () => {
     ['head-triggered fallback', 'quantity_role_unresolved', evaluated('target', { independentMeaning: 0.96 }), { status: 'accepted', decision: 'fallback' }],
     ['unavailable', 'quantity_role_unresolved', { status: 'unavailable', reason: 'http', httpStatus: 400, metadata }, { status: 'unavailable', reason: 'http' }],
   ])('%s preserves status, reason and decision', async (_name, questionCode, result, expected) => {
-    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const metricLog = vi.spyOn(console, 'info').mockImplementation(() => undefined);
     // Observe the gate calls made by the real dispatcher; recomputation is
     // explicitly separate from this observation and never claims to be it.
     const actualGate = vi.spyOn(policy, 'gateContextualDecision');
     const fallback = vi.fn(async () => new Response('baseline'));
     const respond = vi.fn(decision => Response.json(decision));
-    await dispatchFocusedContextual({ context: context(questionCode), env: { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100',
+    const response = await dispatchFocusedContextual({ context: context(questionCode), env: { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100',
       JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE: 'canary', JEV_FOCUSED_CONTEXTUAL_ANSWER_CANARY_PERCENT: '100' },
       firebaseUid: 'synthetic', signal: new AbortController().signal, fallback, respond,
       provider: { evaluate: async () => result } });
     const observed = actualGate.mock.results.map(call => call.value);
-    expect(observed).toHaveLength(2);
-    expect(observed).toEqual([expected, expected]);
+    expect(observed).toHaveLength(1);
+    expect(observed).toEqual([expected]);
+    expect(metricLog).toHaveBeenCalledTimes(1);
+    expect(metricLog).toHaveBeenCalledWith('[AI Decision]', expect.objectContaining({
+      gate: expected.status === 'deferred' ? 'abstained' : expected.status,
+      reason: expected.status === 'accepted' ? null : expected.reason,
+      outcome: expected.status === 'accepted' ? 'success' : 'fallback',
+    }));
     const recomputed = typedJevDiagnostic(result, policy.gateContextualDecision(result, questionCode), policy.CONTEXTUAL_GATE_VERSION);
     expect(recomputed.gateRecomputedByHarness).toEqual({ status: expected.status, reason: expected.reason ?? 'none',
       decision: expected.decision ?? null, gateVersion: policy.CONTEXTUAL_GATE_VERSION });
@@ -146,6 +152,11 @@ describe('recomputed gate provenance and parity with actual dispatch', () => {
     expect(fallback).toHaveBeenCalledTimes(expected.status === 'accepted' ? 0 : 1);
     if (expected.decision === 'target') expect(respond.mock.calls[0][0]).toMatchObject({ decision: 'quantity_role_answer', quantityRole: 'target' });
     if (expected.decision === 'fallback') expect(respond.mock.calls[0][0].decision).toBe('fallback');
+    if (expected.status === 'accepted') {
+      expect(await response.json()).toEqual(respond.mock.calls[0][0]);
+    } else {
+      expect(await response.text()).toBe('baseline');
+    }
     expect(isEvalDispatchDiagnostics({ ...emptyDispatchDiagnostics('jev'), jev: recomputed }, 'jev')).toBe(true);
   });
 });

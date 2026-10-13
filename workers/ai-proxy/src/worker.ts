@@ -1,4 +1,6 @@
 import type { SemanticRequestRecorder } from '../../../shared/semanticDispatchRecorder';
+import { readBoundedOpenAiResponse } from './providerResponseBody';
+import { safeProviderErrorMetadata } from './providerErrorMetadata';
 import { createWorkerSemanticCensus, type SemanticCensusEnv } from './semanticTurnCensus';
 import { observedDecisionProviders, observeSemanticBackgroundWork } from './semanticDispatchWorkerObservation';
 import aiProxyWorker, { AiQuotaDurableObject } from './index';
@@ -239,6 +241,7 @@ async function requireFirebaseSession(
     `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
     {
       method: 'POST',
+      redirect: 'manual',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken: token }),
     },
@@ -772,6 +775,7 @@ async function fetchChatCompletion(
   }
   const upstreamResponse = await providerFetch(`${openAiBaseUrl}/chat/completions`, {
     method: 'POST',
+    redirect: 'manual',
     ...(signal ? { signal } : {}),
     headers: {
       'Content-Type': 'application/json',
@@ -785,17 +789,25 @@ async function fetchChatCompletion(
       max_completion_tokens: maxCompletionTokens,
     }),
   });
-  const upstreamText = await upstreamResponse.text();
-  if (!upstreamResponse.ok) {
+  const upstreamText = await readBoundedOpenAiResponse(upstreamResponse);
+  if (!upstreamResponse.ok || upstreamText === null) {
     console.warn('[AI Proxy] OpenAI upstream failed', { status: upstreamResponse.status });
     return jsonResponse(request, env, 502, { error: 'OpenAI request failed.' });
   }
 
   try {
     const upstreamJson = JSON.parse(upstreamText) as {
+      model?: unknown;
       choices?: Array<{ message?: { content?: string | null } }>;
       usage?: unknown;
     };
+    // Bind provider identity to the model already resolved and allowlisted above.
+    // Only documented canonical IDs are accepted; do not guess snapshot aliases.
+    if (upstreamJson.model !== model) {
+      return jsonResponse(request, env, 502, {
+        error: 'OpenAI response could not be parsed.',
+      });
+    }
     if (observationContext) {
       observationContext.providerCompletion = projectOpenAiCompletionMetadata({
         ...completionBudget, response: upstreamJson,
@@ -883,6 +895,7 @@ async function handlePlanningAttachmentRequest(
   const imageUrl = `data:${parsedPayload.payload.mimeType};base64,${parsedPayload.payload.base64}`;
   const upstreamResponse = await fetch(`${openAiBaseUrl}/chat/completions`, {
     method: 'POST',
+    redirect: 'manual',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${env.OPENAI_API_KEY.trim()}`,
@@ -916,8 +929,8 @@ async function handlePlanningAttachmentRequest(
       max_completion_tokens: PLANNING_ATTACHMENT_MAX_OUTPUT_TOKENS,
     }),
   });
-  const upstreamText = await upstreamResponse.text();
-  if (!upstreamResponse.ok) {
+  const upstreamText = await readBoundedOpenAiResponse(upstreamResponse);
+  if (!upstreamResponse.ok || upstreamText === null) {
     console.warn('[AI Proxy] Luna planning attachment upstream failed', {
       status: upstreamResponse.status,
     });
@@ -1031,14 +1044,15 @@ async function handlePlanningTranscriptionRequest(
 
   const upstreamResponse = await fetch(`${openAiBaseUrl}/audio/transcriptions`, {
     method: 'POST',
+    redirect: 'manual',
     headers: {
       Authorization: `Bearer ${env.OPENAI_API_KEY.trim()}`,
     },
     body: formData,
   });
-  const upstreamText = await upstreamResponse.text();
+  const upstreamText = await readBoundedOpenAiResponse(upstreamResponse);
 
-  if (!upstreamResponse.ok) {
+  if (!upstreamResponse.ok || upstreamText === null) {
     console.warn('[AI Proxy] planning transcription upstream failed', {
       status: upstreamResponse.status,
       model,
@@ -1124,7 +1138,7 @@ const worker = {
       try {
         return await handlePlanningTranscriptionRequest(request, env, observationContext);
       } catch (error) {
-        console.error('[AI Proxy] unexpected planning transcription failure', error);
+        console.error('[AI Proxy] unexpected planning transcription failure', safeProviderErrorMetadata(error));
         return jsonResponse(request, env, 500, { error: 'Unexpected worker error.' });
       }
     }
@@ -1148,7 +1162,7 @@ const worker = {
       try {
         return await handlePlanningAttachmentRequest(request, env, observationContext);
       } catch (error) {
-        console.error('[AI Proxy] unexpected planning attachment failure', error);
+        console.error('[AI Proxy] unexpected planning attachment failure', safeProviderErrorMetadata(error));
         return jsonResponse(request, env, 500, { error: 'Unexpected worker error.' });
       }
     }
@@ -1176,9 +1190,8 @@ const worker = {
           ?? resolveFocusedContextualBaselineFailure(error)
           ?? resolveTemporalScopeRepairBaselineFailure(error)
           ?? resolveUserContextRoutingBaselineFailure(error);
-        // Log the original Luna failure, as before; the wrapper only carries the telemetry class.
         console.error('[AI Proxy] unexpected chat handler failure',
-          baselineFailure && error instanceof Error ? error.cause : error);
+          safeProviderErrorMetadata(baselineFailure && error instanceof Error ? error.cause : error));
         const response = jsonResponse(request, env, 500, { error: 'Unexpected worker error.' });
         return baselineFailure
           ? markLunaBaselineFailure(response, baselineFailure.mode, baselineFailure.failure)

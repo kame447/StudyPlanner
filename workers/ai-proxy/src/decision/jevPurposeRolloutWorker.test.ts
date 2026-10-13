@@ -77,7 +77,7 @@ beforeEach(() => {
       const body = JSON.parse(String(init?.body));
       expect(body).not.toHaveProperty('decisionContext');
       expect(JSON.stringify(body)).not.toContain('JEV_');
-      return Response.json({ choices: [{ message: { content: 'Luna baseline sentinel' } }] });
+      return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ message: { content: 'Luna baseline sentinel' } }] });
     }
     throw new Error('Unstubbed endpoint: fixture must never send a real request.');
   }));
