@@ -23,14 +23,19 @@ function response(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } });
 }
 
-function page(shape: 'current' | 'legacy', nextCursor: string | null = 'next-page') {
+function page(shape: 'current' | 'legacy' | 'page-only', nextCursor: string | null = 'next-page') {
   return { ok: true, users: [user], nextCursor,
-    ...(shape === 'current' ? { enrichmentReady: true, trend } : {}) };
+    ...(shape === 'legacy' ? {} : { enrichmentReady: true }),
+    ...(shape === 'current' ? { trend } : {}) };
 }
 
-function routeResponses(shape: 'current' | 'legacy') {
-  fetchMock.mockImplementation(async (url: string) => new URL(url).pathname.endsWith('/overview')
-    ? response({ ok: true, result: trend }) : response(page(shape)));
+function routeResponses(shape: 'current' | 'legacy' | 'page-only') {
+  fetchMock.mockImplementation(async (value: string) => {
+    const url = new URL(value);
+    if (url.pathname.endsWith('/overview')) return response({ ok: true, result: trend });
+    return response(page(shape === 'page-only' && url.searchParams.get('includeTrend') !== 'false'
+      ? 'current' : shape));
+  });
 }
 
 beforeEach(() => {
@@ -41,7 +46,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-describe.each(['current', 'legacy'] as const)('%s Worker Users response', shape => {
+describe.each(['current', 'legacy', 'page-only'] as const)('%s Worker Users response', shape => {
   it('keeps the initial trend and fetches only Users for the next page', async () => {
     routeResponses(shape);
     const initial = await getAdminObservabilityUsers({ environment: 'preview', limit: 25 });
@@ -51,12 +56,12 @@ describe.each(['current', 'legacy'] as const)('%s Worker Users response', shape 
     expect(initial.trend).toEqual(trend);
     expect(next.users).toEqual(initial.users);
     expect(next.nextCursor).toBe('next-page');
-    expect(next.enrichmentReady).toBe(shape === 'current');
+    expect(next.enrichmentReady).toBe(shape !== 'legacy');
     expect(next).not.toHaveProperty('trend');
     expect(next.users[0]).toMatchObject({ activeDayCount: null, recentErrorState: 'unknown' });
-    expect(initialRequestCount).toBe(shape === 'current' ? 1 : 2);
+    expect(initialRequestCount).toBe(shape === 'legacy' ? 2 : 1);
     expect(fetchMock.mock.calls.length - initialRequestCount).toBe(1);
-    expect(fetchMock).toHaveBeenCalledTimes(shape === 'current' ? 2 : 3);
+    expect(fetchMock).toHaveBeenCalledTimes(shape === 'legacy' ? 3 : 2);
     expect(platform.getIdToken).toHaveBeenCalledTimes(fetchMock.mock.calls.length);
 
     const [url, options] = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
@@ -64,6 +69,8 @@ describe.each(['current', 'legacy'] as const)('%s Worker Users response', shape 
     expect(new URL(url).searchParams.get('environment')).toBe('preview');
     expect(new URL(url).searchParams.get('cursor')).toBe('next-page');
     expect(new URL(url).searchParams.get('limit')).toBe('25');
+    expect(new URL(url).searchParams.get('includeTrend')).toBe('false');
+    expect(new URL(fetchMock.mock.calls[0][0]).searchParams.has('includeTrend')).toBe(false);
     expect(options).toMatchObject({ method: 'GET', headers: { Authorization: 'Bearer synthetic-admin-token' } });
 
     if (shape === 'legacy') {
@@ -72,6 +79,17 @@ describe.each(['current', 'legacy'] as const)('%s Worker Users response', shape 
       expect(overview.searchParams.get('environment')).toBe('preview');
       expect((Date.parse(overview.searchParams.get('to')!) - Date.parse(overview.searchParams.get('from')!)) / 86_400_000).toBe(29);
     }
+  });
+
+  it('refreshes the initial trend without opting out or reusing a cached value', async () => {
+    routeResponses(shape);
+    expect((await getAdminObservabilityUsers()).trend).toEqual(trend);
+    const updatedTrend = { daily: [], activeUsers: null };
+    fetchMock.mockImplementation(async (url: string) => new URL(url).pathname.endsWith('/overview')
+      ? response({ ok: true, result: updatedTrend })
+      : response(shape === 'legacy' ? page('legacy') : { ...page('current'), trend: updatedTrend }));
+    expect((await getAdminObservabilityUsers()).trend).toEqual(updatedTrend);
+    expect(fetchMock.mock.calls.every(([url]) => !new URL(url).searchParams.has('includeTrend'))).toBe(true);
   });
 
   it('keeps a terminal cursor and does not cache a page across requests', async () => {
@@ -132,7 +150,7 @@ describe.each([
   });
 });
 
-it.each(['trend', 'enrichmentReady'] as const)('preserves legacy classification when %s is missing', async missing => {
+it.each(['trend', 'enrichmentReady'] as const)('preserves initial legacy fallback when %s is missing', async missing => {
   const payload: Record<string, unknown> = page('current');
   delete payload[missing];
   fetchMock.mockResolvedValueOnce(response(payload))
@@ -140,7 +158,7 @@ it.each(['trend', 'enrichmentReady'] as const)('preserves legacy classification 
     .mockResolvedValueOnce(response(payload));
   expect((await getAdminObservabilityUsers()).trend).toEqual(trend);
   const next = await getAdminObservabilityUsersPage({ cursor: 'next-page' });
-  expect(next.enrichmentReady).toBe(false);
+  expect(next.enrichmentReady).toBe(missing === 'trend');
   expect(next).not.toHaveProperty('trend');
   expect(fetchMock).toHaveBeenCalledTimes(3);
 });
@@ -150,4 +168,10 @@ it('does not hide initial legacy Overview failure', async () => {
     .mockResolvedValueOnce(response({ error: 'overview unavailable' }, 503));
   await expect(getAdminObservabilityUsers()).rejects.toThrow('overview unavailable');
   expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+it('rejects malformed readiness in a trend-free page response', async () => {
+  fetchMock.mockResolvedValueOnce(response({ ...page('page-only'), enrichmentReady: 'yes' }));
+  await expect(getAdminObservabilityUsersPage()).rejects.toThrow('Observability Users response was invalid.');
+  expect(fetchMock).toHaveBeenCalledTimes(1);
 });

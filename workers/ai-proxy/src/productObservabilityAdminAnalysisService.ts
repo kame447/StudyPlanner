@@ -464,11 +464,12 @@ export class ProductObservabilityAdminAnalysisService {
     environment: ObservabilityEnvironment;
     cursor?: FirestoreOrderedCursor | null;
     limit?: number;
+    includeTrend?: boolean;
   }): Promise<{
     users: ObservabilityAdminUserListItem[];
     nextCursor: FirestoreOrderedCursor | null;
     enrichmentReady: boolean;
-    trend: ObservabilityAdminUserTrend;
+    trend?: ObservabilityAdminUserTrend;
   }> {
     validateProfileCursor(params.cursor);
     const readinessValue = await this.firestore.getDocument(
@@ -493,7 +494,7 @@ export class ProductObservabilityAdminAnalysisService {
         cursorDocumentName: params.cursor?.documentName ?? null,
         limit,
       }),
-      this.readModel.getUserTrend({
+      params.includeTrend === false ? undefined : this.readModel.getUserTrend({
         environment: params.environment,
         fromDate: addDays(toDate, -29),
         toDate,
@@ -606,7 +607,7 @@ export class ProductObservabilityAdminAnalysisService {
         ? { orderedValue: 'profile', documentName: last.documentName }
         : null,
       enrichmentReady,
-      trend,
+      ...(trend ? { trend } : {}),
     };
   }
 
