@@ -2,6 +2,7 @@ import { AppearanceProvider } from './AppearanceProvider';
 import { useStartupProfileObservation } from '../hooks/useStartupProfileObservation';
 import { createStartupSessionScope, type StartupSessionCapability, type StartupSessionScope } from '../lib/startupSessionScope';
 import { retireStartupPreviewCache } from '../lib/retiredStartupPreviewCache';
+import { ProfileRestoreRecoveryScreen } from './ProfileRestoreRecoveryScreen';
 import { PlannerAppBootstrap } from './PlannerAppBootstrap';
 import { startupTiming } from '../lib/startupTiming';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -97,7 +98,13 @@ function ConsentedLaplanceApp({
               resetProfile={personalization.resetProfile}
             >
               <RootStartupReadyProvider onReady={finishStartup}>
-                <App state={state} onReady={onReady} />
+                {state.profileRestoreRecovery ? (
+                  <ProfileRestoreRecoveryScreen
+                    retrying={state.profileRestoreRecovery === 'retrying'}
+                    onRetry={state.retryProfileRestore}
+                    onReady={onReady}
+                  />
+                ) : <App state={state} onReady={onReady} />}
               </RootStartupReadyProvider>
             </WeeklyPlanningPersonalizationProvider>
           </UserPlanningContextProvider>

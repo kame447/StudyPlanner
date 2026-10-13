@@ -1,5 +1,5 @@
 import { startupTiming } from '../lib/startupTiming';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useRootManagedAuthentication } from '../components/RootManagedAuthenticationContext';
 import { useRootStartupReady } from '../components/RootStartupReadyContext';
 import { authRepository } from '../repositories';
@@ -10,7 +10,10 @@ interface UseAuthSessionStateOptions {
   showNotice: ShowNotice;
   expectedUserId?: string;
   onBootstrapSettled?: () => void;
+  isSessionCurrent?: () => boolean;
 }
+
+export type ProfileRestoreRecovery = 'failed' | 'retrying' | null;
 
 type SignInResult = User | null | undefined;
 
@@ -24,6 +27,8 @@ export class ProfileSaveScopeExpiredError extends Error {
 interface UseAuthSessionStateResult {
   booting: boolean;
   user: User | null;
+  profileRestoreRecovery: ProfileRestoreRecovery;
+  retryProfileRestore: (loadPlannerData: (userId: string) => Promise<void>) => Promise<void>;
   bootstrapSession: (
     loadPlannerData: (userId: string) => Promise<void>,
   ) => Promise<void>;
@@ -43,9 +48,17 @@ export function useAuthSessionState({
   showNotice,
   expectedUserId,
   onBootstrapSettled,
+  isSessionCurrent,
 }: UseAuthSessionStateOptions): UseAuthSessionStateResult {
   const bootstrapGeneration = useRef(0);
-  useEffect(() => () => { bootstrapGeneration.current += 1; }, []);
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; bootstrapGeneration.current += 1; };
+  }, []);
+  const restoreFailed = useRef(false);
+  const bootstrapPending = useRef(false);
+  const [profileRestoreRecovery, setProfileRestoreRecovery] = useState<ProfileRestoreRecovery>(null);
   const rootManagedAuthentication = useRootManagedAuthentication();
   const markRootStartupReady = useRootStartupReady();
   const [booting, setBooting] = useState(true);
@@ -68,18 +81,24 @@ export function useAuthSessionState({
 
   const bootstrapSession = useCallback(
     async (loadPlannerData: (userId: string) => Promise<void>) => {
+      if (!mounted.current || isSessionCurrent?.() === false) return;
       const generation = ++bootstrapGeneration.current;
+      const isCurrent = () => mounted.current && generation === bootstrapGeneration.current
+        && isSessionCurrent?.() !== false;
+      bootstrapPending.current = true;
+      if (restoreFailed.current) setProfileRestoreRecovery('retrying');
       invalidateProfileSaves();
       setBooting(true);
       const finishBootstrap = startupTiming.begin('bootstrap');
       let startupOutcome: 'success' | 'error' = 'success';
+      let profileFailed = false;
       const notifySettled = () => {
         try { onBootstrapSettled?.(); } catch { /* Optional cleanup cannot alter bootstrap. */ }
       };
 
       try {
         const currentUser = await startupTiming.measure('profile', () => authRepository.getCurrentUser());
-        if (generation !== bootstrapGeneration.current) return;
+        if (!isCurrent()) return;
         invalidateProfileSaves();
         if (currentUser && expectedUserId && currentUser.id !== expectedUserId) {
           // Live Firebase identity can move ahead of the root's committed session.
@@ -99,7 +118,7 @@ export function useAuthSessionState({
         try {
           await loadPlannerData(currentUser.id);
         } catch (error) {
-          if (generation !== bootstrapGeneration.current) return;
+          if (!isCurrent()) return;
           startupOutcome = 'error';
           showNotice(
             error instanceof Error
@@ -109,8 +128,9 @@ export function useAuthSessionState({
           );
         }
       } catch (error) {
-        if (generation !== bootstrapGeneration.current) return;
+        if (!isCurrent()) return;
         startupOutcome = 'error';
+        profileFailed = Boolean(expectedUserId && isSessionCurrent);
         showNotice(
           error instanceof Error
             ? error.message
@@ -118,15 +138,26 @@ export function useAuthSessionState({
           'error',
         );
       } finally {
-        finishBootstrap(generation === bootstrapGeneration.current ? startupOutcome : 'cancelled');
-        if (generation !== bootstrapGeneration.current) return;
+        finishBootstrap(isCurrent() ? startupOutcome : 'cancelled');
+        if (!isCurrent()) return;
+        bootstrapPending.current = false;
+        restoreFailed.current = profileFailed;
+        setProfileRestoreRecovery(profileFailed ? 'failed' : null);
         setBooting(false);
         notifySettled();
         markRootStartupReady?.();
       }
     },
-    [expectedUserId, invalidateProfileSaves, markRootStartupReady, onBootstrapSettled, showNotice],
+    [expectedUserId, invalidateProfileSaves, isSessionCurrent, markRootStartupReady, onBootstrapSettled, showNotice],
   );
+
+  const retryProfileRestore = useCallback(async (loadPlannerData: (userId: string) => Promise<void>) => {
+    // Admission is synchronous: retained handlers and same-batch clicks cannot
+    // start another read/write-capable restore before the current one settles.
+    if (!mounted.current || !restoreFailed.current || bootstrapPending.current
+      || !expectedUserId || !isSessionCurrent?.()) return;
+    await bootstrapSession(loadPlannerData);
+  }, [bootstrapSession, expectedUserId, isSessionCurrent]);
 
   const signUpWithPassword = useCallback(
     async (email: string, password: string, username: string) => {
@@ -259,6 +290,8 @@ export function useAuthSessionState({
   return {
     booting,
     user,
+    profileRestoreRecovery,
+    retryProfileRestore,
     bootstrapSession,
     signUpWithPassword,
     signInWithPassword,
