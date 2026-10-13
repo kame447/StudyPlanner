@@ -29,6 +29,10 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/c5LocalSelection/controlledCommit.ts',
   // C5: typed pure graph replacement and final synchronous Unit 2/domain revalidation.
   'application/c5LocalSelection/selection.ts',
+  // J2c: actual graph/presentation gate and registered producer context; no language interpretation.
+  'application/weeklyPlanningControlledCandidateGates.ts',
+  'application/weeklyPlanningControlledCandidateDomains.ts',
+  'application/weeklyPlanningControlledCandidateRegistry.ts',
   // Test-only: actual controller/runtime/storage fixtures; production imports prohibited by dormantArchitecture.test.
   'application/c5LocalSelection/controller.testUtils.ts',
   // Test-only: isolated paired graph packets; production imports prohibited by dormantArchitecture.test.

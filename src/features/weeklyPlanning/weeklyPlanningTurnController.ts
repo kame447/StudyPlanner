@@ -15,10 +15,10 @@ import type {
   WeeklyPlanningTurnSubmissionResult,
 } from './weeklyPlanningTurnExecutor';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from './semantic/weeklyPlanningTurnEvidenceV5';
-import type { C5LocalSelectionOptions, C5SelectedTurn } from './application/c5LocalSelection/contracts';
-import { selectC5Turn } from './application/c5LocalSelection/selection';
-import { captureC5Question, decodeC5Ledger } from './application/c5LocalSelection/basis';
-import { commitC5ControlledTurn, hasC5Recovery, readC5RuntimeGraph } from './application/c5LocalSelection/controlledCommit';
+import type { C5LocalSelectionOptions } from './application/c5LocalSelection/contracts';
+import { captureRegisteredCandidateQuestion, stageRegisteredCandidateTurn, registerC5CandidateDomain, type ControlledCandidateRegistry, type RegisteredControlledCandidateAdapter } from './application/weeklyPlanningControlledCandidateRegistry';
+import { decodeC5Ledger } from './application/c5LocalSelection/basis';
+import { commitControlledCandidateTurn, hasC5Recovery, readC5RuntimeGraph } from './application/c5LocalSelection/controlledCommit';
 
 export interface WeeklyPlanningControllerSession {
   ownerId: string;
@@ -86,6 +86,7 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
   now?: () => string;
   /** Dormant PoC: explicit consumer/provider injection only; no production default. */
   c5LocalSelection?: C5LocalSelectionOptions;
+  candidateDomains?: ControlledCandidateRegistry;
 }
 
 class WeeklyPlanningControlledSemanticFailure extends Error {
@@ -278,15 +279,21 @@ export async function submitWeeklyPlanningControlledTurn(
 
   let result: WeeklyPlanningTurnExecutionResult | undefined;
   let preparedCommit: WeeklyPlanningPreparedExecutionCommit | undefined;
-  let c5Selected: C5SelectedTurn | null = null;
+  const candidateRegistry = [
+    ...(params.c5LocalSelection ? [registerC5CandidateDomain(params.c5LocalSelection)] : []),
+    ...(params.candidateDomains ?? []),
+  ];
+  const captureQuestion = (state: PlanningIntakeState, graph: NonNullable<WeeklyPlanningTurnExecutionResult['stableV5Graph']>, messages: readonly WeeklyPlanningMessage[]) =>
+    captureRegisteredCandidateQuestion(candidateRegistry, { state, graph, messages, pending,
+      planningState: { ...snapshot, intakeState: state }, ownerId: params.ownerId, conversationId: pending.conversationId });
+  let candidateSelected: RegisteredControlledCandidateAdapter | null = null;
   try {
-    c5Selected = params.c5LocalSelection && !supplementalContext && !params.selectedStarterTarget
-      ? await selectC5Turn({ ownerId: params.ownerId, snapshot, pending, userText,
-          options: params.c5LocalSelection, getState: params.getState,
-          getGraph: () => readC5RuntimeGraph(params.ownerId, pending.conversationId) })
+    candidateSelected = !supplementalContext && !params.selectedStarterTarget
+      ? await stageRegisteredCandidateTurn(candidateRegistry, { ownerId: params.ownerId, snapshot, pending, userText,
+          getState: params.getState, readCommittedGraph: () => readC5RuntimeGraph(params.ownerId, pending.conversationId) })
       : null;
-    const executionResult = c5Selected && params.c5LocalSelection
-      ? await params.c5LocalSelection.continueSelectedTurn({ snapshot, pending, userText, graph: structuredClone(c5Selected.graph) })
+    const executionResult = candidateSelected
+      ? await candidateSelected.continueSelectedTurn({ snapshot, pending, userText })
       : await params.execute({
       snapshot,
       pending,
@@ -304,10 +311,12 @@ export async function submitWeeklyPlanningControlledTurn(
       userText,
       result: executionResult,
     };
-    if (c5Selected && params.c5LocalSelection) {
+    if (candidateSelected) {
       const assistantMessage = createTurnMessage(envelope, 'assistant', executionResult.message, now());
-      const outcome = commitC5ControlledTurn({ ownerId: params.ownerId, snapshot, begun, pending,
-        userText, selected: c5Selected, options: params.c5LocalSelection, result: executionResult,
+      const outcome = commitControlledCandidateTurn({ ownerId: params.ownerId, snapshot, begun, pending,
+        selected: candidateSelected.selected, prepare: candidateSelected.prepare, branch: candidateSelected.branch,
+        bindNextQuestion: state => captureQuestion(state, candidateSelected!.selected.graph, [...params.getState().messages, assistantMessage]),
+        result: executionResult,
         assistantMessage, getState: params.getState, dispatch: params.dispatch });
       if (outcome.accepted) {
         await runBestEffort(() => params.onCommittedTurn?.({ ...context, committed: params.getState(), assistantMessage }));
@@ -343,11 +352,15 @@ export async function submitWeeklyPlanningControlledTurn(
         // The existing application ledger survives every ordinary turn/question replacement.
         // An execution result (including AI output) cannot introduce or erase consumption.
         const ledger = decodeC5Ledger(snapshot.intakeState?.c5SelectionLedger, params.ownerId, pending.conversationId);
-        const resultState = ledger || executionResult.state.c5SelectionLedger !== undefined
+        const candidateResultState = ledger || executionResult.state.c5SelectionLedger !== undefined
           ? (() => { const { c5SelectionLedger: _resultLedger, ...withoutLedger } = executionResult.state; return withoutLedger; })()
           : executionResult.state;
         const bound = bindWeeklyPlanningQuestionPresentation({
-          state: ledger ? { ...resultState, c5SelectionLedger: ledger } : resultState,
+          state: (() => {
+            const { controlledCandidateProtocolVersion: _untrustedProtocol, ...resultState } = candidateResultState;
+            return { ...resultState, ...(ledger ? { c5SelectionLedger: ledger } : {}),
+              ...(snapshot.intakeState?.controlledCandidateProtocolVersion === 1 ? { controlledCandidateProtocolVersion: 1 as const } : {}) };
+          })(),
           content: executionResult.questionPresentationContent,
           turnId: envelope.turnId,
           assistantMessageId: assistantMessage.id,
@@ -355,10 +368,8 @@ export async function submitWeeklyPlanningControlledTurn(
           planningStateRevision: pending.baseRevision + 2,
           graphRevision: executionResult.stableV5Graph?.revision,
         });
-        return params.c5LocalSelection && executionResult.stableV5Graph
-          ? captureC5Question({ state: bound, graph: executionResult.stableV5Graph,
-              messages: [...params.getState().messages, assistantMessage],
-              ownerId: params.ownerId, conversationId: pending.conversationId })
+        return executionResult.stableV5Graph
+          ? captureQuestion(bound, executionResult.stableV5Graph, [...params.getState().messages, assistantMessage])
           : bound;
       })(),
       assistantMessage,

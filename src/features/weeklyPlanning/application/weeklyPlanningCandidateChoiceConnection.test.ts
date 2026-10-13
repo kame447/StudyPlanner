@@ -116,6 +116,15 @@ async function run(mode: 'accepted' | 'none' | 'low' | 'failure' | 'off' | 'unco
   return { h, choice, result, text, services, requests: (fetch as ReturnType<typeof vi.fn>).mock.calls.slice(fetchStart).map(call => JSON.parse(String(call[1]?.body))) };
 }
 
+it('J2c native C5 byte parity baseline',async()=>{
+  let uuid=0;vi.spyOn(crypto,'randomUUID').mockImplementation(()=>`00000000-0000-4000-8000-${String(++uuid).padStart(12,'0')}`);
+  const {choice,requests}=await run('accepted');
+  const observation={choice:choice.mock.calls.map(call=>String(call[1]?.body)),luna:requests,storage:[...memory.values.entries()],trace:takeWeeklyPlanningStableV5DebugTrace(JSON.parse(String(choice.mock.calls[0][1]?.body)).decisionContext.request.requestId)};
+  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(observation))))).map(b=>b.toString(16).padStart(2,'0')).join('');
+  expect(observation.trace.length).toBeGreaterThan(0);
+  expect(digest).toBe('f6fab45d6358b07c0e2b89fe4556f768a8a9165f3011729f34f0e2bc91692470');
+});
+
 it('actual application entry accepts Choice with zero semantic Luna and real question continuation plus durable consumption', async () => {
   const { h, choice, result } = await run('accepted');
   expect(result.accepted).toBe(true); expect(choice).toHaveBeenCalledTimes(1);

@@ -1,3 +1,9 @@
+import type { ControlledCandidateSemanticContribution } from './weeklyPlanningControlledCandidateDomains';
+import type { ControlledCandidateDomainHost } from './weeklyPlanningControlledCandidateChoice';
+import type { ControlledCandidateRegistry } from './weeklyPlanningControlledCandidateRegistry';
+import type { WeeklyPlanningSemanticTurnObservation } from '../trace/weeklyPlanningSemanticCensus';
+import { weeklyPlanningRegisteredCandidateDomains } from './weeklyPlanningRegisteredCandidateDomains';
+import { decodeWeeklyPlanningStableV5QuestionSlot } from '../intake/weeklyPlanningStableV5QuestionSlot';
 import { projectSemanticCensusMetadata } from '../../../../shared/semanticTurnCensus';
 import { createWeeklyPlanningCandidateChoiceOptions, type WeeklyPlanningCandidateChoiceServices } from './weeklyPlanningCandidateChoiceConnection';
 import {
@@ -41,6 +47,7 @@ import {
 
 export interface WeeklyPlanningTurnApplicationServices {
   candidateChoice?: WeeklyPlanningCandidateChoiceServices;
+  candidateDomains?: (host: ControlledCandidateDomainHost) => ControlledCandidateRegistry;
   submitControlledTurn: typeof submitWeeklyPlanningControlledTurn;
   runtimeGateway: WeeklyPlanningTurnRuntimeGateway;
   stagingLifecycle: WeeklyPlanningTurnStagingLifecycle;
@@ -48,6 +55,7 @@ export interface WeeklyPlanningTurnApplicationServices {
 }
 
 const defaultServices: WeeklyPlanningTurnApplicationServices = {
+  candidateDomains: weeklyPlanningRegisteredCandidateDomains,
   submitControlledTurn: submitWeeklyPlanningControlledTurn,
   runtimeGateway: weeklyPlanningTurnRuntimeGateway,
   stagingLifecycle: weeklyPlanningTurnStagingLifecycle,
@@ -88,10 +96,11 @@ export function submitWeeklyPlanningApplicationTurn(
     return Promise.resolve({ accepted: false, draftCandidates: [] });
   }
 
-  const runRuntime = (turn: Parameters<SubmitWeeklyPlanningControlledTurnParams['execute']>[0], selectedGraph?: Parameters<NonNullable<WeeklyPlanningTurnRuntimeGateway['continueSelectedTurn']>>[1]): Promise<WeeklyPlanningTurnExecutionResult> => {
+  let semanticObservation: WeeklyPlanningSemanticTurnObservation | undefined;
+  const runtimeInput = (turn: Parameters<SubmitWeeklyPlanningControlledTurnParams['execute']>[0], ): ExecuteWeeklyPlanningTurnRuntimeParams => {
     const { snapshot, pending, userText, supplementalContext, selectedStarterTarget } = turn;
     const input: ExecuteWeeklyPlanningTurnRuntimeParams = {
-      ...(c5LocalSelection ? { semanticObservation: c5LocalSelection.semanticObservation } : {}),
+      ...(semanticObservation ? { semanticObservation } : {}),
       snapshot,
       pending,
       userText,
@@ -115,8 +124,12 @@ export function submitWeeklyPlanningApplicationTurn(
         && params.getState().revision === pending.baseRevision + 1
         && isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending),
     };
+    return input;
+  };
+  const runRuntime = (turn: Parameters<SubmitWeeklyPlanningControlledTurnParams['execute']>[0], selectedGraph?: Parameters<NonNullable<WeeklyPlanningTurnRuntimeGateway['continueSelectedTurn']>>[1], contribution?: ControlledCandidateSemanticContribution): Promise<WeeklyPlanningTurnExecutionResult> => {
+    const input = runtimeInput(turn);
     return selectedGraph && services.runtimeGateway.continueSelectedTurn
-      ? services.runtimeGateway.continueSelectedTurn(input, selectedGraph)
+      ? services.runtimeGateway.continueSelectedTurn(input, selectedGraph, contribution)
       : services.runtimeGateway.execute(input);
   };
   const c5LocalSelection: ReturnType<typeof createWeeklyPlanningCandidateChoiceOptions> = params.isPlannerDataSnapshotCurrent && services.runtimeGateway.continueSelectedTurn
@@ -134,6 +147,22 @@ export function submitWeeklyPlanningApplicationTurn(
       })
     : undefined;
 
+  semanticObservation = c5LocalSelection?.semanticObservation;
+  const liveSourceAccess: ControlledCandidateDomainHost['sourceAccess'] = () => params.session.ownerId === params.userId
+    && isPlannerDataReadyForOwner(params.plannerDataAvailability, params.userId)
+    && params.isPlannerDataSnapshotCurrent?.() === true ? 'allowed' : 'denied';
+  const candidateDomains = params.isPlannerDataSnapshotCurrent && services.runtimeGateway.continueSelectedTurn && services.runtimeGateway.prepareCandidateInput && services.runtimeGateway.candidateRequestContext
+    ? services.candidateDomains?.({
+        sourceAccess: liveSourceAccess, choiceServices: services.candidateChoice,
+        censusMetadata: projectSemanticCensusMetadata({ questionCode: decodeWeeklyPlanningStableV5QuestionSlot(params.getState().intakeState?.lastQuestionContext?.targetSlot),
+          targetCount: params.getState().intakeState?.lastQuestionContext?.topicId ? 1 : null, binding: 'unknown', freshness: 'unknown' }),
+        inputForTurn: turn => services.runtimeGateway.prepareCandidateInput!(runtimeInput(turn)).normalizerInput,
+        requestContextForTurn: pending => services.runtimeGateway.candidateRequestContext!(pending, { timeZone: params.timeZone, weekStartsOn: params.weekStartsOn }),
+        continueSelectedTurn: turn => runRuntime(turn, turn.graph, turn.semanticContribution),
+        semanticObservation: () => semanticObservation,
+        bindSemanticObservation: observation => { semanticObservation ??= observation; },
+      }) : undefined;
+
   const submission = services.submitControlledTurn({
     session: params.session,
     ownerId: params.userId,
@@ -144,6 +173,7 @@ export function submitWeeklyPlanningApplicationTurn(
     dispatch: params.dispatch,
     now: params.now,
     c5LocalSelection,
+    candidateDomains,
     execute: runRuntime,
     onStartedTurn({ pending }) {
       services.outcomeLifecycle.started?.({
@@ -186,9 +216,9 @@ export function submitWeeklyPlanningApplicationTurn(
       });
     },
   });
-  return c5LocalSelection ? submission.then(
-    result => { c5LocalSelection.finishCensus(result.recoveryRequired ? 'unknown' : result.accepted ? 'success' : 'failure'); return result; },
-    error => { c5LocalSelection.finishCensus('failure'); throw error; },
+  return semanticObservation ? submission.then(
+    result => { semanticObservation!.finish(result.recoveryRequired ? 'unknown' : result.accepted ? 'success' : 'failure'); return result; },
+    error => { semanticObservation!.finish('failure'); throw error; },
   ) : submission;
 
 }
