@@ -14,6 +14,8 @@ Status: current domain entry point
 
 ## Active work
 
+- [Material details fallback](work/20261013-material-details-fallback.md): Issue #187 keeps acquired candidates when optional NDL detail enrichment fails; local implementation with provider calls disabled.
+
 - [`work/20261012-gpt-6-luna-migration.md`](work/20261012-gpt-6-luna-migration.md): 内部OpenAI既定モデルのGPT-6 Luna移行。独立branchで実装・検証中で、本番反映と実API品質確認は未実施。
 
 - [`work/20260912-managed-agent-runtime-evaluation.md`](work/20260912-managed-agent-runtime-evaluation.md): Agents APIを、複数情報源を調べる学習相談の助言候補生成だけに限定する導入方針と有効化前の評価。Lunaでの対象構成、費用、待ち時間、安全性の実API試験と本番有効化は未実施。

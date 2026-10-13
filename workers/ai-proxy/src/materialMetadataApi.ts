@@ -389,14 +389,23 @@ async function enrichNdlDetails(
   const isbn = candidate.isbn13 ?? candidate.isbn10;
   if (!isbn) return candidate;
   if (candidate.pageCount && candidate.tableOfContents?.length) return candidate;
-  const response = await fetch(buildNdlSruDetailsUrl(isbn), {
-    headers: {
-      Accept: 'application/xml,text/xml;q=0.9,*/*;q=0.1',
-      'User-Agent': 'StudyPlanner material metadata details',
-    },
-  });
-  if (!response.ok) return candidate;
-  return parseNdlSruDetailsXml(await response.text(), candidate);
+  const url = buildNdlSruDetailsUrl(isbn);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/xml,text/xml;q=0.9,*/*;q=0.1',
+        'User-Agent': 'StudyPlanner material metadata details',
+      },
+    });
+    if (!response.ok) return candidate;
+    return parseNdlSruDetailsXml(await response.text(), candidate);
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error;
+    console.warn('[Material Metadata] optional details enrichment failed', {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return candidate;
+  }
 }
 
 function parseOpenBdCoverMap(payload: unknown): Map<string, string> {
