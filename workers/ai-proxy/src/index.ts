@@ -1,3 +1,4 @@
+import { readBoundedOpenAiResponse } from './providerResponseBody';
 import { DurableObject } from 'cloudflare:workers';
 import { DEFAULT_ALLOWED_CHAT_MODELS, resolveChatModel } from './modelPolicy';
 import { resolveOpenAiChatTemperature } from '../../../shared/aiProxyContract';
@@ -756,6 +757,7 @@ async function verifyFirebaseToken(
     `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(webApiKey)}`,
     {
       method: 'POST',
+      redirect: 'manual',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -865,6 +867,7 @@ async function handleChatCompletion(
   );
   const upstreamResponse = await fetch(`${openAiBaseUrl}/chat/completions`, {
     method: 'POST',
+    redirect: 'manual',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${env.OPENAI_API_KEY.trim()}`,
@@ -878,9 +881,9 @@ async function handleChatCompletion(
     }),
   });
 
-  const upstreamText = await upstreamResponse.text();
+  const upstreamText = await readBoundedOpenAiResponse(upstreamResponse);
 
-  if (!upstreamResponse.ok) {
+  if (!upstreamResponse.ok || upstreamText === null) {
     console.warn('[AI Proxy] OpenAI upstream failed', {
       status: upstreamResponse.status,
     });
@@ -890,11 +893,12 @@ async function handleChatCompletion(
   }
 
   const upstreamJson = JSON.parse(upstreamText) as {
+    model?: unknown;
     choices?: Array<{ message?: { content?: string | null } }>;
   };
   const content = upstreamJson.choices?.[0]?.message?.content?.trim();
 
-  if (!content) {
+  if (upstreamJson.model !== model || !content) {
     return jsonResponse(request, env, 502, {
       error: 'OpenAI response content was empty.',
     });
@@ -913,6 +917,7 @@ async function requestGeminiImageAnalysis(params: {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(params.env.GEMINI_API_KEY?.trim() ?? '')}`;
   const upstreamResponse = await fetch(endpoint, {
     method: 'POST',
+    redirect: 'manual',
     headers: {
       'Content-Type': 'application/json',
     },

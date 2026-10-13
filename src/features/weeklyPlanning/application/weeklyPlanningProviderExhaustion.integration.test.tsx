@@ -1,3 +1,4 @@
+import { AI_CHAT_PURPOSE_MODELS } from '../../../../workers/ai-proxy/src/modelPolicy';
 import { loadWeeklyPlanningRuntimeModule } from './weeklyPlanningRuntimeModule';
 import { createRef, forwardRef, useImperativeHandle } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
@@ -83,8 +84,8 @@ function resetRuntime() {
   resetUserPlanningContextRuntimeForTestV1(); resetWeeklyPlanningStableV5DebugTraceForTest();
   resetOpenAiCompatibleClientRequestBudgetForTest(); setWeeklyPlanningTraceRepositoryForTests(undefined);
 }
-function completion(content: string) {
-  return Response.json({ choices: [{ message: { content } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
+function completion(content: string, model = AI_CHAT_PURPOSE_MODELS.weekly_planning_semantic_normalizer) {
+  return Response.json({ model, choices: [{ message: { content } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
 }
 function clearRequests() { proxyRequests = []; jevRequests = []; providerOrder = []; genericRequests = []; unexpectedRequests = []; }
 beforeEach(async () => {

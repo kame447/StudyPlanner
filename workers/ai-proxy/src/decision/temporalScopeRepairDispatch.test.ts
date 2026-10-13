@@ -5,7 +5,7 @@ import {
   dispatchTemporalScopeRepair,
   resolveTemporalScopeRepairBaselineFailure,
 } from './temporalScopeRepairDispatch';
-import type { TemporalScopeRepairDecision } from './temporalScopeRepairDecisionPolicy';
+import { TEMPORAL_SCOPE_REPAIR_REQUEST_TIMEOUT_MS, type TemporalScopeRepairDecision } from './temporalScopeRepairDecisionPolicy';
 
 const metadata: DecisionMetadata = {
   provider: 'typesafe',
@@ -78,6 +78,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -125,6 +126,10 @@ describe('temporal-scope repair dispatch', () => {
 
   it.each([
     ['low confidence', evaluated('plan_unavailable', { confidence: 0.5 })],
+    ['boundary probability', evaluated('plan_unavailable', { selectedProbability: 0.899 })],
+    ['uncertain boundary', evaluated('uncertain', { confidence: 0.799 })],
+    ['HTTP 429', { status: 'unavailable', reason: 'http', httpStatus: 429, metadata }],
+    ['redirect', { status: 'unavailable', reason: 'http', httpStatus: 307, metadata }],
     ['conflicting heads', evaluated('plan_unavailable', { independentMeaning: 0.8 })],
     ['timeout', { status: 'unavailable', reason: 'timeout', metadata }],
     ['network', { status: 'unavailable', reason: 'network', metadata }],
@@ -215,4 +220,87 @@ describe('temporal-scope repair dispatch', () => {
 
     expect(JSON.stringify(vi.mocked(console.info).mock.calls)).not.toContain(attack);
   });
+
+  it.each([
+    { JEV_TEMPORAL_SCOPE_REPAIR_MODE: 'canary', JEV_MODE: 'canary', JEV_TEMPORAL_SCOPE_REPAIR_CANARY_PERCENT: '0', JEV_CANARY_PERCENT: '100' },
+    { JEV_TEMPORAL_SCOPE_REPAIR_MODE: 'shadow', JEV_MODE: 'shadow' },
+  ])('bypasses Jev when the cohort is disabled or shadow has no lifecycle', async (env) => {
+    const injected = provider(evaluated('plan_unavailable'));
+    const fallback = vi.fn(async () => structuredResponse('uncertain'));
+    await dispatchTemporalScopeRepair({
+      context: context(), env, firebaseUid: 'user-fixture',
+      signal: new AbortController().signal, fallback,
+      respond: ({ decision }) => structuredResponse(decision), provider: injected,
+    });
+    expect(injected.evaluate).not.toHaveBeenCalled();
+    expect(fallback).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['shadow', 'canary'] as const)('bypasses %s with a missing adapter key', async (mode) => {
+    const fallback = vi.fn(async () => structuredResponse('uncertain'));
+    const pending: Promise<unknown>[] = [];
+    await dispatchTemporalScopeRepair({
+      context: context(), env: { ...canaryEnv, JEV_MODE: mode, JEV_TEMPORAL_SCOPE_REPAIR_MODE: mode },
+      firebaseUid: 'user-fixture', signal: new AbortController().signal, fallback,
+      respond: ({ decision }) => structuredResponse(decision),
+      executionContext: { waitUntil: (promise) => pending.push(promise) },
+    });
+    expect(fallback).toHaveBeenCalledTimes(1);
+    expect(pending).toHaveLength(0);
+  });
+
+  it('never returns a late accepted Jev decision after request cancellation', async () => {
+    const controller = new AbortController();
+    let finish!: (value: DecisionEvaluation<TemporalScopeRepairDecision>) => void;
+    const injected = { evaluate: vi.fn(() => new Promise<DecisionEvaluation<TemporalScopeRepairDecision>>((resolve) => { finish = resolve; })) };
+    const fallback = vi.fn(async () => structuredResponse('uncertain'));
+    const respond = vi.fn(({ decision }: { decision: TemporalScopeRepairDecision }) => structuredResponse(decision));
+    const response = dispatchTemporalScopeRepair({
+      context: context(), env: canaryEnv, firebaseUid: 'user-fixture',
+      signal: controller.signal, provider: injected, fallback, respond,
+    });
+    const failure = expect(response).rejects.toThrow('cancelled or timed out');
+    controller.abort();
+    finish(evaluated('plan_unavailable'));
+    await failure;
+    expect(fallback).not.toHaveBeenCalled();
+    expect(respond).not.toHaveBeenCalled();
+  });
+
+  it('shares the overall deadline with the Luna fallback and records timeout', async () => {
+    vi.useFakeTimers();
+    let fallbackStarted = false;
+    const response = dispatchTemporalScopeRepair({
+      context: context(), env: canaryEnv, firebaseUid: 'user-fixture',
+      signal: new AbortController().signal,
+      provider: provider(evaluated('plan_unavailable', { confidence: 0.5 })),
+      fallback: (signal) => new Promise((_resolve, reject) => {
+        fallbackStarted = true;
+        signal?.addEventListener('abort', () => reject(new DOMException('deadline', 'AbortError')), { once: true });
+      }),
+      respond: ({ decision }) => structuredResponse(decision),
+    });
+    const failure = response.catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fallbackStarted).toBe(true);
+    await vi.advanceTimersByTimeAsync(TEMPORAL_SCOPE_REPAIR_REQUEST_TIMEOUT_MS);
+    expect(resolveTemporalScopeRepairBaselineFailure(await failure)).toEqual({ mode: 'canary', failure: 'timeout' });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not replace a shadow baseline when telemetry throws', async () => {
+    const pending: Promise<unknown>[] = [];
+    vi.mocked(console.info).mockImplementation(() => { throw new Error('telemetry unavailable'); });
+    const response = await dispatchTemporalScopeRepair({
+      context: context(), env: { ...canaryEnv, JEV_MODE: 'shadow', JEV_TEMPORAL_SCOPE_REPAIR_MODE: 'shadow' },
+      firebaseUid: 'user-fixture', signal: new AbortController().signal,
+      provider: provider(evaluated('plan_unavailable')),
+      fallback: async () => structuredResponse('uncertain'),
+      respond: ({ decision }) => structuredResponse(decision),
+      executionContext: { waitUntil: (promise) => pending.push(promise) },
+    });
+    expect(await response.json()).toEqual({ content: '{"decision":"uncertain"}' });
+    await expect(Promise.all(pending)).resolves.toBeDefined();
+  });
+
 });

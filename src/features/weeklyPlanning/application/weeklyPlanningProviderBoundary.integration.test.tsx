@@ -104,7 +104,7 @@ beforeEach(async () => {
         planningDetailsNotApplied: 'yes', acceptedStateUnchanged: 'yes', retainedPreviewUnchanged: 'yes',
         noUnsupportedClaims: recoveryVerdict });
     } else { throw new Error(`Unexpected provider schema: ${schema}`); }
-    return new Response(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }),
+    return new Response(JSON.stringify({ model: JSON.parse(String(init?.body)).model, choices: [{ message: { content } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }),
       { status: 200, headers: { 'content-type': 'application/json' } });
   }));
   // This suite measures provider/preview/save behavior; code-load retry has its own tests.
