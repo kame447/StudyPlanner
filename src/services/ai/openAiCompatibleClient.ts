@@ -326,6 +326,10 @@ export function createOpenAiCompatibleClient(
       purpose,
       maxCompletionTokens,
     }) {
+      // Capture caller-owned data before token retrieval or transport can yield.
+      // The same detached context is serialized and used for response correlation.
+      const capturedDecisionContext = decisionContext
+        ? structuredClone(decisionContext) : undefined;
       const recorder = config.dispatchRecorder;
       const observesSemantic = recorder?.matchesPurpose(purpose);
       if (usesCloudflareOpenAiProxy({ provider: config.provider ?? 'openai' })) {
@@ -345,7 +349,7 @@ export function createOpenAiCompatibleClient(
 
         const proxyBody = {
           ...(parseSemanticCensusJoin(semanticCensus) ? { semanticCensus: parseSemanticCensusJoin(semanticCensus) } : {}),
-          ...(decisionContext ? { decisionContext } : {}),
+          ...(capturedDecisionContext ? { decisionContext: capturedDecisionContext } : {}),
           ...(purpose ? { purpose } : { model: config.model }),
           temperature,
           messages,
@@ -379,8 +383,8 @@ export function createOpenAiCompatibleClient(
             );
             const proxiedContent = result.content?.trim();
             if (result.decisionContext && (
-              result.decisionContext.requestId !== decisionContext?.requestId
-              || result.decisionContext.inputRevision !== decisionContext?.inputRevision
+              result.decisionContext.requestId !== capturedDecisionContext?.requestId
+              || result.decisionContext.inputRevision !== capturedDecisionContext?.inputRevision
             )) throw new Error('Decision response context did not match the active request.');
 
             if (!proxiedContent) {

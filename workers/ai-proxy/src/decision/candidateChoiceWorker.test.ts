@@ -16,7 +16,7 @@ function install() {
       bodies.push(JSON.parse(String(init?.body)));
       return Response.json({ model: JEV_MODEL.responses[0], answers: { candidate: { type: 'choice', choice: 'leaf:0', confidence: 0.999, probabilities: { 'leaf:0': 0.999, none: 0.001 } }, condition_change: { type: 'noul', noul: 0.001 }, independent_meaning: { type: 'noul', noul: 0.001 } } });
     }
-    if (url.endsWith('/chat/completions')) return Response.json({ choices: [{ message: { content: 'ordinary Luna' } }] });
+    if (url.endsWith('/chat/completions')) return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ message: { content: 'ordinary Luna' } }] });
     throw new Error('Unexpected fixture endpoint');
   })); return { bodies, urls };
 }

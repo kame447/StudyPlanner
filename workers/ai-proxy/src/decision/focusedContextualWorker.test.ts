@@ -144,7 +144,7 @@ beforeEach(() => {
       const body = JSON.parse(String(init?.body));
       expect(body).not.toHaveProperty('decisionContext');
       lunaBodies.push(body);
-      return Response.json({ choices: [{ message: { content: lunaContent } }] });
+      return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ message: { content: lunaContent } }] });
     }
     throw new Error(`Unexpected call: ${url}`);
   }));

@@ -140,6 +140,7 @@ beforeEach(() => {
       if (baselineNetworkFailure) throw new TypeError('private-network-message');
       expect(JSON.parse(String(init?.body))).not.toHaveProperty('decisionContext');
       return Response.json({
+        model: JSON.parse(String(init?.body)).model,
         choices: [{ message: { content: JSON.stringify({ decision: baselineDecisionValue }) } }],
         usage: { prompt_tokens: 10 },
       }, { status: baselineStatus });
@@ -373,11 +374,12 @@ describe('focused authorization deployed proxy dispatch', () => {
         });
       });
       expect(JSON.stringify(firestoreWrites)).not.toContain('private-network-message');
-      // Worker logs keep the original Luna error; only telemetry is reduced to a class.
+      // Ordinary logs and telemetry retain classifications, never provider text.
       expect(console.error).toHaveBeenCalledWith(
         '[AI Proxy] unexpected chat handler failure',
-        expect.objectContaining({ message: 'private-network-message' }),
+        { name: 'TypeError', code: null },
       );
+      expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain('private-network-message');
       expect(JSON.stringify(firestoreWrites)).not.toContain(context.state.currentUserText);
       expect(JSON.stringify(firestoreWrites)).not.toContain(env.OPENROUTER_API_KEY ?? 'missing-key');
     },

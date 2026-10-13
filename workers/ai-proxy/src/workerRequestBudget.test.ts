@@ -86,6 +86,7 @@ describe('AI proxy deployed worker request budget', () => {
       if (url.endsWith('/chat/completions')) {
         upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
         return new Response(JSON.stringify({
+          model: JSON.parse(String(init?.body)).model,
           choices: [{ message: { content: '{"ok":true}' } }],
           usage: OPENAI_USAGE,
         }), { status: 200 });
@@ -137,7 +138,7 @@ describe('AI proxy deployed worker request budget', () => {
   });
 
   it('propagates attachment provider usage without changing the parsed user result', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       if (url.includes('identitytoolkit.googleapis.com')) {
         return new Response(JSON.stringify({
@@ -146,6 +147,7 @@ describe('AI proxy deployed worker request budget', () => {
       }
       if (url.endsWith('/chat/completions')) {
         return new Response(JSON.stringify({
+          model: JSON.parse(String(init?.body)).model,
           choices: [{ message: { content: '{"text":"教材 1章"}' } }],
           usage: OPENAI_USAGE,
         }), { status: 200 });
@@ -185,6 +187,7 @@ describe('AI proxy deployed worker request budget', () => {
       if (url.endsWith('/chat/completions')) {
         upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
         return new Response(JSON.stringify({
+          model: JSON.parse(String(init?.body)).model,
           choices: [{ message: { content: '{"ok":true}' } }],
         }), { status: 200 });
       }

@@ -53,6 +53,10 @@ function probability(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
+function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(value).every(key => keys.includes(key));
+}
+
 function tokens(value: unknown): number | null {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
@@ -143,7 +147,13 @@ export function createOpenRouterDecisionProvider<TState, TDecision extends strin
         const selectedProbability = typeof choice === 'string'
           ? probabilities[choice as TDecision]
           : undefined;
-        if (choiceAnswer?.type !== 'choice'
+        if (!answers || !hasOnlyKeys(answers, [
+          catalog.choiceAnswerKey, catalog.conditionChangeAnswerKey, catalog.independentMeaningAnswerKey,
+        ])
+          || !choiceAnswer || !hasOnlyKeys(choiceAnswer, ['type', 'choice', 'confidence', 'probabilities'])
+          || !changes || !hasOnlyKeys(changes, ['type', 'noul'])
+          || !independent || !hasOnlyKeys(independent, ['type', 'noul'])
+          || choiceAnswer.type !== 'choice'
           || typeof choice !== 'string'
           || !catalog.decisions.includes(choice as TDecision)
           || !probability(choiceAnswer.confidence)

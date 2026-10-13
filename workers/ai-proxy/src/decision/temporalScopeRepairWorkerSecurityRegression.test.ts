@@ -148,7 +148,7 @@ describe('Issue #335 temporal-scope Worker routing / response-envelope containme
       if (url.endsWith('/chat/completions')) {
         const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
         upstreamBodies.push(body);
-        return Response.json({ choices: [{ message: { content: '{"decision":"uncertain"}' } }] });
+        return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ message: { content: '{"decision":"uncertain"}' } }] });
       }
       throw new Error(`Unexpected fetch: ${url}`);
     }));
@@ -191,6 +191,7 @@ describe('Issue #335 temporal-scope Worker routing / response-envelope containme
         const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
         upstreamBodies.push(body);
         return Response.json({
+          model: JSON.parse(String(init?.body)).model,
           choices: [{ message: { content: '{"decision":"uncertain"}' } }],
         });
       }
@@ -230,7 +231,7 @@ describe('Issue #335 temporal-scope Worker routing / response-envelope containme
         }
         if (url === 'https://api.openai.com/v1/chat/completions') {
           upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-          return Response.json({ choices: [{ message: { content: '{"decision":"uncertain"}' } }] });
+          return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ message: { content: '{"decision":"uncertain"}' } }] });
         }
         throw new Error(`Unexpected fetch: ${url}`);
       }));
@@ -282,7 +283,7 @@ describe('Issue #335 temporal-scope Worker routing / response-envelope containme
             condition_change: { type: 'noul', noul: 0.99 }, independent_meaning: { type: 'noul', noul: 0.99 },
           } });
         }
-        if (url === 'https://api.openai.com/v1/chat/completions') return Response.json({ choices: [{ message: { content: '{"decision":"uncertain"}' } }] });
+        if (url === 'https://api.openai.com/v1/chat/completions') return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ message: { content: '{"decision":"uncertain"}' } }] });
         throw new Error(`Unexpected fetch: ${url}`);
       }));
       const response = await worker.fetch(focusedRequest(id, state.sourceText, { state }), environment() as never);

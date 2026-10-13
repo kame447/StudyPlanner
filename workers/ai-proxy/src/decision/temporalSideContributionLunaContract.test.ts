@@ -47,7 +47,7 @@ describe('focused temporal-side Luna contract through the real Worker', () => {
         }
         if (url.endsWith('/chat/completions')) {
           upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-          return Response.json({ choices: [{ message: { content: JSON.stringify({
+          return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ message: { content: JSON.stringify({
             decision: 'fallback', kind: null, constraintLevel: null,
             dateExpression: null, namedTimePeriod: null, startTime: null,
             endTime: null, precision: null,

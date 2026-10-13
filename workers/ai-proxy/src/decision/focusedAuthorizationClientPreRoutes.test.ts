@@ -80,7 +80,7 @@ describe('focused authorization client → Worker → semantic builder', () => {
           dispatches.push(focused ? 'luna-focused' : 'luna-generic');
           if (kind === 'dual failure') return Response.json({}, { status: 503 });
           if (!focused) expect(JSON.stringify(body.messages)).toContain(userInput.userText);
-          return Response.json({ choices: [{ message: { content: JSON.stringify(focused ? { decision: kind === 'luna fallback' ? 'fallback' : 'create_plan' } : createFocusedAuthorizationDocumentV5()) } }] });
+          return Response.json({ model: body.model, choices: [{ message: { content: JSON.stringify(focused ? { decision: kind === 'luna fallback' ? 'fallback' : 'create_plan' } : createFocusedAuthorizationDocumentV5()) } }] });
         }
         throw new Error(`Unexpected endpoint ${endpoint}`);
       }));
