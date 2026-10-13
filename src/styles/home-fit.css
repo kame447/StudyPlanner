@@ -110,8 +110,7 @@
   overflow-y: auto;
 }
 
-.home-dashboard-default .home-schedule-row,
-.home-dashboard-default .home-schedule-empty {
+.home-dashboard-default :is(.home-schedule-row, .home-schedule-empty) {
   min-height: var(--home-fit-row-height);
   --home-add-pad: calc(clamp(4px, 0.65dvh, 7px) + var(--home-relax-schedule-side, 0px));
   padding-block: var(--home-add-pad);
@@ -217,8 +216,7 @@
     font-size: 0.59rem;
   }
 
-  .home-dashboard-default .home-schedule-row,
-  .home-dashboard-default .home-schedule-empty {
+  .home-dashboard-default :is(.home-schedule-row, .home-schedule-empty) {
     --home-add-pad: calc(3px + var(--home-relax-schedule-side, 0px));
     padding-block: var(--home-add-pad);
   }
@@ -240,15 +238,6 @@
   .home-dashboard-default .home-schedule-content small {
     font-size: 0.56rem;
     line-height: 1.05;
-  }
-
-  .home-dashboard-default .home-schedule-add-row strong {
-    font-size: 0.72rem;
-    line-height: 1.1;
-  }
-
-  .home-dashboard-default .home-schedule-empty {
-    line-height: 1.1;
   }
 
   .home-dashboard-default .home-alert-card {
