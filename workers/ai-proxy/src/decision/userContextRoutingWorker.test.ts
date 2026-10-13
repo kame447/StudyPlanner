@@ -218,6 +218,7 @@ describe('user-context routing Worker dispatch', () => {
     const { response } = execute({});
     expect(await (await response).json()).toEqual({ content: lunaContent });
     expect(calls.filter((url) => url.endsWith('/chat/completions'))).toHaveLength(1);
+    expect(lunaBodies[0]).toMatchObject({ model: 'gpt-6-luna' });
     expect(lunaBodies[0]).not.toHaveProperty('decisionContext');
   });
 

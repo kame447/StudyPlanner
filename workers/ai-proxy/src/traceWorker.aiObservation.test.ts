@@ -50,7 +50,7 @@ function setup(outcome: Outcome = 'success', usage?: unknown) {
     FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'unused-by-store-boundary',
     OBSERVABILITY_IDENTITY_SECRET: '0123456789abcdef0123456789abcdef',
     ALLOWED_ORIGIN: 'https://app.example',
-    ALLOWED_CHAT_MODELS: 'gpt-5.6-luna',
+    ALLOWED_CHAT_MODELS: 'gpt-6-luna',
     AI_QUOTA: {
       getByName: () => ({
         checkAndConsume: async () => ({

@@ -759,7 +759,7 @@ async function fetchChatCompletion(
     model,
     getChatTemperature(payload),
   );
-  const providerFetch = dispatchRecorder?.providerFetch('openai', model === 'gpt-5.6-luna' ? 'luna' : 'other',
+  const providerFetch = dispatchRecorder?.providerFetch('openai', (model === 'gpt-5.6-luna' || model === 'gpt-6-luna') ? 'luna' : 'other',
     dispatchRecorder.snapshot().dispatches.some((dispatch) => dispatch.family === 'jev' && dispatch.stage !== 'shadow')
       ? 'fallback' : dispatchRecorder.snapshot().stage) ?? fetch;
   // Observe the same resolved limit sent below; do not change the request policy.
