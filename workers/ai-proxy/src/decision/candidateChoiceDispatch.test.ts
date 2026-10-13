@@ -27,7 +27,7 @@ describe('generic Choice provider validation and dispatch accounting', () => {
     }
   });
   it('sends offset evidence without changing complete leaves or weakening whole-turn/C5 reference gate', async () => {
-    const r = choiceRequest(); const withSpans = { ...r, uninterpretedSpans: [{ start: 0, end: 2 }], context: { ...r.context, question: { id: 'q', code: 'ambiguous_effort_estimate' }, scope: { ...r.context.scope, reference: 'content_addressed_only' } } };
+    const r = choiceRequest(); const withSpans = { ...r, uninterpretedSpans: [{ start: 0, end: 2 }], context: { ...r.context, presentedQuestion: 'Which complete effort estimate do you mean?', question: { id: 'q', code: 'ambiguous_effort_estimate' }, scope: { ...r.context.scope, reference: 'content_addressed_only' } } };
     let body: Record<string, unknown> = {};
     await evaluateCandidateChoice({ firebaseUid: 'fixture-owner', context: { purpose: 'candidate_choice', request: withSpans }, env: { OPENROUTER_API_KEY: 'fixture', JEV_CANDIDATE_CHOICE_MODE: 'canary', JEV_MODE: 'canary', JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' }, transport: async (_input, init) => { body = JSON.parse(String(init?.body)); return Response.json(response()); } });
     expect(body).toMatchObject({ state: { uninterpretedSpans: [{ start: 0, end: 2 }], context: withSpans.context } });

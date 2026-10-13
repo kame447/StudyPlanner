@@ -7,6 +7,7 @@ import { validateWeeklyPlanningFactGraphValueV5 } from '../../semantic/weeklyPla
 import { isUserUtteranceSourcedV5, type WeeklyPlanningFactGraphV5 } from '../../semantic/weeklyPlanningFactGraphV5';
 import { decodeWeeklyPlanningStableV5QuestionSlot } from '../../intake/weeklyPlanningStableV5QuestionSlot';
 import { isWeeklyPlanningQuestionPresentationUnaccompanied } from '../../intake/weeklyPlanningQuestionPresentation';
+import type { WeeklyPlanningMessage } from '../../types';
 import type { PlanningIntakeState } from '../../intake/weeklyPlanningIntakeTypes';
 import type { C5QuestionSnapshot, C5SelectionLedger } from './contracts';
 import type { WorkloadFact } from '../../semantic/weeklyPlanningFactGraph';
@@ -111,15 +112,29 @@ export function decodeC5Snapshot(value: unknown, ownerId: string, conversationId
 }
 
 /** Called only at the presenting controller commit; a reload never enumerates a replacement payload. */
+export function boundC5PresentedQuestion(question: CandidateBinding['question'], messages: readonly WeeklyPlanningMessage[]): NonNullable<CandidateBinding['question']['presentedQuestion']> | null {
+  const matching = messages.filter(message => message.id === question.presentingMessageId);
+  if (matching.length !== 1 || matching[0].role !== 'assistant' || typeof matching[0].content !== 'string'
+    || !matching[0].content.trim() || new TextEncoder().encode(matching[0].content).length > 4000) return null;
+  return { assistantMessageId: matching[0].id, text: matching[0].content };
+}
+
 export function captureC5Question(params: {
   state: PlanningIntakeState; graph: WeeklyPlanningFactGraphV5; ownerId: string; conversationId: string;
+  messages?: readonly WeeklyPlanningMessage[];
 }): PlanningIntakeState {
   const context = params.state.lastQuestionContext;
   const presentation = context?.presentation;
-  if (params.state.questions.length !== 1 || !presentation || presentation.content.responseSource !== 'deterministic_fallback'
+  if (params.state.questions.length !== 1 || !presentation
     || !isWeeklyPlanningQuestionPresentationUnaccompanied(presentation.content)
     || decodeWeeklyPlanningStableV5QuestionSlot(context?.targetSlot) !== 'ambiguous_effort_estimate'
-    || !context?.actionId || !context.topicId || presentation.graphRevision !== params.graph.revision) return params.state;
+    || !context?.topicId || presentation.graphRevision !== params.graph.revision) return params.state;
+  // A fresh presenting commit owns this identity; renderer wording/echoes never supply it.
+  const actionId = context.actionId ?? ['c5-question', presentation.turnId, context.topicId].join(':');
+  const question = { id: actionId, code: 'ambiguous_effort_estimate', presentingTurnId: presentation.turnId,
+    presentingMessageId: presentation.assistantMessageId, presentationRevision: presentation.planningStateRevision };
+  const presentedQuestion = boundC5PresentedQuestion(question, params.messages ?? []);
+  if (!presentedQuestion || presentedQuestion.text !== params.state.questions[0]) return params.state;
   const basis = narrowC5EffortBasis(params.graph, context.topicId);
   if (!basis) return params.state;
   const old = params.state.c5SelectionLedger;
@@ -130,12 +145,11 @@ export function captureC5Question(params: {
   const payload = {
     version: 1 as const, ownerId: params.ownerId, conversationId: params.conversationId,
     graphRevision: params.graph.revision, selectionEpoch,
-    question: { id: context.actionId, code: 'ambiguous_effort_estimate', presentingTurnId: presentation.turnId,
-      presentingMessageId: presentation.assistantMessageId, presentationRevision: presentation.planningStateRevision },
+    question: { ...question, presentedQuestion },
     ...basis,
   };
   const snapshot = freezeCandidateValue({ ...payload, payloadSerialization: canonicalCandidateSerialization(payload) }) as unknown as C5QuestionSnapshot;
-  return { ...params.state, c5SelectionLedger: { ...ledger, lastEpoch: selectionEpoch }, lastQuestionContext: { ...context, c5: snapshot } };
+  return { ...params.state, c5SelectionLedger: { ...ledger, lastEpoch: selectionEpoch }, lastQuestionContext: { ...context, actionId, c5: snapshot } };
 }
 
 /** Old sessions have neither record and remain ineligible until a new presenting commit. */

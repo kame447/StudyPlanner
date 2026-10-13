@@ -47,5 +47,8 @@ function validConfiguration(value: unknown): value is WeeklyPlanningCandidateCho
 
 /** Unknown/missing keys, malformed runtime values and failed getters are inert. */
 export function validateWeeklyPlanningCandidateChoiceConfiguration(value: unknown): WeeklyPlanningCandidateChoiceConfiguration | undefined {
-  try { return validConfiguration(value) ? structuredClone(value) : undefined; } catch { return undefined; }
+  try {
+    const snapshot: unknown = structuredClone(value);
+    return validConfiguration(snapshot) ? snapshot : undefined;
+  } catch { return undefined; }
 }

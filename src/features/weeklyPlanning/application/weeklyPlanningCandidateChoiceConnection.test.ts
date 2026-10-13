@@ -1,3 +1,8 @@
+import { boundC5PresentedQuestion, captureC5Question } from './c5LocalSelection/basis';
+import { bindWeeklyPlanningQuestionPresentation } from '../intake/weeklyPlanningQuestionPresentation';
+import { weeklyPlanningTurnOutcomeLifecycle } from './weeklyPlanningTurnOutcomeLifecycle';
+import { PlannerDataReadAuthority, type PlannerDataAvailability } from '../../../domain/plannerDataReadAuthority';
+import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import { createWeeklyPlanningCandidateChoiceOptions } from './weeklyPlanningCandidateChoiceConnection';
 import { WEEKLY_PLANNING_C5_CHOICE_CALIBRATION, validateWeeklyPlanningCandidateChoiceConfiguration } from './weeklyPlanningCandidateChoiceCalibration';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
@@ -20,7 +25,7 @@ import { submitWeeklyPlanningApplicationTurn, type WeeklyPlanningTurnApplication
 import { weeklyPlanningTurnRuntimeGateway } from './weeklyPlanningTurnRuntimeGateway';
 import { weeklyPlanningTurnStagingLifecycle } from './weeklyPlanningTurnSideEffects';
 import { resetWeeklyPlanningStableV5RuntimeSessionsForTest, hydrateWeeklyPlanningStableV5RuntimeSession } from './weeklyPlanningStableV5RuntimeSession';
-import { loadWeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionStorage';
+import { loadWeeklyPlanningStableV5PersistedSession, getWeeklyPlanningStableV5SessionStorageKeyForTest } from './weeklyPlanningStableV5SessionStorage';
 import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
 import { submitWeeklyPlanningControlledTurn } from '../weeklyPlanningTurnController';
 
@@ -59,7 +64,7 @@ beforeEach(() => {
 });
 afterEach(() => { setWeeklyPlanningTraceRepositoryForTests(undefined); resetWeeklyPlanningStableV5TraceRuntimeForTest(); restore(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); });
 
-async function run(mode: 'accepted' | 'none' | 'low' | 'failure' | 'off' | 'unconfigured' | 'worker_off', extras: Partial<WeeklyPlanningCandidateChoiceServices> = {}, presented = true, prepare?: (h: ReturnType<typeof c5ControllerHarness>) => void, shape: 'question' | 'preview' = 'question') {
+async function run(mode: 'accepted' | 'none' | 'low' | 'failure' | 'off' | 'unconfigured' | 'worker_off', extras: Partial<WeeklyPlanningCandidateChoiceServices> = {}, presented = true, prepare?: (h: ReturnType<typeof c5ControllerHarness>) => void, shape: 'question' | 'preview' = 'question', availabilityOverride?: PlannerDataAvailability, liveProjection: (()=>boolean) | null = ()=>true, outcomeLifecycleOverride?: WeeklyPlanningTurnApplicationServices['outcomeLifecycle']) {
   const fetchStart=(fetch as ReturnType<typeof vi.fn>).mock.calls.length;
   const h = c5ControllerHarness();
   h.graph.planningWindows.push({ id: 'fixture-window', kind: 'absolute', value: '2026-10-05/2026-10-11', start: WEEK, end: '2026-10-11',
@@ -75,7 +80,7 @@ async function run(mode: 'accepted' | 'none' | 'low' | 'failure' | 'off' | 'unco
   // Rehydrate this fixture input before presentation; all expected effects below are independent assertions.
   hydrateWeeklyPlanningStableV5RuntimeSession({ ownerId: OWNER, weekStartDate: WEEK, conversationId: h.conversationId, graph: h.graph });
   if (presented) await h.present();
-  if(shape==='preview') h.replaceState({...h.getState(),intakeState:{...h.getState().intakeState!,draftGenerationIntent:'user_authorized'}});
+  if(shape==='preview') h.replaceState({...h.getState(),intakeState:{...(h.getState().intakeState??createInitialPlanningIntakeState()),draftGenerationIntent:'user_authorized'}});
   prepare?.(h);
   const choice = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
     if (mode === 'worker_off') return Response.json({status:'unavailable',reason:'purpose_off'});
@@ -83,7 +88,7 @@ async function run(mode: 'accepted' | 'none' | 'low' | 'failure' | 'off' | 'unco
     const request = JSON.parse(String(init?.body)).decisionContext.request;
     const selected = request.menu.options.find((entry: any) => entry.kind === 'leaf' && entry.candidate.id === 'estimate-7').id;
     const optionId = mode === 'none' ? 'none' : selected;
-    return Response.json({ status: 'evaluated', catalogVersion: 'complete-candidate-choice-2026-10-05-v1', nodeId: request.menu.nodeId, requestId: request.requestId, selectionEpoch: request.selectionEpoch,
+    return Response.json({ status: 'evaluated', catalogVersion: 'complete-candidate-choice-2026-10-13-v2', nodeId: request.menu.nodeId, requestId: request.requestId, selectionEpoch: request.selectionEpoch,
       candidateSetHash: request.candidateSetHash, optionId,
       probabilities: request.menu.options.map((entry: any) => ({ optionId: entry.id,
         probability: mode === 'low' ? entry.id === selected ? 0.6 : 0.2 : entry.id === optionId ? 0.96 : 0.02 })),
@@ -91,7 +96,7 @@ async function run(mode: 'accepted' | 'none' | 'low' | 'failure' | 'off' | 'unco
   });
   const services = {
     submitControlledTurn: submitWeeklyPlanningControlledTurn, runtimeGateway: weeklyPlanningTurnRuntimeGateway,
-    stagingLifecycle: weeklyPlanningTurnStagingLifecycle, outcomeLifecycle: { committed() {}, discarded() {}, failed() {} },
+    stagingLifecycle: weeklyPlanningTurnStagingLifecycle, outcomeLifecycle: outcomeLifecycleOverride ?? { committed() {}, discarded() {}, failed() {} },
     candidateChoice: {
       configuration: mode === 'unconfigured' ? null : {
         domain: 'c5_effort', mode: mode === 'off' ? 'off' : 'canary', choicePolicy: h.options.policy,
@@ -103,7 +108,8 @@ async function run(mode: 'accepted' | 'none' | 'low' | 'failure' | 'off' | 'unco
   } as WeeklyPlanningTurnApplicationServices;
   const text = '教材aは1問7分です。';
   const result = await submitWeeklyPlanningApplicationTurn({ session: h.session, userId: OWNER, ownerId: OWNER,
-    plannerDataAvailability: createReadyPlannerDataAvailability(OWNER), userText: text, selectedDate: WEEK,
+    plannerDataAvailability: availabilityOverride ?? createReadyPlannerDataAvailability(OWNER),
+    ...(liveProjection?{isPlannerDataSnapshotCurrent:liveProjection}:{}),userText: text, selectedDate: WEEK,
     plans: [], scheduleTemplates: [], getState: h.getState, dispatch: h.dispatch }, services);
   console.info("J2 entry observation", {mode, schemas});
   return { h, choice, result, text, services, requests: (fetch as ReturnType<typeof vi.fn>).mock.calls.slice(fetchStart).map(call => JSON.parse(String(call[1]?.body))) };
@@ -236,7 +242,7 @@ it('actual application blocks a new Luna mutation while its durable C5 outcome i
   expect(result).toMatchObject({accepted:false,recoveryRequired:true});
   const state=JSON.stringify(h.getState()); const graph=JSON.stringify(readC5RuntimeGraph(OWNER,h.conversationId));
   const second=await submitWeeklyPlanningApplicationTurn({session:h.session,userId:OWNER,ownerId:OWNER,
-    plannerDataAvailability:createReadyPlannerDataAvailability(OWNER),userText:'別の意味の入力',selectedDate:WEEK,
+    plannerDataAvailability:createReadyPlannerDataAvailability(OWNER),isPlannerDataSnapshotCurrent:()=>true,userText:'別の意味の入力',selectedDate:WEEK,
     plans:[],scheduleTemplates:[],getState:h.getState,dispatch:h.dispatch},services);
   expect(second).toMatchObject({accepted:false,recoveryRequired:true}); expect(choice).toHaveBeenCalledTimes(1);
   expect(schemas.filter(schema=>schema.includes('weekly_planning_semantic'))).toEqual([]);
@@ -351,4 +357,157 @@ it.each([
   const value=calibrationFixture();mutate(value);
   expect(validateWeeklyPlanningCandidateChoiceConfiguration(value)).toBeUndefined();
   expect(createWeeklyPlanningCandidateChoiceOptions({services:{configuration:value},sourceAccess:()=> 'allowed',continueSelectedTurn:async()=>{throw new Error('must stay inert');}})).toBeUndefined();
+});
+
+
+it('validates the same one-read detached calibration snapshot returned to the consumer',()=>{
+  const input=calibrationFixture();let reads=0;
+  Object.defineProperty(input,'maximumDecisions',{enumerable:true,get:()=>++reads===1?1:1000});
+  expect(validateWeeklyPlanningCandidateChoiceConfiguration(input)?.maximumDecisions).toBe(1);expect(reads).toBe(1);
+  expect(validateWeeklyPlanningCandidateChoiceConfiguration({...calibrationFixture(),maximumDecisions:1000})).toBeUndefined();
+  expect(validateWeeklyPlanningCandidateChoiceConfiguration({...calibrationFixture(),maximumDecisions:1})?.maximumDecisions).toBe(1);
+});
+
+
+it('retains the actual projection lease through authentication and prevents expired candidate exposure or consume',async()=>{
+  const authority=new PlannerDataReadAuthority();const load=authority.begin(OWNER,'2026-10-06T08:00:00.000Z');
+  const ready=authority.succeed(load.token,'2026-10-06T08:00:00.001Z')!;const lease=authority.captureProjectionLease()!;
+  expect(authority.isProjectionUsable(lease)).toBe(true);
+  const {choice,h}=await run('accepted',{getToken:async()=>{
+    authority.requireActualMaterialReconciliation(authority.captureOwnerScope()!,'2026-10-06T08:00:00.002Z');
+    expect(ready.status).toBe('ready');expect(authority.read().status).toBe('stale');return 'scripted-auth';
+  }},true,undefined,'question',ready,()=>authority.isProjectionUsable(lease));
+  expect(choice).not.toHaveBeenCalled();
+  expect(loadWeeklyPlanningStableV5PersistedSession({ownerId:OWNER,weekStartDate:WEEK})!.planningState.intakeState!.c5SelectionLedger!.consumed).toHaveLength(0);
+  expect(resolution(readC5RuntimeGraph(OWNER,h.conversationId),'work-a').ambiguous).toBe(true);
+});
+it('legacy application callers without a live projection gate remain Choice-inert',async()=>{
+  const {choice,result}=await run('accepted',{},true,undefined,'question',undefined,null);
+  expect(choice).not.toHaveBeenCalled();expect(result.accepted).toBe(true);
+  expect(schemas.filter(schema=>schema.includes('weekly_planning_semantic'))).toHaveLength(1);
+});
+
+
+it.each(['ai','deterministic_fallback'] as const)('actual presenting commit creates its own C5 identity and the answer uses semantic Luna0: %s',async source=>{
+  const ordinary=fetch;let semanticSends=0;
+  vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+    const body=JSON.parse(String(init?.body));const schema=body.response_format?.json_schema?.name;
+    if(schema?.includes('weekly_planning_semantic')) {semanticSends++;
+      return Response.json({choices:[{message:{content:JSON.stringify({schemaVersion:'weekly-planning-semantic-v5',planningIntent:'discuss',planningWindow:null,
+        tasks:[],relations:[],availabilityDeclarations:[],constraintSourceRequests:[],userContextFacts:[],uncertainties:[],corrections:[],decisions:[]})}}]});
+    }
+    if(source==='deterministic_fallback')throw new Error('scripted renderer failure');
+    return ordinary(url,init);
+  }));
+  // Seed accepted graph evidence, then let the real normalizer/planner/renderer/controller present the question.
+  // No h.present, actionId patching, injected continuation or frozen question payload.
+  const {h,result,services,choice}=await run('accepted',{},false,undefined,'preview',undefined,()=>true,weeklyPlanningTurnOutcomeLifecycle);
+  expect(result.accepted).toBe(true);expect(semanticSends).toBe(1);expect(choice).not.toHaveBeenCalled();
+  const question=h.getState().intakeState!.lastQuestionContext!;
+  expect(question.targetSlot).toBe('stable_v5:ambiguous_effort_estimate');expect(question.presentation!.content.responseSource).toBe(source);
+  expect.soft(question.actionId).toMatch(/^c5-question:/);expect.soft(question.c5).toBeDefined();expect.soft(question.c5?.question.id).toBe(question.actionId);
+  const saved=loadWeeklyPlanningStableV5PersistedSession({ownerId:OWNER,weekStartDate:WEEK})!;
+  expect(JSON.parse(memory.values.get(getWeeklyPlanningStableV5SessionStorageKeyForTest(OWNER,WEEK))!).requiredCapabilities).toEqual(['c5-bound-presentation-v1']);
+  expect.soft(saved.planningState.intakeState!.lastQuestionContext!.c5).toBeDefined();expect.soft(saved.planningState.intakeState!.lastQuestionContext!.c5?.question.id).toBe(question.actionId);
+  const response=await submitWeeklyPlanningApplicationTurn({session:h.session,userId:OWNER,ownerId:OWNER,
+    plannerDataAvailability:createReadyPlannerDataAvailability(OWNER),isPlannerDataSnapshotCurrent:()=>true,
+    userText:'教材aは1問7分です。',selectedDate:WEEK,plans:[],scheduleTemplates:[],getState:h.getState,dispatch:h.dispatch},services);
+  expect.soft(response.accepted).toBe(true);expect.soft(choice).toHaveBeenCalledTimes(1);expect.soft(semanticSends).toBe(1);
+  const committed=loadWeeklyPlanningStableV5PersistedSession({ownerId:OWNER,weekStartDate:WEEK})!;
+  expect.soft(resolution(committed.graph,'work-a').estimatedMinutes).toBe(70);expect.soft(committed.planningState.intakeState!.c5SelectionLedger?.consumed ?? []).toHaveLength(1);
+});
+
+
+it.each(['grounding','repair_notice','preview_control'] as const)('keeps a machine-bound mixed presentation Choice-ineligible: %s',async kind=>{
+  const {choice}=await run('accepted',{},true,h=>{
+    const state=h.getState();const context=state.intakeState!.lastQuestionContext!;const old=context.presentation!;
+    const content={...old.content,responseSource:'ai' as const,...(kind==='grounding'?{groundingContext:{proposed:1,contested:0}}:kind==='repair_notice'?{selfRepairNotice:true}:{previewPromotionControl:true})};
+    const bound=bindWeeklyPlanningQuestionPresentation({state:state.intakeState!,content,turnId:old.turnId,assistantMessageId:old.assistantMessageId,
+      planningStateRevision:old.planningStateRevision,graphRevision:old.graphRevision});
+    const next=captureC5Question({state:bound,graph:readC5RuntimeGraph(OWNER,h.conversationId),ownerId:OWNER,conversationId:h.conversationId,messages:state.messages});
+    expect(next.lastQuestionContext!.c5).toBeUndefined();h.replaceState({...state,intakeState:next});
+  });
+  expect(choice).not.toHaveBeenCalled();expect(schemas.filter(schema=>schema.includes('weekly_planning_semantic'))).toHaveLength(1);
+});
+it('does not manufacture identity or a candidate snapshot for a legacy state when reading or answering it',async()=>{
+  const {choice}=await run('accepted',{},true,h=>{
+    const state=h.getState();const {actionId:_id,c5:_snapshot,...old}=state.intakeState!.lastQuestionContext!;
+    h.replaceState({...state,intakeState:{...state.intakeState!,lastQuestionContext:old}});
+    expect(h.getState().intakeState!.lastQuestionContext!.actionId).toBeUndefined();
+  });
+  expect(choice).not.toHaveBeenCalled();expect(schemas.filter(schema=>schema.includes('weekly_planning_semantic'))).toHaveLength(1);
+});
+
+
+it.each(['wrong_target','whole_workload','second_question'] as const)('carries the exact bound AI presentation to the actual Worker/provider and fully falls back on none: %s',async variant=>{
+  const shown=variant==='wrong_target'?'教材bの1問あたりは何分ですか。':variant==='whole_workload'?'教材aの全量は何分ですか。':'教材aは1問何分ですか。別の教材の量も追加しますか。';
+  const original=fetch;const upstream: any[]=[];
+  const {JEV_MODEL}=await vi.importActual<{JEV_MODEL:{responses:readonly string[]}}>('../../../../workers/ai-proxy/src/decision/decisionPolicy');
+  const {default:worker}=await vi.importActual<{default:{fetch(request:Request,env:unknown):Promise<Response>}}>('../../../../workers/ai-proxy/src/worker');
+  vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+    if(String(url).includes('identitytoolkit'))return Response.json({users:[{localId:OWNER,emailVerified:true}]});
+    if(String(url).endsWith('/api/alpha/decisions')){upstream.push(JSON.parse(String(init?.body)));return Response.json({model:JEV_MODEL.responses[0],answers:{candidate:{type:'choice',choice:'none',confidence:0.96,
+      probabilities:{'leaf:0':0.02,'leaf:1':0.02,none:0.96}},condition_change:{type:'noul',noul:0.9},independent_meaning:{type:'noul',noul:0.9}}});}
+    return original(url,init);
+  }));
+  const {result,requests,h}=await run('accepted',{transport:async(url,init)=>worker.fetch(new Request(String(url),{...init,headers:{...Object.fromEntries(new Headers(init?.headers)),Origin:'https://app.test'}}),{
+    OPENAI_API_KEY:'fixture-openai',OPENROUTER_API_KEY:'fixture-jev',FIREBASE_WEB_API_KEY:'fixture-project',ALLOWED_ORIGIN:'https://app.test',JEV_MODE:'canary',JEV_CANARY_PERCENT:'100',JEV_CANDIDATE_CHOICE_MODE:'canary',JEV_CANDIDATE_CHOICE_CANARY_PERCENT:'100',
+    AI_QUOTA:{getByName:()=>({checkAndConsume:async()=>({allowed:true,retryAfterSeconds:1})})}} as never)},true,h=>{
+    const state=h.getState();const old=state.intakeState!.lastQuestionContext!;const presentation=old.presentation!;
+    const messages=state.messages.map(message=>message.id===presentation.assistantMessageId?{...message,content:shown}:message);
+    const bound=bindWeeklyPlanningQuestionPresentation({state:{...state.intakeState!,questions:[shown]},content:{...presentation.content,responseSource:'ai'},turnId:presentation.turnId,assistantMessageId:presentation.assistantMessageId,planningStateRevision:presentation.planningStateRevision,graphRevision:presentation.graphRevision});
+    const next=captureC5Question({state:bound,graph:readC5RuntimeGraph(OWNER,h.conversationId),ownerId:OWNER,conversationId:h.conversationId,messages});
+    expect(next.lastQuestionContext!.c5).toBeDefined();h.replaceState({...state,messages,intakeState:next});
+  });
+  expect(result.accepted).toBe(true);expect(upstream).toHaveLength(1);expect(upstream[0].state.context.presentedQuestion).toBe(shown);
+  expect(upstream[0].questions.candidate.instructions).toContain('presentedQuestion');
+  expect(requests.filter(body=>body.response_format?.json_schema?.name?.includes('weekly_planning_semantic'))).toHaveLength(1);
+  expect(JSON.stringify(requests)).toContain('教材aは1問7分です。');
+  expect(h.getState().intakeState!.c5SelectionLedger!.consumed).toEqual([]);
+});
+
+it.each(['off','shadow','canary'] as const)('old strict Worker reader rejects the new context field before mode=%s and entry falls back once',async mode=>{
+  let calls=0;
+  const {result,requests}=await run('accepted',{transport:async(_url,init)=>{
+    calls++;const context=JSON.parse(String(init?.body)).decisionContext.request.context;
+    // Old v1 reader's exact context key set precedes mode selection. This scripted
+    // response tests the actual new client/application fallback, not old model behavior.
+    expect(Object.keys(context)).toContain('presentedQuestion');expect(mode).toBeTruthy();
+    return Response.json({error:'invalid_context'},{status:400});
+  }});
+  expect(result.accepted).toBe(true);expect(calls).toBe(1);
+  expect(requests.filter(body=>body.response_format?.json_schema?.name?.includes('weekly_planning_semantic'))).toHaveLength(1);
+});
+
+it.each(['missing','duplicate','wrong_role','overflow'] as const)('requires exactly one bounded assistant message before exposure: %s',async mode=>{
+  const {choice}=await run('accepted',{},true,h=>{
+    const state=h.getState();const old=state.intakeState!.lastQuestionContext!;const id=old.presentation!.assistantMessageId;
+    const messages=mode==='missing'?state.messages.filter(message=>message.id!==id):mode==='duplicate'?[...state.messages,state.messages.filter(message=>message.id===id)[0]]:
+      state.messages.map(message=>message.id===id?{...message,...(mode==='wrong_role'?{role:'user' as const}:{content:'大'.repeat(1334)})}:message);
+    h.replaceState({...state,messages});
+  });
+  expect(choice).not.toHaveBeenCalled();
+});
+it('keeps the UTF8 boundary exact without truncation and checks message identity',()=>{
+  const question={id:'q',code:'ambiguous_effort_estimate',presentingTurnId:'turn',presentingMessageId:'message',presentationRevision:1};
+  const text='大'.repeat(1333)+'x';expect(new TextEncoder().encode(text).length).toBe(4000);
+  expect(boundC5PresentedQuestion(question,[{id:'message',role:'assistant',content:text,createdAt:'now'}])?.text).toBe(text);
+  expect(boundC5PresentedQuestion(question,[{id:'message',role:'assistant',content:text+'x',createdAt:'now'}])).toBeNull();
+  expect(boundC5PresentedQuestion(question,[{id:'other',role:'assistant',content:text,createdAt:'now'}])).toBeNull();
+});
+
+
+it.each(['auth','provider','renderer'] as const)('keeps live projection validity through the %s await boundary',async phase=>{
+  const authority=new PlannerDataReadAuthority();const load=authority.begin(OWNER,'2026-10-06T08:00:00.000Z');const ready=authority.succeed(load.token,'2026-10-06T08:00:00.001Z')!;const lease=authority.captureProjectionLease()!;
+  const revoke=()=>authority.requireActualMaterialReconciliation(authority.captureOwnerScope()!,'2026-10-06T08:00:00.002Z');
+  const original=fetch;
+  if(phase==='renderer')vi.stubGlobal('fetch',vi.fn(async(url,init)=>{const body=JSON.parse(String(init?.body));if(body.response_format?.json_schema?.name==='weekly_planning_stable_v5_dialogue_response')revoke();return original(url,init);}));
+  const extras: {getToken?: WeeklyPlanningCandidateChoiceServices['getToken'];transport?: typeof fetch}={getToken:async()=>{if(phase==='auth')revoke();return 'scripted-auth';}};
+  let sends=0;
+  if(phase==='provider')extras.transport=async(_url,init)=>{sends++;const r=JSON.parse(String(init?.body)).decisionContext.request;const selected=r.menu.options.find((entry:any)=>entry.kind==='leaf'&&entry.candidate.id==='estimate-7').id;revoke();return Response.json({status:'evaluated',catalogVersion:'complete-candidate-choice-2026-10-13-v2',nodeId:r.menu.nodeId,requestId:r.requestId,selectionEpoch:r.selectionEpoch,candidateSetHash:r.candidateSetHash,optionId:selected,probabilities:r.menu.options.map((entry:any)=>({optionId:entry.id,probability:entry.id===selected?0.96:0.02})),conditionChange:0,independentMeaning:0});};
+  const {h,choice}=await run('accepted',extras,true,undefined,'question',ready,()=>authority.isProjectionUsable(lease));
+  expect(authority.isProjectionUsable(lease)).toBe(false);
+  if(phase==='auth')expect(choice).not.toHaveBeenCalled();if(phase==='provider')expect(sends).toBe(1);
+  expect(loadWeeklyPlanningStableV5PersistedSession({ownerId:OWNER,weekStartDate:WEEK})!.planningState.intakeState!.c5SelectionLedger!.consumed).toEqual([]);
+  expect(resolution(readC5RuntimeGraph(OWNER,h.conversationId),'work-a').ambiguous).toBe(true);
 });

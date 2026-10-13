@@ -71,6 +71,8 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   timetableTerm?: TimetableTerm | null;
   timetableTerms?: TimetableTerm[];
   plannerDataAvailability: PlannerDataAvailability;
+  /** Live lease captured with the request arrays; absent legacy callers cannot use Choice. */
+  isPlannerDataSnapshotCurrent?: () => boolean;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
   now?: () => string;
@@ -117,7 +119,7 @@ export function submitWeeklyPlanningApplicationTurn(
       ? services.runtimeGateway.continueSelectedTurn(input, selectedGraph)
       : services.runtimeGateway.execute(input);
   };
-  const c5LocalSelection: ReturnType<typeof createWeeklyPlanningCandidateChoiceOptions> = services.runtimeGateway.continueSelectedTurn
+  const c5LocalSelection: ReturnType<typeof createWeeklyPlanningCandidateChoiceOptions> = params.isPlannerDataSnapshotCurrent && services.runtimeGateway.continueSelectedTurn
     ? createWeeklyPlanningCandidateChoiceOptions({ services: services.candidateChoice,
         censusMetadata: projectSemanticCensusMetadata({
           questionCode: params.getState().intakeState?.lastQuestionContext?.targetSlot === 'stable_v5:ambiguous_effort_estimate'
@@ -126,7 +128,8 @@ export function submitWeeklyPlanningApplicationTurn(
           binding: 'unknown', freshness: 'unknown',
         }),
         sourceAccess: () => params.session.ownerId === params.userId
-          && isPlannerDataReadyForOwner(params.plannerDataAvailability, params.userId) ? 'allowed' : 'denied',
+          && isPlannerDataReadyForOwner(params.plannerDataAvailability, params.userId)
+          && params.isPlannerDataSnapshotCurrent?.() === true ? 'allowed' : 'denied',
         continueSelectedTurn: ({ snapshot, pending, userText, graph }) => runRuntime({ snapshot, pending, userText }, graph),
       })
     : undefined;

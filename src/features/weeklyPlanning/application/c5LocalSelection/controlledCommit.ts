@@ -136,6 +136,7 @@ export function commitC5ControlledTurn(input: {
     prepare: () => prepareC5TurnCommit({ ...input,
       getGraph: () => readC5RuntimeGraph(input.ownerId, input.pending.conversationId) }, input.selected),
     bindNextQuestion: (state) => captureC5Question({ state, graph: input.selected.graph,
+      messages: [...input.getState().messages, input.assistantMessage],
       ownerId: input.ownerId, conversationId: input.pending.conversationId }),
   });
 }
