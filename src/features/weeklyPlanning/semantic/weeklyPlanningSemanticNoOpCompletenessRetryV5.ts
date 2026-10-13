@@ -1,5 +1,5 @@
 import { hasSelfSufficientConversationActV5 } from './weeklyPlanningConversationActsV5';
-import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
+import type { ChatMessage } from '../../../services/ai/openAiCompatibleClientTypes';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
   FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_MAX_COMPLETION_TOKENS,

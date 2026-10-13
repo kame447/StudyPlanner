@@ -1,6 +1,6 @@
 import type { WeeklyPlanningPreviewConstraintSatisfaction } from '../application/weeklyPlanningPreviewConstraintSatisfaction';
 import type { WeeklyPlanningFixedEventCommunicationFacts } from '../application/weeklyPlanningFixedEventOnlyInteraction';
-import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
+import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClientTypes';
 
 export type WeeklyPlanningStableV5DialogueActionKind =
   | 'question'

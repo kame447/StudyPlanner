@@ -1,7 +1,7 @@
 import type {
   ChatMessage,
   JsonSchemaResponseFormat,
-} from '../../../services/ai/openAiCompatibleClient';
+} from '../../../services/ai/openAiCompatibleClientTypes';
 import {
   SEMANTIC_COMPONENT_ROLES_V5,
   SEMANTIC_QUANTITY_ROLES_V5,

@@ -1,4 +1,4 @@
-import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
+import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClientTypes';
 import {
   focusedDecisionContextV5,
 } from './weeklyPlanningFocusedDecisionContextV5';

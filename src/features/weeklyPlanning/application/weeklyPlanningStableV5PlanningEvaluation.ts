@@ -60,7 +60,7 @@ import type {
 } from './weeklyPlanningStableV5RuntimeContracts';
 import type {
   WeeklyPlanningStableV5SemanticTurnResult,
-} from './weeklyPlanningStableV5SemanticTurn';
+} from './weeklyPlanningStableV5SemanticTurnCore';
 import {
   createWeeklyPlanningSchedulerContext,
   resolveWeeklyPlanningAcceptedPlanningWindow,

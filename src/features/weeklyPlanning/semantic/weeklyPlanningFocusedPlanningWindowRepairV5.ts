@@ -1,7 +1,7 @@
 import type {
   ChatMessage,
   JsonSchemaResponseFormat,
-} from '../../../services/ai/openAiCompatibleClient';
+} from '../../../services/ai/openAiCompatibleClientTypes';
 import type {
   SemanticPlanningWindowV5,
   WeeklyPlanningSemanticDocumentV5,

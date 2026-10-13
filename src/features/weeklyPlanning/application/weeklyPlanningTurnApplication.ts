@@ -10,7 +10,7 @@ import type {
   StudyMaterial,
   TimetableTerm,
 } from '../../../types/domain';
-import type { PlanningState, WeeklyPlanningAction } from '../types';
+import type { PlanningState, WeeklyPlanningAction, WeeklyPlanningPendingTurn } from '../types';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type {
@@ -68,6 +68,8 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
   now?: () => string;
+  resumePending?: WeeklyPlanningPendingTurn;
+  isApplicationCurrent?: () => boolean;
   getState(): PlanningState;
   dispatch(action: WeeklyPlanningAction): PlanningState;
 }
@@ -89,10 +91,13 @@ export function submitWeeklyPlanningApplicationTurn(
     getState: params.getState,
     dispatch: params.dispatch,
     now: params.now,
+    resumePending: params.resumePending,
+    isActive: params.isApplicationCurrent,
     execute({ snapshot, pending, userText, supplementalContext, selectedStarterTarget }) {
       return services.runtimeGateway.execute({
         snapshot,
         pending,
+        resumeDurable: Boolean(params.resumePending),
         userText,
         supplementalContext,
         selectedStarterTarget,
@@ -108,7 +113,7 @@ export function submitWeeklyPlanningApplicationTurn(
         timetableTerms: params.timetableTerms,
         weekStartsOn: params.weekStartsOn,
         timeZone: params.timeZone,
-        isCurrentTurn: () => params.session.ownerId === params.userId
+        isCurrentTurn: () => params.isApplicationCurrent?.() !== false && params.session.ownerId === params.userId
           && params.session.conversationId === pending.conversationId
           && params.getState().weekStartDate === pending.weekStartDate
           && params.getState().revision === pending.baseRevision + 1

@@ -16,7 +16,7 @@ import {
   stableV5MissingSchedulableWorkQuestion,
   renderStableV5RuntimeQuestion,
 } from './weeklyPlanningStableV5RuntimeQuestions';
-import type { WeeklyPlanningStableV5SemanticTurnResult } from './weeklyPlanningStableV5SemanticTurn';
+import type { WeeklyPlanningStableV5SemanticTurnResult } from './weeklyPlanningStableV5SemanticTurnCore';
 
 type SuccessfulSemanticTurn = Extract<
   WeeklyPlanningStableV5SemanticTurnResult,

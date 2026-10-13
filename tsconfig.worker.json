@@ -2,10 +2,18 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
-    "types": ["./.wrangler/types/worker-runtime.d.ts"]
+    "lib": [
+      "ES2022"
+    ],
+    "types": [
+      "./.wrangler/types/worker-runtime.d.ts"
+    ]
   },
-  "include": ["workers/ai-proxy/src/**/*.ts"],
+  "include": [
+    "workers/ai-proxy/src/**/*.ts",
+    "src/types/scheduleEventCompatibility.d.ts",
+    "src/types/monthEventRange.d.ts"
+  ],
   "exclude": [
     "workers/ai-proxy/src/**/*.test.ts",
     "workers/ai-proxy/src/decision/evaluation/**",

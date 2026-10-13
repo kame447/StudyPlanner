@@ -59,7 +59,7 @@ import { evaluateCandidateChoice } from './decision/candidateChoiceDispatch';
 
 export { AiQuotaDurableObject };
 
-interface Env extends WeeklyPlanningTraceApiEnv, DecisionEnv {
+export interface AiProxyWorkerEnv extends WeeklyPlanningTraceApiEnv, DecisionEnv {
   OPENAI_API_KEY: string;
   OPENAI_BASE_URL?: string;
   OPENAI_TRANSCRIPTION_MODEL?: string;
@@ -69,6 +69,8 @@ interface Env extends WeeklyPlanningTraceApiEnv, DecisionEnv {
   ENVIRONMENT?: string;
   AI_QUOTA: DurableObjectNamespace<AiQuotaDurableObject>;
 }
+
+type Env = AiProxyWorkerEnv;
 
 interface FirebaseLookupResponse {
   users?: Array<{
@@ -217,7 +219,7 @@ function bearerToken(request: Request): string {
     : '';
 }
 
-async function requireFirebaseSession(
+export async function requireFirebaseSession(
   request: Request,
   env: Env,
 ): Promise<Response | WeeklyPlanningTraceApiSession> {
@@ -606,7 +608,7 @@ function rateLimitResponse(
   );
 }
 
-async function enforceQuota(
+export async function enforceQuota(
   request: Request,
   env: Env,
   uid: string,
@@ -616,6 +618,21 @@ async function enforceQuota(
   if (!ipResult.allowed) return rateLimitResponse(request, env, ipResult);
   const uidResult = await checkQuota(env, kind, 'uid', uid);
   return uidResult.allowed ? null : rateLimitResponse(request, env, uidResult);
+}
+
+/** Storage admission has its own counters; it never consumes the model-call budget. */
+export async function enforceDurableTurnAdmission(request: Request, env: Env, uid: string): Promise<Response | null> {
+  const minute = getMinuteWindow(Date.now());
+  const day = getDailyWindow(Date.now());
+  for (const [subject, key, rules] of [
+    ['ip', clientIp(request), [{ name: 'turn_acceptance:ip:minute', limit: IP_MINUTE_LIMIT, ...minute }]],
+    ['uid', uid, [{ name: 'turn_acceptance:uid:minute', limit: CHAT_UID_MINUTE_LIMIT, ...minute },
+      { name: 'turn_acceptance:uid:day', limit: CHAT_UID_DAY_LIMIT, ...day }]],
+  ] as const) {
+    const result = await env.AI_QUOTA.getByName(quotaSubjectName(subject, key)).checkAndConsume({ rules: [...rules] });
+    if (!result.allowed) return rateLimitResponse(request, env, result);
+  }
+  return null;
 }
 
 function bodyTooLargeResponse(
@@ -645,6 +662,15 @@ async function handleChatRequest(
 
   const session = await requireFirebaseSession(request, env);
   if (session instanceof Response) return session;
+  return executeAuthenticatedChatRequest(request, env, session, tokenProvider, executionContext, observationContext, dispatchRecorder);
+}
+
+/** Internal entrypoint: only a verified boundary or an accepted owner-bound durable job may call it. */
+export async function executeAuthenticatedChatRequest(
+  request: Request, env: Env, session: WeeklyPlanningTraceApiSession,
+  tokenProvider?: FirestoreTokenProvider, executionContext?: ExecutionContext,
+  observationContext?: AiProxyObservationContext, dispatchRecorder?: SemanticRequestRecorder,
+): Promise<Response> {
   if (observationContext) {
     observationContext.identity = { kind: 'authenticated', firebaseUid: session.uid };
   }
@@ -778,7 +804,7 @@ async function handleChatRequest(
       }, { 'X-StudyPlanner-AI-Provider': 'openrouter' }),
     });
   }
-  return fetchChatCompletion(request, env, payload, modelResolution.model, undefined, semanticRecorder, observationContext);
+  return fetchChatCompletion(request, env, payload, modelResolution.model, request.signal, semanticRecorder, observationContext);
 }
 
 async function fetchChatCompletion(

@@ -1,4 +1,4 @@
-import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClientTypes';
 import { createSemanticTurnCensusScope, productionSemanticCensusOptions } from '../../productObservability/semanticTurnCensus';
 import { projectSemanticCensusMetadata } from '../../../../shared/semanticTurnCensus';
 import { readWeeklyPlanningPendingQuestionV5 } from '../semantic/weeklyPlanningPendingQuestionV5';
