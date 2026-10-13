@@ -1,0 +1,4 @@
+.inquiry-admin-card { min-width: 0; overflow-wrap: anywhere; }
+.inquiry-admin-card h2 { font-size: 1rem; }
+.inquiry-admin-card time { font-size: 0.85rem; }
+.inquiry-admin-body { white-space: pre-wrap; line-height: 1.7; }

@@ -1,4 +1,5 @@
 import { resolveAdminRoute } from '../lib/adminRoutes';
+import { AdminInquiriesPage } from './AdminInquiriesPage';
 import { AdminAiApiPage } from './AdminAiApiPage';
 import { AdminLogsPage } from './AdminLogsPage';
 import { AdminOverviewPage } from './AdminOverviewPage';
@@ -42,6 +43,10 @@ export function AdminRoutes({ path, navigate }: AdminRoutesProps) {
 
   if (route.type === 'logs') {
     return <AdminLogsPage />;
+  }
+
+  if (route.type === 'inquiries') {
+    return <AdminInquiriesPage />;
   }
 
   if (route.type === 'system') {
