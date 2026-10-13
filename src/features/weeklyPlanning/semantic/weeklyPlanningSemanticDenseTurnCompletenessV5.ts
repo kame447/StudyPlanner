@@ -3,6 +3,7 @@ import type {
   JsonSchemaResponseFormat,
 } from '../../../services/ai/openAiCompatibleClient';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
+import { validateWeeklyPlanningSemanticFirstReadingRetentionV5 } from './weeklyPlanningSemanticFirstReadingRetentionV5';
 import { runGenericSemanticRepairRouteV5 } from './weeklyPlanningSemanticGenericRepairRouteV5';
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
 import type { WeeklyPlanningSemanticNormalizerResultV5 } from './weeklyPlanningSemanticNormalizerContractsV5';
@@ -272,27 +273,49 @@ export async function tryWeeklyPlanningDenseTurnCompletenessRetryV5(params: {
     },
   );
   params.run.addAlgorithmicRepairs(retryValidation.algorithmicRepairs);
+  const retentionErrors = retryValidation.document
+    ? validateWeeklyPlanningSemanticFirstReadingRetentionV5({ initialDocument: params.initialDocument, candidateDocument: retryValidation.document })
+    : [];
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.run.input.traceRequestId,
     stage: 'semantic_validation_result',
-    severity: retryValidation.document ? 'info' : 'error',
+    severity: retryValidation.document && retentionErrors.length === 0 ? 'info' : 'error',
     data: {
       attempt: 'dense_completeness_retry',
-      accepted: Boolean(retryValidation.document),
-      errors: retryValidation.errors,
+      accepted: Boolean(retryValidation.document) && retentionErrors.length === 0,
+      errors: [...retryValidation.errors, ...retentionErrors],
       algorithmicRepairs: retryValidation.algorithmicRepairs,
       parsedDocument: retryValidation.parsedDocument,
     },
   });
 
+  if (retentionErrors.length > 0) {
+    const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+      status: 'rejected', document: null,
+      diagnostics: params.run.diagnostics({ attemptCount: 2, repairAttempted: false, validationErrors: retentionErrors, providerError: null }),
+    };
+    params.run.recordDecision(result, { route: 'dense_turn_first_reading_retention_rejected', severity: 'error' });
+    return result;
+  }
   if (!retryValidation.document) {
-    return runGenericSemanticRepairRouteV5({
+    const repaired = await runGenericSemanticRepairRouteV5({
       run: params.run,
       baseMessages: params.baseMessages,
       initialResponse: retryResponse,
       initialValidation: retryValidation,
       attemptCountBeforeRepair: 2,
+      retainedFirstReading: params.initialDocument,
     });
+    // A generic repair may itself take the existing no-op completeness route.
+    // Recheck that final accepted exit without opening another provider call.
+    const errors = repaired.document ? validateWeeklyPlanningSemanticFirstReadingRetentionV5({
+      initialDocument: params.initialDocument, candidateDocument: repaired.document,
+    }) : [];
+    if (errors.length === 0) return repaired;
+    const rejected: WeeklyPlanningSemanticNormalizerResultV5 = { status: 'rejected', document: null,
+      diagnostics: { ...repaired.diagnostics, validationErrors: [...repaired.diagnostics.validationErrors, ...errors] } };
+    params.run.recordDecision(rejected, { route: 'dense_turn_first_reading_retention_rejected', severity: 'error' });
+    return rejected;
   }
 
   const result: WeeklyPlanningSemanticNormalizerResultV5 = {

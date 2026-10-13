@@ -1,3 +1,5 @@
+import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
+import { validateWeeklyPlanningSemanticFirstReadingRetentionV5 } from './weeklyPlanningSemanticFirstReadingRetentionV5';
 import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import type { WeeklyPlanningSemanticNormalizerResultV5 } from './weeklyPlanningSemanticNormalizerContractsV5';
@@ -18,6 +20,7 @@ export async function runGenericSemanticRepairRouteV5(params: {
   initialResponse: string;
   initialValidation: SemanticValidationResultV5;
   attemptCountBeforeRepair?: number;
+  retainedFirstReading?: WeeklyPlanningSemanticDocumentV5;
 }): Promise<WeeklyPlanningSemanticNormalizerResultV5> {
   const attemptCountBeforeRepair = params.attemptCountBeforeRepair ?? 1;
   const repairAttemptCount = attemptCountBeforeRepair + 1;
@@ -73,10 +76,13 @@ export async function runGenericSemanticRepairRouteV5(params: {
   const comparisonDocuments = params.initialValidation.providerDocument && repairedValidation.providerDocument
     ? { initialDocument: params.initialValidation.providerDocument, repairedDocument: repairedValidation.providerDocument }
     : { initialDocument: params.initialValidation.parsedDocument, repairedDocument: repairedValidation.document };
-  const preservationErrors = validateWeeklyPlanningSemanticRepairPreservationV5({
+  const retentionErrors = params.retainedFirstReading && repairedValidation.document
+    ? validateWeeklyPlanningSemanticFirstReadingRetentionV5({ initialDocument: params.retainedFirstReading, candidateDocument: repairedValidation.document })
+    : [];
+  const preservationErrors = [...retentionErrors, ...validateWeeklyPlanningSemanticRepairPreservationV5({
     ...comparisonDocuments,
     initialErrors: params.initialValidation.errors,
-  });
+  })];
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.run.input.traceRequestId,
     stage: 'semantic_validation_result',
