@@ -1,3 +1,4 @@
+import { createBoundFocusedContextualContextFixtureV5, focusedContextualSourceMessagesFixtureV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningFocusedContextualBindingV5.testUtils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../worker';
 import legacyWorker from '../index';
@@ -11,9 +12,7 @@ const contexts = [
   { purpose: 'focused_authorization', requestId: 'fixture-auth', inputRevision: 7,
     previousStatus: 'needs_scope', hasTasks: true, hasPendingQuestion: false,
     state: { currentUserText: 'private-input', lastAssistantMessage: null } },
-  { purpose: 'focused_contextual_answer', requestId: 'fixture-contextual', inputRevision: 7,
-    questionCode: 'quantity_role_unresolved', state: { currentUserText: 'private-input',
-      pendingQuestion: { targetQuantityRole: 'declared', questionBasis: null, hasEstimateTarget: false } } },
+  createBoundFocusedContextualContextFixtureV5(),
   { purpose: 'temporal_scope_repair', requestId: 'fixture-temporal', inputRevision: 7,
     state: { sourceText: 'private-input', currentAttachedTask: { title: 'private-title' },
       interpretedTime: { dateExpression: 'weekday:tuesday', namedTimePeriod: null, startTime: '18:00', endTime: '20:00' } } },
@@ -90,7 +89,7 @@ describe('credential-bearing Worker fetch redirects and Luna model identity', ()
       vi.stubGlobal('fetch', transport);
       const response = await worker.fetch(request('/chat/completions', {
         purpose: context.purpose === 'user_context_routing' ? 'user_context_interpreter' : 'weekly_planning_semantic_normalizer',
-        messages: [{ role: 'user', content: 'private-luna-input' }], decisionContext: context,
+        messages: focusedContextualSourceMessagesFixtureV5(context, 'private-luna-input'), decisionContext: context,
         provider: { zdr: false, data_collection: 'allow', order: ['browser-chosen-provider'] },
       }), { ...env, JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100',
         JEV_FOCUSED_AUTHORIZATION_MODE: 'canary', JEV_FOCUSED_AUTHORIZATION_CANARY_PERCENT: '100',
@@ -121,7 +120,7 @@ describe('credential-bearing Worker fetch redirects and Luna model identity', ()
       JEV_USER_CONTEXT_ROUTING_MODE: mode, JEV_USER_CONTEXT_ROUTING_CANARY_PERCENT: '100' };
     const response = await worker.fetch(request('/chat/completions', {
       purpose: context.purpose === 'user_context_routing' ? 'user_context_interpreter' : 'weekly_planning_semantic_normalizer',
-      messages: [{ role: 'user', content: 'private-luna-input' }], decisionContext: context,
+      messages: focusedContextualSourceMessagesFixtureV5(context, 'private-luna-input'), decisionContext: context,
     }), configured as never, undefined, { waitUntil: promise => pending.push(promise) } as ExecutionContext);
     await Promise.all(pending);
     expect(response.status).toBe(502);
@@ -149,7 +148,7 @@ describe('credential-bearing Worker fetch redirects and Luna model identity', ()
     const transport = installTransport({ servedModel: 'unverified-model' });
     const response = await worker.fetch(request('/chat/completions', {
       purpose: context.purpose === 'user_context_routing' ? 'user_context_interpreter' : 'weekly_planning_semantic_normalizer',
-      messages: [{ role: 'user', content: 'private-luna-input' }], decisionContext: context,
+      messages: focusedContextualSourceMessagesFixtureV5(context, 'private-luna-input'), decisionContext: context,
     }), { ...env, JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100',
       JEV_FOCUSED_AUTHORIZATION_MODE: 'canary', JEV_FOCUSED_AUTHORIZATION_CANARY_PERCENT: '100',
       JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE: 'canary', JEV_FOCUSED_CONTEXTUAL_ANSWER_CANARY_PERCENT: '100',

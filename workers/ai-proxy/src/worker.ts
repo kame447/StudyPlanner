@@ -279,6 +279,7 @@ type FocusedDecisionContextClassification =
   | { kind: 'none' }
   | { kind: 'focused_authorization'; context: FocusedAuthorizationDecisionContext }
   | { kind: 'focused_contextual'; context: FocusedContextualDecisionContext }
+  | { kind: 'focused_contextual_unavailable' }
   | { kind: 'temporal_scope_repair'; context: TemporalScopeRepairDecisionContext }
   | { kind: 'user_context_routing'; context: UserContextRoutingDecisionContext }
   | { kind: 'unknown_purpose' }
@@ -301,6 +302,11 @@ function classifyFocusedDecisionContext(
       ? { kind: 'focused_contextual', context: value }
       : { kind: 'invalid' };
   }
+  if (value.purpose === 'focused_contextual_answer_v2') {
+    return isFocusedContextualDecisionContext(value)
+      ? { kind: 'focused_contextual', context: value }
+      : { kind: 'focused_contextual_unavailable' };
+  }
   if (value.purpose === 'temporal_scope_repair') {
     return isTemporalScopeRepairDecisionContext(value)
       ? { kind: 'temporal_scope_repair', context: value }
@@ -314,6 +320,29 @@ function classifyFocusedDecisionContext(
   // Newer clients may add a focused purpose before this Worker is deployed.
   // Ignore such contexts rather than rejecting an otherwise valid Luna request.
   return { kind: 'unknown_purpose' };
+}
+
+function matchesBoundContextualSource(
+  payload: ChatCompletionRequest,
+  context: FocusedContextualDecisionContext,
+): boolean {
+  if (context.purpose !== 'focused_contextual_answer_v2') return true;
+  const sources: Record<string, unknown>[] = [];
+  for (const message of payload.messages ?? []) {
+    if (message.role !== 'user') continue;
+    try {
+      const source: unknown = JSON.parse(message.content);
+      if (isRecord(source) && Object.hasOwn(source, 'currentUserText')) sources.push(source);
+    } catch { /* Ordinary text remains with the original Luna interpreter. */ }
+  }
+  if (sources.length !== 1) return false;
+  const source = sources[0];
+  const pending = source.pendingQuestion;
+  if (source.currentUserText !== context.state.currentUserText || !isRecord(pending)
+    || pending.questionCode !== context.questionCode || !isRecord(pending.questionTargetWorkload)) return false;
+  const workload = context.state.pendingQuestion.target.workload;
+  return ['quantityRole', 'amount', 'unitCode', 'unitLabel'].every(key =>
+    (pending.questionTargetWorkload as Record<string, unknown>)[key] === workload[key as keyof typeof workload]);
 }
 
 function validateChatRequest(payload: unknown): string | null {
@@ -658,7 +687,10 @@ async function handleChatRequest(
     return jsonResponse(request, env, 400, { error: 'Requested model is not allowed.' });
   }
 
-  const focusedContext = classifyFocusedDecisionContext(payload.decisionContext);
+  let focusedContext = classifyFocusedDecisionContext(payload.decisionContext);
+  if (focusedContext.kind === 'focused_contextual' && !matchesBoundContextualSource(payload, focusedContext.context)) {
+    focusedContext = { kind: 'focused_contextual_unavailable' };
+  }
   const candidateChoice = isRecord(payload.decisionContext) && payload.decisionContext.purpose === 'candidate_choice';
   if (candidateChoice && (!isCandidateChoiceDecisionContext(payload.decisionContext)
     || payload.purpose !== 'weekly_planning_semantic_normalizer'
@@ -672,6 +704,7 @@ async function handleChatRequest(
   if (
     (focusedContext.kind === 'focused_authorization'
       || focusedContext.kind === 'focused_contextual'
+      || focusedContext.kind === 'focused_contextual_unavailable'
       || focusedContext.kind === 'temporal_scope_repair')
     && payload.purpose !== 'weekly_planning_semantic_normalizer'
   ) {

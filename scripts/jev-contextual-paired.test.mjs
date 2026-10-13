@@ -1,3 +1,4 @@
+import { CONTEXTUAL_CATALOG_VERSION } from '../shared/focusedContextualCatalog.ts';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { build } from 'esbuild';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -7,7 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createPairedWorkerSource } from './jev-contextual-paired-runtime.mjs';
 import { applyJointLabels, REQUIRED_OWNER_THRESHOLDS, sha256, validateApproval, validateCorpus } from './jev-contextual-paired-eval.mjs';
-import { PAIRED_ARTIFACT_SCHEMA } from './jev-contextual-paired-artifact.mjs';
+import { PAIRED_ARTIFACT_SCHEMA, validateArm } from './jev-contextual-paired-artifact.mjs';
 import { observedTotal, clopperPearsonUpper95, summarizePairs } from './jev-contextual-eval-metrics.mjs';
 import { summarize, summarizeLunaBaseline } from './jev-contextual-cloud-eval.mjs';
 
@@ -78,6 +79,20 @@ describe('paired artifact summarize CLI (offline)', () => {
       runtimeSha256: legacy.runtimeSha256, policySha256: legacy.policySha256 });
   });
 
+  it('keeps historical v3 records explicit and rejects mixing them with current bound output', async () => {
+    const historical = structuredClone(artifact);
+    for (const pair of historical.pairs) for (const arm of ['jevFirst', 'lunaOnly']) {
+      pair[arm].catalogVersion = 'focused-contextual-answer-2026-10-04-v3';
+    }
+    expect(() => validateArm(historical.pairs[0].jevFirst, corpus.cases[0], 'jevFirst')).toThrow();
+    // Framing-only historical reproduction: no provider result or old label is new J1 evidence.
+    const read = await summarizeArtifact(historical);
+    expect(read.status, read.stderr).toBe(0);
+    expect(JSON.parse(read.stdout).artifact.catalogVersion).toBe('focused-contextual-answer-2026-10-04-v3');
+    historical.pairs[0].jevFirst.catalogVersion = CONTEXTUAL_CATALOG_VERSION;
+    const mixed = await summarizeArtifact(historical);
+    expect(mixed.status).toBe(1); expect(mixed.stdout).toBe('');
+  });
   it.each([
     ['unknown provider', (a) => { a.pairs[0].jevFirst.dispatches[0].provider = 'unrecognized'; }],
     ['missing provider', (a) => { delete a.pairs[0].jevFirst.dispatches[0].provider; }],
@@ -228,7 +243,7 @@ describe('paired contextual evaluation preparation (offline)', () => {
     expect(wire[0].body.state.questionCode).toBe('quantity_role_unresolved');
     expect(wire[0].body.state).not.toHaveProperty('requestId');
     expect(treatment).toMatchObject({ lunaDispatches: 0, directRoleAccepted: true,
-      catalogVersion: 'focused-contextual-answer-2026-10-04-v3', gateVersion: 'contextual-conservative-v2-calibrated',
+      catalogVersion: CONTEXTUAL_CATALOG_VERSION, gateVersion: 'contextual-conservative-v2-calibrated',
       inputTokens: 10, actualCostUsd: 0.00001, jointCorrect: null });
     expect(treatment.semanticResult.document.tasks[0]).toMatchObject({ existingPublicId: 'task-synthetic',
       workloads: [{ localId: 'workload-question', quantityRole: 'target', amount: 14 }] });
