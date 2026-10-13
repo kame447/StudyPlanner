@@ -41,6 +41,10 @@ export interface ControlledCandidateDomainOptions extends Pick<C5LocalSelectionO
 }
 export type ControlledCandidateRegistry = readonly RegisteredControlledCandidateDomain[];
 
+export function controlledCandidateQuestionCode(state: PlanningIntakeState | undefined) {
+  return decodeWeeklyPlanningStableV5QuestionSlot(state?.lastQuestionContext?.targetSlot);
+}
+
 /** Ambiguous registrations fail closed independently of registration order. */
 function routeFor(registry: ControlledCandidateRegistry, code: string | null): RegisteredControlledCandidateDomain | null {
   if (!code || new Set(registry.map(route => route.domainId)).size !== registry.length

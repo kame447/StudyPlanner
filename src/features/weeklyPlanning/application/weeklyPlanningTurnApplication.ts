@@ -1,9 +1,8 @@
 import type { ControlledCandidateSemanticContribution } from './weeklyPlanningControlledCandidateDomains';
 import type { ControlledCandidateDomainHost } from './weeklyPlanningControlledCandidateChoice';
-import type { ControlledCandidateRegistry } from './weeklyPlanningControlledCandidateRegistry';
+import { controlledCandidateQuestionCode, type ControlledCandidateRegistry } from './weeklyPlanningControlledCandidateRegistry';
 import type { WeeklyPlanningSemanticTurnObservation } from '../trace/weeklyPlanningSemanticCensus';
 import { weeklyPlanningRegisteredCandidateDomains } from './weeklyPlanningRegisteredCandidateDomains';
-import { decodeWeeklyPlanningStableV5QuestionSlot } from '../intake/weeklyPlanningStableV5QuestionSlot';
 import { projectSemanticCensusMetadata } from '../../../../shared/semanticTurnCensus';
 import { createWeeklyPlanningCandidateChoiceOptions, type WeeklyPlanningCandidateChoiceServices } from './weeklyPlanningCandidateChoiceConnection';
 import {
@@ -154,7 +153,7 @@ export function submitWeeklyPlanningApplicationTurn(
   const candidateDomains = params.isPlannerDataSnapshotCurrent && services.runtimeGateway.continueSelectedTurn && services.runtimeGateway.prepareCandidateInput && services.runtimeGateway.candidateRequestContext
     ? services.candidateDomains?.({
         sourceAccess: liveSourceAccess, choiceServices: services.candidateChoice,
-        censusMetadata: projectSemanticCensusMetadata({ questionCode: decodeWeeklyPlanningStableV5QuestionSlot(params.getState().intakeState?.lastQuestionContext?.targetSlot),
+        censusMetadata: projectSemanticCensusMetadata({ questionCode: controlledCandidateQuestionCode(params.getState().intakeState),
           targetCount: params.getState().intakeState?.lastQuestionContext?.topicId ? 1 : null, binding: 'unknown', freshness: 'unknown' }),
         inputForTurn: turn => services.runtimeGateway.prepareCandidateInput!(runtimeInput(turn)).normalizerInput,
         requestContextForTurn: pending => services.runtimeGateway.candidateRequestContext!(pending, { timeZone: params.timeZone, weekStartsOn: params.weekStartsOn }),

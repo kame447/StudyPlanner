@@ -357,9 +357,13 @@ export async function submitWeeklyPlanningControlledTurn(
           : executionResult.state;
         const bound = bindWeeklyPlanningQuestionPresentation({
           state: (() => {
+            const trustedProtocol = snapshot.intakeState?.controlledCandidateProtocolVersion === 1 ? 1 : undefined;
+            if (!ledger && candidateResultState.controlledCandidateProtocolVersion === trustedProtocol) {
+              return candidateResultState;
+            }
             const { controlledCandidateProtocolVersion: _untrustedProtocol, ...resultState } = candidateResultState;
             return { ...resultState, ...(ledger ? { c5SelectionLedger: ledger } : {}),
-              ...(snapshot.intakeState?.controlledCandidateProtocolVersion === 1 ? { controlledCandidateProtocolVersion: 1 as const } : {}) };
+              ...(trustedProtocol === 1 ? { controlledCandidateProtocolVersion: 1 as const } : {}) };
           })(),
           content: executionResult.questionPresentationContent,
           turnId: envelope.turnId,
