@@ -28,6 +28,8 @@ Owning Issue: #213
 
 - [Scheduled maintenance idle read load](work/20261008-backend-idle-read-load.md): Issue #542 backend read measurement and local bounded idle-read reduction. Separate from the published client-runtime release unit; production billing and rollout remain unverified.
 
+- [Admin user timeline request ownership](work/20261013-admin-user-timeline-ownership.md): Issue #213 selected-actor pagination, stale-response isolation and retry; local focused verification only.
+
 ## Ownership
 
 本ドメインが所有するもの:

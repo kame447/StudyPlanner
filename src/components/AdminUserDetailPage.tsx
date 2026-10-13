@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   ArrowLeft,
@@ -55,13 +55,17 @@ function timelineDetail(item: ObservabilityUserTimelineItem): string {
   return item.eventType;
 }
 
-export function AdminUserDetailPage({
-  userId,
-  navigate,
-}: {
+interface AdminUserDetailPageProps {
   userId: string;
   navigate: (path: string) => void;
-}) {
+}
+
+export function AdminUserDetailPage(props: AdminUserDetailPageProps) {
+  // Initial data and continuation state share the selected actor's lifetime.
+  return <AdminUserInvestigation key={props.userId} {...props} />;
+}
+
+function AdminUserInvestigation({ userId, navigate }: AdminUserDetailPageProps) {
   const loadDetail = useCallback(
     () => getAdminObservabilityUserInvestigation({
       actorSubjectId: userId,
@@ -81,6 +85,20 @@ export function AdminUserDetailPage({
   const [nextCursor, setNextCursor] = useState<string | null | undefined>(undefined);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState('');
+  const requests = useRef({
+    active: false,
+    pending: null as symbol | null,
+    completedCursors: new Set<string>(),
+  });
+
+  useLayoutEffect(() => {
+    const owner = requests.current;
+    owner.active = true;
+    return () => {
+      owner.active = false;
+      owner.pending = null;
+    };
+  }, []);
 
   const timeline = useMemo(
     () => [...(detail?.timeline ?? []), ...extraTimeline],
@@ -89,7 +107,11 @@ export function AdminUserDetailPage({
   const resolvedCursor = nextCursor === undefined ? detail?.nextCursor ?? null : nextCursor;
 
   async function loadMore() {
-    if (!resolvedCursor || loadingMore) return;
+    const owner = requests.current;
+    if (!owner.active || !resolvedCursor || owner.pending || owner.completedCursors.has(resolvedCursor)) return;
+    const token = Symbol('user-timeline-page');
+    owner.pending = token;
+    const ownsRequest = () => owner.active && owner.pending === token;
     setLoadingMore(true);
     setLoadMoreError('');
     try {
@@ -99,12 +121,19 @@ export function AdminUserDetailPage({
         cursor: resolvedCursor,
         limit: 50,
       });
+      if (!ownsRequest()) return;
+      owner.completedCursors.add(resolvedCursor);
       setExtraTimeline((current) => [...current, ...page.timeline]);
       setNextCursor(page.nextCursor);
     } catch (error) {
-      setLoadMoreError(error instanceof Error ? error.message : '続きの履歴を取得できませんでした。');
+      if (ownsRequest()) {
+        setLoadMoreError(error instanceof Error ? error.message : '続きの履歴を取得できませんでした。');
+      }
     } finally {
-      setLoadingMore(false);
+      if (ownsRequest()) {
+        owner.pending = null;
+        setLoadingMore(false);
+      }
     }
   }
 
