@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 
 const FOCUSABLE_SELECTOR = [
   'button:not([disabled])',
@@ -18,20 +18,27 @@ export function useDialogFocus<T extends HTMLElement>(open: boolean, onClose: ()
   const initialFocusRef = useRef<HTMLElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
+  const returnFocusFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open || typeof window === 'undefined') return undefined;
 
-    previousFocusRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const focusFrame = window.requestAnimationFrame(() => {
-      const target = initialFocusRef.current ?? dialogRef.current;
-      if (target && isVisible(target)) target.focus();
-    });
+    if (returnFocusFrameRef.current !== null) {
+      window.cancelAnimationFrame(returnFocusFrameRef.current);
+      returnFocusFrameRef.current = null;
+    }
+    // Repeated setup must not replace the launcher with this dialog itself.
+    if (!dialogRef.current?.contains(document.activeElement)) {
+      previousFocusRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
+    // Own focus before the visible dialog can be followed by history navigation.
+    const target = initialFocusRef.current ?? dialogRef.current;
+    if (target && isVisible(target)) target.focus();
 
     function handleKeyDown(event: KeyboardEvent) {
       const dialog = dialogRef.current;
@@ -70,10 +77,13 @@ export function useDialogFocus<T extends HTMLElement>(open: boolean, onClose: ()
 
     window.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.cancelAnimationFrame(focusFrame);
       window.removeEventListener('keydown', handleKeyDown);
       const previousFocus = previousFocusRef.current;
-      window.requestAnimationFrame(() => {
+      const focusAtClose = document.activeElement;
+      returnFocusFrameRef.current = window.requestAnimationFrame(() => {
+        returnFocusFrameRef.current = null;
+        // A newer dialog or deliberate user focus wins over an old cleanup.
+        if (document.activeElement !== focusAtClose && document.activeElement !== document.body) return;
         if (previousFocus?.isConnected && isVisible(previousFocus)) previousFocus.focus();
       });
     };
