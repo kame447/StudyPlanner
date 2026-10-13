@@ -1,6 +1,6 @@
 # Home inline add menu
 
-Status: draft PR #601 published; initial CI exposed one separator regression and one incorrect browser-test expectation. Corrections passed final local verification; publication of the corrected content and exact-head browser acceptance remain open under Issue #483.
+Status: draft PR #601 has corrected visual/cross-browser checks passing. The test-only pre-click scroll correction passed final local verification and awaits another exact-head browser run under Issue #483.
 
 - Branch: `ui/home-inline-add`
 - Base / initial HEAD: `819d5bac3791b0d0aac2a6b1fd977fe73256edf6`
@@ -9,7 +9,7 @@ Status: draft PR #601 published; initial CI exposed one separator regression and
 - Scope: replace the bottom chooser with a plus/X toggle and event/study actions inside the current Today Schedule add-row bounds; preserve existing forms, callbacks, current-day defaults, navigation and owner lifetime.
 - Next: finish the initial browser run, verify the combined local corrections, publish the corrected same-PR content through the integration owner, and follow its CI to terminal. Aggregate JavaScript budget remains a separate inherited gate.
 - Definition of done: repeated open/close/select, Escape/focus and navigation reset, both destinations/current date, narrow phone/tablet/desktop and theme layout verified; relevant tests/types, final full verify, applicable browser/visual gates and integration evidence must be reported separately.
-- Verification: corrected local full verification passed at `1e704d57` with 7,230 tests and production build. Initial remote core CI including Firestore passed and all 11 geometry cases rendered successfully. Corrected remote browser/visual verification is pending. No UI-completion claim.
+- Verification: prior corrected local/remote full checks passed at `1e704d57` / remote `39d7c7c`, with 7,230 tests. Corrected visual 4/4 and cross-browser matrix pass; Chromium has 541 passes and one pre-click scroll-coordinate test failure. Final test-only correction full verification passed at `818940eb`; its new remote browser run is pending. No UI-completion claim.
 
 ## Earlier candidate checkpoint — 2026-10-13
 
@@ -71,3 +71,19 @@ The batched correction has focused 6 files / 52 tests passing, all three changed
 - Separate bundle guard retains only the inherited aggregate JavaScript failures: 2,340,967 raw / 630,454 gzip bytes. CSS total 492,505 and largest 424,820 raw bytes pass unchanged thresholds.
 - Root source review approved the two selector corrections and narrow browser-contract fixes. Exact focus-policy assertion passes; an added unapproved focus statement is rejected. Thirteen screenshots now use supported artifact paths.
 - This subsequent checkpoint is documentation-only. Corrected remote CI, visual comparison and the two complete destination save paths must still pass on the next published head; the initial 11 geometry successes do not replace that evidence.
+
+
+## Exact browser scroll diagnosis — 2026-10-13
+
+Remote `39d7c7c9538d372e94deb014ac62478dd73ac067` matches local tree `88c3591ad3871bade9e92eff87f159e38d22ea74`. [Visual matrix](https://github.com/kame447/StudyPlanner/actions/runs/38343227052) passes all four original goldens and every cross-browser project. [Browser Regression](https://github.com/kame447/StudyPlanner/actions/runs/38343227061/job/115118669367) reports 541 passed / 1 failed: 390px event/study saves and reload pass, as do all eleven geometry cases and the repaired settings/focus contracts. All thirteen saved screenshots were inspected; labels fit, with the 300px study label wrapping inside its button.
+
+The sole 1280px failure is caused by comparing coordinates before versus after Playwright reveals a partially clipped button. Preserved trace call `ppqp@16631` proves the schedule list's scrollTop changes 0→3 during the pre-click action snapshot, while the plus is still closed. The row's y becomes 400.171875 from 403.171875 before the click handler runs; height/width/x and every Home relaxation variable remain identical. Body/dashboard scroll offsets stay zero. This is not evidence of menu-induced layout movement.
+
+The test-only correction performs the temporary original-row audit, explicitly scrolls the target into view, and waits for stable geometry before capturing the closed box. Exact full bounding-box equality remains unchanged, and ancestor scroll offsets must also remain equal through menu opening. The populated before/after geometry and offsets are attached as JSON. Application source, CSS, destination forms, screenshots and thresholds are unchanged by this correction. Final local verification and both complete browser save paths on its new head remain pending.
+
+
+## Scroll-precondition final local verification — 2026-10-13
+
+Commit `818940eb528e19b4b2b437813f89e68cf7314e9f` / tree `9a47eac39d5114b095bc537ce300ef474d7a112e` passes the final `npm run verify` command above, exit 0: fresh app/Worker types, 813 files / 7,230 tests passed, 10 files / 45 tests skipped, 1 todo, production build 5.31 seconds. All 2,369 source input hashes and 235 installed package identities, tool hashes and runtime are identical before/after; the verified worktree is clean.
+
+The final bundle is byte-count identical to the prior corrected build: JS 2,340,967 raw / 630,454 gzip, CSS 492,505 total / 424,820 largest. Only inherited aggregate JavaScript limits fail. This checkpoint is documentation-only after that full run. The next published head still requires successful execution of both save/reload flows, exact position and scroll-offset assertions, and all thirteen screenshot cases.

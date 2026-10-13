@@ -45,6 +45,16 @@ async function expectLastPlanSeparator(row) {
   expect(styles.timelineBorder).toBe('1px');
 }
 
+async function scrollOffsets(row) {
+  return row.evaluate(element => {
+    const offsets = [];
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+      offsets.push({ tag: parent.tagName, className: parent.className, top: parent.scrollTop, left: parent.scrollLeft });
+    }
+    return offsets;
+  });
+}
+
 for (const width of [390, 1280]) {
   test(`Home adds an event or study without Calendar navigation at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
@@ -65,9 +75,11 @@ for (const width of [390, 1280]) {
     await expect(home).not.toContainText('今日の予定はまだありません');
     await browseAnotherDateThenHome(page);
     const row = page.getByRole('group', { name: '今日の予定の追加', exact: true });
-    await waitForVisualReady(page, '.home-inline-add');
     await expectOriginalRowHeight(row);
+    await add.scrollIntoViewIfNeeded();
+    await waitForVisualReady(page, '.home-inline-add');
     const closedBox = await row.boundingBox();
+    const closedScroll = await scrollOffsets(row);
     await add.click();
     const chooser = row;
     const close = chooser.getByRole('button', { name: '予定の追加を閉じる', exact: true });
@@ -80,6 +92,7 @@ for (const width of [390, 1280]) {
     await expect(page.locator('.home-add-sheet, .home-add-overlay')).toHaveCount(0);
     const chooserBox = await chooser.boundingBox();
     expect(chooserBox).toEqual(closedBox);
+    expect(await scrollOffsets(row)).toEqual(closedScroll);
     const boxes = await chooser.getByRole('button').evaluateAll(nodes => nodes.map(node => {
       const rect = node.getBoundingClientRect();
       return { x: rect.x, right: rect.right, y: rect.y, bottom: rect.bottom, fits: node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1 };
@@ -106,12 +119,22 @@ for (const width of [390, 1280]) {
     await expect(event).toHaveCount(0); await expect(home).toBeVisible();
     await expect(home.locator('.home-schedule-list')).toContainText('ホームから予定');
     await browseAnotherDateThenHome(page);
-    await waitForVisualReady(page, '.home-inline-add');
     await expectOriginalRowHeight(row);
     await expectLastPlanSeparator(row);
+    // Locator clicks first reveal a partly clipped button. Measure after that
+    // scroll and after the temporary original-row probe, not before them.
+    await add.scrollIntoViewIfNeeded();
+    await waitForVisualReady(page, '.home-inline-add');
     const populatedRow = await row.boundingBox();
+    const populatedScroll = await scrollOffsets(row);
     await add.click();
-    expect(await row.boundingBox()).toEqual(populatedRow);
+    const expandedRow = await row.boundingBox();
+    const expandedScroll = await scrollOffsets(row);
+    await testInfo.attach('populated-inline-position', { contentType: 'application/json', body: JSON.stringify({
+      before: { box: populatedRow, scroll: populatedScroll }, after: { box: expandedRow, scroll: expandedScroll },
+    }) });
+    expect(expandedRow).toEqual(populatedRow);
+    expect(expandedScroll).toEqual(populatedScroll);
     await expectLastPlanSeparator(row);
     for (const button of await row.getByRole('button').all()) {
       expect((await button.boundingBox()).height).toBeCloseTo(populatedRow.height, 1);
@@ -168,6 +191,8 @@ for (const [width, appearance, theme, height = 844, relaxed = false, count = 0] 
     await expectOriginalRowHeight(row);
     await page.evaluate(() => document.fonts.ready);
     if (count) await expectLastPlanSeparator(row);
+    await add.scrollIntoViewIfNeeded();
+    await waitForVisualReady(page, '.home-inline-add');
     const closed = await row.boundingBox();
     // The whole original frame remains a tap target, including its top edge.
     await add.click({ position: { x: 4, y: 2 } });
