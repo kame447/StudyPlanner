@@ -1,8 +1,8 @@
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
 import {
-  focusedContextualDecisionContextV5,
   focusedDecisionContextV5,
 } from './weeklyPlanningFocusedDecisionContextV5';
+import { createFocusedContextualBindingSnapshotV5, isFocusedContextualBindingCurrentV5 } from './weeklyPlanningFocusedContextualBindingV5';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
   FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS,
@@ -204,7 +204,8 @@ export async function tryFocusedContextualAnswerRouteV5(
   const baseMessages = createExtendedContextualMessagesV5(run.input);
   let attemptMessages = baseMessages;
   let forceLunaForRetry = false;
-  const decisionContext = focusedContextualDecisionContextV5(run.input);
+  const bindingSnapshot = createFocusedContextualBindingSnapshotV5(run.input);
+  const decisionContext = bindingSnapshot?.context;
   const requestWithoutDecisionContext = {
     messages: baseMessages,
     temperature: 0,
@@ -272,6 +273,16 @@ export async function tryFocusedContextualAnswerRouteV5(
         },
       });
       const decision = parseExtendedContextualDecisionV5(response);
+      if (bindingSnapshot && !isFocusedContextualBindingCurrentV5(bindingSnapshot, run.input)) {
+        const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+          status: 'rejected', document: null,
+          diagnostics: run.diagnostics({ attemptCount: attempt, repairAttempted: false,
+            validationErrors: ['focused-contextual:stale-binding'], providerError: null,
+            requestBytes, responseLengths }),
+        };
+        run.recordDecision(result, { route: 'focused_contextual_stale_binding' });
+        return result;
+      }
       const provisional = decision?.decision === 'provisional_timebox';
       const document = provisional
         ? target.questionCode === 'missing_effort_estimate'

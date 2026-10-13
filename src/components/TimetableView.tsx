@@ -1,3 +1,6 @@
+import { TimetableClassDetail } from './TimetableClassDetail';
+import { classAttendanceRepository } from '../repositories';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import {
   Suspense,
   lazy,
@@ -22,6 +25,8 @@ import {
 } from '../lib/timetableViewModel';
 import { TimetablePeriodSwipeItem } from './TimetablePeriodSwipeItem';
 import type {
+  Plan,
+  PlanDraft,
   RecurrenceWeekday,
   ScheduleTemplate,
   ScheduleTemplateAlternatingWeek,
@@ -42,6 +47,8 @@ const TimetableOcrImportDialog = lazy(() =>
 );
 
 interface TimetableViewProps {
+  plans?: Plan[];
+  onSavePlan?: (draft: PlanDraft) => Promise<void>;
   userId: string;
   activeTerm: TimetableTerm | null;
   timetableTerms?: TimetableTerm[];
@@ -222,6 +229,8 @@ function getTemplatePatternLabel(template: ScheduleTemplate): string {
 }
 
 export function TimetableView({
+  plans = [],
+  onSavePlan,
   userId,
   activeTerm,
   timetableTerms = [],
@@ -244,8 +253,12 @@ export function TimetableView({
     y: number;
   } | null>(null);
   const lastEmptyCellTapRef = useRef<{ cellKey: string; at: number } | null>(null);
+  const [selectedClass, setSelectedClass] = useState<{ userId: string; termId: string; id: string } | null>(null);
+  const selectedTemplate = selectedClass?.userId === userId && selectedClass.termId === activeTermId
+    ? scheduleTemplates.find(template => template.id === selectedClass.id && template.userId === userId) ?? null : null;
   const [draft, setDraft] = useState<ScheduleTemplateDraft | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<ScheduleTemplate | null>(null);
+  const { dialogRef: editorDialogRef, initialFocusRef: editorInitialFocusRef } = useDialogFocus<HTMLFormElement>(draft !== null, closeEditor);
   const editorRevision = useRef(0);
   const pendingEditorRevision = useRef<number | null>(null);
   const [savingTemplateId, setSavingTemplateId] = useState<string | null>(null);
@@ -368,6 +381,7 @@ export function TimetableView({
 
   function closeEditor() {
     editorRevision.current += 1;
+    setSelectedClass(null);
     setDraft(null);
     setEditingTemplate(null);
   }
@@ -379,6 +393,7 @@ export function TimetableView({
     }
 
     editorRevision.current += 1;
+    setSelectedClass(null);
     setEditingTemplate(null);
     setDraft(createTemplateDraft(userId, activeTermId, weekday, period, activeTerm));
   }
@@ -905,7 +920,7 @@ export function TimetableView({
                   <button
                     aria-label={
                       primaryTemplate
-                        ? `${weekday.label}曜 ${period.label}限 ${primaryTemplate.title}を編集`
+                        ? `${weekday.label}曜 ${period.label}限 ${primaryTemplate.title}の詳細`
                         : `${weekday.label}曜 ${period.label}限 授業を追加`
                     }
                     className={[
@@ -916,7 +931,7 @@ export function TimetableView({
                     key={cellKey}
                     onClick={(event) => {
                       if (primaryTemplate) {
-                        openEditEditor(primaryTemplate);
+                        setSelectedClass({ userId, termId: activeTermId, id: primaryTemplate.id });
                         return;
                       }
 
@@ -1213,15 +1228,23 @@ export function TimetableView({
         </div>
       ) : null}
 
+      {selectedTemplate && !draft ? <TimetableClassDetail
+        key={`${userId}:${selectedTemplate.id}`} template={selectedTemplate} plans={plans}
+        attendanceRepository={classAttendanceRepository} onSavePlan={onSavePlan}
+        onEdit={() => openEditEditor(selectedTemplate)} onClose={() => setSelectedClass(null)}
+      /> : null}
+
       {draft ? (
         <div className="overlay modal-overlay timetable-modal-overlay" onClick={closeEditor}>
           <form
-            className="modal-card timetable-editor-modal"
+            className="modal-card timetable-editor-modal timetable-compact-editor"
+            ref={editorDialogRef} tabIndex={-1}
+            role="dialog" aria-modal="true" aria-label={editingTemplate ? '授業を編集' : '授業を追加'}
             onClick={(event) => event.stopPropagation()}
             onSubmit={handleSubmit}
           >
             <div className="timetable-editor-header">
-              <button className="ghost-button" onClick={closeEditor} type="button">
+              <button className="ghost-button" ref={node => { editorInitialFocusRef.current = node; }} onClick={closeEditor} type="button">
                 閉じる
               </button>
               <div className="timetable-editor-heading">
@@ -1253,15 +1276,6 @@ export function TimetableView({
                     autoComplete="off"
                     value={draft.title}
                     onChange={(event) => updateDraft('title', event.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>教科</span>
-                  <input
-                    disabled={isEditorDraftLocked}
-                    autoComplete="off"
-                    value={draft.subject}
-                    onChange={(event) => updateDraft('subject', event.target.value)}
                   />
                 </label>
               </section>
@@ -1312,105 +1326,118 @@ export function TimetableView({
                 </div>
               </section>
 
-              {usesAlternatingWeeks ? (
+              <details className="timetable-editor-options">
+                <summary>教科・教室・メモ・繰り返し</summary>
+                {usesAlternatingWeeks ? (
+                  <section className="timetable-editor-card">
+                    <div className="timetable-card-title timetable-pattern-title">
+                      <strong>交互週</strong>
+                      <span>時間割全体のA/Bどちらに出る授業か</span>
+                    </div>
+                    <div className="timetable-pattern-options">
+                      {([
+                        ['both', 'A/B共通'],
+                        ['a', 'A週'],
+                        ['b', 'B週'],
+                      ] as Array<[ScheduleTemplateAlternatingWeek, string]>).map(([value, label]) => (
+                        <button
+                          className={
+                            (draft.alternatingWeek ?? 'both') === value
+                              ? 'segment active'
+                              : 'segment'
+                          }
+                          disabled={isEditorDraftLocked}
+                          key={value}
+                          onClick={() => updateDraft('alternatingWeek', value)}
+                          type="button"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
                 <section className="timetable-editor-card">
                   <div className="timetable-card-title timetable-pattern-title">
-                    <strong>交互週</strong>
-                    <span>時間割全体のA/Bどちらに出る授業か</span>
+                    <strong>授業の頻度</strong>
+                    <span>隔週はこの授業だけの設定です</span>
                   </div>
-                  <div className="timetable-pattern-options">
+                  <div className="timetable-pattern-options two-options">
                     {([
-                      ['both', 'A/B共通'],
-                      ['a', 'A週'],
-                      ['b', 'B週'],
-                    ] as Array<[ScheduleTemplateAlternatingWeek, string]>).map(([value, label]) => (
+                      [1, '毎週'],
+                      [2, '隔週'],
+                    ] as Array<[ScheduleTemplateWeekInterval, string]>).map(([value, label]) => (
                       <button
-                        className={
-                          (draft.alternatingWeek ?? 'both') === value
-                            ? 'segment active'
-                            : 'segment'
-                        }
+                        className={(draft.weekInterval ?? 1) === value ? 'segment active' : 'segment'}
                         disabled={isEditorDraftLocked}
                         key={value}
-                        onClick={() => updateDraft('alternatingWeek', value)}
+                        onClick={() => {
+                          updateDraft('weekInterval', value);
+                          if (value === 1) {
+                            updateDraft('weekIntervalAnchorDate', null);
+                          } else if (!draft.weekIntervalAnchorDate) {
+                            updateDraft(
+                              'weekIntervalAnchorDate',
+                              activeTerm?.startDate ?? getTodayIsoDate(),
+                            );
+                          }
+                        }}
                         type="button"
                       >
                         {label}
                       </button>
                     ))}
                   </div>
-                </section>
-              ) : null}
-
-              <section className="timetable-editor-card">
-                <div className="timetable-card-title timetable-pattern-title">
-                  <strong>授業の頻度</strong>
-                  <span>隔週はこの授業だけの設定です</span>
-                </div>
-                <div className="timetable-pattern-options two-options">
-                  {([
-                    [1, '毎週'],
-                    [2, '隔週'],
-                  ] as Array<[ScheduleTemplateWeekInterval, string]>).map(([value, label]) => (
-                    <button
-                      className={(draft.weekInterval ?? 1) === value ? 'segment active' : 'segment'}
-                      disabled={isEditorDraftLocked}
-                      key={value}
-                      onClick={() => {
-                        updateDraft('weekInterval', value);
-                        if (value === 1) {
-                          updateDraft('weekIntervalAnchorDate', null);
-                        } else if (!draft.weekIntervalAnchorDate) {
-                          updateDraft(
-                            'weekIntervalAnchorDate',
-                            activeTerm?.startDate ?? getTodayIsoDate(),
-                          );
+                  {draft.weekInterval === 2 ? (
+                    <label className="field timetable-anchor-field">
+                      <span>この授業がある週の基準日</span>
+                      <input
+                        disabled={isEditorDraftLocked}
+                        type="date"
+                        value={draft.weekIntervalAnchorDate ?? ''}
+                        onChange={(event) =>
+                          updateDraft('weekIntervalAnchorDate', event.target.value || null)
                         }
-                      }}
-                      type="button"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                {draft.weekInterval === 2 ? (
-                  <label className="field timetable-anchor-field">
-                    <span>この授業がある週の基準日</span>
-                    <input
-                      disabled={isEditorDraftLocked}
-                      type="date"
-                      value={draft.weekIntervalAnchorDate ?? ''}
-                      onChange={(event) =>
-                        updateDraft('weekIntervalAnchorDate', event.target.value || null)
-                      }
-                    />
-                    <small>この日を含む週から1週おきに授業があるものとして扱います。</small>
-                  </label>
-                ) : null}
-              </section>
+                      />
+                      <small>この日を含む週から1週おきに授業があるものとして扱います。</small>
+                    </label>
+                  ) : null}
+                </section>
 
-              <section className="timetable-editor-card">
-                <div className="timetable-detail-grid">
-                  <label className="field">
-                    <span>教室</span>
-                    <input
-                      disabled={isEditorDraftLocked}
-                      autoComplete="off"
-                      value={draft.classroom ?? ''}
-                      onChange={(event) => updateDraft('classroom', event.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>メモ</span>
-                    <textarea
-                      disabled={isEditorDraftLocked}
-                      rows={3}
-                      value={draft.memo}
-                      onChange={(event) => updateDraft('memo', event.target.value)}
-                    />
-                  </label>
-                </div>
-              </section>
+                <section className="timetable-editor-card">
+                  <div className="timetable-detail-grid">
+                    <label className="field">
+                      <span>教科</span>
+                      <input
+                        disabled={isEditorDraftLocked}
+                        autoComplete="off"
+                        value={draft.subject}
+                        onChange={(event) => updateDraft('subject', event.target.value)}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>教室</span>
+                      <input
+                        disabled={isEditorDraftLocked}
+                        autoComplete="off"
+                        value={draft.classroom ?? ''}
+                        onChange={(event) => updateDraft('classroom', event.target.value)}
+                      />
+                    </label>
+                    <label className="field timetable-memo-field">
+                      <span>メモ</span>
+                      <textarea
+                        disabled={isEditorDraftLocked}
+                        rows={3}
+                        value={draft.memo}
+                        onChange={(event) => updateDraft('memo', event.target.value)}
+                      />
+                    </label>
+                  </div>
+                </section>
+
+              </details>
 
               {editingTemplate ? (
                 <div className="row-actions timetable-editor-actions">

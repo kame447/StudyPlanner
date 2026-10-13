@@ -160,6 +160,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
+    createPlanDraft,
     movePlanOccurrence,
     saveWeeklyApprovedPlan,
     completeWeeklyApprovalOperation,
@@ -615,6 +616,8 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
 
             {viewMode === 'timetable' ? (
               <TimetableView
+                plans={plans}
+                onSavePlan={createPlanDraft}
                 userId={user.id}
                 activeTerm={activeTimetableTerm}
                 timetableTerms={timetableTerms}

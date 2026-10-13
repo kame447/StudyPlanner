@@ -393,7 +393,7 @@ describe('Stable V5 focused contextual-answer semantic route', () => {
     expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
     expect(vi.mocked(client.createChatCompletion).mock.calls[0][0].decisionContext)
       .toMatchObject({
-        purpose: 'focused_contextual_answer',
+        purpose: 'focused_contextual_answer_v2',
         requestId: 'quantity-role-turn',
         inputRevision: 2,
         questionCode: 'quantity_role_unresolved',

@@ -1302,7 +1302,8 @@ for (const options of [cases.find(item => item.label === 'desktop' && item.theme
       expect(await page.evaluate(() => window.__plannerRecoveryHook.saveError)).toBeNull();
     }
     await navigate(page, '時間割');
-    await page.getByRole('button', { name: '月曜 1限 授業Aを編集', exact: true }).click();
+    await page.getByRole('button', { name: '月曜 1限 授業Aの詳細', exact: true }).click();
+    await page.locator('.timetable-class-detail').getByRole('button', { name: '編集', exact: true }).click();
     const editor = page.locator('.timetable-editor-modal');
     await editor.getByLabel('授業名', { exact: true }).fill('保存した授業A');
     await page.evaluate(() => window.__plannerRecoveryRepository.holdNextTemplateWrite());
@@ -1313,7 +1314,8 @@ for (const options of [cases.find(item => item.label === 'desktop' && item.theme
     }
     await expect(editor.getByRole('button', { name: '閉じる', exact: true })).toBeEnabled();
     await editor.getByRole('button', { name: '閉じる', exact: true }).click();
-    await page.getByRole('button', { name: '火曜 1限 授業Bを編集', exact: true }).click();
+    await page.getByRole('button', { name: '火曜 1限 授業Bの詳細', exact: true }).click();
+    await page.locator('.timetable-class-detail').getByRole('button', { name: '編集', exact: true }).click();
     for (const control of await editor.locator('input, select, textarea, .segment').all()) {
       await expect(control).toBeEnabled();
     }
@@ -1326,7 +1328,7 @@ for (const options of [cases.find(item => item.label === 'desktop' && item.theme
     await page.screenshot({ path: testInfo.outputPath(`timetable-editor-${options.label}-${options.theme}.png`), fullPage: true });
     await editor.getByRole('button', { name: '保存', exact: true }).click();
     await expect(editor).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '火曜 1限 未保存の授業Bを編集', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '火曜 1限 未保存の授業Bの詳細', exact: true })).toBeVisible();
   });
 
   test(`new timetable class stays locked until one create completes ${options.label}-${options.theme}`, async ({ page }, testInfo) => {
@@ -1350,7 +1352,7 @@ for (const options of [cases.find(item => item.label === 'desktop' && item.theme
     await page.screenshot({ path: testInfo.outputPath(`timetable-pending-create-${options.label}-${options.theme}.png`), fullPage: true });
     await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanWrite());
     await expect(editor).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '水曜 1限 新しく保存する授業を編集', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '水曜 1限 新しく保存する授業の詳細', exact: true })).toBeVisible();
     expect(writeMethods(await repoSnapshot(page)).slice(before.length)).toEqual(['upsertScheduleTemplate']);
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleTemplates.v1') ?? '[]'));
     expect(saved).toEqual([expect.objectContaining({ title: '新しく保存する授業' })]);
@@ -1370,7 +1372,8 @@ for (const viewport of [
     await page.evaluate(() => window.__plannerRecoveryHook.startTimetableClass({ title: '編集する授業', periodNumber: 1 }));
     await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(true);
     await navigate(page, '時間割');
-    await page.getByRole('button', { name: '月曜 1限 編集する授業を編集', exact: true }).click();
+    await page.getByRole('button', { name: '月曜 1限 編集する授業の詳細', exact: true }).click();
+    await page.locator('.timetable-class-detail').getByRole('button', { name: '編集', exact: true }).click();
     const editor = page.locator('.timetable-editor-modal');
     await expect(editor).toBeVisible();
     // Use an independent fixed element outside the route as the browser's
@@ -1410,6 +1413,7 @@ for (const viewport of [
     const nav = await page.getByRole('navigation', { name: '主要ナビゲーション' }).boundingBox();
     const form = await editor.boundingBox();
     expect(form.y + form.height).toBeLessThanOrEqual(nav.y + 1);
+    await editor.locator('.timetable-editor-options > summary').click();
     for (const control of [editor.getByLabel('教室', { exact: true }), editor.getByLabel('メモ', { exact: true }), editor.getByRole('button', { name: '授業を削除', exact: true })]) {
       await control.scrollIntoViewIfNeeded();
       await control.click({ trial: true });
