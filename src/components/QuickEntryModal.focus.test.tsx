@@ -74,9 +74,9 @@ function setup(render: (props: ComponentProps<typeof QuickEntryModal>) => ReactE
     active: () => activeElement, listenerCount: () => listeners.size };
 }
 
-it('moves initial focus from the Home launcher onto the non-input dialog', () => {
+it('owns non-input dialog focus before the first frame or immediate navigation', () => {
   const f = setup();
-  expect(f.active() === f.opener).toBe(true);
+  expect(f.active() === f.form).toBe(true);
   f.flushFrame();
   expect(f.active() === f.form).toBe(true);
   expect(renderer!.root.findByType('form').props.tabIndex).toBe(-1);
@@ -131,11 +131,11 @@ it.each(['hidden', 'disconnected'])('does not return focus to a %s launcher afte
   expect(f.listenerCount()).toBe(0);
 });
 
-it('cancels pending entry focus when closed before the first frame', () => {
+it('does not refocus the dialog after closing before the first frame', () => {
   const f = setup();
   act(() => renderer!.unmount()); renderer = undefined;
   f.flushFrame();
-  expect(f.form.focus).not.toHaveBeenCalled();
+  expect(f.form.focus).toHaveBeenCalledOnce();
   expect(f.active() === f.opener).toBe(true);
   expect(f.listenerCount()).toBe(0);
 });
