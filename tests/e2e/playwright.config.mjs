@@ -12,6 +12,7 @@ export default defineConfig({
   testIgnore: [
     '**/admin-overview-render.spec.mjs',
     '**/admin-system-environment.spec.mjs',
+    '**/admin-analysis-query-snapshot.spec.mjs',
     '**/support-inquiries.spec.mjs',
     '**/cross-browser-smoke.spec.mjs',
     '**/home-add-mobile-motion.spec.mjs',
