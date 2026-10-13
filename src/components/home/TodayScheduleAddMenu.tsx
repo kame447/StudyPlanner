@@ -10,20 +10,12 @@ export function TodayScheduleAddMenu({ date, empty, onAddEntry }: {
 }) {
   const [open, setOpen] = useState(false);
   const id = useId();
-  const containerRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const firstActionRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
     firstActionRef.current?.focus({ preventScroll: true });
-    function closeOutside(event: PointerEvent) {
-      if (event.target instanceof Node && !containerRef.current?.contains(event.target)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('pointerdown', closeOutside);
-    return () => document.removeEventListener('pointerdown', closeOutside);
   }, [open]);
 
   function close() {
@@ -31,20 +23,15 @@ export function TodayScheduleAddMenu({ date, empty, onAddEntry }: {
     toggleRef.current?.focus({ preventScroll: true });
   }
 
-  function select(kind: HomeAddEntry['kind']) {
-    // Keep focus on the retained toggle while the inline actions become inactive.
-    close();
+  function select(kind: HomeAddEntry['kind'], button: HTMLButtonElement) {
+    // Tapped buttons are not focused by every browser; retain the actual dialog opener.
+    button.focus({ preventScroll: true });
     onAddEntry({ kind, date });
   }
 
   return (
-    <div ref={containerRef}
-      className={`${empty ? 'home-schedule-empty' : 'home-schedule-add-row'} home-inline-add`}
+    <div className={`${empty ? 'home-schedule-empty' : 'home-schedule-add-row'} home-inline-add`}
       role="group" aria-label="今日の予定の追加"
-      onBlur={(event) => {
-        // Safari can blur to the document before an internal touch dispatches click.
-        if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setOpen(false);
-      }}
       onKeyDown={(event) => {
         if (open && event.key === 'Escape') {
           event.preventDefault();
@@ -55,7 +42,7 @@ export function TodayScheduleAddMenu({ date, empty, onAddEntry }: {
       <div className={open ? 'home-add-controls is-open' : 'home-add-controls'}>
         <button ref={firstActionRef} id={`${id}-schedule`} className="home-add-action" type="button"
           disabled={!open} aria-hidden={!open}
-          onClick={() => select('schedule')}>
+          onClick={(event) => select('schedule', event.currentTarget)}>
           <CalendarPlus size={16} aria-hidden="true" /><span>予定を追加</span>
         </button>
         <button ref={toggleRef} className={open ? 'home-add-toggle is-open' : 'home-add-toggle'}
@@ -66,7 +53,7 @@ export function TodayScheduleAddMenu({ date, empty, onAddEntry }: {
         </button>
         <button id={`${id}-study`} className="home-add-action" type="button"
           disabled={!open} aria-hidden={!open}
-          onClick={() => select('study')}>
+          onClick={(event) => select('study', event.currentTarget)}>
           <BookOpenCheck size={16} aria-hidden="true" /><span>学習予定を追加</span>
         </button>
       </div>
