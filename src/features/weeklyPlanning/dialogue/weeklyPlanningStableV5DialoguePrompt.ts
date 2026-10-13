@@ -75,6 +75,8 @@ export function createWeeklyPlanningStableV5DialogueStateSummary(
 export function createWeeklyPlanningStableV5DialoguePrompt(
   input: WeeklyPlanningStableV5DialogueRenderInput,
 ): { systemPrompt: string; userPrompt: string } {
+  const allocationBreakdown = input.actionKind === 'preview_ready' && input.previewCount > 0
+    ? input.allocationBreakdown : undefined;
   const systemPrompt = [
     'あなたは学習計画アプリの対話担当です。アプリが決めた意味と次の行為を変えず、継続中の相談として自然な日本語にしてください。',
     '入力にない具体情報は補わず、受理済みの情報を確認し直す質問も勝手に追加しないでください。',
@@ -97,6 +99,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       previewPromotionControlLabel: input.previewPromotionControlLabel ?? null,
       relevantLabels: input.requiredLabels,
       previewCount: input.previewCount,
+      ...(allocationBreakdown ? { allocationBreakdown } : {}),
       ...(input.recovery ? { recovery: input.recovery } : {}),
       ...(input.recoveryQuestionEvidence ? { recoveryQuestionEvidence: input.recoveryQuestionEvidence } : {}),
       ...(input.actionKind === 'preview_ready' && input.previewConstraintSatisfaction
@@ -110,6 +113,13 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       'acceptedFactsは会話上受理済みのFactです。resolutionPendingItemsはscheduler等で追加解決が必要な項目であり、そこに同じFactが現れてもユーザー発話自体が未受理という意味ではありません。',
       'currentTurnGrounding.acceptedFactsはこのturnで新たに受理したFactです。required_before_resumeでは会話上重要なFactを短くACKしてから質問へ戻し、groundingAcknowledgementにそのfactIdとACK本文を入れ、最終textをその本文から始めてください。ACK対象Factに時刻・日付・数量などユーザーが明示した具体値がある場合は、その具体値を省略せずACK本文にも残してください。recommendedは必要な場合だけ、noneはgroundingAcknowledgement=nullとし定型ACKを足さないでください。受理済みFactを再確認質問にしないでください。',
       'communicationがある場合はアプリが選んだgoalに従い、raw発話から別の会話目的を選び直さないでください。acknowledge_asideでは保留中の質問を尋ねず、その発話に自然に応答してください。resume_questionでは実際のquestionIntentの質問へ戻ってください。',
+      ...(input.communication?.consultation ? [
+        'communication.consultationは読取専用の評価根拠です。日上限は空き時間ではありません。accepted_plan_onlyは受理済み条件だけ、proposed_daysはalternativeに示す対象・日付だけの仮説評価です。fits/does_not_fitはその条件と期間での結果であり、一般的な可能・不可能を意味しません。not_evaluatedは不足理由を説明し、未評価の条件を可能とも不可能とも断定しないでください。',
+        'feasibilityClaimはnone、またはこの評価根拠と同じfits/does_not_fitのみ。本文にも同じ評価範囲と確実性を保ってください。workEstimatesとdailyLimitsは根拠値のまま扱い、差を計算して自由時間としないでください。nextActionに沿って自然に応じ、必要な確認は一つまでにしてください。',
+        ...(input.communication.alternativeRequiresAdoption ? [
+          '提案日は未採用で、現在の候補には反映していません。旧候補の承認・保存操作を別案の採用手段として案内しないでください。別案を採用するか自然に確認し、明示された変更だけが通常の計画更新へ進みます。',
+        ] : []),
+      ] : []),
       ...(input.communication?.statusReason === 'fixed_event_manual_entry' ? [
         'planningStateSummaryやacceptedFactsにある固定予定は受理済みの占有時間情報です。情報がなければ日時や受理済み予定を補わないでください。このAI turnで予定を作成・保存していません。communication.manualEntryの既存navigationLabelから既存actionLabelを選ぶ手動入力経路を自然に案内してください。この画面に追加ボタンがあると仮定せず、自動移動・登録を約束しないでください。追加の学習や作業を勧誘する質問は足さないでください。',
       ] : []),
@@ -122,6 +132,12 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
       'effort_measurementのmeasurementを変えないでください。duration_per_unit=1単位あたり、session_duration=1回、total_duration=全体です。',
       'resolution_questionのquantity_roleではplan_target_amount=今回この計画で進めたい量、remaining_total_amount=現在残っている全体量です。全体量対1回分など別の軸へ変えないでください。task_relation_referenceは関係の両端にあるタスクを特定するための質問であり、順序の承認、登録、予定への反映、新規タスク追加を求めないでください。task_relation_self_referenceは同一タスク同士になっている関係を修復するため、異なる二つの対象を聞いてください。',
       'previewPromotionControlLabelがあれば候補は生成済みです。その操作を案内してください。groundingContextのproposedは短く示し確認質問を足さず、contestedは断言しないでください。',
+      ...(input.actionKind === 'preview_ready' && input.previewCount > 0 ? [
+        'previewCount counts blocks in ONE preview: say 候補N件, never N個/つのプレビュー or N案.',
+      ] : []),
+      ...(allocationBreakdown ? [
+        'allocationBreakdownは今回の新しい候補の実配分です。見積もり・余裕の内訳はUI表示に任せ、余裕0の場合もこの内訳を返答で繰り返さず、再計算・理由の推測をせず、allocatedMinutesをユーザーの指定量と言い換えないでください。currentTurnGroundingの明示値ACKは維持してください。',
+      ] : []),
       ...(input.actionKind === 'preview_ready' && input.previewConstraintSatisfaction?.length ? [
         'previewConstraintSatisfactionは実際の今回の候補と受理済み1回の時間を照合した結果です。sourceFactIdの条件とtaskIdの対象を守り、not_satisfiedは受理した1回の時間を候補全体で満たしていないこと、not_evaluatedは満たしたと確認できないことを自然に伝えてください。条件を受理しただけで満たしたと述べず、超過・欠落などの原因や変更を推測しないでください。satisfied以外を満足扱いしないでください。',
       ] : []),

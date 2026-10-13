@@ -12,13 +12,13 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'semantic_meaning_ownership',
     retentionBasis: 'semantic_scope_boundary',
     retentionReason: 'The model must own utterance-level meaning while deterministic code owns representation, state, safety, scheduling, and persistence; collapsing those responsibilities can cause supported meaning to be omitted merely because later code cannot recover it.',
-    instruction: 'Interpret user meaning and conversational context yourself. Deterministic code validates representation and state and handles safety, scheduling, and persistence; it does not recover semantic meaning that you omit or replace with a guess.',
+    instruction: 'Interpret user meaning/context. Code validates representation/state, owns safety/scheduling/persistence; it does not recover semantic meaning you omit/guess.',
   },
   {
     id: 'current_turn_scope',
     retentionBasis: 'semantic_scope_boundary',
     retentionReason: 'Schema and validators can reject malformed output, but cannot decide which supported meanings belong to the current utterance rather than copied context.',
-    instruction: 'Interpret every supported explicit current-turn contribution, including side contributions; pending questions do not suppress stated facts.',
+    instruction: 'Interpret all supported explicit current-turn contributions despite pending questions.',
   },
   {
     id: 'quoted_serialized_data_boundary',
@@ -36,13 +36,13 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'study_activity_kind',
     retentionBasis: 'language_interpretation',
     retentionReason: 'The dominant study activity is a semantic classification of the described work; deterministic code only validates the closed representation.',
-    instruction: 'Classify study.activityKind by dominant work: memorization_retrieval, problem_solving, reading, writing, mixed if none dominates, else other or unknown.',
+    instruction: 'study.activityKind: dominant memorization_retrieval, problem_solving, reading, writing; mixed if none dominates, else other/unknown.',
   },
   {
     id: 'workload_unit_code',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Mapping the user’s counted unit to word/problem/page/etc. requires understanding language; deterministic code validates the selected canonical code instead of re-reading raw text.',
-    instruction: 'For workload unitCode use the matching standard unit: minute, hour, page, problem, word, lesson, chapter, section, exam_year, mock_exam, session; custom only when none matches. unitLabel may preserve wording.',
+    instruction: 'workload unitCode: matching minute/hour/page/problem/word/lesson/chapter/section/exam_year/mock_exam/session; custom only if none matches. unitLabel may keep wording.',
   },
   {
     id: 'workload_quantity_effort',
@@ -72,7 +72,7 @@ export const WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 = [
     id: 'conversation_act',
     retentionBasis: 'language_interpretation',
     retentionReason: 'Explanation, topic changes and returns are additive utterance meaning; formal question priority and state remain application-owned.',
-    instruction: 'Additive conversationActs; no mutation/authority; keep facts. answer_pending_question: delta; ask_about_pending_question: current question meaning; topic_shift/resume_topic: shift/return. decline_additional_work: optional only. request_event_registration: explicit fixed-event registration, manual only. targetPublicId: existing task/component/null; planning only: [].',
+    instruction: 'conversationActs add meaning, no authority; keep facts. answer_pending_question=delta; ask_about_pending_question=question meaning; topic_shift/resume_topic=shift/return; decline_additional_work=optional only; request_event_registration=explicit fixed-event manual entry; consultation_request=advice. targetPublicId=existing task/component/null; plain planning=[]. Consultation-only placementAlternative={scope:task|plan,dateExpressions:1-7 canonical date expressions,sourceText:current quote}, else null. Weekdays use accepted horizon; hypotheses are not facts.',
   },
   {
     id: 'explicit_recurrence_sources',
