@@ -22,6 +22,7 @@ export interface AppSettingsGeneralProps {
   monthTimetableError?: string | null;
   themeMode: ThemeMode;
   themePalette: ThemePalette;
+  themeError?: string | null;
   onChangeTheme: (mode: ThemeMode) => void;
   onChangeThemePalette: (palette: ThemePalette) => void;
 }
@@ -39,7 +40,7 @@ export function AppSettingsGeneral({
   onChangeHomeSceneStyle, onChangeHomeSceneMotion, homeSceneError,
   showDayTimetable = true, onChangeDayTimetable, dayTimetableError,
   showMonthTimetable = true, onChangeMonthTimetable, monthTimetableError,
-  themeMode, themePalette, onChangeTheme, onChangeThemePalette,
+  themeMode, themePalette, themeError, onChangeTheme, onChangeThemePalette,
 }: AppSettingsGeneralProps) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { weekStartsOn, setWeekStartsOn, resetProfile } = useWeeklyPlanningPersonalization();
@@ -88,6 +89,7 @@ export function AppSettingsGeneral({
           </div>
         </div> : null}
       </div>
+      {themeError ? <p className="settings-inline-error settings-group-note" role="alert">{themeError}</p> : null}
     </SettingsGroup>
 
     {onChangeHomeSceneStyle && onChangeHomeSceneMotion ? <SettingsGroup title="ホームのイラスト">
