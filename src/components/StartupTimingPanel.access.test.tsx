@@ -3,6 +3,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { StartupTimingPanel } from './StartupTimingPanel';
 import { AppSettingsSupportPanel } from './AppSettingsSupportPanel';
 import type { AuthSessionUser } from '../services/authSession';
+import { readStartupDeliveryTiming } from '../lib/startupDeliveryTiming';
+vi.mock('../lib/startupDeliveryTiming', () => ({ readStartupDeliveryTiming: vi.fn(() => ({
+  navigation: null, assets: [], splashMountedMs: null, deliveryToSplashGapMs: null,
+})) }));
 
 const boundary = vi.hoisted(() => ({ enabled: true, available: true, rows: [],
   auth: vi.fn(), admin: vi.fn(), unsubscribeAuth: vi.fn(), unsubscribes: [] as ReturnType<typeof vi.fn>[],
@@ -26,6 +30,7 @@ let renderer: ReactTestRenderer | undefined;
 const user = (id: string, requiresEmailVerification = false) => ({ id, requiresEmailVerification });
 const details = () => renderer!.root.findAllByType('details');
 beforeEach(() => {
+  vi.mocked(readStartupDeliveryTiming).mockClear();
   vi.stubEnv('DEV', false);
   boundary.enabled = true; boundary.available = true;
   boundary.auth.mockClear(); boundary.admin.mockClear(); boundary.unsubscribeAuth.mockClear();
@@ -42,12 +47,14 @@ it('removes start/stop diagnostics from ordinary Support independently of query 
   expect(output).not.toMatch(/起動時間の診断|計測.*再読み込み/);
   expect(output).toContain('お問い合わせ');
   expect(boundary.auth).not.toHaveBeenCalled(); expect(boundary.admin).not.toHaveBeenCalled();
+  expect(readStartupDeliveryTiming).not.toHaveBeenCalled();
 });
 it('does not check identity or render controls without opt-in', () => {
   boundary.enabled = false;
   act(() => { renderer = create(<StartupTimingPanel />); });
   expect(renderer!.toJSON()).toBeNull();
   expect(boundary.auth).not.toHaveBeenCalled(); expect(boundary.admin).not.toHaveBeenCalled();
+  expect(readStartupDeliveryTiming).not.toHaveBeenCalled();
 });
 it('keeps query-enabled production diagnostics hidden for unresolved, signed-out, unverified and ordinary users', () => {
   act(() => { renderer = create(<StartupTimingPanel />); });
@@ -57,18 +64,23 @@ it('keeps query-enabled production diagnostics hidden for unresolved, signed-out
   expect(boundary.admin).not.toHaveBeenCalled();
   act(() => boundary.userChanged!(user('ordinary'))); expect(details()).toHaveLength(0);
   act(() => boundary.admins.get('ordinary')!(false)); expect(details()).toHaveLength(0);
+  expect(readStartupDeliveryTiming).not.toHaveBeenCalled();
 });
 it('uses the existing administrator verdict and drops it before another owner is checked', () => {
   act(() => { renderer = create(<StartupTimingPanel />); });
   act(() => boundary.userChanged!(user('admin')));
   act(() => boundary.admins.get('admin')!(true)); expect(details()).toHaveLength(1);
+  expect(readStartupDeliveryTiming).toHaveBeenCalledExactlyOnceWith(null);
   act(() => boundary.userChanged!(user('ordinary'))); expect(details()).toHaveLength(0);
   expect(boundary.unsubscribes[0]).toHaveBeenCalledOnce();
+  expect(readStartupDeliveryTiming).toHaveBeenCalledTimes(1);
   // Even a late prior-owner listener cannot grant the current owner's panel.
   act(() => boundary.admins.get('admin')!(true)); expect(details()).toHaveLength(0);
+  expect(readStartupDeliveryTiming).toHaveBeenCalledTimes(1);
   act(() => boundary.admins.get('ordinary')!(true)); expect(details()).toHaveLength(1);
   act(() => boundary.admins.get('ordinary')!(false)); expect(details()).toHaveLength(0);
   act(() => boundary.userChanged!(null)); expect(details()).toHaveLength(0);
+  expect(readStartupDeliveryTiming).toHaveBeenCalledTimes(2);
   act(() => renderer!.unmount()); renderer = undefined;
   expect(boundary.unsubscribeAuth).toHaveBeenCalledOnce();
 });
@@ -77,9 +89,11 @@ it('retains explicit local development diagnostics without production admin requ
   act(() => { renderer = create(<StartupTimingPanel />); });
   expect(details()).toHaveLength(1);
   expect(boundary.auth).not.toHaveBeenCalled(); expect(boundary.admin).not.toHaveBeenCalled();
+  expect(readStartupDeliveryTiming).toHaveBeenCalledExactlyOnceWith(null);
 });
 it('has no production diagnostics for a local-only auth service', () => {
   boundary.available = false;
   act(() => { renderer = create(<StartupTimingPanel />); });
   expect(details()).toHaveLength(0); expect(boundary.auth).not.toHaveBeenCalled();
+  expect(readStartupDeliveryTiming).not.toHaveBeenCalled();
 });

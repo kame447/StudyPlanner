@@ -396,13 +396,8 @@ export class ProductObservabilityReadModelService {
     toDate: string;
   }): Promise<ObservabilityOverviewReadModel> {
     listObservabilityDatesInclusive(params.fromDate, params.toDate, MAX_OVERVIEW_DAYS);
-    const [daily, activeUsersValue, checkpoint, registeredUsers] = await Promise.all([
-      this.getDailyRollups(params),
-      this.firestore.getDocument(
-        ACTIVE_USER_WINDOW_COLLECTION,
-        activeUserWindowId(params.environment, params.toDate),
-      ),
-      this.getRollupCheckpoint(),
+    const [{ daily, activeUsers, checkpoint }, registeredUsers] = await Promise.all([
+      this.getPeriodSnapshot(params),
       registeredUsersForPeriod(this.firestore, params.fromDate, params.toDate),
     ]);
     const period = aggregateOverviewPeriod(daily);
@@ -414,12 +409,7 @@ export class ProductObservabilityReadModelService {
       registeredUsers,
       period,
       daily,
-      activeUsers: readActiveUsers(
-        activeUsersValue,
-        params.environment,
-        params.toDate,
-        checkpoint.activeUserDirtySources,
-      ),
+      activeUsers,
       aiLatencyP50Ms: latencyPercentileMs(period.ai.latency, 0.5),
       aiLatencyP95Ms: latencyPercentileMs(period.ai.latency, 0.95),
       rollupCheckpoint: checkpoint,
@@ -471,6 +461,19 @@ export class ProductObservabilityReadModelService {
     daily: ObservabilityDailyRollup[];
     activeUsers: ObservabilityActiveUserWindows | null;
   }> {
+    const { daily, activeUsers } = await this.getPeriodSnapshot(params);
+    return { daily, activeUsers };
+  }
+
+  private async getPeriodSnapshot(params: {
+    environment: ObservabilityEnvironment;
+    fromDate: string;
+    toDate: string;
+  }): Promise<{
+    daily: ObservabilityDailyRollup[];
+    activeUsers: ObservabilityActiveUserWindows | null;
+    checkpoint: ObservabilityRollupCheckpoint;
+  }> {
     const dates = listObservabilityDatesInclusive(params.fromDate, params.toDate, MAX_OVERVIEW_DAYS);
     const keys: FirestoreTransactionDocumentKey[] = [
       ...dates.map((localDate) => ({
@@ -486,6 +489,7 @@ export class ProductObservabilityReadModelService {
     const values = await this.firestore.batchGetDocumentKeys(keys);
     const checkpoint = readCheckpoint(values[dates.length + 1] ?? null);
     return {
+      checkpoint,
       daily: dates
         .map((localDate, index) => readDailyRollup(
           values[index] ?? null,

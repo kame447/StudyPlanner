@@ -9,6 +9,11 @@ async function browseAnotherDateThenHome(page) {
 }
 
 
+async function waitForInlineMotion(row) {
+  await row.evaluate(element => Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished)));
+}
+
+
 async function expectOriginalRowHeight(row) {
   const heights = await row.evaluate(element => {
     // Recreate the previous one-button row under the same inherited layout values.
@@ -128,6 +133,7 @@ for (const width of [390, 1280]) {
     }) });
     expect(chooserBox).toEqual(closedBox);
     expect(chooserScroll).toEqual(closedScroll);
+    await waitForInlineMotion(row);
     const boxes = await chooser.getByRole('button').evaluateAll(nodes => nodes.map(node => {
       const rect = node.getBoundingClientRect();
       return { x: rect.x, right: rect.right, y: rect.y, bottom: rect.bottom, fits: node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1 };
@@ -148,10 +154,18 @@ for (const width of [390, 1280]) {
     await add.click();
     await chooser.getByRole('button', { name: '予定を追加', exact: true }).click();
     const event = page.locator('.month-event-modal');
+    await expect(event).toBeVisible();
+    await expect(close).toHaveAttribute('aria-expanded', 'true');
+    await event.getByRole('button', { name: '閉じる', exact: true }).click();
+    await expect(event).toHaveCount(0);
+    await expect(chooser.getByRole('button')).toHaveCount(3);
+    await chooser.getByRole('button', { name: '予定を追加', exact: true }).click();
     await expect(event.getByRole('button', { name: '開始日', exact: true })).toContainText('2026年8月19日');
     await event.getByLabel('タイトル', { exact: true }).fill('ホームから予定');
     await event.getByRole('button', { name: '保存', exact: true }).click();
     await expect(event).toHaveCount(0); await expect(home).toBeVisible();
+    await expect(close).toHaveAttribute('aria-expanded', 'true');
+    await expect(chooser.getByRole('button')).toHaveCount(3);
     await expect(home.locator('.home-schedule-list')).toContainText('ホームから予定');
     await browseAnotherDateThenHome(page);
     await expectOriginalRowHeight(row);
@@ -171,16 +185,25 @@ for (const width of [390, 1280]) {
     expect(expandedRow).toEqual(populatedRow);
     expect(expandedScroll).toEqual(populatedScroll);
     await expectLastPlanSeparator(row);
+    await waitForInlineMotion(row);
     for (const button of await row.getByRole('button').all()) {
       expect((await button.boundingBox()).height).toBeCloseTo(populatedRow.height, 1);
     }
     await chooser.getByRole('button', { name: '学習予定を追加', exact: true }).click();
     const study = page.getByRole('dialog', { name: '予定・記録の追加' });
+    await expect(study).toBeVisible();
+    await expect(close).toHaveAttribute('aria-expanded', 'true');
+    await study.getByRole('button', { name: '閉じる', exact: true }).click();
+    await expect(study).toHaveCount(0);
+    await expect(chooser.getByRole('button')).toHaveCount(3);
+    await chooser.getByRole('button', { name: '学習予定を追加', exact: true }).click();
     await expect(study.getByLabel('日付', { exact: true })).toHaveValue(E2E_TODAY);
     await study.getByPlaceholder('例: 英語課題 / 面接準備').fill('ホームから学習');
     await study.getByRole('button', { name: '30分', exact: true }).click();
     await study.getByRole('button', { name: '保存', exact: true }).click();
     await expect(study).toHaveCount(0); await expect(home).toBeVisible();
+    await expect(close).toHaveAttribute('aria-expanded', 'true');
+    await expect(chooser.getByRole('button')).toHaveCount(3);
     await expect(home.locator('.home-schedule-list')).toContainText('ホームから学習');
     await expect(page.locator('.schedule-month-view')).toHaveCount(0);
     await page.reload();
@@ -236,6 +259,7 @@ for (const [width, appearance, theme, height = 844, relaxed = false, count = 0] 
     if (count) await expectLastPlanSeparator(row);
     expect(open.width).toBeCloseTo(closed.width, 1);
     expect(open.height).toBeCloseTo(closed.height, 1);
+    await waitForInlineMotion(row);
     const bounds = await row.evaluate(element => {
       const frame = element.getBoundingClientRect();
       return Array.from(element.querySelectorAll('button')).map(button => {
@@ -254,11 +278,17 @@ for (const [width, appearance, theme, height = 844, relaxed = false, count = 0] 
     const screenshot = testInfo.outputPath('home-add-chooser.png');
     await row.screenshot({ path: screenshot });
     await testInfo.attach(`inline-${width}-${appearance}-${theme}`, { path: screenshot, contentType: 'image/png' });
+    const close = row.getByRole('button', { name: '予定の追加を閉じる', exact: true });
     await page.getByRole('heading', { name: '今日の予定', exact: true }).click();
+    await expect(close).toHaveAttribute('aria-expanded', 'true');
+    await close.press('Space');
     await expect(add).toHaveAttribute('aria-expanded', 'false');
     await add.press('Space');
     await expect(row.getByRole('button', { name: '予定を追加', exact: true })).toBeFocused();
     await page.keyboard.press('Shift+Tab');
+    await expect(close).toHaveAttribute('aria-expanded', 'true');
+    await expect(row.getByRole('button')).toHaveCount(3);
+    await close.press('Escape');
     await expect(add).toHaveAttribute('aria-expanded', 'false');
     await expect(row.getByRole('button')).toHaveCount(1);
   });

@@ -12,6 +12,7 @@ test('dragging and cancelling a native Home add touch does not open a form', asy
   await page.getByRole('button', { name: '今日の予定に追加', exact: true }).tap();
   const studyAction = page.getByRole('button', { name: '学習予定を追加', exact: true });
   await expect(studyAction).toBeVisible();
+  await expect(studyAction).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
   await collectHomeAddActionEvents(page);
   const box = await studyAction.boundingBox();
   if (!box) throw new Error('The Home study action must have a touch target');
@@ -31,7 +32,8 @@ test('dragging and cancelling a native Home add touch does not open a form', asy
   await testInfo.attach('home-add-cancelled-native-touch-events', {
     contentType: 'application/json', body: JSON.stringify(events),
   });
-  expect(events.some(event => event.type === 'pointerdown' && event.pointerType === 'touch' && event.trusted)).toBe(true);
+  expect(events.some(event => event.type === 'pointerdown' && event.pointerType === 'touch'
+    && event.target.includes('学習予定を追加') && event.trusted)).toBe(true);
   expect(events.some(event => event.type === 'pointercancel' && event.trusted)).toBe(true);
   expect(events.some(event => event.type === 'click')).toBe(false);
   // The next intentional tap still works; no retained pointer flag blocks it.

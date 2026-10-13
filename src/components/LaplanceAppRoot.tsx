@@ -1,7 +1,9 @@
+import { PublicPageBoundary } from './PublicPageBoundary';
 import { AppearanceProvider } from './AppearanceProvider';
 import { useStartupProfileObservation } from '../hooks/useStartupProfileObservation';
 import { createStartupSessionScope, type StartupSessionCapability, type StartupSessionScope } from '../lib/startupSessionScope';
 import { retireStartupPreviewCache } from '../lib/retiredStartupPreviewCache';
+import { ProfileRestoreRecoveryScreen } from './ProfileRestoreRecoveryScreen';
 import { PlannerAppBootstrap } from './PlannerAppBootstrap';
 import { startupTiming } from '../lib/startupTiming';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -97,7 +99,13 @@ function ConsentedLaplanceApp({
               resetProfile={personalization.resetProfile}
             >
               <RootStartupReadyProvider onReady={finishStartup}>
-                <App state={state} onReady={onReady} />
+                {state.profileRestoreRecovery ? (
+                  <ProfileRestoreRecoveryScreen
+                    retrying={state.profileRestoreRecovery === 'retrying'}
+                    onRetry={state.retryProfileRestore}
+                    onReady={onReady}
+                  />
+                ) : <App state={state} onReady={onReady} />}
               </RootStartupReadyProvider>
             </WeeklyPlanningPersonalizationProvider>
           </UserPlanningContextProvider>
@@ -176,7 +184,7 @@ function RootManagedUnauthenticatedApp() {
 }
 
 export function LaplanceAppRoot(props: { authSession?: AuthSessionService } = {}) {
-  return <AppearanceProvider><LaplanceAppRootContent {...props} /></AppearanceProvider>;
+  return <AppearanceProvider><PublicPageBoundary><LaplanceAppRootContent {...props} /></PublicPageBoundary></AppearanceProvider>;
 }
 
 function LaplanceAppRootContent({
@@ -188,10 +196,6 @@ function LaplanceAppRootContent({
   );
   const traceEnabled = isWeeklyPlanningTraceFeatureEnabled();
   useEffect(() => { retireStartupPreviewCache(); }, []);
-  const currentPath = window.location.pathname;
-  const isLegalPage = currentPath === '/terms'
-    || currentPath === '/privacy'
-    || currentPath === '/contact';
   const [session, setSession] = useState<{ userId: string | null | undefined; epoch: number; scope: StartupSessionScope }>(() => {
     const user = authSession.getCurrentUser();
     return { userId: user && !user.requiresEmailVerification ? user.id : authSession.available ? undefined : null, epoch: 0, scope: createStartupSessionScope() };
@@ -235,7 +239,7 @@ function LaplanceAppRootContent({
     return () => { subscribed = false; unsubscribe(); currentSession.current.scope.invalidate(); };
   }, [authSession]);
 
-  if (isLegalPage || !traceEnabled || !authSession.available) {
+  if (!traceEnabled || !authSession.available) {
     return <App />;
   }
 

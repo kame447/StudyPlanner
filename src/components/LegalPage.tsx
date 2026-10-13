@@ -1,3 +1,4 @@
+import { PublicPageLink } from './PublicPageLink';
 import { ContactPage } from './ContactPage';
 
 type LegalPageKind = 'terms' | 'privacy' | 'contact';
@@ -246,9 +247,9 @@ export function LegalPage({ kind }: LegalPageProps) {
   return (
     <main className="legal-page-shell">
       <article className="legal-page-card">
-        <a className="legal-back-link" href="/">
+        <PublicPageLink className="legal-back-link" href="/">
           Laplanceへ戻る
-        </a>
+        </PublicPageLink>
         <header className="legal-page-header">
           <p className="eyebrow">Laplance</p>
           <h1>{content.title}</h1>

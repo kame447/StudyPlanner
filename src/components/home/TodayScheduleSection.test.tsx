@@ -17,7 +17,7 @@ it('offers an accessible plus without the empty explanation and separates viewin
   const add = renderer.root.findByProps({ 'aria-label': '今日の予定に追加' });
   act(() => add.props.onClick());
   expect(onAddEntry).not.toHaveBeenCalled();
-  act(() => renderer.root.findAllByType('button').find(button => button.props.id?.endsWith('-schedule'))!.props.onClick());
+  act(() => renderer.root.findAllByType('button').find(button => button.props.id?.endsWith('-schedule'))!.props.onClick({ currentTarget: { focus: vi.fn() } }));
   expect(onAddEntry).toHaveBeenCalledWith({ kind: 'schedule', date: dashboard.today });
   expect(onOpenDay).not.toHaveBeenCalled();
   const all = renderer.root.findAllByType('button').find(button => button.children.includes('すべて見る '))!;
@@ -62,7 +62,7 @@ it.each([0, 1, 2, 3, 4, 5])('renders only today with %i current-day plans, witho
     const add = renderer.root.findByProps({ 'aria-label': '今日の予定に追加' });
     act(() => add.props.onClick());
     expect(onAddEntry).not.toHaveBeenCalled();
-    act(() => renderer.root.findAllByType('button').find(button => button.props.id?.endsWith('-study'))!.props.onClick());
+    act(() => renderer.root.findAllByType('button').find(button => button.props.id?.endsWith('-study'))!.props.onClick({ currentTarget: { focus: vi.fn() } }));
     expect(onAddEntry).toHaveBeenCalledWith({ kind: 'study', date: today });
     const all = renderer.root.findAllByType('button').find(button => button.children.includes('すべて見る '))!;
     act(() => all.props.onClick());
