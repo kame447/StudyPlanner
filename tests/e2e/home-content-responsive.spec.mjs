@@ -22,9 +22,9 @@ async function separated(page) {
 async function actions(page) {
   const add = page.getByRole('button', { name: '今日の予定に追加', exact: true });
   await add.scrollIntoViewIfNeeded(); await add.click({ trial: true, timeout: 5000 }); await add.focus(); await page.keyboard.press('Enter');
-  const dialog = page.getByRole('dialog', { name: '今日の予定に追加', exact: true });
-  await expect(dialog).toBeVisible(); await dialog.getByRole('button', { name: 'キャンセル', exact: true }).click();
-  await expect(dialog).toHaveCount(0); await expect(add).toBeFocused();
+  const dialog = page.getByRole('group', { name: '今日の予定の追加', exact: true });
+  await expect(dialog).toBeVisible(); await dialog.getByRole('button', { name: '予定の追加を閉じる', exact: true }).click();
+  await expect(add).toHaveAttribute('aria-expanded', 'false'); await expect(add).toBeFocused();
   for (const target of [page.locator('.home-alert-card').last(), page.locator('.home-start-button')]) {
     await target.scrollIntoViewIfNeeded(); await target.click({ trial: true, timeout: 5000 }); await target.focus(); await expect(target).toBeFocused();
   }

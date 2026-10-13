@@ -143,8 +143,14 @@ for (const width of [1280, 390, 320]) {
     // Browser Forward can reopen settings while an existing body-portal dialog is open.
     await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: 'ホーム', exact: true }).click();
     await expect(page.locator('.home-today-panel')).toContainText('設定後も残る予定');
-    await page.getByRole('button', { name: '今日の予定に追加', exact: true }).click();
-    const addDialog = page.getByRole('dialog', { name: '今日の予定に追加', exact: true });
+    const homeAdd = page.getByRole('button', { name: '今日の予定に追加', exact: true });
+    await homeAdd.click();
+    await page.keyboard.press('Escape');
+    await expect(homeAdd).toHaveAttribute('aria-expanded', 'false');
+    await expect(homeAdd).toBeFocused();
+    await homeAdd.click();
+    await page.getByRole('button', { name: '学習予定を追加', exact: true }).click();
+    const addDialog = page.getByRole('dialog', { name: '予定・記録の追加', exact: true });
     await expect(addDialog).toBeVisible();
     await page.goForward(); await expect(settings).toBeVisible(); await expect(addDialog).toBeHidden();
     await settings.getByRole('tab', { name: '設定', exact: true }).focus(); await page.keyboard.press('Tab');
@@ -152,7 +158,11 @@ for (const width of [1280, 390, 320]) {
     await page.keyboard.press('Escape');
     await settings.getByRole('button', { name: '戻る', exact: true }).click();
     await expect(addDialog).toBeVisible();
-    await addDialog.getByRole('button', { name: 'キャンセル', exact: true }).click();
+    await page.keyboard.press('Escape');
+    // The existing destination form closes through its button, unlike the inline chooser.
+    await expect(addDialog).toBeVisible();
+    await addDialog.getByRole('button', { name: '閉じる', exact: true }).click();
+    await expect(addDialog).toHaveCount(0);
     await menu.click(); await page.reload();
     await expect(page.getByRole('main', { name: 'アプリ設定' })).toBeVisible();
     await page.getByRole('button', { name: '戻る', exact: true }).click();
