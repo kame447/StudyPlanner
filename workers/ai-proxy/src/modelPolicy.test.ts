@@ -39,6 +39,7 @@ describe('ai-proxy chat model policy', () => {
 
   it('falls back to the client model when no purpose is given (general NL backward compat)', () => {
     expect(resolveChatModel({ model: 'gpt-6-luna' })).toEqual({ model: 'gpt-6-luna' });
+    expect(resolveChatModel({ model: 'gpt-5.6-luna' })).toEqual({ model: 'gpt-5.6-luna' });
     expect(resolveChatModel({ model: '  gpt-6-luna  ' })).toEqual({ model: 'gpt-6-luna' });
   });
 
@@ -55,6 +56,6 @@ describe('ai-proxy chat model policy', () => {
 
   it('keeps every purpose-routed model inside the default allowlist', () => {
     expect(new Set(Object.values(AI_CHAT_PURPOSE_MODELS))).toEqual(new Set(['gpt-6-luna']));
-    expect(DEFAULT_ALLOWED_CHAT_MODELS).toEqual(['gpt-6-luna']);
+    expect(DEFAULT_ALLOWED_CHAT_MODELS).toEqual(['gpt-6-luna', 'gpt-5.6-luna']);
   });
 });

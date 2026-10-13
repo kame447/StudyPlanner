@@ -48,3 +48,10 @@ The existing [Cloudflare Pages check](https://github.com/kame447/StudyPlanner/ru
 - Both direct and Worker requests retain supported structured-output contracts and bounded output budgets, with no accidental temperature addition.
 - Current usage identifies GPT-6 Luna as Luna and prices known complete text usage using a distinct version; GPT-5.6 historical estimates and evidence remain unchanged.
 - Focused tests and final full verification pass on the integrated content; remaining live/rollout limits are explicit.
+
+## 2026-10-13 rollout-compatibility amendment
+
+- Worker-first deployment temporarily accepts both explicit `gpt-6-luna` and legacy `gpt-5.6-luna` requests. All known-purpose routes continue selecting GPT-6 Luna. This prevents supported retained-tab and purpose-less direct calls from failing solely because their old model was removed from the allowlist. No arbitrary model is enabled.
+- The Worker must be upgraded and its active version and nonsecret bindings read back before new Pages clients are shipped. A rollback Worker must preserve the explicit-model compatibility window and any accepted wire schema.
+- This change alone does not validate GPT-6 provider access, Japanese conversation quality, current Worker source parity, Cloudflare secret preservation, Jev shadow/canary or production save/reload; each requires independent evidence.
+- A preexisting JS bundle-budget failure must be reported separately and cannot be marked green solely because it predates this patch.
