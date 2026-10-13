@@ -11,7 +11,7 @@ export type ContextualDecision =
   | 'fallback';
 
 export const CONTEXTUAL_JEV_MODEL = JEV_MODEL;
-export const CONTEXTUAL_CATALOG_VERSION = 'focused-contextual-answer-2026-10-13-v4-bound-target';
+export { CONTEXTUAL_CATALOG_VERSION } from '../../../../shared/focusedContextualCatalog';
 export const CONTEXTUAL_GATE_VERSION = 'contextual-conservative-v2-calibrated';
 export const CONTEXTUAL_JEV_TIMEOUT_MS = 1_500;
 export const CONTEXTUAL_REQUEST_TIMEOUT_MS = 85_000;

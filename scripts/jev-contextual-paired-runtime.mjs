@@ -16,6 +16,7 @@ import { createWeeklyPlanningSemanticNormalizerV5 } from ${source('src/features/
 import { dispatchFocusedContextual } from ${source('workers/ai-proxy/src/decision/focusedContextualDispatch.ts')};
 import { createOpenRouterDecisionProvider } from ${source('workers/ai-proxy/src/decision/openRouterDecisionProvider.ts')};
 import { CONTEXTUAL_DECISION_CATALOG, CONTEXTUAL_CATALOG_VERSION, CONTEXTUAL_GATE_VERSION, CONTEXTUAL_JEV_TIMEOUT_MS, gateContextualDecision } from ${source('workers/ai-proxy/src/decision/contextualDecisionPolicy.ts')};
+import { createContextualPairedInput } from ${source('scripts/jev-contextual-paired-input.ts')};
 import { emptyDispatchDiagnostics, providerRequestId, readProviderError, typedJevDiagnostic } from ${source('scripts/jev-contextual-eval-diagnostics.mjs')};
 ${dataModule ? `import { CASES, EXPECTED_DIGEST, EXPIRES_AT } from ${JSON.stringify(dataModule)};` : `const CASES = ${JSON.stringify(cases)};
 const EXPECTED_DIGEST = ${JSON.stringify(digest)};
@@ -26,27 +27,7 @@ const known = (value) => typeof value === 'number' && Number.isFinite(value) && 
 const tokens = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
 const total = (values) => values.some((value) => value === null) ? null : values.reduce((sum, value) => sum + value, 0);
 
-function inputFor(item, arm) {
-  const progress = item.progressBasis === true;
-  const workload = { publicId: 'workload-question', taskPublicId: 'task-synthetic',
-    componentPublicId: null, quantityRole: progress ? 'completed' : 'unknown',
-    amount: item.targetAmount, unitCode: item.unitCode, unitLabel: item.unitLabel, rangeStart: null,
-    rangeEnd: null, perOccurrence: false, periodExpression: null };
-  return {
-    userText: item.userText, traceRequestId: 'ctx-paired-' + item.id + '-' + arm,
-    publicStateSummary: {
-      graphRevision: 31, previousCompatibilityStatus: 'revision_pending',
-      pendingQuestion: { actionId: null, questionCode: item.questionCode,
-        targetFactId: 'workload-question', graphRevision: 31,
-        effortMeasurement: item.questionCode === 'missing_effort_estimate' ? 'total_duration' : null,
-        estimateForWorkloadFactId: progress ? 'workload-estimate' : null,
-        questionBasis: progress ? 'completed_workload_total' : null },
-      workloads: progress ? [workload, { ...workload, publicId: 'workload-estimate', quantityRole: 'remaining', amount: 5 }] : [workload],
-      tasks: [{ publicId: 'task-synthetic', category: 'study', title: item.taskTitle }],
-      components: [], relations: [],
-    },
-  };
-}
+const inputFor = createContextualPairedInput;
 
 export async function runTurn(item, env, signal, arm, options = {}) {
   const started = Date.now();
@@ -260,7 +241,7 @@ export async function runTurn(item, env, signal, arm, options = {}) {
     async createChatCompletion(request) {
       const context = request.decisionContext;
       let response;
-      if (context?.purpose === 'focused_contextual_answer') {
+      if (context?.purpose === 'focused_contextual_answer_v2') {
         response = await dispatchFocusedContextual({ context,
           env: { OPENROUTER_API_KEY: env.OPENROUTER_API_KEY,
             JEV_MODE: arm === 'jevFirst' ? 'canary' : 'off', JEV_CANARY_PERCENT: '100',
