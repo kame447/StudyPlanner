@@ -3,6 +3,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PlannerMutationReconciliation } from '../domain/plannerMutationReconciliation';
 import { PlannerMutationScopeExpiredError, usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
 import { useOptimisticPlannerState } from './useOptimisticPlannerState';
+import { useTodoMutationAdmission } from './useTodoMutationAdmission';
 import { ActualMutationAdmissionError, actualUnavailableMessage, useActualMutationAdmission, MaterialMutationAdmissionError, materialStaleMessage, materialRefreshMessage, type MaterialEditBaseline, type ActualActionTarget } from './useActualMutationAdmission';
 import { removeByKey, upsertByKey } from '../lib/collections';
 import {
@@ -459,6 +460,7 @@ export function usePlannerDataState({
     });
   }
   const projectionLease = plannerDataReadSnapshot.projectionLease;
+  const todoAdmission = useTodoMutationAdmission(mutationScope, userId, todos, plannerDataReadAuthority, projectionLease);
   const isPlannerDataSnapshotCurrent = useCallback(() => mutationScope.isCurrent() && projectionLease !== null
     && projectionLease.ownerId === userId && plannerDataReadAuthority.isProjectionUsable(projectionLease),
   [mutationScope, projectionLease, userId, plannerDataReadAuthority]);
@@ -1514,6 +1516,13 @@ export function usePlannerDataState({
     }
   }
 
+  function admitTodoMutation(id: string, owner: string) {
+    try { return todoAdmission.begin(id, owner); } catch (error) {
+      showNotice(resolveErrorMessage(error, 'Todoを更新できませんでした。'), 'error');
+      throw error;
+    }
+  }
+
   async function saveTodo(draft: TodoTaskDraft, targetTodoId?: string) {
     if (!userId) {
       throw new Error('ログイン状態を確認できませんでした。');
@@ -1524,44 +1533,48 @@ export function usePlannerDataState({
       throw new Error('Todoのタイトルを入れてください。');
     }
 
-    const currentTodo = todos.find((todo) => todo.id === targetTodoId);
-    const now = new Date().toISOString();
-    const dueDate = draft.dueDate || null;
-    const status = draft.status ?? currentTodo?.status ?? 'open';
-    const pinned =
-      status === 'done' ? false : draft.pinned ?? currentTodo?.pinned ?? false;
-    const nextTodo: TodoTask = {
-      id: currentTodo?.id ?? createId('todo'),
-      ...draft,
-      title: draft.title.trim(),
-      subject: draft.subject.trim(),
-      estimatedMinutes:
-        typeof draft.estimatedMinutes === 'number'
-          ? Math.max(0, Math.round(draft.estimatedMinutes))
-          : null,
-      dueDate,
-      dueTime: dueDate ? draft.dueTime || null : null,
-      memo: draft.memo.trim(),
-      status,
-      scheduledPlanId:
-        draft.scheduledPlanId !== undefined
-          ? draft.scheduledPlanId
-          : currentTodo?.scheduledPlanId ?? null,
-      pinned,
-      createdAt: currentTodo?.createdAt ?? now,
-      updatedAt: now,
-    };
-
-    const todoOperation = todoState.begin(current => upsertByKey(current, nextTodo, todo => todo.id));
+    if (draft.userId !== userId) throw new PlannerMutationScopeExpiredError();
+    const admission = targetTodoId !== undefined ? admitTodoMutation(targetTodoId, draft.userId) : null;
     try {
-      await plannerRepository.upsertTodo(nextTodo);
-      todoState.commit(todoOperation);
-      showNotice(currentTodo ? 'Todoを更新しました。' : 'Todoを追加しました。', 'success');
-    } catch (error) {
-      todoState.reject(todoOperation);
-      showNotice(resolveErrorMessage(error, 'Todoを保存できませんでした。'), 'error');
-      throw error;
-    }
+      const currentTodo = admission?.todo;
+      const now = new Date().toISOString();
+      const dueDate = draft.dueDate || null;
+      const status = draft.status ?? currentTodo?.status ?? 'open';
+      const pinned =
+        status === 'done' ? false : draft.pinned ?? currentTodo?.pinned ?? false;
+      const nextTodo: TodoTask = {
+        id: currentTodo?.id ?? createId('todo'),
+        ...draft,
+        title: draft.title.trim(),
+        subject: draft.subject.trim(),
+        estimatedMinutes:
+          typeof draft.estimatedMinutes === 'number'
+            ? Math.max(0, Math.round(draft.estimatedMinutes))
+            : null,
+        dueDate,
+        dueTime: dueDate ? draft.dueTime || null : null,
+        memo: draft.memo.trim(),
+        status,
+        scheduledPlanId:
+          draft.scheduledPlanId !== undefined
+            ? draft.scheduledPlanId
+            : currentTodo?.scheduledPlanId ?? null,
+        pinned,
+        createdAt: currentTodo?.createdAt ?? now,
+        updatedAt: now,
+      };
+
+      const todoOperation = todoState.begin(current => upsertByKey(current, nextTodo, todo => todo.id));
+      try {
+        await plannerRepository.upsertTodo(nextTodo);
+        todoState.commit(todoOperation);
+        showNotice(currentTodo ? 'Todoを更新しました。' : 'Todoを追加しました。', 'success');
+      } catch (error) {
+        todoState.reject(todoOperation);
+        showNotice(resolveErrorMessage(error, 'Todoを保存できませんでした。'), 'error');
+        throw error;
+      }
+    } finally { admission?.settle(); }
   }
 
   async function scheduleTodoAsPlan(todo: TodoTask, draft: PlanDraft): Promise<Plan> {
@@ -1570,34 +1583,39 @@ export function usePlannerDataState({
       showNotice('終了時刻は開始時刻より後にしてください。', 'error');
       throw new Error('終了時刻は開始時刻より後にしてください。');
     }
-    const nextPlan = createPlanFromDraft({ ...draft, sourceType: 'todo', sourceId: todo.id });
-    const dueDate = todo.dueDate || null;
-    const nextTodo: TodoTask = {
-      ...todo,
-      status: 'scheduled',
-      scheduledPlanId: nextPlan.id,
-      dueDate,
-      dueTime: dueDate ? todo.dueTime ?? null : null,
-      updatedAt: new Date().toISOString(),
-    };
-    const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
-    const selectionOperation = selectionState.begin(() => selectionAt(nextPlan.date));
-
-    const todoOperation = todoState.begin(current => upsertByKey(current, nextTodo, item => item.id));
+    if (draft.userId !== userId) throw new PlannerMutationScopeExpiredError();
+    const admission = admitTodoMutation(todo.id, todo.userId);
     try {
-      await plannerRepository.scheduleTodoPlan({ plan: nextPlan, todo: nextTodo });
-      selectionState.commit(selectionOperation);
-      planState.commit(planOperation);
-      todoState.commit(todoOperation);
-      showNotice('Todoを予定化しました。', 'success');
-      return nextPlan;
-    } catch (error) {
-      planState.reject(planOperation);
-      todoState.reject(todoOperation);
-      selectionState.reject(selectionOperation);
-      showNotice(resolveErrorMessage(error, 'Todoを予定化できませんでした。'), 'error');
-      throw error;
-    }
+      todo = admission.todo;
+      const nextPlan = createPlanFromDraft({ ...draft, sourceType: 'todo', sourceId: todo.id });
+      const dueDate = todo.dueDate || null;
+      const nextTodo: TodoTask = {
+        ...todo,
+        status: 'scheduled',
+        scheduledPlanId: nextPlan.id,
+        dueDate,
+        dueTime: dueDate ? todo.dueTime ?? null : null,
+        updatedAt: new Date().toISOString(),
+      };
+      const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
+      const selectionOperation = selectionState.begin(() => selectionAt(nextPlan.date));
+
+      const todoOperation = todoState.begin(current => upsertByKey(current, nextTodo, item => item.id));
+      try {
+        await plannerRepository.scheduleTodoPlan({ plan: nextPlan, todo: nextTodo });
+        selectionState.commit(selectionOperation);
+        planState.commit(planOperation);
+        todoState.commit(todoOperation);
+        showNotice('Todoを予定化しました。', 'success');
+        return nextPlan;
+      } catch (error) {
+        planState.reject(planOperation);
+        todoState.reject(todoOperation);
+        selectionState.reject(selectionOperation);
+        showNotice(resolveErrorMessage(error, 'Todoを予定化できませんでした。'), 'error');
+        throw error;
+      }
+    } finally { admission.settle(); }
   }
 
   async function deleteTodo(todo: TodoTask) {
@@ -1605,25 +1623,29 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    const todoOperation = todoState.begin(current => removeByKey(current, todo.id, item => item.id));
+    const admission = admitTodoMutation(todo.id, todo.userId);
     try {
-      await plannerRepository.deleteTodo(userId, todo.id);
-      todoState.commit(todoOperation);
-      showDeleteUndoNotice(async () => {
-        const undoProjection = plannerDataReadAuthority.captureProjectionLease();
-        await plannerRepository.upsertTodo(todo);
-        // A crossing read owns the newer projection. Repair from persistence
-        // instead of replaying the captured deleted row over that snapshot.
-        if (undoProjection && plannerDataReadAuthority.isOwnerCurrent(undoProjection)
-          && !plannerDataReadAuthority.hasAcceptedProjectionChanged(undoProjection)) {
-          setTodos((current) => upsertByKey(current, todo, (item) => item.id));
-        }
-      }, ['plans-todos']);
-    } catch (error) {
-      todoState.reject(todoOperation);
-      showNotice(resolveErrorMessage(error, 'Todoを削除できませんでした。'), 'error');
-      throw error;
-    }
+      todo = admission.todo;
+      const todoOperation = todoState.begin(current => removeByKey(current, todo.id, item => item.id));
+      try {
+        await plannerRepository.deleteTodo(userId, todo.id);
+        todoState.commit(todoOperation);
+        showDeleteUndoNotice(async () => {
+          const undoProjection = plannerDataReadAuthority.captureProjectionLease();
+          await plannerRepository.upsertTodo(todo);
+          // A crossing read owns the newer projection. Repair from persistence
+          // instead of replaying the captured deleted row over that snapshot.
+          if (undoProjection && plannerDataReadAuthority.isOwnerCurrent(undoProjection)
+            && !plannerDataReadAuthority.hasAcceptedProjectionChanged(undoProjection)) {
+            setTodos((current) => upsertByKey(current, todo, (item) => item.id));
+          }
+        }, ['plans-todos']);
+      } catch (error) {
+        todoState.reject(todoOperation);
+        showNotice(resolveErrorMessage(error, 'Todoを削除できませんでした。'), 'error');
+        throw error;
+      }
+    } finally { admission.settle(); }
   }
 
   async function saveStudySubject(
