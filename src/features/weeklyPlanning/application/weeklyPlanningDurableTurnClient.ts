@@ -53,7 +53,7 @@ export function clearDurableWeeklyTurnReceipt(ownerId: string, requestId: string
 function defaultPorts(): DurableTurnClientPorts {
   const base = getCloudflareAiProxyUrl().replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
   return {
-    fetch, endpoint: `${base}/weekly-planning/turns`, now: Date.now,
+    fetch: (...args) => fetch(...args), endpoint: `${base}/weekly-planning/turns`, now: Date.now,
     token: async (ownerId) => {
       const user = getFirebaseAuth()?.currentUser;
       if (!user || user.uid !== ownerId) throw new Error('会話の所有者が変わりました。');
@@ -107,6 +107,7 @@ export async function executeDurableWeeklyTurn(
       if ((response.status >= 400 && response.status < 500) || response.status === 503) throw new Error('返信の継続を受け付けられませんでした。会話を開き直してください。');
       if (!response.ok) { needsReconcile = true; await ports.wait(Math.min(10_000, 2000 + attempts++ * 1000)); continue; }
       const state = await response.json() as DurableTurnResult;
+      if (!state || typeof state !== 'object') throw new Error('保存された返信の形式を確認できませんでした。');
       if (JSON.stringify(state.identity) !== JSON.stringify(identity)) {
         // Object key order is not protocol identity.
         if (Object.entries(identity).some(([field, value]) => state.identity?.[field as keyof typeof identity] !== value)) throw new Error('保存された返信の識別情報が一致しません。');
@@ -118,7 +119,7 @@ export async function executeDurableWeeklyTurn(
       if (state.status === 'completed') {
         if (typeof state.result !== 'string') throw new Error('保存された返信の形式を確認できませんでした。');
         const result = JSON.parse(state.result) as IsolatedWeeklyPlanningTurnResult;
-        if (!result.result || typeof result.result.message !== 'string' || !Array.isArray(result.result.draftCandidates)
+        if (!result || typeof result !== 'object' || !result.result || typeof result.result.message !== 'string' || !Array.isArray(result.result.draftCandidates)
           || !Array.isArray(result.stagedContextFacts) || typeof result.observedDate !== 'string') throw new Error('保存された返信の形式を確認できませんでした。');
         return result;
       }

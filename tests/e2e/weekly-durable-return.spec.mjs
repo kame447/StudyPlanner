@@ -32,6 +32,11 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       return route.fulfill({ status: state ? 200 : 404, json: state });
     });
     await page.goto(url);
+    // Keep the real browser transport: Node mocks do not enforce native fetch's receiver.
+    console.info('Native fetch receiver check', await page.evaluate(async () => {
+      try { await ({ fetch }).fetch('data:text/plain,binding-check'); return 'object receiver accepted'; }
+      catch (error) { return `${error.name}: ${error.message}`; }
+    }));
     const input = page.locator('.ai-planning-composer textarea');
     await expect(input).toBeVisible(); await input.fill('学習計画を相談したい'); await input.press('Enter');
     await expect.poll(() => posts).toBe(1);

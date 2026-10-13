@@ -1,11 +1,11 @@
 # Durable weekly-planning turns
 
-Status: active, local implementation; production activation is not authorized by this record.
+Status: active, [Draft PR #637](https://github.com/kame447/StudyPlanner/pull/637); production activation is not authorized by this record.
 
 ## Ownership and source
 
 - Implementation owner: `resume_durable_ai_turns` (resumed from `implement_resumable_ai_turns` at 2026-10-13 20:44 UTC), coordinated by the parent release owner.
-- Source: main `782f3559` exported into the isolated `ai-durable-turns-20261013` workspace. No branch or PR has been created yet.
+- Current branch: `feat/durable-ai-turns-20261013`, including main `c1f10455323f7d1a4834a7ece18fd3eb073f8820`. The original export from `782f3559` is preserved as historical evidence.
 - Scope: continue one complete accepted weekly-planning turn when the phone suspends the browser; recover the same result without resubmitting AI work. Approval and saving remain the existing client application responsibility.
 - #305 owns Jev/semantic selection and #488 owns conversation behavior. Their current branches and PRs remain untouched. The C5 controller hook in this source is dormant; #616's forthcoming production adapter is an integration dependency, not permission to duplicate it.
 - Viewport-return work is a separate owner.
@@ -47,7 +47,7 @@ Evidence is retained in the sibling `ai-durable-turns-evidence-20261013` directo
 
 The first full run passed fresh types and 8092 tests but failed source-move architecture checks, one historical Git archive test (export had no Git history), two fingerprint checks (source changed during the run), and the reload regression subsequently fixed above. Do not count that run as release-ready.
 
-Next: freeze a real Git worktree from exact base `782f3559b40efaaa9fa3b176b63cbe8407b04e9e`, rerun fresh full verification and SQLite probe without concurrent edits, review the exact diff, integrate latest main, then browser acceptance and a small live synthetic semantic/renderer check through an already-authorized existing connection if available. Physical iPhone suspension/return remains unverified. The real-model path is not yet verified.
+Next: finish native browser acceptance on the combined branch, then the small live synthetic semantic/renderer check through the existing workflow below. Physical iPhone suspension/return remains unverified. The real-model path is not yet verified.
 
 Exit requires a reviewed commit/PR, all applicable CI and browser gates on the combined source, and separate explicit approval before any production Durable Object binding/migration/resource activation. Main integration is owned by the release coordinator.
 
@@ -83,3 +83,16 @@ This is one synthetic utterance, using the workflow's existing secret and four-c
 ## Pre-publication cancellation race correction — 2026-10-13 21:37 UTC
 
 Review of explicit cancellation exposed two additional short state transitions requiring serialization: claiming a queued job, and committing terminal success/failure. They now share the existing mutation boundary with acceptance/cancellation, rechecking owner, conversation, request, input revision, timestamp and fingerprint. Provider work remains outside the lock. Regression cases pause the actual claim and terminal storage read/write to prove cancellation cannot be overwritten and an old result/failure cannot corrupt the next accepted turn. The prior full result remains valid only for its earlier snapshot; final full/native gates must cover this correction.
+
+## Published verification — 2026-10-13 21:58 UTC
+
+- Published `c5e7d9893bae260cbacd98e3a046bed9d9cdf57e` and local `cc85121bba46f201743b503a99c3660d564fe54f` share tree `73eec5f7847fa844668ad1332dbca828895f2177`. GitHub ref/tree and all 81 uploaded blobs were read back. `publication.receipt.json` records exact identity.
+- The frozen local full passed fresh types, 866 files / 8224 tests and production build. `verify-locked.receipt.json` records exit 0 and equal before/after source, executable installed dependencies, generated Worker types, lockfile and toolchain fingerprints. Vitest/Vite cache directories are explicitly excluded. The preceding raw cache-inclusive installed fingerprint mismatch is retained separately; it is not claimed as a matched receipt.
+- [Native CI](https://github.com/kame447/StudyPlanner/actions/runs/38472647505) independently passed 8224 tests, fresh types/build and the actual SQLite/alarm/RPC probe. Synthetic disconnect/replay yields one result with two provider calls; explicit cancellation of an in-flight semantic call prevents a subsequent renderer dispatch. Actual SQLite round-trip also passed mixed Unicode input/output at the configured size bounds.
+- Admin render, visual, desktop Chromium/Firefox/WebKit and browser-quality passed. Browser Regression and mobile WebKit are still running. Bundle-budget failed: same-toolchain main comparison has zero CSS increase and only 1556 raw / 465 gzip JavaScript bytes added by this branch. The inherited main budget failure remains a release gate; thresholds were not raised.
+- Additional response-boundary regression proved that JSON null could be misclassified as a transport TypeError and poll again. Explicit object guards now reject null/scalar state and completion payloads immediately. Twelve focused client/reload tests passed; this final small correction still needs exact-source full/native verification.
+- No real-model workflow or physical iPhone acceptance has run. Production Durable Object binding/migration/flags remain unchanged and require separate resource/cost approval.
+
+### Native transport correction — 2026-10-13 22:03 UTC
+
+The null-response correction passed a new frozen full at local `dc1fe643` (8225 tests, fresh types/build, matching before/after receipt). The initial native mobile run then finished with 249 successes and two durable-return failures before any POST. Its trace showed the real gateway and synthetic authentication loaded, and the UI had accepted the user message. Native fetch had been stored directly as a ports method, supplying the wrong receiver when called; the default port now forwards with a thin arrow function. A receiver regression failed before this change and all 13 client/reload checks pass afterward. The same browser fixture retains the real transport and records the browser's receiver behavior; native acceptance and exact-source full for this correction remain required.

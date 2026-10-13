@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { executeDurableWeeklyTurn, cancelDurableWeeklyTurn, readDurableWeeklyTurnReceipt, saveDurableWeeklyTurnReceipt, type DurableTurnClientPorts } from './weeklyPlanningDurableTurnClient';
 import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import { durableReceipt } from './weeklyPlanningDurableTurn.testUtils';
+vi.mock('../../../lib/firebaseClient', () => ({ getFirebaseAuth: () => ({ currentUser: {
+  uid: durableReceipt().ownerId, getIdToken: async () => 'owner-token',
+} }) }));
 function harness() {
   const receipt = durableReceipt(); let now = Date.parse(receipt.pending.startedAt);
   const fetch = vi.fn<typeof globalThis.fetch>(); const token = vi.fn(async () => 'owner-token');
@@ -16,6 +19,15 @@ function harness() {
 }
 
 describe('durable browser turn transport', () => {
+  it('calls native fetch without binding it to the transport ports object', async () => {
+    const h = harness(); vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(h.identity.startedAt);
+    let receiver: unknown;
+    vi.stubGlobal('fetch', function (this: unknown) { receiver = this; return Promise.resolve(h.response('completed')); });
+    try {
+      expect(await executeDurableWeeklyTurn(h.receipt)).toEqual(h.completed);
+      expect(receiver === undefined || receiver === globalThis).toBe(true);
+    } finally { vi.unstubAllGlobals(); vi.useRealTimers(); }
+  });
   it('accepts once and only polls afterward', async () => {
     const h = harness(); h.fetch.mockResolvedValueOnce(h.response('queued')).mockResolvedValueOnce(h.response('running')).mockResolvedValueOnce(h.response('completed'));
     expect(await executeDurableWeeklyTurn(h.receipt, { ports: h.ports })).toEqual(h.completed);
@@ -61,6 +73,16 @@ describe('durable browser turn transport', () => {
       const h = harness(); h.fetch.mockResolvedValueOnce(response);
       await expect(executeDurableWeeklyTurn(h.receipt, { ports: h.ports })).rejects.toThrow();
       expect(h.fetch).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('treats JSON null and scalar protocol values as terminal validation failures', async () => {
+    for (const response of [Response.json(null), Response.json(42), Response.json('queued'),
+      harness().response('completed', { result: 'null' }), harness().response('completed', { result: '42' })]) {
+      const h = harness(); h.fetch.mockResolvedValueOnce(response);
+      h.ports.wait = vi.fn(async () => { throw new Error('unexpected retry'); });
+      await expect(executeDurableWeeklyTurn(h.receipt, { ports: h.ports })).rejects.toThrow('形式');
+      expect(h.fetch).toHaveBeenCalledTimes(1); expect(h.ports.wait).not.toHaveBeenCalled();
     }
   });
 
