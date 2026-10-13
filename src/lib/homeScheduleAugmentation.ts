@@ -1,4 +1,5 @@
 import { createScheduleOccurrenceProjection, type ScheduleOccurrence } from '../domain/scheduleOccurrence';
+import { getScheduleOccurrenceColor, type ScheduleColorPresentation } from './scheduleEventColor';
 import { addDays } from './date';
 import type {
   MonthEvent,
@@ -37,12 +38,13 @@ function planTypeForOccurrence(occurrence: ScheduleOccurrence): PlanType {
 function projectOccurrenceAsReadOnlyPlan(
   occurrence: ScheduleOccurrence,
   date: string,
-): Plan {
+): Plan & ScheduleColorPresentation {
   const startTime = occurrence.start.date === date ? occurrence.start.time : '00:00';
   const endTime = occurrence.end.date === date ? occurrence.end.time : '24:00';
 
   return {
     id: `${occurrence.id}:home:${date}`,
+    scheduleColor: getScheduleOccurrenceColor(occurrence),
     seriesId: occurrence.id,
     userId: occurrence.ownerId,
     title: occurrence.title,

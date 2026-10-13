@@ -330,7 +330,8 @@ it('the real App and AuthScreen are not mounted after authenticated failure, but
   await act(async () => { fake.emit(null); await microtasks(); });
   expect(renderer!.root.findAllByProps({ 'data-testid': 'profile-restore-recovery' })).toHaveLength(0);
   expect(renderer!.root.findAllByType(AuthScreen)).toHaveLength(1);
-  expect(renderer!.root.findAllByType('h2').map(heading => heading.children.join(''))).toContain('新規会員登録');
+  expect(renderer!.root.findByProps({ role: 'tab', 'data-intent': 'sign-in' }).props['aria-selected']).toBe(true);
+  expect(renderer!.root.findByProps({ role: 'tab', 'data-intent': 'sign-up' }).props['aria-selected']).toBe(false);
 });
 
 

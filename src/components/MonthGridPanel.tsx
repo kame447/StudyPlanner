@@ -1,3 +1,4 @@
+import { scheduleEventColorStyle } from '../lib/scheduleEventColor';
 import { useMemo, type CSSProperties } from 'react';
 import {
   addDays,
@@ -50,16 +51,6 @@ function getHolidayLabelLengthClass(holidayName: string): string {
 
 function isMultiDayMonthEvent(monthEvent: MonthEvent): boolean {
   return getMonthEventEndDate(monthEvent).localeCompare(monthEvent.date) > 0;
-}
-
-function getMonthEventToneIndex(monthEvent: MonthEvent): number {
-  let hash = 0;
-
-  for (const character of monthEvent.id) {
-    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-  }
-
-  return hash % 5;
 }
 
 interface MonthRangeSegment {
@@ -174,8 +165,9 @@ function buildMonthRangeSegments(week: ProjectedMonthCell[]): MonthRangeSegment[
   return segments;
 }
 
-function getRangeSegmentStyle(segment: MonthRangeSegment): CSSProperties {
+function getRangeSegmentStyle(segment: MonthRangeSegment, color: string): CSSProperties {
   return {
+    ...scheduleEventColorStyle(color),
     '--month-range-span-days': segment.endIndex - segment.startIndex + 1,
     '--month-range-lane': segment.lane,
   } as CSSProperties;
@@ -365,7 +357,6 @@ export function MonthGridPanel({
                     type="button"
                   >
                     {startingRangeSegments.map((segment) => {
-                      const toneIndex = getMonthEventToneIndex(segment.monthEvent);
                       const timeLabel = formatMonthEventTimeRangeForDate(
                         segment.monthEvent,
                         cell.date,
@@ -376,13 +367,12 @@ export function MonthGridPanel({
                           key={`${segment.monthEvent.id}-${week[0]?.date ?? weekIndex}-${segment.startIndex}`}
                           className={[
                             'month-range-segment',
-                            `tone-${toneIndex}`,
                             segment.continuesBefore ? 'continues-before' : '',
                             segment.continuesAfter ? 'continues-after' : '',
                           ]
                             .filter(Boolean)
                             .join(' ')}
-                          style={getRangeSegmentStyle(segment)}
+                          style={getRangeSegmentStyle(segment, projection.eventColors.get(segment.monthEvent.id)!)}
                           title={`${timeLabel} ${segment.monthEvent.title}`}
                         >
                           <span>{segment.monthEvent.title}</span>
@@ -439,6 +429,7 @@ export function MonthGridPanel({
                           <span
                             key={monthEvent.id}
                             className="event-pill month-major-event-pill"
+                            style={scheduleEventColorStyle(projection.eventColors.get(monthEvent.id)!)}
                             title={`${timeLabel} ${monthEvent.title}`}
                           >
                             <span className="month-major-event-full">

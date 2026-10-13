@@ -1366,7 +1366,7 @@ for (const viewport of [
   { width: 800, height: 1100, reducedMotion: 'no-preference' },
   { width: 1000, height: 1250, reducedMotion: 'no-preference' },
 ]) {
-  test(`timetable overlay keeps lower fields above navigation ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
+  test(`timetable dialog covers navigation and keeps lower fields usable ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
     await page.emulateMedia({ reducedMotion: viewport.reducedMotion });
     await boot(page, { ...viewport, theme: 'light' });
     await page.evaluate(() => window.__plannerRecoveryHook.startTimetableClass({ title: '編集する授業', periodNumber: 1 }));
@@ -1410,9 +1410,16 @@ for (const viewport of [
     expect(bounds.y).toBeCloseTo(geometry.fixedViewport.y, 0);
     expect(bounds.width).toBeCloseTo(geometry.fixedViewport.width, 0);
     expect(bounds.height).toBeCloseTo(geometry.fixedViewport.height, 0);
-    const nav = await page.getByRole('navigation', { name: '主要ナビゲーション' }).boundingBox();
     const form = await editor.boundingBox();
-    expect(form.y + form.height).toBeLessThanOrEqual(nav.y + 1);
+    expect(form.y).toBe(0);
+    expect(form.y + form.height).toBe(viewport.height);
+    expect(await page.getByRole('navigation', { name: '主要ナビゲーション' }).evaluate(nav => {
+      const overlay = document.querySelector('.timetable-class-overlay');
+      return [...nav.querySelectorAll('button')].every(button => {
+        const rect = button.getBoundingClientRect();
+        return overlay.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+      });
+    })).toBe(true);
     await editor.locator('.timetable-editor-options > summary').click();
     for (const control of [editor.getByLabel('教室', { exact: true }), editor.getByLabel('メモ', { exact: true }), editor.getByRole('button', { name: '授業を削除', exact: true })]) {
       await control.scrollIntoViewIfNeeded();

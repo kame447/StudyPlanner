@@ -144,7 +144,7 @@
   padding: 2px 6px;
   border: 0;
   border-radius: 5px;
-  background: color-mix(in srgb, #6ec9a2 30%, var(--surface) 70%);
+  background: var(--schedule-event-bg);
   color: var(--text);
   box-shadow: none;
   pointer-events: none;
@@ -174,22 +174,6 @@
   line-height: 1.05;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.schedule-month-view .month-range-segment.tone-1 {
-  background: color-mix(in srgb, #f4b85c 31%, var(--surface) 69%);
-}
-
-.schedule-month-view .month-range-segment.tone-2 {
-  background: color-mix(in srgb, #a787ef 27%, var(--surface) 73%);
-}
-
-.schedule-month-view .month-range-segment.tone-3 {
-  background: color-mix(in srgb, #72aefa 28%, var(--surface) 72%);
-}
-
-.schedule-month-view .month-range-segment.tone-4 {
-  background: color-mix(in srgb, #ef7b9f 25%, var(--surface) 75%);
 }
 
 .schedule-month-view .month-major-event-list {

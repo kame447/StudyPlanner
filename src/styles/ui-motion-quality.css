@@ -29,11 +29,6 @@
   gap: 12px;
 }
 
-.home-main .splash-screen__logo,
-.section-stack .splash-screen__logo {
-  width: min(210px, 58vw);
-}
-
 :root[data-theme='dark'] .splash-screen {
   background: var(--app-background);
   color: var(--text-primary);
@@ -221,8 +216,7 @@
   .section-stack > .timetable-view,
   .home-streak-flame,
   .home-nav-active-circle,
-  .ai-planning-typing::after,
-  .splash-screen__logo {
+  .ai-planning-typing::after {
     animation: none !important;
   }
 

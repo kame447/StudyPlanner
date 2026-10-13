@@ -1,4 +1,9 @@
 /* Lesson dialogs own the viewport; the timetable's old drawer keeps nav space. */
+.section-stack > .timetable-view:has(> .timetable-class-overlay) {
+  /* Finish the route fade before its opacity can trap the fixed dialog below
+     navigation. Keep the animation name/timeline so closing does not restart it. */
+  animation-duration: 0s;
+}
 .timetable-modal-overlay.timetable-class-overlay {
   display: flex; align-items: stretch; justify-content: flex-end;
   z-index: var(--z-modal-overlay); padding: 0; scrollbar-gutter: auto;

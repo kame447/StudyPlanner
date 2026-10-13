@@ -12,6 +12,7 @@ async function expectFrontmostOpaqueDialog(dialog) {
     const overlay = node.closest('.timetable-class-overlay');
     const card = node.getBoundingClientRect(), veil = overlay.getBoundingClientRect();
     const body = node.querySelector('.timetable-editor-body').getBoundingClientRect();
+    const routeStyle = getComputedStyle(node.closest('.timetable-view'));
     const canvas = document.createElement('canvas'), context = canvas.getContext('2d');
     context.fillStyle = getComputedStyle(node).backgroundColor;
     context.fillRect(0, 0, 1, 1);
@@ -30,14 +31,17 @@ async function expectFrontmostOpaqueDialog(dialog) {
       const target = document.elementFromPoint((contentRight + innerWidth) / 2, y);
       return !target?.closest('button, a, input, textarea, select, [role="button"]');
     });
-    return { alpha, coveredNav, headerFrontmost, veil: [veil.x, veil.y, veil.right, veil.bottom],
+    return { alpha, coveredNav, headerFrontmost, routeOpacity: routeStyle.opacity, routeAnimationDuration: routeStyle.animationDuration,
+      veil: [veil.x, veil.y, veil.right, veil.bottom],
       card: [card.x, card.y, card.right, card.bottom], bodyInside: body.top >= card.top && body.bottom <= card.bottom,
       // Root geometry excludes its reserved scrollbar gutter. clientWidth
       // includes empty gutters in Chromium, so it is not the content boundary.
       contentRight, gutterIsNonInteractive, viewport: [innerWidth, innerHeight], focusInside: node.contains(document.activeElement), pageLocked: getComputedStyle(document.documentElement).overflowY === 'hidden' };
   });
   expect(layout.alpha).toBe(255);
-  expect(layout.coveredNav).toBe(true);
+  expect(layout.coveredNav, JSON.stringify(layout)).toBe(true);
+  expect(layout.routeOpacity).toBe('1');
+  expect(layout.routeAnimationDuration).toBe('0s');
   expect(layout.headerFrontmost, JSON.stringify(layout)).toBe(true);
   expect(layout.pageLocked).toBe(true);
   expect(layout.focusInside).toBe(true);
@@ -145,6 +149,19 @@ for (const viewport of [
     const screenshot = testInfo.outputPath(`lesson-detail-${viewport.width}-${viewport.theme}.png`);
     await page.screenshot({ path: screenshot });
     await testInfo.attach('Lesson summary with saved attendance and related schedule', { path: screenshot, contentType: 'image/png' });
+    await page.keyboard.press('Escape');
+    await expect(reopened).toHaveCount(0);
+    await expect(reopenedLauncher).toBeFocused();
+    expect(await page.locator('.timetable-view').evaluate(node => ({
+      opacity: getComputedStyle(node).opacity,
+      runningEntry: node.getAnimations().some(animation => animation.animationName === 'ui-surface-fade' && animation.playState === 'running'),
+    }))).toEqual({ opacity: '1', runningEntry: false });
+    expect(await page.getByRole('navigation', { name: '主要ナビゲーション' }).evaluate(nav => [...nav.querySelectorAll('button')].every(button => {
+      const rect = button.getBoundingClientRect();
+      return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+    }))).toBe(true);
+    await reopenedLauncher.click();
+    await expectFrontmostOpaqueDialog(reopened);
     await page.keyboard.press('Escape');
     await expect(reopened).toHaveCount(0);
     await expect(reopenedLauncher).toBeFocused();

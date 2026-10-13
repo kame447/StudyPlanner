@@ -177,3 +177,19 @@ it('locks the deleting session without locking a reopened draft', async () => {
   expect(titleInput().props.value).toBe('Reopened B');
   expect(remove).toHaveBeenCalledTimes(1);
 });
+
+it('keeps period controls and meaningful state while omitting redundant descriptions', () => {
+  mount();
+  act(() => renderer.root.findAllByType('button').find(node => node.children.includes('期間'))!.props.onClick());
+  const sheet = renderer.root.findByProps({ className: 'timetable-term-sheet timetable-period-sheet' });
+  const text = JSON.stringify(sheet.findAllByType('p').map(node => node.children));
+  expect(text).not.toContain('実際に使う日付で管理');
+  expect(sheet.findAllByType('small').map(node => node.children.join('')).join('')).not.toContain('時間割全体の内容');
+  expect(sheet.findAllByType('span').some(node => node.children.includes('期間未設定'))).toBe(true);
+  expect(sheet.findAllByType('input').filter(node => node.props.type === 'date')).toHaveLength(2);
+  const checkbox = sheet.findByProps({ type: 'checkbox' });
+  act(() => checkbox.props.onChange({ target: { checked: true } }));
+  expect(sheet.findAllByType('input').filter(node => node.props.type === 'date')).toHaveLength(3);
+  expect(sheet.findByType('small').children.join('')).toContain('この日を含む週をA週');
+  expect(sheet.findAllByType('button').some(node => node.children.includes('保存して使用'))).toBe(true);
+});

@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
+import { getScheduleOccurrenceColor, scheduleEventWeekStyle } from '../lib/scheduleEventColor';
 import type { WeekSpanningOccurrenceLayout } from '../lib/scheduleOccurrencePresentation';
 import type { Plan } from '../types/domain';
 
@@ -9,17 +9,10 @@ interface WeekSpanningEventsLaneProps {
   onOpenPlan?: (plan: Plan) => void;
 }
 
-function toneClassForOccurrence(occurrence: ScheduleOccurrence): string {
-  const key = (occurrence.subject || occurrence.title || occurrence.id).trim();
-  const toneIndex = Array.from(key || occurrence.id).reduce(
-    (sum, character) => sum + character.charCodeAt(0),
-    0,
-  ) % 8;
-  return `weekly-draft-tone-${toneIndex + 1}`;
-}
-
 function cardStyle(item: WeekSpanningOccurrenceLayout['items'][number]): CSSProperties {
   return {
+    ...scheduleEventWeekStyle(getScheduleOccurrenceColor(item.occurrence),
+      item.occurrence.source.backingKind === 'month-event' ? 'theme' : 'pastel'),
     gridColumn: `${item.startColumn + 2} / ${item.endColumn + 2}`,
     gridRow: item.lane + 1,
     alignSelf: 'center',
@@ -85,7 +78,6 @@ export function WeekSpanningEventsLane({
         const isReadOnlyTimetable =
           occurrence.source.backingKind === 'timetable-template';
         const commonProps = {
-          className: toneClassForOccurrence(occurrence),
           'data-schedule-occurrence-id': isReadOnlyTimetable ? undefined : occurrence.id,
           'data-week-spanning-event': 'true',
           style: cardStyle(item),
