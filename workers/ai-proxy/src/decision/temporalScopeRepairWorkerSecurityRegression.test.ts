@@ -3,6 +3,7 @@ import {
   WEEKLY_PLANNING_ISSUE152_ADVERSARIAL_CORPUS,
 } from '../../../../src/features/weeklyPlanning/security/weeklyPlanningIssue152AdversarialCorpus';
 import worker from '../worker';
+import { TEMPORAL_SCOPE_REPAIR_CASES } from './evaluation/temporalScopeRepairCorpus';
 
 function environment() {
   const quotaStub = {
@@ -207,4 +208,89 @@ describe('Issue #335 temporal-scope Worker routing / response-envelope containme
     expect(upstreamBodies[0]).not.toHaveProperty('decisionContext');
     expect(upstreamBodies[0]?.max_completion_tokens).toBe(320);
   });
+
+  it.each(['429', '500', 'malformed', 'model mismatch', 'redirect', 'network'])(
+    'joins the real adapter %s failure to exactly one Luna fallback', async (kind) => {
+      const providerCalls: string[] = [];
+      const upstreamBodies: Record<string, unknown>[] = [];
+      vi.spyOn(console, 'info').mockImplementation(() => undefined);
+      vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('identitytoolkit.googleapis.com')) {
+          return Response.json({ users: [{ localId: 'user-1', emailVerified: true }] });
+        }
+        providerCalls.push(url);
+        if (url === 'https://openrouter.ai/api/alpha/decisions') {
+          expect(init?.redirect).toBe('manual');
+          if (kind === 'network') throw new TypeError('mock network unavailable');
+          if (kind === 'malformed') return new Response('invalid-json');
+          if (kind === 'model mismatch') return Response.json({ model: 'typesafe/jev-latest' });
+          if (kind === 'redirect') return new Response(null, { status: 307, headers: { Location: 'https://untrusted.example' } });
+          return Response.json({}, { status: Number(kind) });
+        }
+        if (url === 'https://api.openai.com/v1/chat/completions') {
+          upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+          return Response.json({ choices: [{ message: { content: '{"decision":"uncertain"}' } }] });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }));
+      const response = await worker.fetch(focusedRequest(kind, '数学だけは火曜を避けて'), environment() as never);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ content: '{"decision":"uncertain"}' });
+      expect(providerCalls).toEqual(['https://openrouter.ai/api/alpha/decisions', 'https://api.openai.com/v1/chat/completions']);
+      expect(upstreamBodies[0]).toMatchObject({ max_completion_tokens: 320 });
+      expect(upstreamBodies[0]).not.toHaveProperty('decisionContext');
+    },
+  );
+
+  it('returns controlled failure without a decision when both providers return HTTP errors', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const providerCalls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('identitytoolkit.googleapis.com')) {
+        return Response.json({ users: [{ localId: 'user-1', emailVerified: true }] });
+      }
+      providerCalls.push(url);
+      return Response.json({}, { status: 503 });
+    }));
+    const response = await worker.fetch(focusedRequest('dual-failure', '火曜は塾です'), environment() as never);
+    expect(response.status).toBe(502);
+    const body = await response.json();
+    expect(body).toHaveProperty('error');
+    expect(body).not.toHaveProperty('content');
+    expect(body).not.toHaveProperty('decisionContext');
+    expect(providerCalls).toEqual(['https://openrouter.ai/api/alpha/decisions', 'https://api.openai.com/v1/chat/completions']);
+  });
+
+
+  it.each(TEMPORAL_SCOPE_REPAIR_CASES.filter((item) => [
+    't-security-system-2', 't-security-role-tag-1', 'h-security-xml-2', 'h-security-abnormal-1',
+  ].includes(item.id)))(
+    'keeps named known regression $id uncertain after conflicting Jev heads and mock Luna', async ({ id, state }) => {
+      vi.spyOn(console, 'info').mockImplementation(() => undefined);
+      const providerCalls: string[] = [];
+      vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('identitytoolkit.googleapis.com')) return Response.json({ users: [{ localId: 'user-1', emailVerified: true }] });
+        providerCalls.push(url);
+        if (url === 'https://openrouter.ai/api/alpha/decisions') {
+          expect(JSON.parse(String(init?.body)).state).toEqual(state);
+          return Response.json({ model: 'typesafe/jev-1.13', answers: {
+            temporal_scope: { type: 'choice', choice: 'plan_unavailable', confidence: 0.99, probabilities: { plan_unavailable: 0.99, uncertain: 0.01 } },
+            condition_change: { type: 'noul', noul: 0.99 }, independent_meaning: { type: 'noul', noul: 0.99 },
+          } });
+        }
+        if (url === 'https://api.openai.com/v1/chat/completions') return Response.json({ choices: [{ message: { content: '{"decision":"uncertain"}' } }] });
+        throw new Error(`Unexpected fetch: ${url}`);
+      }));
+      const response = await worker.fetch(focusedRequest(id, state.sourceText, { state }), environment() as never);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ content: '{"decision":"uncertain"}' });
+      expect(providerCalls).toEqual(['https://openrouter.ai/api/alpha/decisions', 'https://api.openai.com/v1/chat/completions']);
+      // The Luna output is stipulated: this detects fallback/containment defects, not real model injection resistance.
+    },
+  );
+
 });
