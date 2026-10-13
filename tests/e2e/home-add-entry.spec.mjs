@@ -55,6 +55,24 @@ async function scrollOffsets(row) {
   });
 }
 
+async function prepareInlinePointer(page, add) {
+  // Settle Home before revealing the control: a later layout pass can change
+  // the scrollport without changing the row's own box. Do not pre-hover/focus.
+  await waitForVisualReady(page, '.home-inline-add');
+  await add.scrollIntoViewIfNeeded();
+  await expect(add).toBeInViewport({ ratio: 1 });
+  const containment = await add.evaluate(element => new Promise(resolve => {
+    const observer = new IntersectionObserver(([entry]) => {
+      observer.disconnect();
+      resolve({ ratio: entry.intersectionRatio, target: entry.boundingClientRect.toJSON(),
+        visible: entry.intersectionRect.toJSON() });
+    });
+    observer.observe(element);
+  }));
+  expect(containment.ratio).toBe(1);
+  return containment;
+}
+
 for (const width of [390, 1280]) {
   test(`Home adds an event or study without Calendar navigation at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
@@ -76,8 +94,7 @@ for (const width of [390, 1280]) {
     await browseAnotherDateThenHome(page);
     const row = page.getByRole('group', { name: '今日の予定の追加', exact: true });
     await expectOriginalRowHeight(row);
-    await add.scrollIntoViewIfNeeded();
-    await waitForVisualReady(page, '.home-inline-add');
+    const closedContainment = await prepareInlinePointer(page, add);
     const closedBox = await row.boundingBox();
     const closedScroll = await scrollOffsets(row);
     await add.click();
@@ -92,8 +109,13 @@ for (const width of [390, 1280]) {
     await expect(close).toHaveAttribute('aria-expanded', 'true');
     await expect(page.locator('.home-add-sheet, .home-add-overlay')).toHaveCount(0);
     const chooserBox = await chooser.boundingBox();
+    const chooserScroll = await scrollOffsets(row);
+    await testInfo.attach('empty-inline-position', { contentType: 'application/json', body: JSON.stringify({
+      before: { box: closedBox, scroll: closedScroll, containment: closedContainment },
+      after: { box: chooserBox, scroll: chooserScroll },
+    }) });
     expect(chooserBox).toEqual(closedBox);
-    expect(await scrollOffsets(row)).toEqual(closedScroll);
+    expect(chooserScroll).toEqual(closedScroll);
     const boxes = await chooser.getByRole('button').evaluateAll(nodes => nodes.map(node => {
       const rect = node.getBoundingClientRect();
       return { x: rect.x, right: rect.right, y: rect.y, bottom: rect.bottom, fits: node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1 };
@@ -122,17 +144,17 @@ for (const width of [390, 1280]) {
     await browseAnotherDateThenHome(page);
     await expectOriginalRowHeight(row);
     await expectLastPlanSeparator(row);
-    // Locator clicks first reveal a partly clipped button. Measure after that
-    // scroll and after the temporary original-row probe, not before them.
-    await add.scrollIntoViewIfNeeded();
-    await waitForVisualReady(page, '.home-inline-add');
+    // Measure after the temporary row probe, settled layout and final reveal;
+    // the ordinary click must still preserve geometry through hover/focus/open.
+    const populatedContainment = await prepareInlinePointer(page, add);
     const populatedRow = await row.boundingBox();
     const populatedScroll = await scrollOffsets(row);
     await add.click();
     const expandedRow = await row.boundingBox();
     const expandedScroll = await scrollOffsets(row);
     await testInfo.attach('populated-inline-position', { contentType: 'application/json', body: JSON.stringify({
-      before: { box: populatedRow, scroll: populatedScroll }, after: { box: expandedRow, scroll: expandedScroll },
+      before: { box: populatedRow, scroll: populatedScroll, containment: populatedContainment },
+      after: { box: expandedRow, scroll: expandedScroll },
     }) });
     expect(expandedRow).toEqual(populatedRow);
     expect(expandedScroll).toEqual(populatedScroll);
