@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   createEmptyMonthEventChecklistItem,
   createEmptyMonthEventDraft,
@@ -24,6 +24,7 @@ import {
   validateMonthEventDraft,
   type MonthEventDeleteScope,
 } from '../lib/monthEventEditor';
+import { getMonthEventColor, scheduleEventColorStyle } from '../lib/scheduleEventColor';
 import { DayCalendarDialog } from './DatePickerDialogs';
 import { TimeWheelPicker } from './TimeRangeFields';
 import type { MonthEvent, MonthEventDraft } from '../types/domain';
@@ -58,7 +59,6 @@ const FULL_WEEKDAY_LABELS = [
   '土曜日',
 ];
 
-const MONTH_EVENT_BAR_COLORS = ['#56c59a', '#e56d9a', '#5f9df7', '#f2ad4e', '#8a7cf6'];
 const MINUTES_PER_DAY = 24 * 60;
 
 function formatMonthEventDateHeading(dateString: string): string {
@@ -81,13 +81,6 @@ function formatMonthEventDateButton(dateString: string): string {
   const weekdayLabel = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
 
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日(${weekdayLabel})`;
-}
-
-function getTimelineItemStyle(index: number): CSSProperties {
-  return {
-    '--month-event-bar-color':
-      MONTH_EVENT_BAR_COLORS[index % MONTH_EVENT_BAR_COLORS.length],
-  } as CSSProperties;
 }
 
 function getInitialExpandedAddons(draft: MonthEventDraft): Set<MonthEventAddonKey> {
@@ -518,7 +511,7 @@ function MonthEventEditor({
 
             {visibleEvents.length > 0 ? (
               <div className="month-event-timeline-list">
-                {visibleEvents.map((monthEvent, index) => (
+                {visibleEvents.map((monthEvent) => (
                   <button
                     key={monthEvent.id}
                     className={
@@ -526,7 +519,7 @@ function MonthEventEditor({
                         ? 'month-event-timeline-item active'
                         : 'month-event-timeline-item'
                     }
-                    style={getTimelineItemStyle(index)}
+                    style={scheduleEventColorStyle(getMonthEventColor(monthEvent.id))}
                     onClick={() => handleSelectEvent(monthEvent)}
                     type="button"
                   >

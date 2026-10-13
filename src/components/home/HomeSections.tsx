@@ -9,6 +9,7 @@ import {
   Plus,
   Target,
 } from 'lucide-react';
+import { getPlanScheduleColor, scheduleEventColorStyle } from '../../lib/scheduleEventColor';
 import { minutesBetween } from '../../lib/date';
 import type { HomeDashboardModel } from '../../lib/homeDashboard';
 import {
@@ -89,6 +90,7 @@ function HomeScheduleRow({
   return (
     <button
       className="home-schedule-row"
+      style={scheduleEventColorStyle(getPlanScheduleColor(plan))}
       type="button"
       onClick={() => onOpenDay(plan.date)}
     >

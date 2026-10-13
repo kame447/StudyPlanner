@@ -1511,7 +1511,7 @@
   width: 5px;
   height: 48px;
   border-radius: 999px;
-  background: var(--month-event-bar-color, var(--accent));
+  background: var(--schedule-event-color, var(--accent));
 }
 
 .month-event-timeline-copy {
