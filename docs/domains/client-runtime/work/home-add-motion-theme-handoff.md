@@ -1,10 +1,10 @@
 # Home add menu: touch, motion and palette
 
-Status: local candidate verified and independently source-reviewed under [Issue #483](https://github.com/kame447/StudyPlanner/issues/483). Latest main is integrated and locally verified; browser/visual CI remains pending; no publication, merge or deployment performed.
+Status: [draft PR #609](https://github.com/kame447/StudyPlanner/pull/609), under [Issue #483](https://github.com/kame447/StudyPlanner/issues/483). Initial browser acceptance passed; four reviewed Home golden updates are locally verified and await publication plus exact-head visual CI. No main merge or deployment performed.
 
 - Local branch: `ui/home-add-motion-theme`.
 - Initial base: `e44f4b4154608a4ebd41399b8f41d6f6dce7431c`; verified current main base: `05c78b6fa0d708c39e7ca5ceb1703ca80f7509a9`.
-- [PR #601](https://github.com/kame447/StudyPlanner/pull/601) was already merged. Current Issue checkpoints, related open/closed PRs and branches were checked before this requested continuation. No overlapping active PR was found, and no new Issue/PR or branch deletion was performed.
+- [PR #601](https://github.com/kame447/StudyPlanner/pull/601) was already merged. Current Issue checkpoints, related open/closed PRs and branches were checked before the requested continuation. PR #609 now owns this release unit; no new Issue, replacement PR or branch deletion.
 - Normal merge of current main completed without conflict. Verified implementation HEAD: `10842bc527c46dffab81f3d7892bbd6371118b7d`, tree `ec503a2053d20d54e71ecf0ec92ef6b16b1773be`. The final follow-up commit changes only this verification record.
 
 ## Change
@@ -32,14 +32,15 @@ One-worker `npm run verify` completed with fresh non-incremental app/Worker type
 - Browser collection passes: 24 motion/theme cases, four native-touch/keyboard/cancel cases in Chromium, and three mobile WebKit cases. Local collection used Playwright 1.62.1, not the CI-pinned browser version. Collection is not execution evidence.
 - Raw logs, input manifests, mutation/control receipts and fixture proof are retained outside the PR by the integration owner.
 
-## Remaining acceptance
+## Initial PR browser acceptance and golden update
 
-Local Chromium cannot start (`socket()` denied, including one reviewed escalated attempt); official WebKit lacks host libraries. Native browser, screenshots, physical iOS and authenticated production behavior are unverified.
+Published head `8aa9b222397f013c530b1c5e6c8d20baedb29a3d`; CI merge `55aed9c5ba07cdd18d0b710ad36130817fcfa8cb` has the exact verified tree `04b9fd1b58a317e2c0890e59e9fc7ed21fccb805`.
 
-After authorized draft publication, run the existing full gates plus:
-1. Existing Home 13 geometry/form cases and the 28 new Chromium cases: both fade directions, interruption, reduced motion, full-row taps during closing, all five palettes × light/dark × standard/pixel, native touch, save/reload and cancellation.
-2. Mobile WebKit's three new native-touch/keyboard cases, inspecting the recorded event-order artifacts.
-3. Existing responsive/focus and four visual projects. Review the intended Home color change and update only the four Home goldens when justified by actual images; do not mask the control or loosen tolerances. Other surface goldens are unchanged.
-4. Fresh combined verification if later main changes or other requested UI work are integrated. Further CSS additions must stay within the unchanged guards.
+- [Core CI](https://github.com/kame447/StudyPlanner/actions/runs/38362145062): fresh types, 7,645 tests, existing Firestore Rules script and build passed. The upstream approval emulator's nine skipped tests are not exercised by that separate Rules script.
+- [Chromium](https://github.com/kame447/StudyPlanner/actions/runs/38362144712): 605 passed, no flaky tests, including all 41 Home add cases. Twenty actual palette PNGs were inspected; labels, icons and central close control remain contained. Motion midpoint, reversal, reduced motion and full-row hit tests passed.
+- [Cross-browser](https://github.com/kame447/StudyPlanner/actions/runs/38362144689): Chromium 68 / Firefox 68 / WebKit desktop 72 / mobile 210 passed, six existing skips. Three mobile Home cases passed without retry. Recorded native touch opened/saved/reloaded both widths; cancellation recorded trusted pointercancel without click. Headless WebKit used internal BUTTON focus, not null-target blur; the causal null-blur proof remains the separate unit/mutation test.
+- [Admin](https://github.com/kame447/StudyPlanner/actions/runs/38362144687) 45 and [browser quality](https://github.com/kame447/StudyPlanner/actions/runs/38362144855) five passed. CSS guard passed; pre-existing aggregate JS overage remains.
+- Initial visual failed only on four Home images. Both reviewers inspected actual/diff PNGs from artifact `11795178545` (ZIP SHA-256 `924d099b407777affe44a44724fd880bbc8729ddaf249ebe9ef41d8c5839fcf2`). Mobile differences are the add-row paint only. Desktop goldens also predate already-adopted CTA wording and pre-start student removal; source/history confirmed those residuals. All four attempt/retry pairs are byte identical. Only the four untouched CI actual Home PNGs are adopted; no other goldens, masks or tolerances changed.
+- After these four image updates, final local `npm run verify` again passed fresh types, 830 files / 7,645 tests (54 skips / one todo excluded), and build. All 2,403 tracked/unignored input hashes and 235 installed package identities matched before/after. The only subsequent change is this record.
 
-Keep this single release unit for the touch fix and requested motion/theme improvement. No production-fix or merge-ready claim before those pending gates complete.
+Next: publish this same PR's reviewed golden update and verify its exact-head CI, especially all four visual projects. Physical iOS and authenticated production remain unverified. Local Chromium/WebKit launch restrictions were not retried. Further integration needs its own exact-content proof; no main or production-fix claim yet.
