@@ -113,7 +113,7 @@ html[data-appearance='pixel'] :is(button, .home-nav-active-circle, .user-avatar,
 }
 html[data-appearance='pixel'] :is(
   .home-start-button, .primary-button, .home-nav-active-circle,
-  .bookshelf-add-material-fab, .schedule-add-fab, .ai-planning-send-button,
+  .bookshelf-add-material-fab, .schedule-add-fab, .home-add-toggle, .ai-planning-send-button,
   .schedule-view-tabs button.active, .bookshelf-category-chips button.active,
   .settings-segments button[aria-pressed='true']
 ) {

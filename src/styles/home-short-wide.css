@@ -132,8 +132,7 @@
     font-size: 0.59rem;
   }
 
-  .home-dashboard-default .home-schedule-row,
-  .home-dashboard-default .home-schedule-empty {
+  .home-dashboard-default :is(.home-schedule-row, .home-schedule-empty) {
     min-height: var(--home-fit-row-height);
     --home-add-pad: 3px;
     padding-block: var(--home-add-pad);
@@ -154,8 +153,7 @@
     line-height: 1.05;
   }
 
-  .home-dashboard-default .home-schedule-content strong,
-  .home-dashboard-default .home-schedule-add-row strong {
+  .home-dashboard-default .home-schedule-content strong {
     font-size: 0.72rem;
     line-height: 1.1;
   }

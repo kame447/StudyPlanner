@@ -252,11 +252,18 @@ export async function resolveAdminObservabilityUserIdentity(
   return payload.matches;
 }
 
-export async function getAdminObservabilityUsers(params: {
+interface AdminObservabilityUsersQuery {
   environment?: ObservabilityEnvironment;
   cursor?: string | null;
   limit?: number;
-} = {}): Promise<AdminObservabilityUserPage> {
+}
+
+export type AdminObservabilityUsersPageData = Omit<AdminObservabilityUserPage, 'trend'>;
+
+async function requestAdminObservabilityUsersPage(params: AdminObservabilityUsersQuery): Promise<{
+  page: AdminObservabilityUsersPageData;
+  trend: ObservabilityAdminUserTrend | null;
+}> {
   const query = new URLSearchParams();
   if (params.environment) query.set('environment', params.environment);
   if (params.cursor) query.set('cursor', params.cursor);
@@ -271,30 +278,47 @@ export async function getAdminObservabilityUsers(params: {
   const hasEnrichmentField = Object.prototype.hasOwnProperty.call(payload, 'enrichmentReady');
   const hasTrendField = Object.prototype.hasOwnProperty.call(payload, 'trend');
   const hasCurrentResponseShape = hasEnrichmentField && hasTrendField;
-  let trend: ObservabilityAdminUserTrend;
+  let trend: ObservabilityAdminUserTrend | null = null;
   if (hasCurrentResponseShape) {
     const responseTrend = readUserTrend(payload.trend);
     if (typeof payload.enrichmentReady !== 'boolean' || !responseTrend) {
       throw new Error('Observability Users response was invalid.');
     }
     trend = responseTrend;
-  } else {
-    const toDate = formatObservabilityReportingDate(new Date());
-    const overview = await getAdminObservabilityOverview({
-      environment: params.environment,
-      fromDate: shiftObservabilityDate(toDate, -29),
-      toDate,
-    });
-    trend = {
-      daily: overview.daily,
-      activeUsers: overview.activeUsers,
-    };
   }
   return {
-    users: payload.users.map(normalizeAdminUser),
-    nextCursor: payload.nextCursor,
-    enrichmentReady: hasCurrentResponseShape ? payload.enrichmentReady ?? false : false,
+    page: {
+      users: payload.users.map(normalizeAdminUser),
+      nextCursor: payload.nextCursor,
+      enrichmentReady: hasCurrentResponseShape ? payload.enrichmentReady ?? false : false,
+    },
     trend,
+  };
+}
+
+// Appending users does not refresh the screen's initial trend. Keep the result
+// explicit rather than manufacturing an empty trend or caching one by owner.
+export async function getAdminObservabilityUsersPage(
+  params: AdminObservabilityUsersQuery = {},
+): Promise<AdminObservabilityUsersPageData> {
+  return (await requestAdminObservabilityUsersPage(params)).page;
+}
+
+export async function getAdminObservabilityUsers(
+  params: AdminObservabilityUsersQuery = {},
+): Promise<AdminObservabilityUserPage> {
+  const { page, trend } = await requestAdminObservabilityUsersPage(params);
+  if (trend) return { ...page, trend };
+
+  const toDate = formatObservabilityReportingDate(new Date());
+  const overview = await getAdminObservabilityOverview({
+    environment: params.environment,
+    fromDate: shiftObservabilityDate(toDate, -29),
+    toDate,
+  });
+  return {
+    ...page,
+    trend: { daily: overview.daily, activeUsers: overview.activeUsers },
   };
 }
 

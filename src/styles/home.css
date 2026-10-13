@@ -624,13 +624,12 @@
 }
 
 .home-inline-add,
-.home-dashboard-default .home-schedule-add-row.home-inline-add,
-.home-dashboard-default .home-schedule-empty.home-inline-add {
+.home-dashboard-default :is(.home-schedule-add-row, .home-schedule-empty).home-inline-add {
   padding: 0;
   cursor: default;
 }
 
-.home-inline-add-controls {
+.home-add-controls {
   width: 100%;
   min-height: inherit;
   display: grid;
@@ -638,7 +637,7 @@
   align-items: stretch;
 }
 
-.home-inline-add-controls > button {
+.home-add-controls > button {
   min-width: 0;
   min-height: 20px;
   padding: var(--home-add-pad, 0px) 2px;
@@ -648,8 +647,8 @@
   align-items: center;
   justify-content: center;
   gap: 3px;
-  color: inherit;
-  background: transparent;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--surface) 88%, var(--accent) 12%);
   font: inherit;
   font-size: 0.72rem;
   font-weight: 600;
@@ -657,24 +656,60 @@
   cursor: pointer;
 }
 
-.home-inline-add-controls > button:hover {
-  background: var(--surface-soft);
+.home-add-controls > button:hover {
+  background: var(--accent);
+  color: #fff;
 }
 
-.home-inline-add-controls > button:focus-visible {
-  outline: 2px solid var(--home-blue);
-  outline-offset: -3px;
+.home-add-action {
+  grid-area: 1 / 1;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 180ms ease-out, visibility 0s 180ms;
 }
 
-.home-inline-add-action span {
+.is-open > .home-add-action {
+  pointer-events: auto;
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.home-add-action:last-child {
+  grid-column: 3;
+}
+
+.home-add-controls > .home-add-toggle {
+  grid-area: 1 / 2;
+  background: var(--accent);
+  color: #fff;
+}
+
+.home-add-toggle svg {
+  transition: transform 240ms var(--ui-motion-spring);
+}
+
+.home-add-toggle.is-open svg {
+  transform: rotate(45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-add-action,
+  .home-add-toggle svg {
+    transition: none;
+  }
+}
+
+.home-add-action span {
   overflow-wrap: anywhere;
 }
 
-.home-inline-add-action svg {
+.home-add-action svg {
   flex-shrink: 0;
 }
 
-.home-inline-add-toggle:not(.is-open) {
+.home-add-toggle:not(.is-open) {
   grid-column: 1 / -1;
 }
 
@@ -985,11 +1020,6 @@
 .home-start-button:active,
 .home-alert-card:active {
   transform: scale(0.985);
-}
-
-.home-dashboard button:focus-visible {
-  outline: 3px solid rgba(8, 118, 249, 0.25);
-  outline-offset: 2px;
 }
 
 /* Responsive --------------------------------------------------------- */
