@@ -38,7 +38,7 @@ function initialConditions() {
 
 async function boot(page, mode) {
   const audit = { blockedExternal: [], proxy: [], replacedModules: [] };
-  await page.addInitScript(() => sessionStorage.setItem('studyplanner.ai.runtime.v1', JSON.stringify({ provider: 'openai', model: 'gpt-6-luna', apiKey: '' })));
+  await page.addInitScript(() => sessionStorage.setItem('studyplanner.ai.runtime.v1', JSON.stringify({ provider: 'openai', apiKey: '' })));
   await page.route('**/*', async route => {
     const url = new globalThis.URL(route.request().url());
     if (url.origin !== 'http://127.0.0.1:4174') {
