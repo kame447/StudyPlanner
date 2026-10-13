@@ -135,6 +135,30 @@ export function validateWeeklyPreviewApproval(params: {
   const metadata = metadataFromBlocks(params);
   if (!metadata) return invalidAttempt(undefined, 'missing-or-mixed-preview-metadata');
 
+  const failures = params.blocks
+    .map((block) => validatePreviewMetadata(params, block.behaviorMetadata?.previewMetadata ?? metadata))
+    .filter((result): result is Extract<WeeklyPreviewApprovalGuardResult, { allowed: false }> => !result.allowed);
+  // Fixed category priority, then stable payload order, keeps the rejection
+  // independent of block order without changing the operation's metadata.
+  const priority = {
+    invalid_preview_approval_attempt: 0,
+    stale_preview_approval_attempt: 1,
+    pending_assumption_preview_approval_attempt: 2,
+  };
+  failures.sort((left, right) => {
+    const category = priority[left.attempt.kind] - priority[right.attempt.kind];
+    if (category !== 0) return category;
+    const leftKey = JSON.stringify(left.attempt);
+    const rightKey = JSON.stringify(right.attempt);
+    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+  });
+  return failures[0] ?? { allowed: true, metadata };
+}
+
+function validatePreviewMetadata(
+  params: Parameters<typeof validateWeeklyPreviewApproval>[0],
+  metadata: WeeklyPreviewMetadata,
+): WeeklyPreviewApprovalGuardResult {
   if (metadata.authorizedUserId !== params.userId
     || params.blocks.some((block) => block.userId !== params.userId)
     || metadata.approvalEligibility === 'blocked_invalid'
