@@ -453,7 +453,7 @@ function BookshelfMaterialDialogSession({
                 />
               </div>
               <p className="detail-note">
-                検索で表紙が見つからない場合は jpeg / png / webp を自分で設定できます。
+                対応形式: JPEG / PNG / WebP
               </p>
             </div>
           </div>

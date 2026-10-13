@@ -117,6 +117,10 @@ describe('bookshelf dialogs', () => {
       );
     });
 
+    expect(JSON.stringify(renderer.toJSON())).toContain('対応形式: JPEG / PNG / WebP');
+    expect(JSON.stringify(renderer.toJSON())).toContain('まず教材を探し、見つからなければ手入力できます。');
+    expect(renderer.root.findByProps({ type: 'file' }).props.accept).toBe('image/jpeg,image/png,image/webp');
+
     act(() => {
       renderer.root.findByProps({ placeholder: '黄色チャート' }).props.onChange({
         target: { value: '黄色チャート' },

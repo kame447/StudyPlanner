@@ -63,7 +63,6 @@ export function PlanEditorPanel({
           <div className="section-header">
             <div>
               <h2 id={headingId}>{heading}</h2>
-              <p>入力項目は最小限に絞っています。</p>
             </div>
             <button
               ref={(node) => {
