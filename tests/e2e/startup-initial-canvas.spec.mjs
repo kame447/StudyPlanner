@@ -23,7 +23,9 @@ async function seed(page, theme, signedIn = false) {
           html: getComputedStyle(document.documentElement).backgroundColor,
           body: getComputedStyle(document.body).backgroundColor,
           muted: video.muted,
-          inline: video.playsInline,
+          // Firefox does not expose the reflected playsInline property.
+          // Assert the actual inline-playback markup on every engine instead.
+          inline: video.hasAttribute('playsinline'),
         };
       }
     }).observe(document, { childList: true, subtree: true });
