@@ -83,7 +83,7 @@ export function createFocusedContextualBindingSnapshotV5(
   };
   const context = {
     purpose: 'focused_contextual_answer_v2' as const,
-    requestId: input.traceRequestId,
+    requestId: input.traceRequestId?.trim() || 'focused-contextual-local-only',
     inputRevision: target.graphRevision,
     targetToken: binding.targetToken,
     questionCode: target.questionCode,

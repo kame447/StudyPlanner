@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import { focusedContextualDecisionState } from '../../../../shared/focusedContextualDecision';
 import { createFocusedContextualBindingSnapshotV5, isFocusedContextualBindingCurrentV5 } from './weeklyPlanningFocusedContextualBindingV5';
 import { createFocusedContextualBindingGraphFixtureV5, createFocusedContextualBindingInputFixtureV5 } from './weeklyPlanningFocusedContextualBindingV5.testUtils';
@@ -78,6 +79,45 @@ describe('J1 typed graph to bound contextual input', () => {
     expect(focusedContextualDecisionState(first.context)).toEqual(focusedContextualDecisionState(second.context));
     expect(isFocusedContextualBindingCurrentV5(first, renamed)).toBe(false);
   });
+  it('sends complete parent/material context to focused Luna for the same pending answer', async () => {
+    const capture = async (parentLabel: string) => {
+      const graph = createFocusedContextualBindingGraphFixtureV5();
+      graph.components[0].label = parentLabel;
+      const input = createFocusedContextualBindingInputFixtureV5(graph);
+      const client: OpenAiCompatibleClient = { createChatCompletion: vi.fn(async () => JSON.stringify({
+        decision: 'fallback', effortTarget: null, effortMeasurement: null,
+        minutes: null, precision: null, quantityRole: null,
+      })) };
+      const result = await tryFocusedContextualAnswerRouteV5(new WeeklyPlanningSemanticNormalizerRunV5(client, input));
+      expect(result).toBeNull();
+      expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
+      const request = vi.mocked(client.createChatCompletion).mock.calls[0][0];
+      const message = request.messages.find(item => item.role === 'user');
+      expect(message).toBeDefined();
+      return JSON.parse(String(message!.content)).pendingQuestion.boundTarget;
+    };
+    const blue = await capture('青チャート');
+    const red = await capture('赤チャート');
+    expect(blue.componentChain).toEqual([
+      { role: 'material', label: '青チャート' },
+      { role: 'chapter', label: '第1章' },
+    ]);
+    expect(red.componentChain[0].label).toBe('赤チャート');
+    expect(red).not.toEqual(blue);
+    expect(blue.workload).toMatchObject({ quantityRole: 'declared', amount: 20, unitCode: 'problem' });
+    expect(JSON.stringify(blue)).not.toContain('private-id');
+    expect(JSON.stringify(blue)).not.toContain('fixture-private-provenance');
+  });
+
+  it('does not send incomplete pending-target context to focused Luna', async () => {
+    const input = createFocusedContextualBindingInputFixtureV5();
+    (input.publicStateSummary!.components as unknown[]).shift();
+    const client = { createChatCompletion: vi.fn(async () => '{}') };
+    const result = await tryFocusedContextualAnswerRouteV5(new WeeklyPlanningSemanticNormalizerRunV5(client, input));
+    expect(result).toBeNull();
+    expect(client.createChatCompletion).not.toHaveBeenCalled();
+  });
+
   it.each(['revision', 'presentation', 'target value'])('rejects a role reply after late %s drift', async fault => {
     const input = createFocusedContextualBindingInputFixtureV5();
     const client = { createChatCompletion: vi.fn(async () => {

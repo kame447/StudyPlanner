@@ -165,13 +165,14 @@ function relationContext(input: WeeklyPlanningSemanticNormalizerInputV5): string
 
 export function createExtendedContextualMessagesV5(
   input: WeeklyPlanningSemanticNormalizerInputV5,
+  boundTarget?: NonNullable<ReturnType<typeof createFocusedContextualBindingSnapshotV5>>['context']['state']['pendingQuestion']['target'],
 ) {
   return [
     {
       role: 'system' as const,
       content: `${FOCUSED_CONTEXTUAL_PROVISIONAL_INSTRUCTION} Existing typed relations: ${relationContext(input)}`,
     },
-    ...createFocusedContextualAnswerMessagesV5(input),
+    ...createFocusedContextualAnswerMessagesV5(input, boundTarget),
   ];
 }
 
@@ -201,11 +202,15 @@ export async function tryFocusedContextualAnswerRouteV5(
   const retryDualTargetInterpretation = target.questionCode === 'missing_effort_estimate'
     && target.questionBasis === 'completed_workload_total'
     && target.estimateForWorkload !== null;
-  const baseMessages = createExtendedContextualMessagesV5(run.input);
+  const bindingSnapshot = createFocusedContextualBindingSnapshotV5(run.input);
+  if (!bindingSnapshot) return null;
+  const baseMessages = createExtendedContextualMessagesV5(
+    run.input, bindingSnapshot.context.state.pendingQuestion.target,
+  );
   let attemptMessages = baseMessages;
   let forceLunaForRetry = false;
-  const bindingSnapshot = createFocusedContextualBindingSnapshotV5(run.input);
-  const decisionContext = bindingSnapshot?.context;
+  // A missing trace identity is a local Luna-only route, never a Jev request.
+  const decisionContext = run.input.traceRequestId?.trim() ? bindingSnapshot.context : undefined;
   const requestWithoutDecisionContext = {
     messages: baseMessages,
     temperature: 0,
@@ -251,7 +256,10 @@ export async function tryFocusedContextualAnswerRouteV5(
         attempt: attemptName,
         requestBytes: requestByteLength,
         request: {
-          messages: request.messages,
+          // Provider-only target lineage must not be copied into persistent trace prompts.
+          messages: request.messages.map(message => ({
+            role: message.role, content: '[focused contextual provider prompt redacted]',
+          })),
           temperature: request.temperature,
           responseFormat: request.responseFormat,
           purpose: request.purpose,
