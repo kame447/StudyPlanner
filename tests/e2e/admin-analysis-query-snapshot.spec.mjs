@@ -14,7 +14,10 @@ test('AI analysis hides the old query through failure, retry, and a date change'
   await resolve(0, 101);
   await expect(requestCount).toHaveText('101');
 
-  await page.getByLabel('環境', { exact: true }).selectOption('preview');
+  const environment = page.locator('.admin-overview-controls').getByRole('combobox');
+  await expect(environment).toHaveValue('production');
+  await environment.selectOption('preview');
+  await expect(environment).toHaveValue('preview');
   await expect.poll(async () => (await requests()).length).toBe(2);
   await expect(cards).toHaveCount(0);
   await page.evaluate(() => window.__adminAnalysisRequests[1].reject());
