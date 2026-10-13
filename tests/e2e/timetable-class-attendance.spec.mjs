@@ -25,9 +25,16 @@ async function expectFrontmostOpaqueDialog(dialog) {
       const rect = button.getBoundingClientRect();
       return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
     });
+    const contentRight = document.documentElement.getBoundingClientRect().right;
+    const gutterIsNonInteractive = contentRight >= innerWidth || [20, innerHeight / 2, innerHeight - 20].every(y => {
+      const target = document.elementFromPoint((contentRight + innerWidth) / 2, y);
+      return !target?.closest('button, a, input, textarea, select, [role="button"]');
+    });
     return { alpha, coveredNav, headerFrontmost, veil: [veil.x, veil.y, veil.right, veil.bottom],
       card: [card.x, card.y, card.right, card.bottom], bodyInside: body.top >= card.top && body.bottom <= card.bottom,
-      viewport: [document.documentElement.clientWidth, innerHeight], focusInside: node.contains(document.activeElement), pageLocked: getComputedStyle(document.documentElement).overflowY === 'hidden' };
+      // Root geometry excludes its reserved scrollbar gutter. clientWidth
+      // includes empty gutters in Chromium, so it is not the content boundary.
+      contentRight, gutterIsNonInteractive, viewport: [innerWidth, innerHeight], focusInside: node.contains(document.activeElement), pageLocked: getComputedStyle(document.documentElement).overflowY === 'hidden' };
   });
   expect(layout.alpha).toBe(255);
   expect(layout.coveredNav).toBe(true);
@@ -35,8 +42,9 @@ async function expectFrontmostOpaqueDialog(dialog) {
   expect(layout.pageLocked).toBe(true);
   expect(layout.focusInside).toBe(true);
   expect(layout.bodyInside).toBe(true);
+  expect(layout.gutterIsNonInteractive).toBe(true);
   expect(layout.veil[0]).toBe(0); expect(layout.veil[1]).toBe(0);
-  expect(layout.veil[2]).toBe(layout.viewport[0]); expect(layout.veil[3]).toBe(layout.viewport[1]);
+  expect(layout.veil[2], JSON.stringify(layout)).toBe(layout.contentRight); expect(layout.veil[3]).toBe(layout.viewport[1]);
   expect(layout.card[0]).toBeGreaterThanOrEqual(0); expect(layout.card[1]).toBe(0);
   expect(layout.card[2]).toBeLessThanOrEqual(layout.viewport[0]); expect(layout.card[3]).toBe(layout.viewport[1]);
 }
