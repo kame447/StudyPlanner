@@ -1,3 +1,4 @@
+import type { WeeklyPlanningConsultationCommunication } from '../application/weeklyPlanningConsultationCommunication';
 import type { WeeklyPlanningPreviewConstraintSatisfaction } from '../application/weeklyPlanningPreviewConstraintSatisfaction';
 import type { WeeklyPlanningFixedEventCommunicationFacts } from '../application/weeklyPlanningFixedEventOnlyInteraction';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
@@ -200,6 +201,9 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   communication?: {
     goal: 'ask_question' | 'explain_question' | 'acknowledge_aside' | 'resume_question' | 'present_preview' | 'acknowledge';
     askQuestion: boolean;
+    consultation?: WeeklyPlanningConsultationCommunication;
+    /** An unadopted what-if cannot grant approval for any retained preview. */
+    alternativeRequiresAdoption?: true;
   } & Partial<WeeklyPlanningFixedEventCommunicationFacts>;
   actionId: string;
   currentUserMessage: string;
@@ -239,7 +243,9 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   | 'unsafe_text'
   | 'ungrounded_text'
   | 'repeated_question_text'
-  | 'recovery_verification_failed';
+  | 'recovery_verification_failed'
+  | 'unchecked_consultation_feasibility'
+  | 'unadopted_alternative_promotion';
 
 export type WeeklyPlanningStableV5DialogueRenderResult =
   | {
@@ -312,6 +318,22 @@ export const WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT: JsonSc
           ],
         },
         text: stringSchema(),
+      },
+    },
+  },
+};
+
+/** Consultation presentation metadata, with no planning or persistence authority. */
+export const WEEKLY_PLANNING_CONSULTATION_DIALOGUE_RESPONSE_FORMAT: JsonSchemaResponseFormat = {
+  ...WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
+  json_schema: {
+    ...WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT.json_schema,
+    schema: {
+      ...WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT.json_schema.schema,
+      required: ['actionId', 'actionKind', 'questionCode', 'groundingAcknowledgement', 'text', 'feasibilityClaim'],
+      properties: {
+        ...(WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT.json_schema.schema.properties as JsonSchemaObject),
+        feasibilityClaim: { type: 'string', enum: ['none', 'fits', 'does_not_fit'] },
       },
     },
   },

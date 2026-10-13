@@ -10,6 +10,7 @@ import {
 } from '../trace/weeklyPlanningDialogueRendererTrace';
 import {
   WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
+  WEEKLY_PLANNING_CONSULTATION_DIALOGUE_RESPONSE_FORMAT,
   type WeeklyPlanningStableV5DialogueRenderInput,
   type WeeklyPlanningStableV5DialogueRenderResult,
   type WeeklyPlanningStableV5DialogueRenderer,
@@ -75,7 +76,9 @@ async function requestDialogueRender(params: {
   const rawResponse = await params.client.createChatCompletion({
     messages: params.messages,
     temperature: 0.4,
-    responseFormat: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
+    responseFormat: params.input.communication?.consultation
+      ? WEEKLY_PLANNING_CONSULTATION_DIALOGUE_RESPONSE_FORMAT
+      : WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
     purpose: 'weekly_planning_renderer',
   });
   return parseWeeklyPlanningStableV5DialogueRendererResponse(rawResponse, params.input);
@@ -200,16 +203,19 @@ export function createAiWeeklyPlanningStableV5DialogueRenderer(
           ? REPEATED_QUESTION_REPAIR_INSTRUCTION
           : initial.reason === 'grounding_contract_mismatch'
             ? GROUNDING_ACK_REPAIR_INSTRUCTION
-            : null;
+            : initial.reason === 'unchecked_consultation_feasibility' || initial.reason === 'unadopted_alternative_promotion'
+              ? '相談のfeasibilityClaimはnone、またはapplicationDecision.communication.consultation.feasibility.statusと同じ値にしてください。未評価の条件を可能・不可能と断定せず、評価済みの範囲を自然に説明してください。未採用の別案は採用するか尋ね、既存候補の承認操作を案内しないでください。'
+              : null;
         if (!repairInstruction) return initial;
-        return await requestDialogueRender({
-          client,
-          input,
-          messages: [
-            ...baseMessages,
-            { role: 'user', content: repairInstruction },
-          ],
-        });
+        const repairMessages: ChatMessage[] = [
+          ...baseMessages, { role: 'user', content: repairInstruction },
+        ];
+        const consultationRepair = input.communication?.consultation ? {
+          messages: repairMessages, initialResponse: initial.rawResponse,
+          responseFormat: WEEKLY_PLANNING_CONSULTATION_DIALOGUE_RESPONSE_FORMAT,
+        } : undefined;
+        if (consultationRepair) promptContext.consultationRepair = consultationRepair;
+        return await requestDialogueRender({ client, input, messages: repairMessages });
       } catch {
         return { status: 'fallback', reason: 'provider_error', rawResponse: null };
       }

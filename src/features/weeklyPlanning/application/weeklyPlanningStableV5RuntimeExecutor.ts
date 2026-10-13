@@ -1,3 +1,5 @@
+import { evaluateWeeklyPlanningConsultationAlternative } from './weeklyPlanningConsultationAlternativeEvaluation';
+import { consultationCommunicationForPlanning } from './weeklyPlanningConsultationCommunication';
 import { projectWeeklyPlanningPreviewConstraintSatisfaction } from './weeklyPlanningPreviewConstraintSatisfaction';
 import { planWeeklyPlanningInteraction, classifyWeeklyPlanningInteraction } from './weeklyPlanningInteractionDecision';
 import {
@@ -77,10 +79,19 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     explainedQuestion: semanticTurn.pendingQuestionPresentation.status === 'fresh'
       ? semanticTurn.pendingQuestionPresentation.questionContext : null,
   });
-  const routingEvaluation = interactionPlan.dialogueQuestionOverride ? { ...evaluation,
+  const consulting = interactionPlan.acts.consultation;
+  const alternativeEvidence = consulting ? evaluateWeeklyPlanningConsultationAlternative({
+    acts: semantic.normalization.document?.conversationActs, compilation: evaluation.compilation,
+    graph: createWeeklyPlanningPlacementGraphViewV5(evaluation.activeGraph), input, requestContext,
+  }) : null;
+  // A read-only discussion cannot reuse an earlier request to publish a new preview.
+  const routeBase = consulting && !evaluation.semanticChanged
+    && (evaluation.planningIntent === 'discuss' || evaluation.planningIntent === 'unknown')
+    ? { ...evaluation, authorized: false } : evaluation;
+  const routingEvaluation = interactionPlan.dialogueQuestionOverride ? { ...routeBase,
     dialogue: { ...evaluation.dialogue, status: 'ask_question' as const,
       question: interactionPlan.dialogueQuestionOverride, previewEligible: false as const },
-  } : evaluation;
+  } : routeBase;
   const responseRoute = weeklyPlanningStableV5ResponseRouter.beforePreview({
     input,
     graph: semantic.graph,
@@ -100,6 +111,9 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     return {
       ...output,
       observability: semanticObservability,
+      ...(consulting ? { consultation: consultationCommunicationForPlanning({
+        compilation: evaluation.compilation, preserveExistingPreview: output.preserveExistingPreview === true, alternativeEvidence,
+      }) } : {}),
       interactionOutcome: classifyWeeklyPlanningInteraction({ plan: interactionPlan, output,
         previousQuestion: input.previousState?.lastQuestionContext, presentation: semanticTurn.pendingQuestionPresentation }),
     };
@@ -148,6 +162,9 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   return {
     ...output,
     interactionOutcome: { kind: 'apply' },
+    ...(consulting ? { consultation: consultationCommunicationForPlanning({
+      compilation: evaluation.compilation, preview, preserveExistingPreview: output.preserveExistingPreview === true, alternativeEvidence,
+    }) } : {}),
     ...(output.draftCandidates.length > 0 && !output.preserveExistingPreview
       ? { previewConstraintSatisfaction: projectWeeklyPlanningPreviewConstraintSatisfaction({
           graph: evaluation.activeGraph,
