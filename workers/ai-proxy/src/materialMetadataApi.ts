@@ -491,17 +491,24 @@ function pickCandidateForDetails(
   ) ?? candidates[0] ?? null;
 }
 
+async function lookupMaterialCandidates(
+  client: FirestoreServiceAccountClient | null,
+  query: NonNullable<ReturnType<typeof classifyMaterialMetadataQuery>>,
+): Promise<MaterialMetadataSearchResponse> {
+  const cached = await lookupCatalog(client, query);
+  if (cached.length > 0) return { results: cached, cacheHit: true };
+
+  const results = await searchNdl(query);
+  await cacheCandidates(client, results);
+  return { results, cacheHit: false };
+}
+
 async function resolveCandidateForDetails(
   client: FirestoreServiceAccountClient | null,
   query: NonNullable<ReturnType<typeof classifyMaterialMetadataQuery>>,
 ): Promise<MaterialMetadataCandidate | null> {
-  const cached = await lookupCatalog(client, query);
-  let candidate = pickCandidateForDetails(cached, query);
-  if (!candidate) {
-    const searched = await searchNdl(query);
-    await cacheCandidates(client, searched);
-    candidate = pickCandidateForDetails(searched, query);
-  }
+  const { results } = await lookupMaterialCandidates(client, query);
+  const candidate = pickCandidateForDetails(results, query);
   if (!candidate) return null;
   const enriched = await enrichNdlDetails(candidate);
   await cacheCandidates(client, [enriched]);
@@ -583,18 +590,10 @@ export async function handleMaterialMetadataApi(
     }
   }
 
-  const cached = await lookupCatalog(client, query);
-  if (cached.length > 0) {
-    const results = await enrichCoverUrls(cached);
-    const body: MaterialMetadataSearchResponse = { results, cacheHit: true };
-    return jsonResponse(request, env, 200, body as unknown as Record<string, unknown>);
-  }
-
   try {
-    const providerResults = await searchNdl(query);
-    await cacheCandidates(client, providerResults);
-    const results = await enrichCoverUrls(providerResults);
-    const body: MaterialMetadataSearchResponse = { results, cacheHit: false };
+    const lookup = await lookupMaterialCandidates(client, query);
+    const results = await enrichCoverUrls(lookup.results);
+    const body: MaterialMetadataSearchResponse = { results, cacheHit: lookup.cacheHit };
     return jsonResponse(request, env, 200, body as unknown as Record<string, unknown>);
   } catch (error) {
     console.warn('[Material Metadata] provider search failed', {
