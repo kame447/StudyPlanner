@@ -35,3 +35,7 @@ Firestore Rules は Phase 3 merge 後に repository-owned な WIF workflow か�
 - client/server authorityそのもの
 
 これらは各 owning domain 側で管理を継続し、scheduled occurrence の参照や確定予定の保存が必要な箇所でのみ本ドメインの境界へ接続する。
+
+## Active work
+
+- [Narrow canonical schedule projection reads](work/20261013-schedule-projection-reads.md) — Issue #542; local targeted-recovery read reduction, with production frequency and deployed index verification separate.
