@@ -1024,7 +1024,6 @@ export function TimetableView({
             <div className="section-header timetable-period-sheet-header">
               <div>
                 <h2>時間割の期間</h2>
-                <p>「前期」などの制度ではなく、実際に使う日付で管理します。</p>
               </div>
               <button
                 className="ghost-button"
@@ -1132,7 +1131,6 @@ export function TimetableView({
                 <label className="timetable-setting-row">
                   <span>
                     <strong>交互週を使う</strong>
-                    <small>A週/B週で時間割全体の内容が変わる場合だけ有効にします。</small>
                   </span>
                   <input
                     checked={periodForm.usesAlternatingWeeks}

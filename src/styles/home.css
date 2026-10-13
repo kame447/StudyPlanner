@@ -563,8 +563,9 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: var(--home-blue);
-  color: #fff;
+  background: var(--schedule-event-bg, var(--home-blue));
+  color: var(--text);
+  box-shadow: 0 0 0 2px var(--schedule-event-color);
 }
 
 .home-time-dot::after {
@@ -582,6 +583,7 @@
 
 .home-time-dot.completed {
   background: #31a56f;
+  color: #fff;
 }
 
 .home-schedule-content {

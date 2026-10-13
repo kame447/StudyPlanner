@@ -35,7 +35,7 @@ async function instrument(page, signedIn) {
       localStorage.setItem('cold-start-seeded', 'true');
     }
     const observer = new MutationObserver(() => {
-      const target = document.querySelector(signedIn ? '.home-main' : '.auth-card');
+      const target = document.querySelector(signedIn ? '.home-main' : '.auth-entry');
       if (target && target.getClientRects().length && getComputedStyle(target).visibility !== 'hidden') {
         performance.mark('startup-visible');
         observer.disconnect();
@@ -62,7 +62,7 @@ for (const width of [1280, 390]) {
     page.on('pageerror', error => errors.push(String(error)));
     await instrument(page, false);
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: '新規会員登録', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toBeVisible();
     await expect(page.getByLabel('起動時間の診断')).toHaveCount(0);
     const loggedOut = await snapshot(page);
     expect(loggedOut.pendingIdle).toBe(0);
