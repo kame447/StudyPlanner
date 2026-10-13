@@ -1,11 +1,9 @@
-.study-session-mode-section {
-  display: grid;
-}
-
 .study-session-mode-picker {
+  position: relative;
+  isolation: isolate;
+  touch-action: pan-y;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 3px;
   padding: 3px;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -33,18 +31,24 @@
   line-height: 1.25;
 }
 
-.study-session-mode-picker button small {
-  min-width: 0;
-  color: var(--text-muted);
-  font-size: 0.74rem;
-  line-height: 1.25;
+.study-session-mode-indicator {
+  position: absolute;
+  inset: 3px auto 3px 3px;
+  width: calc((100% - 6px) / 2);
+  z-index: -1;
+  border-radius: 10px;
+  background: var(--surface-strong);
+  box-shadow: 0 1px 3px rgba(20, 32, 45, 0.1);
+  transition: transform 240ms cubic-bezier(0.25, 1, 0.5, 1);
+  pointer-events: none;
+}
+
+.study-session-mode-picker[data-mode="pomodoro"] .study-session-mode-indicator {
+  transform: translateX(100%);
 }
 
 .study-session-mode-picker button.active {
-  border-color: var(--home-blue, var(--accent));
-  background: var(--surface-strong);
   color: var(--home-blue, var(--accent));
-  box-shadow: 0 1px 3px rgba(20, 32, 45, 0.1);
 }
 
 .study-session-mode-picker button:disabled {
@@ -111,4 +115,35 @@
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
   font-weight: 800;
+}
+
+.study-session-settings-button {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-strong);
+  color: var(--home-blue, var(--accent));
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.study-session-settings-view h2 {
+  margin: 0 0 16px;
+  font-size: 1.1rem;
+}
+
+.study-session-settings-view p {
+  margin: 16px 0 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .study-session-mode-indicator { transition: none; }
 }
