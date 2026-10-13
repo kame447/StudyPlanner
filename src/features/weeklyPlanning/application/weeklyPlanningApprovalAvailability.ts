@@ -1,4 +1,5 @@
 import type { WeeklyPlanDraftBlock } from '../types';
+import { validateWeeklyPreviewApproval } from '../planning/weeklyPlanningApproval';
 import {
   resolveWeeklyPlanningApprovalRuntime,
 } from './weeklyPlanningApprovalRuntimeResolver';
@@ -73,9 +74,9 @@ export function classifyWeeklyPlanningApprovalAvailability(params: {
   }
 
   if (
-    first.authorizedUserId !== params.userId
-    || first.stale
-    || first.approvalEligibility !== 'eligible'
+    metadata.some((item) => item!.authorizedUserId !== params.userId
+      || item!.stale
+      || item!.approvalEligibility !== 'eligible')
   ) {
     return { kind: 'blocked', reason: 'metadata_ineligible', message: BLOCKED_MESSAGE };
   }
@@ -98,26 +99,22 @@ export function classifyWeeklyPlanningApprovalAvailability(params: {
     };
   }
 
-  if (!first.conversationId) {
-    return { kind: 'eligible', reason: 'legacy_compatible' };
-  }
-
   const runtime = runtimeResolution.runtimeSnapshot;
-  if (!runtime) {
+  if (first.conversationId && !runtime) {
     return {
       kind: 'recompute_required',
       reason: 'session_runtime_unavailable',
       message: RECOMPUTE_MESSAGE,
     };
   }
-  if (runtime.conversationId !== first.conversationId) {
+  if (first.conversationId && runtime!.conversationId !== first.conversationId) {
     return {
       kind: 'recompute_required',
       reason: 'conversation_mismatch',
       message: RECOMPUTE_MESSAGE,
     };
   }
-  if (runtime.stateRevision !== first.stateRevision) {
+  if (first.conversationId && runtime!.stateRevision !== first.stateRevision) {
     return {
       kind: 'recompute_required',
       reason: 'state_revision_mismatch',
@@ -125,5 +122,15 @@ export function classifyWeeklyPlanningApprovalAvailability(params: {
     };
   }
 
-  return { kind: 'eligible', reason: 'current_session' };
+  const guard = validateWeeklyPreviewApproval({
+    blocks,
+    userId: params.userId,
+    currentStateRevision: runtime?.stateRevision ?? first.stateRevision,
+    proposalRecords: runtime?.proposalRecords ?? [],
+    runtimeSnapshot: runtime,
+  });
+  if (!guard.allowed) {
+    return { kind: 'blocked', reason: 'metadata_ineligible', message: BLOCKED_MESSAGE };
+  }
+  return { kind: 'eligible', reason: first.conversationId ? 'current_session' : 'legacy_compatible' };
 }
