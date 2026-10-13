@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FocusedContextualDecisionContext } from '../../../../shared/focusedContextualDecision';
 import worker from '../worker';
-import { JEV_MODEL } from './decisionPolicy';
+import { JEV_MODEL, JEV_PROVIDER_PREFERENCES } from './decisionPolicy';
 import type { ContextualDecision } from './contextualDecisionPolicy';
 
 const calls: string[] = [];
@@ -144,7 +144,7 @@ beforeEach(() => {
       const body = JSON.parse(String(init?.body));
       expect(body).not.toHaveProperty('decisionContext');
       lunaBodies.push(body);
-      return Response.json({ choices: [{ message: { content: lunaContent } }] });
+      return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ message: { content: lunaContent } }] });
     }
     throw new Error(`Unexpected call: ${url}`);
   }));
@@ -172,6 +172,7 @@ describe('focused contextual Worker dispatch', () => {
       expect(jevBodies).toHaveLength(2);
       expect(jevBodies[0]).toEqual({
         model: JEV_MODEL.request,
+        provider: JEV_PROVIDER_PREFERENCES,
         state: { questionCode: original.questionCode, ...original.state },
         questions: expect.any(Object),
       });

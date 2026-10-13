@@ -18,11 +18,11 @@ function harness(options: { mode?: string; masterMode?: string; domain?: 'weekly
   const recorder = createSemanticRequestRecorder({ population, turnId, requestId, stage: 'focused', boundary: 'worker' });
   const startedAtMs = recorder.snapshot().startedAtMs;
   const calls: string[] = []; const background: Promise<unknown>[] = [];
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input); calls.push(url);
     if (url.includes('identitytoolkit')) return Response.json({ users: options.auth === false ? [] : [{ localId: 'fixture-user', emailVerified: true }] });
     if (url.includes('openrouter')) return options.jev ? options.jev() : jev();
-    if (url.includes('/chat/completions')) return options.luna ? options.luna() : Response.json({ choices: [{ message: { content: '{"decision":"fallback"}' } }] });
+    if (url.includes('/chat/completions')) return options.luna ? options.luna() : Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ message: { content: '{"decision":"fallback"}' } }] });
     throw new Error('Unexpected network path.');
   }));
   const purpose = (options.payload?.decisionContext as { purpose?: string } | undefined)?.purpose ?? decisionContext.purpose;
