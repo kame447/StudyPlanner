@@ -33,7 +33,22 @@ export function narrowC5EffortBasis(graph: WeeklyPlanningFactGraphV5, workloadId
   const task = active.tasks.find((fact) => fact.id === workload.taskId);
   const component = workload.componentId ? active.components.find((fact) => fact.id === workload.componentId) : null;
   if (!task || (workload.componentId && !component)) return null;
-  if ([task, workload, ...(component ? [component] : [])].some((fact) => !isUserUtteranceSourcedV5(fact.source))) return null;
+  // Preserve every typed qualifier through the root; an incomplete chain cannot be selected.
+  // Bounds match Unit0: no truncation, and private source/reference data remain local.
+  const chain: Array<(typeof active.components)[number]> = [];
+  const seen = new Set<string>();
+  let current = component;
+  while (current) {
+    if (chain.length >= 8 || seen.has(current.id) || current.taskId !== task.id
+      || !current.label.trim() || new TextEncoder().encode(current.label).length > 512) return null;
+    seen.add(current.id);
+    chain.unshift(current);
+    if (current.parentComponentId === null) break;
+    const parent = active.components.find(fact => fact.id === current!.parentComponentId);
+    if (!parent) return null;
+    current = parent;
+  }
+  if ([task, workload, ...chain].some((fact) => !isUserUtteranceSourcedV5(fact.source))) return null;
   const resolution = resolveGenericWorkItemEstimate({ workload, workloads: c5PlanningWorkloads(active), estimates: active.effortEstimates });
   if (!resolution.ambiguous || resolution.sourceWorkloadFactIds.length || resolution.sourceFactIds.length < 2) return null;
   const cohort = resolution.sourceFactIds;
@@ -50,6 +65,7 @@ export function narrowC5EffortBasis(graph: WeeklyPlanningFactGraphV5, workloadId
     componentId: workload.componentId, componentLabel: component?.label ?? null,
     componentRole: component?.role ?? null, componentParentId: component?.parentComponentId ?? null,
     componentCreatedRevision: component?.createdRevision ?? null,
+    componentChain: chain.map(({ role, label }) => ({ role, label })),
     workload: {
       id: workload.id, quantityRole: workload.quantityRole, amount: workload.amount,
       unitCode: workload.unitCode, unitLabel: workload.unitLabel,
@@ -68,8 +84,11 @@ export function narrowC5EffortBasis(graph: WeeklyPlanningFactGraphV5, workloadId
     },
   }));
   // Source text and access metadata stay internal; Unit 2 never projects binding.sources to a provider.
-  const sources = [task, ...(component ? [component] : []), workload, ...estimates]
-    .map((fact) => ({ id: fact.id, revision: canonicalCandidateSerialization({ source: fact.source, createdRevision: fact.createdRevision }) }));
+  const sources = [task, ...chain, workload, ...estimates]
+    .map((fact) => ({ id: fact.id, revision: canonicalCandidateSerialization({
+      source: fact.source, createdRevision: fact.createdRevision,
+      ...('parentComponentId' in fact ? { taskId: fact.taskId, parentComponentId: fact.parentComponentId } : {}),
+    }) }));
   return { target: { kind: 'workload', id: workload.id }, scope, sources, cohort, candidates };
 }
 

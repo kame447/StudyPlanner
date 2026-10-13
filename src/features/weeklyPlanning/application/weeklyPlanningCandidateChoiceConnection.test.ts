@@ -1,3 +1,4 @@
+import { validateWeeklyPlanningFactGraphValueV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
 import { boundC5PresentedQuestion, captureC5Question } from './c5LocalSelection/basis';
 import { bindWeeklyPlanningQuestionPresentation } from '../intake/weeklyPlanningQuestionPresentation';
 import { weeklyPlanningTurnOutcomeLifecycle } from './weeklyPlanningTurnOutcomeLifecycle';
@@ -510,4 +511,43 @@ it.each(['auth','provider','renderer'] as const)('keeps live projection validity
   if(phase==='auth')expect(choice).not.toHaveBeenCalled();if(phase==='provider')expect(sends).toBe(1);
   expect(loadWeeklyPlanningStableV5PersistedSession({ownerId:OWNER,weekStartDate:WEEK})!.planningState.intakeState!.c5SelectionLedger!.consumed).toEqual([]);
   expect(resolution(readC5RuntimeGraph(OWNER,h.conversationId),'work-a').ambiguous).toBe(true);
+});
+
+function prepareAncestorQuestion(h: ReturnType<typeof c5ControllerHarness>) {
+  const graph = structuredClone(readC5RuntimeGraph(OWNER, h.conversationId));
+  graph.components = [
+    { id: 'material-parent', taskId: 'task-a', parentComponentId: null, role: 'material', label: '海辺の観察帳', source: graph.tasks[0].source, createdRevision: 1 },
+    { id: 'chapter-child', taskId: 'task-a', parentComponentId: 'material-parent', role: 'chapter', label: '図版A', source: graph.tasks[0].source, createdRevision: 1 },
+  ];
+  graph.workloads[0].componentId = 'chapter-child';
+  graph.factLifecycles.push(...graph.components.map(fact => ({ factId: fact.id, status: 'active' as const,
+    createdRevision: 1, terminalRevision: null, supersededByFactId: null })));
+  expect(validateWeeklyPlanningFactGraphValueV5(graph).errors).toEqual([]);
+  hydrateWeeklyPlanningStableV5RuntimeSession({ ownerId: OWNER, weekStartDate: WEEK, conversationId: h.conversationId, graph });
+  const state = h.getState();
+  h.replaceState({ ...state, intakeState: captureC5Question({ state: state.intakeState!, graph,
+    ownerId: OWNER, conversationId: h.conversationId, messages: state.messages }) });
+}
+it('actual entry carries the complete ancestor labels to Choice without private ancestor sources', async () => {
+  const { choice, h } = await run('accepted', {}, true, prepareAncestorQuestion);
+  expect(choice).toHaveBeenCalledTimes(1);
+  const request = JSON.parse(String(choice.mock.calls[0][1]?.body));
+  expect(request.decisionContext.request.context.scope.componentChain).toEqual([
+    { role: 'material', label: '海辺の観察帳' }, { role: 'chapter', label: '図版A' },
+  ]);
+  expect(JSON.stringify(request)).not.toContain('private-source-');
+  expect(h.getState().intakeState!.c5SelectionLedger!.consumed).toHaveLength(1);
+});
+it('actual entry refuses a parent meaning changed during auth before sending or consuming Choice', async () => {
+  let harness: ReturnType<typeof c5ControllerHarness>;
+  const { choice, h } = await run('accepted', { getToken: async () => {
+    const graph = structuredClone(readC5RuntimeGraph(OWNER, harness.conversationId));
+    graph.components[0].label = '山地の観察帳';
+    expect(validateWeeklyPlanningFactGraphValueV5(graph).errors).toEqual([]);
+    hydrateWeeklyPlanningStableV5RuntimeSession({ ownerId: OWNER, weekStartDate: WEEK, conversationId: harness.conversationId, graph });
+    return 'scripted-auth';
+  } }, true, current => { harness = current; prepareAncestorQuestion(current); });
+  expect.soft(choice).not.toHaveBeenCalled();
+  expect.soft(h.getState().intakeState!.c5SelectionLedger!.consumed).toEqual([]);
+  expect(schemas.filter(name => name.includes('weekly_planning_semantic'))).toHaveLength(1);
 });
