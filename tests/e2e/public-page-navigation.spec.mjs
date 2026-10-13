@@ -1,17 +1,22 @@
-import { expect, test } from './support/fixed-clock.mjs';
+import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
 
-async function seed(page) {
-  await page.addInitScript(() => {
+async function seed(page, { withPlan = true } = {}) {
+  await page.addInitScript(({ today, withPlan }) => {
     sessionStorage.setItem('public-navigation-loads', String(Number(sessionStorage.getItem('public-navigation-loads') || 0) + 1));
     if (localStorage.getItem('public-navigation-seeded')) return;
     const user = { id: 'public-navigation-user', email: 'navigation@example.test', username: 'Navigation', avatar: '', createdAt: new Date().toISOString() };
     localStorage.setItem('studyplanner.users', JSON.stringify([user]));
     localStorage.setItem('studyplanner.session', user.id);
-    for (const key of ['studyplanner.plans', 'studyplanner.actuals', 'studyplanner.todos.v1', 'studyplanner.studySubjects.v1', 'studyplanner.studyMaterials.v1']) {
+    const plan = { id: 'public-navigation-plan', seriesId: 'public-navigation-plan', userId: user.id, title: '問い合わせ後も残る予定',
+      subject: '数学', type: 'study', sourceType: 'manual', date: today, startTime: '14:00', endTime: '15:00',
+      memo: '', repeat: 'none', repeatUntil: null, excludedDates: [], recurrenceRules: [],
+      createdAt: user.createdAt, updatedAt: user.createdAt };
+    localStorage.setItem('studyplanner.plans', JSON.stringify(withPlan ? [plan] : []));
+    for (const key of ['studyplanner.actuals', 'studyplanner.todos.v1', 'studyplanner.studySubjects.v1', 'studyplanner.studyMaterials.v1']) {
       localStorage.setItem(key, '[]');
     }
     localStorage.setItem('public-navigation-seeded', 'true');
-  });
+  }, { today: E2E_TODAY, withPlan });
 }
 async function openContact(page) {
   await page.getByRole('button', { name: 'メニューを開く', exact: true }).click();
@@ -26,6 +31,7 @@ for (const width of [1280, 390]) {
   test(`contact round-trip keeps the document, Home and retained portal at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 }); await seed(page); await page.goto('/');
     const home = page.locator('.home-today-panel'); await expect(home).toBeVisible();
+    await expect(home).toContainText('問い合わせ後も残る予定');
     const homeNode = await home.elementHandle();
     const documentLoads = await page.evaluate(() => sessionStorage.getItem('public-navigation-loads'));
     await page.evaluate(() => {
@@ -74,7 +80,7 @@ for (const width of [1280, 390]) {
   });
 
   test(`public pages keep a running study session and scroll under its body lock at ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 844 }); await seed(page); await page.goto('/');
+    await page.setViewportSize({ width, height: 844 }); await seed(page, { withPlan: false }); await page.goto('/');
     await openContact(page); await page.goBack(); await page.goBack();
     await page.getByRole('button', { name: /勉強を開始/ }).click();
     await page.getByRole('dialog', { name: '学習を開始', exact: true }).getByRole('button', { name: 'スタート', exact: true }).click();
