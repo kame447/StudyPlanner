@@ -1,0 +1,163 @@
+/* Edit forms share a quiet, opaque canvas and responsive field groups.
+   These rules intentionally exclude standalone records and Todo scheduling. */
+.modal-card.linked-actual-record-sheet,
+.modal-card.todo-edit-modal:not(.todo-schedule-modal) {
+  background: var(--app-background);
+}
+
+.daily-detail-modal .linked-actual-editor-card .actual-editor-head {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 2px 0 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.linked-actual-editor-card .actual-editor-head > :first-child {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.linked-actual-editor-card .actual-editor-head-actions {
+  margin-inline-start: auto;
+}
+
+.linked-actual-editor-card .actual-form-compact {
+  gap: 12px;
+  padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
+}
+
+.linked-actual-editor-card .actual-editor-section {
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.linked-actual-editor-card .actual-time-grid {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.linked-actual-editor-card .actual-date-field {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.linked-actual-editor-card .actual-time-field-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
+  flex: 2 1 15rem;
+  min-width: 0;
+  gap: 8px;
+}
+
+.linked-actual-editor-card .actual-alignment-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.linked-actual-editor-card .actual-alignment-field > span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.linked-actual-editor-card .segmented-control {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.modal-card.daily-detail-modal .linked-actual-editor-card .field input,
+.modal-card.daily-detail-modal .linked-actual-editor-card .field select,
+.modal-card.daily-detail-modal .linked-actual-editor-card .field textarea,
+.modal-card.todo-edit-modal:not(.todo-schedule-modal) .field input,
+.modal-card.todo-edit-modal:not(.todo-schedule-modal) .field select,
+.modal-card.todo-edit-modal:not(.todo-schedule-modal) .field textarea {
+  min-width: 0;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: max(1rem, 16px);
+  line-height: 1.3;
+  box-sizing: border-box;
+}
+
+.modal-card.daily-detail-modal .linked-actual-editor-card .field textarea,
+.modal-card.todo-edit-modal:not(.todo-schedule-modal) .field textarea {
+  min-height: 64px;
+}
+
+.linked-actual-record-sheet > .daily-detail-modal-header button,
+.daily-detail-modal .linked-actual-editor-card button,
+.linked-actual-editor-card .actual-tracking-details summary,
+.modal-card.todo-edit-modal:not(.todo-schedule-modal) button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.linked-actual-editor-card .actual-tracking-details summary {
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  padding-inline: 0;
+}
+
+.modal-card.todo-edit-modal:not(.todo-schedule-modal) {
+  gap: 12px;
+  padding: 16px;
+}
+
+.todo-edit-modal:not(.todo-schedule-modal) .todo-edit-header {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.todo-edit-modal:not(.todo-schedule-modal) .todo-form-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.todo-edit-modal .todo-edit-field-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.todo-edit-modal .todo-edit-deadline-pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.todo-edit-deadline-pair > .field:first-child {
+  flex: 1.3 1 9rem;
+}
+
+.todo-edit-deadline-pair > .field:last-child {
+  flex: 1 1 7rem;
+}
+
+.todo-edit-modal:not(.todo-schedule-modal) .field {
+  gap: 4px;
+}
+
+.todo-edit-modal:not(.todo-schedule-modal) .field > span {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
