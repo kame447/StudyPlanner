@@ -219,7 +219,8 @@ function buildDropGhostStyle(target: WeekPlanMoveTarget): CSSProperties {
 
 function getBlockColorStyle(entry: WeekPreviewBaseBlock): CSSProperties {
   return entry.draft ? {} : scheduleEventWeekStyle(entry.occurrence
-    ? getScheduleOccurrenceColor(entry.occurrence) : getPlanScheduleColor(entry));
+    ? getScheduleOccurrenceColor(entry.occurrence) : getPlanScheduleColor(entry),
+  entry.occurrence?.source.backingKind === 'month-event' ? 'theme' : 'pastel');
 }
 
 function getToneClass(entry: WeekPreviewBaseBlock): string {

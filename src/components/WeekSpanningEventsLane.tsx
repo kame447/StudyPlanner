@@ -11,7 +11,8 @@ interface WeekSpanningEventsLaneProps {
 
 function cardStyle(item: WeekSpanningOccurrenceLayout['items'][number]): CSSProperties {
   return {
-    ...scheduleEventWeekStyle(getScheduleOccurrenceColor(item.occurrence)),
+    ...scheduleEventWeekStyle(getScheduleOccurrenceColor(item.occurrence),
+      item.occurrence.source.backingKind === 'month-event' ? 'theme' : 'pastel'),
     gridColumn: `${item.startColumn + 2} / ${item.endColumn + 2}`,
     gridRow: item.lane + 1,
     alignSelf: 'center',
