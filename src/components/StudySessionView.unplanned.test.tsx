@@ -279,3 +279,48 @@ it.each([{ label: 'planned', nextPlan: futurePlan }, { label: 'unplanned', nextP
   expect(page.scrollTop).toBe(0);
   expect(renderer!.root.findByProps({ rows: 3 }).props.value).toBe('スクロール後も入力を保持');
 });
+
+it('keeps planned context once, behind an optional disclosure, without repeated start explanations', async () => {
+  const planned = { ...futurePlan, memo: '読み直すページを確認' };
+  await mount(planned); await click('勉強を開始');
+  const dialog = renderer!.root.findByProps({ role: 'dialog' });
+  const context = dialog.findByProps({ className: 'study-session-details' });
+  expect(context.type).toBe('details');
+  expect(context.props.open).toBeUndefined();
+  expect(context.findByType('summary').children).toEqual(['詳細']);
+  expect(context.findAllByType('dd').map(node => node.children.join(''))).toEqual([planned.title, planned.subject, book.name, planned.memo].filter(Boolean));
+  expect(dialog.findAllByProps({ className: 'study-session-helper' })).toHaveLength(0);
+  expect(dialog.findAllByProps({ className: 'study-session-card study-session-context-card' })).toHaveLength(0);
+  expect(dialog.findByProps({ 'aria-label': '学習内容' }).props.value).toBe('planned');
+  expect(dialog.findAllByType('h2')).toHaveLength(0);
+  expect(dialog.findByProps({ 'data-study-session-elapsed': true }).props['aria-label']).toBe('経過時間');
+});
+
+it('retains accessible mode controls and the break-inclusion notice before explicit start', async () => {
+  await mount(futurePlan); await click('勉強を開始');
+  await change({ 'aria-label': '学習内容' }, 'unplanned');
+  const picker = renderer!.root.findByProps({ role: 'group', 'aria-label': '学習方式' });
+  const [normal, pomodoro] = picker.findAllByType('button');
+  expect(normal.props['aria-pressed']).toBe(true);
+  await act(async () => { pomodoro.props.onClick(); });
+  expect(pomodoro.props['aria-pressed']).toBe(true);
+  expect(renderer!.root.findByProps({ 'data-study-session-phase-remaining': true }).children).toEqual(['25:00']);
+  expect(renderer!.root.findAllByType('small').some(node => node.children.includes('休憩を含めて記録'))).toBe(true);
+  expect(renderer!.root.findByProps({ 'aria-label': '勉強する内容' }).props.value).toBe('');
+  await click('スタート');
+  expect(pomodoro.props.disabled).toBe(true);
+  expect(normal.props.disabled).toBe(true);
+  await click('終了する'); await click('記録を保存');
+  expect(standalone).toHaveBeenCalledTimes(1);
+  expect(linked).not.toHaveBeenCalled();
+});
+
+
+it('keeps the entire planned title readable before start even without other details', async () => {
+  const title = '長い学習内容を開始前に確認するためのタイトル'.repeat(10);
+  const planned = { ...futurePlan, title, subject: '', memo: '', materialId: null, materialName: '' };
+  await mount(planned); await click('勉強を開始');
+  const details = renderer!.root.findByProps({ className: 'study-session-details' });
+  expect(details.props.open).toBeUndefined();
+  expect(details.findAllByType('dd').map(node => node.children.join(''))).toEqual([title]);
+});
