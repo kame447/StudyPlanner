@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SemanticTaskV5, WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticDocumentV5';
 import { createWeeklyPlanningSemanticNormalizerV5 } from './weeklyPlanningSemanticNormalizerV5';
 import { createWeeklyPlanningSemanticPipelineV5 } from './weeklyPlanningSemanticPipelineV5';
+import { isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5 } from './weeklyPlanningSemanticNoOpCompletenessRetryV5';
 import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemanticResponseValidationV5';
 import { validateWeeklyPlanningSemanticFirstReadingRetentionV5 } from './weeklyPlanningSemanticFirstReadingRetentionV5';
 import { createEmptyWeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
@@ -272,4 +273,72 @@ it.each([false, true])('persists actual first/retry/rejection evidence through o
       }
     }
   } finally { restore(); }
+});
+
+it.each([{pending:true,protectedAct:false},{pending:false,protectedAct:false},{pending:true,protectedAct:true}])('distinguishes context-only baseline from protected meaning (%j)', async ({pending, protectedAct}) => {
+ const first: WeeklyPlanningSemanticDocumentV5 = { schemaVersion:'weekly-planning-semantic-v5', planningIntent:'create_plan', planningWindow:null,
+ tasks:[{ localId:'shell-alpha', existingPublicId:'public-alpha', category:'study', title:'alpha20', study:{purpose:'self_study',contextLabel:null,components:[]},
+ workloads:[],effortEstimates:[],temporalConstraints:[],recurrence:[],sourceText:'alpha20'}],relations:[],availabilityDeclarations:[],constraintSourceRequests:[],userContextFacts:[],uncertainties:[],corrections:[],decisions:[] };
+ if (protectedAct) first.conversationActs = [{kind:'answer_pending_question',targetPublicId:'public-alpha'}];
+ const retry = structuredClone(first); retry.conversationActs=[]; retry.tasks[0] = { ...retry.tasks[0],localId:'task-beta',existingPublicId:null,title:'beta10',sourceText:'beta10',
+ workloads:[{localId:'quantity-beta',quantityRole:'target',amount:10,unitCode:'problem',unitLabel:'problems',rangeStart:null,rangeEnd:null,perOccurrence:false,periodExpression:null,sourceText:'beta10'}] };
+ const userText='alpha20 beta10 '+ 'padding '.repeat(800);const publicStateSummary={tasks:[{publicId:'public-alpha',title:'alpha20',category:'study'}],components:[],pendingQuestion:pending ? {questionCode:'missing_effort_estimate',targetFactId:'public-alpha'} : undefined};
+ expect(validateWeeklyPlanningSemanticResponseV5(JSON.stringify(first),{currentUserText:userText,publicStateSummary}).errors).toEqual([]);
+ expect(validateWeeklyPlanningSemanticResponseV5(JSON.stringify(retry),{currentUserText:userText,publicStateSummary}).errors).toEqual([]);
+ expect(isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5({document:first,publicStateSummary})).toBe(pending);
+ let semantic=0;const client={createChatCompletion:vi.fn(async(request:any)=>request.responseFormat?.json_schema.name==='weekly_planning_dense_turn_completeness_audit_v5'
+ ?JSON.stringify({decision:'incomplete',missingFacts:['beta10']}):JSON.stringify(++semantic===1?first:retry))};
+ const result=await createWeeklyPlanningSemanticNormalizerV5(client).normalize({userText,publicStateSummary});
+ if (protectedAct) { expect(result.status).toBe('rejected'); expect(result.document).toBeNull(); }
+ else { expect(result.status).toBe('accepted'); expect(result.document!.tasks[0].workloads[0].amount).toBe(10); }
+ expect(client.createChatCompletion).toHaveBeenCalledTimes(3);
+});
+
+it('ignores an unused existing binding shell beside a retained new proposition, while still protecting the new quantity', () => {
+  const first = document(); first.tasks[0].existingPublicId = 'public-alpha'; first.tasks[0].workloads = [];
+  const summary = { tasks: [{publicId:'public-alpha', title:'alpha20', category:'study'}], components: [] };
+  const retry = structuredClone(first); retry.tasks.shift(); retry.tasks.push(task('gamma5', 5));
+  expect(retained(first, retry, summary)).toEqual([]);
+  retry.tasks[0].workloads[0].amount = 999; expect(retained(first, retry, summary).length).toBeGreaterThan(0);
+});
+
+it('keeps an existing owner binding that is actually referenced by a new workload', () => {
+  const first = document(); first.tasks[0].existingPublicId = 'public-alpha';
+  const summary = {tasks:[{publicId:'public-alpha', title:'alpha20', category:'study'}], components:[]};
+  expect(retained(first, renameLocalIds(first) as WeeklyPlanningSemanticDocumentV5, summary)).toEqual([]);
+});
+it('keeps a true new task declaration even before its quantity is known', () => {
+  const first = document(); first.tasks.forEach(value => { value.workloads = []; });
+  const retry = structuredClone(first); retry.tasks.pop(); expect(retained(first, retry).length).toBeGreaterThan(0);
+});
+it('accepts an empty binding baseline through existing invalid-response repair with no further dispatch', async () => {
+  const first = document(); first.tasks = [first.tasks[0]]; first.tasks[0].existingPublicId = 'public-alpha'; first.tasks[0].workloads = [];
+  const repair = document(); repair.tasks = [repair.tasks[1]];
+  const invalid = structuredClone(repair); invalid.tasks[0].workloads[0].localId = invalid.tasks[0].localId;
+  const client = clientFor(first, invalid, repair);
+  const summary = {tasks:[{publicId:'public-alpha', title:'alpha20', category:'study'}], components:[]};
+  const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({userText:TEXT, publicStateSummary:summary});
+  expect(result.status).toBe('accepted'); expect(result.document!.tasks[0].workloads[0].amount).toBe(10);
+  expect(result.diagnostics).toMatchObject({attemptCount:3, repairAttempted:true}); expect(client.createChatCompletion).toHaveBeenCalledTimes(4);
+});
+it('keeps the old public graph task while applying a new delta without its unused shell', async () => {
+  const first = document(); first.tasks = [first.tasks[0]]; first.tasks[0].existingPublicId = 'public-alpha'; first.tasks[0].workloads = [];
+  const retry = document(); retry.tasks = [retry.tasks[1]]; const client = clientFor(first, retry);
+  const source = {conversationId:'sol7-context',turnId:'seed',semanticLocalId:'seed',sourceText:'alpha20',origin:'user' as const};
+  const oldTask = {id:'public-alpha', category:'study' as const, title:'alpha20', source, createdRevision:1};
+  const graph = {...createEmptyWeeklyPlanningFactGraphV5(),revision:1,tasks:[oldTask],factLifecycles:[{factId:'public-alpha',status:'active' as const,createdRevision:1,terminalRevision:null,supersededByFactId:null}]};
+  const result = await createWeeklyPlanningSemanticPipelineV5(createWeeklyPlanningSemanticNormalizerV5(client)).run({
+    graph, conversationId:'sol7-context',turnId:'new-beta',expectedRevision:1,userText:TEXT,
+    schedulerContext:{ownerId:'sol7',currentDate:'2026-10-13',planningStartDate:'2026-10-12',planningEndDate:'2026-10-18',timeZone:'Asia/Tokyo'}});
+  expect(result.normalization.status).toBe('accepted'); expect(result.canonicalization?.status).toBe('applied');
+  expect(result.graph.tasks.find(value => value.id === 'public-alpha')).toEqual(oldTask);
+  expect(result.graph.workloads.map(value => value.amount)).toEqual([10]); expect(client.createChatCompletion).toHaveBeenCalledTimes(3);
+});
+
+it('allows a known binding citation to broaden while retaining its new meaning and exact public identity', () => {
+  const first = document(); first.tasks[0].existingPublicId = 'public-alpha'; const retry = structuredClone(first);
+  retry.tasks[0].sourceText = 'alpha20 beta10';
+  const summary = {tasks:[{publicId:'public-alpha',title:'alpha20',category:'study'}],components:[]};
+  expect(retained(first, retry, summary)).toEqual([]);
+  retry.tasks[0].workloads[0].sourceText = 'detail'; expect(retained(first, retry, summary).length).toBeGreaterThan(0);
 });

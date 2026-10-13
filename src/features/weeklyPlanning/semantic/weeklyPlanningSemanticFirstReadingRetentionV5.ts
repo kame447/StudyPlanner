@@ -5,6 +5,7 @@ interface RetainedNode {
   kind: string;
   localId: string | null;
   payload: string;
+  bindingContext: boolean;
   references: Map<string, string>;
 }
 
@@ -20,10 +21,13 @@ function stableSerialize(value: unknown): string {
 /** Only validated typed declarations enter this projection; sourceText is opaque evidence. */
 function retainedNodes(document: WeeklyPlanningSemanticDocumentV5): RetainedNode[] {
   const nodes: RetainedNode[] = [];
-  function add(kind: string, value: object, owner?: string, referencePaths: string[] = []): void {
+  function add(kind: string, value: object, owner?: string, referencePaths: string[] = [], bindingContext = false): void {
     const payload = structuredClone(value) as Payload;
     const localId = typeof payload.localId === 'string' ? payload.localId : null;
     delete payload.localId;
+    // A known-public shell may refine its opaque citation; its actual binding
+    // and typed owner attributes still have to correspond exactly.
+    if (bindingContext) delete payload.sourceText;
     const references = new Map<string, string>();
     if (owner !== undefined) references.set('$owner', owner);
     for (const path of referencePaths) {
@@ -35,19 +39,19 @@ function retainedNodes(document: WeeklyPlanningSemanticDocumentV5): RetainedNode
         record[key] = null;
       }
     }
-    nodes.push({ kind, localId, payload: stableSerialize({ payload, referenceKeys: [...references.keys()].sort() }), references });
+    nodes.push({ kind, localId, bindingContext, payload: stableSerialize({ payload, referenceKeys: [...references.keys()].sort() }), references });
   }
   add('document', { schemaVersion: document.schemaVersion, planningIntent: document.planningIntent });
   if (document.planningWindow) add('planning_window', document.planningWindow);
   for (const task of document.tasks) {
     const { workloads, effortEstimates, temporalConstraints, recurrence, durableContextSignals, study, ...identity } = task;
     const { components, ...studyIdentity } = study ?? { components: [] };
-    add('task', { ...identity, study: study === null ? null : studyIdentity });
+    add('task', { ...identity, study: study === null ? null : studyIdentity }, undefined, [], Boolean(task.existingPublicId));
     workloads.forEach(value => add('workload', value, task.localId));
     (durableContextSignals ?? []).forEach(value => add('durable_context_signal', value, task.localId));
     for (const component of components) {
       const { workloads: nestedWorkloads, durableContextSignals: signals, ...componentIdentity } = component;
-      add('component', componentIdentity, task.localId, ['parentLocalId']);
+      add('component', componentIdentity, task.localId, ['parentLocalId'], Boolean(component.existingPublicId));
       nestedWorkloads.forEach(value => add('workload', value, component.localId));
       (signals ?? []).forEach(value => add('durable_context_signal', value, component.localId));
     }
@@ -66,6 +70,23 @@ function retainedNodes(document: WeeklyPlanningSemanticDocumentV5): RetainedNode
   return nodes;
 }
 
+/** Retain new propositions and only the binding context their references need. */
+function retainedFirstReadingNodes(document: WeeklyPlanningSemanticDocumentV5): RetainedNode[] {
+  const nodes = retainedNodes(document);
+  const byId = new Map(nodes.flatMap((node, index) => node.localId === null ? [] : [[node.localId, index] as const]));
+  const pending = nodes.flatMap((node, index) => node.kind !== 'document' && !node.bindingContext ? [index] : []);
+  if (pending.length === 0) return [];
+  const retained = new Set([0, ...pending]);
+  while (pending.length > 0) {
+    const node = nodes[pending.pop()!];
+    for (const target of node.references.values()) {
+      const index = byId.get(target);
+      if (index !== undefined && !retained.has(index)) { retained.add(index); pending.push(index); }
+    }
+  }
+  return nodes.filter((_node, index) => retained.has(index));
+}
+
 /**
  * Prove a one-to-one retained typed/reference floor while allowing additions.
  * IDs may change only when payload, ownership and reference constraints establish
@@ -76,7 +97,7 @@ export function validateWeeklyPlanningSemanticFirstReadingRetentionV5(params: {
   initialDocument: WeeklyPlanningSemanticDocumentV5;
   candidateDocument: WeeklyPlanningSemanticDocumentV5;
 }): string[] {
-  const initial = retainedNodes(params.initialDocument);
+  const initial = retainedFirstReadingNodes(params.initialDocument);
   const candidate = retainedNodes(params.candidateDocument);
   const initialIds = new Map(initial.flatMap((node, index) => node.localId === null ? [] : [[node.localId, index] as const]));
   const candidateIds = new Map(candidate.flatMap((node, index) => node.localId === null ? [] : [[node.localId, index] as const]));
