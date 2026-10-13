@@ -242,7 +242,10 @@ describe('AI proxy deployed worker request budget', () => {
       }
       if (url.endsWith('/chat/completions')) {
         upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-        return Response.json({ choices: [{ message: { content: '{"ok":true}' } }] });
+        return Response.json({
+          model: JSON.parse(String(init?.body)).model,
+          choices: [{ message: { content: '{"ok":true}' } }],
+        });
       }
       throw new Error(`Unexpected fetch: ${url}`);
     }));
