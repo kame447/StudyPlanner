@@ -4,6 +4,7 @@ import {
   Bot,
   CalendarClock,
   ListTree,
+  MessageSquare,
   Settings,
   Users,
 } from 'lucide-react';
@@ -97,6 +98,7 @@ export function AdminApp({
   const isAiPage = currentPath === '/admin/ai';
   const isPlanningPage = currentPath === '/admin/planning';
   const isLogsPage = currentPath === '/admin/logs';
+  const isInquiriesPage = currentPath === '/admin/inquiries';
   const isSystemPage = currentPath === '/admin/system';
 
   return (
@@ -161,6 +163,14 @@ export function AdminApp({
                 <Settings aria-hidden="true" size={19} />
                 <span>System</span>
               </button>
+              <button
+                className={`admin-console-nav-item${isInquiriesPage ? ' active' : ''}`}
+                onClick={() => navigate('/admin/inquiries')}
+                type="button"
+              >
+                <MessageSquare aria-hidden="true" size={19} />
+                <span>お問い合わせ</span>
+              </button>
             </nav>
 
             <div className="admin-console-sidebar-footer">
@@ -173,7 +183,7 @@ export function AdminApp({
           </aside>
 
           <div className="admin-console-main">
-            <AdminRoutes path={currentPath} navigate={navigate} />
+            <AdminRoutes key={userId} path={currentPath} navigate={navigate} />
           </div>
         </div>
       </AdminGuard>

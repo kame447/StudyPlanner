@@ -2,7 +2,7 @@ import {
   ChevronRight,
   FileText,
   Info,
-  Mail,
+  MessageSquare,
   ShieldCheck,
 } from 'lucide-react';
 import { FaqView } from './FaqView';
@@ -16,7 +16,7 @@ export function AppSettingsSupportPanel() {
         <strong>ヘルプ</strong>
         <a className="support-link-row" href="/contact">
           <span className="support-link-main">
-            <Mail aria-hidden="true" size={20} strokeWidth={1.9} />
+            <MessageSquare aria-hidden="true" size={20} strokeWidth={1.9} />
             <span>お問い合わせ</span>
           </span>
           <ChevronRight aria-hidden="true" size={20} strokeWidth={1.9} />
