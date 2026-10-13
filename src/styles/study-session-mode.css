@@ -7,7 +7,7 @@
   padding: 3px;
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: color-mix(in srgb, var(--surface-strong) 68%, var(--app-background));
+  background: color-mix(in srgb, var(--surface-strong) 68%, var(--accent));
 }
 
 .study-session-mode-picker button {
@@ -136,6 +136,10 @@
 .study-session-settings-view h2 {
   margin: 0 0 16px;
   font-size: 1.1rem;
+}
+
+.study-session-settings-view .study-session-segments button.active {
+  color: var(--surface-strong);
 }
 
 .study-session-settings-view p {
