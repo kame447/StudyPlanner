@@ -334,7 +334,7 @@ describe('traceWorker admin subrequest budget', () => {
   });
 
   it.each([
-    ['/observability/admin/overview?from=2026-06-25&to=2026-09-25', 9],
+    ['/observability/admin/overview?from=2026-06-25&to=2026-09-25', 7],
     ['/observability/admin/ai?from=2026-06-25&to=2026-09-25', 5],
     ['/observability/admin/planning?from=2026-06-25&to=2026-09-25', 4],
     ['/observability/admin/system', 6],
@@ -353,6 +353,17 @@ describe('traceWorker admin subrequest budget', () => {
     expect(response.status, JSON.stringify(body)).toBe(200);
     expect(calls).toHaveLength(expected);
     expect(calls.every((call) => call.init?.redirect === 'manual')).toBe(true);
+    if (path.startsWith('/observability/admin/overview?')) {
+      const batches = calls.filter((call) => call.url.endsWith(':batchGet'));
+      expect(batches).toHaveLength(1);
+      const documents = JSON.parse(String(batches[0].init?.body)).documents as string[];
+      expect(documents).toHaveLength(95);
+      expect(documents.slice(-2)).toEqual([
+        'projects/test-project/databases/(default)/documents/observability_active_user_windows/test:2026-09-25',
+        'projects/test-project/databases/(default)/documents/observability_rollup_state/main',
+      ]);
+      expect(calls.filter((call) => call.url.endsWith(':runAggregationQuery'))).toHaveLength(3);
+    }
     if (path.startsWith('/observability/admin/logs?')) {
       expect(body).toMatchObject({ pageEvidence: {
         rawDocumentCount: 0, mappedSessionCount: 0,
@@ -369,6 +380,27 @@ describe('traceWorker admin subrequest budget', () => {
     if (path.includes('/user-identity')) {
       expect((body as { matches?: unknown[] }).matches).toHaveLength(5);
     }
+  });
+
+  it.each(['observability_active_user_windows', 'observability_rollup_state'])('keeps Overview %s read failures sanitized', async (collection) => {
+    installFetchMock();
+    const mockedFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const documents = url.endsWith(':batchGet')
+        ? JSON.parse(String(init?.body)).documents as string[]
+        : [];
+      if (url.includes(`/documents/${collection}/`)
+        || documents.some((name) => name.includes(`/documents/${collection}/`))) {
+        return new Response('private backend failure', { status: 503 });
+      }
+      return mockedFetch(input, init);
+    });
+
+    const response = await adminGet('/observability/admin/overview?from=2026-06-25&to=2026-09-25');
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'Observability read model is temporarily unavailable.' });
+    expect(console.error).toHaveBeenCalled();
   });
 
   it('keeps ready Users page 25 plus trend at exactly 8 requests', async () => {
