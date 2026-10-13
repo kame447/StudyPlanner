@@ -40,7 +40,7 @@ export function TimetableClassScheduleForm({ template, onSave, onClose }: {
     }
   }
   return <form className="class-detail-form" aria-label="授業の予定を追加" onSubmit={submit}>
-    <label className="field"><span>予定名</span><input autoFocus disabled={saving} value={title}
+    <label className="field"><span>予定名</span><input disabled={saving} value={title}
       placeholder="レポート提出、中間試験など" onChange={event => setTitle(event.target.value)} required /></label>
     <div className="class-detail-form-row">
       <label className="field"><span>日付</span><input disabled={saving} type="date" value={date} onChange={event => setDate(event.target.value)} required /></label>

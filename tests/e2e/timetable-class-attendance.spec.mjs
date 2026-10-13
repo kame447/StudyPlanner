@@ -5,6 +5,9 @@ const navigate = (page, name) => page.getByRole('navigation', { name: '主要ナ
 const counts = detail => detail.locator('.class-attendance-counts dd');
 
 async function expectFrontmostOpaqueDialog(dialog) {
+  // Ordinary save notices intentionally sit above dialogs for 3600ms. Inspect
+  // the stable dialog after they expire; do not hide or lower application UI.
+  await expect(dialog.page().locator('.app-toast-layer')).toHaveCount(0);
   const layout = await dialog.evaluate(node => {
     const overlay = node.closest('.timetable-class-overlay');
     const card = node.getBoundingClientRect(), veil = overlay.getBoundingClientRect();
@@ -28,7 +31,7 @@ async function expectFrontmostOpaqueDialog(dialog) {
   });
   expect(layout.alpha).toBe(255);
   expect(layout.coveredNav).toBe(true);
-  expect(layout.headerFrontmost).toBe(true);
+  expect(layout.headerFrontmost, JSON.stringify(layout)).toBe(true);
   expect(layout.pageLocked).toBe(true);
   expect(layout.focusInside).toBe(true);
   expect(layout.bodyInside).toBe(true);
@@ -72,6 +75,8 @@ for (const viewport of [
 
     await detail.getByRole('button', { name: '追加', exact: true }).click();
     const schedule = detail.getByRole('form', { name: '授業の予定を追加' });
+    await expect(schedule).toBeVisible();
+    expect(await page.evaluate(() => document.activeElement?.matches('input, textarea, select'))).toBe(false);
     await schedule.getByLabel('予定名', { exact: true }).fill('論理レポート提出');
     await schedule.getByLabel('日付', { exact: true }).fill(E2E_TODAY);
     await schedule.getByLabel('開始', { exact: true }).fill('17:00');
