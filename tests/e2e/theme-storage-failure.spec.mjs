@@ -112,10 +112,16 @@ for (const key of [MODE_KEY, PALETTE_KEY]) {
     expect(await saved(page, MODE_KEY)).toBe('light');
     expect(await saved(page, PALETTE_KEY)).toBe('sakura');
     await page.reload();
-    await expect(page.locator('.home-main > .home-dashboard')).toBeVisible();
+    // Reload preserves the active settings history entry.
+    await expect(page.getByRole('main', { name: 'アプリ設定' })).toBeVisible();
+    await expect(alert(page)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'ライト', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('[aria-controls="settings-palette-options"]')).toContainText('サクラ');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     expect(await saved(page, PALETTE_KEY)).toBe('sakura');
     expect(await page.locator('html').evaluate(element => getComputedStyle(element).getPropertyValue('--accent').trim())).toBe('#c75a86');
+    await page.getByRole('button', { name: '戻る', exact: true }).click();
+    await expect(page.locator('.home-main > .home-dashboard')).toBeVisible();
     expect(errors).toEqual([]);
   });
 }
