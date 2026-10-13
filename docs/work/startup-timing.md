@@ -33,6 +33,50 @@ Compare the first splash point to Home and inspect the spans between them. Use `
 
 The panel adds opt-in observation overhead, so do not present sub-millisecond differences as a user-visible speedup. Unit/deferred and synthetic local-repository browser fixtures verify measurement, error identity and ordering, not actual Firebase or mobile latency. Never put private screenshots/fixture replacements into public Issues. Publish only a manually reviewed phase timing summary with environment context.
 
+## Passive document and initial-asset delivery
+
+The authorized panel also reads already-buffered Navigation/Resource Timing once
+when it has the first `splash-mounted` point. If administrator access arrives
+later, the browser may already have discarded resource entries; missing data
+stays unknown. This adds no request, listener, resource-buffer resize, storage,
+clipboard/export action or Firestore read. The existing authorization read and
+its potential contention remain unchanged. Phase-row JSON and its 80-row limit
+are unchanged; the delivery summary is a separate bounded projection.
+
+The document exposes only fetch/request/response-start and response-end times.
+Resources expose only fixed role, start/response-end and transfer/encoded/decoded
+byte counts. The allowlist is the current production Vite graph: `entry-script`,
+`react-vendor`, `firebase-vendor`, `runtime-vendor`, `icons-vendor`, `entry-styles`.
+Only same-origin `/assets/` hash-named JS/CSS without credentials, query or fragment,
+completed by the first Splash effect, qualify. Full names/URLs, arbitrary resource
+entries, navigation URLs, request contents and raw errors are never retained.
+Other dynamic views, video, fonts and API requests are outside this projection.
+
+The inferred delivery-to-Splash residual subtracts the latest response completion
+among HTML and all six tracked assets from the Splash effect. It is not a sum of
+parallel resource durations, measured CPU time, browser paint, or total startup
+latency. It can include evaluation, scheduling, rendering and other unobserved
+work. Missing/invalid navigation, missing or duplicate asset roles, or a response
+later than Splash suppress the inference. Zero byte counters are shown as unknown,
+not proof of memory/disk/service-worker cache or a zero-byte response. Browser
+response timing includes cache/service-worker behavior and is not a server-only
+or wire-only measurement. Redirect/network subphases are not independently
+attributed. The six-role mapping must be reviewed if the initial build graph
+changes; development source modules normally leave those roles unknown.
+
+Use fresh documents when comparing launches. A retained-page or back/forward-cache
+resume can still show the original document's sample and is not a newly measured
+launch. Match the actual origin/path, build, account/data, theme, visibility,
+network and diagnostic choices across a slow installed launch and Safari. Do not
+clear storage/cache or reinstall to manufacture comparability. If the diagnostic
+URL cannot be opened in the installed context, report that limitation rather than
+labelling a Safari sample as PWA evidence. This instrumentation does not identify
+the user's actual delay or establish any speed improvement.
+
+API references: [Navigation Timing](https://www.w3.org/TR/navigation-timing-2/)
+and [Resource Timing](https://www.w3.org/TR/resource-timing/).
+Implementation/evidence: [delivery timing checkpoint](../domains/client-runtime/work/startup-delivery-timing-handoff.md).
+
 ## Bootstrap overlap
 
 After accepted consent and the saved week-start preference, `PlannerAppBootstrap` restores authentication/profile and planner state concurrently with the existing memory provider initialization. The provider continues to suppress its children until its existing success/error terminal state; `AppContent`, including weekly-planning hooks and optional view preloads, therefore mounts only after memory settles. Supplied planner state is consumed rather than loaded again. The splash releases only when that content also observes bootstrap termination.

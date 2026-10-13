@@ -6,6 +6,7 @@ import { createAuthSessionService, type AuthSessionService } from '../services/a
 import { useAdminStatus } from '../hooks/useAdminStatus';
 import { startupTiming } from '../lib/startupTiming';
 import { StartupTimingButton } from './StartupTimingButton';
+import { StartupDeliveryTiming } from './StartupDeliveryTiming';
 
 /** The query opts into local measurement, never into administrator visibility. */
 export function StartupTimingPanel() {
@@ -69,6 +70,7 @@ function StartupTimingRows() {
     <p>Profile比較設定: {startupProfileObservation}（この起動のみ）</p>
     <p>Marker比較設定: {startupMarkerObservation}（この起動のみ）</p>
     <StartupTimingButton enabled />
+    <StartupDeliveryTiming splashStartMs={rows.find(row => row.phase === 'splash-mounted')?.startMs ?? null} />
     <pre>{JSON.stringify(rows, null, 2)}</pre>
   </details>;
 }
