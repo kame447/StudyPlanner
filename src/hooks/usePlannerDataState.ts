@@ -1704,8 +1704,12 @@ export function usePlannerDataState({
     if (!userId) {
       throw new Error('ログイン状態を確認できませんでした。');
     }
-
-    const hasMaterials = studyMaterials.some(
+    const currentSubject = actualAdmission.subjects().find(item => item.id === subject.id);
+    if (subject.userId !== userId || !currentSubject) {
+      throw new MaterialMutationAdmissionError(materialStaleMessage);
+    }
+    subject = currentSubject;
+    const hasMaterials = actualAdmission.materials().some(
       (material) =>
         material.userId === userId &&
         material.subjectId === subject.id,
@@ -1716,21 +1720,35 @@ export function usePlannerDataState({
       throw new Error('教材がある教科は削除できません。');
     }
 
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
+    const releaseAdmission = admitActualMutation([], [], [], [subject.id]);
+    let dispatchedFailure = false;
     try {
       await plannerRepository.deleteStudySubject(userId, subject.id);
-      setStudySubjects((current) =>
-        current.filter((item) => item.id !== subject.id),
-      );
+      if (!acknowledgedProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
+        setStudySubjects(current => current.filter(item => item.id !== subject.id));
+      }
       showDeleteUndoNotice(async () => {
-        await plannerRepository.upsertStudySubject(subject);
-        setStudySubjects((current) =>
-          sortStudySubjects(upsertByKey(current, subject, (item) => item.id)),
-        );
+        // A retained Undo cannot replace an already observed newer subject.
+        if (actualAdmission.subjects().some(item => item.id === subject.id)) {
+          throw new MaterialMutationAdmissionError(materialStaleMessage);
+        }
+        const restoreProjection = plannerDataReadAuthority.captureProjectionLease();
+        const releaseRestore = admitActualMutation([], [], [], [subject.id]);
+        let restoreFailure = false;
+        try {
+          await plannerRepository.upsertStudySubject(subject);
+          if (!restoreProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(restoreProjection)) {
+            setStudySubjects(current => sortStudySubjects(upsertByKey(current, subject, item => item.id)));
+          }
+        } catch (error) { restoreFailure = true; throw error; }
+        finally { settleActualAdmission(releaseRestore, restoreProjection, ['actual-material'], restoreFailure); }
       });
     } catch (error) {
+      dispatchedFailure = true;
       showNotice(resolveErrorMessage(error, '教科を削除できませんでした。'), 'error');
       throw error;
-    }
+    } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], dispatchedFailure); }
   }
 
   async function saveStudyMaterial(
