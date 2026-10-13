@@ -44,7 +44,7 @@ function Harness({ owner = 'owner-a' }: { owner?: string }) {
   state = usePlannerDataState({ userId: owner, showNotice });
   const unused = async (): Promise<never> => { throw new Error('outside material handoff'); };
   const snapshot: PlannerAppSnapshot = {
-    ...state, user: { id: owner } as User, booting: false, notice: null, dismissNotice() {},
+    ...state, user: { id: owner } as User, booting: false, profileRestoreRecovery: null, retryProfileRestore: async () => undefined, notice: null, dismissNotice() {},
     signUpWithPassword: unused, signInWithPassword: unused, signInWithGoogle: unused,
     sendPasswordReset: unused, saveUserProfile: unused, signOut: unused,
     saveWeeklyApprovedPlan: unused, completeWeeklyApprovalOperation: unused,
