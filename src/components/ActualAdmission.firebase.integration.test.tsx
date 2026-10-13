@@ -3,12 +3,12 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Firestore } from 'firebase/firestore';
 import type { PlannerRepository } from '../repositories/repositoryContracts';
-import { plan } from '../repositories/localPersistenceConcurrency.testUtils';
+import { deferred, plan, todo } from '../repositories/localPersistenceConcurrency.testUtils';
 import { DayView } from './DayView';
 import { QuickEntryModal } from './QuickEntryModal';
 import { ActualEditorCard } from './ActualEditorCard';
 import { usePlannerDataState, type UsePlannerDataStateResult } from '../hooks/usePlannerDataState';
-const sdk=vi.hoisted(()=>({ rows:new Map<string,Map<string,any>>(), log:[] as string[], gate:null as null|Promise<void>, entered:false }));
+const sdk=vi.hoisted(()=>({ rows:new Map<string,Map<string,any>>(), log:[] as string[], gate:null as null|Promise<void>, entered:false, gateField: 'occurrenceDate' }));
 const boundary=vi.hoisted(()=>({repository:null as unknown as PlannerRepository}));
 vi.mock('../repositories',()=>({plannerRepository:new Proxy({},{get:(_t,k)=>boundary.repository[k as keyof PlannerRepository]})}));
 // Portal placement is presentation-only; the real DayView, editors and mutation code remain intact.
@@ -16,11 +16,11 @@ vi.mock('react-dom',async(importOriginal)=>({...await importOriginal<typeof impo
 vi.mock('firebase/firestore',()=>({
   collection:(_db:any,name:string)=>({name}), doc:(_db:any,collectionName:string,id:string)=>({collectionName,id}),
   where:(field:string,_op:string,value:any)=>({field,value}), query:(collection:any,...conditions:any[])=>({...collection,conditions}), deleteField:()=>null,
-  getDocs:async(q:any)=>{if(q.name==='actuals' && q.conditions.some((c:any)=>c.field==='occurrenceDate') && sdk.gate){const g=sdk.gate;sdk.gate=null;sdk.entered=true;sdk.log.push('query-pending');await g;sdk.log.push('query-finished');}
+  getDocs:async(q:any)=>{if(q.name==='actuals' && q.conditions.some((c:any)=>c.field===sdk.gateField) && sdk.gate){const g=sdk.gate;sdk.gate=null;sdk.entered=true;sdk.log.push('query-pending');await g;sdk.log.push('query-finished');}
     const values=[...(sdk.rows.get(q.name)?.values()??[])].filter(row=>q.conditions.every((c:any)=>row[c.field]===c.value));
     return {docs:values.map(row=>({id:row.id,data:()=>structuredClone(row)}))};},
   deleteDoc:async(ref:any)=>{sdk.log.push('delete:'+ref.id);sdk.rows.get(ref.collectionName)?.delete(ref.id);},
-  setDoc:async(ref:any,value:any)=>{let rows=sdk.rows.get(ref.collectionName);if(!rows)sdk.rows.set(ref.collectionName,rows=new Map());rows.set(ref.id,structuredClone(value));},
+  setDoc:async(ref:any,value:any)=>{sdk.log.push('set:'+ref.id);let rows=sdk.rows.get(ref.collectionName);if(!rows)sdk.rows.set(ref.collectionName,rows=new Map());rows.set(ref.id,structuredClone(value));},
   writeBatch:()=>{const ops:any[]=[];return {set:(ref:any,value:any)=>ops.push({ref,value}),delete:(ref:any)=>ops.push({ref}),commit:async()=>{for(const {ref,value} of ops){let rows=sdk.rows.get(ref.collectionName);if(!rows)sdk.rows.set(ref.collectionName,rows=new Map());if(value){sdk.log.push('set:'+ref.id);rows.set(ref.id,structuredClone(value));}else rows.delete(ref.id);}}};},
 }));
 import {createFirebasePlannerRepository} from '../repositories/firebasePlannerRepository';
@@ -33,7 +33,7 @@ function Harness(){state=usePlannerDataState({userId:'owner',showNotice:notices}
   </>}
 function button(label:string){return renderer!.root.findAllByType('button').find(b=>b.children.includes(label))!;}
 async function click(label:string){await act(async()=>{button(label).props.onClick()});}
-beforeEach(()=>{sdk.rows.clear();sdk.rows.set('plans',new Map([[p.id,p]]));sdk.log=[];sdk.gate=null;sdk.entered=false;notices.mockClear();
+beforeEach(()=>{vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);sdk.rows.clear();sdk.rows.set('plans',new Map([[p.id,p]]));sdk.log=[];sdk.gate=null;sdk.entered=false;sdk.gateField='occurrenceDate';notices.mockClear();
   vi.stubGlobal('window',{addEventListener:noop,removeEventListener:noop,setTimeout,clearTimeout,matchMedia:()=>({matches:true}),confirm:()=>true,
     requestAnimationFrame:()=>1,cancelAnimationFrame:noop});
   vi.stubGlobal('HTMLElement',class {});
@@ -122,4 +122,183 @@ it('real UI Plan deletion rejects during linked Actual query, then succeeds afte
   await act(async()=>{deletePlanButton().props.onClick()});
   expect(await boundary.repository.getActuals('owner')).toEqual([]);
   expect(await boundary.repository.getPlans('owner')).toEqual([]);
+});
+
+
+it.each(['edit', 'delete'] as const)('normal Plan deletion rejects a linked Todo %s during the actual query', async operation => {
+  const linkedPlan = { ...p, sourceType: 'todo' as const, sourceId: 'todo' };
+  const linkedTodo = todo({ scheduledPlanId: linkedPlan.id });
+  sdk.rows.set('plans', new Map([[linkedPlan.id, linkedPlan]]));
+  sdk.rows.set('todos', new Map([[linkedTodo.id, linkedTodo]]));
+  await act(async () => { renderer = create(<Harness />); });
+  await act(async () => { await state.loadPlannerData('owner'); });
+  const retained = state;
+  let release!: () => void;
+  sdk.gateField = 'planId';
+  sdk.gate = new Promise<void>(resolve => { release = resolve; });
+  let deleting!: Promise<void>;
+  await act(async () => { deleting = state.deletePlan(linkedPlan); });
+  expect(sdk.entered).toBe(true);
+  let conflict: unknown;
+  await act(async () => {
+    try {
+      if (operation === 'edit') await retained.saveTodo({ ...linkedTodo, title: 'newer Todo title' }, linkedTodo.id);
+      else await retained.deleteTodo(linkedTodo);
+    } catch (error) { conflict = error; }
+  });
+  const beforeRelease = await boundary.repository.getTodos('owner');
+  await act(async () => { release(); await deleting; });
+  const durableTodos = await boundary.repository.getTodos('owner');
+  expect(await boundary.repository.getPlans('owner')).toEqual([]);
+  // An admitted newer write must never be overwritten or resurrected by the
+  // captured Todo carried through the delayed Firebase query.
+  if (!conflict) expect.soft(durableTodos).toEqual(beforeRelease);
+  expect.soft(conflict).toBeInstanceOf(Error);
+  expect.soft(durableTodos).toEqual([expect.objectContaining({ id: linkedTodo.id, title: linkedTodo.title, status: 'open', scheduledPlanId: null })]);
+});
+
+
+function DataHarness({ owner = 'owner' }: { owner?: string }) {
+  state = usePlannerDataState({ userId: owner, showNotice: notices });
+  return null;
+}
+async function mountLinkedTodo(concurrent = false) {
+  const linkedPlan = { ...p, sourceType: 'todo' as const, sourceId: 'todo' };
+  const linkedTodo = todo({ scheduledPlanId: linkedPlan.id });
+  sdk.rows.set('plans', new Map([[linkedPlan.id, linkedPlan]]));
+  sdk.rows.set('todos', new Map([[linkedTodo.id, linkedTodo]]));
+  await act(async () => { renderer = create(<DataHarness />, { createNodeMock: () => null, unstable_isConcurrent: concurrent } as Parameters<typeof create>[1]); });
+  await act(async () => { await state.loadPlannerData('owner'); });
+  return { linkedPlan, linkedTodo };
+}
+function pausePlanActualQuery() {
+  const gate = deferred();
+  sdk.gateField = 'planId';
+  sdk.gate = gate.promise;
+  return gate;
+}
+
+it.each(['edit', 'delete'] as const)('normal Plan deletion rejects during a prior linked Todo %s, then safely retries', async operation => {
+  const { linkedPlan, linkedTodo } = await mountLinkedTodo();
+  const retained = state;
+  const gate = deferred();
+  const originalSave = boundary.repository.upsertTodo;
+  const originalDelete = boundary.repository.deleteTodo;
+  boundary.repository.upsertTodo = async row => { await gate.promise; return originalSave(row); };
+  boundary.repository.deleteTodo = async (...args) => { await gate.promise; return originalDelete(...args); };
+  let first!: Promise<void>;
+  await act(async () => {
+    first = operation === 'edit'
+      ? state.saveTodo({ ...linkedTodo, title: 'updated before deletion' }, linkedTodo.id)
+      : state.deleteTodo(linkedTodo);
+  });
+  let conflict: unknown;
+  await act(async () => { try { await state.deletePlan(linkedPlan); } catch (error) { conflict = error; } });
+  expect(conflict).toBeInstanceOf(Error);
+  expect((await boundary.repository.getPlans('owner')).map(row => row.id)).toEqual([linkedPlan.id]);
+  await act(async () => { gate.resolve(); await first; });
+  // The retained callback must consult committed Todo state, not its old array.
+  await act(async () => { await retained.deletePlan(linkedPlan); });
+  expect(await boundary.repository.getPlans('owner')).toEqual([]);
+  expect(await boundary.repository.getTodos('owner')).toEqual(operation === 'delete' ? [] : [expect.objectContaining({
+    id: linkedTodo.id, title: 'updated before deletion', status: 'open', scheduledPlanId: null,
+  })]);
+});
+
+it.each(['success', 'failure'] as const)('linked Todo stays reserved through Plan-delete %s until committed publication, then retries', async outcome => {
+  const { linkedPlan, linkedTodo } = await mountLinkedTodo(true);
+  const retained = state;
+  const gate = pausePlanActualQuery();
+  let deleting!: Promise<void>, failure: unknown, conflict: unknown;
+  await act(async () => { deleting = state.deletePlan(linkedPlan).catch(error => { failure = error; }); });
+  expect(sdk.entered).toBe(true);
+  await act(async () => {
+    if (outcome === 'success') gate.resolve(); else gate.reject(new Error('query failure'));
+    await deleting;
+    try { await retained.deleteTodo(linkedTodo); } catch (error) { conflict = error; }
+  });
+  expect(conflict).toBeInstanceOf(Error);
+  if (outcome === 'failure') {
+    expect(failure).toBeInstanceOf(Error);
+    expect(state.plans.map(row => row.id)).toEqual([linkedPlan.id]);
+    expect(state.todos).toEqual(await boundary.repository.getTodos('owner'));
+    await act(async () => { await state.deletePlan(linkedPlan); });
+  } else expect(failure).toBeUndefined();
+  await act(async () => { await state.saveTodo({ ...state.todos[0], title: 'retry after publication' }, linkedTodo.id); });
+  expect(await boundary.repository.getPlans('owner')).toEqual([]);
+  expect(await boundary.repository.getTodos('owner')).toEqual([expect.objectContaining({
+    title: 'retry after publication', status: 'open', scheduledPlanId: null,
+  })]);
+});
+
+it('Plan deletion uses the latest matching Todo after a read and leaves a reassigned Todo untouched', async () => {
+  const { linkedPlan, linkedTodo } = await mountLinkedTodo();
+  const retained = state;
+  await boundary.repository.upsertTodo({ ...linkedTodo, title: 'latest metadata', memo: 'latest memo' });
+  await act(async () => { await state.loadPlannerData('owner'); });
+  await act(async () => { await retained.deletePlan(linkedPlan); });
+  expect(await boundary.repository.getTodos('owner')).toEqual([expect.objectContaining({
+    title: 'latest metadata', memo: 'latest memo', status: 'open', scheduledPlanId: null,
+  })]);
+  // Another valid Plan association must not be undone by this stale Plan source.
+  await boundary.repository.upsertPlan(linkedPlan);
+  await boundary.repository.upsertTodo({ ...linkedTodo, title: 'reassigned', scheduledPlanId: 'other-plan' });
+  await act(async () => { await state.loadPlannerData('owner'); });
+  sdk.log = [];
+  await act(async () => { await retained.deletePlan(linkedPlan); });
+  expect(sdk.log).not.toContain('set:' + linkedTodo.id);
+  expect(await boundary.repository.getTodos('owner')).toEqual([expect.objectContaining({ title: 'reassigned', scheduledPlanId: 'other-plan' })]);
+});
+
+it('pending Plan deletion permits unrelated Todo edits and owner replacement without stale UI publication', async () => {
+  const { linkedPlan } = await mountLinkedTodo();
+  const otherTodo = todo({ id: 'other-todo', title: 'independent', status: 'open', scheduledPlanId: null });
+  await boundary.repository.upsertTodo(otherTodo);
+  await act(async () => { await state.loadPlannerData('owner'); });
+  const gate = pausePlanActualQuery();
+  let deleting!: Promise<void>, staleCompletion: unknown;
+  await act(async () => { deleting = state.deletePlan(linkedPlan).catch(error => { staleCompletion = error; }); });
+  await act(async () => { await state.saveTodo({ ...otherTodo, title: 'independent edit' }, otherTodo.id); });
+  expect((await boundary.repository.getTodos('owner')).find(row => row.id === otherTodo.id)?.title).toBe('independent edit');
+  const nextTodo = todo({ id: 'next-owner-todo', userId: 'next-owner', status: 'open', scheduledPlanId: null });
+  await boundary.repository.upsertTodo(nextTodo);
+  await act(async () => { renderer!.update(<DataHarness owner="next-owner" />); });
+  await act(async () => { await state.loadPlannerData('next-owner'); });
+  notices.mockClear();
+  await act(async () => { gate.resolve(); await deleting; });
+  expect(staleCompletion).toBeInstanceOf(Error);
+  expect(state.todos).toEqual(await boundary.repository.getTodos('next-owner'));
+  expect(state.plans).toEqual([]);
+  expect(notices).not.toHaveBeenCalled();
+  await act(async () => { await state.saveTodo({ ...nextTodo, title: 'new owner can edit' }, nextTodo.id); });
+  expect((await boundary.repository.getTodos('next-owner'))[0].title).toBe('new owner can edit');
+});
+
+it.each(['pending', 'failed'] as const)('linked Todo stays fenced while crossing-read repair is %s after Plan deletion', async repair => {
+  const { linkedPlan, linkedTodo } = await mountLinkedTodo();
+  const retained = state;
+  const gate = pausePlanActualQuery();
+  let deleting!: Promise<void>;
+  await act(async () => { deleting = state.deletePlan(linkedPlan); });
+  await act(async () => { await state.loadPlannerData('owner'); });
+  expect(state.todos[0].scheduledPlanId).toBe(linkedPlan.id);
+  const repairGate = deferred();
+  const originalGet = boundary.repository.getTodos;
+  boundary.repository.getTodos = async owner => {
+    if (repair === 'failed') throw new Error('repair offline');
+    await repairGate.promise;
+    return originalGet(owner);
+  };
+  await act(async () => { gate.resolve(); await deleting; });
+  expect(state.isPlannerDataSnapshotCurrent()).toBe(false);
+  expect(await originalGet('owner')).toEqual([expect.objectContaining({ status: 'open', scheduledPlanId: null })]);
+  sdk.log = [];
+  await act(async () => { await expect(retained.saveTodo({ ...linkedTodo, title: 'stale edit' }, linkedTodo.id)).rejects.toThrow('再読み込み'); });
+  expect(sdk.log).toEqual([]);
+  boundary.repository.getTodos = originalGet;
+  await act(async () => { repairGate.resolve(); });
+  if (repair === 'failed') await act(async () => { await state.retryPlannerData(); });
+  expect(state.todos).toEqual(await originalGet('owner'));
+  await act(async () => { await state.saveTodo({ ...state.todos[0], title: 'fresh edit' }, linkedTodo.id); });
+  expect(await originalGet('owner')).toEqual([expect.objectContaining({ title: 'fresh edit', status: 'open', scheduledPlanId: null })]);
 });
