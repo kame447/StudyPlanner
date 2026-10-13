@@ -1,4 +1,5 @@
 import { expect, test, E2E_TODAY } from './support/fixed-clock.mjs';
+import { waitForVisualReady } from './support/ui-regression.mjs';
 
 async function browseAnotherDateThenHome(page) {
   await page.locator('.primary-bottom-nav button').filter({ hasText: '予定' }).click();
@@ -27,6 +28,23 @@ async function expectOriginalRowHeight(row) {
   expect(heights.current).toBeCloseTo(heights.original, 1);
 }
 
+
+async function expectLastPlanSeparator(row) {
+  const styles = await row.evaluate(element => {
+    const lastPlan = Array.from(element.parentElement.querySelectorAll('.home-schedule-row')).at(-1);
+    if (!lastPlan) throw new Error('A populated Today list is required');
+    const timeline = getComputedStyle(lastPlan, '::before');
+    return { border: getComputedStyle(lastPlan).borderBottomWidth,
+      timelineDisplay: timeline.display, timelineContent: timeline.content, timelineBorder: timeline.borderLeftWidth,
+      followedByAddControl: lastPlan.nextElementSibling === element };
+  });
+  expect(styles.followedByAddControl).toBe(true);
+  expect(styles.border).toBe('1px');
+  expect(styles.timelineDisplay).not.toBe('none');
+  expect(styles.timelineContent).not.toBe('none');
+  expect(styles.timelineBorder).toBe('1px');
+}
+
 for (const width of [390, 1280]) {
   test(`Home adds an event or study without Calendar navigation at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
@@ -47,6 +65,7 @@ for (const width of [390, 1280]) {
     await expect(home).not.toContainText('今日の予定はまだありません');
     await browseAnotherDateThenHome(page);
     const row = page.getByRole('group', { name: '今日の予定の追加', exact: true });
+    await waitForVisualReady(page, '.home-inline-add');
     await expectOriginalRowHeight(row);
     const closedBox = await row.boundingBox();
     await add.click();
@@ -87,10 +106,13 @@ for (const width of [390, 1280]) {
     await expect(event).toHaveCount(0); await expect(home).toBeVisible();
     await expect(home.locator('.home-schedule-list')).toContainText('ホームから予定');
     await browseAnotherDateThenHome(page);
+    await waitForVisualReady(page, '.home-inline-add');
     await expectOriginalRowHeight(row);
+    await expectLastPlanSeparator(row);
     const populatedRow = await row.boundingBox();
     await add.click();
     expect(await row.boundingBox()).toEqual(populatedRow);
+    await expectLastPlanSeparator(row);
     for (const button of await row.getByRole('button').all()) {
       expect((await button.boundingBox()).height).toBeCloseTo(populatedRow.height, 1);
     }
@@ -145,11 +167,13 @@ for (const [width, appearance, theme, height = 844, relaxed = false, count = 0] 
     }
     await expectOriginalRowHeight(row);
     await page.evaluate(() => document.fonts.ready);
+    if (count) await expectLastPlanSeparator(row);
     const closed = await row.boundingBox();
     // The whole original frame remains a tap target, including its top edge.
     await add.click({ position: { x: 4, y: 2 } });
     await expect(row.getByRole('button')).toHaveCount(3);
     const open = await row.boundingBox();
+    if (count) await expectLastPlanSeparator(row);
     expect(open.width).toBeCloseTo(closed.width, 1);
     expect(open.height).toBeCloseTo(closed.height, 1);
     const bounds = await row.evaluate(element => {
@@ -167,7 +191,9 @@ for (const [width, appearance, theme, height = 844, relaxed = false, count = 0] 
     expect(bounds.every(bound => bound.fullHeight && bound.inside && bound.textInside && bound.noOverflow), JSON.stringify(bounds)).toBe(true);
     await expect(row.getByRole('button', { name: '予定を追加', exact: true })).toBeVisible();
     await expect(row.getByRole('button', { name: '学習予定を追加', exact: true })).toBeVisible();
-    await testInfo.attach(`inline-${width}-${appearance}-${theme}`, { body: await row.screenshot(), contentType: 'image/png' });
+    const screenshot = testInfo.outputPath('home-add-chooser.png');
+    await row.screenshot({ path: screenshot });
+    await testInfo.attach(`inline-${width}-${appearance}-${theme}`, { path: screenshot, contentType: 'image/png' });
     await page.getByRole('heading', { name: '今日の予定', exact: true }).click();
     await expect(add).toHaveAttribute('aria-expanded', 'false');
     await add.press('Space');

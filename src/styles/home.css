@@ -551,7 +551,7 @@
   cursor: pointer;
 }
 
-.home-schedule-row:last-of-type {
+.home-schedule-row:last-child {
   border-bottom: 0;
 }
 
@@ -576,7 +576,7 @@
   border-left: 1px dashed #cbd5e4;
 }
 
-.home-schedule-row:last-of-type .home-time-dot::after {
+.home-schedule-row:last-child .home-time-dot::after {
   display: none;
 }
 

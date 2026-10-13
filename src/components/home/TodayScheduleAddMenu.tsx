@@ -32,7 +32,7 @@ export function TodayScheduleAddMenu({ date, empty, onAddEntry }: {
   }
 
   function select(kind: HomeAddEntry['kind']) {
-    // The existing form owns dialog focus and returns it to this retained toggle.
+    // Keep focus on the retained toggle as the inline action buttons unmount.
     close();
     onAddEntry({ kind, date });
   }
