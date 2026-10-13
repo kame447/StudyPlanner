@@ -5,7 +5,7 @@ import type {
   DecisionProvider,
   DecisionQuestionCatalog,
 } from './decisionProvider';
-import { AUTHORIZATION_QUESTIONS, JEV_MODEL, JEV_TIMEOUT_MS } from './decisionPolicy';
+import { AUTHORIZATION_QUESTIONS, JEV_MODEL, JEV_PROVIDER_PREFERENCES, JEV_TIMEOUT_MS } from './decisionPolicy';
 
 const DECISIONS_URL = 'https://openrouter.ai/api/alpha/decisions';
 const MAX_DECISIONS_RESPONSE_BYTES = 32_768;
@@ -90,7 +90,10 @@ export function createOpenRouterDecisionProvider<TState, TDecision extends strin
   return {
     async evaluate(state, signal) {
       const started = Date.now();
-      const body = JSON.stringify({ model: JEV_MODEL.request, state, questions: catalog.questions });
+      const body = JSON.stringify({
+        model: JEV_MODEL.request, state, questions: catalog.questions,
+        provider: JEV_PROVIDER_PREFERENCES,
+      });
       const metadata: DecisionMetadata = {
         provider: 'openrouter', requestedModel: JEV_MODEL.request, servedModel: null,
         latencyMs: 0, inputTokens: null, outputTokens: null, costUsd: null,

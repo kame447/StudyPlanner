@@ -57,6 +57,14 @@ beforeEach(() => vi.spyOn(console, 'info').mockImplementation(() => undefined));
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('purpose-independent Decisions validation', () => {
+  it.each(catalogs)('$name fixes the privacy routing preferences on the server-owned request', async ({ catalog }) => {
+    const transport = vi.fn<typeof fetch>(async () => Response.json(responseBody(catalog)));
+    await createOpenRouterDecisionProvider({ apiKey: 'fixture', catalog, fetch: transport }).evaluate({});
+    expect(JSON.parse(String(transport.mock.calls[0][1]?.body)).provider)
+      .toEqual({ zdr: true, data_collection: 'deny' });
+    expect(transport).toHaveBeenCalledTimes(1);
+  });
+
   it.each(catalogs)('$name rejects every malformed numeric/head/option variant without retry', async ({ catalog }) => {
     const variants: Array<(body: ReturnType<typeof responseBody>) => void> = [
       body => { body.answers[catalog.choiceAnswerKey].confidence = NaN; },

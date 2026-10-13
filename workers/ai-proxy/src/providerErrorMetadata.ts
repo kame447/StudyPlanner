@@ -6,8 +6,9 @@ const ERROR_CODES = ['ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT'] as 
  */
 export function safeProviderErrorMetadata(error: unknown): { name: string; code: string | null } {
   try {
-    const name = error instanceof Error && ERROR_NAMES.some(value => value === error.name)
-      ? error.name : 'unknown';
+    const rawName = error instanceof Error ? error.name : undefined;
+    const name = typeof rawName === 'string' && ERROR_NAMES.some(value => value === rawName)
+      ? rawName : 'unknown';
     const code = typeof error === 'object' && error !== null
       ? (error as { code?: unknown }).code : undefined;
     return { name, code: typeof code === 'string' && ERROR_CODES.some(value => value === code) ? code : null };

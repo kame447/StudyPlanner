@@ -69,6 +69,48 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('credential-bearing Worker fetch redirects and Luna model identity', () => {
+  it.each(contexts)('$purpose fixes privacy preferences despite browser override and falls back once on route rejection', async context => {
+    for (const status of [403, 422]) {
+      const decisionBodies: Array<Record<string, unknown>> = [];
+      const lunaBodies: Array<Record<string, unknown>> = [];
+      const transport = vi.fn<typeof fetch>(async (input, init) => {
+        const url = String(input);
+        if (url.includes('identitytoolkit')) return Response.json({ users: [{ localId: 'fixture-owner', emailVerified: true }] });
+        const body = JSON.parse(String(init?.body));
+        if (url.includes('openrouter.ai')) {
+          decisionBodies.push(body);
+          return Response.json({ error: 'private-upstream-sentinel' }, { status });
+        }
+        if (url.includes('api.openai.com')) {
+          lunaBodies.push(body);
+          return Response.json({ model: body.model, choices: [{ message: { content: 'luna-after-private-route-rejection' } }] });
+        }
+        throw new Error('Unstubbed endpoint: no real provider call is allowed.');
+      });
+      vi.stubGlobal('fetch', transport);
+      const response = await worker.fetch(request('/chat/completions', {
+        purpose: context.purpose === 'user_context_routing' ? 'user_context_interpreter' : 'weekly_planning_semantic_normalizer',
+        messages: [{ role: 'user', content: 'private-luna-input' }], decisionContext: context,
+        provider: { zdr: false, data_collection: 'allow', order: ['browser-chosen-provider'] },
+      }), { ...env, JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100',
+        JEV_FOCUSED_AUTHORIZATION_MODE: 'canary', JEV_FOCUSED_AUTHORIZATION_CANARY_PERCENT: '100',
+        JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE: 'canary', JEV_FOCUSED_CONTEXTUAL_ANSWER_CANARY_PERCENT: '100',
+        JEV_TEMPORAL_SCOPE_REPAIR_MODE: 'canary', JEV_TEMPORAL_SCOPE_REPAIR_CANARY_PERCENT: '100',
+        JEV_USER_CONTEXT_ROUTING_MODE: 'canary', JEV_USER_CONTEXT_ROUTING_CANARY_PERCENT: '100',
+      } as never);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ content: 'luna-after-private-route-rejection' });
+      expect(decisionBodies).toHaveLength(1);
+      expect(decisionBodies[0].provider).toEqual({ zdr: true, data_collection: 'deny' });
+      expect(lunaBodies).toHaveLength(1);
+      expect(lunaBodies[0]).not.toHaveProperty('provider');
+      expect(lunaBodies[0]).not.toHaveProperty('decisionContext');
+      expect(transport.mock.calls.filter(([input]) => String(input).includes('openrouter.ai'))).toHaveLength(1);
+      expect(transport.mock.calls.filter(([input]) => String(input).includes('api.openai.com'))).toHaveLength(1);
+      expect(JSON.stringify(vi.mocked(console.info).mock.calls)).not.toContain('private-upstream-sentinel');
+    }
+  });
+
   it.each(cells)('$context.purpose/$mode rejects redirect $status with one Luna send and no credential forwarding', async ({ context, mode, status }) => {
     const transport = installTransport({ redirectStatus: status });
     const pending: Promise<unknown>[] = [];

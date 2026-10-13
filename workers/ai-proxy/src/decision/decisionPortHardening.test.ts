@@ -31,6 +31,33 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('bounded Luna response and ordinary error-log privacy', () => {
+  // Astra1's independent red oracle, strengthened with exact read counts.
+  it('does not emit an unvalidated second value from a diagnostic name accessor', () => {
+    const error = new Error('raw input and key in message must stay private');
+    let reads = 0;
+    Object.defineProperty(error, 'name', {
+      get() { return ++reads === 1 ? 'Error' : 'RAW_INPUT_SECRET_SENTINEL'; },
+    });
+    const metadata = safeProviderErrorMetadata(error);
+    expect(JSON.stringify(metadata)).not.toContain('RAW_INPUT_SECRET_SENTINEL');
+    expect(metadata.name).toBe('Error');
+    expect(reads).toBe(1);
+  });
+
+  it('reads a changing diagnostic code accessor once and contains throwing names', () => {
+    const error = new Error('private-message');
+    let reads = 0;
+    Object.defineProperty(error, 'code', {
+      get() { return ++reads === 1 ? 'ECONNRESET' : 'RAW_CODE_SECRET_SENTINEL'; },
+    });
+    expect(safeProviderErrorMetadata(error)).toEqual({ name: 'Error', code: 'ECONNRESET' });
+    expect(reads).toBe(1);
+    const throwing = Object.defineProperty(new Error('private-key-sentinel'), 'name', {
+      get() { throw new Error('private-name-sentinel'); },
+    });
+    expect(safeProviderErrorMetadata(throwing)).toEqual({ name: 'unknown', code: null });
+  });
+
   it.each([
     { path: '/planning-attachment', error: 'AI planning image analysis failed.', body: {
       model: AI_CHAT_PURPOSE_MODELS.weekly_planning_attachment,
