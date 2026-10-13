@@ -86,7 +86,8 @@ for (const width of [390, 1280]) {
     await expect(chooser.getByRole('button')).toHaveCount(3);
     await expect(chooser.locator('.lucide-calendar-plus')).toHaveCount(1);
     await expect(chooser.locator('.lucide-book-open-check')).toHaveCount(1);
-    await expect(close.locator('.lucide-x')).toHaveCount(1);
+    await expect(close.locator('.lucide-plus')).toHaveCount(1);
+    await expect(close).toHaveClass(/is-open/);
     await expect(chooser.getByRole('button', { name: '予定を追加', exact: true })).toBeFocused();
     await expect(close).toHaveAttribute('aria-expanded', 'true');
     await expect(page.locator('.home-add-sheet, .home-add-overlay')).toHaveCount(0);
