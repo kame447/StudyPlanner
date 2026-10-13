@@ -72,8 +72,8 @@ async function expectSameRow(first, second) {
   expect(a.x + a.width).toBeLessThanOrEqual(b.x);
 }
 
-async function expectResponsivePair(first, second) {
-  const geometry = await first.evaluate(element => {
+async function expectResponsivePair(first, second, minimumRem = 14) {
+  const geometry = await first.evaluate((element, minimumRem) => {
     const pair = element.parentElement.parentElement;
     const style = getComputedStyle(pair);
     const gap = parseFloat(style.columnGap);
@@ -85,8 +85,8 @@ async function expectResponsivePair(first, second) {
       ? width - ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth']
         .reduce((sum, key) => sum + parseFloat(style[key]), 0)
       : width;
-    return { contentWidth, requiredWidth: 14 * rem + gap };
-  });
+    return { contentWidth, requiredWidth: minimumRem * rem + gap };
+  }, minimumRem);
   if (geometry.contentWidth >= geometry.requiredWidth) await expectSameRow(first, second);
   else {
     const [a, b] = await Promise.all([first.boundingBox(), second.boundingBox()]);
@@ -127,12 +127,16 @@ for (const scenario of cases) {
     await expect(record).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]')[0]))
       .toMatchObject({ title: '変更した内容', note: '保持する記録メモ', isAlignedToPlan: false });
+    // Capture the next editor after the real 3.6s save notice naturally leaves,
+    // so its heading is not obscured by a transient notification in the image.
+    await expect(page.locator('.app-toast').filter({ hasText: '記録を保存しました。' })).toHaveCount(0);
 
     await page.getByRole('tab', { name: 'Todo', exact: true }).click();
     const row = page.locator('.todo-view-item').filter({ hasText: '研究室に進捗共有' });
     await row.getByRole('button', { name: '編集', exact: true }).click();
     const todo = page.locator('.todo-edit-modal:not(.todo-schedule-modal)');
     await expectReadableControls(todo);
+    await expect(todo.getByRole('heading', { name: 'Todo編集', exact: true })).toBeVisible();
     const background = await todo.evaluate(element => {
       const style = getComputedStyle(element);
       const canvas = document.createElement('canvas');
@@ -152,9 +156,10 @@ for (const scenario of cases) {
     await expect(type).toHaveAccessibleName('種別');
     await expect(type).toHaveValue('study');
     await expectResponsivePair(type, todo.getByRole('spinbutton', { name: '所要時間（分）', exact: true }));
-    if (!scenario.enlarged) {
-      if (scenario.width >= 390) await expectSameRow(todo.getByLabel('締切日', { exact: true }), todo.getByLabel('締切時刻', { exact: true }));
-    }
+    // The deadline flex pair needs 9rem + 7rem, based on its own available
+    // width, not the desktop/mobile viewport outside the modal.
+    await expectResponsivePair(todo.getByLabel('締切日', { exact: true }),
+      todo.getByLabel('締切時刻', { exact: true }), 16);
     await testInfo.attach('Compact Todo editor', { body: await page.screenshot(), contentType: 'image/png' });
     await todo.getByLabel('タイトル', { exact: true }).fill('取消する変更');
     await todo.getByRole('button', { name: 'キャンセル', exact: true }).click();

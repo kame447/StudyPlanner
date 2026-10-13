@@ -57,4 +57,15 @@ describe('schedule event color authority', () => {
     });
     expect(scheduleEventWeekStyle('#ef7b9f')).toMatchObject(style);
   });
+
+  it('retains light week-plan surfaces and fixed readable text without changing the accent', () => {
+    expect(scheduleEventWeekStyle('#2f78e3', 'pastel')).toMatchObject({
+      '--schedule-event-color': '#2f78e3',
+      '--weekly-draft-tone': 'var(--schedule-event-color)',
+      '--weekly-draft-tone-bg': 'color-mix(in srgb, var(--schedule-event-color) 13%, #fff 87%)',
+      '--text': '#263238',
+      '--text-muted': '#52606d',
+    });
+    expect(scheduleEventWeekStyle('#2f78e3')).not.toHaveProperty('--text');
+  });
 });
