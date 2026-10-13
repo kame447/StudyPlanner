@@ -95,6 +95,10 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
   // controls. Keep these statement-specific so new input focus in the same file
   // still fails this guard. Browser tests assert the actual heading/tab/button.
   const allowedFocusStatements = new Map([
+    // Auth Arrow/Home/End navigation focuses only an explicitly selected mode button.
+    ['src/components/AuthScreen.tsx', new Set([
+      'event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-intent="${nextIntent}"]`)?.focus();',
+    ])],
     // Arrow/Home/End navigation focuses only the sibling mode buttons.
     ['src/components/StudySessionModePicker.tsx', new Set([
       'event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-mode="${mode}"]`)?.focus();',
@@ -167,7 +171,7 @@ test.describe('mobile browser input focus policy', () => {
 
   test('auth surface opens without stealing focus and keeps all visible text controls zoom-safe', async ({ page }) => {
     await page.goto(AUTH_HARNESS_URL);
-    await expect(page.getByRole('heading', { name: '新規会員登録' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toBeVisible();
 
     await expectNoTextControlFocused(page);
     await expectVisibleTextControlsAtLeast16px(page);
