@@ -274,7 +274,8 @@ it.each([false, true])('ignores a retired preview key and preserves authenticate
   if (!signedIn) {
     expect(renderer!.root.findAllByProps({ role: 'tablist', 'aria-label': '認証モード' })).toHaveLength(1);
     expect(renderer!.root.findAllByProps({ type: 'email' })).toHaveLength(1);
-    expect(renderer!.root.findAllByType('h2').map((heading) => heading.children.join(''))).toContain('新規会員登録');
+    expect(renderer!.root.findByProps({ role: 'tab', 'data-intent': 'sign-in' }).props['aria-selected']).toBe(true);
+    expect(renderer!.root.findByProps({ role: 'tab', 'data-intent': 'sign-up' }).props['aria-selected']).toBe(false);
   }
   expect(getItem).not.toHaveBeenCalledWith('studyplanner.app-access-key');
   expect(setItem).not.toHaveBeenCalled();

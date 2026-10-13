@@ -31,6 +31,8 @@ The requirements document is the specification; the Issue is the work-state owne
 Other active client-runtime work:
 
 - [Durable weekly-planning turns](work/ai-durable-turns-handoff.md): accepted whole-turn execution after browser suspension, invocation-local shared runtime, and GET-only recovery; production resource activation remains separately gated.
+- [Compact record and Todo forms](work/compact-actual-record-form-handoff.md): UI Issue #483; linked-record/Todo density, completed disclosure order, and timetable helper copy; local verification and browser/release boundaries tracked separately.
+- [Login entry and quiet starfield](work/login-starfield-handoff.md): UI Issue #483; login-first admission, accessible mode switching and a shared dark canvas; native logo/rendering acceptance remains separately tracked.
 
 - [Passive startup delivery timing](work/startup-delivery-timing-handoff.md): Issue #542; local-only pre-Splash diagnostics, with installed-device cause and publication still separate.
 
