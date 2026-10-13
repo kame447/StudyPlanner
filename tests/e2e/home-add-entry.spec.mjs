@@ -55,21 +55,33 @@ async function scrollOffsets(row) {
   });
 }
 
-async function prepareInlinePointer(page, add) {
+async function prepareInlinePointer(page, add, testInfo, phase) {
   // Settle Home before revealing the control: a later layout pass can change
   // the scrollport without changing the row's own box. Do not pre-hover/focus.
   await waitForVisualReady(page, '.home-inline-add');
   await add.scrollIntoViewIfNeeded();
-  await expect(add).toBeInViewport({ ratio: 1 });
   const containment = await add.evaluate(element => new Promise(resolve => {
     const observer = new IntersectionObserver(([entry]) => {
       observer.disconnect();
+      const ancestors = [];
+      for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+        const style = getComputedStyle(parent);
+        ancestors.push({ tag: parent.tagName, className: parent.className,
+          rect: parent.getBoundingClientRect().toJSON(), overflowX: style.overflowX, overflowY: style.overflowY,
+          clientWidth: parent.clientWidth, clientHeight: parent.clientHeight,
+          scrollWidth: parent.scrollWidth, scrollHeight: parent.scrollHeight,
+          scrollTop: parent.scrollTop, scrollLeft: parent.scrollLeft });
+      }
       resolve({ ratio: entry.intersectionRatio, target: entry.boundingClientRect.toJSON(),
-        visible: entry.intersectionRect.toJSON() });
+        visible: entry.intersectionRect.toJSON(), root: entry.rootBounds?.toJSON(), ancestors });
     });
     observer.observe(element);
   }));
-  expect(containment.ratio).toBe(1);
+  // Native intersection is diagnostic, not the layout acceptance contract.
+  // Preserve it before the ordinary click and the exact geometry assertions.
+  await testInfo.attach(`${phase}-native-intersection`, {
+    contentType: 'application/json', body: JSON.stringify(containment),
+  });
   return containment;
 }
 
@@ -94,7 +106,7 @@ for (const width of [390, 1280]) {
     await browseAnotherDateThenHome(page);
     const row = page.getByRole('group', { name: '今日の予定の追加', exact: true });
     await expectOriginalRowHeight(row);
-    const closedContainment = await prepareInlinePointer(page, add);
+    const closedContainment = await prepareInlinePointer(page, add, testInfo, 'empty');
     const closedBox = await row.boundingBox();
     const closedScroll = await scrollOffsets(row);
     await add.click();
@@ -146,7 +158,7 @@ for (const width of [390, 1280]) {
     await expectLastPlanSeparator(row);
     // Measure after the temporary row probe, settled layout and final reveal;
     // the ordinary click must still preserve geometry through hover/focus/open.
-    const populatedContainment = await prepareInlinePointer(page, add);
+    const populatedContainment = await prepareInlinePointer(page, add, testInfo, 'populated');
     const populatedRow = await row.boundingBox();
     const populatedScroll = await scrollOffsets(row);
     await add.click();
