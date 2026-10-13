@@ -24,7 +24,11 @@ Owning Issue: #213
 
 ## Active work
 
+- [Event ingestion read load](work/20261013-event-ingestion-read-load.md): Issue #542 create-first event persistence, preserving immutable replay and unknown-write recovery; local verification and HTTP tradeoffs.
+
 - [Scheduled maintenance idle read load](work/20261008-backend-idle-read-load.md): Issue #542 backend read measurement and local bounded idle-read reduction. Separate from the published client-runtime release unit; production billing and rollout remain unverified.
+
+- [Admin user timeline request ownership](work/20261013-admin-user-timeline-ownership.md): Issue #213 selected-actor pagination, stale-response isolation and retry; local focused verification only.
 
 ## Ownership
 

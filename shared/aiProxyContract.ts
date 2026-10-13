@@ -9,6 +9,7 @@ export const AI_PROXY_CHAT_REQUEST_LIMITS = {
 
 const DEFAULT_TEMPERATURE_ONLY_OPENAI_MODELS = new Set([
   'gpt-5.6-luna',
+  'gpt-6-luna',
 ]);
 
 export function resolveOpenAiChatTemperature(

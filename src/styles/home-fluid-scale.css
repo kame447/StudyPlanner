@@ -334,13 +334,13 @@
 
   .home-dashboard-default .home-schedule-row,
   .home-dashboard-default .home-schedule-empty {
-    padding-top: calc(9px + var(--home-relax-schedule-side, 0px));
-    padding-bottom: calc(9px + var(--home-relax-schedule-side, 0px));
+    --home-add-pad: calc(9px + var(--home-relax-schedule-side, 0px));
+    padding-block: var(--home-add-pad);
   }
 
   .home-dashboard-default .home-schedule-add-row {
-    padding-top: calc(8px + var(--home-relax-schedule-side, 0px));
-    padding-bottom: calc(8px + var(--home-relax-schedule-side, 0px));
+    --home-add-pad: calc(8px + var(--home-relax-schedule-side, 0px));
+    padding-block: var(--home-add-pad);
   }
 
   .home-dashboard-default .home-today-panel {
@@ -399,13 +399,13 @@
 
   .home-dashboard-default .home-schedule-row,
   .home-dashboard-default .home-schedule-empty {
-    padding-top: calc(11px + var(--home-relax-schedule-side, 0px));
-    padding-bottom: calc(11px + var(--home-relax-schedule-side, 0px));
+    --home-add-pad: calc(11px + var(--home-relax-schedule-side, 0px));
+    padding-block: var(--home-add-pad);
   }
 
   .home-dashboard-default .home-schedule-add-row {
-    padding-top: calc(10px + var(--home-relax-schedule-side, 0px));
-    padding-bottom: calc(10px + var(--home-relax-schedule-side, 0px));
+    --home-add-pad: calc(10px + var(--home-relax-schedule-side, 0px));
+    padding-block: var(--home-add-pad);
   }
 
   .home-dashboard-default .home-today-panel {

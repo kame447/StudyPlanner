@@ -48,3 +48,18 @@ export interface DecisionProvider<
     signal?: AbortSignal,
   ): Promise<DecisionEvaluation<TDecision>>;
 }
+
+export type DecisionProviderAttempt<TDecision extends string> = DecisionEvaluation<TDecision>
+  | { status: 'unavailable'; reason: 'network'; metadata: null };
+
+/** A nonconforming adapter must not stop shadow or bypass the one Luna fallback.
+ * No provider identity/usage is invented when it throws instead of returning
+ * the typed result. Baseline markers and the physical dispatch ledger remain
+ * the observation boundary for this exceptional path.
+ */
+export async function evaluateDecisionProviderSafely<TState, TDecision extends string>(
+  provider: DecisionProvider<TState, TDecision>, state: TState, signal?: AbortSignal,
+): Promise<DecisionProviderAttempt<TDecision>> {
+  try { return await provider.evaluate(state, signal); }
+  catch { return { status: 'unavailable', reason: 'network', metadata: null }; }
+}

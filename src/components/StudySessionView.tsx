@@ -4,7 +4,6 @@ import {
   BookOpen,
   CheckCircle2,
   Clock3,
-  FileText,
   NotebookPen,
   Pause,
   Play,
@@ -435,7 +434,7 @@ function StudySessionView({
       aria-modal="true"
       aria-label={dialogLabel}
     >
-      <div className="study-session-page" ref={pageRef}>
+      <div className="study-session-page" data-phase={phase} ref={pageRef}>
         <header className="study-session-header">
           <button type="button" className="study-session-icon-button" onClick={handleBack} aria-label="戻る">
             <ArrowLeft size={24} aria-hidden="true" />
@@ -447,38 +446,47 @@ function StudySessionView({
         {phase === 'timer' ? (
           <main className="study-session-content study-session-timer-view">
             <section className="study-session-card study-session-primary-card">
-              <div className="study-session-eyebrow"><BookOpen size={18} aria-hidden="true" />現在の学習対象</div>
-              <h2>{sessionTitle}</h2>
-              {initialTarget.kind === 'planned' && !isStarted ? (
-                <label className="study-session-target-choice">学習内容
-                  <select aria-label="学習内容" value={target.kind} onChange={event => { if (!started.current) setTarget(event.target.value === 'planned' ? initialTarget : { kind: 'unplanned', userId }); }}>
-                    <option value="planned">この予定で学習: {initialTarget.plan.title}</option>
-                    <option value="unplanned">予定にない学習</option>
-                  </select>
-                </label>
-              ) : null}
-              {!plan && !isStarted ? (
-                <div className="study-session-field-grid study-session-unplanned-setup">
-                  <label>勉強する内容<input aria-label="勉強する内容" value={unplannedTitle} placeholder="学習" onChange={event => setUnplannedTitle(event.target.value)} /></label>
-                  <label>教材<select aria-label="教材" value={unplannedMaterialId} onChange={event => {
-                    const selected = materials.find(item => item.id === event.target.value);
-                    setUnplannedMaterialId(selected?.id ?? '');
-                    setUnplannedSubject(selected?.subjectName ?? '');
-                    setUnplannedTitle(current => !current || current === material?.name ? selected?.name ?? '' : current);
-                  }}>
-                    <option value="">教材なし</option>
-                    {materials.filter(item => item.status !== 'archived').map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-                  </select></label>
-                </div>
-              ) : null}
-              {plan ? <dl className="study-session-plan-meta">
-                <div><dt><Clock3 size={18} aria-hidden="true" />予定</dt><dd>{plan.occurrenceDate ?? plan.date} {plan.startTime} - {plan.endTime}</dd></div>
-                <div><dt><TimerReset size={18} aria-hidden="true" />予定時間</dt><dd>{formatMinutesLabel(plannedMinutes ?? 0)}</dd></div>
-                <div><dt><FileText size={18} aria-hidden="true" />内容</dt><dd>{plan.memo.trim() || plan.subject || plan.title}</dd></div>
-              </dl> : null}
+              <div className={plan ? "study-session-setup has-plan" : "study-session-setup"}>
+                {isStarted ? <h2>{sessionTitle}</h2> : null}
+                {initialTarget.kind === 'planned' && !isStarted ? (
+                  <label className="study-session-target-choice">
+                    <select aria-label="学習内容" value={target.kind} onChange={event => { if (!started.current) setTarget(event.target.value === 'planned' ? initialTarget : { kind: 'unplanned', userId }); }}>
+                      <option value="planned">この予定で学習: {initialTarget.plan.title}</option>
+                      <option value="unplanned">予定にない学習</option>
+                    </select>
+                  </label>
+                ) : null}
+                {!plan && !isStarted ? (
+                  <div className="study-session-field-grid study-session-unplanned-setup">
+                    <label>勉強する内容<input aria-label="勉強する内容" value={unplannedTitle} placeholder="学習" onChange={event => setUnplannedTitle(event.target.value)} /></label>
+                    <label>教材<select aria-label="教材" value={unplannedMaterialId} onChange={event => {
+                      const selected = materials.find(item => item.id === event.target.value);
+                      setUnplannedMaterialId(selected?.id ?? '');
+                      setUnplannedSubject(selected?.subjectName ?? '');
+                      setUnplannedTitle(current => !current || current === material?.name ? selected?.name ?? '' : current);
+                    }}>
+                      <option value="">教材なし</option>
+                      {materials.filter(item => item.status !== 'archived').map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    </select></label>
+                  </div>
+                ) : null}
+                {plan ? <dl className="study-session-plan-meta study-session-plan-overview">
+                  <div><dt><Clock3 size={16} aria-hidden="true" />予定</dt><dd>{plan.occurrenceDate ?? plan.date} {plan.startTime} - {plan.endTime} · {formatMinutesLabel(plannedMinutes ?? 0)}</dd></div>
+                </dl> : null}
+                {plan || (isStarted && material) ? (
+                  <details className="study-session-details">
+                    <summary>詳細</summary>
+                    <dl>
+                      {plan ? <div><dt>内容</dt><dd>{plan.title}</dd></div> : null}
+                      {plan?.subject ? <div><dt>科目</dt><dd>{plan.subject}</dd></div> : null}
+                      {material || plan?.materialName?.trim() ? <div><dt>教材</dt><dd>{material?.name ?? plan?.materialName}</dd></div> : null}
+                      {plan?.memo.trim() ? <div><dt>メモ</dt><dd>{plan.memo}</dd></div> : null}
+                    </dl>
+                  </details>
+                ) : null}
+              </div>
 
               <div className="study-session-mode-section">
-                <span className="study-session-mode-label">学習方式</span>
                 <div className="study-session-mode-picker" role="group" aria-label="学習方式">
                   <button
                     type="button"
@@ -488,7 +496,6 @@ function StudySessionView({
                     onClick={() => setStudyMode('normal')}
                   >
                     <strong>通常タイマー</strong>
-                    <small>{plan ? '予定時間を通して計測' : '時間を決めずに計測'}</small>
                   </button>
                   <button
                     type="button"
@@ -507,15 +514,17 @@ function StudySessionView({
                 <div className="study-session-timer-inner">
                   {studyMode === 'pomodoro' ? (
                     <>
-                      <span data-pomodoro-phase>{pomodoroPhaseLabel}</span>
-                      <strong data-study-session-phase-remaining>{formatPomodoroTime(pomodoroPhaseRemainingMs)}</strong>
+                      <div className="study-session-phase-clock">
+                        <span data-pomodoro-phase>{pomodoroPhaseLabel}</span>
+                        <strong data-study-session-phase-remaining>{formatPomodoroTime(pomodoroPhaseRemainingMs)}</strong>
+                      </div>
                       <b>{currentPomodoroSet}{totalPomodoroSets === null ? '' : ` / ${totalPomodoroSets}`} セット ・ 次は {pomodoroNextLabel}</b>
                     </>
                   ) : (
                     <>
-                      <span>{isStarted ? '経過時間' : '開始前'}</span>
-                      <strong data-study-session-elapsed>{formatDurationDisplay(elapsedMs)}</strong>
-                      <b>{plannedMs === null ? '予定にない学習' : isStarted ? `残り ${formatDurationDisplay(remainingMs ?? 0)}` : `予定 ${formatMinutesLabel(plannedMinutes ?? 0)}`}</b>
+                      {isStarted ? <span>経過時間</span> : null}
+                      <strong data-study-session-elapsed aria-label="経過時間">{formatDurationDisplay(elapsedMs)}</strong>
+                      {plannedMs !== null && isStarted ? <b>残り {formatDurationDisplay(remainingMs ?? 0)}</b> : null}
                     </>
                   )}
                 </div>
@@ -530,7 +539,7 @@ function StudySessionView({
                     <i aria-hidden="true">→</i>
                     <span>集中</span>
                   </div>
-                  <small>現段階では休憩もセッションの総学習時間に含めて記録します。</small>
+                  <small>休憩を含めて記録</small>
                   {isStarted ? <span className="study-session-total-elapsed">総経過 {formatDurationDisplay(elapsedMs)}</span> : null}
                 </div>
               ) : null}
@@ -555,20 +564,6 @@ function StudySessionView({
                 </div>
               )}
             </section>
-
-            <section className="study-session-card study-session-context-card">
-              <div className="study-session-context-row">
-                <span className="study-session-context-icon material"><BookOpen size={21} aria-hidden="true" /></span>
-                <span><small>教材</small><strong>{material?.name ?? (plan?.materialName?.trim() || '教材未設定')}</strong></span>
-              </div>
-              <div className="study-session-context-row">
-                <span className="study-session-context-icon"><NotebookPen size={21} aria-hidden="true" /></span>
-                <span><small>現在のメモ</small><strong>{plan?.memo.trim() || 'メモはありません'}</strong></span>
-              </div>
-            </section>
-            <p className="study-session-helper">
-              {isStarted ? '終了後にそのまま記録画面へ進みます' : 'スタートを押すまで計測されません'}
-            </p>
           </main>
         ) : recordDraft ? (
           <main className="study-session-content study-session-record-view">
@@ -603,7 +598,7 @@ function StudySessionView({
               </div> : null}
 
               {plan && recordDraft.isAlignedToPlan ? (
-                <div className="study-session-aligned-card"><strong>予定ベースで記録します</strong><span>内容: {plan.title}{plan.subject ? ` / ${plan.subject}` : ''}</span></div>
+                <div className="study-session-aligned-card"><strong>{plan.title}</strong>{plan.subject ? <span>{plan.subject}</span> : null}</div>
               ) : (
                 <div className="study-session-field-grid">
                   <label>実際にやった内容<input value={recordDraft.title} onChange={(event) => setRecordDraft({ ...recordDraft, title: event.target.value })} /></label>
@@ -637,9 +632,7 @@ function StudySessionView({
                   </div>
                   {previewCurrentPercent !== null && previewNextPercent !== null ? (
                     <small>進捗を {Math.round(previewCurrentPercent)}% → {Math.round(previewNextPercent)}% に更新</small>
-                  ) : (
-                    <small>今回進んだ量を教材の進捗へ反映できます。</small>
-                  )}
+                  ) : null}
                 </div>
               ) : null}
 

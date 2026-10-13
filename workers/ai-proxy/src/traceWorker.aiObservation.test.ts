@@ -26,6 +26,7 @@ function setup(outcome: Outcome = 'success', usage?: unknown) {
     if (url.endsWith('/chat/completions')) {
       if (outcome === 'provider_error') return new Response('upstream failure', { status: 503 });
       return Response.json({
+        model: JSON.parse(String(init?.body)).model,
         choices: [{ message: { content: '{"text":"教材 1章"}' } }],
         ...(usage === undefined ? {} : { usage }),
       });
@@ -49,7 +50,7 @@ function setup(outcome: Outcome = 'success', usage?: unknown) {
     FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'unused-by-store-boundary',
     OBSERVABILITY_IDENTITY_SECRET: '0123456789abcdef0123456789abcdef',
     ALLOWED_ORIGIN: 'https://app.example',
-    ALLOWED_CHAT_MODELS: 'gpt-5.6-luna',
+    ALLOWED_CHAT_MODELS: 'gpt-6-luna',
     AI_QUOTA: {
       getByName: () => ({
         checkAndConsume: async () => ({
@@ -254,7 +255,7 @@ describe('traceWorker AI observation authentication', () => {
     await expect(Promise.all(tasks)).resolves.toEqual([undefined]);
     expect(lookupCalls(fetchMock)).toHaveLength(1);
     expect(warning).toHaveBeenCalledWith('[AI Proxy] observability metric write failed', {
-      message: 'storage unavailable',
+      name: 'Error', code: null,
     });
   });
 
@@ -274,7 +275,7 @@ describe('traceWorker AI observation authentication', () => {
     await expect(Promise.all(tasks)).resolves.toEqual([undefined]);
     expect(lookupCalls(fetchMock)).toHaveLength(1);
     expect(warning).toHaveBeenCalledWith('[AI Proxy] observability metric write failed', {
-      message: 'observation failed',
+      name: 'Error', code: null,
     });
   });
 
@@ -323,7 +324,7 @@ describe('traceWorker completion metadata stays inside existing observation', ()
       }
       if (url.endsWith('/chat/completions')) {
         upstream.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-        return Response.json({ choices: [{ finish_reason: row.finishReason,
+        return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ finish_reason: row.finishReason,
           message: { content: row.content, ...(row.refusal === undefined ? {} : { refusal: row.refusal }) } }], usage });
       }
       unexpected.push(url);
@@ -417,7 +418,7 @@ describe('traceWorker completion evidence belongs to the actual Luna attempt', (
       }
       if (url === 'https://api.openai.com/v1/chat/completions') {
         lunaRequests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-        return Response.json({ choices: [{ finish_reason: 'length', message: {
+        return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ finish_reason: 'length', message: {
           content: '{"decision":"fallback"}', refusal: 'private-luna-refusal-sentinel',
         } }], usage: lunaUsage });
       }

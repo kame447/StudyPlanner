@@ -143,9 +143,10 @@ it('opens Home creation without navigation, clears prior edits and fences old cl
   const closePlanEditor = vi.fn();
   fixture.state.closePlanEditor = closePlanEditor;
   await act(async () => { renderer = create(<App />); });
-  const open = () => renderer!.root.findByType(HomeScheduleView).props.onAddEntry();
+  const open = () => renderer!.root.findByType(HomeScheduleView).props.onAddEntry({ kind: 'study', date: '2026-10-13' });
   await act(async () => { open(); });
   expect(closePlanEditor).toHaveBeenCalledOnce();
+  expect(renderer!.root.findByType(HomeAddFlow).props.entry).toEqual({ kind: 'study', date: '2026-10-13' });
   expect(fixture.state.setViewMode).not.toHaveBeenCalled();
   expect(renderer!.root.findByType('main').props.className).toBe('home-main planner-data-recovery-main');
   const oldClose = renderer!.root.findByType(HomeAddFlow).props.onClose;
@@ -174,7 +175,7 @@ it('retains the previous App view and Home entry instance while settings owns th
   });
   fixture.state.closePlanEditor = vi.fn();
   await act(async () => { renderer = create(<App />); });
-  await act(async () => renderer!.root.findByType(HomeScheduleView).props.onAddEntry());
+  await act(async () => renderer!.root.findByType(HomeScheduleView).props.onAddEntry({ kind: 'study', date: '2026-10-13' }));
   const homeInstance = renderer!.root.findByType(HomeScheduleView);
   const entryInstance = renderer!.root.findByType(HomeAddFlow);
   act(() => renderer!.root.findByType(PrimaryAppHeader).props.onOpenSettings());

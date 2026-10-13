@@ -73,7 +73,8 @@ test('study session waits for an explicit start and then flows into record savin
   await page.getByRole('button', { name: '勉強を開始' }).click();
   const ready = page.getByRole('dialog', { name: '学習を開始' });
   await expect(ready).toBeVisible();
-  await expect(ready.getByRole('heading', { name: '卒業研究' })).toBeVisible();
+  await expect(ready.getByRole('combobox', { name: '学習内容' })).toHaveValue('planned');
+  await expect(ready.getByRole('combobox', { name: '学習内容' })).toContainText('卒業研究');
   await expect(ready.getByRole('button', { name: /通常タイマー/ })).toHaveAttribute('aria-pressed', 'true');
 
   const readyElapsed = ready.locator('[data-study-session-elapsed]');
@@ -163,7 +164,7 @@ test('pomodoro can be selected before start and exposes focus and break UI', asy
   await expect(ready.locator('[data-pomodoro-phase]')).toHaveText('集中');
   await expect(ready.locator('[data-study-session-phase-remaining]')).toHaveText('25:00');
   await expect(ready.getByText('1 / 3 セット ・ 次は 休憩 5分', { exact: true })).toBeVisible();
-  await expect(ready.getByText('現段階では休憩もセッションの総学習時間に含めて記録します。', { exact: true })).toBeVisible();
+  await expect(ready.getByText('休憩を含めて記録', { exact: true })).toBeVisible();
 
   await ready.getByRole('button', { name: 'スタート' }).click();
   const session = page.getByRole('dialog', { name: '学習中' });

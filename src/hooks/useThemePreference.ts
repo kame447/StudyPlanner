@@ -1,6 +1,7 @@
 import { useLayoutEffect, useState } from 'react';
 import {
   getThemePaletteCssVariables,
+  isThemePalette,
   type ThemeMode,
   type ThemePalette,
 } from '../lib/themePalette';
@@ -23,15 +24,7 @@ function readStoredThemePalette(): ThemePalette {
   }
 
   const storedPalette = window.localStorage.getItem(THEME_PALETTE_STORAGE_KEY);
-  switch (storedPalette) {
-    case 'ocean':
-    case 'sakura':
-    case 'amber':
-    case 'violet':
-      return storedPalette;
-    default:
-      return 'forest';
-  }
+  return isThemePalette(storedPalette) ? storedPalette : 'forest';
 }
 
 export function useThemePreference() {

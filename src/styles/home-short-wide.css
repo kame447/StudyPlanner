@@ -135,14 +135,14 @@
   .home-dashboard-default .home-schedule-row,
   .home-dashboard-default .home-schedule-empty {
     min-height: var(--home-fit-row-height);
-    padding-top: 3px;
-    padding-bottom: 3px;
+    --home-add-pad: 3px;
+    padding-block: var(--home-add-pad);
   }
 
   .home-dashboard-default .home-schedule-add-row {
     min-height: clamp(32px, 4.5dvh, 40px);
-    padding-top: 3px;
-    padding-bottom: 3px;
+    --home-add-pad: 3px;
+    padding-block: var(--home-add-pad);
   }
 
   .home-dashboard-default .home-schedule-content {

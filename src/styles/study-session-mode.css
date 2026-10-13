@@ -1,52 +1,55 @@
 .study-session-mode-section {
   display: grid;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.study-session-mode-label {
-  color: var(--text-muted);
-  font-size: 0.82rem;
-  font-weight: 850;
 }
 
 .study-session-mode-picker {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-strong) 68%, var(--app-background));
 }
 
 .study-session-mode-picker button {
   min-width: 0;
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
   display: grid;
   gap: 3px;
   align-content: center;
-  padding: 10px 12px;
+  padding: 4px 8px;
   color: var(--text-primary);
   font: inherit;
-  text-align: left;
+  text-align: center;
 }
 
 .study-session-mode-picker button strong {
-  font-size: 0.92rem;
+  font-size: 0.85rem;
+  line-height: 1.25;
 }
 
 .study-session-mode-picker button small {
   min-width: 0;
   color: var(--text-muted);
   font-size: 0.74rem;
-  line-height: 1.35;
+  line-height: 1.25;
 }
 
 .study-session-mode-picker button.active {
   border-color: var(--home-blue, var(--accent));
-}
-
-.study-session-mode-picker button.active strong {
+  background: var(--surface-strong);
   color: var(--home-blue, var(--accent));
+  box-shadow: 0 1px 3px rgba(20, 32, 45, 0.1);
 }
 
 .study-session-mode-picker button:disabled {
   cursor: default;
+  opacity: 0.72;
 }
 
 .study-session-mode-picker button.active:disabled {
@@ -55,14 +58,13 @@
 
 .study-session-start-button {
   width: 100%;
-  margin-top: 2px;
 }
 
 .study-session-pomodoro-status {
   display: grid;
   justify-items: center;
-  gap: 8px;
-  margin: -2px 0 18px;
+  gap: 4px;
+  margin: 0;
   text-align: center;
 }
 
@@ -75,8 +77,8 @@
 }
 
 .study-session-pomodoro-flow span {
-  min-width: 62px;
-  padding: 7px 11px;
+  min-width: 44px;
+  padding: 3px 8px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--text-muted) 8%, transparent);
   color: var(--text-muted);
@@ -109,10 +111,4 @@
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
   font-weight: 800;
-}
-
-@media (max-width: 420px) {
-  .study-session-mode-picker {
-    grid-template-columns: 1fr;
-  }
 }
