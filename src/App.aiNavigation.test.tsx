@@ -38,7 +38,9 @@ beforeEach(() => {
     addEventListener() {}, removeEventListener() {}, setTimeout, clearTimeout, performance, scrollTo() {},
     history: { state: {}, length: 1, pushState() {}, replaceState() {} } });
   vi.stubGlobal('HTMLElement', class {});
-  vi.stubGlobal('document', { documentElement: { dataset: {}, style: {} }, body: { style: {} } });
+  vi.stubGlobal('document', Object.assign(new EventTarget(), {
+    documentElement: { dataset: {}, style: {} }, body: { style: {} }, visibilityState: 'visible',
+  }));
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('network forbidden'); }));
   vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'false');
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:navigation-draft');
@@ -106,9 +108,14 @@ it('pauses the retained surface during settings and drops it for owner changes a
   expect(renderer!.root.findAllByType(AiPlanningView)).toHaveLength(0);
   await act(async () => { nav().onOpenAiPlanning(); });
   expect(input().props.value).toBe('');
+  const subscribe = vi.spyOn(document, 'addEventListener');
+  const unsubscribe = vi.spyOn(document, 'removeEventListener');
   await render(null);
   expect(renderer!.root.findAllByType(AiPlanningView)).toHaveLength(0);
+  expect(renderer!.root.findByProps({ className: 'auth-stars' })).toBeDefined();
+  expect(subscribe).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
   await render({ id: 'owner-a' } as User);
+  expect(unsubscribe).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
   expect(renderer!.root.findAllByType(AiPlanningView)).toHaveLength(0);
   await act(async () => { nav().onOpenAiPlanning(); });
   expect(input().props.value).toBe('');
