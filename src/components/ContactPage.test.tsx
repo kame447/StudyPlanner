@@ -37,7 +37,12 @@ describe('email-free contact', () => {
     mount(); act(() => auth.emit(owner));
     fill('  \n '); act(submit);
     expect(submitInquiry).not.toHaveBeenCalled();
-    fill(); act(() => { submit(); submit(); });
+    fill();
+    const label = renderer.root.findByType('label');
+    expect(label.props.htmlFor).toBe(renderer.root.findByType('textarea').props.id);
+    expect(label.findAllByType('textarea')).toHaveLength(0);
+    expect(label.findByType('span').children).toEqual(['お問い合わせ内容']);
+    act(() => { submit(); submit(); });
     expect(submitInquiry).toHaveBeenCalledTimes(1);
     expect(text()).toContain('送信中');
     expect(text()).not.toContain('受け付けました');

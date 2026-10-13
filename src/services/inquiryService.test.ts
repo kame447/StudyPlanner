@@ -5,7 +5,7 @@ import { listInquiries, submitInquiry } from './inquiryService';
 const mocks = vi.hoisted(() => ({
   uid: 'owner' as string | null,
   available: true,
-  get: vi.fn(), set: vi.fn(), getDocs: vi.fn(), query: vi.fn(), startAfter: vi.fn(), limit: vi.fn(),
+  get: vi.fn(), getServer: vi.fn(), set: vi.fn(), getDocs: vi.fn(), query: vi.fn(), startAfter: vi.fn(), limit: vi.fn(),
   transaction: vi.fn(),
 }));
 vi.mock('../lib/firebaseClient', () => ({
@@ -19,6 +19,7 @@ vi.mock('firebase/firestore', async (original) => {
     doc: (_db: unknown, collection: string, id: string) => `${collection}/${id}`,
     collection: (_db: unknown, name: string) => name,
     query: (...args: unknown[]) => mocks.query(...args),
+    getDocFromServer: (...args: unknown[]) => mocks.getServer(...args),
     getDocsFromServer: (...args: unknown[]) => mocks.getDocs(...args),
     orderBy: (field: unknown, direction: string) => ({ field, direction }),
     documentId: () => '__name__',
@@ -28,12 +29,14 @@ vi.mock('firebase/firestore', async (original) => {
     runTransaction: (_db: unknown, operation: unknown) => mocks.transaction(operation),
   };
 });
+const savedReceipt = () => ({ schemaVersion: 1, userId: 'owner', body: '問い合わせ内容', createdAt: new Timestamp(100, 1) });
 const submission = { requestId: '12345678-1234-1234-1234-123456789abc', body: '問い合わせ内容' };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.uid = 'owner'; mocks.available = true;
   mocks.get.mockResolvedValue({ exists: () => false });
+  mocks.getServer.mockResolvedValue({ exists: () => false });
   mocks.transaction.mockImplementation((operation) => operation({ get: mocks.get, set: mocks.set }));
 });
 
@@ -47,7 +50,7 @@ describe('inquiry submission', () => {
     expect(mocks.set).toHaveBeenCalledTimes(2);
   });
   it('acknowledges a saved same-content retry without another write', async () => {
-    mocks.get.mockResolvedValue({ exists: () => true, data: () => ({ schemaVersion: 1, userId: 'owner', body: submission.body }) });
+    mocks.get.mockResolvedValue({ exists: () => true, data: savedReceipt });
     await expect(submitInquiry('owner', submission)).resolves.toBe(submission.requestId);
     expect(mocks.set).not.toHaveBeenCalled();
   });
@@ -78,10 +81,41 @@ describe('inquiry submission', () => {
     await expect(submitInquiry('owner', submission)).rejects.toThrow('ログイン');
     expect(mocks.set).not.toHaveBeenCalled();
   });
+  it.each(['permission-denied', 'lost response'])('reconciles %s only from a matching server receipt', async (message) => {
+    mocks.transaction.mockRejectedValueOnce(new Error(message));
+    mocks.getServer.mockResolvedValueOnce({ exists: () => true, data: savedReceipt });
+    await expect(submitInquiry('owner', submission)).resolves.toBe(submission.requestId);
+    expect(mocks.getServer).toHaveBeenCalledExactlyOnceWith(`support_inquiries/${submission.requestId}`);
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+  it.each([
+    { userId: 'another' }, { body: 'changed' }, { schemaVersion: 2 },
+    { createdAt: 'not-a-server-timestamp' }, { email: 'unexpected' },
+  ])('does not reconcile a mismatching or malformed receipt: %j', async (patch) => {
+    const error = new Error('permission-denied');
+    mocks.transaction.mockRejectedValueOnce(error);
+    mocks.getServer.mockResolvedValueOnce({ exists: () => true, data: () => ({ ...savedReceipt(), ...patch }) });
+    await expect(submitInquiry('owner', submission)).rejects.toBe(error);
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+  it('preserves commit failure when the receipt cannot be confirmed by the server', async () => {
+    const error = new Error('lost response');
+    mocks.transaction.mockRejectedValueOnce(error);
+    mocks.getServer.mockRejectedValueOnce(new Error('offline'));
+    await expect(submitInquiry('owner', submission)).rejects.toBe(error);
+  });
+  it('rejects an account change while reconciling a receipt', async () => {
+    mocks.transaction.mockRejectedValueOnce(new Error('permission-denied'));
+    mocks.getServer.mockImplementationOnce(async () => {
+      mocks.uid = 'another';
+      return { exists: () => true, data: savedReceipt };
+    });
+    await expect(submitInquiry('owner', submission)).rejects.toThrow('ログイン');
+  });
   it('does not claim success when commit acknowledgement is lost, then safely recovers', async () => {
     mocks.transaction.mockRejectedValueOnce(new Error('lost response'));
     await expect(submitInquiry('owner', submission)).rejects.toThrow('lost response');
-    mocks.get.mockResolvedValue({ exists: () => true, data: () => ({ schemaVersion: 1, userId: 'owner', body: submission.body }) });
+    mocks.get.mockResolvedValue({ exists: () => true, data: savedReceipt });
     await expect(submitInquiry('owner', submission)).resolves.toBe(submission.requestId);
     expect(mocks.set).not.toHaveBeenCalled();
   });

@@ -59,8 +59,8 @@ export function InquiryForm({ userId }: { userId: string }) {
 
   return (
     <form className="section-stack" onSubmit={(event) => { void send(event); }} aria-busy={state.kind === 'sending'}>
-      <label className="field" htmlFor="inquiry-body">
-        <span>お問い合わせ内容</span>
+      <div className="field">
+        <label htmlFor="inquiry-body"><span>お問い合わせ内容</span></label>
         <textarea
           id="inquiry-body"
           rows={8}
@@ -71,7 +71,7 @@ export function InquiryForm({ userId }: { userId: string }) {
           aria-describedby="inquiry-guidance inquiry-count"
           required
         />
-      </label>
+      </div>
       <span id="inquiry-count" className="detail-note">{body.length} / {INQUIRY_BODY_MAX_LENGTH}文字</span>
       <p id="inquiry-guidance" className="detail-note">内容とアカウントの識別情報を管理者へ送信します。パスワードなどの機密情報は入力しないでください。連続送信は1分に1件までです。</p>
       {validation && <p role="alert">{validation}</p>}

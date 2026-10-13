@@ -38,9 +38,12 @@ for (const viewport of [{ label: 'desktop', width: 1440, height: 1000 }, { label
 test('unknown submission result retries the same receipt, then clears content on sign-out', async ({ page }) => {
   await page.goto('/admin-overview.html?view=contact&state=retry');
   await page.getByLabel('お問い合わせ内容', { exact: true }).fill('再送でも一件だけ受け付けてください。');
+  await expect(page.getByRole('textbox', { name: 'お問い合わせ内容', exact: true })).toHaveAccessibleName('お問い合わせ内容');
   await page.getByRole('button', { name: '送信する', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('送信結果を確認できません');
   await expect(page.getByLabel('お問い合わせ内容', { exact: true })).toBeDisabled();
+  await expect(page.getByRole('textbox', { name: 'お問い合わせ内容', exact: true })).toHaveAccessibleName('お問い合わせ内容');
+  await expect(page.getByLabel('お問い合わせ内容', { exact: true })).toHaveValue('再送でも一件だけ受け付けてください。');
   await page.getByRole('button', { name: '同じ内容で再試行' }).click();
   await expect(page.getByRole('status')).toContainText('受け付けました');
   const submissions = await page.evaluate(() => window.__inquirySubmissions);

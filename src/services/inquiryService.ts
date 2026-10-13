@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   documentId,
+  getDocFromServer,
   getDocsFromServer,
   limit,
   orderBy,
@@ -11,6 +12,7 @@ import {
   startAfter,
   Timestamp,
   type QueryConstraint,
+  type DocumentData,
 } from 'firebase/firestore';
 import { getFirebaseAuth, getFirestoreDb } from '../lib/firebaseClient';
 import {
@@ -35,33 +37,48 @@ function requireOwner(userId: string) {
   }
 }
 
+function matchesReceipt(saved: DocumentData, userId: string, body: string): boolean {
+  return Object.keys(saved).length === 4 && saved.schemaVersion === 1
+    && saved.userId === userId && saved.body === body && saved.createdAt instanceof Timestamp;
+}
+
 export async function submitInquiry(userId: string, input: InquirySubmission): Promise<string> {
   const submission = validateInquirySubmission(input);
   requireOwner(userId);
   const db = requireDatabase();
   const reference = doc(db, COLLECTION, submission.requestId);
   const cooldown = doc(db, 'support_inquiry_limits', userId);
-  await runTransaction(db, async (transaction) => {
-    requireOwner(userId);
-    const existing = await transaction.get(reference);
-    if (existing.exists()) {
-      const saved = existing.data();
-      if (saved.schemaVersion !== 1 || saved.userId !== userId || saved.body !== submission.body) {
-        throw new Error('受付番号と送信内容が一致しません。');
+  try {
+    await runTransaction(db, async (transaction) => {
+      requireOwner(userId);
+      const existing = await transaction.get(reference);
+      if (existing.exists()) {
+        const saved = existing.data();
+        if (!matchesReceipt(saved, userId, submission.body)) {
+          throw new Error('受付番号と送信内容が一致しません。');
+        }
+        return;
       }
-      return;
-    }
-    // Reading the gate makes simultaneous new submissions conflict and retry safely.
-    await transaction.get(cooldown);
-    requireOwner(userId);
-    transaction.set(cooldown, { inquiryId: submission.requestId, submittedAt: serverTimestamp() });
-    transaction.set(reference, {
-      schemaVersion: 1,
-      userId,
-      body: submission.body,
-      createdAt: serverTimestamp(),
+      // Read the gate so simultaneous new submissions share a transaction precondition.
+      await transaction.get(cooldown);
+      requireOwner(userId);
+      transaction.set(cooldown, { inquiryId: submission.requestId, submittedAt: serverTimestamp() });
+      transaction.set(reference, {
+        schemaVersion: 1,
+        userId,
+        body: submission.body,
+        createdAt: serverTimestamp(),
+      });
     });
-  });
+  } catch (error) {
+    requireOwner(userId);
+    // Rules can deny the losing same-ID commit before Firestore retries its stale
+    // transaction. Only a matching, server-confirmed immutable receipt is success.
+    const saved = await getDocFromServer(reference).catch(() => { throw error; });
+    requireOwner(userId);
+    if (!saved.exists() || !matchesReceipt(saved.data(), userId, submission.body)) throw error;
+  }
+  requireOwner(userId);
   return submission.requestId;
 }
 

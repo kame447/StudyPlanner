@@ -25,20 +25,30 @@ export async function verifyInquiryRules({ owner, intruder, createContext, conte
     batch.set(doc(context.db, 'support_inquiry_limits', context.user.uid), { inquiryId: id, submittedAt: serverTimestamp(), ...gatePatch });
     return batch.commit();
   };
+  function matchesReceipt(saved, context) {
+    return Object.keys(saved).length === 4 && saved.schemaVersion === 1
+      && saved.userId === context.user.uid && saved.body === payload(context.user.uid).body
+      && saved.createdAt instanceof Timestamp;
+  }
   async function sendTransaction(context, id) {
-    return runTransaction(context.db, async (transaction) => {
-      const ref = doc(context.db, 'support_inquiries', id);
-      const saved = await transaction.get(ref);
-      if (saved.exists()) {
-        assert.equal(saved.data().userId, context.user.uid);
-        assert.equal(saved.data().body, payload(context.user.uid).body);
-        return;
-      }
-      const gate = doc(context.db, 'support_inquiry_limits', context.user.uid);
-      await transaction.get(gate);
-      transaction.set(gate, { inquiryId: id, submittedAt: serverTimestamp() });
-      transaction.set(ref, payload(context.user.uid));
-    });
+    const ref = doc(context.db, 'support_inquiries', id);
+    try {
+      await runTransaction(context.db, async (transaction) => {
+        const saved = await transaction.get(ref);
+        if (saved.exists()) {
+          assert.equal(matchesReceipt(saved.data(), context), true);
+          return;
+        }
+        const gate = doc(context.db, 'support_inquiry_limits', context.user.uid);
+        await transaction.get(gate);
+        transaction.set(gate, { inquiryId: id, submittedAt: serverTimestamp() });
+        transaction.set(ref, payload(context.user.uid));
+      });
+    } catch (error) {
+      // Mirror the service: permission denial is not success without server proof.
+      const saved = await getDocFromServer(ref).catch(() => { throw error; });
+      if (!saved.exists() || !matchesReceipt(saved.data(), context)) throw error;
+    }
   }
 
   const receipt = randomUUID();
@@ -59,8 +69,17 @@ export async function verifyInquiryRules({ owner, intruder, createContext, conte
   await expectPermissionDenied('inquiry rejects mismatched gate', () => sendBatch(owner, randomUUID(), {}, { inquiryId: randomUUID() }));
   await expectPermissionDenied('inquiry rejects forged gate timestamp', () => sendBatch(owner, randomUUID(), {}, { submittedAt: Timestamp.fromMillis(1) }));
 
+  const single = await createContext('inquiry-single'); contexts.push(single);
+  const singleReceipt = randomUUID();
+  await sendTransaction(single, singleReceipt);
+  assert.equal((await getDocFromServer(doc(single.db, 'support_inquiries', singleReceipt))).exists(), true);
+  console.log('Firestore inquiry fresh single submission passed.');
+
   // Two tabs retrying the same operation produce one immutable receipt.
-  await Promise.all([sendTransaction(owner, receipt), sendTransaction(owner, receipt)]);
+  const sameId = await Promise.allSettled([sendTransaction(owner, receipt), sendTransaction(owner, receipt)]);
+  assert.equal(sameId.filter((result) => result.status === 'fulfilled').length, 2,
+    `Both same-ID callers must succeed: ${JSON.stringify(sameId.map((result) => result.status === 'fulfilled' ? result.status : result.reason?.code))}`);
+  console.log('Firestore inquiry concurrent same-ID submission passed.');
   const first = await getDocFromServer(doc(owner.db, 'support_inquiries', receipt));
   assert.equal(first.exists(), true);
   assert.deepEqual(Object.keys(first.data()).sort(), ['body', 'createdAt', 'schemaVersion', 'userId']);
@@ -91,11 +110,11 @@ export async function verifyInquiryRules({ owner, intruder, createContext, conte
   await seed('admins', admin.user.uid, { enabled: { booleanValue: true } });
   const inbox = query(collection(admin.db, 'support_inquiries'), orderBy('createdAt', 'desc'), orderBy(documentId(), 'desc'), limit(26));
   const inboxPage = await getDocsFromServer(inbox);
-  assert.equal(inboxPage.size, 2);
+  assert.equal(inboxPage.size, 3);
   assert.equal((await getDocFromServer(doc(admin.db, 'support_inquiries', receipt))).exists(), true);
   const last = inboxPage.docs[0];
   const secondPage = await getDocsFromServer(query(collection(admin.db, 'support_inquiries'), orderBy('createdAt', 'desc'), orderBy(documentId(), 'desc'), startAfter(last.data().createdAt, last.id), limit(26)));
-  assert.equal(secondPage.size, 1);
+  assert.equal(secondPage.size, 2);
   await expectPermissionDenied('admin unbounded list', () => getDocsFromServer(collection(admin.db, 'support_inquiries')));
   await expectPermissionDenied('admin excessive page', () => getDocsFromServer(query(collection(admin.db, 'support_inquiries'), limit(27))));
   await expectPermissionDenied('admin cannot edit user inquiry', () => setDoc(doc(admin.db, 'support_inquiries', receipt), { body: 'admin changed' }, { merge: true }));
