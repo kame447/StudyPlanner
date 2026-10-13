@@ -73,13 +73,21 @@ async function expectSameRow(first, second) {
 }
 
 async function expectResponsivePair(first, second) {
-  const fit = await first.evaluate(element => {
+  const geometry = await first.evaluate(element => {
     const pair = element.parentElement.parentElement;
-    const gap = parseFloat(getComputedStyle(pair).columnGap);
+    const style = getComputedStyle(pair);
+    const gap = parseFloat(style.columnGap);
     const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
-    return pair.clientWidth >= 14 * rem + gap;
+    // clientWidth rounds fractional CSS pixels and can classify a narrow,
+    // correctly wrapped grid as two columns at the exact auto-fit boundary.
+    const width = parseFloat(style.width);
+    const contentWidth = style.boxSizing === 'border-box'
+      ? width - ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth']
+        .reduce((sum, key) => sum + parseFloat(style[key]), 0)
+      : width;
+    return { contentWidth, requiredWidth: 14 * rem + gap };
   });
-  if (fit) await expectSameRow(first, second);
+  if (geometry.contentWidth >= geometry.requiredWidth) await expectSameRow(first, second);
   else {
     const [a, b] = await Promise.all([first.boundingBox(), second.boundingBox()]);
     expect(b.y).toBeGreaterThanOrEqual(a.y + a.height);
@@ -154,7 +162,9 @@ for (const scenario of cases) {
     await expect(row).toContainText('研究室に進捗共有');
     await row.getByRole('button', { name: '編集', exact: true }).click();
     await todo.getByLabel('所要時間（分）', { exact: true }).fill('30');
-    await todo.getByLabel('メモ', { exact: true }).fill('保持するTodoメモ');
+    const memo = todo.getByRole('textbox', { name: 'メモ', exact: true });
+    await expect(memo).toHaveAccessibleName('メモ');
+    await memo.fill('保持するTodoメモ');
     await todo.getByRole('button', { name: '保存', exact: true }).click();
     await expect(todo).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.todos.v1') ?? '[]')[0]))
