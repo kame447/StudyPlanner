@@ -121,7 +121,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     useState<BookshelfInitialAction>(null);
   const primaryHeaderRef = useRef<HTMLDivElement | null>(null);
   const primaryBottomNavRef = useRef<HTMLElement | null>(null);
-  const { themeMode, setThemeMode, themePalette, setThemePalette } =
+  const { themeMode, setThemeMode, themePalette, setThemePalette, error: themeError } =
     useThemePreference();
   const appearancePreference = useAppAppearance();
   const {
@@ -751,6 +751,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         appearanceError={appearancePreference.error}
         themeMode={themeMode}
         themePalette={themePalette}
+        themeError={themeError}
         onChangeTheme={setThemeMode}
         onChangeThemePalette={setThemePalette}
         onClose={settingsNavigation.close}
