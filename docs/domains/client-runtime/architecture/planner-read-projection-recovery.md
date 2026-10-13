@@ -38,6 +38,27 @@ Uncontended saves keep their optimistic fast path. A rejected ordinary write doe
 
 Repair failure leaves the saved Plan durable but its display stale and retryable. Explicit retry only reads the requested groups; it does not resubmit the save or reset the user's newer date/view selection. Owner/reset epochs revoke old callbacks and read publication. This boundary does not add backend ordering or cross-client guarantees.
 
+## Todo command admission
+
+Todo edit, scheduling and delete resolve an existing ID from committed same-owner
+Todo rows before repository dispatch. A missing explicit edit target is not a
+new create. Their local same-ID reservation survives promise settlement until
+React commits the associated success or rollback, and unrelated Todos remain
+independently operable. Synchronous preparation failure also releases the claim.
+
+The rows and their accepted projection lease are published together. The existing
+read authority rejects replaced/uncommitted leases, pending or failed Plans/Todos
+repair and unresolved full-read failure, including its retry. An ordinary clean
+full refresh can overlap a command using its previously accepted baseline;
+unrelated repair groups do not block this local admission. Failed full-read
+health is cleared only by successful full acceptance or owner/reset, not merely
+by starting a retry. Rejection uses the existing visible notice and dispatches no
+write. New creation without an edit ID retains its existing path.
+
+This is not general stale-edit conflict resolution, server atomicity or coverage
+of every linked-Plan/Undo writer. Existing successful-write reconciliation and
+repository safety contracts continue to apply.
+
 ## Todo Undo successful acknowledgement
 
 Todo Undo captures an accepted-projection lease when invoked and declares Plans/Todos successful completion. If a current-owner read replaces the projection before the restore returns, do not insert the captured deleted Todo; re-read the existing Plans/Todos group after tracked writers settle. Success observed during an older full read also retains the group. Uncontended Undo keeps its direct post-persistence update without extra reads.

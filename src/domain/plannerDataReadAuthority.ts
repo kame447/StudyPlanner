@@ -111,6 +111,7 @@ export class PlannerDataReadAuthority {
   private attemptId = 0;
   private acceptedRevision = 0;
   private full: 'idle' | 'loading' | 'ready' | 'failed' = 'idle';
+  private hasUnrecoveredFullReadFailure = false;
   private concern: ProjectionConcern | null = null;
   private observedAt: string | null = null;
   private lastSuccessfulAt: string | null = null;
@@ -135,6 +136,16 @@ export class PlannerDataReadAuthority {
   isProjectionUsable(lease: PlannerDataProjectionLease): boolean {
     return this.isOwnerCurrent(lease) && lease.acceptedRevision === this.acceptedRevision
       && this.full === 'ready' && this.concern === null;
+  }
+
+  /** Local writes may overlap a clean refresh of an already accepted snapshot.
+   * Known repair uncertainty and an uncommitted/replaced projection are unsafe.
+   */
+  canAdmitMutationFromProjection(lease: PlannerDataProjectionLease, targets: readonly PlannerRepairTarget[]): boolean {
+    return this.isOwnerCurrent(lease) && lease.acceptedRevision === this.acceptedRevision
+      && this.lastSuccessfulAt !== null && !this.hasUnrecoveredFullReadFailure
+      && (this.full === 'ready' || this.full === 'loading')
+      && !this.concern?.targets.some(target => targets.includes(target));
   }
 
   read(): PlannerDataAvailability {
@@ -174,6 +185,7 @@ export class PlannerDataReadAuthority {
       this.epoch += 1;
       this.ownerId = ownerId;
       this.lastSuccessfulAt = null;
+      this.hasUnrecoveredFullReadFailure = false;
       this.acceptedRevision = 0;
       this.concern = null;
     }
@@ -206,6 +218,7 @@ export class PlannerDataReadAuthority {
       token.requestRevision !== this.requestRevision ? this.concern?.targets ?? [] : [],
     );
     this.full = 'ready';
+    this.hasUnrecoveredFullReadFailure = false;
     this.lastSuccessfulAt = observedAt;
     this.observedAt = observedAt;
     this.acceptedRevision += 1;
@@ -218,6 +231,7 @@ export class PlannerDataReadAuthority {
   fail(token: PlannerDataLoadToken, observedAt: string): PlannerDataAvailability | null {
     if (!this.isCurrent(token)) return null;
     this.full = 'failed';
+    this.hasUnrecoveredFullReadFailure = true;
     this.observedAt = observedAt;
     return this.read();
   }
@@ -289,6 +303,7 @@ export class PlannerDataReadAuthority {
     this.generation += 1;
     this.ownerId = null;
     this.full = 'idle';
+    this.hasUnrecoveredFullReadFailure = false;
     this.concern = null;
     this.observedAt = null;
     this.lastSuccessfulAt = null;

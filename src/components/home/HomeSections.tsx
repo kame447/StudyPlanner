@@ -21,6 +21,7 @@ import { HomePlanTitle } from './HomePlanTitle';
 import { buildPlanOccurrenceKey } from '../../lib/planRecurrence';
 import type { Actual, Plan, StudyMaterial, TodoTask } from '../../types/domain';
 import { useStudySessionLauncher } from '../StudySessionView';
+import { TodayScheduleAddMenu, type HomeAddEntry } from './TodayScheduleAddMenu';
 
 export type HomeSectionId =
   | 'getting-started'
@@ -289,7 +290,7 @@ export function TodayScheduleSection({
   dashboard: HomeDashboardModel;
   studyMaterials: StudyMaterial[];
   onOpenDay: (date: string) => void;
-  onAddEntry: () => void;
+  onAddEntry: (entry: HomeAddEntry) => void;
 }) {
   return (
     <section className="home-panel home-today-panel" data-home-section="today-schedule">
@@ -316,9 +317,8 @@ export function TodayScheduleSection({
             })}
           </>
         ) : null}
-        <button className={dashboard.todayPlans.length > 0 ? 'home-schedule-add-row' : 'home-schedule-empty'} type="button" onClick={onAddEntry} aria-label="今日の予定に追加">
-          <Plus size={20} aria-hidden="true" />
-        </button>
+        <TodayScheduleAddMenu key={dashboard.today} date={dashboard.today}
+          empty={dashboard.todayPlans.length === 0} onAddEntry={onAddEntry} />
       </div>
       {dashboard.todayPlans.length > 4 ? <p className="home-scroll-hint">下にスクロールして続きを読む ↓</p> : null}
     </section>

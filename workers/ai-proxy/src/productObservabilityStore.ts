@@ -10,6 +10,7 @@ import {
   type StoredObservabilityEvent,
 } from '../../../shared/productObservabilityContract';
 import {
+  FirestoreImmutableDocumentConflictError,
   FirestoreServiceAccountClient,
   type FirestoreServiceAccountEnv,
 } from './firestoreServiceAccountClient';
@@ -233,12 +234,8 @@ export class ProductObservabilityStore {
       'observability-event',
       `${actorSubjectId}\n${clientEventId}`,
     );
-    const existing = await this.firestore.getDocument(EVENT_COLLECTION, documentId);
-    if (existing) {
-      if (eventsMatch(existing, event)) return;
-      throw new Error('observability event idempotency conflict');
-    }
-
+    // Atomic creation already protects the canonical actor/event identity.
+    // Avoid reading a missing event before every successful first delivery.
     try {
       await this.firestore.setImmutableDocument(
         EVENT_COLLECTION,
@@ -247,8 +244,15 @@ export class ProductObservabilityStore {
         'observability event conflict',
       );
     } catch (error) {
-      const raced = await this.firestore.getDocument(EVENT_COLLECTION, documentId);
+      // A 409 has already been read by the client. Reuse only that exact
+      // snapshot; unknown write outcomes still need a fresh reconciliation read.
+      const raced = error instanceof FirestoreImmutableDocumentConflictError
+        ? error.getExistingDocument()
+        : await this.firestore.getDocument(EVENT_COLLECTION, documentId);
       if (raced && eventsMatch(raced, event)) return;
+      if (raced && error instanceof FirestoreImmutableDocumentConflictError) {
+        throw new Error('observability event idempotency conflict');
+      }
       throw error;
     }
   }

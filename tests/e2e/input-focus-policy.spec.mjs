@@ -91,10 +91,14 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     'src/components/MonthView.tsx',
     'src/components/QuickAddMenu.tsx',
   ]);
-  // Settings may focus its heading, keyboard tabs and the user-activated return
-  // target. Keep these statement-specific so a new input focus in the same file
-  // still fails this guard. Browser tests assert the actual heading/tab/origin.
-  const allowedSettingsFocus = new Map([
+  // Settings and the user-opened Home disclosure may focus their non-input
+  // controls. Keep these statement-specific so new input focus in the same file
+  // still fails this guard. Browser tests assert the actual heading/tab/button.
+  const allowedFocusStatements = new Map([
+    ['src/components/home/TodayScheduleAddMenu.tsx', new Set([
+      'firstActionRef.current?.focus({ preventScroll: true });',
+      'toggleRef.current?.focus({ preventScroll: true });',
+    ])],
     ['src/components/AppSettingsDialog.tsx', new Set([
       'titleRef.current?.focus({ preventScroll: true });',
       'tabRefs.current[TABS[next].id]?.focus();',
@@ -116,7 +120,7 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
 
     source.split('\n').forEach((line, index) => {
       if (line.includes('.focus(') && !allowedFocusFiles.has(fileName)
-        && !allowedSettingsFocus.get(fileName)?.has(line.trim())) {
+        && !allowedFocusStatements.get(fileName)?.has(line.trim())) {
         unexpectedFocus.push(`${fileName}:${index + 1}:${line.trim()}`);
       }
     });

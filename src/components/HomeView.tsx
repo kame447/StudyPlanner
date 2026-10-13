@@ -1,3 +1,4 @@
+import type { HomeAddEntry } from './home/TodayScheduleAddMenu';
 import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
 import { useHomeTextReflow } from './home/useHomeTextReflow';
 import type { HomeScenePreferences } from '../lib/homeScenePreferences';
@@ -25,7 +26,7 @@ interface HomeViewProps {
   primaryBottomNavRef: RefObject<HTMLElement | null>;
   onOpenAiPlanning: () => void;
   onOpenSchedule: () => void;
-  onAddEntry: () => void;
+  onAddEntry: (entry: HomeAddEntry) => void;
   onOpenDay: (date: string) => void;
   onOpenTodo: () => void;
   onOpenBookshelf: () => void;

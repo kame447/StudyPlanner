@@ -81,6 +81,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     const running = page.getByRole('dialog', { name: '学習中', exact: true });
     const pause = running.getByRole('button', { name: '一時停止', exact: true });
     await expect(pause).toBeVisible();
+    // The compact timer can still fit at 320px tall. A smaller viewport exercises
+    // the remaining scroll fallback and preserves the original reader-position contract.
+    await page.setViewportSize({ ...viewport, height: 240 });
     await running.locator('.study-session-page').evaluate(element => { element.scrollTop = 120; });
     await pause.focus();
     const readerScroll = await running.locator('.study-session-page').evaluate(element => element.scrollTop);
@@ -91,6 +94,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     await pause.click();
     await running.getByRole('button', { name: '再開', exact: true }).click();
     expect(await running.locator('.study-session-page').evaluate(element => element.scrollTop)).toBe(readerScroll);
+    await page.setViewportSize(viewport);
     await running.getByRole('button', { name: '終了する', exact: true }).click();
     const record = page.getByRole('dialog', { name: '学習を記録', exact: true });
     await expect(record).toContainText(E2E_TODAY);

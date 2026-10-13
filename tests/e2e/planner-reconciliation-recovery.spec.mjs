@@ -895,8 +895,10 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     const nextPlan = page.locator('[data-home-section="next-plan"]');
     await expect(nextPlan.getByRole('heading', { name: plans[0].title, exact: true })).toBeVisible();
     await nextPlan.getByRole('button', { name: '▶ 勉強を開始', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: '学習を開始', exact: true })
-      .getByRole('heading', { name: plans[0].title, exact: true })).toBeVisible();
+    const target0 = page.getByRole('dialog', { name: '学習を開始', exact: true })
+      .getByRole('combobox', { name: '学習内容', exact: true });
+    await expect(target0).toHaveValue('planned');
+    await expect(target0.locator('option:checked')).toHaveText(`この予定で学習: ${plans[0].title}`);
     await page.getByRole('dialog', { name: '学習を開始', exact: true })
       .getByRole('button', { name: 'スタート', exact: true }).click();
     // Move beyond A's planned end with the shared deterministic clock. The
@@ -922,8 +924,10 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(nextPlan.getByRole('heading', { name: plans[1].title, exact: true })).toBeVisible();
     await nextPlan.getByRole('button', { name: '▶ 勉強を開始', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: '学習を開始', exact: true })
-      .getByRole('heading', { name: plans[1].title, exact: true })).toBeVisible();
+    const target1 = page.getByRole('dialog', { name: '学習を開始', exact: true })
+      .getByRole('combobox', { name: '学習内容', exact: true });
+    await expect(target1).toHaveValue('planned');
+    await expect(target1.locator('option:checked')).toHaveText(`この予定で学習: ${plans[1].title}`);
     await page.getByRole('dialog', { name: '学習を開始', exact: true })
       .getByRole('button', { name: 'スタート', exact: true }).click();
     await page.clock.fastForward(60_000);
