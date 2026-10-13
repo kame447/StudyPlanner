@@ -37,6 +37,11 @@ async function seed(page, scenario) {
 }
 
 async function expectReadableControls(form) {
+  // Measure settled geometry, including delayed entry animations on controls.
+  // Do not weaken the 44px target contract or disable product motion.
+  await expect.poll(() => form.evaluate(element => element.getAnimations({ subtree: true })
+    .filter(animation => animation.playState === 'running'
+      && Number.isFinite(animation.effect?.getComputedTiming().endTime)).length)).toBe(0);
   const metrics = await form.evaluate(element => ({
     overflow: element.scrollWidth - element.clientWidth,
     buttons: [...element.querySelectorAll('button, summary')].filter(control => control.getClientRects().length > 0).map(control => ({
@@ -135,7 +140,10 @@ for (const scenario of cases) {
       expect(background.actual).toBe(background.expected);
       expect(background.actual).toContain('linear-gradient');
     }
-    await expectResponsivePair(todo.getByLabel('種別', { exact: true }), todo.getByLabel('所要時間（分）', { exact: true }));
+    const type = todo.getByRole('combobox', { name: '種別', exact: true });
+    await expect(type).toHaveAccessibleName('種別');
+    await expect(type).toHaveValue('study');
+    await expectResponsivePair(type, todo.getByRole('spinbutton', { name: '所要時間（分）', exact: true }));
     if (!scenario.enlarged) {
       if (scenario.width >= 390) await expectSameRow(todo.getByLabel('締切日', { exact: true }), todo.getByLabel('締切時刻', { exact: true }));
     }
