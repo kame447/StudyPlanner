@@ -122,6 +122,38 @@ export async function verifyInquiryRules({ owner, intruder, createContext, conte
   await seed('admins', admin.user.uid, { enabled: { booleanValue: false } });
   await expectPermissionDenied('disabled administrator list', () => getDocsFromServer(inbox));
 
+  // The same 60-second gate admits at most three immutable private image slots.
+  const photoOwner = await createContext('inquiry-photo-owner'); contexts.push(photoOwner);
+  const descriptor = { sha256: 'a'.repeat(64), contentType: 'image/png', byteLength: 100, width: 100, height: 100 };
+  const photoPayload = { schemaVersion: 2, attachments: [descriptor] };
+  for (const [label, patch] of [
+    ['empty slots', { attachments: [] }],
+    ['four slots', { attachments: Array(4).fill(descriptor) }],
+    ['public URL', { attachments: [{ ...descriptor, url: 'https://public.example/image' }] }],
+    ['SVG', { attachments: [{ ...descriptor, contentType: 'image/svg+xml' }] }],
+    ['oversize bytes', { attachments: [{ ...descriptor, byteLength: 5242881 }] }],
+    ['invalid digest', { attachments: [{ ...descriptor, sha256: 'not-a-digest' }] }],
+    ['excess pixels', { attachments: [{ ...descriptor, width: 6000, height: 6000 }] }],
+    ['excess dimension', { attachments: [{ ...descriptor, width: 8193 }] }],
+    ['fractional dimension', { attachments: [{ ...descriptor, width: 1.5 }] }],
+    ['schema one with photos', { schemaVersion: 1 }],
+  ]) {
+    await expectPermissionDenied(`photo inquiry rejects ${label}`, () => sendBatch(photoOwner, randomUUID(), { ...photoPayload, ...patch }));
+  }
+  const photoReceipt = randomUUID();
+  await sendBatch(photoOwner, photoReceipt, { ...photoPayload, attachments: [descriptor, descriptor, descriptor] });
+  const storedPhoto = await getDocFromServer(doc(photoOwner.db, 'support_inquiries', photoReceipt));
+  assert.equal(storedPhoto.data().attachments.length, 3);
+  await expectPermissionDenied('photo slots share text cooldown', () => sendBatch(photoOwner, randomUUID(), photoPayload));
+  await expectPermissionDenied('cannot change accepted photo hash', () => setDoc(doc(photoOwner.db, 'support_inquiries', photoReceipt), { attachments: [{ ...descriptor, sha256: 'b'.repeat(64) }] }, { merge: true }));
+  await expectPermissionDenied('cannot add accepted photo slot', () => setDoc(doc(photoOwner.db, 'support_inquiries', photoReceipt), { attachments: Array(4).fill(descriptor) }, { merge: true }));
+  await expectPermissionDenied('foreign photo receipt read', () => getDocFromServer(doc(intruder.db, 'support_inquiries', photoReceipt)));
+  await seed('admins', admin.user.uid, { enabled: { booleanValue: true } });
+  assert.equal((await getDocFromServer(doc(admin.db, 'support_inquiries', photoReceipt))).data().attachments.length, 3);
+  await seed('admins', admin.user.uid, { enabled: { booleanValue: false } });
+  await expectPermissionDenied('revoked admin photo receipt read', () => getDocFromServer(doc(admin.db, 'support_inquiries', photoReceipt)));
+  console.log('Firestore private photo descriptors, immutable slots, owner/admin access and shared cooldown passed.');
+
   const unsigned = await createContext('inquiry-unsigned'); contexts.push(unsigned);
   await signOut(unsigned.auth);
   await expectPermissionDenied('signed-out create', () => sendBatch(unsigned, randomUUID()));

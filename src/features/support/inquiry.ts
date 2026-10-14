@@ -1,15 +1,18 @@
+import { isInquiryAttachmentList, type InquiryAttachment } from '../../../shared/inquiryAttachments';
 export const INQUIRY_BODY_MAX_LENGTH = 2000;
 export const INQUIRY_PAGE_SIZE = 25;
 
 export interface InquirySubmission {
   requestId: string;
   body: string;
+  attachments?: InquiryAttachment[];
 }
 
 export interface SupportInquiry {
   id: string;
   userId: string;
   body: string;
+  attachments?: InquiryAttachment[];
   createdAt: string;
 }
 
@@ -33,5 +36,8 @@ export function validateInquirySubmission(input: InquirySubmission): InquirySubm
   if (!body || body.length > INQUIRY_BODY_MAX_LENGTH) {
     throw new Error(`お問い合わせ内容を1〜${INQUIRY_BODY_MAX_LENGTH}文字で入力してください。`);
   }
-  return { requestId: input.requestId, body };
+  if (input.attachments !== undefined && !isInquiryAttachmentList(input.attachments)) {
+    throw new Error('写真の添付情報が無効です。');
+  }
+  return { requestId: input.requestId, body, ...(input.attachments ? { attachments: input.attachments.map((item) => ({ ...item })) } : {}) };
 }
