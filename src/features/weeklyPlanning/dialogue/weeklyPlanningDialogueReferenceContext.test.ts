@@ -146,6 +146,63 @@ describe('read-only owner evidence for conversational examples', () => {
     })).toBeNull();
   });
 
+  it('separates the historical lookback date from a later target day', () => {
+    const evidence = selectWeeklyPlanningDialogueReferenceContext({
+      ownerId: OWNER,
+      referenceDate: DATE,
+      targetDate: '2026-10-16',
+      plans: [plan({ id: 'tomorrow-shift', date: '2026-10-16',
+        title: '明日のバイト', type: 'other',
+        startTime: '20:00', endTime: '22:00' }),
+        plan({ id: 'prior-study', date: '2026-10-10', title: '数学復習' })],
+      monthEvents: [monthEvent({ id: 'today-only', title: '今日の会議' })],
+    });
+    expect(evidence).toMatchObject({
+      referenceDate: DATE,
+      targetDate: '2026-10-16',
+      pastActivities: [{ source: 'planned', label: '数学復習', date: '2026-10-10' }],
+      targetDateCommitments: [{
+        label: '明日のバイト', startTime: '20:00', endTime: '22:00',
+      }],
+    });
+    expect(JSON.stringify(evidence)).not.toContain('今日の会議');
+  });
+
+  it('clips overnight commitments to the target-day interval rather than claiming yesterday\'s time', () => {
+    const context = selectWeeklyPlanningDialogueReferenceContext({
+      ownerId: OWNER, referenceDate: DATE, targetDate: DATE,
+      plans: [
+        plan({ id: 'overnight', seriesId: 'overnight', title: '夜勤',
+          type: 'other', date: '2026-10-14',
+          startTime: '23:00', endTime: '02:00' }),
+        plan({ id: 'late', seriesId: 'late', title: '深夜作業',
+          type: 'other', date: DATE,
+          startTime: '22:00', endTime: '01:00' }),
+      ],
+    });
+    expect(context?.targetDateCommitments).toEqual([
+      { source: 'existing_commitment', label: '夜勤', category: 'other',
+        startTime: '00:00', endTime: '02:00' },
+      { source: 'existing_commitment', label: '深夜作業', category: 'other',
+        startTime: '22:00', endTime: '24:00' },
+    ]);
+  });
+
+  it('does not present a single-day calendar commitment for a multi-day planning horizon', () => {
+    const evidence = selectWeeklyPlanningDialogueReferenceContext({
+      ownerId: OWNER, referenceDate: DATE, targetDate: null,
+      plans: [plan({ title: '研究を進める' }),
+        plan({ id: 'today-event', title: '塾バイト', type: 'other',
+          date: DATE, startTime: '19:00', endTime: '22:00' })],
+    });
+    expect(evidence).toMatchObject({
+      referenceDate: DATE,
+      targetDate: null,
+      pastActivities: [{ source: 'planned', label: '研究を進める' }],
+      targetDateCommitments: [],
+    });
+  });
+
   it('keeps results bounded and deterministic across many repeated records', () => {
     const manyActuals = Array.from({ length: 150 }, (_, n) =>
       actual({ id: 'actual-' + String(n), title: '研究' + String(n),

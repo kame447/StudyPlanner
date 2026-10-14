@@ -219,6 +219,18 @@ function createRenderInput(params: {
   const previewConstraintSatisfaction = params.actionKind === 'preview_ready'
     ? params.result.previewConstraintSatisfaction : undefined;
   const fallbackText = RENDERER_TECHNICAL_STOP;
+  // Read the canonical target window, not merely the currently selected UI day.
+  // A multi-day horizon has no single truthful set of 'today' commitments.
+  const windows = planningInformation?.planningWindows;
+  const lastWindow = Array.isArray(windows) && windows.length > 0
+    ? windows[windows.length - 1] : null;
+  const windowStart = lastWindow && typeof lastWindow.start === 'string'
+    ? lastWindow.start.slice(0, 10) : null;
+  const windowEnd = lastWindow && typeof lastWindow.end === 'string'
+    ? lastWindow.end.slice(0, 10) : null;
+  const targetDate = lastWindow
+    ? (windowStart && windowEnd && windowStart === windowEnd ? windowStart : null)
+    : params.input.selectedDate;
   // Evidence is used for optional examples only when the question genuinely
   // asks which activity to plan. It is not fed into semantic acceptance.
   const referenceContext = params.actionKind === 'question'
@@ -226,7 +238,8 @@ function createRenderInput(params: {
     && questionIntent.mode === 'missing_task_identity'
     ? selectWeeklyPlanningDialogueReferenceContext({
         ownerId: params.input.userId,
-        referenceDate: params.input.selectedDate,
+        referenceDate: params.input.requestContext?.currentDate ?? params.input.selectedDate,
+        targetDate,
         plans: params.input.plans,
         actuals: params.input.actuals,
         monthEvents: params.input.monthEvents,

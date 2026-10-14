@@ -20,7 +20,10 @@ export interface WeeklyPlanningDialogueReferenceCommitment {
 }
 
 export interface WeeklyPlanningDialogueReferenceContext {
+  /** Lookback boundary; this is the current request date, not always the target day. */
   referenceDate: string;
+  /** Omitted when equal to referenceDate; null means the target spans multiple days. */
+  targetDate?: string | null;
   pastActivities: WeeklyPlanningDialogueReferenceActivity[];
   targetDateCommitments: WeeklyPlanningDialogueReferenceCommitment[];
 }
@@ -56,6 +59,8 @@ function withinRange(date: string, start: string, end: string): boolean {
 export function selectWeeklyPlanningDialogueReferenceContext(params: {
   ownerId: string;
   referenceDate: string;
+  /** Null omits day-specific commitments for a multi-day planning window. */
+  targetDate?: string | null;
   plans: readonly Plan[];
   actuals?: readonly Actual[];
   monthEvents?: readonly MonthEvent[];
@@ -66,6 +71,8 @@ export function selectWeeklyPlanningDialogueReferenceContext(params: {
 }): WeeklyPlanningDialogueReferenceContext | null {
   const { ownerId, referenceDate } = params;
   if (!ownerId || !/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) return null;
+  const targetDate = params.targetDate === undefined ? referenceDate : params.targetDate;
+  if (targetDate !== null && !/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) return null;
   const earliestDate = addDays(referenceDate, -HISTORY_DAYS);
   const ownedPlans = params.plans.filter(plan => plan.userId === ownerId);
   const plansById = new Map(ownedPlans.map(plan => [plan.id, plan]));
@@ -111,10 +118,10 @@ export function selectWeeklyPlanningDialogueReferenceContext(params: {
   // Use the same canonical occurrence expansion as the Day/Week planner:
   // recurring lessons and date-specific overrides must not be guessed from
   // raw plan templates.
-  const projection = createScheduleOccurrenceProjection({
+  const projection = targetDate === null ? { occurrences: [] } : createScheduleOccurrenceProjection({
     ownerId,
-    startDate: referenceDate,
-    endDate: referenceDate,
+    startDate: targetDate,
+    endDate: targetDate,
     plans: ownedPlans,
     monthEvents: params.monthEvents,
     scheduleTemplates: params.scheduleTemplates,
@@ -125,8 +132,8 @@ export function selectWeeklyPlanningDialogueReferenceContext(params: {
   const targetDateCommitments: WeeklyPlanningDialogueReferenceCommitment[] = [];
   for (const occurrence of projection.occurrences) {
     if (!occurrence.busy || occurrence.category === 'study') continue;
-    if (occurrence.start.date > referenceDate
-      || occurrence.end.date < referenceDate) continue;
+    if (targetDate === null || occurrence.start.date > targetDate
+      || occurrence.end.date < targetDate) continue;
     const label = normalizedLabel(occurrence.title);
     if (!label) continue;
     const category = occurrence.category;
@@ -136,8 +143,10 @@ export function selectWeeklyPlanningDialogueReferenceContext(params: {
       category: category === 'class' || category === 'exam'
         || category === 'school' || category === 'cram-school'
         || category === 'deadline' ? category : 'other',
-      startTime: occurrence.start.time,
-      endTime: occurrence.end.time,
+      // Canonical occurrences may span midnight; state only the interval
+      // actually occupied on this target day, not yesterday's starting hour.
+      startTime: occurrence.start.date < targetDate ? '00:00' : occurrence.start.time,
+      endTime: occurrence.end.date > targetDate ? '24:00' : occurrence.end.time,
     });
     if (targetDateCommitments.length === MAX_COMMITMENTS) break;
   }
@@ -146,6 +155,7 @@ export function selectWeeklyPlanningDialogueReferenceContext(params: {
   }
   return {
     referenceDate,
+    ...(targetDate !== referenceDate ? { targetDate } : {}),
     pastActivities: [...completed, ...planned],
     targetDateCommitments,
   };

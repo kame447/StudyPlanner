@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Plan, Actual } from '../../../types/domain';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
+import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import type { WeeklyPlanningTurnExecutionInput, WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import { renderWeeklyPlanningStableV5AssistantMessageCore, type WeeklyPlanningTurnDialoguePorts } from './weeklyPlanningStableV5TurnDialogueCore';
 import type { WeeklyPlanningStableV5DialogueRenderInput } from './weeklyPlanningStableV5DialogueContracts';
@@ -98,6 +99,41 @@ describe('read-only reference context enters only appropriate conversational ren
       result: pendingResult('missing_effort_estimate'),
     }, ports);
     expect(capture.mock.calls[0][0].referenceContext).toBeUndefined();
+  });
+
+  it.each([
+    { start: '2026-10-16', end: '2026-10-16', expectedCommitments: 1, expectedTargetDate: '2026-10-16' },
+    { start: '2026-10-15', end: '2026-10-21', expectedCommitments: 0, expectedTargetDate: null },
+  ])('uses the canonical target window %s..%s rather than a stale UI date', async ({ start, end, expectedCommitments, expectedTargetDate }) => {
+    const { capture, ports } = rendererSpy();
+    const graph = createEmptyWeeklyPlanningFactGraphV5();
+    graph.revision = 1;
+    graph.planningWindows.push({
+      id: 'window-1', kind: 'absolute', value: start,
+      start, end, createdRevision: 1,
+      source: {
+        conversationId: 'weekly-conversation', turnId: 'turn-0',
+        semanticLocalId: 'window', sourceText: '明日の予定',
+        origin: 'user',
+      },
+    });
+    const input = turn([
+      plan(),
+      { ...plan(), id: 'shift', seriesId: 'shift',
+        date: '2026-10-16', title: '明日のバイト', type: 'other',
+        startTime: '19:00', endTime: '21:00' },
+    ]);
+    const original = { ...pendingResult('missing_schedulable_work'), stableV5Graph: graph };
+    await renderWeeklyPlanningStableV5AssistantMessageCore({ input, result: original }, ports);
+    const references = capture.mock.calls[0][0].referenceContext;
+    expect(references).toMatchObject({
+      referenceDate: DATE,
+      targetDate: expectedTargetDate,
+      targetDateCommitments: expectedCommitments
+        ? [{ label: '明日のバイト', startTime: '19:00', endTime: '21:00' }]
+        : [],
+    });
+    expect(references?.pastActivities.some(item => item.label === '数学の復習')).toBe(true);
   });
 
   it('does not borrow a different owner\'s past activity as an example', async () => {
