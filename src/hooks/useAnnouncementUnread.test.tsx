@@ -22,6 +22,13 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => renderer?.unmount()); vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe('bounded announcement bell evidence', () => {
+  it('does not start a read after its owner exits during service loading', async () => {
+    act(() => { renderer = create(<Probe />); });
+    act(() => renderer.unmount());
+    await act(async () => {});
+    expect(listAnnouncements).not.toHaveBeenCalled();
+    expect(getAnnouncementReadState).not.toHaveBeenCalled();
+  });
   it('detects an older unread notice even when the latest has an individual receipt, without loading another page', async () => {
     vi.mocked(getAnnouncementReadState).mockResolvedValue({ through: null, items: { a: item.publishedAt } });
     await mount(); expect(model.status).toBe('unread'); expect(listAnnouncements).toHaveBeenCalledExactlyOnceWith('owner', null);

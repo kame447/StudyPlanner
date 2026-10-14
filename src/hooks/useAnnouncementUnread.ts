@@ -3,7 +3,6 @@ import {
   compareAnnouncementTime, isAnnouncementUnread, mergeAnnouncementReadState,
   type Announcement, type AnnouncementCursor, type AnnouncementPage, type AnnouncementReadState,
 } from '../features/announcements/announcement';
-import { getAnnouncementReadState, listAnnouncements } from '../services/announcementService';
 
 export interface AnnouncementPageSnapshot { page: AnnouncementPage<Announcement>; read: AnnouncementReadState }
 type UnreadStatus = 'unknown' | 'unread' | 'read';
@@ -40,6 +39,8 @@ export function useAnnouncementUnread(owner: string, isOpen: boolean) {
     }
     if (!cursor) session.lastAttempt = Date.now();
     const request = (async () => {
+      const { listAnnouncements, getAnnouncementReadState } = await import('../services/announcementService');
+      if (!live()) throw new Error('ログイン状態が変わりました。');
       const page = await listAnnouncements(owner, cursor);
       if (!live()) throw new Error('ログイン状態が変わりました。');
       const read = await getAnnouncementReadState(owner, page.items);
