@@ -96,4 +96,28 @@ describe('standalone readable settings', () => {
     act(() => renderer.update(<AppSettingsDialog {...props} />));
     expect(renderer.root.findByProps({ role: 'tabpanel' }).props['aria-labelledby']).toBe('app-settings-tab-settings');
   });
+
+  it('moves ordinary help into support while retaining errors, non-obvious effects and valid accessible references', () => {
+    mount();
+    act(() => renderer.update(<AppSettingsDialog {...props}
+      onChangeDayTimetable={vi.fn()} dayTimetableError="日表示を保存できませんでした"
+      monthTimetableError="月表示を保存できませんでした" />));
+    expect(renderer.root.findAllByProps({ role: 'alert' }).map(node => node.children.join('')))
+      .toEqual(['月表示を保存できませんでした', '日表示を保存できませんでした']);
+    expect(renderer.root.findByProps({ id: 'settings-week-description' }).children.join(''))
+      .toContain('「今週」「来週」の解釈と週間計画の保存単位');
+    expect(renderer.root.findAllByProps({ className: 'settings-help' })).toHaveLength(0);
+    for (const node of renderer.root.findAll(node => typeof node.type === 'string' && Boolean(node.props['aria-labelledby'] || node.props['aria-describedby']))) {
+      for (const reference of [node.props['aria-labelledby'], node.props['aria-describedby']].filter(Boolean)) {
+        for (const id of reference.split(' ')) expect(renderer.root.findAllByProps({ id })).toHaveLength(1);
+      }
+    }
+    selectTab('memory');
+    expect(JSON.stringify(renderer.toJSON())).not.toContain('別の計画でも役立つ目標');
+    act(() => button('追加').props.onClick());
+    expect(JSON.stringify(renderer.toJSON())).not.toContain('種類を選ぶ必要はありません');
+    expect(renderer.root.findByType('textarea').props.placeholder).toBe('例：英単語は15分くらいに分けて勉強したい');
+    selectTab('support');
+    expect(JSON.stringify(renderer.toJSON())).toContain('別の計画にも役立つ目標');
+  });
 });

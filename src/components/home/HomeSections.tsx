@@ -176,9 +176,6 @@ export function GettingStartedSection({
           <h1 id="home-getting-started-title">Laplanceを準備する</h1>
         </div>
       </div>
-      <p className="home-setup-copy">
-        まず1つ登録すると、予定・進捗・要対応などがホームに自動で表示されます。
-      </p>
       <div className="home-setup-actions">
         {actions.map(({ id, title, detail, icon: Icon, onClick, primary }) => (
           <button
@@ -322,7 +319,6 @@ export function TodayScheduleSection({
         <TodayScheduleAddMenu key={dashboard.today} date={dashboard.today}
           empty={dashboard.todayPlans.length === 0} onAddEntry={onAddEntry} />
       </div>
-      {dashboard.todayPlans.length > 4 ? <p className="home-scroll-hint">下にスクロールして続きを読む ↓</p> : null}
     </section>
   );
 }

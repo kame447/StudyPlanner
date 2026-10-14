@@ -2,6 +2,8 @@
 
 Status: canonical domain entry point
 
+Ordinary in-app usage guidance is grouped in the existing settings support FAQ. Action-point validation, consent, warnings, error recovery and accessible labels remain on their owning screens. Current migration and verification: [guidance to support](work/20261014-guidance-to-support.md).
+
 Support owns the authenticated `/contact` submission, read-only `/admin/inquiries` inbox, and administrator-authored in-app announcements. It is independent of planner persistence, AI conversation traces and product analytics. The contact flow neither requests nor copies email addresses; existing sign-in and email verification policies are unchanged.
 
 ## Contract

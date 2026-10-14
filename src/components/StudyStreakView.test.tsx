@@ -97,7 +97,8 @@ it('shows automatic protection with a compact three-value summary and no manual 
   expect(root.findAllByType('input')).toHaveLength(0);
   expect(root.findAllByType('form')).toHaveLength(0);
   expect(root.findAllByType('button').some(node => node.children.includes('チケットを使う'))).toBe(false);
-  expect(root.findAllByType('span').some(node => node.children.includes('お休み券は自動で使います'))).toBe(true);
+  expect(root.findAllByType('span').some(node => node.children.includes('お休み券は自動で使います'))).toBe(false);
+  expect(root.findByProps({ className: 'study-streak-ticket-note' }).findByType('span').children.join('')).toBe('次の1枚まで 5日');
 });
 
 it('provides all six calendar rows without discarding the last week', () => {
