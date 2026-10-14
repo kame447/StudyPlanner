@@ -1,9 +1,15 @@
 # Day timetable visibility and occurrence removal
 
-Status: active; diagnostic publication prepared after focused local checks; exact-head CI/browser acceptance pending; main release held
+Status: active local continuation; latest-main integration and day time editing in progress; publication and merge held
 Branch: `fix/day-timetable-occurrence-controls`
 Base: `3a1e60b9`
 PR: https://github.com/kame447/StudyPlanner/pull/541 (draft)
+
+## Continued day controls — 2026-10-14 08:58 UTC
+
+The user requested time changes and deletion from the Day timetable detail, removal of redundant explanation, and explicitly resumed unfinished repairs. The existing PR #541 and branch remain the sole owner; no duplicate PR or logical branch was created. Local owner: the day-controls implementation task. Current remote HEAD is `e2810e6d66727aa4b909c54aedd809f1a8183548`; integration base is current main `90211bdc`. The prior ownership hold is resolved by this explicit continuation, while publication and merge still require the coordinator's approval.
+
+Next: merge current main without replacing adopted #554 display preferences or #540 flows; preserve cancellation/Undo/Actual history and the shared AI busy-time consumer. Then add an explicit same-day time editor for projected classes and remove the redundant detail paragraph. Reuse canonical saved Plan provenance for time overrides, retain the master timetable and other days, and test stale/owner/pending/failure/reload boundaries. Previous failed WebKit evidence remains failed. Focused tests and independent review precede final full/native verification.
 
 ## Diagnostic verification and publication checkpoint — 2026-10-08 14:23 UTC
 
