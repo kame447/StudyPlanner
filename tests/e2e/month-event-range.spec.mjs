@@ -281,6 +281,30 @@ test.describe('multi-day month events', () => {
         await editor.getByRole('button', { name: '保存', exact: true }).click();
         const scope = editor.getByRole('group', { name: '繰り返し予定の更新範囲' });
         await expect(scope).toBeVisible();
+        const originalViewport = page.viewportSize();
+        for (const layout of [
+          { width: 320, height: 568, textScale: '100%' },
+          { width: 812, height: 375, textScale: '200%' },
+          { width: 1280, height: 720, textScale: '100%' },
+        ]) {
+          await page.setViewportSize({ width: layout.width, height: layout.height });
+          await page.evaluate(scale => { document.documentElement.style.fontSize = scale; }, layout.textScale);
+          await expect.poll(() => editor.evaluate(element => {
+            const prompt = element.querySelector('.month-event-edit-scope').getBoundingClientRect();
+            const body = element.querySelector('.month-event-editor-body').getBoundingClientRect();
+            return body.top - prompt.bottom;
+          })).toBeGreaterThanOrEqual(0);
+          for (const name of ['この予定だけ変更', 'これ以降も全部変更', 'キャンセル']) {
+            const button = scope.getByRole('button', { name, exact: true });
+            await button.scrollIntoViewIfNeeded();
+            await expect(button).toBeInViewport();
+            // Normal hit-testing must succeed even though the input fieldset is disabled.
+            await button.click({ trial: true });
+          }
+          await page.screenshot({ path: testInfo.outputPath(`recurring-event-${action}-scope-${layout.width}-${layout.textScale}.png`) });
+        }
+        await page.evaluate(() => { document.documentElement.style.removeProperty('font-size'); });
+        await page.setViewportSize(originalViewport);
         await page.screenshot({ path: testInfo.outputPath(`recurring-event-${action}-scope-confirmation.png`) });
         expect(await page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'))).toBe(before);
         await scope.getByRole('button', { name: 'キャンセル', exact: true }).click();
