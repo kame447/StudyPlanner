@@ -260,7 +260,10 @@ export interface MonthEventChecklistItem {
   checked: boolean;
 }
 
+export type MonthEventColor = 'green' | 'orange' | 'purple' | 'blue' | 'pink';
+
 export interface MonthEvent {
+  color?: MonthEventColor;
   id: string;
   userId: string;
   date: string;
@@ -279,6 +282,7 @@ export interface MonthEvent {
 }
 
 export interface MonthEventDraft {
+  color?: MonthEventColor;
   userId: string;
   date: string;
   title: string;

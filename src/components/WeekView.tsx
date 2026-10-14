@@ -17,6 +17,7 @@ import {
 import { deleteScheduleOccurrence } from '../domain/scheduleOccurrenceMutation';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import {
+  addDays,
   getWeekDates,
   minutesBetween,
   minutesFromTime,
@@ -47,6 +48,7 @@ import {
 } from '../lib/weekViewLayout';
 import { useScheduleItemActionPress } from '../hooks/useScheduleItemActionPress';
 import { useTimelineDragCancellation } from '../hooks/useTimelineDragCancellation';
+import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { useUndoRedoHistory } from '../hooks/useUndoRedoHistory';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import type {
@@ -81,6 +83,7 @@ interface WeekViewProps {
   onMovePlan?: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   onDeletePlan?: (plan: Plan) => Promise<void>;
   onDeleteMonthEvent?: (monthEvent: MonthEvent) => Promise<void>;
+  onChangeWeek?: (date: string) => void;
   onOpenDay: (date: string) => void;
 }
 
@@ -262,6 +265,7 @@ export function WeekView({
   onDeletePlan,
   onDeleteMonthEvent,
   onOpenDay,
+  onChangeWeek,
 }: WeekViewProps) {
   const [timelineMode, setTimelineMode] = useState<WeekTimelineMode>('plan');
   const [dragVisual, setDragVisual] = useState<DragVisualState | null>(null);
@@ -269,6 +273,11 @@ export function WeekView({
   const suppressClickUntilRef = useRef(0);
   const moveHistory = useUndoRedoHistory<string, WeekPlanMoveTarget>();
   const scheduleAction = useScheduleItemActionPress<ScheduleOccurrence>();
+  const swipeNavigation = useSwipeNavigation({
+    onPrevious: () => onChangeWeek?.(addDays(selectedDate, -7)),
+    onNext: () => onChangeWeek?.(addDays(selectedDate, 7)),
+    disabled: !onChangeWeek || Boolean(dragVisual || scheduleAction.activeAction),
+  });
   const weekDates = getWeekDates(selectedDate);
   const weekStartDate = weekDates[0];
   const weekEndDate = weekDates[weekDates.length - 1];
@@ -833,6 +842,7 @@ export function WeekView({
   }
 
   function handleActionClickCapture(event: ReactMouseEvent<HTMLElement>) {
+    swipeNavigation.onClickCapture(event);
     if (!scheduleAction.shouldSuppressClick()) return;
     event.preventDefault();
     event.stopPropagation();
@@ -887,6 +897,7 @@ export function WeekView({
     <>
       <section
         className="panel schedule-week-view"
+        {...swipeNavigation}
         onPointerDownCapture={handleActionPointerDownCapture}
         onPointerMoveCapture={handleActionPointerMoveCapture}
         onPointerUpCapture={handleActionPointerUpCapture}

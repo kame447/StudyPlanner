@@ -94,6 +94,7 @@ export function createMonthEventDraftFromEvent(event: MonthEvent): MonthEventDra
     memo: event.memo,
     checklist: event.checklist.map((item) => ({ ...item })),
     locationTags: [...event.locationTags],
+    ...(event.color ? { color: event.color } : {}),
   };
 }
 

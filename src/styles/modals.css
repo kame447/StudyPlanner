@@ -813,6 +813,58 @@
   font-weight: 850;
 }
 
+/* Selection changes remount only the title region; typing never restarts this cue. */
+@media (prefers-reduced-motion: no-preference) {
+  .month-event-title-selected .month-event-title-field input {
+    animation: month-event-title-selection 300ms ease-out;
+  }
+}
+
+@keyframes month-event-title-selection {
+  from {
+    transform: translateY(3px);
+    background-color: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.month-event-color-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.month-event-color-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.month-event-color-chip[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  font-weight: 850;
+}
+
+.month-event-color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
 .month-event-addon-chip-row {
   display: flex;
   align-items: center;

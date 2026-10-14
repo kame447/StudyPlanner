@@ -1,5 +1,6 @@
 import type {
   MonthEvent,
+  MonthEventColor,
   MonthEventChecklistItem,
   MonthEventRepeat,
   Plan,
@@ -59,6 +60,7 @@ export interface ScheduleEventPlanDetails {
 }
 
 export interface ScheduleEventGeneralDetails {
+  color?: MonthEventColor;
   url: string;
   checklist: MonthEventChecklistItem[];
   locationTags: string[];
@@ -244,6 +246,7 @@ export function scheduleEventFromMonthEvent(event: MonthEvent): ScheduleEvent {
       url: event.url ?? '',
       checklist: checklist.map((item) => ({ ...item })),
       locationTags: uniqueStrings(event.locationTags),
+      ...(event.color ? { color: event.color } : {}),
     },
   };
 }
@@ -307,6 +310,7 @@ export function scheduleEventToMonthEvent(event: ScheduleEvent): MonthEvent | nu
     memo: event.memo,
     checklist: event.general.checklist.map((item) => ({ ...item })),
     locationTags: [...event.general.locationTags],
+    ...(event.general.color ? { color: event.general.color } : {}),
     createdAt: event.createdAt,
     updatedAt: event.updatedAt,
     ...(event.busy === false ? { busy: false } : {}),

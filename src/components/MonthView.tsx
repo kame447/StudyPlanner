@@ -2,7 +2,8 @@ import type { MonthEventEditRequest } from '../domain/recurringMonthEvent';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useExitMotion } from '../hooks/useExitMotion';
-import { todayIsoDate } from '../lib/date';
+import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
+import { addMonths, todayIsoDate } from '../lib/date';
 import { buildMonthGrid } from '../lib/monthViewProjection';
 import { MonthDaySheet } from './MonthDaySheet';
 import { MonthEventDialog } from './MonthEventDialog';
@@ -51,6 +52,7 @@ export function MonthView({
   timetableTerms = [],
   createRequestId = 0,
   onSelectDate,
+  onChangeMonth,
   onOpenWeek,
   onOpenDay,
   onSaveMonthEvent,
@@ -76,6 +78,11 @@ export function MonthView({
   const lastCellClick = useRef<{ date: string; at: number } | null>(null);
   const lastCreateRequestId = useRef(createRequestId);
   const todayDate = todayIsoDate();
+  const swipeNavigation = useSwipeNavigation({
+    onPrevious: () => onChangeMonth(addMonths(monthDate, -1)),
+    onNext: () => onChangeMonth(addMonths(monthDate, 1)),
+    disabled: Boolean(eventModalDate || daySheetDate),
+  });
 
   const registerCellRef = useCallback((date: string, node: HTMLButtonElement | null) => {
     if (node) {
@@ -241,7 +248,7 @@ export function MonthView({
   }, []);
 
   return (
-    <section ref={viewRef} className="panel schedule-month-view">
+    <section ref={viewRef} className="panel schedule-month-view" {...swipeNavigation}>
       <div className="schedule-month-static-grid">
         <MonthGridPanel
           monthDate={monthDate}

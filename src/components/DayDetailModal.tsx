@@ -9,6 +9,7 @@ import type { Actual, ActualDraft, MonthEvent, Plan } from '../types/domain';
 
 interface DayDetailModalProps {
   detailPlan: Plan | null;
+  openRecordInitially?: boolean;
   historyOnly?: boolean;
   deleteOccurrenceLabel?: string;
   deleteOccurrenceDescription?: string;
@@ -38,7 +39,8 @@ export function DayDetailModal(props: DayDetailModalProps) {
 
 function DayDetailSession({
   historyOnly = false,
-  deleteOccurrenceLabel = 'この日だけ削除',
+  openRecordInitially = false,
+  deleteOccurrenceLabel = '予定を削除',
   deleteOccurrenceDescription,
   onDeleteOccurrence,
   detailPlan,
@@ -56,7 +58,7 @@ function DayDetailSession({
   onDeleteActual,
   onClose,
 }: DayDetailModalProps) {
-  const [recordSession, setRecordSession] = useState<RecordSession | null>(null);
+  const [recordSession, setRecordSession] = useState<RecordSession | null>(() => openRecordInitially && detailPlan ? structuredClone({ plan: detailPlan, actual: detailActual }) : null);
   const { isExiting, requestExit } = useExitMotion(onClose);
   const sheetMotionClassName = isExiting ? 'is-closing' : 'is-open';
 

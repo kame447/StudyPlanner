@@ -124,6 +124,16 @@ async function upsertDocument<T extends PlannerDoc>(
   return sanitizedItem;
 }
 
+function prepareMonthEventWrite(event: MonthEvent) {
+  return {
+    ...stripUndefinedDeep(event),
+    // Legacy writes merge. Explicitly returning to automatic color must remove
+    // the saved override instead of letting undefined sanitization retain it.
+    ...(Object.prototype.hasOwnProperty.call(event, 'color') && event.color === undefined
+      ? { color: deleteField() } : {}),
+  };
+}
+
 async function listActualsByPlanId(
   firestoreDb: Firestore,
   userId: string,
@@ -734,7 +744,7 @@ export function createFirebasePlannerRepository(
         assertRecurringMonthEventWrite(userId, monthEvents);
         const batch = writeBatch(firestoreDb);
         monthEvents.forEach((event) => {
-          batch.set(doc(firestoreDb, 'month_events', event.id), stripUndefinedDeep(event), { merge: true });
+          batch.set(doc(firestoreDb, 'month_events', event.id), prepareMonthEventWrite(event), { merge: true });
         });
         await batch.commit();
       } catch (error) {
@@ -745,7 +755,8 @@ export function createFirebasePlannerRepository(
     },
     async upsertMonthEvent(monthEvent) {
       try {
-        return await upsertDocument(firestoreDb, 'month_events', monthEvent);
+        await setDoc(doc(firestoreDb, 'month_events', monthEvent.id), prepareMonthEventWrite(monthEvent), { merge: true });
+        return stripUndefinedDeep(monthEvent);
       } catch (error) {
         throw new Error(
           normalizeErrorMessage(

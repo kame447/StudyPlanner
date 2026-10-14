@@ -3,6 +3,7 @@ import type { ScheduleOccurrence, ScheduleOccurrenceCategory } from '../domain/s
 import type { PlanType } from '../types/domain';
 import {
   getMonthEventColor,
+  MONTH_EVENT_COLOR_OPTIONS,
   getPlanScheduleColor,
   getScheduleOccurrenceColor,
   scheduleEventColorStyle,
@@ -21,6 +22,16 @@ function occurrence(overrides: Partial<ScheduleOccurrence> = {}): ScheduleOccurr
 }
 
 describe('schedule event color authority', () => {
+  it.each(MONTH_EVENT_COLOR_OPTIONS)('uses the saved $key choice regardless of source identity', option => {
+    expect(getMonthEventColor('shift-1', option.key)).toBe(option.color);
+    expect(getMonthEventColor('another-id', option.key)).toBe(option.color);
+    expect(getScheduleOccurrenceColor(occurrence({ color: option.key }))).toBe(option.color);
+  });
+
+  it('never renders unrecognized persisted color as arbitrary CSS', () => {
+    expect(getMonthEventColor('shift-1', '#000' as never)).toBe(getMonthEventColor('shift-1'));
+  });
+
   it('uses saved identity even when projection id, title, dates and busy status change', () => {
     const original = occurrence();
     const changed = occurrence({

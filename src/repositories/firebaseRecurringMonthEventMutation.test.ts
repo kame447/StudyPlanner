@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn((_db, name) => ({ name })),
-  deleteDoc: vi.fn(), deleteField: vi.fn(),
+  deleteDoc: vi.fn(), deleteField: vi.fn(() => 'DELETE_FIELD'),
   doc: vi.fn((_db, collectionName, id) => ({ collectionName, id })),
   getDocs: mocks.getDocs, getDocsFromServer: vi.fn(), getDocFromServer: vi.fn(),
   query: vi.fn((...parts) => ({ parts })), runTransaction: vi.fn(),
@@ -77,6 +77,23 @@ for (const mode of ['canonical', 'legacy'] as const) {
       expect([...mocks.records.entries()].filter(([id]) => unrelated.some(([other]) => other === id))).toEqual(unrelated);
       expect(mocks.setDoc).not.toHaveBeenCalled();
       expect(mocks.getDocs).not.toHaveBeenCalled();
+    });
+
+    it.each(['blue', undefined] as const)('writes the selected color %s through normal and recurring persistence boundaries', async color => {
+      const repository = setup();
+      const row = { ...source, color };
+      await repository.upsertMonthEvent(row);
+      const normalPayload = mocks.setDoc.mock.calls[0][1];
+      await repository.applyRecurringMonthEventMutation('owner', [row]);
+      const batchPayload = mocks.batchSet.mock.calls[0][1];
+      for (const payload of [normalPayload, batchPayload]) {
+        if (mode === 'canonical') {
+          if (color) expect(payload.general.color).toBe(color);
+          else expect(payload.general).not.toHaveProperty('color');
+        } else {
+          expect(payload.color).toBe(color ?? 'DELETE_FIELD');
+        }
+      }
     });
 
     it('rejects an atomic commit failure without independently saving either row or falling back', async () => {

@@ -270,21 +270,22 @@ it.each(['edit-first', 'cancel-first', 'import-first'] as const)('serializes day
   expect(state.plans.filter(row => row.sourceType === 'timetable')).toHaveLength(order === 'cancel-first' ? 0 : 1);
 });
 
-it('recovers an acknowledged-lost time edit without duplicating the override', async () => {
+it.each(['time', 'record'] as const)('recovers acknowledged-lost %s materialization without duplicating the override', async operation => {
   const { repository } = await mount(); const occurrence = get('timetable-template');
   const put = boundary.repository.upsertPlan, read = boundary.repository.getPlans;
   boundary.repository.upsertPlan = async value => { await put(value); throw Error('ack lost'); };
   boundary.repository.getPlans = async () => { throw Error('offline'); };
   const writes = vi.spyOn(boundary.repository, 'upsertPlan');
   const time = { startTime: '17:00', endTime: '18:00' };
-  await act(async () => { await expect(state.changeDayTimetableTime(occurrence, time)).rejects.toThrow('ack lost'); });
-  await act(async () => { await expect(state.changeDayTimetableTime(occurrence, time)).rejects.toThrow('保存状態'); });
+  const save = () => operation === 'time' ? state.changeDayTimetableTime(occurrence, time) : state.prepareDayTimetableRecord(occurrence);
+  await act(async () => { await expect(save()).rejects.toThrow('ack lost'); });
+  await act(async () => { await expect(save()).rejects.toThrow('保存状態'); });
   expect(writes).toHaveBeenCalledTimes(1);
   boundary.repository.getPlans = read;
   await act(async () => { await state.retryPlannerData(); });
   expect(state.plans.filter(row => row.sourceType === 'timetable')).toHaveLength(1);
   expect(state.plans).toEqual(await repository.getPlans('owner'));
-  await act(async () => { await expect(state.changeDayTimetableTime(occurrence, time)).rejects.toThrow('更新されました'); });
+  await act(async () => { await expect(save()).rejects.toThrow('更新されました'); });
   expect(writes).toHaveBeenCalledTimes(1);
 });
 
@@ -300,4 +301,44 @@ it('rejects invalid, stale and old-owner time edits before persistence', async (
   await act(async () => { renderer!.update(<Harness owner="other" />); });
   await act(async () => { await expect(old(occurrence, { startTime: '17:00', endTime: '18:00' })).rejects.toThrow('切り替わりました'); });
   expect(write).not.toHaveBeenCalled();
+});
+
+it('materializes one grouped timetable occurrence and records against its durable Plan identity', async () => {
+  const { repository } = await mount(); const occurrence = get('timetable-template');
+  const masters = await repository.getScheduleTemplates('owner');
+  let saved!: Awaited<ReturnType<typeof state.prepareDayTimetableRecord>>;
+  await act(async () => { saved = await state.prepareDayTimetableRecord(occurrence); });
+  expect(saved).toMatchObject({ userId: 'owner', date: DATE, sourceDate: DATE, sourceType: 'timetable',
+    sourceId: occurrence.source.backingId, startTime: '14:00', endTime: '16:00', repeat: 'none' });
+  expect(saved.id).not.toBe(occurrence.id);
+  expect(state.plans.find(row => row.id === saved.id)).toEqual(saved);
+  expect(await repository.getScheduleTemplates('owner')).toEqual(masters);
+  const { createActualDraftForPlan } = await import('../lib/actualDrafts');
+  await act(async () => { await state.saveActual(saved, createActualDraftForPlan(saved)); });
+  await act(async () => { await state.loadPlannerData('owner'); });
+  expect(state.actuals.find(row => row.planId === saved.id)).toMatchObject({ occurrenceDate: DATE,
+    actualStartTime: '14:00', actualEndTime: '16:00' });
+  expect(project().filter(row => row.title === template.title)).toHaveLength(1);
+  expect(project('2026-10-12').find(row => row.source.backingKind === 'timetable-template')).toBeDefined();
+  await act(async () => { await expect(state.prepareDayTimetableRecord(occurrence)).rejects.toThrow('更新されました'); });
+  expect((await repository.getPlans('owner')).filter(row => row.sourceType === 'timetable')).toHaveLength(1);
+});
+
+it('blocks duplicate record preparation and preserves source admission through write failure', async () => {
+  await mount(); const occurrence = get('timetable-template'); const gate = deferred();
+  const put = boundary.repository.upsertPlan;
+  const writes = vi.fn(async value => { await gate.promise; return put(value); });
+  boundary.repository.upsertPlan = writes;
+  let first!: Promise<unknown>;
+  await act(async () => { first = state.prepareDayTimetableRecord(occurrence).catch(error => error); });
+  await act(async () => {
+    await expect(state.prepareDayTimetableRecord(occurrence)).rejects.toThrow('保存中');
+    await expect(state.deleteDayOccurrence(occurrence)).rejects.toThrow('保存中');
+  });
+  expect(writes).toHaveBeenCalledOnce();
+  await act(async () => { gate.reject(Error('offline')); expect(await first).toBeInstanceOf(Error); });
+  expect(state.plans.filter(row => row.sourceType === 'timetable')).toHaveLength(0);
+  boundary.repository.upsertPlan = put;
+  await act(async () => { await state.retryPlannerData(); await state.prepareDayTimetableRecord(get('timetable-template')); });
+  expect(state.plans.filter(row => row.sourceType === 'timetable')).toHaveLength(1);
 });
