@@ -1,3 +1,4 @@
+import { isValidQuickEntryDate } from '../lib/quickEntryDrafts';
 import { ActualMutationAdmissionError } from '../hooks/useActualMutationAdmission';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { formatMinutes, minutesBetween } from '../lib/date';
@@ -151,6 +152,10 @@ export function ActualEditorCard({
 
   async function handleSave() {
     if (pendingMutation.current || isClosing) return;
+    if (!isValidQuickEntryDate(draft.occurrenceDate)) {
+      setError('有効な日付を入力してください。');
+      return;
+    }
     if (minutesBetween(draft.actualStartTime, draft.actualEndTime) <= 0) {
       setError('記録の終了時刻は開始時刻より後にしてください。');
       return;
