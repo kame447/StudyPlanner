@@ -196,6 +196,8 @@ export interface WeeklyPlanningExistingScheduleGrounding {
 }
 
 export interface WeeklyPlanningStableV5DialogueRenderInput {
+  /** Read-only, owner-scoped examples; never a new user request or accepted Fact. */
+  referenceContext?: import('./weeklyPlanningDialogueReferenceContext').WeeklyPlanningDialogueReferenceContext;
   /** Application-selected conversation goal, not a second interpretation of raw text. */
   communication?: {
     goal: 'ask_question' | 'explain_question' | 'acknowledge_aside' | 'resume_question' | 'present_preview' | 'acknowledge';
