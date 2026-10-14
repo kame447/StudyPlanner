@@ -74,3 +74,11 @@ Parent review, authorized upstream publication and the existing GitHub CI/native
 - Minimal repair: change the existing linked-existing memo locator to its exact actual label. Keep the non-aligned fixture, all six cases, invalid-save no-write/input retention assertions, corrected-save/reload checks, retry policy and timeouts unchanged. No production change is needed.
 - Logs and inspected screenshots: `/workspace/shared/laplans-actual-native-650/bc85b6b0/`; compact images artifact `11898461986`, SHA-256 `5ba8d70dc6e104edce9ce59c1e18b72bb26eb7018fe4e9ffc639642c28696459`.
 - Next: discovery and fresh exact-content verify for the repaired native-test snapshot; publish through the same sole writer and require both engines' six actual cases plus complete gates before merge.
+
+
+## Corrected native-test snapshot verification — 2026-10-14 13:34 UTC
+
+- Verified repair commit `e8bb6824ecba3edd19bda9f7b2f379b83e8b70b2`, tree `4ef3c80c74cffa20918514c91c2514b39a3040f3`. Relative to the previous published content, only the exact memo locator line and this checkpoint changed; production, fixtures, all save/reload assertions, six cases and timeouts are unchanged.
+- Fresh `npm run verify` returned **exit 0** from 13:29:50 to 13:33:16 UTC: fresh app/Worker types and runtime declarations, **907 files / 8,616 tests passed**, 11 skipped files / 54 skipped tests / 1 todo, build **5.71s**; unit 168.38s. The same supported two-fork environment and telemetry disable flags were used, with `WRANGLER_LOG_PATH=/tmp/actual-locator-repair-wrangler`.
+- Exact source identity before/after: **2,253 files**, SHA-256 `36473cdf29a2e5fd32814d7cc3d4e3361fbdbcef2e6342ad35e88cb3f10618fa`. Installed **19,328 files** and generated Worker declarations match the previous integration fingerprint unchanged. Both discovery commands returned exit 0 and selected six actual tests per engine; no native browser was launched locally.
+- Receipts: ignored `artifacts/native-locator-repair/{before-verify,after-verify,final-inputs,terminal-local-receipt}.json`, `verify.log`, exit/start/end sidecars and both discovery logs. Documentation-only followup does not change verified inputs. The previous native failure remains recorded; corrected-head CI/native and post-main acceptance are still pending.
