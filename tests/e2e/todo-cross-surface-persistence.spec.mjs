@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/startup-ready.mjs';
 
 async function openTodo(page) {
   await page.locator('.primary-bottom-nav button').filter({ hasText: '予定' }).click();

@@ -1,4 +1,5 @@
-import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
+import { WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5 } from './weeklyPlanningConversationActsV5';
+import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClientTypes';
 import { USER_PLANNING_CONTEXT_SEMANTIC_KINDS_V1 } from '../../userPlanningContext/userPlanningContextTypes';
 import {
   SEMANTIC_AVAILABILITY_KINDS_V5,
@@ -139,7 +140,7 @@ const effortEstimateSchema = objectSchema(
   ],
   {
     localId: stringSchema,
-    targetLocalId: stringSchema,
+    targetLocalId: { ...stringSchema, description: "Same-task task/component/workload localId. Only total_duration/session_duration may instead use an exact active workload publicId under an explicitly bound active task; declared localIds take precedence." },
     kind: enumSchema(['total_duration', 'duration_per_unit', 'session_duration']),
     minutes: numberSchema,
     unitCode: {
@@ -247,7 +248,7 @@ const uncertaintySchema = objectSchema(
   ['localId', 'targetLocalId', 'field', 'reason', 'sourceText'],
   {
     localId: stringSchema,
-    targetLocalId: stringSchema,
+    targetLocalId: { ...stringSchema, description: "A supported fact localId declared in this response, or document for an unresolved referent; never a public Fact ID or this uncertainty's own localId." },
     field: stringSchema,
     reason: stringSchema,
     ...sourceTextProperty,
@@ -350,6 +351,10 @@ const userContextFactSchema = objectSchema(
   },
 );
 
+const conversationActSchema = objectSchema(['kind', 'targetPublicId'], {
+  kind: enumSchema(WEEKLY_PLANNING_CONVERSATION_ACT_KINDS_V5), targetPublicId: nullableStringSchema,
+});
+
 const rootSchema = objectSchema(
   [
     'schemaVersion',
@@ -360,6 +365,7 @@ const rootSchema = objectSchema(
     'availabilityDeclarations',
     'constraintSourceRequests',
     'userContextFacts',
+    'conversationActs',
     'uncertainties',
     'corrections',
     'decisions',
@@ -376,6 +382,7 @@ const rootSchema = objectSchema(
     availabilityDeclarations: arraySchema(availabilityDeclarationSchema),
     constraintSourceRequests: arraySchema(constraintSourceRequestSchema),
     userContextFacts: arraySchema(userContextFactSchema),
+    conversationActs: arraySchema(conversationActSchema),
     uncertainties: arraySchema(uncertaintySchema),
     corrections: arraySchema(correctionSchema),
     decisions: arraySchema(decisionSchema),

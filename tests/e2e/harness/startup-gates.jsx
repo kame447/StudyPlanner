@@ -1,11 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { StudyPlannerAppRoot } from '../../../src/components/StudyPlannerAppRoot';
+import { LaplanceAppRoot } from '../../../src/components/LaplanceAppRoot';
 import { authRepository, plannerRepository } from '../../../src/repositories';
 import { StartupTimingPanel } from '../../../src/components/StartupTimingPanel';
 import { addDays, toIsoDate } from '../../../src/lib/date';
-import { createLocalWeeklyPlanningPersonalizationRepository } from '../../../src/features/weeklyPlanning/personalization/weeklyPlanningPersonalizationRepository';
-import './plannerRecoveryRepository.fixture.js';
+import { createLocalWeeklyPlanningPersonalizationRepository, setWeeklyPlanningPersonalizationRepositoryForTests } from '../../../src/features/weeklyPlanning/personalization/weeklyPlanningPersonalizationRepository';
+import { authRepository as recoveryAuthRepository } from './plannerRecoveryRepository.fixture.js';
+import { getUserPlanningContextRepositoryV1 } from '../../../src/features/userPlanningContext/userPlanningContextRepository';
 import '../../../src/styles.css';
 import '../../../src/styles/interaction-continuity.css';
 import '../../../src/styles/appSettingsMemory.css';
@@ -25,7 +26,60 @@ if (!localStorage.getItem('startup-gates-seeded')) {
   }));
   localStorage.setItem('startup-gates-seeded', 'true');
 }
-await createLocalWeeklyPlanningPersonalizationRepository().setWeekStartsOn(ownerId, 'monday');
+if (new URLSearchParams(location.search).get('weekStart') !== 'missing') {
+  await createLocalWeeklyPlanningPersonalizationRepository().setWeekStartsOn(ownerId, 'monday');
+}
+// Opt-in synthetic read failure; the production hook/root own retry and readiness.
+if (new URLSearchParams(location.search).get('preferenceWait') === '1') {
+  const local = createLocalWeeklyPlanningPersonalizationRepository();
+  const requests = [];
+  const control = window.__preferenceReadHarness = {
+    writes: 0,
+    get readCount() { return requests.length; },
+    async resolve(index, missing = false) {
+      requests[index].resolve(missing ? null : await local.getProfile(ownerId));
+    },
+  };
+  setWeeklyPlanningPersonalizationRepositoryForTests({
+    getProfile() { return new Promise((resolve, reject) => requests.push({ resolve, reject })); },
+    setWeekStartsOn(...args) { control.writes += 1; return local.setWeekStartsOn(...args); },
+    resetProfile(...args) { control.writes += 1; return local.resetProfile(...args); },
+  });
+}
+
+// Opt-in profile-rejection fixture. Only external promise settlement is held;
+// the real root, memory provider, restore hook and planner admission stay intact.
+if (new URLSearchParams(location.search).get('profileRecovery') === '1') {
+  const originalRestore = recoveryAuthRepository.getCurrentUser;
+  const memoryRepository = getUserPlanningContextRepositoryV1();
+  const originalInitialize = memoryRepository.initialize.bind(memoryRepository);
+  const restores = [];
+  let releaseMemory;
+  const memoryWait = new Promise(resolve => { releaseMemory = resolve; });
+  const control = window.__profileRestoreHarness = {
+    calls: 0,
+    memoryCalls: 0,
+    rejectImmediately: true,
+    get pending() { return restores.length; },
+    releaseMemory() { releaseMemory(); },
+    rejectRestore() { restores.shift().reject(new Error('Synthetic profile restore failure')); },
+    resolveRestore() { restores.shift().resolve(); },
+  };
+  recoveryAuthRepository.getCurrentUser = async () => {
+    // Signed-out startup keeps its ordinary local authentication path.
+    if (!localStorage.getItem('studyplanner.session')) return originalRestore();
+    control.calls += 1;
+    if (control.rejectImmediately) throw new Error('Synthetic profile restore failure');
+    await new Promise((resolve, reject) => restores.push({ resolve, reject }));
+    return originalRestore();
+  };
+  memoryRepository.initialize = async (...args) => {
+    control.memoryCalls += 1;
+    await memoryWait;
+    return originalInitialize(...args);
+  };
+}
+
 window.__plannerRecoveryRepository.holdTargetReads();
 window.__realWeeklyEvents = [];
 const authListeners = new Set();
@@ -76,5 +130,5 @@ const session = {
   async signOut() { window.__startupGateHarness.emitAuth(null); },
 };
 ReactDOM.createRoot(document.getElementById('root')).render(<React.StrictMode>
-  <StartupTimingPanel /><StudyPlannerAppRoot authSession={session} />
+  <StartupTimingPanel /><LaplanceAppRoot authSession={session} />
 </React.StrictMode>);

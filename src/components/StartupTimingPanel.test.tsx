@@ -1,6 +1,7 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
 import { StartupTimingPanel } from './StartupTimingPanel';
+import { StartupTimingButton } from './StartupTimingButton';
 const state = vi.hoisted(() => ({ enabled: true, markOnce: vi.fn(),
   rows: [{ id: 1, phase: 'bootstrap', startMs: 0, durationMs: 20, outcome: 'error' }] }));
 vi.mock('../lib/startupTiming', () => ({ startupTiming: {
@@ -46,4 +47,10 @@ it('keeps the optional diagnostic panel above the shared bottom-navigation clear
   fixture();
   expect(renderer.root.findByType('details').props.style.bottom)
     .toBe('calc(var(--app-bottom-nav-clearance, 72px) + 8px)');
+});
+
+it('offers an explicit stop reload while preserving the diagnostic rows', () => {
+  fixture();
+  expect(renderer.root.findByType(StartupTimingButton).props.enabled).toBe(true);
+  expect(renderer.root.findByType('pre').props.children).toContain('bootstrap');
 });

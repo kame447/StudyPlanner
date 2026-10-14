@@ -258,6 +258,7 @@ function schedulerResultProjection(value: unknown): Record<string, unknown> {
     availabilityWindowCount: availabilityWindows.length,
     fixedTaskReservationCount: fixedTaskReservations.length,
     sourceSelectionCount: sourceSelections.length,
+    hardClockBounds: compactUnknown(input.hardClockBounds),
   };
 }
 
@@ -293,6 +294,7 @@ function semanticResultProjection(data: Record<string, unknown>): Record<string,
       diagnostics: compactUnknown(normalization.diagnostics),
       document: {
         planningIntent: stringValue(document.planningIntent),
+        conversationActs: compactUnknown(document.conversationActs),
         planningWindow: compactUnknown(document.planningWindow),
         taskCount: Array.isArray(document.tasks) ? document.tasks.length : 0,
         relationCount: Array.isArray(document.relations) ? document.relations.length : 0,
@@ -331,6 +333,7 @@ function schedulerProjection(data: Record<string, unknown>): Record<string, unkn
       status: stringValue(compilation.status),
       issueCount: Array.isArray(compilation.issues) ? compilation.issues.length : 0,
       issues: issueProjection(compilation.issues),
+      hardClockBounds: compactUnknown(record(compilation.input).hardClockBounds),
     },
     dialogue: {
       status: stringValue(dialogue.status),

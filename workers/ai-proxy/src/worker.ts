@@ -1,4 +1,6 @@
 import type { SemanticRequestRecorder } from '../../../shared/semanticDispatchRecorder';
+import { readBoundedOpenAiResponse } from './providerResponseBody';
+import { safeProviderErrorMetadata } from './providerErrorMetadata';
 import { createWorkerSemanticCensus, type SemanticCensusEnv } from './semanticTurnCensus';
 import { observedDecisionProviders, observeSemanticBackgroundWork } from './semanticDispatchWorkerObservation';
 import aiProxyWorker, { AiQuotaDurableObject } from './index';
@@ -6,6 +8,7 @@ import { DEFAULT_ALLOWED_CHAT_MODELS, resolveChatModel } from './modelPolicy';
 import {
   AI_PROXY_CHAT_REQUEST_LIMITS,
   getUtf8ByteLength,
+  projectOpenAiCompletionMetadata,
   resolveOpenAiChatTemperature,
 } from '../../../shared/aiProxyContract';
 import {
@@ -56,7 +59,7 @@ import { evaluateCandidateChoice } from './decision/candidateChoiceDispatch';
 
 export { AiQuotaDurableObject };
 
-interface Env extends WeeklyPlanningTraceApiEnv, DecisionEnv {
+export interface AiProxyWorkerEnv extends WeeklyPlanningTraceApiEnv, DecisionEnv {
   OPENAI_API_KEY: string;
   OPENAI_BASE_URL?: string;
   OPENAI_TRANSCRIPTION_MODEL?: string;
@@ -66,6 +69,8 @@ interface Env extends WeeklyPlanningTraceApiEnv, DecisionEnv {
   ENVIRONMENT?: string;
   AI_QUOTA: DurableObjectNamespace<AiQuotaDurableObject>;
 }
+
+type Env = AiProxyWorkerEnv;
 
 interface FirebaseLookupResponse {
   users?: Array<{
@@ -214,7 +219,7 @@ function bearerToken(request: Request): string {
     : '';
 }
 
-async function requireFirebaseSession(
+export async function requireFirebaseSession(
   request: Request,
   env: Env,
 ): Promise<Response | WeeklyPlanningTraceApiSession> {
@@ -238,6 +243,7 @@ async function requireFirebaseSession(
     `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
     {
       method: 'POST',
+      redirect: 'manual',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken: token }),
     },
@@ -275,6 +281,7 @@ type FocusedDecisionContextClassification =
   | { kind: 'none' }
   | { kind: 'focused_authorization'; context: FocusedAuthorizationDecisionContext }
   | { kind: 'focused_contextual'; context: FocusedContextualDecisionContext }
+  | { kind: 'focused_contextual_unavailable' }
   | { kind: 'temporal_scope_repair'; context: TemporalScopeRepairDecisionContext }
   | { kind: 'user_context_routing'; context: UserContextRoutingDecisionContext }
   | { kind: 'unknown_purpose' }
@@ -297,6 +304,11 @@ function classifyFocusedDecisionContext(
       ? { kind: 'focused_contextual', context: value }
       : { kind: 'invalid' };
   }
+  if (value.purpose === 'focused_contextual_answer_v2') {
+    return isFocusedContextualDecisionContext(value)
+      ? { kind: 'focused_contextual', context: value }
+      : { kind: 'focused_contextual_unavailable' };
+  }
   if (value.purpose === 'temporal_scope_repair') {
     return isTemporalScopeRepairDecisionContext(value)
       ? { kind: 'temporal_scope_repair', context: value }
@@ -310,6 +322,29 @@ function classifyFocusedDecisionContext(
   // Newer clients may add a focused purpose before this Worker is deployed.
   // Ignore such contexts rather than rejecting an otherwise valid Luna request.
   return { kind: 'unknown_purpose' };
+}
+
+function matchesBoundContextualSource(
+  payload: ChatCompletionRequest,
+  context: FocusedContextualDecisionContext,
+): boolean {
+  if (context.purpose !== 'focused_contextual_answer_v2') return true;
+  const sources: Record<string, unknown>[] = [];
+  for (const message of payload.messages ?? []) {
+    if (message.role !== 'user') continue;
+    try {
+      const source: unknown = JSON.parse(message.content);
+      if (isRecord(source) && Object.hasOwn(source, 'currentUserText')) sources.push(source);
+    } catch { /* Ordinary text remains with the original Luna interpreter. */ }
+  }
+  if (sources.length !== 1) return false;
+  const source = sources[0];
+  const pending = source.pendingQuestion;
+  if (source.currentUserText !== context.state.currentUserText || !isRecord(pending)
+    || pending.questionCode !== context.questionCode || !isRecord(pending.questionTargetWorkload)) return false;
+  const workload = context.state.pendingQuestion.target.workload;
+  return ['quantityRole', 'amount', 'unitCode', 'unitLabel'].every(key =>
+    (pending.questionTargetWorkload as Record<string, unknown>)[key] === workload[key as keyof typeof workload]);
 }
 
 function validateChatRequest(payload: unknown): string | null {
@@ -573,7 +608,7 @@ function rateLimitResponse(
   );
 }
 
-async function enforceQuota(
+export async function enforceQuota(
   request: Request,
   env: Env,
   uid: string,
@@ -583,6 +618,21 @@ async function enforceQuota(
   if (!ipResult.allowed) return rateLimitResponse(request, env, ipResult);
   const uidResult = await checkQuota(env, kind, 'uid', uid);
   return uidResult.allowed ? null : rateLimitResponse(request, env, uidResult);
+}
+
+/** Storage admission has its own counters; it never consumes the model-call budget. */
+export async function enforceDurableTurnAdmission(request: Request, env: Env, uid: string): Promise<Response | null> {
+  const minute = getMinuteWindow(Date.now());
+  const day = getDailyWindow(Date.now());
+  for (const [subject, key, rules] of [
+    ['ip', clientIp(request), [{ name: 'turn_acceptance:ip:minute', limit: IP_MINUTE_LIMIT, ...minute }]],
+    ['uid', uid, [{ name: 'turn_acceptance:uid:minute', limit: CHAT_UID_MINUTE_LIMIT, ...minute },
+      { name: 'turn_acceptance:uid:day', limit: CHAT_UID_DAY_LIMIT, ...day }]],
+  ] as const) {
+    const result = await env.AI_QUOTA.getByName(quotaSubjectName(subject, key)).checkAndConsume({ rules: [...rules] });
+    if (!result.allowed) return rateLimitResponse(request, env, result);
+  }
+  return null;
 }
 
 function bodyTooLargeResponse(
@@ -612,6 +662,15 @@ async function handleChatRequest(
 
   const session = await requireFirebaseSession(request, env);
   if (session instanceof Response) return session;
+  return executeAuthenticatedChatRequest(request, env, session, tokenProvider, executionContext, observationContext, dispatchRecorder);
+}
+
+/** Internal entrypoint: only a verified boundary or an accepted owner-bound durable job may call it. */
+export async function executeAuthenticatedChatRequest(
+  request: Request, env: Env, session: WeeklyPlanningTraceApiSession,
+  tokenProvider?: FirestoreTokenProvider, executionContext?: ExecutionContext,
+  observationContext?: AiProxyObservationContext, dispatchRecorder?: SemanticRequestRecorder,
+): Promise<Response> {
   if (observationContext) {
     observationContext.identity = { kind: 'authenticated', firebaseUid: session.uid };
   }
@@ -654,7 +713,10 @@ async function handleChatRequest(
     return jsonResponse(request, env, 400, { error: 'Requested model is not allowed.' });
   }
 
-  const focusedContext = classifyFocusedDecisionContext(payload.decisionContext);
+  let focusedContext = classifyFocusedDecisionContext(payload.decisionContext);
+  if (focusedContext.kind === 'focused_contextual' && !matchesBoundContextualSource(payload, focusedContext.context)) {
+    focusedContext = { kind: 'focused_contextual_unavailable' };
+  }
   const candidateChoice = isRecord(payload.decisionContext) && payload.decisionContext.purpose === 'candidate_choice';
   if (candidateChoice && (!isCandidateChoiceDecisionContext(payload.decisionContext)
     || payload.purpose !== 'weekly_planning_semantic_normalizer'
@@ -668,6 +730,7 @@ async function handleChatRequest(
   if (
     (focusedContext.kind === 'focused_authorization'
       || focusedContext.kind === 'focused_contextual'
+      || focusedContext.kind === 'focused_contextual_unavailable'
       || focusedContext.kind === 'temporal_scope_repair')
     && payload.purpose !== 'weekly_planning_semantic_normalizer'
   ) {
@@ -698,7 +761,7 @@ async function handleChatRequest(
     return dispatchFocusedAuthorization({
       provider: providers?.authorization,
       context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder),
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder, observationContext),
       respond: (decision) => jsonResponse(request, env, 200, {
         content: JSON.stringify({ decision }),
         decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
@@ -710,7 +773,7 @@ async function handleChatRequest(
     return dispatchFocusedContextual({
       provider: providers?.contextual,
       context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder),
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder, observationContext),
       respond: (decision) => jsonResponse(request, env, 200, {
         content: JSON.stringify(decision),
         decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
@@ -722,7 +785,7 @@ async function handleChatRequest(
     return dispatchTemporalScopeRepair({
       provider: providers?.temporal,
       context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder),
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder, observationContext),
       respond: (decision) => jsonResponse(request, env, 200, {
         content: JSON.stringify(decision),
         decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
@@ -734,19 +797,20 @@ async function handleChatRequest(
     return dispatchUserContextRouting({
       provider: providers?.userContext,
       context, env, firebaseUid: session.uid, tokenProvider, executionContext, signal: request.signal,
-      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder),
+      fallback: (signal) => fetchChatCompletion(request, env, payload, modelResolution.model, signal, semanticRecorder, observationContext),
       respond: (decision) => jsonResponse(request, env, 200, {
         content: JSON.stringify(decision),
         decisionContext: { requestId: context.requestId, inputRevision: context.inputRevision },
       }, { 'X-StudyPlanner-AI-Provider': 'openrouter' }),
     });
   }
-  return fetchChatCompletion(request, env, payload, modelResolution.model, undefined, semanticRecorder);
+  return fetchChatCompletion(request, env, payload, modelResolution.model, request.signal, semanticRecorder, observationContext);
 }
 
 async function fetchChatCompletion(
   request: Request, env: Env, payload: ChatCompletionRequest, model: string, signal?: AbortSignal,
   dispatchRecorder?: SemanticRequestRecorder,
+  observationContext?: AiProxyObservationContext,
 ): Promise<Response> {
   const openAiBaseUrl = (env.OPENAI_BASE_URL?.trim() || 'https://api.openai.com/v1')
     .replace(/\/$/, '');
@@ -754,11 +818,23 @@ async function fetchChatCompletion(
     model,
     getChatTemperature(payload),
   );
-  const providerFetch = dispatchRecorder?.providerFetch('openai', model === 'gpt-5.6-luna' ? 'luna' : 'other',
+  const providerFetch = dispatchRecorder?.providerFetch('openai', (model === 'gpt-5.6-luna' || model === 'gpt-6-luna') ? 'luna' : 'other',
     dispatchRecorder.snapshot().dispatches.some((dispatch) => dispatch.family === 'jev' && dispatch.stage !== 'shadow')
       ? 'fallback' : dispatchRecorder.snapshot().stage) ?? fetch;
+  // Observe the same resolved limit sent below; do not change the request policy.
+  const maxCompletionTokens = getChatOutputTokenLimit(payload);
+  const completionBudget = {
+    requestedMaxCompletionTokens: typeof payload.max_completion_tokens === 'number'
+      && Number.isFinite(payload.max_completion_tokens)
+      ? payload.max_completion_tokens : payload.max_tokens,
+    effectiveMaxCompletionTokens: maxCompletionTokens,
+  };
+  if (observationContext) {
+    observationContext.providerCompletion = projectOpenAiCompletionMetadata(completionBudget);
+  }
   const upstreamResponse = await providerFetch(`${openAiBaseUrl}/chat/completions`, {
     method: 'POST',
+    redirect: 'manual',
     ...(signal ? { signal } : {}),
     headers: {
       'Content-Type': 'application/json',
@@ -769,20 +845,33 @@ async function fetchChatCompletion(
       ...(upstreamTemperature === undefined ? {} : { temperature: upstreamTemperature }),
       messages: payload.messages,
       response_format: payload.response_format,
-      max_completion_tokens: getChatOutputTokenLimit(payload),
+      max_completion_tokens: maxCompletionTokens,
     }),
   });
-  const upstreamText = await upstreamResponse.text();
-  if (!upstreamResponse.ok) {
+  const upstreamText = await readBoundedOpenAiResponse(upstreamResponse);
+  if (!upstreamResponse.ok || upstreamText === null) {
     console.warn('[AI Proxy] OpenAI upstream failed', { status: upstreamResponse.status });
     return jsonResponse(request, env, 502, { error: 'OpenAI request failed.' });
   }
 
   try {
     const upstreamJson = JSON.parse(upstreamText) as {
+      model?: unknown;
       choices?: Array<{ message?: { content?: string | null } }>;
       usage?: unknown;
     };
+    // Bind provider identity to the model already resolved and allowlisted above.
+    // Only documented canonical IDs are accepted; do not guess snapshot aliases.
+    if (upstreamJson.model !== model) {
+      return jsonResponse(request, env, 502, {
+        error: 'OpenAI response could not be parsed.',
+      });
+    }
+    if (observationContext) {
+      observationContext.providerCompletion = projectOpenAiCompletionMetadata({
+        ...completionBudget, response: upstreamJson,
+      });
+    }
     const content = upstreamJson.choices?.[0]?.message?.content?.trim();
     if (!content) {
       return jsonResponse(request, env, 502, {
@@ -865,6 +954,7 @@ async function handlePlanningAttachmentRequest(
   const imageUrl = `data:${parsedPayload.payload.mimeType};base64,${parsedPayload.payload.base64}`;
   const upstreamResponse = await fetch(`${openAiBaseUrl}/chat/completions`, {
     method: 'POST',
+    redirect: 'manual',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${env.OPENAI_API_KEY.trim()}`,
@@ -898,8 +988,8 @@ async function handlePlanningAttachmentRequest(
       max_completion_tokens: PLANNING_ATTACHMENT_MAX_OUTPUT_TOKENS,
     }),
   });
-  const upstreamText = await upstreamResponse.text();
-  if (!upstreamResponse.ok) {
+  const upstreamText = await readBoundedOpenAiResponse(upstreamResponse);
+  if (!upstreamResponse.ok || upstreamText === null) {
     console.warn('[AI Proxy] Luna planning attachment upstream failed', {
       status: upstreamResponse.status,
     });
@@ -1013,14 +1103,15 @@ async function handlePlanningTranscriptionRequest(
 
   const upstreamResponse = await fetch(`${openAiBaseUrl}/audio/transcriptions`, {
     method: 'POST',
+    redirect: 'manual',
     headers: {
       Authorization: `Bearer ${env.OPENAI_API_KEY.trim()}`,
     },
     body: formData,
   });
-  const upstreamText = await upstreamResponse.text();
+  const upstreamText = await readBoundedOpenAiResponse(upstreamResponse);
 
-  if (!upstreamResponse.ok) {
+  if (!upstreamResponse.ok || upstreamText === null) {
     console.warn('[AI Proxy] planning transcription upstream failed', {
       status: upstreamResponse.status,
       model,
@@ -1106,7 +1197,7 @@ const worker = {
       try {
         return await handlePlanningTranscriptionRequest(request, env, observationContext);
       } catch (error) {
-        console.error('[AI Proxy] unexpected planning transcription failure', error);
+        console.error('[AI Proxy] unexpected planning transcription failure', safeProviderErrorMetadata(error));
         return jsonResponse(request, env, 500, { error: 'Unexpected worker error.' });
       }
     }
@@ -1130,7 +1221,7 @@ const worker = {
       try {
         return await handlePlanningAttachmentRequest(request, env, observationContext);
       } catch (error) {
-        console.error('[AI Proxy] unexpected planning attachment failure', error);
+        console.error('[AI Proxy] unexpected planning attachment failure', safeProviderErrorMetadata(error));
         return jsonResponse(request, env, 500, { error: 'Unexpected worker error.' });
       }
     }
@@ -1158,9 +1249,8 @@ const worker = {
           ?? resolveFocusedContextualBaselineFailure(error)
           ?? resolveTemporalScopeRepairBaselineFailure(error)
           ?? resolveUserContextRoutingBaselineFailure(error);
-        // Log the original Luna failure, as before; the wrapper only carries the telemetry class.
         console.error('[AI Proxy] unexpected chat handler failure',
-          baselineFailure && error instanceof Error ? error.cause : error);
+          safeProviderErrorMetadata(baselineFailure && error instanceof Error ? error.cause : error));
         const response = jsonResponse(request, env, 500, { error: 'Unexpected worker error.' });
         return baselineFailure
           ? markLunaBaselineFailure(response, baselineFailure.mode, baselineFailure.failure)

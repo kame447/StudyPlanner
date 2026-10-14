@@ -1,0 +1,20 @@
+import { expect, it, vi } from 'vitest';
+import { preloadAppViews } from './preloadAppViews';
+const loaded = vi.hoisted(() => new Set<string>());
+vi.mock('../components/AiPlanningView', () => { loaded.add('ai'); return {}; });
+vi.mock('../components/WeekView', () => { loaded.add('week'); return {}; });
+vi.mock('../components/DayView', () => ({}));
+vi.mock('../components/TodoView', () => ({}));
+vi.mock('../components/ReportView', () => ({}));
+vi.mock('../components/TimetableView', () => ({}));
+vi.mock('../components/BookshelfView', () => ({}));
+vi.mock('../components/QuickEntryModal', () => ({}));
+vi.mock('../components/TimetableOcrImportDialog', () => ({}));
+it('loads AI code with optional views once without mounting its UI or starting a conversation', async () => {
+  expect(loaded.size).toBe(0);
+  const first = preloadAppViews();
+  expect(preloadAppViews()).toBe(first);
+  await first;
+  expect(loaded).toEqual(new Set(['ai', 'week']));
+  expect(preloadAppViews()).toBe(first);
+});

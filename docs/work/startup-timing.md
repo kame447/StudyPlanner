@@ -1,8 +1,18 @@
 # Local startup timing
 
-Use `?startupTiming=1` on the application URL to opt into an in-memory diagnostic panel. Open “起動計測（端末内のみ）” after startup. A normal URL has no panel or measurements. Reload starts a new recording; no database, localStorage, cookies, network telemetry, or trace payload is added by this instrumentation.
+Use `?startupTiming=1` on the application URL to opt into in-memory measurement. In production, the panel appears only after the existing Firebase administrator check permits the verified signed-in account; the query itself is not an administrator credential. Local development permits the panel without an administrator account. Open “起動計測（端末内のみ）” after startup. A normal URL has no panel or measurements. Reload starts a new recording; no database, localStorage, cookies, network telemetry, or trace payload is added by this instrumentation.
 
-Rows contain only an anonymous sequence number, a fixed phase name, milliseconds from this page's monotonic performance clock, duration, and a pending/success/error/cancelled outcome. The recorder is capped at 80 rows and stops accepting new spans after the first visible Home observation. Existing pending spans may finish. No account IDs, schedule contents, request URLs, tokens, results, or raw error messages are retained. Startup timing is intentionally separate from AI conversation traces; it does not alter trace fields or retention.
+Rows contain only an anonymous sequence number, a fixed phase name, milliseconds from this page's monotonic performance clock, duration, and a pending/success/error/cancelled outcome. An `intro-complete` point additionally contains one fixed `introOutcome` value. The recorder is capped at 80 rows and stops accepting new spans after the first visible Home observation. Existing pending spans may finish. No account IDs, schedule contents, request URLs, tokens, results, or raw error messages are retained. Startup timing is intentionally separate from AI conversation traces; it does not alter trace fields or retention.
+
+## Operator access
+
+Ordinary Settings → Support has no startup timing card or reload control, whether the query switch is present or absent. Production signed-out, unresolved, unverified and non-administrator accounts have no timing panel. The access check is activated only for an explicit timing query, is keyed by current authenticated owner, and uses the existing administrator subscription; no new permission or persistent preference is created. Account change, sign-out and administrator revocation remove the panel.
+
+Operators start a sample with the explicit query URL. The permitted panel offers “計測を終了して再読み込み” to remove the recorder switch from the same browsing context. The anonymous Home observation runs independently of panel authorization, so waiting for administrator verification does not redefine its timestamp. That optional authorization read can still affect a diagnostic sample's resource contention; compare matched configurations.
+
+The stop action preserves the current origin, path, fragment and all other query parameters, including diagnostic comparison choices. Removing `startupTiming` disables those choices on the next document under the existing selector rules; their URL values remain. No timing preference or recording is saved. Existing leave-page warnings still apply; cancelling one keeps the control usable. Reload starts a new sample and does not recover the previous recording.
+
+The query remains an explicit developer/operator measurement switch. It does not diagnose or speed up startup, and a normal browser sample is not an installed Home Screen performance measurement.
 
 ## Interpretation
 
@@ -10,16 +20,62 @@ Rows contain only an anonymous sequence number, a fixed phase name, milliseconds
 - `auth-session`, `consent`, `preferences`: observed pending intervals at the React boundaries. Resolution can lead to onboarding or a signed-out view; success does not mean consent was granted
 - `memory`: context repository initialization, including transaction wait
 - `profile`: authentication repository restore, including its profile read/required write
-- `plans`, `actuals`, `day-notes`, `month-events`, `todos`, `subjects`, `materials`, `templates`, `terms`, `periods`: separately measured repository calls. These already run in parallel; do not sum them to infer critical-path duration
+- `schedule-snapshot`, `actuals`, `day-notes`, `todos`, `subjects`, `materials`, `templates`, `terms`, `periods`: separately measured full-load repository calls. The schedule snapshot supplies Plan and MonthEvent projections together. These calls run in parallel; do not sum them to infer critical-path duration. `plans` / `month-events` remain recognized diagnostic phase names for narrower or older consumers
 - `timetable-write`: canonicalization persistence call after the initial reads, not the pure transformation's CPU time
 - `bootstrap`: profile plus planner initialization. Error outcomes preserve the existing error handling/release behavior
+- `startup-wait-ended`: the existing startup surface's first committed non-loading state, and each later loading → non-loading transition before the first visible Home. This also records releases to sign-in, onboarding or recovery/error UI. It observes presentation waiting only; it does not declare successful authentication, consent or data readiness. Revoked session observations are ignored.
+- `intro-complete`: the committed terminal intro outcome, recorded once per document. `introOutcome` is exactly one of `ended`, `skipped`, `reduced-motion`, `autoplay-blocked`, `media-error`, or `stalled`. A recorded point's `success` means observation succeeded, not that media playback or data loading succeeded. The reason describes why intro presentation ended; it does not bypass application waiting.
 - `home-visible`: first animation-frame observation of a connected, laid-out Home with no splash. It approximates first usable Home, not a browser paint or complete image/font load metric
 
 A Home layout may contain recovery/error UI; inspect bootstrap/read outcomes before saying schedules loaded successfully. A run starting signed out includes human login time and must not be compared with an authenticated reload.
 
-Compare the first splash point to Home and inspect the spans between them. Record the exact deployed commit, browser/device and whether this is a new tab or a reload. Asset cache warmth, Firebase cache warmth and existing login are separate conditions. Production runs and development StrictMode's repeated effects are not equivalent; cancelled spans identify effect cleanup. Logged-out/onboarding runs legitimately have no `home-visible` point. A failed phase does not make the application successful merely because its splash ends.
+Compare the first splash point to Home and inspect the spans between them. Use `startup-wait-ended` and `intro-complete` to distinguish preparation waiting from intro presentation; read error outcomes still determine whether required data loaded successfully. Multiple wait-ended points describe separate wait exits (for example a failed read and a later manual retry), not one successful launch. Before/after-video Home timings, skipped/full-playback samples and backgrounded/foreground samples are not directly interchangeable. Record the exact deployed commit, browser/device and whether this is a new tab or a reload. Asset cache warmth, Firebase cache warmth and existing login are separate conditions. Production runs and development StrictMode's repeated effects are not equivalent; cancelled spans identify effect cleanup. Logged-out/onboarding runs legitimately have no `home-visible` point. A failed phase does not make the application successful merely because its splash ends.
 
 The panel adds opt-in observation overhead, so do not present sub-millisecond differences as a user-visible speedup. Unit/deferred and synthetic local-repository browser fixtures verify measurement, error identity and ordering, not actual Firebase or mobile latency. Never put private screenshots/fixture replacements into public Issues. Publish only a manually reviewed phase timing summary with environment context.
+
+## Passive document and initial-asset delivery
+
+The authorized panel also reads already-buffered Navigation/Resource Timing once
+when it has the first `splash-mounted` point. If administrator access arrives
+later, the browser may already have discarded resource entries; missing data
+stays unknown. This adds no request, listener, resource-buffer resize, storage,
+clipboard/export action or Firestore read. The existing authorization read and
+its potential contention remain unchanged. Phase-row JSON and its 80-row limit
+are unchanged; the delivery summary is a separate bounded projection.
+
+The document exposes only fetch/request/response-start and response-end times.
+Resources expose only fixed role, start/response-end and transfer/encoded/decoded
+byte counts. The allowlist is the current production Vite graph: `entry-script`,
+`react-vendor`, `firebase-vendor`, `runtime-vendor`, `icons-vendor`, `entry-styles`.
+Only same-origin `/assets/` hash-named JS/CSS without credentials, query or fragment,
+completed by the first Splash effect, qualify. Full names/URLs, arbitrary resource
+entries, navigation URLs, request contents and raw errors are never retained.
+Other dynamic views, video, fonts and API requests are outside this projection.
+
+The inferred delivery-to-Splash residual subtracts the latest response completion
+among HTML and all six tracked assets from the Splash effect. It is not a sum of
+parallel resource durations, measured CPU time, browser paint, or total startup
+latency. It can include evaluation, scheduling, rendering and other unobserved
+work. Missing/invalid navigation, missing or duplicate asset roles, or a response
+later than Splash suppress the inference. Zero byte counters are shown as unknown,
+not proof of memory/disk/service-worker cache or a zero-byte response. Browser
+response timing includes cache/service-worker behavior and is not a server-only
+or wire-only measurement. Redirect/network subphases are not independently
+attributed. The six-role mapping must be reviewed if the initial build graph
+changes; development source modules normally leave those roles unknown.
+
+Use fresh documents when comparing launches. A retained-page or back/forward-cache
+resume can still show the original document's sample and is not a newly measured
+launch. Match the actual origin/path, build, account/data, theme, visibility,
+network and diagnostic choices across a slow installed launch and Safari. Do not
+clear storage/cache or reinstall to manufacture comparability. If the diagnostic
+URL cannot be opened in the installed context, report that limitation rather than
+labelling a Safari sample as PWA evidence. This instrumentation does not identify
+the user's actual delay or establish any speed improvement.
+
+API references: [Navigation Timing](https://www.w3.org/TR/navigation-timing-2/)
+and [Resource Timing](https://www.w3.org/TR/resource-timing/).
+Implementation/evidence: [delivery timing checkpoint](../domains/client-runtime/work/startup-delivery-timing-handoff.md).
 
 ## Bootstrap overlap
 
@@ -29,6 +85,8 @@ Readiness belongs to the keyed authenticated session. The bootstrap also checks 
 
 The overlap removes a dependency, not the remaining consent/preferences and slowest-planner-read latency. Compare exact builds in the same authenticated browser; do not promise one-second startup from deferred tests or add overlapping durations.
 
+The active [Firestore read-load and startup investigation](../domains/client-runtime/work/20261008-firestore-read-load-and-startup.md) records separate synthetic gate timing, SDK logical calls and Emulator observations. Its synthetic cold/warm inputs are not an optimization comparison or real-network measurement. A stalled consent status can prevent planner reads from starting, so inspect earlier gates before attributing every long splash to Firestore data volume.
+
 ## Completed schedule-migration gate
 
 Firebase schedule authority now owns the rollout-capability check and current completed-marker decision in one place. Startup uses a server-only marker read. Only an existing current-version completed marker with `fromCache === false` and `hasPendingWrites === false` skips transactional acquisition. This reuses the domain completed-state predicate; it does not claim full schema/owner validation beyond the existing authority contract. The owner-scoped document path remains unchanged.
@@ -36,6 +94,8 @@ Firebase schedule authority now owns the rollout-capability check and current co
 Missing, migrating, cached/pending-write, metadata-less or unsupported snapshots still go through the existing transaction, including concurrent completion checks. Completed cutover is monotonic under current Rules; no Rules change or persistent client cache is introduced. Only permission denial from the marker capability read permits legacy rollout compatibility. Network/authentication failure and every subsequent transaction/backfill/query failure remain failures, not a reason to fall back to legacy data. The composition wrapper's redundant probe is removed.
 
 The verified mechanism is one clean completed-marker server read instead of a probe followed by a read-only transaction with its verify commit. Missing/migrating paths retain their existing atomic work. This is one shared per-owner gate for plans and month events, not two migrations. End-to-end duration still requires real-browser measurement; do not infer milliseconds from the operation count.
+
+The full-load canonical query is now recorded as `schedule-canonical-snapshot`, with both projections derived from that result. It sits inside `schedule-snapshot`; do not add nested spans as separate critical-path time or billable reads. Explicit subsequent loads still perform a fresh query. Single-projection callers can retain `schedule-canonical-plans` / `schedule-canonical-month-events`.
 
 ## Readiness is the performance target
 
@@ -45,7 +105,7 @@ Compare alternatives using the same device, network, account, dataset, build and
 
 ### 起動ロゴの寿命
 
-認証未確定から同意・個別設定・bootstrap待ちまで、可視Splashは同じ外側の起動シェルに保つ。内側のセッションはepoch付きで分離するが、認証が確定しただけでSplashを交換しない。通常画面が準備できた時点で初めて表示を切り替える。
+認証未確定から同意・個別設定・bootstrap待ちまで、可視Splashは同じ外側の起動シェルに保つ。内側のセッションはepoch付きで分離するが、認証が確定しただけでSplashを交換しない。通常画面の準備とイントロの終了・skipの両方が揃って初めて表示を切り替える。準備だけが先に終わった場合は動画を維持し、既存のskip操作を有効にする。
 
 PR122の再発監視として、Splashの個数だけでなくcomponent/DOMの同一性をunknown-auth→verified-ownerで検証する。`splash-mounted`はmark-onceなので、診断値が1件であることだけでは再マウント不存在の証明にならない。アカウント切替・サインアウト後の新セッションは別の寿命であり、古いready通知を採用しない。
 

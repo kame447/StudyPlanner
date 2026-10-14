@@ -8,7 +8,7 @@ function environment() {
   const quota = { checkAndConsume: vi.fn(async () => ({ allowed: true, retryAfterSeconds: 0 })) };
   return {
     OPENAI_API_KEY: 'openai-fixture', FIREBASE_WEB_API_KEY: 'firebase-fixture',
-    ALLOWED_ORIGIN: 'https://app.example', ALLOWED_CHAT_MODELS: 'gpt-5.6-luna',
+    ALLOWED_ORIGIN: 'https://app.example', ALLOWED_CHAT_MODELS: 'gpt-6-luna',
     JEV_MODE: 'off', JEV_CANARY_PERCENT: '0', AI_QUOTA: { getByName: () => quota },
   };
 }
@@ -47,7 +47,7 @@ describe('focused temporal-side Luna contract through the real Worker', () => {
         }
         if (url.endsWith('/chat/completions')) {
           upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-          return Response.json({ choices: [{ message: { content: JSON.stringify({
+          return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ message: { content: JSON.stringify({
             decision: 'fallback', kind: null, constraintLevel: null,
             dateExpression: null, namedTimePeriod: null, startTime: null,
             endTime: null, precision: null,
@@ -66,7 +66,9 @@ describe('focused temporal-side Luna contract through the real Worker', () => {
       expect(response.status).toBe(200);
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(upstreamBodies).toHaveLength(1);
-      expect(upstreamBodies[0]?.max_completion_tokens).toBe(640);
+      expect(upstreamBodies[0]).toMatchObject({ model: 'gpt-6-luna', max_completion_tokens: 640 });
+      expect(upstreamBodies[0]).not.toHaveProperty('temperature');
+      expect(upstreamBodies[0]).not.toHaveProperty('reasoning_effort');
       expect(upstreamBodies[0]?.response_format).toEqual(
         FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_RESPONSE_FORMAT_V5,
       );

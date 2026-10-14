@@ -152,12 +152,6 @@ function AuthHarness() {
     <AuthScreen
       notice={null}
       onDismissNotice={() => record('auth-dismiss-notice')}
-      accessGateEnabled={false}
-      accessGateUnlocked
-      onUnlockAccessGate={(key) => {
-        record('auth-unlock', { key });
-        return false;
-      }}
       onSignUpWithPassword={async (email, password, username) => {
         record('auth-sign-up', { email, password, username });
         return false;

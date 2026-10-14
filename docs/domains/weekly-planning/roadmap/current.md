@@ -63,6 +63,12 @@ The third-stage re-inventory (2026-09-28) found no further safe field-level or f
 
 The #246/#294 consultation and memory owners, #187 provider integration, #213 telemetry, #164 storage and #51 final approval retain their responsibilities. The limited consultation-agent work in PR #304 remains separate from ordinary Stable V5 classification. Keep #305 and #333 open until their own acceptance conditions are met.
 
+## Issue #488: staged integration
+
+[Issue #488](https://github.com/kame447/StudyPlanner/issues/488) resumes from preserved [Draft PR #563](https://github.com/kame447/StudyPlanner/pull/563). The 2026-10-10 restart replaces the former all-integrated-first ordering: audit responsibility and dependency boundaries, then implement, verify and merge genuinely independent release units sequentially. Start with the unreadable-checkpoint preservation unit before adopting new conversation-format fields; independent graph/window/scheduler fixes may precede the conversation core only when their dependency closure is demonstrated. Do not merge PR563 wholesale or ship a partially connected conversation feature.
+
+The [staged integration ledger](../work/20261010-issue488-staged-integration.md) owns source preservation, unit/PR mapping, missing inputs, exact verification checkpoints and unfinished acceptance. Conversation-affecting units still require real-model UI evidence and the applicable approval/save/reload, trace, security and browser gates. Issue #246 consultation runtime and other independent owners retain their scope.
+
 ## Issue #246: learning consultation before scheduling
 
 Issue #246 adds pre-scheduling learning consultation/advice.

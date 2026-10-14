@@ -240,24 +240,10 @@
   width: 100%;
 }
 
-.brand-logo-image {
-  display: block;
-  height: 114px;
-  width: auto;
-  max-width: min(520px, 100%);
-  object-fit: contain;
-  flex-shrink: 0;
-}
-
 .app-header .brand-lockup {
   justify-content: flex-start;
   width: auto;
   flex: 1 1 auto;
-}
-
-.app-header .brand-logo-image {
-  height: 91px;
-  max-width: min(416px, 100%);
 }
 
 .brand-mark {
@@ -267,35 +253,10 @@
   filter: drop-shadow(0 12px 24px var(--accent-shadow));
 }
 
-.brand-mark svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.brand-copy {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.brand-kicker {
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
 .brand-name {
   font-size: clamp(1.85rem, 4vw, 2.9rem);
   line-height: 1;
   letter-spacing: 0.01em;
-}
-
-.brand-tagline {
-  color: var(--text-muted);
-  font-size: 0.94rem;
 }
 
 .user-badge,

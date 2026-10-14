@@ -1,4 +1,6 @@
+import { verifyClassAttendanceRules } from './firestore-class-attendance-rules.mjs';
 import process from 'node:process';
+import { verifyInquiryRules } from './firestore-inquiry-rules.mjs';
 import { deleteApp, initializeApp } from 'firebase/app';
 import {
   connectAuthEmulator,
@@ -358,6 +360,8 @@ try {
     throw new Error('Timetable date exception undo was not retained.');
   }
 
+  await verifyClassAttendanceRules({ owner, intruder, expectPermissionDenied, projectId, firestoreHost });
+  await verifyInquiryRules({ owner, intruder, createContext, contexts, expectPermissionDenied, projectId, firestoreHost });
   console.log('Firestore profile and ScheduleEvent authority rules regression passed.');
 } finally {
   await Promise.all(contexts.map(({ app }) => deleteApp(app)));

@@ -84,6 +84,24 @@ function baseParams() {
 }
 
 describe('submitWeeklyPlanningApplicationTurn', () => {
+  it('resumes accepted work without constructing a new candidate-choice observation or selection', async () => {
+    const { params } = baseParams();
+    let configurationReads = 0;
+    const execute = vi.fn(async () => ({ state: createInitialPlanningIntakeState(), message: '回収した返信', draftCandidates: [] }));
+    const continueSelectedTurn = vi.fn(execute);
+    const services = createServices({ runtimeGateway: { execute, continueSelectedTurn },
+      candidateChoice: { get configuration() { configurationReads += 1; return null; } } });
+    const resumePending = { conversationId: 'conversation-1', turnId: 'conversation-1:turn:1',
+      requestId: 'conversation-1:request:1', weekStartDate: '2026-07-27', baseRevision: 0,
+      startedAt: '2026-07-27T01:00:00.000Z' };
+    const result = await submitWeeklyPlanningApplicationTurn({ ...params, resumePending,
+      isPlannerDataSnapshotCurrent: () => true }, services);
+    expect(result.accepted).toBe(true);
+    expect(configurationReads).toBe(0); expect(continueSelectedTurn).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ resumeDurable: true, pending: resumePending }));
+  });
+
   it('fails closed before starting a turn when planner data is unavailable, stale, or owned by another user', async () => {
     const blockedAvailability: PlannerDataAvailability[] = [
       {
@@ -278,4 +296,24 @@ describe('submitWeeklyPlanningApplicationTurn', () => {
     }));
     expect(store.getState().pendingTurn).toBeUndefined();
   });
+
+  it.each(['cancel', 'owner_change', 'revision_change'])('passes a live recovery guard that closes after %s', async (change) => {
+    const { params, store } = baseParams();
+    const services = createServices();
+    let before: boolean | undefined;
+    let after: boolean | undefined;
+    services.runtimeGateway.execute = async (input) => {
+      before = input.isCurrentTurn?.();
+      if (change === 'cancel') store.dispatch({ type: 'cancel_turn', pending: input.pending });
+      if (change === 'owner_change') params.session.ownerId = 'other-user';
+      if (change === 'revision_change') store.dispatch({ type: 'load_state',
+        state: { ...store.getState(), revision: store.getState().revision + 1 } });
+      after = input.isCurrentTurn?.();
+      return { state: createInitialPlanningIntakeState(), message: '終了', draftCandidates: [] };
+    };
+    await submitWeeklyPlanningApplicationTurn(params, services);
+    expect(before).toBe(true);
+    expect(after).toBe(false);
+  });
+
 });

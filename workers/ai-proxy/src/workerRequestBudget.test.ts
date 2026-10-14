@@ -5,7 +5,7 @@ import {
 } from '../../../shared/aiProxyContract';
 import worker from './worker';
 
-function createEnv(allowedChatModels = 'gpt-test') {
+function createEnv(allowedChatModels: string | null = 'gpt-test') {
   const quotaCalls: unknown[] = [];
   const quotaStub = {
     async checkAndConsume(input: unknown) {
@@ -19,7 +19,7 @@ function createEnv(allowedChatModels = 'gpt-test') {
       OPENAI_API_KEY: 'openai-key',
       FIREBASE_WEB_API_KEY: 'firebase-key',
       ALLOWED_ORIGIN: 'https://app.example',
-      ALLOWED_CHAT_MODELS: allowedChatModels,
+      ...(allowedChatModels === null ? {} : { ALLOWED_CHAT_MODELS: allowedChatModels }),
       AI_QUOTA: {
         getByName() {
           return quotaStub;
@@ -86,6 +86,7 @@ describe('AI proxy deployed worker request budget', () => {
       if (url.endsWith('/chat/completions')) {
         upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
         return new Response(JSON.stringify({
+          model: JSON.parse(String(init?.body)).model,
           choices: [{ message: { content: '{"ok":true}' } }],
           usage: OPENAI_USAGE,
         }), { status: 200 });
@@ -136,8 +137,9 @@ describe('AI proxy deployed worker request budget', () => {
     expect(response.headers.get('Cache-Control')).toBe('no-store');
   });
 
-  it('propagates attachment provider usage without changing the parsed user result', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+  it('routes attachment requests to GPT-6 Luna and preserves provider usage', async () => {
+    const upstreamBodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       if (url.includes('identitytoolkit.googleapis.com')) {
         return new Response(JSON.stringify({
@@ -145,7 +147,9 @@ describe('AI proxy deployed worker request budget', () => {
         }), { status: 200 });
       }
       if (url.endsWith('/chat/completions')) {
+        upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
         return new Response(JSON.stringify({
+          model: JSON.parse(String(init?.body)).model,
           choices: [{ message: { content: '{"text":"教材 1章"}' } }],
           usage: OPENAI_USAGE,
         }), { status: 200 });
@@ -153,7 +157,7 @@ describe('AI proxy deployed worker request budget', () => {
       throw new Error(`Unexpected fetch: ${url}`);
     }));
 
-    const { env } = createEnv('gpt-5.6-luna');
+    const { env } = createEnv(null);
     const response = await worker.fetch(
       new Request('https://proxy.example/planning-attachment', {
         method: 'POST',
@@ -171,9 +175,21 @@ describe('AI proxy deployed worker request budget', () => {
       result: { text: '教材 1章' },
       usage: OPENAI_USAGE,
     });
+    expect(upstreamBodies).toHaveLength(1);
+    expect(upstreamBodies[0]).toMatchObject({
+      model: 'gpt-6-luna', response_format: { type: 'json_object' },
+    });
+    expect(upstreamBodies[0]).not.toHaveProperty('temperature');
+    expect(upstreamBodies[0]).not.toHaveProperty('reasoning_effort');
   });
 
-  it('omits an unsupported custom temperature from Luna upstream requests', async () => {
+  it.each([
+    undefined,
+    'weekly_planning_interpreter',
+    'weekly_planning_semantic_normalizer',
+    'weekly_planning_renderer',
+    'user_context_interpreter',
+  ])('preserves the structured default Luna request for purpose %s', async (purpose) => {
     const upstreamBodies: Array<Record<string, unknown>> = [];
     vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
@@ -185,29 +201,85 @@ describe('AI proxy deployed worker request budget', () => {
       if (url.endsWith('/chat/completions')) {
         upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
         return new Response(JSON.stringify({
+          model: JSON.parse(String(init?.body)).model,
           choices: [{ message: { content: '{"ok":true}' } }],
         }), { status: 200 });
       }
       throw new Error(`Unexpected fetch: ${url}`);
     }));
 
-    const { env } = createEnv('gpt-5.6-luna');
+    const payload = createPayload({
+      model: purpose ? 'ignored-client-model' : 'gpt-6-luna',
+      purpose,
+      temperature: 0,
+    });
+    const { env } = createEnv(null);
     const response = await worker.fetch(
       new Request('https://proxy.example/chat/completions', {
         method: 'POST',
         headers: createHeaders(),
-        body: JSON.stringify(createPayload({
-          model: 'gpt-5.6-luna',
-          temperature: 0,
-        })),
+        body: JSON.stringify(payload),
       }),
       env as never,
     );
 
     expect(response.status).toBe(200);
     expect(upstreamBodies).toHaveLength(1);
+    expect(upstreamBodies[0]).toEqual({
+      model: 'gpt-6-luna',
+      messages: payload.messages,
+      response_format: payload.response_format,
+      max_completion_tokens: 3_200,
+    });
+  });
+
+  it('keeps the legacy explicit Luna model valid during GPT-6 Worker-first rollout', async () => {
+    const upstreamBodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('identitytoolkit.googleapis.com')) {
+        return Response.json({ users: [{ localId: 'user-1', emailVerified: true }] });
+      }
+      if (url.endsWith('/chat/completions')) {
+        upstreamBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return Response.json({
+          model: JSON.parse(String(init?.body)).model,
+          choices: [{ message: { content: '{"ok":true}' } }],
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+    const { env } = createEnv(null);
+    const payload = createPayload({ model: 'gpt-5.6-luna' });
+    const response = await worker.fetch(new Request('https://proxy.example/chat/completions', {
+      method: 'POST', headers: createHeaders(), body: JSON.stringify(payload),
+    }), env as never);
+    expect(response.status).toBe(200);
+    expect(upstreamBodies).toHaveLength(1);
     expect(upstreamBodies[0]).toMatchObject({ model: 'gpt-5.6-luna' });
-    expect(upstreamBodies[0]).not.toHaveProperty('temperature');
+  });
+
+  it.each([
+    { allowed: null, payload: { model: 'gpt-5.5-luna' } },
+    { allowed: 'gpt-5.6-luna', payload: { purpose: 'weekly_planning_semantic_normalizer' } },
+  ])('rejects a disallowed Luna model before consuming quota or calling the provider', async ({ allowed, payload }) => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('identitytoolkit.googleapis.com')) {
+        return Response.json({ users: [{ localId: 'user-1', emailVerified: true }] });
+      }
+      throw new Error(`Unexpected provider call: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { env, quotaCalls } = createEnv(allowed);
+    const response = await worker.fetch(new Request('https://proxy.example/chat/completions', {
+      method: 'POST', headers: createHeaders(), body: JSON.stringify(createPayload(payload)),
+    }), env as never);
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Requested model is not allowed.' });
+    expect(quotaCalls).toHaveLength(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('returns a typed 413 response with the actual and allowed byte counts', async () => {

@@ -19,6 +19,7 @@ const canonicalPlan = {
 
 function legacyRepository(): PlannerRepository {
   return {
+    getScheduleSnapshot: vi.fn().mockResolvedValue({ plans: [legacyPlan], monthEvents: [] }),
     getPlans: vi.fn().mockResolvedValue([legacyPlan]),
     getMonthEvents: vi.fn().mockResolvedValue([]),
     upsertPlan: vi.fn(async (plan: Plan) => plan),
@@ -28,6 +29,7 @@ function legacyRepository(): PlannerRepository {
 function authorityRepository(): ScheduleEventAuthorityRepository {
   return {
     ensureMigrated: vi.fn().mockResolvedValue(undefined),
+    getScheduleSnapshot: vi.fn().mockResolvedValue({ plans: [canonicalPlan], monthEvents: [] }),
     getPlans: vi.fn().mockResolvedValue([canonicalPlan]),
     getMonthEvents: vi.fn().mockResolvedValue([]),
     applyRecurringPlanMutation: vi.fn().mockResolvedValue(undefined),
@@ -99,5 +101,49 @@ describe('ScheduleEvent-backed planner rollout compatibility', () => {
 
     expect(legacy.getPlans).not.toHaveBeenCalled();
     expect(authority.getPlans).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('combined schedule read authority', () => {
+  it('awaits migration once, then reads a new combined canonical snapshot on each invocation', async () => {
+    const legacy = legacyRepository();
+    const authority = authorityRepository();
+    let release!: () => void;
+    vi.mocked(authority.ensureMigrated).mockReturnValueOnce(new Promise<void>(resolve => { release = resolve; }));
+    const repository = createScheduleEventBackedPlannerRepository(legacy, authority);
+    const first = repository.getScheduleSnapshot('user-1');
+    expect(authority.getScheduleSnapshot).not.toHaveBeenCalled();
+    release();
+    await expect(first).resolves.toEqual({ plans: [canonicalPlan], monthEvents: [] });
+    await repository.getScheduleSnapshot('user-1');
+    expect(authority.ensureMigrated).toHaveBeenCalledOnce();
+    expect(authority.getScheduleSnapshot).toHaveBeenCalledTimes(2);
+    expect(authority.getPlans).not.toHaveBeenCalled();
+    expect(authority.getMonthEvents).not.toHaveBeenCalled();
+    expect(legacy.getScheduleSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('preserves rollout fallback for both slices and retries the capability on the next load', async () => {
+    const legacy = legacyRepository();
+    const authority = authorityRepository();
+    vi.mocked(authority.ensureMigrated).mockRejectedValueOnce(new ScheduleEventMigrationCapabilityUnavailableError());
+    const repository = createScheduleEventBackedPlannerRepository(legacy, authority);
+    await expect(repository.getScheduleSnapshot('user-1')).resolves.toEqual({ plans: [legacyPlan], monthEvents: [] });
+    await expect(repository.getScheduleSnapshot('user-1')).resolves.toEqual({ plans: [canonicalPlan], monthEvents: [] });
+    expect(legacy.getScheduleSnapshot).toHaveBeenCalledOnce();
+    expect(authority.ensureMigrated).toHaveBeenCalledTimes(2);
+    expect(authority.getScheduleSnapshot).toHaveBeenCalledOnce();
+  });
+
+  it('does not fallback or cache a failed canonical combined read', async () => {
+    const legacy = legacyRepository();
+    const authority = authorityRepository();
+    vi.mocked(authority.getScheduleSnapshot).mockRejectedValueOnce(new Error('canonical failed'));
+    const repository = createScheduleEventBackedPlannerRepository(legacy, authority);
+    await expect(repository.getScheduleSnapshot('user-1')).rejects.toThrow('canonical failed');
+    await expect(repository.getScheduleSnapshot('user-1')).resolves.toEqual({ plans: [canonicalPlan], monthEvents: [] });
+    expect(legacy.getScheduleSnapshot).not.toHaveBeenCalled();
+    expect(authority.getScheduleSnapshot).toHaveBeenCalledTimes(2);
   });
 });

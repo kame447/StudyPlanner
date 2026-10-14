@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { act, create, type ReactTestRenderer, type TestRendererOptions } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useMonthTimetablePreference } from './useMonthTimetablePreference';
 import { useTimetableDisplayPreference } from './useTimetableDisplayPreference';
 const useDayTimetablePreference = (owner?: string) => useTimetableDisplayPreference('day', owner);
 
@@ -66,7 +67,7 @@ describe('day timetable preference owner boundary', () => {
   });
 });
 
-describe('month timetable stale callbacks', () => {
+describe('day timetable stale callbacks', () => {
   it('isolates exact owner IDs without trimming them', () => {
     const values = new Map<string, string>();
     vi.stubGlobal('window', { localStorage: {
@@ -185,4 +186,26 @@ it('cannot save from a suspended render that never committed', async () => {
   });
   act(() => current.setShowTimetable(false));
   expect(setItem).not.toHaveBeenCalled();
+});
+
+it('retries a failed day save and leaves the real month hook and storage independent', () => {
+  const values = new Map<string, string>();
+  const setItem = vi.fn((key: string, value: string) => { values.set(key, value); });
+  vi.stubGlobal('window', { localStorage: { getItem: (key: string) => values.get(key), setItem } });
+  let month!: ReturnType<typeof useMonthTimetablePreference>;
+  function Both() { current = useDayTimetablePreference('owner'); month = useMonthTimetablePreference('owner'); return null; }
+  act(() => { renderer = create(<Both />); });
+  act(() => month.setShowTimetable(false));
+  expect(current.showTimetable).toBe(true);
+  setItem.mockImplementationOnce(() => { throw new Error('blocked'); });
+  act(() => current.setShowTimetable(false));
+  expect(current.showTimetable).toBe(true);
+  expect(current.error).toContain('設定を保存できませんでした');
+  act(() => current.setShowTimetable(false));
+  expect(current.showTimetable).toBe(false); expect(current.error).toBeNull();
+  act(() => month.setShowTimetable(true));
+  expect(current.showTimetable).toBe(false); expect(month.showTimetable).toBe(true);
+  expect([...values.entries()].sort()).toEqual([
+    ['study-planner-day-timetable:owner', 'false'], ['study-planner-month-timetable:owner', 'true'],
+  ]);
 });

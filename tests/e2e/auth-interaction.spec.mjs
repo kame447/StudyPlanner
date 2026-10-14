@@ -10,22 +10,13 @@ async function events(page, type) {
 
 async function openAuth(page) {
   await page.goto(AUTH_HARNESS_URL);
-  await expect(page.getByRole('heading', { name: '新規会員登録' })).toBeVisible();
-}
-
-async function tabUntilFocused(page, locator, maxSteps = 20) {
-  for (let step = 0; step < maxSteps; step += 1) {
-    if (await locator.evaluate((element) => document.activeElement === element)) {
-      return;
-    }
-    await page.keyboard.press('Tab');
-  }
-  await expect(locator).toBeFocused();
+  await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toBeVisible();
 }
 
 test.describe('AuthScreen browser interactions', () => {
   test('password-confirmation mismatch is rejected before the sign-up boundary', async ({ page }) => {
     await openAuth(page);
+    await page.getByRole('tab', { name: '新規会員登録', exact: true }).click();
 
     await page.getByLabel('メールアドレス').fill('browser-regression@example.com');
     await page.getByLabel('パスワード', { exact: true }).fill('abcdef12');
@@ -38,6 +29,7 @@ test.describe('AuthScreen browser interactions', () => {
 
   test('matching sign-up fields reach the external registration boundary once', async ({ page }) => {
     await openAuth(page);
+    await page.getByRole('tab', { name: '新規会員登録', exact: true }).click();
 
     await page.getByLabel('ユーザーネーム').fill('browser-user');
     await page.getByLabel('メールアドレス').fill('browser-regression@example.com');
@@ -69,12 +61,22 @@ test.describe('AuthScreen browser interactions', () => {
     });
   });
 
-  test('keyboard-only navigation can reach the other authentication intent without assuming one exact tab step', async ({ page }) => {
+  test('keyboard-only mode switching supports Arrow, Home, End and a single tab stop', async ({ page }) => {
     await openAuth(page);
-
-    const signUp = page.getByRole('tab', { name: '新規会員登録', exact: true });
     const login = page.getByRole('tab', { name: 'ログイン', exact: true });
-    await signUp.focus();
-    await tabUntilFocused(page, login);
+    const signUp = page.getByRole('tab', { name: '新規会員登録', exact: true });
+    await login.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(signUp).toBeFocused();
+    await expect(signUp).toHaveAttribute('aria-selected', 'true');
+    await expect(login).toHaveAttribute('tabindex', '-1');
+    await page.keyboard.press('Home');
+    await expect(login).toBeFocused();
+    await page.keyboard.press('End');
+    await expect(signUp).toBeFocused();
+    await page.keyboard.press('ArrowLeft');
+    await expect(login).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByLabel('メールアドレス')).toBeFocused();
   });
 });

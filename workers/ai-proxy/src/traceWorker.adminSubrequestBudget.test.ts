@@ -318,6 +318,7 @@ describe('traceWorker admin subrequest budget', () => {
     ['/observability/admin/users', 'eHh4eHh4'],
     ['/observability/admin/users', 'AAAAAAAAA'],
     ['/observability/admin/users', 'eyJmb28iOjF9'],
+    ['/observability/admin/users?includeTrend=false', 'eyJmb28iOjF9'],
     ['/observability/admin/users?actor=actor-aaaaaaaa', 'eHh4eHh4'],
     ['/observability/admin/users?actor=actor-aaaaaaaa', 'AAAAAAAAA'],
     ['/observability/admin/users?actor=actor-aaaaaaaa', 'eyJmb28iOjF9'],
@@ -334,7 +335,7 @@ describe('traceWorker admin subrequest budget', () => {
   });
 
   it.each([
-    ['/observability/admin/overview?from=2026-06-25&to=2026-09-25', 9],
+    ['/observability/admin/overview?from=2026-06-25&to=2026-09-25', 7],
     ['/observability/admin/ai?from=2026-06-25&to=2026-09-25', 5],
     ['/observability/admin/planning?from=2026-06-25&to=2026-09-25', 4],
     ['/observability/admin/system', 6],
@@ -353,6 +354,17 @@ describe('traceWorker admin subrequest budget', () => {
     expect(response.status, JSON.stringify(body)).toBe(200);
     expect(calls).toHaveLength(expected);
     expect(calls.every((call) => call.init?.redirect === 'manual')).toBe(true);
+    if (path.startsWith('/observability/admin/overview?')) {
+      const batches = calls.filter((call) => call.url.endsWith(':batchGet'));
+      expect(batches).toHaveLength(1);
+      const documents = JSON.parse(String(batches[0].init?.body)).documents as string[];
+      expect(documents).toHaveLength(95);
+      expect(documents.slice(-2)).toEqual([
+        'projects/test-project/databases/(default)/documents/observability_active_user_windows/test:2026-09-25',
+        'projects/test-project/databases/(default)/documents/observability_rollup_state/main',
+      ]);
+      expect(calls.filter((call) => call.url.endsWith(':runAggregationQuery'))).toHaveLength(3);
+    }
     if (path.startsWith('/observability/admin/logs?')) {
       expect(body).toMatchObject({ pageEvidence: {
         rawDocumentCount: 0, mappedSessionCount: 0,
@@ -371,10 +383,31 @@ describe('traceWorker admin subrequest budget', () => {
     }
   });
 
-  it('keeps ready Users page 25 plus trend at exactly 8 requests', async () => {
+  it.each(['observability_active_user_windows', 'observability_rollup_state'])('keeps Overview %s read failures sanitized', async (collection) => {
+    installFetchMock();
+    const mockedFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const documents = url.endsWith(':batchGet')
+        ? JSON.parse(String(init?.body)).documents as string[]
+        : [];
+      if (url.includes(`/documents/${collection}/`)
+        || documents.some((name) => name.includes(`/documents/${collection}/`))) {
+        return new Response('private backend failure', { status: 503 });
+      }
+      return mockedFetch(input, init);
+    });
+
+    const response = await adminGet('/observability/admin/overview?from=2026-06-25&to=2026-09-25');
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'Observability read model is temporarily unavailable.' });
+    expect(console.error).toHaveBeenCalled();
+  });
+
+  it.each(['', '&includeTrend=true', '&includeTrend=invalid'])('keeps ready Users page 25 plus trend at exactly 8 requests: %s', async (selection) => {
     const calls = installFetchMock({ populatedUsers: true, usersReady: true });
 
-    const response = await adminGet('/observability/admin/users?limit=25');
+    const response = await adminGet(`/observability/admin/users?limit=25${selection}`);
     const body = await response.json() as {
       users?: unknown[];
       enrichmentReady?: boolean;
@@ -445,6 +478,78 @@ describe('traceWorker admin subrequest budget', () => {
     expect(body.enrichmentReady).toBe(false);
     expect(body.nextCursor).not.toBeNull();
     expect(calls.every((call) => call.init?.redirect === 'manual')).toBe(true);
+  });
+
+  it.each([
+    { name: 'ready', usersReady: true, profileCount: 25, total: 8 },
+    { name: 'migration-incomplete', usersReady: false, profileCount: 9, total: 42 },
+    { name: 'empty', usersReady: true, profileCount: 0, total: 6 },
+  ])('omits only the 32 trend document keys for the same $name continuation page', async (fixture) => {
+    const calls = installFetchMock(fixture);
+    const cursor = Buffer.from(JSON.stringify({ orderedValue: 'profile',
+      documentName: 'projects/test-project/databases/(default)/documents/profiles/firebase-user-0',
+    })).toString('base64url');
+    const path = `/observability/admin/users?limit=25&cursor=${cursor}`;
+    const beforeResponse = await adminGet(path);
+    const before = await beforeResponse.json() as Record<string, unknown>;
+    const beforeCalls = calls.splice(0);
+    const afterResponse = await adminGet(`${path}&includeTrend=false`);
+    const after = await afterResponse.json();
+    const isTrendBatch = (call: FetchCall) => call.url.endsWith(':batchGet')
+      && (JSON.parse(String(call.init?.body)).documents as string[])
+        .some(name => name.includes('/observability_daily_rollups/'));
+    const trendKeys = (batch: FetchCall[]) => batch.filter(isTrendBatch)
+      .flatMap(call => JSON.parse(String(call.init?.body)).documents as string[]);
+
+    expect(beforeResponse.status).toBe(200);
+    expect(afterResponse.status).toBe(200);
+    expect(beforeCalls).toHaveLength(fixture.total);
+    expect(trendKeys(beforeCalls)).toHaveLength(32);
+    expect(trendKeys(calls)).toEqual([]);
+    expect(calls).toHaveLength(fixture.total - 1);
+    const { trend, ...expectedPage } = before;
+    expect(trend).toEqual({ daily: [], activeUsers: null });
+    expect(after).toEqual(expectedPage);
+    // All remaining auth, bounded query and join requests retain their exact inputs.
+    expect(calls).toEqual(beforeCalls.filter(call => !isTrendBatch(call)));
+  });
+
+  it('keeps a page readable during trend failure while an initial refresh still fails', async () => {
+    const calls = installFetchMock({ usersReady: true });
+    const fetcher = globalThis.fetch;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const names: string[] = String(input).endsWith(':batchGet')
+        ? JSON.parse(String(init?.body)).documents : [];
+      if (names.some(name => name.includes('/observability_daily_rollups/'))) {
+        return new Response('private trend failure', { status: 503 });
+      }
+      return fetcher(input, init);
+    });
+    const initial = await adminGet('/observability/admin/users');
+    expect(initial.status).toBe(503);
+    expect(await initial.json()).toEqual({ error: 'Observability read model is temporarily unavailable.' });
+    calls.splice(0);
+    const page = await adminGet('/observability/admin/users?includeTrend=false');
+    expect(page.status).toBe(200);
+    const body = await page.json() as { users: unknown[] };
+    expect(body.users).toHaveLength(5);
+    expect(body).not.toHaveProperty('trend');
+    expect(calls.some(call => String(call.init?.body).includes('/observability_daily_rollups/'))).toBe(false);
+  });
+
+  it.each(['anonymous', 'non-admin'] as const)('requires admin authorization for a trend-free page: %s', async (caller) => {
+    const calls = installFetchMock();
+    if (caller === 'non-admin') {
+      const fetcher = globalThis.fetch;
+      vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) =>
+        String(input).includes('/documents/admins/') ? new Response(null, { status: 404 }) : fetcher(input, init));
+    }
+    const response = await traceWorker.fetch(new Request('https://worker.example/observability/admin/users?includeTrend=false', {
+      headers: caller === 'anonymous' ? {} : { Authorization: 'Bearer firebase-id-token' },
+    }), env);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'Admin access is required.' });
+    expect(calls.some(call => call.url.endsWith(':runQuery') || call.url.endsWith(':batchGet'))).toBe(false);
   });
 
   it('scans 200 near-maximum entries in exactly 10 batches without repeats or skips', async () => {

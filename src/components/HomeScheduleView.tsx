@@ -1,3 +1,4 @@
+import type { HomeAddEntry } from './home/TodayScheduleAddMenu';
 import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
 import type { HomeScenePreferences } from '../lib/homeScenePreferences';
 import { useMemo, type RefObject } from 'react';
@@ -30,7 +31,7 @@ interface HomeScheduleViewProps {
   primaryBottomNavRef: RefObject<HTMLElement | null>;
   onOpenAiPlanning: () => void;
   onOpenSchedule: () => void;
-  onAddEntry: () => void;
+  onAddEntry: (entry: HomeAddEntry) => void;
   onOpenDay: (date: string) => void;
   onOpenTodo: () => void;
   onOpenBookshelf: () => void;
@@ -85,7 +86,7 @@ export function HomeScheduleView({
   );
 
   return (
-    <HomeView
+    <HomeView key={userId}
       homeScenePreferences={homeScenePreferences}
       plans={displayPlans}
       actuals={actuals}

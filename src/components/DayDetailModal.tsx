@@ -281,7 +281,7 @@ function PlannedActualDetail({ session, plans, actuals, onEditPlan, onDeletePlan
       onClick={requestClose}
     >
       <div
-        className="modal-card daily-detail-modal schedule-record-sheet"
+        className="modal-card daily-detail-modal schedule-record-sheet linked-actual-record-sheet"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="schedule-action-handle" aria-hidden="true" />
@@ -291,9 +291,6 @@ function PlannedActualDetail({ session, plans, actuals, onEditPlan, onDeletePlan
           </button>
           <div className="daily-detail-modal-heading">
             <h2>{session.actual ? '記録を編集' : '記録を保存'}</h2>
-            <p>
-              {session.plan.startTime} - {session.plan.endTime} / {session.plan.title}
-            </p>
           </div>
           <button className="schedule-action-close" onClick={requestClose} disabled={isPending} type="button" aria-label="閉じる">
             <X aria-hidden="true" size={21} />

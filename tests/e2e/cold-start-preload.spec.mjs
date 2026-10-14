@@ -1,9 +1,9 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, installStartupSkip } from './support/startup-ready.mjs';
 
 // Use a real performance clock (no date-dependent assertions). A fresh Playwright
 // context has an empty HTTP cache. Reload reuses that context; record actual
 // transfer sizes rather than assuming every response becomes a cache hit.
-const OPTIONAL_VIEWS = ['WeekView', 'DayView', 'TodoView', 'ReportView',
+const OPTIONAL_VIEWS = ['AiPlanningView', 'WeekView', 'DayView', 'TodoView', 'ReportView',
   'TimetableView', 'BookshelfView', 'QuickEntryModal', 'TimetableOcrImportDialog'];
 const optionalNames = resources => OPTIONAL_VIEWS.filter(name => resources.some(resource =>
   new URL(resource.name).pathname.match(new RegExp(`/assets/${name}-[^/]+\\.js$`))));
@@ -35,7 +35,7 @@ async function instrument(page, signedIn) {
       localStorage.setItem('cold-start-seeded', 'true');
     }
     const observer = new MutationObserver(() => {
-      const target = document.querySelector(signedIn ? '.home-main' : '.auth-card');
+      const target = document.querySelector(signedIn ? '.home-main' : '.auth-entry');
       if (target && target.getClientRects().length && getComputedStyle(target).visibility !== 'hidden') {
         performance.mark('startup-visible');
         observer.disconnect();
@@ -62,7 +62,7 @@ for (const width of [1280, 390]) {
     page.on('pageerror', error => errors.push(String(error)));
     await instrument(page, false);
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: '新規会員登録', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toBeVisible();
     await expect(page.getByLabel('起動時間の診断')).toHaveCount(0);
     const loggedOut = await snapshot(page);
     expect(loggedOut.pendingIdle).toBe(0);
@@ -72,27 +72,16 @@ for (const width of [1280, 390]) {
     // Seed only a synthetic local-repository owner; no credentials or cloud data.
     const homeContext = await browser.newContext({ viewport: { width, height: 900 } });
     const homePage = await homeContext.newPage();
+    await installStartupSkip(homePage);
     homePage.on('pageerror', error => errors.push(String(error)));
     try {
       await instrument(homePage, true);
       await homePage.goto('http://127.0.0.1:4173/?startupTiming=1');
       await expect(homePage.locator('.home-main')).toBeVisible();
       await expect.poll(() => homePage.evaluate(() => window.__startupIdle.pending())).toBe(1);
-      const diagnostics = homePage.getByLabel('起動時間の診断');
-      await expect(diagnostics).toBeVisible();
-      const timingRows = async () => JSON.parse(await diagnostics.locator('pre').textContent());
-      await expect.poll(async () => (await timingRows()).some(row => row.phase === 'home-visible')).toBe(true);
-      const diagnosticRows = await timingRows();
-      expect(diagnosticRows.length).toBeLessThanOrEqual(80);
-      for (const phase of ['profile', 'plans', 'actuals', 'month-events', 'bootstrap', 'home-visible']) {
-        expect(diagnosticRows.some(row => row.phase === phase && row.outcome === 'success')).toBe(true);
-      }
-      for (const row of diagnosticRows) {
-        expect(Object.keys(row).sort()).toEqual(['durationMs', 'id', 'outcome', 'phase', 'startMs']);
-        expect(Number.isFinite(row.startMs)).toBe(true);
-        expect(row.durationMs === null || Number.isFinite(row.durationMs)).toBe(true);
-      }
-      expect(JSON.stringify(diagnosticRows)).not.toMatch(/startup@example|cold-start-owner|起動検証/);
+      // Production UI stays ordinary even when an operator query is pasted.
+      // Row schema/privacy is exercised by the controlled development startup-gates suite.
+      await expect(homePage.getByLabel('起動時間の診断')).toHaveCount(0);
       const coldHome = await snapshot(homePage);
       expect(coldHome.pendingIdle).toBe(1);
       expect(optionalNames(coldHome.resources)).toEqual([]);

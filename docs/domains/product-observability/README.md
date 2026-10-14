@@ -1,7 +1,7 @@
 # Product Observability
 
 Status: canonical domain entry point
-Updated: 2026-10-03
+Updated: 2026-10-08
 Owning Issue: #213
 
 このドメインは、StudyPlanner 全体の利用状況・AI/API 利用・機能品質・運用状態を、管理者が分析し、個別障害まで掘り下げるための観測責務を所有する。
@@ -21,6 +21,18 @@ Owning Issue: #213
 - product intent / information architecture / metric semantics: `spec/console-requirements.md`
 - telemetry / aggregation / trust / retention / drill-down architecture: `architecture/telemetry-and-read-model.md`
 - current implementation order: `roadmap/current.md`
+
+## Active work
+
+- [Admin Users page-only trend reads](work/20261013-admin-users-page-trend-reads.md): Issues #542/#213 remove the unused Worker trend request only when appending a Users page; preserve initial-load and mixed-version contracts.
+
+- [Admin Overview snapshot requests](work/20261013-admin-overview-snapshot.md): Issues #542/#213 share the existing bounded snapshot reader with Users trend; HTTP request consolidation with unchanged document keys and registration counts.
+
+- [Event ingestion read load](work/20261013-event-ingestion-read-load.md): Issue #542 create-first event persistence, preserving immutable replay and unknown-write recovery; local verification and HTTP tradeoffs.
+
+- [Scheduled maintenance idle read load](work/20261008-backend-idle-read-load.md): Issue #542 backend read measurement and local bounded idle-read reduction. Separate from the published client-runtime release unit; production billing and rollout remain unverified.
+
+- [Admin user timeline request ownership](work/20261013-admin-user-timeline-ownership.md): Issue #213 selected-actor pagination, stale-response isolation and retry; local focused verification only.
 
 ## Ownership
 

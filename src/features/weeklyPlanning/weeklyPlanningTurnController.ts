@@ -1,6 +1,7 @@
+import { assertWeeklyPlanningTurnCommitShape } from './application/weeklyPlanningTurnSideEffects';
 import { createDialogueTurnEnvelope } from './dialogue/weeklyPlanningDialogueOrchestrator';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
-import { bindWeeklyPlanningQuestionPresentation } from './intake/weeklyPlanningQuestionPresentation';
+import { bindWeeklyPlanningQuestionPresentation, resolveWeeklyPlanningQuestionPresentationFreshness } from './intake/weeklyPlanningQuestionPresentation';
 import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
 import type {
   PlanningState,
@@ -83,6 +84,9 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
     assistantMessage: WeeklyPlanningMessage;
   }): void | Promise<void>;
   now?: () => string;
+  /** Recovery reuses the exact accepted request; execution must be status-only. */
+  resumePending?: WeeklyPlanningPendingTurn;
+  isActive?: () => boolean;
   /** Dormant PoC: explicit consumer/provider injection only; no production default. */
   c5LocalSelection?: C5LocalSelectionOptions;
 }
@@ -241,6 +245,9 @@ export async function submitWeeklyPlanningControlledTurn(
     return { accepted: false, draftCandidates: [] };
   }
 
+  if (params.resumePending && (params.resumePending.conversationId !== params.session.conversationId
+    || params.resumePending.weekStartDate !== snapshot.weekStartDate
+    || params.resumePending.baseRevision !== snapshot.revision)) return { accepted: false, draftCandidates: [] };
   ensureSessionScope(params.session, params.ownerId, snapshot.weekStartDate);
   params.session.requestSequence = Math.max(
     params.session.requestSequence,
@@ -248,7 +255,7 @@ export async function submitWeeklyPlanningControlledTurn(
     inferWeeklyPlanningControllerRequestSequence(snapshot.messages, params.session.conversationId),
   ) + 1;
   const now = params.now ?? (() => new Date().toISOString());
-  const createdAt = now();
+  const createdAt = params.resumePending?.startedAt ?? now();
   const envelope = createDialogueTurnEnvelope({
     conversationId: params.session.conversationId,
     inputStateRevision: snapshot.revision,
@@ -264,6 +271,9 @@ export async function submitWeeklyPlanningControlledTurn(
     baseRevision: snapshot.revision,
     startedAt: createdAt,
   };
+  if (params.resumePending && !isSameWeeklyPlanningPendingTurn(pending, params.resumePending)) {
+    return { accepted: false, draftCandidates: [] };
+  }
   const begun = params.dispatch({
     type: 'begin_turn',
     pending,
@@ -274,6 +284,8 @@ export async function submitWeeklyPlanningControlledTurn(
     return { accepted: false, draftCandidates: [] };
   }
   await runBestEffort(() => params.onStartedTurn?.({ snapshot, pending }));
+
+  if (params.isActive?.() === false) return { accepted: false, draftCandidates: [] };
 
   let result: WeeklyPlanningTurnExecutionResult | undefined;
   let preparedCommit: WeeklyPlanningPreparedExecutionCommit | undefined;
@@ -316,13 +328,13 @@ export async function submitWeeklyPlanningControlledTurn(
       }
       return outcome;
     }
-    if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
+    if (params.isActive?.() === false || !isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
       await runBestEffort(() => params.discardExecutionResult?.({ ...context, reason: 'stale' }));
       return { accepted: false, draftCandidates: [] };
     }
 
     preparedCommit = params.prepareExecutionCommit?.(context) ?? undefined;
-    if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
+    if (params.isActive?.() === false || !isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
       preparedCommit?.rollback();
       preparedCommit = undefined;
       await runBestEffort(() => params.discardExecutionResult?.({ ...context, reason: 'stale' }));
@@ -335,7 +347,7 @@ export async function submitWeeklyPlanningControlledTurn(
       executionResult.message,
       now(),
     );
-    const committed = params.dispatch({
+    const commitAction: Extract<WeeklyPlanningAction, { type: 'commit_turn' }> = {
       type: 'commit_turn',
       pending,
       intakeState: (() => {
@@ -356,13 +368,19 @@ export async function submitWeeklyPlanningControlledTurn(
         });
         return params.c5LocalSelection && executionResult.stableV5Graph
           ? captureC5Question({ state: bound, graph: executionResult.stableV5Graph,
+              messages: [...params.getState().messages, assistantMessage],
               ownerId: params.ownerId, conversationId: pending.conversationId })
           : bound;
       })(),
       assistantMessage,
       draftCandidates: executionResult.draftCandidates,
       preservePreviewCandidates: executionResult.preserveExistingPreview,
+    };
+    assertWeeklyPlanningTurnCommitShape({
+      ownerId: params.ownerId, pending, state: params.getState(),
+      action: commitAction, result: executionResult,
     });
+    const committed = params.dispatch(commitAction);
     const accepted = committed.pendingTurn === undefined
       && committed.weekStartDate === pending.weekStartDate
       && committed.revision === pending.baseRevision + 2;
@@ -406,7 +424,7 @@ export async function submitWeeklyPlanningControlledTurn(
         reason: 'failed',
       }));
     }
-    if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
+    if (params.isActive?.() === false || !isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
       return { accepted: false, draftCandidates: [] };
     }
     const controlledFailure = error instanceof WeeklyPlanningControlledSemanticFailure;
@@ -414,10 +432,28 @@ export async function submitWeeklyPlanningControlledTurn(
       ? error.userMessage
       : '週間計画の会話状態を更新できませんでした。';
     const assistantMessage = createTurnMessage(envelope, 'assistant', message, now());
+    const recovery = failedResult?.recoveryPresentation?.question;
+    const previousPresentation = recovery ? resolveWeeklyPlanningQuestionPresentationFreshness({
+      previousState: snapshot.intakeState, inputStateRevision: pending.baseRevision,
+      messages: snapshot.messages, graphRevision: recovery.graphRevision,
+    }) : null;
+    const questionPresentation = recovery && controlledFailure
+      && failedResult?.responseSource === 'ai'
+      && failedResult.questionPresentationContent?.responseSource === 'ai'
+      && previousPresentation?.status === 'fresh'
+      && recovery.previousAssistantMessageId === previousPresentation.presentation.assistantMessageId
+      && snapshot.intakeState
+      ? bindWeeklyPlanningQuestionPresentation({
+          state: snapshot.intakeState, content: failedResult.questionPresentationContent,
+          turnId: envelope.turnId, assistantMessageId: assistantMessage.id,
+          planningStateRevision: pending.baseRevision + 2, graphRevision: recovery.graphRevision,
+        }).lastQuestionContext?.presentation
+      : undefined;
     const failedState = params.dispatch({
       type: 'fail_turn',
       pending,
       assistantMessage,
+      ...(questionPresentation ? { questionPresentation } : {}),
     });
     await runBestEffort(() => params.onFailedTurn?.({
       snapshot,

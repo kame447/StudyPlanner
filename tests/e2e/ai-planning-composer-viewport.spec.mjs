@@ -20,7 +20,11 @@ async function seedConversationAndViewport(page, withPreview = false) {
     window.__aiComposerViewport = {
       set(next, event = 'resize') {
         Object.assign(metrics, next);
-        viewport.dispatchEvent(new Event(event));
+        if (event) viewport.dispatchEvent(new Event(event));
+      },
+      visibility(state) {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+        document.dispatchEvent(new Event('visibilitychange'));
       },
     };
     const ownerId = 'ui-regression-user';
@@ -197,13 +201,17 @@ test.describe('AI conversation stays readable with a reduced visual viewport', (
       await input.evaluate(element => element.blur());
       await changeViewport(page, { height, offsetTop: 0 });
       await clickPrimaryNav(page, 'ホーム');
-      await expect(page.locator('.ai-planning-view')).toHaveCount(0);
+      await expect(page.locator('.ai-planning-view')).toBeHidden();
+      await expect(page.getByRole('region', { name: 'AI計画', exact: true })).toHaveCount(0);
+      await expect(page.locator('.app-shell')).not.toHaveCSS('position', 'fixed');
       expect(await page.locator('.app-shell').evaluate(element => ({
         height: element.style.getPropertyValue('--ai-planning-viewport-height'),
         top: element.style.getPropertyValue('--ai-planning-viewport-top'),
       }))).toEqual({ height: '', top: '' });
       await clickPrimaryNav(page, 'AI計画');
       await expect(messages).toHaveCount(24);
+      await expect(input).toHaveValue('前の相談を確認しながら入力\n2行目も保持a');
+      expect((await readLayout(page)).scrollTop).toBe(0);
       await expect(input).not.toBeFocused();
       await expectReadableLayout(page);
     });
@@ -221,6 +229,65 @@ test.describe('AI conversation stays readable with a reduced visual viewport', (
     await changeViewport(page, { scale: 1, height: 844, offsetTop: 0 });
     await expectReadableLayout(page);
   });
+
+  for (const returnEvent of ['visibilitychange', 'pageshow']) {
+    for (const followsEnd of [true, false]) {
+      test(`restores full height after ${returnEvent} without resize (follows end: ${followsEnd})`, async ({ page, browserName, isMobile }, testInfo) => {
+        await seedConversationAndViewport(page); await page.goto('/');
+        await clickPrimaryNav(page, 'AI計画');
+        const input = page.locator('.ai-planning-composer textarea');
+        const conversation = page.locator('.ai-planning-conversation');
+        await expect(conversation.locator('.ai-planning-message-row')).toHaveCount(24);
+        await input.fill('別のアプリから戻っても下書きを保持');
+        await input.evaluate(element => element.blur());
+        await expect.poll(async () => (await readLayout(page)).endGap).toBeLessThanOrEqual(2);
+        if (!followsEnd) await scrollConversationToStart(page, conversation, { browserName, isMobile });
+        const before = await readLayout(page);
+
+        for (let cycle = 0; cycle < 2; cycle += 1) {
+          await changeViewport(page, { height: 430, offsetTop: 80 });
+          await expect.poll(async () => (await readLayout(page)).shell.height).toBe(430);
+          // Explicitly synthetic lifecycle/geometry ordering: the return signal
+          // arrives with the old keyboard size; metrics settle before paint and
+          // no resize follows. This is not a physical iOS app-switch test.
+          await page.evaluate(returnEvent => {
+            if (returnEvent === 'visibilitychange') {
+              window.__aiComposerViewport.visibility('hidden');
+              window.__aiComposerViewport.visibility('visible');
+            } else {
+              window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+            }
+            window.__aiComposerViewport.set({ height: 844, offsetTop: 0 }, null);
+          }, returnEvent);
+          await expect.poll(async () => (await readLayout(page)).shell.height).toBe(844);
+          await expectReadableLayout(page);
+          const after = await readLayout(page);
+          expect(Math.abs(after.nav.bottom - after.bottom)).toBeLessThanOrEqual(1);
+          expect(after.windowScroll).toBe(before.windowScroll);
+          if (followsEnd) expect(after.endGap).toBeLessThanOrEqual(2);
+          else expect(after.scrollTop).toBe(before.scrollTop);
+          await expect(input).toHaveValue('別のアプリから戻っても下書きを保持');
+          await expect(input).not.toBeFocused();
+        }
+        await testInfo.attach(`ai-viewport-return-${returnEvent}-${followsEnd}`, {
+          body: await page.screenshot(), contentType: 'image/png',
+        });
+
+        await clickPrimaryNav(page, 'ホーム');
+        await page.evaluate(async () => {
+          window.__aiComposerViewport.set({ height: 430, offsetTop: 80 }, null);
+          window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+          window.__aiComposerViewport.visibility('visible');
+          await new Promise(resolve => requestAnimationFrame(resolve));
+        });
+        expect(await page.locator('.app-shell').evaluate(element => ({
+          height: element.style.getPropertyValue('--ai-planning-viewport-height'),
+          top: element.style.getPropertyValue('--ai-planning-viewport-top'),
+        }))).toEqual({ height: '', top: '' });
+        await expect(page.locator('.app-shell')).not.toHaveCSS('position', 'fixed');
+      });
+    }
+  }
 
   test('respects the preview scroll lock while the viewport changes and releases both owners on close', async ({ page, browserName, isMobile }) => {
     await seedConversationAndViewport(page, true); await page.goto('/');
@@ -269,4 +336,80 @@ test.describe('AI composer on desktop', () => {
     await expect(page.getByRole('button', { name: '音声入力', exact: true })).toBeFocused();
     await expectReadableLayout(page);
   });
+});
+
+
+for (const width of [390, 1280]) {
+  test(`retains AI draft, attachment and DOM across navigation and settings history at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await seedConversationAndViewport(page); await page.goto('/');
+    await clickPrimaryNav(page, 'AI計画');
+    const input = page.locator('.ai-planning-composer textarea');
+    await input.fill('保存前の入力\n2行目');
+    await page.locator('.ai-planning-attachment-input').setInputFiles({
+      name: 'draft.png', mimeType: 'image/png',
+      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=', 'base64'),
+    });
+    const firstInput = await input.elementHandle();
+    const originalConversation = await page.locator('.ai-planning-conversation').textContent();
+    await page.evaluate(() => {
+      window.__navigationSplashCount = 0;
+      new MutationObserver(records => {
+        for (const record of records) for (const node of record.addedNodes) {
+          if (node instanceof Element && (node.matches('.splash-screen') || node.querySelector('.splash-screen'))) window.__navigationSplashCount += 1;
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+    for (const label of ['ホーム', '予定', '教材', '時間割', 'ホーム']) {
+      await clickPrimaryNav(page, label);
+      await expect(page.locator('.ai-planning-view')).toBeHidden();
+      await expect(page.getByRole('region', { name: 'AI計画', exact: true })).toHaveCount(0);
+      await expect(page.locator('.app-shell')).not.toHaveCSS('position', 'fixed');
+      await expect(page.locator('.splash-screen')).toHaveCount(0);
+      await page.evaluate(() => { window.__navigationSplashCount = 0; });
+      await clickPrimaryNav(page, 'AI計画');
+      await expect(input).toHaveValue('保存前の入力\n2行目');
+      expect(await page.evaluate(() => window.__navigationSplashCount)).toBe(0);
+      await expect(page.getByLabel('添付画像 draft.png')).toBeVisible();
+      expect(await firstInput.evaluate(node => node === document.querySelector('.ai-planning-composer textarea'))).toBe(true);
+      expect(await page.locator('.ai-planning-conversation').textContent()).toBe(originalConversation);
+    }
+    await page.getByRole('button', { name: 'メニューを開く', exact: true }).click();
+    await expect(page.getByRole('main', { name: 'アプリ設定' })).toBeVisible();
+    await expect(page.locator('.ai-planning-view')).toBeHidden();
+    await page.goBack();
+    await expect(input).toBeVisible(); await expect(input).toHaveValue('保存前の入力\n2行目');
+    await page.goForward();
+    await expect(page.getByRole('main', { name: 'アプリ設定' })).toBeVisible();
+    await page.getByRole('button', { name: '戻る', exact: true }).click();
+    await expect(input).toBeVisible(); await expect(page.getByLabel('添付画像 draft.png')).toBeVisible();
+    expect(await page.evaluate(() => window.__navigationSplashCount)).toBe(0);
+    expect(await page.evaluate(() => ({ root: document.documentElement.style.overflow,
+      body: document.body.style.overflow, position: document.body.style.position })))
+      .toEqual({ root: '', body: '', position: '' });
+  });
+}
+
+test('late AI code loading never overrides a newer navigation or restarts the app splash', async ({ page }) => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let requested;
+  const seen = new Promise(resolve => { requested = resolve; });
+  await page.route(/\/assets\/AiPlanningView-[^/]+\.js$/, async route => {
+    requested(); await gate; await route.continue();
+  });
+  await seedConversationAndViewport(page); await page.goto('/');
+  await clickPrimaryNav(page, 'AI計画');
+  await seen;
+  await expect(page.getByRole('status').filter({ hasText: 'AI計画を開いています' })).toBeVisible();
+  await expect(page.locator('.splash-screen')).toHaveCount(0);
+  await clickPrimaryNav(page, 'ホーム');
+  release();
+  await expect(page.locator('.ai-planning-view')).toHaveCount(1);
+  await expect(page.locator('.ai-planning-view')).toBeHidden();
+  await expect(page.getByRole('navigation', { name: '主要ナビゲーション' })
+    .getByRole('button', { name: 'ホーム', exact: true })).toHaveAttribute('aria-current', 'page');
+  await clickPrimaryNav(page, 'AI計画');
+  await expect(page.locator('.ai-planning-message-row')).toHaveCount(24);
+  await expect(page.locator('.splash-screen')).toHaveCount(0);
 });

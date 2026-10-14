@@ -6,6 +6,7 @@ import type {
   ScheduleTemplate,
   TimetableTerm,
 } from '../types/domain';
+import { getMonthEventColor, scheduleEventWeekStyle } from '../lib/scheduleEventColor';
 import { WeekView } from './WeekView';
 
 const TIMESTAMP = '2026-08-01T00:00:00.000Z';
@@ -305,6 +306,7 @@ describe('WeekView schedule occurrence projection', () => {
     expect(spanningEvent.props.style.gridColumn).toBe(gridColumn);
     expect(findTimedBlocks(renderer, '月跨ぎ予定')).toHaveLength(0);
     expect(findTimedBlock(renderer, '時間指定予定').props.style).toEqual({
+      ...scheduleEventWeekStyle(getMonthEventColor('timed')),
       top: '95.83333333333334%',
       height: 'max(2.083333333333333%, 14px)',
       left: 'calc(0% + 2px)',

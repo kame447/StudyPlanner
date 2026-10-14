@@ -271,17 +271,17 @@ it.each([false, true])('failed full read does not revoke successful Todo Undo, s
   let restoring!: Promise<void>;
   await act(async () => { restoring = undo(); });
   await persisted.promise;
-  const getPlans = boundary.repository.getPlans;
+  const getScheduleSnapshot = boundary.repository.getScheduleSnapshot;
   let first = true;
-  boundary.repository.getPlans = async owner => {
-    if (superseded && first) { first = false; const result = await getPlans(owner); await oldRead.promise; return result; }
+  boundary.repository.getScheduleSnapshot = async owner => {
+    if (superseded && first) { first = false; const result = await getScheduleSnapshot(owner); await oldRead.promise; return result; }
     throw new Error('full read failed');
   };
   let loading: Promise<void> | undefined;
   if (superseded) await act(async () => { loading = state.loadPlannerData('owner'); });
   await act(async () => { await expect(state.loadPlannerData('owner')).rejects.toThrow('full read failed'); });
   if (loading) await act(async () => { oldRead.resolve(); await loading; });
-  boundary.repository.getPlans = getPlans;
+  boundary.repository.getScheduleSnapshot = getScheduleSnapshot;
   const reads = vi.spyOn(boundary.repository, 'getTodos');
   await act(async () => { response.resolve(); await restoring; });
   expect(state.todos).toEqual(await repository.getTodos('owner'));

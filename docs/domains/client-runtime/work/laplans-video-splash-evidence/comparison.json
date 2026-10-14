@@ -1,0 +1,35 @@
+{
+  "stable_fields": {
+    "head": true,
+    "branch": true,
+    "input_digest": true,
+    "package_lock": true,
+    "package_json": true,
+    "installed_lock": true,
+    "node_modules_link": true,
+    "installed_packages_digest": true,
+    "source_env_files": true,
+    "tools": true
+  },
+  "changed_non_docs_inputs": [],
+  "changed_installed_packages": [],
+  "generated_worker_types_before": {
+    "missing": true
+  },
+  "generated_worker_types_after": {
+    "size": 615867,
+    "sha256": "bf808b3fb4789a76410fc9c1ba8cd85e80453b8f92fa0981bdb86a9d523d612e"
+  },
+  "source_count": 1843,
+  "source_digest": "3e84df7f218c617183de5a16dac4f28f1150a5a219a511adf9ef812480f85a75",
+  "verify_exit": "0",
+  "budget_exit": "0",
+  "summary_lines": [
+    " Test Files  762 passed | 10 skipped (772)",
+    "      Tests  6200 passed | 45 skipped | 1 todo (6246)",
+    "   Start at  11:44:01",
+    "   Duration  555.04s (transform 26.24s, setup 0ms, collect 139.45s, tests 138.26s, environment 263ms, prepare 89.28s)",
+    "\u2713 built in 10.64s"
+  ],
+  "after_snapshot_note": "Initial receipt-only snapshot command could not find python in the isolated execution PATH; rerun immediately after process exit using existing interpreter. Verification/build/budget ran once with exit 0; no test or source rerun/change."
+}

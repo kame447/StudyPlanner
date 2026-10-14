@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/startup-ready.mjs';
 import { clickPrimaryNav, seedRegressionUser } from './support/ui-regression.mjs';
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
@@ -91,10 +91,30 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     'src/components/MonthView.tsx',
     'src/components/QuickAddMenu.tsx',
   ]);
-  // Settings may focus its heading, keyboard tabs and the user-activated return
-  // target. Keep these statement-specific so a new input focus in the same file
-  // still fails this guard. Browser tests assert the actual heading/tab/origin.
-  const allowedSettingsFocus = new Map([
+  // Settings and the user-opened Home disclosure may focus their non-input
+  // controls. Keep these statement-specific so new input focus in the same file
+  // still fails this guard. Browser tests assert the actual heading/tab/button.
+  const allowedFocusStatements = new Map([
+    // Auth Arrow/Home/End navigation focuses only an explicitly selected mode button.
+    ['src/components/AuthScreen.tsx', new Set([
+      'event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-intent="${nextIntent}"]`)?.focus();',
+    ])],
+    // Arrow/Home/End navigation focuses only the sibling mode buttons.
+    ['src/components/StudySessionModePicker.tsx', new Set([
+      'event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-mode="${mode}"]`)?.focus();',
+    ])],
+    // User-opened settings focus their h1; Save/Back restore the launch button.
+    // Neither target is a text control; Pomodoro browser tests assert both.
+    ['src/components/StudySessionView.tsx', new Set([
+      "if (phase === 'settings') headingRef.current?.focus();",
+      'settingsButtonRef.current?.focus();',
+    ])],
+    ['src/components/home/TodayScheduleAddMenu.tsx', new Set([
+      'firstActionRef.current?.focus({ preventScroll: true });',
+      'toggleRef.current?.focus({ preventScroll: true });',
+      // The selected HTMLButtonElement becomes the dialog's non-input return target.
+      'button.focus({ preventScroll: true });',
+    ])],
     ['src/components/AppSettingsDialog.tsx', new Set([
       'titleRef.current?.focus({ preventScroll: true });',
       'tabRefs.current[TABS[next].id]?.focus();',
@@ -104,6 +124,13 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     ])],
     ['src/hooks/useSettingsNavigation.ts', new Set([
       'if (returnFocus.current?.isConnected) returnFocus.current.focus({ preventScroll: true });',
+    ])],
+    // Public navigation initially focuses only its non-input return link.
+    // Back restores the user's previous focus only when that origin is visible;
+    // it does not choose a new input or restore focus to a hidden planner.
+    ['src/components/PublicPageBoundary.tsx', new Set([
+      "publicSurface.current?.querySelector<HTMLElement>('.legal-back-link')?.focus({ preventScroll: true });",
+      'if (target?.isConnected && target.getClientRects().length) target.focus({ preventScroll: true });',
     ])],
   ]);
 
@@ -116,7 +143,7 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
 
     source.split('\n').forEach((line, index) => {
       if (line.includes('.focus(') && !allowedFocusFiles.has(fileName)
-        && !allowedSettingsFocus.get(fileName)?.has(line.trim())) {
+        && !allowedFocusStatements.get(fileName)?.has(line.trim())) {
         unexpectedFocus.push(`${fileName}:${index + 1}:${line.trim()}`);
       }
     });
@@ -144,7 +171,7 @@ test.describe('mobile browser input focus policy', () => {
 
   test('auth surface opens without stealing focus and keeps all visible text controls zoom-safe', async ({ page }) => {
     await page.goto(AUTH_HARNESS_URL);
-    await expect(page.getByRole('heading', { name: '新規会員登録' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toBeVisible();
 
     await expectNoTextControlFocused(page);
     await expectVisibleTextControlsAtLeast16px(page);

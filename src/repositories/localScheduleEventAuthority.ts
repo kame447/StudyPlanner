@@ -196,6 +196,14 @@ export function createLocalScheduleEventAuthority(
       }
     },
 
+    async getScheduleSnapshot(userId) {
+      const events = readScheduleEvents(storage).filter((event) => event.userId === userId);
+      return {
+        plans: events.map(scheduleEventToPlan).filter((plan): plan is NonNullable<typeof plan> => plan !== null),
+        monthEvents: events.map(scheduleEventToMonthEvent).filter((event): event is NonNullable<typeof event> => event !== null),
+      };
+    },
+
     async getPlans(userId) {
       return readScheduleEvents(storage)
         .filter((event) => event.userId === userId)

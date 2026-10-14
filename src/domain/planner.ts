@@ -109,6 +109,7 @@ export function createPlanDraftFromPlan(plan: Plan): PlanDraft {
 
   return {
     userId: plan.userId,
+    ...(plan.classTemplateId ? { classTemplateId: plan.classTemplateId } : {}),
     title: plan.title,
     subject: plan.subject,
     date: plan.occurrenceDate ?? plan.date,

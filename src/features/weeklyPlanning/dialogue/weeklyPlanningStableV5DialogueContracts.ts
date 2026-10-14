@@ -1,4 +1,6 @@
-import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
+import type { WeeklyPlanningPreviewConstraintSatisfaction } from '../application/weeklyPlanningPreviewConstraintSatisfaction';
+import type { WeeklyPlanningFixedEventCommunicationFacts } from '../application/weeklyPlanningFixedEventOnlyInteraction';
+import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClientTypes';
 
 export type WeeklyPlanningStableV5DialogueActionKind =
   | 'question'
@@ -58,6 +60,7 @@ export type WeeklyPlanningStableV5DialogueResolutionKind =
   | 'quantity_role'
   | 'effort_estimate_choice'
   | 'availability_date_scope'
+  | 'temporal_date_scope'
   | 'time_bounds'
   | 'named_time_period_bounds'
   | 'commitment_date_scope'
@@ -74,6 +77,7 @@ export type WeeklyPlanningStableV5DialogueRequestedInformation =
   | 'quantity_role'
   | 'choose_effort_estimate'
   | 'availability_date_scope'
+  | 'applicable_start_or_deadline_date'
   | 'start_and_end_time'
   | 'named_time_period_start_and_end'
   | 'commitment_date'
@@ -183,12 +187,27 @@ export interface WeeklyPlanningStableV5DialogueCurrentTurnGrounding {
   acceptedFacts: WeeklyPlanningStableV5DialogueGroundingFact[];
 }
 
+/** Read-only evidence from this turn's selected, successfully compiled schedule. */
+export interface WeeklyPlanningExistingScheduleGrounding {
+  graphRevision: number;
+  sourceId: string;
+  requestFactId: string;
+  occupiedEventIds: string[];
+}
+
 export interface WeeklyPlanningStableV5DialogueRenderInput {
+  /** Application-selected conversation goal, not a second interpretation of raw text. */
+  communication?: {
+    goal: 'ask_question' | 'explain_question' | 'acknowledge_aside' | 'resume_question' | 'present_preview' | 'acknowledge';
+    askQuestion: boolean;
+  } & Partial<WeeklyPlanningFixedEventCommunicationFacts>;
   actionId: string;
   currentUserMessage: string;
   recentConversation: WeeklyPlanningStableV5DialogueConversationTurn[];
   planningInformation: Record<string, unknown> | null;
   currentTurnGrounding?: WeeklyPlanningStableV5DialogueCurrentTurnGrounding | null;
+  existingScheduleGrounding?: WeeklyPlanningExistingScheduleGrounding;
+  previewConstraintSatisfaction?: WeeklyPlanningPreviewConstraintSatisfaction[];
   actionKind: WeeklyPlanningStableV5DialogueActionKind;
   questionCode: string | null;
   questionTarget?: WeeklyPlanningStableV5DialogueQuestionTarget | null;
@@ -197,6 +216,17 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   requiredLabels: string[];
   fallbackText: string;
   previewCount: number;
+  /** A failed semantic turn accepted no new facts. Never inferred from rendered text. */
+  recovery?: {
+    planningDetailsNotApplied: true;
+    acceptedStateUnchanged: true;
+    retainedPreviewUnchanged: boolean;
+  };
+  /** Complete bounded identity/scope evidence, shared by recovery generation and verification. */
+  recoveryQuestionEvidence?: {
+    facts: WeeklyPlanningStableV5DialogueQuestionTarget[];
+    labels: string[];
+  };
 }
 
 export type WeeklyPlanningStableV5DialogueFallbackReason =
@@ -208,13 +238,15 @@ export type WeeklyPlanningStableV5DialogueFallbackReason =
   | 'grounding_contract_mismatch'
   | 'unsafe_text'
   | 'ungrounded_text'
-  | 'repeated_question_text';
+  | 'repeated_question_text'
+  | 'recovery_verification_failed';
 
 export type WeeklyPlanningStableV5DialogueRenderResult =
   | {
       status: 'rendered';
       text: string;
       rawResponse: string;
+      recoveryVerified?: true;
     }
   | {
       status: 'fallback';

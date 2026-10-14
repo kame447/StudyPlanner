@@ -180,6 +180,38 @@ function appendRequest(
 }
 
 describe('weekly planning trace server authority', () => {
+  it('issues and reuses a canonical session with only the previous-epoch secret', async () => {
+    const epoch = resolveWeeklyPlanningTraceEpoch(new Date());
+    const oldEnv = {
+      ...env(),
+      WEEKLY_PLANNING_TRACE_HMAC_SECRETS: JSON.stringify({
+        [String(Number(epoch) - 1)]: 'a'.repeat(64),
+      }),
+    };
+    const request = () => new Request('https://example.test/weekly-planning-trace/session/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        idempotencyKey: 'weekly-trace-09012345678-client',
+        conversationCorrelationKey: 'conversation-09012345678-client',
+        session: sessionMetadata(0),
+      }),
+    });
+    const first = await handleWeeklyPlanningTraceApi(request(), oldEnv, { uid: 'user-1' });
+    const second = await handleWeeklyPlanningTraceApi(request(), oldEnv, { uid: 'user-1' });
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(first.body.sessionId).toBe(second.body.sessionId);
+    expect(fakeFirestore.sessions).toHaveLength(1);
+    const admin = await handleWeeklyPlanningTraceApi(
+      new Request('https://example.test/weekly-planning-trace/admin/sessions'),
+      oldEnv,
+      { uid: 'admin-1' },
+    );
+    expect(admin.status).toBe(200);
+    expect(admin.body.sessions).toHaveLength(1);
+  });
+
   it.each([false, true])('validates concurrent starts with matching conversation: %s', async (matching) => {
     const prototype = fakeFirestore.FakeWeeklyPlanningTraceFirestoreClient.prototype;
     const original = prototype.getDocument;

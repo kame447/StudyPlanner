@@ -1,4 +1,7 @@
+import { usePublicPageNavigation } from './PublicPageLink';
+import type { HomeAddEntry } from './home/TodayScheduleAddMenu';
 import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
+import { useHomeTextReflow } from './home/useHomeTextReflow';
 import type { HomeScenePreferences } from '../lib/homeScenePreferences';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { buildHomeDashboardModel } from '../lib/homeDashboard';
@@ -24,7 +27,7 @@ interface HomeViewProps {
   primaryBottomNavRef: RefObject<HTMLElement | null>;
   onOpenAiPlanning: () => void;
   onOpenSchedule: () => void;
-  onAddEntry: () => void;
+  onAddEntry: (entry: HomeAddEntry) => void;
   onOpenDay: (date: string) => void;
   onOpenTodo: () => void;
   onOpenBookshelf: () => void;
@@ -118,6 +121,7 @@ export function HomeView({
   onOpenBookshelf,
   onOpenReport,
 }: HomeViewProps) {
+  const publicPageOpen = usePublicPageNavigation()?.isPublicPage ?? false;
   const now = useHomeDisplayClock();
   const dashboard = useMemo(
     () => buildHomeDashboardModel({ plans, actuals, todos, now }),
@@ -143,6 +147,7 @@ export function HomeView({
     );
   }, [activeStudyMaterials]);
   const coreSectionsRef = useRef<HTMLDivElement | null>(null);
+  const homeTextSize = useHomeTextReflow(coreSectionsRef, isGettingStarted);
   const materialProbeRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const layoutRelaxationRef = useRef<HomeLayoutRelaxation>(emptyLayoutRelaxation());
   const [supplementalMaterialRows, setSupplementalMaterialRows] = useState<number | null>(null);
@@ -152,16 +157,20 @@ export function HomeView({
   }, [activeStudyMaterials, supplementalMaterialRows]);
 
   useEffect(() => {
+    if (publicPageOpen) return undefined;
     if (isGettingStarted) {
       setSupplementalMaterialRows(null);
       return undefined;
     }
 
+    let active = true;
     let frameId = 0;
     let convergencePass = 0;
     const measure = () => {
+      if (!active) return;
       window.cancelAnimationFrame(frameId);
       frameId = window.requestAnimationFrame(() => {
+        if (!active) return;
         const core = coreSectionsRef.current;
         const header = primaryHeaderRef.current;
         const nav = primaryBottomNavRef.current;
@@ -173,6 +182,7 @@ export function HomeView({
         const topbar = header?.querySelector<HTMLElement>('.home-topbar');
         if (
           !core ||
+          !core.getClientRects().length ||
           !header ||
           !nav ||
           !(dashboardElement instanceof HTMLElement) ||
@@ -184,6 +194,8 @@ export function HomeView({
         ) {
           return;
         }
+
+        if (dashboardElement.dataset.contentScroll === 'true') return;
 
         const chromeViewportKey = `${window.innerWidth}x${window.innerHeight}`;
         let chromeLocked = header.dataset.homeChromeViewport === chromeViewportKey;
@@ -516,11 +528,14 @@ export function HomeView({
     void document.fonts.ready.then(restartMeasurement, () => undefined);
 
     return () => {
+      active = false;
       window.cancelAnimationFrame(frameId);
       window.removeEventListener('resize', restartMeasurement);
       window.visualViewport?.removeEventListener('resize', restartMeasurement);
     };
   }, [
+    publicPageOpen,
+    homeTextSize,
     dashboard.todayPlans.length,
     dashboard.upcomingPlans.length,
     isGettingStarted,

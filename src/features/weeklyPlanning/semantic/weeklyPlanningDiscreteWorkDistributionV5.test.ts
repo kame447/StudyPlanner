@@ -76,6 +76,25 @@ function compileAndDistribute(graph: WeeklyPlanningFactGraph) {
 }
 
 describe('quantity-preserving discrete work distribution', () => {
+  it('keeps the actual range offset and totals while displaying a canonical page unit', () => {
+    const graph = graphForDiscreteWork({ amount: 40, unitCode: 'page', unitLabel: '40ページ',
+      minutesPerUnit: 4, rangeStart: '21', rangeEnd: '60' });
+    const before = structuredClone(graph);
+    const { compiled, distributed } = compileAndDistribute(graph);
+    expect(compiled.issues).toEqual([]);
+    expect(compiled.items[0]).toMatchObject({ baseEstimatedMinutes: 160, estimatedMinutes: 180 });
+    expect(distributed.map((item) => item.quantity.amount)).toEqual([14, 13, 13]);
+    expect(distributed.map((item) => item.quantity.actualRange)).toEqual([
+      { start: '21', end: '34' }, { start: '35', end: '47' }, { start: '48', end: '60' },
+    ]);
+    expect(distributed.reduce((sum, item) => sum + (item.baseEstimatedMinutes ?? 0), 0)).toBeCloseTo(160);
+    expect(distributed.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0), 0)).toBe(180);
+    expect(graph).toEqual(before);
+    expect(distributed.map((item) => item.label)).toEqual([
+      '数学 14ページ（21〜34ページ）', '数学 13ページ（35〜47ページ）', '数学 13ページ（48〜60ページ）',
+    ]);
+  });
+
   it('keeps the raw estimate while distributing the safety-buffered allocation', () => {
     const { compiled, distributed } = compileAndDistribute(graphForDiscreteWork({
       amount: 40,

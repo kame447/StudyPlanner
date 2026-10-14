@@ -9,6 +9,7 @@ import {
   Plus,
   Target,
 } from 'lucide-react';
+import { getPlanScheduleColor, scheduleEventColorStyle } from '../../lib/scheduleEventColor';
 import { minutesBetween } from '../../lib/date';
 import type { HomeDashboardModel } from '../../lib/homeDashboard';
 import {
@@ -17,9 +18,11 @@ import {
 } from '../../lib/homeNextPlanVisual';
 import { DEFAULT_HOME_SCENE_PREFERENCES, type HomeScenePreferences } from '../../lib/homeScenePreferences';
 import { HomeScene } from './HomeScene';
+import { HomePlanTitle } from './HomePlanTitle';
 import { buildPlanOccurrenceKey } from '../../lib/planRecurrence';
 import type { Actual, Plan, StudyMaterial, TodoTask } from '../../types/domain';
 import { useStudySessionLauncher } from '../StudySessionView';
+import { TodayScheduleAddMenu, type HomeAddEntry } from './TodayScheduleAddMenu';
 
 export type HomeSectionId =
   | 'getting-started'
@@ -87,6 +90,7 @@ function HomeScheduleRow({
   return (
     <button
       className="home-schedule-row"
+      style={scheduleEventColorStyle(getPlanScheduleColor(plan))}
       type="button"
       onClick={() => onOpenDay(plan.date)}
     >
@@ -169,7 +173,7 @@ export function GettingStartedSection({
         <span className="home-setup-mark"><BookOpen size={22} aria-hidden="true" /></span>
         <div>
           <p>はじめに</p>
-          <h1 id="home-getting-started-title">StudyPlannerを準備する</h1>
+          <h1 id="home-getting-started-title">Laplanceを準備する</h1>
         </div>
       </div>
       <p className="home-setup-copy">
@@ -235,11 +239,7 @@ export function NextPlanSection({
         <p className="home-eyebrow">次の予定</p>
         {nextPlan ? (
           <>
-            <h1>{usesStartAction ? nextPlan.title : (
-              <button type="button" className="home-next-title-action" aria-label={`${nextPlanPresentation?.actionLabel ?? '予定を確認する'}: ${nextPlan.title}`} onClick={() => onOpenDay(nextPlan.date)}>
-                {nextPlan.title}<ChevronRight size={20} aria-hidden="true" />
-              </button>
-            )}</h1>
+            <HomePlanTitle key={nextPlan.id} title={nextPlan.title} />
             <div className="home-next-meta">
               <span><Clock aria-hidden="true" size={18} />{nextPlan.startTime} - {nextPlan.endTime}</span>
               <span>
@@ -250,6 +250,7 @@ export function NextPlanSection({
                 <Target aria-hidden="true" size={18} />
                 {nextPlanPresentation?.durationLabel} {formatMinutes(minutesBetween(nextPlan.startTime, nextPlan.endTime))}
               </span>
+
             </div>
           </>
         ) : (
@@ -261,6 +262,7 @@ export function NextPlanSection({
 
       <HomeScene kind={nextPlanVisual.kind} preferences={homeScenePreferences} plan={nextPlan} />
 
+      <div className="home-actions">
       <button
         className="home-start-button"
         type="button"
@@ -271,6 +273,12 @@ export function NextPlanSection({
         </span>
         勉強を開始
       </button>
+      {nextPlan && !usesStartAction && (
+        <button type="button" className="home-plan-inspect" aria-label={`${nextPlanPresentation?.actionLabel ?? '予定を確認する'}: ${nextPlan.title}`} onClick={() => onOpenDay(nextPlan.date)}>
+          {nextPlanPresentation?.semanticKind === 'class' ? '授業を確認' : '予定を確認'}
+        </button>
+      )}
+      </div>
     </section>
   );
 }
@@ -284,7 +292,7 @@ export function TodayScheduleSection({
   dashboard: HomeDashboardModel;
   studyMaterials: StudyMaterial[];
   onOpenDay: (date: string) => void;
-  onAddEntry: () => void;
+  onAddEntry: (entry: HomeAddEntry) => void;
 }) {
   return (
     <section className="home-panel home-today-panel" data-home-section="today-schedule">
@@ -311,9 +319,8 @@ export function TodayScheduleSection({
             })}
           </>
         ) : null}
-        <button className={dashboard.todayPlans.length > 0 ? 'home-schedule-add-row' : 'home-schedule-empty'} type="button" onClick={onAddEntry} aria-label="今日の予定に追加">
-          <Plus size={20} aria-hidden="true" />
-        </button>
+        <TodayScheduleAddMenu key={dashboard.today} date={dashboard.today}
+          empty={dashboard.todayPlans.length === 0} onAddEntry={onAddEntry} />
       </div>
       {dashboard.todayPlans.length > 4 ? <p className="home-scroll-hint">下にスクロールして続きを読む ↓</p> : null}
     </section>

@@ -1,0 +1,288 @@
+{
+  "snapshot": "/tmp/studyplanner-cross-projection-0kute1xd",
+  "day_head": "250bf511b2a3960b376a367b80ef59dc79b98e0d",
+  "perf_head": "22847120386987329e2f034d6062d59694ef1180",
+  "records": [
+    {
+      "path": "src/components/DayPlanDeleteRecovery.integration.test.tsx",
+      "perf_sha256": "8539f26f0541dbd636e02e72c0fe4f635f91ed03a21d844052ef2273e6e5f248",
+      "merge": "copy"
+    },
+    {
+      "path": "src/components/LinkedActualRecovery.integration.test.tsx",
+      "perf_sha256": "46ffea74e83ebb6a05a5963d5893dcc3d7a245f1339b21fd63650d27ef15b391",
+      "merge": "copy"
+    },
+    {
+      "path": "src/components/StandaloneActualRecovery.integration.test.tsx",
+      "perf_sha256": "fdad3d044365d9aad039ac224c78350047d11848dfe145ec1dcfe24540767b72",
+      "merge": "copy"
+    },
+    {
+      "path": "src/components/StudyPlannerAppRoot.parallelStartup.test.tsx",
+      "perf_sha256": "51dbe89add134c936d1190d964558754eaa0c83f5650291a0287b18ea75007fc",
+      "merge": "copy"
+    },
+    {
+      "path": "src/components/StudyPlannerAppRoot.tsx",
+      "perf_sha256": "4634bb297271d19964838a8db67695382f9fa1577a2fe42f36fc429e0089f5dc",
+      "merge": "copy"
+    },
+    {
+      "path": "src/features/weeklyPlanning/trace/useWeeklyPlanningTracePolicy.ts",
+      "perf_sha256": "36c68540bb9bd8a5d7c196d05a60ca1a6c456bb835b2575f1a191467f83e68ed",
+      "merge": "copy"
+    },
+    {
+      "path": "src/features/weeklyPlanning/trace/weeklyPlanningTracePrivacyClient.ts",
+      "perf_sha256": "47bb649c8bdcf782c1bde9f5d134c2a9c1dd8e46b3ba6035cf9dce37f10b8cfa",
+      "merge": "copy"
+    },
+    {
+      "path": "src/hooks/plannerReadSpies.testUtils.ts",
+      "perf_sha256": "b462c653fed91c82e8944c56ac7a5f210224a4d8dfe2c28686fc13c0dce0f2d0",
+      "merge": "copy"
+    },
+    {
+      "path": "src/hooks/usePlannerAppState.bootstrapIdentity.test.tsx",
+      "perf_sha256": "f34d28dec5224db29d938dda55c4a2109052ef7f71cdf1ff70239f2b444610f4",
+      "merge": "copy"
+    },
+    {
+      "path": "src/hooks/usePlannerAppState.ts",
+      "perf_sha256": "a5f6d898005b465e3385a7bb241b6df0ef51418e200833993d6355d7ce094724",
+      "merge": "auto"
+    },
+    {
+      "path": "src/hooks/usePlannerAppState.weeklyApproval.test.tsx",
+      "perf_sha256": "e9b311525a9130bafc599733f6311c170b565dfd23b60d2d368092d9f48e962b",
+      "merge": "copy"
+    },
+    {
+      "path": "src/hooks/usePlannerDataState.actualAdmissionReadLifetime.test.tsx",
+      "perf_sha256": "d82d456818fe666919cd464ff424bd2bdafbfd5f60589f837310cb7ef025ca54",
+      "merge": "copy"
+    },
+    {
+      "path": "src/hooks/usePlannerDataState.dayNoteReadRecovery.test.tsx",
+      "perf_sha256": "564aa5b7817c3dd510f1f60c99aaff4cb0a09804b3572e8d36e3a99c65ee5182",
+      "merge": "copy"
+    },
+    {
+      "path": "src/hooks/usePlannerDataState.monthEventRecovery.test.tsx",
+      "perf_sha256": "617b3ce52ea6fb1641e5fdb979ff00c9e09b861c7c290629749c8b6e3d83d1f8",
+      "merge": "copy"
+    },
+    {
+      "path": "src/hooks/usePlannerDataState.planUndoRecovery.test.tsx",
+      "perf_sha256": "359e368043c21723921bc1b1cf069a4eb091ad5cdb714a1f198aac4e9ef378fa",
+      "merge": "copy"
+    },
+    {
+      "path": "src/hooks/usePlannerDataState.reconciliation.test.tsx",
+      "perf_sha256": "a0107347b0ca0103a3b10502e4fa2fc3fcb9fd1e424be2f4e2e4be5601cf7d56",
+      "merge": "copy"
+    },
+    {
+      "path": "src/hooks/usePlannerDataState.selectivePublication.test.tsx",
+      "perf_sha256": "ce2e47516ec674c7aecb18708bc644f7e2540b2edaf07eeab5bc64887c05c10d",
+      "merge": "copy"
+    },
+    {
+      "path": "src/hooks/usePlannerDataState.test.tsx",
+      "perf_sha256": "1759c7367b4c5fc0aae57ae421eafc796945a5311358de4d59da6137524a1508",
+      "merge": "copy"
+    },
+    {
+      "path": "src/hooks/usePlannerDataState.todoReadRecovery.test.tsx",
+      "perf_sha256": "c57813911ca0301b81890131c15a7f159c31673b80b23822252b67b02b312200",
+      "merge": "copy"
+    },
+    {
+      "path": "src/hooks/usePlannerDataState.ts",
+      "perf_sha256": "32649cc57533dbe6976fd6215f810a63f09fc4ab279793c54321e017fcb90390",
+      "merge": "conflict"
+    },
+    {
+      "path": "src/lib/startupTiming.ts",
+      "perf_sha256": "75344b74e34fb71fbbdffe31448f3c10074dc30d709605f9a1ba6a5cc0ffe43c",
+      "merge": "copy"
+    },
+    {
+      "path": "src/repositories/firebasePlannerRepository.ts",
+      "perf_sha256": "3412302bd12407727f60d406694e7762a9e439be77655f7173c55207dbb9fc08",
+      "merge": "copy"
+    },
+    {
+      "path": "src/repositories/firebaseScheduleEventAuthority.test.ts",
+      "perf_sha256": "ab936403de1e14d8247300285a8113873632907fb7bd443ca9650eb08471cb6f",
+      "merge": "copy"
+    },
+    {
+      "path": "src/repositories/firebaseScheduleEventAuthority.ts",
+      "perf_sha256": "e978f403cd7c6aa908e69cfcef5bb12f24b482757a9673fef07f641b63035c15",
+      "merge": "copy"
+    },
+    {
+      "path": "src/repositories/localScheduleEventAuthority.test.ts",
+      "perf_sha256": "34e499fdacd5ce71a20b03527e6b2ea11ced819071f3e2efd4a2725305b39960",
+      "merge": "copy"
+    },
+    {
+      "path": "src/repositories/localScheduleEventAuthority.ts",
+      "perf_sha256": "0ad975d845c9a974f5d531d7960c429a0eaf40236f26f56d5fccb5082146c148",
+      "merge": "copy"
+    },
+    {
+      "path": "src/repositories/observedPlannerRepository.ts",
+      "perf_sha256": "c4d736b04bf8774a8dd309492a14eb7cd6d29099b1d4b6e76e8b12aaa8c2649b",
+      "merge": "copy"
+    },
+    {
+      "path": "src/repositories/plannerRepository.ts",
+      "perf_sha256": "78e8d5edccb80323894cd47181dad385d162992170fa89b969f3ef66f17d2700",
+      "merge": "copy"
+    },
+    {
+      "path": "src/repositories/repositoryContracts.ts",
+      "perf_sha256": "b4249f52fffe347f3dc317dd72800d18e4fb941db51fa01e591273d78bac5dc7",
+      "merge": "copy"
+    },
+    {
+      "path": "src/repositories/scheduleEventAuthorityRepository.test.ts",
+      "perf_sha256": "666680cf10cf554351f872384495683576d5359635fcabd209b8db0c883a7790",
+      "merge": "copy"
+    },
+    {
+      "path": "src/repositories/scheduleEventAuthorityRepository.ts",
+      "perf_sha256": "fcf36701c73eca845b31605a8e8c15c82561d673e7e7d99a5fa9e51a4bc7095a",
+      "merge": "copy"
+    },
+    {
+      "path": "src/repositories/unavailableRepositories.ts",
+      "perf_sha256": "f37b1d7c9e93439e14484186aae32f4b7d970a25d0d6dca8fd402dc4cc361323",
+      "merge": "copy"
+    },
+    {
+      "path": "tests/e2e/harness/plannerRecoveryRepository.fixture.js",
+      "perf_sha256": "553f6df7315875dc8aefa5b01b01e874fd30ecf063e923b9cb6363dc29d45ed1",
+      "merge": "copy"
+    },
+    {
+      "path": "tests/e2e/planner-reconciliation-recovery.spec.mjs",
+      "perf_sha256": "478f813115d53a3a985251b130b99db2bf1cfba7ce94e2b4dc7163b0f4a976fc",
+      "merge": "auto"
+    },
+    {
+      "path": "scripts/performance/firestore-read-load-emulator.mjs",
+      "perf_sha256": "0dceb5974c22991aa92998ef80399da2c87e4127fa6fddf30a711c798abb5d2a",
+      "merge": "copy"
+    },
+    {
+      "path": "scripts/performance/measure-firestore-read-load.mjs",
+      "perf_sha256": "2ac5cf2fc2deb702c85643b2808ff5c03f50146532a4540ad4db8caa1fe4b1ee",
+      "merge": "copy"
+    },
+    {
+      "path": "scripts/performance/vitest.firestore-read-load.config.mjs",
+      "perf_sha256": "efab57581cc7b2c01d9b34e982766350db879b8ff706311279831a29dab13dfb",
+      "merge": "copy"
+    },
+    {
+      "path": "src/components/StudyPlannerAppRoot.startupLatency.test.tsx",
+      "perf_sha256": "e977e40e35472f4d91ef5a873538a6792acc4745225bf3ad60630533e06f6848",
+      "merge": "copy"
+    },
+    {
+      "path": "src/features/weeklyPlanning/trace/weeklyPlanningTracePolicyRequest.test.tsx",
+      "perf_sha256": "40ea787dac8caf3b3093fc78eef746b439208037b806c9676884fa293e83de3d",
+      "merge": "copy"
+    },
+    {
+      "path": "src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx",
+      "perf_sha256": "8ec9ff30bdb4501e3811685458e7b9523175a514cb2c1b1b9abaad5c0b72cdfe",
+      "merge": "copy"
+    },
+    {
+      "path": "src/hooks/weeklyApprovalNative.issue542Audit.test.tsx",
+      "perf_sha256": "88c801047a183f1f4bc28ccf25ea3d06883a0e33913e092c85592033f97349ea",
+      "merge": "copy"
+    },
+    {
+      "path": "src/repositories/scheduleSnapshot.issue542Audit.test.ts",
+      "perf_sha256": "2e03b1ee077995c6f4f539953c9b437a691200cf2f6f330e17c62efe581c8e34",
+      "merge": "copy"
+    },
+    {
+      "path": "tests/performance/firestore-read-load-emulator.approval-entry.ts",
+      "perf_sha256": "c22990ccafbf443e6cbb87918134ffb12cb0105c44aaeade97ef45a0cf591eab",
+      "merge": "copy"
+    },
+    {
+      "path": "tests/performance/firestore-read-load-emulator.approval.tsx",
+      "perf_sha256": "79c696cd84cd9e87ad71adca043d0a2592b95d57d940ca1dc3bb986bc12a2971",
+      "merge": "copy"
+    },
+    {
+      "path": "tests/performance/firestore-read-load-emulator.integration.ts",
+      "perf_sha256": "59d153b533566ecb26de412ecc01305542f956998f1ae73016d8569ffb8376d5",
+      "merge": "copy"
+    },
+    {
+      "path": "tests/performance/firestoreReadLoad.fixtures.ts",
+      "perf_sha256": "8919b325ef81b7334dcd2b364e0d7a6c381632d335084b5e926e2a8ae47b6fdc",
+      "merge": "copy"
+    },
+    {
+      "path": "tests/performance/firestoreReadLoad.measurement.test.tsx",
+      "perf_sha256": "54099781e0477675aa17c5fca841eabcf8906a7fe479ac5c74f5d423b53f2d2b",
+      "merge": "copy"
+    },
+    {
+      "path": "tests/performance/firestoreReadLoad.noNetwork.ts",
+      "perf_sha256": "a8c2715888a445a3f0570bfa91d8b8914f325ddf0dfbe45637f3de5052829f30",
+      "merge": "copy"
+    }
+  ],
+  "manual_resolution": {
+    "path": "src/hooks/usePlannerDataState.ts",
+    "region": "return object savePlanDraft/projectPlanSave/movePlanOccurrence/deleteDayOccurrence",
+    "rule": "Keep entire Day side; add exact perf projectPlanSave wrapper, no semantic production edits",
+    "sha256": "b1f28343ad6427cf68d34267a41ead11d2a0080d58169978fd4f2b6297fc0bce"
+  },
+  "final_source_parity": {
+    "unexpected_changes_to_day_src": [],
+    "perf_input_drift": [],
+    "day_worktree_status": "",
+    "day_head_unchanged": true
+  },
+  "tested_runtime_sha256": {
+    "src/hooks/usePlannerDataState.ts": "b1f28343ad6427cf68d34267a41ead11d2a0080d58169978fd4f2b6297fc0bce",
+    "src/hooks/usePlannerAppState.ts": "f1114cf632a591f171b6899fc3feb2ac7d3b3f8c1ddb1cba0a8b90b4ca137a25"
+  },
+  "probe_sha256": "de0ad28c64f878adf123acfdfc77e24ac21d6fe8fbe6f3b3d82bac2b586b147c",
+  "tooling": {
+    "node": "v24.19.0",
+    "node_modules_realpath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules",
+    "dependencies": {
+      "vitest": "3.2.7",
+      "react": "18.3.1",
+      "react-test-renderer": "18.3.1",
+      "vite": "6.4.3",
+      "typescript": "5.9.3"
+    },
+    "env": {
+      "DEV_LAN_HOST": "127.0.0.1"
+    },
+    "workers": 1
+  },
+  "final_verification": {
+    "exit_code": 0,
+    "files": 3,
+    "passed": 57,
+    "new_cross_cases": 17,
+    "log": "probe-final-combined.log",
+    "report": "cross-projection-report.md",
+    "report_sha256": "3254966700f785e53b2d04cb832763d74f0190c4d9a072a1c0ed95562b414bed"
+  }
+}

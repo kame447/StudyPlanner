@@ -1,8 +1,12 @@
+import { handleDurableTurnApi, isDurableTurnPath, type DurableTurnApiEnv } from './durableTurns/durableTurnApi';
+export { WeeklyPlanningTurnDurableObject } from './durableTurns/weeklyPlanningTurnDurableObject';
+import { handleInquiryAttachmentApi, isInquiryAttachmentPath, type InquiryAttachmentEnv } from './inquiryAttachmentApi';
 import {
   WEEKLY_PLANNING_TRACE_CONTRACT_VERSION,
   WEEKLY_PLANNING_TRACE_HEADERS,
   WEEKLY_PLANNING_TRACE_WORKER_REVISION,
 } from '../../../shared/weeklyPlanningTraceContract';
+import { safeProviderErrorMetadata } from './providerErrorMetadata';
 import {
   isObservableAiProxyPath,
   observeAiProxyRequest,
@@ -222,6 +226,10 @@ export default {
     executionContext?: ExecutionContext,
   ): Promise<Response> {
     const pathname = new URL(request.url).pathname;
+    if (isDurableTurnPath(pathname)) return handleDurableTurnApi(request, env as unknown as DurableTurnApiEnv);
+    if (isInquiryAttachmentPath(pathname)) {
+      return handleInquiryAttachmentApi(request, env as unknown as InquiryAttachmentEnv);
+    }
     const adminBudget = isProductObservabilityAdminPath(pathname)
       ? new WorkerSubrequestBudget('fetch', pathname)
       : null;
@@ -275,9 +283,9 @@ export default {
     const publicResponse = stripJevExecutionMarker(response);
 
     if (observationContext) {
-      const onError = (error: unknown) => console.warn('[AI Proxy] observability metric write failed', {
-        message: error instanceof Error ? error.message : String(error),
-      });
+      const onError = (error: unknown) => console.warn(
+        '[AI Proxy] observability metric write failed', safeProviderErrorMetadata(error),
+      );
       scheduleAiRequestMetric(
         executionContext,
         observeAiProxyRequest({

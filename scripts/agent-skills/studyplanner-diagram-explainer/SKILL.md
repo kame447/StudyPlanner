@@ -1,13 +1,13 @@
 ---
 name: studyplanner-diagram-explainer
-description: StudyPlanner の architecture、責務境界、data flow、state、sequence をユーザーへ視覚的に説明すると理解しやすくなる場面で使う。Diagram Design を使い、current code、tests、canonical docs を根拠に図を作る。
+description: Laplance の architecture、責務境界、data flow、state、sequence をユーザーへ視覚的に説明すると理解しやすくなる場面で使う。Diagram Design を使い、current code、tests、canonical docs を根拠に図を作る。
 ---
 
-# StudyPlanner diagram explainer
+# Laplance diagram explainer
 
 ## Purpose
 
-Diagram Design は StudyPlanner runtime の機能ではなく、人間向けの説明を補助する開発ツールとして使う。
+Diagram Design は Laplance runtime の機能ではなく、人間向けの説明を補助する開発ツールとして使う。
 
 文章だけでは責務境界や処理順序を追いにくい場合に図を使う。短い質問や、文章だけで誤解なく説明できる内容では無理に図を作らない。
 

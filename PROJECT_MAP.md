@@ -1,4 +1,4 @@
-# StudyPlanner Project Map
+# Laplance Project Map
 
 Status: canonical repository navigation map
 Updated: 2026-10-07
@@ -58,6 +58,13 @@ Reporting work:
 2. `docs/domains/reporting/spec/learning-report.md`
 3. `src/lib/learningReport.ts` / `src/lib/learningReport.test.ts`
 4. `src/components/ReportView.tsx`
+
+Support inquiries work:
+
+1. `docs/domains/support/README.md`
+2. `src/features/support/inquiry.ts` / `src/services/inquiryService.ts`
+3. `src/components/ContactPage.tsx` / `src/components/AdminInquiriesPage.tsx`
+4. `firestore.rules` / `scripts/ci/firestore-inquiry-rules.mjs`
 
 Product observability / admin analytics work:
 
@@ -342,7 +349,7 @@ Telemetry and analytics are best-effort observation, never product authority. Li
 
 ### External integrations
 
-External data is evidence/suggestion, never an automatic replacement for StudyPlanner-owned product truth. Provider outage, malformed responses or changed quota/terms must fail closed to the existing manual/local product path instead of silently fabricating metadata.
+External data is evidence/suggestion, never an automatic replacement for Laplance-owned product truth. Provider outage, malformed responses or changed quota/terms must fail closed to the existing manual/local product path instead of silently fabricating metadata.
 
 ### Persistence
 

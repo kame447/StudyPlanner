@@ -9,6 +9,8 @@ import {
   Settings,
   Users,
 } from 'lucide-react';
+import { ContactPage } from '../../../src/components/ContactPage';
+import { AdminApp } from '../../../src/components/AdminApp';
 import { AdminAiApiPage } from '../../../src/components/AdminAiApiPage';
 import { AdminLogsPage } from '../../../src/components/AdminLogsPage';
 import { AdminOverviewPage } from '../../../src/components/AdminOverviewPage';
@@ -92,4 +94,25 @@ function AdminConsoleHarness() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<AdminConsoleHarness />);
+const inquiryAuth = {
+  available: true,
+  getCurrentUser: () => null,
+  subscribe(listener) {
+    listener(params.get('state') === 'signed-out' ? null : { id: 'fixture-owner', requiresEmailVerification: false });
+    window.__inquiryAuthSwitch = listener;
+    return () => { delete window.__inquiryAuthSwitch; };
+  },
+  signOut: async () => {},
+};
+function ContactHarness() {
+  const [visible, setVisible] = React.useState(true);
+  React.useEffect(() => { window.__inquiryVisible = setVisible; return () => { delete window.__inquiryVisible; }; }, []);
+  return visible ? <ContactPage authSession={inquiryAuth} /> : <p>別画面</p>;
+}
+if (view === 'inquiries') {
+  window.history.replaceState({}, '', `/admin/inquiries${window.location.search}`);
+}
+ReactDOM.createRoot(document.getElementById('root')).render(
+  view === 'contact' ? <ContactHarness />
+    : view === 'inquiries' ? <AdminApp authSession={inquiryAuth} /> : <AdminConsoleHarness />,
+);

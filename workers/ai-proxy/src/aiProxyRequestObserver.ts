@@ -1,4 +1,4 @@
-import { getUtf8ByteLength } from '../../../shared/aiProxyContract';
+import { getUtf8ByteLength, type ProviderCompletionMetadata } from '../../../shared/aiProxyContract';
 import { isFocusedDecisionContext } from '../../../shared/focusedContextualDecision';
 import type {
   AiRequestMetricPayload,
@@ -35,6 +35,8 @@ export interface AiProxyObservationContext {
   requestBody?:
     | { kind: 'text'; text: string }
     | { kind: 'parsed'; payload: unknown; bytes: number };
+  /** Completion facts projected from the provider response, never from the client body. */
+  providerCompletion?: ProviderCompletionMetadata;
 }
 
 interface FirebaseLookupResponse {
@@ -97,6 +99,7 @@ async function resolveFirebaseUid(
       `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
       {
         method: 'POST',
+        redirect: 'manual',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken: token }),
       },
@@ -301,6 +304,8 @@ export async function observeAiProxyRequest(params: {
     requestBytes,
     responseBytes: getUtf8ByteLength(responseText),
     usage,
+    ...(operation.operationKind === 'chat_completion' && context.providerCompletion
+      ? { providerCompletion: context.providerCompletion } : {}),
     startedAtMs: params.startedAtMs,
     onError: params.onError,
   });

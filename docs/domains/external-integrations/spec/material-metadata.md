@@ -208,7 +208,7 @@ Amazonランキングは書誌providerとして利用しない。人気教材の
 
 共有catalog writeはserver-side integrationだけが行う。
 
-## 9. StudyPlanner側の責務
+## 9. Laplance側の責務
 
 外部書誌が提供するページ数や目次は「本の事実」であり、「どう学習するか」の決定ではない。
 

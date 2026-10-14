@@ -16,6 +16,7 @@ import {
   type LunaBaselineFailure,
 } from './decisionExecutionMarker';
 import type { DecisionEvaluation, DecisionProvider } from './decisionProvider';
+import { evaluateDecisionProviderSafely } from './decisionProvider';
 import { createOpenRouterDecisionProvider } from './openRouterDecisionProvider';
 import {
   gateUserContextRoutingDecision,
@@ -207,7 +208,7 @@ export async function dispatchUserContextRouting(params: {
   };
 
   if (mode === 'shadow') {
-    const evaluation = provider.evaluate(params.context.state);
+    const evaluation = evaluateDecisionProviderSafely(provider, params.context.state);
     const baseline = fallbackWithFailureMarker(
       params.fallback,
       mode,
@@ -215,7 +216,7 @@ export async function dispatchUserContextRouting(params: {
     ).then((response) => markJevExecution(response, mode));
     params.executionContext!.waitUntil(
       Promise.all([evaluation, baseline.then(baselineDomain, () => null)])
-        .then(([result, domain]) => record(result, domain))
+        .then(([result, domain]) => result.metadata ? record(result, domain) : undefined)
         .catch(() => undefined),
     );
     return baseline;
@@ -236,9 +237,10 @@ export async function dispatchUserContextRouting(params: {
     controller.abort();
   }, USER_CONTEXT_ROUTING_REQUEST_TIMEOUT_MS);
   try {
-    const evaluation = await provider.evaluate(params.context.state, controller.signal);
-    const gate = gateUserContextRoutingDecision(evaluation);
-    const metric = record(evaluation, null).catch(() => undefined);
+    const evaluation = await evaluateDecisionProviderSafely(provider, params.context.state, controller.signal);
+    const gate: ReturnType<typeof gateUserContextRoutingDecision> = evaluation.metadata ? gateUserContextRoutingDecision(evaluation)
+      : { status: 'unavailable', reason: evaluation.reason };
+    const metric = evaluation.metadata ? record(evaluation, null).catch(() => undefined) : Promise.resolve();
     if (params.executionContext) params.executionContext.waitUntil(metric);
     else await metric;
     if (controller.signal.aborted) {

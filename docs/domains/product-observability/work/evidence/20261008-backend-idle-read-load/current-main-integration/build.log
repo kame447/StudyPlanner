@@ -1,0 +1,57 @@
+
+> studyplanner-app@0.1.0 build
+> vite build --config vite.config.mjs
+
+vite v6.4.3 building for production...
+transforming...
+✓ 2285 modules transformed.
+rendering chunks...
+[plugin vite:reporter]
+(!) <INTEGRATION_WORKTREE>/src/repositories/index.ts is dynamically imported by <INTEGRATION_WORKTREE>/src/features/weeklyPlanning/application/weeklyPlanningApprovalLocalRepository.ts but also statically imported by <INTEGRATION_WORKTREE>/src/components/AiPlanningViewLegacy.tsx, <INTEGRATION_WORKTREE>/src/hooks/useAuthSessionState.ts, <INTEGRATION_WORKTREE>/src/hooks/usePlannerDataState.ts, <INTEGRATION_WORKTREE>/src/hooks/useStartupMarkerObservation.ts, <INTEGRATION_WORKTREE>/src/hooks/useStartupProfileObservation.ts, dynamic import will not move module into another chunk.
+
+computing gzip size...
+dist/index.html                                                                0.75 kB │ gzip:   0.35 kB
+dist/assets/laplans-startup-poster--fBWBY7p.jpg                               14.65 kB
+dist/assets/laplans-startup-still-DZkdwz_z.jpg                                18.28 kB
+dist/assets/studyplanner-logo-DbNnCwAb.png                                    85.42 kB
+dist/assets/laplans_blackhole_1080x1920-D2MVrOtH.mp4                       1,628.76 kB
+dist/assets/BookshelfView-BC_aTddq.css                                         2.85 kB │ gzip:   0.76 kB
+dist/assets/week-plan-drag-CWO5B0FK.css                                        4.12 kB │ gzip:   1.18 kB
+dist/assets/TimetableView-DSePjugX.css                                         7.39 kB │ gzip:   1.90 kB
+dist/assets/AdminApp-xWc48Q7_.css                                             11.26 kB │ gzip:   2.34 kB
+dist/assets/AiPlanningView-CzYw3TTs.css                                       34.91 kB │ gzip:   6.60 kB
+dist/assets/index-eJWyKeJ-.css                                               424.40 kB │ gzip:  69.61 kB
+dist/assets/timetableTime-BglNDXzE.js                                          0.80 kB │ gzip:   0.60 kB
+dist/assets/useEditorMutation-CerX001Z.js                                      1.06 kB │ gzip:   0.57 kB
+dist/assets/quickEntryDrafts-mAeXgM4V.js                                       1.57 kB │ gzip:   0.77 kB
+dist/assets/aiImageAttachment-DXRLKI3P.js                                      1.61 kB │ gzip:   0.85 kB
+dist/assets/weeklyPlanningMemoryPaceObservationsV5-CRIo0azp.js                 1.61 kB │ gzip:   0.76 kB
+dist/assets/HomeAddFlow-Zw5scUYF.js                                            1.77 kB │ gzip:   0.88 kB
+dist/assets/naturalLanguageCatalog-BemF7W7C.js                                 1.91 kB │ gzip:   0.82 kB
+dist/assets/week-plan-drag-BQpk9zDZ.js                                         3.97 kB │ gzip:   1.74 kB
+dist/assets/ScheduleItemDeleteAction-Nv-90Dt4.js                               4.54 kB │ gzip:   2.11 kB
+dist/assets/subjectInference-XJ3NmUKl.js                                       5.59 kB │ gzip:   2.52 kB
+dist/assets/TimelineDragOverlay-C2soa5MB.js                                    5.80 kB │ gzip:   2.23 kB
+dist/assets/TimetableOcrImportDialog-qC7qu1dn.js                               7.66 kB │ gzip:   2.54 kB
+dist/assets/vendor-runtime-CsTA7JqP.js                                         7.80 kB │ gzip:   3.57 kB
+dist/assets/ReportView-DvkNkWje.js                                            13.33 kB │ gzip:   4.29 kB
+dist/assets/TodoView-CTK2fdW7.js                                              13.35 kB │ gzip:   3.79 kB
+dist/assets/QuickEntryModal-BOgmEBUG.js                                       15.21 kB │ gzip:   4.33 kB
+dist/assets/WeekView-CNKxZKm-.js                                              18.93 kB │ gzip:   6.67 kB
+dist/assets/naturalLanguageCatalog-HKCDV4wU.js                                23.36 kB │ gzip:   8.03 kB
+dist/assets/TimetableView-BCvH1rs-.js                                         25.51 kB │ gzip:   7.74 kB
+dist/assets/vendor-icons-5U6lONxQ.js                                          34.75 kB │ gzip:   7.36 kB
+dist/assets/AiPlanningView-C8QY3GSe.js                                        56.23 kB │ gzip:  16.79 kB
+dist/assets/DayView-VQ-0VK_r.js                                               61.17 kB │ gzip:  16.78 kB
+dist/assets/AdminApp-CeIOttyc.js                                              83.96 kB │ gzip:  21.02 kB
+dist/assets/BookshelfView-DAL1bpy1.js                                        110.10 kB │ gzip:  26.72 kB
+dist/assets/vendor-react-j6gBtND5.js                                         142.95 kB │ gzip:  45.79 kB
+dist/assets/weeklyPlanningStableV5InstrumentedRuntimeExecutor-Nj_TTzgr.js    355.57 kB │ gzip:  88.39 kB
+dist/assets/vendor-firebase-FApntBPu.js                                      480.85 kB │ gzip: 111.32 kB
+dist/assets/index-CBrzFt2l.js                                                762.74 kB │ gzip: 215.80 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 7.14s

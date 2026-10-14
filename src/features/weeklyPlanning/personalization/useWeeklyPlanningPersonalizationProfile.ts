@@ -6,10 +6,14 @@ import {
 } from './weeklyPlanningPersonalizationRepository';
 import type { WeeklyPlanningPersonalizationProfile } from './weeklyPlanningPersonalizationTypes';
 
+// Match consent-read recovery UX, not a network SLO or an SDK request timeout.
+export const PERSONALIZATION_READ_TIMEOUT_MS = 15_000;
+
 export interface WeeklyPlanningPersonalizationProfileState {
   loading: boolean;
   profile: WeeklyPlanningPersonalizationProfile | null;
   error: string;
+  readFailed: boolean;
   refresh(): Promise<void>;
   setWeekStartsOn(value: WeeklyPlanningWeekStartsOn): Promise<boolean>;
   resetProfile(): Promise<boolean>;
@@ -21,6 +25,31 @@ function errorMessage(error: unknown): string {
     : '学習設定を確認できませんでした。';
 }
 
+async function readProfile(
+  repository: WeeklyPlanningPersonalizationRepository,
+  userId: string,
+  signal: AbortSignal,
+) {
+  if (signal.aborted) throw signal.reason;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let cancel: () => void = () => {};
+  const deadline = new Promise<never>((_resolve, reject) => {
+    cancel = () => reject(signal.reason);
+    signal.addEventListener('abort', cancel, { once: true });
+    timeout = setTimeout(() => reject(new Error(
+      '学習設定の確認に時間がかかっています。通信状態を確認して、もう一度読み込んでください。',
+    )), PERSONALIZATION_READ_TIMEOUT_MS);
+  });
+  try {
+    // Firestore getDoc cannot be aborted. Bound only this consumer's wait;
+    // Promise.race also observes late rejection without publishing late results.
+    return await Promise.race([repository.getProfile(userId), deadline]);
+  } finally {
+    clearTimeout(timeout);
+    signal.removeEventListener('abort', cancel);
+  }
+}
+
 export function useWeeklyPlanningPersonalizationProfile(
   userId: string,
   injectedRepository?: WeeklyPlanningPersonalizationRepository,
@@ -30,55 +59,81 @@ export function useWeeklyPlanningPersonalizationProfile(
     [],
   );
   const repository = injectedRepository ?? defaultRepository;
-  const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState<WeeklyPlanningPersonalizationProfile | null>(null);
-  const [error, setError] = useState('');
+  const scope = useMemo(() => ({
+    active: false,
+    read: null as AbortController | null,
+    readConfirmed: false,
+    writing: false,
+  }), [repository, userId]);
+  const [state, setState] = useState({
+    scope, loading: true, profile: null as WeeklyPlanningPersonalizationProfile | null,
+    error: '', readFailed: false,
+  });
 
   const refresh = useCallback(async () => {
-    setLoading(true);
-    setError('');
+    if (!scope.active || scope.writing) return;
+    scope.read?.abort();
+    const request = new AbortController();
+    scope.read = request;
+    scope.readConfirmed = false;
+    const isCurrent = () => scope.active && scope.read === request && !request.signal.aborted;
+    setState({ scope, loading: true, profile: null, error: '', readFailed: false });
     try {
-      setProfile(await repository.getProfile(userId));
+      const profile = await readProfile(repository, userId, request.signal);
+      if (!isCurrent()) return;
+      scope.readConfirmed = true;
+      setState({ scope, loading: false, profile, error: '', readFailed: false });
     } catch (caught) {
-      setProfile(null);
-      setError(errorMessage(caught));
+      if (!isCurrent()) return;
+      setState({ scope, loading: false, profile: null, error: errorMessage(caught), readFailed: true });
     } finally {
-      setLoading(false);
+      if (scope.read === request) scope.read = null;
     }
-  }, [repository, userId]);
+  }, [repository, scope, userId]);
 
   useEffect(() => {
+    scope.active = true;
     void refresh();
-  }, [refresh]);
+    return () => {
+      scope.active = false;
+      scope.readConfirmed = false;
+      scope.read?.abort();
+      scope.read = null;
+    };
+  }, [refresh, scope]);
 
-  const setWeekStartsOn = useCallback(async (value: WeeklyPlanningWeekStartsOn) => {
-    setLoading(true);
-    setError('');
+  const mutate = useCallback(async (operation: () => Promise<WeeklyPlanningPersonalizationProfile | null>) => {
+    // A failed/unfinished read is not permission to overwrite an unknown profile.
+    if (!scope.active || !scope.readConfirmed || scope.read || scope.writing) return false;
+    scope.writing = true;
+    setState(previous => ({ ...previous, loading: true, error: '' }));
     try {
-      setProfile(await repository.setWeekStartsOn(userId, value));
+      const profile = await operation();
+      if (!scope.active) return false;
+      setState({ scope, loading: false, profile, error: '', readFailed: false });
       return true;
     } catch (caught) {
-      setError(errorMessage(caught));
+      if (!scope.active) return false;
+      setState(previous => ({ ...previous, loading: false, error: errorMessage(caught) }));
       return false;
     } finally {
-      setLoading(false);
+      scope.writing = false;
     }
-  }, [repository, userId]);
+  }, [scope]);
 
-  const resetProfile = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      await repository.resetProfile(userId);
-      setProfile(null);
-      return true;
-    } catch (caught) {
-      setError(errorMessage(caught));
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  }, [repository, userId]);
+  const setWeekStartsOn = useCallback((value: WeeklyPlanningWeekStartsOn) => (
+    mutate(() => repository.setWeekStartsOn(userId, value))
+  ), [mutate, repository, userId]);
 
-  return { loading, profile, error, refresh, setWeekStartsOn, resetProfile };
+  const resetProfile = useCallback(() => mutate(async () => {
+    await repository.resetProfile(userId);
+    return null;
+  }), [mutate, repository, userId]);
+
+  // Never expose a prior owner's settings during the render before effect cleanup.
+  const current = state.scope === scope ? state : {
+    loading: true, profile: null, error: '', readFailed: false,
+  };
+  return { loading: current.loading, profile: current.profile, error: current.error,
+    readFailed: current.readFailed, refresh, setWeekStartsOn, resetProfile };
 }

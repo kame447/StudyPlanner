@@ -1,8 +1,11 @@
 import { act, create } from 'react-test-renderer';
-import { expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Plan } from '../../types/domain';
 import { buildHomeDashboardModel } from '../../lib/homeDashboard';
 import { TodayScheduleSection } from './HomeSections';
+
+beforeEach(() => vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+afterEach(() => vi.unstubAllGlobals());
 
 it('offers an accessible plus without the empty explanation and separates viewing from adding', () => {
   const onAddEntry = vi.fn(); const onOpenDay = vi.fn();
@@ -13,8 +16,11 @@ it('offers an accessible plus without the empty explanation and separates viewin
   expect(JSON.stringify(renderer.toJSON())).not.toContain('今日の予定はまだありません');
   const add = renderer.root.findByProps({ 'aria-label': '今日の予定に追加' });
   act(() => add.props.onClick());
-  expect(onAddEntry).toHaveBeenCalledOnce(); expect(onOpenDay).not.toHaveBeenCalled();
-  const all = renderer.root.findAllByType('button').find(button => button !== add)!;
+  expect(onAddEntry).not.toHaveBeenCalled();
+  act(() => renderer.root.findAllByType('button').find(button => button.props.id?.endsWith('-schedule'))!.props.onClick({ currentTarget: { focus: vi.fn() } }));
+  expect(onAddEntry).toHaveBeenCalledWith({ kind: 'schedule', date: dashboard.today });
+  expect(onOpenDay).not.toHaveBeenCalled();
+  const all = renderer.root.findAllByType('button').find(button => button.children.includes('すべて見る '))!;
   act(() => all.props.onClick()); expect(onOpenDay).toHaveBeenCalledWith(dashboard.today);
   act(() => renderer.unmount());
 });
@@ -55,7 +61,9 @@ it.each([0, 1, 2, 3, 4, 5])('renders only today with %i current-day plans, witho
     expect(onOpenDay.mock.calls).toEqual(current.map(() => [today]));
     const add = renderer.root.findByProps({ 'aria-label': '今日の予定に追加' });
     act(() => add.props.onClick());
-    expect(onAddEntry).toHaveBeenCalledOnce();
+    expect(onAddEntry).not.toHaveBeenCalled();
+    act(() => renderer.root.findAllByType('button').find(button => button.props.id?.endsWith('-study'))!.props.onClick({ currentTarget: { focus: vi.fn() } }));
+    expect(onAddEntry).toHaveBeenCalledWith({ kind: 'study', date: today });
     const all = renderer.root.findAllByType('button').find(button => button.children.includes('すべて見る '))!;
     act(() => all.props.onClick());
     expect(onOpenDay).toHaveBeenLastCalledWith(today);
@@ -90,6 +98,8 @@ it('keeps only today’s recurring occurrence and its matching completion mark',
     expect(rows).toHaveLength(1);
     expect(rows[0].findByType('strong').children).toEqual(['daily']);
     expect(rows[0].findAllByProps({ className: 'home-time-dot completed' })).toHaveLength(1);
+    // Completion keeps its own indicator without replacing the schedule accent.
+    expect(rows[0].props.style['--schedule-event-color']).toBe('#2f78e3');
   } finally {
     act(() => renderer.unmount());
   }
@@ -111,7 +121,10 @@ it('uses local occurrence dates before and after midnight without carrying other
     const titles = () => renderer.root.findAllByType('strong').map(item => item.children.join(''));
     expect(before.today).toBe('2026-10-07');
     expect(titles()).toEqual(['October 7']);
+    act(() => renderer.root.findByProps({ 'aria-label': '今日の予定に追加' }).props.onClick());
+    expect(renderer.root.findByProps({ 'aria-label': '予定の追加を閉じる' }).props['aria-expanded']).toBe(true);
     act(() => renderer.update(render(after)));
+    expect(renderer.root.findByProps({ 'aria-label': '今日の予定に追加' }).props['aria-expanded']).toBe(false);
     expect(after.today).toBe('2026-10-08');
     expect(titles()).toEqual(['October 8']);
   } finally {

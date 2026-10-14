@@ -12,6 +12,8 @@ const withinFoundation = (path: string) => path.startsWith(`${foundation}/`);
 const numericConsumers = new Set(['src/features/weeklyPlanning/semantic/weeklyPlanningNumericPendingChoiceV5.ts', 'src/features/weeklyPlanning/semantic/weeklyPlanningNumericPendingCommitV5.ts']);
 // Every incoming file requires an intentional, individual review: the C5 consumer files plus the numeric PoC files.
 const allowedConsumers = new Set([
+  // J2a calibrated production connection; test-only consumers stay excluded.
+  'src/features/weeklyPlanning/application/weeklyPlanningCandidateChoiceConnection.ts',
   'src/features/weeklyPlanning/application/c5LocalSelection/contracts.ts',
   'src/features/weeklyPlanning/application/c5LocalSelection/basis.ts',
   'src/features/weeklyPlanning/application/c5LocalSelection/selection.ts',

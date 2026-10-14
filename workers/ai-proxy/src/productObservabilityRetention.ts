@@ -59,6 +59,14 @@ export class ProductObservabilityRetentionService {
     const deletes: FirestoreBulkDocumentWrite[] = [];
 
     for (const collection of RETENTION_COLLECTIONS) {
+      const first = await this.firestore.queryDocumentsAfter({
+        collection,
+        orderByField: 'expireAt',
+        limit: 1,
+      });
+      if (expiredPrefix(first, nowIso).length === 0) continue;
+      // This is only an idle-work probe. Deletions must come from a fresh full
+      // page, since the first document may change between these two reads.
       const rows = await this.firestore.queryDocumentsAfter({
         collection,
         orderByField: 'expireAt',

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StudyPlannerLogo } from './StudyPlannerLogo';
+import { LaplanceLogo } from './LaplanceLogo';
 
 interface InitialPrivacyConsentScreenProps {
   unavailable: boolean;
@@ -44,7 +44,7 @@ export function InitialPrivacyConsentScreen({
     <main className="auth-shell auth-shell-modern">
       <section className="auth-card auth-main-card">
         <div className="auth-brand-header">
-          <StudyPlannerLogo />
+          <LaplanceLogo />
         </div>
 
         <div className="auth-stage-card">

@@ -1,0 +1,66 @@
+{
+  "scope": "Issue 542 browser capability probe only; application browser tests were not reached",
+  "head": "22847120386987329e2f034d6062d59694ef1180",
+  "result": "blocked_before_application_execution",
+  "runtime": {
+    "node": "v24.19.0",
+    "playwright": "1.62.1",
+    "browser": "Chromium 154.0.8037.57 (Debian GNU/Linux 13, trixie)",
+    "executable": "/usr/bin/chromium"
+  },
+  "attempts": [
+    {
+      "mode": "exec_command default sandbox",
+      "command": "node --input-type=module - <<'JS'\nimport { chromium } from '../studyplanner-home-live-clock-work/tests/e2e/node_modules/playwright-core/index.mjs';\nconst browser = await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});\nconst context = await browser.newContext({serviceWorkers:'block'});\nawait context.route('**/*', route => route.abort());\nconst page = await context.newPage(); await page.setContent('<title>Issue 542 isolated browser probe</title><p>local only</p>');\nconsole.log(JSON.stringify({browser:browser.version(), title:await page.title(), text:await page.locator('p').textContent()}));\nawait browser.close();\nJS",
+      "result": "browser launch failed",
+      "errors": [
+        "Target page, context or browser has been closed",
+        "FATAL:chrome/browser/process_singleton_posix.cc:297 Check failed: . socket() failed: Operation not permitted (1)",
+        "Read-only file system writing the default Chromium crash-report directory"
+      ]
+    },
+    {
+      "mode": "exec_command require_escalated with isolated HOME/XDG_CONFIG_HOME",
+      "command": "mkdir -p /tmp/issue542-browser-home /tmp/issue542-browser-config && HOME=/tmp/issue542-browser-home XDG_CONFIG_HOME=/tmp/issue542-browser-config node --input-type=module - <<'JS'\nimport { chromium } from '../studyplanner-home-live-clock-work/tests/e2e/node_modules/playwright-core/index.mjs';\nconst browser = await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox'],env:{...process.env,HOME:'/tmp/issue542-browser-home',XDG_CONFIG_HOME:'/tmp/issue542-browser-config'}});\nconst context = await browser.newContext({serviceWorkers:'block'});\nawait context.route('**/*', route => route.abort());\nconst page = await context.newPage(); await page.setContent('<title>Issue 542 isolated browser probe</title><p>local only</p>');\nconsole.log(JSON.stringify({browser:browser.version(), title:await page.title(), text:await page.locator('p').textContent()}));\nawait browser.close();\nJS",
+      "exitCode": 1,
+      "errors": [
+        "Target page, context or browser has been closed",
+        "FATAL:chrome/browser/process_singleton_posix.cc:297 Check failed: . socket() failed: Operation not permitted (1)"
+      ]
+    }
+  ],
+  "notRun": [
+    "planner-reconciliation-recovery.spec.mjs",
+    "startup-gates.spec.mjs",
+    "weekly-real-approval-races.spec.mjs",
+    "timetable-owner-startup.spec.mjs",
+    "startup policy timeout/retry browser UI",
+    "desktop/mobile rendered image inspection"
+  ],
+  "safety": {
+    "applicationVisited": false,
+    "externalServiceContacted": false,
+    "existingServerReused": false,
+    "browserDownloaded": false,
+    "runtimeModified": false,
+    "userDeviceUsed": false,
+    "pushDeployPerformed": false
+  },
+  "limits": [
+    "No browser pass or application failure can be inferred from this capability probe.",
+    "Production Firestore, billed reads, actual device latency and deployed UI remain outside this evidence."
+  ],
+  "buildProbe": {
+    "result": "failed in configuration load before app compilation",
+    "command": "env -i PATH=\"$PATH\" HOME=/tmp/issue542-browser-home XDG_CONFIG_HOME=/tmp/issue542-browser-config TZ=Asia/Tokyo node ./node_modules/vite/bin/vite.js build --config .cache/issue542-browser/isolated-vite.config.mjs",
+    "error": "SystemError [ERR_SYSTEM_ERROR]: uv_interface_addresses returned Unknown system error 1; resolvePreferredLanIp -> os.networkInterfaces() in the existing Vite configuration",
+    "note": "Temporary config and artifacts removed; final build verification is owned by the integration task. The imported development network helper checked .env/.env.local existence, but both were absent; no environment file values were loaded."
+  },
+  "runtimeFileHashes": {
+    "src/components/StudyPlannerAppRoot.tsx": "41b95b83477b1876bd975e9ea07ea31dc47c75dc618c2ad9ff217d1528ca1244",
+    "src/features/weeklyPlanning/trace/useWeeklyPlanningTracePolicy.ts": "36c68540bb9bd8a5d7c196d05a60ca1a6c456bb835b2575f1a191467f83e68ed",
+    "src/features/weeklyPlanning/trace/weeklyPlanningTracePrivacyClient.ts": "47bb649c8bdcf782c1bde9f5d134c2a9c1dd8e46b3ba6035cf9dce37f10b8cfa",
+    "src/hooks/usePlannerAppState.ts": "a5f6d898005b465e3385a7bb241b6df0ef51418e200833993d6355d7ce094724",
+    "src/hooks/usePlannerDataState.ts": "32649cc57533dbe6976fd6215f810a63f09fc4ab279793c54321e017fcb90390"
+  }
+}

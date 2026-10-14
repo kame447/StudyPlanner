@@ -1,4 +1,5 @@
-import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
+import { hasSelfSufficientConversationActV5 } from './weeklyPlanningConversationActsV5';
+import type { ChatMessage } from '../../../services/ai/openAiCompatibleClientTypes';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
   FOCUSED_TASK_TEMPORAL_SIDE_CONTRIBUTION_MAX_COMPLETION_TOKENS,
@@ -127,6 +128,7 @@ export function isWeeklyPlanningSemanticNoOpCompletenessRetryEligibleV5(params: 
   publicStateSummary?: Record<string, unknown>;
 }): boolean {
   if (!hasMachinePendingQuestion(params.publicStateSummary)) return false;
+  if (hasSelfSufficientConversationActV5(params.document.conversationActs)) return false;
   const document = params.document;
   if (
     document.planningWindow

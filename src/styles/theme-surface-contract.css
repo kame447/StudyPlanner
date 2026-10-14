@@ -152,7 +152,6 @@
 :root[data-theme='dark'] .home-streak-card strong,
 :root[data-theme='dark'] .home-date-display,
 :root[data-theme='dark'] .home-date-value,
-:root[data-theme='dark'] .home-date-unit,
 :root[data-theme='dark'] .home-icon-button,
 :root[data-theme='dark'] .home-next-copy h1,
 :root[data-theme='dark'] .home-schedule-row,
@@ -169,16 +168,6 @@
 :root[data-theme='dark'] .home-date-segment {
   border-color: var(--border);
   background: var(--surface-strong);
-}
-
-:root[data-theme='dark'] .home-date-ring {
-  border-color: color-mix(in srgb, var(--text-primary) 76%, transparent);
-  background: var(--surface-strong);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.34);
-}
-
-:root[data-theme='dark'] .home-date-ring::after {
-  background: color-mix(in srgb, var(--text-primary) 76%, transparent);
 }
 
 :root[data-theme='dark'] .home-avatar-button {

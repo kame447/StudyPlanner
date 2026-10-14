@@ -29,6 +29,8 @@ describe('D5 symmetric offline paired harness', () => {
   it('keeps 10/50/100/250 diagnostics separate and flat-compatible including none', () => {
     expect(numericCardinalityDiagnostics().map(r => [r.cardinality, r.domainMinutes.length])).toEqual([[10, 10], [50, 50], [100, 100], [250, 250]]);
   });
+  // Functional sweep of all 16 arms: observed 1.3s and 5.3s across full runs.
+  // This finite runner budget preserves every assertion; it is not a performance guarantee.
   it('runs real multi-node hierarchy dispatch accounting separately at each fixed-binding cardinality', async () => {
     const h = numericFixture(); const spansReceived: Array<{ arm: string; count: number }> = [];
     const strata = await runNumericCardinalityDiagnostics({ pairId: crypto.randomUUID(), source: 'synthetic', input: { ...h.input, userText: '1分' }, uninterpretedSpans: [{ start: 0, end: 2 }], labelProvenance: 'synthetic-orchestration-only' }, {
@@ -52,5 +54,5 @@ describe('D5 symmetric offline paired harness', () => {
     expect(strata.map(s => s.rows.find(r => r.arm === 'hierarchy')!.summary.jevDispatches)).toEqual([1, 2, 2, 3]);
     for (const stratum of strata) for (const row of stratum.rows) expect(row.graph?.graph.effortEstimates[0].minutes).toBe(1);
     expect(spansReceived.every(s => s.count === (s.arm === 'unparsed_span' ? 1 : 0))).toBe(true);
-  });
+  }, 15_000);
 });

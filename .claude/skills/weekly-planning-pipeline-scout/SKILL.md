@@ -1,6 +1,6 @@
 ---
 name: weekly-planning-pipeline-scout
-description: StudyPlanner の weeklyPlanning 実装を current canonical docs と照合し、未完了 task を調査・整理する。
+description: Laplance の weeklyPlanning 実装を current canonical docs と照合し、未完了 task を調査・整理する。
 ---
 
 # weekly-planning-pipeline-scout

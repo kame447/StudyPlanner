@@ -590,17 +590,29 @@ export class ProductObservabilityActiveUserSnapshotService {
   ): Promise<ProductObservabilityActiveUserSnapshotBatchResult> {
     const nowIso = this.now().toISOString();
     const today = observabilityReportingDate(nowIso);
-    const keys: FirestoreTransactionDocumentKey[] = [
+    const controlKeys: FirestoreTransactionDocumentKey[] = [
       { collection: ACTIVE_USER_SNAPSHOT_JOB_COLLECTION, id: ACTIVE_USER_SNAPSHOT_JOB_ID },
       {
         collection: ACTIVE_USER_WINDOW_COLLECTION,
         id: snapshotId(this.defaultEnvironment, today),
       },
+    ];
+    if (dirtySources.length === 0) {
+      const controls = await this.firestore.batchGetDocumentKeys(controlKeys);
+      const currentJob = readJob(controls[0] ?? null, nowIso);
+      if (currentJob.status === 'idle' && controls[1]) {
+        return { pageReads: 0, published: false, hasMore: false, completedSource: null };
+      }
+    }
+    const keys: FirestoreTransactionDocumentKey[] = [
+      ...controlKeys,
       ...Array.from({ length: ACTIVE_USER_SNAPSHOT_SHARD_COUNT }, (_, index) => ({
         collection: ACTIVE_USER_SNAPSHOT_ACCUMULATOR_COLLECTION,
         id: accumulatorId(index),
       })),
     ];
+    // An inconclusive idle probe is not part of the write snapshot. Preserve one
+    // complete starting read and compare it again inside the commit transaction.
     const values = await this.firestore.batchGetDocumentKeys(keys);
     const commitIfCurrent = async (
       writes: readonly FirestoreTransactionDocumentWrite[],

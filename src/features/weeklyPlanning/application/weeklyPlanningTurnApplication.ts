@@ -1,3 +1,5 @@
+import { projectSemanticCensusMetadata } from '../../../../shared/semanticTurnCensus';
+import { createWeeklyPlanningCandidateChoiceOptions, type WeeklyPlanningCandidateChoiceServices } from './weeklyPlanningCandidateChoiceConnection';
 import {
   isPlannerDataReadyForOwner,
   type PlannerDataAvailability,
@@ -10,15 +12,18 @@ import type {
   StudyMaterial,
   TimetableTerm,
 } from '../../../types/domain';
-import type { PlanningState, WeeklyPlanningAction } from '../types';
+import type { PlanningState, WeeklyPlanningAction, WeeklyPlanningPendingTurn } from '../types';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type {
   WeeklyPlanningTurnSubmissionResult,
+  WeeklyPlanningTurnExecutionResult,
 } from '../weeklyPlanningTurnExecutionTypes';
 import {
   submitWeeklyPlanningControlledTurn,
+  isSameWeeklyPlanningPendingTurn,
   type WeeklyPlanningControllerSession,
+  type SubmitWeeklyPlanningControlledTurnParams,
 } from '../weeklyPlanningTurnController';
 import {
   weeklyPlanningTurnOutcomeLifecycle,
@@ -27,6 +32,7 @@ import {
 import {
   weeklyPlanningTurnRuntimeGateway,
   type WeeklyPlanningTurnRuntimeGateway,
+  type ExecuteWeeklyPlanningTurnRuntimeParams,
 } from './weeklyPlanningTurnRuntimeGateway';
 import {
   weeklyPlanningTurnStagingLifecycle,
@@ -34,6 +40,7 @@ import {
 } from './weeklyPlanningTurnSideEffects';
 
 export interface WeeklyPlanningTurnApplicationServices {
+  candidateChoice?: WeeklyPlanningCandidateChoiceServices;
   submitControlledTurn: typeof submitWeeklyPlanningControlledTurn;
   runtimeGateway: WeeklyPlanningTurnRuntimeGateway;
   stagingLifecycle: WeeklyPlanningTurnStagingLifecycle;
@@ -64,9 +71,13 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   timetableTerm?: TimetableTerm | null;
   timetableTerms?: TimetableTerm[];
   plannerDataAvailability: PlannerDataAvailability;
+  /** Live lease captured with the request arrays; absent legacy callers cannot use Choice. */
+  isPlannerDataSnapshotCurrent?: () => boolean;
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
   now?: () => string;
+  resumePending?: WeeklyPlanningPendingTurn;
+  isApplicationCurrent?: () => boolean;
   getState(): PlanningState;
   dispatch(action: WeeklyPlanningAction): PlanningState;
 }
@@ -79,7 +90,55 @@ export function submitWeeklyPlanningApplicationTurn(
     return Promise.resolve({ accepted: false, draftCandidates: [] });
   }
 
-  return services.submitControlledTurn({
+  const runRuntime = (turn: Parameters<SubmitWeeklyPlanningControlledTurnParams['execute']>[0], selectedGraph?: Parameters<NonNullable<WeeklyPlanningTurnRuntimeGateway['continueSelectedTurn']>>[1]): Promise<WeeklyPlanningTurnExecutionResult> => {
+    const { snapshot, pending, userText, supplementalContext, selectedStarterTarget } = turn;
+    const input: ExecuteWeeklyPlanningTurnRuntimeParams = {
+      ...(c5LocalSelection ? { semanticObservation: c5LocalSelection.semanticObservation } : {}),
+      snapshot,
+      pending,
+      resumeDurable: Boolean(params.resumePending),
+      userText,
+      supplementalContext,
+      selectedStarterTarget,
+      selectedDate: params.selectedDate,
+      userId: params.userId,
+      plans: params.plans,
+      monthEvents: params.monthEvents,
+      actuals: params.actuals,
+      studyMaterials: params.studyMaterials,
+      scheduleTemplates: params.scheduleTemplates,
+      timetableTermId: params.timetableTermId,
+      timetableTerm: params.timetableTerm,
+      timetableTerms: params.timetableTerms,
+      weekStartsOn: params.weekStartsOn,
+      timeZone: params.timeZone,
+      isCurrentTurn: () => params.isApplicationCurrent?.() !== false && params.session.ownerId === params.userId
+        && params.session.conversationId === pending.conversationId
+        && params.getState().weekStartDate === pending.weekStartDate
+        && params.getState().revision === pending.baseRevision + 1
+        && isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending),
+    };
+    return selectedGraph && services.runtimeGateway.continueSelectedTurn
+      ? services.runtimeGateway.continueSelectedTurn(input, selectedGraph)
+      : services.runtimeGateway.execute(input);
+  };
+  // A recovered server turn already owns its interpretation. Reconcile it without new Choice work.
+  const c5LocalSelection: ReturnType<typeof createWeeklyPlanningCandidateChoiceOptions> = !params.resumePending && params.isPlannerDataSnapshotCurrent && services.runtimeGateway.continueSelectedTurn
+    ? createWeeklyPlanningCandidateChoiceOptions({ services: services.candidateChoice,
+        censusMetadata: projectSemanticCensusMetadata({
+          questionCode: params.getState().intakeState?.lastQuestionContext?.targetSlot === 'stable_v5:ambiguous_effort_estimate'
+            ? 'ambiguous_effort_estimate' : null,
+          targetCount: params.getState().intakeState?.lastQuestionContext?.topicId ? 1 : null,
+          binding: 'unknown', freshness: 'unknown',
+        }),
+        sourceAccess: () => params.session.ownerId === params.userId
+          && isPlannerDataReadyForOwner(params.plannerDataAvailability, params.userId)
+          && params.isPlannerDataSnapshotCurrent?.() === true ? 'allowed' : 'denied',
+        continueSelectedTurn: ({ snapshot, pending, userText, graph }) => runRuntime({ snapshot, pending, userText }, graph),
+      })
+    : undefined;
+
+  const submission = services.submitControlledTurn({
     session: params.session,
     ownerId: params.userId,
     userText: params.userText,
@@ -88,27 +147,10 @@ export function submitWeeklyPlanningApplicationTurn(
     getState: params.getState,
     dispatch: params.dispatch,
     now: params.now,
-    execute({ snapshot, pending, userText, supplementalContext, selectedStarterTarget }) {
-      return services.runtimeGateway.execute({
-        snapshot,
-        pending,
-        userText,
-        supplementalContext,
-        selectedStarterTarget,
-        selectedDate: params.selectedDate,
-        userId: params.userId,
-        plans: params.plans,
-        monthEvents: params.monthEvents,
-        actuals: params.actuals,
-        studyMaterials: params.studyMaterials,
-        scheduleTemplates: params.scheduleTemplates,
-        timetableTermId: params.timetableTermId,
-        timetableTerm: params.timetableTerm,
-        timetableTerms: params.timetableTerms,
-        weekStartsOn: params.weekStartsOn,
-        timeZone: params.timeZone,
-      });
-    },
+    resumePending: params.resumePending,
+    isActive: params.isApplicationCurrent,
+    c5LocalSelection,
+    execute: runRuntime,
     onStartedTurn({ pending }) {
       services.outcomeLifecycle.started?.({
         ownerId: params.ownerId,
@@ -150,4 +192,9 @@ export function submitWeeklyPlanningApplicationTurn(
       });
     },
   });
+  return c5LocalSelection ? submission.then(
+    result => { c5LocalSelection.finishCensus(result.recoveryRequired ? 'unknown' : result.accepted ? 'success' : 'failure'); return result; },
+    error => { c5LocalSelection.finishCensus('failure'); throw error; },
+  ) : submission;
+
 }

@@ -5,6 +5,7 @@ import type {
   PlanDeleteWithDependentsMutation,
   PlanRestoreWithDependentsMutation,
   PlannerRepository,
+  PlannerScheduleSnapshot,
   TodoPlanScheduleMutation,
 } from './repositoryContracts';
 
@@ -26,6 +27,7 @@ export interface ScheduleEventAuthorityRepository {
     userId: string,
     loadLegacy: () => Promise<LegacyScheduleSnapshot>,
   ): Promise<void>;
+  getScheduleSnapshot(userId: string): Promise<PlannerScheduleSnapshot>;
   getPlans(userId: string): Promise<Plan[]>;
   getMonthEvents(userId: string): Promise<MonthEvent[]>;
   applyRecurringPlanMutation(
@@ -84,6 +86,12 @@ export function createScheduleEventBackedPlannerRepository(
     observeStartupScheduleMarker: authorityRepository.observeStartupScheduleMarker
       ? (owner, scope) => authorityRepository.observeStartupScheduleMarker!(owner, scope)
       : undefined,
+    async getScheduleSnapshot(userId) {
+      const mode = await resolveSchedulePersistenceMode(userId);
+      return mode === 'canonical'
+        ? authorityRepository.getScheduleSnapshot(userId)
+        : legacyRepository.getScheduleSnapshot(userId);
+    },
     async getPlans(userId) {
       const mode = await resolveSchedulePersistenceMode(userId);
       return mode === 'canonical'

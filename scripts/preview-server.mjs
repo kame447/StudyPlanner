@@ -4,6 +4,7 @@ import https from 'node:https';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolvePreferredLanIp } from './dev-network-config.mjs';
+import { respondWithPreviewVideo } from './preview-media-response.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
@@ -44,8 +45,12 @@ function getLocalHttpsOptions() {
   };
 }
 
-function respondWithFile(filePath, response) {
+function respondWithFile(filePath, request, response) {
   const extension = path.extname(filePath).toLowerCase();
+  if (extension === '.mp4') {
+    respondWithPreviewVideo(filePath, request, response);
+    return;
+  }
   const contentType = mimeTypes[extension] ?? 'application/octet-stream';
   const stream = fs.createReadStream(filePath);
 
@@ -84,11 +89,11 @@ const requestListener = (request, response) => {
   }
 
   if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isFile()) {
-    respondWithFile(resolvedPath, response);
+    respondWithFile(resolvedPath, request, response);
     return;
   }
 
-  respondWithFile(indexHtmlPath, response);
+  respondWithFile(indexHtmlPath, request, response);
 };
 
 const server = httpsOptions

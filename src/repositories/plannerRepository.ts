@@ -129,6 +129,15 @@ export function createPlannerRepository(
   storageGateway: PlannerStorageGateway,
 ): PlannerRepository {
   return {
+    async getScheduleSnapshot(userId) {
+      const [plans, monthEvents] = await Promise.all([
+        storageGateway.readPlans(), storageGateway.readMonthEvents(),
+      ]);
+      return {
+        plans: filterByUserId(plans, userId),
+        monthEvents: filterByUserId(monthEvents, userId),
+      };
+    },
     async getPlans(userId) {
       return filterByUserId(await storageGateway.readPlans(), userId);
     },

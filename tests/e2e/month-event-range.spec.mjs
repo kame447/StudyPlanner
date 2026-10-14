@@ -240,7 +240,12 @@ test.describe('multi-day month events', () => {
     await expect(selected).toBeFocused();
     await page.getByRole('tab', { name: '日', exact: true }).click();
     await expect(heading).toContainText(`${targetMonthLabel}${dates.startDay}日`);
-    await expect(page.getByText(title, { exact: true })).toBeVisible();
+    // The event also names its accent in the legend. Verify the actual event
+    // control, not an unscoped text match that can resolve to either surface.
+    const dayEvent = page.locator('.timeline-plan-block').filter({ hasText: title });
+    await expect(dayEvent).toHaveCount(1);
+    await expect(dayEvent.getByText(title, { exact: true })).toBeVisible();
+    await expect(dayEvent).toHaveAttribute('aria-label', new RegExp(`${title}、09:00から10:00`));
     await page.getByRole('tab', { name: '週', exact: true }).click();
     await expect(heading).toContainText(targetMonthLabel);
     await expect(page.locator('.schedule-week-view').getByText(title, { exact: true })).toBeVisible();
@@ -319,10 +324,23 @@ test.describe('multi-day month events', () => {
     await page.keyboard.press('Enter');
     const editorOverlay = page.locator('.month-event-modal-overlay');
     const editor = editorOverlay.locator('.month-event-modal');
+    async function waitForEditorEntrance() {
+      await expect(editor).toBeVisible();
+      await editor.evaluate(async (element) => {
+        const motion = element.closest('.month-event-dialog-motion');
+        if (!(motion instanceof HTMLElement)) throw new Error('Month event motion root is missing');
+        const entranceAnimations = motion.getAnimations({ subtree: true })
+          .filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime));
+        await Promise.all(entranceAnimations.map(animation => animation.finished.catch(() => undefined)));
+      });
+    }
+    // Storage recovery is the subject here; click only after the real entrance finishes.
+    await waitForEditorEntrance();
     const title = '失敗しても残す予定';
     await editor.getByLabel('タイトル').fill(title);
     await page.evaluate(() => { window.__monthEventSaveFailures = 1; });
     await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.__monthEventSaveFailures)).toBe(0);
     await expect(editor.getByRole('alert')).toContainText('もう一度保存');
     await expect(editor.getByLabel('タイトル')).toHaveValue(title);
     await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
@@ -334,10 +352,12 @@ test.describe('multi-day month events', () => {
 
     await cellForDay(grid, page, dates.startDay).click();
     await page.locator('.month-day-sheet-event').filter({ hasText: title }).click();
+    await waitForEditorEntrance();
     const editedTitle = '編集も残す予定';
     await editor.getByLabel('タイトル').fill(editedTitle);
     await page.evaluate(() => { window.__monthEventSaveFailures = 1; });
     await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.__monthEventSaveFailures)).toBe(0);
     await expect(editor.getByRole('alert')).toContainText('もう一度保存');
     await expect(editor.getByLabel('タイトル')).toHaveValue(editedTitle);
     await expect.poll(() => readCanonicalMonthEventRange(page, title))
@@ -400,3 +420,99 @@ test.describe('multi-day month events', () => {
     });
   });
 });
+
+
+for (const width of [390, 1280]) {
+  test.describe(`midnight event boundary ${width}px`, () => {
+    test.use({ viewport: { width, height: 900 }, screen: { width, height: 900 } });
+
+    test('midnight-ended events survive editor save and reload without spilling into the next day', async ({ page }, testInfo) => {
+      const dates = currentMonthDays();
+      const now = new Date().toISOString();
+      const title = '深夜0時までの予定';
+      const updatedTitle = '深夜0時までの予定（確認済み）';
+      const controlTitles = ['24時終了の対照', '翌日0時終了の対照'];
+      const base = {
+        userId: 'month-range-user', date: dates.startDate, endDate: dates.startDate,
+        startTime: '23:00', endTime: '00:00', repeat: 'none', repeatUntil: null,
+        excludedDates: [], url: '', memo: '', checklist: [], locationTags: [],
+        createdAt: now, updatedAt: now,
+      };
+      await seedRangeTestState(page, [
+        { ...base, id: 'midnight-same-date', title },
+        { ...base, id: 'midnight-24-control', title: controlTitles[0], endTime: '24:00' },
+        { ...base, id: 'midnight-next-date-control', title: controlTitles[1], endDate: dates.middleDate },
+      ]);
+      const externalRequests = [];
+      const origin = new URL(testInfo.project.use.baseURL).origin;
+      await page.route('**/*', route => {
+        const url = new URL(route.request().url());
+        if (['http:', 'https:'].includes(url.protocol) && url.origin !== origin) {
+          externalRequests.push(url.origin);
+          return route.abort();
+        }
+        return route.continue();
+      });
+      const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]'));
+      await openSchedule(page);
+      const grid = page.getByRole('grid', { name: '月間カレンダー' });
+      await expect.poll(async () => (await stored()).length).toBe(3);
+      const initial = await stored();
+      const original = initial.find(event => event.title === title);
+      expect(original).toMatchObject({ date: dates.startDate, endDate: dates.startDate, startTime: '23:00', endTime: '00:00' });
+      await cellForDay(grid, page, dates.startDay).click();
+      await page.locator('.month-day-sheet-event').filter({ hasText: title }).click();
+      const editor = page.locator('.month-event-modal');
+      await expect(editor.getByLabel('タイトル')).toHaveValue(title);
+      await editor.getByLabel('タイトル').fill(updatedTitle);
+      expect(await stored()).toEqual(initial);
+      await editor.getByRole('button', { name: '保存', exact: true }).click();
+      await expect(editor).toHaveCount(0);
+      await expect.poll(async () => (await stored()).find(event => event.id === original.id)?.title).toBe(updatedTitle);
+      const saved = await stored();
+      expect(saved).toHaveLength(3);
+      expect(saved.find(event => event.id === original.id)).toMatchObject({
+        id: original.id, title: updatedTitle, date: dates.startDate, endDate: dates.startDate,
+        startTime: '23:00', endTime: '00:00',
+      });
+      expect(saved.filter(event => event.id !== original.id)).toEqual(initial.filter(event => event.id !== original.id));
+
+      for (const phase of ['saved', 'reloaded']) {
+        if (phase === 'reloaded') {
+          await page.reload();
+          await openSchedule(page);
+          await cellForDay(grid, page, dates.startDay).focus();
+          await page.keyboard.press('ArrowRight');
+          await page.keyboard.press('ArrowLeft');
+        }
+        await page.getByRole('tab', { name: '週', exact: true }).click();
+        const week = page.locator('.schedule-week-view');
+        for (const name of [updatedTitle, ...controlTitles]) {
+          const block = week.locator('[data-week-spanning-event]').filter({ hasText: name });
+          await expect(block).toHaveCount(1);
+          await expect(block).toHaveAttribute('title', `${name} / ${dates.startDate} 23:00 - ${dates.middleDate} 00:00`);
+          expect(await block.evaluate(element => element.style.gridColumn)).toBe('2 / 3');
+        }
+        const image = testInfo.outputPath(`midnight-week-${phase}-${width}.png`);
+        await page.screenshot({ path: image, fullPage: true });
+        await testInfo.attach(`midnight-week-${phase}-${width}`, { path: image, contentType: 'image/png' });
+        await page.getByRole('tab', { name: '日', exact: true }).click();
+        await expect(page.locator('.schedule-period-picker-trigger')).toContainText(`${Number(E2E_TODAY.slice(5, 7))}月${dates.startDay}日`);
+        for (const name of [updatedTitle, ...controlTitles]) {
+          await expect(page.locator('[data-day-spanning-events] [data-schedule-occurrence-id], .timeline-plan-block').filter({ hasText: name })).toHaveCount(1);
+        }
+        await page.getByRole('tab', { name: '月', exact: true }).click();
+        await cellForDay(grid, page, dates.middleDay).focus();
+        await page.keyboard.press('ArrowRight');
+        await page.keyboard.press('ArrowLeft');
+        await page.getByRole('tab', { name: '日', exact: true }).click();
+        await expect(page.locator('.schedule-period-picker-trigger')).toContainText(`${Number(E2E_TODAY.slice(5, 7))}月${dates.middleDay}日`);
+        for (const name of [updatedTitle, ...controlTitles]) {
+          await expect(page.locator('[data-day-spanning-events] [data-schedule-occurrence-id], .timeline-plan-block').filter({ hasText: name })).toHaveCount(0);
+        }
+        expect(await stored()).toEqual(saved);
+      }
+      expect(externalRequests).toEqual([]);
+    });
+  });
+}

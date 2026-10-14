@@ -35,6 +35,9 @@ export function createUnavailableAuthRepository(): AuthRepository {
 
 export function createUnavailablePlannerRepository(): PlannerRepository {
   return {
+    async getScheduleSnapshot() {
+      return { plans: [], monthEvents: [] };
+    },
     async getPlans() {
       return [];
     },

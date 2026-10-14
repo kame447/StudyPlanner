@@ -6,7 +6,7 @@
 // model は、呼び出し側で必ず allowlist(ALLOWED_CHAT_MODELS)に含まれることを
 // 検証してから OpenAI へ送る(purpose 由来でも allowlist をバイパスしない)。
 
-const INTERNAL_OPENAI_MODEL = 'gpt-5.6-luna';
+const INTERNAL_OPENAI_MODEL = 'gpt-6-luna';
 
 export const AI_CHAT_PURPOSE_MODELS: Record<string, string> = {
   weekly_planning_interpreter: INTERNAL_OPENAI_MODEL,
@@ -18,7 +18,9 @@ export const AI_CHAT_PURPOSE_MODELS: Record<string, string> = {
 
 // 時間割OCRだけは無料枠を利用するため Gemini 経路で別管理する。
 // AI計画に関わる意味解釈・描画・添付画像理解は Luna に統一する。
-export const DEFAULT_ALLOWED_CHAT_MODELS = [INTERNAL_OPENAI_MODEL];
+// Keep legacy explicit-model clients usable during the Worker-first rollout.
+// Purpose-routed requests still use GPT-6 Luna only.
+export const DEFAULT_ALLOWED_CHAT_MODELS = [INTERNAL_OPENAI_MODEL, 'gpt-5.6-luna'];
 
 export interface ChatModelResolutionInput {
   model?: string;

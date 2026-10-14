@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Actual, MonthEvent, Plan } from '../types/domain';
 import { createLocalPlannerStorageGateway } from './localStorageGateway';
 import { createLocalScheduleEventAuthority } from './localScheduleEventAuthority';
@@ -194,4 +194,26 @@ describe('local ScheduleEvent authority', () => {
     expect(await repository.getMonthEvents('user-1')).toEqual([updated]);
     expect(await gateway.readMonthEvents()).toEqual([source]);
   });
+});
+
+
+it('loads one fresh owner-scoped local schedule snapshot while preserving migration and later edits', async () => {
+  const storage = new MemoryStorage();
+  const { gateway, repository } = createRepository(storage);
+  await gateway.writePlans([plan(), plan({ id: 'other-plan', userId: 'user-2' })]);
+  await gateway.writeMonthEvents([monthEvent()]);
+  const first = await repository.getScheduleSnapshot('user-1');
+  expect(first.plans).toEqual([expect.objectContaining(plan())]);
+  expect(first.monthEvents).toEqual([expect.objectContaining(monthEvent())]);
+  const read = vi.spyOn(storage, 'getItem');
+  await repository.getScheduleSnapshot('user-1');
+  expect(read.mock.calls.filter(([key]) => key === 'studyplanner.scheduleEvents.v1')).toHaveLength(1);
+  await repository.upsertPlan({ ...first.plans[0], title: 'Later edit' });
+  await repository.deleteMonthEvent('user-1', monthEvent().id);
+  const next = await repository.getScheduleSnapshot('user-1');
+  expect(next.plans[0].title).toBe('Later edit');
+  expect(next.monthEvents).toEqual([]);
+  const other = await repository.getScheduleSnapshot('user-2');
+  expect(other.plans.map(row => row.id)).toEqual(['other-plan']);
+  expect(other.monthEvents).toEqual([]);
 });

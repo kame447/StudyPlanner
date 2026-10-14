@@ -8,6 +8,7 @@ import { validC5SessionRecords } from './c5LocalSelection/basis';
 export const WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION =
   'studyplanner-weekly-planning-stable-v5-session-v1' as const;
 export const WEEKLY_PLANNING_C5_SESSION_CAPABILITY = 'c5-local-selection-v1' as const;
+export const WEEKLY_PLANNING_C5_BOUND_PRESENTATION_CAPABILITY = 'c5-bound-presentation-v1' as const;
 
 export const MAX_WEEKLY_PLANNING_STORED_SESSION_BYTES = 2 * 1024 * 1024;
 const MAX_MESSAGES = MAX_WEEKLY_PLANNING_STORED_MESSAGES;
@@ -15,7 +16,7 @@ const MAX_MESSAGES = MAX_WEEKLY_PLANNING_STORED_MESSAGES;
 export interface WeeklyPlanningStableV5PersistedSession {
   version: typeof WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION;
   /** Older strict readers reject this extension instead of silently dropping consumption. */
-  requiredCapabilities?: readonly [typeof WEEKLY_PLANNING_C5_SESSION_CAPABILITY];
+  requiredCapabilities?: readonly [typeof WEEKLY_PLANNING_C5_SESSION_CAPABILITY | typeof WEEKLY_PLANNING_C5_BOUND_PRESENTATION_CAPABILITY];
   ownerId: string;
   weekStartDate: string;
   conversationId: string;
@@ -116,7 +117,8 @@ function createPersistedEnvelope(params: {
   return {
     version: WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION,
     ...(params.planningState.intakeState?.c5SelectionLedger
-      ? { requiredCapabilities: [WEEKLY_PLANNING_C5_SESSION_CAPABILITY] as const } : {}),
+      ? { requiredCapabilities: [params.planningState.intakeState.lastQuestionContext?.c5?.question.presentedQuestion
+          ? WEEKLY_PLANNING_C5_BOUND_PRESENTATION_CAPABILITY : WEEKLY_PLANNING_C5_SESSION_CAPABILITY] as const } : {}),
     ownerId: params.ownerId,
     weekStartDate: params.weekStartDate,
     conversationId: params.conversationId,
@@ -162,7 +164,7 @@ export function parseWeeklyPlanningStableV5PersistedSession(params: {
       ])
       || value.version !== WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION
       || (value.requiredCapabilities !== undefined && (!Array.isArray(value.requiredCapabilities)
-        || value.requiredCapabilities.length !== 1 || value.requiredCapabilities[0] !== WEEKLY_PLANNING_C5_SESSION_CAPABILITY))
+        || value.requiredCapabilities.length !== 1 || !([WEEKLY_PLANNING_C5_SESSION_CAPABILITY, WEEKLY_PLANNING_C5_BOUND_PRESENTATION_CAPABILITY] as readonly unknown[]).includes(value.requiredCapabilities[0])))
       || value.ownerId !== params.ownerId
       || value.weekStartDate !== params.weekStartDate
       || !isNonEmptyString(value.conversationId)
@@ -196,7 +198,7 @@ export function parseWeeklyPlanningStableV5PersistedSession(params: {
     if (!validC5SessionRecords(value.planningState.intakeState, params.ownerId, value.conversationId)) return null;
     return {
       version: value.version,
-      ...(value.requiredCapabilities !== undefined ? { requiredCapabilities: [WEEKLY_PLANNING_C5_SESSION_CAPABILITY] as const } : {}),
+      ...(value.requiredCapabilities !== undefined ? { requiredCapabilities: [value.requiredCapabilities[0] as typeof WEEKLY_PLANNING_C5_SESSION_CAPABILITY | typeof WEEKLY_PLANNING_C5_BOUND_PRESENTATION_CAPABILITY] as const } : {}),
       ownerId: params.ownerId,
       weekStartDate: params.weekStartDate,
       conversationId: value.conversationId,

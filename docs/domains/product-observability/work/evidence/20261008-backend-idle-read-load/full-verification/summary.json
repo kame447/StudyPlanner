@@ -1,0 +1,59 @@
+{
+  "verify_start": "2026-10-08T12:45:25Z",
+  "verify_exit": "0",
+  "verify_end": "2026-10-08T13:02:51Z",
+  "bundle_exit": "0",
+  "bundle_end": "2026-10-08T13:02:52Z",
+  "checks": {
+    "Test Files": "759 passed | 10 skipped (769)",
+    "Tests": "6163 passed | 45 skipped | 1 todo (6209)"
+  },
+  "sourceInputsIdentical": true,
+  "installedPackagesIdentical": true,
+  "inputCount": 1845,
+  "installedPresentCount": 237,
+  "optionalAbsentCount": 99,
+  "inputManifestSha256": "0aaaa5398a8e8fae5d0d57a604fbc64608e6669e2db20d221e390df397aeef89",
+  "installedPackageManifestSha256": "e71c1751d9042603e45009ba1dcc4ec8b4a47bf799062fdfcdfbb0d9728d18a5",
+  "verifyLogSha256": "9045b03d84c743fe1dee6cf54e3868196d93ddbffda0e89b03c19d6ebc62a5db",
+  "before": {
+    "branch": "perf/firestore-backend-idle-reads",
+    "environmentFiles": [],
+    "head": "22847120386987329e2f034d6062d59694ef1180",
+    "inputCount": 1845,
+    "inputManifestSha256": "0aaaa5398a8e8fae5d0d57a604fbc64608e6669e2db20d221e390df397aeef89",
+    "installedPackageManifestSha256": "e71c1751d9042603e45009ba1dcc4ec8b4a47bf799062fdfcdfbb0d9728d18a5",
+    "node": "v24.19.0",
+    "nodeBinary": "<NODE_RUNTIME>/bin/node",
+    "nodeBinarySha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12",
+    "nodeModulesRealPath": "<DEPENDENCY_WORKTREE>/node_modules",
+    "timestamp": "2026-10-08T12:45:25.191215+00:00",
+    "workerRuntimeTypes": {
+      "missing": true
+    },
+    "rawInstalledPackageManifestSha256": "33f6896aab782ec816c5d3afa66c7f15c5d040354650ba8534b8f00053570ecd"
+  },
+  "after": {
+    "branch": "perf/firestore-backend-idle-reads",
+    "environmentFiles": [],
+    "head": "22847120386987329e2f034d6062d59694ef1180",
+    "inputCount": 1845,
+    "inputManifestSha256": "0aaaa5398a8e8fae5d0d57a604fbc64608e6669e2db20d221e390df397aeef89",
+    "installedPackageManifestSha256": "e71c1751d9042603e45009ba1dcc4ec8b4a47bf799062fdfcdfbb0d9728d18a5",
+    "node": "v24.19.0",
+    "nodeBinary": "<NODE_RUNTIME>/bin/node",
+    "nodeBinarySha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12",
+    "nodeModulesRealPath": "<DEPENDENCY_WORKTREE>/node_modules",
+    "timestamp": "2026-10-08T13:02:52.676685+00:00",
+    "workerRuntimeTypes": {
+      "sha256": "bf808b3fb4789a76410fc9c1ba8cd85e80453b8f92fa0981bdb86a9d523d612e",
+      "size": 615867
+    },
+    "rawInstalledPackageManifestSha256": "33f6896aab782ec816c5d3afa66c7f15c5d040354650ba8534b8f00053570ecd"
+  },
+  "limits": "Local full verification, not browser, live Firestore, production, deployed index state, or billing proof.",
+  "rawVerifyLogSha256": "865257d990223fcfaeba6700e36b0837208f70412f514292297333da83a102a2",
+  "logNormalization": "See ../log-normalization.json and ../path-normalization.json. Whitespace and ephemeral path prefixes are normalized; original hashes are retained. No test was rerun.",
+  "rawInstalledPackageManifestSha256": "33f6896aab782ec816c5d3afa66c7f15c5d040354650ba8534b8f00053570ecd",
+  "prePathNormalizationVerifyLogSha256": "c88d6c1a09694e00ac0b1100e1fb7c894a97038fb8131eedcf355a0249bca3ba"
+}

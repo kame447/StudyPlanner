@@ -1,0 +1,10 @@
+{
+  "path": "/workspace/scratch/3b7e1f5c90f6/studyplanner-laplans-video-work/.wrangler/types/worker-runtime.d.ts",
+  "sha256": "bf808b3fb4789a76410fc9c1ba8cd85e80453b8f92fa0981bdb86a9d523d612e",
+  "size": 615867,
+  "header": [
+    "/* eslint-disable */",
+    "// Runtime types generated with workerd@1.20260926.1 2026-04-10",
+    "// Begin runtime types"
+  ]
+}

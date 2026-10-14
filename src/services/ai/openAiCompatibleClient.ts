@@ -1,23 +1,22 @@
+import type { ChatMessage, JsonSchemaResponseFormat, OpenAiCompatibleClient } from './openAiCompatibleClientTypes';
+export type { ChatMessage, JsonSchemaResponseFormat, OpenAiCompatibleClient } from './openAiCompatibleClientTypes';
 import type { SemanticRequestRecorder } from '../../../shared/semanticDispatchRecorder';
-import { parseSemanticCensusJoin, type SemanticCensusJoin, type SemanticCensusRequestObserver } from '../../../shared/semanticTurnCensus';
-import type { SemanticDispatchStage } from '../../../shared/semanticDispatchLedger';
+import { parseSemanticCensusJoin } from '../../../shared/semanticTurnCensus';
 import {
   getCloudflareAiProxyUrl,
   usesCloudflareOpenAiProxy,
 } from '../../lib/aiConfig';
 import type { AiChatPurpose } from '../../lib/aiModelPolicy';
-import type { FocusedDecisionContext } from '../../../shared/focusedContextualDecision';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
-import { resolveOpenAiChatTemperature } from '../../../shared/aiProxyContract';
+import {
+  projectOpenAiCompletionMetadata,
+  resolveOpenAiChatTemperature,
+  type ProviderCompletionMetadata,
+} from '../../../shared/aiProxyContract';
 import {
   recordOpenAiCompatibleRequestMetric,
   utf8ByteLength,
 } from './openAiCompatibleClientMetrics';
-
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
 
 export interface OpenAiCompatibleClientConfig {
   provider?: 'openai' | 'rules';
@@ -27,15 +26,6 @@ export interface OpenAiCompatibleClientConfig {
   requestTimeoutMs?: number;
   /** Explicit per-request evaluation hook; never serialized to proxy/provider or trace. */
   dispatchRecorder?: SemanticRequestRecorder;
-}
-
-export interface JsonSchemaResponseFormat {
-  type: 'json_schema';
-  json_schema: {
-    name: string;
-    schema: Record<string, unknown>;
-    strict?: boolean;
-  };
 }
 
 interface ChatCompletionRequest {
@@ -235,6 +225,7 @@ function recordRequestMetric(params: {
   responseContent?: string | null;
   usage?: ChatCompletionUsage | null;
   startedAtMs: number;
+  providerCompletion?: ProviderCompletionMetadata;
 }): void {
   if (!shouldCaptureEvalMetrics()) return;
   recordOpenAiCompatibleRequestMetric({
@@ -251,6 +242,7 @@ function recordRequestMetric(params: {
     completionTokens: params.usage?.completion_tokens ?? null,
     totalTokens: params.usage?.total_tokens ?? null,
     durationMs: Math.max(0, Date.now() - params.startedAtMs),
+    ...(params.providerCompletion ? { providerCompletion: params.providerCompletion } : {}),
   });
 }
 
@@ -289,23 +281,6 @@ async function runFetchWithTimeout<T>(
   }
 }
 
-export interface OpenAiCompatibleClient {
-  /** Invocation-local capability, present only on a census-wrapped client. */
-  semanticCensusEnabled?: boolean;
-  semanticCensusObserver?: SemanticCensusRequestObserver;
-  createChatCompletion(input: {
-    /** Telemetry only; injected after semantic trace capture and sent only to our proxy. */
-    semanticCensus?: SemanticCensusJoin;
-    semanticCensusStage?: SemanticDispatchStage;
-    decisionContext?: FocusedDecisionContext;
-    messages: ChatMessage[];
-    temperature?: number;
-    responseFormat?: JsonSchemaResponseFormat;
-    purpose?: AiChatPurpose;
-    maxCompletionTokens?: number;
-  }): Promise<string>;
-}
-
 export function createOpenAiCompatibleClient(
   config: OpenAiCompatibleClientConfig,
 ): OpenAiCompatibleClient {
@@ -320,6 +295,10 @@ export function createOpenAiCompatibleClient(
       purpose,
       maxCompletionTokens,
     }) {
+      // Capture caller-owned data before token retrieval or transport can yield.
+      // The same detached context is serialized and used for response correlation.
+      const capturedDecisionContext = decisionContext
+        ? structuredClone(decisionContext) : undefined;
       const recorder = config.dispatchRecorder;
       const observesSemantic = recorder?.matchesPurpose(purpose);
       if (usesCloudflareOpenAiProxy({ provider: config.provider ?? 'openai' })) {
@@ -339,7 +318,7 @@ export function createOpenAiCompatibleClient(
 
         const proxyBody = {
           ...(parseSemanticCensusJoin(semanticCensus) ? { semanticCensus: parseSemanticCensusJoin(semanticCensus) } : {}),
-          ...(decisionContext ? { decisionContext } : {}),
+          ...(capturedDecisionContext ? { decisionContext: capturedDecisionContext } : {}),
           ...(purpose ? { purpose } : { model: config.model }),
           temperature,
           messages,
@@ -373,8 +352,8 @@ export function createOpenAiCompatibleClient(
             );
             const proxiedContent = result.content?.trim();
             if (result.decisionContext && (
-              result.decisionContext.requestId !== decisionContext?.requestId
-              || result.decisionContext.inputRevision !== decisionContext?.inputRevision
+              result.decisionContext.requestId !== capturedDecisionContext?.requestId
+              || result.decisionContext.inputRevision !== capturedDecisionContext?.inputRevision
             )) throw new Error('Decision response context did not match the active request.');
 
             if (!proxiedContent) {
@@ -443,6 +422,10 @@ export function createOpenAiCompatibleClient(
       const requestBody = JSON.stringify(payload);
       claimProcessAiRequestBudget();
       const startedAtMs = Date.now();
+      let providerCompletion = projectOpenAiCompletionMetadata({
+        requestedMaxCompletionTokens: maxCompletionTokens,
+        effectiveMaxCompletionTokens: payload.max_completion_tokens,
+      });
       try {
         const result = await runFetchWithTimeout(
           `${config.baseUrl.replace(/\/$/, '')}/chat/completions`,
@@ -461,6 +444,11 @@ export function createOpenAiCompatibleClient(
             }
 
             const data = (await response.json()) as ChatCompletionResponse;
+            providerCompletion = projectOpenAiCompletionMetadata({
+              response: data,
+              requestedMaxCompletionTokens: maxCompletionTokens,
+              effectiveMaxCompletionTokens: payload.max_completion_tokens,
+            });
             const content = data.choices?.[0]?.message?.content?.trim();
 
             if (!content) {
@@ -469,7 +457,7 @@ export function createOpenAiCompatibleClient(
 
             return { content, usage: data.usage ?? null };
           },
-          observesSemantic ? recorder?.providerFetch('openai', directModel === 'gpt-5.6-luna' ? 'luna' : 'other') : undefined,
+          observesSemantic ? recorder?.providerFetch('openai', (directModel === 'gpt-5.6-luna' || directModel === 'gpt-6-luna') ? 'luna' : 'other') : undefined,
         );
 
         if (shouldCaptureEvalUsage()) {
@@ -492,6 +480,7 @@ export function createOpenAiCompatibleClient(
           responseContent: result.content,
           usage: result.usage,
           startedAtMs,
+          providerCompletion,
         });
         return result.content;
       } catch (error) {
@@ -503,6 +492,7 @@ export function createOpenAiCompatibleClient(
           status: 'failure',
           requestBody,
           startedAtMs,
+          providerCompletion,
         });
         throw error;
       }

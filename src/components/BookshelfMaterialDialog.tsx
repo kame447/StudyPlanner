@@ -71,6 +71,8 @@ function BookshelfMaterialDialogSession({
   const [requiresInspection, setRequiresInspection] = useState(false);
   const firstSubject = subjects[0] ?? null;
   const [name, setName] = useState(material?.name ?? '');
+  const nameRevision = useRef(0);
+  const catalogNameRevision = useRef(0);
   const [subjectId, setSubjectId] = useState(material?.subjectId ?? firstSubject?.id ?? '');
   const [coverImageDataUrl, setCoverImageDataUrl] = useState(
     material?.coverImageDataUrl ?? '',
@@ -302,13 +304,17 @@ function BookshelfMaterialDialogSession({
                 pendingCatalogSelection.current = pending;
                 setIsResolvingCatalog(pending);
                 if (pending) {
+                  catalogNameRevision.current = nameRevision.current;
                   catalogCoverRevision.current = beginCoverSelection();
                   setStatus('');
                 }
               }}
               onSelect={(candidate) => {
                 setCatalogCandidate(candidate);
-                setName(candidate.title);
+                // A later typed name takes precedence over this delayed selection.
+                if (nameRevision.current === catalogNameRevision.current) {
+                  setName(candidate.title);
+                }
                 // Metadata remains selected even when a later custom photo wins.
                 if (coverRevision.current === catalogCoverRevision.current) {
                   setCatalogCoverUrl(candidate.coverImageUrl ?? '');
@@ -393,7 +399,10 @@ function BookshelfMaterialDialogSession({
                 <span>教材名</span>
                 <input
                   value={name}
-                  onChange={(event) => setName(event.target.value)}
+                  onChange={(event) => {
+                    nameRevision.current += 1;
+                    setName(event.target.value);
+                  }}
                   placeholder="黄色チャート"
                 />
               </label>
@@ -444,7 +453,7 @@ function BookshelfMaterialDialogSession({
                 />
               </div>
               <p className="detail-note">
-                検索で表紙が見つからない場合は jpeg / png / webp を自分で設定できます。
+                対応形式: JPEG / PNG / WebP
               </p>
             </div>
           </div>

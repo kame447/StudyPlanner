@@ -354,6 +354,9 @@ export async function handleProductObservabilityAdminApi(
 
       const page = await analysis.listUsers({
         environment,
+        // Opt out only on the explicit page-only request. Existing clients and
+        // initial/refresh loads keep their current trend response.
+        includeTrend: url.searchParams.get('includeTrend') !== 'false',
         cursor: decodeCursor(url.searchParams.get('cursor')),
         limit: requestedLimit(url.searchParams.get('limit')),
       });
@@ -362,7 +365,7 @@ export async function handleProductObservabilityAdminApi(
         users: page.users,
         nextCursor: encodeCursor(page.nextCursor),
         enrichmentReady: page.enrichmentReady,
-        trend: page.trend,
+        ...(page.trend ? { trend: page.trend } : {}),
       });
     }
     return jsonResponse(request, env, 404, { error: 'Not found.' });

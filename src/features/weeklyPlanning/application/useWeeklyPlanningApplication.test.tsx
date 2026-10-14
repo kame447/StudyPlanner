@@ -16,7 +16,13 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPlanFromDraft } from '../../../domain/planner';
 import type { Actual, Plan, PlanDraft, StudyMaterial } from '../../../types/domain';
+import { createInitialPlanningState } from '../weeklyPlanningReducer';
+import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import * as sessionCodec from './weeklyPlanningStableV5SessionCodec';
+import * as compatibilityStorage from '../weeklyPlanningStorage';
+import { saveWeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionStorage';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
+import { resolveWeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
 import type { WeeklyPreviewMetadata } from '../planning/weeklyPlanningApprovalTypes';
 import {
   clearWeeklyPlanningSessionRuntime,
@@ -35,6 +41,7 @@ import type {
   WeeklyPlanningTurnSubmissionResult,
 } from '../weeklyPlanningTurnExecutor';
 import {
+  getWeeklyPlanningStableV5RuntimeSession,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from './weeklyPlanningStableV5RuntimeSession';
 import {
@@ -163,6 +170,388 @@ describe('useWeeklyPlanningApplication', () => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     clearWeeklyPlanningSessionRuntime();
     restoreWindow();
+  });
+
+  // The executor is this suite's existing boundary fixture. Actual generation and finite
+  // verification are covered by the scripted-provider integration suite, not claimed here.
+  async function presentRecoveryQuestion(app: RenderedApplicationHarness) {
+    await act(async () => { expect(app.ref.current!.chat.initialize().status).toBe('saved'); });
+    const seed = app.ref.current!.exportConversationSnapshot({ includeEmpty: true })!;
+    const source = { conversationId: seed.conversationId, turnId: 'accepted-seed',
+      semanticLocalId: 'task', sourceText: '英単語20語', origin: 'user' as const };
+    seed.graph = { ...seed.graph, revision: 3,
+      tasks: [{ id: 'task-english', category: 'study', title: '英単語', source, createdRevision: 1 }],
+      workloads: [{ id: 'workload-english', taskId: 'task-english', componentId: null, quantityRole: 'target',
+        amount: 20, unitCode: 'word', unitLabel: '語', rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null, source: { ...source, semanticLocalId: 'workload' }, createdRevision: 1 }],
+      factLifecycles: ['task-english', 'workload-english'].map(factId => ({ factId, status: 'active' as const,
+        createdRevision: 1, terminalRevision: null, supersededByFactId: null })),
+    };
+    await act(async () => { expect(app.ref.current!.loadConversationSnapshot(seed)).toBe(true); });
+    const content = { responseSource: 'ai' as const, currentTurnGrounding: 'none' as const,
+      selfRepairNotice: false, groundingContext: { proposed: 0, contested: 0 }, previewPromotionControl: false };
+    executeWeeklyPlanningTurnMock.mockResolvedValueOnce({
+      ...turnResult('英単語20語'), stableV5Graph: seed.graph, responseSource: 'ai',
+      state: { ...turnResult('英単語20語').state, status: 'revision_pending', questions: ['合計時間を教えてください。'],
+        lastQuestionContext: { kind: 'missing', targetSlot: 'stable_v5:missing_effort_estimate',
+          intent: 'total_duration', topicId: 'workload-english' } },
+      message: '英単語20語には、合計でどのくらい時間がかかりますか？', questionPresentationContent: content,
+    } satisfies WeeklyPlanningTurnExecutionResult);
+    await act(async () => { expect((await app.ref.current!.submitTurn('英単語20語')).accepted).toBe(true); });
+    const before = structuredClone(app.ref.current!.state);
+    expect(resolveWeeklyPlanningQuestionPresentationFreshness({ previousState: before.intakeState,
+      inputStateRevision: before.revision, messages: before.messages, graphRevision: seed.graph.revision }).status).toBe('fresh');
+    const message = '今回の変更はまだ反映していません。英単語20語に必要な合計時間は何分ほどですか？';
+    const recoveryResult: WeeklyPlanningTurnExecutionResult = {
+      ...turnResult('UNAPPLIED-RECOVERY-INPUT'), message, responseSource: 'ai',
+      questionPresentationContent: content,
+      recoveryPresentation: { question: { graphRevision: seed.graph.revision,
+        previousAssistantMessageId: before.intakeState!.lastQuestionContext!.presentation!.assistantMessageId } },
+      failure: { code: 'stable_v5_normalization_rejected', userMessage: message, traceCode: 'hook-recovery-fixture',
+        diagnostics: { attemptCount: 2, repairAttempted: true, validationErrorCategories: ['invalid_json'], providerErrorCategory: null } },
+    };
+    return { before, graph: seed.graph, recoveryResult };
+  }
+
+  it('restores a saved recovery question after a selected-body read fault without losing its actual presentation', async () => {
+    const first = await renderApplicationHarness();
+    const { before, graph, recoveryResult } = await presentRecoveryQuestion(first);
+    executeWeeklyPlanningTurnMock.mockResolvedValueOnce(recoveryResult);
+    await act(async () => { expect((await first.ref.current!.submitTurn('200語に変更')).accepted).toBe(true); });
+    const expected = structuredClone(first.ref.current!.state);
+    const newMessage = expected.messages[expected.messages.length - 1];
+    expect(newMessage.content).toBe(recoveryResult.message);
+    expect(expected.intakeState?.sourceTurns).toEqual(before.intakeState?.sourceTurns);
+    expect(expected.intakeState?.lastQuestionContext?.presentation?.assistantMessageId).toBe(newMessage.id);
+    expect(expected.intakeState?.lastQuestionContext?.presentation?.assistantMessageId)
+      .not.toBe(before.intakeState?.lastQuestionContext?.presentation?.assistantMessageId);
+    expect(first.ref.current!.exportConversationSnapshot()?.graph).toEqual(graph);
+    await act(async () => { expect(first.ref.current!.chat.checkpoint().status).toBe('saved'); });
+    const stableKey = getWeeklyPlanningStableV5SessionStorageKeyForTest('user-1', '2026-07-13');
+    const indexKey = 'studyplanner.weeklyPlanning.activeSession.user-1';
+    const raw = storageHarness.values.get(stableKey)!;
+    const index = storageHarness.values.get(indexKey);
+    expect(JSON.parse(raw).planningState.intakeState.lastQuestionContext.presentation.assistantMessageId).toBe(newMessage.id);
+    await first.unmount(); resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+    const read = storageHarness.storage.getItem.bind(storageHarness.storage);
+    let observedFault = false;
+    storageHarness.storage.getItem = key => {
+      if (key === stableKey) { observedFault = true; throw new Error('recovered checkpoint temporarily unavailable'); }
+      return read(key);
+    };
+    const writes = vi.spyOn(storageHarness.storage, 'setItem');
+    const second = await renderApplicationHarness();
+    try {
+      expect(observedFault).toBe(true);
+      await act(async () => { expect(second.ref.current!.chat.initialize().status).toBe('blocked'); });
+      expect(second.ref.current!.exportConversationSnapshot({ includeEmpty: true })).toBeNull();
+      expect(second.ref.current!.chat.checkpoint().status).toBe('blocked');
+      await act(async () => { expect((await second.ref.current!.submitTurn('全部で60分')).accepted).toBe(false); });
+      expect(executeWeeklyPlanningTurnMock).toHaveBeenCalledTimes(2);
+      expect(writes.mock.calls.filter(([key]) => key === stableKey || key === indexKey)).toEqual([]);
+      expect(storageHarness.values.get(stableKey)).toBe(raw);
+      expect(storageHarness.values.get(indexKey)).toBe(index);
+      storageHarness.storage.getItem = read;
+      await act(async () => { expect(second.ref.current!.chat.retry().status).toBe('saved'); });
+      const restored = second.ref.current!.state;
+      expect(executeWeeklyPlanningTurnMock).toHaveBeenCalledTimes(2);
+      expect(restored.revision).toBe(expected.revision);
+      expect(restored.messages).toEqual(expected.messages);
+      expect(restored.intakeState?.lastQuestionContext).toEqual(expected.intakeState?.lastQuestionContext);
+      expect(second.ref.current!.exportConversationSnapshot()?.graph).toEqual(graph);
+      expect(resolveWeeklyPlanningQuestionPresentationFreshness({ previousState: restored.intakeState,
+        inputStateRevision: restored.revision, messages: restored.messages, graphRevision: graph.revision }).status).toBe('fresh');
+    } finally { storageHarness.storage.getItem = read; writes.mockRestore(); await second.unmount(); }
+  });
+
+  it('rejects a late recovery receipt after owner B becomes unavailable without saving it to either owner', async () => {
+    const app = await renderApplicationHarness();
+    const { recoveryResult } = await presentRecoveryQuestion(app);
+    await act(async () => { expect(app.ref.current!.chat.checkpoint().status).toBe('saved'); });
+    const ownerB = 'user-2'; const weekStartDate = '2026-07-13';
+    expect(saveWeeklyPlanningStableV5PersistedSession({ ownerId: ownerB, weekStartDate, conversationId: 'owner-b',
+      graph: { ...createEmptyWeeklyPlanningFactGraphV5(), revision: 7 }, planningState: {
+        ...createInitialPlanningState(weekStartDate), messages: [{ id: 'owner-b:turn:1:user', role: 'user',
+          content: 'Owner B retained work', createdAt: '2026-07-14T00:00:00Z' }],
+      } })).toBe(true);
+    const bIndexKey = `studyplanner.weeklyPlanning.activeSession.${ownerB}`;
+    storageHarness.values.set(bIndexKey, JSON.stringify({ version: 1, ownerId: ownerB, weekStartDate, conversationId: 'owner-b' }));
+    const protectedKeys = ['user-1', ownerB].flatMap(owner => [
+      getWeeklyPlanningStableV5SessionStorageKeyForTest(owner, weekStartDate), `studyplanner.weeklyPlanning.activeSession.${owner}`,
+    ]);
+    const saved = protectedKeys.map(key => [key, storageHarness.values.get(key)] as const);
+    const delayed = createDeferred<WeeklyPlanningTurnExecutionResult>();
+    let observedInput: WeeklyPlanningTurnExecutionInput | undefined;
+    executeWeeklyPlanningTurnMock.mockImplementationOnce((input: WeeklyPlanningTurnExecutionInput) => {
+      observedInput = input; return delayed.promise;
+    });
+    let submission!: Promise<WeeklyPlanningTurnSubmissionResult>;
+    await act(async () => { submission = app.ref.current!.submitTurn('200語に変更'); await Promise.resolve(); });
+    expect(observedInput?.isCurrentTurn?.()).toBe(true);
+    const read = storageHarness.storage.getItem.bind(storageHarness.storage);
+    storageHarness.storage.getItem = key => { if (key === bIndexKey) throw new Error('owner B unavailable'); return read(key); };
+    const writes = vi.spyOn(storageHarness.storage, 'setItem');
+    try {
+      await app.update({ userId: ownerB });
+      await act(async () => { expect(app.ref.current!.chat.initialize().status).toBe('blocked'); });
+      expect(observedInput?.isCurrentTurn?.()).toBe(false);
+      expect(app.ref.current!.exportConversationSnapshot({ includeEmpty: true })).toBeNull();
+      await act(async () => { delayed.resolve(recoveryResult); expect((await submission).accepted).toBe(false); });
+      expect(app.ref.current!.state.messages).toEqual([]);
+      expect(app.ref.current!.state.intakeState?.lastQuestionContext).toBeUndefined();
+      expect(executeWeeklyPlanningTurnMock).toHaveBeenCalledTimes(2);
+      expect(writes.mock.calls.filter(([key]) => protectedKeys.includes(key))).toEqual([]);
+      for (const [key, raw] of saved) expect(storageHarness.values.get(key)).toBe(raw);
+    } finally { storageHarness.storage.getItem = read; writes.mockRestore(); await app.unmount(); }
+  });
+
+  it.each(['single', 'stable-retained', 'compatibility-retained', 'compatibility-retained-index-read-failure', 'compatibility-retained-initial-index-read-failure'] as const)('does not revive a deleted chat after opaque-format recovery (%s)', async collision => {
+    const ownerId = 'user-1';
+    const weekStartDate = '2026-07-13';
+    const stableKey = getWeeklyPlanningStableV5SessionStorageKeyForTest(ownerId, weekStartDate);
+    const retainedKey = `studyplanner.weeklyPlanningUnreadable.v1.${ownerId}.${weekStartDate}`;
+    const compatibilityKey = `studyplanner.weeklyPlanning.${ownerId}.${weekStartDate}`;
+    const planningState = { ...createInitialPlanningState(weekStartDate), messages: [{
+      id: 'deleted-conversation:turn:1:user', role: 'user' as const,
+      content: 'Deleted opaque conversation', createdAt: '2026-07-14T00:00:00Z',
+    }] };
+    expect(saveWeeklyPlanningStableV5PersistedSession({ ownerId, weekStartDate,
+      conversationId: 'deleted-conversation', graph: { ...createEmptyWeeklyPlanningFactGraphV5(), revision: 2, tasks: [{
+        id: 'deleted-task', category: 'study', title: 'Deleted task must not reach a new turn', createdRevision: 1,
+        source: { conversationId: 'deleted-conversation', turnId: 'deleted-conversation:turn:1',
+          semanticLocalId: 'deleted-task-local', sourceText: 'Deleted opaque conversation', origin: 'user' },
+      }], factLifecycles: [{ factId: 'deleted-task', status: 'active', createdRevision: 1,
+        terminalRevision: null, supersededByFactId: null }] }, planningState })).toBe(true);
+    const future = JSON.parse(storageHarness.values.get(stableKey)!);
+    future.planningState.futureStateField = 'future-stable-data';
+    const raw = JSON.stringify(future);
+    storageHarness.values.set(stableKey, raw);
+    if (collision !== 'single') storageHarness.values.set(compatibilityKey, JSON.stringify({ version: 2,
+      state: { ...planningState, futureStateField: 'future-compatibility-data' } }));
+    storageHarness.values.set(`studyplanner.weeklyPlanning.activeSession.${ownerId}`, JSON.stringify({
+      version: 1, ownerId, weekStartDate, conversationId: 'deleted-conversation',
+    }));
+    if (collision.startsWith('compatibility-retained')) compatibilityStorage.loadWeeklyPlanningState(ownerId, weekStartDate);
+    const expectedRetainedRaw = collision.startsWith('compatibility-retained')
+      ? JSON.parse(storageHarness.values.get(retainedKey)!).raw : raw;
+    const save = vi.fn(async (_draft: PlanDraft): Promise<Plan> => { throw new Error('unexpected plan write'); });
+    const first = await renderApplicationHarness({ saveWeeklyApprovedPlan: save });
+    await act(async () => { expect(first.ref.current!.chat.initialize().status).toBe('saved'); });
+    const deletedId = first.ref.current!.chat.index.activeChatId;
+    await act(async () => { expect(first.ref.current!.chat.remove(deletedId).status).toBe('saved'); });
+    expect(first.ref.current!.state.messages).toEqual([]);
+    const retained = storageHarness.values.get(retainedKey);
+    expect(JSON.parse(retained!).raw).toBe(expectedRetainedRaw);
+    await first.unmount();
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+
+    const currentStableParser = sessionCodec.parseWeeklyPlanningStableV5PersistedSession;
+    const stableSpy = vi.spyOn(sessionCodec, 'parseWeeklyPlanningStableV5PersistedSession').mockImplementation(params => {
+      const parsed = JSON.parse(params.raw);
+      delete parsed.planningState.futureStateField;
+      return currentStableParser({ ...params, raw: JSON.stringify(parsed) });
+    });
+    const currentCompatibilityParser = compatibilityStorage.parseWeeklyPlanningCompatibilitySnapshot;
+    const compatibilitySpy = vi.spyOn(compatibilityStorage, 'parseWeeklyPlanningCompatibilitySnapshot').mockImplementation((value, owner, week) => {
+      const parsed = JSON.parse(value);
+      const savedState = parsed.version === 3 ? parsed.payload?.state : parsed.state;
+      if (savedState) delete savedState.futureStateField;
+      return currentCompatibilityParser(JSON.stringify(parsed), owner, week);
+    });
+    let indexReadFaultObserved = false;
+    if (collision.endsWith('index-read-failure')) {
+      const originalRead = storageHarness.storage.getItem.bind(storageHarness.storage);
+      let indexReads = 0;
+      storageHarness.storage.getItem = key => {
+        if (key === `studyplanner.weeklyPlanning.activeSession.${ownerId}` && ++indexReads === (collision.includes('initial-index') ? 1 : 2)) {
+          indexReadFaultObserved = true;
+          throw new Error('selection unavailable during the selected storage read');
+        }
+        return originalRead(key);
+      };
+    }
+    let second: RenderedApplicationHarness | undefined;
+    try {
+      second = await renderApplicationHarness({ saveWeeklyApprovedPlan: save });
+      await act(async () => { expect(second!.ref.current!.chat.initialize().status).toBe('saved'); });
+      expect(indexReadFaultObserved).toBe(collision.endsWith('index-read-failure'));
+      expect(second.ref.current!.state.messages).toEqual([]);
+      expect(second.ref.current!.exportConversationSnapshot({ includeEmpty: true })?.graph.revision).toBe(0);
+      expect(second.ref.current!.chat.index.chats.some(chat => chat.id === deletedId)).toBe(false);
+      expect(storageHarness.values.get(retainedKey)).toBe(retained);
+      expect(save).not.toHaveBeenCalled();
+      expect(executeWeeklyPlanningTurnMock).not.toHaveBeenCalled();
+      executeWeeklyPlanningTurnMock.mockImplementation(async (input: WeeklyPlanningTurnExecutionInput) => {
+        const runtime = getWeeklyPlanningStableV5RuntimeSession(input.conversationId!);
+        expect(runtime?.graph.tasks).toEqual([]);
+        expect(runtime?.graph.revision).toBe(0);
+        return turnResult(input.userText);
+      });
+      await act(async () => {
+        expect((await second!.ref.current!.submitTurn('Start fresh after deletion')).accepted).toBe(true);
+      });
+      expect(executeWeeklyPlanningTurnMock).toHaveBeenCalledTimes(1);
+      expect(save).not.toHaveBeenCalled();
+      expect(storageHarness.values.get(retainedKey)).toBe(retained);
+    } finally {
+      await second?.unmount();
+      stableSpy.mockRestore();
+      compatibilitySpy.mockRestore();
+    }
+  });
+
+  it.each([1, 2, 'persistent'] as const)('preserves a normal selected checkpoint when index read %s fails and later reads recover', async failureRead => {
+    const first = await renderApplicationHarness();
+    await act(async () => { expect(first.ref.current!.chat.initialize().status).toBe('saved'); });
+    await act(async () => {
+      first.ref.current!.appendMessage({ id: 'normal-selected:turn:1:user', role: 'user',
+        content: 'Normal selected conversation must survive a read fault', createdAt: '2026-07-14T00:00:00Z' });
+    });
+    const saved = first.ref.current!.exportConversationSnapshot({ includeEmpty: true })!;
+    saved.graph.revision = 2;
+    await act(async () => { expect(first.ref.current!.loadConversationSnapshot(saved)).toBe(true); });
+    const expectedMessages = first.ref.current!.state.messages;
+    const expectedGraph = first.ref.current!.exportConversationSnapshot({ includeEmpty: true })?.graph;
+    const stableKey = getWeeklyPlanningStableV5SessionStorageKeyForTest('user-1', '2026-07-13');
+    const expectedRaw = storageHarness.values.get(stableKey);
+    expect(expectedRaw).toBeDefined();
+    await first.unmount();
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+    const originalRead = storageHarness.storage.getItem.bind(storageHarness.storage);
+    let faultObserved = false;
+    let indexReads = 0;
+    storageHarness.storage.getItem = key => {
+      if (key === 'studyplanner.weeklyPlanning.activeSession.user-1'
+        && (failureRead === 'persistent' || ++indexReads === failureRead)) {
+        faultObserved = true;
+        throw new Error('initial selection temporarily unavailable');
+      }
+      return originalRead(key);
+    };
+    const second = await renderApplicationHarness();
+    try {
+      expect(faultObserved).toBe(true);
+      if (failureRead !== 2) expect(storageHarness.values.get(stableKey)).toBe(expectedRaw);
+      else expect(JSON.parse(storageHarness.values.get(stableKey)!).graph).toEqual(expectedGraph);
+      if (failureRead === 'persistent') {
+        await act(async () => { expect(second.ref.current!.chat.initialize()).toEqual({ status: 'blocked', reason: 'initialization-unavailable' }); });
+        expect(second.ref.current!.chat.requiresInitialization).toBe(true);
+        expect(second.ref.current!.chat.canStartWithoutRestoring).toBe(false);
+        expect(second.ref.current!.exportConversationSnapshot({ includeEmpty: true })).toBeNull();
+        await act(async () => { expect((await second.ref.current!.submitTurn('Must stay blocked')).accepted).toBe(false); });
+        expect(executeWeeklyPlanningTurnMock).not.toHaveBeenCalled();
+        expect(storageHarness.values.get(stableKey)).toBe(expectedRaw);
+        storageHarness.storage.getItem = originalRead;
+        await act(async () => { expect(second.ref.current!.chat.retry().status).toBe('saved'); });
+      } else {
+        await act(async () => { expect(second.ref.current!.chat.initialize().status).toBe('saved'); });
+      }
+      expect(second.ref.current!.state.messages).toEqual(expectedMessages);
+      expect(second.ref.current!.exportConversationSnapshot({ includeEmpty: true })?.graph).toEqual(expectedGraph);
+    } finally { await second.unmount(); }
+  });
+
+  it.each([
+    ['stable', false], ['stable', true], ['compatibility', false], ['compatibility', true],
+  ] as const)('keeps selected %s checkpoint read failures unavailable until retry (persistent=%s)', async (format, persistent) => {
+    const ownerId = 'user-1';
+    const weekStartDate = '2026-07-13';
+    const planningState = { ...createInitialPlanningState(weekStartDate), messages: [{
+      id: 'selected-body:turn:1:user', role: 'user' as const, content: 'Checkpoint body must survive failed reads', createdAt: '2026-07-14T00:00:00Z',
+    }] };
+    const key = format === 'stable' ? getWeeklyPlanningStableV5SessionStorageKeyForTest(ownerId, weekStartDate)
+      : `studyplanner.weeklyPlanning.${ownerId}.${weekStartDate}`;
+    if (format === 'stable') expect(saveWeeklyPlanningStableV5PersistedSession({ ownerId, weekStartDate,
+      conversationId: 'selected-body', graph: { ...createEmptyWeeklyPlanningFactGraphV5(), revision: 2 }, planningState })).toBe(true);
+    else storageHarness.values.set(key, JSON.stringify({ version: 3, ownerId, payload: { version: 2, state: planningState } }));
+    const indexKey = `studyplanner.weeklyPlanning.activeSession.${ownerId}`;
+    storageHarness.values.set(indexKey, JSON.stringify({ version: 1, ownerId, weekStartDate,
+      conversationId: format === 'stable' ? 'selected-body' : null }));
+    const originalRaw = storageHarness.values.get(key);
+    const originalIndex = storageHarness.values.get(indexKey);
+    const originalRead = storageHarness.storage.getItem.bind(storageHarness.storage);
+    let failedReads = 0;
+    storageHarness.storage.getItem = storedKey => {
+      if (storedKey === key && (persistent || failedReads < 2)) { failedReads += 1; throw new Error('selected checkpoint unavailable'); }
+      return originalRead(storedKey);
+    };
+    const app = await renderApplicationHarness();
+    try {
+      expect(failedReads).toBeGreaterThan(0);
+      expect(storageHarness.values.get(key)).toBe(originalRaw);
+      expect(storageHarness.values.get(indexKey)).toBe(originalIndex);
+      expect(app.ref.current!.exportConversationSnapshot({ includeEmpty: true })).toBeNull();
+      await act(async () => { expect(app.ref.current!.chat.initialize()).toEqual({ status: 'blocked', reason: 'initialization-unavailable' }); });
+      expect(app.ref.current!.chat.canStartWithoutRestoring).toBe(false);
+      await act(async () => { expect((await app.ref.current!.submitTurn('Do not overwrite unavailable work')).accepted).toBe(false); });
+      expect(storageHarness.values.get(key)).toBe(originalRaw);
+      expect(storageHarness.values.get(indexKey)).toBe(originalIndex);
+      expect(executeWeeklyPlanningTurnMock).not.toHaveBeenCalled();
+      storageHarness.storage.getItem = originalRead;
+      await act(async () => { expect(app.ref.current!.chat.retry().status).toBe('saved'); });
+      expect(app.ref.current!.state.messages).toEqual(planningState.messages);
+      expect(app.ref.current!.exportConversationSnapshot({ includeEmpty: true })?.graph.revision).toBe(format === 'stable' ? 2 : 0);
+    } finally { await app.unmount(); }
+  });
+
+  it('does not reuse unavailable state readiness or a retained retry across A to B to A owners', async () => {
+    const ownerId = 'user-1';
+    const weekStartDate = '2026-07-13';
+    const planningState = { ...createInitialPlanningState(weekStartDate), messages: [{
+      id: 'owner-a:turn:1:user', role: 'user' as const, content: 'Owner A saved work', createdAt: '2026-07-14T00:00:00Z',
+    }] };
+    expect(saveWeeklyPlanningStableV5PersistedSession({ ownerId, weekStartDate, conversationId: 'owner-a',
+      graph: { ...createEmptyWeeklyPlanningFactGraphV5(), revision: 2 }, planningState })).toBe(true);
+    const indexKey = `studyplanner.weeklyPlanning.activeSession.${ownerId}`;
+    const stableKey = getWeeklyPlanningStableV5SessionStorageKeyForTest(ownerId, weekStartDate);
+    storageHarness.values.set(indexKey, JSON.stringify({ version: 1, ownerId, weekStartDate, conversationId: 'owner-a' }));
+    const originalRaw = storageHarness.values.get(stableKey);
+    const originalIndex = storageHarness.values.get(indexKey);
+    const originalRead = storageHarness.storage.getItem.bind(storageHarness.storage);
+    storageHarness.storage.getItem = key => { if (key === indexKey) throw new Error('owner A unavailable'); return originalRead(key); };
+    const app = await renderApplicationHarness();
+    try {
+      const oldChat = app.ref.current!.chat;
+      await act(async () => { expect(oldChat.initialize().status).toBe('blocked'); });
+      await app.update({ userId: 'user-2' });
+      await act(async () => { expect(app.ref.current!.chat.initialize().status).toBe('saved'); });
+      const ownerBSnapshot = app.ref.current!.exportConversationSnapshot({ includeEmpty: true });
+      expect(ownerBSnapshot?.ownerId).toBe('user-2');
+      expect(ownerBSnapshot?.graph.revision).toBe(0);
+      await act(async () => { expect(app.ref.current!.chat.checkpoint().status).toBe('saved'); });
+      expect(oldChat.retry()).toEqual({ status: 'blocked', reason: 'owner-changed' });
+      await app.update({ userId: ownerId });
+      expect(app.ref.current!.exportConversationSnapshot({ includeEmpty: true })).toBeNull();
+      expect(oldChat.retry()).toEqual({ status: 'blocked', reason: 'owner-changed' });
+      expect(storageHarness.values.get(stableKey)).toBe(originalRaw);
+      expect(storageHarness.values.get(indexKey)).toBe(originalIndex);
+      storageHarness.storage.getItem = originalRead;
+      await act(async () => { expect(app.ref.current!.chat.retry().status).toBe('saved'); });
+      expect(app.ref.current!.state.messages).toEqual(planningState.messages);
+      const snapshot = app.ref.current!.exportConversationSnapshot({ includeEmpty: true });
+      expect(snapshot?.ownerId).toBe(ownerId);
+      expect(snapshot?.conversationId).toBe('owner-a');
+      expect(snapshot?.graph.revision).toBe(2);
+      expect(executeWeeklyPlanningTurnMock).not.toHaveBeenCalled();
+    } finally { await app.unmount(); }
+  });
+
+  it('restores a valid weekly checkpoint saved before the blank chat metadata is updated', async () => {
+    const first = await renderApplicationHarness();
+    await act(async () => { expect(first.ref.current!.chat.initialize().status).toBe('saved'); });
+    await act(async () => {
+      first.ref.current!.appendMessage({ id: 'new-turn:turn:1:user', role: 'user',
+        content: 'New work saved before chat metadata', createdAt: '2026-07-14T00:00:00Z' });
+    });
+    expect(first.ref.current!.chat.index.chats.find(chat => chat.id === first.ref.current!.chat.index.activeChatId)?.weekStartDate).toBeNull();
+    const messages = first.ref.current!.state.messages;
+    await first.unmount();
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+    const second = await renderApplicationHarness();
+    try {
+      await act(async () => { expect(second.ref.current!.chat.initialize().status).toBe('saved'); });
+      expect(second.ref.current!.state.messages).toEqual(messages);
+    } finally { await second.unmount(); }
   });
 
   it.each([false, true])('rejects retained snapshot admission after pending (recovered=%s)', async (recovered) => {

@@ -1,0 +1,2134 @@
+{
+  "schemaVersion": 1,
+  "scope": "Planner hydration, navigation, manual save, durable weekly approval and reload; auth/profile/catalog/telemetry excluded",
+  "syntheticTransport": true,
+  "sdkCacheAndBillingObserved": false,
+  "now": "2026-10-08T12:00:00.000Z",
+  "approvalCount": 5,
+  "results": [
+    {
+      "dataset": "small",
+      "scale": 1,
+      "fixtureDigest": "2dc7360bf4a03afb312eac9b10d5497ca04a907bf09c9d5908bb5659692106eb",
+      "seededCollectionSizes": {
+        "schedule_events": 33,
+        "schedule_event_migrations": 1,
+        "actuals": 12,
+        "day_notes": 4,
+        "todos": 3,
+        "study_subjects": 1,
+        "study_materials": 4,
+        "schedule_templates": 3,
+        "timetable_terms": 1,
+        "timetable_periods": 3
+      },
+      "finalPersistedDigest": "9c413135e4ddc1413796b8b25c0bb4aeca6c0d67bc0b4e06238aafb0a0cb0eae",
+      "rows": [
+        {
+          "operation": "cold-planner-launch",
+          "readCalls": 10,
+          "returnedDocuments": 64,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {
+            "getDocFromServer": 1,
+            "getDocs": 9
+          },
+          "byCollection": {
+            "schedule_event_migrations": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "actuals": {
+              "calls": 1,
+              "returnedDocuments": 12,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "day_notes": {
+              "calls": 1,
+              "returnedDocuments": 4,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "todos": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_subjects": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_materials": {
+              "calls": 1,
+              "returnedDocuments": 4,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_templates": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_terms": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_periods": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_events": {
+              "calls": 1,
+              "returnedDocuments": 32,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            }
+          },
+          "dataDigest": "e407145f1c7becafa94f6453efe120b620d578928687a9bdc54215efc3f13d75",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 24,
+            "actuals": 12,
+            "dayNotes": 4,
+            "monthEvents": 8,
+            "todos": 3,
+            "studySubjects": 1,
+            "studyMaterials": 4,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "warm-planner-launch",
+          "readCalls": 9,
+          "returnedDocuments": 63,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {
+            "getDocs": 9
+          },
+          "byCollection": {
+            "actuals": {
+              "calls": 1,
+              "returnedDocuments": 12,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "day_notes": {
+              "calls": 1,
+              "returnedDocuments": 4,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "todos": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_subjects": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_materials": {
+              "calls": 1,
+              "returnedDocuments": 4,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_templates": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_terms": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_periods": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_events": {
+              "calls": 1,
+              "returnedDocuments": 32,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            }
+          },
+          "dataDigest": "e407145f1c7becafa94f6453efe120b620d578928687a9bdc54215efc3f13d75",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 24,
+            "actuals": 12,
+            "dayNotes": 4,
+            "monthEvents": 8,
+            "todos": 3,
+            "studySubjects": 1,
+            "studyMaterials": 4,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "open-day",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "e407145f1c7becafa94f6453efe120b620d578928687a9bdc54215efc3f13d75",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 24,
+            "actuals": 12,
+            "dayNotes": 4,
+            "monthEvents": 8,
+            "todos": 3,
+            "studySubjects": 1,
+            "studyMaterials": 4,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "day",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "next-day",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "e407145f1c7becafa94f6453efe120b620d578928687a9bdc54215efc3f13d75",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 24,
+            "actuals": 12,
+            "dayNotes": 4,
+            "monthEvents": 8,
+            "todos": 3,
+            "studySubjects": 1,
+            "studyMaterials": 4,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "day",
+            "selectedDate": "2026-10-09",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "open-week",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "e407145f1c7becafa94f6453efe120b620d578928687a9bdc54215efc3f13d75",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 24,
+            "actuals": 12,
+            "dayNotes": 4,
+            "monthEvents": 8,
+            "todos": 3,
+            "studySubjects": 1,
+            "studyMaterials": 4,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "week",
+            "selectedDate": "2026-10-05",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "next-week",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "e407145f1c7becafa94f6453efe120b620d578928687a9bdc54215efc3f13d75",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 24,
+            "actuals": 12,
+            "dayNotes": 4,
+            "monthEvents": 8,
+            "todos": 3,
+            "studySubjects": 1,
+            "studyMaterials": 4,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "week",
+            "selectedDate": "2026-10-12",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "open-month",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "e407145f1c7becafa94f6453efe120b620d578928687a9bdc54215efc3f13d75",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 24,
+            "actuals": 12,
+            "dayNotes": 4,
+            "monthEvents": 8,
+            "todos": 3,
+            "studySubjects": 1,
+            "studyMaterials": 4,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-12",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "next-month",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "e407145f1c7becafa94f6453efe120b620d578928687a9bdc54215efc3f13d75",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 24,
+            "actuals": 12,
+            "dayNotes": 4,
+            "monthEvents": 8,
+            "todos": 3,
+            "studySubjects": 1,
+            "studyMaterials": 4,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-11-01",
+            "monthDate": "2026-11-01"
+          }
+        },
+        {
+          "operation": "manual-save-1",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 1,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "d0cb7e5408eac39645c8d51e78d71ea4044926cf4c003a36c815589629ac439c",
+          "projectionDigest": "9e3618c890dc272e93dc54f24cdb4acab4d286f323a8ad0884e87d9de1e363c9",
+          "collectionSizes": {
+            "plans": 25,
+            "actuals": 12,
+            "dayNotes": 4,
+            "monthEvents": 8,
+            "todos": 3,
+            "studySubjects": 1,
+            "studyMaterials": 4,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "approved-save-1-and-complete",
+          "readCalls": 10,
+          "returnedDocuments": 7,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 3,
+          "transactionAttempts": 2,
+          "writtenDocuments": 5,
+          "byOperation": {
+            "getDoc": 2,
+            "transaction.get": 8
+          },
+          "byCollection": {
+            "schedule_event_migrations": {
+              "calls": 4,
+              "returnedDocuments": 4,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "weekly_planning_approval_operations": {
+              "calls": 2,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 1
+            },
+            "weekly_planning_approval_items": {
+              "calls": 2,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 1
+            },
+            "schedule_events": {
+              "calls": 2,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 1
+            }
+          },
+          "dataDigest": "b2af29e2d1b7553bdc4f96438fe49b4636e8215d875fb16f327aca7440ec35b3",
+          "projectionDigest": "dcdbe7056d80a150ff72944be9478e7d9666ca9803a10961512594cb3b1b25c6",
+          "collectionSizes": {
+            "plans": 26,
+            "actuals": 12,
+            "dayNotes": 4,
+            "monthEvents": 8,
+            "todos": 3,
+            "studySubjects": 1,
+            "studyMaterials": 4,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "approved-save-K-and-complete",
+          "readCalls": 38,
+          "returnedDocuments": 27,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 11,
+          "transactionAttempts": 6,
+          "writtenDocuments": 21,
+          "byOperation": {
+            "getDoc": 6,
+            "transaction.get": 32
+          },
+          "byCollection": {
+            "schedule_event_migrations": {
+              "calls": 12,
+              "returnedDocuments": 12,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "weekly_planning_approval_operations": {
+              "calls": 6,
+              "returnedDocuments": 5,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 1
+            },
+            "weekly_planning_approval_items": {
+              "calls": 10,
+              "returnedDocuments": 5,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 5
+            },
+            "schedule_events": {
+              "calls": 10,
+              "returnedDocuments": 5,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 5
+            }
+          },
+          "dataDigest": "4ddaad181b43bce7be43005876aa2d85bc7c751610c929dfdf46a2e6140278ed",
+          "projectionDigest": "ee1438291f0e5e44d9b581a27222f65e38b2891d404d9e35ca83e58a6744e577",
+          "collectionSizes": {
+            "plans": 31,
+            "actuals": 12,
+            "dayNotes": 4,
+            "monthEvents": 8,
+            "todos": 3,
+            "studySubjects": 1,
+            "studyMaterials": 4,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "explicit-full-refresh",
+          "readCalls": 9,
+          "returnedDocuments": 70,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {
+            "getDocs": 9
+          },
+          "byCollection": {
+            "actuals": {
+              "calls": 1,
+              "returnedDocuments": 12,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "day_notes": {
+              "calls": 1,
+              "returnedDocuments": 4,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "todos": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_subjects": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_materials": {
+              "calls": 1,
+              "returnedDocuments": 4,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_templates": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_terms": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_periods": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_events": {
+              "calls": 1,
+              "returnedDocuments": 39,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            }
+          },
+          "dataDigest": "4ddaad181b43bce7be43005876aa2d85bc7c751610c929dfdf46a2e6140278ed",
+          "projectionDigest": "ee1438291f0e5e44d9b581a27222f65e38b2891d404d9e35ca83e58a6744e577",
+          "collectionSizes": {
+            "plans": 31,
+            "actuals": 12,
+            "dayNotes": 4,
+            "monthEvents": 8,
+            "todos": 3,
+            "studySubjects": 1,
+            "studyMaterials": 4,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "cold-reload-after-saves",
+          "readCalls": 10,
+          "returnedDocuments": 71,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {
+            "getDocFromServer": 1,
+            "getDocs": 9
+          },
+          "byCollection": {
+            "schedule_event_migrations": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "actuals": {
+              "calls": 1,
+              "returnedDocuments": 12,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "day_notes": {
+              "calls": 1,
+              "returnedDocuments": 4,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "todos": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_subjects": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_materials": {
+              "calls": 1,
+              "returnedDocuments": 4,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_templates": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_terms": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_periods": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_events": {
+              "calls": 1,
+              "returnedDocuments": 39,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            }
+          },
+          "dataDigest": "4ddaad181b43bce7be43005876aa2d85bc7c751610c929dfdf46a2e6140278ed",
+          "projectionDigest": "ee1438291f0e5e44d9b581a27222f65e38b2891d404d9e35ca83e58a6744e577",
+          "collectionSizes": {
+            "plans": 31,
+            "actuals": 12,
+            "dayNotes": 4,
+            "monthEvents": 8,
+            "todos": 3,
+            "studySubjects": 1,
+            "studyMaterials": 4,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        }
+      ]
+    },
+    {
+      "dataset": "medium",
+      "scale": 10,
+      "fixtureDigest": "c664cc2bc50eb80fdd41298aa234dd2b17f1d2bde864ddf962d551a6949b56d5",
+      "seededCollectionSizes": {
+        "schedule_events": 321,
+        "schedule_event_migrations": 1,
+        "actuals": 120,
+        "day_notes": 40,
+        "todos": 30,
+        "study_subjects": 1,
+        "study_materials": 40,
+        "schedule_templates": 3,
+        "timetable_terms": 1,
+        "timetable_periods": 3
+      },
+      "finalPersistedDigest": "32859f7a41339af52d648f79fd8b054f6c5deca950a105f6d9b432047df8dcea",
+      "rows": [
+        {
+          "operation": "cold-planner-launch",
+          "readCalls": 10,
+          "returnedDocuments": 559,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {
+            "getDocFromServer": 1,
+            "getDocs": 9
+          },
+          "byCollection": {
+            "schedule_event_migrations": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "actuals": {
+              "calls": 1,
+              "returnedDocuments": 120,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "day_notes": {
+              "calls": 1,
+              "returnedDocuments": 40,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "todos": {
+              "calls": 1,
+              "returnedDocuments": 30,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_subjects": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_materials": {
+              "calls": 1,
+              "returnedDocuments": 40,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_templates": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_terms": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_periods": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_events": {
+              "calls": 1,
+              "returnedDocuments": 320,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            }
+          },
+          "dataDigest": "b40446b73bb233675d4573bc3080729e2cdeaab240566d65e3f64d5c440f2d30",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 240,
+            "actuals": 120,
+            "dayNotes": 40,
+            "monthEvents": 80,
+            "todos": 30,
+            "studySubjects": 1,
+            "studyMaterials": 40,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "warm-planner-launch",
+          "readCalls": 9,
+          "returnedDocuments": 558,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {
+            "getDocs": 9
+          },
+          "byCollection": {
+            "actuals": {
+              "calls": 1,
+              "returnedDocuments": 120,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "day_notes": {
+              "calls": 1,
+              "returnedDocuments": 40,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "todos": {
+              "calls": 1,
+              "returnedDocuments": 30,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_subjects": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_materials": {
+              "calls": 1,
+              "returnedDocuments": 40,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_templates": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_terms": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_periods": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_events": {
+              "calls": 1,
+              "returnedDocuments": 320,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            }
+          },
+          "dataDigest": "b40446b73bb233675d4573bc3080729e2cdeaab240566d65e3f64d5c440f2d30",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 240,
+            "actuals": 120,
+            "dayNotes": 40,
+            "monthEvents": 80,
+            "todos": 30,
+            "studySubjects": 1,
+            "studyMaterials": 40,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "open-day",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "b40446b73bb233675d4573bc3080729e2cdeaab240566d65e3f64d5c440f2d30",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 240,
+            "actuals": 120,
+            "dayNotes": 40,
+            "monthEvents": 80,
+            "todos": 30,
+            "studySubjects": 1,
+            "studyMaterials": 40,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "day",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "next-day",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "b40446b73bb233675d4573bc3080729e2cdeaab240566d65e3f64d5c440f2d30",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 240,
+            "actuals": 120,
+            "dayNotes": 40,
+            "monthEvents": 80,
+            "todos": 30,
+            "studySubjects": 1,
+            "studyMaterials": 40,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "day",
+            "selectedDate": "2026-10-09",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "open-week",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "b40446b73bb233675d4573bc3080729e2cdeaab240566d65e3f64d5c440f2d30",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 240,
+            "actuals": 120,
+            "dayNotes": 40,
+            "monthEvents": 80,
+            "todos": 30,
+            "studySubjects": 1,
+            "studyMaterials": 40,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "week",
+            "selectedDate": "2026-10-05",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "next-week",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "b40446b73bb233675d4573bc3080729e2cdeaab240566d65e3f64d5c440f2d30",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 240,
+            "actuals": 120,
+            "dayNotes": 40,
+            "monthEvents": 80,
+            "todos": 30,
+            "studySubjects": 1,
+            "studyMaterials": 40,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "week",
+            "selectedDate": "2026-10-12",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "open-month",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "b40446b73bb233675d4573bc3080729e2cdeaab240566d65e3f64d5c440f2d30",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 240,
+            "actuals": 120,
+            "dayNotes": 40,
+            "monthEvents": 80,
+            "todos": 30,
+            "studySubjects": 1,
+            "studyMaterials": 40,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-12",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "next-month",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "b40446b73bb233675d4573bc3080729e2cdeaab240566d65e3f64d5c440f2d30",
+          "projectionDigest": "41baaff221b5782bbe11f26aaca4dd3abf1eaafc1af5f800d9e72a3162b9b2ec",
+          "collectionSizes": {
+            "plans": 240,
+            "actuals": 120,
+            "dayNotes": 40,
+            "monthEvents": 80,
+            "todos": 30,
+            "studySubjects": 1,
+            "studyMaterials": 40,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-11-01",
+            "monthDate": "2026-11-01"
+          }
+        },
+        {
+          "operation": "manual-save-1",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 1,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "ba8b2a63b80705816fd88b1f5bd1eb8d8c30accec6f337f1331c8ae71d93a139",
+          "projectionDigest": "738c0490c536081b96af99c354208b3e9548e2164c7d681b49958d43a98534f7",
+          "collectionSizes": {
+            "plans": 241,
+            "actuals": 120,
+            "dayNotes": 40,
+            "monthEvents": 80,
+            "todos": 30,
+            "studySubjects": 1,
+            "studyMaterials": 40,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "approved-save-1-and-complete",
+          "readCalls": 10,
+          "returnedDocuments": 7,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 3,
+          "transactionAttempts": 2,
+          "writtenDocuments": 5,
+          "byOperation": {
+            "getDoc": 2,
+            "transaction.get": 8
+          },
+          "byCollection": {
+            "schedule_event_migrations": {
+              "calls": 4,
+              "returnedDocuments": 4,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "weekly_planning_approval_operations": {
+              "calls": 2,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 1
+            },
+            "weekly_planning_approval_items": {
+              "calls": 2,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 1
+            },
+            "schedule_events": {
+              "calls": 2,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 1
+            }
+          },
+          "dataDigest": "fe7b1ab46f5d6b3294eb0e7a47b5aa20b335604f9ae850f633f16a95bf5fe4e4",
+          "projectionDigest": "473629cd6e16fb06d130a5bb296fc75474435843759f49b77a6d6b81f104013e",
+          "collectionSizes": {
+            "plans": 242,
+            "actuals": 120,
+            "dayNotes": 40,
+            "monthEvents": 80,
+            "todos": 30,
+            "studySubjects": 1,
+            "studyMaterials": 40,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "approved-save-K-and-complete",
+          "readCalls": 38,
+          "returnedDocuments": 27,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 11,
+          "transactionAttempts": 6,
+          "writtenDocuments": 21,
+          "byOperation": {
+            "getDoc": 6,
+            "transaction.get": 32
+          },
+          "byCollection": {
+            "schedule_event_migrations": {
+              "calls": 12,
+              "returnedDocuments": 12,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "weekly_planning_approval_operations": {
+              "calls": 6,
+              "returnedDocuments": 5,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 1
+            },
+            "weekly_planning_approval_items": {
+              "calls": 10,
+              "returnedDocuments": 5,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 5
+            },
+            "schedule_events": {
+              "calls": 10,
+              "returnedDocuments": 5,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 5
+            }
+          },
+          "dataDigest": "9659254ada90cf8aaceef2fc166f83c1f16ac9eaeb246d7b112854d5721869df",
+          "projectionDigest": "c414f41f5184f4ac1c13592e5181547e8a1cb5bba3f652ab810928b47ebdfcec",
+          "collectionSizes": {
+            "plans": 247,
+            "actuals": 120,
+            "dayNotes": 40,
+            "monthEvents": 80,
+            "todos": 30,
+            "studySubjects": 1,
+            "studyMaterials": 40,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "explicit-full-refresh",
+          "readCalls": 9,
+          "returnedDocuments": 565,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {
+            "getDocs": 9
+          },
+          "byCollection": {
+            "actuals": {
+              "calls": 1,
+              "returnedDocuments": 120,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "day_notes": {
+              "calls": 1,
+              "returnedDocuments": 40,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "todos": {
+              "calls": 1,
+              "returnedDocuments": 30,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_subjects": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_materials": {
+              "calls": 1,
+              "returnedDocuments": 40,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_templates": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_terms": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_periods": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_events": {
+              "calls": 1,
+              "returnedDocuments": 327,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            }
+          },
+          "dataDigest": "9659254ada90cf8aaceef2fc166f83c1f16ac9eaeb246d7b112854d5721869df",
+          "projectionDigest": "c414f41f5184f4ac1c13592e5181547e8a1cb5bba3f652ab810928b47ebdfcec",
+          "collectionSizes": {
+            "plans": 247,
+            "actuals": 120,
+            "dayNotes": 40,
+            "monthEvents": 80,
+            "todos": 30,
+            "studySubjects": 1,
+            "studyMaterials": 40,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "cold-reload-after-saves",
+          "readCalls": 10,
+          "returnedDocuments": 566,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {
+            "getDocFromServer": 1,
+            "getDocs": 9
+          },
+          "byCollection": {
+            "schedule_event_migrations": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "actuals": {
+              "calls": 1,
+              "returnedDocuments": 120,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "day_notes": {
+              "calls": 1,
+              "returnedDocuments": 40,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "todos": {
+              "calls": 1,
+              "returnedDocuments": 30,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_subjects": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_materials": {
+              "calls": 1,
+              "returnedDocuments": 40,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_templates": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_terms": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_periods": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_events": {
+              "calls": 1,
+              "returnedDocuments": 327,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            }
+          },
+          "dataDigest": "9659254ada90cf8aaceef2fc166f83c1f16ac9eaeb246d7b112854d5721869df",
+          "projectionDigest": "c414f41f5184f4ac1c13592e5181547e8a1cb5bba3f652ab810928b47ebdfcec",
+          "collectionSizes": {
+            "plans": 247,
+            "actuals": 120,
+            "dayNotes": 40,
+            "monthEvents": 80,
+            "todos": 30,
+            "studySubjects": 1,
+            "studyMaterials": 40,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        }
+      ]
+    },
+    {
+      "dataset": "large",
+      "scale": 100,
+      "fixtureDigest": "695b4c3f256e1ed1cb6906b4a25ba0b05718b7255922a5fb438e4ec2932e38ce",
+      "seededCollectionSizes": {
+        "schedule_events": 3201,
+        "schedule_event_migrations": 1,
+        "actuals": 1200,
+        "day_notes": 400,
+        "todos": 300,
+        "study_subjects": 1,
+        "study_materials": 400,
+        "schedule_templates": 3,
+        "timetable_terms": 1,
+        "timetable_periods": 3
+      },
+      "finalPersistedDigest": "409de28124b8e1e7bc334dd418fb5df7f6769d68c2f8083a37e6bde24f336801",
+      "rows": [
+        {
+          "operation": "cold-planner-launch",
+          "readCalls": 10,
+          "returnedDocuments": 5509,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {
+            "getDocFromServer": 1,
+            "getDocs": 9
+          },
+          "byCollection": {
+            "schedule_event_migrations": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "actuals": {
+              "calls": 1,
+              "returnedDocuments": 1200,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "day_notes": {
+              "calls": 1,
+              "returnedDocuments": 400,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "todos": {
+              "calls": 1,
+              "returnedDocuments": 300,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_subjects": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_materials": {
+              "calls": 1,
+              "returnedDocuments": 400,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_templates": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_terms": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_periods": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_events": {
+              "calls": 1,
+              "returnedDocuments": 3200,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            }
+          },
+          "dataDigest": "618e45b21cc368858fe8e26c2dc66cff1e940222232e59bd0066e4a087541869",
+          "projectionDigest": "153ff482e1c301bda36781c1ef3bb336043bc28eb8f532828ab949863168518f",
+          "collectionSizes": {
+            "plans": 2400,
+            "actuals": 1200,
+            "dayNotes": 400,
+            "monthEvents": 800,
+            "todos": 300,
+            "studySubjects": 1,
+            "studyMaterials": 400,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "warm-planner-launch",
+          "readCalls": 9,
+          "returnedDocuments": 5508,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {
+            "getDocs": 9
+          },
+          "byCollection": {
+            "actuals": {
+              "calls": 1,
+              "returnedDocuments": 1200,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "day_notes": {
+              "calls": 1,
+              "returnedDocuments": 400,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "todos": {
+              "calls": 1,
+              "returnedDocuments": 300,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_subjects": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_materials": {
+              "calls": 1,
+              "returnedDocuments": 400,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_templates": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_terms": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_periods": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_events": {
+              "calls": 1,
+              "returnedDocuments": 3200,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            }
+          },
+          "dataDigest": "618e45b21cc368858fe8e26c2dc66cff1e940222232e59bd0066e4a087541869",
+          "projectionDigest": "153ff482e1c301bda36781c1ef3bb336043bc28eb8f532828ab949863168518f",
+          "collectionSizes": {
+            "plans": 2400,
+            "actuals": 1200,
+            "dayNotes": 400,
+            "monthEvents": 800,
+            "todos": 300,
+            "studySubjects": 1,
+            "studyMaterials": 400,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "open-day",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "618e45b21cc368858fe8e26c2dc66cff1e940222232e59bd0066e4a087541869",
+          "projectionDigest": "153ff482e1c301bda36781c1ef3bb336043bc28eb8f532828ab949863168518f",
+          "collectionSizes": {
+            "plans": 2400,
+            "actuals": 1200,
+            "dayNotes": 400,
+            "monthEvents": 800,
+            "todos": 300,
+            "studySubjects": 1,
+            "studyMaterials": 400,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "day",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "next-day",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "618e45b21cc368858fe8e26c2dc66cff1e940222232e59bd0066e4a087541869",
+          "projectionDigest": "153ff482e1c301bda36781c1ef3bb336043bc28eb8f532828ab949863168518f",
+          "collectionSizes": {
+            "plans": 2400,
+            "actuals": 1200,
+            "dayNotes": 400,
+            "monthEvents": 800,
+            "todos": 300,
+            "studySubjects": 1,
+            "studyMaterials": 400,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "day",
+            "selectedDate": "2026-10-09",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "open-week",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "618e45b21cc368858fe8e26c2dc66cff1e940222232e59bd0066e4a087541869",
+          "projectionDigest": "153ff482e1c301bda36781c1ef3bb336043bc28eb8f532828ab949863168518f",
+          "collectionSizes": {
+            "plans": 2400,
+            "actuals": 1200,
+            "dayNotes": 400,
+            "monthEvents": 800,
+            "todos": 300,
+            "studySubjects": 1,
+            "studyMaterials": 400,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "week",
+            "selectedDate": "2026-10-05",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "next-week",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "618e45b21cc368858fe8e26c2dc66cff1e940222232e59bd0066e4a087541869",
+          "projectionDigest": "153ff482e1c301bda36781c1ef3bb336043bc28eb8f532828ab949863168518f",
+          "collectionSizes": {
+            "plans": 2400,
+            "actuals": 1200,
+            "dayNotes": 400,
+            "monthEvents": 800,
+            "todos": 300,
+            "studySubjects": 1,
+            "studyMaterials": 400,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "week",
+            "selectedDate": "2026-10-12",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "open-month",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "618e45b21cc368858fe8e26c2dc66cff1e940222232e59bd0066e4a087541869",
+          "projectionDigest": "153ff482e1c301bda36781c1ef3bb336043bc28eb8f532828ab949863168518f",
+          "collectionSizes": {
+            "plans": 2400,
+            "actuals": 1200,
+            "dayNotes": 400,
+            "monthEvents": 800,
+            "todos": 300,
+            "studySubjects": 1,
+            "studyMaterials": 400,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-12",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "next-month",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "618e45b21cc368858fe8e26c2dc66cff1e940222232e59bd0066e4a087541869",
+          "projectionDigest": "153ff482e1c301bda36781c1ef3bb336043bc28eb8f532828ab949863168518f",
+          "collectionSizes": {
+            "plans": 2400,
+            "actuals": 1200,
+            "dayNotes": 400,
+            "monthEvents": 800,
+            "todos": 300,
+            "studySubjects": 1,
+            "studyMaterials": 400,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-11-01",
+            "monthDate": "2026-11-01"
+          }
+        },
+        {
+          "operation": "manual-save-1",
+          "readCalls": 0,
+          "returnedDocuments": 0,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 1,
+          "byOperation": {},
+          "byCollection": {},
+          "dataDigest": "93dbd1b3179bb0f7e5923c30d0156b3904af798180e88e4923549fcd09d2a77f",
+          "projectionDigest": "e8f4a824c2e46f29614578c4859e18b7d2fdf0232699fa35f5500e20b603aa82",
+          "collectionSizes": {
+            "plans": 2401,
+            "actuals": 1200,
+            "dayNotes": 400,
+            "monthEvents": 800,
+            "todos": 300,
+            "studySubjects": 1,
+            "studyMaterials": 400,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "approved-save-1-and-complete",
+          "readCalls": 10,
+          "returnedDocuments": 7,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 3,
+          "transactionAttempts": 2,
+          "writtenDocuments": 5,
+          "byOperation": {
+            "getDoc": 2,
+            "transaction.get": 8
+          },
+          "byCollection": {
+            "schedule_event_migrations": {
+              "calls": 4,
+              "returnedDocuments": 4,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "weekly_planning_approval_operations": {
+              "calls": 2,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 1
+            },
+            "weekly_planning_approval_items": {
+              "calls": 2,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 1
+            },
+            "schedule_events": {
+              "calls": 2,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 1
+            }
+          },
+          "dataDigest": "f487de5f3fe869c518e08afc173f9fffe703cbd7be09dadafca9eacc80b1b2fa",
+          "projectionDigest": "33d0c8ebe3ef4149197c29e06b826f56cbee53a7b9c112287f4a1c28800c4e2b",
+          "collectionSizes": {
+            "plans": 2402,
+            "actuals": 1200,
+            "dayNotes": 400,
+            "monthEvents": 800,
+            "todos": 300,
+            "studySubjects": 1,
+            "studyMaterials": 400,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "approved-save-K-and-complete",
+          "readCalls": 38,
+          "returnedDocuments": 27,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 11,
+          "transactionAttempts": 6,
+          "writtenDocuments": 21,
+          "byOperation": {
+            "getDoc": 6,
+            "transaction.get": 32
+          },
+          "byCollection": {
+            "schedule_event_migrations": {
+              "calls": 12,
+              "returnedDocuments": 12,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "weekly_planning_approval_operations": {
+              "calls": 6,
+              "returnedDocuments": 5,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 1
+            },
+            "weekly_planning_approval_items": {
+              "calls": 10,
+              "returnedDocuments": 5,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 5
+            },
+            "schedule_events": {
+              "calls": 10,
+              "returnedDocuments": 5,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 5
+            }
+          },
+          "dataDigest": "4f48a8419145082cbcf7803855657f91d586e096eff2cbb0b41600ccf19d660c",
+          "projectionDigest": "0869fd6b8968350a919a08f521542d6e71ccfd9716374cef73151ac39431a06f",
+          "collectionSizes": {
+            "plans": 2407,
+            "actuals": 1200,
+            "dayNotes": 400,
+            "monthEvents": 800,
+            "todos": 300,
+            "studySubjects": 1,
+            "studyMaterials": 400,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "explicit-full-refresh",
+          "readCalls": 9,
+          "returnedDocuments": 5515,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {
+            "getDocs": 9
+          },
+          "byCollection": {
+            "actuals": {
+              "calls": 1,
+              "returnedDocuments": 1200,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "day_notes": {
+              "calls": 1,
+              "returnedDocuments": 400,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "todos": {
+              "calls": 1,
+              "returnedDocuments": 300,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_subjects": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_materials": {
+              "calls": 1,
+              "returnedDocuments": 400,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_templates": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_terms": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_periods": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_events": {
+              "calls": 1,
+              "returnedDocuments": 3207,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            }
+          },
+          "dataDigest": "4f48a8419145082cbcf7803855657f91d586e096eff2cbb0b41600ccf19d660c",
+          "projectionDigest": "0869fd6b8968350a919a08f521542d6e71ccfd9716374cef73151ac39431a06f",
+          "collectionSizes": {
+            "plans": 2407,
+            "actuals": 1200,
+            "dayNotes": 400,
+            "monthEvents": 800,
+            "todos": 300,
+            "studySubjects": 1,
+            "studyMaterials": 400,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        },
+        {
+          "operation": "cold-reload-after-saves",
+          "readCalls": 10,
+          "returnedDocuments": 5516,
+          "emptyQueries": 0,
+          "missingDocumentCalls": 0,
+          "transactionAttempts": 0,
+          "writtenDocuments": 0,
+          "byOperation": {
+            "getDocFromServer": 1,
+            "getDocs": 9
+          },
+          "byCollection": {
+            "schedule_event_migrations": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "actuals": {
+              "calls": 1,
+              "returnedDocuments": 1200,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "day_notes": {
+              "calls": 1,
+              "returnedDocuments": 400,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "todos": {
+              "calls": 1,
+              "returnedDocuments": 300,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_subjects": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "study_materials": {
+              "calls": 1,
+              "returnedDocuments": 400,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_templates": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_terms": {
+              "calls": 1,
+              "returnedDocuments": 1,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "timetable_periods": {
+              "calls": 1,
+              "returnedDocuments": 3,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            },
+            "schedule_events": {
+              "calls": 1,
+              "returnedDocuments": 3207,
+              "emptyQueries": 0,
+              "missingDocumentCalls": 0
+            }
+          },
+          "dataDigest": "4f48a8419145082cbcf7803855657f91d586e096eff2cbb0b41600ccf19d660c",
+          "projectionDigest": "0869fd6b8968350a919a08f521542d6e71ccfd9716374cef73151ac39431a06f",
+          "collectionSizes": {
+            "plans": 2407,
+            "actuals": 1200,
+            "dayNotes": 400,
+            "monthEvents": 800,
+            "todos": 300,
+            "studySubjects": 1,
+            "studyMaterials": 400,
+            "scheduleTemplates": 3,
+            "timetableTerms": 1,
+            "timetablePeriods": 3
+          },
+          "view": {
+            "mode": "month",
+            "selectedDate": "2026-10-08",
+            "monthDate": "2026-10-01"
+          }
+        }
+      ]
+    }
+  ]
+}

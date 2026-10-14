@@ -240,13 +240,20 @@ export async function getAdminObservabilityOverview() {
   };
 }
 
-export async function getAdminObservabilityUsers() {
+export async function getAdminObservabilityUsersPage() {
   maybeFail();
-  const overview = await getAdminObservabilityOverview();
   return {
     users: harnessState === 'empty' ? [] : users,
     nextCursor: null,
     enrichmentReady: true,
+  };
+}
+
+export async function getAdminObservabilityUsers() {
+  const page = await getAdminObservabilityUsersPage();
+  const overview = await getAdminObservabilityOverview();
+  return {
+    ...page,
     trend: {
       daily: overview.daily,
       activeUsers: overview.activeUsers,
@@ -336,7 +343,7 @@ export async function getAdminObservabilityUserInvestigation() {
   };
 }
 
-export async function getAdminObservabilityAiAnalysis() {
+async function createAiAnalysisFixture() {
   maybeFail();
   if (harnessState === 'empty') {
     return {
@@ -424,4 +431,20 @@ export async function getAdminObservabilityAiAnalysis() {
       updatedAt: '2026-08-29T14:00:02.000Z',
     },
   };
+}
+
+
+export async function getAdminObservabilityAiAnalysis(query = {}) {
+  const data = await createAiAnalysisFixture();
+  if (harnessState !== 'query-ownership') return data;
+  return new Promise((resolve, reject) => {
+    window.__adminAnalysisRequests ??= [];
+    window.__adminAnalysisRequests.push({
+      query,
+      resolve(requestCount) {
+        resolve({ ...data, ...query, total: { ...data.total, requestCount } });
+      },
+      reject() { reject(new Error('Harness current analysis unavailable.')); },
+    });
+  });
 }

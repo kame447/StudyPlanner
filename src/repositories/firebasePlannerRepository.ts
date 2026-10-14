@@ -5,6 +5,7 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  getDocsFromServer,
   query,
   setDoc,
   where,
@@ -224,7 +225,13 @@ async function upsertActualDocument(
 export function createFirebasePlannerRepository(
   firestoreDb: Firestore,
 ): PlannerRepository {
-  return {
+  const repository: PlannerRepository = {
+    async getScheduleSnapshot(userId) {
+      const [plans, monthEvents] = await Promise.all([
+        repository.getPlans(userId), repository.getMonthEvents(userId),
+      ]);
+      return { plans, monthEvents };
+    },
     async getPlans(userId) {
       try {
         return (await listByUserId<Plan>(firestoreDb, 'plans', userId)).map(
@@ -249,8 +256,17 @@ export function createFirebasePlannerRepository(
         );
       }
     },
-    async getDayNotes(userId) {
+    async getDayNotes(userId, options) {
       try {
+        if (options?.requireServer) {
+          const snapshot = await getDocsFromServer(
+            query(collection(firestoreDb, 'day_notes'), where('userId', '==', userId)),
+          );
+          if (snapshot.metadata?.fromCache !== false || snapshot.metadata.hasPendingWrites !== false) {
+            throw new Error('日次メモの保存済みデータを確認できませんでした。オンラインで再読み込みしてください。');
+          }
+          return snapshot.docs.map(document => ({ ...document.data(), id: document.id }) as DayNote);
+        }
         return await listByUserId<DayNote>(firestoreDb, 'day_notes', userId);
       } catch (error) {
         throw new Error(
@@ -899,4 +915,5 @@ export function createFirebasePlannerRepository(
       }
     },
   };
+  return repository;
 }

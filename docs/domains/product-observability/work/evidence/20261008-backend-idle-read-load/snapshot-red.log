@@ -1,0 +1,188 @@
+
+ RUN  v3.2.7 <BACKEND_WORKTREE>
+
+ ❯ workers/ai-proxy/src/productObservabilityActiveUserSnapshot.test.ts (16 tests | 4 failed) 5979ms
+   ✓ ProductObservabilityActiveUserSnapshotService > publishes exact counts only after the complete 30-day scan 107ms
+   ✓ ProductObservabilityActiveUserSnapshotService > checkpoints a large dirty backlog without publishing partial counts and resumes exactly  3013ms
+   ✓ ProductObservabilityActiveUserSnapshotService > checkpoints a large bootstrap backlog without publishing partial counts and resumes exactly  1007ms
+   ✓ ProductObservabilityActiveUserSnapshotService > advances historical targets one at a time and exposes the source only after the last target 4ms
+   ✓ ProductObservabilityActiveUserSnapshotService > returns to idle so a later dirty source can safely reuse the same revision number 3ms
+   ✓ ProductObservabilityActiveUserSnapshotService > leaves no published or checkpoint state when the transaction conflicts 5ms
+   ✓ ProductObservabilityActiveUserSnapshotService > does not publish when another invocation changes job state during the scan 2ms
+   ✓ ProductObservabilityActiveUserSnapshotService > fails before publish when one accumulator shard would exceed its document bound 28ms
+   ✓ ProductObservabilityActiveUserSnapshotService > keeps a near-limit publish below 10 MiB and rejects an oversized publish first  1124ms
+   ✓ ProductObservabilityActiveUserSnapshotService > counts stale persisted shards even when they do not belong to the current job  453ms
+   × ProductObservabilityActiveUserSnapshotService > does no actor scan when the current snapshot exists and no source is dirty 72ms
+     → expected [ { keys: [ …(66) ] } ] to deeply equal [ { keys: [ …(2) ] } ]
+   × ProductObservabilityActiveUserSnapshotService > reads fresh complete state after an inconclusive idle probe instead of joining separate snapshots 36ms
+     → expected { pageReads: 30, …(3) } to match object { published: false, …(2) }
+(1 matching property omitted from actual)
+   ✓ ProductObservabilityActiveUserSnapshotService > rechecks a dirty source on the next invocation after a clean read, without clearing or mutating it 23ms
+   ✓ ProductObservabilityActiveUserSnapshotService > does not skip a supplied dirty revision just because the current snapshot exists 21ms
+   × ProductObservabilityActiveUserSnapshotService > uses one reporting date per invocation and bootstraps the new Tokyo day on the next invocation 12ms
+     → expected [ 66 ] to deeply equal [ 2 ]
+   × ProductObservabilityActiveUserSnapshotService > fails closed on a malformed idle control document without reading accumulators 16ms
+     → expected [ 66 ] to deeply equal [ 2 ]
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  workers/ai-proxy/src/productObservabilityActiveUserSnapshot.test.ts > ProductObservabilityActiveUserSnapshotService > does no actor scan when the current snapshot exists and no source is dirty
+AssertionError: expected [ { keys: [ …(66) ] } ] to deeply equal [ { keys: [ …(2) ] } ]
+
+- Expected
++ Received
+
+  [
+    {
+      "keys": [
+        "observability_active_user_snapshot_job/main",
+        "observability_active_user_windows/production:2026-08-28",
++       "observability_active_user_snapshot_accumulator/main:00",
++       "observability_active_user_snapshot_accumulator/main:01",
++       "observability_active_user_snapshot_accumulator/main:02",
++       "observability_active_user_snapshot_accumulator/main:03",
++       "observability_active_user_snapshot_accumulator/main:04",
++       "observability_active_user_snapshot_accumulator/main:05",
++       "observability_active_user_snapshot_accumulator/main:06",
++       "observability_active_user_snapshot_accumulator/main:07",
++       "observability_active_user_snapshot_accumulator/main:08",
++       "observability_active_user_snapshot_accumulator/main:09",
++       "observability_active_user_snapshot_accumulator/main:10",
++       "observability_active_user_snapshot_accumulator/main:11",
++       "observability_active_user_snapshot_accumulator/main:12",
++       "observability_active_user_snapshot_accumulator/main:13",
++       "observability_active_user_snapshot_accumulator/main:14",
++       "observability_active_user_snapshot_accumulator/main:15",
++       "observability_active_user_snapshot_accumulator/main:16",
++       "observability_active_user_snapshot_accumulator/main:17",
++       "observability_active_user_snapshot_accumulator/main:18",
++       "observability_active_user_snapshot_accumulator/main:19",
++       "observability_active_user_snapshot_accumulator/main:20",
++       "observability_active_user_snapshot_accumulator/main:21",
++       "observability_active_user_snapshot_accumulator/main:22",
++       "observability_active_user_snapshot_accumulator/main:23",
++       "observability_active_user_snapshot_accumulator/main:24",
++       "observability_active_user_snapshot_accumulator/main:25",
++       "observability_active_user_snapshot_accumulator/main:26",
++       "observability_active_user_snapshot_accumulator/main:27",
++       "observability_active_user_snapshot_accumulator/main:28",
++       "observability_active_user_snapshot_accumulator/main:29",
++       "observability_active_user_snapshot_accumulator/main:30",
++       "observability_active_user_snapshot_accumulator/main:31",
++       "observability_active_user_snapshot_accumulator/main:32",
++       "observability_active_user_snapshot_accumulator/main:33",
++       "observability_active_user_snapshot_accumulator/main:34",
++       "observability_active_user_snapshot_accumulator/main:35",
++       "observability_active_user_snapshot_accumulator/main:36",
++       "observability_active_user_snapshot_accumulator/main:37",
++       "observability_active_user_snapshot_accumulator/main:38",
++       "observability_active_user_snapshot_accumulator/main:39",
++       "observability_active_user_snapshot_accumulator/main:40",
++       "observability_active_user_snapshot_accumulator/main:41",
++       "observability_active_user_snapshot_accumulator/main:42",
++       "observability_active_user_snapshot_accumulator/main:43",
++       "observability_active_user_snapshot_accumulator/main:44",
++       "observability_active_user_snapshot_accumulator/main:45",
++       "observability_active_user_snapshot_accumulator/main:46",
++       "observability_active_user_snapshot_accumulator/main:47",
++       "observability_active_user_snapshot_accumulator/main:48",
++       "observability_active_user_snapshot_accumulator/main:49",
++       "observability_active_user_snapshot_accumulator/main:50",
++       "observability_active_user_snapshot_accumulator/main:51",
++       "observability_active_user_snapshot_accumulator/main:52",
++       "observability_active_user_snapshot_accumulator/main:53",
++       "observability_active_user_snapshot_accumulator/main:54",
++       "observability_active_user_snapshot_accumulator/main:55",
++       "observability_active_user_snapshot_accumulator/main:56",
++       "observability_active_user_snapshot_accumulator/main:57",
++       "observability_active_user_snapshot_accumulator/main:58",
++       "observability_active_user_snapshot_accumulator/main:59",
++       "observability_active_user_snapshot_accumulator/main:60",
++       "observability_active_user_snapshot_accumulator/main:61",
++       "observability_active_user_snapshot_accumulator/main:62",
++       "observability_active_user_snapshot_accumulator/main:63",
+      ],
+    },
+  ]
+
+ ❯ workers/ai-proxy/src/productObservabilityActiveUserSnapshot.test.ts:511:36
+    509|     expect(firestore.queriedDates).toEqual([]);
+    510|     expect(firestore.rollbackCount).toBe(0);
+    511|     expect(firestore.readRequests).toEqual([{ keys: [
+       |                                    ^
+    512|       `${ACTIVE_USER_SNAPSHOT_JOB_COLLECTION}/${ACTIVE_USER_SNAPSHOT_J…
+    513|       'observability_active_user_windows/production:2026-08-28',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  workers/ai-proxy/src/productObservabilityActiveUserSnapshot.test.ts > ProductObservabilityActiveUserSnapshotService > reads fresh complete state after an inconclusive idle probe instead of joining separate snapshots
+AssertionError: expected { pageReads: 30, …(3) } to match object { published: false, …(2) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "completedSource": null,
+-   "pageReads": 0,
++   "pageReads": 30,
+    "published": false,
+  }
+
+ ❯ workers/ai-proxy/src/productObservabilityActiveUserSnapshot.test.ts:528:20
+    526|     const result = await service(firestore).runBatch([]);
+    527|
+    528|     expect(result).toMatchObject({ published: false, pageReads: 0, com…
+       |                    ^
+    529|     expect(firestore.readRequests.map((request) => request.keys.length…
+    530|     expect(firestore.transactionSequence).toBe(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  workers/ai-proxy/src/productObservabilityActiveUserSnapshot.test.ts > ProductObservabilityActiveUserSnapshotService > uses one reporting date per invocation and bootstraps the new Tokyo day on the next invocation
+AssertionError: expected [ 66 ] to deeply equal [ 2 ]
+
+- Expected
++ Received
+
+  [
+-   2,
++   66,
+  ]
+
+ ❯ workers/ai-proxy/src/productObservabilityActiveUserSnapshot.test.ts:590:74
+    588|     expect(beforeMidnight).toMatchObject({ published: false, pageReads…
+    589|     expect(firestore.documents.has('observability_active_user_windows/…
+    590|     expect(firestore.readRequests.map((request) => request.keys.length…
+       |                                                                          ^
+    591|     firestore.readRequests.length = 0;
+    592|     const afterMidnight = await snapshots.runBatch([]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  workers/ai-proxy/src/productObservabilityActiveUserSnapshot.test.ts > ProductObservabilityActiveUserSnapshotService > fails closed on a malformed idle control document without reading accumulators
+AssertionError: expected [ 66 ] to deeply equal [ 2 ]
+
+- Expected
++ Received
+
+  [
+-   2,
++   66,
+  ]
+
+ ❯ workers/ai-proxy/src/productObservabilityActiveUserSnapshot.test.ts:611:74
+    609|     await expect(service(firestore).runBatch([])).rejects.toThrow('act…
+    610|
+    611|     expect(firestore.readRequests.map((request) => request.keys.length…
+       |                                                                          ^
+    612|     expect(firestore.transactionSequence).toBe(0);
+    613|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 12 passed (16)
+   Start at  21:36:59
+   Duration  7.99s (transform 257ms, setup 0ms, collect 336ms, tests 5.98s, environment 0ms, prepare 308ms)

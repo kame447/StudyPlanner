@@ -1,7 +1,7 @@
 import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
 import type { MaterialEditBaseline } from './useActualMutationAdmission';
 import type { ActualActionTarget } from './useActualMutationAdmission';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { PlannerMutationScopeExpiredError, usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
 import { createPlanFromDraft } from '../domain/planner';
 import type { PlannerDataAvailability, PlannerDataRecovery } from '../domain/plannerDataReadAuthority';
@@ -11,7 +11,7 @@ import {
   getWeeklyPlanningApprovalPlanRepository,
 } from '../features/weeklyPlanning/application/weeklyPlanningApprovalPlanRepository';
 import type { WeeklyDraftApprovalOperation } from '../features/weeklyPlanning/planning/weeklyPlanningApprovalTypes';
-import { useAuthSessionState } from './useAuthSessionState';
+import { useAuthSessionState, type ProfileRestoreRecovery } from './useAuthSessionState';
 import { useNoticeState, type NoticeState } from './useNoticeState';
 import { usePlannerDataState } from './usePlannerDataState';
 import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
@@ -45,9 +45,11 @@ import type {
 interface PlannerAppState {
   booting: boolean;
   user: User | null;
+  profileRestoreRecovery: ProfileRestoreRecovery;
+  retryProfileRestore: () => Promise<void>;
   plans: Plan[];
   actuals: Actual[];
-  dayNotes: DayNote[];
+  dayNotes: DayNote[] | null;
   monthEvents: MonthEvent[];
   todos: TodoTask[];
   studySubjects: StudySubject[];
@@ -83,6 +85,7 @@ interface PlannerAppState {
   openCreatePlan: () => void;
   openEditPlan: (plan: Plan) => void;
   closePlanEditor: () => void;
+  createPlanDraft: (draft: PlanDraft) => Promise<void>;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   movePlanOccurrence: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
@@ -97,6 +100,7 @@ interface PlannerAppState {
   linkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   deleteActual: (actual: Actual) => Promise<void>;
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
+  loadDayNotes: () => Promise<void>;
   saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
   deleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
   saveTodo: (draft: TodoTaskDraft, targetTodoId?: string) => Promise<void>;
@@ -135,7 +139,7 @@ interface PlannerAppState {
   currentDayNote: DayNote | DayNoteDraft | null;
 }
 
-export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, onBootstrapSettled }: { noticeAutoDismiss?: boolean; expectedUserId?: string; onBootstrapSettled?: () => void } = {}): PlannerAppState {
+export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, onBootstrapSettled, isSessionCurrent }: { noticeAutoDismiss?: boolean; expectedUserId?: string; onBootstrapSettled?: () => void; isSessionCurrent?: () => boolean } = {}): PlannerAppState {
   const { notice, showNotice, dismissNotice } = useNoticeState(noticeAutoDismiss);
   const weeklyPlanningApprovalPlanRepository =
     getWeeklyPlanningApprovalPlanRepository();
@@ -143,13 +147,15 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     booting,
     user,
     bootstrapSession,
+    profileRestoreRecovery,
+    retryProfileRestore: retryProfileSession,
     signUpWithPassword: registerWithPassword,
     signInWithPassword: loginWithPassword,
     signInWithGoogle: loginWithGoogle,
     sendPasswordReset,
     saveUserProfile,
     signOut: signOutSession,
-  } = useAuthSessionState({ showNotice, expectedUserId, onBootstrapSettled });
+  } = useAuthSessionState({ showNotice, expectedUserId, onBootstrapSettled, isSessionCurrent });
   const {
     plans: storedPlans,
     actuals,
@@ -173,13 +179,16 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     editingPlan,
     isRecurringPlanEdit,
     pendingRecurringPlanAction,
-    loadPlannerData,
+    bootstrapPlannerData,
+    loadDayNotes,
+    projectPlanSave,
     resetPlannerData,
     setViewMode,
     openCreatePlan,
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
+    createPlanDraft,
     movePlanOccurrence,
     deleteDayOccurrence,
     deletePlan,
@@ -217,6 +226,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
   } = usePlannerDataState({
     userId: user?.id ?? null,
     showNotice,
+    deferDayNotes: true,
   });
   const { scope: approvalScope, invalidate: invalidateApprovalScope } = usePlannerMutationScope(user?.id ?? null);
   const [weeklyApprovedPlanOverlay, setWeeklyApprovedPlanOverlay, clearWeeklyApprovedPlanOverlay] =
@@ -235,9 +245,11 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     clearWeeklyApprovedPlanOverlay([]);
   }, [clearWeeklyApprovedPlanOverlay, user?.id]);
 
+  const retryProfileRestore = useCallback(() => retryProfileSession(bootstrapPlannerData), [retryProfileSession, bootstrapPlannerData]);
+
   useEffect(() => {
-    void bootstrapSession(loadPlannerData);
-  }, [bootstrapSession, loadPlannerData]);
+    void bootstrapSession(bootstrapPlannerData);
+  }, [bootstrapSession, bootstrapPlannerData]);
 
   // Keep the early request, but do not repeat a confirmed successful read when
   // the root-owned profile is restored. A fresh root mount gets a fresh scope.
@@ -269,7 +281,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     const currentUser = await loginWithPassword(email, password);
 
     if (currentUser) {
-      await loadPlannerData(currentUser.id);
+      await bootstrapPlannerData(currentUser.id);
     }
   }
 
@@ -277,7 +289,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     const currentUser = await loginWithGoogle();
 
     if (currentUser) {
-      await loadPlannerData(currentUser.id);
+      await bootstrapPlannerData(currentUser.id);
     }
   }
 
@@ -307,27 +319,20 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     );
 
     try {
-      const savedPlan = await weeklyPlanningApprovalPlanRepository.saveApprovedPlan(draft);
+      // The repository acknowledgement remains the durable authority. The data
+      // hook tracks the write before dispatch and reconciles only Plans/Todos
+      // if a newer read or another mutation crossed this acknowledgement.
+      const savedPlan = await projectPlanSave(
+        () => weeklyPlanningApprovalPlanRepository.saveApprovedPlan(draft),
+      );
       if (!approvalScope.isCurrent()) throw new PlannerMutationScopeExpiredError();
-      setWeeklyApprovedPlanOverlay((current) =>
-        sortByDateTime(
-          upsertByKey(
-            current.filter((plan) => plan.id !== nextPlan.id),
-            savedPlan,
-            (plan) => plan.id,
-          ),
-        ),
-      );
-      await loadPlannerData(user.id);
-      setWeeklyApprovedPlanOverlay((current) =>
-        current.filter((plan) => plan.id !== nextPlan.id && plan.id !== savedPlan.id),
-      );
       return savedPlan;
-    } catch (error) {
+    } finally {
+      // This overlay is pending UI only. Confirmed rows belong to the shared
+      // projection; failed/unknown responses must never become saved truth.
       setWeeklyApprovedPlanOverlay((current) =>
         current.filter((plan) => plan.id !== nextPlan.id),
       );
-      throw error;
     }
   }
 
@@ -343,6 +348,8 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
   return {
     booting,
     user,
+    profileRestoreRecovery,
+    retryProfileRestore,
     plans,
     actuals,
     dayNotes,
@@ -378,6 +385,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
+    createPlanDraft,
     movePlanOccurrence,
     saveWeeklyApprovedPlan: approvalScope.bindMutation(saveWeeklyApprovedPlan),
     completeWeeklyApprovalOperation: approvalScope.bindMutation(completeWeeklyApprovalOperation),
@@ -391,6 +399,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     linkStandaloneActualToPlan,
     deleteActual,
     saveDayNote,
+    loadDayNotes,
     saveMonthEvent,
     deleteMonthEvent,
     saveTodo,

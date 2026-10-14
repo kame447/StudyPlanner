@@ -6,7 +6,7 @@ import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // This is the supported toolchain pin, not evidence of a fresh live-provider evaluation.
-const PINNED_WRANGLER_VERSION = '4.143.1';
+const PINNED_WRANGLER_VERSION = '4.147.0';
 let failureStage = 'startup';
 
 async function loadWrangler() {
@@ -18,7 +18,7 @@ async function loadWrangler() {
       `Refusing remote evaluation with Wrangler ${String(packageJson.version)}; expected ${PINNED_WRANGLER_VERSION}.`);
     return import(pathToFileURL(resolve(dirname(executable), '../wrangler-dist/cli.js')).href);
   }
-  throw new Error('Put the verified Wrangler 4.143.1 binary on PATH before running this evaluator.');
+  throw new Error('Put the verified Wrangler 4.147.0 binary on PATH before running this evaluator.');
 }
 
 function parseArgs() {

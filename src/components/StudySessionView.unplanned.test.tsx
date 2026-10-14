@@ -80,7 +80,7 @@ it('starts from an empty Home and persists an unplanned Actual without creating 
 it('class Home keeps an accessible schedule button while its primary action starts unplanned study', async () => {
   const classPlan = { ...futurePlan, sourceType: 'timetable' as const, title: '数学の授業' };
   await mount(classPlan);
-  const inspect = renderer!.root.findByProps({ className: 'home-next-title-action' });
+  const inspect = renderer!.root.findByProps({ className: 'home-plan-inspect' });
   expect(inspect.type).toBe('button');
   expect(inspect.props.type).toBe('button');
   expect(inspect.props['aria-label']).toContain('授業を確認');
@@ -278,4 +278,242 @@ it.each([{ label: 'planned', nextPlan: futurePlan }, { label: 'unplanned', nextP
   await click('終了する');
   expect(page.scrollTop).toBe(0);
   expect(renderer!.root.findByProps({ rows: 3 }).props.value).toBe('スクロール後も入力を保持');
+});
+
+it('keeps planned context once, behind an optional disclosure, without repeated start explanations', async () => {
+  const planned = { ...futurePlan, memo: '読み直すページを確認' };
+  await mount(planned); await click('勉強を開始');
+  const dialog = renderer!.root.findByProps({ role: 'dialog' });
+  const context = dialog.findByProps({ className: 'study-session-details' });
+  expect(context.type).toBe('details');
+  expect(context.props.open).toBeUndefined();
+  expect(context.findByType('summary').children).toEqual(['詳細']);
+  expect(context.findAllByType('dd').map(node => node.children.join(''))).toEqual([planned.title, planned.subject, book.name, planned.memo].filter(Boolean));
+  expect(dialog.findAllByProps({ className: 'study-session-helper' })).toHaveLength(0);
+  expect(dialog.findAllByProps({ className: 'study-session-card study-session-context-card' })).toHaveLength(0);
+  expect(dialog.findByProps({ 'aria-label': '学習内容' }).props.value).toBe('planned');
+  expect(dialog.findAllByType('h2')).toHaveLength(0);
+  expect(dialog.findByProps({ 'data-study-session-elapsed': true }).props['aria-label']).toBe('経過時間');
+});
+
+it('retains accessible mode controls and the break-inclusion notice before explicit start', async () => {
+  await mount(futurePlan); await click('勉強を開始');
+  await change({ 'aria-label': '学習内容' }, 'unplanned');
+  const picker = renderer!.root.findByProps({ role: 'group', 'aria-label': '学習方式' });
+  const [normal, pomodoro] = picker.findAllByType('button');
+  expect(normal.props['aria-pressed']).toBe(true);
+  await act(async () => { pomodoro.props.onClick(); });
+  expect(pomodoro.props['aria-pressed']).toBe(true);
+  expect(renderer!.root.findByProps({ 'data-study-session-phase-remaining': true }).children).toEqual(['25:00']);
+  expect(renderer!.root.findAllByType('small').some(node => node.children.includes('休憩を含めて記録'))).toBe(true);
+  expect(renderer!.root.findByProps({ 'aria-label': '勉強する内容' }).props.value).toBe('');
+  await click('スタート');
+  expect(pomodoro.props.disabled).toBe(true);
+  expect(normal.props.disabled).toBe(true);
+  await click('終了する'); await click('記録を保存');
+  expect(standalone).toHaveBeenCalledTimes(1);
+  expect(linked).not.toHaveBeenCalled();
+});
+
+
+it('keeps the entire planned title readable before start even without other details', async () => {
+  const title = '長い学習内容を開始前に確認するためのタイトル'.repeat(10);
+  const planned = { ...futurePlan, title, subject: '', memo: '', materialId: null, materialName: '' };
+  await mount(planned); await click('勉強を開始');
+  const details = renderer!.root.findByProps({ className: 'study-session-details' });
+  expect(details.props.open).toBeUndefined();
+  expect(details.findAllByType('dd').map(node => node.children.join(''))).toEqual([title]);
+});
+
+async function choosePomodoro() {
+  const picker = renderer!.root.findByProps({ role: 'group', 'aria-label': '学習方式' });
+  await act(async () => { picker.findAllByType('button')[1].props.onClick(); });
+}
+async function openPomodoroSettings() {
+  await act(async () => { renderer!.root.findByProps({ 'aria-label': '集中と休憩の設定' }).props.onClick(); });
+}
+
+it('keeps Pomodoro settings on a separate screen and saves them without starting or losing study inputs', async () => {
+  await mount(futurePlan); await click('勉強を開始');
+  await change({ 'aria-label': '学習内容' }, 'unplanned');
+  await change({ 'aria-label': '勉強する内容' }, '設定を変えても残す');
+  await change({ 'aria-label': '教材' }, 'book');
+  await choosePomodoro(); await openPomodoroSettings();
+  expect(renderer!.root.findByProps({ role: 'dialog' }).props['aria-label']).toBe('ポモドーロ設定');
+  expect(renderer!.root.findAllByProps({ 'aria-label': '勉強する内容' })).toHaveLength(0);
+  expect(renderer!.root.findAllByProps({ className: 'study-session-timer-ring' })).toHaveLength(0);
+  await click('50分 / 10分');
+  await change({ 'aria-label': 'セット数' }, '3');
+  await click('設定を保存');
+  expect(renderer!.root.findByProps({ role: 'dialog' }).props['aria-label']).toBe('学習を開始');
+  expect(renderer!.root.findByProps({ 'data-study-session-phase-remaining': true }).children).toEqual(['50:00']);
+  expect(renderer!.root.findByProps({ 'aria-label': '勉強する内容' }).props.value).toBe('設定を変えても残す');
+  expect(renderer!.root.findByProps({ 'aria-label': '教材' }).props.value).toBe('book');
+  expect(standalone).not.toHaveBeenCalled();
+  await openPomodoroSettings();
+  expect(renderer!.root.findByProps({ 'aria-label': 'セット数' }).props.value).toBe(3);
+  expect(button('50分 / 10分').props['aria-pressed']).toBe(true);
+});
+
+it('Back discards unsaved settings while keeping committed values and the study target', async () => {
+  const page = { scrollTop: 0 };
+  await mount(futurePlan, page); await click('勉強を開始'); await choosePomodoro();
+  page.scrollTop = 50;
+  await openPomodoroSettings(); expect(page.scrollTop).toBe(0);
+  await click('50分 / 10分'); await change({ 'aria-label': 'セット数' }, '2');
+  page.scrollTop = 150;
+  await back(); expect(page.scrollTop).toBe(0);
+  expect(renderer!.root.findByProps({ 'data-study-session-phase-remaining': true }).children).toEqual(['25:00']);
+  expect(renderer!.root.findByProps({ 'aria-label': '学習内容' }).props.value).toBe('planned');
+  await openPomodoroSettings();
+  expect(renderer!.root.findByProps({ 'aria-label': 'セット数' }).props.value).toBe('');
+  expect(button('25分 / 5分').props['aria-pressed']).toBe(true);
+  expect(window.confirm).not.toHaveBeenCalled();
+});
+
+it('retained settings and start callbacks cannot start from settings or modify an active session', async () => {
+  await mount(); await click('勉強を開始'); await choosePomodoro();
+  const start = button('スタート').props.onClick;
+  const open = renderer!.root.findByProps({ 'aria-label': '集中と休憩の設定' }).props.onClick;
+  await openPomodoroSettings();
+  await act(async () => { start(); });
+  expect(renderer!.root.findByProps({ role: 'dialog' }).props['aria-label']).toBe('ポモドーロ設定');
+  await click('50分 / 10分'); await change({ 'aria-label': 'セット数' }, '1');
+  const saveSettings = button('設定を保存').props.onClick;
+  await back(); await click('スタート');
+  await act(async () => { open(); saveSettings(); });
+  expect(renderer!.root.findByProps({ role: 'dialog' }).props['aria-label']).toBe('学習中');
+  expect(renderer!.root.findByProps({ 'data-study-session-phase-remaining': true }).children).toEqual(['25:00']);
+  expect(renderer!.root.findAllByProps({ 'aria-label': '集中と休憩の設定' })).toHaveLength(0);
+});
+
+it.each([{ preset: '25分 / 5分', focus: 25, cycle: 30 }, { preset: '50分 / 10分', focus: 50, cycle: 60 }])('stops at one complete $preset set, retaining explicit record review and break duration', async ({ preset, focus, cycle }) => {
+  let tick = () => {};
+  vi.spyOn(window, 'setInterval').mockImplementation(handler => { tick = handler as () => void; return 1 as unknown as ReturnType<typeof window.setInterval>; });
+  vi.spyOn(window, 'clearInterval').mockImplementation(() => {});
+  await mount(); await click('勉強を開始'); await choosePomodoro(); await openPomodoroSettings();
+  await click(preset); await change({ 'aria-label': 'セット数' }, '1'); await click('設定を保存'); await click('スタート');
+  vi.setSystemTime(new Date(`2026-10-07T12:${focus.toString().padStart(2, '0')}:00`));
+  await act(async () => tick());
+  expect(renderer!.root.findByProps({ 'data-pomodoro-phase': true }).children).toEqual(['休憩']);
+  vi.setSystemTime(new Date(new Date('2026-10-07T12:00:00').getTime() + (cycle + 4) * 60_000));
+  await act(async () => tick());
+  expect(renderer!.root.findByProps({ role: 'status' }).children).toEqual(['全セット完了']);
+  expect(renderer!.root.findByProps({ 'data-study-session-phase-remaining': true }).children).toEqual(['00:00']);
+  expect(button('完了').props.disabled).toBe(true);
+  expect(standalone).not.toHaveBeenCalled();
+  expect(renderer!.root.findByProps({ role: 'dialog' }).props['aria-label']).toBe('学習中');
+  await click('終了する'); await back();
+  expect(button('完了').props.disabled).toBe(true);
+  await click('終了する'); await click('記録を保存');
+  expect(standalone).toHaveBeenCalledWith(expect.objectContaining({ actualStartTime: '12:00', actualEndTime: cycle === 60 ? '13:00' : '12:30' }));
+});
+
+it('caps a finite Pomodoro record even if finish precedes a delayed timer tick', async () => {
+  await mount(); await click('勉強を開始'); await choosePomodoro(); await openPomodoroSettings();
+  await change({ 'aria-label': 'セット数' }, '2'); await click('設定を保存'); await click('スタート');
+  vi.setSystemTime(new Date('2026-10-07T13:15:00'));
+  await click('終了する'); await click('記録を保存');
+  expect(standalone).toHaveBeenCalledWith(expect.objectContaining({ actualStartTime: '12:00', actualEndTime: '13:00' }));
+});
+
+it('does not count paused time toward a finite Pomodoro goal and repeated resume keeps elapsed work', async () => {
+  await mount(); await click('勉強を開始'); await choosePomodoro(); await openPomodoroSettings();
+  await change({ 'aria-label': 'セット数' }, '1'); await click('設定を保存'); await click('スタート');
+  vi.setSystemTime(new Date('2026-10-07T12:10:00')); await click('一時停止');
+  vi.setSystemTime(new Date('2026-10-07T12:20:00'));
+  const resume = button('再開').props.onClick;
+  await act(async () => { resume(); resume(); });
+  vi.setSystemTime(new Date('2026-10-07T12:25:00')); await act(async () => { resume(); });
+  await click('終了する'); await click('記録を保存');
+  expect(standalone).toHaveBeenCalledWith(expect.objectContaining({ actualStartTime: '12:00', actualEndTime: '12:15' }));
+});
+
+it.each(['tick', 'pause', 'finish'])('uses the actual Pomodoro completion date when a completed session stays open overnight (%s)', async endPath => {
+  let tick = () => {};
+  vi.spyOn(window, 'setInterval').mockImplementation(handler => { tick = handler as () => void; return 1 as unknown as ReturnType<typeof window.setInterval>; });
+  vi.spyOn(window, 'clearInterval').mockImplementation(() => {});
+  vi.setSystemTime(new Date('2026-10-07T22:00:00'));
+  await mount(); await click('勉強を開始'); await choosePomodoro(); await openPomodoroSettings();
+  await change({ 'aria-label': 'セット数' }, '1'); await click('設定を保存'); await click('スタート');
+  vi.setSystemTime(new Date('2026-10-07T22:35:00'));
+  if (endPath === 'tick') await act(async () => tick());
+  if (endPath === 'pause') await click('一時停止');
+  vi.setSystemTime(new Date('2026-10-08T08:00:00'));
+  await click('終了する'); await click('記録を保存');
+  expect(standalone).toHaveBeenCalledWith(expect.objectContaining({ occurrenceDate: '2026-10-07', actualStartTime: '22:00', actualEndTime: '22:30' }));
+});
+
+it('retained resume cannot restart a paused tracker behind record review', async () => {
+  await mount(); await click('勉強を開始'); await click('スタート');
+  vi.setSystemTime(new Date('2026-10-07T12:05:00')); await click('一時停止');
+  const resume = button('再開').props.onClick;
+  await click('終了する');
+  await act(async () => { resume(); });
+  vi.setSystemTime(new Date('2026-10-07T12:20:00')); await back();
+  expect(button('再開')).toBeDefined();
+  await click('終了する'); await click('記録を保存');
+  expect(standalone).toHaveBeenCalledWith(expect.objectContaining({ actualEndTime: '12:05' }));
+});
+
+it('requires date review when the active Pomodoro measurement itself crosses midnight', async () => {
+  vi.setSystemTime(new Date('2026-10-07T23:45:00'));
+  await mount(); await click('勉強を開始'); await choosePomodoro(); await openPomodoroSettings();
+  await change({ 'aria-label': 'セット数' }, '1'); await click('設定を保存'); await click('スタート');
+  vi.setSystemTime(new Date('2026-10-08T08:00:00'));
+  await click('終了する'); await click('記録を保存');
+  expect(standalone).not.toHaveBeenCalled();
+  expect(renderer!.root.findAllByProps({ role: 'alert' }).some(node => node.children.some(text => typeof text === 'string' && text.includes('日付をまたいだ計測')))).toBe(true);
+});
+
+it('keeps the planned automatic set count as a goal without introducing an automatic stop', async () => {
+  let tick = () => {};
+  vi.spyOn(window, 'setInterval').mockImplementation(handler => { tick = handler as () => void; return 1 as unknown as ReturnType<typeof window.setInterval>; });
+  vi.spyOn(window, 'clearInterval').mockImplementation(() => {});
+  await mount(futurePlan); await click('勉強を開始'); await choosePomodoro(); await click('スタート');
+  vi.setSystemTime(new Date('2026-10-07T13:05:00'));
+  await act(async () => tick());
+  expect(renderer!.root.findAllByProps({ role: 'status' })).toHaveLength(0);
+  expect(button('一時停止').props.disabled).toBe(false);
+  await click('終了する'); await click('記録を保存');
+  expect(linked).toHaveBeenCalledWith(futurePlan, expect.objectContaining({ actualStartTime: '12:00', actualEndTime: '13:05' }));
+});
+
+
+it('uses the newly saved preset and set limit even through a retained Start callback', async () => {
+  await mount(); await click('勉強を開始'); await choosePomodoro();
+  const retainedStart = button('スタート').props.onClick;
+  await openPomodoroSettings(); await click('50分 / 10分');
+  await change({ 'aria-label': 'セット数' }, '1'); await click('設定を保存');
+  await act(async () => { retainedStart(); });
+  expect(renderer!.root.findByProps({ 'data-study-session-phase-remaining': true }).children).toEqual(['50:00']);
+  vi.setSystemTime(new Date('2026-10-07T13:20:00'));
+  await click('終了する'); await click('記録を保存');
+  expect(standalone).toHaveBeenCalledWith(expect.objectContaining({ actualStartTime: '12:00', actualEndTime: '13:00' }));
+});
+
+
+it('keeps the latest mode and settings when Save and a retained Start arrive together', async () => {
+  await mount(); await click('勉強を開始');
+  const retainedStart = button('スタート').props.onClick;
+  await choosePomodoro(); await openPomodoroSettings();
+  await click('50分 / 10分'); await change({ 'aria-label': 'セット数' }, '1');
+  const save = button('設定を保存').props.onClick;
+  await act(async () => { save(); retainedStart(); });
+  expect(renderer!.root.findByProps({ 'data-study-session-phase-remaining': true }).children).toEqual(['50:00']);
+  vi.setSystemTime(new Date('2026-10-07T13:20:00'));
+  await click('終了する'); await click('記録を保存');
+  expect(standalone).toHaveBeenCalledWith(expect.objectContaining({ actualEndTime: '13:00' }));
+});
+
+it('ignores a discarded settings Save callback after a different settings screen is opened', async () => {
+  await mount(); await click('勉強を開始'); await choosePomodoro(); await openPomodoroSettings();
+  await click('50分 / 10分'); await change({ 'aria-label': 'セット数' }, '3');
+  const discardedSave = button('設定を保存').props.onClick;
+  await back(); await openPomodoroSettings();
+  await act(async () => { discardedSave(); });
+  expect(renderer!.root.findByProps({ role: 'dialog' }).props['aria-label']).toBe('ポモドーロ設定');
+  await click('設定を保存');
+  expect(renderer!.root.findByProps({ 'data-study-session-phase-remaining': true }).children).toEqual(['25:00']);
+  expect(renderer!.root.findByProps({ 'aria-label': '集中と休憩の設定' }).children.join('')).toContain('制限なし');
 });

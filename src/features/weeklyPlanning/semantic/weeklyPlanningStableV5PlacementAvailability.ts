@@ -1,7 +1,8 @@
 import { createScheduleOccurrenceProjection } from '../../../domain/scheduleOccurrence';
+import { doesMonthEventOccurOnDate } from '../../../lib/monthEvents';
 import { getRecurrenceWeekday } from '../../../lib/planRecurrence';
 import { buildTimetableImportCandidates } from '../../../lib/timetableImport';
-import type { Plan, ScheduleTemplate } from '../../../types/domain';
+import type { MonthEvent, Plan, ScheduleTemplate } from '../../../types/domain';
 import type { GenericSchedulerInput } from './weeklyPlanningGenericSchedulerInput';
 import type { WeeklyPlanningPlacementNotBeforeV5 } from './weeklyPlanningStableV5PlacementPolicy';
 
@@ -21,6 +22,7 @@ export const DEFAULT_PLACEMENT_DAY_END = '22:00';
 
 const EXISTING_PLAN_BUFFER_MINUTES = 10;
 const MINUTES_PER_DAY = 24 * 60;
+const PLACEMENT_CLOCK = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 
 export function minutesFromPlacementTime(time: string): number {
   if (time === '24:00') return MINUTES_PER_DAY;
@@ -95,6 +97,60 @@ function existingPlanIntervals(
   });
 }
 
+function monthEventIntervals(params: {
+  ownerId: string;
+  monthEvents?: readonly MonthEvent[];
+  dates: readonly string[];
+}): MinuteInterval[] {
+  if (!params.monthEvents?.length || params.dates.length === 0) return [];
+  const dates = [...params.dates].sort();
+  const projection = createScheduleOccurrenceProjection({
+    ownerId: params.ownerId,
+    startDate: dates[0],
+    endDate: dates[dates.length - 1],
+    plans: [],
+    monthEvents: params.monthEvents.filter((event) => {
+      // Match the existing editor's all-day representations without deciding
+      // their deferred busy/free policy in the ordinary timed-event path.
+      const allDay = event.startTime === '00:00'
+        && (event.endTime === '24:00' || event.endTime === '23:59' || event.endTime === '00:00');
+      if (event.userId !== params.ownerId || event.busy === false || allDay
+        || !params.dates.some((date) => doesMonthEventOccurOnDate(event, date))) return false;
+      // Check raw clocks before the canonical projection's overlap filter can
+      // discard invalid occupied data. Calendar membership uses its same helper.
+      if (!PLACEMENT_CLOCK.test(event.startTime)
+        || !(PLACEMENT_CLOCK.test(event.endTime) || event.endTime === '24:00')) {
+        throw new RangeError('Invalid timed schedule occurrence clock');
+      }
+      return true;
+    }),
+    scheduleTemplates: [],
+  });
+  const intervals: MinuteInterval[] = [];
+  for (const occurrence of projection.occurrences) {
+    if (!occurrence.busy) continue;
+    if (!PLACEMENT_CLOCK.test(occurrence.start.time)
+      || !PLACEMENT_CLOCK.test(occurrence.end.time)) {
+      throw new RangeError('Invalid timed schedule occurrence clock');
+    }
+    // Recurrence, exclusions, multi-day spans and 24:00 normalization belong
+    // to the canonical projection. Only apply the existing placement buffer.
+    addCrossDateInterval({
+      dates: params.dates,
+      startDate: occurrence.start.date,
+      startTime: placementTimeFromMinutes(
+        minutesFromPlacementTime(occurrence.start.time) - EXISTING_PLAN_BUFFER_MINUTES,
+      ),
+      endDate: occurrence.end.date,
+      endTime: placementTimeFromMinutes(
+        minutesFromPlacementTime(occurrence.end.time) + EXISTING_PLAN_BUFFER_MINUTES,
+      ),
+      target: intervals,
+    });
+  }
+  return intervals;
+}
+
 function timetableIntervals(params: {
   ownerId: string;
   plans: readonly Plan[];
@@ -161,12 +217,18 @@ export function buildPlacementBusyIntervals(params: {
   input: GenericSchedulerInput;
   dates: readonly string[];
   plans: readonly Plan[];
+  monthEvents?: readonly MonthEvent[];
   scheduleTemplates: readonly ScheduleTemplate[];
   timetableTermId?: string;
 }): MinuteInterval[] {
   return [
     ...hardConstraintIntervals({ input: params.input, dates: params.dates }),
     ...existingPlanIntervals(params.plans, params.dates),
+    ...monthEventIntervals({
+      ownerId: params.input.ownerId,
+      monthEvents: params.monthEvents,
+      dates: params.dates,
+    }),
     ...timetableIntervals({
       ownerId: params.input.ownerId,
       plans: params.plans,
@@ -210,33 +272,9 @@ export function buildPlacementWindowsByDate(params: {
     notBefore: params.notBefore,
   })));
 
-  const hardAvailable = params.input.availabilityWindows.filter((window) =>
-    window.constraintLevel === 'hard'
-    && window.kind === 'available'
-    && window.start.date === window.end.date);
-  hardAvailable.forEach((window, windowIndex) => {
-    const start = minutesFromPlacementTime(window.start.time);
-    const end = minutesFromPlacementTime(window.end.time);
-    if (end <= start) {
-      result.set(window.start.date, []);
-      return;
-    }
-    const clipped = clampPlacementWindowsToNotBefore({
-      date: window.start.date,
-      windows: [{ start, end }],
-      notBefore: params.notBefore,
-    });
-    const previous = result.get(window.start.date);
-    const hasPriorHardWindow = hardAvailable
-      .slice(0, windowIndex)
-      .some((candidate) => candidate.start.date === window.start.date);
-    result.set(
-      window.start.date,
-      hasPriorHardWindow ? [...(previous ?? []), ...clipped] : clipped,
-    );
-  });
-  for (const [date, windows] of result) {
-    result.set(date, windows.sort((left, right) => left.start - right.start));
+  const hardAvailable = buildHardAvailableWindowsByDate(params);
+  for (const [date, windows] of hardAvailable) {
+    result.set(date, windows);
   }
   return result;
 }
@@ -251,22 +289,24 @@ export function buildHardAvailableWindowsByDate(params: {
   params.input.availabilityWindows
     .filter((window) =>
       window.constraintLevel === 'hard'
-      && window.kind === 'available'
-      && window.start.date === window.end.date
-      && dateSet.has(window.start.date))
+      && window.kind === 'available')
     .forEach((window) => {
-      const start = minutesFromPlacementTime(window.start.time);
-      const end = minutesFromPlacementTime(window.end.time);
-      if (end <= start) return;
-      const clipped = clampPlacementWindowsToNotBefore({
-        date: window.start.date,
-        windows: [{ start, end }],
-        notBefore: params.notBefore,
+      const intervals: MinuteInterval[] = [];
+      addCrossDateInterval({
+        dates: params.dates,
+        startDate: window.start.date, startTime: window.start.time,
+        endDate: window.end.date, endTime: window.end.time,
+        target: intervals,
       });
-      result.set(window.start.date, [
-        ...(result.get(window.start.date) ?? []),
-        ...clipped,
-      ]);
+      if (intervals.length === 0 && window.start.date === window.end.date && dateSet.has(window.start.date)) {
+        result.set(window.start.date, []);
+      }
+      for (const interval of intervals) {
+        const clipped = clampPlacementWindowsToNotBefore({
+          date: interval.date, windows: [{ start: interval.start, end: interval.end }], notBefore: params.notBefore,
+        });
+        result.set(interval.date, [...(result.get(interval.date) ?? []), ...clipped]);
+      }
     });
   for (const [date, windows] of result) {
     result.set(date, windows.sort((left, right) => left.start - right.start));

@@ -8,6 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type TouchEvent as ReactTouchEvent,
 } from 'react';
+import { getPlanScheduleColor, getScheduleOccurrenceColor, scheduleEventWeekStyle } from '../lib/scheduleEventColor';
 import { createPortal } from 'react-dom';
 import {
   createScheduleOccurrenceProjection,
@@ -121,6 +122,7 @@ interface DragSession {
   startScrollLeft: number;
   scrollElement: HTMLDivElement | null;
   toneClass: string;
+  toneStyle: CSSProperties;
   title: string;
   active: boolean;
   canceled: boolean;
@@ -135,6 +137,7 @@ interface DragVisualState {
   blockId: string;
   title: string;
   toneClass: string;
+  toneStyle: CSSProperties;
   target: WeekPlanMoveTarget;
   overlayX: number;
   overlayY: number;
@@ -191,6 +194,7 @@ function buildBlockStyle(entry: WeekPreviewBlock): CSSProperties {
   const heightPercent = (durationMinutes / MINUTES_PER_DAY) * 100;
 
   return {
+    ...getBlockColorStyle(entry),
     top: `${topPercent}%`,
     height: `max(${heightPercent}%, 14px)`,
     left: `calc(${entry.lane * laneWidth}% + 2px)`,
@@ -214,7 +218,14 @@ function buildDropGhostStyle(target: WeekPlanMoveTarget): CSSProperties {
   };
 }
 
+function getBlockColorStyle(entry: WeekPreviewBaseBlock): CSSProperties {
+  return entry.draft ? {} : scheduleEventWeekStyle(entry.occurrence
+    ? getScheduleOccurrenceColor(entry.occurrence) : getPlanScheduleColor(entry),
+  entry.occurrence?.source.backingKind === 'month-event' ? 'theme' : 'pastel');
+}
+
 function getToneClass(entry: WeekPreviewBaseBlock): string {
+  if (!entry.draft) return '';
   const key = (entry.subject || entry.title || entry.id).trim();
   const toneIndex = Array.from(key || entry.id).reduce(
     (sum, character) => sum + character.charCodeAt(0),
@@ -416,6 +427,7 @@ export function WeekView({
       startScrollLeft: scrollElement?.scrollLeft ?? 0,
       scrollElement,
       toneClass: getToneClass(entry),
+      toneStyle: getBlockColorStyle(entry),
       title: entry.title,
       active: false,
       canceled: false,
@@ -500,6 +512,7 @@ export function WeekView({
       blockId: session.blockId,
       title: session.title,
       toneClass: session.toneClass,
+      toneStyle: session.toneStyle,
       target,
       overlayX: clientX - session.grabOffsetX,
       overlayY: clientY - session.grabOffsetY,
@@ -849,6 +862,7 @@ export function WeekView({
           <div
             className={`schedule-week-drag-overlay ${dragVisual.toneClass}`}
             style={{
+              ...dragVisual.toneStyle,
               left: dragVisual.overlayX,
               top: dragVisual.overlayY,
               width: dragVisual.width,
@@ -1062,7 +1076,7 @@ export function WeekView({
                       {targetGhost ? (
                         <span
                           className={`schedule-week-drop-ghost ${targetGhost.toneClass}`}
-                          style={buildDropGhostStyle(targetGhost.target)}
+                          style={{ ...buildDropGhostStyle(targetGhost.target), ...targetGhost.toneStyle }}
                           aria-hidden="true"
                         >
                           <strong>{targetGhost.title}</strong>

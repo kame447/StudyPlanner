@@ -1,3 +1,4 @@
+import type { SemanticConversationActV5 } from './weeklyPlanningConversationActsV5';
 import type { UserPlanningContextSemanticFactV1 } from '../../userPlanningContext/userPlanningContextTypes';
 
 export const WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 =
@@ -340,6 +341,8 @@ export interface WeeklyPlanningSemanticDocumentV5 {
   availabilityDeclarations: SemanticAvailabilityDeclarationV5[];
   constraintSourceRequests: SemanticConstraintSourceRequestV5[];
   userContextFacts?: UserPlanningContextSemanticFactV1[];
+  /** Optional for older internal documents; absent means no conversational act. */
+  conversationActs?: SemanticConversationActV5[];
   uncertainties: SemanticUncertaintyV5[];
   corrections: SemanticCorrectionV5[];
   decisions: SemanticDecisionV5[];

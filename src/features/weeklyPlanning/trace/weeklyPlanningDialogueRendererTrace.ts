@@ -86,7 +86,7 @@ function utf8Bytes(value: string): Uint8Array {
 function decodeUtf8Prefix(bytes: Uint8Array, maxBytes: number): string {
   for (let length = Math.min(bytes.byteLength, Math.max(0, maxBytes)); length >= 0; length -= 1) {
     try {
-      return new TextDecoder('utf-8', { fatal: true }).decode(bytes.slice(0, length));
+      return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes.slice(0, length));
     } catch {
       // Back up when the byte limit cuts a multi-byte code point.
     }
@@ -98,7 +98,7 @@ function decodeUtf8Suffix(bytes: Uint8Array, maxBytes: number): string {
   const start = Math.max(0, bytes.byteLength - Math.max(0, maxBytes));
   for (let offset = start; offset <= bytes.byteLength; offset += 1) {
     try {
-      return new TextDecoder('utf-8', { fatal: true }).decode(bytes.slice(offset));
+      return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes.slice(offset));
     } catch {
       // Advance when the suffix starts in the middle of a multi-byte code point.
     }
