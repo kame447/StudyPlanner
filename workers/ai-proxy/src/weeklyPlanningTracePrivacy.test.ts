@@ -170,6 +170,24 @@ describe('weekly planning trace privacy boundary', () => {
       .toThrow(/no valid epoch secret/);
   });
 
+  it('extends the retained epoch ring without replacing existing identity keys', async () => {
+    const primary = JSON.stringify({ '690': 'a'.repeat(64) });
+    const extension = JSON.stringify({ '691': 'b'.repeat(64), '692': 'c'.repeat(64) });
+    const old = parseWeeklyPlanningTraceHmacSecrets(primary);
+    const combined = parseWeeklyPlanningTraceHmacSecrets(primary, extension);
+    expect(traceSubjectEpochsForDeletion(combined)).toEqual(['690', '691', '692']);
+    expect(await createWeeklyPlanningTraceSubject('owner', '690', combined))
+      .toEqual(await createWeeklyPlanningTraceSubject('owner', '690', old));
+    expect((await createWeeklyPlanningTraceSubject('owner', '691', combined)).epoch).toBe('691');
+    await expect(createWeeklyPlanningTraceSubject('owner', '691', old))
+      .rejects.toThrow(/missing for epoch 691/);
+    expect(() => parseWeeklyPlanningTraceHmacSecrets(primary, JSON.stringify({
+      '690': 'z'.repeat(64),
+    }))).toThrow(/duplicate epoch/);
+    expect(() => parseWeeklyPlanningTraceHmacSecrets(primary, '{bad'))
+      .toThrow(/invalid JSON/);
+  });
+
   it('uses epochs no longer than thirty days and assigns a 180 day expiry', () => {
     const epochMs = 30 * 24 * 60 * 60 * 1000;
     const reference = new Date(OCCURRED_AT);

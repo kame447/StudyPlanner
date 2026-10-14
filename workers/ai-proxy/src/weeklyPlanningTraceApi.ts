@@ -30,6 +30,7 @@ import type { FirestoreTokenProvider } from './firestoreServiceAccountClient';
 
 export interface WeeklyPlanningTraceApiEnv extends WeeklyPlanningTraceFirestoreEnv {
   WEEKLY_PLANNING_TRACE_HMAC_SECRETS: string;
+  WEEKLY_PLANNING_TRACE_HMAC_SECRETS_EXTENSION?: string;
   WEEKLY_PLANNING_TRACE_WORKER_REVISION?: string;
 }
 
@@ -149,7 +150,10 @@ async function parseJsonBody(request: Request): Promise<Record<string, unknown>>
 }
 
 function currentSecretRing(env: WeeklyPlanningTraceApiEnv) {
-  return parseWeeklyPlanningTraceHmacSecrets(env.WEEKLY_PLANNING_TRACE_HMAC_SECRETS);
+  return parseWeeklyPlanningTraceHmacSecrets(
+    env.WEEKLY_PLANNING_TRACE_HMAC_SECRETS,
+    env.WEEKLY_PLANNING_TRACE_HMAC_SECRETS_EXTENSION,
+  );
 }
 
 async function currentSubject(
