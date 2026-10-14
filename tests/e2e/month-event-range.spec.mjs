@@ -281,6 +281,7 @@ test.describe('multi-day month events', () => {
         await editor.getByRole('button', { name: '保存', exact: true }).click();
         const scope = editor.getByRole('group', { name: '繰り返し予定の更新範囲' });
         await expect(scope).toBeVisible();
+        await page.screenshot({ path: testInfo.outputPath(`recurring-event-${action}-scope-confirmation.png`) });
         expect(await page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'))).toBe(before);
         await scope.getByRole('button', { name: 'キャンセル', exact: true }).click();
         expect(await page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'))).toBe(before);

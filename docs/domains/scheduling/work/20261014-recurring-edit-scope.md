@@ -33,6 +33,18 @@ Final application snapshot identity (repository inputs excluding generated `.cac
 - Native month-event regression now includes both edit scopes, cancellation and no-write-before-confirmation assertions, while retaining deletion and navigation coverage. Syntax check and Chromium discovery select 10 cases. The mobile WebKit matrix selection now includes these same 10 cases; only that testMatch entry was added after the full application verification, with syntax/discovery checked separately. No timeout or threshold changed. Discovery is not execution; local Chromium is blocked by the already-confirmed environment EPERM.
 - `git diff --check`: passed. No configured lint script.
 
+## Integration checkpoint (2026-10-14 17:10 UTC)
+
+The original `bc191fa112b117add4e645260413d547379383f2` checkpoint remains intact. A detached release candidate combines it with the approved PR #655/#656 content (`5b04a910a1a7057c159053f077bb234a32b36121`). The only merge conflict was this domain README; both canonical work links were retained. The ordinary event validator and scoped-recurring admission code merged without removing either fix.
+
+The user subsequently requested selecting related tests rather than rerunning the full suite on every change. Accordingly, the original 8,717-test full result remains evidence for its original snapshot; it is not presented as a full run of this integrated snapshot. Integrated checks were selected from the actual changed boundaries:
+
+- 31 files / 453 tests passed: event range/domain validation, editor/navigation, recurring and ordinary save recovery, shared reconciliation/rollback, canonical and legacy batch boundaries, plus the integrated support and streak UI consumers.
+- Fresh non-incremental app/Worker typechecks and production build passed (5.35 seconds). Dependencies, repository adapters, Rules and the real Emulator runner are unchanged from the earlier successful scope checkpoint. Generated Worker declarations retain the same SHA-256.
+- Native spec/config syntax passed; Chromium and mobile WebKit discovery each selected 12 month-event cases, including PR #655's two overnight save/reload cases. The local discovery runner is Playwright 1.62.1; remote CI installs its declared 1.64.0 runner and remains the browser-execution authority.
+- After the selected unit/integration run, one native-test screenshot statement was added to capture the visible scope prompt before any write. Syntax/discovery and the fresh type/build checks cover the resulting final inputs; no app/runtime/unit-test inputs changed after the 453-test run. Browser execution and rendered screenshot inspection remain pending.
+- The app installed-manifest identity remains `8e678bb3de679bce9991a9144eaa0edde69b3451456f31e7be30cfc10d98e7c3`. No dependency, schema, Rules, timeout, budget-threshold or editor-loading changes were added.
+
 ## Separately tracked capacity result
 
 The unchanged budget gate fails seven categories on both base `1b828e77` and this change. This is a known, separately scoped capacity issue, not a new failed category. The earlier assumption of six baseline failures was stale.
@@ -44,4 +56,4 @@ Compared with the existing exact-base budget report: total JavaScript +5,111 raw
 1. Publish the authorized change through the existing release owner; no remote changes were made in this implementation worktree.
 2. Integrate current main, retaining PR #655's independent validator fix and other approved changes.
 3. Preserve the newly added mobile WebKit matrix selection for `month-event-range.spec.mjs`; validate its rendered scope prompt during native checks.
-4. Run exact integrated verification and native desktop/mobile browser gates, inspect the rendered scope prompt, then follow authorized publication and post-main checks. Local component, adapter and Emulator evidence does not establish authenticated production UI behavior or cross-device concurrency guarantees.
+4. Preserve the selected integrated checks above, run native desktop/mobile browser gates, inspect the rendered scope prompt, then follow authorized publication and post-main checks. Local component, adapter and Emulator evidence does not establish authenticated production UI behavior or cross-device concurrency guarantees.
