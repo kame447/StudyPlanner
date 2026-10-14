@@ -7,3 +7,7 @@
 - [`spec/learning-report.md`](spec/learning-report.md): 学習レポートの情報設計、集計不変条件、UI/UX、ナビゲーション、受け入れ条件
 
 本ドメインは、週間計画の意味解釈・スケジューリングや、client/server authority を所有しない。レポートは既存データを決定論的に集計して表示する二次画面であり、AI を集計や評価の正本として利用しない。
+
+進行中の作業:
+
+- [連続学習カレンダーとお休みチケット](work/20261014-study-streak-calendar-handoff.md)
