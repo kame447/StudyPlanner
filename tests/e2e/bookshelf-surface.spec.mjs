@@ -2,6 +2,8 @@ import { expect, test } from './support/fixed-clock.mjs';
 
 async function seedBookshelf(page) {
   await page.addInitScript(() => {
+    if (localStorage.getItem('bookshelf-surface-seeded')) return;
+    localStorage.setItem('bookshelf-surface-seeded', 'true');
     const today = new Date().toLocaleDateString('sv-SE');
     const tomorrowDate = new Date(`${today}T00:00:00`);
     tomorrowDate.setDate(tomorrowDate.getDate() + 1);
@@ -164,7 +166,7 @@ test('opens the redesigned bookshelf and material detail from the main navigatio
   await expect(page.getByText('アルゴリズム問題集を進める')).toBeVisible();
 
   await page.getByRole('button', { name: '教材メニューを開く' }).click();
-  await expect(page.getByText('教材内構造を編集')).toBeVisible();
+  await expect(page.getByText('目次を編集')).toBeVisible();
   await expect(page.getByText('よく使う教材から外す')).toBeVisible();
 });
 
@@ -198,3 +200,145 @@ test.describe('mobile bookshelf containment', () => {
     expect(metrics.shellWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
   });
 });
+
+for (const width of [390, 1280]) {
+  test(`table of contents editor has usable fields and spacing at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await seedBookshelf(page);
+    await openBookshelf(page);
+    await page.getByText('アルゴリズム問題集').first().click();
+    await expect(page.getByText('最近の学習記録')).toBeHidden();
+    await expect(page.getByText('今後の予定')).toBeHidden();
+    await page.getByRole('button', { name: '教材メニューを開く' }).click();
+    await page.getByRole('button', { name: '目次を編集' }).click();
+    const editor = page.locator('.bookshelf-structure-editor');
+    await expect(editor.getByRole('heading', { name: '目次', exact: true })).toBeVisible();
+    await expect(editor.getByLabel('章・節の名前 1')).toHaveValue('基礎編');
+    const geometry = await editor.evaluate(element => {
+      const row = element.querySelector('.bookshelf-structure-edit-row');
+      const inputs = [...row.querySelectorAll('input')];
+      const toggle = element.querySelector('.bookshelf-settings-group').getBoundingClientRect();
+      const list = element.querySelector('.bookshelf-structure-edit-list').getBoundingClientRect();
+      return { widths: inputs.map(input => input.getBoundingClientRect().width), heights: inputs.map(input => input.getBoundingClientRect().height), gap: list.top - toggle.bottom, overflow: element.scrollWidth - element.clientWidth };
+    });
+    expect(Math.min(...geometry.widths)).toBeGreaterThan(90);
+    expect(Math.min(...geometry.heights)).toBeGreaterThanOrEqual(44);
+    expect(geometry.gap).toBeGreaterThanOrEqual(16);
+    expect(geometry.overflow).toBeLessThanOrEqual(1);
+    await page.screenshot({ path: testInfo.outputPath(`material-contents-${width}.png`), animations: 'disabled' });
+    await editor.getByLabel('章・節の名前 1').fill('一時編集');
+    await editor.getByRole('button', { name: 'キャンセル', exact: true }).click();
+    await page.getByRole('button', { name: '教材メニューを開く' }).click();
+    await page.getByRole('button', { name: '目次を編集' }).click();
+    await expect(editor.getByLabel('章・節の名前 1')).toHaveValue('基礎編');
+  });
+}
+
+for (const width of [390, 1280]) {
+  test(`material study status persists separately from archive and progress at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await seedBookshelf(page); await openBookshelf(page);
+    await page.getByText('アルゴリズム問題集', { exact: true }).first().click();
+    await page.getByRole('button', { name: '教材メニューを開く' }).click();
+    await page.getByRole('button', { name: '教材情報・進捗を編集', exact: true }).click();
+    await page.getByRole('combobox', { name: '学習状態', exact: true }).selectOption('completed');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByRole('combobox', { name: '学習状態', exact: true })).toHaveCount(0);
+    await page.reload(); await openBookshelf(page);
+    const filter = page.getByRole('group', { name: '学習状態で絞り込み' });
+    await filter.getByRole('button', { name: '学習済み', exact: true }).click();
+    await expect(page.getByText('アルゴリズム問題集', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('ネットワーク演習', { exact: true })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath(`material-completed-${width}.png`), animations: 'disabled' });
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.studyMaterials.v1')).find(material => material.id === 'bookshelf-e2e-material'));
+    expect(saved).toMatchObject({ studyStatus: 'completed', status: 'active', currentUnit: 80, totalUnits: 200 });
+    await filter.getByRole('button', { name: '学習中', exact: true }).click();
+    await expect(page.getByText('アルゴリズム問題集', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('ネットワーク演習', { exact: true }).first()).toBeVisible();
+  });
+}
+
+test('untracked materials omit misleading progress but tracked zero remains visible', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedBookshelf(page);
+  await page.addInitScript(() => {
+    const materials = JSON.parse(localStorage.getItem('studyplanner.studyMaterials.v1'));
+    materials[0].currentUnit = 0;
+    materials[1].paceEnabled = false;
+    localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify(materials));
+  });
+  await openBookshelf(page);
+  const tracked = page.locator('.bookshelf-featured-card').filter({ hasText: 'アルゴリズム問題集' });
+  const untracked = page.locator('.bookshelf-featured-card').filter({ hasText: 'ネットワーク演習' });
+  await expect(tracked).toContainText('進捗 0%');
+  await expect(untracked.locator('.bookshelf-progress-caption')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('material-progress-disabled.png'), animations: 'disabled' });
+  await untracked.click();
+  await expect(page.locator('.bookshelf-detail-page')).toBeVisible();
+  await expect(page.locator('.bookshelf-detail-page')).not.toContainText('0%');
+});
+
+test('photo import discloses its destination and leaves contents unchanged without AI login', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedBookshelf(page); await openBookshelf(page);
+  await page.getByText('アルゴリズム問題集', { exact: true }).first().click();
+  await page.getByRole('button', { name: '教材メニューを開く' }).click();
+  await page.getByRole('button', { name: '目次を編集', exact: true }).click();
+  const editor = page.locator('.bookshelf-structure-editor');
+  const photo = editor.getByRole('region', { name: '目次写真の取込' });
+  await expect(photo).toContainText('OpenAIへ送信');
+  await expect(photo).toContainText('写真は教材に保存されません');
+  const persisted = await page.evaluate(() => localStorage.getItem('studyplanner:material-detail:v1:bookshelf-e2e-user:bookshelf-e2e-material'));
+  await photo.getByLabel('目次写真を選択', { exact: true }).setInputFiles({ name: 'contents.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') });
+  await expect(photo.getByRole('alert')).toContainText('ログインとAI接続が必要');
+  await expect(editor.getByLabel('章・節の名前 1')).toHaveValue('基礎編');
+  await page.screenshot({ path: testInfo.outputPath('material-photo-entry.png'), animations: 'disabled' });
+  await editor.getByRole('button', { name: 'キャンセル', exact: true }).click();
+  expect(await page.evaluate(() => localStorage.getItem('studyplanner:material-detail:v1:bookshelf-e2e-user:bookshelf-e2e-material'))).toBe(persisted);
+});
+
+for (const width of [390, 1280]) {
+  test(`synthetic contents extraction supports correction replacement and saved reopen at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.addInitScript(() => {
+      const key = 'studyplanner:material-detail:v1:photo-ui-owner:photo-book';
+      if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ structureEnabled: true, structureVisible: true, favorite: false, structureItems: [{ id: 'original', title: '元の目次', startUnit: 1, endUnit: 20 }] }));
+    });
+    const requests = [];
+    await page.route('http://127.0.0.1:4174/planning-attachment', async route => {
+      requests.push(route.request().postDataJSON());
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ result: { items: [
+        { level: 1, title: '読取された章', startPage: 1, endPage: 40 },
+        { level: 2, title: '最初の節', startPage: 2, endPage: 10 },
+      ] } }) });
+    });
+    const open = async () => {
+      await page.getByText('目次取込テスト教材', { exact: true }).first().click();
+      await page.getByRole('button', { name: '教材メニューを開く' }).click();
+      await page.getByRole('button', { name: '目次を編集', exact: true }).click();
+    };
+    await page.goto('http://127.0.0.1:4174/material-contents-photo.html'); await open();
+    const editor = page.locator('.bookshelf-structure-editor');
+    const photo = editor.getByRole('region', { name: '目次写真の取込' });
+    await photo.getByLabel('目次写真を選択', { exact: true }).setInputFiles({ name: 'contents.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') });
+    await expect(photo.getByText('読取結果（未保存）', { exact: true })).toBeVisible();
+    expect(requests).toHaveLength(1); expect(requests[0].purpose).toBe('material_contents_photo');
+    await photo.getByLabel('見出し', { exact: true }).first().fill('訂正した章');
+    page.once('dialog', dialog => dialog.dismiss());
+    await photo.getByRole('button', { name: '確認した目次を編集欄へ反映', exact: true }).click();
+    await expect(editor.getByLabel('章・節の名前 1')).toHaveValue('元の目次');
+    page.once('dialog', dialog => dialog.accept());
+    await photo.getByRole('button', { name: '確認した目次を編集欄へ反映', exact: true }).click();
+    await expect(editor.getByLabel('章・節の名前 1')).toHaveValue('訂正した章');
+    const pending = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner:material-detail:v1:photo-ui-owner:photo-book')));
+    expect(pending.structureItems[0].title).toBe('元の目次');
+    await page.screenshot({ path: testInfo.outputPath(`material-photo-reviewed-${width}.png`), animations: 'disabled' });
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await page.reload(); await open();
+    await expect(editor.getByLabel('章・節の名前 1')).toHaveValue('訂正した章');
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner:material-detail:v1:photo-ui-owner:photo-book')));
+    expect(saved.structureItems[0]).toMatchObject({ title: '訂正した章', startUnit: 1, endUnit: 40, children: [expect.objectContaining({ title: '最初の節', startUnit: 2, endUnit: 10 })] });
+  });
+}

@@ -27,6 +27,10 @@ const runtimeGatewayStubPlugin = {
     const normalizedImporter = importer
       ? path.normalize(stripViteQuery(importer))
       : '';
+    if (['./firebaseClient', './aiConfig'].includes(source)
+      && normalizedImporter.endsWith(path.normalize('src/lib/materialContentsPhoto.ts'))) {
+      return path.resolve(harnessDir, 'material-contents-photo-auth.fixture.js');
+    }
     if (source === './usePlannerDataState'
       && normalizedImporter.endsWith(path.normalize('src/hooks/usePlannerAppState.ts'))) {
       return path.resolve(harnessDir, 'usePlannerDataState.control.jsx');

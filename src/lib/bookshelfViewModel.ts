@@ -3,20 +3,25 @@ import {
   isRecordForMaterial,
   type MaterialDetailPreferences,
 } from './bookshelfMaterialDetails';
-import type { Actual, StudyMaterial } from '../types/domain';
+import type { Actual, MaterialStudyStatus, StudyMaterial } from '../types/domain';
 
 export function filterBookshelfMaterials({
   materials,
   activeSubjectId,
   searchQuery,
+  studyStatus = 'all',
 }: {
   materials: readonly StudyMaterial[];
   activeSubjectId: string;
   searchQuery: string;
+  studyStatus?: MaterialStudyStatus | 'all';
 }): StudyMaterial[] {
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase('ja');
 
   return materials.filter((material) => {
+    if (studyStatus !== 'all' && (material.studyStatus ?? 'studying') !== studyStatus) {
+      return false;
+    }
     if (activeSubjectId !== 'all' && material.subjectId !== activeSubjectId) {
       return false;
     }

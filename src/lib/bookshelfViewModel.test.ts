@@ -40,6 +40,22 @@ function actual(patch: Partial<Actual>): Actual {
 }
 
 describe('filterBookshelfMaterials', () => {
+  it('filters explicit study state independently from progress and combines subject/search', () => {
+    const legacy = material('legacy', { currentUnit: 100, totalUnits: 100 });
+    const completed = material('completed', { studyStatus: 'completed', currentUnit: 20, totalUnits: 100 });
+    const studying = material('studying', { studyStatus: 'studying', subjectId: 'math' });
+    const rows = [legacy, completed, studying];
+    const filter = (studyStatus: 'all' | 'studying' | 'completed', activeSubjectId = 'all', searchQuery = '') =>
+      filterBookshelfMaterials({ materials: rows, studyStatus, activeSubjectId, searchQuery });
+    expect(filter('studying')).toEqual([legacy, studying]);
+    expect(filter('completed')).toEqual([completed]);
+    expect(filter('all')).toEqual(rows);
+    expect(filter('studying', 'math', 'studying')).toEqual([studying]);
+    expect(filter('completed', 'math')).toEqual([]);
+    expect(filter('completed', 'all', 'legacy')).toEqual([]);
+    expect(legacy.studyStatus).toBeUndefined();
+  });
+
   const materials = Object.freeze([
     material('vocabulary', { name: 'TOEIC 単語集', aliases: ['金フレ', 'Gold'] }),
     material('math', { name: '数学演習', subjectId: 'math', subjectName: '数学' }),

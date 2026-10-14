@@ -1,3 +1,4 @@
+import { MaterialContentsPhotoImport } from './MaterialContentsPhotoImport';
 import type { MaterialEditBaseline } from '../hooks/useActualMutationAdmission';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -34,7 +35,7 @@ import {
   selectFrequentBookshelfMaterials,
   selectRecentBookshelfMaterials,
 } from '../lib/bookshelfViewModel';
-import { calculateMaterialPace } from '../lib/materialPace';
+import { calculateMaterialPace, getMaterialUnitLabel } from '../lib/materialPace';
 import { createId } from '../lib/id';
 import { todayIsoDate } from '../lib/date';
 import { BookshelfMaterialDetail } from './BookshelfMaterialDetail';
@@ -164,6 +165,7 @@ export function BookshelfView({
   const [editingMaterialBaseline, setEditingMaterialBaseline] = useState<MaterialEditBaseline>();
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
   const [menuMaterialId, setMenuMaterialId] = useState<string | null>(null);
+  const [studyStatusFilter, setStudyStatusFilter] = useState<'all' | 'studying' | 'completed'>('all');
   const [activeSubjectId, setActiveSubjectId] = useState<string>('all');
   const [expandedSubjectIds, setExpandedSubjectIds] = useState<string[]>(() =>
     subjects[0]?.id ? [subjects[0].id] : [],
@@ -228,8 +230,9 @@ export function BookshelfView({
         materials: activeMaterials,
         activeSubjectId,
         searchQuery,
+        studyStatus: studyStatusFilter,
       }),
-    [activeMaterials, activeSubjectId, searchQuery],
+    [activeMaterials, activeSubjectId, searchQuery, studyStatusFilter],
   );
   const filteredMaterialIds = useMemo(
     () => new Set(filteredMaterials.map((material) => material.id)),
@@ -413,6 +416,23 @@ export function BookshelfView({
             />
           </label>
         ) : null}
+        <div className="bookshelf-category-chips" role="group" aria-label="学習状態で絞り込み">
+          {([
+            ['all', 'すべての状態'],
+            ['studying', '学習中'],
+            ['completed', '学習済み'],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              className={studyStatusFilter === value ? 'active' : ''}
+              aria-pressed={studyStatusFilter === value}
+              onClick={() => setStudyStatusFilter(value)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="bookshelf-category-filter-row">
           <div className="bookshelf-category-chips">
             <button
@@ -471,12 +491,12 @@ export function BookshelfView({
                   <span className="bookshelf-featured-copy">
                     <strong>{material.name}</strong>
                     <small>{subject?.name ?? material.subjectName}</small>
-                    <span className="bookshelf-progress-caption">
+                    {material.paceEnabled === true ? <span className="bookshelf-progress-caption">
                       <span className="bookshelf-inline-progress" aria-hidden="true">
                         <span style={{ width: `${progress}%` }} />
                       </span>
                       進捗 {Math.round(progress)}%
-                    </span>
+                    </span> : null}
                   </span>
                 </button>
               );
@@ -551,14 +571,14 @@ export function BookshelfView({
                               <MaterialCover material={material} subject={subject} compact />
                               <span className="bookshelf-material-row-copy">
                                 <strong>{material.name}</strong>
-                                <small>{material.subjectName}</small>
+                                <small>{material.subjectName} ・ {material.studyStatus === 'completed' ? '学習済み' : '学習中'}</small>
                               </span>
-                              <span className="bookshelf-material-row-progress">
+                              {material.paceEnabled === true ? <span className="bookshelf-material-row-progress">
                                 <small>進捗 {Math.round(progress)}%</small>
                                 <span className="bookshelf-inline-progress" aria-hidden="true">
                                   <span style={{ width: `${progress}%` }} />
                                 </span>
-                              </span>
+                              </span> : null}
                               <button
                                 className="bookshelf-row-menu-button"
                                 type="button"
@@ -616,7 +636,7 @@ export function BookshelfView({
                   <MaterialCover material={material} subject={subject} compact />
                   <span>
                     <strong>{material.name}</strong>
-                    <small>{material.subjectName}</small>
+                    <small>{material.subjectName} ・ {material.studyStatus === 'completed' ? '学習済み' : '学習中'}</small>
                   </span>
                   <time>
                     {new Date(material.createdAt).toLocaleDateString('ja-JP', {
@@ -702,7 +722,7 @@ export function BookshelfView({
             </button>
             <button type="button" onClick={() => openStructureEditor(menuMaterial)}>
               <ListTree aria-hidden="true" />
-              教材内構造を編集
+              目次を編集
               <ChevronRight aria-hidden="true" />
             </button>
             <button
@@ -778,11 +798,12 @@ export function BookshelfView({
             </div>
             <section className="bookshelf-settings-group">
               <div>
-                <strong>教材内構造を表示</strong>
+                <strong>目次を表示</strong>
               </div>
               <label className="bookshelf-switch">
                 <input
                   type="checkbox"
+                  aria-label="目次を表示"
                   disabled={!getPreferences(displaySettingsMaterial.id).structureEnabled}
                   checked={
                     getPreferences(displaySettingsMaterial.id).structureEnabled &&
@@ -824,7 +845,7 @@ export function BookshelfView({
           >
             <div className="bookshelf-modal-title-row">
               <div>
-                <h2>教材内構造</h2>
+                <h2>目次</h2>
                 <p>{structureEditorMaterial.name}</p>
               </div>
               <button
@@ -841,11 +862,12 @@ export function BookshelfView({
 
             <section className="bookshelf-settings-group">
               <div>
-                <strong>教材内構造を使う</strong>
+                <strong>目次を使う</strong>
               </div>
               <label className="bookshelf-switch">
                 <input
                   type="checkbox"
+                  aria-label="目次を使う"
                   checked={structureDraft.structureEnabled}
                   onChange={(event) =>
                     setStructureDraft((current) =>
@@ -865,12 +887,21 @@ export function BookshelfView({
               </label>
             </section>
 
+            <MaterialContentsPhotoImport
+              key={`${userId}:${structureEditorMaterial.id}`}
+              hasExistingItems={structureDraft.structureItems.length > 0}
+              includePageRanges={(structureEditorMaterial.progressUnit ?? 'page') === 'page'}
+              onApply={(items) => setStructureDraft(current => current ? {
+                ...current, structureEnabled: true, structureVisible: true, structureItems: items,
+              } : current)}
+            />
+
             {structureDraft.structureEnabled ? (
               <div className="bookshelf-structure-edit-list">
                 {structureDraft.structureItems.map((item, index) => (
                   <div className="bookshelf-structure-edit-row" key={item.id}>
                     <label>
-                      <span>項目 {index + 1}</span>
+                      <span>章・節の名前 {index + 1}</span>
                       <input
                         value={item.title}
                         onChange={(event) =>
@@ -880,7 +911,7 @@ export function BookshelfView({
                       />
                     </label>
                     <label>
-                      <span>開始位置</span>
+                      <span>開始（{getMaterialUnitLabel(structureEditorMaterial)}）</span>
                       <input
                         type="number"
                         min="0"
@@ -894,7 +925,7 @@ export function BookshelfView({
                       />
                     </label>
                     <label>
-                      <span>終了位置</span>
+                      <span>終了（{getMaterialUnitLabel(structureEditorMaterial)}）</span>
                       <input
                         type="number"
                         min="0"
@@ -908,7 +939,7 @@ export function BookshelfView({
                       />
                     </label>
                     <label>
-                      <span>進捗%</span>
+                      <span>進捗（%・任意）</span>
                       <input
                         type="number"
                         min="0"
@@ -919,7 +950,7 @@ export function BookshelfView({
                             progressRate: parseOptionalNumber(event.target.value),
                           })
                         }
-                        placeholder="自動/任意"
+                        placeholder="自動"
                       />
                     </label>
                     <button
@@ -937,7 +968,7 @@ export function BookshelfView({
                   onClick={addStructureItem}
                 >
                   <Plus aria-hidden="true" />
-                  項目を追加
+                  章・節を追加
                 </button>
               </div>
             ) : null}
@@ -1042,7 +1073,7 @@ export function BookshelfView({
                     />
                     <span>
                       <strong>{material.name}</strong>
-                      <small>{material.subjectName}</small>
+                      <small>{material.subjectName} ・ {material.studyStatus === 'completed' ? '学習済み' : '学習中'}</small>
                     </span>
                   </button>
                 );
