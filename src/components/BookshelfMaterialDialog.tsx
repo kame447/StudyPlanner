@@ -285,7 +285,6 @@ function BookshelfMaterialDialogSession({
           <div className="section-header">
             <div>
               <h2>{material ? '教材を編集' : '教材を追加'}</h2>
-              {!material ? <p>まず教材を探し、見つからなければ手入力できます。</p> : null}
             </div>
             <button className="ghost-button" onClick={onClose} type="button">
               閉じる
@@ -467,7 +466,6 @@ function BookshelfMaterialDialogSession({
               />
               <span>
                 <strong>教材ペース管理を使う</strong>
-                <small>総量と目標日から、1日あたりの目安を表示します。</small>
               </span>
             </label>
 
