@@ -48,6 +48,8 @@ const ALLOWED_PRODUCTION_IMPORTERS = new Set([
   'application/weeklyPlanningStableV5ResponseRouting.ts',
   'application/weeklyPlanningStableV5ResultProjection.ts',
   'application/weeklyPlanningStableV5RuntimeExecutor.ts',
+  // J2a: selected graph enters the existing deterministic continuation; no new semantic authority.
+  'application/weeklyPlanningStableV5CandidateContinuation.ts',
   'application/weeklyPlanningStableV5RuntimeQuestions.ts',
   'application/weeklyPlanningStableV5RuntimeSession.ts',
   'application/weeklyPlanningStableV5RuntimeTraceLifecycle.ts',

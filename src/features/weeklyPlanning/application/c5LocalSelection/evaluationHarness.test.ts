@@ -12,7 +12,7 @@ import { projectCandidateProviderContext } from '../candidateSelection/manifest'
 describe('C5 paired preregistration preparation (no API run)', () => {
   it('isolates all three arms with the same original state/full tuple, and detects omitted leaves/qualifiers', async () => {
     const conversationId = 'evaluation-only'; const graph = c5Graph(conversationId);
-    const state = captureC5Question({ ownerId: OWNER, conversationId, graph, state: bindWeeklyPlanningQuestionPresentation({
+    const state = captureC5Question({ ownerId: OWNER, conversationId, graph, messages: [{id:'turn:assistant',role:'assistant',content:'effort question',createdAt:'2026-10-05T00:00:00.000Z'}], state: bindWeeklyPlanningQuestionPresentation({
       state: { ...createInitialPlanningIntakeState(), questions: ['effort question'], lastQuestionContext: { kind: 'ambiguity', topicId: 'work-a',
         targetSlot: 'stable_v5:ambiguous_effort_estimate', actionId: 'q' } },
       content: { responseSource: 'deterministic_fallback', currentTurnGrounding: 'none', selfRepairNotice: false,

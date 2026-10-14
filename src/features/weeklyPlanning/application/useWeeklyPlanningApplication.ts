@@ -336,6 +336,7 @@ export function useWeeklyPlanningApplication({
       timetableTerm,
       timetableTerms,
       plannerDataAvailability,
+      isPlannerDataSnapshotCurrent: isBoundPlannerDataCurrent,
       weekStartsOn,
       getState: getPlanningState,
       dispatch: dispatchAndPersist,

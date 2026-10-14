@@ -177,7 +177,10 @@ export async function executeWeeklyPlanningStableV5SemanticTurn(
   });
 
   const semantic = await createWeeklyPlanningSemanticPipelineV5(
-    createCensusObservedWeeklyPlanningNormalizer(createOpenAiCompatibleClient(aiConfig), createWeeklyPlanningSemanticNormalizerV5),
+    createCensusObservedWeeklyPlanningNormalizer(
+      input.semanticObservation?.client ?? createOpenAiCompatibleClient(aiConfig),
+      createWeeklyPlanningSemanticNormalizerV5, input.semanticObservation,
+    ),
   ).run({
     graph: runtimeSession.graph,
     conversationId: input.conversationId,

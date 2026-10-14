@@ -27,6 +27,7 @@ import type {
 } from './weeklyPlanningStableV5RuntimeContracts';
 import {
   executeWeeklyPlanningStableV5SemanticTurn,
+  type WeeklyPlanningStableV5SemanticTurnResult,
 } from './weeklyPlanningStableV5SemanticTurn';
 import {
   stageWeeklyPlanningStableV5Turn,
@@ -58,6 +59,16 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
   const semanticTurn = await executeWeeklyPlanningStableV5SemanticTurn(input);
   if (semanticTurn.status === 'failure') return semanticTurn.output;
 
+  return continueWeeklyPlanningStableV5RuntimeTurn(input, semanticTurn);
+}
+
+/** Shared application continuation after a validated interpretation or controlled selection. */
+export function continueWeeklyPlanningStableV5RuntimeTurn(
+  input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
+  semanticTurn: Extract<WeeklyPlanningStableV5SemanticTurnResult, { status: 'success' }>,
+  options: { controlledSelection?: boolean } = {},
+): WeeklyPlanningTurnExecutionResult {
+
   const { requestContext, semantic } = semanticTurn;
   const semanticObservability = {
     repairUsed: semantic.normalization.diagnostics.repairAttempted,
@@ -65,7 +76,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurn(
     previewCount: null,
     unscheduledCount: null,
   } as const;
-  stageWeeklyPlanningStableV5Turn({ input, semanticTurn });
+  stageWeeklyPlanningStableV5Turn({ input, semanticTurn, omitCanonicalizationEvidence: options.controlledSelection });
 
   const evaluation = runWeeklyPlanningStableV5PlanningStage({
     input,
