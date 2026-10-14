@@ -8,6 +8,15 @@ import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from '../applicatio
 import { createStableV5SemanticPublicStateSummary } from '../application/weeklyPlanningStableV5SemanticContext';
 import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import { createReadyPlannerDataAvailability } from '../testUtils/plannerDataAvailabilityTest';
+import { submitWeeklyPlanningControlledTurn } from '../weeklyPlanningTurnController';
+import { weeklyPlanningTurnRuntimeGateway } from '../application/weeklyPlanningTurnRuntimeGateway';
+import { weeklyPlanningTurnStagingLifecycle } from '../application/weeklyPlanningTurnSideEffects';
+import { weeklyPlanningTurnOutcomeLifecycle } from '../application/weeklyPlanningTurnOutcomeLifecycle';
+import { registerControlledCandidateDomain } from '../application/weeklyPlanningControlledCandidateRegistry';
+import type { ControlledCandidateStageContext } from '../application/weeklyPlanningControlledCandidateDomains';
+import { createNumericPendingRegisteredDomainV5 } from './weeklyPlanningNumericRegisteredDomainV5';
+import { normalizedChoice } from './weeklyPlanningNumericPendingChoiceV5.testUtils';
+import type { WeeklyPlanningTurnApplicationServices } from '../application/weeklyPlanningTurnApplication';
 import type { PlanningState, WeeklyPlanningAction } from '../types';
 
 const owner = 'j2b-fixture-owner'; const week = '2026-10-12'; const conversation = 'j2b-real-conversation';
@@ -77,4 +86,49 @@ it('default unconfigured D5 stays inert while a real two-turn effort answer reac
   expect(answered.graph.effortEstimates).toMatchObject([{ kind: 'duration_per_unit', minutes: 3, precision: 'exact', unitCode: 'problem' }]);
   expect(answered.graph.workloads).toHaveLength(1);
   expect(answered.graph.workloads[0].amount).toBe(10);
+});
+
+
+it('configured D5 reaches a real two-turn question and replaces the focused Luna semantic request', async () => {
+  let state = createInitialPlanningState(week);
+  const session = createWeeklyPlanningControllerSession(owner, week, conversation);
+  const choice = vi.fn(async (request: Parameters<ControlledCandidateStageContext['choose']>[0], beforeDispatch: () => void) => {
+    beforeDispatch();
+    return normalizedChoice(request, 'leaf:1');
+  });
+  const services: WeeklyPlanningTurnApplicationServices = {
+    submitControlledTurn: submitWeeklyPlanningControlledTurn,
+    runtimeGateway: weeklyPlanningTurnRuntimeGateway,
+    stagingLifecycle: weeklyPlanningTurnStagingLifecycle,
+    outcomeLifecycle: weeklyPlanningTurnOutcomeLifecycle,
+    candidateDomains: host => {
+      const domain = createNumericPendingRegisteredDomainV5([2, 3, 5], 'fixture-question-domain-v1');
+      return [registerControlledCandidateDomain(domain, {
+        sourceAccess: host.sourceAccess, inputForTurn: host.inputForTurn,
+        requestContextForTurn: host.requestContextForTurn,
+        continueSelectedTurn: host.continueSelectedTurn,
+        policy: { id: 'synthetic-only', calibrationEvidenceId: 'synthetic-only', rules: [
+          { menuKind: 'leaves', optionCount: 4, depth: 0, minimumTopProbability: 0.98, minimumMargin: 0.90 },
+        ] },
+        maximumChildrenPerMenu: 16, maximumDecisions: 1, choose: choice,
+      })];
+    },
+  };
+  const submit = (userText: string) => submitWeeklyPlanningApplicationTurn({ session, userId: owner, ownerId: owner,
+    userText, selectedDate: week, plans: [], scheduleTemplates: [],
+    plannerDataAvailability: createReadyPlannerDataAvailability(owner),
+    isPlannerDataSnapshotCurrent: () => true,
+    getState: () => state, dispatch: (action: WeeklyPlanningAction): PlanningState => state = weeklyPlanningReducer(state, action),
+  }, services);
+  expect((await submit('今週、数学の問題を10問進めたい')).accepted).toBe(true);
+  const first = state.intakeState!.lastQuestionContext!;
+  expect(first.actionId).toMatch(/^candidate-question:d5_numeric:/);
+  expect(first.controlledCandidate).toBeDefined();
+  const before = schemas.length;
+  expect((await submit('1問3分です')).accepted).toBe(true);
+  expect(choice).toHaveBeenCalledTimes(1);
+  expect(schemas.slice(before).filter(name => name.includes('semantic') || name.includes('focused_contextual'))).toEqual([]);
+  const saved = loadWeeklyPlanningStableV5PersistedSession({ ownerId: owner, weekStartDate: week })!;
+  expect(saved.graph.effortEstimates).toMatchObject([{ minutes: 3, kind: 'duration_per_unit', unitCode: 'problem' }]);
+  expect(saved.graph.workloads).toHaveLength(1);
 });

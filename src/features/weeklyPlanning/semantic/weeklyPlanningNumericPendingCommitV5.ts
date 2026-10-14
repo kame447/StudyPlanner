@@ -1,6 +1,7 @@
 import { isNumericPendingQuestionDomainCurrentV5, type NumericPendingPresentedQuestionV5, type NumericPendingQuestionDomainV5 } from './weeklyPlanningNumericPendingDomainV5';
 import type { WeeklyPlanningSemanticCanonicalizationResultV5 } from './weeklyPlanningSemanticCanonicalizerV5';
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticTypesV5';
+import { serializeC5ApplicationState } from '../application/c5LocalSelection/basis';
 import { canonicalCandidateSerialization, prepareCandidateSelectionCommit, type AtomicSelectionView, type StagedCandidateSelection, type SelectionLedger, type SelectionCommitOutcome, type SelectionFailure } from '../application/candidateSelection';
 import { numericPendingBoundToInputV5, numericPendingObservationV5, type NumericPendingStateV5, type StagedNumericPendingChoiceV5 } from './weeklyPlanningNumericPendingChoiceV5';
 import { readWeeklyPlanningPendingQuestionV5 } from './weeklyPlanningPendingQuestionV5';
@@ -104,13 +105,13 @@ export function createNumericPendingControlledAdapterV5<State, Receipt>(staged: 
             || canonicalCandidateSerialization(port.readRuntimeGraph()) !== canonicalCandidateSerialization(live.input.committedGraph)) return null;
           const observation = numericPendingObservationV5(live.state, live.domainMinutes, live.domainPolicyVersion);
           const ledger = projectLedger(live.ledger);
-          const evidence = canonicalCandidateSerialization({ input: live.input, observation, ledger: live.ledger, turnId: live.turnId });
+          const evidence = serializeC5ApplicationState({ input: live.input, observation, ledger: live.ledger, turnId: live.turnId });
           return port.prepareLocalCandidateReducerCommit({ selection: staged.selection, current: live.current, ledger: live.ledger,
             view: { observation, ledger, validateLeaf: candidate => canonicalCandidateSerialization(candidate) === canonicalCandidateSerialization(staged.selection.candidate) },
             revalidateFinalized() {
               try {
                 const current = port.readCurrent();
-                return matchingStateLedger(current) && canonicalCandidateSerialization({ input: current.input,
+                return matchingStateLedger(current) && serializeC5ApplicationState({ input: current.input,
                   observation: numericPendingObservationV5(current.state, current.domainMinutes, current.domainPolicyVersion), ledger: current.ledger, turnId: current.turnId }) === evidence
                   && canonicalCandidateSerialization(port.readRuntimeGraph()) === canonicalCandidateSerialization(graph);
               } catch { return false; }

@@ -1,6 +1,6 @@
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import { decodeWeeklyPlanningStableV5QuestionSlot } from '../intake/weeklyPlanningStableV5QuestionSlot';
-import { isWeeklyPlanningQuestionPresentationUnaccompanied } from '../intake/weeklyPlanningQuestionPresentation';
+import { isWeeklyPlanningQuestionPresentationDirect } from '../intake/weeklyPlanningQuestionPresentation';
 import type { PlanningState, WeeklyPlanningMessage, WeeklyPlanningPendingTurn } from '../types';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
@@ -83,7 +83,7 @@ export function registerControlledCandidateDomain(domain: ControlledCandidateDom
     capture(turn) {
       const context = turn.state.lastQuestionContext; const p = context?.presentation;
       if (!p || turn.state.questions.length !== 1 || !context?.topicId
-        || !isWeeklyPlanningQuestionPresentationUnaccompanied(p.content) || p.graphRevision !== turn.graph.revision
+        || !isWeeklyPlanningQuestionPresentationDirect(p.content) || p.graphRevision !== turn.graph.revision
         || domain.domainPolicyVersion !== policyVersion || options.sourceAccess() !== 'allowed') return turn.state;
       const old = turn.state.c5SelectionLedger;
       const ledger = old === undefined ? { version: 1 as const, ownerId: turn.ownerId, conversationId: turn.conversationId, lastEpoch: 0, consumed: [] }

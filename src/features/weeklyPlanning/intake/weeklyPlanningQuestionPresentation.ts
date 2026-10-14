@@ -84,6 +84,24 @@ export function isWeeklyPlanningQuestionPresentationUnaccompanied(
     && !content.previewPromotionControl;
 }
 
+/**
+ * Machine-bound single pending questions may follow a previously established
+ * proposal, provided the response has no contested, repair or preview promotion.
+ * The controller separately binds the exact assistant text and typed question.
+ */
+export function isWeeklyPlanningQuestionPresentationDirect(
+  content: WeeklyPlanningQuestionPresentationContent,
+): boolean {
+  return isWeeklyPlanningQuestionPresentationUnaccompanied(content) || (
+    content.responseSource === 'ai'
+    && content.currentTurnGrounding === 'recommended'
+    && content.groundingContext.proposed === 1
+    && content.groundingContext.contested === 0
+    && !content.selfRepairNotice
+    && !content.previewPromotionControl
+  );
+}
+
 /** Strict decoder: persisted state is untrusted, and anything unexpected fails closed. */
 export function decodeWeeklyPlanningQuestionPresentation(
   value: unknown,
