@@ -48,13 +48,28 @@ function withProvisionalTimeboxState(params: {
   };
 }
 
+interface WeeklyPlanningRuntimeStagePorts {
+  stageTurn(params: { input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
+    semanticTurn: Extract<WeeklyPlanningStableV5SemanticTurnResult, { status: 'success' }>;
+    omitCanonicalizationEvidence?: boolean }): void;
+}
+
 export async function executeWeeklyPlanningStableV5RuntimeTurnCore(
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
-  ports: { semanticTurn: (input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput) => ReturnType<typeof executeWeeklyPlanningStableV5SemanticTurnCore>; stageTurn: (params: { input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput; semanticTurn: Extract<WeeklyPlanningStableV5SemanticTurnResult, { status: 'success' }> }) => void },
+  ports: WeeklyPlanningRuntimeStagePorts & { semanticTurn: (input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput) => ReturnType<typeof executeWeeklyPlanningStableV5SemanticTurnCore> },
 ): Promise<WeeklyPlanningTurnExecutionResult> {
   const semanticTurn = await ports.semanticTurn(input);
   if (semanticTurn.status === 'failure') return semanticTurn.output;
+  return continueWeeklyPlanningStableV5RuntimeTurnCore(input, semanticTurn, ports);
+}
 
+/** Shared continuation; browser staging and isolated server state stay invocation-local. */
+export function continueWeeklyPlanningStableV5RuntimeTurnCore(
+  input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
+  semanticTurn: Extract<WeeklyPlanningStableV5SemanticTurnResult, { status: 'success' }>,
+  ports: WeeklyPlanningRuntimeStagePorts,
+  options: { controlledSelection?: boolean } = {},
+): WeeklyPlanningTurnExecutionResult {
   const { requestContext, semantic } = semanticTurn;
   const semanticObservability = {
     repairUsed: semantic.normalization.diagnostics.repairAttempted,
@@ -62,7 +77,7 @@ export async function executeWeeklyPlanningStableV5RuntimeTurnCore(
     previewCount: null,
     unscheduledCount: null,
   } as const;
-  ports.stageTurn({ input, semanticTurn });
+  ports.stageTurn({ input, semanticTurn, omitCanonicalizationEvidence: options.controlledSelection });
 
   const evaluation = runWeeklyPlanningStableV5PlanningStage({
     input,

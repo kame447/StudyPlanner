@@ -16,7 +16,7 @@ import { clearWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningSt
 import type { WeeklyPlanningTurnRequestContext } from './weeklyPlanningTemporalContext';
 
 export interface IsolatedWeeklyPlanningTurnInput {
-  input: Omit<WeeklyPlanningTurnExecutionInput, 'isCurrentTurn' | 'requestContext'> & { requestContext: WeeklyPlanningTurnRequestContext };
+  input: Omit<WeeklyPlanningTurnExecutionInput, 'isCurrentTurn' | 'requestContext' | 'semanticObservation'> & { requestContext: WeeklyPlanningTurnRequestContext };
   graph: WeeklyPlanningFactGraphV5;
   userContextRecords: UserPlanningContextRecordV1[];
   weekStartDate: string;

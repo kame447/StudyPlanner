@@ -15,6 +15,8 @@ type SuccessfulSemanticTurn = Extract<
 export function stageWeeklyPlanningStableV5Turn(params: {
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput;
   semanticTurn: SuccessfulSemanticTurn;
+  /** C5 records its bounded durable outcome separately; its fact-selection evidence is private. */
+  omitCanonicalizationEvidence?: boolean;
 }): void {
   const { input, semanticTurn } = params;
   const { requestContext, runtimeSession, semantic } = semanticTurn;
@@ -59,7 +61,7 @@ export function stageWeeklyPlanningStableV5Turn(params: {
       requestId: input.traceRequestId,
       previousGraphRevision: runtimeSession.graph.revision,
       stagedGraph: semantic.graph,
-      canonicalization: semantic.canonicalization,
+      canonicalization: params.omitCanonicalizationEvidence ? null : semantic.canonicalization,
     },
   });
 }

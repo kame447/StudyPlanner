@@ -12,6 +12,8 @@ import type { WeeklyPlanningTurnSubmissionResult } from '../weeklyPlanningTurnEx
 import * as aiConfig from '../../../lib/aiConfig';
 import * as firebase from '../../../lib/firebaseClient';
 import { readDurableWeeklyTurnReceipt } from './weeklyPlanningDurableTurnClient';
+import { weeklyPlanningTurnRuntimeGateway } from './weeklyPlanningTurnRuntimeGateway';
+import { durableReceipt } from './weeklyPlanningDurableTurn.testUtils';
 
 const OWNER = 'durable-owner'; const DATE = '2026-10-14';
 const Harness = forwardRef<WeeklyPlanningApplication, UseWeeklyPlanningApplicationInput>((props, ref) => {
@@ -66,6 +68,25 @@ async function runAlarm() {
         questionCode: prompt.applicationDecision.questionCode, groundingAcknowledgement: null, text: 'どの学習を計画しましょうか？' });
     }) })));
 }
+it('keeps an invocation-local semantic observer out of persisted receipts and server payloads', async () => {
+  const fixture = durableReceipt();
+  const observer = { client: { createChatCompletion: vi.fn(async () => 'must not be used') },
+    finish: vi.fn(), privateMarker: 'local-only-observer-sentinel' };
+  const result = weeklyPlanningTurnRuntimeGateway.execute({
+    snapshot: fixture.snapshot,
+    pending: { ...fixture.pending, startedAt: new Date().toISOString() },
+    userText: '10月14日の計画を立てたい', selectedDate: DATE, userId: OWNER,
+    plans: [], scheduleTemplates: [], semanticObservation: observer,
+  });
+  await vi.waitFor(() => expect(record?.status).toBe('queued'));
+  expect(readDurableWeeklyTurnReceipt(OWNER)?.payload.input).not.toHaveProperty('semanticObservation');
+  expect(JSON.parse(record!.payload!).input).not.toHaveProperty('semanticObservation');
+  expect(record!.payload).not.toContain(observer.privateMarker);
+  await runAlarm(); await vi.advanceTimersByTimeAsync(10_000);
+  expect((await result).message).toBe('どの学習を計画しましょうか？');
+  expect(providerCalls).toBe(2); expect(observer.client.createChatCompletion).not.toHaveBeenCalled();
+  expect(observer.finish).not.toHaveBeenCalled();
+});
 it('finishes while detached and restores exactly one reply through the real controller without another AI call or save', async () => {
   const first = await mount(); let submitted!: Promise<WeeklyPlanningTurnSubmissionResult>;
   await act(async () => { submitted = first.ref.current!.submitTurn('10月14日の計画を立てたい'); await vi.waitFor(() => expect(record?.status).toBe('queued'));  });

@@ -19,7 +19,10 @@ export function executeWeeklyPlanningStableV5SemanticTurn(input: ExecuteWeeklyPl
       criteria: { rulesProviderRejected: true, validConfigurationRequired: true } } });
   if (aiConfig.provider === 'rules' || configError) throw new Error(configError ?? 'Stable V5にはAI structured output接続が必要です。');
   return executeWeeklyPlanningStableV5SemanticTurnCore(input, {
-    normalizer: createCensusObservedWeeklyPlanningNormalizer(createOpenAiCompatibleClient(aiConfig), createWeeklyPlanningSemanticNormalizerV5),
+    normalizer: createCensusObservedWeeklyPlanningNormalizer(
+      input.semanticObservation?.client ?? createOpenAiCompatibleClient(aiConfig),
+      createWeeklyPlanningSemanticNormalizerV5, input.semanticObservation,
+    ),
     session: getOrCreateWeeklyPlanningStableV5RuntimeSession({ ownerId: input.userId, conversationId: input.conversationId }),
     selectContext: userPlanningContextPromptSelectionV2, recordFailure: recordWeeklyPlanningStableV5FailureDiagnostics,
   });

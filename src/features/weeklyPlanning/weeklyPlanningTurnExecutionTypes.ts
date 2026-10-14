@@ -1,3 +1,4 @@
+import type { WeeklyPlanningSemanticTurnObservation } from './trace/weeklyPlanningSemanticCensusTypes';
 import type { WeeklyPlanningPreviewConstraintSatisfaction } from './application/weeklyPlanningPreviewConstraintSatisfaction';
 import type { WeeklyPlanningExistingScheduleGrounding } from './dialogue/weeklyPlanningStableV5DialogueContracts';
 import type {
@@ -23,6 +24,8 @@ import type { WeeklyPlanningTraceResponseSource } from './trace/weeklyPlanningTr
 import type { WeeklyPlanningMessage } from './types';
 
 export interface WeeklyPlanningTurnExecutionInput {
+  /** Invocation-local Choice/Luna observer; internal only, never serialized or persisted. */
+  semanticObservation?: WeeklyPlanningSemanticTurnObservation;
   previousState?: PlanningIntakeState;
   messages: readonly WeeklyPlanningMessage[];
   userText: string;

@@ -5,7 +5,7 @@ Status: draft PR #636, approved Rules release integration in progress; R2 activa
 ## Ownership
 
 - Branch: `feat/private-inquiry-photos`
-- Current integration base: main `f1ca9a7dbf0a3c2c2605a3718fc8e5dd2b2bfb75`, followed by the exact #635 class candidate (tree `53214538ecd9e294dd277f08d3ea1f79357d7c31`). Original feature base `782f3559b40efaaa9fa3b176b63cbe8407b04e9e`.
+- Current integration base: main `02623b9f6f110d69c762ef45256c6cc1b6cbd949`, followed by the exact #635 class candidate (tree `029e9a4c70ec8b1c4b521793cc1c3f8e7f4ac0a3`). Original feature base `782f3559b40efaaa9fa3b176b63cbe8407b04e9e`.
 - No active matching Issue/PR/branch found in the 2026-10-13 preflight. Prior inquiry PRs #612, #615 and #621 are merged; their completed scope is not reopened.
 - Scope: JPEG/PNG attachments on `/contact`, private lazy image access in the administrator inbox, existing inquiry rate/idempotency/privacy boundaries.
 - Publication, final integrated verification, CI and merge are coordinated by the integration owner. No resource creation, billing change, permission grant or production deploy is performed in this implementation worktree.
@@ -16,7 +16,7 @@ Use a private Cloudflare R2 binding on the existing Worker. Firestore keeps an i
 
 Firebase Storage would require a second storage authorization/rules/deployment surface. Inline Firestore bytes would increase reads/document sizes. R2 behind the existing Worker gives the smallest isolated object-storage boundary; this choice would need revisiting if deployment cannot provide a private R2 binding or existing Firebase project configuration.
 
-Next: verify the cumulative f1ca + #635 + #636 snapshot with fresh app/Worker types, full tests/build and exact-head native CI, then hand it to the sole release owner for #635 → #636 adoption. The user approved the described photo metadata Rules change on 2026-10-14; R2 provisioning/binding/access/billing remains unapproved and untouched. The old local/native success is historical evidence for its exact tree. Local browser execution is known blocked and is not retried.
+Next: verify the cumulative current main + #635 + #636 snapshot with fresh app/Worker types, full tests/build and exact-head native CI, then hand it to the sole release owner for #635 → #636 adoption. The user approved the described photo metadata Rules change on 2026-10-14; R2 provisioning/binding/access/billing remains unapproved and untouched. The old local/native success is historical evidence for its exact tree. Local browser execution is known blocked and is not retried.
 
 ## Resume checkpoint — 2026-10-13 20:43 UTC
 
@@ -65,3 +65,9 @@ The existing Jev wire-compatibility test generates `.cache/j1-old-worker` from i
 - Normally merged the class owner's exact candidate `1de8077144f2a0b352495b0ef50a4e454bf480c1` (tree `53214538ecd9e294dd277f08d3ea1f79357d7c31`), which already includes main f1ca. Before this checkpoint update, photo integration `43509da81af621481db65bf9470b05348b6edf4c` has tree `5378aeb3b52f5cf780309979c19783bd2b745df0`. The merge is conflict-free. The only shared feature file is `firestore.rules`; both bounded permission blocks are preserved independently. The diff against the class candidate remains the same 29 photo-responsibility files.
 - Photo product, fixtures and Worker resource configuration are unchanged from dfdc8889. No R2 resource or binding is added. Without the binding, the existing unavailable-photo state preserves text submission. The existing test boundaries cover immutable metadata, shared cooldown, foreign-owner rejection, enabled/revoked administrators, private fixed-slot Worker storage and synthetic full-size rendering; they will be rerun on the final combined snapshot.
 - Fresh dependency installation is shared as a byte-verified copied installation, with separate per-worktree caches. Final full verification is serialized after the class owner's run. Completion requires fresh exact-content types/full tests/build and terminal CI/Rules, native Admin photo rendering, normal Browser and Matrix evidence. Existing bundle overages stay explicit and thresholds stay unchanged.
+
+## External-main reconciliation — 2026-10-14 03:33 UTC
+
+The preceding cumulative candidate `06f301a4392e59fa74f12ef3bc42f952ff15e8a0` / tree `5ec11cdac4fd00d9c077ba20d28925200cf0b2cc` completed local fresh full (8,314 tests), native core/real Rules/build, Admin 57 with both image sizes inspected, Browser 683 and all six Matrix jobs. The six inherited budget metrics remained failing; the Ready-triggered replacement core passed and its canceled predecessor was not counted. That proof is retained for its exact snapshot.
+
+Before adoption, external PR #616 advanced main to `02623b9f6f110d69c762ef45256c6cc1b6cbd949`. Its 30 weekly-planning files leave photo code, Rules, manifests and workflows unchanged, but the changed integration snapshot requires fresh proof. The release owner requested one normal recomposition of #635 → #636 → #637. Normally merged #635 local candidate `3a2d0fc28e95f4cc67322b9ce81ecfdac0d428f5` (tree `029e9a4c70ec8b1c4b521793cc1c3f8e7f4ac0a3`); no conflict or photo implementation change. Before this checkpoint update, local `2ae2729fed58a227fd717e66694bbc00ee68af75` has tree `16e245fb8f5dbc5b5c1e9eb06f6fe96b61ae7733`. Final full and native checks will run once for this revised cumulative candidate. The previously approved Rules scope and excluded R2/resource/billing activation are unchanged.

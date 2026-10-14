@@ -2,6 +2,15 @@
 
 Status: active, [Draft PR #637](https://github.com/kame447/StudyPlanner/pull/637); production activation is not authorized by this record.
 
+## Current C5-main integration — 2026-10-14 03:39 UTC
+
+- Main advanced through external PR #616 to `02623b9f6f110d69c762ef45256c6cc1b6cbd949` while the preceding combined candidate was being published. The pre-C5 source (`ec7cba4e`, tree `21a6dcf7`) passed 8,374 tests, fresh types and build, but its four shared-runtime conflicts prevent adoption against this new main. Those results and the first live-model run below remain historical exact-source evidence.
+- Integrated the updated class/photo candidate `13159d561aa4f5ca44e26018ae4eab31e89056cd`, tree `05dbffff29e4224171b8259ff8c27a02351aed08`, containing the new main. Release order remains #635 → #636 → #637, with actual main/source-tree reconciliation before adoption.
+- Preserve both changes: C5's selected-graph continuation now enters the same extracted deterministic planning core through invocation-local staging ports; the browser adapter still provides its semantic observation/session services, while isolated Durable Object execution keeps its own provider and graph. The existing null C5 calibration, prompts and schemas are unchanged. No C5 rollout is enabled here.
+- Restore the durable recovery identity and live ownership checks through the newly shared input builder. An accepted-turn resume must not construct another C5 observation/selection: a new regression fails before that guard and passes after it. Invocation-local observer clients/callbacks are explicitly excluded from durable payload/receipt types and serialized input; a regression checks actual local receipt and server input. They are not trace/persistence data because they are executable transport/observation capabilities, not planning evidence. Existing C5 append-failure/outbox/reload/Worker/truncation tests continue to cover persisted outcome evidence.
+- The first combined verification stopped in Worker typechecking before tests: the new observer's `ReturnType` imported browser telemetry/configuration into the Worker type graph. Its existing two-member contract now has one pure type definition, re-exported by the browser adapter; both runtime input contracts import that type directly. No runtime policy or compiler check was weakened. Preserve the failed verification separately from the repaired exact-source result.
+- Current integration requires one new frozen full/native verification and one additional authorized synthetic live-model run capped at four calls, followed by temporary-workflow cleanup and exact tree read-back. Do not substitute the prior model result for this changed runtime.
+
 ## Drain correction and bounded live-model check — 2026-10-14
 
 - Resumed the existing PR/branch from published `86e547baf3b57c10168fe4fea02a63ed9a9388ac`; old transient local evidence was unavailable, so source was restored from GitHub. Final integration with the separately approved class/detail and photo changes will be verified once after the release owner supplies the final main SHA.

@@ -368,6 +368,7 @@ export async function submitWeeklyPlanningControlledTurn(
         });
         return params.c5LocalSelection && executionResult.stableV5Graph
           ? captureC5Question({ state: bound, graph: executionResult.stableV5Graph,
+              messages: [...params.getState().messages, assistantMessage],
               ownerId: params.ownerId, conversationId: pending.conversationId })
           : bound;
       })(),
