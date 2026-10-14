@@ -51,7 +51,7 @@ test.describe('weekly conversation rendering browser contracts', () => {
     await page.keyboard.insertText('あ'.repeat(declaredMaxLength + 1));
     await expect(input).toHaveValue('あ'.repeat(declaredMaxLength));
 
-    await input.press('Enter');
+    await page.getByRole('button', { name: '送信', exact: true }).click();
 
     await expect.poll(async () => (await realEvents(page, 'real-runtime-execute')).length).toBe(1);
     expect((await realEvents(page, 'real-runtime-execute'))[0].payload.userText).toHaveLength(declaredMaxLength);

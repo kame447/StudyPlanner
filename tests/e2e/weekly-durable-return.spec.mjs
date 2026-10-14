@@ -38,7 +38,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       catch (error) { return `${error.name}: ${error.message}`; }
     }));
     const input = page.locator('.ai-planning-composer textarea');
-    await expect(input).toBeVisible(); await input.fill('学習計画を相談したい'); await input.press('Enter');
+    await expect(input).toBeVisible(); await input.fill('学習計画を相談したい'); await page.getByRole('button', { name: '送信', exact: true }).click();
     await expect.poll(() => posts).toBe(1);
     // Destroy the browser runtime while the accepted job is still queued.
     await page.goto('about:blank');
