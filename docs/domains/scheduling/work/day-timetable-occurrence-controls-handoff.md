@@ -1,9 +1,18 @@
 # Day timetable visibility and occurrence removal
 
-Status: scoped desktop time-input repair prepared; default-parallel aggregate and post-fix native CI remain open
+Status: scoped desktop time-input repair passes full local verification with two supported forks; exact published CI and post-fix native acceptance remain open
 Branch: `fix/day-timetable-occurrence-controls`
 Current main base: `90211bdcf39dd9bce66211df129949a5668a0de4`
 PR: https://github.com/kame447/StudyPlanner/pull/541 (draft)
+
+## Exact-content two-fork aggregate verification — 2026-10-14 10:55 UTC
+
+- Runtime/test commit: `4e26c492796d65daf27486b9c3fe3ce8e7b1736b`, tree `52d3bbbe716c220943320e270ae8c494ee3ebaed`. The coordinator independently reviewed the four-line scoped CSS and found no blocker. This later checkpoint changes documentation only.
+- The installed Vitest 3.2.7 implementation explicitly supports `VITEST_MAX_FORKS` / `VITEST_MIN_FORKS`: its default pool is `forks`, the variables populate `poolOptions.forks`, and those values take precedence over automatic worker counts. The repository's runner does not override that pool. No package, script, test, timeout or configuration file was changed.
+- With command-local `VITEST_MAX_FORKS=2 VITEST_MIN_FORKS=2 DEV_LAN_HOST=127.0.0.1 WRANGLER_SEND_METRICS=false DO_NOT_TRACK=1`, unmodified **`npm run verify` passed, exit 0**: regenerated Worker runtime declarations, fresh non-incremental app/Worker TypeScript, **890 files / 8,523 tests passed**, 11 skipped files / 54 skipped tests / 1 todo, and production build **6.18s**. Unit execution started at 10:49:46 UTC and took 180.81s. The earlier timed-out Jev case passed at 432ms. Native browser acceptance is a separate pending gate.
+- This was one run with materially reduced concurrency. The earlier default-parallel aggregate failure is retained below; it was not relabeled as passed or repeated under identical conditions. The integration owner's `abf92709` full run overlapped (unit started 10:49:17 UTC, 77.76s, then build 5.97s). This run is not claimed to have been isolated from all other work.
+- `pre-verify-2workers.json` / `post-verify-2workers.json` confirm all **2,215 non-documentation input hashes** and **362 installed package manifests** remain identical. Source and dependency fingerprints match the prior checkpoint. The only worktree residue is the existing generated `.cache` fixture, excluded from the patch.
+- Durable local evidence: ignored `artifacts/day-font-repair/verify-2workers.log`, `verify-2workers.exit`, `pre-verify-2workers.json`, `post-verify-2workers.json`, and `final-receipt.json`. Publication and merge remain with the sole release coordinator; require fresh exact-head CI plus the unchanged 16px/containment/time-edit native cases before acceptance.
 
 ## Desktop time-input readability repair — 2026-10-14 10:39 UTC
 
