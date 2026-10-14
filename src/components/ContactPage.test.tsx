@@ -1,10 +1,13 @@
+import { renderToStaticMarkup } from 'react-dom/server';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContactPage } from './ContactPage';
 import { createFakeAuthSession } from '../test/fakeAuthSession';
+import { getInquiryDraft } from '../services/inquiryDraft';
 import { submitInquiry } from '../services/inquiryService';
 
-vi.mock('../services/inquiryService', () => ({ submitInquiry: vi.fn() }));
+vi.mock('../services/inquiryService', () => ({ submitInquiry: vi.fn(), recoverInquiryReceipt: vi.fn() }));
+vi.mock('../services/inquiryAttachmentService', () => ({ inquiryAttachmentsAvailable: vi.fn(async () => false), uploadInquiryAttachments: vi.fn(), prepareInquiryAttachments: vi.fn() }));
 let renderer: ReactTestRenderer;
 let auth: ReturnType<typeof createFakeAuthSession>;
 const owner = { id: 'owner', requiresEmailVerification: false };
@@ -14,7 +17,7 @@ function fill(body = '予定を保存できません') { act(() => renderer.root
 function submit() { renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); }
 
 beforeEach(() => { vi.clearAllMocks(); auth = createFakeAuthSession(); });
-afterEach(() => { act(() => renderer?.unmount()); });
+afterEach(() => { act(() => renderer?.unmount()); getInquiryDraft(auth.session).dispose(); });
 
 describe('email-free contact', () => {
   it('waits for auth then requests login without sending or asking for an email', () => {
@@ -38,7 +41,7 @@ describe('email-free contact', () => {
     fill('  \n '); act(submit);
     expect(submitInquiry).not.toHaveBeenCalled();
     fill();
-    const label = renderer.root.findByType('label');
+    const label = renderer.root.findAllByType('label').find((label) => label.props.htmlFor === 'inquiry-body')!;
     expect(label.props.htmlFor).toBe(renderer.root.findByType('textarea').props.id);
     expect(label.findAllByType('textarea')).toHaveLength(0);
     expect(label.findByType('span').children).toEqual(['お問い合わせ内容']);
@@ -75,13 +78,19 @@ describe('email-free contact', () => {
     act(() => auth.emit(null));
     expect(renderer.root.findAllByType('form')).toHaveLength(0);
   });
-  it('clears the draft on reload and never automatically resends an unknown result', async () => {
+  it('keeps the draft on same-document remount and never automatically resends an unknown result', async () => {
     vi.mocked(submitInquiry).mockRejectedValue(new Error('network'));
     mount(); act(() => auth.emit(owner)); fill(); await act(async () => submit());
     act(() => renderer.unmount());
     mount(); act(() => auth.emit(owner));
-    expect(renderer.root.findByType('textarea').props.value).toBe('');
+    expect(renderer.root.findByType('textarea').props.value).toBe('予定を保存できません');
     expect(submitInquiry).toHaveBeenCalledTimes(1);
+  });
+  it('renders static HTML as auth-unresolved without exposing an in-memory owner or draft', () => {
+    mount(); act(() => auth.emit(owner)); fill('private owner draft');
+    const html = renderToStaticMarkup(<ContactPage authSession={auth.session} />);
+    expect(html).toContain('ログイン状態を確認しています');
+    expect(html).not.toContain('private owner draft'); expect(html).not.toContain('textarea');
   });
   it('creates a new receipt only after explicitly choosing another inquiry', async () => {
     vi.mocked(submitInquiry).mockResolvedValue('receipt');

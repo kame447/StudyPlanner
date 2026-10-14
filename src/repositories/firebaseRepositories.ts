@@ -1,3 +1,5 @@
+import { createFirebaseClassAttendanceRepository } from './firebaseClassAttendanceRepository';
+import type { ClassAttendanceRepository } from './classAttendanceRepository';
 import { getFirebaseAuth, getFirestoreDb } from '../lib/firebaseClient';
 import type { RepositoryBundle } from './createRepositories';
 import { createFirebaseAuthRepository } from './firebaseAuthRepository';
@@ -6,7 +8,7 @@ import { createFirebaseScheduleEventAuthority } from './firebaseScheduleEventAut
 import { createObservedPlannerRepository } from './observedPlannerRepository';
 import { createScheduleEventBackedPlannerRepository } from './scheduleEventAuthorityRepository';
 
-export function createFirebaseRepositories(): RepositoryBundle {
+export function createFirebaseRepositories(): RepositoryBundle & { classAttendanceRepository: ClassAttendanceRepository } {
   const firebaseAuth = getFirebaseAuth();
   const firestoreDb = getFirestoreDb();
 
@@ -22,6 +24,7 @@ export function createFirebaseRepositories(): RepositoryBundle {
 
   return {
     authRepository: createFirebaseAuthRepository(firebaseAuth, firestoreDb),
+    classAttendanceRepository: createFirebaseClassAttendanceRepository(firestoreDb),
     plannerRepository: createObservedPlannerRepository(plannerRepository),
   };
 }

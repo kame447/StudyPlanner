@@ -21,7 +21,11 @@ export async function handleDurableTurnApi(request: Request, env: DurableTurnApi
   if (!['GET', 'POST', 'DELETE'].includes(request.method)) return respond(405, { error: 'Method not allowed.' });
   const session = await requireFirebaseSession(request, env);
   if (session instanceof Response) return session;
-  if (env.DURABLE_WEEKLY_TURNS !== 'enabled' || !env.AI_TURNS) return respond(503, { error: 'durable_turns_unavailable' });
+  // Stop new acceptance without stranding authenticated recovery/cancellation.
+  // Already accepted alarms keep running; this flag is not a provider kill switch.
+  if (!env.AI_TURNS || (request.method === 'POST' && env.DURABLE_WEEKLY_TURNS !== 'enabled')) {
+    return respond(503, { error: 'durable_turns_unavailable' });
+  }
   try {
     if (request.method === 'DELETE') {
       const query = new URL(request.url).searchParams;

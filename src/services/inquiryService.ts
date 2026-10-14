@@ -1,3 +1,4 @@
+import { isInquiryAttachmentList, sameInquiryAttachments, type InquiryAttachment } from '../../shared/inquiryAttachments';
 import {
   collection,
   doc,
@@ -37,9 +38,11 @@ function requireOwner(userId: string) {
   }
 }
 
-function matchesReceipt(saved: DocumentData, userId: string, body: string): boolean {
-  return Object.keys(saved).length === 4 && saved.schemaVersion === 1
-    && saved.userId === userId && saved.body === body && saved.createdAt instanceof Timestamp;
+function matchesReceipt(saved: DocumentData, userId: string, submission: InquirySubmission): boolean {
+  const hasPhotos = submission.attachments !== undefined;
+  return Object.keys(saved).length === (hasPhotos ? 5 : 4) && saved.schemaVersion === (hasPhotos ? 2 : 1)
+    && saved.userId === userId && saved.body === submission.body && saved.createdAt instanceof Timestamp
+    && (!hasPhotos || (isInquiryAttachmentList(saved.attachments) && sameInquiryAttachments(saved.attachments, submission.attachments)));
 }
 
 export async function submitInquiry(userId: string, input: InquirySubmission): Promise<string> {
@@ -54,7 +57,7 @@ export async function submitInquiry(userId: string, input: InquirySubmission): P
       const existing = await transaction.get(reference);
       if (existing.exists()) {
         const saved = existing.data();
-        if (!matchesReceipt(saved, userId, submission.body)) {
+        if (!matchesReceipt(saved, userId, submission)) {
           throw new Error('受付番号と送信内容が一致しません。');
         }
         return;
@@ -64,7 +67,8 @@ export async function submitInquiry(userId: string, input: InquirySubmission): P
       requireOwner(userId);
       transaction.set(cooldown, { inquiryId: submission.requestId, submittedAt: serverTimestamp() });
       transaction.set(reference, {
-        schemaVersion: 1,
+        schemaVersion: submission.attachments ? 2 : 1,
+        ...(submission.attachments ? { attachments: submission.attachments } : {}),
         userId,
         body: submission.body,
         createdAt: serverTimestamp(),
@@ -76,10 +80,21 @@ export async function submitInquiry(userId: string, input: InquirySubmission): P
     // transaction. Only a matching, server-confirmed immutable receipt is success.
     const saved = await getDocFromServer(reference).catch(() => { throw error; });
     requireOwner(userId);
-    if (!saved.exists() || !matchesReceipt(saved.data(), userId, submission.body)) throw error;
+    if (!saved.exists() || !matchesReceipt(saved.data(), userId, submission)) throw error;
   }
   requireOwner(userId);
   return submission.requestId;
+}
+
+// Read-only reconciliation after reload. Never creates or rewrites a receipt.
+export async function recoverInquiryReceipt(userId: string, receiptId: string, attachments?: InquiryAttachment[]): Promise<boolean> {
+  if (!/^[a-zA-Z0-9_-]{20,80}$/.test(receiptId)) throw new Error('受付番号が無効です。');
+  requireOwner(userId);
+  const saved = await getDocFromServer(doc(requireDatabase(), COLLECTION, receiptId));
+  requireOwner(userId);
+  if (!saved.exists()) return false;
+  const data = saved.data();
+  return typeof data.body === 'string' && matchesReceipt(data, userId, { requestId: receiptId, body: data.body, ...(attachments ? { attachments } : {}) });
 }
 
 // Firestore Rules independently require an enabled administrator and a bounded query.
@@ -94,12 +109,15 @@ export async function listInquiries(cursor: InquiryCursor | null = null): Promis
   const rows = snapshot.docs.slice(0, INQUIRY_PAGE_SIZE);
   const items = rows.map((row) => {
     const value = row.data();
-    if (value.schemaVersion !== 1 || typeof value.userId !== 'string'
+    if (![1, 2].includes(value.schemaVersion)
+      || (value.schemaVersion === 2 && !isInquiryAttachmentList(value.attachments))
+      || typeof value.userId !== 'string'
       || typeof value.body !== 'string' || !(value.createdAt instanceof Timestamp)) {
       throw new Error('お問い合わせのデータを読み取れませんでした。');
     }
     return {
       id: row.id,
+      ...(value.schemaVersion === 2 ? { attachments: value.attachments } : {}),
       userId: value.userId,
       body: value.body,
       createdAt: value.createdAt.toDate().toISOString(),

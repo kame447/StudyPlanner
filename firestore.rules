@@ -283,6 +283,40 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Attendance is private evidence, independent of study-time Actual records.
+    match /class_attendance/{userId}/classes/{templateId}/records/{date} {
+      function validAttendanceDate() {
+        let parts = date.split('-');
+        let year = int(parts[0]);
+        let month = int(parts[1]);
+        let day = int(parts[2]);
+        let leapYear = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+        return date.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')
+          && year >= 100
+          && (month != 2 || day <= (leapYear ? 29 : 28))
+          && (!(month in [4, 6, 9, 11]) || day <= 30);
+      }
+      function validAttendance() {
+        return request.resource.data.keys().hasOnly([
+            'schemaVersion', 'userId', 'templateId', 'date', 'status', 'createdAt', 'updatedAt'
+          ])
+          && request.resource.data.schemaVersion == 1
+          && request.resource.data.userId == userId
+          && request.resource.data.templateId == templateId
+          && request.resource.data.date == date
+          && validAttendanceDate()
+          && request.resource.data.status in ['present', 'absent', 'late-or-left']
+          && request.resource.data.createdAt is string
+          && request.resource.data.updatedAt is string
+          && get(/databases/$(database)/documents/schedule_templates/$(templateId)).data.userId == userId;
+      }
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && validAttendance();
+      allow update: if isOwner(userId) && validAttendance()
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if false;
+    }
+
     match /actuals/{actualId} {
       allow read: if canReadOwnedResource();
       allow create: if canCreateOwnedResource();
@@ -346,6 +380,29 @@ service cloud.firestore {
       allow delete: if isOwner(resource.data.userId);
     }
 
+    function validInquiryPhoto(photo) {
+      return photo is map
+        && photo.keys().hasOnly(['sha256', 'contentType', 'byteLength', 'width', 'height'])
+        && photo.sha256 is string && photo.sha256.matches('^[a-f0-9]{64}$')
+        && photo.contentType in ['image/jpeg', 'image/png']
+        && photo.byteLength is int && photo.byteLength > 0 && photo.byteLength <= 5242880
+        && photo.width is int && photo.width > 0 && photo.width <= 8192
+        && photo.height is int && photo.height > 0 && photo.height <= 8192
+        && photo.width * photo.height <= 24000000;
+    }
+
+    function validInquirySchema(data) {
+      return (data.schemaVersion == 1
+          && data.keys().hasOnly(['schemaVersion', 'userId', 'body', 'createdAt']))
+        || (data.schemaVersion == 2
+          && data.keys().hasOnly(['schemaVersion', 'userId', 'body', 'createdAt', 'attachments'])
+          && data.attachments is list
+          && data.attachments.size() >= 1 && data.attachments.size() <= 3
+          && validInquiryPhoto(data.attachments[0])
+          && (data.attachments.size() < 2 || validInquiryPhoto(data.attachments[1]))
+          && (data.attachments.size() < 3 || validInquiryPhoto(data.attachments[2])));
+    }
+
     // Inquiry content is separate from telemetry and is never editable by clients.
     match /support_inquiries/{inquiryId} {
       // A missing receipt must be readable to perform a create-only transaction.
@@ -356,10 +413,7 @@ service cloud.firestore {
         && request.query.limit != null && request.query.limit <= 26;
       allow create: if isSignedIn()
         && inquiryId.matches('^[a-zA-Z0-9_-]{20,80}$')
-        && request.resource.data.keys().hasOnly([
-          'schemaVersion', 'userId', 'body', 'createdAt'
-        ])
-        && request.resource.data.schemaVersion == 1
+        && validInquirySchema(request.resource.data)
         && isOwner(request.resource.data.userId)
         && request.resource.data.body is string
         && request.resource.data.body.size() >= 1

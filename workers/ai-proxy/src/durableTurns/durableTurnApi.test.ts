@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { handleDurableTurnApi, type DurableTurnApiEnv } from './durableTurnApi';
 import { durableReceipt } from '../../../../src/features/weeklyPlanning/application/weeklyPlanningDurableTurn.testUtils';
-import { DurableTurnJob } from './durableTurnJob';
+import { DurableTurnJob, type DurableTurnRecord } from './durableTurnJob';
 
 function harness() {
   const receipt = durableReceipt();
-  const job = new DurableTurnJob({ read: async () => undefined, write: async () => {}, alarmAt: async () => {} }, () => Date.parse(receipt.pending.startedAt));
-  const accept = vi.fn(async (input: Parameters<typeof job.accept>[0]) => ({ accepted: true as const, value: await job.accept(input) })); const status = vi.fn(async () => null);
+  let record: DurableTurnRecord | undefined;
+  const job = new DurableTurnJob({ read: async () => structuredClone(record), write: async (next) => { record = structuredClone(next); }, alarmAt: async () => {} }, () => Date.parse(receipt.pending.startedAt));
+  const accept = vi.fn(async (input: Parameters<typeof job.accept>[0]) => ({ accepted: true as const, value: await job.accept(input) }));
+  const status = vi.fn((scope: Parameters<typeof job.status>[0]) => job.status(scope));
   const cancel = vi.fn((identity: Parameters<typeof job.cancel>[0]) => job.cancel(identity));
   const namespace = { getByName: vi.fn(() => ({ accept, status, cancel })) };
   const checkAndConsume = vi.fn(async (_request: { rules: Array<{ name: string }> }) => ({ allowed: true, retryAfterSeconds: 0 }));
@@ -18,7 +20,7 @@ function harness() {
   const request = (value: unknown = body, headers: Record<string, string> = {}) => new Request('https://proxy.test/weekly-planning/turns', {
     method: 'POST', headers: { Authorization: 'Bearer test-token', Origin: 'https://app.test', 'CF-Connecting-IP': '192.0.2.1', ...headers }, body: JSON.stringify(value),
   });
-  return { body, env, request, namespace, accept, status, fetch, checkAndConsume, cancel };
+  return { body, env, request, namespace, accept, status, fetch, checkAndConsume, cancel, job };
 }
 afterEach(() => vi.unstubAllGlobals());
 describe('authenticated durable turn API', () => {
@@ -76,6 +78,60 @@ describe('authenticated durable turn API', () => {
     expect(response.status).toBe(200); expect(await response.json()).toMatchObject({ status: 'failed', failure: 'cancelled' });
     expect(h.cancel).toHaveBeenCalledWith({ ownerId: 'alice', conversationId: 'chat', requestId: 'chat:request:1', baseRevision: 0, startedAt: h.body.startedAt });
     expect(h.accept).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, 'disabled'])('rejects new acceptance with flag %s without preventing owner recovery or cancellation', async (flag) => {
+    const h = harness();
+    expect((await handleDurableTurnApi(h.request(), h.env)).status).toBe(202);
+    const drained = { ...h.env, DURABLE_WEEKLY_TURNS: flag };
+    h.accept.mockClear(); h.checkAndConsume.mockClear(); h.namespace.getByName.mockClear();
+    expect((await handleDurableTurnApi(h.request(), drained)).status).toBe(503);
+    expect(h.accept).not.toHaveBeenCalled(); expect(h.checkAndConsume).not.toHaveBeenCalled();
+    expect(h.namespace.getByName).not.toHaveBeenCalled();
+    const query = new URLSearchParams({ conversationId: h.body.conversationId, requestId: h.body.requestId,
+      baseRevision: String(h.body.baseRevision), startedAt: String(h.body.startedAt) });
+    const request = (method: string) => new Request(`https://proxy.test/weekly-planning/turns?${query}`, {
+      method, headers: { Authorization: 'Bearer test-token', Origin: 'https://app.test' },
+    });
+    const polled = await handleDurableTurnApi(request('GET'), drained);
+    expect(polled.status).toBe(200); expect(await polled.json()).toMatchObject({ status: 'queued', identity: { ownerId: 'alice' } });
+    expect(h.checkAndConsume).not.toHaveBeenCalled();
+    const cancelled = await handleDurableTurnApi(request('DELETE'), drained);
+    expect(cancelled.status).toBe(200); expect(await cancelled.json()).toMatchObject({ status: 'failed', failure: 'cancelled' });
+    expect(h.checkAndConsume).toHaveBeenCalledTimes(2);
+    expect(h.accept).not.toHaveBeenCalled();
+  });
+
+  it('returns the same completed result while acceptance is disabled', async () => {
+    const h = harness(); await handleDurableTurnApi(h.request(), h.env);
+    const execute = vi.fn(async () => 'synthetic completed reply'); await h.job.run(execute);
+    const query = new URLSearchParams({ conversationId: h.body.conversationId, requestId: h.body.requestId });
+    for (let read = 0; read < 2; read += 1) {
+      const response = await handleDurableTurnApi(new Request(`https://proxy.test/weekly-planning/turns?${query}`, {
+        headers: { Authorization: 'Bearer test-token' },
+      }), { ...h.env, DURABLE_WEEKLY_TURNS: 'disabled' });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ status: 'completed', result: 'synthetic completed reply' });
+    }
+    expect(execute).toHaveBeenCalledTimes(1); expect(h.accept).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['GET', 'DELETE'])('preserves authentication, origin, owner isolation and binding requirements for %s during drain', async (method) => {
+    const h = harness(); await handleDurableTurnApi(h.request(), h.env);
+    const drained = { ...h.env, DURABLE_WEEKLY_TURNS: 'disabled' };
+    const query = new URLSearchParams({ conversationId: h.body.conversationId, requestId: h.body.requestId,
+      baseRevision: String(h.body.baseRevision), startedAt: String(h.body.startedAt), ownerId: 'alice' });
+    const request = (headers: Record<string, string> = {}) => new Request(`https://proxy.test/weekly-planning/turns?${query}`, {
+      method, headers: { Authorization: 'Bearer test-token', Origin: 'https://app.test', ...headers },
+    });
+    expect((await handleDurableTurnApi(request({ Authorization: '' }), drained)).status).toBe(401);
+    expect((await handleDurableTurnApi(request({ Origin: 'https://evil.test' }), drained)).status).toBe(403);
+    expect((await handleDurableTurnApi(request(), { ...drained, AI_TURNS: undefined })).status).toBe(503);
+    h.fetch.mockResolvedValueOnce(Response.json({ users: [{ localId: 'bob', emailVerified: true }] }));
+    expect((await handleDurableTurnApi(request(), drained)).status).toBe(404);
+    expect(h.namespace.getByName).toHaveBeenLastCalledWith(JSON.stringify(['bob', h.body.conversationId]));
+    expect(await h.job.status({ ownerId: 'alice', conversationId: h.body.conversationId, requestId: h.body.requestId }))
+      .toMatchObject({ status: 'queued' });
   });
 
 });

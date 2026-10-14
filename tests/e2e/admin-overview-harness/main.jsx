@@ -104,10 +104,15 @@ const inquiryAuth = {
   },
   signOut: async () => {},
 };
+function ContactHarness() {
+  const [visible, setVisible] = React.useState(true);
+  React.useEffect(() => { window.__inquiryVisible = setVisible; return () => { delete window.__inquiryVisible; }; }, []);
+  return visible ? <ContactPage authSession={inquiryAuth} /> : <p>別画面</p>;
+}
 if (view === 'inquiries') {
   window.history.replaceState({}, '', `/admin/inquiries${window.location.search}`);
 }
 ReactDOM.createRoot(document.getElementById('root')).render(
-  view === 'contact' ? <ContactPage authSession={inquiryAuth} />
+  view === 'contact' ? <ContactHarness />
     : view === 'inquiries' ? <AdminApp authSession={inquiryAuth} /> : <AdminConsoleHarness />,
 );

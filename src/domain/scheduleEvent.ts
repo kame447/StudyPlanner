@@ -45,6 +45,7 @@ export interface ScheduleEventRecurrence {
 }
 
 export interface ScheduleEventPlanDetails {
+  classTemplateId?: string;
   legacyPlanId: string;
   seriesId: string;
   subject: string;
@@ -148,6 +149,7 @@ function normalizedMonthEventEndDate(event: MonthEvent): string {
 function planDetails(plan: Plan): ScheduleEventPlanDetails {
   return {
     legacyPlanId: plan.id,
+    ...(plan.classTemplateId ? { classTemplateId: plan.classTemplateId } : {}),
     seriesId: plan.seriesId,
     subject: plan.subject,
     planType: plan.type,
@@ -254,6 +256,7 @@ export function scheduleEventToPlan(event: ScheduleEvent): Plan | null {
   return {
     id: event.provenance.legacy.id,
     seriesId: event.plan.seriesId,
+    ...(event.plan.classTemplateId ? { classTemplateId: event.plan.classTemplateId } : {}),
     userId: event.userId,
     title: event.title,
     subject: event.plan.subject,

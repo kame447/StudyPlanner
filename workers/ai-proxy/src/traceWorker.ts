@@ -1,5 +1,6 @@
 import { handleDurableTurnApi, isDurableTurnPath, type DurableTurnApiEnv } from './durableTurns/durableTurnApi';
 export { WeeklyPlanningTurnDurableObject } from './durableTurns/weeklyPlanningTurnDurableObject';
+import { handleInquiryAttachmentApi, isInquiryAttachmentPath, type InquiryAttachmentEnv } from './inquiryAttachmentApi';
 import {
   WEEKLY_PLANNING_TRACE_CONTRACT_VERSION,
   WEEKLY_PLANNING_TRACE_HEADERS,
@@ -226,6 +227,9 @@ export default {
   ): Promise<Response> {
     const pathname = new URL(request.url).pathname;
     if (isDurableTurnPath(pathname)) return handleDurableTurnApi(request, env as unknown as DurableTurnApiEnv);
+    if (isInquiryAttachmentPath(pathname)) {
+      return handleInquiryAttachmentApi(request, env as unknown as InquiryAttachmentEnv);
+    }
     const adminBudget = isProductObservabilityAdminPath(pathname)
       ? new WorkerSubrequestBudget('fetch', pathname)
       : null;
