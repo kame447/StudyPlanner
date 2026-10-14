@@ -1,8 +1,8 @@
-# Support inquiries
+# Support inquiries and announcements
 
 Status: canonical domain entry point
 
-Support owns the authenticated `/contact` submission and read-only `/admin/inquiries` inbox. It is independent of planner persistence, AI conversation traces and product analytics. The contact flow neither requests nor copies email addresses; existing sign-in and email verification policies are unchanged.
+Support owns the authenticated `/contact` submission, read-only `/admin/inquiries` inbox, and administrator-authored in-app announcements. It is independent of planner persistence, AI conversation traces and product analytics. The contact flow neither requests nor copies email addresses; existing sign-in and email verification policies are unchanged.
 
 ## Contract
 
@@ -35,3 +35,16 @@ Text acceptance and image transfer are separate states. Interrupted transfers re
 Active photo execution and exact receipts: [private inquiry photos](work/20261013-private-inquiry-photos.md).
 
 Active execution and exact receipts: [in-app inquiry work record](work/20261013-in-app-inquiries.md).
+
+
+## Announcements
+
+The home bell lazily opens an opaque full-screen announcements page. The current planner stays mounted behind the native modal surface; list/detail Back and Forward use the existing same-document history notification boundary. The surface is keyed by authenticated user, and account changes discard late reads/writes and do not restore a different user's history entry. This is in-app publication, not a push-notification service.
+
+Administrators reuse the existing enabled-admin guard and `/admin/announcements` navigation. Drafts live in `announcement_drafts`, readable/writable only by enabled administrators. Editing a draft does not change the public version. Explicit preview and publication atomically copies the checked revision to `announcements`; signed-in users can read only that published collection. Stale saves/publishes fail and identical retries do not create new revisions or publication timestamps. There is no new admin grant, anonymous access, deletion, email/phone collection, or automatic distribution outside the app.
+
+The published and administrative repositories read 26 records to display 25, using timestamp precision plus document-ID cursors. No new listener, polling, startup read, custom index or whole-collection scan is introduced. Each visible page reads its owner-only summary and at most 25 owner-only individual receipts. Bulk-read advances one monotonic timestamp through the newest observed publication; older unloaded pages are therefore covered without fetching them. Later publications, including revised publications of the same notice, remain unread. Failed read-state persistence is visible and never silently treated as success.
+
+Rollout is approval-gated: merge of `firestore.rules` automatically triggers production WIF deployment, so the Rules diff must be reviewed and authorized before merge. Deploy and verify Rules before exposing the feature. Local component/service tests and emulator authorization are separate from native browser/production delivery proof. The existing admin browser job includes the announcement list/detail, theme/viewport, error, owner-switch and publish-preview regressions.
+
+Active implementation and exact verification receipts: [announcements work record](work/20261014-admin-announcements.md).

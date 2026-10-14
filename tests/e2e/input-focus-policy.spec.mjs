@@ -122,6 +122,14 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     ['src/components/HomeTopbar.tsx', new Set([
       'event.currentTarget.focus({ preventScroll: true });',
     ])],
+    // User-opened announcements focus only their button opener and Back button.
+    // The dedicated announcement browser cases assert both, including detail/history.
+    ['src/components/AnnouncementsButton.tsx', new Set([
+      'event.currentTarget.focus({ preventScroll: true });',
+    ])],
+    ['src/components/AnnouncementsPage.tsx', new Set([
+      "dialog.current?.querySelector<HTMLButtonElement>('.announcements-back')?.focus({ preventScroll: true });",
+    ])],
     ['src/hooks/useSettingsNavigation.ts', new Set([
       'if (returnFocus.current?.isConnected) returnFocus.current.focus({ preventScroll: true });',
     ])],
@@ -131,6 +139,14 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     ['src/components/PublicPageBoundary.tsx', new Set([
       "publicSurface.current?.querySelector<HTMLElement>('.legal-back-link')?.focus({ preventScroll: true });",
       'if (target?.isConnected && target.getClientRects().length) target.focus({ preventScroll: true });',
+    ])],
+    // The user-opened calendar focuses its h1 and restores its launch button.
+    // Dedicated calendar browser cases assert both targets and the 16px date input.
+    ['src/components/StudyStreakView.tsx', new Set([
+      'titleRef.current?.focus({ preventScroll: true });',
+    ])],
+    ['src/hooks/useStudyStreakNavigation.ts', new Set([
+      'if (origin.current.element?.isConnected) origin.current.element.focus({ preventScroll: true });',
     ])],
   ]);
 

@@ -3,6 +3,7 @@ import {
   buildPlanOccurrenceKey,
   expandPlansForDateRange,
   getActualOccurrenceKey,
+  resolvePlanOccurrence,
 } from './planRecurrence';
 import {
   resolveTimelineSubjectDisplay,
@@ -145,10 +146,10 @@ function resolveActualPlan(
     return undefined;
   }
 
-  return (
-    expandedPlanByOccurrenceKey.get(getActualOccurrenceKey(actual)) ??
-    planById.get(actual.planId)
-  );
+  const expanded = expandedPlanByOccurrenceKey.get(getActualOccurrenceKey(actual));
+  if (expanded) return expanded;
+  const source = planById.get(actual.planId);
+  return source ? resolvePlanOccurrence(source, actual.occurrenceDate) : undefined;
 }
 
 function resolveRecordTitle(actual: Actual, plan?: Plan): string {

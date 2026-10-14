@@ -1,6 +1,6 @@
 import { forwardRef } from 'react';
 import type { Actual, Plan, TodoTask, User } from '../types/domain';
-import { HomeTopbar } from './HomeTopbar';
+import { HomeTopbar, type VerifiedStudyStreakSummary } from './HomeTopbar';
 
 interface PrimaryAppHeaderProps {
   user: User;
@@ -9,6 +9,8 @@ interface PrimaryAppHeaderProps {
   todos: TodoTask[];
   onOpenProfile: () => void;
   onOpenSettings: () => void;
+  onOpenStudyStreak?: () => void;
+  streakSummary?: VerifiedStudyStreakSummary | null;
   className?: string;
 }
 
@@ -21,6 +23,8 @@ export const PrimaryAppHeader = forwardRef<HTMLDivElement, PrimaryAppHeaderProps
       todos,
       onOpenProfile,
       onOpenSettings,
+      onOpenStudyStreak,
+      streakSummary,
       className,
     },
     ref,
@@ -44,6 +48,8 @@ export const PrimaryAppHeader = forwardRef<HTMLDivElement, PrimaryAppHeaderProps
           todos={todos}
           onOpenProfile={onOpenProfile}
           onOpenSettings={onOpenSettings}
+          onOpenStudyStreak={onOpenStudyStreak}
+          streakSummary={streakSummary}
         />
       </div>
     );

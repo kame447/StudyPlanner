@@ -17,6 +17,7 @@ import {
   normalizeStudyRecordsForDisplay,
 } from './studyRecords';
 import type { Actual, Plan, TodoTask } from '../types/domain';
+import { calculateStudyStreaks } from './studyStreak';
 
 export interface HomeDayProgress {
   date: string;
@@ -77,34 +78,6 @@ function buildStudyDateSet(actuals: Actual[]): Set<string> {
       .filter((actual) => studyMinutes(actual) > 0)
       .map((actual) => actual.occurrenceDate),
   );
-}
-
-function calculateStreaks(actuals: Actual[], today: string): { current: number; best: number } {
-  const studyDates = buildStudyDateSet(actuals);
-  const sortedDates = Array.from(studyDates).sort();
-
-  let best = 0;
-  let running = 0;
-  let previous: string | null = null;
-
-  for (const date of sortedDates) {
-    running = previous && addDays(previous, 1) === date ? running + 1 : 1;
-    best = Math.max(best, running);
-    previous = date;
-  }
-
-  let cursor = studyDates.has(today) ? today : addDays(today, -1);
-  if (!studyDates.has(cursor)) {
-    return { current: 0, best };
-  }
-
-  let current = 0;
-  while (studyDates.has(cursor)) {
-    current += 1;
-    cursor = addDays(cursor, -1);
-  }
-
-  return { current, best };
 }
 
 function sortDueTodos(todos: TodoTask[]): TodoTask[] {
@@ -203,7 +176,7 @@ export function buildHomeDashboardModel({
       : weekActualMinutes > 0
         ? 100
         : 0;
-  const streaks = calculateStreaks(studyActuals, today);
+  const streaks = calculateStudyStreaks([...buildStudyDateSet(studyActuals)], today);
 
   return {
     today,

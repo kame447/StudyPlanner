@@ -1,4 +1,6 @@
+import { verifyAnnouncementRules } from './firestore-announcement-rules.mjs';
 import { verifyClassAttendanceRules } from './firestore-class-attendance-rules.mjs';
+import { verifyStudyStreakRules } from './firestore-study-streak-rules.mjs';
 import process from 'node:process';
 import { verifyInquiryRules } from './firestore-inquiry-rules.mjs';
 import { deleteApp, initializeApp } from 'firebase/app';
@@ -15,6 +17,7 @@ import {
   getFirestore,
   serverTimestamp,
   setDoc,
+  writeBatch,
 } from 'firebase/firestore';
 
 const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'demo-studyplanner';
@@ -329,8 +332,40 @@ try {
     scheduleEvent(owner.user.uid, 'foreign'),
   ));
 
+  const classIds = ['day-cancel-class-1', 'day-cancel-class-2'];
+  for (const id of classIds) await setDoc(doc(owner.db, 'schedule_templates', id), {
+    id, userId: owner.user.uid, title: 'Legacy template without exceptions', active: true,
+  });
+  const exclude = writeBatch(owner.db);
+  for (const id of classIds) exclude.set(doc(owner.db, 'schedule_templates', id), { excludedDates: ['2026-10-05'] }, { merge: true });
+  await exclude.commit();
+  for (const id of classIds) {
+    const row = (await getDoc(doc(owner.db, 'schedule_templates', id))).data();
+    if (JSON.stringify(row.excludedDates) !== '["2026-10-05"]' || !row.active) throw new Error('Timetable date exception was not retained.');
+  }
+  await expectPermissionDenied('foreign timetable date exception', () => setDoc(
+    doc(intruder.db, 'schedule_templates', classIds[0]), { excludedDates: ['2026-10-12'] }, { merge: true },
+  ));
+  const ownIntruderId = 'intruder-own-template';
+  await setDoc(doc(intruder.db, 'schedule_templates', ownIntruderId), { id: ownIntruderId, userId: intruder.user.uid, excludedDates: [] });
+  const mixedOwners = writeBatch(intruder.db);
+  mixedOwners.set(doc(intruder.db, 'schedule_templates', ownIntruderId), { excludedDates: ['2026-10-12'] }, { merge: true });
+  mixedOwners.set(doc(intruder.db, 'schedule_templates', classIds[0]), { excludedDates: ['2026-10-12'] }, { merge: true });
+  await expectPermissionDenied('mixed-owner timetable cancellation batch', () => mixedOwners.commit());
+  if ((await getDoc(doc(intruder.db, 'schedule_templates', ownIntruderId))).data().excludedDates.length !== 0) {
+    throw new Error('Rejected timetable batch must be atomic.');
+  }
+  const restore = writeBatch(owner.db);
+  for (const id of classIds) restore.set(doc(owner.db, 'schedule_templates', id), { excludedDates: [] }, { merge: true });
+  await restore.commit();
+  for (const id of classIds) if ((await getDoc(doc(owner.db, 'schedule_templates', id))).data().excludedDates.length !== 0) {
+    throw new Error('Timetable date exception undo was not retained.');
+  }
+
   await verifyClassAttendanceRules({ owner, intruder, expectPermissionDenied, projectId, firestoreHost });
+  await verifyStudyStreakRules({ owner, intruder, expectPermissionDenied, projectId, firestoreHost });
   await verifyInquiryRules({ owner, intruder, createContext, contexts, expectPermissionDenied, projectId, firestoreHost });
+  await verifyAnnouncementRules({ owner, intruder, createContext, contexts, expectPermissionDenied, projectId, firestoreHost });
   console.log('Firestore profile and ScheduleEvent authority rules regression passed.');
 } finally {
   await Promise.all(contexts.map(({ app }) => deleteApp(app)));

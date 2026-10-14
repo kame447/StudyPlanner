@@ -42,3 +42,12 @@ Evidence receipts are in this worktree's ignored `artifacts/` directory: `baseli
 ## Remaining release gate
 
 Parent review, authorized upstream publication and the existing GitHub CI/native browser gates remain open. The change is locally implemented and verified to the stated boundaries; it is not deployed or fully accepted in a browser. No old record is automatically repaired.
+
+
+## Resume checkpoint — 2026-10-14 12:50 UTC
+
+- The user explicitly approved resuming the cancelled actual PR publication on 2026-10-14 at 12:48 UTC. The sole publication owner handles the original PR creation retry and all upstream writes; this worker owns only the existing local branch and verification.
+- Remote actual head `4542d408452b57efae0ce9c7d8b123ad54f1b58e` and local head `8cc72773eb9ab29a70ba573b5ba6dcf742a80c91` have the same tree `cc0f5101ad81b6537cc09083fb88267d301aa779`. No duplicate Issue, branch or PR is created by this worker.
+- Merge current main `fe8aa40d9e3ceb594c01f29e6f9f6d2521c69bb2` normally into the original branch. The only conflict is the existing mobile-WebKit test list; retain every main entry, including Day and streak, and retain actual date validation. Day controls, announcements, streak and Day grid selection remain byte-identical to main outside this actual-only diff.
+- The actual production delta remains the original 14 added lines across the two editors. Existing focused component/persistence regressions and six native cases remain unchanged. No assertion, timeout or threshold is relaxed.
+- Next: focused regressions and discovery, one fresh exact-content aggregate verification on this merged snapshot, then pass the final tip and receipt to the sole publisher. Native acceptance requires actual Chromium and mobile-WebKit six-case results plus post-main confirmation. The original blocked verification outcome remains unverified historical evidence and is not reclassified as successful.

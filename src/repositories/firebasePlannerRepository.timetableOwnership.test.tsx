@@ -9,6 +9,7 @@ import { createLocalFixture } from './localPersistenceConcurrency.testUtils';
 import { usePlannerDataState, type UsePlannerDataStateResult } from '../hooks/usePlannerDataState';
 import { TimetableOcrImportDialog } from '../components/TimetableOcrImportDialog';
 import { buildTimetableImportCandidates } from '../lib/timetableImport';
+import { createScheduleOccurrenceProjection } from '../domain/scheduleOccurrence';
 
 const sdk = vi.hoisted(() => ({
   rows: new Map<string, Map<string, any>>(),
@@ -32,10 +33,10 @@ vi.mock('firebase/firestore', () => {
       sdk.failNextCommit = false;
       throw new Error('synthetic commit failure');
     }
-    for (const { ref, value } of operations) {
+    for (const { ref, value, options } of operations) {
       let rows = sdk.rows.get(ref.collectionName);
       if (!rows) sdk.rows.set(ref.collectionName, rows = new Map());
-      if (value) rows.set(ref.id, structuredClone(value)); else rows.delete(ref.id);
+      if (value) rows.set(ref.id, structuredClone(options?.merge ? { ...rows.get(ref.id), ...value } : value)); else rows.delete(ref.id);
     }
   }
   return {
@@ -48,11 +49,11 @@ vi.mock('firebase/firestore', () => {
       .filter(row => query.conditions.every((condition: any) => row[condition.field] === condition.value))
       .map(row => ({ id: row.id, data: () => structuredClone(row) })) }),
     deleteDoc: async (ref: any) => apply([{ ref }], ref.uid),
-    setDoc: async (ref: any, value: any) => apply([{ ref, value }], ref.uid),
+    setDoc: async (ref: any, value: any, options: any) => apply([{ ref, value, options }], ref.uid),
     writeBatch: (db: any) => {
       const operations: any[] = [];
       return {
-        set: (ref: any, value: any) => operations.push({ ref, value }),
+        set: (ref: any, value: any, options: any) => operations.push({ ref, value, options }),
         delete: (ref: any) => operations.push({ ref }),
         commit: async () => {
           sdk.batches.push(operations.map(({ ref, value }) => ({ collectionName: ref.collectionName,
@@ -179,4 +180,38 @@ it('uses owner-scoped manual activation, preserves OCR period/template reference
   expect(state.scheduleTemplates).toHaveLength(6);
   expect(state.timetablePeriods).toEqual([]);
   expect(sdk.rows.get('timetable_terms')?.get('2026-full-year')).toEqual(legacyTerm());
+});
+
+it('persists optional date exclusions in one owner-checked batch without changing the template source', async () => {
+  const original = templates().slice(0, 2);
+  sdk.rows.set('schedule_templates', new Map(original.map(row => [row.id, row])));
+  const after = original.map(row => ({ ...row, excludedDates: ['2026-10-05'] }));
+  await boundary.repository.applyTimetableMutation({ userId: owner, templateUpserts: after, templateDeletes: [], termUpserts: [], termDeletes: [], periodUpserts: [], periodDeletes: [] });
+  expect(sdk.batches).toHaveLength(1);
+  expect(sdk.batches[0]).toEqual(original.map(row => ({ collectionName: 'schedule_templates', id: row.id, deleted: false })));
+  expect((await boundary.repository.getScheduleTemplates(owner)).map(row => row.excludedDates)).toEqual([['2026-10-05'], ['2026-10-05']]);
+  const saved = structuredClone(sdk.rows);
+  sdk.failNextCommit = true;
+  await expect(boundary.repository.applyTimetableMutation({ userId: owner, templateUpserts: original, templateDeletes: [], termUpserts: [], termDeletes: [], periodUpserts: [], periodDeletes: [] })).rejects.toThrow();
+  expect(sdk.rows).toEqual(saved);
+  await expect(boundary.repository.applyTimetableMutation({ userId: foreignOwner, templateUpserts: after, templateDeletes: [], termUpserts: [], termDeletes: [], periodUpserts: [], periodDeletes: [] })).rejects.toThrow();
+  expect(sdk.rows).toEqual(saved);
+});
+
+
+it('undo clears a legacy template exception through Firestore merge semantics and stays restored after reload', async () => {
+  seedObservedShape(); await mountAndLoad();
+  const projected = () => createScheduleOccurrenceProjection({ ownerId: owner, startDate: '2026-10-05', endDate: '2026-10-05',
+    plans: state.plans, scheduleTemplates: state.scheduleTemplates, timetableTerms: state.timetableTerms }).occurrences;
+  const occurrence = projected()[0];
+  expect(state.scheduleTemplates.find(row => row.id === occurrence.source.backingId)?.excludedDates).toBeUndefined();
+  await act(async () => { await state.deleteDayOccurrence(occurrence); });
+  expect(projected().some(row => row.id === occurrence.id)).toBe(false);
+  const restore = [...notice.mock.calls].reverse().find(call => call[2]?.actionLabel === '元に戻す')?.[2]?.onAction;
+  expect(restore).toBeTypeOf('function');
+  await act(async () => { await restore(); });
+  const stored = await boundary.repository.getScheduleTemplates(owner);
+  expect(stored.find(row => row.id === occurrence.source.backingId)?.excludedDates).toEqual([]);
+  await act(async () => { await state.loadPlannerData(owner); });
+  expect(projected().some(row => row.id === occurrence.id)).toBe(true);
 });

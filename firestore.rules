@@ -188,6 +188,71 @@ service cloud.firestore {
         && hasValidScheduleEventDetails();
     }
 
+    function validAnnouncementContent(data) {
+      return data.schemaVersion == 1
+        && data.category in ['お知らせ', 'アップデート', '不具合', 'メンテナンス', 'その他']
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 120
+        && data.title.matches('.*[^\\s].*')
+        && data.body is string && data.body.size() > 0 && data.body.size() <= 10000
+        && data.body.matches('[\\s\\S]*[^\\s][\\s\\S]*')
+        && data.revision is int && data.revision > 0;
+    }
+    function validAnnouncementDraft(data) {
+      return data.keys().hasOnly(['schemaVersion', 'category', 'title', 'body', 'revision', 'publishedRevision', 'createdAt', 'updatedAt'])
+        && validAnnouncementContent(data)
+        && data.publishedRevision is int && data.publishedRevision >= 0 && data.publishedRevision <= data.revision
+        && data.createdAt is timestamp && data.updatedAt is timestamp;
+    }
+    function publicationMatchesDraft(id, data) {
+      let draft = getAfter(/databases/$(database)/documents/announcement_drafts/$(id)).data;
+      return draft.revision == data.revision && draft.publishedRevision == data.revision
+        && draft.title == data.title && draft.body == data.body && draft.category == data.category;
+    }
+    match /announcement_drafts/{id} {
+      allow get: if isAdmin();
+      allow list: if isAdmin() && request.query.limit != null && request.query.limit <= 26;
+      allow create: if isAdmin() && validAnnouncementDraft(request.resource.data)
+        && request.resource.data.revision == 1 && request.resource.data.publishedRevision == 0
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+      allow update: if isAdmin() && validAnnouncementDraft(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && ((request.resource.data.revision == resource.data.revision + 1
+            && request.resource.data.publishedRevision == resource.data.publishedRevision
+            && request.resource.data.updatedAt == request.time)
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['publishedRevision'])
+            && request.resource.data.publishedRevision == resource.data.revision
+            && getAfter(/databases/$(database)/documents/announcements/$(id)).data.revision == resource.data.revision
+            && getAfter(/databases/$(database)/documents/announcements/$(id)).data.publishedAt == request.time));
+      allow delete: if false;
+    }
+    match /announcements/{id} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && request.query.limit != null && request.query.limit <= 26;
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['schemaVersion', 'category', 'title', 'body', 'revision', 'publishedAt'])
+        && validAnnouncementContent(request.resource.data)
+        && request.resource.data.publishedAt == request.time
+        && publicationMatchesDraft(id, request.resource.data)
+        && (resource == null || request.resource.data.revision > resource.data.revision);
+      allow delete: if false;
+    }
+    match /announcement_reads/{userId} {
+      allow get: if isOwner(userId);
+      allow create, update: if isOwner(userId) && request.resource.data.keys().hasOnly(['through'])
+        && request.resource.data.through is timestamp && request.resource.data.through <= request.time
+        && (resource == null || request.resource.data.through >= resource.data.through);
+      allow delete, list: if false;
+      match /items/{id} {
+        allow get: if isOwner(userId);
+        allow list: if isOwner(userId) && request.query.limit != null && request.query.limit <= 25;
+        allow create, update: if isOwner(userId) && request.resource.data.keys().hasOnly(['publishedAt'])
+          && request.resource.data.publishedAt is timestamp
+          && request.resource.data.publishedAt <= get(/databases/$(database)/documents/announcements/$(id)).data.publishedAt
+          && (resource == null || request.resource.data.publishedAt >= resource.data.publishedAt);
+        allow delete: if false;
+      }
+    }
+
     match /admins/{adminId} {
       allow get: if isOwner(adminId) || isAdmin();
       allow list: if isAdmin();
@@ -315,6 +380,42 @@ service cloud.firestore {
       allow update: if isOwner(userId) && validAttendance()
         && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if false;
+    }
+
+    // A private append-only set of chosen rest dates. Ticket totals remain a
+    // projection of the owner's Actual history, not stored currency or credit.
+    match /study_rest_days/{userId} {
+      function validRestState() {
+        return request.resource.data.keys().hasOnly(['schemaVersion', 'userId', 'revision', 'dates'])
+          && request.resource.data.schemaVersion == 1
+          && request.resource.data.userId == userId
+          && request.resource.data.revision is int
+          && request.resource.data.dates is list
+          && request.resource.data.dates.toSet().size() == request.resource.data.dates.size();
+      }
+      function validRestDate(date) {
+        let parts = date.split('-');
+        let year = int(parts[0]);
+        let month = int(parts[1]);
+        let day = int(parts[2]);
+        let leapYear = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+        return date is string
+          && date.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')
+          && year >= 100
+          && (month != 2 || day <= (leapYear ? 29 : 28))
+          && (!(month in [4, 6, 9, 11]) || day <= 30);
+      }
+      allow get: if isOwner(userId);
+      allow list, delete: if false;
+      allow create: if isOwner(userId) && validRestState()
+        && request.resource.data.revision == 1
+        && request.resource.data.dates.size() == 1
+        && validRestDate(request.resource.data.dates[0]);
+      allow update: if isOwner(userId) && validRestState()
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.dates.size() == resource.data.dates.size() + 1
+        && request.resource.data.dates.hasAll(resource.data.dates)
+        && validRestDate(request.resource.data.dates.removeAll(resource.data.dates)[0]);
     }
 
     match /actuals/{actualId} {
