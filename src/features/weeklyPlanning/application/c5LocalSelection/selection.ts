@@ -8,7 +8,7 @@ import { resolveGenericWorkItemEstimate } from '../../semantic/weeklyPlanningGen
 import { validateWeeklyPlanningFactGraphValueV5 } from '../../semantic/weeklyPlanningFactGraphValidatorV5';
 import type { WeeklyPlanningFactGraphV5 } from '../../semantic/weeklyPlanningFactGraphV5';
 import type { PlanningState, WeeklyPlanningPendingTurn } from '../../types';
-import { c5PlanningWorkloads, decodeC5Ledger, decodeC5Snapshot, narrowC5EffortBasis, serializeC5Value, serializeC5ApplicationState } from './basis';
+import { boundC5PresentedQuestion, c5PlanningWorkloads, decodeC5Ledger, decodeC5Snapshot, narrowC5EffortBasis, serializeC5Value, serializeC5ApplicationState } from './basis';
 import type { C5LocalSelectionOptions, C5ReducerCommit, C5SelectedTurn, C5SelectionLedger } from './contracts';
 import type { WorkloadFact } from '../../semantic/weeklyPlanningFactGraph';
 
@@ -22,7 +22,7 @@ const commitGuards = new WeakMap<object, () => boolean>();
 function answerBasis(input: TurnBasis): CandidateBasis | null {
   const frozen = decodeC5Snapshot(input.snapshot.intakeState?.lastQuestionContext?.c5, input.ownerId, input.pending.conversationId);
   const ledger = decodeC5Ledger(input.snapshot.intakeState?.c5SelectionLedger, input.ownerId, input.pending.conversationId);
-  if (!frozen || !ledger || ledger.lastEpoch !== frozen.selectionEpoch) return null;
+  if (!frozen?.question.presentedQuestion || !ledger || ledger.lastEpoch !== frozen.selectionEpoch) return null;
   const selectionKey = serializeC5Value([input.ownerId, input.pending.conversationId, frozen.question.id, frozen.selectionEpoch]);
   if (ledger.consumed.some((entry) => entry.selectionKey === selectionKey)) return null;
   return {
@@ -64,7 +64,8 @@ function observe(input: TurnBasis, expected: CandidateBasis): CandidateObservati
     && freshness.presentation.assistantMessageId === frozen.question.presentingMessageId
     && freshness.presentation.planningStateRevision === frozen.question.presentationRevision;
   return {
-    binding: live ? { ...expected.binding, graphRevision: graph.revision, sources: live.sources, target: live.target, scope: live.scope } : expected.binding,
+    binding: live ? { ...expected.binding, graphRevision: graph.revision, sources: live.sources, target: live.target, scope: live.scope,
+      question: { ...expected.binding.question, presentedQuestion: boundC5PresentedQuestion(expected.binding.question, current.messages) ?? undefined } } : expected.binding,
     candidates: live?.candidates ?? [],
     sourceAccess: input.options.sourceAccess(),
     intentProvenance: 'validated_current_turn',
