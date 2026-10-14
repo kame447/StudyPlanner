@@ -13,44 +13,48 @@ export function useAdminDataLoader<T>(
   initialData: T,
   fallbackErrorMessage: string,
 ): AdminDataLoadResult<T> {
-  const [loadState, setLoadState] = useState<AdminDataLoadState>('loading');
-  const [data, setData] = useState<T>(initialData);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [snapshot, setSnapshot] = useState<{
+    owner: typeof load;
+    result: AdminDataLoadResult<T>;
+  }>(() => ({
+    owner: load,
+    result: { loadState: 'loading', data: initialData, errorMessage: '' },
+  }));
 
   useEffect(() => {
     let active = true;
-
-    setLoadState('loading');
-    setErrorMessage('');
+    setSnapshot({
+      owner: load,
+      result: { loadState: 'loading', data: initialData, errorMessage: '' },
+    });
 
     load()
-      .then((nextData) => {
-        if (!active) {
-          return;
-        }
-
-        setData(nextData);
-        setLoadState('ready');
+      .then((data) => {
+        if (!active) return;
+        setSnapshot({ owner: load, result: { loadState: 'ready', data, errorMessage: '' } });
       })
       .catch((error) => {
-        if (!active) {
-          return;
-        }
-
-        setErrorMessage(
-          error instanceof Error ? error.message : fallbackErrorMessage,
-        );
-        setLoadState('error');
+        if (!active) return;
+        setSnapshot({
+          owner: load,
+          result: {
+            loadState: 'error',
+            data: initialData,
+            errorMessage: error instanceof Error ? error.message : fallbackErrorMessage,
+          },
+        });
       });
 
     return () => {
       active = false;
     };
+    // initialData is the empty snapshot for this load, not a request dependency.
+    // Callers may construct an equivalent initial object on every render.
   }, [fallbackErrorMessage, load]);
 
-  return {
-    loadState,
-    data,
-    errorMessage,
-  };
+  // Hide the previous query's snapshot in the new query's first render,
+  // before the passive effect resets its loading state.
+  return snapshot.owner === load
+    ? snapshot.result
+    : { loadState: 'loading', data: initialData, errorMessage: '' };
 }

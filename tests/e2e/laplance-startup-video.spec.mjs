@@ -136,23 +136,27 @@ for (const width of [390, 1280]) {
     expect(await page.evaluate(() => localStorage.getItem('studyplanner.app-access-key'))).toBeNull();
     await page.evaluate(() => window.__startupGateHarness.emitAuth(null));
     await expect(page.getByRole('button', { name: skipName })).toBeEnabled();
-    await expect(page.getByRole('heading', { name: '新規会員登録' })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toHaveCount(0);
     const video = page.locator('video');
     await observeEnded(video);
     if (width === 390) await expectRealCompletion(page);
     else await page.getByRole('button', { name: skipName }).click();
 
-    await expect(page.getByRole('heading', { name: '新規会員登録' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: '限定公開キー' })).toHaveCount(0);
     await expect(page.getByLabel('閲覧キー', { exact: true })).toHaveCount(0);
     await expect(page.locator('.home-main:visible')).toHaveCount(0);
     await expect(page.getByRole('link', { name: '利用規約' })).toHaveAttribute('href', '/terms');
     await expect(page.getByRole('link', { name: 'プライバシーポリシー' })).toHaveAttribute('href', '/privacy');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await testInfo.attach(`auth-entry-signup-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+    await testInfo.attach(`auth-entry-default-login-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
 
+    await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('tab', { name: '新規会員登録', exact: true }).click();
+    await expect(page.getByLabel('パスワード確認')).toBeVisible();
+    await testInfo.attach(`auth-entry-signup-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
     await page.getByRole('tab', { name: 'ログイン', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'ログイン', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toBeVisible();
     await expect(page.getByLabel('メールアドレス')).toBeVisible();
     await expect(page.getByLabel('パスワード', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Googleでログイン' })).toBeVisible();
@@ -164,7 +168,7 @@ for (const width of [390, 1280]) {
     await page.waitForFunction(() => Boolean(window.__startupGateHarness));
     await page.evaluate(() => window.__startupGateHarness.emitAuth(null));
     await page.getByRole('button', { name: skipName }).click();
-    await expect(page.getByRole('heading', { name: '新規会員登録' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'ログイン', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: '限定公開キー' })).toHaveCount(0);
     await expect(page.locator('.home-main:visible')).toHaveCount(0);
     expect(await page.evaluate(() => localStorage.getItem('studyplanner.app-access-key'))).toBe('obsolete-synthetic-value');

@@ -260,7 +260,10 @@ interface AdminObservabilityUsersQuery {
 
 export type AdminObservabilityUsersPageData = Omit<AdminObservabilityUserPage, 'trend'>;
 
-async function requestAdminObservabilityUsersPage(params: AdminObservabilityUsersQuery): Promise<{
+async function requestAdminObservabilityUsersPage(
+  params: AdminObservabilityUsersQuery,
+  includeTrend = true,
+): Promise<{
   page: AdminObservabilityUsersPageData;
   trend: ObservabilityAdminUserTrend | null;
 }> {
@@ -268,6 +271,7 @@ async function requestAdminObservabilityUsersPage(params: AdminObservabilityUser
   if (params.environment) query.set('environment', params.environment);
   if (params.cursor) query.set('cursor', params.cursor);
   if (params.limit) query.set('limit', String(params.limit));
+  if (!includeTrend) query.set('includeTrend', 'false');
   const payload = await adminGet<{
     ok: true;
     users: ObservabilityAdminUserListItem[];
@@ -278,6 +282,12 @@ async function requestAdminObservabilityUsersPage(params: AdminObservabilityUser
   const hasEnrichmentField = Object.prototype.hasOwnProperty.call(payload, 'enrichmentReady');
   const hasTrendField = Object.prototype.hasOwnProperty.call(payload, 'trend');
   const hasCurrentResponseShape = hasEnrichmentField && hasTrendField;
+  // A page-only response may intentionally omit trend, while older Workers
+  // still return it. Keep their full-response validation and legacy fallback.
+  const hasPageResponseShape = !includeTrend && hasEnrichmentField && !hasTrendField;
+  if (hasPageResponseShape && typeof payload.enrichmentReady !== 'boolean') {
+    throw new Error('Observability Users response was invalid.');
+  }
   let trend: ObservabilityAdminUserTrend | null = null;
   if (hasCurrentResponseShape) {
     const responseTrend = readUserTrend(payload.trend);
@@ -290,7 +300,7 @@ async function requestAdminObservabilityUsersPage(params: AdminObservabilityUser
     page: {
       users: payload.users.map(normalizeAdminUser),
       nextCursor: payload.nextCursor,
-      enrichmentReady: hasCurrentResponseShape ? payload.enrichmentReady ?? false : false,
+      enrichmentReady: hasCurrentResponseShape || hasPageResponseShape ? payload.enrichmentReady ?? false : false,
     },
     trend,
   };
@@ -301,7 +311,7 @@ async function requestAdminObservabilityUsersPage(params: AdminObservabilityUser
 export async function getAdminObservabilityUsersPage(
   params: AdminObservabilityUsersQuery = {},
 ): Promise<AdminObservabilityUsersPageData> {
-  return (await requestAdminObservabilityUsersPage(params)).page;
+  return (await requestAdminObservabilityUsersPage(params, false)).page;
 }
 
 export async function getAdminObservabilityUsers(

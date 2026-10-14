@@ -98,6 +98,8 @@ it('keeps only today’s recurring occurrence and its matching completion mark',
     expect(rows).toHaveLength(1);
     expect(rows[0].findByType('strong').children).toEqual(['daily']);
     expect(rows[0].findAllByProps({ className: 'home-time-dot completed' })).toHaveLength(1);
+    // Completion keeps its own indicator without replacing the schedule accent.
+    expect(rows[0].props.style['--schedule-event-color']).toBe('#2f78e3');
   } finally {
     act(() => renderer.unmount());
   }

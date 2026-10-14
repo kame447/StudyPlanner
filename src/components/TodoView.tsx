@@ -584,12 +584,12 @@ function TodoViewSession({
                   }))
                 }
               >
+                <span className="todo-completed-label">完了</span>
                 {isExpanded ? (
                   <ChevronDown aria-hidden="true" size={18} strokeWidth={1.9} />
                 ) : (
                   <ChevronRight aria-hidden="true" size={18} strokeWidth={1.9} />
                 )}
-                <span className="todo-completed-label">完了</span>
                 <span className="todo-section-count">{sectionTodos.length}</span>
               </button>
             </h3>
@@ -725,60 +725,64 @@ function TodoViewSession({
                 />
               </label>
 
-              <label className="field">
-                <span>種別</span>
-                <select
-                  value={editDraft.type}
-                  onChange={(event) =>
-                    updateEditDraft('type', event.target.value as PlanType)
-                  }
-                >
-                  {PLAN_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="todo-edit-field-pair">
+                <label className="field">
+                  <span>種別</span>
+                  <select
+                    value={editDraft.type}
+                    onChange={(event) =>
+                      updateEditDraft('type', event.target.value as PlanType)
+                    }
+                  >
+                    {PLAN_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-              <label className="field">
-                <span>所要時間</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={editDraft.estimatedMinutes ?? ''}
-                  onChange={(event) =>
-                    updateEditDraft(
-                      'estimatedMinutes',
-                      event.target.value ? Number(event.target.value) : null,
-                    )
-                  }
-                />
-              </label>
+                <label className="field">
+                  <span>所要時間（分）</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={editDraft.estimatedMinutes ?? ''}
+                    onChange={(event) =>
+                      updateEditDraft(
+                        'estimatedMinutes',
+                        event.target.value ? Number(event.target.value) : null,
+                      )
+                    }
+                  />
+                </label>
+              </div>
 
-              <label className="field">
-                <span>締切日</span>
-                <input
-                  type="date"
-                  value={editDraft.dueDate ?? ''}
-                  onChange={(event) =>
-                    updateEditDraft('dueDate', event.target.value || null)
-                  }
-                />
-              </label>
+              <div className="todo-edit-deadline-pair">
+                <label className="field">
+                  <span>締切日</span>
+                  <input
+                    type="date"
+                    value={editDraft.dueDate ?? ''}
+                    onChange={(event) =>
+                      updateEditDraft('dueDate', event.target.value || null)
+                    }
+                  />
+                </label>
 
-              <label className="field">
-                <span>締切時刻</span>
-                <input
-                  type="time"
-                  value={editDraft.dueTime ?? ''}
-                  disabled={!editDraft.dueDate}
-                  onChange={(event) =>
-                    updateEditDraft('dueTime', event.target.value || null)
-                  }
-                />
-              </label>
+                <label className="field">
+                  <span>締切時刻</span>
+                  <input
+                    type="time"
+                    value={editDraft.dueTime ?? ''}
+                    disabled={!editDraft.dueDate}
+                    onChange={(event) =>
+                      updateEditDraft('dueTime', event.target.value || null)
+                    }
+                  />
+                </label>
+              </div>
             </div>
 
             <label className="field">

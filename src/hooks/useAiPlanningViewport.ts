@@ -39,8 +39,10 @@ export function useAiPlanningViewport(
     }));
     let height = -1;
     let top = -1;
+    let resumeFrame: number | null = null;
 
     const updateViewport = () => {
+      if (document.visibilityState === 'hidden') return;
       // Pinch zoom must magnify the existing layout, not shrink/reflow it.
       if (viewport.scale !== 1 || viewport.height <= 0) return;
       const nextHeight = viewport.height;
@@ -63,14 +65,38 @@ export function useAiPlanningViewport(
       if (conversation) conversation.scrollTop = atEnd ? conversation.scrollHeight : scrollTop;
     };
 
+    const cancelResumeFrame = () => {
+      if (resumeFrame === null) return;
+      window.cancelAnimationFrame(resumeFrame);
+      resumeFrame = null;
+    };
+    const resumeViewport = () => {
+      if (document.visibilityState === 'hidden') {
+        cancelResumeFrame();
+        return;
+      }
+      if (resumeFrame !== null) return;
+      // A background keyboard dismissal need not deliver a resize event.
+      // Read at the next paint so an event-time stale size is not retained.
+      resumeFrame = window.requestAnimationFrame(() => {
+        resumeFrame = null;
+        updateViewport();
+      });
+    };
+
     updateViewport();
     viewport.addEventListener('resize', updateViewport);
     viewport.addEventListener('scroll', updateViewport);
     window.addEventListener('resize', updateViewport);
+    window.addEventListener('pageshow', resumeViewport);
+    document.addEventListener('visibilitychange', resumeViewport);
     return () => {
+      cancelResumeFrame();
       viewport.removeEventListener('resize', updateViewport);
       viewport.removeEventListener('scroll', updateViewport);
       window.removeEventListener('resize', updateViewport);
+      window.removeEventListener('pageshow', resumeViewport);
+      document.removeEventListener('visibilitychange', resumeViewport);
       for (const { name, value, priority } of previous) {
         if (value) shell.style.setProperty(name, value, priority);
         else shell.style.removeProperty(name);

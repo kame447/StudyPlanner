@@ -120,7 +120,7 @@ for (const width of [390, 1280]) {
 
 for (const theme of ['light', 'dark']) {
   for (const { path, surface } of [
-    { path: '/', surface: '.auth-card' },
+    { path: '/', surface: '.auth-entry' },
     { path: '/terms', surface: '.legal-page-card' },
     { path: '/privacy', surface: '.legal-page-card' },
     { path: '/contact', surface: '.legal-page-card' },
@@ -134,10 +134,20 @@ for (const theme of ['light', 'dark']) {
       await expect(page.locator(surface)).toBeVisible();
       await expect(page.locator('.startup-splash')).toHaveCount(0);
       // Admin currently owns no persisted theme preference and uses base light.
-      await expectThemeReleased(page, path === '/admin' ? 'light' : theme);
+      if (path === '/') {
+        await expect.poll(async () => (await canvas(page)).guard).toBe(false);
+        await expect(page.locator('html')).toHaveCSS('color-scheme', 'dark');
+        await expect(page.locator('body')).toHaveCSS('background-color', DARK_CANVAS);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      } else await expectThemeReleased(page, path === '/admin' ? 'light' : theme);
       await page.reload();
       await expect(page.locator(surface)).toBeVisible();
-      await expectThemeReleased(page, path === '/admin' ? 'light' : theme);
+      if (path === '/') {
+        await expect.poll(async () => (await canvas(page)).guard).toBe(false);
+        await expect(page.locator('html')).toHaveCSS('color-scheme', 'dark');
+        await expect(page.locator('body')).toHaveCSS('background-color', DARK_CANVAS);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      } else await expectThemeReleased(page, path === '/admin' ? 'light' : theme);
     });
   }
 }
