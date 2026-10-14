@@ -29,7 +29,7 @@ const durable = page => page.evaluate(() => Object.fromEntries(Object.keys(local
 for (const mobile of [false, true]) {
   test.describe(mobile ? 'mobile timetable tap' : 'desktop timetable click', () => {
     test.use({ viewport: { width: mobile ? 390 : 1280, height: mobile ? 844 : 900 }, isMobile: mobile, hasTouch: mobile });
-    test('unimported class opens read-only details and the timetable route without changing saved data', async ({ page }, testInfo) => {
+    test('unimported class opens day controls and the timetable route without changing saved data', async ({ page }, testInfo) => {
       const errors = [];
       page.on('pageerror', error => errors.push(String(error)));
       await seed(page);
@@ -65,7 +65,9 @@ for (const mobile of [false, true]) {
         await expect(dialog.getByRole('button', { name: '閉じる', exact: true })).toBeFocused();
       }
       await expect(dialog).toContainText('13:00 - 14:00');
-      await expect(dialog).toContainText('時間割から表示しています');
+      await expect(dialog).not.toContainText('時間割から表示しています');
+      await expect(dialog.getByRole('button', { name: 'この日の時間を変更', exact: true })).toBeVisible();
+      await expect(dialog.getByRole('button', { name: 'この日だけ削除', exact: true })).toBeVisible();
       await expect(dialog.getByRole('button', { name: '記録を保存', exact: true })).toHaveCount(0);
       await expect(dialog.getByRole('button', { name: '予定を編集', exact: true })).toHaveCount(0);
       // Visibility can become true during the bottom-sheet entrance animation.
