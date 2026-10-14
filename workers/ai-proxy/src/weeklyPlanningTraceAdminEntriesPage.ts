@@ -30,6 +30,7 @@ export interface WeeklyPlanningTraceAdminEntriesPageEnv
   FIREBASE_WEB_API_KEY: string;
   ALLOWED_ORIGIN?: string;
   WEEKLY_PLANNING_TRACE_HMAC_SECRETS: string;
+  WEEKLY_PLANNING_TRACE_HMAC_SECRETS_EXTENSION?: string;
   WEEKLY_PLANNING_TRACE_WORKER_REVISION?: string;
 }
 
@@ -343,7 +344,10 @@ async function appendAccessAudit(
   const actor = await createWeeklyPlanningTraceSubject(
     uid,
     epoch,
-    parseWeeklyPlanningTraceHmacSecrets(env.WEEKLY_PLANNING_TRACE_HMAC_SECRETS),
+    parseWeeklyPlanningTraceHmacSecrets(
+      env.WEEKLY_PLANNING_TRACE_HMAC_SECRETS,
+      env.WEEKLY_PLANNING_TRACE_HMAC_SECRETS_EXTENSION,
+    ),
   );
   const id = `trace-audit:${now.getTime()}:${crypto.randomUUID()}`;
   await firestore.setImmutableDocument(TRACE_ACCESS_AUDIT, id, {

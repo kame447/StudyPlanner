@@ -263,7 +263,10 @@ export function resolveWeeklyPlanningTraceEpoch(now: Date | string | number): st
   return String(Math.floor(time / TRACE_EPOCH_MS));
 }
 
-export function parseWeeklyPlanningTraceHmacSecrets(raw: string): TraceHmacSecretRing {
+export function parseWeeklyPlanningTraceHmacSecrets(
+  raw: string,
+  extension?: string,
+): TraceHmacSecretRing {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -278,7 +281,15 @@ export function parseWeeklyPlanningTraceHmacSecrets(raw: string): TraceHmacSecre
       /^\d+$/.test(entry[0]) && typeof entry[1] === 'string' && entry[1].length >= 32,
     );
   if (entries.length === 0) throw new Error('trace HMAC secret ring has no valid epoch secret');
-  return Object.fromEntries(entries);
+  const primary = Object.fromEntries(entries) as TraceHmacSecretRing;
+  if (!extension?.trim()) return primary;
+  const additional = parseWeeklyPlanningTraceHmacSecrets(extension);
+  for (const epoch of Object.keys(additional)) {
+    if (Object.prototype.hasOwnProperty.call(primary, epoch)) {
+      throw new Error('trace HMAC extension has duplicate epoch');
+    }
+  }
+  return { ...primary, ...additional };
 }
 
 export async function createWeeklyPlanningTraceSubject(
