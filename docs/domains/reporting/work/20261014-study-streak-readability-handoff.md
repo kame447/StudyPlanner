@@ -20,6 +20,7 @@ The FAQ owner received the existing contract: seven real study days earn a ticke
 ## Verification and next step
 
 - Focused UI/style checks: 24 passed in five files; the existing mobile WebKit suite discovers all five streak cases. Evidence is saved in `/workspace/shared/laplans-streak-readability-evidence/` with the source fingerprint.
+- Combined verification caught a test-only TypeScript narrowing error in the new progress assertion. Selecting the actual `span` test instance fixes it without changing product behavior; the final 24 focused checks and fresh `typecheck:app:full` both pass.
 - Fresh full verification is intentionally held by the integration owner while an unrelated Worker type-generation authorization issue is reviewed. The planned full run will cover the fixed combined FAQ/UI candidate once, rather than duplicate branch runs.
 - Existing native cases now check bounded rows and readable fonts in addition to one-screen layout, six-week months, automatic protection and large-text fallback. Discovery is not execution proof.
 - Local browser launch remains unavailable under the previously verified sandbox restriction; do not claim new rendered/native results from the prior main checks.
