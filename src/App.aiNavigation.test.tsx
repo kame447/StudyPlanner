@@ -13,6 +13,11 @@ import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './features/we
 import type { TodoTask, User } from './types/domain';
 
 const boundary = vi.hoisted(() => ({ todos: vi.fn(async () => []), materials: vi.fn(async () => []) }));
+// This suite isolates planner/navigation behavior; streak persistence has its own provider integration tests.
+vi.mock('./components/StudyStreakContext', () => ({
+  StudyStreakProvider: ({ children }: { children: import('react').ReactNode }) => children,
+  useSharedStudyStreak: () => null,
+}));
 vi.mock('./repositories', () => ({ plannerRepository: { getTodos: boundary.todos, getStudyMaterials: boundary.materials } }));
 vi.mock('./lib/preloadAppViews', () => ({ scheduleAppViewPreload: () => () => undefined }));
 vi.mock('./hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));

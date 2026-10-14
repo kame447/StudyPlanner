@@ -16,6 +16,11 @@ import type { PlannerRepository } from './repositories/repositoryContracts';
 import type { StudyMaterial, User } from './types/domain';
 
 const boundary = vi.hoisted(() => ({ repository: null as unknown as PlannerRepository }));
+// This suite isolates planner/navigation behavior; streak persistence has its own provider integration tests.
+vi.mock('./components/StudyStreakContext', () => ({
+  StudyStreakProvider: ({ children }: { children: import('react').ReactNode }) => children,
+  useSharedStudyStreak: () => null,
+}));
 vi.mock('./repositories', () => ({ plannerRepository: new Proxy({}, {
   get: (_target, key) => boundary.repository[key as keyof PlannerRepository],
 }) }));

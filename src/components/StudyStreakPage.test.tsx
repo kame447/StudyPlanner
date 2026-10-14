@@ -1,6 +1,7 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { StudyStreakPage } from './StudyStreakPage';
+import { StudyStreakProvider } from './StudyStreakContext';
 import { StudyStreakView } from './StudyStreakView';
 import type { Actual, Plan } from '../types/domain';
 import type { StudyStreakHistory } from '../repositories/studyStreakRepository';
@@ -16,43 +17,64 @@ beforeEach(() => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-08-19T10:00:00'));
   repository.canUseRestDays = true;
   repository.read.mockReset().mockResolvedValue(history);
-  repository.useRestDay.mockReset().mockImplementation(async (current: StudyStreakHistory, date: string) => ({ ...current, restDays: [{ date }] }));
+  repository.useRestDay.mockReset().mockImplementation(async (current: StudyStreakHistory, date: string) => ({ ...current, restDays: [...current.restDays, { date }] }));
 });
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.useRealTimers(); });
 const button = (label: string) => renderer!.root.findAllByType('button').find(node => node.children.includes(label))!;
+const screen = (open = true) => <StudyStreakProvider userId="owner" plans={plans} actuals={actuals}>{open && <StudyStreakPage onClose={vi.fn()} />}</StudyStreakProvider>;
 
-it('connects complete history and manual use, then publishes a verified summary for the matching input', async () => {
-  const onSummaryChange = vi.fn();
-  await act(async () => { renderer = create(<StudyStreakPage userId="owner" plans={plans} actuals={actuals}
-    onClose={vi.fn()} onSummaryChange={onSummaryChange} />); });
+it('automatically protects yesterday on Home and reuses the same reader when detail opens again', async () => {
+  await act(async () => { renderer = create(screen(false)); });
   expect(repository.read).toHaveBeenCalledTimes(1);
-  expect(renderer!.root.findByType(StudyStreakView).props.model.availableTickets).toBe(1);
-  expect(onSummaryChange).toHaveBeenLastCalledWith({ userId: 'owner', today: '2026-08-19', plans, actuals, currentStreak: 0, bestStreak: 7 });
-  await act(async () => { await button('チケットを使う').props.onClick(); });
-  expect(repository.useRestDay).toHaveBeenCalledWith(history, '2026-08-18', '2026-08-19');
-  expect(renderer!.root.findByType(StudyStreakView).props.model.protectedDates).toEqual(['2026-08-18']);
-  expect(onSummaryChange).toHaveBeenLastCalledWith(expect.objectContaining({ currentStreak: 7, bestStreak: 7 }));
+  expect(repository.useRestDay).toHaveBeenCalledWith(history, '2026-08-18', '2026-08-19', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  await act(async () => renderer!.update(screen()));
+  expect(renderer!.root.findByType(StudyStreakView).props.model).toMatchObject({ availableTickets: 0, currentStreak: 7, protectedDates: ['2026-08-18'] });
+  await act(async () => renderer!.update(screen(false)));
+  await act(async () => renderer!.update(screen()));
+  expect(repository.read).toHaveBeenCalledTimes(1);
+  expect(repository.useRestDay).toHaveBeenCalledTimes(1);
+  expect(renderer!.root.findAllByType('input')).toHaveLength(0);
 });
 
-it('invalidates a header summary and never offers manual use when history cannot be read', async () => {
+it('keeps unknown history distinct from zero and retries without exposing manual actions', async () => {
   repository.read.mockRejectedValue(new Error('学習履歴を読み込めませんでした。'));
-  const onSummaryChange = vi.fn();
-  await act(async () => { renderer = create(<StudyStreakPage userId="owner" plans={plans} actuals={actuals}
-    onClose={vi.fn()} onSummaryChange={onSummaryChange} />); });
+  await act(async () => { renderer = create(screen()); });
   const view = renderer!.root.findByType(StudyStreakView);
   expect(view.props.model.currentStreak).toBeNull();
-  expect(view.props.restDayActions).toBeUndefined();
   expect(view.props.error).toBe('学習履歴を読み込めませんでした。');
-  expect(onSummaryChange).toHaveBeenLastCalledWith(null);
+  expect(repository.useRestDay).not.toHaveBeenCalled();
   repository.read.mockResolvedValueOnce(history);
   await act(async () => button('再読み込み').props.onClick());
-  expect(renderer!.root.findByType(StudyStreakView).props.model.availableTickets).toBe(1);
+  expect(renderer!.root.findByType(StudyStreakView).props.model.availableTickets).toBe(0);
 });
 
-it('shows read-only history on a repository without safe manual-use support', async () => {
-  repository.canUseRestDays = false;
-  await act(async () => { renderer = create(<StudyStreakPage userId="owner" plans={plans} actuals={actuals} onClose={vi.fn()} />); });
-  expect(renderer!.root.findByType(StudyStreakView).props.model.historyComplete).toBe(true);
-  expect(renderer!.root.findByType(StudyStreakView).props.restDayActions).toBeUndefined();
-  expect(renderer!.root.findAllByProps({ type: 'date' })).toHaveLength(0);
+it('retains acknowledged history and the selected month when automatic saving fails', async () => {
+  repository.useRestDay.mockRejectedValue(new Error('保存できませんでした。'));
+  await act(async () => { renderer = create(screen()); });
+  const view = renderer!.root.findByType(StudyStreakView);
+  expect(view.props.model).toMatchObject({ availableTickets: 1, protectedDates: [] });
+  expect(view.props.error).toBe('保存できませんでした。');
+  const previous = renderer!.root.findByProps({ 'aria-label': '前の月' });
+  act(() => previous.props.onClick());
+  repository.useRestDay.mockImplementation(async (current: StudyStreakHistory, date: string) => ({ ...current, restDays: [{ date }] }));
+  await act(async () => button('再読み込み').props.onClick());
+  expect(renderer!.root.findByProps({ 'aria-live': 'polite' }).children).toEqual(['2026年7月']);
+  expect(renderer!.root.findByType(StudyStreakView).props.model.availableTickets).toBe(0);
+});
+
+it('waits for the initial planner snapshot and offers planner recovery without a duplicate history read', async () => {
+  const recover = vi.fn();
+  const render = (active: boolean, blockedError: string | null = null) => <StudyStreakProvider userId="owner" plans={plans} actuals={actuals}
+    active={active} blockedError={blockedError} onRetryBlocked={recover}><StudyStreakPage onClose={vi.fn()} /></StudyStreakProvider>;
+  await act(async () => { renderer = create(render(false)); });
+  expect(repository.read).not.toHaveBeenCalled();
+  expect(renderer!.root.findByType(StudyStreakView).props.pending).toBe(true);
+  await act(async () => renderer!.update(render(false, '学習履歴を読み込めませんでした。')));
+  expect(renderer!.root.findByType(StudyStreakView).props.pending).toBe(false);
+  act(() => button('再読み込み').props.onClick());
+  expect(recover).toHaveBeenCalledTimes(1);
+  expect(repository.read).not.toHaveBeenCalled();
+  await act(async () => renderer!.update(render(true)));
+  expect(repository.read).toHaveBeenCalledTimes(1);
+  expect(renderer!.root.findByType(StudyStreakView).props.model.currentStreak).toBe(7);
 });

@@ -1,6 +1,7 @@
-import { useId, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, Flame, ShieldCheck, Ticket } from 'lucide-react';
-import { addDays, addMonths, formatMonthLabel, getMonthGrid, getWeekdayLabels, startOfMonth } from '../lib/date';
+import { useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ShieldCheck, Ticket } from 'lucide-react';
+import { StudyStreakFlame } from './StudyStreakFlame';
+import { addMonths, formatMonthLabel, getMonthGrid, getWeekdayLabels, startOfMonth } from '../lib/date';
 import type { StudyStreakModel } from '../lib/studyStreak';
 import '../styles/study-streak.css';
 
@@ -13,25 +14,13 @@ export interface StudyStreakViewProps {
   model: StudyStreakDisplayModel;
   onClose: () => void;
   pending?: boolean;
+  refreshing?: boolean;
   error?: string | null;
   onRetry?: () => void;
-  restDayActions?: {
-    saving: boolean;
-    error?: string | null;
-    blockReason: (date: string) => string | null;
-    onUse: (date: string) => Promise<boolean>;
-  };
 }
 
-export function StudyStreakView({ today, model, onClose, pending = false, error, onRetry, restDayActions }: StudyStreakViewProps) {
+export function StudyStreakView({ today, model, onClose, pending = false, refreshing = false, error, onRetry }: StudyStreakViewProps) {
   const [month, setMonth] = useState(() => startOfMonth(today));
-  const [restDate, setRestDate] = useState(() => addDays(today, -1));
-  const [useError, setUseError] = useState('');
-  const [useNotice, setUseNotice] = useState('');
-  const usePending = useRef(false);
-  const mounted = useRef(false);
-  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const restBlockReason = restDayActions?.blockReason(restDate) ?? null;
   const titleId = useId();
   const monthId = useId();
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -46,7 +35,7 @@ export function StudyStreakView({ today, model, onClose, pending = false, error,
     titleRef.current?.focus({ preventScroll: true });
   }, []);
 
-  return <main className="study-streak-page" aria-labelledby={titleId} onKeyDown={event => {
+  return <main className="study-streak-page" aria-labelledby={titleId} aria-busy={pending || refreshing} onKeyDown={event => {
     if (event.key === 'Escape') { event.preventDefault(); onClose(); }
   }}>
     <div className="study-streak-content">
@@ -64,15 +53,18 @@ export function StudyStreakView({ today, model, onClose, pending = false, error,
           <h2>連続学習</h2>
           <span className="study-streak-best">最高 {model.bestStreak ?? '—'}日</span>
         </div>
-        <Flame className="study-streak-hero-flame" size={104} strokeWidth={1.3} aria-hidden="true" />
+        <StudyStreakFlame className="study-streak-hero-flame" size={64} studiedToday={studyDates.has(today)} />
       </section>
 
       <dl className="study-streak-summary">
         <div><dt><span className="study-streak-legend-study" aria-hidden="true" />学習日数</dt><dd>{model.historyComplete ? model.studyDates.length : '—'}<span>日</span></dd></div>
-        <div><dt><ShieldCheck size={18} aria-hidden="true" />お休み日数</dt><dd>{pending || !model.historyComplete ? '—' : model.protectedDates.length}<span>日</span></dd></div>
+        <div><dt><ShieldCheck size={18} aria-hidden="true" />お休み日数</dt><dd>{!model.historyComplete ? '—' : model.protectedDates.length}<span>日</span></dd></div>
+        <div><dt><Ticket size={16} aria-hidden="true" />お休み券</dt><dd aria-label={`お休みチケット ${model.availableTickets === null ? '確認中' : `${model.availableTickets}枚`}`}>
+          {model.availableTickets === null ? '—' : model.availableTickets}<span>枚</span>
+        </dd></div>
       </dl>
 
-      <section className="study-streak-calendar" aria-labelledby={monthId}>
+      <section className="study-streak-calendar" aria-labelledby={monthId} style={{ '--streak-week-count': rows.length } as CSSProperties}>
         <header className="study-streak-calendar-header">
           <h2 id={monthId} aria-live="polite">{formatMonthLabel(month)}</h2>
           <div className="study-streak-calendar-controls">
@@ -102,39 +94,14 @@ export function StudyStreakView({ today, model, onClose, pending = false, error,
         </div>
       </section>
 
-      <section className="study-streak-tickets" aria-label="お休みチケット">
-        <Ticket size={28} aria-hidden="true" />
-        <div><h2>お休みチケット</h2>
-          {model.studyDaysTowardNextTicket !== null && !pending && !error ? <p>次の1枚まで {7 - model.studyDaysTowardNextTicket}日</p> : null}
-        </div>
-        <strong aria-label={`お休みチケット ${pending || model.availableTickets === null ? '確認中' : `${model.availableTickets}枚`}`}>
-          {pending || model.availableTickets === null ? '—' : model.availableTickets}<span>枚</span>
-        </strong>
-      </section>
-      {model.historyComplete && !pending && !error && unprotectedDates.size > 0 ? <p className="study-streak-use-note" role="status">
+      <p className="study-streak-ticket-note">
+        <span>お休み券は自動で使います</span>
+        {model.studyDaysTowardNextTicket !== null && !error ? <span>次の1枚まで {7 - model.studyDaysTowardNextTicket}日</span> : null}
+      </p>
+      {model.historyComplete && !error && unprotectedDates.size > 0 ? <p className="study-streak-use-note" role="status">
         学習記録の変更により、お休み{unprotectedDates.size}日分を連続学習に含められません（{[...unprotectedDates].slice(0, 3).map(date => date.split('-').join('/')).join('、')}{unprotectedDates.size > 3 ? ' ほか' : ''}）。点線の日を確認してください。
       </p> : null}
-      {restDayActions && !pending && !error ? <section className="study-streak-use" aria-label="お休みチケットを使う">
-        <div className="study-streak-use-controls">
-          <label>お休みする日<input type="date" value={restDate} max={today} disabled={restDayActions.saving}
-            onChange={event => { if (!usePending.current) { setRestDate(event.target.value); setUseNotice(''); setUseError(''); } }} /></label>
-          <button type="button" className="study-streak-today" disabled={restDayActions.saving || Boolean(restBlockReason)} onClick={async () => {
-            if (usePending.current || restDayActions.saving || restBlockReason) return;
-            usePending.current = true;
-            setUseError('');
-            try {
-              const saved = await restDayActions.onUse(restDate);
-              if (saved && mounted.current) setUseNotice('お休みチケットを使いました。');
-            } catch {
-              if (mounted.current) setUseError('保存を確認できませんでした。再読み込みして確認してください。');
-            } finally { usePending.current = false; }
-          }}>{restDayActions.saving ? '保存中…' : 'チケットを使う'}</button>
-        </div>
-        {restDayActions.error || useError ? <p className="study-streak-error" role="alert">{restDayActions.error || useError}</p>
-          : useNotice ? <p className="study-streak-status" role="status">{useNotice}</p>
-          : restBlockReason ? <p className="study-streak-use-note">{restBlockReason}</p> : null}
-      </section> : null}
-      {pending ? <p className="study-streak-status" role="status">記録を確認しています…</p> : null}
+      {pending && !model.historyComplete ? <p className="study-streak-status" role="status">記録を確認しています…</p> : null}
       {error ? <div className="study-streak-error" role="alert"><p>{error}</p>{onRetry ? <button className="study-streak-today" type="button" onClick={onRetry}>再読み込み</button> : null}</div> : null}
     </div>
   </main>;

@@ -20,8 +20,9 @@ export interface StudyRestState {
 
 export interface StudyStreakRepository {
   readonly canUseRestDays: boolean;
-  read(userId: string, options?: { hint?: StudyHistoryHint; refresh?: boolean }): Promise<StudyStreakHistory>;
-  useRestDay(history: StudyStreakHistory, date: string, today: string): Promise<StudyStreakHistory>;
+  peek?(userId: string, hint?: StudyHistoryHint): StudyStreakHistory | null;
+  read(userId: string, options?: { hint?: StudyHistoryHint; refresh?: boolean; today?: string }): Promise<StudyStreakHistory>;
+  useRestDay(history: StudyStreakHistory, date: string, today: string, options?: { signal?: AbortSignal }): Promise<StudyStreakHistory>;
 }
 
 export function assertStudyStreakOwner(userId: string) {
@@ -100,10 +101,12 @@ export function createLocalStudyStreakRepository(
   return {
     canUseRestDays: withLock !== null,
     read,
-    async useRestDay(history, date, today) {
+    async useRestDay(history, date, today, options) {
       if (!withLock) throw new Error('このブラウザーではお休みチケットを安全に保存できません。');
       return withLock(key(history.userId), async () => {
+        if (options?.signal?.aborted) throw new Error('学習履歴の確認が中断されました。');
         const current = await read(history.userId);
+        if (options?.signal?.aborted) throw new Error('学習履歴の確認が中断されました。');
         const previous = state(history.userId);
         const next = appendStudyRestDay(current, previous, date, today);
         if (next !== previous) storage.setItem(key(history.userId), JSON.stringify(next));
