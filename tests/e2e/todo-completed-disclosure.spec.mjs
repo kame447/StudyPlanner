@@ -50,6 +50,11 @@ for (const [name, viewport, touch] of [
         const button = section.getByRole('button', { name: new RegExp(`完了\\s*${count}`) });
         const rows = section.locator('.todo-view-item');
         await expect(button).toHaveAttribute('aria-expanded', 'false');
+        await expect(button.locator('.todo-completed-label + svg')).toHaveClass(/chevron-right/);
+        const labelBounds = await button.locator('.todo-completed-label').boundingBox();
+        const chevronBounds = await button.locator('svg').boundingBox();
+        expect(chevronBounds.x - (labelBounds.x + labelBounds.width)).toBeGreaterThanOrEqual(0);
+        expect(chevronBounds.x - (labelBounds.x + labelBounds.width)).toBeLessThanOrEqual(12);
         await expect(section.locator('.todo-section-count')).toHaveText(String(count));
         await expect(rows).toHaveCount(0);
         await expect(section.getByText('Todoはありません。')).toHaveCount(0);
@@ -71,6 +76,7 @@ for (const [name, viewport, touch] of [
           await button.press('Enter');
         }
         await expect(button).toHaveAttribute('aria-expanded', 'true');
+        await expect(button.locator('.todo-completed-label + svg')).toHaveClass(/chevron-down/);
         await expect(panel).not.toHaveAttribute('hidden');
         await expect(rows).toHaveCount(count);
         if (count === 0) {

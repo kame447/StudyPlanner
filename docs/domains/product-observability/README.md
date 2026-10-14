@@ -24,6 +24,8 @@ Owning Issue: #213
 
 ## Active work
 
+- [Admin Users page-only trend reads](work/20261013-admin-users-page-trend-reads.md): Issues #542/#213 remove the unused Worker trend request only when appending a Users page; preserve initial-load and mixed-version contracts.
+
 - [Admin Overview snapshot requests](work/20261013-admin-overview-snapshot.md): Issues #542/#213 share the existing bounded snapshot reader with Users trend; HTTP request consolidation with unchanged document keys and registration counts.
 
 - [Event ingestion read load](work/20261013-event-ingestion-read-load.md): Issue #542 create-first event persistence, preserving immutable replay and unknown-write recovery; local verification and HTTP tradeoffs.

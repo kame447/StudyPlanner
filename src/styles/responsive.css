@@ -26,10 +26,6 @@
     gap: 14px;
   }
 
-  .splash-screen__logo {
-    width: min(780px, 94vw);
-  }
-
   .splash-screen__message {
     font-size: 0.86rem;
   }
@@ -45,11 +41,6 @@
 
   .view-titlebar {
     align-items: flex-start;
-  }
-
-  .auth-summary-grid,
-  .auth-mode-tabs {
-    grid-template-columns: 1fr;
   }
 
   .score-grid,
@@ -521,20 +512,6 @@
     justify-content: center;
   }
 
-  .brand-logo-image {
-    height: 69px;
-    max-width: min(340px, 100%);
-  }
-
-  .app-header .brand-logo-image {
-    height: 55px;
-    max-width: min(272px, 100%);
-  }
-
-  .brand-copy {
-    min-width: 0;
-  }
-
   .brand-mark {
     width: 46px;
     height: 46px;
@@ -542,10 +519,6 @@
 
   .brand-name {
     font-size: 1.18rem;
-  }
-
-  .brand-tagline {
-    font-size: 0.6rem;
   }
 
   .my-page-trigger {
@@ -1297,10 +1270,6 @@
     gap: 12px;
   }
 
-  .splash-screen__logo {
-    width: min(700px, 96vw);
-  }
-
   .splash-screen__message {
     font-size: 0.78rem;
   }
@@ -1343,16 +1312,6 @@
     width: 100%;
   }
 
-  .brand-logo-image {
-    height: 57px;
-    max-width: min(260px, 100%);
-  }
-
-  .app-header .brand-logo-image {
-    height: 46px;
-    max-width: min(208px, 100%);
-  }
-
   .brand-mark {
     width: 38px;
     height: 38px;
@@ -1360,10 +1319,6 @@
 
   .brand-name {
     font-size: 0.98rem;
-  }
-
-  .brand-tagline {
-    font-size: 0.52rem;
   }
 
   .my-page-trigger {
@@ -2165,26 +2120,12 @@
     padding-bottom: calc(12px + var(--mobile-ad-reserve) + env(safe-area-inset-bottom, 0px));
   }
 
-  .splash-screen__logo {
-    width: min(620px, 97vw);
-  }
-
   .splash-screen__message {
     font-size: 0.72rem;
   }
 
   .app-shell {
     gap: 10px;
-  }
-
-  .brand-logo-image {
-    height: 50px;
-    max-width: min(220px, 100%);
-  }
-
-  .app-header .brand-logo-image {
-    height: 40px;
-    max-width: min(176px, 100%);
   }
 
   .panel,

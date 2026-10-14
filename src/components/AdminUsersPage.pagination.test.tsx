@@ -26,10 +26,12 @@ function user(id: string) {
     eventCount: 0, productActivityCount: 0, aiRequestCount: 0, planningOutcomeCount: 0,
   };
 }
-function page(shape: 'current' | 'legacy', id: string, nextCursor: string | null) {
+function page(shape: 'current' | 'legacy' | 'page-only', id: string, nextCursor: string | null) {
   return {
     ok: true, users: [user(id)], nextCursor,
-    ...(shape === 'current' ? { enrichmentReady: true, trend: id === 'first' ? initialTrend : laterTrend } : {}),
+    ...(shape !== 'legacy' ? { enrichmentReady: true } : {}),
+    ...(shape === 'current' || (shape === 'page-only' && id === 'first')
+      ? { trend: id === 'first' ? initialTrend : laterTrend } : {}),
   };
 }
 function deferredResponse() {
@@ -70,7 +72,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe.each(['legacy', 'current'] as const)('Users pagination with %s Worker', (shape) => {
+describe.each(['legacy', 'current', 'page-only'] as const)('Users pagination with %s Worker', (shape) => {
   it('uses the page API, appends users, and preserves the initial trend and identity query', async () => {
     const initial = vi.spyOn(service, 'getAdminObservabilityUsers');
     const append = vi.spyOn(service, 'getAdminObservabilityUsersPage');
@@ -112,6 +114,7 @@ describe.each(['legacy', 'current'] as const)('Users pagination with %s Worker',
     for (const [url, options] of fetchMock.mock.calls) {
       expect(options).toEqual({ method: 'GET', headers: { Authorization: 'Bearer synthetic-admin-token' } });
       expect(new URL(url).searchParams.get('environment')).toBe('production');
+      expect(new URL(url).searchParams.get('includeTrend')).toBe(new URL(url).searchParams.has('cursor') ? 'false' : null);
       expect(url).not.toContain('private');
     }
   });

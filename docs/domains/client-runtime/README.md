@@ -22,6 +22,7 @@ Supporting architecture:
 Execution tracking:
 
 - Issue #164
+- [Normal Plan deletion and linked Todo admission](work/20261013-linked-todo-plan-delete.md) — Issue #437; compound-delete reservation and persisted race regression
 - [Todo target admission](work/20261013-todo-target-admission.md) — Issue #437; local deleted-target and in-flight command protection, with remote/browser acceptance separate
 - [Deferred DayNote startup scope](work/20261009-day-note-startup-scope.md) — Issue #542; scoped verification snapshot, preserving full-read and DayNote recovery contracts
 - [Firestore read load and startup investigation](work/20261008-firestore-read-load-and-startup.md) — Issue #542; verified local candidate, separated mock/Emulator/cost evidence, with browser acceptance and the separately tracked first-save Rules repair still open
@@ -29,6 +30,9 @@ Execution tracking:
 The requirements document is the specification; the Issue is the work-state owner. Do not duplicate the full requirements under a generic task directory.
 
 Other active client-runtime work:
+
+- [Compact record and Todo forms](work/compact-actual-record-form-handoff.md): UI Issue #483; linked-record/Todo density, completed disclosure order, and timetable helper copy; local verification and browser/release boundaries tracked separately.
+- [Login entry and quiet starfield](work/login-starfield-handoff.md): UI Issue #483; login-first admission, accessible mode switching and a shared dark canvas; native logo/rendering acceptance remains separately tracked.
 
 - [Passive startup delivery timing](work/startup-delivery-timing-handoff.md): Issue #542; local-only pre-Splash diagnostics, with installed-device cause and publication still separate.
 

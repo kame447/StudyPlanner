@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState, type KeyboardEvent } from 'react';
 import type { NoticeState } from '../hooks/useNoticeState';
 import { LaplanceLogo } from './LaplanceLogo';
+import { AuthStarfield } from './AuthStarfield';
+import '../styles/auth-entry.css';
 
 type AuthIntent = 'sign-in' | 'sign-up';
 
@@ -25,12 +27,13 @@ export function AuthScreen({
   onSignInWithGoogle,
   onSendPasswordReset,
 }: AuthScreenProps) {
-  const [intent, setIntent] = useState<AuthIntent>('sign-up');
+  const [intent, setIntent] = useState<AuthIntent>('sign-in');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
+  const formId = useId();
 
   useEffect(() => {
     setPassword('');
@@ -39,12 +42,20 @@ export function AuthScreen({
   }, [intent]);
 
   const requestTitle = intent === 'sign-up' ? '新規会員登録' : 'ログイン';
-  const requestDescription =
-    intent === 'sign-up'
-      ? '最初にメールアドレスとパスワードを登録し、確認メールを1回だけ送ります。'
-      : '登録済みのメールアドレスとパスワードでログインします。';
   const requestButtonLabel =
     intent === 'sign-up' ? '登録して確認メールを送る' : 'ログインする';
+
+  function handleModeKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    const nextIntent = event.key === 'Home' ? 'sign-in'
+      : event.key === 'End' ? 'sign-up'
+      : event.key === 'ArrowLeft' || event.key === 'ArrowRight'
+        ? intent === 'sign-in' ? 'sign-up' : 'sign-in'
+        : null;
+    if (!nextIntent) return;
+    event.preventDefault();
+    setIntent(nextIntent);
+    event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-intent="${nextIntent}"]`)?.focus();
+  }
 
   async function handlePrimaryAction() {
     setLocalError(null);
@@ -70,7 +81,7 @@ export function AuthScreen({
   }
 
   return (
-    <main className="auth-shell auth-shell-modern">
+    <main className="auth-shell auth-entry-shell">
       {notice ? (
         <div className={`app-toast-layer ${notice.placement ?? 'top'}`} aria-live="polite">
           <div className={`app-notice app-toast ${notice.tone}`}>
@@ -98,128 +109,127 @@ export function AuthScreen({
         </div>
       ) : null}
 
-      <section className="auth-card auth-main-card">
-        <div className="auth-brand-header">
+      <section className="auth-entry" aria-labelledby={`${formId}-heading`}>
+        <h1 id={`${formId}-heading`} className="auth-entry-heading">{requestTitle}</h1>
+        <div className="auth-entry-brand">
           <LaplanceLogo />
         </div>
 
-        <div className="auth-stage-card">
-          <div className="auth-stage-header">
-            <div>
-              <h2>{requestTitle}</h2>
-              <p>{requestDescription}</p>
-            </div>
-          </div>
-
-          <div className="auth-mode-tabs" role="tablist" aria-label="認証モード">
-            <button
-              className={
-                intent === 'sign-up' ? 'auth-mode-tab active' : 'auth-mode-tab'
-              }
-              onClick={() => setIntent('sign-up')}
+        <div className="auth-entry-content">
+          <div className="auth-entry-modes" role="tablist" aria-label="認証モード">
+            {(['sign-in', 'sign-up'] as const).map(mode => <button
+              key={mode}
+              id={`${formId}-${mode}`}
+              className="auth-entry-mode"
+              data-intent={mode}
+              onClick={() => setIntent(mode)}
+              onKeyDown={handleModeKeyDown}
               type="button"
               role="tab"
-              aria-selected={intent === 'sign-up'}
+              aria-selected={intent === mode}
+              aria-controls={`${formId}-panel`}
+              tabIndex={intent === mode ? 0 : -1}
             >
-              新規会員登録
-            </button>
-            <button
-              className={
-                intent === 'sign-in' ? 'auth-mode-tab active' : 'auth-mode-tab'
-              }
-              onClick={() => setIntent('sign-in')}
-              type="button"
-              role="tab"
-              aria-selected={intent === 'sign-in'}
-            >
-              ログイン
-            </button>
+              {mode === 'sign-in' ? 'ログイン' : '新規会員登録'}
+            </button>)}
           </div>
 
-          <form
-            className="auth-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handlePrimaryAction();
-            }}
-          >
-            {intent === 'sign-up' ? (
+          <div id={`${formId}-panel`} role="tabpanel" aria-labelledby={`${formId}-${intent}`}>
+            <form
+              className="auth-form"
+              aria-label={requestTitle}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handlePrimaryAction();
+              }}
+            >
+              {intent === 'sign-up' ? (
+                <label className="field">
+                  <span>ユーザーネーム <small>任意</small></span>
+                  <input
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value)}
+                    name="username"
+                    autoComplete="nickname"
+                    placeholder="未入力ならメールアドレス"
+                  />
+                </label>
+              ) : null}
+
               <label className="field">
-                <span>ユーザーネーム</span>
+                <span>メールアドレス</span>
                 <input
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                  placeholder="未入力ならメールアドレスを使います"
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@example.com"
                 />
               </label>
-            ) : null}
 
-            <label className="field">
-              <span>メールアドレス</span>
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-              />
-            </label>
-
-            <label className="field">
-              <span>パスワード</span>
-              <input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="6文字以上"
-              />
-            </label>
-
-            {intent === 'sign-up' ? (
               <label className="field">
-                <span>パスワード確認</span>
+                <span>パスワード</span>
                 <input
                   type="password"
-                  value={passwordConfirm}
-                  onChange={(event) => setPasswordConfirm(event.target.value)}
-                  placeholder="もう一度入力"
+                  name="password"
+                  autoComplete={intent === 'sign-in' ? 'current-password' : 'new-password'}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder={intent === 'sign-up' ? '6文字以上' : 'パスワードを入力'}
                 />
               </label>
-            ) : null}
 
-            {localError ? <p className="inline-error">{localError}</p> : null}
+              {intent === 'sign-up' ? (
+                <label className="field">
+                  <span>パスワード確認</span>
+                  <input
+                    type="password"
+                    name="passwordConfirmation"
+                    autoComplete="new-password"
+                    value={passwordConfirm}
+                    onChange={(event) => setPasswordConfirm(event.target.value)}
+                    placeholder="もう一度入力"
+                  />
+                </label>
+              ) : null}
 
-            <button className="primary-button" type="submit">
-              {requestButtonLabel}
-            </button>
+              {localError ? <p className="auth-entry-error" role="alert">{localError}</p> : null}
 
-            <p className="auth-legal-note">
-              <a href="/terms">利用規約</a>および
-              <a href="/privacy">プライバシーポリシー</a>を確認できます。
-              <br />
-              データ保存への同意は、初回ログイン後に一度だけ確認します。
-            </p>
+              <button className="auth-entry-submit" type="submit">
+                {requestButtonLabel}
+              </button>
 
-            {intent === 'sign-in' ? (
-              <div className="row-actions">
-                <button
-                  className="ghost-button"
-                  onClick={() => void onSendPasswordReset(email)}
-                  type="button"
-                >
-                  パスワードを再設定
-                </button>
-                <button
-                  className="ghost-button"
-                  onClick={() => void onSignInWithGoogle()}
-                  type="button"
-                >
-                  Googleでログイン
-                </button>
-              </div>
-            ) : null}
-          </form>
+              {intent === 'sign-in' ? (
+                <>
+                  <button
+                    className="auth-entry-reset"
+                    onClick={() => void onSendPasswordReset(email)}
+                    type="button"
+                  >
+                    パスワードを再設定
+                  </button>
+                  <div className="auth-entry-divider" aria-hidden="true">または</div>
+                  <button
+                    className="auth-entry-google"
+                    onClick={() => void onSignInWithGoogle()}
+                    type="button"
+                  >
+                    Googleでログイン
+                  </button>
+                </>
+              ) : <p className="auth-entry-hint">登録後、確認メールをお送りします。</p>}
+            </form>
+          </div>
         </div>
+        <nav className="auth-entry-legal" aria-label="利用に関する情報">
+          <a href="/terms">利用規約</a>
+          <a href="/privacy">プライバシーポリシー</a>
+        </nav>
       </section>
+      <AuthStarfield />
     </main>
   );
 }

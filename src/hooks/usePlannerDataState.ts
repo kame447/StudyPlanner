@@ -1001,82 +1001,88 @@ export function usePlannerDataState({
 
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     const releaseAdmission = admitActualMutation([], [plan.id]);
-    try { plan = requireCurrentPlan(plan); } catch (error) { releaseAdmission(); throw error; }
-    const linkedTodo =
-      plan.sourceType === 'todo' && plan.sourceId
-        ? todos.find(
-            (todo) => todo.id === plan.sourceId && todo.scheduledPlanId === plan.id,
-          ) ?? null
-        : null;
-    const linkedActuals = actualAdmission.current().filter((actual) => actual.planId === plan.id);
-    const nextLinkedTodo = linkedTodo
-      ? {
-          ...linkedTodo,
-          status: 'open' as const,
-          scheduledPlanId: null,
-          updatedAt: new Date().toISOString(),
-        }
-      : null;
-
-    const planOperation = planState.begin(current => removeByKey(current, plan.id, item => item.id));
-    const actualOperation = actualState.begin(current => current.filter(actual => actual.planId !== plan.id));
-    const todoOperation = todoState.begin(current => nextLinkedTodo
-      ? upsertByKey(current, nextLinkedTodo, todo => todo.id) : current);
+    let todoReservation: ReturnType<typeof todoAdmission.beginLinkedPlanDelete> = null;
     try {
-      closePlanEditor();
-      await plannerRepository.deletePlanWithDependents({
-        userId,
-        plan,
-        todo: nextLinkedTodo,
-      });
-      planState.commit(planOperation);
-      actualState.commit(actualOperation);
-      todoState.commit(todoOperation);
-      showDeleteUndoNotice(async () => {
-        const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
-        // Only local owner admission is known to reject safely before dispatch.
-        // Repository validation/outcome policy remains behind its own boundary.
-        if (!mutationScope.isCurrent() || !acknowledgedProjection
-          || acknowledgedProjection.ownerId !== userId || plan.userId !== userId) {
-          throw new PlannerMutationScopeExpiredError();
+      plan = requireCurrentPlan(plan);
+      if (plan.sourceType === 'todo' && plan.sourceId) {
+        try { todoReservation = todoAdmission.beginLinkedPlanDelete(plan.sourceId, plan.userId, plan.id); }
+        catch (error) {
+          showNotice(resolveErrorMessage(error, 'Todoを更新できませんでした。'), 'error');
+          throw error;
         }
-        const releaseRestoreAdmission = admitActualMutation(linkedActuals, [plan.id]);
-        const restore = reconciliation.beginPlanRestore();
-        let restoreNeedsRefresh = false;
-        let outcome: 'success' | 'failure' = 'failure';
-        try {
-          await plannerRepository.restorePlanWithDependents({
-            plan,
-            actuals: linkedActuals,
-            todo: linkedTodo,
-          });
-          outcome = 'success';
-          // Publish all captured dependents under one accepted-projection lease.
-          // A failed/superseded read alone does not revoke this acknowledgement.
-          if (!mutationScope.isCurrent() || !plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)) return;
-          if (plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
-            restoreNeedsRefresh = true;
-            return;
+      }
+      const linkedTodo = todoReservation?.todo ?? null;
+      const linkedActuals = actualAdmission.current().filter((actual) => actual.planId === plan.id);
+      const nextLinkedTodo = linkedTodo
+        ? {
+            ...linkedTodo,
+            status: 'open' as const,
+            scheduledPlanId: null,
+            updatedAt: new Date().toISOString(),
           }
-          setPlans((current) => sortAndUpsertPlans(current, [plan]));
-          if (linkedActuals.length > 0) {
-            setActuals((current) => upsertActualsById(current, linkedActuals));
+        : null;
+
+      const planOperation = planState.begin(current => removeByKey(current, plan.id, item => item.id));
+      const actualOperation = actualState.begin(current => current.filter(actual => actual.planId !== plan.id));
+      const todoOperation = todoState.begin(current => nextLinkedTodo
+        ? upsertByKey(current, nextLinkedTodo, todo => todo.id) : current);
+      try {
+        closePlanEditor();
+        await plannerRepository.deletePlanWithDependents({
+          userId,
+          plan,
+          todo: nextLinkedTodo,
+        });
+        planState.commit(planOperation);
+        actualState.commit(actualOperation);
+        todoState.commit(todoOperation);
+        showDeleteUndoNotice(async () => {
+          const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
+          // Only local owner admission is known to reject safely before dispatch.
+          // Repository validation/outcome policy remains behind its own boundary.
+          if (!mutationScope.isCurrent() || !acknowledgedProjection
+            || acknowledgedProjection.ownerId !== userId || plan.userId !== userId) {
+            throw new PlannerMutationScopeExpiredError();
           }
-          if (linkedTodo) {
-            setTodos((current) => upsertByKey(current, linkedTodo, (item) => item.id));
+          const releaseRestoreAdmission = admitActualMutation(linkedActuals, [plan.id]);
+          const restore = reconciliation.beginPlanRestore();
+          let restoreNeedsRefresh = false;
+          let outcome: 'success' | 'failure' = 'failure';
+          try {
+            await plannerRepository.restorePlanWithDependents({
+              plan,
+              actuals: linkedActuals,
+              todo: linkedTodo,
+            });
+            outcome = 'success';
+            // Publish all captured dependents under one accepted-projection lease.
+            // A failed/superseded read alone does not revoke this acknowledgement.
+            if (!mutationScope.isCurrent() || !plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)) return;
+            if (plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
+              restoreNeedsRefresh = true;
+              return;
+            }
+            setPlans((current) => sortAndUpsertPlans(current, [plan]));
+            if (linkedActuals.length > 0) {
+              setActuals((current) => upsertActualsById(current, linkedActuals));
+            }
+            if (linkedTodo) {
+              setTodos((current) => upsertByKey(current, linkedTodo, (item) => item.id));
+            }
+          } finally {
+            settleActualAdmission(releaseRestoreAdmission, acknowledgedProjection, ['actual-material', 'plans-todos'], restoreNeedsRefresh || outcome === 'failure');
+            reconciliation.settleMutation(restore, outcome);
           }
-        } finally {
-          settleActualAdmission(releaseRestoreAdmission, acknowledgedProjection, ['actual-material', 'plans-todos'], restoreNeedsRefresh || outcome === 'failure');
-          reconciliation.settleMutation(restore, outcome);
-        }
-      });
-    } catch (error) {
-      planState.reject(planOperation);
-      actualState.reject(actualOperation);
-      todoState.reject(todoOperation);
-      showNotice(resolveErrorMessage(error, '予定を削除できませんでした。'), 'error');
-      throw error;
+        });
+      } catch (error) {
+        planState.reject(planOperation);
+        actualState.reject(actualOperation);
+        todoState.reject(todoOperation);
+        showNotice(resolveErrorMessage(error, '予定を削除できませんでした。'), 'error');
+        throw error;
+      }
     } finally {
+      todoReservation?.settle();
       settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material', 'plans-todos']);
     }
   }
@@ -1704,8 +1710,12 @@ export function usePlannerDataState({
     if (!userId) {
       throw new Error('ログイン状態を確認できませんでした。');
     }
-
-    const hasMaterials = studyMaterials.some(
+    const currentSubject = actualAdmission.subjects().find(item => item.id === subject.id);
+    if (subject.userId !== userId || !currentSubject) {
+      throw new MaterialMutationAdmissionError(materialStaleMessage);
+    }
+    subject = currentSubject;
+    const hasMaterials = actualAdmission.materials().some(
       (material) =>
         material.userId === userId &&
         material.subjectId === subject.id,
@@ -1716,21 +1726,35 @@ export function usePlannerDataState({
       throw new Error('教材がある教科は削除できません。');
     }
 
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
+    const releaseAdmission = admitActualMutation([], [], [], [subject.id]);
+    let dispatchedFailure = false;
     try {
       await plannerRepository.deleteStudySubject(userId, subject.id);
-      setStudySubjects((current) =>
-        current.filter((item) => item.id !== subject.id),
-      );
+      if (!acknowledgedProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
+        setStudySubjects(current => current.filter(item => item.id !== subject.id));
+      }
       showDeleteUndoNotice(async () => {
-        await plannerRepository.upsertStudySubject(subject);
-        setStudySubjects((current) =>
-          sortStudySubjects(upsertByKey(current, subject, (item) => item.id)),
-        );
+        // A retained Undo cannot replace an already observed newer subject.
+        if (actualAdmission.subjects().some(item => item.id === subject.id)) {
+          throw new MaterialMutationAdmissionError(materialStaleMessage);
+        }
+        const restoreProjection = plannerDataReadAuthority.captureProjectionLease();
+        const releaseRestore = admitActualMutation([], [], [], [subject.id]);
+        let restoreFailure = false;
+        try {
+          await plannerRepository.upsertStudySubject(subject);
+          if (!restoreProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(restoreProjection)) {
+            setStudySubjects(current => sortStudySubjects(upsertByKey(current, subject, item => item.id)));
+          }
+        } catch (error) { restoreFailure = true; throw error; }
+        finally { settleActualAdmission(releaseRestore, restoreProjection, ['actual-material'], restoreFailure); }
       });
     } catch (error) {
+      dispatchedFailure = true;
       showNotice(resolveErrorMessage(error, '教科を削除できませんでした。'), 'error');
       throw error;
-    }
+    } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], dispatchedFailure); }
   }
 
   async function saveStudyMaterial(

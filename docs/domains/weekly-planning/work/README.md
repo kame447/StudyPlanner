@@ -7,6 +7,8 @@ This directory contains durable unfinished task/checkpoint records only when an 
 
 Current durable records:
 
+- [別アプリからの復帰時のviewport再計測](20261013-ai-viewport-resume-handoff.md) — #483関連。復帰イベントと描画フレームの境界だけを修正し、実機原因・native描画は未確認。AI通信・semantic変更とは別scope。
+
 - [AI入力時のviewportと会話履歴の表示](20261007-ai-composer-viewport-history-handoff.md) — 入力中の会話可視領域・scroll ownershipに限定した暫定local checkpoint。Issue作成がcancelされたため再試行を停止中。#488のsemantic実装とは別scope。
 
 - [`20261010-issue488-staged-integration.md`](20261010-issue488-staged-integration.md) — Issue #488（公開source保全、独立release unit、依存・検証・未完了項目の台帳）
