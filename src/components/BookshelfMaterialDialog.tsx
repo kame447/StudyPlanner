@@ -70,6 +70,9 @@ function BookshelfMaterialDialogSession({
   const [editBaseline] = useState(baseline);
   const [requiresInspection, setRequiresInspection] = useState(false);
   const firstSubject = subjects[0] ?? null;
+  const [studyStatus, setStudyStatus] = useState<NonNullable<StudyMaterial['studyStatus']>>(
+    material?.studyStatus ?? 'studying',
+  );
   const [name, setName] = useState(material?.name ?? '');
   const nameRevision = useRef(0);
   const catalogNameRevision = useRef(0);
@@ -195,6 +198,7 @@ function BookshelfMaterialDialogSession({
           catalogIsbn13: catalogCandidate?.isbn13 ?? material?.catalogIsbn13,
           aliases: catalogCandidate?.aliases ?? material?.aliases ?? [],
           status: material?.status ?? 'active',
+          studyStatus,
           paceEnabled,
           progressUnit,
           progressUnitLabel:
@@ -374,7 +378,7 @@ function BookshelfMaterialDialogSession({
                     <small>ほか {catalogCandidate.tableOfContents.length - 10} 項目</small>
                   ) : null}
                   <p className="detail-note">
-                    保存すると教材内構造の初期項目として使います。あとから非表示・編集できます。
+                    保存すると目次の初期項目として使います。あとから非表示・編集できます。
                   </p>
                 </div>
               ) : null}
@@ -417,6 +421,18 @@ function BookshelfMaterialDialogSession({
                       {subject.name}
                     </option>
                   ))}
+                </select>
+              </label>
+
+              <label className="field">
+                <span>学習状態</span>
+                <select
+                  aria-label="学習状態"
+                  value={studyStatus}
+                  onChange={(event) => setStudyStatus(event.target.value === 'completed' ? 'completed' : 'studying')}
+                >
+                  <option value="studying">学習中</option>
+                  <option value="completed">学習済み</option>
                 </select>
               </label>
 

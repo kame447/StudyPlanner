@@ -2042,6 +2042,7 @@ export function usePlannerDataState({
       catalogIsbn13: draft.catalogIsbn13?.trim() || currentMaterial?.catalogIsbn13,
       aliases: draft.aliases ?? currentMaterial?.aliases ?? [],
       status: draft.status ?? currentMaterial?.status ?? 'active',
+      studyStatus: draft.studyStatus ?? currentMaterial?.studyStatus ?? 'studying',
       paceEnabled,
       progressUnit: draft.progressUnit ?? currentMaterial?.progressUnit ?? 'page',
       progressUnitLabel:

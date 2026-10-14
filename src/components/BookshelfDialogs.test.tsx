@@ -34,6 +34,21 @@ const material: StudyMaterial = {
 };
 
 describe('bookshelf dialogs', () => {
+  it.each([undefined, 'studying', 'completed'] as const)('edits study state from %s independently of lifecycle and progress', async (initial) => {
+    const original = { ...material, currentUnit: 80, studyStatus: initial };
+    const onSave = vi.fn().mockResolvedValue(original);
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<BookshelfMaterialDialog userId="user-1" material={original}
+      subjects={[subject]} onClose={vi.fn()} onSave={onSave} onDelete={vi.fn()} />); });
+    const select = renderer.root.findByProps({ 'aria-label': '学習状態' });
+    expect(select.props.value).toBe(initial ?? 'studying');
+    const next = initial === 'completed' ? 'studying' : 'completed';
+    act(() => select.props.onChange({ target: { value: next } }));
+    await act(async () => { await renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); });
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ studyStatus: next, status: 'active', currentUnit: 80, totalUnits: 100 }), original.id, undefined);
+    act(() => renderer.unmount());
+  });
+
   it('keeps subject creation and color selection inside the subject dialog', async () => {
     const onSave = vi.fn().mockResolvedValue(subject);
     const onClose = vi.fn();
@@ -141,6 +156,7 @@ describe('bookshelf dialogs', () => {
         subjectName: '数学',
         color: '#2f6fc2',
         status: 'active',
+        studyStatus: 'studying',
         paceEnabled: false,
         progressUnit: 'page',
       }),
