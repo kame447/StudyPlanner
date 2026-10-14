@@ -708,12 +708,15 @@ test(`Quick Entry pending linked save blocks Day record open and Plan delete, th
     await expect(actions.getByRole('alert')).toContainText('保存・更新中');
     await expect(page.locator('.actual-editor-card')).toHaveCount(0);
     const heldCalls = (await repoSnapshot(page)).calls;
-    await actions.getByRole('button', { name: '削除', exact: true }).click();
+    // One-off plans expose one cancellation action, named explicitly for the event.
+    const deletePlan = actions.getByRole('button', { name: '予定を削除', exact: true });
+    await expect(actions.locator('.schedule-action-item.danger')).toHaveCount(1);
+    await deletePlan.click();
     // Identical busy feedback is shown once; unchanged repository calls and
     // durable bytes below independently prove the Plan deletion was rejected.
     await expect(actions.getByRole('alert').filter({ hasText: '保存・更新中' })).toHaveCount(1);
     await expect(actions).toBeVisible();
-    await expect(actions.getByRole('button', { name: '削除', exact: true })).toBeEnabled();
+    await expect(deletePlan).toBeEnabled();
     await expect(page.getByRole('button', { name: '元に戻す', exact: true })).toHaveCount(0);
     expect((await repoSnapshot(page)).calls).toEqual(heldCalls);
     expect(await durableWrites(page)).toEqual(storageBefore);
