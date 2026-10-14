@@ -41,6 +41,15 @@ export function hasWeeklyPlanningSemanticUncertaintyResolutionV5(params: {
   if (uncertainty.field === 'constraintSource') {
     return target === null && document.constraintSourceRequests.length > 0;
   }
+  if (target === null && uncertainty.field === 'tasks') {
+    // A document-level activity need is satisfied by a new, validated task
+    // contribution, not by an identity-only shell or arbitrary response text.
+    // Also reconcile already-committed tasks from a later revision: older
+    // conversations can carry the stale need after the task was accepted.
+    return document.tasks.some((task) => !task.existingPublicId)
+      || createWeeklyPlanningActiveSchedulerGraphViewV5(graph).tasks.some((task) =>
+        task.createdRevision > uncertainty.createdRevision);
+  }
   if (!target) return false;
   const active = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
 

@@ -4,7 +4,7 @@ import { createAiWeeklyPlanningStableV5DialogueRenderer } from './weeklyPlanning
 import { renderWeeklyPlanningStableV5AssistantMessageCore, renderWeeklyPlanningStableV5RecoveryMessageCore,
   type WeeklyPlanningTurnDialoguePorts } from './weeklyPlanningStableV5TurnDialogueCore';
 export { createWeeklyPlanningSystemDialogueRendererTrace, WEEKLY_PLANNING_RECOVERY_TECHNICAL_STOP,
-  isWeeklyPlanningStableV5SystemResult, fallbackTextForStableV5TypedIntent } from './weeklyPlanningStableV5TurnDialogueCore';
+  isWeeklyPlanningStableV5SystemResult } from './weeklyPlanningStableV5TurnDialogueCore';
 const ports: WeeklyPlanningTurnDialoguePorts = {
   createRenderer: (options) => createAiWeeklyPlanningStableV5DialogueRenderer(getAiConfig(), undefined, options),
   getSession: getWeeklyPlanningStableV5RuntimeSession,

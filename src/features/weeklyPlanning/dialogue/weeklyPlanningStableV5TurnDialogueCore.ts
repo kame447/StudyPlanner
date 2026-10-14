@@ -1,13 +1,10 @@
 import type { WeeklyPlanningStableV5DialogueRenderer } from './weeklyPlanningStableV5DialogueContracts';
 import type { getWeeklyPlanningStableV5RuntimeSession } from '../application/weeklyPlanningStableV5RuntimeSession';
 import { stableV5MissingSchedulableWorkQuestion } from '../application/weeklyPlanningStableV5RuntimeQuestions';
-import { resolveWeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
+import { resolveWeeklyPlanningQuestionPresentationFreshness, withoutWeeklyPlanningQuestionPresentation } from '../intake/weeklyPlanningQuestionPresentation';
 import {
   type WeeklyPlanningStableV5DialogueActionKind,
   type WeeklyPlanningStableV5DialogueRenderInput,
-} from './weeklyPlanningStableV5DialogueContracts';
-import type {
-  WeeklyPlanningStableV5DialogueQuestionIntent,
 } from './weeklyPlanningStableV5DialogueContracts';
 import {
   decodeWeeklyPlanningStableV5QuestionSlot,
@@ -55,8 +52,9 @@ export interface WeeklyPlanningTurnDialoguePorts {
 }
 
 const RECENT_TURN_LIMIT = 4;
-// Failure-only wording: accepted planning may already be staged, so make no non-application claim.
-const ASIDE_RENDERER_TECHNICAL_STOP = '返信を作れませんでした。少し待ってからもう一度送信してください。';
+// A renderer outage is not evidence that the user's meaning was ambiguous.
+// Accepted planning facts can already be staged, so do not assert that input was discarded.
+const RENDERER_TECHNICAL_STOP = '返信を作れませんでした。少し待ってからもう一度送信してください。';
 
 export const WEEKLY_PLANNING_RECOVERY_TECHNICAL_STOP =
   '返信を作れませんでした。今回の内容は計画へ反映していません。少し待ってからもう一度送信してください。';
@@ -96,11 +94,6 @@ function selfRepairNotice(params: {
   })?.message ?? null;
 }
 
-function withSelfRepairNotice(message: string, notice: string | null): string {
-  if (!notice || message.includes(notice)) return message;
-  return `${notice} ${message}`;
-}
-
 function actionId(params: {
   traceRequestId: string;
   actionKind: WeeklyPlanningStableV5DialogueActionKind;
@@ -119,10 +112,19 @@ function withAssistantMessage(params: {
   responseSource: 'ai' | 'deterministic_fallback' | 'rules' | 'system';
   dialogueRendererTrace: WeeklyPlanningDialogueRendererTrace;
   questionPresentationContent?: WeeklyPlanningQuestionPresentationContent;
+  questionPresented?: boolean;
 }): WeeklyPlanningTurnExecutionResult {
-  const state = params.result.interactionOutcome?.kind !== 'aside' && params.result.state.questions.length > 0
-    ? { ...params.result.state, questions: [params.message] }
-    : params.result.state;
+  const state = params.questionPresented === false
+    ? {
+        ...params.result.state,
+        questions: [],
+        lastQuestionContext: withoutWeeklyPlanningQuestionPresentation(
+          params.result.state.lastQuestionContext,
+        ),
+      }
+    : params.result.interactionOutcome?.kind !== 'aside' && params.result.state.questions.length > 0
+      ? { ...params.result.state, questions: [params.message] }
+      : params.result.state;
   const {
     questionPresentationContent: _unrenderedContent,
     recoveryPresentation: _unverifiedRecovery,
@@ -174,83 +176,6 @@ function groundingRecords(
   }));
 }
 
-function effortFallbackText(
-  intent: Extract<WeeklyPlanningStableV5DialogueQuestionIntent, { kind: 'effort_measurement' }>,
-): string {
-  if (intent.measurement === 'session_duration') {
-    return '1回の学習時間を教えてください。';
-  }
-  if (intent.measurement === 'duration_per_unit') {
-    const unit = intent.unitLabel?.trim();
-    return unit
-      ? `1${unit}あたりどれくらい時間がかかりますか？`
-      : '1単位あたりどれくらい時間がかかりますか？';
-  }
-  if (intent.quantityRole === 'completed' && intent.unitLabel?.trim()) {
-    return `完了した${intent.amount}${intent.unitLabel.trim()}には、合計でどれくらい時間がかかりましたか？`;
-  }
-  return '指定した量を進めるのに、合計でどれくらい時間がかかりますか？';
-}
-
-function schedulableWorkFallbackText(
-  intent: Extract<WeeklyPlanningStableV5DialogueQuestionIntent, { kind: 'schedulable_work_detail' }>,
-): string {
-  if (intent.mode === 'all_requested_work_complete') {
-    return '指定された作業は完了済みです。ほかに予定へ加えたい作業や、考慮したい予定・制約があれば教えてください。';
-  }
-  if (intent.mode === 'missing_task_identity') {
-    return '予定に入れたい作業を一つ教えてください。';
-  }
-  if (intent.mode === 'registered_material_target_scope') {
-    const unit = intent.knownUnitLabel?.trim() || '単位';
-    const total = intent.knownTotalUnits;
-    const current = intent.knownCurrentUnits;
-    const remaining = intent.knownRemainingUnits;
-    if (
-      typeof total === 'number'
-      && Number.isFinite(total)
-      && typeof current === 'number'
-      && Number.isFinite(current)
-      && typeof remaining === 'number'
-      && Number.isFinite(remaining)
-    ) {
-      return `本棚では全${total}${unit}のうち${current}${unit}まで進んでいて、残りは${remaining}${unit}です。今回の計画では残りをすべて進めますか？ それとも今回進める範囲を指定しますか？`;
-    }
-    return '本棚に保存済みの進捗は確認できています。今回の計画でどこまで進めるかだけ教えてください。';
-  }
-  if (intent.progressBasis === 'known_bounded_quantity' && intent.knownUnitLabel?.trim()) {
-    return `今は${intent.knownUnitLabel.trim()}でどのくらいまで進んでいますか？`;
-  }
-  return '完成を100%とすると、今はだいたい何%くらいまで進んでいますか？';
-}
-
-export function fallbackTextForStableV5TypedIntent(params: {
-  applicationText: string;
-  questionIntent: WeeklyPlanningStableV5DialogueQuestionIntent | null | undefined;
-}): string {
-  const intent = params.questionIntent;
-  if (intent?.kind === 'learning_strategy_proposal') {
-    if (intent.proposalKind === 'mixed_acquisition_review') {
-      const { min, max } = intent.reviewSessionDurationMinutes;
-      return `今の空き時間では収まりきらないため、新しい範囲は少し長めに学習し、復習は1回${min}〜${max}分で短く分散する方針に切り替えますか？`;
-    }
-    const min = intent.suggestedSessionDurationMinutes.min;
-    const max = intent.suggestedSessionDurationMinutes.max;
-    if (intent.proposalKind === 'calibrate_memory_pace') {
-      const minutes = intent.selectedSessionDurationMinutes ?? min;
-      return `学習ペース計測の提案（${minutes}分）について、採用するか教えてください。`;
-    }
-    return `分散学習の提案（1回${min}〜${max}分）について、採用するか教えてください。`;
-  }
-  if (intent?.kind === 'effort_measurement') {
-    return effortFallbackText(intent);
-  }
-  if (intent?.kind === 'schedulable_work_detail') {
-    return schedulableWorkFallbackText(intent);
-  }
-  return params.applicationText;
-}
-
 function createRenderInput(params: {
   input: WeeklyPlanningTurnExecutionInput;
   result: WeeklyPlanningTurnExecutionResult;
@@ -292,13 +217,7 @@ function createRenderInput(params: {
     : null;
   const previewConstraintSatisfaction = params.actionKind === 'preview_ready'
     ? params.result.previewConstraintSatisfaction : undefined;
-  const fallbackText = params.result.communicationFacts
-    || previewConstraintSatisfaction?.some(fact => fact.status !== 'satisfied')
-    || params.result.interactionOutcome?.kind === 'aside'
-    ? ASIDE_RENDERER_TECHNICAL_STOP : fallbackTextForStableV5TypedIntent({
-    applicationText: params.result.message,
-    questionIntent,
-  });
+  const fallbackText = RENDERER_TECHNICAL_STOP;
   const previousQuestionCode = questionCodeFromTargetSlot(
     params.input.previousState?.lastQuestionContext?.targetSlot,
   );
@@ -340,7 +259,7 @@ function createRenderInput(params: {
       targetFactId,
       includePreviewPromotionControl: previewPromotionControlLabel !== null,
     }),
-    fallbackText: withSelfRepairNotice(fallbackText, params.notice),
+    fallbackText,
     previewCount: params.result.draftCandidates.length,
   };
 }
@@ -358,6 +277,7 @@ export async function renderWeeklyPlanningStableV5AssistantMessageCore(params: {
       message: params.result.message,
       responseSource: 'system',
       dialogueRendererTrace,
+      questionPresented: false,
     });
     recordWeeklyPlanningDialogueDecisionV5({
       requestId: params.input.traceRequestId,
@@ -418,12 +338,8 @@ export async function renderWeeklyPlanningStableV5AssistantMessageCore(params: {
       message: finalMessage,
       responseSource: 'deterministic_fallback',
       dialogueRendererTrace,
-      questionPresentationContent: questionPresentationContent({
-        result: params.result,
-        renderInput,
-        responseSource: 'deterministic_fallback',
-        notice,
-      }),
+      // This was an error, not a question the user actually saw.
+      questionPresented: false,
     });
     recordWeeklyPlanningDialogueDecisionV5({
       requestId: params.input.traceRequestId,

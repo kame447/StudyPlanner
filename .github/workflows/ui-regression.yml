@@ -108,7 +108,9 @@ jobs:
   cross-browser-projects:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # WebKit mobile took 23.4m for 288 passing tests; setup and artifact uploads
+    # pushed the job past 25m. Keep all assertions and artifact gates intact.
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
