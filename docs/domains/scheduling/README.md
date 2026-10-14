@@ -38,6 +38,8 @@ Firestore Rules は Phase 3 merge 後に repository-owned な WIF workflow か�
 
 ## Active work
 
+- [Month-event save range validation](work/month-event-save-range-handoff.md) — local correction aligning persistence admission with existing multi-day editor validation; publication and native execution pending.
+
 - [Day grid native selection](work/day-grid-native-selection-handoff.md) — PR #648; suppress accidental native text selection in the Day grid while preserving editors and schedule gestures.
 - [Day timetable visibility and occurrence cancellation](work/day-timetable-occurrence-controls-handoff.md)
 - [Narrow canonical schedule projection reads](work/20261013-schedule-projection-reads.md) — Issue #542; local targeted-recovery read reduction, with production frequency and deployed index verification separate.
