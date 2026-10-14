@@ -126,6 +126,7 @@ kind/details = study-specific / general-specific additional data
 
 ### Day
 
+- 未取り込みの時間割詳細から「この日の時間を変更」できる。確定時に既存の時間割取込provenanceを持つ単発canonical Planを一度だけ保存し、元template・別日・Actualは変更しない。grouped授業のsourceIdと元日のsourceDateを保つため、元時刻と変更時刻を二重表示・二重busyにしない。終了00:00は24:00へ正規化する。入力取消しは未保存、保存中は重複/閉じる/競合操作を遮断し、失敗時は入力を保持する。古い対象、owner、保存結果不明への入場保護は当日取消しと共有する。
 - 日カレンダーには、月とは独立した「日カレンダーに時間割を表示」設定を設ける。初期値はON、ユーザー別ブラウザ保存。共通projection後に未取り込みの時間割だけを表示から除き、保存済み予定・実績・月/週/Home・AIのbusy判定は変更しない。
 - 日詳細の「この日だけ削除」は、表示設定とは別の永続的なoccurrence取消し。元Plan/MonthEventと系列・別日・ActualのID/linkは保持し、選択occurrenceの開始日に対する例外だけを保存する。複数日に跨る場合は開始〜終了日を明示し「この回だけ削除」と表示して、開始日単位の一つのoccurrence全体を対象にする（当日の切片だけは削除しない）。系列全体の削除へ拡大しない。既存の全削除/範囲選択経路のdependent削除契約は変更しない。
 - 未取り込み時間割の取消しは、template専用の当日例外commandで扱い、通常Planのdrag/edit/deleteへ投影IDを送らない。`ScheduleTemplate.excludedDates` はoptionalで未設定は空。連続コマをまとめたoccurrenceは構成templateすべてを既存のowner検証付きatomic timetable mutationで更新する。時間割マスタの行自体は残り、編集/import/学期ID整合化でも例外を保持する。

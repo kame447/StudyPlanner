@@ -1,3 +1,4 @@
+import { buildDayTimetableTimeEdit, type DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
 import { buildDayOccurrenceCancellation } from '../domain/dayOccurrenceCancellation';
 import { requireCurrentTimetableImportTemplates } from '../domain/timetableImportAdmission';
 import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
@@ -209,6 +210,7 @@ export interface UsePlannerDataStateResult {
   projectPlanSave: (savePlan: () => Promise<Plan>) => Promise<Plan>;
   movePlanOccurrence: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   deleteDayOccurrence: (occurrence: ScheduleOccurrence) => Promise<void>;
+  changeDayTimetableTime: (occurrence: ScheduleOccurrence, time: DayTimetableTimeChange) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
@@ -298,7 +300,7 @@ export function usePlannerDataState({
   const dayMutationData = useRef({ plans, monthEvents, scheduleTemplates, timetableTerms });
   useLayoutEffect(() => { dayMutationData.current = { plans, monthEvents, scheduleTemplates, timetableTerms }; },
     [plans, monthEvents, scheduleTemplates, timetableTerms]);
-  const pendingDayCancellations = useMemo(() => new Set<string>(), [mutationScope]);
+  const pendingDayOccurrenceChanges = useMemo(() => new Set<string>(), [mutationScope]);
   const pendingDaySourceWrites = useMemo(() => new Map<string, number>(), [mutationScope]);
   const uncertainDaySources = useMemo(() => new Map<string, NonNullable<ReturnType<PlannerDataReadAuthority['captureProjectionLease']>>>(), [mutationScope]);
   const plannerDataReadAuthorityRef = useRef<PlannerDataReadAuthority | null>(null);
@@ -1032,7 +1034,7 @@ export function usePlannerDataState({
   async function withDayOccurrenceSourceWrite<T>(target: string | string[] | undefined, write: () => Promise<T>): Promise<T> {
     const keys = target ? typeof target === 'string' ? [target] : target : [];
     requireKnownDaySources(keys);
-    if (keys.some(key => pendingDayCancellations.has(key))) throw new Error('この予定は保存中です。');
+    if (keys.some(key => pendingDayOccurrenceChanges.has(key))) throw new Error('この予定は保存中です。');
     keys.forEach(key => pendingDaySourceWrites.set(key, (pendingDaySourceWrites.get(key) ?? 0) + 1));
     try { return await write(); } finally {
       keys.forEach(key => {
@@ -1054,6 +1056,36 @@ export function usePlannerDataState({
     }
   }
 
+  async function changeDayTimetableTime(occurrence: ScheduleOccurrence, time: DayTimetableTimeChange) {
+    requireDayOccurrenceProjection();
+    if (!userId || occurrence.ownerId !== userId) throw new PlannerMutationScopeExpiredError();
+    const edit = buildDayTimetableTimeEdit({ ownerId: userId, occurrence, ...dayMutationData.current }, time);
+    const plan = createPlanFromDraft(edit.draft);
+    const keys = [...edit.templates.map(row => `timetable-template:${row.id}`), `plan:${plan.id}`];
+    requireKnownDaySources(keys);
+    if (keys.some(key => pendingDayOccurrenceChanges.has(key) || pendingDaySourceWrites.has(key))) {
+      throw new Error('この予定は保存中です。');
+    }
+    // Reserve every grouped template before saving, symmetrically with import,
+    // cancellation and master edits. No optimistic template is converted to a Plan.
+    keys.forEach(key => pendingDayOccurrenceChanges.add(key));
+    const lease = plannerDataReadAuthority.captureProjectionLease();
+    try {
+      await plannerRepository.upsertPlan(plan);
+      if (lease && plannerDataReadAuthority.isOwnerCurrent(lease)
+        && !plannerDataReadAuthority.hasAcceptedProjectionChanged(lease)) {
+        setPlans(current => sortAndUpsertPlans(current, [plan]));
+      }
+      showNotice('この日の時間を変更しました。', 'success');
+    } catch (error) {
+      if (lease) {
+        keys.forEach(key => uncertainDaySources.set(key, lease));
+        reconciliation.request(lease, ['plans-todos']);
+      }
+      throw error;
+    } finally { keys.forEach(key => pendingDayOccurrenceChanges.delete(key)); }
+  }
+
   async function deleteDayOccurrence(occurrence: ScheduleOccurrence) {
     requireDayOccurrenceProjection();
     if (!userId || occurrence.ownerId !== userId) throw new PlannerMutationScopeExpiredError();
@@ -1062,9 +1094,9 @@ export function usePlannerDataState({
       ? cancellation.before.map(row => `timetable-template:${row.id}`)
       : [`${occurrence.source.backingKind}:${occurrence.source.backingId}`];
     requireKnownDaySources(keys);
-    const isPending = () => keys.some(key => pendingDayCancellations.has(key) || pendingDaySourceWrites.has(key));
-    const markPending = () => keys.forEach(key => pendingDayCancellations.add(key));
-    const clearPending = () => keys.forEach(key => pendingDayCancellations.delete(key));
+    const isPending = () => keys.some(key => pendingDayOccurrenceChanges.has(key) || pendingDaySourceWrites.has(key));
+    const markPending = () => keys.forEach(key => pendingDayOccurrenceChanges.add(key));
+    const clearPending = () => keys.forEach(key => pendingDayOccurrenceChanges.delete(key));
     if (isPending()) throw new Error('この予定は保存中です。');
     const targets: PlannerRepairTarget[] = cancellation.kind === 'timetable' ? ['timetable']
       : cancellation.kind === 'plan' ? ['plans-todos'] : ['month-events'];
@@ -2451,6 +2483,7 @@ export function usePlannerDataState({
     movePlanOccurrence: trackMutation((plan: Plan, target: WeekPlanMoveTarget) =>
       withDayOccurrenceSourceWrite(`plan:${plan.id}`, () => movePlanOccurrence(plan, target)), ['plans-todos']),
     deleteDayOccurrence: trackMutation(deleteDayOccurrence, ['timetable', 'plans-todos', 'month-events']),
+    changeDayTimetableTime: trackMutation(changeDayTimetableTime, ['plans-todos']),
     deletePlan: trackMutation(deletePlan, ['actual-material', 'plans-todos']),
     confirmRecurringPlanScope: trackMutation(confirmRecurringPlanScope),
     cancelRecurringPlanScope,

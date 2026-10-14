@@ -1,3 +1,4 @@
+import type { DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
 import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
 import type { MaterialEditBaseline } from './useActualMutationAdmission';
 import type { ActualActionTarget } from './useActualMutationAdmission';
@@ -91,6 +92,7 @@ interface PlannerAppState {
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
   completeWeeklyApprovalOperation: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
   deleteDayOccurrence: (occurrence: ScheduleOccurrence) => Promise<void>;
+  changeDayTimetableTime: (occurrence: ScheduleOccurrence, time: DayTimetableTimeChange) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
@@ -191,6 +193,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     createPlanDraft,
     movePlanOccurrence,
     deleteDayOccurrence,
+    changeDayTimetableTime,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
@@ -390,6 +393,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     saveWeeklyApprovedPlan: approvalScope.bindMutation(saveWeeklyApprovedPlan),
     completeWeeklyApprovalOperation: approvalScope.bindMutation(completeWeeklyApprovalOperation),
     deleteDayOccurrence,
+    changeDayTimetableTime,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,

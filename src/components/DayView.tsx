@@ -1,3 +1,4 @@
+import type { DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
 import type { ActualActionTarget } from '../hooks/useActualMutationAdmission';
 import {
   useEffect,
@@ -50,6 +51,7 @@ import type {
 interface DayViewProps {
   showTimetable?: boolean;
   onDeleteOccurrence?: (occurrence: ScheduleOccurrence) => Promise<void>;
+  onChangeTimetableTime?: (occurrence: ScheduleOccurrence, time: DayTimetableTimeChange) => Promise<void>;
   selectedDate: string;
   userId: string;
   plans: Plan[];
@@ -125,6 +127,7 @@ function createMonthEventActualPlan(
 export function DayView({
   showTimetable = true,
   onDeleteOccurrence,
+  onChangeTimetableTime,
   selectedDate,
   userId,
   plans,
@@ -507,7 +510,7 @@ export function DayView({
       {actualOpenError ? <p className="inline-error" role="alert">{actualOpenError}</p> : null}
       {detailTimetable ? (
         <DayTimetableDetailModal key={detailTimetable.id} occurrence={detailTimetable}
-          onClose={closeModal} onOpenTimetable={onOpenTimetable}
+          onClose={closeModal} onOpenTimetable={onOpenTimetable} onSaveTime={onChangeTimetableTime}
           onDeleteOccurrence={onDeleteOccurrence ? () => onDeleteOccurrence(detailTimetable) : undefined} />
       ) : null}
       <DayDetailModal

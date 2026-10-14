@@ -1,5 +1,6 @@
 import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
 const OWNER = 'day-occurrence-owner';
+test.use({ contextOptions: { reducedMotion: 'reduce' } });
 async function timedPhase(name, run) {
   const startedAt = performance.now();
   console.log('Day occurrence phase:', JSON.stringify({ name, state: 'started' }));
@@ -54,9 +55,11 @@ async function setVisible(page, visible) {
   await page.locator('.app-settings-page').getByRole('button', { name: '戻る', exact: true }).click();
 }
 for (const width of [390, 1280]) {
+  test.describe(`Day controls initial viewport ${width}px`, () => {
+  test.use({ viewport: { width, height: 900 }, screen: { width, height: 900 } });
   test(`day visibility and single-occurrence cancellation preserve recorded history at ${width}px`, async ({ page }, testInfo) => {
     await timedPhase('open seeded Day', async () => {
-      await page.setViewportSize({ width, height: 900 }); await seed(page); await page.goto('/'); await openDay(page);
+      await seed(page); await page.goto('/'); await openDay(page);
       await expect(card(page, '自動表示の授業')).toHaveCount(1);
     });
     const savedActuals = await actuals(page);
@@ -123,5 +126,54 @@ for (const width of [390, 1280]) {
     await timedPhase('verify all three next-week occurrences remain', async () => {
       for (const title of ['毎週の学習', '毎週の予定', '自動表示の授業']) await expect(card(page, title)).toHaveCount(1);
     });
+  });
+  test(`day time edit preserves timetable, reloads and can be canceled with Undo at ${width}px`, async ({ page }, testInfo) => {
+    await seed(page); await page.goto('/'); await openDay(page);
+    const templates = await page.evaluate(() => localStorage.getItem('studyplanner.scheduleTemplates.v1'));
+    const savedActuals = await actuals(page);
+    await card(page, '自動表示の授業').click();
+    const detail = page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true });
+    await expect(detail).not.toContainText('時間割から表示しています');
+    await detail.getByRole('button', { name: 'この日の時間を変更', exact: true }).click();
+    await detail.getByLabel('開始', { exact: true }).fill('17:00');
+    await detail.getByLabel('終了', { exact: true }).fill('18:30');
+    await attachScreen(page, testInfo, `day-time-editor-${width}`);
+    const bounds = await detail.evaluate(element => {
+      const r = element.getBoundingClientRect();
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: innerWidth, height: innerHeight,
+        inputFont: getComputedStyle(element.querySelector('input')).fontSize };
+    });
+    expect(bounds.left).toBeGreaterThanOrEqual(0); expect(bounds.right).toBeLessThanOrEqual(bounds.width);
+    expect(bounds.top).toBeGreaterThanOrEqual(0); expect(bounds.bottom).toBeLessThanOrEqual(bounds.height);
+    expect(parseFloat(bounds.inputFont)).toBeGreaterThanOrEqual(16);
+    await detail.getByRole('button', { name: 'キャンセル', exact: true }).click();
+    await expect(detail.getByRole('button', { name: 'この日の時間を変更', exact: true })).toBeVisible();
+    await detail.getByRole('button', { name: 'この日の時間を変更', exact: true }).click();
+    await expect(detail.getByLabel('開始', { exact: true })).toHaveValue('10:00');
+    await detail.getByLabel('開始', { exact: true }).fill('17:00');
+    await detail.getByLabel('終了', { exact: true }).fill('18:30');
+    await detail.getByRole('button', { name: 'この日だけ保存', exact: true }).click();
+    await expect(detail).toHaveCount(0);
+    await expect(card(page, '自動表示の授業')).toHaveCount(1);
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1'))
+      .filter(row => row.title === '自動表示の授業'));
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({ date: E2E_TODAY, startTime: '17:00', endTime: '18:30',
+      provenance: { sourceType: 'timetable' }, plan: { sourceDate: E2E_TODAY } });
+    expect(saved[0].provenance.sourceId).toContain('1-2');
+    expect(await page.evaluate(() => localStorage.getItem('studyplanner.scheduleTemplates.v1'))).toBe(templates);
+    await page.reload(); await openDay(page);
+    await expect(card(page, '自動表示の授業')).toHaveCount(1);
+    await card(page, '自動表示の授業').click();
+    await page.getByRole('dialog', { name: '自動表示の授業の操作', exact: true })
+      .getByRole('button', { name: 'この日だけ削除', exact: true }).click();
+    await expect(card(page, '自動表示の授業')).toHaveCount(0);
+    await page.getByRole('button', { name: '元に戻す', exact: true }).click();
+    await expect(card(page, '自動表示の授業')).toHaveCount(1);
+    for (let day = 0; day < 7; day++) await page.getByRole('button', { name: '次の期間へ', exact: true }).click();
+    await card(page, '自動表示の授業').click();
+    await expect(detail).toContainText('10:00 - 12:00');
+    expect(await actuals(page)).toBe(savedActuals);
+  });
   });
 }

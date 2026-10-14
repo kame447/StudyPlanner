@@ -153,3 +153,42 @@ it('describes an overnight occurrence before removing the whole selected instanc
   await act(async () => { button.props.onClick(); });
   expect(remove).toHaveBeenCalledWith(expect.objectContaining({ start: { date: '2026-10-05', time: '23:00' } }));
 });
+
+it('edits the selected timetable time, keeps input after failure, and blocks duplicate/close while pending', async () => {
+  let fail!: (reason: Error) => void;
+  const save = vi.fn().mockReturnValueOnce(new Promise<void>((_, reject) => { fail = reject; })).mockResolvedValue(undefined);
+  props = { ...props, onChangeTimetableTime: save, onDeleteOccurrence: vi.fn() };
+  mount(); clickCard(template.title);
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('時間割から表示しています');
+  act(() => dialogs()[0].findAllByType('button').find(node => node.children.includes('この日の時間を変更'))!.props.onClick());
+  const fields = () => dialogs()[0].findAllByType('input');
+  act(() => fields()[0].props.onChange({ target: { value: '14:00' } }));
+  act(() => fields()[1].props.onChange({ target: { value: '15:30' } }));
+  const submit = dialogs()[0].findByType('form').props.onSubmit;
+  await act(async () => { submit({ preventDefault: noop }); submit({ preventDefault: noop }); });
+  expect(save).toHaveBeenCalledTimes(1);
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ start: { date: props.selectedDate, time: '09:00' } }), { startTime: '14:00', endTime: '15:30' });
+  act(() => dialogs()[0].findByProps({ 'aria-label': '閉じる' }).props.onClick());
+  expect(dialogs()).toHaveLength(1); expect(fields().every(node => node.props.disabled)).toBe(true);
+  await act(async () => { fail(Error('offline')); });
+  expect(fields().map(node => node.props.value)).toEqual(['14:00', '15:30']);
+  expect(dialogs()[0].findByProps({ role: 'alert' }).children.join('')).toContain('offline');
+  await act(async () => { dialogs()[0].findByType('form').props.onSubmit({ preventDefault: noop }); });
+  expect(save).toHaveBeenCalledTimes(2); expect(dialogs()).toHaveLength(0);
+});
+
+it('cancels an unsaved time change and preserves its original target if the source changes during editing', async () => {
+  const save = vi.fn(async () => undefined);
+  props = { ...props, onChangeTimetableTime: save };
+  mount(); clickCard(template.title);
+  const edit = () => dialogs()[0].findAllByType('button').find(node => node.children.includes('この日の時間を変更'))!;
+  act(() => edit().props.onClick());
+  act(() => dialogs()[0].findAllByType('input')[0].props.onChange({ target: { value: '14:00' } }));
+  act(() => dialogs()[0].findAllByType('button').find(node => node.children.includes('キャンセル'))!.props.onClick());
+  expect(save).not.toHaveBeenCalled();
+  act(() => edit().props.onClick());
+  expect(dialogs()[0].findAllByType('input')[0].props.value).toBe('09:00');
+  act(() => renderer!.update(<DayView {...props} scheduleTemplates={[{ ...template, startTime: '08:00' }]} />));
+  await act(async () => { dialogs()[0].findByType('form').props.onSubmit({ preventDefault: noop }); });
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ start: { date: props.selectedDate, time: '09:00' } }), expect.anything());
+});
