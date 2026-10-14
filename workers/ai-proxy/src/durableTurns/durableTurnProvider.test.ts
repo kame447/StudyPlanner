@@ -34,4 +34,14 @@ describe('durable provider uses the existing proxy policy', () => {
     expect(timeout.mock.calls[0][0]).toBeLessThanOrEqual(2500);
   });
 
+  it.each([new DOMException('private timeout details', 'TimeoutError'), new TypeError('private network details')])(
+    'retains a safe transport classification instead of a generic provider_error', async error => {
+      const env = { OPENAI_API_KEY: 'server-key', ALLOWED_CHAT_MODELS: 'gpt-6-luna', AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: true, retryAfterSeconds: 0 }) }) } } as unknown as AiProxyWorkerEnv;
+      const fetch = vi.fn(async () => { throw error; }); vi.stubGlobal('fetch', fetch);
+      const client = createDurableTurnProvider(env, 'alice', async (_request, send) => send());
+      await expect(client.createChatCompletion({ messages: [{ role: 'user', content: 'hello' }], purpose: 'weekly_planning_renderer' }))
+        .rejects.toMatchObject({ providerFailure: { kind: error.name === 'TimeoutError' ? 'timeout' : 'network_error', httpStatus: 502, upstreamStatus: null } });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
 });

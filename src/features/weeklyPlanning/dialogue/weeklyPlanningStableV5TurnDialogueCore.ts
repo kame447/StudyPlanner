@@ -469,6 +469,7 @@ export async function renderWeeklyPlanningStableV5RecoveryMessageCore(params: {
       response: { status: 'fallback',
         reason: rendered.status === 'fallback' ? rendered.reason : 'recovery_no_longer_current',
         rawResponse: rendered.rawResponse,
+        ...(rendered.status === 'fallback' && rendered.providerFailure ? { providerFailure: rendered.providerFailure } : {}),
         renderedText: rendered.status === 'rendered' ? rendered.text : null },
     } };
   }

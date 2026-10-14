@@ -345,7 +345,7 @@ describe('traceWorker completion metadata stays inside existing observation', ()
     const { response, tasks } = await invoke(request, env);
     expect(response.status).toBe(row.status);
     expect(await response.json()).toEqual(row.content === null
-      ? { error: 'OpenAI response content was empty.' }
+      ? { error: 'OpenAI response content was empty.', providerFailure: { kind: 'empty_response', httpStatus: 502, upstreamStatus: 200, completion: { finishReason: row.finishReason, refusalPresent: row.refusal === undefined ? null : row.refusal !== null, requestedMaxCompletionTokens: row.requested ?? null, effectiveMaxCompletionTokens: row.effective, reasoningTokens: row.reasoningTokens, textTokens: row.textTokens } } }
       : { content: row.content, usage });
     await Promise.all(tasks);
     expect(unexpected).toEqual([]);

@@ -124,7 +124,7 @@ describe('credential-bearing Worker fetch redirects and Luna model identity', ()
     }), configured as never, undefined, { waitUntil: promise => pending.push(promise) } as ExecutionContext);
     await Promise.all(pending);
     expect(response.status).toBe(502);
-    expect(await response.json()).toEqual({ error: 'OpenAI request failed.' });
+    expect(await response.json()).toEqual({ error: 'OpenAI request failed.', providerFailure: { kind: 'http_error', httpStatus: 502, upstreamStatus: status, completion: null } });
     const luna = transport.mock.calls.filter(([input]) => String(input).includes('api.openai.com'));
     expect(luna).toHaveLength(1);
     expect(luna[0][1]?.redirect).toBe('manual');
