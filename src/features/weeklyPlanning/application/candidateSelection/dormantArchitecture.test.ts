@@ -14,6 +14,7 @@ const numericConsumers = new Set(['src/features/weeklyPlanning/semantic/weeklyPl
 const registeredNumericConsumers = new Set([
   // D5 producer: frozen finite domain feeds the existing numeric selector, not a normalizer shortcut.
   'src/features/weeklyPlanning/semantic/weeklyPlanningNumericPendingDomainV5.ts',
+  'src/features/weeklyPlanning/semantic/weeklyPlanningNumericRegisteredDomainV5.ts',
 ]);
 // Every incoming file requires an intentional, individual review.
 const allowedConsumers = new Set([
