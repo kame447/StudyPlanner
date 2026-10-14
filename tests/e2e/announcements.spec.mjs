@@ -11,13 +11,15 @@ for (const width of [375, 1440]) for (const theme of ['light', 'dark']) {
       overflow: getComputedStyle(document.documentElement).overflow,
       gutter: getComputedStyle(document.documentElement).scrollbarGutter,
     }));
-    expect(await page.evaluate(() => window.__announcementReads?.length ?? 0)).toBe(0);
+    await expect(page.getByRole('img', { name: '未読のお知らせあり' })).toBeVisible();
+    expect(await page.evaluate(() => window.__announcementReads.length)).toBe(1);
     await page.getByRole('button', { name: 'お知らせを開く' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByRole('heading', { name: 'お知らせ一覧' })).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'ホームへ戻る' })).toBeFocused();
     await expect(dialog.locator('.announcement-row')).toHaveCount(25);
-    await expect(dialog.getByRole('img', { name: '未読' })).toHaveCount(25);
+    expect(await page.evaluate(() => window.__announcementReads.length)).toBe(1);
+    await expect(dialog.getByRole('img', { name: '未読', exact: true })).toHaveCount(25);
     expect(await page.evaluate(() => document.querySelector('dialog').getBoundingClientRect().width)).toBe(width);
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflow)).toBe('hidden');
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollbarGutter)).toBe('auto');
@@ -27,16 +29,19 @@ for (const width of [375, 1440]) for (const theme of ['light', 'dark']) {
     await expect(dialog.getByRole('heading', { name: '【解消】朝の時間帯の通信障害につきまして' })).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'お知らせ一覧へ戻る' })).toBeFocused();
     await expect(dialog.locator('.announcement-body')).toContainText('<script>実行しない本文</script>');
+    await page.screenshot({ path: path.join(artifacts, `announcement-detail-${width}-${theme}.png`) });
     await expect.poll(() => page.evaluate(() => window.__announcementWrites.length)).toBe(1);
     await page.goBack();
     await expect(dialog.getByRole('heading', { name: 'お知らせ一覧' })).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'ホームへ戻る' })).toBeFocused();
-    await expect(dialog.getByRole('img', { name: '未読' })).toHaveCount(24);
+    await expect(dialog.getByRole('img', { name: '未読', exact: true })).toHaveCount(24);
+    await expect(page.locator('.announcement-bell-dot')).toHaveCount(1);
     await dialog.getByRole('button', { name: 'すべて既読' }).click();
-    await expect(dialog.getByRole('img', { name: '未読' })).toHaveCount(0);
+    await expect(dialog.getByRole('img', { name: '未読', exact: true })).toHaveCount(0);
+    await expect(page.locator('.announcement-bell-dot')).toHaveCount(0);
     await dialog.getByRole('button', { name: 'もっと見る' }).click();
     await expect(dialog.locator('.announcement-row')).toHaveCount(26);
-    await expect(dialog.getByRole('img', { name: '未読' })).toHaveCount(0);
+    await expect(dialog.getByRole('img', { name: '未読', exact: true })).toHaveCount(0);
     expect(await page.evaluate(() => window.__announcementReads.length)).toBe(2);
     await dialog.getByRole('button', { name: 'ホームへ戻る' }).click();
     await expect(dialog).toHaveCount(0);
@@ -51,6 +56,7 @@ for (const width of [375, 1440]) for (const theme of ['light', 'dark']) {
 }
 test('announcements failures are explicit, and account changes cannot reopen another owner history', async ({ page }) => {
   await page.goto('/admin-overview.html?view=announcements&state=error');
+  await expect.poll(() => page.evaluate(() => window.__announcementReads.length)).toBe(1);
   await page.getByRole('button', { name: 'お知らせを開く' }).click();
   await expect(page.getByRole('alert')).toContainText('取得できません');
   await page.getByRole('button', { name: '再試行', exact: true }).click(); await expect(page.locator('.announcement-row')).toHaveCount(25);
@@ -65,7 +71,25 @@ test('failed individual read stays unread and only explicit retry succeeds', asy
   await expect(page.getByRole('alert')).toContainText('既読を保存できません');
   expect(await page.evaluate(() => window.__announcementWrites.length)).toBe(1);
   await page.getByRole('button', { name: '既読を再試行' }).click(); await expect(page.getByRole('alert')).toHaveCount(0);
-  await page.goBack(); await expect(page.getByRole('img', { name: '未読' })).toHaveCount(24);
+  await page.goBack(); await expect(page.getByRole('img', { name: '未読', exact: true })).toHaveCount(24);
+});
+for (const [width, theme] of [[375, 'light'], [1440, 'dark']]) test(`one announcement clears its bell after read ${width}/${theme}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto(`/admin-overview.html?view=announcements&state=single&theme=${theme}`);
+  await expect(page.getByRole('img', { name: '未読のお知らせあり' })).toBeVisible();
+  await page.getByRole('button', { name: 'お知らせを開く' }).click();
+  await expect(page.locator('.announcement-row')).toHaveCount(1);
+  await expect(page.locator('.announcement-category svg')).toHaveCount(1);
+  await page.screenshot({ path: path.join(artifacts, `announcement-single-${width}-${theme}.png`) });
+  await page.locator('.announcement-row').click();
+  await expect(page.locator('.announcement-body')).toBeVisible();
+  await expect(page.locator('.announcement-bell-dot')).toHaveCount(0);
+  await page.screenshot({ path: path.join(artifacts, `announcement-single-detail-${width}-${theme}.png`) });
+  await page.getByRole('button', { name: 'お知らせ一覧へ戻る' }).click();
+  await page.getByRole('button', { name: 'ホームへ戻る' }).click();
+  await expect(page.getByRole('button', { name: 'お知らせを開く' })).toBeFocused();
+  await expect(page.getByRole('img', { name: '未読のお知らせあり' })).toHaveCount(0);
+  expect(await page.evaluate(() => window.__announcementReads.length)).toBe(1);
 });
 for (const width of [375, 1440]) test(`admin drafts are separate and explicit publication is previewed ${width}`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
