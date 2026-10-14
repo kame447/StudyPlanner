@@ -430,7 +430,7 @@ function projectStageData(stage: string, value: unknown): unknown {
         graphRevision: numberValue(data.graphRevision),
         selectedDate: stringValue(data.selectedDate),
         fallbackHorizon: compactUnknown(data.fallbackHorizon),
-        recentTurnLimit: numberValue(data.recentTurnLimit),
+        historyWindow: compactUnknown(data.historyWindow),
         recentConversation: compactMessages(data.recentConversation),
         publicStateSummary: compactUnknown(data.publicStateSummary),
         schedulerContext: compactUnknown(data.schedulerContext),

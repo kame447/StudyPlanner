@@ -88,6 +88,7 @@ export function createWeeklyPlanningStableV5DialoguePrompt(
     actionId: input.actionId,
     currentUserMessage: input.currentUserMessage,
     recentConversation: input.recentConversation,
+    ...(input.historyWindow ? { historyWindow: input.historyWindow } : {}),
     currentTurnGrounding: input.currentTurnGrounding ?? { mode: 'none', acceptedFacts: [] },
     planningStateSummary: createWeeklyPlanningStableV5DialogueStateSummary(input),
     applicationDecision: {

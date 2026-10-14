@@ -26,6 +26,8 @@ retrievalは「保存形式」と「検索方法」を同一視しない。正�
 
 Jevをmemory retrievalへ使う場合の機能ownerは#294のまま維持する。#305からprovider/typed validation/gate/evaluationの仕組みを再利用してよいが、保存先owner routingや他のJev用途のthreshold/corpusをそのまま流用しない。詳細は [Memory and conversation architecture](architecture/memory-and-conversation.md)、[read/writeサービスの詳細設計](architecture/context-service-contract.md)、[Current roadmap](roadmap/current.md) を参照する。
 
+週間計画内のリクエスト捕捉とモデル用履歴窓は [Codex-derived context harness](../weekly-planning/architecture/codex-context-harness.md) に実装上の境界を記す。これは既存の会話・記憶ストアを読む実行時の投影であり、上記の長期記憶やforgetの完了を意味しない。
+
 ## Current state
 
 #232 / PR #235のfoundationが `src/features/userPlanningContext/` にある。自然言語の追加/編集、origin/authority、source-of-truth routing、revoked tombstone、Firestore transaction/revisionを利用する。件数制限付きprompt selectionと、現在のFact Graphから過去の根拠を回収するweekly-planningのepisodic projectionも既存実装であり、ゼロから再実装しない。

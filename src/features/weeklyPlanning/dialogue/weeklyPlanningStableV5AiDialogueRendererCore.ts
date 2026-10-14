@@ -1,3 +1,4 @@
+import { PlanningModelPrompt, PlanningModelStep } from '../harness/planningModelStep';
 import type { ChatMessage, OpenAiCompatibleClient, JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClientTypes';
 import {
   WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
@@ -25,30 +26,25 @@ const GROUNDING_ACK_REPAIR_INSTRUCTION = [
   '最終textをその短いACK本文から始めてからapplicationDecisionの質問へ戻ってください。',
 ].join('');
 
-function rendererPromptTraceContext(prompt: {
-  systemPrompt: string;
-  userPrompt: string;
-}, input: WeeklyPlanningStableV5DialogueRenderInput): Record<string, unknown> {
-  const messages = [
-    { role: 'system', content: prompt.systemPrompt },
-    { role: 'user', content: prompt.userPrompt },
-  ];
+function rendererPromptTraceContext(
+  prompt: PlanningModelPrompt,
+  input: WeeklyPlanningStableV5DialogueRenderInput,
+): Record<string, unknown> {
   return {
     ...(input.existingScheduleGrounding
       ? { existingScheduleGrounding: input.existingScheduleGrounding }
       : {}),
-    messages,
-    requestBytes: new TextEncoder().encode(JSON.stringify(messages)).byteLength,
+    ...prompt.trace(),
   };
 }
 
 async function requestDialogueRender(params: {
   client: OpenAiCompatibleClient;
   input: WeeklyPlanningStableV5DialogueRenderInput;
-  messages: ChatMessage[];
+  prompt: PlanningModelPrompt;
 }): Promise<WeeklyPlanningStableV5DialogueRenderResult> {
   const rawResponse = await params.client.createChatCompletion({
-    messages: params.messages,
+    messages: params.prompt.messages(),
     temperature: 0.4,
     responseFormat: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
     purpose: 'weekly_planning_renderer',
@@ -141,23 +137,27 @@ export function createWeeklyPlanningStableV5DialogueRendererCore(
   options: { canDispatchRecovery?: () => boolean; rememberPrompt?: (actionId: string, context: Record<string, unknown>) => void } = {},
 ): WeeklyPlanningStableV5DialogueRenderer {
   return {
-    async render(input) {
+    async render(sourceInput) {
       try {
-        const prompt = createWeeklyPlanningStableV5DialoguePrompt(input);
+        const step = new PlanningModelStep(sourceInput);
+        const input = step.input;
+        const prompt = step.prompt((captured) => {
+          const instructions = createWeeklyPlanningStableV5DialoguePrompt(captured);
+          return [
+            { role: 'system', content: instructions.systemPrompt },
+            { role: 'user', content: instructions.userPrompt },
+          ];
+        });
         const promptContext = rendererPromptTraceContext(prompt, input);
         options.rememberPrompt?.(
           input.actionId,
           promptContext,
         );
-        const baseMessages: ChatMessage[] = [
-          { role: 'system', content: prompt.systemPrompt },
-          { role: 'user', content: prompt.userPrompt },
-        ];
         if (input.recovery && (options.canDispatchRecovery?.() !== true
           || (input.actionKind === 'question' && !input.recoveryQuestionEvidence))) {
           return { status: 'fallback', reason: 'recovery_verification_failed', rawResponse: null };
         }
-        const initial = await requestDialogueRender({ client, input, messages: baseMessages });
+        const initial = await requestDialogueRender({ client, input, prompt });
         // Recovery uses the existing two-call ceiling for generation + verification,
         // never generation + repair + verification. No extra call after a throw/stale turn.
         if (input.recovery) {
@@ -176,14 +176,9 @@ export function createWeeklyPlanningStableV5DialogueRendererCore(
             ? GROUNDING_ACK_REPAIR_INSTRUCTION
             : null;
         if (!repairInstruction) return initial;
-        return await requestDialogueRender({
-          client,
-          input,
-          messages: [
-            ...baseMessages,
-            { role: 'user', content: repairInstruction },
-          ],
-        });
+        const retryPrompt = prompt.withMessage({ role: 'user', content: repairInstruction });
+        promptContext.retryPrompt = retryPrompt.trace();
+        return await requestDialogueRender({ client, input, prompt: retryPrompt });
       } catch {
         return { status: 'fallback', reason: 'provider_error', rawResponse: null };
       }

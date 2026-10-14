@@ -1,3 +1,4 @@
+import { capturePlanningTurnContext } from '../harness/planningContextSnapshot';
 import { resolveWeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { validateWeeklyPlanningFactGraphValueV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
@@ -19,6 +20,7 @@ export async function continueWeeklyPlanningSelectedCandidateTurn(
   input: WeeklyPlanningTurnExecutionInput & ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
   selectedGraph: WeeklyPlanningFactGraphV5,
 ) {
+  input = capturePlanningTurnContext(input);
   const graph = structuredClone(selectedGraph);
   if (!validateWeeklyPlanningFactGraphValueV5(graph).graph) throw new Error('Invalid selected candidate graph.');
   const runtimeSession = getOrCreateWeeklyPlanningStableV5RuntimeSession({ ownerId: input.userId, conversationId: input.conversationId });

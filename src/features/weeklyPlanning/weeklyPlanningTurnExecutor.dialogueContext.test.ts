@@ -162,7 +162,7 @@ describe('Stable V5 dialogue context wiring', () => {
 
   it('passes recent conversation, typed planning facts, and grounding records to the renderer', async () => {
     const messages = [
-      message('1', 'user', 'この発話だけは古いので除外される'),
+      message('1', 'user', '研究は今日は入れない'),
       message('2', 'assistant', '来週の計画ですね。'),
       message('3', 'user', '院試の勉強をしたい'),
       message('4', 'assistant', '分野を教えてください。'),
@@ -190,12 +190,11 @@ describe('Stable V5 dialogue context wiring', () => {
 
     expect(stableV5RendererMock).toHaveBeenCalledWith(expect.objectContaining({
       currentUserMessage: 'どういうこと？',
-      recentConversation: [
-        { role: 'assistant', content: '分野を教えてください。' },
-        { role: 'user', content: '第1分野と第2分野' },
-        { role: 'assistant', content: '作業量を教えてください。' },
-        { role: 'user', content: 'それぞれ3時間' },
-      ],
+      recentConversation: messages.map(({ role, content }) => ({ role, content })),
+      historyWindow: expect.objectContaining({
+        policy: 'recent_complete_turns', originalMessageCount: 7,
+        includedMessageCount: 7, omittedMessageCount: 0, budgetBytes: 8192,
+      }),
       planningInformation: expect.objectContaining({
         revision: 4,
         planningWindows: [expect.objectContaining({
