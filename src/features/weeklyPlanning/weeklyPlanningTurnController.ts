@@ -84,6 +84,9 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
     assistantMessage: WeeklyPlanningMessage;
   }): void | Promise<void>;
   now?: () => string;
+  /** Recovery reuses the exact accepted request; execution must be status-only. */
+  resumePending?: WeeklyPlanningPendingTurn;
+  isActive?: () => boolean;
   /** Dormant PoC: explicit consumer/provider injection only; no production default. */
   c5LocalSelection?: C5LocalSelectionOptions;
 }
@@ -242,6 +245,9 @@ export async function submitWeeklyPlanningControlledTurn(
     return { accepted: false, draftCandidates: [] };
   }
 
+  if (params.resumePending && (params.resumePending.conversationId !== params.session.conversationId
+    || params.resumePending.weekStartDate !== snapshot.weekStartDate
+    || params.resumePending.baseRevision !== snapshot.revision)) return { accepted: false, draftCandidates: [] };
   ensureSessionScope(params.session, params.ownerId, snapshot.weekStartDate);
   params.session.requestSequence = Math.max(
     params.session.requestSequence,
@@ -249,7 +255,7 @@ export async function submitWeeklyPlanningControlledTurn(
     inferWeeklyPlanningControllerRequestSequence(snapshot.messages, params.session.conversationId),
   ) + 1;
   const now = params.now ?? (() => new Date().toISOString());
-  const createdAt = now();
+  const createdAt = params.resumePending?.startedAt ?? now();
   const envelope = createDialogueTurnEnvelope({
     conversationId: params.session.conversationId,
     inputStateRevision: snapshot.revision,
@@ -265,6 +271,9 @@ export async function submitWeeklyPlanningControlledTurn(
     baseRevision: snapshot.revision,
     startedAt: createdAt,
   };
+  if (params.resumePending && !isSameWeeklyPlanningPendingTurn(pending, params.resumePending)) {
+    return { accepted: false, draftCandidates: [] };
+  }
   const begun = params.dispatch({
     type: 'begin_turn',
     pending,
@@ -275,6 +284,8 @@ export async function submitWeeklyPlanningControlledTurn(
     return { accepted: false, draftCandidates: [] };
   }
   await runBestEffort(() => params.onStartedTurn?.({ snapshot, pending }));
+
+  if (params.isActive?.() === false) return { accepted: false, draftCandidates: [] };
 
   let result: WeeklyPlanningTurnExecutionResult | undefined;
   let preparedCommit: WeeklyPlanningPreparedExecutionCommit | undefined;
@@ -317,13 +328,13 @@ export async function submitWeeklyPlanningControlledTurn(
       }
       return outcome;
     }
-    if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
+    if (params.isActive?.() === false || !isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
       await runBestEffort(() => params.discardExecutionResult?.({ ...context, reason: 'stale' }));
       return { accepted: false, draftCandidates: [] };
     }
 
     preparedCommit = params.prepareExecutionCommit?.(context) ?? undefined;
-    if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
+    if (params.isActive?.() === false || !isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
       preparedCommit?.rollback();
       preparedCommit = undefined;
       await runBestEffort(() => params.discardExecutionResult?.({ ...context, reason: 'stale' }));
@@ -413,7 +424,7 @@ export async function submitWeeklyPlanningControlledTurn(
         reason: 'failed',
       }));
     }
-    if (!isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
+    if (params.isActive?.() === false || !isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
       return { accepted: false, draftCandidates: [] };
     }
     const controlledFailure = error instanceof WeeklyPlanningControlledSemanticFailure;

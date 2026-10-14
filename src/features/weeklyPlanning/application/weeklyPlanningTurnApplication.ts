@@ -12,7 +12,7 @@ import type {
   StudyMaterial,
   TimetableTerm,
 } from '../../../types/domain';
-import type { PlanningState, WeeklyPlanningAction } from '../types';
+import type { PlanningState, WeeklyPlanningAction, WeeklyPlanningPendingTurn } from '../types';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type {
@@ -76,6 +76,8 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
   now?: () => string;
+  resumePending?: WeeklyPlanningPendingTurn;
+  isApplicationCurrent?: () => boolean;
   getState(): PlanningState;
   dispatch(action: WeeklyPlanningAction): PlanningState;
 }
@@ -94,6 +96,7 @@ export function submitWeeklyPlanningApplicationTurn(
       ...(c5LocalSelection ? { semanticObservation: c5LocalSelection.semanticObservation } : {}),
       snapshot,
       pending,
+      resumeDurable: Boolean(params.resumePending),
       userText,
       supplementalContext,
       selectedStarterTarget,
@@ -109,7 +112,7 @@ export function submitWeeklyPlanningApplicationTurn(
       timetableTerms: params.timetableTerms,
       weekStartsOn: params.weekStartsOn,
       timeZone: params.timeZone,
-      isCurrentTurn: () => params.session.ownerId === params.userId
+      isCurrentTurn: () => params.isApplicationCurrent?.() !== false && params.session.ownerId === params.userId
         && params.session.conversationId === pending.conversationId
         && params.getState().weekStartDate === pending.weekStartDate
         && params.getState().revision === pending.baseRevision + 1
@@ -119,7 +122,8 @@ export function submitWeeklyPlanningApplicationTurn(
       ? services.runtimeGateway.continueSelectedTurn(input, selectedGraph)
       : services.runtimeGateway.execute(input);
   };
-  const c5LocalSelection: ReturnType<typeof createWeeklyPlanningCandidateChoiceOptions> = params.isPlannerDataSnapshotCurrent && services.runtimeGateway.continueSelectedTurn
+  // A recovered server turn already owns its interpretation. Reconcile it without new Choice work.
+  const c5LocalSelection: ReturnType<typeof createWeeklyPlanningCandidateChoiceOptions> = !params.resumePending && params.isPlannerDataSnapshotCurrent && services.runtimeGateway.continueSelectedTurn
     ? createWeeklyPlanningCandidateChoiceOptions({ services: services.candidateChoice,
         censusMetadata: projectSemanticCensusMetadata({
           questionCode: params.getState().intakeState?.lastQuestionContext?.targetSlot === 'stable_v5:ambiguous_effort_estimate'
@@ -143,6 +147,8 @@ export function submitWeeklyPlanningApplicationTurn(
     getState: params.getState,
     dispatch: params.dispatch,
     now: params.now,
+    resumePending: params.resumePending,
+    isActive: params.isApplicationCurrent,
     c5LocalSelection,
     execute: runRuntime,
     onStartedTurn({ pending }) {

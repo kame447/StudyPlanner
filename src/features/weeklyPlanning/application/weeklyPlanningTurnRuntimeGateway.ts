@@ -1,4 +1,7 @@
-import type { WeeklyPlanningSemanticTurnObservation } from '../trace/weeklyPlanningSemanticCensus';
+import { durableWeeklyPlanningEnabled, executeDurableWeeklyTurn, readDurableWeeklyTurnReceipt, saveDurableWeeklyTurnReceipt } from './weeklyPlanningDurableTurnClient';
+import { getOrCreateWeeklyPlanningStableV5RuntimeSession, commitWeeklyPlanningStableV5RuntimeGraph } from './weeklyPlanningStableV5RuntimeSession';
+import { loadUserPlanningContextSnapshotV1, stageUserPlanningContextFactsV1 } from '../../userPlanningContext/userPlanningContextSpace';
+import type { WeeklyPlanningSemanticTurnObservation } from '../trace/weeklyPlanningSemanticCensusTypes';
 import type {
   Actual,
   MonthEvent,
@@ -57,6 +60,7 @@ export interface ExecuteWeeklyPlanningTurnRuntimeParams {
   weekStartsOn?: WeeklyPlanningWeekStartsOn;
   timeZone?: string;
   isCurrentTurn?: () => boolean;
+  resumeDurable?: boolean;
 }
 
 export interface WeeklyPlanningTurnRuntimeGateway {
@@ -113,7 +117,33 @@ export function createWeeklyPlanningTurnRuntimeGateway(
       return continueWeeklyPlanningSelectedCandidateTurn(executionInput(params, services.bindStableV5SessionScope), graph);
     },
     async execute(params) {
-      return services.executeTurn(executionInput(params, services.bindStableV5SessionScope));
+      const input = executionInput(params, services.bindStableV5SessionScope);
+      const { requestContext } = input;
+      if (!durableWeeklyPlanningEnabled()) return services.executeTurn(input);
+      const session = getOrCreateWeeklyPlanningStableV5RuntimeSession({ ownerId: params.userId,
+        conversationId: params.pending.conversationId });
+      const { isCurrentTurn: _guard, semanticObservation: _observation, ...serializableInput } = input;
+      const existing = readDurableWeeklyTurnReceipt(params.userId);
+      const receipt = params.resumeDurable ? existing : {
+        version: 1 as const, ownerId: params.userId, snapshot: params.snapshot, pending: params.pending,
+        payload: { input: serializableInput, graph: session.graph, weekStartDate: params.snapshot.weekStartDate,
+          userContextRecords: loadUserPlanningContextSnapshotV1({ ownerId: params.userId,
+            currentDate: requestContext.currentDate }).records },
+      };
+      if (!receipt || receipt.pending.requestId !== params.pending.requestId
+        || receipt.pending.conversationId !== params.pending.conversationId) throw new Error('会話の復帰情報が一致しません。');
+      if (!params.resumeDurable) saveDurableWeeklyTurnReceipt(receipt);
+      const completed = await executeDurableWeeklyTurn(receipt, {
+        resumeOnly: params.resumeDurable, isCurrent: params.isCurrentTurn,
+      });
+      if (params.isCurrentTurn?.() === false) throw new Error('会話の所有者が変わりました。');
+      if (!completed.result.failure && completed.result.stableV5Graph) {
+        commitWeeklyPlanningStableV5RuntimeGraph({ ownerId: params.userId,
+          conversationId: params.pending.conversationId, graph: completed.result.stableV5Graph });
+        stageUserPlanningContextFactsV1({ ownerId: params.userId, conversationId: params.pending.conversationId,
+          requestId: params.pending.requestId, observedDate: completed.observedDate, facts: completed.stagedContextFacts });
+      }
+      return completed.result;
     },
   };
 }

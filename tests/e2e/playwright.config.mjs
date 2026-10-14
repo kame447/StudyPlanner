@@ -59,5 +59,12 @@ export default defineConfig({
       reuseExistingServer: !isCi,
       timeout: 30_000,
     },
+    {
+      command: 'node ./node_modules/vite/bin/vite.js --config tests/e2e/harness/durable.vite.config.mjs',
+      cwd: repoRoot,
+      url: 'http://127.0.0.1:4175/real-weekly.html',
+      reuseExistingServer: !isCi,
+      timeout: 30_000,
+    },
   ],
 });

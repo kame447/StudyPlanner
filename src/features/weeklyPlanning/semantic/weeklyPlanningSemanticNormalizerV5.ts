@@ -1,4 +1,4 @@
-import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClientTypes';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
   validateWeeklyPlanningCurrentTurnProvenanceV5,

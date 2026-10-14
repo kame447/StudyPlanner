@@ -15,6 +15,17 @@ const STABLE_MODULE_TOKENS = [
 ] as const;
 
 const ALLOWED_PRODUCTION_IMPORTERS = new Set([
+  // Durable turns reuse the same implementation through invocation-local ports.
+  'application/weeklyPlanningIsolatedTurn.ts',
+  'application/weeklyPlanningStableV5ContextFacts.ts',
+  'application/weeklyPlanningStableV5RuntimeExecutorCore.ts',
+  'application/weeklyPlanningStableV5SemanticContextCore.ts',
+  'application/weeklyPlanningStableV5SemanticTurnCore.ts',
+  'application/weeklyPlanningStableV5TurnResultProjectionCore.ts',
+  'dialogue/weeklyPlanningStableV5AiDialogueRendererCore.ts',
+  'dialogue/weeklyPlanningStableV5TurnDialogueCore.ts',
+  // Shared test fixtures are forbidden from production imports below.
+  'application/weeklyPlanningDurableTurn.testUtils.ts',
   'weeklyPlanningTurnExecutor.ts',
   'weeklyPlanningTurnExecutionTypes.ts',
   'weeklyPlanningOwnedStorage.ts',
@@ -116,6 +127,10 @@ describe('Stable V5 production connection boundary', () => {
       if ([...source.matchAll(STATIC_IMPORT_EXPRESSION)].some((match) =>
         /(?:^|\/)weeklyPlanningMaterialIdentityFixture(?:\.ts)?$/.test(match[1]))) {
         violations.push(`${relativePath}:test-only-material-identity-fixture`);
+      }
+      if ([...source.matchAll(STATIC_IMPORT_EXPRESSION)].some((match) =>
+        /(?:^|\/)weeklyPlanningDurableTurn\.testUtils(?:\.ts)?$/.test(match[1]))) {
+        violations.push(`${relativePath}:test-only-durable-turn-fixture`);
       }
       if (relativePath.startsWith('semantic/')) continue;
 

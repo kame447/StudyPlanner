@@ -1,7 +1,7 @@
 import type {
   ChatMessage,
   OpenAiCompatibleClient,
-} from '../../../services/ai/openAiCompatibleClient';
+} from '../../../services/ai/openAiCompatibleClientTypes';
 import type { SemanticDispatchStage } from '../../../../shared/semanticDispatchLedger';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 } from './weeklyPlanningSemanticTypesV5';

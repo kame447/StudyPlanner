@@ -144,6 +144,7 @@ function contextualBindingObservations(params: {
 
 export function createWeeklyPlanningSemanticPipelineV5(
   normalizer: WeeklyPlanningSemanticNormalizerV5,
+  recordFailure: typeof recordWeeklyPlanningStableV5FailureDiagnostics = recordWeeklyPlanningStableV5FailureDiagnostics,
 ): {
   run(
     input: WeeklyPlanningSemanticPipelineInputV5,
@@ -198,7 +199,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
       });
 
       if (normalization.status === 'provider_failure') {
-        recordWeeklyPlanningStableV5FailureDiagnostics({
+        recordFailure({
           turnId: input.turnId,
           status: 'provider_failure',
           diagnostics: normalization.diagnostics,
@@ -224,7 +225,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
         return result;
       }
       if (!normalization.document) {
-        recordWeeklyPlanningStableV5FailureDiagnostics({
+        recordFailure({
           turnId: input.turnId,
           status: 'normalization_rejected',
           diagnostics: normalization.diagnostics,
@@ -373,7 +374,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
         },
       });
       if (canonicalization.status === 'rejected') {
-        recordWeeklyPlanningStableV5FailureDiagnostics({
+        recordFailure({
           turnId: input.turnId,
           status: 'canonicalization_rejected',
           diagnostics: normalization.diagnostics,

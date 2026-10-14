@@ -1,12 +1,12 @@
+import type { ChatMessage, JsonSchemaResponseFormat, OpenAiCompatibleClient } from './openAiCompatibleClientTypes';
+export type { ChatMessage, JsonSchemaResponseFormat, OpenAiCompatibleClient } from './openAiCompatibleClientTypes';
 import type { SemanticRequestRecorder } from '../../../shared/semanticDispatchRecorder';
-import { parseSemanticCensusJoin, type SemanticCensusJoin, type SemanticCensusRequestObserver } from '../../../shared/semanticTurnCensus';
-import type { SemanticDispatchStage } from '../../../shared/semanticDispatchLedger';
+import { parseSemanticCensusJoin } from '../../../shared/semanticTurnCensus';
 import {
   getCloudflareAiProxyUrl,
   usesCloudflareOpenAiProxy,
 } from '../../lib/aiConfig';
 import type { AiChatPurpose } from '../../lib/aiModelPolicy';
-import type { FocusedDecisionContext } from '../../../shared/focusedContextualDecision';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
 import {
   projectOpenAiCompletionMetadata,
@@ -18,11 +18,6 @@ import {
   utf8ByteLength,
 } from './openAiCompatibleClientMetrics';
 
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
-
 export interface OpenAiCompatibleClientConfig {
   provider?: 'openai' | 'rules';
   baseUrl: string;
@@ -31,15 +26,6 @@ export interface OpenAiCompatibleClientConfig {
   requestTimeoutMs?: number;
   /** Explicit per-request evaluation hook; never serialized to proxy/provider or trace. */
   dispatchRecorder?: SemanticRequestRecorder;
-}
-
-export interface JsonSchemaResponseFormat {
-  type: 'json_schema';
-  json_schema: {
-    name: string;
-    schema: Record<string, unknown>;
-    strict?: boolean;
-  };
 }
 
 interface ChatCompletionRequest {
@@ -293,23 +279,6 @@ async function runFetchWithTimeout<T>(
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-export interface OpenAiCompatibleClient {
-  /** Invocation-local capability, present only on a census-wrapped client. */
-  semanticCensusEnabled?: boolean;
-  semanticCensusObserver?: SemanticCensusRequestObserver;
-  createChatCompletion(input: {
-    /** Telemetry only; injected after semantic trace capture and sent only to our proxy. */
-    semanticCensus?: SemanticCensusJoin;
-    semanticCensusStage?: SemanticDispatchStage;
-    decisionContext?: FocusedDecisionContext;
-    messages: ChatMessage[];
-    temperature?: number;
-    responseFormat?: JsonSchemaResponseFormat;
-    purpose?: AiChatPurpose;
-    maxCompletionTokens?: number;
-  }): Promise<string>;
 }
 
 export function createOpenAiCompatibleClient(

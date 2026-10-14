@@ -1,4 +1,4 @@
-import type { WeeklyPlanningSemanticTurnObservation } from './trace/weeklyPlanningSemanticCensus';
+import type { WeeklyPlanningSemanticTurnObservation } from './trace/weeklyPlanningSemanticCensusTypes';
 import type { WeeklyPlanningPreviewConstraintSatisfaction } from './application/weeklyPlanningPreviewConstraintSatisfaction';
 import type { WeeklyPlanningExistingScheduleGrounding } from './dialogue/weeklyPlanningStableV5DialogueContracts';
 import type {

@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../../../services/ai/openAiCompatibleClient';
+import type { ChatMessage } from '../../../services/ai/openAiCompatibleClientTypes';
 import type { WeeklyPlanningTurnEvidenceV5 } from './weeklyPlanningTurnEvidenceV5';
 import {
   createWeeklyPlanningSemanticMeaningPolicyV5,

@@ -1,4 +1,4 @@
-import type { WeeklyPlanningSemanticTurnObservation } from '../trace/weeklyPlanningSemanticCensus';
+import type { WeeklyPlanningSemanticTurnObservation } from '../trace/weeklyPlanningSemanticCensusTypes';
 import type {
   Actual,
   MonthEvent,

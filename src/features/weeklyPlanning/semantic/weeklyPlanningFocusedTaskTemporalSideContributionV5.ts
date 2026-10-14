@@ -1,7 +1,7 @@
 import type {
   ChatMessage,
   JsonSchemaResponseFormat,
-} from '../../../services/ai/openAiCompatibleClient';
+} from '../../../services/ai/openAiCompatibleClientTypes';
 import {
   CANONICAL_RELATIVE_DATE_EXPRESSIONS,
   CANONICAL_WEEKDAY_DATE_EXPRESSIONS,

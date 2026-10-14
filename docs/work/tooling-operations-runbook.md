@@ -32,6 +32,16 @@ Each durable entry should record:
 
 Do not record credentials, secret values, access tokens, private user data, or raw sensitive logs here.
 
+## Bounded live-model evaluation when workflow dispatch is unavailable
+
+Verified execution on 2026-10-14 for [PR #637](https://github.com/kame447/StudyPlanner/pull/637), [run 38505480239](https://github.com/kame447/StudyPlanner/actions/runs/38505480239). The connector exposed workflow reads and reruns but no dispatch; the server CLI and cloud browser had no authenticated session. This is a capability gap, not a permission denial. Use this fallback only with explicit authorization for the API call and the temporary repository workflow; never use it after a reviewer/access denial.
+
+The one-shot workflow reused `observe:weekly-ai:conversation:turn` and the existing `OPENAI_API_KEY` secret, scoped to its execution step. It used one fixed synthetic utterance, an empty checkpoint, the existing four-request process ceiling, no new credentials and only `contents: read`; checkout did not persist credentials. Branch/path, repository-owner, first-attempt and dedicated-commit guards limited execution. An exact parent/source check preceded secret use. There were no automatic retries or changes to another owner's branch/workflow. Artifact upload was conditional on checking that the secret value was absent from output files; only synthetic data was used.
+
+The first attempt passed with two API calls, one nonempty AI reply and no plan save. Check the exact head/inputs, job steps, downloaded artifact digest and purpose-level call metrics rather than treating a green workflow alone as a model result. This smoke does not prove Durable Object transport or a full approved-and-saved conversation.
+
+Cleanup must use a normal same-branch commit to remove the temporary file, followed by current-tree read-back and exact diff comparison; do not leave a recurring test trigger or grant a workflow write permission just to delete itself. A denied/cancelled cleanup must be reported and resolved through the owner, not bypassed through another tool. In this first occurrence, deletion-commit creation returned `user cancelled MCP tool call`; execution paused until the owner re-supplied the original authorization. One identical retry succeeded. Cleanup commit `dcb8a2b28ed5fe76c644016b24b7211491eab909` deletes only the temporary workflow and restores exactly the original `c3e218638c61f3e7fd3e2036aceb017f228b9384` tree. Both remote ref and fetched current-tree absence were verified. The original Completion-Based Evaluation workflow is unchanged.
+
 ---
 
 ## Cloudflare remote dev: Jev smoke transport failures

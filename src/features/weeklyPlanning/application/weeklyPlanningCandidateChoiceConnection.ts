@@ -1,5 +1,5 @@
 import { WEEKLY_PLANNING_C5_CHOICE_CALIBRATION, validateWeeklyPlanningCandidateChoiceConfiguration } from './weeklyPlanningCandidateChoiceCalibration';
-import type { WeeklyPlanningSemanticTurnObservation } from '../trace/weeklyPlanningSemanticCensus';
+import type { WeeklyPlanningSemanticTurnObservation } from '../trace/weeklyPlanningSemanticCensusTypes';
 import { createCandidateChoiceClient, type CandidateSemanticGatePolicy } from '../../../services/ai/candidateChoiceClient';
 import type { CalibratedChoicePolicy } from './candidateSelection/contracts';
 import type { C5LocalSelectionOptions } from './c5LocalSelection/contracts';

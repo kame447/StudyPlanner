@@ -1,10 +1,11 @@
-import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClientTypes';
 import { createSemanticTurnCensusScope, productionSemanticCensusOptions } from '../../productObservability/semanticTurnCensus';
 import { projectSemanticCensusMetadata } from '../../../../shared/semanticTurnCensus';
 import { readWeeklyPlanningPendingQuestionV5 } from '../semantic/weeklyPlanningPendingQuestionV5';
 import type { WeeklyPlanningSemanticNormalizerV5, WeeklyPlanningSemanticNormalizerInputV5 } from '../semantic/weeklyPlanningSemanticNormalizerContractsV5';
 
-export type WeeklyPlanningSemanticTurnObservation = ReturnType<typeof createSemanticTurnCensusScope>;
+import type { WeeklyPlanningSemanticTurnObservation } from './weeklyPlanningSemanticCensusTypes';
+export type { WeeklyPlanningSemanticTurnObservation } from './weeklyPlanningSemanticCensusTypes';
 
 /** Only machine-state metadata; never reads utterance, graph labels or generated semantic content. */
 export function weeklyPlanningSemanticCensusMetadata(input: WeeklyPlanningSemanticNormalizerInputV5) {
