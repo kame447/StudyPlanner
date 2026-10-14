@@ -93,7 +93,8 @@ test('owner-scoped timetable startup preserves a foreign legacy term and six cla
   await navigate(page, '時間割');
   await expectClassesVisible(page);
   // The recovered row opens the real editor; closing it must not replay a save.
-  await page.getByRole('button', { name: '月曜 1限 数学Iを編集', exact: true }).click();
+  await page.getByRole('button', { name: '月曜 1限 数学Iの詳細', exact: true }).click();
+  await page.locator('.timetable-class-detail').getByRole('button', { name: '編集', exact: true }).click();
   const editor = page.locator('.timetable-editor-modal');
   await expect(editor).toBeVisible();
   await expect(editor.getByLabel('授業名', { exact: true })).toHaveValue(OWNER_TEMPLATES[0].title);

@@ -86,6 +86,7 @@ export interface WeeklyPlanningMemoryPaceObservationResultV1 {
 }
 
 export interface Plan {
+  classTemplateId?: string;
   id: string;
   seriesId: string;
   userId: string;
@@ -140,6 +141,7 @@ export interface ActualMaterialProgressUpdate {
 }
 
 export interface PlanDraft {
+  classTemplateId?: string;
   userId: string;
   title: string;
   subject: string;

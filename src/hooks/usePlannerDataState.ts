@@ -202,6 +202,7 @@ export interface UsePlannerDataStateResult {
   openEditPlan: (plan: Plan) => void;
   closePlanEditor: () => void;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  createPlanDraft: (draft: PlanDraft) => Promise<void>;
   projectPlanSave: (savePlan: () => Promise<Plan>) => Promise<Plan>;
   movePlanOccurrence: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
@@ -926,6 +927,18 @@ export function usePlannerDataState({
       );
       throw error;
     }
+  }
+
+  async function createPlanDraft(draft: PlanDraft): Promise<void> {
+    if (!userId || draft.userId !== userId) {
+      throw new Error('ログイン状態と予定の所有者を確認してください。');
+    }
+    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
+      throw new Error('終了時刻は開始時刻より後にしてください。');
+    }
+    // Independent create surfaces must not inherit the global editor's target
+    // or resolve before a recurring-edit confirmation has actually persisted.
+    await projectPlanSave(() => plannerRepository.upsertPlan(createPlanFromDraft(draft)));
   }
 
   async function savePlanDraft(draft: PlanDraft, targetPlanId?: string) {
@@ -2295,6 +2308,7 @@ export function usePlannerDataState({
     openEditPlan,
     closePlanEditor,
     savePlanDraft: trackMutation(savePlanDraft, ['plans-todos']),
+    createPlanDraft: trackMutation(createPlanDraft, ['plans-todos']),
     projectPlanSave: trackMutation(projectPlanSave, ['plans-todos']),
     movePlanOccurrence: trackMutation(movePlanOccurrence, ['plans-todos']),
     deletePlan: trackMutation(deletePlan, ['actual-material', 'plans-todos']),
