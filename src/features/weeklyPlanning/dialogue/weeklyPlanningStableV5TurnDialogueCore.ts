@@ -2,6 +2,7 @@ import type { WeeklyPlanningStableV5DialogueRenderer } from './weeklyPlanningSta
 import type { getWeeklyPlanningStableV5RuntimeSession } from '../application/weeklyPlanningStableV5RuntimeSession';
 import { stableV5MissingSchedulableWorkQuestion } from '../application/weeklyPlanningStableV5RuntimeQuestions';
 import { resolveWeeklyPlanningQuestionPresentationFreshness, withoutWeeklyPlanningQuestionPresentation } from '../intake/weeklyPlanningQuestionPresentation';
+import { selectWeeklyPlanningDialogueReferenceContext } from './weeklyPlanningDialogueReferenceContext';
 import {
   type WeeklyPlanningStableV5DialogueActionKind,
   type WeeklyPlanningStableV5DialogueRenderInput,
@@ -184,7 +185,7 @@ function createRenderInput(params: {
   questionCode: string | null;
   actionId: string;
 }): WeeklyPlanningStableV5DialogueRenderInput {
-  const planningInformation = params.result.stableV5Graph
+  const planningInformation: Record<string, unknown> | null = params.result.stableV5Graph
     ? {
         ...createWeeklyPlanningStableV5DialogueProjection(params.result.stableV5Graph),
         registeredMaterials: createWeeklyPlanningRegisteredMaterialContextV5({
@@ -218,6 +219,50 @@ function createRenderInput(params: {
   const previewConstraintSatisfaction = params.actionKind === 'preview_ready'
     ? params.result.previewConstraintSatisfaction : undefined;
   const fallbackText = RENDERER_TECHNICAL_STOP;
+  // Read the canonical target window, not merely the currently selected UI day.
+  // A multi-day horizon has no single truthful set of 'today' commitments.
+  const windows = planningInformation?.['planningWindows'];
+  const lastWindow = Array.isArray(windows) && windows.length > 0
+    ? windows[windows.length - 1] : null;
+  const windowStart = lastWindow && typeof lastWindow.start === 'string'
+    ? lastWindow.start.slice(0, 10) : null;
+  const windowEnd = lastWindow && typeof lastWindow.end === 'string'
+    ? lastWindow.end.slice(0, 10) : null;
+  const targetDate = lastWindow
+    ? (windowStart && windowEnd && windowStart === windowEnd ? windowStart : null)
+    : params.input.selectedDate;
+  // Evidence is used for optional examples only when the question genuinely
+  // asks which activity to plan. It is not fed into semantic acceptance.
+  const isUnspecifiedActivityQuestion = questionIntent?.kind === 'schedulable_work_detail'
+    && questionIntent.mode === 'missing_task_identity';
+  // The real first-turn "今日の予定立てて" trace can have a document-scoped
+  // missing-tasks uncertainty instead of the work-item question above.
+  // Do not offer historical work when a concrete task is already accepted or
+  // the uncertainty concerns a particular task or another semantic field.
+  const acceptedTaskFacts = planningInformation?.['tasks'];
+  const isDocumentMissingTasksQuestion = params.questionCode === 'semantic_uncertainty'
+    && questionIntent?.kind === 'resolution_question'
+    && questionIntent.resolutionKind === 'semantic_clarification'
+    && questionIntent.ambiguityField === 'tasks'
+    && questionTarget?.collection === 'uncertainties'
+    && questionTarget.fact.targetFactId === null
+    && Array.isArray(acceptedTaskFacts)
+    && acceptedTaskFacts.length === 0;
+  const referenceContext = params.actionKind === 'question'
+    && (isUnspecifiedActivityQuestion || isDocumentMissingTasksQuestion)
+    ? selectWeeklyPlanningDialogueReferenceContext({
+        ownerId: params.input.userId,
+        referenceDate: params.input.requestContext?.currentDate ?? params.input.selectedDate,
+        targetDate,
+        plans: params.input.plans,
+        actuals: params.input.actuals,
+        monthEvents: params.input.monthEvents,
+        scheduleTemplates: params.input.scheduleTemplates,
+        timetableTermId: params.input.timetableTermId,
+        timetableTerm: params.input.timetableTerm,
+        timetableTerms: params.input.timetableTerms,
+      })
+    : null;
   const previousQuestionCode = questionCodeFromTargetSlot(
     params.input.previousState?.lastQuestionContext?.targetSlot,
   );
@@ -245,6 +290,7 @@ function createRenderInput(params: {
       .map(({ role, content }) => ({ role, content })),
     planningInformation,
     currentTurnGrounding,
+    ...(referenceContext ? { referenceContext } : {}),
     ...(previewConstraintSatisfaction ? { previewConstraintSatisfaction } : {}),
     ...(params.result.existingScheduleGrounding
       ? { existingScheduleGrounding: params.result.existingScheduleGrounding }

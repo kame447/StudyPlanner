@@ -110,7 +110,7 @@ test('study session waits for an explicit start and then flows into record savin
   })).toBe(1);
 });
 
-test('study session reveals within its pane and an edge swipe uses the existing exit confirmation', async ({ page }) => {
+test('study session reveals within its pane and an edge swipe preserves background measurement', async ({ page }) => {
   await seedStudySession(page);
   await page.goto('/');
 
@@ -132,23 +132,28 @@ test('study session reveals within its pane and an edge swipe uses the existing 
   expect(box).not.toBeNull();
   if (!box) return;
 
-  const dialogPromise = new Promise((resolve) => {
-    page.once('dialog', async (dialog) => {
-      expect(dialog.message()).toBe(
-        '学習セッションを終了してホームに戻りますか？ 計測内容は保存されません。',
-      );
-      await dialog.dismiss();
-      resolve();
-    });
-  });
+  const dialogs = [];
+  page.on('dialog', dialog => { dialogs.push(dialog.message()); void dialog.dismiss(); });
+  const beforeElapsed = await elapsed.innerText();
+  const readSession = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.activeSession.v1.study-session-user')));
+  const beforeSession = await readSession();
+  expect(beforeSession).not.toBeNull();
 
   await page.mouse.move(box.x + 8, box.y + 180);
   await page.mouse.down();
   await page.mouse.move(box.x + 118, box.y + 182, { steps: 4 });
   await page.mouse.up();
-  await dialogPromise;
-
+  await expect(session).toBeHidden();
+  expect(dialogs).toEqual([]);
+  await page.clock.fastForward(10_000);
+  await page.getByRole('button', { name: '計測中へ戻る', exact: true }).click();
   await expect(session).toBeVisible();
+  const seconds = value => value.split(':').reduce((total, part) => total * 60 + Number(part), 0);
+  await expect.poll(async () => seconds(await elapsed.innerText())).toBeGreaterThanOrEqual(seconds(beforeElapsed) + 10);
+  expect((await readSession()).sessionId).toBe(beforeSession.sessionId);
+  await expect(session).toContainText('卒業研究');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]'))).toEqual([]);
+  expect(dialogs).toEqual([]);
 });
 
 test('pomodoro can be selected before start and exposes focus and break UI', async ({ page }) => {

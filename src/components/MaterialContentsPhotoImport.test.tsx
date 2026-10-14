@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MaterialContentsPhotoImport } from './MaterialContentsPhotoImport';
@@ -17,6 +18,10 @@ function mount(hasExistingItems = false) {
   return { renderer, onApply, button, select };
 }
 describe('contents photo review', () => {
+  it('keeps the photo touch target more specific than responsive modal buttons', () => {
+    const css = readFileSync(new URL('../styles/bookshelf.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.modal-card\.bookshelf-structure-editor \.material-contents-photo-action\s*\{[^}]*min-height:\s*44px/);
+  });
   it('uses the existing secondary action surface for the photo entry', () => {
     const view = mount();
     expect(view.button('目次写真から読み取る').props.className).toBe('ghost-button material-contents-photo-action');

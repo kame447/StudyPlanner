@@ -1837,7 +1837,8 @@
   }
 }
 
-.material-contents-photo-action {
+/* Keep this touch target above responsive modal button compaction. */
+.modal-card.bookshelf-structure-editor .material-contents-photo-action {
   min-height: 44px;
   white-space: normal;
 }

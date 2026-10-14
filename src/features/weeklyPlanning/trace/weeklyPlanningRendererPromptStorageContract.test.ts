@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createWeeklyPlanningStableV5DialoguePrompt } from '../dialogue/weeklyPlanningStableV5DialoguePrompt';
+import { prepareWeeklyPlanningTraceServerWrite } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
 import {
   WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
   measureWeeklyPlanningTraceJsonBytes,
@@ -181,6 +183,78 @@ describe('renderer prompt trace storage contract', () => {
       userId: firstInput.userId,
       conversationId: firstInput.conversationId,
     })).toEqual([]);
+  });
+
+  it('persists bounded historical examples through provider prompt, outbox and Worker without private notes', async () => {
+    const referenceContext = {
+      referenceDate: '2026-10-15',
+      pastActivities: [{ source: 'completed' as const, label: '数学の復習', date: '2026-10-13' }],
+      targetDateCommitments: [{
+        source: 'existing_commitment' as const, label: 'バイト', category: 'other' as const,
+        startTime: '19:00', endTime: '21:00',
+      }],
+    };
+    const prompt = createWeeklyPlanningStableV5DialoguePrompt({
+      actionId: 'stable-v5:storage-contract:quantity_role_unresolved',
+      currentUserMessage: '今日の予定立てて',
+      recentConversation: [],
+      planningInformation: null,
+      referenceContext,
+      actionKind: 'question',
+      questionCode: 'quantity_role_unresolved',
+      requiredLabels: [],
+      fallbackText: '返信を作れませんでした。',
+      previewCount: 0,
+    });
+    const messages = [
+      { role: 'system', content: prompt.systemPrompt },
+      { role: 'user', content: prompt.userPrompt },
+    ];
+    const promptContext = {
+      messages,
+      requestBytes: new TextEncoder().encode(JSON.stringify(messages)).byteLength,
+      futurePromptFieldAddedWithoutTraceSchemaChange: FUTURE_FIELD_SENTINEL,
+    };
+    const harness = createRepositoryHarness();
+    harness.failNext();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    const firstInput = traceInput('conversation-1:request:1', promptContext);
+    await recordWeeklyPlanningStableV5TurnTrace(firstInput);
+    expect(harness.writes).toHaveLength(0);
+    const pending = listWeeklyPlanningTraceOutboxItems({
+      userId: firstInput.userId, conversationId: firstInput.conversationId,
+    });
+    expect(pending).toHaveLength(1);
+    const captured = pending[0].input.dialogueRendererTrace?.request?.promptContext as typeof promptContext;
+    expect(JSON.parse(captured.messages[1].content).conversationReferences).toEqual(referenceContext);
+    expect(JSON.stringify(captured)).not.toContain('private');
+
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace(
+      traceInput('conversation-1:request:2', { replay: true }),
+    );
+    expect(harness.writes).toHaveLength(2);
+    expect(listWeeklyPlanningTraceOutboxItems({
+      userId: firstInput.userId, conversationId: firstInput.conversationId,
+    })).toEqual([]);
+    const replayed = harness.writes[0].entries[0];
+    const stored = promptContextFromEntry(replayed) as typeof promptContext;
+    expect(JSON.parse(stored.messages[1].content).conversationReferences).toEqual(referenceContext);
+    expect(stored.futurePromptFieldAddedWithoutTraceSchemaChange).toBe(FUTURE_FIELD_SENTINEL);
+    expect(measureWeeklyPlanningTraceJsonBytes(replayed))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+
+    const prepared = prepareWeeklyPlanningTraceServerWrite({
+      session: harness.writes[0].session as unknown as Record<string, unknown>,
+      entries: harness.writes[0].entries as unknown as Record<string, unknown>[],
+    }, { token: `wpt_${'f'.repeat(43)}`, epoch: '691' }, {
+      sessionId: 'weekly-trace-323e4567-e89b-52d3-a456-426614174000',
+      logicalConversationId: 'weekly-conversation-323e4567-e89b-52d3-a456-426614174000',
+    }, '2026-10-15T00:00:00.000Z');
+    expect(prepared.entries).toHaveLength(1);
+    expect(JSON.stringify(prepared.entries[0])).toContain('conversationReferences');
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0]))
+      .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
   });
 
   it('compacts oversized future fields instead of making the whole turn unsavable', async () => {
