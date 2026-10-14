@@ -83,13 +83,16 @@ describe('session cap actual runtime to current renderer disclosure', () => {
     expect(rendered.draftCandidates).toEqual(before.draftCandidates); expect(rendered.state).toEqual(before.state); expect(rendered.stableV5Graph).toEqual(before.stableV5Graph);
     expect(completion).toHaveBeenCalledTimes(1);
   });
-  it.each(['satisfied', 'not_satisfied', 'not_evaluated'] as const)('keeps state and normal fallback semantics for %s', async status => {
+  it.each(['satisfied', 'not_satisfied', 'not_evaluated'] as const)('keeps actual preview state without falsely claiming success on renderer outage: %s', async status => {
     const run = await execute(status === 'satisfied' ? 60 : 20);
     if (status === 'not_evaluated') run.result.previewConstraintSatisfaction![0].status = status;
     const before = structuredClone(run.result); completion.mockRejectedValue(new Error('injected renderer failure'));
     const rendered = await renderWeeklyPlanningStableV5AssistantMessage(run);
     expect(rendered.responseSource).toBe('deterministic_fallback');
-    expect(rendered.message).toBe(status === 'satisfied' ? before.message : '返信を作れませんでした。少し待ってからもう一度送信してください。');
+    expect(rendered.message).toBe('返信を作れませんでした。少し待ってからもう一度送信してください。');
+    expect(rendered.message).not.toBe(before.message);
+    expect(rendered.questionPresentationContent).toBeUndefined();
+    expect(rendered.dialogueRendererTrace?.response).toMatchObject({ status: 'fallback', reason: 'provider_error' });
     expect(rendered.draftCandidates).toEqual(before.draftCandidates); expect(rendered.state).toEqual(before.state); expect(rendered.stableV5Graph).toEqual(before.stableV5Graph);
     expect(completion).toHaveBeenCalledTimes(1);
   });

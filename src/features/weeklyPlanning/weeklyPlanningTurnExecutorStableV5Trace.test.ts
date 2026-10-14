@@ -69,7 +69,7 @@ function runtimeResult() {
 function renderedRuntimeResult() {
   return {
     ...runtimeResult(),
-    responseSource: 'deterministic_fallback' as const,
+    responseSource: 'ai' as const,
     dialogueRendererTrace: {
       actionId: 'stable-v5:conversation-1:request:4:semantic_uncertainty',
       actionKind: 'question' as const,
@@ -77,23 +77,23 @@ function renderedRuntimeResult() {
       request: {
         purpose: 'weekly_planning_renderer' as const,
         requiredLabels: [],
-        fallbackText: '確認してください。',
+        fallbackText: '返信を作れませんでした。少し待ってからもう一度送信してください。',
         previewCount: 0,
       },
       response: {
-        status: 'fallback' as const,
-        reason: 'provider_error',
-        rawResponse: null,
-        renderedText: null,
+        status: 'rendered' as const,
+        reason: null,
+        rawResponse: '{}',
+        renderedText: '確認してください。',
       },
       decision: {
-        branch: 'deterministic_fallback' as const,
-        responseSource: 'deterministic_fallback' as const,
+        branch: 'ai_rendered' as const,
+        responseSource: 'ai' as const,
         finalMessage: '確認してください。',
       },
     },
     questionPresentationContent: {
-      responseSource: 'deterministic_fallback' as const,
+      responseSource: 'ai' as const,
       currentTurnGrounding: 'none' as const,
       selfRepairNotice: false,
     groundingContext: { proposed: 0, contested: 0 },
@@ -109,9 +109,9 @@ describe('weeklyPlanningTurnExecutor Stable V5 trace projection', () => {
     renderDialogueMock.mockReset();
     executeRuntimeMock.mockResolvedValue(runtimeResult());
     renderDialogueMock.mockResolvedValue({
-      status: 'fallback',
-      reason: 'provider_error',
-      rawResponse: null,
+      status: 'rendered',
+      text: '確認してください。',
+      rawResponse: '{}',
     });
   });
 

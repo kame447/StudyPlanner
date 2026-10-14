@@ -405,7 +405,17 @@ it.each(['ai','deterministic_fallback'] as const)('actual presenting commit crea
   const {h,result,services,choice}=await run('accepted',{},false,undefined,'preview',undefined,()=>true,weeklyPlanningTurnOutcomeLifecycle);
   expect(result.accepted).toBe(true);expect(semanticSends).toBe(1);expect(choice).not.toHaveBeenCalled();
   const question=h.getState().intakeState!.lastQuestionContext!;
-  expect(question.targetSlot).toBe('stable_v5:ambiguous_effort_estimate');expect(question.presentation!.content.responseSource).toBe(source);
+  expect(question.targetSlot).toBe('stable_v5:ambiguous_effort_estimate');
+  if (source === 'deterministic_fallback') {
+    // A provider outage is not a presented question: no C5 authority may
+    // be derived from a technical error. The typed pending slot remains.
+    expect(question.presentation).toBeUndefined();
+    expect(question.c5).toBeUndefined();
+    expect(h.getState().intakeState!.questions).toEqual([]);
+    expect(loadWeeklyPlanningStableV5PersistedSession({ownerId:OWNER,weekStartDate:WEEK})!.planningState.intakeState!.lastQuestionContext!.c5).toBeUndefined();
+    return;
+  }
+  expect(question.presentation!.content.responseSource).toBe('ai');
   expect.soft(question.actionId).toMatch(/^c5-question:/);expect.soft(question.c5).toBeDefined();expect.soft(question.c5?.question.id).toBe(question.actionId);
   const saved=loadWeeklyPlanningStableV5PersistedSession({ownerId:OWNER,weekStartDate:WEEK})!;
   expect(JSON.parse(memory.values.get(getWeeklyPlanningStableV5SessionStorageKeyForTest(OWNER,WEEK))!).requiredCapabilities).toEqual(['c5-bound-presentation-v1']);

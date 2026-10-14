@@ -756,9 +756,10 @@ describe('question presentation binding across the turn commit boundary', () => 
         expect(second.responseSource).toBe(isRendererFailure ? 'deterministic_fallback' : 'ai');
         if (isRendererFailure) {
           expect(second.dialogueRendererTrace?.response).toMatchObject({ status: 'fallback', reason: 'provider_error' });
-          expect(second.message).toBe(isMixed
-            ? '物理の問題は10問ではなく47問ですね。修正しました。 返信を作れませんでした。少し待ってからもう一度送信してください。'
-            : '返信を作れませんでした。少し待ってからもう一度送信してください。');
+          // Renderer failure is not a machine-authoritative acknowledgement.
+          // Accepted corrections still belong to the graph, never to error copy.
+          expect(second.message).toBe('返信を作れませんでした。少し待ってからもう一度送信してください。');
+          expect(second.message).not.toContain('修正しました');
           expect(second.message).not.toContain('反映していません');
           expect(second.state.questions).not.toContain(second.message);
           expect(second.questionPresentationContent).toBeUndefined();

@@ -95,17 +95,17 @@ describe('Stable V5 question presentation content', () => {
     previewPromotionControl: false,});
   });
 
-  it('records the grounding and self-repair notice rendered with the question', async () => {
+  it('records grounded correction information only when the renderer actually presents a question', async () => {
     runtimeMock.mockResolvedValue({
       state: questionState(), message: '確認してください。', draftCandidates: [],
       stableV5Graph: graphWithCurrentTurnCorrection(),
     });
-    rendererMock.mockResolvedValue({ status: 'fallback', reason: 'provider_error', rawResponse: null });
+    rendererMock.mockResolvedValue({ status: 'rendered', text: '英単語を80語に修正しました。次の条件を確認します。', rawResponse: '{}' });
 
     const result = await execute();
 
     expect(result.questionPresentationContent).toEqual({
-      responseSource: 'deterministic_fallback',
+      responseSource: 'ai',
       currentTurnGrounding: 'recommended',
       selfRepairNotice: true,
     groundingContext: { proposed: 0, contested: 0 },

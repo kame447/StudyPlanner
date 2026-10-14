@@ -2,6 +2,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
 import { HomeTopbar } from './HomeTopbar';
 import type { useSharedStudyStreak } from './StudyStreakContext';
+vi.mock('./AnnouncementsButton', () => ({ AnnouncementsButton: () => null }));
 const shared = vi.hoisted(() => ({ value: null as ReturnType<typeof useSharedStudyStreak> }));
 vi.mock('./StudyStreakContext', () => ({ useSharedStudyStreak: () => shared.value }));
 
