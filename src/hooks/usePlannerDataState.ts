@@ -38,6 +38,7 @@ import {
 import { createId } from '../lib/id';
 import { buildPlanOccurrenceKey, getActualOccurrenceKey } from '../lib/planRecurrence';
 import { sortMonthEvents } from '../lib/monthEvents';
+import { validateMonthEventDraft } from '../lib/monthEventEditor';
 import { plannerRepository } from '../repositories';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import {
@@ -1656,14 +1657,10 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
-      showNotice('主要予定の終了時刻は開始時刻より後にしてください。', 'error');
-      throw new Error('主要予定の終了時刻は開始時刻より後にしてください。');
-    }
-
-    if (!draft.title.trim()) {
-      showNotice('主要予定のタイトルを入れてください。', 'error');
-      throw new Error('主要予定のタイトルを入れてください。');
+    const validationError = validateMonthEventDraft({ ...draft, title: draft.title.trim() });
+    if (validationError) {
+      showNotice(validationError, 'error');
+      throw new Error(validationError);
     }
 
     const currentMonthEvent = monthEvents.find(

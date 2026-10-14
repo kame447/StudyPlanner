@@ -129,9 +129,6 @@ export function BookshelfMaterialSearch({
       <div className="material-metadata-search-heading">
         <div>
           <strong>教材を検索</strong>
-          <p className="detail-note">
-            1000件以上の初期検索インデックスから探し、主要教材は表紙も確認します。版やISBNが必要な候補は選択後に外部書誌で確認します。
-          </p>
         </div>
       </div>
 
