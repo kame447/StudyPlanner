@@ -2,6 +2,7 @@ import type { WeeklyPlanningStableV5DialogueRenderer } from './weeklyPlanningSta
 import type { getWeeklyPlanningStableV5RuntimeSession } from '../application/weeklyPlanningStableV5RuntimeSession';
 import { stableV5MissingSchedulableWorkQuestion } from '../application/weeklyPlanningStableV5RuntimeQuestions';
 import { resolveWeeklyPlanningQuestionPresentationFreshness, withoutWeeklyPlanningQuestionPresentation } from '../intake/weeklyPlanningQuestionPresentation';
+import { selectWeeklyPlanningDialogueReferenceContext } from './weeklyPlanningDialogueReferenceContext';
 import {
   type WeeklyPlanningStableV5DialogueActionKind,
   type WeeklyPlanningStableV5DialogueRenderInput,
@@ -218,6 +219,23 @@ function createRenderInput(params: {
   const previewConstraintSatisfaction = params.actionKind === 'preview_ready'
     ? params.result.previewConstraintSatisfaction : undefined;
   const fallbackText = RENDERER_TECHNICAL_STOP;
+  // Evidence is used for optional examples only when the question genuinely
+  // asks which activity to plan. It is not fed into semantic acceptance.
+  const referenceContext = params.actionKind === 'question'
+    && questionIntent?.kind === 'schedulable_work_detail'
+    && questionIntent.mode === 'missing_task_identity'
+    ? selectWeeklyPlanningDialogueReferenceContext({
+        ownerId: params.input.userId,
+        referenceDate: params.input.selectedDate,
+        plans: params.input.plans,
+        actuals: params.input.actuals,
+        monthEvents: params.input.monthEvents,
+        scheduleTemplates: params.input.scheduleTemplates,
+        timetableTermId: params.input.timetableTermId,
+        timetableTerm: params.input.timetableTerm,
+        timetableTerms: params.input.timetableTerms,
+      })
+    : null;
   const previousQuestionCode = questionCodeFromTargetSlot(
     params.input.previousState?.lastQuestionContext?.targetSlot,
   );
@@ -245,6 +263,7 @@ function createRenderInput(params: {
       .map(({ role, content }) => ({ role, content })),
     planningInformation,
     currentTurnGrounding,
+    ...(referenceContext ? { referenceContext } : {}),
     ...(previewConstraintSatisfaction ? { previewConstraintSatisfaction } : {}),
     ...(params.result.existingScheduleGrounding
       ? { existingScheduleGrounding: params.result.existingScheduleGrounding }
