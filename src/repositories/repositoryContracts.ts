@@ -147,6 +147,7 @@ export interface PlannerRepository {
   upsertActual(actual: Actual): Promise<Actual>;
   deleteActual(userId: string, actualId: string): Promise<void>;
   upsertDayNote(dayNote: DayNote): Promise<DayNote>;
+  applyRecurringMonthEventMutation(userId: string, monthEvents: MonthEvent[]): Promise<void>;
   upsertMonthEvent(monthEvent: MonthEvent): Promise<MonthEvent>;
   deleteMonthEvent(userId: string, monthEventId: string): Promise<void>;
   upsertTodo(todo: TodoTask): Promise<TodoTask>;

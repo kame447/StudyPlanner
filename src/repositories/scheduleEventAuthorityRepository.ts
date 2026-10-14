@@ -1,3 +1,4 @@
+import { assertRecurringMonthEventWrite } from './plannerWritePreparation';
 import type { StartupSessionCapability } from '../lib/startupSessionScope';
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
 import type { MonthEvent, Plan } from '../types/domain';
@@ -43,6 +44,7 @@ export interface ScheduleEventAuthorityRepository {
   scheduleTodoPlan(mutation: TodoPlanScheduleMutation): Promise<void>;
   upsertPlan(plan: Plan): Promise<Plan>;
   deletePlan(userId: string, planId: string): Promise<void>;
+  applyRecurringMonthEventMutation(userId: string, monthEvents: MonthEvent[]): Promise<void>;
   upsertMonthEvent(monthEvent: MonthEvent): Promise<MonthEvent>;
   deleteMonthEvent(userId: string, monthEventId: string): Promise<void>;
 }
@@ -149,6 +151,15 @@ export function createScheduleEventBackedPlannerRepository(
         return;
       }
       await legacyRepository.deletePlan(userId, planId);
+    },
+    async applyRecurringMonthEventMutation(userId, monthEvents) {
+      assertRecurringMonthEventWrite(userId, monthEvents);
+      const mode = await resolveSchedulePersistenceMode(userId);
+      if (mode === 'canonical') {
+        await authorityRepository.applyRecurringMonthEventMutation(userId, monthEvents);
+        return;
+      }
+      await legacyRepository.applyRecurringMonthEventMutation(userId, monthEvents);
     },
     async upsertMonthEvent(monthEvent) {
       const mode = await resolveSchedulePersistenceMode(monthEvent.userId);

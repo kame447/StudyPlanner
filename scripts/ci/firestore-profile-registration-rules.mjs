@@ -2,6 +2,7 @@ import { verifyAnnouncementRules } from './firestore-announcement-rules.mjs';
 import { verifyClassAttendanceRules } from './firestore-class-attendance-rules.mjs';
 import { verifyStudyStreakRules } from './firestore-study-streak-rules.mjs';
 import process from 'node:process';
+import { deepStrictEqual } from 'node:assert';
 import { verifyInquiryRules } from './firestore-inquiry-rules.mjs';
 import { deleteApp, initializeApp } from 'firebase/app';
 import {
@@ -159,6 +160,71 @@ function monthScheduleEvent(userId, legacyId = 'legacy-month-event') {
       locationTags: [],
     },
   };
+}
+
+async function verifyRecurringMonthEventBatch({ owner, foreign, canonical }) {
+  const mode = canonical ? 'canonical' : 'legacy';
+  const collection = canonical ? 'schedule_events' : 'month_events';
+  const record = (userId, id, recurrence) => {
+    const event = monthScheduleEvent(userId, id);
+    if (canonical) return { ...event, recurrence };
+    return {
+      id, userId, title: event.title, date: event.date, endDate: event.endDate,
+      startTime: event.startTime, endTime: event.endTime,
+      repeat: recurrence.repeat, repeatUntil: recurrence.repeatUntil,
+      excludedDates: recurrence.excludedDates, busy: false, memo: event.memo,
+      ...event.general, createdAt: event.createdAt, updatedAt: event.updatedAt,
+    };
+  };
+  const reference = (context, row) => doc(context.db, collection, row.id);
+  const set = (batch, row) => canonical
+    ? batch.set(reference(owner, row), row)
+    : batch.set(reference(owner, row), row, { merge: true });
+  const weekly = { repeat: 'weekly', repeatUntil: '2026-12-31', excludedDates: [], rules: [] };
+  for (const scope of ['single', 'future']) {
+    const source = record(owner.user.uid, `recurring-${mode}-${scope}`, weekly);
+    await setDoc(reference(owner, source), source);
+    const retained = record(owner.user.uid, `recurring-${mode}-${scope}`, scope === 'single'
+      ? { ...weekly, excludedDates: ['2026-09-10'] }
+      : { ...weekly, repeatUntil: '2026-09-03' });
+    const replacement = {
+      ...record(owner.user.uid, `recurring-${mode}-${scope}-replacement`, scope === 'single'
+        ? { repeat: 'none', repeatUntil: null, excludedDates: [], rules: [] }
+        : weekly),
+      date: '2026-09-10', endDate: '2026-09-10', title: 'Edited occurrence', busy: false,
+    };
+    const accepted = writeBatch(owner.db);
+    set(accepted, retained);
+    set(accepted, replacement);
+    await accepted.commit();
+    deepStrictEqual((await getDoc(reference(owner, source))).data(), retained,
+      `${mode} ${scope}: source and replacement must both persist`);
+    deepStrictEqual((await getDoc(reference(owner, replacement))).data(), replacement);
+
+    // Both submitted payloads claim the writer's owner, but the replacement ID
+    // already belongs to someone else. Rules must reject the entire batch.
+    const foreignRecord = record(foreign.user.uid, `recurring-${mode}-${scope}-foreign`, weekly);
+    await setDoc(reference(foreign, foreignRecord), foreignRecord);
+    const rejected = writeBatch(owner.db);
+    set(rejected, { ...retained, title: 'Must not partially persist' });
+    set(rejected, { ...foreignRecord, userId: owner.user.uid, title: 'Must not replace foreign event' });
+    await expectPermissionDenied(`${mode} ${scope} recurring edit with foreign replacement`, () => rejected.commit());
+    deepStrictEqual((await getDoc(reference(owner, source))).data(), retained,
+      `${mode} ${scope}: rejected replacement must leave source unchanged`);
+    deepStrictEqual((await getDoc(reference(foreign, foreignRecord))).data(), foreignRecord);
+  }
+  if (!canonical) {
+    const source = record(owner.user.uid, 'recurring-legacy-single', weekly);
+    const before = (await getDoc(reference(owner, source))).data();
+    await setDoc(doc(owner.db, 'schedule_event_migrations', owner.user.uid),
+      migrationLease(owner.user.uid, FIXED_AT));
+    const blocked = writeBatch(owner.db);
+    set(blocked, { ...before, title: 'Must not fork legacy authority' });
+    const replacement = record(owner.user.uid, 'recurring-legacy-after-cutover', weekly);
+    set(blocked, replacement);
+    await expectPermissionDenied('legacy recurring edit after migration lease', () => blocked.commit());
+    deepStrictEqual((await getDoc(reference(owner, source))).data(), before);
+  }
 }
 
 const contexts = [];
@@ -331,6 +397,15 @@ try {
     doc(intruder.db, 'schedule_events', 'plan:foreign'),
     scheduleEvent(owner.user.uid, 'foreign'),
   ));
+
+  const recurringForeign = await createContext('recurring-foreign');
+  const recurringLegacy = await createContext('recurring-legacy');
+  contexts.push(recurringForeign, recurringLegacy);
+  await setDoc(doc(recurringForeign.db, 'schedule_event_migrations', recurringForeign.user.uid),
+    migrationLease(recurringForeign.user.uid, FIXED_AT));
+  await verifyRecurringMonthEventBatch({ owner, foreign: recurringForeign, canonical: true });
+  await verifyRecurringMonthEventBatch({ owner: recurringLegacy, foreign: intruder, canonical: false });
+  console.log('Recurring MonthEvent single/future batch, owner isolation, and authority rules passed.');
 
   const classIds = ['day-cancel-class-1', 'day-cancel-class-2'];
   for (const id of classIds) await setDoc(doc(owner.db, 'schedule_templates', id), {
