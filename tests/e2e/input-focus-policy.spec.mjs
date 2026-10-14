@@ -122,6 +122,14 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     ['src/components/HomeTopbar.tsx', new Set([
       'event.currentTarget.focus({ preventScroll: true });',
     ])],
+    // User-opened announcements focus only their button opener and Back button.
+    // The dedicated announcement browser cases assert both, including detail/history.
+    ['src/components/AnnouncementsButton.tsx', new Set([
+      'event.currentTarget.focus({ preventScroll: true });',
+    ])],
+    ['src/components/AnnouncementsPage.tsx', new Set([
+      "dialog.current?.querySelector<HTMLButtonElement>('.announcements-back')?.focus({ preventScroll: true });",
+    ])],
     ['src/hooks/useSettingsNavigation.ts', new Set([
       'if (returnFocus.current?.isConnected) returnFocus.current.focus({ preventScroll: true });',
     ])],

@@ -36,7 +36,9 @@ export function AnnouncementsPage({ userId, detailId, onOpenDetail, onBack }: Pr
     active.current = true; element?.showModal(); void load(null);
     return () => { active.current = false; element?.close(); };
   }, [load]);
-  useLayoutEffect(() => { dialog.current?.querySelector<HTMLButtonElement>('.announcements-back')?.focus(); }, [detailId]);
+  useLayoutEffect(() => {
+    dialog.current?.querySelector<HTMLButtonElement>('.announcements-back')?.focus({ preventScroll: true });
+  }, [detailId]);
   const detail = items.find((item) => item.id === detailId);
   const markRead = useCallback(async (item: Announcement) => {
     if (savingRef.current) return;

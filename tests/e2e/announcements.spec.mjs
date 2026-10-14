@@ -15,6 +15,7 @@ for (const width of [375, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByRole('button', { name: 'お知らせを開く' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByRole('heading', { name: 'お知らせ一覧' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'ホームへ戻る' })).toBeFocused();
     await expect(dialog.locator('.announcement-row')).toHaveCount(25);
     await expect(dialog.getByRole('img', { name: '未読' })).toHaveCount(25);
     expect(await page.evaluate(() => document.querySelector('dialog').getBoundingClientRect().width)).toBe(width);
@@ -24,10 +25,12 @@ for (const width of [375, 1440]) for (const theme of ['light', 'dark']) {
     await page.screenshot({ path: path.join(artifacts, `announcements-${width}-${theme}.png`) });
     await dialog.locator('.announcement-row').first().click();
     await expect(dialog.getByRole('heading', { name: '【解消】朝の時間帯の通信障害につきまして' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'お知らせ一覧へ戻る' })).toBeFocused();
     await expect(dialog.locator('.announcement-body')).toContainText('<script>実行しない本文</script>');
     await expect.poll(() => page.evaluate(() => window.__announcementWrites.length)).toBe(1);
     await page.goBack();
     await expect(dialog.getByRole('heading', { name: 'お知らせ一覧' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'ホームへ戻る' })).toBeFocused();
     await expect(dialog.getByRole('img', { name: '未読' })).toHaveCount(24);
     await dialog.getByRole('button', { name: 'すべて既読' }).click();
     await expect(dialog.getByRole('img', { name: '未読' })).toHaveCount(0);
