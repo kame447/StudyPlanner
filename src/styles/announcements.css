@@ -1,7 +1,15 @@
+/* A full-screen announcement owns scrolling; don't reserve the underlying
+   schedule's stable scrollbar gutter while its native dialog is open. */
+html:has(.announcements-page[open]),
+body:has(.announcements-page[open]) {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
 .announcements-page {
   position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none;
   box-sizing: border-box; margin: 0; padding: max(20px, env(safe-area-inset-top)) 20px max(28px, env(safe-area-inset-bottom));
   border: 0; color: var(--text-primary); background: var(--app-background); background-color: Canvas; overscroll-behavior: contain;
+  overflow-y: auto;
 }
 .announcements-page::backdrop { background: var(--app-background); }
 .announcements-content { width: min(100%, 860px); margin: 0 auto; }

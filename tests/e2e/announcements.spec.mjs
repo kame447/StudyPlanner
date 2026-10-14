@@ -7,6 +7,10 @@ for (const width of [375, 1440]) for (const theme of ['light', 'dark']) {
   test(`announcements list/detail/read state ${width}/${theme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`/admin-overview.html?view=announcements&theme=${theme}`);
+    const originalRootScroll = await page.evaluate(() => ({
+      overflow: getComputedStyle(document.documentElement).overflow,
+      gutter: getComputedStyle(document.documentElement).scrollbarGutter,
+    }));
     expect(await page.evaluate(() => window.__announcementReads?.length ?? 0)).toBe(0);
     await page.getByRole('button', { name: 'お知らせを開く' }).click();
     const dialog = page.getByRole('dialog');
@@ -14,6 +18,8 @@ for (const width of [375, 1440]) for (const theme of ['light', 'dark']) {
     await expect(dialog.locator('.announcement-row')).toHaveCount(25);
     await expect(dialog.getByRole('img', { name: '未読' })).toHaveCount(25);
     expect(await page.evaluate(() => document.querySelector('dialog').getBoundingClientRect().width)).toBe(width);
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflow)).toBe('hidden');
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollbarGutter)).toBe('auto');
     expect(await page.evaluate(() => document.querySelector('dialog').scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     await page.screenshot({ path: path.join(artifacts, `announcements-${width}-${theme}.png`) });
     await dialog.locator('.announcement-row').first().click();
@@ -31,6 +37,10 @@ for (const width of [375, 1440]) for (const theme of ['light', 'dark']) {
     expect(await page.evaluate(() => window.__announcementReads.length)).toBe(2);
     await dialog.getByRole('button', { name: 'ホームへ戻る' }).click();
     await expect(dialog).toHaveCount(0);
+    expect(await page.evaluate(() => ({
+      overflow: getComputedStyle(document.documentElement).overflow,
+      gutter: getComputedStyle(document.documentElement).scrollbarGutter,
+    }))).toEqual(originalRootScroll);
     await expect(page.getByRole('button', { name: 'お知らせを開く' })).toBeFocused();
     await page.goForward(); await expect(page.getByRole('heading', { name: 'お知らせ一覧' })).toBeVisible();
     await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0);
