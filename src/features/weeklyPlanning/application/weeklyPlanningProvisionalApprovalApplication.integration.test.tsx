@@ -41,9 +41,14 @@ vi.mock('../../../lib/aiConfig', () => ({
   getAiConfigValidationMessage: () => undefined,
   getCloudflareAiProxyUrl: () => null,
 }));
-vi.mock('../../../services/ai/openAiCompatibleClient', () => ({
-  createOpenAiCompatibleClient: () => ({ createChatCompletion: vi.fn() }),
-}));
+vi.mock('../../../services/ai/openAiCompatibleClient', async () => {
+  const { successfulWeeklyPlanningRendererCompletion } = await import(
+    '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture'
+  );
+  return { createOpenAiCompatibleClient: () => ({
+    createChatCompletion: successfulWeeklyPlanningRendererCompletion,
+  }) };
+});
 vi.mock('../semantic/weeklyPlanningSemanticNormalizerV5', () => ({
   createWeeklyPlanningSemanticNormalizerV5: () => ({ normalize: normalizeMock }),
 }));
