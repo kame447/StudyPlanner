@@ -1,3 +1,4 @@
+import type { StudyProgressPreferences } from '../lib/studyProgressPolicy';
 import type { HomeAddEntry } from './home/TodayScheduleAddMenu';
 import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
 import type { HomeScenePreferences } from '../lib/homeScenePreferences';
@@ -16,6 +17,7 @@ import type {
 import { HomeView } from './HomeView';
 
 interface HomeScheduleViewProps {
+  progressPreferences?: StudyProgressPreferences;
   homeScenePreferences?: HomeScenePreferences;
   userId: string;
   plans: Plan[];
@@ -39,6 +41,7 @@ interface HomeScheduleViewProps {
 }
 
 export function HomeScheduleView({
+  progressPreferences,
   homeScenePreferences,
   userId,
   plans,
@@ -87,6 +90,7 @@ export function HomeScheduleView({
 
   return (
     <HomeView key={userId}
+      progressPreferences={progressPreferences}
       homeScenePreferences={homeScenePreferences}
       plans={displayPlans}
       actuals={actuals}

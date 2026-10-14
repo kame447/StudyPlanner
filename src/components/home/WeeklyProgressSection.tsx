@@ -64,7 +64,7 @@ export function WeeklyProgressSection({
           style={ringStyle}
           aria-label={`週全体の予定に対する達成率 ${dashboard.weekProgressPercent}%`}
         >
-          <div><strong>{dashboard.weekProgressPercent}%</strong></div>
+          <div><strong>{dashboard.weekProgressPercent}<small>%</small></strong></div>
         </div>
 
         <div className="weekly-progress-summary" aria-label="現時点までの予定と実績">

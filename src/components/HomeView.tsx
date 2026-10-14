@@ -1,3 +1,4 @@
+import type { StudyProgressPreferences } from '../lib/studyProgressPolicy';
 import { usePublicPageNavigation } from './PublicPageLink';
 import type { HomeAddEntry } from './home/TodayScheduleAddMenu';
 import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
@@ -18,6 +19,7 @@ import {
 import { WeeklyProgressSection } from './home/WeeklyProgressSection';
 
 interface HomeViewProps {
+  progressPreferences?: StudyProgressPreferences;
   homeScenePreferences?: HomeScenePreferences;
   plans: Plan[];
   actuals: Actual[];
@@ -106,6 +108,7 @@ function preferredScheduleListHeight(scheduleList: HTMLElement): number {
 }
 
 export function HomeView({
+  progressPreferences,
   homeScenePreferences,
   plans,
   actuals,
@@ -124,8 +127,8 @@ export function HomeView({
   const publicPageOpen = usePublicPageNavigation()?.isPublicPage ?? false;
   const now = useHomeDisplayClock();
   const dashboard = useMemo(
-    () => buildHomeDashboardModel({ plans, actuals, todos, now }),
-    [actuals, plans, todos, now],
+    () => buildHomeDashboardModel({ plans, actuals, todos, now, progressPreferences }),
+    [actuals, plans, todos, now, progressPreferences],
   );
   const isGettingStarted =
     plans.length === 0 &&

@@ -34,7 +34,8 @@ it('keeps one plan summary and save action with a labelled, pressed-state conten
   expect(root.findByProps({ type: 'date' }).props.value).toBe(plan.date);
   const times = root.findByProps({ className: 'actual-time-field-pair' });
   expect(times.findAllByProps({ type: 'time' }).map(node => node.props.value)).toEqual(['17:00', '21:30']);
-  expect(root.findByType('summary').children).toEqual(['計測補助']);
+  expect(root.findAllByProps({ className: 'actual-tracking-details' })).toHaveLength(0);
+  expect(root.findAllByProps({ className: 'tracking-display' })).toHaveLength(0);
 });
 
 it('preserves alternate-content validation, data and the return to planned content', async () => {

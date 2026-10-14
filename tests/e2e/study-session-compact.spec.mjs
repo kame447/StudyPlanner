@@ -68,7 +68,12 @@ for (const viewport of viewports) {
       await expect(ready.locator('[data-study-session-elapsed]')).toHaveText('00:00:00');
       await ready.getByRole('button', { name: /ポモドーロ/ }).click();
       await expectInitialFit(ready);
-      await expect(ready.getByText('休憩を含めて記録', { exact: true })).toBeVisible();
+      await expect(ready.getByRole('button', { name: 'ポモドーロ', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await expect(ready.locator('[data-pomodoro-phase]')).toHaveText('集中');
+      await expect(ready.locator('[data-study-session-phase-remaining]')).toHaveText('25:00');
+      await expect(ready.getByRole('button', { name: '集中と休憩の設定', exact: true }))
+        .toHaveText(scenario === 'planned' ? '25分 / 5分 ・ 2セット（目安）' : '25分 / 5分 ・ 制限なし');
+      await expect(ready.getByText('休憩を含めて記録', { exact: true })).toHaveCount(0);
       if (scenario === 'switched' && [320, 390, 1280].includes(viewport.width)) {
         const screenshot = testInfo.outputPath(`start-${viewport.width}-pomodoro.png`);
         await page.screenshot({ path: screenshot });
@@ -118,12 +123,19 @@ async function expectLargeTextReachability(page, ready) {
   await start.focus();
   await expect(start).toBeInViewport({ ratio: 1 });
   const clock = ready.locator('[data-study-session-phase-remaining]');
-  const badge = ready.locator('.study-session-timer-inner > b');
-  const clockBounds = await clock.boundingBox();
-  const badgeBounds = await badge.boundingBox();
-  expect(clockBounds).not.toBeNull();
-  expect(badgeBounds).not.toBeNull();
-  expect(clockBounds.y + clockBounds.height <= badgeBounds.y + 1 || clockBounds.x + clockBounds.width <= badgeBounds.x + 1).toBe(true);
+  // The compact Pomodoro face now contains its phase and clock; the removed
+  // explanatory badge is not a layout target. Keep checking the actual text
+  // and neighboring settings action rather than merely deleting the old bound.
+  const phase = ready.locator('[data-pomodoro-phase]');
+  const settings = ready.getByRole('button', { name: '集中と休憩の設定', exact: true });
+  await expect(phase).toHaveText('集中');
+  await expect(clock).toHaveText('25:00');
+  const [phaseBounds, clockBounds, settingsBounds] = await Promise.all([
+    phase.boundingBox(), clock.boundingBox(), settings.boundingBox(),
+  ]);
+  for (const bounds of [phaseBounds, clockBounds, settingsBounds]) expect(bounds).not.toBeNull();
+  expect(phaseBounds.y + phaseBounds.height).toBeLessThanOrEqual(clockBounds.y + 1);
+  expect(clockBounds.y + clockBounds.height).toBeLessThanOrEqual(settingsBounds.y + 1);
   const dimensions = await ready.evaluate(element => {
     const pane = element.querySelector('.study-session-page');
     const clippedControls = [...element.querySelectorAll('button, input, select')].filter(control => control.scrollHeight > control.clientHeight + 1 && getComputedStyle(control).overflowY === 'hidden').map(control => control.textContent);

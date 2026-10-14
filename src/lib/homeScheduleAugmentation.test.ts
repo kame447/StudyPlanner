@@ -220,3 +220,46 @@ describe('home schedule augmentation', () => {
     expect(augmented.every((item) => item.type === 'other')).toBe(true);
   });
 });
+
+it('counts opt-in general events consistently across registration routes, including earlier this week', () => {
+  const earlier = '2026-09-02';
+  const original = plan({ id: 'general', type: 'other', date: earlier, startTime: '12:30', endTime: '13:00' });
+  const event = monthEvent({ date: earlier, checklist: [{ id: 'done', text: '完了', checked: true }] });
+  const options = { ownerId: 'user-1', plans: [], monthEvents: [], scheduleTemplates: [], startDate: '2026-09-05' };
+  const fromPlan = augmentHomePlansWithScheduleOccurrences({ ...options, plans: [original] });
+  const fromMonth = augmentHomePlansWithScheduleOccurrences({ ...options, monthEvents: [event] });
+  const now = new Date('2026-09-05T15:00:00');
+  for (const includeGeneralEvents of [false, true, false]) {
+    const progressPreferences = { includeGeneralEvents, includeTimetable: false };
+    const a = buildHomeDashboardModel({ plans: fromPlan, actuals: [], todos: [], now, progressPreferences });
+    const b = buildHomeDashboardModel({ plans: fromMonth, actuals: [], todos: [], now, progressPreferences });
+    expect(a.weekPlannedMinutes).toBe(includeGeneralEvents ? 30 : 0);
+    expect(b.weekPlannedMinutes).toBe(a.weekPlannedMinutes);
+    expect(b.weekExpectedMinutesByNow).toBe(a.weekExpectedMinutesByNow);
+    expect(b.weekActualMinutes).toBe(0);
+    expect(b.weekProgressPercent).toBe(0);
+  }
+});
+
+it('deduplicates imported classes and applies timetable opt-in independently of general events', () => {
+  const term = timetableTerm();
+  const template = scheduleTemplate();
+  const imported = plan({ id: 'imported', title: template.title, type: 'study', sourceType: 'timetable', sourceId: template.id,
+    startTime: template.startTime, endTime: template.endTime });
+  const options = { ownerId: 'user-1', monthEvents: [monthEvent()], scheduleTemplates: [template], timetableTermId: term.id,
+    timetableTerm: term, timetableTerms: [term], startDate: '2026-09-05' };
+  for (const plans of [[], [imported]]) {
+    const augmented = augmentHomePlansWithScheduleOccurrences({ ...options, plans });
+    const todayClasses = augmented.filter(item => item.date === '2026-09-05' && item.sourceType === 'timetable');
+    expect(todayClasses).toHaveLength(1);
+    const now = new Date('2026-09-05T16:00:00');
+    const excluded = buildHomeDashboardModel({ plans: augmented, actuals: [], todos: [], now,
+      progressPreferences: { includeGeneralEvents: true, includeTimetable: false } });
+    const included = buildHomeDashboardModel({ plans: augmented, actuals: [], todos: [], now,
+      progressPreferences: { includeGeneralEvents: false, includeTimetable: true } });
+    expect(excluded.weekPlannedMinutes).toBe(30);
+    expect(included.weekPlannedMinutes).toBe(90);
+    expect(included.weekActualMinutes).toBe(0);
+    expect(included.missingActualPlans.map(item => item.id)).toEqual(plans.length ? ['imported'] : []);
+  }
+});

@@ -44,7 +44,7 @@ export function formatDurationDisplay(totalMs: number): string {
 export function getElapsedMs(tracker: TrackerState, nowMs: number): number {
   return (
     tracker.elapsedBeforeMs +
-    (tracker.runningFromMs !== null ? nowMs - tracker.runningFromMs : 0)
+    (tracker.runningFromMs !== null ? Math.max(0, nowMs - tracker.runningFromMs) : 0)
   );
 }
 
