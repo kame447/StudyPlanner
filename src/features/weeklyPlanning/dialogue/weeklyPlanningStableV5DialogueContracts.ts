@@ -37,6 +37,7 @@ export interface WeeklyPlanningStableV5DialogueSchedulableWorkQuestionIntent {
   kind: 'schedulable_work_detail';
   mode:
     | 'existing_target_progress'
+    | 'open_ended_session'
     | 'registered_material_target_scope'
     | 'missing_task_identity'
     | 'all_requested_work_complete';
@@ -49,6 +50,7 @@ export interface WeeklyPlanningStableV5DialogueSchedulableWorkQuestionIntent {
   knownRemainingUnits?: number | null;
   requestedInformation:
     | readonly ['current_progress']
+    | readonly ['session_allocation']
     | readonly ['plan_target_scope']
     | readonly ['task_identity']
     | readonly ['additional_task_or_constraint'];
