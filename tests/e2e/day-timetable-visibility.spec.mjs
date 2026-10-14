@@ -75,6 +75,63 @@ for (const width of [390, 1280]) {
   test.describe(`initial viewport ${width}px`, () => {
     // Mobile WebKit must receive its viewport at context creation, not after launch.
     test.use({ viewport: { width, height: 900 }, screen: { width, height: 900 } });
+    test(`day grid avoids native selection while preserving editable controls and activation at ${width}px`, async ({ page }, testInfo) => {
+      const external = await rejectExternalRequests(page, testInfo);
+      await seed(page); await page.goto('/'); await openDay(page);
+      const before = await snapshot(page);
+      const grid = page.locator('.timeline-shell');
+      const policy = await grid.evaluate(element => {
+        const nodes = [element, element.querySelector('.timeline-canvas'),
+          element.querySelector('.timeline-hour-label'), element.querySelector('.timeline-entry-title')];
+        return nodes.map(node => {
+          const style = getComputedStyle(node);
+          return { selection: style.userSelect || style.webkitUserSelect,
+            callout: style.getPropertyValue('-webkit-touch-callout'), touchAction: style.touchAction };
+        });
+      });
+      expect(policy.every(value => value.selection === 'none')).toBe(true);
+      if (testInfo.project.use.browserName === 'webkit') expect(policy.every(value => value.callout === 'none')).toBe(true);
+      expect(policy.every(value => value.touchAction !== 'none')).toBe(true);
+      // Real browser mouse selection is separate from iOS's system callout UI.
+      const hour = grid.locator('.timeline-hour-label').filter({ hasText: /^10:00$/ });
+      await hour.scrollIntoViewIfNeeded();
+      const bounds = await hour.boundingBox();
+      await page.evaluate(() => getSelection()?.removeAllRanges());
+      await page.mouse.move(bounds.x + 3, bounds.y + 5); await page.mouse.down();
+      await page.mouse.move(bounds.x + bounds.width - 3, bounds.y + bounds.height + 5, { steps: 5 });
+      await page.mouse.up();
+      expect(await page.evaluate(() => getSelection()?.toString())).toBe('');
+
+      const editable = await grid.evaluate(element => {
+        // These temporary inline controls verify the exception, not an app form.
+        const controls = [document.createElement('input'), document.createElement('textarea'), document.createElement('div')];
+        controls[0].value = controls[1].value = '選択を保つ';
+        controls[2].contentEditable = 'true'; controls[2].textContent = '選択を保つ';
+        const values = controls.map(control => {
+          element.append(control);
+          const style = getComputedStyle(control);
+          const value = { selection: style.userSelect || style.webkitUserSelect,
+            callout: style.getPropertyValue('-webkit-touch-callout') };
+          control.remove(); return value;
+        });
+        return values;
+      });
+      expect(editable.every(value => value.selection === 'text')).toBe(true);
+      if (testInfo.project.use.browserName === 'webkit') expect(editable.every(value => value.callout === 'default')).toBe(true);
+
+      const timetable = card(page, '自動表示の授業');
+      await timetable.scrollIntoViewIfNeeded();
+      if (await page.evaluate(() => navigator.maxTouchPoints > 0)) await timetable.tap();
+      else await timetable.click();
+      const detail = page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true });
+      await expect(detail).toBeVisible();
+      await detail.getByRole('button', { name: '閉じる', exact: true }).click();
+      await expect(detail).toHaveCount(0);
+      await timetable.focus(); await page.keyboard.press('Enter');
+      await expect(detail).toBeVisible();
+      await page.keyboard.press('Escape'); await expect(detail).toHaveCount(0);
+      expect(await snapshot(page)).toEqual(before); expect(external).toEqual([]);
+    });
     test(`day and month settings persist independently without changing schedules at ${width}px`, async ({ page }, testInfo) => {
       const external = await rejectExternalRequests(page, testInfo);
       await seed(page); await page.goto('/'); await openDay(page);

@@ -38,5 +38,6 @@ Firestore Rules は Phase 3 merge 後に repository-owned な WIF workflow か�
 
 ## Active work
 
+- [Day grid native selection](work/day-grid-native-selection-handoff.md) — local-only suppression of accidental Safari selection/callout in the Day grid, preserving editors and schedule gestures.
 - [Narrow canonical schedule projection reads](work/20261013-schedule-projection-reads.md) — Issue #542; local targeted-recovery read reduction, with production frequency and deployed index verification separate.
 - [Class detail, attendance, and associated schedules](work/20261013-class-detail-attendance.md) — active local-only feature; independent attendance evidence and an optional lesson reference on existing canonical schedules.
