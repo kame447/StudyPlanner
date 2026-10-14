@@ -129,6 +129,16 @@
   grid-template-columns: 64px minmax(0, 1fr);
   gap: 12px;
   overflow-x: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Keep native editing available if an inline editor is placed in the grid. */
+.timeline-shell :is(input, textarea, [contenteditable]:not([contenteditable="false"])) {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
 }
 
 .timeline-shell.split {
