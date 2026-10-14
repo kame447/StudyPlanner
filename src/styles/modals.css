@@ -225,6 +225,10 @@
   font-size: 0.78rem;
 }
 
+.daily-detail-modal .day-timetable-delete-button {
+  min-height: 40px;
+}
+
 .actual-form-compact {
   display: grid;
   gap: 10px;
@@ -1759,3 +1763,18 @@
   }
 }
 
+
+.day-timetable-time-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.day-timetable-time-fields .field,
+.day-timetable-time-fields input {
+  min-width: 0;
+}
+
+.modal-card.daily-detail-modal .day-timetable-time-fields input {
+  font-size: max(1rem, 16px);
+}

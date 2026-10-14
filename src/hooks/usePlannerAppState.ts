@@ -1,3 +1,5 @@
+import type { DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
+import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
 import type { MaterialEditBaseline } from './useActualMutationAdmission';
 import type { ActualActionTarget } from './useActualMutationAdmission';
 import { useCallback, useEffect, useMemo } from 'react';
@@ -89,6 +91,8 @@ interface PlannerAppState {
   movePlanOccurrence: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
   completeWeeklyApprovalOperation: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
+  deleteDayOccurrence: (occurrence: ScheduleOccurrence) => Promise<void>;
+  changeDayTimetableTime: (occurrence: ScheduleOccurrence, time: DayTimetableTimeChange) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
@@ -188,6 +192,8 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     savePlanDraft,
     createPlanDraft,
     movePlanOccurrence,
+    deleteDayOccurrence,
+    changeDayTimetableTime,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
@@ -386,6 +392,8 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     movePlanOccurrence,
     saveWeeklyApprovedPlan: approvalScope.bindMutation(saveWeeklyApprovedPlan),
     completeWeeklyApprovalOperation: approvalScope.bindMutation(completeWeeklyApprovalOperation),
+    deleteDayOccurrence,
+    changeDayTimetableTime,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,

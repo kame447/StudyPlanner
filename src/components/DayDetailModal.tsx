@@ -9,6 +9,10 @@ import type { Actual, ActualDraft, MonthEvent, Plan } from '../types/domain';
 
 interface DayDetailModalProps {
   detailPlan: Plan | null;
+  historyOnly?: boolean;
+  deleteOccurrenceLabel?: string;
+  deleteOccurrenceDescription?: string;
+  onDeleteOccurrence?: () => Promise<void>;
   monthEvent: MonthEvent | null;
   detailActual?: Actual;
   standaloneActual: Actual | null;
@@ -33,6 +37,10 @@ export function DayDetailModal(props: DayDetailModalProps) {
 }
 
 function DayDetailSession({
+  historyOnly = false,
+  deleteOccurrenceLabel = 'この日だけ削除',
+  deleteOccurrenceDescription,
+  onDeleteOccurrence,
   detailPlan,
   monthEvent,
   detailActual,
@@ -67,14 +75,15 @@ function DayDetailSession({
     requestExit();
   };
 
-  async function deleteFromMenu() {
+  async function deleteFromMenu(single = false) {
     if (!detailPlan || menuBlocked()) return;
     const attempt = {};
     pendingDelete.current = attempt;
     setIsDeleting(true);
     setDeleteError('');
     try {
-      await onDeletePlan(detailPlan);
+      if (single && onDeleteOccurrence) await onDeleteOccurrence();
+      else await onDeletePlan(detailPlan);
     } catch (error) {
       if (pendingDelete.current === attempt) {
         pendingDelete.current = null;
@@ -114,8 +123,9 @@ function DayDetailSession({
               </div>
             </div>
 
+            {historyOnly ? <p>この日の予定は削除済みです。記録は残っています。</p> : null}
             <div className="schedule-action-list">
-              {!monthEvent ? (
+              {!monthEvent && !historyOnly ? (
                 <button
                   className="schedule-action-item"
                   disabled={isDeleting || isExiting}
@@ -154,7 +164,14 @@ function DayDetailSession({
                 <ChevronRight aria-hidden="true" size={22} />
               </button>
 
-              {!monthEvent ? (
+              {onDeleteOccurrence ? <button className="schedule-action-item danger" type="button"
+                disabled={isDeleting || isExiting} onClick={() => void deleteFromMenu(true)}>
+                <span className="schedule-action-icon"><Trash2 aria-hidden="true" size={24} /></span>
+                <span className="schedule-action-copy"><strong>{deleteOccurrenceLabel}</strong>
+                  {deleteOccurrenceDescription ? <span>{deleteOccurrenceDescription}</span> : null}</span>
+                <ChevronRight aria-hidden="true" size={22} />
+              </button> : null}
+              {!monthEvent && !historyOnly ? (
                 <button
                   className="schedule-action-item danger"
                   disabled={isDeleting || isExiting}
