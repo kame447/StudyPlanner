@@ -1,3 +1,4 @@
+import { questionIntentForStableV5Dialogue } from '../dialogue/weeklyPlanningStableV5DialogueContext';
 import { recordFailedWeeklyPlanningApplicationTurn } from '../application/weeklyPlanningTurnTraceSideEffects';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 import { WeeklyPlanningSemanticNormalizerRunV5 } from '../semantic/weeklyPlanningSemanticNormalizerRunV5';
@@ -367,5 +368,53 @@ describe('Stable V5 renderer trace persistence', () => {
       }] }));
       expect(diagnosticEntry(harness.writes[0].entries).diagnostics).not.toHaveProperty('providerDispatch');
     });
+
+  it.each([false, true])('persists the actual open-ended session prompt through a failed write and Worker preparation (large=%s)', async large => {
+    const task = { id: 'research', category: 'study', title: '研究' };
+    const planningInformation = { tasks: [task], workloads: [] };
+    const questionTarget = { collection: 'tasks' as const, fact: task };
+    const input: WeeklyPlanningStableV5DialogueRenderInput = { actionId: 'open-ended-session-persistence',
+      currentUserMessage: '今日、研究を進めたい', recentConversation: [], planningInformation, actionKind: 'question',
+      questionCode: 'missing_schedulable_work', questionTarget,
+      questionIntent: questionIntentForStableV5Dialogue({ questionCode: 'missing_schedulable_work', questionTarget, planningInformation }),
+      requiredLabels: ['研究'], fallbackText: '', previewCount: 0 };
+    const calls: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]> = [];
+    const text = '研究は、今日はいつ取り組めそうですか？';
+    const raw = JSON.stringify({ actionId: input.actionId, actionKind: input.actionKind, questionCode: input.questionCode,
+      groundingAcknowledgement: null, text });
+    const rendered = await createAiWeeklyPlanningStableV5DialogueRenderer(
+      { provider: 'openai', baseUrl: 'https://example.test/v1', apiKey: 'test', model: 'test' },
+      { async createChatCompletion(request) { calls.push(request); return raw; } },
+    ).render(input);
+    expect(rendered.status, JSON.stringify({ rendered, calls: calls.length })).toBe('rendered');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].messages[1].content).toContain('open_ended_session');
+    const trace = boundWeeklyPlanningDialogueRendererTraceForTransport({ ...rendererTrace('rendered'),
+      actionId: input.actionId, questionCode: input.questionCode,
+      response: { status: 'rendered', reason: null, rawResponse: raw, renderedText: text },
+      decision: { branch: 'ai_rendered', responseSource: 'ai', finalMessage: text } });
+    const context = trace.request!.promptContext as Record<string, unknown>;
+    expect(context.messages).toEqual(calls[0].messages);
+    trace.request!.promptContext = { futureSessionSentinel: { retained: true }, ...context,
+      ...(large ? { futureLargeSessionField: 'session-data'.repeat(30_000) } : {}) };
+    const harness = createRepositoryHarness(); harness.failNext(); setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    const first = traceInput({ requestId: 'session-gate', dialogueRendererTrace: boundWeeklyPlanningDialogueRendererTraceForTransport(trace), assistantMessage: text });
+    await recordWeeklyPlanningStableV5TurnTrace(first);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: first.userId, conversationId: first.conversationId })).toHaveLength(1);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace(traceInput({ requestId: 'session-gate-retry' }));
+    const retried = harness.writes[0];
+    const serialized = JSON.stringify(retried.entries[0]);
+    expect(serialized).toContain('futureSessionSentinel');
+    if (large) expect(serialized).toContain('traceTruncated');
+    expect(measureWeeklyPlanningTraceJsonBytes(retried.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const prepared = prepareWeeklyPlanningTraceServerWrite({ session: retried.session as unknown as Record<string, unknown>,
+      entries: retried.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'a'.repeat(43)}`, epoch: '100' },
+      { sessionId: 'weekly-trace-123e4567-e89b-52d3-a456-426614174000', logicalConversationId: 'weekly-conversation-123e4567-e89b-52d3-a456-426614174000' },
+      '2026-10-15T00:00:00.000Z');
+    expect(prepared.entries).toHaveLength(1);
+    expect(JSON.stringify(prepared.entries[0])).toContain('futureSessionSentinel');
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+  });
 
 });

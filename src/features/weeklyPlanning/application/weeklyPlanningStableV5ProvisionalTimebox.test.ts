@@ -269,4 +269,34 @@ describe('Stable V5 provisional timebox scheduler projection', () => {
     expect(resolution.workloadFactIds).toEqual([]);
     expect(resolution.state).toBeNull();
   });
+  it('keeps canonical unknown effort but removes only inapplicable scoped estimate needs from a timeboxed projection', () => {
+    const base = workGraph(['workload-research']);
+    const need = (id: string, targetFactId: string, field: string) => ({ id, targetFactId, field, reason: 'unknown', source, createdRevision: 2 });
+    const graph = { ...base, revision: 11, availabilityDeclarations: [], constraintSourceRequests: [], planningWindows: [],
+      relations: [], temporalConstraints: [], recurrences: [],
+      uncertainties: [need('estimate', 'task-workload-research', 'total_duration'),
+        need('meaning', 'task-workload-research', 'material_identity'), need('other', 'other-task', 'total_duration'),
+        { ...need('later', 'task-workload-research', 'total_duration'), createdRevision: 12 }],
+    } as unknown as WeeklyPlanningGenericSchedulerGraphView;
+    const before = structuredClone(graph);
+    const resolution = resolveWeeklyPlanningProvisionalTimeboxV5({ directive: { kind: 'provisional_timebox', scope: 'current_missing_effort' },
+      previousState: null, currentCompilation: missingCompilation([{ questionFactId: 'workload-research' }]), graph, graphRevision: 11, turnId: 'allocation' });
+    expect(projectWeeklyPlanningProvisionalTimeboxGraphV5({ graph, resolution }).uncertainties.map(n => n.id)).toEqual(['meaning', 'other', 'later']);
+    expect(graph).toEqual(before);
+  });
+
+  it('can provisionally allocate a known task even when no workload has ever been invented', () => {
+    const graph = { ...workGraph(['research']), workloads: [], revision: 11, availabilityDeclarations: [], constraintSourceRequests: [],
+      planningWindows: [], relations: [], uncertainties: [], temporalConstraints: [], recurrences: [],
+    } as unknown as WeeklyPlanningGenericSchedulerGraphView;
+    const resolution = resolveWeeklyPlanningProvisionalTimeboxV5({ directive: { kind: 'provisional_timebox', scope: 'current_missing_effort' },
+      previousState: null, currentCompilation: missingCompilation([]), graph, graphRevision: 11, turnId: 'allocate' });
+    const projected = projectWeeklyPlanningProvisionalTimeboxGraphV5({ graph, resolution });
+    expect(projected.workloads).toMatchObject([{ taskId: 'task-research', unitCode: 'minute', amount: 60 }]);
+    expect(graph.workloads).toEqual([]);
+    const unapproved = resolveWeeklyPlanningProvisionalTimeboxV5({ directive: null, previousState: null,
+      currentCompilation: missingCompilation([]), graph, graphRevision: 11, turnId: 'no-permission' });
+    expect(projectWeeklyPlanningProvisionalTimeboxGraphV5({ graph, resolution: unapproved })).toBe(graph);
+  });
+
 });

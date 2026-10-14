@@ -240,6 +240,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     directive: semantic.normalization.contextualDirective,
     previousState: input.previousState?.provisionalTimebox ?? null,
     currentCompilation: rawBaselineCompilation,
+    graph: activeGraph,
     graphRevision: semantic.graph.revision,
     turnId: input.traceRequestId,
   });

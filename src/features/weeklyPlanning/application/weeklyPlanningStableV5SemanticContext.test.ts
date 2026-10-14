@@ -102,6 +102,7 @@ describe('Stable V5 semantic public-state question binding', () => {
     expect(summary.pendingQuestion).toEqual({
       actionId: 'proposal-1',
       questionCode: 'learning_strategy_proposal',
+      intent: 'learning_strategy_proposal',
       targetFactId: 'workload-1',
       graphRevision: 2,
       effortMeasurement: null,
@@ -146,6 +147,7 @@ describe('Stable V5 semantic public-state question binding', () => {
     expect(summary.pendingQuestion).toEqual({
       actionId: 'question-1',
       questionCode: 'missing_effort_estimate',
+      intent: 'session_duration',
       targetFactId: 'workload-1',
       graphRevision: 4,
       effortMeasurement: 'session_duration',
@@ -184,6 +186,7 @@ describe('Stable V5 semantic public-state question binding', () => {
     expect(summary.pendingQuestion).toEqual({
       actionId: null,
       questionCode: 'missing_effort_estimate',
+      intent: 'total_duration',
       targetFactId: 'workload-completed-70',
       graphRevision: 5,
       effortMeasurement: 'total_duration',

@@ -207,7 +207,7 @@ describe('Stable V5 missing schedulable work question', () => {
     expect(question.targetFactId).toBe('material');
   });
 
-  it.each([false, true])('asks progress with completed work, recorded duration=%s, and no future target', (hasRecordedDuration) => {
+  it.each([false, true])('asks for a session allocation with only completed work, recorded duration=%s, and no future target', (hasRecordedDuration) => {
     const graph = createEmptyWeeklyPlanningFactGraphV5();
     graph.tasks = [{ id: 'task-slides', category: 'study', title: '発表スライド', source, createdRevision: 1 }];
     graph.workloads = [{
@@ -236,7 +236,8 @@ describe('Stable V5 missing schedulable work question', () => {
     const question = stableV5MissingSchedulableWorkQuestion(graph);
 
     expect(question.targetFactId).toBe('task-slides');
-    expect(question.message).toContain('100%');
+    expect(question.intent).toBe('open_ended_session');
+    expect(question.message).not.toContain('100%');
     expect(question.message).not.toContain('全5ページ');
     expect(graph).toEqual(accepted);
   });

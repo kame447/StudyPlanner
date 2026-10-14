@@ -56,6 +56,7 @@ function pendingQuestionFromState(
   return {
     actionId: context?.actionId ?? null,
     questionCode,
+    intent: context?.intent ?? null,
     targetFactId: context?.topicId ?? null,
     graphRevision,
     effortMeasurement: effortMeasurementFromState(state),
