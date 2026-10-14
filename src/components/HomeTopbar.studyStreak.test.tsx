@@ -1,6 +1,7 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
 import { HomeTopbar } from './HomeTopbar';
+vi.mock('./AnnouncementsButton', () => ({ AnnouncementsButton: () => null }));
 
 let renderer: ReactTestRenderer | undefined;
 afterEach(() => act(() => renderer?.unmount()));
