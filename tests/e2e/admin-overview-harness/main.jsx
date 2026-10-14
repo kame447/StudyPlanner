@@ -12,6 +12,7 @@ import {
 import { AnnouncementsButton } from '../../../src/components/AnnouncementsButton';
 import { ContactPage } from '../../../src/components/ContactPage';
 import { AdminApp } from '../../../src/components/AdminApp';
+import { ApplicationRouteRoot } from '../../../src/components/ApplicationRouteRoot';
 import { AdminAiApiPage } from '../../../src/components/AdminAiApiPage';
 import { AdminLogsPage } from '../../../src/components/AdminLogsPage';
 import { AdminOverviewPage } from '../../../src/components/AdminOverviewPage';
@@ -115,11 +116,11 @@ function AnnouncementsHarness() {
   React.useEffect(() => { window.__announcementSwitchOwner = setOwner; return () => { delete window.__announcementSwitchOwner; }; }, []);
   return <main><h1>ホーム</h1><AnnouncementsButton key={owner} userId={owner} /><button type="button">背景の操作</button></main>;
 }
-if (view === 'announcements-admin') window.history.replaceState({}, '', `/admin/announcements${window.location.search}`);
+if (view === 'announcements-admin' || view === 'admin-return') window.history.replaceState({}, '', `/admin/announcements${window.location.search}`);
 if (view === 'inquiries') {
   window.history.replaceState({}, '', `/admin/inquiries${window.location.search}`);
 }
 ReactDOM.createRoot(document.getElementById('root')).render(
-  view === 'announcements' ? <AnnouncementsHarness /> : view === 'announcements-admin' ? <AdminApp authSession={inquiryAuth} /> : view === 'contact' ? <ContactHarness />
+  view === 'admin-return' ? <ApplicationRouteRoot authSession={inquiryAuth} /> : view === 'announcements' ? <AnnouncementsHarness /> : view === 'announcements-admin' ? <AdminApp authSession={inquiryAuth} /> : view === 'contact' ? <ContactHarness />
     : view === 'inquiries' ? <AdminApp authSession={inquiryAuth} /> : <AdminConsoleHarness />,
 );

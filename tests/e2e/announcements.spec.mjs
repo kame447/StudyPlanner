@@ -91,7 +91,7 @@ for (const [width, theme] of [[375, 'light'], [1440, 'dark']]) test(`one announc
   await expect(page.getByRole('img', { name: '未読のお知らせあり' })).toHaveCount(0);
   expect(await page.evaluate(() => window.__announcementReads.length)).toBe(1);
 });
-for (const width of [375, 1440]) test(`admin drafts are separate and explicit publication is previewed ${width}`, async ({ page }) => {
+for (const width of [375, 1440]) test(`admin drafts and one-action publication remain separate ${width}`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
   await page.goto('/admin-overview.html?view=announcements-admin&theme=dark');
   await expect(page.getByRole('heading', { name: 'お知らせ管理' })).toBeVisible();
@@ -102,13 +102,44 @@ for (const width of [375, 1440]) test(`admin drafts are separate and explicit pu
   await expect(page.getByRole('status')).toContainText('下書きを保存しました');
   expect(await page.evaluate(() => window.__announcementPublicationTitles())).not.toContain('新機能のお知らせ');
   const card = page.locator('.announcement-admin-card').filter({ hasText: '新機能のお知らせ' });
-  await card.getByRole('button', { name: '公開内容を確認' }).click();
-  await expect(page.getByRole('heading', { name: '公開内容の確認' })).toBeVisible();
+  await card.getByRole('button', { name: '編集', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'お知らせを編集' })).toBeVisible();
   await page.getByRole('button', { name: 'キャンセル', exact: true }).click();
   expect(await page.evaluate(() => window.__announcementPublicationTitles())).not.toContain('新機能のお知らせ');
-  await card.getByRole('button', { name: '公開内容を確認' }).click(); await page.getByRole('button', { name: 'この内容で公開' }).click();
+  await card.getByRole('button', { name: '編集', exact: true }).click(); await page.getByRole('button', { name: '公開', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('公開しました');
   expect(await page.evaluate(() => window.__announcementPublicationTitles())).toContain('新機能のお知らせ');
   await page.evaluate(() => window.__inquiryAdminAccess(false));
   await expect(page.getByRole('alert')).toContainText('アクセス権限がありません'); await expect(page.locator('.announcement-admin-card')).toHaveCount(0);
+});
+
+for (const width of [375, 1440]) test(`admin return retains session and document at ${width}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto('/admin-overview.html?view=admin-return&theme=dark');
+  await expect(page.getByRole('heading', { name: 'お知らせ管理' })).toBeVisible();
+  await page.evaluate(() => { window.__sameDocument = 'retained'; });
+  if (width < 821) {
+    await expect(page.getByLabel('管理メニュー')).toBeVisible();
+    await page.getByLabel('管理メニュー').selectOption('/admin');
+    await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible();
+    await page.getByLabel('管理メニュー').selectOption('/admin/announcements');
+  }
+  await page.getByRole('button', { name: '新しいお知らせ' }).click();
+  await page.getByLabel('タイトル', { exact: true }).fill('作成して直接公開');
+  await page.getByLabel('本文', { exact: true }).fill('確認した内容を一度の操作で公開します。');
+  expect(await page.evaluate(() => window.__announcementPublicationTitles())).not.toContain('作成して直接公開');
+  if (width < 821) {
+    expect(await page.getByLabel('タイトル', { exact: true }).evaluate(node => parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(16);
+  }
+  await page.getByRole('button', { name: '公開', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('公開しました');
+  expect(await page.evaluate(() => window.__announcementPublicationTitles())).toContain('作成して直接公開');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.getByRole('link', { name: '通常画面へ戻る', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '通常画面', exact: true })).toBeVisible();
+  await expect(page.getByText('ログイン中: fixture-owner')).toBeVisible();
+  expect(await page.evaluate(() => window.__sameDocument)).toBe('retained');
+  await page.goBack(); await expect(page.getByRole('heading', { name: 'お知らせ管理' })).toBeVisible();
+  await page.goForward(); await expect(page.getByRole('heading', { name: '通常画面', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__sameDocument)).toBe('retained');
 });
