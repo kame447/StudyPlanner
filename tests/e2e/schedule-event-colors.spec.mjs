@@ -87,3 +87,73 @@ for (const width of [390, 1280]) {
     });
   }
 }
+
+for (const width of [390, 1280]) {
+  test.describe(`event editor controls ${width}px`, () => {
+    test.use({ viewport: { width, height: 900 }, contextOptions: { reducedMotion: 'reduce' } });
+    test('persists explicit color and automatic reset and keeps addon fields', async ({ page }, testInfo) => {
+      await seed(page, 'light');
+      await page.addInitScript(() => {
+        if (localStorage.getItem('editor-controls-single')) return;
+        const events = JSON.parse(localStorage.getItem('studyplanner.monthEvents'));
+        events.forEach(event => { event.repeat = 'none'; });
+        localStorage.setItem('studyplanner.monthEvents', JSON.stringify(events));
+        localStorage.setItem('editor-controls-single', 'true');
+      });
+      const editor = page.locator('.month-event-modal');
+      const open = async () => {
+        await nav(page, '予定').click();
+        await page.getByRole('tab', { name: '月', exact: true }).click();
+        await page.getByRole('grid', { name: '月間カレンダー' }).locator('[aria-selected="true"]').click();
+        await page.locator('.month-day-sheet-event').filter({ hasText: TITLE }).click();
+        await expect(editor.getByLabel('タイトル', { exact: true })).toHaveValue(TITLE);
+      };
+      await page.goto('/'); await open();
+      await expect(editor.getByRole('button', { name: '追加', exact: true })).toBeVisible();
+      await expect(editor.getByRole('button', { name: '自動', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await editor.getByRole('button', { name: '青', exact: true }).click();
+      await editor.getByRole('button', { name: /メモ/ }).click();
+      await editor.getByLabel('メモ', { exact: true }).fill('色を確認');
+      await editor.getByRole('button', { name: /メモ/ }).click();
+      await page.screenshot({ path: testInfo.outputPath(`event-editor-controls-${width}.png`), animations: 'disabled' });
+      await editor.getByRole('button', { name: '保存', exact: true }).click();
+      await expect(editor).toHaveCount(0);
+      await page.reload(); await open();
+      await expect(editor.getByRole('button', { name: '青', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await expect(editor.getByLabel('メモ', { exact: true })).toHaveValue('色を確認');
+      await editor.getByRole('button', { name: '自動', exact: true }).click();
+      await editor.getByRole('button', { name: '保存', exact: true }).click();
+      await expect(editor).toHaveCount(0);
+      await page.reload(); await open();
+      await expect(editor.getByRole('button', { name: '自動', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    });
+  });
+}
+
+test.describe('calendar swipe navigation', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, contextOptions: { reducedMotion: 'reduce' } });
+  test('changes month and week horizontally while ignoring vertical and cancelled gestures', async ({ page }, testInfo) => {
+    await seed(page, 'light'); await page.goto('/'); await nav(page, '予定').click();
+    const period = page.locator('.schedule-period-picker-trigger');
+    const swipe = async (surface, dx, dy, cancel = false) => surface.evaluate((element, { dx, dy, cancel }) => {
+      const fire = (type, x, y) => {
+        // WebKit does not expose a constructible Touch. Match the existing day-swipe harness.
+        const touch = { identifier: 1, target: element, clientX: x, clientY: y };
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'touches', { value: type === 'touchstart' || type === 'touchmove' ? [touch] : [] });
+        Object.defineProperty(event, 'changedTouches', { value: [touch] });
+        element.dispatchEvent(event);
+      };
+      fire('touchstart', 190, 250); fire('touchmove', 190 + dx, 250 + dy); fire(cancel ? 'touchcancel' : 'touchend', 190 + dx, 250 + dy);
+    }, { dx, dy, cancel });
+    for (const [tab, selector] of [['月', '.schedule-month-view'], ['週', '.schedule-week-view']]) {
+      await page.getByRole('tab', { name: tab, exact: true }).click();
+      const surface = page.locator(selector); const original = await period.innerText();
+      await swipe(surface, 10, 120); await expect(period).toHaveText(original);
+      await swipe(surface, -120, 0, true); await expect(period).toHaveText(original);
+      await swipe(surface, -120, 0); await expect(period).not.toHaveText(original);
+      await page.screenshot({ path: testInfo.outputPath(`calendar-swipe-${tab === '月' ? 'month' : 'week'}.png`), animations: 'disabled' });
+      await swipe(surface, 120, 0); await expect(period).toHaveText(original);
+    }
+  });
+});

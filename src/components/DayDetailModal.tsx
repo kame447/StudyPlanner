@@ -9,7 +9,9 @@ import type { Actual, ActualDraft, MonthEvent, Plan } from '../types/domain';
 
 interface DayDetailModalProps {
   detailPlan: Plan | null;
+  openRecordInitially?: boolean;
   historyOnly?: boolean;
+  showWholePlanDelete?: boolean;
   deleteOccurrenceLabel?: string;
   deleteOccurrenceDescription?: string;
   onDeleteOccurrence?: () => Promise<void>;
@@ -38,7 +40,9 @@ export function DayDetailModal(props: DayDetailModalProps) {
 
 function DayDetailSession({
   historyOnly = false,
-  deleteOccurrenceLabel = 'この日だけ削除',
+  showWholePlanDelete = true,
+  openRecordInitially = false,
+  deleteOccurrenceLabel = '予定を削除',
   deleteOccurrenceDescription,
   onDeleteOccurrence,
   detailPlan,
@@ -56,7 +60,7 @@ function DayDetailSession({
   onDeleteActual,
   onClose,
 }: DayDetailModalProps) {
-  const [recordSession, setRecordSession] = useState<RecordSession | null>(null);
+  const [recordSession, setRecordSession] = useState<RecordSession | null>(() => openRecordInitially && detailPlan ? structuredClone({ plan: detailPlan, actual: detailActual }) : null);
   const { isExiting, requestExit } = useExitMotion(onClose);
   const sheetMotionClassName = isExiting ? 'is-closing' : 'is-open';
 
@@ -171,7 +175,7 @@ function DayDetailSession({
                   {deleteOccurrenceDescription ? <span>{deleteOccurrenceDescription}</span> : null}</span>
                 <ChevronRight aria-hidden="true" size={22} />
               </button> : null}
-              {!monthEvent && !historyOnly ? (
+              {!monthEvent && !historyOnly && showWholePlanDelete ? (
                 <button
                   className="schedule-action-item danger"
                   disabled={isDeleting || isExiting}

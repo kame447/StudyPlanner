@@ -171,6 +171,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     completeWeeklyApprovalOperation,
     deleteDayOccurrence,
     changeDayTimetableTime,
+    prepareDayTimetableRecord,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
@@ -562,6 +563,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
                 onDeletePlan={deletePlan}
                 onDeleteMonthEvent={deleteMonthEvent}
                 onOpenDay={openDay}
+                onChangeWeek={openWeek}
               />
             ) : null}
 
@@ -569,6 +571,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
               <DayView
                 onDeleteOccurrence={deleteDayOccurrence}
                 onChangeTimetableTime={changeDayTimetableTime}
+                onPrepareTimetableRecord={prepareDayTimetableRecord}
                 showTimetable={dayTimetablePreference.showTimetable}
                 selectedDate={selectedDate}
                 userId={user.id}

@@ -38,6 +38,8 @@ Firestore Rules は Phase 3 merge 後に repository-owned な WIF workflow か�
 
 ## Active work
 
+- [Event editor selection and optional fields](work/event-editor-selection-handoff.md) — add wording, selection cue, color chips, and reversible disclosure; focused checks passed, combined/visual verification pending.
+
 - [Recurring general-event edit scope](work/20261014-recurring-edit-scope.md) — restore single/future selection while preserving earlier occurrences; local implementation verified, publication/native gates pending.
 - [Month-event save range validation](work/month-event-save-range-handoff.md) — local correction aligning persistence admission with existing multi-day editor validation; publication and native execution pending.
 

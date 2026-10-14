@@ -92,7 +92,7 @@ function buildEntries(params: {
       ),
     ).map((event) => ({
       id: event.id,
-      color: getMonthEventColor(event.id),
+      color: getMonthEventColor(event.id, event.color),
       title: event.title,
       timeLabel: formatMonthEventTimeRangeForDate(event, params.renderedDate),
       monthEvent: event,

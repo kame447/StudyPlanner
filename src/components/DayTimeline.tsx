@@ -56,6 +56,7 @@ export type DayTimelineSelection =
   | { kind: "standalone-actual"; id: string };
 
 interface TimelineEntry {
+  color?: MonthEvent["color"];
   id: string;
   targetId: string;
   selectionId: string;
@@ -133,7 +134,7 @@ function getTimelineDensityClass(
 
 function getTimelineEntryColor(entry: TimelineEntry): string {
   if (entry.occurrence) return getScheduleOccurrenceColor(entry.occurrence);
-  if (entry.entryKind === "month-event") return getMonthEventColor(entry.targetId);
+  if (entry.entryKind === "month-event") return getMonthEventColor(entry.targetId, entry.color);
   return getPlanScheduleColor(entry);
 }
 
@@ -243,6 +244,7 @@ export function DayTimeline({
         selectionId: `month-event:${monthEvent.id}`,
         entryKind: "month-event" as const,
         title: monthEvent.title,
+        color: monthEvent.color,
         subject: "主要予定",
         type: "other" as const,
         sourceType: "manual" as const,
@@ -307,6 +309,7 @@ export function DayTimeline({
             selectionId: `month-event:${monthEvent.id}`,
             entryKind: "month-event" as const,
             title: actual.title?.trim() || monthEvent.title,
+            color: monthEvent.color,
             subject: actual.subject.trim() || "主要予定",
             type: "other" as const,
             sourceType: "manual" as const,
@@ -782,7 +785,6 @@ export function DayTimeline({
                           backgroundColor: theme.soft,
                           borderColor: theme.border,
                           color: theme.text,
-                          boxShadow: `inset 5px 0 0 ${theme.fill}`,
                         }}
                         onClick={() =>
                           onSelectEntry(
