@@ -137,8 +137,12 @@ test.describe('calendar swipe navigation', () => {
     const period = page.locator('.schedule-period-picker-trigger');
     const swipe = async (surface, dx, dy, cancel = false) => surface.evaluate((element, { dx, dy, cancel }) => {
       const fire = (type, x, y) => {
-        const touch = new Touch({ identifier: 1, target: element, clientX: x, clientY: y });
-        element.dispatchEvent(new TouchEvent(type, { bubbles: true, touches: type === 'touchstart' || type === 'touchmove' ? [touch] : [], changedTouches: [touch] }));
+        // WebKit does not expose a constructible Touch. Match the existing day-swipe harness.
+        const touch = { identifier: 1, target: element, clientX: x, clientY: y };
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'touches', { value: type === 'touchstart' || type === 'touchmove' ? [touch] : [] });
+        Object.defineProperty(event, 'changedTouches', { value: [touch] });
+        element.dispatchEvent(event);
       };
       fire('touchstart', 190, 250); fire('touchmove', 190 + dx, 250 + dy); fire(cancel ? 'touchcancel' : 'touchend', 190 + dx, 250 + dy);
     }, { dx, dy, cancel });

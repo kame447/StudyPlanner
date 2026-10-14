@@ -220,6 +220,8 @@ it.each([
   } else clickCard(title);
   const button = dialogs()[0].findAllByType('button').find(node => node.findAllByType('strong').some(strong => strong.children.join('') === label));
   expect(button).toBeDefined();
+  const deleteActions = dialogs()[0].findAllByType('button').filter(node => node.props.className === 'schedule-action-item danger');
+  expect(deleteActions).toHaveLength(kind === 'month-event' || (kind === 'plan' && repeat === 'none') ? 1 : 2);
   const text = JSON.stringify(renderer!.toJSON());
   if (label === '予定を削除') expect(text).not.toMatch(/この日だけ削除|この回だけ削除|別の回/);
   await act(async () => { button!.props.onClick(); });
