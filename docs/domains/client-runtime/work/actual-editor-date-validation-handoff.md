@@ -16,7 +16,7 @@ The real editor → `usePlannerDataState` → coordinated canonical local reposi
 
 The two editors now use the existing `isValidQuickEntryDate` before save; standalone relinking applies the same guard. Blank dates, malformed dates and impossible calendar dates remain editable and cannot begin a pending mutation. No new date policy, implicit date correction, repository change, schema change, historical repair, time behavior or scope expansion is introduced. Production delta: 14 added lines in two files.
 
-## Verification checkpoint
+## Initial local verification checkpoint (before publication)
 
 - Base: `90211bdcf39dd9bce66211df129949a5668a0de4`; only this branch's files are modified.
 - Baseline component callback test: 16 failed, showing invalid date submission before the guards.
@@ -39,7 +39,7 @@ Evidence receipts are in this worktree's ignored `artifacts/` directory: `baseli
 3. Focused regressions, relevant actual-browser desktop/mobile checks, fresh type checks, full unit/integration tests and production build on the exact final content.
 4. Review exact diff. Upstream push, main changes and merge remain with the parent approval boundary.
 
-## Remaining release gate
+## Initial remaining release gate
 
 Parent review, authorized upstream publication and the existing GitHub CI/native browser gates remain open. The change is locally implemented and verified to the stated boundaries; it is not deployed or fully accepted in a browser. No old record is automatically repaired.
 
@@ -51,3 +51,15 @@ Parent review, authorized upstream publication and the existing GitHub CI/native
 - Merge current main `fe8aa40d9e3ceb594c01f29e6f9f6d2521c69bb2` normally into the original branch. The only conflict is the existing mobile-WebKit test list; retain every main entry, including Day and streak, and retain actual date validation. Day controls, announcements, streak and Day grid selection remain byte-identical to main outside this actual-only diff.
 - The actual production delta remains the original 14 added lines across the two editors. Existing focused component/persistence regressions and six native cases remain unchanged. No assertion, timeout or threshold is relaxed.
 - Next: focused regressions and discovery, one fresh exact-content aggregate verification on this merged snapshot, then pass the final tip and receipt to the sole publisher. Native acceptance requires actual Chromium and mobile-WebKit six-case results plus post-main confirmation. The original blocked verification outcome remains unverified historical evidence and is not reclassified as successful.
+
+
+## Current verification and publication handoff — 2026-10-14 12:56 UTC
+
+- Existing PR: [#650](https://github.com/kame447/StudyPlanner/pull/650), draft. The sole publisher retried the explicitly authorized cancelled creation successfully. The initial remote head is `4542d408`; the merged local snapshot below has not yet been published at this checkpoint.
+- Verified integration commit: `0a30cbac16e132ae490744ab7860c38a38b3ea83`, tree `ffc14825af66392fec43439f3ae1e7cd08954731`, parents `8cc72773eb9ab29a70ba573b5ba6dcf742a80c91` and current main `fe8aa40d9e3ceb594c01f29e6f9f6d2521c69bb2`. The only resolved conflict was the mobile-WebKit test list. The final diff from main contains the eight original actual task files only; the previously accepted four features are unchanged.
+- Fresh `npm run verify` on this integration snapshot returned **exit 0**, 2026-10-14 12:51:49–12:55:16 UTC: fresh non-incremental app/Worker TypeScript and regenerated Worker types; **907 passed files / 8,616 passed tests**, 11 skipped files / 54 skipped tests / 1 todo; production build **5.97s**. Unit duration: 170.30s. No assertion, timeout or threshold was changed.
+- Command-local environment: `WRANGLER_SEND_METRICS=false DO_NOT_TRACK=1 DEV_LAN_HOST=127.0.0.1 VITEST_MAX_FORKS=2 VITEST_MIN_FORKS=2 WRANGLER_LOG_PATH=/tmp/actual-resume-wrangler`. The two-fork settings are already supported by installed Vitest 3.2.7; no runner configuration or dependency changed. This is a new authorized integration verification, not a retroactive success claim for the earlier blocked run.
+- Input identity before/after was identical: **2,253 non-documentation source/test/config files**, SHA-256 `0d1ddd838957b80df8e21f5a518de45c85af8e993255384288c357033de9b8d7`; **19,328 installed dependency files**, SHA-256 `853d115f3fa57c7d701198ef36e5309559c6046213d6a86a03946ab49b4c6a4f`. Generated Worker declaration hash remains `c96c8ed5d4ba9748b9b191362998ccf92a7a7ae97a7f8c4a7bce008b1fedef79`. Node 24.19.0 / TypeScript 5.9.3 / Vitest 3.2.7 / Vite 6.4.3 / React 18.3.1 / Wrangler 4.147.0.
+- Focused actual regressions: **57 passed / 8 files**, exit 0. Existing local Playwright 1.62.1 discovery selected **6 actual cases in Chromium** and **6 actual + 4 Day + 4 streak cases in mobile WebKit**. Discovery is not browser execution. No local browser launch was retried.
+- Evidence: ignored `artifacts/resume-main-fe8aa40d/` contains focused/discovery logs and exit sidecars, `verify.log`, `verify.exit`, start/end timestamps, before/after input fingerprints and `terminal-local-receipt.json`. This documentation-only checkpoint does not change verified runtime inputs.
+- Still required: publish the final exact tree through the sole publisher; existing CI and native Chromium/mobile-WebKit six-case success; inspect screenshots and failures if any; authorized merge and exact-main post-merge checks. Known inherited bundle-budget failures remain separately disclosed. Physical iPhone/PWA installation and historical invalid-record repair are outside this verification.
