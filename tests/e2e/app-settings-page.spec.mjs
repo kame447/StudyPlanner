@@ -227,7 +227,10 @@ test('study progress defaults exclude general events and timetable and persists 
   await expect(general).not.toBeChecked(); await expect(timetable).not.toBeChecked();
   await general.check(); await expect(timetable).not.toBeChecked();
   await page.screenshot({ path: testInfo.outputPath('home-progress-inclusion.png'), animations: 'disabled' });
-  await page.reload(); await page.getByRole('button', { name: 'メニューを開く', exact: true }).click();
+  await page.reload();
+  // Reload restores the settings route; its Home menu is deliberately absent.
+  await expect(settings).toBeVisible();
+  await expect(page.getByRole('button', { name: 'メニューを開く', exact: true })).toHaveCount(0);
   await expect(general).toBeChecked(); await expect(timetable).not.toBeChecked();
   await timetable.check(); await general.uncheck();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('study-planner-study-progress:settings-page-user')))).toEqual({ includeGeneralEvents: false, includeTimetable: true });

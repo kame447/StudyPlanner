@@ -553,6 +553,7 @@ export function DayView({
         actuals={actuals}
         onEditPlan={onEditPlan}
         onDeletePlan={deleteDetailPlan}
+        showWholePlanDelete={!onDeleteOccurrence || deletionPresentation?.isRecurring !== false}
         deleteOccurrenceLabel={deletionPresentation?.label}
         deleteOccurrenceDescription={deletionPresentation?.description}
         historyOnly={Boolean(selectedDetailPlan && !selectedDetailOccurrence && !retainedDeletingPlan

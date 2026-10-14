@@ -68,7 +68,12 @@ for (const viewport of viewports) {
       await expect(ready.locator('[data-study-session-elapsed]')).toHaveText('00:00:00');
       await ready.getByRole('button', { name: /ポモドーロ/ }).click();
       await expectInitialFit(ready);
-      await expect(ready.getByText('休憩を含めて記録', { exact: true })).toBeVisible();
+      await expect(ready.getByRole('button', { name: 'ポモドーロ', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await expect(ready.locator('[data-pomodoro-phase]')).toHaveText('集中');
+      await expect(ready.locator('[data-study-session-phase-remaining]')).toHaveText('25:00');
+      await expect(ready.getByRole('button', { name: '集中と休憩の設定', exact: true }))
+        .toHaveText(scenario === 'planned' ? '25分 / 5分 ・ 2セット（目安）' : '25分 / 5分 ・ 制限なし');
+      await expect(ready.getByText('休憩を含めて記録', { exact: true })).toHaveCount(0);
       if (scenario === 'switched' && [320, 390, 1280].includes(viewport.width)) {
         const screenshot = testInfo.outputPath(`start-${viewport.width}-pomodoro.png`);
         await page.screenshot({ path: screenshot });

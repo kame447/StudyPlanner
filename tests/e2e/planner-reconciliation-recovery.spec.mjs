@@ -34,7 +34,7 @@ async function boot(page, options) {
     const url = new URL(route.request().url());
     return ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ? route.continue() : route.abort();
   });
-  await page.goto(`${HARNESS_URL}?theme=${options.theme}${options.strict ? '&strict=true' : ''}`);
+  await page.goto(`${HARNESS_URL}?theme=${options.theme}${options.strict ? '&strict=true' : ''}${options.parallelStudySessions ? '&parallelStudySessions=true' : ''}`);
   await page.waitForFunction(() => typeof window.__plannerRecoveryHook?.snapshot === 'function');
   await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
   await expect(page.getByRole('navigation', { name: '主要ナビゲーション' })).toBeVisible();
@@ -882,7 +882,7 @@ async function inspectMaterialAdmissionDraft(page, testInfo, label, record) {
 
 for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
   test(`same-material Study Sessions preserve busy draft, retry from committed progress and reload ${viewport}-${theme}`, async ({ page }, testInfo) => {
-    await boot(page, cases.find(item => item.label === viewport && item.theme === theme));
+    await boot(page, { ...cases.find(item => item.label === viewport && item.theme === theme), parallelStudySessions: true });
     const plans = await page.evaluate(async date => {
       const userId = window.__plannerRecoveryHook.snapshot().ownerId;
       const plans = await window.__plannerRecoveryRepository.seedMaterialAdmissionPlans({ userId, date });
@@ -918,10 +918,18 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     const beforeBusyWrites = await durableWrites(page);
     expect(await materialAdmissionCallCount(page)).toBe(1);
     await record.getByRole('button', { name: '戻る', exact: true }).click();
-    page.once('dialog', dialog => dialog.accept());
     await page.getByRole('dialog', { name: '学習中', exact: true })
       .getByRole('button', { name: '戻る', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
+    // Back minimizes A; relaunching its surface must retain the pending session.
+    await nextPlan.getByRole('button', { name: '▶ 勉強を開始', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '学習中', exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '学習を開始', exact: true })).toHaveCount(0);
+    await page.getByRole('dialog', { name: '学習中', exact: true })
+      .getByRole('button', { name: '戻る', exact: true }).click();
+    // Switch only the test launch surface. A's provider stays mounted and B
+    // shares the real hook's admission boundary, never a replacement save stub.
+    await page.evaluate(() => window.__plannerRecoveryStudySessions.openSecondary());
     await expect(nextPlan.getByRole('heading', { name: plans[1].title, exact: true })).toBeVisible();
     await nextPlan.getByRole('button', { name: '▶ 勉強を開始', exact: true }).click();
     const target1 = page.getByRole('dialog', { name: '学習を開始', exact: true })

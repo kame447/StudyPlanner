@@ -27,6 +27,10 @@ const runtimeGatewayStubPlugin = {
     const normalizedImporter = importer
       ? path.normalize(stripViteQuery(importer))
       : '';
+    if (source === './components/StudySessionView'
+      && normalizedImporter.endsWith(path.normalize('src/App.tsx'))) {
+      return path.resolve(harnessDir, 'StudySessionProvider.control.jsx');
+    }
     if (source === './usePlannerDataState'
       && normalizedImporter.endsWith(path.normalize('src/hooks/usePlannerAppState.ts'))) {
       return path.resolve(harnessDir, 'usePlannerDataState.control.jsx');

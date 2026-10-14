@@ -19,6 +19,7 @@ export function dayOccurrenceCancellationPresentation(occurrence: ScheduleOccurr
     && !(occurrence.end.time === '00:00' && occurrence.end.date === addDays(occurrence.start.date, 1));
   const range = `${formatDateLabel(occurrence.start.date)} ${occurrence.start.time} - ${formatDateLabel(occurrence.end.date)} ${occurrence.end.time}`;
   return {
+    isRecurring,
     label: !isRecurring ? '予定を削除' : crossesDays ? 'この回だけ削除' : 'この日だけ削除',
     description: crossesDays
       ? isRecurring

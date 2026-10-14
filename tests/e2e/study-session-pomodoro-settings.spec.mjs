@@ -169,14 +169,25 @@ test('mode indicator moves continuously sideways, accepts swipe and honors reduc
   expect(await indicator.evaluate(element => ({ duration: getComputedStyle(element).transitionDuration, animations: element.getAnimations().length }))).toEqual({ duration: '0s', animations: 0 });
 });
 
-test('settings allow enlarged text to scroll without clipping controls', async ({ page }) => {
+test('settings allow enlarged text to scroll without clipping controls', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 568 });
   const ready = await openStart(page, 'pixel');
   await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
   await ready.getByRole('button', { name: '集中と休憩の設定' }).click();
   const settings = page.getByRole('dialog', { name: 'ポモドーロ設定', exact: true });
   const save = settings.getByRole('button', { name: '設定を保存' });
+  await page.evaluate(() => document.fonts.ready);
   await save.focus();
+  await expect(save).toBeFocused();
+  await testInfo.attach('Enlarged settings focus geometry', {
+    body: JSON.stringify(await save.evaluate(element => {
+      const pane = element.closest('.study-session-page');
+      const rect = element.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom, height: rect.height, viewportHeight: innerHeight,
+        scrollTop: pane.scrollTop, scrollHeight: pane.scrollHeight, clientHeight: pane.clientHeight,
+        scrollPaddingBottom: getComputedStyle(pane).scrollPaddingBottom };
+    }), null, 2), contentType: 'application/json',
+  });
   await expect(save).toBeInViewport({ ratio: 1 });
   expect(await settings.locator('.study-session-page').evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   await page.keyboard.press('Enter');

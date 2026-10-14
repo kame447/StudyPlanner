@@ -262,6 +262,23 @@ for (const appearance of ['standard', 'pixel']) {
         expect(metrics.pageWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
         expect(metrics.chartBottom).toBeLessThanOrEqual(metrics.navTop);
         expect(metrics.detailBottom).toBeLessThanOrEqual(metrics.navTop);
+        if (scope === '月') {
+          const ticks = await page.locator('.learning-report-chart.scope-month .learning-report-chart-label strong').evaluateAll(elements =>
+            elements.filter(element => element.textContent.trim()).map(element => {
+              const range = document.createRange(); range.selectNodeContents(element);
+              const box = range.getBoundingClientRect();
+              return { text: element.textContent, lines: range.getClientRects().length, left: box.left, right: box.right };
+            }));
+          expect(ticks.length).toBeGreaterThan(1);
+          for (const [index, tick] of ticks.entries()) {
+            expect(tick.text).toMatch(/^\d{1,2}$/);
+            expect(tick.lines, tick.text).toBe(1);
+            if (index) expect(ticks[index - 1].right, `${ticks[index - 1].text} / ${tick.text}`).toBeLessThanOrEqual(tick.left);
+          }
+          await testInfo.attach(`month-ticks-${appearance}-${viewport.width}`, {
+            body: JSON.stringify(ticks, null, 2), contentType: 'application/json',
+          });
+        }
       }
       await testInfo.attach(`compact-report-${appearance}-${viewport.width}`, {
         body: await page.screenshot(), contentType: 'image/png',

@@ -304,7 +304,7 @@ it('rejects invalid, stale and old-owner time edits before persistence', async (
 });
 
 it('materializes one grouped timetable occurrence and records against its durable Plan identity', async () => {
-  const { repository } = await mount(); const occurrence = get('timetable-template');
+  const { repository, storage } = await mount(); const occurrence = get('timetable-template');
   const masters = await repository.getScheduleTemplates('owner');
   let saved!: Awaited<ReturnType<typeof state.prepareDayTimetableRecord>>;
   await act(async () => { saved = await state.prepareDayTimetableRecord(occurrence); });
@@ -312,6 +312,11 @@ it('materializes one grouped timetable occurrence and records against its durabl
     sourceId: occurrence.source.backingId, startTime: '14:00', endTime: '16:00', repeat: 'none' });
   expect(saved.id).not.toBe(occurrence.id);
   expect(state.plans.find(row => row.id === saved.id)).toEqual(saved);
+  const canonical = JSON.parse(storage.getItem('studyplanner.scheduleEvents.v1') ?? '[]');
+  expect(canonical.find((row: { provenance: { legacy: { id: string } } }) => row.provenance.legacy.id === saved.id)).toMatchObject({
+    title: saved.title, date: DATE, provenance: { sourceType: 'timetable', sourceId: saved.sourceId, legacy: { kind: 'plan', id: saved.id } },
+  });
+  expect(JSON.parse(storage.getItem('studyplanner.plans') ?? '[]').some((row: { id: string }) => row.id === saved.id)).toBe(false);
   expect(await repository.getScheduleTemplates('owner')).toEqual(masters);
   const { createActualDraftForPlan } = await import('../lib/actualDrafts');
   await act(async () => { await state.saveActual(saved, createActualDraftForPlan(saved)); });
@@ -341,4 +346,21 @@ it('blocks duplicate record preparation and preserves source admission through w
   boundary.repository.upsertPlan = put;
   await act(async () => { await state.retryPlannerData(); await state.prepareDayTimetableRecord(get('timetable-template')); });
   expect(state.plans.filter(row => row.sourceType === 'timetable')).toHaveLength(1);
+});
+
+it('one-off cancellation keeps the saved history and restores the same target through Undo', async () => {
+  const { repository } = await mount();
+  await repository.upsertPlan(plan({ date: DATE, repeat: 'none' }));
+  await act(async () => { await state.loadPlannerData('owner'); });
+  const occurrence = get('plan');
+  const records = await repository.getActuals('owner');
+  await act(async () => { await state.deleteDayOccurrence(occurrence); });
+  expect(project().some(row => row.id === occurrence.id)).toBe(false);
+  expect(await repository.getActuals('owner')).toEqual(records);
+  const restore = undo();
+  await act(async () => { await state.loadPlannerData('owner'); });
+  expect(project().some(row => row.id === occurrence.id)).toBe(false);
+  await act(async () => { await restore(); });
+  expect(project().find(row => row.id === occurrence.id)).toMatchObject({ source: { backingId: occurrence.source.backingId } });
+  expect(await repository.getActuals('owner')).toEqual(records);
 });

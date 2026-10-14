@@ -44,3 +44,22 @@ it('retains controls and plan supplements even in an empty period', () => {
   act(() => root.findByProps({ 'aria-label': 'ホームに戻る' }).props.onClick());
   expect(onBack).toHaveBeenCalledOnce();
 });
+
+it.each([
+  [0, '2026-08-24', '31'],
+  [4, '2026-04-24', '30'],
+  [6, '2026-02-24', '28'],
+] as const)('keeps monthly axis labels short and separated across month lengths (%s)', (steps, date, lastDay) => {
+  act(() => { renderer = create(<ReportView selectedDate={date} plans={[]} actuals={[{ ...actual, occurrenceDate: date }]} onBack={() => {}} />); });
+  const root = renderer!.root;
+  act(() => root.findAllByProps({ role: 'tab' })[2].props.onClick());
+  for (let step = 0; step < steps; step += 1) {
+    act(() => root.findByProps({ 'aria-label': '前の期間を表示' }).props.onClick());
+  }
+  const labels = root.findAllByProps({ className: 'learning-report-chart-label' });
+  expect(labels.map(label => label.findByType('strong').children.join(''))).toEqual(['1', '5', '10', '15', '20', '25', lastDay]);
+  expect(labels.every(label => label.findAllByType('span').length === 0)).toBe(true);
+  const items = root.findAllByProps({ role: 'listitem' });
+  expect(items).toHaveLength(Number(lastDay));
+  expect(items[0].props['aria-label']).toMatch(/\d+\/1 /);
+});
