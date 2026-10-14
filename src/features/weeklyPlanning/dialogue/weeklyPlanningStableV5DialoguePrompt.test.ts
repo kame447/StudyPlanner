@@ -97,6 +97,11 @@ describe('Stable V5 dialogue prompt', () => {
     const request = String((payload as { request: string }).request);
 
     expect(prompt.systemPrompt).toContain('継続中の相談');
+    expect(prompt.systemPrompt).toContain('一緒に具体化する');
+    expect(prompt.systemPrompt).toContain('答えやすい問いかけ');
+    expect(prompt.systemPrompt).toContain('決まった挨拶や回答例に固定せず');
+    // Writing style is guidance, not a hard-coded user-visible response.
+    expect(prompt.systemPrompt).not.toContain('もちろんです');
     expect(request).toContain('currentTurnGrounding.acceptedFacts');
     expect(request).toContain('required_before_resume');
     expect(request).toContain('requestedInformation');
