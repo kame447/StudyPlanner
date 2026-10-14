@@ -9,6 +9,7 @@ import {
   Settings,
   Users,
 } from 'lucide-react';
+import { AnnouncementsButton } from '../../../src/components/AnnouncementsButton';
 import { ContactPage } from '../../../src/components/ContactPage';
 import { AdminApp } from '../../../src/components/AdminApp';
 import { AdminAiApiPage } from '../../../src/components/AdminAiApiPage';
@@ -109,10 +110,16 @@ function ContactHarness() {
   React.useEffect(() => { window.__inquiryVisible = setVisible; return () => { delete window.__inquiryVisible; }; }, []);
   return visible ? <ContactPage authSession={inquiryAuth} /> : <p>別画面</p>;
 }
+function AnnouncementsHarness() {
+  const [owner, setOwner] = React.useState('fixture-owner');
+  React.useEffect(() => { window.__announcementSwitchOwner = setOwner; return () => { delete window.__announcementSwitchOwner; }; }, []);
+  return <main><h1>ホーム</h1><AnnouncementsButton key={owner} userId={owner} /><button type="button">背景の操作</button></main>;
+}
+if (view === 'announcements-admin') window.history.replaceState({}, '', `/admin/announcements${window.location.search}`);
 if (view === 'inquiries') {
   window.history.replaceState({}, '', `/admin/inquiries${window.location.search}`);
 }
 ReactDOM.createRoot(document.getElementById('root')).render(
-  view === 'contact' ? <ContactHarness />
+  view === 'announcements' ? <AnnouncementsHarness /> : view === 'announcements-admin' ? <AdminApp authSession={inquiryAuth} /> : view === 'contact' ? <ContactHarness />
     : view === 'inquiries' ? <AdminApp authSession={inquiryAuth} /> : <AdminConsoleHarness />,
 );

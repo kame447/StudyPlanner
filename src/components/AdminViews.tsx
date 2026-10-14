@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { resolveAdminRoute } from '../lib/adminRoutes';
 import { AdminInquiriesPage } from './AdminInquiriesPage';
 import { AdminAiApiPage } from './AdminAiApiPage';
@@ -8,12 +9,15 @@ import { AdminSystemPage } from './AdminSystemPage';
 import { AdminUserDetailPage } from './AdminUserDetailPage';
 import { AdminUsersPage } from './AdminUsersPage';
 
+const AdminAnnouncementsPage = lazy(() => import('./AdminAnnouncementsPage').then((module) => ({ default: module.AdminAnnouncementsPage })));
+
 interface AdminRoutesProps {
+  userId: string;
   path: string;
   navigate: (path: string, options?: { replace?: boolean }) => void;
 }
 
-export function AdminRoutes({ path, navigate }: AdminRoutesProps) {
+export function AdminRoutes({ path, navigate, userId }: AdminRoutesProps) {
   const route = resolveAdminRoute(path);
 
   if (route.type === 'overview') {
@@ -47,6 +51,10 @@ export function AdminRoutes({ path, navigate }: AdminRoutesProps) {
 
   if (route.type === 'inquiries') {
     return <AdminInquiriesPage />;
+  }
+
+  if (route.type === 'announcements') {
+    return <Suspense fallback={<p role="status">お知らせ管理を開いています</p>}><AdminAnnouncementsPage key={userId} userId={userId} /></Suspense>;
   }
 
   if (route.type === 'system') {
