@@ -12,7 +12,6 @@ import {
   useState,
   type ChangeEvent,
   type CSSProperties,
-  type KeyboardEvent,
   type ReactNode,
 } from 'react';
 import {
@@ -760,19 +759,6 @@ export function AiPlanningView({
     }
   }
 
-  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (
-      event.key !== 'Enter' ||
-      event.shiftKey ||
-      event.nativeEvent.isComposing ||
-      event.nativeEvent.keyCode === 229
-    ) {
-      return;
-    }
-    event.preventDefault();
-    void submitMessage();
-  }
-
   function useStarterPrompt(option: AiPlanningStarterPromptOption) {
     if (!ownsSubmissionScope() || recoveryOperation.current || isComposerBusy) return;
     setText(option.requestText);
@@ -1103,7 +1089,6 @@ export function AiPlanningView({
                 setSelectedStarterOption(null);
               }
             }}
-            onKeyDown={handleKeyDown}
             rows={1}
             maxLength={4000}
             placeholder={isListening ? '音声を認識中...' : '予定や目標を入力...'}

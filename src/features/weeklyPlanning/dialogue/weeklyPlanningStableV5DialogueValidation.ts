@@ -368,6 +368,7 @@ function validateRenderedText(
     currentUserMessage: input.currentUserMessage,
     recentConversation: input.recentConversation,
     planningInformation: input.planningInformation,
+    conversationReferences: input.referenceContext ?? null,
     requiredLabels: input.requiredLabels,
     previewPromotionControlLabel: input.previewPromotionControlLabel ?? null,
     previewCount: input.previewCount,

@@ -1,3 +1,4 @@
+import { assertRecurringMonthEventWrite } from './plannerWritePreparation';
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
 import type {
   PlannerRepository,
@@ -485,6 +486,13 @@ mutation.planDeletes,
 
       await storageGateway.writeDayNotes(nextDayNotes);
       return dayNote;
+    },
+    async applyRecurringMonthEventMutation(userId, monthEvents) {
+      assertRecurringMonthEventWrite(userId, monthEvents);
+      const current = await storageGateway.readMonthEvents();
+      const ids = new Set(monthEvents.map((event) => event.id));
+      assertOwnedRecords(userId, current.filter((event) => ids.has(event.id)), '繰り返し予定更新');
+      await storageGateway.writeMonthEvents(upsertMany(current, monthEvents));
     },
     async upsertMonthEvent(monthEvent) {
       const nextMonthEvents = replaceById(

@@ -1,3 +1,4 @@
+import { assertRecurringMonthEventWrite } from './plannerWritePreparation';
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
 import {
   createScheduleEventMigrationState,
@@ -383,6 +384,15 @@ export function createLocalScheduleEventAuthority(
         },
         '予定削除',
       );
+    },
+
+    async applyRecurringMonthEventMutation(userId, monthEvents) {
+      assertRecurringMonthEventWrite(userId, monthEvents);
+      const upserts = monthEvents.map(scheduleEventFromMonthEvent);
+      const current = readScheduleEvents(storage);
+      const ids = new Set(upserts.map((event) => event.id));
+      assertOwnedRecords(userId, current.filter((event) => ids.has(event.id)), '繰り返し予定更新');
+      writeScheduleEvents(storage, upserts.reduce((events, event) => replaceById(events, event), current));
     },
 
     async upsertMonthEvent(monthEvent) {

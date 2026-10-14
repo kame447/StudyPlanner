@@ -105,7 +105,7 @@ async function boot(page, mode) {
 
 async function submit(page, audit, text) {
   const before = audit.proxy.length;
-  await composer(page).fill(text); await composer(page).press('Enter');
+  await composer(page).fill(text); await page.getByRole('button', { name: '送信', exact: true }).click();
   await expect.poll(() => audit.proxy.length).toBeGreaterThan(before);
   await expect(page.getByRole('button', { name: '処理をキャンセル', exact: true })).toHaveCount(0);
   await expect(composer(page)).toBeEnabled();
