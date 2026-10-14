@@ -42,7 +42,9 @@ export function StudyStreakView({ today, model, onClose, pending = false, error,
   const rows = Array.from({ length: 6 }, (_, index) => grid.slice(index * 7, index * 7 + 7))
     .filter(row => row.some(cell => cell.inCurrentMonth));
   const currentMonth = startOfMonth(today);
-  useLayoutEffect(() => { titleRef.current?.focus({ preventScroll: true }); }, []);
+  useLayoutEffect(() => {
+    titleRef.current?.focus({ preventScroll: true });
+  }, []);
 
   return <main className="study-streak-page" aria-labelledby={titleId} onKeyDown={event => {
     if (event.key === 'Escape') { event.preventDefault(); onClose(); }
