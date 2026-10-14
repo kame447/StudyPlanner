@@ -16,20 +16,14 @@ async function composer(page) {
   return input;
 }
 
-test('two Enter events in the same browser task start only one real controlled turn', async ({ page }) => {
+test('two Send button clicks in the same browser task start only one real controlled turn', async ({ page }) => {
   await page.goto(REAL_WEEKLY_URL);
   const input = await composer(page);
   await input.fill('二重送信しない条件');
 
-  await input.evaluate((element) => {
-    const dispatch = () => element.dispatchEvent(new KeyboardEvent('keydown', {
-      key: 'Enter',
-      code: 'Enter',
-      bubbles: true,
-      cancelable: true,
-    }));
-    dispatch();
-    dispatch();
+  await page.getByRole('button', { name: '送信', exact: true }).evaluate((button) => {
+    button.click();
+    button.click();
   });
 
   await expect.poll(
