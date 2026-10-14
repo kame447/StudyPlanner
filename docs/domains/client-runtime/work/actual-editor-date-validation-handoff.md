@@ -82,3 +82,22 @@ Parent review, authorized upstream publication and the existing GitHub CI/native
 - Fresh `npm run verify` returned **exit 0** from 13:29:50 to 13:33:16 UTC: fresh app/Worker types and runtime declarations, **907 files / 8,616 tests passed**, 11 skipped files / 54 skipped tests / 1 todo, build **5.71s**; unit 168.38s. The same supported two-fork environment and telemetry disable flags were used, with `WRANGLER_LOG_PATH=/tmp/actual-locator-repair-wrangler`.
 - Exact source identity before/after: **2,253 files**, SHA-256 `36473cdf29a2e5fd32814d7cc3d4e3361fbdbcef2e6342ad35e88cb3f10618fa`. Installed **19,328 files** and generated Worker declarations match the previous integration fingerprint unchanged. Both discovery commands returned exit 0 and selected six actual tests per engine; no native browser was launched locally.
 - Receipts: ignored `artifacts/native-locator-repair/{before-verify,after-verify,final-inputs,terminal-local-receipt}.json`, `verify.log`, exit/start/end sidecars and both discovery logs. Documentation-only followup does not change verified inputs. The previous native failure remains recorded; corrected-head CI/native and post-main acceptance are still pending.
+
+## Resumed against current main (2026-10-14 17:08 UTC)
+
+The owner authorized resuming PR #650 and merging after verification at 17:01 UTC.
+Candidate `a8f690da257a3e2d6b3f75ae0d00704006854f25` merges published
+`aef23da3` with main `1b828e77`, without the cancelled obsolete timeout follow-up.
+The existing 35-minute cross-browser job cap is preserved; no timeout was reduced.
+The merge is conflict-free and the main-relative change remains the original eight files.
+
+`npm run verify` passed: fresh app/Worker types, 8,668 tests / 915 files, build
+5.27 seconds (54 skips and one todo reported separately). Source inputs (2,642)
+and installed immutable dependency files (19,329) match before/after. The existing
+command-local `CLOUDFLARE_CF_FETCH_ENABLED=false` disables Miniflare's metadata GET;
+metrics are disabled and test forks are limited to two. Generated compatibility-test
+cache outputs were retained outside the worktree. This checkpoint is documentation-only.
+
+Published-head native checks and subsequent main integration remain pending. The latest
+owner instruction selects related checks for subsequent changes rather than repeating
+full suites without a relevant content or dependency change.
