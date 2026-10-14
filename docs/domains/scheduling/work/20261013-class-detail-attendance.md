@@ -1,10 +1,10 @@
 # Class detail, attendance, and associated schedules
 
-Status: draft PR, motion-enabled dialog coverage correction under verification
-Updated: 2026-10-13
+Status: draft PR, approved production Rules integration under final verification
+Updated: 2026-10-14
 Branch: `feat/class-detail-attendance`
 Base and initial HEAD: `98f3c324b5320d38294905c858ce1d2310209312`
-PR: #635 (`feat/class-detail-attendance`), currently draft. Branch/PR publication and verified main integration are approved; owner-only access for the new production attendance collection still requires the parent’s specific confirmation before merge triggers Rules deployment.
+PR: #635 (`feat/class-detail-attendance`), currently draft. Branch/PR publication, verified main integration and the new owner-only production attendance collection access are approved. Main integration remains gated on exact combined-content verification and native acceptance.
 
 ## Request and scope
 
@@ -18,7 +18,7 @@ GitHub main, open PRs, related issues and all available branches were checked be
 - One attendance record per authenticated owner, immutable lesson ID and date; status is correctable. Renaming a lesson must not lose records.
 - Associated schedules use existing Plan → canonical ScheduleEvent persistence, with an optional lesson ID reference. They do not masquerade as timetable occurrences or introduce another calendar authority.
 - Attendance repository reads only the open lesson, rather than expanding startup reads.
-- Rules changes remain a candidate: no production deployment or expanded access has occurred. Before main merge, confirm the new owner-only production attendance collection access because main triggers automatic Rules deployment.
+- Rules changes remain a candidate until verified integration. The user specifically approved owner-only production attendance access on 2026-10-14. Release must use the existing GitHub WIF deployment and verify the production Rules read-back; no credentials, resources or broader access are added.
 - Notifications are outside this slice because the current app has no reminder delivery implementation.
 
 ## Current checkpoint
@@ -79,3 +79,11 @@ The immediate navigation hit-test remains unchanged in strength and now reports 
 The scoped motion correction passed exact local full verification at `054f9368` / tree `9ecf47fb` (8,197 tests, fresh types, production build; all source, generated and 19,305 installed-file fingerprints unchanged). Before publication, main advanced to `f85a873b` with the approved event-color and compact-form changes. The existing attendance branch is normally merged with that main; the sole conflict is the cross-browser selection list, resolved by retaining both attendance and compact-form scenarios. Automatic TimetableView/editor-lifetime merges are inspected and retained. This combined content requires a new exact full/native result; the previous full proves only the pre-integration snapshot.
 
 The intermediate main-f85 full was intentionally interrupted (exit130) when the parent confirmed the authorized release sequence was still underway. Final main `c32b0e27` / tree `e08d3b42` includes #631–#634; #628 remains open and is not an adopted predecessor. The same attendance branch now normally integrates that final main, preserving all existing and new cross-browser entries. Final acceptance uses the combined `main-c32-motion` evidence, not the interrupted intermediate run.
+
+## Approved production integration: 2026-10-14
+
+The user approved the owner-only attendance Rules release. The existing branch and PR are resumed from remote `73d154f44ff309bc8c10f3f085e52987251cca53` (tree `d1809938bf370f7d11205352e858db8e7d46b8e4`). That head's native CI/Rules, ordinary Browser Regression, four-project UI matrix, visual regression, browser quality and Admin render passed. Bundle-budget failure remains separately tracked; no threshold was weakened. Previous local evidence directories are unavailable after environment restoration, so no local result is reused for the new content.
+
+Main `f1ca9a7d` is normally merged into the same branch, preserving #638's linked Todo/Plan deletion admission. The shared planner hook merges without conflict; the only class-feature difference against main remains the explicit durable schedule-create operation and its public result member. No architecture, dependency, or test-infrastructure expansion is introduced. Fresh dependencies are installed from the unchanged lockfile.
+
+Next: run one fresh `npm run verify` on the exact combined content, record source/generated/installed/environment identity, publish by a non-force update to the existing branch, and follow exact-head native CI/Rules, ordinary browser, matrix, visual, quality and Admin render checks. The sole main integration owner coordinates #635 then #636 and the existing production WIF deployment. No new branch or PR, branch deletion, new credentials, R2/DO resources or billing changes are in this slice. Historical confirmation-pending entries above describe their then-current gate; the approval in this section supersedes that gate only.
