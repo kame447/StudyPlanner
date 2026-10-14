@@ -1,3 +1,4 @@
+import { PlanningContextManager } from '../harness/planningContextManager';
 import { resolveWeeklyPlanningQuestionPresentationFreshness, type WeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
 import {
   createWeeklyPlanningActiveSchedulerGraphViewV5,
@@ -21,7 +22,6 @@ import {
   activeStableV5PlanningWindows,
   createStableV5SemanticPublicStateSummary,
   stableV5RequestContextForInput,
-  STABLE_V5_RECENT_TURN_LIMIT,
 } from './weeklyPlanningStableV5SemanticContextCore';
 import {
   createWeeklyPlanningSchedulerContext,
@@ -112,9 +112,8 @@ export async function executeWeeklyPlanningStableV5SemanticTurnCore(
     resolvedTemporalConstraints: resolvedTemporalConstraintsBefore,
     groundingRecords: input.previousState?.groundingRecords,
   });
-  const recentConversation = input.messages
-    .slice(-STABLE_V5_RECENT_TURN_LIMIT)
-    .map(({ role, content }) => ({ role, content }));
+  const history = new PlanningContextManager(input.messages).forModel();
+  const recentConversation = history.messages;
   const stateSummary = createStableV5SemanticPublicStateSummary({
     graph: runtimeSession.graph,
     messages: input.messages,
@@ -125,6 +124,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurnCore(
     userText: input.userText,
     studyMaterials: input.studyMaterials ?? [],
   }, ports.selectContext);
+  stateSummary.historyWindow = history.window;
   const initialSchedulerContext = createWeeklyPlanningSchedulerContext({
     ownerId: input.userId,
     horizon: fallbackHorizon,
@@ -150,7 +150,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurnCore(
         groundedRelativeWindow: 'reuse the persisted absolute grounding range until the source fact is corrected',
         otherwise: 'resolveCanonicalDateExpression(window.value, requestContext.currentDate, weekStartsOn)',
       },
-      recentTurnLimit: STABLE_V5_RECENT_TURN_LIMIT,
+      historyWindow: history.window,
       recentConversation,
       publicStateSummary: stateSummary,
       schedulerContext: initialSchedulerContext,

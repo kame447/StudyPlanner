@@ -1,3 +1,4 @@
+import { PlanningModelStep } from '../harness/planningModelStep';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClientTypes';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import {
@@ -114,7 +115,9 @@ export function createWeeklyPlanningSemanticNormalizerV5(
   client: OpenAiCompatibleClient,
 ): WeeklyPlanningSemanticNormalizerV5 {
   return {
-    async normalize(input) {
+    async normalize(sourceInput) {
+      const step = new PlanningModelStep(sourceInput);
+      const input = step.input;
       const run = new WeeklyPlanningSemanticNormalizerRunV5(client, input);
       const finish = (result: WeeklyPlanningSemanticNormalizerResultV5) =>
         enforceFinalCurrentTurnProvenance({ input, run, result });
@@ -127,7 +130,7 @@ export function createWeeklyPlanningSemanticNormalizerV5(
       const authorization = await tryFocusedAuthorizationRouteV5(run);
       if (authorization.result) return finish(authorization.result);
 
-      const baseMessages = createWeeklyPlanningSemanticBaseMessagesV5(input);
+      const baseMessages = step.prompt(createWeeklyPlanningSemanticBaseMessagesV5).messages();
       recordWeeklyPlanningStableV5DebugTrace({
         requestId: input.traceRequestId,
         stage: 'semantic_normalizer_prepared',

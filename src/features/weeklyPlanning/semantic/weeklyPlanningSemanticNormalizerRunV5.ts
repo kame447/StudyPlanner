@@ -94,7 +94,8 @@ export class WeeklyPlanningSemanticNormalizerRunV5 {
         this.providerDispatchCount += 1;
         this.pendingProviderDispatches += 1;
         try {
-          return await client.createChatCompletion(request);
+          // Keep caller-owned prompt/validator evidence unchanged by transport adapters.
+          return await client.createChatCompletion(structuredClone(request));
         } catch (error) {
           this.providerDispatchFailed = true;
           throw error;

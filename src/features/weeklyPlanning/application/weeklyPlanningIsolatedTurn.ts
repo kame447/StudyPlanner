@@ -1,3 +1,5 @@
+import { boundWeeklyPlanningDialogueRendererTraceForTransport } from '../trace/weeklyPlanningDialogueRendererTrace';
+import { capturePlanningTurnContext, snapshotContextValue } from '../harness/planningContextSnapshot';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClientTypes';
 import type { WeeklyPlanningTurnExecutionInput, WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
@@ -34,9 +36,11 @@ export async function executeIsolatedWeeklyPlanningTurn(
   payload: IsolatedWeeklyPlanningTurnInput,
   client: OpenAiCompatibleClient,
 ): Promise<IsolatedWeeklyPlanningTurnResult> {
-  const input = { ...payload.input, isCurrentTurn: () => true };
+  const input = capturePlanningTurnContext({ ...payload.input, isCurrentTurn: () => true });
+  const userContextRecords = snapshotContextValue(payload.userContextRecords);
   const session = { ownerId: input.userId, conversationId: input.conversationId,
     weekStartDate: payload.weekStartDate, graph: structuredClone(payload.graph), updatedAt: 0 };
+  const promptContexts = new Map<string, Record<string, unknown>>();
   let graph = session.graph;
   let failure: WeeklyPlanningStableV5RecordedFailure | null = null;
   let stagedContextFacts: UserPlanningContextSemanticFactV1[] = [];
@@ -45,7 +49,7 @@ export async function executeIsolatedWeeklyPlanningTurn(
       semanticTurn: (runtimeInput) => executeWeeklyPlanningStableV5SemanticTurnCore(runtimeInput, {
         normalizer: createWeeklyPlanningSemanticNormalizerV5(client), session,
         selectContext: ({ relevantScopeKeys }) => selectUserPlanningContextPromptRecordsV2({
-          records: payload.userContextRecords, relevantScopeKeys,
+          records: userContextRecords, relevantScopeKeys,
         }),
         recordFailure: (params) => { failure = createWeeklyPlanningStableV5FailureDiagnostics(params); },
       }),
@@ -59,15 +63,27 @@ export async function executeIsolatedWeeklyPlanningTurn(
         });
       },
     });
-    const result = await projectWeeklyPlanningStableV5TurnResultCore({ input,
+    let result = await projectWeeklyPlanningStableV5TurnResultCore({ input,
       result: withRepairSafePreview(input, { ...core, stableV5Graph: graph }),
     }, {
       takeFailure: () => { const value = failure; failure = null; return value; },
       dialogue: {
-        createRenderer: (options) => createWeeklyPlanningStableV5DialogueRendererCore(client, options),
+        createRenderer: (options) => createWeeklyPlanningStableV5DialogueRendererCore(client, {
+          ...options,
+          // Sampling evidence belongs to this invocation, not a process-global
+          // actionId cache shared by concurrent owners on the Worker.
+          rememberPrompt: (id, context) => { promptContexts.set(id, context); },
+        }),
         getSession: (conversationId) => conversationId === session.conversationId ? structuredClone(session) : null,
       },
     });
+    const trace = result.dialogueRendererTrace;
+    const promptContext = trace?.actionId ? promptContexts.get(trace.actionId) : undefined;
+    if (trace?.request && promptContext) {
+      result = { ...result, dialogueRendererTrace: boundWeeklyPlanningDialogueRendererTraceForTransport({
+        ...trace, request: { ...trace.request, promptContext },
+      }) };
+    }
     return { result, stagedContextFacts: result.failure ? [] : stagedContextFacts,
       observedDate: input.requestContext.currentDate };
   } finally {

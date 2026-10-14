@@ -1,3 +1,4 @@
+import { capturePlanningTurnContext } from './harness/planningContextSnapshot';
 import { loadWeeklyPlanningRuntimeModule } from './application/weeklyPlanningRuntimeModule';
 import {
   resolveWeeklyPlanningRequestContextAtIngress,
@@ -22,6 +23,7 @@ export type {
 export async function executeWeeklyPlanningTurn(
   input: WeeklyPlanningTurnExecutionInput,
 ): Promise<WeeklyPlanningTurnExecutionResult> {
+  input = capturePlanningTurnContext(input);
   weeklyPlanningStableV5TurnResultProjector.begin(input.traceRequestId);
   const requestContext = resolveWeeklyPlanningRequestContextAtIngress({
     requestContext: input.requestContext,

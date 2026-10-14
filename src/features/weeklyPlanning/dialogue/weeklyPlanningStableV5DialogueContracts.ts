@@ -204,6 +204,8 @@ export interface WeeklyPlanningStableV5DialogueRenderInput {
   actionId: string;
   currentUserMessage: string;
   recentConversation: WeeklyPlanningStableV5DialogueConversationTurn[];
+  /** Describes only the model window; never used to grant question/approval authority. */
+  historyWindow?: import('../harness/planningContextManager').PlanningHistoryWindow;
   planningInformation: Record<string, unknown> | null;
   currentTurnGrounding?: WeeklyPlanningStableV5DialogueCurrentTurnGrounding | null;
   existingScheduleGrounding?: WeeklyPlanningExistingScheduleGrounding;

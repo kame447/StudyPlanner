@@ -1,3 +1,4 @@
+import { PlanningContextManager } from '../harness/planningContextManager';
 import type { WeeklyPlanningStableV5DialogueRenderer } from './weeklyPlanningStableV5DialogueContracts';
 import type { getWeeklyPlanningStableV5RuntimeSession } from '../application/weeklyPlanningStableV5RuntimeSession';
 import { stableV5MissingSchedulableWorkQuestion } from '../application/weeklyPlanningStableV5RuntimeQuestions';
@@ -51,7 +52,6 @@ export interface WeeklyPlanningTurnDialoguePorts {
   getSession: typeof getWeeklyPlanningStableV5RuntimeSession;
 }
 
-const RECENT_TURN_LIMIT = 4;
 // A renderer outage is not evidence that the user's meaning was ambiguous.
 // Accepted planning facts can already be staged, so do not assert that input was discarded.
 const RENDERER_TECHNICAL_STOP = '返信を作れませんでした。少し待ってからもう一度送信してください。';
@@ -184,6 +184,7 @@ function createRenderInput(params: {
   questionCode: string | null;
   actionId: string;
 }): WeeklyPlanningStableV5DialogueRenderInput {
+  const history = new PlanningContextManager(params.input.messages).forModel();
   const planningInformation = params.result.stableV5Graph
     ? {
         ...createWeeklyPlanningStableV5DialogueProjection(params.result.stableV5Graph),
@@ -240,9 +241,8 @@ function createRenderInput(params: {
     } } : {}),
     actionId: params.actionId,
     currentUserMessage: params.input.userText,
-    recentConversation: params.input.messages
-      .slice(-RECENT_TURN_LIMIT)
-      .map(({ role, content }) => ({ role, content })),
+    recentConversation: history.messages,
+    historyWindow: history.window,
     planningInformation,
     currentTurnGrounding,
     ...(previewConstraintSatisfaction ? { previewConstraintSatisfaction } : {}),

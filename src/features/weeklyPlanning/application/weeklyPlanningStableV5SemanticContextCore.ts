@@ -14,8 +14,6 @@ import type { WeeklyPlanningMessage } from '../types';
 import type { WeeklyPlanningTurnRequestContext } from './weeklyPlanningTemporalContext';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeContracts';
 
-export const STABLE_V5_RECENT_TURN_LIMIT = 4;
-
 export function activeStableV5PlanningWindows(graph: WeeklyPlanningFactGraphV5) {
   if (graph.factLifecycles.length === 0) return [...graph.planningWindows];
   const activeIds = new Set(

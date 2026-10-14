@@ -1,3 +1,5 @@
+import { truncateMiddleWithMarker } from '../harness/codexUtf8Budget';
+import { boundContextJson } from '../harness/codexJsonPreview';
 import type { WeeklyPlanningTraceResponseSource } from './weeklyPlanningTraceTypes';
 
 export type WeeklyPlanningDialogueRendererTraceActionKind =
@@ -79,76 +81,19 @@ export function resetWeeklyPlanningDialogueRendererPromptContextsForTest(): void
   pendingPromptContexts.clear();
 }
 
-function utf8Bytes(value: string): Uint8Array {
-  return new TextEncoder().encode(value);
-}
-
-function decodeUtf8Prefix(bytes: Uint8Array, maxBytes: number): string {
-  for (let length = Math.min(bytes.byteLength, Math.max(0, maxBytes)); length >= 0; length -= 1) {
-    try {
-      return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes.slice(0, length));
-    } catch {
-      // Back up when the byte limit cuts a multi-byte code point.
-    }
-  }
-  return '';
-}
-
-function decodeUtf8Suffix(bytes: Uint8Array, maxBytes: number): string {
-  const start = Math.max(0, bytes.byteLength - Math.max(0, maxBytes));
-  for (let offset = start; offset <= bytes.byteLength; offset += 1) {
-    try {
-      return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes.slice(offset));
-    } catch {
-      // Advance when the suffix starts in the middle of a multi-byte code point.
-    }
-  }
-  return '';
-}
-
 function boundedText(value: string, maxBytes: number): string {
-  const bytes = utf8Bytes(value);
-  if (bytes.byteLength <= maxBytes) return value;
-  const marker = '…[trace truncated]';
-  const markerBytes = utf8Bytes(marker).byteLength;
-  if (maxBytes <= markerBytes) return decodeUtf8Prefix(bytes, maxBytes);
-  return `${decodeUtf8Prefix(bytes, maxBytes - markerBytes)}${marker}`;
+  return truncateMiddleWithMarker(value, maxBytes, '…[trace truncated]');
 }
 
 function boundedNullableText(value: string | null, maxBytes: number): string | null {
   return value === null ? null : boundedText(value, maxBytes);
 }
 
-function boundedJsonValue(value: unknown, maxBytes: number): unknown {
-  let serialized: string;
-  try {
-    serialized = JSON.stringify(value) ?? 'null';
-  } catch {
-    return { traceTruncated: true, reason: 'unserializable' };
-  }
-  const bytes = utf8Bytes(serialized);
-  if (bytes.byteLength <= maxBytes) {
-    try {
-      return JSON.parse(serialized);
-    } catch {
-      return { traceTruncated: true, reason: 'invalid_serialized_json' };
-    }
-  }
-  const markerBudget = Math.min(512, Math.max(128, Math.floor(maxBytes * 0.15)));
-  const contentBudget = Math.max(256, maxBytes - markerBudget);
-  return {
-    traceTruncated: true,
-    originalBytes: bytes.byteLength,
-    jsonHead: decodeUtf8Prefix(bytes, Math.floor(contentBudget * 0.65)),
-    jsonTail: decodeUtf8Suffix(bytes, Math.floor(contentBudget * 0.35)),
-  };
-}
-
 export function boundWeeklyPlanningDialogueRendererTraceForTransport(
   trace: WeeklyPlanningDialogueRendererTrace,
 ): WeeklyPlanningDialogueRendererTrace {
-  const rememberedPromptContext = takeWeeklyPlanningDialogueRendererPromptContext(trace.actionId);
-  const promptContext = trace.request?.promptContext ?? rememberedPromptContext;
+  const promptContext = trace.request?.promptContext
+    ?? takeWeeklyPlanningDialogueRendererPromptContext(trace.actionId);
   return {
     actionId: boundedNullableText(trace.actionId, 512),
     actionKind: trace.actionKind,
@@ -163,7 +108,7 @@ export function boundWeeklyPlanningDialogueRendererTraceForTransport(
           previewCount: trace.request.previewCount,
           ...(promptContext === undefined
             ? {}
-            : { promptContext: boundedJsonValue(promptContext, 12 * 1024) }),
+            : { promptContext: boundContextJson(promptContext, 12 * 1024) }),
         }
       : null,
     response: {
