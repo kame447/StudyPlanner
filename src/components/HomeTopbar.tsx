@@ -4,7 +4,7 @@ import { Menu } from 'lucide-react';
 import { collectStudyDates } from '../lib/studyStreak';
 import { StudyStreakFlame } from './StudyStreakFlame';
 import { useSharedStudyStreak } from './StudyStreakContext';
-import { buildHomeDashboardModel } from '../lib/homeDashboard';
+import { toIsoDate } from '../lib/date';
 import type { Actual, Plan, TodoTask, User } from '../types/domain';
 import { AnnouncementsButton } from './AnnouncementsButton';
 import { HomeDateDisplay } from './HomeDateDisplay';
@@ -24,25 +24,22 @@ export function HomeTopbar({
   user,
   plans,
   actuals,
-  todos,
   onOpenProfile,
   onOpenSettings,
   onOpenStudyStreak,
 }: HomeTopbarProps) {
-  const now = useHomeDisplayClock();
-  const dashboard = useMemo(
-    () => buildHomeDashboardModel({ plans, actuals, todos, now }),
-    [actuals, plans, todos, now],
-  );
-
-  const studiedToday = useMemo(() => collectStudyDates({ userId: user.id, plans, actuals, today: dashboard.today }).includes(dashboard.today),
-    [user.id, plans, actuals, dashboard.today]);
-
+  const today = toIsoDate(useHomeDisplayClock());
   const shared = useSharedStudyStreak();
-  const verifiedModel = shared?.userId === user.id && shared.today === dashboard.today
-    && shared.plans === plans && shared.actuals === actuals && shared.controller.model?.historyComplete
-    && shared.controller.model.today === dashboard.today
-    ? shared.controller.model : null;
+  const snapshot = shared?.userId === user.id && shared.today === today
+    && shared.plans === plans && shared.actuals === actuals ? shared : null;
+  // The shared calendar has already normalized these records. Standalone
+  // headers use the same predicate without constructing a full dashboard.
+  const studiedToday = useMemo(() => snapshot
+    ? snapshot.displayModel.studyDates.includes(today)
+    : collectStudyDates({ userId: user.id, plans, actuals, today }).includes(today),
+  [snapshot, user.id, plans, actuals, today]);
+  const verifiedModel = snapshot?.controller.model?.historyComplete && snapshot.controller.model.today === today
+    ? snapshot.controller.model : null;
   const currentStreak = verifiedModel?.currentStreak ?? null;
   const bestStreak = verifiedModel?.bestStreak ?? null;
 
@@ -60,7 +57,7 @@ export function HomeTopbar({
         </div>
       </button>
 
-      <HomeDateDisplay date={dashboard.today} />
+      <HomeDateDisplay date={today} />
 
       <div className="home-top-actions">
         <AnnouncementsButton userId={user.id} />

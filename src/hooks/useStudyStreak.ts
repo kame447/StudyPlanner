@@ -59,6 +59,9 @@ export function useStudyStreak(userId: string, today: string, repository: StudyS
         return;
       }
       try {
+        if (!repository.canUseRestDays && nextAutomaticStudyRestDate({ ...accepted, today })) {
+          throw new Error('このブラウザーではお休みチケットを安全に保存できません。');
+        }
         if (repository.canUseRestDays) {
           let date: string | null;
           while (current() && (date = nextAutomaticStudyRestDate({ ...accepted, today }))) {

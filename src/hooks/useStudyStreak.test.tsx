@@ -87,6 +87,18 @@ describe('automatic streak protection and display lifetime', () => {
     act(() => renderer.unmount());
   });
 
+  it('explains an unsupported safe-write capability instead of silently skipping an eligible gap', async () => {
+    const repo = { ...repository(), canUseRestDays: false };
+    let state!: ReturnType<typeof useStudyStreak>;
+    function Harness() { state = useStudyStreak('owner', '2026-10-09', repo); return null; }
+    let renderer!: ReturnType<typeof create>;
+    await act(async () => { renderer = create(<Harness />); });
+    expect(state.model?.availableTickets).toBe(1);
+    expect(state.saveError).toContain('安全に保存できません');
+    expect(repo.useRestDay).not.toHaveBeenCalled();
+    act(() => renderer.unmount());
+  });
+
   it('shows a confirmed cache immediately and preserves it when background refresh fails', async () => {
     const repo = repository(), cached = { ...history(), restDays: [{ date: '2026-10-08' }] };
     repo.peek = () => cached;
