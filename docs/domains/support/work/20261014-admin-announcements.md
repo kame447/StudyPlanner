@@ -36,3 +36,8 @@ The final budget command exits 1 for six existing aggregate/largest-asset limits
 - Largest CSS chunk is unchanged: 433,224 raw / 70,723 gzip bytes.
 
 The baseline archive did not create another Git branch or change either dependency manifest. Exact result receipts are retained with the local feature artifacts; the existing capacity issue remains separate from this announcement implementation.
+
+
+## Browser-suite routing follow-up
+
+After commit `39bff1fe`, independent CI-selection review found the dedicated announcement harness cases were also selected by the ordinary app's Browser Regression configuration. The ordinary configuration now excludes `announcements.spec.mjs`, matching the existing inquiry harness boundary. The dedicated Admin Overview Render job remains its only owner. Discovery confirms zero announcement cases in the normal suite and all eight in the admin suite. This is a test-routing configuration correction, not a native test pass. The 8,480-test full receipt above precedes this one-line routing follow-up; final combined-content verification is owned by the integration task.
