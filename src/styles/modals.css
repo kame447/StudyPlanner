@@ -1774,3 +1774,7 @@
 .day-timetable-time-fields input {
   min-width: 0;
 }
+
+.modal-card.daily-detail-modal .day-timetable-time-fields input {
+  font-size: max(1rem, 16px);
+}

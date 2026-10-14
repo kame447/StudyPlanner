@@ -1,9 +1,23 @@
 # Day timetable visibility and occurrence removal
 
-Status: active local continuation; latest-main integration and day time editing in progress; publication and merge held
+Status: scoped desktop time-input repair prepared; default-parallel aggregate and post-fix native CI remain open
 Branch: `fix/day-timetable-occurrence-controls`
-Base: `3a1e60b9`
+Current main base: `90211bdcf39dd9bce66211df129949a5668a0de4`
 PR: https://github.com/kame447/StudyPlanner/pull/541 (draft)
+
+## Desktop time-input readability repair — 2026-10-14 10:39 UTC
+
+- Existing PR #541 / branch reused. Repair base: local `5231b46e7e4281e74c9b8a101cef184ceed616a2`; the release coordinator owns remote publication and merge. The separate Day selection-suppression task does not own this modal CSS.
+- Native Browser Regression [run 38547576335](https://github.com/kame447/StudyPlanner/actions/runs/38547576335), Chromium job `115797327220`, checked out merge SHA `565a10ce190937489849cfc3c1bd7f70d9c34bca`. Result: **688 passed / 1 failed**. The 1280px time-editor case measured **13.44px** against the unchanged minimum **16px**, identically on its initial attempt and retry. The 390px case passed. The failing desktop attempt stops before save/cancel/Undo, so those later actions are not claimed as passed on desktop.
+- Cause: `.modal-card.daily-detail-modal .field input` uses `0.84rem` (13.44px with the observed 16px root). The mobile/coarse-pointer focus policy forces 16px, explaining the width-dependent outcome. A wrong input target or transient readiness failure is inconsistent with the time-editor screenshot and identical retry measurement.
+- Minimal repair: a scoped `.modal-card.daily-detail-modal .day-timetable-time-fields input` rule, after the generic modal rule, uses `max(1rem, 16px)`. Only the occurrence-time fields change. Save/admission behavior, timetable/history, global modal sizing, test thresholds, retry policy and browser targets are unchanged.
+- Regression: the stylesheet contract failed before this rule and passed after it; **3 focused files / 11 tests passed**. Fresh app TypeScript and production build passed (6.76s). A full direct Vitest run with two workers passed **890 files / 8,523 tests**, with 11 skipped files / 54 skipped tests / 1 todo (216.20s).
+- The requested regular `npm run verify` ran once with `DEV_LAN_HOST=127.0.0.1 WRANGLER_SEND_METRICS=false DO_NOT_TRACK=1`. Fresh non-incremental app/Worker checks and runtime type regeneration passed. Its default-parallel unit stage returned **8,522 passed / 1 failed**: the unchanged first `weeklyPlanningCandidateChoiceConnection` application case exceeded its 5,000ms limit at 5,023ms. The aggregate build was therefore not reached; the separate build success above is not an aggregate pass.
+- Known concurrent-work evidence: the announcements full run ended at 10:38:38 UTC and the streak full run finished around 10:41 UTC (unit started 10:39:38 and took 75.17s). Neither overlaps this Day unit run at 10:42:17–10:43:41 UTC. Do not attribute the timeout to simultaneous full runs without additional evidence.
+- One isolated, single-worker run of that existing Jev file then passed all **68 cases**, with the failed case taking **1,247ms**. No Jev code, timeout, assertion or runner setting was changed. The slower default-parallel result is consistent with resource pressure, but the exact timeout cause is not proven; all remaining official CI gates remain required. No identical full retry was performed.
+- Before/after receipts match all **2,215 non-documentation input files** and **362 installed package manifests**. Source fingerprint `a6cdec402f10b17d5de61847c291a809cc2b8da8dfc74866a842702b157969f9`; installed-manifest fingerprint `e2af2ff6430a08c3f9eba8dde8be2d5636dc4ad7406fc76d116d2bd5c1246610`. Generated runtime types SHA-256 `c96c8ed5d4ba9748b9b191362998ccf92a7a7ae97a7f8c4a7bce008b1fedef79`. Node 24.19.0 / TypeScript 5.9.3 / Vitest 3.2.7 / Vite 6.4.3 / Wrangler 4.147.0. Native post-fix acceptance remains pending; the local Chromium socket restriction is not retried.
+- Evidence: `/workspace/shared/day-controls-native-20261014/browser-failure.log`; compact image artifact `11886078086`, SHA-256 `dc5d9cfc0aace09ae51278bb3a5d1fe4b22e5d0c71c09c576286fafbade6b5a7`, downloaded and matched. Both 390px and 1280px time-editor screenshots were inspected. Local baseline/focused/type/build logs are under this worktree's ignored `artifacts/day-font-repair/`.
+- Exit: exact-content fresh full checks, publish only through the release coordinator, then require the unchanged computed-font/containment and full time-edit flow to pass on native Chromium and mobile WebKit. Old failed results remain failures until that new-head evidence exists.
 
 ## Local implementation verification — 2026-10-14 09:12 UTC
 
