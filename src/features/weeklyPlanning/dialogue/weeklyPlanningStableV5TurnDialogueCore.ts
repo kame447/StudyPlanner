@@ -233,9 +233,23 @@ function createRenderInput(params: {
     : params.input.selectedDate;
   // Evidence is used for optional examples only when the question genuinely
   // asks which activity to plan. It is not fed into semantic acceptance.
+  const isUnspecifiedActivityQuestion = questionIntent?.kind === 'schedulable_work_detail'
+    && questionIntent.mode === 'missing_task_identity';
+  // The real first-turn "今日の予定立てて" trace can have a document-scoped
+  // missing-tasks uncertainty instead of the work-item question above.
+  // Do not offer historical work when a concrete task is already accepted or
+  // the uncertainty concerns a particular task or another semantic field.
+  const acceptedTaskFacts = planningInformation?.['tasks'];
+  const isDocumentMissingTasksQuestion = params.questionCode === 'semantic_uncertainty'
+    && questionIntent?.kind === 'resolution_question'
+    && questionIntent.resolutionKind === 'semantic_clarification'
+    && questionIntent.ambiguityField === 'tasks'
+    && questionTarget?.collection === 'uncertainties'
+    && questionTarget.fact.targetFactId === null
+    && Array.isArray(acceptedTaskFacts)
+    && acceptedTaskFacts.length === 0;
   const referenceContext = params.actionKind === 'question'
-    && questionIntent?.kind === 'schedulable_work_detail'
-    && questionIntent.mode === 'missing_task_identity'
+    && (isUnspecifiedActivityQuestion || isDocumentMissingTasksQuestion)
     ? selectWeeklyPlanningDialogueReferenceContext({
         ownerId: params.input.userId,
         referenceDate: params.input.requestContext?.currentDate ?? params.input.selectedDate,

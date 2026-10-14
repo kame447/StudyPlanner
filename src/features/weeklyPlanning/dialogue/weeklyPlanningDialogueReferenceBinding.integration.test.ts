@@ -92,6 +92,68 @@ describe('read-only reference context enters only appropriate conversational ren
     expect(JSON.stringify(capture.mock.calls[0][0])).not.toContain('private');
   });
 
+  it('personalizes the real first-turn document-scoped missing-tasks uncertainty, not just generic work-item questions', async () => {
+    const graph = createEmptyWeeklyPlanningFactGraphV5();
+    graph.revision = 1;
+    graph.uncertainties.push({
+      id: 'uncertainty-first-turn', field: 'tasks', targetFactId: null,
+      reason: '予定へ入れる活動が未指定',
+      createdRevision: 1,
+      source: {
+        conversationId: 'weekly-conversation', turnId: 'first-turn',
+        semanticLocalId: 'missing-tasks', sourceText: USER_TEXT,
+        origin: 'user',
+      },
+    });
+    const original = pendingResult('semantic_uncertainty');
+    const state = {
+      ...original.state,
+      lastQuestionContext: {
+        ...original.state.lastQuestionContext!,
+        topicId: 'uncertainty-first-turn',
+      },
+    };
+    const { capture, ports } = rendererSpy();
+    await renderWeeklyPlanningStableV5AssistantMessageCore({
+      input: turn(),
+      result: { ...original, state, stableV5Graph: graph },
+    }, ports);
+    expect(capture.mock.calls[0][0]).toMatchObject({
+      questionCode: 'semantic_uncertainty',
+      questionIntent: {
+        kind: 'resolution_question',
+        resolutionKind: 'semantic_clarification',
+        ambiguityField: 'tasks',
+      },
+      referenceContext: {
+        referenceDate: DATE,
+        pastActivities: [{ source: 'completed', label: '数学の復習', date: '2026-10-11' }],
+      },
+    });
+
+    // It must not introduce unrelated history once a real task is already accepted.
+    const withTask = structuredClone(graph);
+    withTask.tasks.push({
+      id: 'accepted-task', title: '研究', category: 'study',
+      createdRevision: 2,
+      source: graph.uncertainties[0].source,
+    });
+    const blocked = rendererSpy();
+    await renderWeeklyPlanningStableV5AssistantMessageCore({
+      input: turn(), result: { ...original, state, stableV5Graph: withTask },
+    }, blocked.ports);
+    expect(blocked.capture.mock.calls[0][0].referenceContext).toBeUndefined();
+
+    // Do not reinterpret other ambiguous fields as a missing activity.
+    const otherAmbiguity = structuredClone(graph);
+    otherAmbiguity.uncertainties[0].field = 'work_breakdown';
+    const other = rendererSpy();
+    await renderWeeklyPlanningStableV5AssistantMessageCore({
+      input: turn(), result: { ...original, state, stableV5Graph: otherAmbiguity },
+    }, other.ports);
+    expect(other.capture.mock.calls[0][0].referenceContext).toBeUndefined();
+  });
+
   it('does not inject history into an unrelated effort question', async () => {
     const { capture, ports } = rendererSpy();
     await renderWeeklyPlanningStableV5AssistantMessageCore({
