@@ -458,7 +458,7 @@ function MonthEventEditor({
           </button>
         </div>
 
-        {editScopePrompt ? <section className="assistant-feedback-card" role="group" aria-label="繰り返し予定の更新範囲">
+        {editScopePrompt ? <section className="assistant-feedback-card month-event-edit-scope" role="group" aria-label="繰り返し予定の更新範囲">
           <strong>繰り返し予定の更新範囲</strong>
           <p className="detail-note">この予定だけを変更するか、この日以降の予定も変更するかを選んでください。</p>
           <div className="row-actions">

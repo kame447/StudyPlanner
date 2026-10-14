@@ -57,3 +57,14 @@ Compared with the existing exact-base budget report: total JavaScript +5,111 raw
 2. Integrate current main, retaining PR #655's independent validator fix and other approved changes.
 3. Preserve the newly added mobile WebKit matrix selection for `month-event-range.spec.mjs`; validate its rendered scope prompt during native checks.
 4. Preserve the selected integrated checks above, run native desktop/mobile browser gates, inspect the rendered scope prompt, then follow authorized publication and post-main checks. Local component, adapter and Emulator evidence does not establish authenticated production UI behavior or cross-device concurrency guarantees.
+
+## Native layout correction — 2026-10-14 18:20 UTC
+
+PR #659 native Chromium found a real layout defect in both new edit-scope cases. The cancel button was enabled and stable, but the disabled title input intercepted its pointer target on the initial attempt and retry. The screenshots show the wrapped cancel row outside the confirmation card and underneath the title input.
+
+The editor stylesheet models three direct grid regions (header, scrollable input body, footer). Inserting the optional confirmation as a fourth child incorrectly placed it in the flexible body row. The minimal correction gives the confirmation its own explicit, shrinkable row only while it exists, with its own vertical overflow. The normal three-row editor is unchanged; no z-index, pointer-event suppression, forced click or timeout increase is used.
+
+- Related local checks: 47 tests / 5 files passed, application typecheck passed, and production build passed. CSS source regression pins the optional-row contract.
+- Existing native single/future cases retain cancellation/no-write/save/previous-occurrence assertions. They additionally require non-overlapping confirmation/body rectangles and normal hit-testing of all three buttons at 320 × 568, 812 × 375 with 200% root text size, and 1280 × 720. Native syntax and discovery still select 12 cases per Chromium/mobile WebKit engine.
+- The 200% check changes the page root font size; it is not evidence of physical-device/OS text scaling. Local component/style tests and discovery are not a browser-layout pass. Corrected native execution and new screenshots are still required.
+- Independent image/CSS review agreed that the grid-region mismatch causes the failure and found no blocking concern in this bounded correction. Other native failures and elapsed job limits remain separately classified by the release owner.
