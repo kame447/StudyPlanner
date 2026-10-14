@@ -1,3 +1,6 @@
+import type { ControlledCandidateSemanticContribution } from './weeklyPlanningControlledCandidateDomains';
+import { canonicalCandidateSerialization } from './candidateSelection/canonical';
+import { validateWeeklyPlanningSemanticValueV5 } from '../semantic/weeklyPlanningSemanticValidatorV5';
 import { resolveWeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { validateWeeklyPlanningFactGraphValueV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
@@ -18,9 +21,14 @@ import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlan
 export async function continueWeeklyPlanningSelectedCandidateTurn(
   input: WeeklyPlanningTurnExecutionInput & ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
   selectedGraph: WeeklyPlanningFactGraphV5,
+  semanticContribution?: ControlledCandidateSemanticContribution,
 ) {
   const graph = structuredClone(selectedGraph);
   if (!validateWeeklyPlanningFactGraphValueV5(graph).graph) throw new Error('Invalid selected candidate graph.');
+  if (semanticContribution && (semanticContribution.canonicalization.status !== 'applied'
+    || !validateWeeklyPlanningSemanticValueV5(semanticContribution.document).document
+    || canonicalCandidateSerialization(semanticContribution.canonicalization.graph) !== canonicalCandidateSerialization(graph)))
+    throw new Error('Invalid formal candidate contribution.');
   const runtimeSession = getOrCreateWeeklyPlanningStableV5RuntimeSession({ ownerId: input.userId, conversationId: input.conversationId });
   const requestContext = stableV5RequestContextForInput(input).context;
   const pendingQuestionPresentation = resolveWeeklyPlanningQuestionPresentationFreshness({
@@ -41,13 +49,13 @@ export async function continueWeeklyPlanningSelectedCandidateTurn(
         pipelineVersion: WEEKLY_PLANNING_SEMANTIC_PIPELINE_VERSION_V5,
         status: 'scheduler_needs_resolution', graph, scheduler: null,
         // C5 selects existing facts. It creates no new document or authorization act.
-        normalization: { status: 'accepted', document: null, diagnostics: {
+        normalization: { status: 'accepted', document: semanticContribution?.document ?? null, diagnostics: {
           schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
           normalizerVersion: WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5,
           jsonSchemaName: 'candidate_choice', attemptCount: 0, repairAttempted: false,
           requestBytes: [], responseLengths: [], latencyMs: 0, validationErrors: [], providerError: null,
         } },
-        canonicalization: { status: 'applied', graph, diff, errors: [], localToFactId: {} },
+        canonicalization: semanticContribution?.canonicalization ?? { status: 'applied', graph, diff, errors: [], localToFactId: {} },
       },
     }, { controlledSelection: true });
     const result = weeklyPlanningStableV5ResultProjector.core({ input, result: core });

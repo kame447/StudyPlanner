@@ -505,11 +505,11 @@ function taskForTarget(params: {
     decompositionStatus: 'atomic' as const,
     category: params.target.taskCategory,
     title: params.target.taskTitle,
-    study: params.target.component
+    study: params.target.taskCategory === 'study'
       ? {
           purpose: 'unknown' as const,
           contextLabel: null,
-          components: [{
+          components: params.target.component ? [{
             localId: 'focused_contextual_component',
             existingPublicId: params.target.component.publicId,
             parentLocalId: null,
@@ -518,7 +518,7 @@ function taskForTarget(params: {
             workloads: [workload],
             durableContextSignals: [],
             sourceText: params.sourceText,
-          }],
+          }] : [],
         }
       : null,
     workloads: params.target.component ? [] : [workload],

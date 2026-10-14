@@ -1,3 +1,7 @@
+import type { ControlledCandidateSemanticContribution } from './weeklyPlanningControlledCandidateDomains';
+import type { WeeklyPlanningSemanticNormalizerInputV5 } from '../semantic/weeklyPlanningSemanticNormalizerContractsV5';
+import { createStableV5SemanticPublicStateSummary, STABLE_V5_RECENT_TURN_LIMIT } from './weeklyPlanningStableV5SemanticContext';
+import { readC5RuntimeGraph } from './c5LocalSelection/controlledCommit';
 import type { WeeklyPlanningSemanticTurnObservation } from '../trace/weeklyPlanningSemanticCensus';
 import type {
   Actual,
@@ -60,7 +64,9 @@ export interface ExecuteWeeklyPlanningTurnRuntimeParams {
 }
 
 export interface WeeklyPlanningTurnRuntimeGateway {
-  continueSelectedTurn?(params: ExecuteWeeklyPlanningTurnRuntimeParams, graph: WeeklyPlanningFactGraphV5): Promise<WeeklyPlanningTurnExecutionResult>;
+  continueSelectedTurn?(params: ExecuteWeeklyPlanningTurnRuntimeParams, graph: WeeklyPlanningFactGraphV5, semanticContribution?: ControlledCandidateSemanticContribution): Promise<WeeklyPlanningTurnExecutionResult>;
+  candidateRequestContext?(pending: WeeklyPlanningPendingTurn, options: Pick<ExecuteWeeklyPlanningTurnRuntimeParams, 'timeZone' | 'weekStartsOn'>): ReturnType<typeof createWeeklyPlanningTurnRequestContext>;
+  prepareCandidateInput?(params: ExecuteWeeklyPlanningTurnRuntimeParams): { normalizerInput: WeeklyPlanningSemanticNormalizerInputV5; requestContext: ReturnType<typeof createWeeklyPlanningTurnRequestContext> };
   execute(
     params: ExecuteWeeklyPlanningTurnRuntimeParams,
   ): Promise<WeeklyPlanningTurnExecutionResult>;
@@ -108,9 +114,25 @@ export function createWeeklyPlanningTurnRuntimeGateway(
   services: WeeklyPlanningTurnRuntimeGatewayServices = defaultServices,
 ): WeeklyPlanningTurnRuntimeGateway {
   return {
-    async continueSelectedTurn(params, graph) {
+    async continueSelectedTurn(params, graph, semanticContribution) {
       const { continueWeeklyPlanningSelectedCandidateTurn } = await import('./weeklyPlanningStableV5CandidateContinuation');
-      return continueWeeklyPlanningSelectedCandidateTurn(executionInput(params, services.bindStableV5SessionScope), graph);
+      return continueWeeklyPlanningSelectedCandidateTurn(executionInput(params, services.bindStableV5SessionScope), graph, semanticContribution);
+    },
+    candidateRequestContext(pending, options) {
+      return createWeeklyPlanningTurnRequestContext({ startedAtIso: pending.startedAt,
+        timeZone: options.timeZone ?? resolvedTimeZone(), weekStartsOn: options.weekStartsOn ?? 'monday' });
+    },
+    prepareCandidateInput(params) {
+      const input = executionInput(params, services.bindStableV5SessionScope);
+      const graph = readC5RuntimeGraph(input.userId, input.conversationId);
+      return { requestContext: input.requestContext, normalizerInput: {
+        userText: input.userText, supplementalContext: input.supplementalContext, selectedStarterTarget: input.selectedStarterTarget,
+        traceRequestId: input.traceRequestId, committedGraph: structuredClone(graph),
+        recentConversation: input.messages.slice(-STABLE_V5_RECENT_TURN_LIMIT).map(({ role, content }) => ({ role, content })),
+        publicStateSummary: createStableV5SemanticPublicStateSummary({ graph, messages: input.messages,
+          previousState: input.previousState, inputStateRevision: input.inputStateRevision, ownerId: input.userId,
+          currentDate: input.requestContext.currentDate, userText: input.userText, studyMaterials: input.studyMaterials ?? [] }),
+      } };
     },
     async execute(params) {
       return services.executeTurn(executionInput(params, services.bindStableV5SessionScope));
