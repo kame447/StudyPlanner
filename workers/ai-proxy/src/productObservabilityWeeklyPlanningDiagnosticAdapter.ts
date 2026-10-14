@@ -23,7 +23,7 @@ import {
   createWeeklyPlanningTraceSubject,
   isWeeklyPlanningLegacyTraceSessionHandle,
   isWeeklyPlanningTraceSessionId,
-  parseWeeklyPlanningTraceHmacSecrets,
+  resolveWeeklyPlanningTraceHmacSecretRing,
   resolveWeeklyPlanningTraceEpoch,
   weeklyPlanningTraceExpireAt,
 } from './weeklyPlanningTracePrivacy';
@@ -390,10 +390,11 @@ export class ProductObservabilityWeeklyPlanningDiagnosticAdapter {
     const actor = await createWeeklyPlanningTraceSubject(
       adminUid,
       epoch,
-      parseWeeklyPlanningTraceHmacSecrets(
-        rawSecrets,
-        this.env.WEEKLY_PLANNING_TRACE_HMAC_SECRETS_EXTENSION,
-      ),
+      await resolveWeeklyPlanningTraceHmacSecretRing({
+        raw: rawSecrets,
+        extension: this.env.WEEKLY_PLANNING_TRACE_HMAC_SECRETS_EXTENSION,
+        now,
+      }),
     );
     const id = `trace-audit:${now.getTime()}:${crypto.randomUUID()}`;
     await this.firestore.setImmutableDocument(TRACE_ACCESS_AUDIT, id, {

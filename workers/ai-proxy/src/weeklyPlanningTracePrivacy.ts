@@ -292,6 +292,70 @@ export function parseWeeklyPlanningTraceHmacSecrets(
   return { ...primary, ...additional };
 }
 
+/**
+ * Derive missing future trace-epoch keys from the oldest retained primary key.
+ * Explicit keys always win, including keys supplied by the optional extension.
+ *
+ * We must NOT change the 30-day epoch numbering: older canonical IDs and HMAC
+ * subject tokens were generated from those exact epochs and explicit secrets.
+ *
+ * The oldest primary secret is the fixed derivation root. Do not rotate/remove
+ * that primary key without a migration plan for derived trace IDs within the
+ * retention window. The derived bytes and the root are never logged.
+ */
+export async function resolveWeeklyPlanningTraceHmacSecretRing(params: {
+  raw: string;
+  extension?: string;
+  now?: Date | string | number;
+  cryptoApi?: Crypto;
+}): Promise<TraceHmacSecretRing> {
+  const explicitRing = parseWeeklyPlanningTraceHmacSecrets(params.raw, params.extension);
+  const primary = parseWeeklyPlanningTraceHmacSecrets(params.raw);
+  const primaryEpochNames = Object.keys(primary)
+    .filter((name) => Number.isSafeInteger(Number(name)))
+    .sort((left, right) => Number(left) - Number(right) || left.localeCompare(right));
+  if (primaryEpochNames.length === 0) {
+    throw new Error('trace HMAC secret ring has no valid epoch');
+  }
+  const rootEpoch = primaryEpochNames[0];
+  const current = Number(resolveWeeklyPlanningTraceEpoch(params.now ?? new Date()));
+  const oldestRetained = Math.max(
+    current - Math.ceil(WEEKLY_PLANNING_TRACE_RETENTION_DAYS / WEEKLY_PLANNING_TRACE_EPOCH_DAYS),
+    Number(rootEpoch) + 1,
+  );
+  if (current < oldestRetained) return explicitRing;
+  const absent: string[] = [];
+  for (let epoch = oldestRetained; epoch <= current; epoch += 1) {
+    if (!Object.prototype.hasOwnProperty.call(explicitRing, String(epoch))) {
+      absent.push(String(epoch));
+    }
+  }
+  if (absent.length === 0) return explicitRing;
+
+  const subtle = (params.cryptoApi ?? crypto).subtle;
+  const encoder = new TextEncoder();
+  const root = await subtle.importKey(
+    'raw',
+    encoder.encode(primary[rootEpoch]),
+    'HKDF',
+    false,
+    ['deriveBits'],
+  );
+  const salt = encoder.encode('laplans:weekly-planning-trace:derived-epoch-key:v1');
+  const derived = await Promise.all(absent.map(async (epoch): Promise<[string, string]> => {
+    const bits = await subtle.deriveBits({
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt,
+      info: encoder.encode('trace-epoch:' + epoch),
+    }, root, 256);
+    const hex = Array.from(new Uint8Array(bits), (byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
+    return [epoch, hex];
+  }));
+  return { ...explicitRing, ...Object.fromEntries(derived) };
+}
+
 export async function createWeeklyPlanningTraceSubject(
   uid: string,
   epoch: string,
