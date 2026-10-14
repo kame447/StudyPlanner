@@ -16,12 +16,14 @@ import '../styles/admin-phase5.css';
 import '../styles/admin-phase6.css';
 import '../styles/admin-phase7.css';
 import '../styles/admin-phase8.css';
+import '../styles/admin-mobile.css';
 import { AdminGuard } from './AdminGuard';
 import { AdminRoutes } from './AdminViews';
 
 export function AdminApp({
   authSession: injectedAuthSession,
-}: { authSession?: AuthSessionService } = {}) {
+  onReturnToApp,
+}: { authSession?: AuthSessionService; onReturnToApp?: () => void } = {}) {
   const authSession = useMemo(
     () => injectedAuthSession ?? createAuthSessionService(),
     [injectedAuthSession],
@@ -68,9 +70,18 @@ export function AdminApp({
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  const returnHeader = <header className="admin-return-header">
+    <a href="/" className="admin-console-return-link" onClick={onReturnToApp ? (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault(); onReturnToApp();
+    } : undefined}><ArrowLeft aria-hidden="true" size={18} />通常画面へ戻る</a>
+    <span>管理者画面</span>
+  </header>;
+
   if (!authResolved) {
     return (
       <div className="app-shell admin-app-shell admin-app-shell-state">
+        {returnHeader}
         <main className="admin-shell">
           <section className="admin-state-card panel" aria-live="polite">
             <strong>認証状態を確認しています</strong>
@@ -83,11 +94,11 @@ export function AdminApp({
   if (!userId) {
     return (
       <div className="app-shell admin-app-shell admin-app-shell-state">
+        {returnHeader}
         <main className="admin-shell">
           <section className="admin-state-card panel" role="alert">
             <strong>ログインが必要です</strong>
             <p>通常画面でログインしてから管理者画面を開いてください。</p>
-            <a className="ghost-button admin-header-link" href="/">通常画面へ戻る</a>
           </section>
         </main>
       </div>
@@ -105,6 +116,7 @@ export function AdminApp({
 
   return (
     <div className="app-shell admin-app-shell">
+      {returnHeader}
       <AdminGuard status={status}>
         <div className="admin-console-layout">
           <aside className="admin-console-sidebar">
@@ -115,6 +127,15 @@ export function AdminApp({
                 <small>Admin Console</small>
               </div>
             </div>
+
+            <label className="admin-mobile-navigation">管理メニュー
+              <select value={isUsersPage ? '/admin/users' : currentPath} onChange={(event) => navigate(event.target.value)}>
+                <option value="/admin">概要</option><option value="/admin/users">利用者</option>
+                <option value="/admin/ai">AI・API</option><option value="/admin/planning">学習計画</option>
+                <option value="/admin/logs">ログ</option><option value="/admin/system">システム</option>
+                <option value="/admin/inquiries">お問い合わせ</option><option value="/admin/announcements">お知らせ</option>
+              </select>
+            </label>
 
             <nav className="admin-console-nav" aria-label="管理者画面ナビゲーション">
               <button
@@ -179,10 +200,6 @@ export function AdminApp({
             </nav>
 
             <div className="admin-console-sidebar-footer">
-              <a href="/" className="admin-console-return-link">
-                <ArrowLeft aria-hidden="true" size={18} />
-                通常画面へ戻る
-              </a>
               <span>Admin Console</span>
             </div>
           </aside>

@@ -25,6 +25,9 @@ const observabilityStubPlugin = {
   enforce: 'pre',
   resolveId(source, importer) {
     const normalizedImporter = importer ? path.normalize(stripViteQuery(importer)) : '';
+    if (source === './LaplanceAppRoot' && normalizedImporter.endsWith('src/components/ApplicationRouteRoot.tsx')) {
+      return path.resolve(harnessDir, 'applicationRoot.stub.jsx');
+    }
     if (source === '../services/announcementService') return path.resolve(harnessDir, 'announcementService.stub.js');
     if (source === '../services/adminService' && normalizedImporter.endsWith(path.normalize('src/hooks/useAdminStatus.ts'))) {
       return path.resolve(harnessDir, 'inquiryAdminService.stub.js');
