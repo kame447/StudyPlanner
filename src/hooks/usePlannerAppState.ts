@@ -84,6 +84,7 @@ interface PlannerAppState {
   openCreatePlan: () => void;
   openEditPlan: (plan: Plan) => void;
   closePlanEditor: () => void;
+  createPlanDraft: (draft: PlanDraft) => Promise<void>;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   movePlanOccurrence: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
@@ -185,6 +186,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
+    createPlanDraft,
     movePlanOccurrence,
     deletePlan,
     confirmRecurringPlanScope,
@@ -380,6 +382,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     openEditPlan,
     closePlanEditor,
     savePlanDraft,
+    createPlanDraft,
     movePlanOccurrence,
     saveWeeklyApprovedPlan: approvalScope.bindMutation(saveWeeklyApprovedPlan),
     completeWeeklyApprovalOperation: approvalScope.bindMutation(completeWeeklyApprovalOperation),

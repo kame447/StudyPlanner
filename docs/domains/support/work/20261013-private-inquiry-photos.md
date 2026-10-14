@@ -1,11 +1,11 @@
 # Private inquiry photos
 
-Status: draft PR #636, current-main integration verification in progress; production Rules and resources pending separate approval
+Status: draft PR #636, approved Rules release integration in progress; R2 activation remains separately unapproved
 
 ## Ownership
 
 - Branch: `feat/private-inquiry-photos`
-- Current integration base: main `c32b0e27844453ffa800a6e4c733c009c2864ed5` (tree `e08d3b42cc30d5103d83ffd6b724c3c4bdb830b7`); original feature base `782f3559b40efaaa9fa3b176b63cbe8407b04e9e`.
+- Current integration base: main `f1ca9a7dbf0a3c2c2605a3718fc8e5dd2b2bfb75`, followed by the exact #635 class candidate (tree `53214538ecd9e294dd277f08d3ea1f79357d7c31`). Original feature base `782f3559b40efaaa9fa3b176b63cbe8407b04e9e`.
 - No active matching Issue/PR/branch found in the 2026-10-13 preflight. Prior inquiry PRs #612, #615 and #621 are merged; their completed scope is not reopened.
 - Scope: JPEG/PNG attachments on `/contact`, private lazy image access in the administrator inbox, existing inquiry rate/idempotency/privacy boundaries.
 - Publication, final integrated verification, CI and merge are coordinated by the integration owner. No resource creation, billing change, permission grant or production deploy is performed in this implementation worktree.
@@ -16,7 +16,7 @@ Use a private Cloudflare R2 binding on the existing Worker. Firestore keeps an i
 
 Firebase Storage would require a second storage authorization/rules/deployment surface. Inline Firestore bytes would increase reads/document sizes. R2 behind the existing Worker gives the smallest isolated object-storage boundary; this choice would need revisiting if deployment cannot provide a private R2 binding or existing Firebase project configuration.
 
-Next: verify the ordinary merge with current main using fresh app/Worker types, full tests and production build, then publish the same branch and follow exact-head native CI. Implementation and earlier native proof are complete for the older base; that proof does not certify this changed integration snapshot. Production activation separately requires authorized storage/binding and staged Rules deployment. Local browser execution is known blocked by the environment and is not retried.
+Next: verify the cumulative f1ca + #635 + #636 snapshot with fresh app/Worker types, full tests/build and exact-head native CI, then hand it to the sole release owner for #635 → #636 adoption. The user approved the described photo metadata Rules change on 2026-10-14; R2 provisioning/binding/access/billing remains unapproved and untouched. The old local/native success is historical evidence for its exact tree. Local browser execution is known blocked and is not retried.
 
 ## Resume checkpoint — 2026-10-13 20:43 UTC
 
@@ -57,3 +57,11 @@ The existing Jev wire-compatibility test generates `.cache/j1-old-worker` from i
 - Historical exact-head `2ecde183` proof: 8,216 full tests, real Auth/Firestore Rules and build passed; Browser 656, dedicated Admin 57 and all six Matrix jobs passed. The 1080×1920 non-personal PNG was inspected at 375/1440px; decoded size, aspect ratio, 80vh and card containment were asserted. The bundle gate remained red on the same four pre-existing metrics. All prior runs were terminal; see [final old-head checkpoint](https://github.com/kame447/StudyPlanner/pull/636#issuecomment-6156032514).
 - Fresh exact-content full verification is next, serialized after the existing shared test lane. After success, publish a normal merge commit with the old published head and current main as parents, without force, then establish terminal native CI/Rules, Browser, dedicated Admin and Matrix results for that new head. Preserve the existing budget failure rather than changing thresholds.
 - Main merge is still blocked on the pending explicit production Rules permission confirmation. R2 creation/binding/access/billing remains unapproved and untouched. No production data, credentials or live R2 operation is used. Live R2, production authentication and physical devices remain unverified.
+
+## Approved release integration — 2026-10-14 03:05 UTC
+
+- The user approved the previously described owner/admin photo-metadata Rules changes. This does not approve new image-storage resources, bindings, persistent access or billing. The release owner alone adopts #635, verifies its Rules deployment, then adopts #636 and verifies its Rules/Pages/CI results.
+- Re-fetched remote #636 `dfdc8889189a705407ffda86fbe7194eb602ceba`, main `f1ca9a7dbf0a3c2c2605a3718fc8e5dd2b2bfb75` and the prior [final checkpoint](https://github.com/kame447/StudyPlanner/pull/636#issuecomment-6157292646). Prior local workspace/evidence files are absent after the environment reset; source was restored from the existing remote branch. No duplicate Issue/branch/PR was created, and no previous local evidence was claimed to remain present.
+- Normally merged the class owner's exact candidate `1de8077144f2a0b352495b0ef50a4e454bf480c1` (tree `53214538ecd9e294dd277f08d3ea1f79357d7c31`), which already includes main f1ca. Before this checkpoint update, photo integration `43509da81af621481db65bf9470b05348b6edf4c` has tree `5378aeb3b52f5cf780309979c19783bd2b745df0`. The merge is conflict-free. The only shared feature file is `firestore.rules`; both bounded permission blocks are preserved independently. The diff against the class candidate remains the same 29 photo-responsibility files.
+- Photo product, fixtures and Worker resource configuration are unchanged from dfdc8889. No R2 resource or binding is added. Without the binding, the existing unavailable-photo state preserves text submission. The existing test boundaries cover immutable metadata, shared cooldown, foreign-owner rejection, enabled/revoked administrators, private fixed-slot Worker storage and synthetic full-size rendering; they will be rerun on the final combined snapshot.
+- Fresh dependency installation is shared as a byte-verified copied installation, with separate per-worktree caches. Final full verification is serialized after the class owner's run. Completion requires fresh exact-content types/full tests/build and terminal CI/Rules, native Admin photo rendering, normal Browser and Matrix evidence. Existing bundle overages stay explicit and thresholds stay unchanged.
