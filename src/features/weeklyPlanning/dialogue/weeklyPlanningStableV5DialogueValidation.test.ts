@@ -69,6 +69,36 @@ describe('Stable V5 dialogue renderer validation', () => {
     },
   );
 
+  it('grounds a reference to an actual commitment but rejects a fabricated time', () => {
+    const renderInput = input({
+      questionCode: 'missing_schedulable_work',
+      actionId: 'stable-v5:request-1:missing_schedulable_work',
+      currentUserMessage: '今日の予定を立てたい',
+      planningInformation: null,
+      referenceContext: {
+        referenceDate: '2026-10-15',
+        pastActivities: [{ source: 'completed', label: '数学の復習', date: '2026-10-12' }],
+        targetDateCommitments: [{
+          source: 'existing_commitment', label: '塾バイト', category: 'other',
+          startTime: '19:00', endTime: '21:00',
+        }],
+      },
+    });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      response(renderInput, '以前は数学の復習をしていたようですね。今日は19:00から塾バイトの予定がありますが、何を進めたいですか？'),
+      renderInput,
+    )).toMatchObject({ status: 'rendered' });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      response(renderInput, '今日は18:45から塾バイトがあるので、何を進めたいですか？'),
+      renderInput,
+    )).toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
+    const noReference = { ...renderInput, referenceContext: undefined };
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(
+      response(noReference, '今日は19:00から塾バイトがあるので、何を進めたいですか？'),
+      noReference,
+    )).toMatchObject({ status: 'fallback', reason: 'ungrounded_text' });
+  });
+
   it('compares supported clock spellings by minutes symmetrically across the day', () => {
     for (const hour of [0, 1, 9, 12, 13, 21, 23]) for (const minute of [0, 5, 30, 59]) {
       const mm = String(minute).padStart(2, '0');
