@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addDays } from './date';
-import { buildStudyStreakModel, studyRestDayBlockReason, type StudyStreakInput } from './studyStreak';
+import { buildStudyStreakModel, collectStudyDates, nextAutomaticStudyRestDate, studyRestDayBlockReason, type StudyStreakInput } from './studyStreak';
 import { buildHomeDashboardModel } from './homeDashboard';
 import type { Actual } from '../types/domain';
 
@@ -66,10 +66,28 @@ describe('study streak and earned rest days', () => {
     expect(buildStudyStreakModel(input({ today: '2027-01-01', actuals: days('2026-12-26', 7) }))).toMatchObject({ currentStreak: 7, bestStreak: 7 });
   });
 
+  it('automatically selects only ended gaps in chronological order and preserves older manual spends', () => {
+    expect(nextAutomaticStudyRestDate(input())).toBeNull();
+    const source = input({ today: '2026-10-10' });
+    expect(nextAutomaticStudyRestDate(source)).toBe('2026-10-08');
+    expect(nextAutomaticStudyRestDate({ ...source, restDays: [{ date: '2026-10-08' }] })).toBeNull();
+    const legacy = input({ today: '2026-10-13', actuals: [...days('2026-10-01', 7), actual('2026-10-11')], restDays: [{ date: '2026-10-12' }] });
+    expect(nextAutomaticStudyRestDate(legacy)).toBeNull();
+    expect(nextAutomaticStudyRestDate({ ...source, historyComplete: false })).toBeNull();
+    expect(nextAutomaticStudyRestDate(input({ today: '2026-10-09', actuals: days('2026-10-02', 7) }))).toBeNull();
+  });
+
+  it('shares the same real-study qualification for the flame and streak, not rest protection', () => {
+    const source = input({ actuals: [...days('2026-10-01', 7), actual('2026-10-08', { actualEndTime: '09:00' })], restDays: [{ date: '2026-10-08' }] });
+    expect(collectStudyDates(source)).not.toContain(source.today);
+    expect(collectStudyDates({ ...source, actuals: [...source.actuals, actual('2026-10-08', { id: 'positive' })] })).toContain(source.today);
+  });
+
   it('rejects future use, duplicate use and use on a studied day', () => {
     expect(studyRestDayBlockReason(input(), '2026-10-09')).not.toBeNull();
     expect(studyRestDayBlockReason(input(), '2026-10-07')).not.toBeNull();
     expect(studyRestDayBlockReason(input({ restDays: [{ date: '2026-10-08' }] }), '2026-10-08')).not.toBeNull();
-    expect(studyRestDayBlockReason(input(), '2026-10-08')).toBeNull();
+    expect(studyRestDayBlockReason(input(), '2026-10-08')).not.toBeNull();
+    expect(studyRestDayBlockReason(input({ today: '2026-10-09' }), '2026-10-08')).toBeNull();
   });
 });

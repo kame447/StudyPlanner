@@ -1,20 +1,14 @@
 import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
 import { useMemo } from 'react';
-import { Flame, Menu } from 'lucide-react';
-import { buildHomeDashboardModel } from '../lib/homeDashboard';
+import { Menu } from 'lucide-react';
+import { collectStudyDates } from '../lib/studyStreak';
+import { StudyStreakFlame } from './StudyStreakFlame';
+import { useSharedStudyStreak } from './StudyStreakContext';
+import { toIsoDate } from '../lib/date';
 import type { Actual, Plan, TodoTask, User } from '../types/domain';
 import { AnnouncementsButton } from './AnnouncementsButton';
 import { HomeDateDisplay } from './HomeDateDisplay';
 import { UserAvatar } from './UserAvatar';
-
-export interface VerifiedStudyStreakSummary {
-  userId: string;
-  today: string;
-  plans: Plan[];
-  actuals: Actual[];
-  currentStreak: number;
-  bestStreak: number;
-}
 
 interface HomeTopbarProps {
   user: User;
@@ -24,42 +18,38 @@ interface HomeTopbarProps {
   onOpenProfile: () => void;
   onOpenSettings: () => void;
   onOpenStudyStreak?: () => void;
-  streakSummary?: VerifiedStudyStreakSummary | null;
 }
 
 export function HomeTopbar({
   user,
   plans,
   actuals,
-  todos,
   onOpenProfile,
   onOpenSettings,
   onOpenStudyStreak,
-  streakSummary,
 }: HomeTopbarProps) {
-  const now = useHomeDisplayClock();
-  const dashboard = useMemo(
-    () => buildHomeDashboardModel({ plans, actuals, todos, now }),
-    [actuals, plans, todos, now],
-  );
-
-  const verifiedSummary = streakSummary?.userId === user.id && streakSummary.today === dashboard.today
-    && streakSummary.plans === plans && streakSummary.actuals === actuals ? streakSummary : null;
-  const currentStreak = verifiedSummary?.currentStreak ?? null;
-  const bestStreak = verifiedSummary?.bestStreak ?? null;
+  const today = toIsoDate(useHomeDisplayClock());
+  const shared = useSharedStudyStreak();
+  const snapshot = shared?.userId === user.id && shared.today === today
+    && shared.plans === plans && shared.actuals === actuals ? shared : null;
+  // The shared calendar has already normalized these records. Standalone
+  // headers use the same predicate without constructing a full dashboard.
+  const studiedToday = useMemo(() => snapshot
+    ? snapshot.displayModel.studyDates.includes(today)
+    : collectStudyDates({ userId: user.id, plans, actuals, today }).includes(today),
+  [snapshot, user.id, plans, actuals, today]);
+  const verifiedModel = snapshot?.controller.model?.historyComplete && snapshot.controller.model.today === today
+    ? snapshot.controller.model : null;
+  const currentStreak = verifiedModel?.currentStreak ?? null;
+  const bestStreak = verifiedModel?.bestStreak ?? null;
 
   return (
     <header className="home-topbar">
-      <button className="home-streak-card" type="button" aria-label={`連続学習 ${currentStreak === null ? '未確認' : `${currentStreak}日`}、学習記録を開く`} onClick={event => {
+      <button className="home-streak-card" type="button" aria-busy={shared?.userId === user.id && shared.controller.refreshing} aria-label={`連続学習 ${currentStreak === null ? '未確認' : `${currentStreak}日`}、学習記録を開く`} onClick={event => {
         event.currentTarget.focus({ preventScroll: true });
         onOpenStudyStreak?.();
       }}>
-        <Flame
-          key={`streak-${currentStreak}`}
-          className="home-streak-flame"
-          aria-hidden="true"
-          size={30}
-        />
+        <StudyStreakFlame className="home-streak-flame" studiedToday={studiedToday} size={30} />
         <div>
           <span>連続学習</span>
           <strong>{currentStreak ?? '—'}日</strong>
@@ -67,7 +57,7 @@ export function HomeTopbar({
         </div>
       </button>
 
-      <HomeDateDisplay date={dashboard.today} />
+      <HomeDateDisplay date={today} />
 
       <div className="home-top-actions">
         <AnnouncementsButton userId={user.id} />

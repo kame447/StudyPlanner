@@ -22,6 +22,11 @@ import type { User } from './types/domain';
 
 const boundary = vi.hoisted(() => ({ repository: null as unknown as PlannerRepository,
   provider: vi.fn<OpenAiCompatibleClient['createChatCompletion']>() }));
+// This suite isolates planner/navigation behavior; streak persistence has its own provider integration tests.
+vi.mock('./components/StudyStreakContext', () => ({
+  StudyStreakProvider: ({ children }: { children: import('react').ReactNode }) => children,
+  useSharedStudyStreak: () => null,
+}));
 vi.mock('./repositories', () => ({ plannerRepository: new Proxy({}, {
   get: (_target, key) => boundary.repository[key as keyof PlannerRepository],
 }) }));

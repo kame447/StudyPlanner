@@ -84,7 +84,7 @@ describe('server-confirmed streak history and serialized rest dates', () => {
       stored = { schemaVersion: 1, userId: 'owner', revision: 1, dates: ['2026-10-08'] };
       return callback({ get: async () => snapshot(stored), set: vi.fn() });
     });
-    await expect(repository.useRestDay(history, '2026-10-11', '2026-10-11')).rejects.toThrow('チケット');
+    await expect(repository.useRestDay(history, '2026-10-11', '2026-10-12')).rejects.toThrow('チケット');
     expect(stored).toMatchObject({ revision: 1, dates: ['2026-10-08'] });
   });
 });

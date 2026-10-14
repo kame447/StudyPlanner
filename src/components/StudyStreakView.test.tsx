@@ -1,5 +1,6 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
+import { StudyStreakFlame } from './StudyStreakFlame';
 import { StudyStreakView, type StudyStreakDisplayModel } from './StudyStreakView';
 
 const model: StudyStreakDisplayModel = { historyComplete: true, currentStreak: 9, bestStreak: 12,
@@ -26,7 +27,7 @@ it('shows study dates and protected rest dates as distinct labelled calendar sta
   expect(date('2026年10月15日、これから').props.className).toContain('is-future');
   expect(root.findAllByType('th').map(node => node.children[0])).toEqual(['月', '火', '水', '木', '金', '土', '日']);
   expect(root.findByProps({ 'aria-label': 'お休みチケット 1枚' }).children[0]).toBe('1');
-  expect(root.findAllByType('p').some(node => node.children.join('') === '次の1枚まで 5日')).toBe(true);
+  expect(root.findAllByType('span').some(node => node.children.join('') === '次の1枚まで 5日')).toBe(true);
 });
 
 it('moves between months and returns to the live current month without changing record data', () => {
@@ -90,32 +91,42 @@ it('updates the today target at midnight without jumping the displayed month', (
   expect(root.findByProps({ 'aria-live': 'polite' }).children).toEqual(['2026年11月']);
 });
 
-it('only offers connected manual use and prevents duplicate use while the request is pending', async () => {
-  let resolve!: (value: boolean) => void;
-  const onUse = vi.fn(() => new Promise<boolean>(yes => { resolve = yes; }));
-  const { root, button } = mount({ restDayActions: { saving: false, blockReason: () => null, onUse } });
-  const use = button('チケットを使う').props.onClick;
-  let pending!: Promise<void>;
-  act(() => { pending = use(); void use(); });
-  expect(onUse).toHaveBeenCalledTimes(1);
-  expect(onUse).toHaveBeenCalledWith('2026-10-13');
-  act(() => root.findByProps({ type: 'date' }).props.onChange({ target: { value: '2026-10-12' } }));
-  expect(root.findByProps({ type: 'date' }).props.value).toBe('2026-10-13');
-  await act(async () => { resolve(true); await pending; });
-  expect(root.findByProps({ role: 'status' }).children).toEqual(['お休みチケットを使いました。']);
+it('shows automatic protection with a compact three-value summary and no manual form', () => {
+  const { root } = mount();
+  expect(root.findByProps({ className: 'study-streak-summary' }).findAllByType('dd')).toHaveLength(3);
+  expect(root.findAllByType('input')).toHaveLength(0);
+  expect(root.findAllByType('form')).toHaveLength(0);
+  expect(root.findAllByType('button').some(node => node.children.includes('チケットを使う'))).toBe(false);
+  expect(root.findAllByType('span').some(node => node.children.includes('お休み券は自動で使います'))).toBe(true);
 });
 
-it('does not send a blocked date and keeps manual-use failures distinct from loading failures', async () => {
-  const onUse = vi.fn();
-  const { root, button } = mount({ restDayActions: { saving: false, blockReason: () => 'この日は学習しています。', onUse, error: '保存できませんでした。' } });
-  expect(button('チケットを使う').props.disabled).toBe(true);
-  await act(async () => { await button('チケットを使う').props.onClick(); });
-  expect(onUse).not.toHaveBeenCalled();
-  expect(root.findByProps({ role: 'alert' }).children).toEqual(['保存できませんでした。']);
+it('provides all six calendar rows without discarding the last week', () => {
+  const { root, date } = mount({ today: '2026-08-31' });
+  expect(root.findByType('tbody').findAllByType('tr')).toHaveLength(6);
+  expect(root.findByProps({ className: 'study-streak-calendar' }).props.style['--streak-week-count']).toBe(6);
+  expect(date('2026年8月31日、記録なし、今日')).toBeDefined();
+});
+
+it('moves the flame only for real study today and follows record corrections and midnight', () => {
+  const { root } = mount();
+  expect(root.findByType(StudyStreakFlame).props.studiedToday).toBe(true);
+  act(() => renderer!.update(<StudyStreakView today="2026-10-14" model={{ ...model, studyDates: [], protectedDates: ['2026-10-14'] }} onClose={vi.fn()} />));
+  expect(root.findByType(StudyStreakFlame).props.studiedToday).toBe(false);
+  act(() => renderer!.update(<StudyStreakView today="2026-10-15" model={model} onClose={vi.fn()} />));
+  expect(root.findByType(StudyStreakFlame).props.studiedToday).toBe(false);
 });
 
 it('distinguishes a previously registered rest day that changed study history no longer supports', () => {
   const { root, date } = mount({ model: { ...model, protectedDates: [], unprotectedRestDates: ['2026-10-13'] } });
   expect(date('2026年10月13日、お休みチケットの再確認が必要').props.className).toContain('is-unprotected');
   expect(root.findByProps({ role: 'status' }).children.join('')).toContain('お休み1日分を連続学習に含められません');
+});
+
+
+it('keeps a confirmed snapshot visible during a background refresh instead of flashing unknown totals', () => {
+  const { root } = mount({ pending: true, refreshing: true });
+  expect(root.findByProps({ 'aria-label': 'お休みチケット 1枚' }).children[0]).toBe('1');
+  expect(root.findAllByType('dd').map(node => node.children[0])).toEqual(['7', '1', '1']);
+  expect(root.findByType('main').props['aria-busy']).toBe(true);
+  expect(root.findAllByProps({ role: 'status' })).toHaveLength(0);
 });

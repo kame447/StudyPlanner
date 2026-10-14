@@ -16,6 +16,11 @@ import type { User } from '../types/domain';
 const fixture = vi.hoisted(() => ({ repository: null as unknown as PlannerRepository,
   profile: vi.fn(), memory: vi.fn(), content: vi.fn(), observe: vi.fn(), observation: 'off', markerObservation: 'off', marker: vi.fn(),
   realApp: false, reducedMotion: true, policy: 'accepted', preferenceError: '', preferenceLoading: false, weekStartsOn: 'monday' as string | null }));
+// This suite isolates planner/navigation behavior; streak persistence has its own provider integration tests.
+vi.mock('./StudyStreakContext', () => ({
+  StudyStreakProvider: ({ children }: { children: import('react').ReactNode }) => children,
+  useSharedStudyStreak: () => null,
+}));
 vi.mock('../repositories', () => ({ authRepository: { getCurrentUser: fixture.profile, observeStartupProfile: fixture.observe },
   plannerRepository: new Proxy({}, { get: (_, key) => fixture.repository[key as keyof PlannerRepository] }) }));
 vi.mock('../lib/startupMarkerObservation', () => ({ get startupMarkerObservation() { return fixture.markerObservation; } }));

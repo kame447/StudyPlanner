@@ -1,3 +1,4 @@
+import type { ConfirmedStudyHistory } from './confirmedStudyHistory';
 import { observeStartupDocument } from './observeStartupDocument';
 import { startupTiming } from '../lib/startupTiming';
 import type { Firestore, Transaction, WriteBatch } from 'firebase/firestore';
@@ -395,6 +396,7 @@ function assertBatchLimit(operationCount: number, label: string): void {
 
 export function createFirebaseScheduleEventAuthority(
   firestoreDb: Firestore,
+  studyHistory?: ConfirmedStudyHistory,
 ): ScheduleEventAuthorityRepository {
   return {
     observeStartupScheduleMarker(ownerId, scope) {
@@ -407,6 +409,7 @@ export function createFirebaseScheduleEventAuthority(
       userId: string,
       loadLegacy: () => Promise<LegacyScheduleSnapshot>,
     ) {
+      studyHistory?.beginMigration(userId);
       // Keep rollout capability classification restricted to this marker read.
       // A server read may still include local pending writes: those cannot certify cutover.
       let snapshot;
@@ -427,12 +430,13 @@ export function createFirebaseScheduleEventAuthority(
         && snapshot.metadata?.hasPendingWrites === false
         && isCurrentScheduleEventMigration(snapshot.data() as ScheduleEventMigrationCandidate)) {
         startupTiming.markOnce('schedule-marker-complete');
+        studyHistory?.confirmMigration(userId);
         return;
       }
 
       try {
         const state = await startupTiming.measure('schedule-migration-acquire', () => acquireMigrationDocument(firestoreDb, userId));
-        if (isCurrentScheduleEventMigration(state)) return;
+        if (isCurrentScheduleEventMigration(state)) { studyHistory?.confirmMigration(userId); return; }
 
         const legacy = await startupTiming.measure('schedule-legacy-read', loadLegacy);
         assertOwnedRecords(userId, [...legacy.plans, ...legacy.monthEvents], '予定移行');
@@ -462,6 +466,7 @@ export function createFirebaseScheduleEventAuthority(
           doc(firestoreDb, SCHEDULE_EVENT_MIGRATIONS_COLLECTION, userId),
           completedDocument,
         ));
+        studyHistory?.confirmMigration(userId);
       } catch (error) {
         throw new Error(
           normalizeErrorMessage(
@@ -473,15 +478,17 @@ export function createFirebaseScheduleEventAuthority(
     },
 
     async getScheduleSnapshot(userId) {
+      const publish = studyHistory?.beginRead(userId, 'plans');
       try {
-        const events = await startupTiming.measure('schedule-canonical-snapshot', () => listByUserId<ScheduleEvent>(
-          firestoreDb,
-          SCHEDULE_EVENTS_COLLECTION,
-          userId,
+        const snapshot = await startupTiming.measure('schedule-canonical-snapshot', () => getDocs(
+          query(collection(firestoreDb, SCHEDULE_EVENTS_COLLECTION), where('userId', '==', userId)),
         ));
+        const events = snapshot.docs.map(row => mapSnapshot<ScheduleEvent>(row));
         assertOwnedRecords(userId, events, '予定取得');
+        const plans = events.map(scheduleEventToPlan).filter((plan): plan is Plan => plan !== null);
+        publish?.(plans, snapshot.metadata);
         return {
-          plans: events.map(scheduleEventToPlan).filter((plan): plan is Plan => plan !== null),
+          plans,
           monthEvents: events.map(scheduleEventToMonthEvent).filter((event): event is NonNullable<typeof event> => event !== null),
         };
       } catch (error) {
@@ -492,14 +499,16 @@ export function createFirebaseScheduleEventAuthority(
     },
 
     async getPlans(userId) {
+      const publish = studyHistory?.beginRead(userId, 'plans');
       try {
-        return (await startupTiming.measure('schedule-canonical-plans', () => listScheduleProjection(
-          firestoreDb,
-          userId,
-          'plan',
-        )))
-          .map(scheduleEventToPlan)
+        const snapshot = await startupTiming.measure('schedule-canonical-plans', () => getDocs(query(
+          collection(firestoreDb, SCHEDULE_EVENTS_COLLECTION), where('userId', '==', userId),
+          where('provenance.legacy.kind', '==', 'plan'),
+        )));
+        const plans = snapshot.docs.map(row => mapSnapshot<ScheduleEvent>(row)).map(scheduleEventToPlan)
           .filter((plan): plan is Plan => plan !== null);
+        publish?.(plans, snapshot.metadata);
+        return plans;
       } catch (error) {
         throw new Error(
           normalizeErrorMessage('予定を取得できませんでした。', error as FirebaseLikeError),
