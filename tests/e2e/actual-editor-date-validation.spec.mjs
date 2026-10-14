@@ -33,7 +33,7 @@ for (const width of [390, 1280]) for (const kind of ['linked-new', 'linked-exist
       await page.getByRole('button', { name: kind === 'linked-new' ? '記録を保存' : '記録を編集', exact: true }).click();
     }
     const editor = page.locator(kind === 'standalone' ? '.standalone-actual-editor-card' : '.linked-actual-editor-card');
-    const memo = editor.getByRole('textbox', { name: kind === 'standalone' ? 'メモ' : 'メモ・気づき', exact: true });
+    const memo = editor.getByRole('textbox', { name: kind === 'standalone' ? 'メモ' : kind === 'linked-existing' ? 'ズレの理由・メモ' : 'メモ・気づき', exact: true });
     await memo.fill('日付を直しても残すメモ');
     const savedBefore = await readActuals(page);
     await editor.getByLabel('日付', { exact: true }).fill('');
