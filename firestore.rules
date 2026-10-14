@@ -188,6 +188,71 @@ service cloud.firestore {
         && hasValidScheduleEventDetails();
     }
 
+    function validAnnouncementContent(data) {
+      return data.schemaVersion == 1
+        && data.category in ['お知らせ', 'アップデート', '不具合', 'メンテナンス', 'その他']
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 120
+        && data.title.matches('.*[^\\s].*')
+        && data.body is string && data.body.size() > 0 && data.body.size() <= 10000
+        && data.body.matches('[\\s\\S]*[^\\s][\\s\\S]*')
+        && data.revision is int && data.revision > 0;
+    }
+    function validAnnouncementDraft(data) {
+      return data.keys().hasOnly(['schemaVersion', 'category', 'title', 'body', 'revision', 'publishedRevision', 'createdAt', 'updatedAt'])
+        && validAnnouncementContent(data)
+        && data.publishedRevision is int && data.publishedRevision >= 0 && data.publishedRevision <= data.revision
+        && data.createdAt is timestamp && data.updatedAt is timestamp;
+    }
+    function publicationMatchesDraft(id, data) {
+      let draft = getAfter(/databases/$(database)/documents/announcement_drafts/$(id)).data;
+      return draft.revision == data.revision && draft.publishedRevision == data.revision
+        && draft.title == data.title && draft.body == data.body && draft.category == data.category;
+    }
+    match /announcement_drafts/{id} {
+      allow get: if isAdmin();
+      allow list: if isAdmin() && request.query.limit != null && request.query.limit <= 26;
+      allow create: if isAdmin() && validAnnouncementDraft(request.resource.data)
+        && request.resource.data.revision == 1 && request.resource.data.publishedRevision == 0
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+      allow update: if isAdmin() && validAnnouncementDraft(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && ((request.resource.data.revision == resource.data.revision + 1
+            && request.resource.data.publishedRevision == resource.data.publishedRevision
+            && request.resource.data.updatedAt == request.time)
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['publishedRevision'])
+            && request.resource.data.publishedRevision == resource.data.revision
+            && getAfter(/databases/$(database)/documents/announcements/$(id)).data.revision == resource.data.revision
+            && getAfter(/databases/$(database)/documents/announcements/$(id)).data.publishedAt == request.time));
+      allow delete: if false;
+    }
+    match /announcements/{id} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && request.query.limit != null && request.query.limit <= 26;
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['schemaVersion', 'category', 'title', 'body', 'revision', 'publishedAt'])
+        && validAnnouncementContent(request.resource.data)
+        && request.resource.data.publishedAt == request.time
+        && publicationMatchesDraft(id, request.resource.data)
+        && (resource == null || request.resource.data.revision > resource.data.revision);
+      allow delete: if false;
+    }
+    match /announcement_reads/{userId} {
+      allow get: if isOwner(userId);
+      allow create, update: if isOwner(userId) && request.resource.data.keys().hasOnly(['through'])
+        && request.resource.data.through is timestamp && request.resource.data.through <= request.time
+        && (resource == null || request.resource.data.through >= resource.data.through);
+      allow delete, list: if false;
+      match /items/{id} {
+        allow get: if isOwner(userId);
+        allow list: if isOwner(userId) && request.query.limit != null && request.query.limit <= 25;
+        allow create, update: if isOwner(userId) && request.resource.data.keys().hasOnly(['publishedAt'])
+          && request.resource.data.publishedAt is timestamp
+          && request.resource.data.publishedAt <= get(/databases/$(database)/documents/announcements/$(id)).data.publishedAt
+          && (resource == null || request.resource.data.publishedAt >= resource.data.publishedAt);
+        allow delete: if false;
+      }
+    }
+
     match /admins/{adminId} {
       allow get: if isOwner(adminId) || isAdmin();
       allow list: if isAdmin();

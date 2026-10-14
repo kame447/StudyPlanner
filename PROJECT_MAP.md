@@ -59,7 +59,7 @@ Reporting work:
 3. `src/lib/learningReport.ts` / `src/lib/learningReport.test.ts`
 4. `src/components/ReportView.tsx`
 
-Support inquiries work:
+Support work (アプリ内問い合わせ・管理者お知らせ配信):
 
 1. `docs/domains/support/README.md`
 2. `src/features/support/inquiry.ts` / `src/services/inquiryService.ts`

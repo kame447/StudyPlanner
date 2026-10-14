@@ -1,8 +1,9 @@
 import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
 import { useMemo } from 'react';
-import { Bell, Flame, Menu } from 'lucide-react';
+import { Flame, Menu } from 'lucide-react';
 import { buildHomeDashboardModel } from '../lib/homeDashboard';
 import type { Actual, Plan, TodoTask, User } from '../types/domain';
+import { AnnouncementsButton } from './AnnouncementsButton';
 import { HomeDateDisplay } from './HomeDateDisplay';
 import { UserAvatar } from './UserAvatar';
 
@@ -48,14 +49,7 @@ export function HomeTopbar({
       <HomeDateDisplay date={dashboard.today} />
 
       <div className="home-top-actions">
-        <button
-          className="home-icon-button"
-          type="button"
-          aria-label="通知"
-          title="通知機能は準備中です"
-        >
-          <Bell aria-hidden="true" size={22} />
-        </button>
+        <AnnouncementsButton userId={user.id} />
         <button
           className="home-avatar-button"
           type="button"
