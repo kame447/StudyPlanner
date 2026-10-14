@@ -103,7 +103,8 @@ for (const width of [390, 1280]) {
       await card(page, '自動表示の授業').click();
       const detail = page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true });
       await expect(detail).toBeVisible();
-      await expect(detail.getByRole('button', { name: 'この日だけ削除', exact: true })).toHaveCount(0);
+      // Day actions are now available; opening them alone must still leave data unchanged.
+      await expect(detail.getByRole('button', { name: 'この日だけ削除', exact: true })).toBeVisible();
       await detail.getByRole('button', { name: '閉じる', exact: true }).click();
       await page.reload(); await openDay(page);
       await expect(card(page, '自動表示の授業')).toHaveCount(1);

@@ -369,6 +369,7 @@ export interface ScheduleTemplate {
   alternatingWeek?: ScheduleTemplateAlternatingWeek;
   weekInterval?: ScheduleTemplateWeekInterval;
   weekIntervalAnchorDate?: string | null;
+  excludedDates?: string[];
   memo: string;
   active: boolean;
   createdAt: string;
@@ -389,6 +390,7 @@ export interface ScheduleTemplateDraft {
   alternatingWeek?: ScheduleTemplateAlternatingWeek;
   weekInterval?: ScheduleTemplateWeekInterval;
   weekIntervalAnchorDate?: string | null;
+  excludedDates?: string[];
   memo: string;
   active: boolean;
 }

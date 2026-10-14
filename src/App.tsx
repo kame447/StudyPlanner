@@ -170,6 +170,8 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     movePlanOccurrence,
     saveWeeklyApprovedPlan,
     completeWeeklyApprovalOperation,
+    deleteDayOccurrence,
+    changeDayTimetableTime,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
@@ -562,6 +564,8 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
 
             {viewMode === 'day' ? (
               <DayView
+                onDeleteOccurrence={deleteDayOccurrence}
+                onChangeTimetableTime={changeDayTimetableTime}
                 showTimetable={dayTimetablePreference.showTimetable}
                 selectedDate={selectedDate}
                 userId={user.id}
