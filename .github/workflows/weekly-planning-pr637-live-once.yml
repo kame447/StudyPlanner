@@ -1,0 +1,105 @@
+name: PR637 one-shot live-model acceptance
+
+on:
+  push:
+    branches: [feat/durable-ai-turns-20261013]
+    paths: [.github/workflows/weekly-planning-pr637-live-once.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr637-live-once-20261014-0314
+  cancel-in-progress: false
+
+jobs:
+  observe-one-turn:
+    if: >-
+      ${{ github.actor == github.repository_owner && github.run_attempt == 1 && github.event.head_commit.message == 'ci: run PR637 bounded live-model acceptance (once-20261014-0314)' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      TZ: Asia/Tokyo
+      OUTPUT_DIR: artifacts/weekly-planning-resumable-conversation
+      DEV_LAN_HOST: 127.0.0.1
+      CLOUDFLARE_CF_FETCH_ENABLED: 'false'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify the approved source and one-shot change
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = '86e547baf3b57c10168fe4fea02a63ed9a9388ac'
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = '.github/workflows/weekly-planning-pr637-live-once.yml'
+          mkdir -p "$OUTPUT_DIR"
+          node -e 'require("node:fs").writeFileSync(process.env.OUTPUT_DIR + "/execution-receipt.json", JSON.stringify({ head: process.env.GITHUB_SHA, ref: process.env.GITHUB_REF, actor: process.env.GITHUB_ACTOR, runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT, sourceParent: "86e547baf3b57c10168fe4fea02a63ed9a9388ac", action: "submit_turn", maxApiRequests: 4, syntheticOnly: true }, null, 2) + "\n")'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck evaluation implementation
+        run: npm run typecheck
+      - name: Advance the existing completion evaluation once
+        id: advance
+        shell: bash
+        env:
+          WEEKLY_PLANNING_RESUMABLE_EVALUATION_ACTION: '1'
+          WEEKLY_PLANNING_RESUMABLE_ACTION: submit_turn
+          WEEKLY_PLANNING_RESUMABLE_REAL_API_TURN: '1'
+          WEEKLY_PLANNING_RESUMABLE_USER_TEXT: 学習計画の相談をしたいです。
+          WEEKLY_PLANNING_RESUMABLE_CHECKPOINT_PATH: ''
+          WEEKLY_PLANNING_RESUMABLE_OUTPUT_DIR: artifacts/weekly-planning-resumable-conversation
+          WEEKLY_PLANNING_RESUMABLE_OWNER_ID: durable-turn-synthetic-20261013
+          WEEKLY_PLANNING_RESUMABLE_CONVERSATION_ID: durable-turn-semantic-renderer-20261013
+          WEEKLY_PLANNING_RESUMABLE_WEEK_START_DATE: '2026-10-12'
+          WEEKLY_PLANNING_RESUMABLE_SELECTED_DATE: '2026-10-14'
+          WEEKLY_PLANNING_RESUMABLE_TEST_TIMEOUT_MS: '60000'
+          VITE_AI_PROVIDER: openai
+          VITE_AI_BASE_URL: https://api.openai.com/v1
+          VITE_AI_MODEL: gpt-6-luna
+          VITE_AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VITE_AI_MAX_PROCESS_REQUESTS: '4'
+          VITE_AI_EVAL_CAPTURE_METRICS: '1'
+          VITE_CLOUDFLARE_AI_PROXY_URL: ''
+          VITE_DURABLE_WEEKLY_TURNS: ''
+        run: |
+          set -uo pipefail
+          set +e
+          test -n "$VITE_AI_API_KEY" || exit 1
+          npm run observe:weekly-ai:conversation:turn 2>&1 | tee "$OUTPUT_DIR/ai-request-metrics.log"
+          evaluation_status=${PIPESTATUS[0]}
+          node scripts/summarize-ai-eval-metrics.mjs "$OUTPUT_DIR/ai-request-metrics.log" "$OUTPUT_DIR/ai-request-metrics-summary.json" || exit 1
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const secret = process.env.VITE_AI_API_KEY;
+          function inspect(directory) {
+            for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+              const file = path.join(directory, entry.name);
+              if (entry.isDirectory()) inspect(file);
+              else if (fs.readFileSync(file).includes(Buffer.from(secret))) throw new Error('Artifact safety check failed. Upload withheld.');
+            }
+          }
+          inspect(process.env.OUTPUT_DIR);
+          const summary = JSON.parse(fs.readFileSync(path.join(process.env.OUTPUT_DIR, 'ai-request-metrics-summary.json'), 'utf8'));
+          if (summary.total.requestCount > 4) throw new Error('Request ceiling violated.');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'artifacts_safe=true\n');
+          JS
+          safety_status=$?
+          if [ "$safety_status" -ne 0 ]; then exit "$safety_status"; fi
+          exit "$evaluation_status"
+      - name: Upload bounded synthetic evaluation artifact
+        if: ${{ always() && steps.advance.outputs.artifacts_safe == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr637-live-once-20261014
+          path: artifacts/weekly-planning-resumable-conversation/
+          if-no-files-found: error
+          retention-days: 7
