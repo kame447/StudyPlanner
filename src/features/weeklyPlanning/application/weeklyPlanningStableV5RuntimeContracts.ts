@@ -1,3 +1,4 @@
+import type { WeeklyPlanningSemanticTurnObservation } from '../trace/weeklyPlanningSemanticCensus';
 import type {
   Actual,
   MonthEvent,
@@ -12,6 +13,8 @@ import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPl
 import type { WeeklyPlanningTurnRequestContext } from './weeklyPlanningTemporalContext';
 
 export interface ExecuteWeeklyPlanningStableV5RuntimeTurnInput {
+  /** Invocation-local Choice/Luna observer; internal only, never serialized or persisted. */
+  semanticObservation?: WeeklyPlanningSemanticTurnObservation;
   previousState?: PlanningIntakeState;
   messages: readonly WeeklyPlanningMessage[];
   userText: string;

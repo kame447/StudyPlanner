@@ -165,12 +165,12 @@ describe('C5 actual controller / reducer / runtime / acknowledged storage', () =
 
   it('advances re-presentation epoch, preserves consumed history, and never captures superseded history as a candidate', async () => {
     const h = c5ControllerHarness(); await h.present(); const before = h.getState().intakeState!;
-    const next = captureC5Question({ state: before, graph: h.graph, ownerId: OWNER, conversationId: h.conversationId });
+    const next = captureC5Question({ state: before, messages: h.getState().messages, graph: h.graph, ownerId: OWNER, conversationId: h.conversationId });
     expect(next.c5SelectionLedger!.lastEpoch).toBe(2); expect(next.lastQuestionContext!.c5!.selectionEpoch).toBe(2);
     expect(next.c5SelectionLedger!.consumed).toEqual(before.c5SelectionLedger!.consumed);
     await h.submit('教材aは1問7分'); const saved = reload();
     const after = captureC5Question({ state: { ...before, c5SelectionLedger: saved.planningState.intakeState!.c5SelectionLedger },
-      graph: saved.graph, ownerId: OWNER, conversationId: h.conversationId });
+      messages: h.getState().messages.slice(0, 2), graph: saved.graph, ownerId: OWNER, conversationId: h.conversationId });
     expect(after.c5SelectionLedger).toEqual(saved.planningState.intakeState!.c5SelectionLedger);
     const spent = { ...before, c5SelectionLedger: saved.planningState.intakeState!.c5SelectionLedger };
     h.replaceState({ ...h.getState(), revision: before.lastQuestionContext!.presentation!.planningStateRevision,
