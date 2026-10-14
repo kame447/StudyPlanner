@@ -847,7 +847,6 @@ export function TimetableView({
               </button>
             ))}
           </div>
-          <small>時間割全体のA週/B週を切り替えます。</small>
         </div>
       ) : null}
 

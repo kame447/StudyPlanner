@@ -1,3 +1,4 @@
+import { buildRecurringMonthEventEdit, type MonthEventEditRequest } from '../domain/recurringMonthEvent';
 import { buildDayTimetableTimeEdit, type DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
 import { buildDayOccurrenceCancellation } from '../domain/dayOccurrenceCancellation';
 import { requireCurrentTimetableImportTemplates } from '../domain/timetableImportAdmission';
@@ -37,6 +38,7 @@ import {
 import { createId } from '../lib/id';
 import { buildPlanOccurrenceKey, getActualOccurrenceKey } from '../lib/planRecurrence';
 import { sortMonthEvents } from '../lib/monthEvents';
+import { validateMonthEventDraft } from '../lib/monthEventEditor';
 import { plannerRepository } from '../repositories';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import {
@@ -220,7 +222,7 @@ export interface UsePlannerDataStateResult {
   linkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   deleteActual: (actual: Actual) => Promise<void>;
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
-  saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
+  saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string, edit?: MonthEventEditRequest) => Promise<void>;
   deleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
   saveTodo: (draft: TodoTaskDraft, targetTodoId?: string) => Promise<void>;
   scheduleTodoAsPlan: (todo: TodoTask, draft: PlanDraft) => Promise<Plan>;
@@ -1608,22 +1610,57 @@ export function usePlannerDataState({
     await trackMutation(saveDayNote, ['day-notes'])(draft);
   });
 
+  async function saveRecurringMonthEvent(draft: MonthEventDraft, id: string | undefined, edit: MonthEventEditRequest) {
+    requireDayOccurrenceProjection();
+    const source = dayMutationData.current.monthEvents.find(event => event.id === id);
+    if (!userId || draft.userId !== userId || edit.source.userId !== userId || !source
+      || source.userId !== userId || JSON.stringify(source) !== JSON.stringify(edit.source)) {
+      throw new Error('予定が更新されました。現在の予定を開き直してください。');
+    }
+    if ((pendingDaySourceWrites.get(`month-event:${id}`) ?? 0) > 1) throw new Error('この予定は保存中です。');
+    const change = buildRecurringMonthEventEdit(source, draft, edit.occurrenceDate, edit.scope);
+    const lease = plannerDataReadAuthority.captureProjectionLease();
+    const keys = change.monthEvents.map(event => `month-event:${event.id}`);
+    keys.forEach(key => pendingDayOccurrenceChanges.add(key));
+    const operation = monthEventState.begin(current => sortMonthEvents(change.monthEvents.reduce(
+      (rows, event) => upsertByKey(rows, event, row => row.id), current,
+    )));
+    const selection = selectionState.begin(() => selectionAt(
+      isSameMonth(selectedDate, change.editedEvent.date) ? selectedDate : change.editedEvent.date,
+    ));
+    try {
+      await plannerRepository.applyRecurringMonthEventMutation(userId, change.monthEvents);
+      monthEventState.commit(operation);
+      selectionState.commit(selection);
+      showNotice('予定を更新しました。', 'success');
+    } catch (error) {
+      monthEventState.reject(operation);
+      selectionState.reject(selection);
+      // A failed acknowledgement does not prove that the atomic write failed.
+      // Reconcile before allowing a retry to create another replacement.
+      if (lease) {
+        keys.forEach(key => uncertainDaySources.set(key, lease));
+        reconciliation.request(lease, ['month-events']);
+      }
+      showNotice(resolveErrorMessage(error, '予定を保存できませんでした。'), 'error');
+      throw error;
+    } finally { keys.forEach(key => pendingDayOccurrenceChanges.delete(key)); }
+  }
+
   async function saveMonthEvent(
     draft: MonthEventDraft,
     targetMonthEventId?: string,
+    edit?: MonthEventEditRequest,
   ) {
+    if (edit) return saveRecurringMonthEvent(draft, targetMonthEventId, edit);
     if (!userId) {
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
-      showNotice('主要予定の終了時刻は開始時刻より後にしてください。', 'error');
-      throw new Error('主要予定の終了時刻は開始時刻より後にしてください。');
-    }
-
-    if (!draft.title.trim()) {
-      showNotice('主要予定のタイトルを入れてください。', 'error');
-      throw new Error('主要予定のタイトルを入れてください。');
+    const validationError = validateMonthEventDraft({ ...draft, title: draft.title.trim() });
+    if (validationError) {
+      showNotice(validationError, 'error');
+      throw new Error(validationError);
     }
 
     const currentMonthEvent = monthEvents.find(
@@ -2493,8 +2530,8 @@ export function usePlannerDataState({
     linkStandaloneActualToPlan: trackMutation(linkStandaloneActualToPlan),
     deleteActual: trackMutation(deleteActual),
     saveDayNote: saveDayNoteAfterLoad,
-    saveMonthEvent: trackMutation((draft: MonthEventDraft, id?: string) =>
-      withDayOccurrenceSourceWrite(id ? `month-event:${id}` : undefined, () => saveMonthEvent(draft, id)), ['month-events']),
+    saveMonthEvent: trackMutation((draft: MonthEventDraft, id?: string, edit?: MonthEventEditRequest) =>
+      withDayOccurrenceSourceWrite(id ? `month-event:${id}` : undefined, () => saveMonthEvent(draft, id, edit)), ['month-events']),
     deleteMonthEvent: trackMutation((event: MonthEvent) =>
       withDayOccurrenceSourceWrite(`month-event:${event.id}`, () => deleteMonthEvent(event)), ['month-events']),
     saveTodo: trackMutation(saveTodo, ['plans-todos']),

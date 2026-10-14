@@ -37,7 +37,8 @@ for (const [width, height] of [[320, 568], [390, 844], [1280, 720]]) {
     await expect(screen.locator('input, form')).toHaveCount(0);
     await expect(screen.getByRole('cell', { name: '2026年8月18日、お休みチケット使用', exact: true })).toHaveClass(/is-protected/);
     await expect(screen.getByLabel('お休みチケット 0枚', { exact: true })).toBeVisible();
-    await expect(screen.getByText('お休み券は自動で使います', { exact: true })).toBeVisible();
+    await expect(screen.getByText('お休み券は自動で使います', { exact: true })).toHaveCount(0);
+    await expect(screen.getByText('次の1枚まで 7日', { exact: true })).toBeVisible();
     const data = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.studyRestDays.v1:streak-calendar-user')));
     expect(data.dates).toEqual(['2026-08-18']);
     const layout = await screen.evaluate(element => {
@@ -46,6 +47,9 @@ for (const [width, height] of [[320, 568], [390, 844], [1280, 720]]) {
       const studiedDay = element.querySelector('.is-study');
       return { overflow: content.scrollWidth > content.clientWidth, verticalOverflow: element.scrollHeight > element.clientHeight + 1, calendarRows: element.querySelectorAll('tbody tr').length, protectedShape: getComputedStyle(protectedDay).clipPath,
         studyColor: getComputedStyle(studiedDay).backgroundColor, restColor: getComputedStyle(protectedDay).backgroundColor,
+        rowHeight: studiedDay.getBoundingClientRect().height,
+        legendFontSize: parseFloat(getComputedStyle(element.querySelector('.study-streak-legend')).fontSize),
+        progressFontSize: parseFloat(getComputedStyle(element.querySelector('.study-streak-ticket-note')).fontSize),
         controls: [...element.querySelectorAll('button')].map(button => ({ width: button.getBoundingClientRect().width, height: button.getBoundingClientRect().height })) };
     });
     expect(layout.overflow).toBe(false);
@@ -53,6 +57,9 @@ for (const [width, height] of [[320, 568], [390, 844], [1280, 720]]) {
     expect(layout.studyColor).not.toBe(layout.restColor);
     expect(layout.verticalOverflow).toBe(false);
     expect(layout.calendarRows).toBe(6);
+    expect(layout.rowHeight).toBeLessThanOrEqual(44);
+    expect(layout.legendFontSize).toBeGreaterThanOrEqual(14);
+    expect(layout.progressFontSize).toBeGreaterThanOrEqual(16);
     for (const control of layout.controls) { expect(control.width).toBeGreaterThanOrEqual(44); expect(control.height).toBeGreaterThanOrEqual(44); }
     await page.screenshot({ path: testInfo.outputPath(`study-streak-${width}-light.png`), fullPage: true });
     await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });

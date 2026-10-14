@@ -67,7 +67,7 @@ it.each([0, 1, 2, 3, 4, 5])('renders only today with %i current-day plans, witho
     const all = renderer.root.findAllByType('button').find(button => button.children.includes('すべて見る '))!;
     act(() => all.props.onClick());
     expect(onOpenDay).toHaveBeenLastCalledWith(today);
-    expect(renderer.root.findAllByProps({ className: 'home-scroll-hint' })).toHaveLength(count > 4 ? 1 : 0);
+    expect(renderer.root.findAllByProps({ className: 'home-scroll-hint' })).toHaveLength(0);
     expect(JSON.stringify(plans)).toBe(original);
   } finally {
     act(() => renderer.unmount());

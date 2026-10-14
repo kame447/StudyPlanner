@@ -266,9 +266,6 @@ export function MyPageDialog({
                       type="file"
                     />
                   </div>
-                  <p className="detail-note">
-                    写真は自動で正方形に整えて小さめに保存します。
-                  </p>
                   <div className="avatar-option-grid">
                     <button
                       className={!avatar ? 'avatar-option active' : 'avatar-option'}

@@ -57,7 +57,7 @@
 .study-streak-summary dd { margin: 0; font-size: 1.125rem; font-weight: 750; font-variant-numeric: tabular-nums; }
 .study-streak-summary dd span { margin-left: 2px; font-size: .75rem; font-weight: 500; }
 .study-streak-summary svg { width: 14px; height: 14px; color: var(--streak-rest-ink); }
-.study-streak-calendar { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; flex: 1 0 auto; min-height: calc(6.5rem + var(--streak-week-count) * 1.5rem); background: var(--streak-card); border: 1px solid var(--streak-border); border-radius: 14px; padding: .5rem; }
+.study-streak-calendar { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; flex: 0 1 auto; height: calc(7.5rem + var(--streak-week-count) * 2.75rem); min-height: calc(7.5rem + var(--streak-week-count) * 1.5rem); background: var(--streak-card); border: 1px solid var(--streak-border); border-radius: 14px; padding: .5rem; }
 .study-streak-calendar-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .25rem; padding-left: .25rem; }
 .study-streak-calendar-header h2 { margin: 0; color: inherit; font-size: 1rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .study-streak-calendar-controls { display: flex; align-items: center; }
@@ -75,13 +75,13 @@
 .study-streak-day.is-protected { color: var(--streak-rest-ink); }
 .study-streak-day.is-protected .study-streak-day-mark { background: var(--streak-rest); clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 75%, 75% 100%, 25% 100%, 0 75%, 0 25%); }
 .study-streak-day.is-future { font-weight: 400; }
-.study-streak-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: .25rem 1rem; color: var(--streak-muted); font-size: .75rem; }
+.study-streak-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: .25rem 1rem; color: var(--streak-muted); font-size: .875rem; }
 .study-streak-legend > span { display: inline-flex; align-items: center; gap: 4px; }
 .study-streak-legend-study, .study-streak-legend-rest { display: inline-block; width: 12px; height: 12px; flex: none; }
 .study-streak-legend-study { background: var(--streak-study); border-radius: 50%; }
 .study-streak-legend-rest { background: var(--streak-rest); clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 75%, 75% 100%, 25% 100%, 0 75%, 0 25%); }
-.study-streak-ticket-note { display: flex; flex: none; flex-wrap: wrap; justify-content: space-between; gap: .125rem .5rem; margin: 0; color: var(--streak-muted); font-size: .75rem; }
-.study-streak-status, .study-streak-use-note { flex: none; margin: 0; color: var(--streak-muted); font-size: .8125rem; }
+.study-streak-ticket-note { flex: none; margin: 0; text-align: center; color: var(--streak-ink); font-size: 1rem; }
+.study-streak-status, .study-streak-use-note { flex: none; margin: 0; color: var(--streak-muted); font-size: .875rem; }
 .study-streak-error { flex: none; color: var(--danger, #a12c28); font-size: .875rem; }
 .study-streak-error p { margin: 0 0 .25rem; }
 @media (min-height: 650px) {
@@ -97,7 +97,7 @@
   .study-streak-summary { grid-column: 1; }
   .study-streak-summary > div { flex-direction: column; }
   .study-streak-calendar { grid-column: 2; grid-row: 1 / 5; height: 100%; }
-  .study-streak-ticket-note { grid-column: 1; align-self: start; justify-content: center; }
+  .study-streak-ticket-note { grid-column: 1; align-self: start; }
   .study-streak-status, .study-streak-use-note, .study-streak-error { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) { .study-streak-page *, .study-streak-page *::before { animation: none !important; transition: none !important; } }

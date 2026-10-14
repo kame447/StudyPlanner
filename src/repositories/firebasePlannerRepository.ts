@@ -26,6 +26,7 @@ import type {
 } from '../types/domain';
 import type { PlannerRepository } from './repositoryContracts';
 import {
+  assertRecurringMonthEventWrite,
   prepareRecurringPlanWrite,
   stripUndefinedDeep,
 } from './plannerWritePreparation';
@@ -725,6 +726,20 @@ export function createFirebasePlannerRepository(
       } catch (error) {
         throw new Error(
           normalizeErrorMessage('日次メモを保存できませんでした。', error as { message?: string | null }),
+        );
+      }
+    },
+    async applyRecurringMonthEventMutation(userId, monthEvents) {
+      try {
+        assertRecurringMonthEventWrite(userId, monthEvents);
+        const batch = writeBatch(firestoreDb);
+        monthEvents.forEach((event) => {
+          batch.set(doc(firestoreDb, 'month_events', event.id), stripUndefinedDeep(event), { merge: true });
+        });
+        await batch.commit();
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('繰り返し予定を保存できませんでした。', error as FirebaseLikeError),
         );
       }
     },

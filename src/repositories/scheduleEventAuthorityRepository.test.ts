@@ -22,6 +22,7 @@ function legacyRepository(): PlannerRepository {
     getScheduleSnapshot: vi.fn().mockResolvedValue({ plans: [legacyPlan], monthEvents: [] }),
     getPlans: vi.fn().mockResolvedValue([legacyPlan]),
     getMonthEvents: vi.fn().mockResolvedValue([]),
+    applyRecurringMonthEventMutation: vi.fn().mockResolvedValue(undefined),
     upsertPlan: vi.fn(async (plan: Plan) => plan),
   } as unknown as PlannerRepository;
 }
@@ -36,6 +37,7 @@ function authorityRepository(): ScheduleEventAuthorityRepository {
     deletePlanWithDependents: vi.fn().mockResolvedValue(undefined),
     restorePlanWithDependents: vi.fn().mockResolvedValue(undefined),
     scheduleTodoPlan: vi.fn().mockResolvedValue(undefined),
+    applyRecurringMonthEventMutation: vi.fn().mockResolvedValue(undefined),
     upsertPlan: vi.fn(async (plan: Plan) => plan),
     deletePlan: vi.fn().mockResolvedValue(undefined),
     upsertMonthEvent: vi.fn(async (event: MonthEvent) => event),
@@ -145,5 +147,53 @@ describe('combined schedule read authority', () => {
     await expect(repository.getScheduleSnapshot('user-1')).resolves.toEqual({ plans: [canonicalPlan], monthEvents: [] });
     expect(legacy.getScheduleSnapshot).not.toHaveBeenCalled();
     expect(authority.getScheduleSnapshot).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe('recurring MonthEvent authority routing', () => {
+  const events = [{ id: 'series', userId: 'user-1' }, { id: 'replacement', userId: 'user-1' }] as MonthEvent[];
+
+  it('sends the entire mutation to the canonical authority after migration', async () => {
+    const legacy = legacyRepository();
+    const authority = authorityRepository();
+    const repository = createScheduleEventBackedPlannerRepository(legacy, authority);
+    await repository.applyRecurringMonthEventMutation('user-1', events);
+    expect(authority.ensureMigrated).toHaveBeenCalledOnce();
+    expect(authority.applyRecurringMonthEventMutation).toHaveBeenCalledExactlyOnceWith('user-1', events);
+    expect(legacy.applyRecurringMonthEventMutation).not.toHaveBeenCalled();
+    expect(authority.upsertMonthEvent).not.toHaveBeenCalled();
+  });
+
+  it('sends the entire mutation to legacy only when migration capability is unavailable', async () => {
+    const legacy = legacyRepository();
+    const authority = authorityRepository();
+    vi.mocked(authority.ensureMigrated).mockRejectedValueOnce(new ScheduleEventMigrationCapabilityUnavailableError());
+    const repository = createScheduleEventBackedPlannerRepository(legacy, authority);
+    await repository.applyRecurringMonthEventMutation('user-1', events);
+    expect(legacy.applyRecurringMonthEventMutation).toHaveBeenCalledExactlyOnceWith('user-1', events);
+    expect(authority.applyRecurringMonthEventMutation).not.toHaveBeenCalled();
+    expect(authority.upsertMonthEvent).not.toHaveBeenCalled();
+  });
+
+  it('rejects a mixed owner before migration can read or write', async () => {
+    const legacy = legacyRepository();
+    const authority = authorityRepository();
+    const repository = createScheduleEventBackedPlannerRepository(legacy, authority);
+    await expect(repository.applyRecurringMonthEventMutation('user-1', [events[0], { ...events[1], userId: 'foreign' }])).rejects.toThrow('所有者が一致しません');
+    expect(authority.ensureMigrated).not.toHaveBeenCalled();
+    expect(legacy.applyRecurringMonthEventMutation).not.toHaveBeenCalled();
+    expect(authority.applyRecurringMonthEventMutation).not.toHaveBeenCalled();
+  });
+
+  it('propagates canonical write failure without legacy fallback', async () => {
+    const legacy = legacyRepository();
+    const authority = authorityRepository();
+    const failure = new Error('Canonical atomic commit failed');
+    vi.mocked(authority.applyRecurringMonthEventMutation).mockRejectedValueOnce(failure);
+    const repository = createScheduleEventBackedPlannerRepository(legacy, authority);
+    await expect(repository.applyRecurringMonthEventMutation('user-1', events)).rejects.toBe(failure);
+    expect(legacy.applyRecurringMonthEventMutation).not.toHaveBeenCalled();
+    expect(authority.upsertMonthEvent).not.toHaveBeenCalled();
   });
 });

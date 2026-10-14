@@ -117,33 +117,21 @@ export function AppSettingsGeneral({
       {onChangeMonthTimetable ? <div className="settings-row-block">
         <div className="settings-row">
           <span className="settings-field-label" id="month-timetable-label"><CalendarDays aria-hidden="true" size={21} />月カレンダーに時間割を表示</span>
-          <div className="settings-segments" role="group" aria-labelledby="month-timetable-label" aria-describedby="month-timetable-description">
+          <div className="settings-segments" role="group" aria-labelledby="month-timetable-label">
             <button type="button" aria-pressed={showMonthTimetable} onClick={() => onChangeMonthTimetable(true)}>表示する</button>
             <button type="button" aria-pressed={!showMonthTimetable} onClick={() => onChangeMonthTimetable(false)}>表示しない</button>
           </div>
         </div>
-        <details className="settings-help">
-          <summary>表示される授業について</summary>
-          <p id="month-timetable-description">時間割から自動表示する授業を、月カレンダーと日付を開いた一覧に表示します。
-            オフにしても、予定として保存した授業は残ります。週・日表示やAIの空き時間判定は変わりません。
-            このブラウザに、ユーザーごとに保存されます。</p>
-        </details>
         {monthTimetableError ? <p className="settings-inline-error settings-group-note" role="alert">{monthTimetableError}</p> : null}
       </div> : null}
       {onChangeDayTimetable ? <div className="settings-row-block">
         <div className="settings-row">
           <span className="settings-field-label" id="day-timetable-label"><CalendarDays aria-hidden="true" size={21} />日カレンダーに時間割を表示</span>
-          <div className="settings-segments" role="group" aria-labelledby="day-timetable-label" aria-describedby="day-timetable-description">
+          <div className="settings-segments" role="group" aria-labelledby="day-timetable-label">
             <button type="button" aria-pressed={showDayTimetable} onClick={() => onChangeDayTimetable(true)}>表示する</button>
             <button type="button" aria-pressed={!showDayTimetable} onClick={() => onChangeDayTimetable(false)}>表示しない</button>
           </div>
         </div>
-        <details className="settings-help">
-          <summary>表示される授業について</summary>
-          <p id="day-timetable-description">時間割から自動表示する授業を、日カレンダーに表示します。
-            オフにしても、予定として保存した授業や記録は残ります。月・週表示やAIの空き時間判定は変わりません。
-            このブラウザに、ユーザーごとに保存されます。</p>
-        </details>
         {dayTimetableError ? <p className="settings-inline-error settings-group-note" role="alert">{dayTimetableError}</p> : null}
       </div> : null}
       <div className="settings-row-block">
@@ -168,7 +156,6 @@ export function AppSettingsGeneral({
         <span className="settings-field-label"><Sparkles aria-hidden="true" size={21} />週間計画AI</span>
         <span className="settings-row-value">Stable V5<span className="confidence-badge">固定</span></span>
       </div>
-      <p className="settings-group-note">週間計画はStable V5経路だけを使用します。</p>
     </SettingsGroup>
   </div>;
 }
