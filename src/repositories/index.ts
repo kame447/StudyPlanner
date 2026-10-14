@@ -1,4 +1,5 @@
 import { createLocalClassAttendanceRepository, createUnavailableClassAttendanceRepository } from './classAttendanceRepository';
+import { createLocalStudyStreakRepository, createUnavailableStudyStreakRepository } from './studyStreakRepository';
 import { isFirebaseEnabled } from '../lib/firebaseConfig';
 import { createAuthRepository } from './authRepository';
 import { createLocalPlannerRepository } from './createLocalPlannerRepository';
@@ -33,6 +34,7 @@ function createLocalRepositoryBundle() {
     authRepository: createAuthRepository(createLocalAuthStorageGateway()),
     plannerRepository,
     classAttendanceRepository: createLocalClassAttendanceRepository(window.localStorage, plannerRepository),
+    studyStreakRepository: createLocalStudyStreakRepository(window.localStorage, plannerRepository),
   };
 }
 
@@ -44,6 +46,7 @@ const repositoryBundle = isFirebaseEnabled()
         authRepository: createUnavailableAuthRepository(),
         plannerRepository: createUnavailablePlannerRepository(),
         classAttendanceRepository: createUnavailableClassAttendanceRepository(),
+        studyStreakRepository: createUnavailableStudyStreakRepository(),
       };
 
-export const { authRepository, plannerRepository, classAttendanceRepository } = repositoryBundle;
+export const { authRepository, plannerRepository, classAttendanceRepository, studyStreakRepository } = repositoryBundle;

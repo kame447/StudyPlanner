@@ -140,6 +140,14 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
       "publicSurface.current?.querySelector<HTMLElement>('.legal-back-link')?.focus({ preventScroll: true });",
       'if (target?.isConnected && target.getClientRects().length) target.focus({ preventScroll: true });',
     ])],
+    // The user-opened calendar focuses its h1 and restores its launch button.
+    // Dedicated calendar browser cases assert both targets and the 16px date input.
+    ['src/components/StudyStreakView.tsx', new Set([
+      'titleRef.current?.focus({ preventScroll: true });',
+    ])],
+    ['src/hooks/useStudyStreakNavigation.ts', new Set([
+      'if (origin.current.element?.isConnected) origin.current.element.focus({ preventScroll: true });',
+    ])],
   ]);
 
   for (const file of files) {

@@ -1,5 +1,7 @@
+import type { VerifiedStudyStreakSummary } from './components/HomeTopbar';
 import type { HomeAddEntry } from './components/home/TodayScheduleAddMenu';
 import { HomeDisplayClockProvider } from './components/home/HomeDisplayClockContext';
+import { useStudyStreakNavigation } from './hooks/useStudyStreakNavigation';
 import { useSettingsNavigation } from './hooks/useSettingsNavigation';
 import { HomeSceneAtmosphereProvider } from './components/home/HomeSceneAtmosphereContext';
 import { useHomeScenePreference } from './hooks/useHomeScenePreference';
@@ -38,6 +40,8 @@ import { scheduleAppViewPreload } from './lib/preloadAppViews';
 import { isPlannerDataReadyForOwner } from './domain/plannerDataReadAuthority';
 import { resolveActiveTimetableTerm } from './domain/timetableTerm';
 import type { ViewMode } from './types/domain';
+
+const StudyStreakPage = lazy(() => import('./components/StudyStreakPage').then(module => ({ default: module.StudyStreakPage })));
 
 const HomeAddFlow = lazy(() => import('./components/HomeAddFlow').then((module) => ({ default: module.HomeAddFlow })));
 
@@ -109,6 +113,8 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   useEffect(() => { if (!state.booting && startupVisible) onReady?.(); }, [state.booting, startupVisible, onReady]);
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const settingsNavigation = useSettingsNavigation();
+  const streakNavigation = useStudyStreakNavigation(state.user?.id, !state.booting);
+  const [streakSummary, setStreakSummary] = useState<VerifiedStudyStreakSummary | null>(null);
   const [quickEntry, setQuickEntry] = useState<{ ownerId: string; id: number; materialId?: string } | null>(null);
   const quickEntrySequence = useRef(0);
   const [homeEntry, setHomeEntry] = useState<{ ownerId: string; id: number; entry: HomeAddEntry } | null>(null);
@@ -373,7 +379,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     <HomeDisplayClockProvider>
     <HomeSceneAtmosphereProvider>
     <div
-      hidden={settingsNavigation.isOpen}
+      hidden={settingsNavigation.isOpen || streakNavigation.isOpen}
       className={
         isWorkspaceSurface
           ? isScheduleSurface
@@ -390,6 +396,8 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         todos={todos}
         onOpenProfile={() => setIsMyPageOpen(true)}
         onOpenSettings={settingsNavigation.open}
+        onOpenStudyStreak={streakNavigation.open}
+        streakSummary={streakSummary}
         className={primaryHeaderClassName}
       />
 
@@ -759,6 +767,9 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         onChangeThemePalette={setThemePalette}
         onClose={settingsNavigation.close}
       />
+      {streakNavigation.isOpen ? <Suspense fallback={<main className="app-settings-page" aria-label="学習記録"><button type="button" onClick={streakNavigation.close}>戻る</button><p role="status">読み込み中…</p></main>}>
+        <StudyStreakPage key={user.id} userId={user.id} plans={plans} actuals={actuals} onClose={streakNavigation.close} onSummaryChange={setStreakSummary} />
+      </Suspense> : null}
     </HomeSceneAtmosphereProvider>
     </HomeDisplayClockProvider>
   );
