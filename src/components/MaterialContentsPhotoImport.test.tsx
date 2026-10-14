@@ -17,6 +17,10 @@ function mount(hasExistingItems = false) {
   return { renderer, onApply, button, select };
 }
 describe('contents photo review', () => {
+  it('uses the existing secondary action surface for the photo entry', () => {
+    const view = mount();
+    expect(view.button('目次写真から読み取る').props.className).toBe('ghost-button material-contents-photo-action');
+  });
   it('requires review and overwrite confirmation, preserves edited nested sections', async () => {
     vi.mocked(extractMaterialContentsPhoto).mockResolvedValue(rows);
     const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true); vi.stubGlobal('window', { confirm });

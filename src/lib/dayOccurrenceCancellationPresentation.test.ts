@@ -6,7 +6,7 @@ const occurrence: ScheduleOccurrence = { id: 'p', ownerId: 'owner', title: '予�
   source: { kind: 'plan', id: 'p', backingKind: 'plan', backingId: 'p' } };
 it('uses the day-only label for a single day, including an end at its midnight boundary', () => {
   for (const end of [occurrence.end, { date: '2026-10-06', time: '00:00' }]) {
-    expect(dayOccurrenceCancellationPresentation({ ...occurrence, end }, { repeat: 'weekly' })).toEqual({ label: 'この日だけ削除', description: undefined });
+    expect(dayOccurrenceCancellationPresentation({ ...occurrence, end }, { repeat: 'weekly' })).toEqual({ isRecurring: true, label: 'この日だけ削除', description: undefined });
   }
 });
 it.each([{ date: '2026-10-06', time: '01:00' }, { date: '2026-10-07', time: '00:00' }])('explains the entire occurrence range for a cross-day cancellation ending $date $time', end => {
@@ -23,6 +23,7 @@ it.each([
   { date: '2026-10-07', time: '00:00' },
 ])('uses event deletion wording for a one-off ending $date $time', end => {
   const copy = dayOccurrenceCancellationPresentation({ ...occurrence, end }, { repeat: 'none' });
+  expect(copy.isRecurring).toBe(false);
   expect(copy.label).toBe('予定を削除');
   expect(copy.description ?? '').not.toMatch(/この回|別の回/);
   if (end.date === '2026-10-07' || end.time === '01:00') {

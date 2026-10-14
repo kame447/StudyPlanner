@@ -289,6 +289,9 @@ test('photo import discloses its destination and leaves contents unchanged witho
   const photo = editor.getByRole('region', { name: '目次写真の取込' });
   await expect(photo).toContainText('OpenAIへ送信');
   await expect(photo).toContainText('写真は教材に保存されません');
+  const entry = photo.getByRole('button', { name: '目次写真から読み取る', exact: true });
+  await expect(entry).toHaveClass(/ghost-button/);
+  expect((await entry.boundingBox()).height).toBeGreaterThanOrEqual(44);
   const persisted = await page.evaluate(() => localStorage.getItem('studyplanner:material-detail:v1:bookshelf-e2e-user:bookshelf-e2e-material'));
   await photo.getByLabel('目次写真を選択', { exact: true }).setInputFiles({ name: 'contents.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') });
   await expect(photo.getByRole('alert')).toContainText('ログインとAI接続が必要');

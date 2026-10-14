@@ -17,3 +17,12 @@ it('bounds native time controls and their grid labels within separate tracks', (
   expect(values('.study-session-time-adjust input').get('min-width')).toBe('0');
   expect(values('.study-session-time-adjust input[type="time"]').get('max-inline-size')).toBe('100%');
 });
+
+it('keeps a focus-scroll inset for the final settings action at enlarged text sizes', () => {
+  const css = postcss.parse(readFileSync(new URL('./study-session.css', import.meta.url), 'utf8'));
+  const declarations: string[] = [];
+  css.walkRules('.study-session-page[data-phase="settings"]', rule => {
+    rule.walkDecls('scroll-padding-bottom', declaration => { declarations.push(declaration.value); });
+  });
+  expect(declarations).toEqual(['16px']);
+});

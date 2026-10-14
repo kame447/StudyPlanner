@@ -1836,3 +1836,8 @@
     grid-column: 2;
   }
 }
+
+.material-contents-photo-action {
+  min-height: 44px;
+  white-space: normal;
+}

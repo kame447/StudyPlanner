@@ -52,7 +52,7 @@ export function MaterialContentsPhotoImport({ hasExistingItems, onApply, include
     {!includePageRanges ? <p>ページ以外の進捗単位のため、章・節の名前と階層だけを取り込みます。ページ番号は進捗位置に反映しません。</p> : null}
     <input ref={input} hidden type="file" accept="image/png,image/jpeg" aria-label="目次写真を選択"
       onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void read(file); }} />
-    <button type="button" className="secondary-button" onClick={() => input.current?.click()}>目次写真から読み取る</button>
+    <button type="button" className="ghost-button material-contents-photo-action" onClick={() => input.current?.click()}>目次写真から読み取る</button>
     {busy ? <p role="status">目次を読み取っています…</p> : null}
     {error ? <p role="alert" className="inline-error">{error}</p> : null}
     {rows ? <div className="section-stack">

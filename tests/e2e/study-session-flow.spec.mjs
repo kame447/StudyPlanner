@@ -163,14 +163,16 @@ test('pomodoro can be selected before start and exposes focus and break UI', asy
   await expect(pomodoro).toHaveAttribute('aria-pressed', 'true');
   await expect(ready.locator('[data-pomodoro-phase]')).toHaveText('集中');
   await expect(ready.locator('[data-study-session-phase-remaining]')).toHaveText('25:00');
-  await expect(ready.getByText('1 / 3 セット ・ 次は 休憩 5分', { exact: true })).toBeVisible();
-  await expect(ready.getByText('休憩を含めて記録', { exact: true })).toBeVisible();
+  await expect(ready.getByRole('button', { name: '集中と休憩の設定', exact: true }))
+    .toHaveText('25分 / 5分 ・ 3セット（目安）');
+  await expect(ready.getByText('休憩を含めて記録', { exact: true })).toHaveCount(0);
 
   await ready.getByRole('button', { name: 'スタート' }).click();
   const session = page.getByRole('dialog', { name: '学習中' });
   await expect(session.getByRole('button', { name: /ポモドーロ/ })).toBeDisabled();
   await expect(session.locator('[data-study-session-phase-remaining]')).not.toHaveText('25:00', { timeout: 2500 });
   await expect(session.getByText(/総経過/)).toBeVisible();
+  await expect(session.locator('[aria-label="ポモドーロの進行"] .active')).toHaveText('集中');
 });
 
 test('startup light surface keeps the browser canvas white over a restored dark theme', async ({ page }) => {

@@ -86,7 +86,7 @@ function SummaryCard({
 }
 
 function shouldShowMonthLabel(index: number, total: number): boolean {
-  return index === 0 || index === total - 1 || (index + 1) % 5 === 0;
+  return index === 0 || index === total - 1 || ((index + 1) % 5 === 0 && total - 1 - index >= 3);
 }
 
 export function ReportView({
@@ -324,8 +324,8 @@ export function ReportView({
                     }
                     aria-hidden="true"
                   >
-                    <strong>{showLabel ? bucket.label : ''}</strong>
-                    <span>{showLabel ? bucket.sublabel : ''}</span>
+                    <strong>{showLabel ? (scope === 'month' ? String(index + 1) : bucket.label) : ''}</strong>
+                    {scope !== 'month' ? <span>{showLabel ? bucket.sublabel : ''}</span> : null}
                   </div>
                 </div>
               );

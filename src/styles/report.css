@@ -405,6 +405,13 @@
   gap: 2px;
 }
 
+/* Month ticks span empty neighbouring columns without breaking digit pairs. */
+.learning-report-chart.scope-month .learning-report-chart-label strong {
+  max-width: none;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
 .learning-report-chart.scope-month .learning-report-chart-bar {
   width: min(10px, 78%);
   min-width: 2px;

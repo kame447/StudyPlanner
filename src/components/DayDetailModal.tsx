@@ -11,6 +11,7 @@ interface DayDetailModalProps {
   detailPlan: Plan | null;
   openRecordInitially?: boolean;
   historyOnly?: boolean;
+  showWholePlanDelete?: boolean;
   deleteOccurrenceLabel?: string;
   deleteOccurrenceDescription?: string;
   onDeleteOccurrence?: () => Promise<void>;
@@ -39,6 +40,7 @@ export function DayDetailModal(props: DayDetailModalProps) {
 
 function DayDetailSession({
   historyOnly = false,
+  showWholePlanDelete = true,
   openRecordInitially = false,
   deleteOccurrenceLabel = '予定を削除',
   deleteOccurrenceDescription,
@@ -173,7 +175,7 @@ function DayDetailSession({
                   {deleteOccurrenceDescription ? <span>{deleteOccurrenceDescription}</span> : null}</span>
                 <ChevronRight aria-hidden="true" size={22} />
               </button> : null}
-              {!monthEvent && !historyOnly ? (
+              {!monthEvent && !historyOnly && showWholePlanDelete ? (
                 <button
                   className="schedule-action-item danger"
                   disabled={isDeleting || isExiting}

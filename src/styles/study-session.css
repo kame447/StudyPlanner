@@ -677,3 +677,9 @@
   color: inherit;
   font: inherit;
 }
+
+/* Native focus scrolling must leave room for fractional-pixel rounding and
+   the focus outline on the final settings action, including enlarged text. */
+.study-session-page[data-phase="settings"] {
+  scroll-padding-bottom: 16px;
+}

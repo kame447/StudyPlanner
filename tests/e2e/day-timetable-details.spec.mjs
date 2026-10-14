@@ -119,6 +119,7 @@ for (const width of [390, 1280]) {
       const savedDialog = page.getByRole('dialog', { name: '保存済み予定の操作', exact: true });
       await expect(savedDialog.getByRole('button', { name: '予定を削除', exact: true })).toBeVisible();
       await expect(savedDialog).not.toContainText('この日だけ削除');
+      await expect(savedDialog.locator('.schedule-action-item.danger')).toHaveCount(1);
       await page.screenshot({ path: testInfo.outputPath(`single-event-delete-${width}.png`), animations: 'disabled' });
       await savedDialog.getByRole('button', { name: '閉じる', exact: true }).click();
       await card('未取込の授業').click();
@@ -129,15 +130,21 @@ for (const width of [390, 1280]) {
       await expect(record).toContainText('未取込の授業');
       await expect(record).toContainText(E2E_TODAY);
       await page.screenshot({ path: testInfo.outputPath(`timetable-record-${width}.png`), animations: 'disabled' });
+      // Plan writes use canonical scheduleEvents; the migration input array is not a live mirror.
+      const savedEvent = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]')
+        .find(value => value.provenance?.sourceType === 'timetable' && value.provenance?.sourceId === 'template'));
+      expect(savedEvent).toMatchObject({ userId: 'day-detail-owner', title: '未取込の授業', date: E2E_TODAY,
+        startTime: '13:00', endTime: '14:00', provenance: { sourceType: 'timetable', sourceId: 'template', legacy: { kind: 'plan' } } });
+      const savedPlanId = savedEvent.provenance.legacy.id;
+      expect(savedPlanId).toEqual(expect.any(String));
       await record.getByRole('button', { name: '記録保存', exact: true }).click();
-      await expect.poll(() => page.evaluate(() => {
-        const plans = JSON.parse(localStorage.getItem('studyplanner.plans') ?? '[]');
-        const actuals = JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]');
-        const plan = plans.find(value => value.sourceId === 'template');
-        return actuals.find(value => value.planId === plan?.id)?.occurrenceDate;
-      })).toBe(E2E_TODAY);
+      const readActuals = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]'));
+      const expectedActual = { userId: 'day-detail-owner', planId: savedPlanId, title: '未取込の授業',
+        occurrenceDate: E2E_TODAY, actualStartTime: '13:00', actualEndTime: '14:00' };
+      await expect.poll(readActuals).toEqual([expect.objectContaining(expectedActual)]);
+      await expect(record).toHaveCount(0);
       await page.reload();
-      await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]').length)).toBe(1);
+      await expect.poll(readActuals).toEqual([expect.objectContaining(expectedActual)]);
     });
   });
 }
