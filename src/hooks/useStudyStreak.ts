@@ -1,79 +1,115 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { buildStudyStreakModel, studyRestDayBlockReason } from '../lib/studyStreak';
+import { buildStudyStreakModel, nextAutomaticStudyRestDate } from '../lib/studyStreak';
 import type { StudyHistoryHint, StudyStreakHistory, StudyStreakRepository } from '../repositories/studyStreakRepository';
 
-type HistoryState = { hint?: StudyHistoryHint } & (
-  | { status: 'loading'; userId: string; history: null }
-  | { status: 'ready'; userId: string; history: StudyStreakHistory }
-  | { status: 'error'; userId: string; history: null; message: string });
+type HistoryState = {
+  userId: string;
+  repository: StudyStreakRepository;
+  hint?: StudyHistoryHint;
+  history: StudyStreakHistory | null;
+  refreshing: boolean;
+  readError: string | null;
+};
 
-export function useStudyStreak(userId: string, today: string, repository: StudyStreakRepository, hint?: StudyHistoryHint) {
-  const [state, setState] = useState<HistoryState>({ status: 'loading', userId, history: null, hint });
-  const [revision, setRevision] = useState(0);
+export function useStudyStreak(userId: string, today: string, repository: StudyStreakRepository, hint?: StudyHistoryHint, active = true) {
+  const [state, setState] = useState<HistoryState>(() => ({ userId, repository, hint,
+    history: repository.peek?.(userId, hint) ?? null, refreshing: true, readError: null }));
+  const [request, setRequest] = useState({ revision: 0, force: false });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const lifetime = useRef(0);
-  const mounted = useRef(false);
-  const pending = useRef<number | null>(null);
-  const hintRef = useRef(hint);
-  hintRef.current = hint;
+  const busy = useRef(false);
+  const committed = useRef({ userId, today, repository, hint, active });
+  useLayoutEffect(() => { committed.current = { userId, today, repository, hint, active }; });
+  const matches = (previous: HistoryState) => previous.userId === userId && previous.repository === repository
+    && previous.hint?.plans === hint?.plans && previous.hint?.actuals === hint?.actuals;
+  const matchesInput = matches(state);
+  const history = matchesInput ? state.history : null;
+  const model = useMemo(() => history ? buildStudyStreakModel({ ...history, today }) : null, [history, today]);
+
   useEffect(() => {
     const epoch = ++lifetime.current;
-    mounted.current = true;
-    const readHint = hintRef.current;
-    setState({ status: 'loading', userId, history: null, hint: readHint });
+    if (!active) {
+      busy.current = false;
+      setSaving(false);
+      setState(previous => ({ ...previous, refreshing: false }));
+      return;
+    }
+    const controller = new AbortController();
+    busy.current = true;
+    const current = () => committed.current.active && epoch === lifetime.current && !controller.signal.aborted
+      && committed.current.userId === userId && committed.current.repository === repository
+      && committed.current.today === today && committed.current.hint?.plans === hint?.plans
+      && committed.current.hint?.actuals === hint?.actuals;
+    setState(previous => ({ userId, repository, hint,
+      history: matches(previous) ? previous.history : repository.peek?.(userId, hint) ?? null,
+      refreshing: true, readError: null }));
     setSaving(false);
     setSaveError(null);
-    pending.current = null;
-    void repository.read(userId, { hint: readHint, refresh: revision > 0 }).then(history => {
-      if (epoch === lifetime.current) {
-        if (history.userId !== userId || !history.historyComplete) throw new Error('学習履歴を確認できませんでした。');
-        setState({ status: 'ready', userId, history, hint: readHint });
+    void (async () => {
+      let accepted: StudyStreakHistory;
+      try {
+        accepted = await repository.read(userId, { hint, today, refresh: request.force });
+        if (!current()) return;
+        if (accepted.userId !== userId || !accepted.historyComplete) throw new Error('学習履歴を確認できませんでした。');
+        setState({ userId, repository, hint, history: accepted, refreshing: true, readError: null });
+      } catch (error) {
+        if (current()) setState(previous => ({ ...previous, refreshing: false,
+          readError: error instanceof Error ? error.message : '学習履歴を読み込めませんでした。' }));
+        return;
       }
-    }).catch(error => {
-      if (epoch === lifetime.current) setState({ status: 'error', userId, history: null, hint: readHint,
-        message: error instanceof Error ? error.message : '学習履歴を読み込めませんでした。' });
-    });
-    return () => { mounted.current = false; lifetime.current += 1; };
-  }, [userId, repository, revision, hint?.plans, hint?.actuals]);
-  const matchesInput = state.userId === userId && state.hint?.plans === hint?.plans && state.hint?.actuals === hint?.actuals;
-  const history = matchesInput && state.status === 'ready' ? state.history : null;
-  const committed = useRef({ userId, repository, history });
-  useLayoutEffect(() => { committed.current = { userId, repository, history }; });
-  const model = useMemo(() => history ? buildStudyStreakModel({ ...history, today }) : null, [history, today]);
-  const useRestDay = useCallback(async (date: string): Promise<boolean> => {
-    if (!mounted.current || !history || !repository.canUseRestDays || pending.current !== null
-      || committed.current.userId !== userId || committed.current.repository !== repository
-      || committed.current.history !== history) return false;
-    const reason = studyRestDayBlockReason({ ...history, today }, date);
-    if (reason) { setSaveError(reason); return false; }
-    const epoch = lifetime.current;
-    pending.current = epoch;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const next = await repository.useRestDay(history, date, today);
-      if (epoch !== lifetime.current || next.userId !== userId || committed.current.history !== history) return false;
-      setState({ status: 'ready', userId, history: next, hint: hintRef.current });
-      return true;
-    } catch (error) {
-      if (epoch === lifetime.current) setSaveError(error instanceof Error ? error.message : 'お休みチケットを保存できませんでした。');
-      return false;
-    } finally {
-      if (epoch === lifetime.current) {
-        pending.current = null;
-        setSaving(false);
+      try {
+        if (!repository.canUseRestDays && nextAutomaticStudyRestDate({ ...accepted, today })) {
+          throw new Error('このブラウザーではお休みチケットを安全に保存できません。');
+        }
+        if (repository.canUseRestDays) {
+          let date: string | null;
+          while (current() && (date = nextAutomaticStudyRestDate({ ...accepted, today }))) {
+            setSaving(true);
+            const next = await repository.useRestDay(accepted, date, today, { signal: controller.signal });
+            if (!current()) return;
+            if (next.userId !== userId || !next.historyComplete || !next.restDays.some(day => day.date === date)) {
+              throw new Error('お休みチケットの保存を確認できませんでした。');
+            }
+            accepted = next;
+            setState({ userId, repository, hint, history: accepted, refreshing: true, readError: null });
+          }
+        }
+      } catch (error) {
+        if (current()) setSaveError(error instanceof Error ? error.message : 'お休みチケットを保存できませんでした。');
+      } finally {
+        if (current()) {
+          setSaving(false);
+          setState(previous => ({ ...previous, refreshing: false }));
+        }
       }
-    }
-  }, [history, repository, today, userId]);
+    })().finally(() => { if (epoch === lifetime.current) busy.current = false; });
+    return () => { controller.abort(); lifetime.current += 1; busy.current = false; };
+  }, [userId, today, repository, hint?.plans, hint?.actuals, request, active]);
+
+  useEffect(() => {
+    if (!active || typeof window === 'undefined' || typeof document === 'undefined'
+      || !window.addEventListener || !document.addEventListener) return;
+    const resume = () => {
+      if (document.visibilityState !== 'hidden' && !busy.current) {
+        setRequest(previous => ({ revision: previous.revision + 1, force: false }));
+      }
+    };
+    window.addEventListener('focus', resume);
+    window.addEventListener('pageshow', resume);
+    document.addEventListener('visibilitychange', resume);
+    return () => {
+      window.removeEventListener('focus', resume);
+      window.removeEventListener('pageshow', resume);
+      document.removeEventListener('visibilitychange', resume);
+    };
+  }, [active]);
+  const retry = useCallback(() => setRequest(previous => ({ revision: previous.revision + 1, force: true })), []);
   return {
-    status: matchesInput ? state.status : 'loading' as const,
-    model, saving: matchesInput && saving,
-    readError: matchesInput && state.status === 'error' ? state.message : null,
-    saveError: matchesInput ? saveError : null,
-    canUseRestDays: Boolean(history && repository.canUseRestDays),
-    useRestDay,
-    blockReason: (date: string) => history ? studyRestDayBlockReason({ ...history, today }, date) : '学習履歴を確認中です。',
-    retry: () => setRevision(value => value + 1),
+    status: history ? 'ready' as const : matchesInput && state.readError ? 'error' as const : 'loading' as const,
+    model, refreshing: active && (!matchesInput || state.refreshing), saving: matchesInput && saving,
+    readError: matchesInput ? state.readError : null, saveError: matchesInput ? saveError : null, retry,
   };
 }
+
+export type StudyStreakController = ReturnType<typeof useStudyStreak>;

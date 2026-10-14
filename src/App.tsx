@@ -1,4 +1,4 @@
-import type { VerifiedStudyStreakSummary } from './components/HomeTopbar';
+import { StudyStreakProvider } from './components/StudyStreakContext';
 import type { HomeAddEntry } from './components/home/TodayScheduleAddMenu';
 import { HomeDisplayClockProvider } from './components/home/HomeDisplayClockContext';
 import { useStudyStreakNavigation } from './hooks/useStudyStreakNavigation';
@@ -114,7 +114,6 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
   const settingsNavigation = useSettingsNavigation();
   const streakNavigation = useStudyStreakNavigation(state.user?.id, !state.booting);
-  const [streakSummary, setStreakSummary] = useState<VerifiedStudyStreakSummary | null>(null);
   const [quickEntry, setQuickEntry] = useState<{ ownerId: string; id: number; materialId?: string } | null>(null);
   const quickEntrySequence = useRef(0);
   const [homeEntry, setHomeEntry] = useState<{ ownerId: string; id: number; entry: HomeAddEntry } | null>(null);
@@ -377,6 +376,11 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
 
   return (
     <HomeDisplayClockProvider>
+    <StudyStreakProvider key={user.id} userId={user.id} plans={plans} actuals={actuals}
+      active={isPlannerDataReadyForOwner(plannerDataAvailability, user.id)}
+      blockedError={plannerDataAvailability.ownerId === user.id && ['unavailable', 'stale'].includes(plannerDataAvailability.status)
+        ? '学習履歴を読み込めませんでした。' : null}
+      onRetryBlocked={() => { void retryPlannerData(); }}>
     <HomeSceneAtmosphereProvider>
     <div
       hidden={settingsNavigation.isOpen || streakNavigation.isOpen}
@@ -397,7 +401,6 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         onOpenProfile={() => setIsMyPageOpen(true)}
         onOpenSettings={settingsNavigation.open}
         onOpenStudyStreak={streakNavigation.open}
-        streakSummary={streakSummary}
         className={primaryHeaderClassName}
       />
 
@@ -768,9 +771,10 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         onClose={settingsNavigation.close}
       />
       {streakNavigation.isOpen ? <Suspense fallback={<main className="app-settings-page" aria-label="学習記録"><button type="button" onClick={streakNavigation.close}>戻る</button><p role="status">読み込み中…</p></main>}>
-        <StudyStreakPage key={user.id} userId={user.id} plans={plans} actuals={actuals} onClose={streakNavigation.close} onSummaryChange={setStreakSummary} />
+        <StudyStreakPage onClose={streakNavigation.close} />
       </Suspense> : null}
     </HomeSceneAtmosphereProvider>
+    </StudyStreakProvider>
     </HomeDisplayClockProvider>
   );
 }

@@ -58,3 +58,26 @@ describe('announcement page', () => {
     await act(async () => button('再試行').props.onClick()); expect(listAnnouncements).toHaveBeenLastCalledWith('owner', cursor); expect(renderer.root.findAllByProps({ className: 'announcement-row' })).toHaveLength(3);
   });
 });
+
+it('shares the bell page and emits receipt updates only after successful persistence', async () => {
+  const acknowledge = vi.fn();
+  const loadPage = vi.fn().mockResolvedValue({ page: { items, nextCursor: null }, read: { through: null, items: {} } });
+  let finish!: () => void;
+  vi.mocked(markAnnouncementRead).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  await act(async () => { renderer = create(<AnnouncementsPage userId="owner" detailId="a" onOpenDetail={open} onBack={back} loadPage={loadPage} onReadAcknowledged={acknowledge} />); });
+  expect(listAnnouncements).not.toHaveBeenCalled(); expect(getAnnouncementReadState).not.toHaveBeenCalled(); expect(acknowledge).not.toHaveBeenCalled();
+  act(() => renderer.unmount());
+  await act(async () => finish());
+  expect(acknowledge).toHaveBeenCalledExactlyOnceWith({ through: null, items: { a: item.publishedAt } });
+});
+it('keeps failed bulk persistence out of the bell and allows marking a read first page with unseen continuation', async () => {
+  const acknowledge = vi.fn();
+  const loadPage = vi.fn().mockResolvedValue({ page: { items, nextCursor: { ...items[1].publishedAt, id: 'b' } }, read: { through: null, items: { a: item.publishedAt, b: items[1].publishedAt } } });
+  vi.mocked(markAllAnnouncementsRead).mockRejectedValueOnce(new Error('offline'));
+  await act(async () => { renderer = create(<AnnouncementsPage userId="owner" detailId={null} onOpenDetail={open} onBack={back} loadPage={loadPage} onReadAcknowledged={acknowledge} />); });
+  expect(button('すべて既読').props.disabled).toBe(false);
+  await act(async () => button('すべて既読').props.onClick());
+  expect(acknowledge).not.toHaveBeenCalled(); expect(text()).toContain('既読を保存できません');
+  await act(async () => button('既読を再試行').props.onClick());
+  expect(acknowledge).toHaveBeenCalledExactlyOnceWith({ through: item.publishedAt, items: {} });
+});

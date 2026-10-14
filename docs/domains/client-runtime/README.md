@@ -48,3 +48,5 @@ Other active client-runtime work:
 - [Laplans startup video](work/laplans-video-splash-handoff.md): isolated local presentation change under UI Issue #483; verification evidence and remaining browser/release gates are tracked in this one handoff.
 
 Client-first does not imply client-authoritative shared state. Authentication, owner isolation, reconciliation, cross-device consistency and server-side security boundaries remain explicit requirements.
+
+- [Admin mobile navigation and announcement actions](work/admin-mobile-navigation-handoff.md): visible return, same-document navigation and direct draft/publication actions; local follow-up awaiting publication approval.

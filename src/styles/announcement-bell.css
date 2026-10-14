@@ -1,0 +1,12 @@
+.announcement-bell { position: relative; }
+.announcement-bell-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--surface-strong);
+  border-radius: 50%;
+  background: var(--danger, #db5050);
+  pointer-events: none;
+}

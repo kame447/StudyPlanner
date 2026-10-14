@@ -1,3 +1,4 @@
+import type { ConfirmedStudyHistory } from './confirmedStudyHistory';
 import type { Firestore } from 'firebase/firestore';
 import {
   collection,
@@ -224,6 +225,7 @@ async function upsertActualDocument(
 
 export function createFirebasePlannerRepository(
   firestoreDb: Firestore,
+  studyHistory?: ConfirmedStudyHistory,
 ): PlannerRepository {
   const repository: PlannerRepository = {
     async getScheduleSnapshot(userId) {
@@ -244,12 +246,13 @@ export function createFirebasePlannerRepository(
       }
     },
     async getActuals(userId) {
+      const publish = studyHistory?.beginRead(userId, 'actuals');
       try {
-        return dedupeLinkedActualRecords(
-          (await listByUserId<Actual>(firestoreDb, 'actuals', userId)).map(
-            normalizeActualRecord,
-          ),
-        );
+        const snapshot = await getDocs(query(collection(firestoreDb, 'actuals'), where('userId', '==', userId)));
+        const actuals = dedupeLinkedActualRecords(snapshot.docs.map(row =>
+          normalizeActualRecord({ ...row.data(), id: row.id } as Actual)));
+        publish?.(actuals, snapshot.metadata);
+        return actuals;
       } catch (error) {
         throw new Error(
           normalizeErrorMessage('記録を取得できませんでした。', error as { message?: string | null }),
