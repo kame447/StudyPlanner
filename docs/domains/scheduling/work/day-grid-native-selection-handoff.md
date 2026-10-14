@@ -1,6 +1,6 @@
 # Day grid native selection
 
-Status: local implementation and full verification complete; native verification and publication pending
+Status: PR #648 is published; WebKit test-contract correction passed local verification, native rerun and merge pending
 
 - Owner: `implement_day_schedule_actions`, coordinated by the release owner.
 - Branch: `fix/day-grid-native-selection`; base/initial HEAD `90211bdcf39dd9bce66211df129949a5668a0de4`.
@@ -29,4 +29,18 @@ A document-wide selection or context-menu cancellation would also affect editors
 
 Keep this independent branch separate from PR #541 and the previously approved four-feature release. After separate publication approval, use existing Chromium and WebKit CI with the unchanged runners and inspect native results. A physical iOS check is still required to directly establish system callout suppression. Do not weaken native assertions or claim full UI completion from local unit/build proof.
 
-No upstream push, main write, merge, production service activation or browser-run retry is included in this local work. Exit requires preserved editor/gesture semantics, exact local proof and explicit remaining native/publication limits.
+The user approved publication and main integration after browser verification on 2026-10-14. The release owner is the sole publisher. PR [#648](https://github.com/kame447/StudyPlanner/pull/648), remote `76b434cc5616bbe4141743eb4224de8bf9e59a84`, has the same tree `7272b927475944def55d036bbfce8889a5b654da` as local `8703052e1e89cca175474ce5fd6c459e33458b15`. CI merge checkout `9b303a096055d1c7df32b47a473351296b45f5e3` is also identical. No production service activation is included.
+
+## WebKit native checkpoint and test-contract repair
+
+- Initial exact-tree CI [38553798328](https://github.com/kame447/StudyPlanner/actions/runs/38553798328) passed fresh types, 8461 tests, Rules and build. Chromium [38553798360](https://github.com/kame447/StudyPlanner/actions/runs/38553798360) passed all 687 cases, including both new selection cases and saved-card drag/Undo/Redo. Admin, desktop Chromium/Firefox/WebKit, visual and browser-quality checks passed. Bundle budget retains the existing six metric overruns; thresholds are unchanged.
+- Mobile WebKit [38553798505](https://github.com/kame447/StudyPlanner/actions/runs/38553798505), job `115817833366`, passed 278 and failed the two new selection cases, with 3 existing skips. Both widths and both attempts fail at the computed-value assertion before any actual selection gesture. Existing saved-card drag/Undo/Redo passes. Merge remains blocked.
+- Full native artifact `11889847825` was downloaded through the connector, byte count 101636082 and SHA-256 `1cb52cb04d6bbaac6e0c81d21742efb625b9cbf3fb20742d49dbd88a24c062a9` verified. Failure image and trace were inspected. The trace retains the failing assertion and rendered page but does not record the locator-evaluation result, so the exact descendant computed values are not claimed as observed.
+- The previous assertion incorrectly equated computed and used values for every descendant. [CSS UI Level 4](https://www.w3.org/TR/css-ui-4/#propdef-user-select) makes `user-select` non-inherited, with a child computed `auto` resolving to used `none` under a non-selectable parent. WebKit's [implementation change #239514](https://bugs.webkit.org/show_bug.cgi?id=239514) and its own [test correction #321698](https://bugs.webkit.org/show_bug.cgi?id=321698) document this distinction. The test contract needs correction independently of whether an additional product defect exists; the next native run must establish actual behavior.
+- The repair leaves production CSS and gestures unchanged. Require the grid's explicit `none`, accept spec-valid descendant computed `auto`, and exercise actual title → time → kind selection gestures while the mouse is held, before a detail dialog can alter focus. Begin the existing saved-card drag on its title and require empty text selection before mouse release, while retaining exact moved times, Undo, Redo and reload assertions.
+- Log actual per-node policy for diagnosis. Check callout style only when `CSS.supports` exposes the property, and annotate unsupported browser ports as an unverified physical-iOS boundary, not success. Unit coverage still requires the production declarations and editor exceptions. Do not expand CSS to every descendant solely to satisfy a computed-style assertion.
+- The user's additional image of native selection inside a timetable card was viewed locally. Its title, time and kind are normal text descendants within this same Day grid. Private image contents are not copied to repository artifacts; all native tests use the existing fictional fixtures.
+
+- Corrected test snapshot passed focused 4 files / 36 tests, syntax checking and 7-case WebKit collection. Final local `verify` (same command/environment above) exited 0: fresh app/Worker checks, 886 files / 8461 tests, 54 skips / 1 todo, build 5.33s. Before/after source SHA-256 `204620b6a019d7257dc0beb0f1c38239b6431399c09a0188f496f19d40ed29e1`, installed-dependency hash and generated Worker types match. No production code changed. This local success does not resolve the native failure until the corrected cases run there.
+
+Next: sole-owner publication to the same PR and exact-head Chromium/WebKit reruns. The real gesture checks must pass; a repeated failure returns to diagnosis rather than relaxing assertions. Physical iOS system selection handles remain separately unverified.
