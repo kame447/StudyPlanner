@@ -6,7 +6,9 @@ import { usePlannerDataState, type UsePlannerDataStateResult } from '../hooks/us
 import { createEmptyMonthEventDraft } from '../domain/planner';
 import { formatDateLabel } from '../lib/date';
 
-const repo = vi.hoisted(() => ({ upsertMonthEvent: vi.fn(), deleteMonthEvent: vi.fn() }));
+const repo = vi.hoisted(() => ({ upsertMonthEvent: vi.fn(), deleteMonthEvent: vi.fn(), applyRecurringMonthEventMutation: vi.fn(),
+  getScheduleSnapshot: vi.fn(), getActuals: vi.fn(), getTodos: vi.fn(), getDayNotes: vi.fn(), getStudySubjects: vi.fn(),
+  getStudyMaterials: vi.fn(), getScheduleTemplates: vi.fn(), getTimetableTerms: vi.fn(), getTimetablePeriods: vi.fn(), applyTimetableMutation: vi.fn() }));
 vi.mock('../repositories', () => ({ plannerRepository: repo }));
 // Only the DOM portal boundary is replaced; calendar, sheet, dialog, date picker, and state are real.
 vi.mock('react-dom', () => ({ createPortal: (node: unknown) => node }));
@@ -45,6 +47,7 @@ async function seed(repeat: 'monthly' | 'none' = 'monthly', endDate = '2026-05-1
   await act(async () => {
     await state.saveMonthEvent({ ...createEmptyMonthEventDraft('owner', '2026-05-15'), endDate, title: 'Seed May event', repeat });
   });
+  await act(async () => { await state.loadPlannerData('owner'); });
   repo.upsertMonthEvent.mockClear();
 }
 async function openOccurrence() {
@@ -66,6 +69,11 @@ beforeEach(async () => {
   vi.stubGlobal('document', { body: {} });
   repo.upsertMonthEvent.mockReset().mockResolvedValue(undefined);
   repo.deleteMonthEvent.mockReset().mockResolvedValue(undefined);
+  repo.applyRecurringMonthEventMutation.mockReset().mockResolvedValue(undefined);
+  repo.getScheduleSnapshot.mockImplementation(async () => ({ plans: [], monthEvents: state.monthEvents }));
+  for (const getter of [repo.getActuals, repo.getTodos, repo.getDayNotes, repo.getStudySubjects, repo.getStudyMaterials,
+    repo.getScheduleTemplates, repo.getTimetableTerms, repo.getTimetablePeriods]) getter.mockResolvedValue([]);
+  repo.applyTimetableMutation.mockResolvedValue(undefined);
   await act(async () => { renderer = create(<Harness />); });
 });
 afterEach(() => { act(() => renderer.unmount()); vi.unstubAllGlobals(); vi.useRealTimers(); });
@@ -87,10 +95,15 @@ it.each(['none', 'monthly'] as const)('new October %s input stays in October des
 
 it('keeps October after title input on a recurring occurrence with a May series anchor', async () => {
   await seed(); await openOccurrence();
-  expect(byLabel('開始日').children.join('')).toContain('2026年5月15日');
+  expect(byLabel('開始日').children.join('')).toContain('2026年10月15日');
   await title('October occurrence title input'); await click(button('保存'));
-  expect(repo.upsertMonthEvent).toHaveBeenCalledTimes(1);
-  expect(repo.upsertMonthEvent.mock.calls[0][0]).toMatchObject({ date: '2026-05-15', title: 'October occurrence title input' });
+  expect(repo.applyRecurringMonthEventMutation).not.toHaveBeenCalled();
+  await click(button('これ以降も全部変更'));
+  expect(repo.applyRecurringMonthEventMutation).toHaveBeenCalledTimes(1);
+  expect(repo.applyRecurringMonthEventMutation.mock.calls[0][1]).toEqual([
+    expect.objectContaining({ date: '2026-05-15', title: 'Seed May event', repeatUntil: '2026-09-15' }),
+    expect.objectContaining({ date: '2026-10-15', title: 'October occurrence title input' }),
+  ]);
   expect(state.monthDate).toBe('2026-10-01'); expect(state.selectedDate).toBe('2026-10-15');
 });
 
@@ -121,11 +134,12 @@ it('keeps October after title input on a May-to-October nonrecurring range', asy
 it('an explicit recurring start-date move still navigates to the new month', async () => {
   await seed(); await openOccurrence();
   await click(byLabel('開始日'));
-  for (let i = 0; i < 6; i++) await click(byLabel('翌月'));
+  await click(byLabel('翌月'));
   await click(byLabel(formatDateLabel('2026-11-15')));
   expect(byLabel('開始日').children.join('')).toContain('2026年11月15日');
   await click(button('保存'));
-  expect(repo.upsertMonthEvent.mock.calls[0][0]).toMatchObject({ date: '2026-11-15', endDate: '2026-11-15' });
+  await click(button('この予定だけ変更'));
+  expect(repo.applyRecurringMonthEventMutation.mock.calls[0][1][1]).toMatchObject({ date: '2026-11-15', endDate: '2026-11-15' });
   expect(state.monthDate).toBe('2026-11-01'); expect(state.selectedDate).toBe('2026-11-15');
 });
 
@@ -133,8 +147,8 @@ it.each(['resolve', 'reject'] as const)('preserves a newer toolbar month when a 
   await seed(); await openOccurrence(); await title('Pending October edit');
   let resolve!: () => void; let reject!: (e: Error) => void;
   const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
-  repo.upsertMonthEvent.mockReturnValueOnce(promise);
-  await click(button('保存'));
+  repo.applyRecurringMonthEventMutation.mockReturnValueOnce(promise);
+  await click(button('保存')); await click(button('これ以降も全部変更'));
   expect(state.monthDate).toBe('2026-10-01');
   await click(byLabel('次の期間へ'));
   expect(state.monthDate).toBe('2026-11-01');

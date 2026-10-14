@@ -254,7 +254,7 @@ test.describe('multi-day month events', () => {
     await expect(selected.locator('.month-date-number')).toHaveText(String(dates.startDay));
   });
 
-  for (const action of ['edit', 'single-delete', 'future-delete']) {
+  for (const action of ['edit-single', 'edit-future', 'single-delete', 'future-delete']) {
     test(`keeps October visible after ${action} of a May-anchored recurring event`, async ({ page }, testInfo) => {
       const title = '5月開始の繰り返し予定';
       const now = new Date().toISOString();
@@ -274,10 +274,19 @@ test.describe('multi-day month events', () => {
       await page.locator('.month-day-sheet-event').filter({ hasText: title }).click();
       const overlay = page.locator('.month-event-modal-overlay');
       const editor = overlay.locator('.month-event-modal');
-      await expect(editor.getByRole('button', { name: '開始日', exact: true })).toContainText('2026年5月15日');
-      if (action === 'edit') {
+      await expect(editor.getByRole('button', { name: '開始日', exact: true })).toContainText('2026年10月15日');
+      if (action.startsWith('edit-')) {
         await editor.getByLabel('タイトル', { exact: true }).fill('10月で編集した繰り返し予定');
+        const before = await page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'));
         await editor.getByRole('button', { name: '保存', exact: true }).click();
+        const scope = editor.getByRole('group', { name: '繰り返し予定の更新範囲' });
+        await expect(scope).toBeVisible();
+        expect(await page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'))).toBe(before);
+        await scope.getByRole('button', { name: 'キャンセル', exact: true }).click();
+        expect(await page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'))).toBe(before);
+        await expect(editor.getByLabel('タイトル', { exact: true })).toHaveValue('10月で編集した繰り返し予定');
+        await editor.getByRole('button', { name: '保存', exact: true }).click();
+        await scope.getByRole('button', { name: action === 'edit-single' ? 'この予定だけ変更' : 'これ以降も全部変更', exact: true }).click();
       } else {
         await editor.getByRole('button', { name: '削除', exact: true }).click();
         await editor.getByRole('button', {
@@ -292,10 +301,16 @@ test.describe('multi-day month events', () => {
       const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]')
         .find(item => item.provenance?.legacy?.kind === 'month-event'));
       expect(stored).toMatchObject({ date: '2026-05-15', endDate: '2026-05-15' });
-      if (action === 'edit') {
-        expect(stored.title).toBe('10月で編集した繰り返し予定');
+      if (action.startsWith('edit-')) {
+        expect(stored.title).toBe(title);
+        const created = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]')
+          .find(item => item.title === '10月で編集した繰り返し予定'));
+        expect(created).toMatchObject({ date: '2026-10-15', endDate: '2026-10-15',
+          recurrence: { repeat: action === 'edit-single' ? 'none' : 'monthly' } });
+        if (action === 'edit-single') expect(stored.recurrence.excludedDates).toContain('2026-10-15');
+        else expect(stored.recurrence.repeatUntil).toBe('2026-09-15');
         await expect(selected).toContainText('10月で編集した繰り返し予定');
-        await page.screenshot({ path: testInfo.outputPath('recurring-event-october-preserved.png') });
+        await page.screenshot({ path: testInfo.outputPath(`recurring-event-${action}-october-preserved.png`) });
       } else if (action === 'single-delete') {
         expect(stored.recurrence.excludedDates).toContain('2026-10-15');
       } else {

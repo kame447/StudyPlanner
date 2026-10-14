@@ -1,3 +1,4 @@
+import { assertRecurringMonthEventWrite } from './plannerWritePreparation';
 import type { ConfirmedStudyHistory } from './confirmedStudyHistory';
 import { observeStartupDocument } from './observeStartupDocument';
 import { startupTiming } from '../lib/startupTiming';
@@ -726,6 +727,22 @@ export function createFirebaseScheduleEventAuthority(
       } catch (error) {
         throw new Error(
           normalizeErrorMessage('予定を削除できませんでした。', error as FirebaseLikeError),
+        );
+      }
+    },
+
+    async applyRecurringMonthEventMutation(userId, monthEvents) {
+      try {
+        assertRecurringMonthEventWrite(userId, monthEvents);
+        const batch = writeBatch(firestoreDb);
+        monthEvents.forEach((monthEvent) => {
+          const event = scheduleEventFromMonthEvent(monthEvent);
+          batch.set(doc(firestoreDb, SCHEDULE_EVENTS_COLLECTION, event.id), stripUndefinedDeep(event));
+        });
+        await batch.commit();
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('繰り返し予定を保存できませんでした。', error as FirebaseLikeError),
         );
       }
     },
