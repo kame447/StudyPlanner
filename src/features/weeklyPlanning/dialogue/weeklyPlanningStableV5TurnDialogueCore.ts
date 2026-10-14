@@ -185,7 +185,7 @@ function createRenderInput(params: {
   questionCode: string | null;
   actionId: string;
 }): WeeklyPlanningStableV5DialogueRenderInput {
-  const planningInformation = params.result.stableV5Graph
+  const planningInformation: Record<string, unknown> | null = params.result.stableV5Graph
     ? {
         ...createWeeklyPlanningStableV5DialogueProjection(params.result.stableV5Graph),
         registeredMaterials: createWeeklyPlanningRegisteredMaterialContextV5({
@@ -221,7 +221,7 @@ function createRenderInput(params: {
   const fallbackText = RENDERER_TECHNICAL_STOP;
   // Read the canonical target window, not merely the currently selected UI day.
   // A multi-day horizon has no single truthful set of 'today' commitments.
-  const windows = planningInformation?.planningWindows;
+  const windows = planningInformation?.['planningWindows'];
   const lastWindow = Array.isArray(windows) && windows.length > 0
     ? windows[windows.length - 1] : null;
   const windowStart = lastWindow && typeof lastWindow.start === 'string'
