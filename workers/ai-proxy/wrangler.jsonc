@@ -27,13 +27,18 @@
     "ALLOWED_GEMINI_MODELS": "gemini-3.5-flash",
     "GEMINI_MODEL": "gemini-3.5-flash",
     "ENVIRONMENT": "production",
-    "WEEKLY_PLANNING_TRACE_WORKER_REVISION": "weekly-planning-trace-20260729-005"
+    "WEEKLY_PLANNING_TRACE_WORKER_REVISION": "weekly-planning-trace-20260729-005",
+    "DURABLE_WEEKLY_TURNS": "enabled"
   },
   "durable_objects": {
     "bindings": [
       {
         "name": "AI_QUOTA",
         "class_name": "AiQuotaDurableObject"
+      },
+      {
+        "name": "AI_TURNS",
+        "class_name": "WeeklyPlanningTurnDurableObject"
       }
     ]
   },
@@ -42,6 +47,12 @@
       "tag": "v1",
       "new_sqlite_classes": [
         "AiQuotaDurableObject"
+      ]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": [
+        "WeeklyPlanningTurnDurableObject"
       ]
     }
   ]
