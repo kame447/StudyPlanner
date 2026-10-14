@@ -64,6 +64,64 @@ afterEach(()=>{
   vi.restoreAllMocks();vi.unstubAllGlobals();vi.unstubAllEnvs();
 });
 
+it('leaves Enter variants and IME confirmation to textarea editing until Send is activated', async () => {
+  await mount(); await type('数学を進める');
+  for (const event of [
+    { key: 'Enter' },
+    { key: 'Enter', shiftKey: true },
+    { key: 'Enter', ctrlKey: true },
+    { key: 'Enter', metaKey: true },
+    { key: 'Enter', nativeEvent: { isComposing: true, keyCode: 13 } },
+    { key: 'Enter', nativeEvent: { isComposing: false, keyCode: 229 } },
+  ]) {
+    const preventDefault = vi.fn();
+    await act(async () => { textInput().props.onKeyDown?.({ nativeEvent: {}, ...event, preventDefault }); });
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(mocks.load).not.toHaveBeenCalled();
+    expect(mocks.execute).not.toHaveBeenCalled();
+    expect(textInput().props.value).toBe('数学を進める');
+  }
+
+  // Native newline insertion is covered by the keyboard browser regression.
+  const multiline = '数学を進める\n\n英語も復習する';
+  await type(multiline);
+  expect(send().props.disabled).toBe(false);
+  await act(async () => { send().props.onClick(); });
+  expect(mocks.execute).toHaveBeenCalledTimes(1);
+  expect(mocks.execute.mock.calls[0][0].userText).toBe(multiline);
+  expect(textInput().props.value).toBe('');
+});
+
+it('allows only one Send while preparation is pending and restores editing after completion', async () => {
+  const ready = createDeferred<object>(); mocks.load.mockReturnValue(ready.promise);
+  await mount(); await type('数学\n英語');
+  const clickSend = send().props.onClick;
+  await act(async () => { clickSend(); clickSend(); });
+  expect(mocks.load).toHaveBeenCalledTimes(1);
+  expect(mocks.execute).not.toHaveBeenCalled();
+  expect(send().props.disabled).toBe(true);
+  expect(textInput().props.disabled).toBe(true);
+  await act(async () => { ready.resolve({}); });
+  expect(mocks.execute).toHaveBeenCalledTimes(1);
+  expect(mocks.execute.mock.calls[0][0].userText).toBe('数学\n英語');
+  expect(textInput().props.disabled).toBe(false);
+});
+
+it('keeps the multiline draft after a preparation error and submits only on a new Send click', async () => {
+  mocks.load.mockRejectedValueOnce(new Error('temporary preparation failure'));
+  await mount(); await type('数学\n\n英語');
+  await act(async () => { send().props.onClick(); });
+  expect(mocks.execute).not.toHaveBeenCalled();
+  expect(textInput().props.value).toBe('数学\n\n英語');
+  expect(textInput().props.disabled).toBe(false);
+  expect(send().props.disabled).toBe(false);
+  expect(JSON.stringify(renderer!.toJSON())).toContain('temporary preparation failure');
+  await act(async () => { send().props.onClick(); });
+  expect(mocks.execute).toHaveBeenCalledTimes(1);
+  expect(mocks.execute.mock.calls[0][0].userText).toBe('数学\n\n英語');
+  expect(textInput().props.value).toBe('');
+});
+
 it('rejects module failure before OCR or begin_turn and keeps the exact composer text and file',async()=>{
   await mount();await type('  明日の予定立てたい\n');const file=await attach();await failSubmission();
   expect(mocks.ocr).not.toHaveBeenCalled();expect(mocks.execute).not.toHaveBeenCalled();expect(app.state.messages).toHaveLength(0);expect(app.state.pendingTurn).toBeUndefined();
