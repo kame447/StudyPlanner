@@ -99,3 +99,55 @@ describe('home dashboard schedule semantics', () => {
     expect(dashboard.currentStreak).toBe(1);
   });
 });
+
+describe('Home progress inclusion preferences', () => {
+  const preferences = { includeGeneralEvents: false, includeTimetable: false };
+  const study = plan();
+  const general = plan({ id: 'exam', type: 'mock-exam', title: '試験' });
+  // Imported classes may retain type=study. Provenance must take precedence.
+  const timetable = plan({ id: 'class', sourceType: 'timetable', sourceId: 'template', type: 'study' });
+  const plans = [study, general, timetable];
+  const actuals = plans.map((item) => actual({ id: `${item.id}-actual`, planId: item.id, actualEndTime: '09:30' }));
+  const now = new Date('2026-09-05T12:00:00');
+
+  it.each([
+    [false, false, 60, 30],
+    [true, false, 120, 60],
+    [false, true, 120, 60],
+    [true, true, 180, 90],
+  ])('uses one membership for planned and actual minutes (%s, %s)', (includeGeneralEvents, includeTimetable, planned, recorded) => {
+    const snapshot = JSON.stringify({ plans, actuals });
+    const dashboard = buildHomeDashboardModel({ plans, actuals, todos: [], now,
+      progressPreferences: { includeGeneralEvents, includeTimetable } });
+    expect(dashboard.weekPlannedMinutes).toBe(planned);
+    expect(dashboard.weekExpectedMinutesByNow).toBe(planned);
+    expect(dashboard.weekActualMinutes).toBe(recorded);
+    expect(dashboard.weekActualMinutesByNow).toBe(recorded);
+    expect(dashboard.weekProgressPercent).toBe(50);
+    expect(dashboard.weekDeltaMinutesByNow).toBe(recorded - planned);
+    expect(dashboard.missingActualPlans).toHaveLength(0);
+    expect(dashboard.todayPlans).toHaveLength(3);
+    expect(JSON.stringify({ plans, actuals })).toBe(snapshot);
+  });
+
+  it('does not mark registration or elapsed time complete; independently scopes missing records', () => {
+    for (const [includeGeneralEvents, includeTimetable, expected] of [
+      [false, false, ['plan-1']], [true, false, ['plan-1', 'exam']],
+      [false, true, ['plan-1', 'class']], [true, true, ['plan-1', 'exam', 'class']],
+    ] as const) {
+      const dashboard = buildHomeDashboardModel({ plans, actuals: [], todos: [], now,
+        progressPreferences: { includeGeneralEvents, includeTimetable } });
+      expect(dashboard.weekActualMinutes).toBe(0);
+      expect(dashboard.weekProgressPercent).toBe(0);
+      expect(dashboard.missingActualPlans.map(item => item.id).sort()).toEqual([...expected].sort());
+    }
+  });
+
+  it('retains normalized deduplication, standalone records and study actuals when toggled back off', () => {
+    const dashboard = buildHomeDashboardModel({ plans, todos: [], now, progressPreferences: preferences,
+      actuals: [...actuals, actual({ id: 'older', updatedAt: '2026-09-01T00:00:00Z' }),
+        actual({ id: 'standalone', planId: null, actualEndTime: '09:15' })] });
+    expect(dashboard.weekPlannedMinutes).toBe(60);
+    expect(dashboard.weekActualMinutes).toBe(45);
+  });
+});

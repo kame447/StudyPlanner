@@ -1,0 +1,19 @@
+.study-session-resume {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: calc(5.5rem + env(safe-area-inset-bottom));
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  max-width: calc(100vw - 2rem);
+  padding: .85rem 1rem;
+  border: 1px solid var(--accent, #345d50);
+  border-radius: 999px;
+  background: var(--surface, #fff);
+  color: var(--text, #203830);
+  box-shadow: 0 4px 20px #0002;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}

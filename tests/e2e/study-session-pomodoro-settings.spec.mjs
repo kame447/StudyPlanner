@@ -263,3 +263,49 @@ test('a finite measurement crossing midnight still requires explicit date review
   await expect(record).toBeVisible();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]'))).toEqual([]);
 });
+
+for (const width of [390, 1280]) {
+  test(`custom pomodoro survives Home and reload and saves a reviewed subject at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const ready = await openStart(page);
+    await ready.getByRole('button', { name: '集中と休憩の設定' }).click();
+    const settings = page.getByRole('dialog', { name: 'ポモドーロ設定', exact: true });
+    await expect(settings.getByRole('button', { name: '25分 / 5分', exact: true })).toBeVisible();
+    await expect(settings.getByRole('button', { name: '50分 / 10分', exact: true })).toBeVisible();
+    await settings.getByRole('button', { name: 'カスタム', exact: true }).click();
+    await settings.getByRole('spinbutton', { name: '集中（分）', exact: true }).fill('17');
+    await settings.getByRole('spinbutton', { name: '休憩（分）', exact: true }).fill('3');
+    await settings.getByRole('combobox', { name: 'セット数' }).selectOption('1');
+    await page.screenshot({ path: testInfo.outputPath(`custom-pomodoro-${width}.png`), animations: 'disabled' });
+    await settings.getByRole('button', { name: '設定を保存' }).click();
+    await page.clock.pauseAt(new Date(`${E2E_TODAY}T12:00:00+09:00`));
+    await ready.getByRole('button', { name: 'スタート', exact: true }).click();
+    const running = page.getByRole('dialog', { name: '学習中', exact: true });
+    await running.getByRole('button', { name: '戻る', exact: true }).click();
+    await expect(running).toBeHidden();
+    await page.clock.fastForward(10 * 60_000);
+    await page.getByRole('button', { name: '計測中へ戻る', exact: true }).click();
+    await expect(running.locator('[data-study-session-phase-remaining]')).toHaveText('07:00');
+    await page.reload();
+    await page.getByRole('button', { name: '計測中へ戻る', exact: true }).click();
+    await expect(running.locator('[data-study-session-phase-remaining]')).toHaveText('07:00');
+    await page.clock.fastForward(8 * 60_000);
+    await expect(running.locator('[data-pomodoro-phase]')).toHaveText('休憩');
+    await expect(running.locator('[data-study-session-phase-remaining]')).toHaveText('02:00');
+    await running.getByRole('button', { name: '終了する', exact: true }).click();
+    const record = page.getByRole('dialog', { name: '学習を記録', exact: true });
+    await record.getByLabel('科目を入力', { exact: true }).fill('復習');
+    await record.getByText('記録時刻を調整', { exact: true }).click();
+    const fields = record.locator('.study-session-time-adjust input[type="time"]');
+    await expect(fields).toHaveCount(2);
+    const [first, second] = await Promise.all([fields.nth(0).boundingBox(), fields.nth(1).boundingBox()]);
+    expect(first.x + first.width <= second.x + 1 || first.y + first.height <= second.y + 1).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`restored-record-fields-${width}.png`), animations: 'disabled' });
+    await record.getByRole('button', { name: '記録を保存', exact: true }).click();
+    await expect(record).toHaveCount(0);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]'))).toEqual([
+      expect.objectContaining({ planId: null, subject: '復習', occurrenceDate: E2E_TODAY, actualStartTime: '12:00', actualEndTime: '12:18' }),
+    ]);
+  });
+}

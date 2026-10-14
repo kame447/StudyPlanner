@@ -17,7 +17,6 @@ import {
   validateWeeklyPlanningMemoryPaceObservationResultV5,
 } from '../features/weeklyPlanning/personalization/weeklyPlanningMemoryPaceObservationsV5';
 import type { Actual, ActualDraft, Plan } from '../types/domain';
-import { ActualTrackingTools } from './ActualTrackingTools';
 
 interface ActualEditorCardProps {
   plan: Plan;
@@ -138,16 +137,6 @@ export function ActualEditorCard({
       materialName: nextAligned ? plan.materialName ?? '' : current.materialName,
       ...(nextAligned ? {} : { weeklyPlanningObservationResult: undefined }),
     }));
-  }
-
-  function applyMeasuredRange(startTime: string, endTime: string) {
-    if (pendingMutation.current || isClosing) return;
-    setDraft((current) => ({
-      ...current,
-      actualStartTime: startTime,
-      actualEndTime: endTime,
-    }));
-    setError('');
   }
 
   async function handleSave() {
@@ -505,11 +494,6 @@ export function ActualEditorCard({
               )}
             </section>
           ) : null}
-
-          <details className="actual-tracking-details">
-            <summary>計測補助</summary>
-            <ActualTrackingTools onApplyMeasuredRange={applyMeasuredRange} />
-          </details>
 
           {error ? <p className="inline-error" role="alert">{error}</p> : null}
 

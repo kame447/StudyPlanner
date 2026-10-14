@@ -101,3 +101,27 @@ describe.each([
     expect(getPomodoroProgress(-minute, config)).toEqual(getPomodoroProgress(0, config));
   });
 });
+
+
+describe('custom Pomodoro durations', () => {
+  it('uses custom durations in automatic goals and finite cycle completion', () => {
+    const settings = { preset: 'custom' as const, customFocusMinutes: 17, customBreakMinutes: 3, setCount: 2 };
+    const resolved = resolvePomodoroSettings(settings, null);
+    expect(resolved).toMatchObject({ focusMs: 17 * minute, breakMs: 3 * minute, cycleMs: 20 * minute, stopAfterMs: 40 * minute });
+    expect(getPomodoroProgress(17 * minute, resolved)).toMatchObject({ phase: 'break', phaseRemainingMs: 3 * minute });
+    expect(getPomodoroProgress(20 * minute, resolved)).toMatchObject({ phase: 'focus', currentSet: 2 });
+    expect(getPomodoroProgress(50 * minute, resolved)).toMatchObject({ isComplete: true, elapsedMs: 40 * minute });
+    expect(resolvePomodoroSettings({ ...settings, setCount: null }, 41 * minute).totalSets).toBe(3);
+  });
+
+  it.each([0, -1, 0.5, 1441, NaN, Infinity, undefined])('rejects invalid focus or break duration %s', value => {
+    for (const field of ['customFocusMinutes', 'customBreakMinutes']) {
+      expect(() => resolvePomodoroSettings({ preset: 'custom', setCount: null, customFocusMinutes: 25, customBreakMinutes: 5, [field]: value }, null)).toThrow(RangeError);
+    }
+  });
+
+  it('accepts minute bounds and preserves fixed presets when custom values exist', () => {
+    expect(resolvePomodoroSettings({ preset: 'custom', setCount: null, customFocusMinutes: 1, customBreakMinutes: 1440 }, null).cycleMs).toBe(1441 * minute);
+    expect(resolvePomodoroSettings({ preset: '50-10', setCount: null, customFocusMinutes: 17, customBreakMinutes: 3 }, null).focusMs).toBe(50 * minute);
+  });
+});

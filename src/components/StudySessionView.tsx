@@ -1,3 +1,5 @@
+import { createStudySessionIdentity, supportsStudySessionRecovery, saveStudySessionOnce, clearStudySession, readStudySession, writeStudySession, type StudySessionSnapshot } from '../lib/studySessionStorage';
+import './StudySessionResume.css';
 import { ActualMutationAdmissionError, materialUncertainMessage } from '../hooks/useActualMutationAdmission';
 import {
   ArrowLeft,
@@ -37,13 +39,14 @@ import {
   buildActualMaterialProgressUpdatesFromInput,
   getMaterialUnitLabel,
 } from '../lib/materialPace';
-import type { ActualDraft, Plan, StudyMaterial } from '../types/domain';
+import type { ActualDraft, Plan, StudyMaterial, StudySubject } from '../types/domain';
 import { createDefaultPomodoroSettings, getPomodoroCompletedAt, getPomodoroProgress, resolvePomodoroSettings, type PomodoroSettings, type ResolvedPomodoroSettings } from '../lib/pomodoroSession';
 import { StudySessionModePicker, type StudyMode } from './StudySessionModePicker';
 import { PomodoroSettingsView } from './PomodoroSettingsView';
 
 interface StudySessionProviderProps {
   userId: string;
+  subjects?: StudySubject[];
   materials: StudyMaterial[];
   onSaveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
   onSaveStandaloneActual: (draft: ActualDraft) => Promise<void>;
@@ -65,53 +68,66 @@ export function StudySessionProvider(props: PropsWithChildren<StudySessionProvid
 function OwnedStudySessionProvider({
   children,
   userId,
+  subjects = [],
   materials,
   onSaveActual,
   onSaveStandaloneActual,
 }: PropsWithChildren<StudySessionProviderProps>) {
   const nextSessionId = useRef(0);
   const mounted = useRef(true);
-  type ActiveSession = { id: number; target: StudySessionTarget };
-  const currentSession = useRef<ActiveSession | null>(null);
-  const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+  type ActiveSession = { id: number; target: StudySessionTarget; restored?: StudySessionSnapshot };
+  const [activeSession, setActiveSession] = useState<ActiveSession | null>(() => {
+    const restored = readStudySession(userId);
+    return restored ? { id: 0, target: restored.initialTarget, restored } : null;
+  });
+  const currentSession = useRef(activeSession);
+  const [visible, setVisible] = useState(false);
   useLayoutEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; };
   }, []);
 
-  function closeSession(session: ActiveSession) {
+  function closeSession(session: ActiveSession, sessionId: string) {
     if (!mounted.current || currentSession.current !== session) return;
     currentSession.current = null;
+    clearStudySession(userId, sessionId);
     setActiveSession(null);
   }
 
   function launch(request: StudySessionRequest) {
-    if (!mounted.current || currentSession.current || !userId) return;
+    if (!mounted.current || !userId) return;
+    if (currentSession.current) { setVisible(true); return; }
     if (request.kind === 'planned' && request.plan.userId !== userId) return;
     const target: StudySessionTarget = request.kind === 'planned'
       ? request : { kind: 'unplanned', userId };
     const session = { id: ++nextSessionId.current, target };
     currentSession.current = session;
     setActiveSession(session);
+    setVisible(true);
   }
 
   return (
     <StudySessionLaunchContext.Provider value={launch}>
       {children}
+      {activeSession && !visible ? <button type="button" className="study-session-resume" onClick={() => setVisible(true)}><TimerReset size={18} aria-hidden="true" />計測中へ戻る</button> : null}
       {activeSession ? (
         <StudySessionView
           key={activeSession.id}
           initialTarget={activeSession.target}
+          restored={activeSession.restored}
+          visible={visible}
+          onMinimize={() => setVisible(false)}
           userId={userId}
           materials={materials.filter(material => material.userId === userId)}
-          onClose={() => closeSession(activeSession)}
-          onSaveActual={async (target, draft) => {
+          subjects={subjects.filter(subject => subject.userId === userId)}
+          onClose={sessionId => closeSession(activeSession, sessionId)}
+          onSaveActual={async (target, draft, sessionId) => {
             if (!mounted.current || currentSession.current !== activeSession || draft.userId !== userId) {
               throw new ActualMutationAdmissionError('学習画面を開き直してください。');
             }
             if (target.kind === 'planned') await onSaveActual(target.plan, draft);
             else await onSaveStandaloneActual(draft);
-            closeSession(activeSession);
+            closeSession(activeSession, sessionId);
           }}
         />
       ) : null}
@@ -153,48 +169,88 @@ function resolveMaterial(plan: Plan, materials: StudyMaterial[]): StudyMaterial 
 
 function StudySessionView({
   initialTarget,
+  restored,
+  visible,
+  onMinimize,
   userId,
+  subjects,
   materials,
   onClose,
   onSaveActual,
 }: {
   initialTarget: StudySessionTarget;
+  restored?: StudySessionSnapshot;
+  visible: boolean;
+  onMinimize: () => void;
   userId: string;
+  subjects: StudySubject[];
   materials: StudyMaterial[];
-  onClose: () => void;
-  onSaveActual: (target: StudySessionTarget, draft: ActualDraft) => Promise<void>;
+  onClose: (sessionId: string) => void;
+  onSaveActual: (target: StudySessionTarget, draft: ActualDraft, sessionId: string) => Promise<void>;
 }) {
+  const [sessionIdentity] = useState(() => restored ? { sessionId: restored.sessionId, persistent: true } : createStudySessionIdentity(userId));
+  const { sessionId } = sessionIdentity;
   const initialNow = useMemo(() => Date.now(), []);
-  const [target, setTarget] = useState(initialTarget);
+  const [target, setTarget] = useState(restored?.target ?? initialTarget);
   const plan = target.kind === 'planned' ? target.plan : null;
-  const [unplannedTitle, setUnplannedTitle] = useState('');
-  const [unplannedSubject, setUnplannedSubject] = useState('');
-  const [unplannedMaterialId, setUnplannedMaterialId] = useState('');
-  const [needsDateAdjustment, setNeedsDateAdjustment] = useState(false);
-  const started = useRef(false);
+  const [unplannedTitle, setUnplannedTitle] = useState(restored?.unplannedTitle ?? '');
+  const [unplannedSubject, setUnplannedSubject] = useState(restored?.unplannedSubject ?? '');
+  const [unplannedMaterialId, setUnplannedMaterialId] = useState(restored?.unplannedMaterialId ?? '');
+  const [needsDateAdjustment, setNeedsDateAdjustment] = useState(restored?.needsDateAdjustment ?? false);
+  const started = useRef(restored !== undefined);
   const savePending = useRef(false);
-  const saveBlocked = useRef(false);
-  const recordedElapsedMs = useRef<number | null>(null);
-  const [phase, setPhase] = useState<SessionPhase>('timer');
+  const saveBlocked = useRef(restored?.requiresInspection ?? false);
+  const recordedElapsedMs = useRef<number | null>(restored?.recordedElapsedMs ?? null);
+  const [phase, setPhase] = useState<SessionPhase>(restored?.phase ?? 'timer');
   const pageRef = useRef<HTMLDivElement>(null);
-  const [studyMode, setStudyMode] = useState<StudyMode>('normal');
-  const [pomodoroSettings, setPomodoroSettings] = useState(createDefaultPomodoroSettings);
-  const activePomodoro = useRef<ResolvedPomodoroSettings | null>(null);
-  const pomodoroCompletedAt = useRef<number | null>(null);
+  const [studyMode, setStudyMode] = useState<StudyMode>(restored?.studyMode ?? 'normal');
+  const [pomodoroSettings, setPomodoroSettings] = useState(restored?.pomodoroSettings ?? createDefaultPomodoroSettings);
+  const activePomodoro = useRef<ResolvedPomodoroSettings | null>(restored?.activePomodoro ?? null);
+  const pomodoroCompletedAt = useRef<number | null>(restored?.pomodoroCompletedAt ?? null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const restoreSettingsFocus = useRef(false);
-  const phaseRef = useRef<SessionPhase>('timer');
+  const phaseRef = useRef<SessionPhase>(restored?.phase ?? 'timer');
   const settingsRevision = useRef(0);
   const renderedSettingsRevision = settingsRevision.current;
   const [nowMs, setNowMs] = useState(initialNow);
-  const [tracker, setTracker] = useState<TrackerState>(createInitialTracker);
-  const [recordDraft, setRecordDraft] = useState<ActualDraft | null>(null);
-  const [progressInput, setProgressInput] = useState('');
-  const [observationProgressInput, setObservationProgressInput] = useState('');
+  const [tracker, setTracker] = useState<TrackerState>(restored?.tracker ?? createInitialTracker);
+  const [recordDraft, setRecordDraft] = useState<ActualDraft | null>(restored?.recordDraft ?? null);
+  const [progressInput, setProgressInput] = useState(restored?.progressInput ?? '');
+  const [observationProgressInput, setObservationProgressInput] = useState(restored?.observationProgressInput ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [requiresInspection, setRequiresInspection] = useState(false);
+  const [requiresInspection, setRequiresInspection] = useState(restored?.requiresInspection ?? false);
+
+  const [storageUnavailable, setStorageUnavailable] = useState(false);
+  function persistSession(inspection = requiresInspection) {
+    if (tracker.anchorMs === null) return;
+    const persisted = sessionIdentity.persistent && supportsStudySessionRecovery() && writeStudySession({
+      version: 1, sessionId, userId, initialTarget, target, tracker,
+      phase: phase === 'record' ? 'record' : 'timer', studyMode, pomodoroSettings,
+      activePomodoro: activePomodoro.current, pomodoroCompletedAt: pomodoroCompletedAt.current,
+      recordedElapsedMs: recordedElapsedMs.current, recordDraft,
+      unplannedTitle, unplannedSubject, unplannedMaterialId, progressInput,
+      observationProgressInput, needsDateAdjustment, requiresInspection: inspection,
+    });
+    setStorageUnavailable(!persisted);
+  }
+  useLayoutEffect(() => {
+    persistSession(requiresInspection || saving);
+  }, [tracker, phase, studyMode, pomodoroSettings, target, recordDraft, unplannedTitle,
+    unplannedSubject, unplannedMaterialId, progressInput, observationProgressInput,
+    needsDateAdjustment, requiresInspection, saving]);
+
+  useEffect(() => {
+    const refresh = () => setNowMs(Date.now());
+    if (visible) refresh();
+    window.addEventListener?.('pageshow', refresh);
+    document.addEventListener?.('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener?.('pageshow', refresh);
+      document.removeEventListener?.('visibilitychange', refresh);
+    };
+  }, [visible]);
 
   const plannedMinutes = plan ? Math.max(1, minutesBetween(plan.startTime, plan.endTime)) : null;
   const plannedMs = plannedMinutes === null ? null : plannedMinutes * 60_000;
@@ -213,11 +269,7 @@ function StudySessionView({
   const pomodoroIsFocus = pomodoroProgress.phase === 'focus';
   const pomodoroPhaseRemainingMs = pomodoroProgress.phaseRemainingMs;
   const totalPomodoroSets = resolvedPomodoro.totalSets;
-  const currentPomodoroSet = pomodoroProgress.currentSet;
   const pomodoroPhaseLabel = isPomodoroComplete ? '完了' : pomodoroIsFocus ? '集中' : '休憩';
-  const pomodoroNextLabel = pomodoroIsFocus
-    ? `休憩 ${resolvedPomodoro.breakMs / 60_000}分`
-    : `集中 ${resolvedPomodoro.focusMs / 60_000}分`;
 
   const progressDegrees = studyMode === 'pomodoro'
     ? pomodoroProgress.progressDegrees
@@ -280,12 +332,13 @@ function StudySessionView({
   }, [isPomodoroComplete, tracker.runningFromMs, pomodoroProgress.elapsedMs]);
 
   useEffect(() => {
+    if (!visible) return;
     const previousBodyOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previousBodyOverflow;
     };
-  }, []);
+  }, [visible]);
 
   function startTimer() {
     if (started.current || phaseRef.current !== 'timer') return;
@@ -389,14 +442,12 @@ function StudySessionView({
       return;
     }
 
-    if (
-      elapsedMs > 0 &&
-      !window.confirm('学習セッションを終了してホームに戻りますか？ 計測内容は保存されません。')
-    ) {
+    if (started.current) {
+      onMinimize();
       return;
     }
 
-    onClose();
+    onClose(sessionId);
   }
 
   async function saveRecord() {
@@ -447,15 +498,18 @@ function StudySessionView({
         }
       : undefined;
 
+    persistSession(true);
     savePending.current = true;
     setSaving(true);
     setError('');
     try {
-      await onSaveActual(target, {
+      const save = () => onSaveActual(target, {
         ...recordDraft,
         materialProgressUpdates,
         weeklyPlanningObservationResult,
-      });
+      }, sessionId);
+      if (sessionIdentity.persistent) await saveStudySessionOnce(userId, sessionId, save, error => error instanceof ActualMutationAdmissionError);
+      else await save();
     } catch (error) {
       savePending.current = false;
       setSaving(false);
@@ -469,8 +523,10 @@ function StudySessionView({
   return (
     <div
       className="study-session-overlay"
-      role="dialog"
-      aria-modal="true"
+      hidden={!visible}
+      style={!visible ? { display: 'none' } : undefined}
+      role={visible ? "dialog" : undefined}
+      aria-modal={visible ? true : undefined}
       aria-label={dialogLabel}
     >
       <div className="study-session-page" data-phase={phase} ref={pageRef}>
@@ -482,6 +538,7 @@ function StudySessionView({
           <span className="study-session-header-spacer" aria-hidden="true" />
         </header>
 
+        {storageUnavailable && isStarted ? <p role="status" className="study-session-error">このブラウザでは計測の一時保存ができません。ページを閉じたり再読み込みすると計測が失われます。</p> : null}
         {phase === 'timer' ? (
           <main className="study-session-content study-session-timer-view">
             <section className="study-session-card study-session-primary-card">
@@ -540,7 +597,6 @@ function StudySessionView({
                         <span data-pomodoro-phase>{pomodoroPhaseLabel}</span>
                         <strong data-study-session-phase-remaining>{formatPomodoroTime(pomodoroPhaseRemainingMs)}</strong>
                       </div>
-                      <b>{currentPomodoroSet}{totalPomodoroSets === null ? '' : ` / ${totalPomodoroSets}`} セット{isPomodoroComplete ? ' 完了' : ` ・ 次は ${pomodoroNextLabel}`}</b>
                     </>
                   ) : (
                     <>
@@ -566,7 +622,6 @@ function StudySessionView({
                     <i aria-hidden="true">→</i>
                     <span>集中</span>
                   </div>}
-                  <small>休憩を含めて記録</small>
                   {isStarted ? <span className="study-session-total-elapsed">総経過 {formatDurationDisplay(elapsedMs)}</span> : null}
                 </div>
               ) : null}
@@ -591,6 +646,9 @@ function StudySessionView({
                   </button>
                 </div>
               )}
+              {isStarted ? <button type="button" className="study-session-settings-button" disabled={saving} onClick={() => {
+                if (!savePending.current && window.confirm('計測内容と未保存の入力を破棄しますか？')) onClose(sessionId);
+              }}>計測を破棄</button> : null}
             </section>
           </main>
         ) : phase === 'settings' ? (
@@ -632,7 +690,19 @@ function StudySessionView({
               ) : (
                 <div className="study-session-field-grid">
                   <label>実際にやった内容<input value={recordDraft.title} onChange={(event) => setRecordDraft({ ...recordDraft, title: event.target.value })} /></label>
-                  <label>実際の科目<input value={recordDraft.subject} onChange={(event) => setRecordDraft({ ...recordDraft, subject: event.target.value })} /></label>
+                  <label>実際の科目
+                    <select aria-label="登録済みの科目" value={subjects.find(subject => subject.name === recordDraft.subject)?.id ?? ''}
+                      onChange={(event) => {
+                        const subject = subjects.find(subject => subject.id === event.target.value);
+                        setRecordDraft({ ...recordDraft, subject: subject?.name ?? '' });
+                      }}>
+                      <option value="">未設定・自由入力</option>
+                      {subjects.map(subject => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
+                    </select>
+                  </label>
+                  <label>科目を入力（任意）<input aria-label="科目を入力" placeholder="科目を入力（任意）" value={recordDraft.subject} onChange={(event) => setRecordDraft({ ...recordDraft, subject: event.target.value })} />
+                  </label>
+                  <p className="muted">保存後も、日表示でこの記録を開くと科目を変更できます。</p>
                 </div>
               )}
             </section>

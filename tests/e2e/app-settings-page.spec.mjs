@@ -217,3 +217,39 @@ for (const width of [1280, 390, 320]) {
     expect(await page.evaluate(() => localStorage.getItem('studyplanner.plans'))).toBe(savedPlans);
   });
 }
+
+test('study progress defaults exclude general events and timetable and persists independent opt-ins', async ({ page }, testInfo) => {
+  await seed(page); await page.goto('/');
+  await page.getByRole('button', { name: 'メニューを開く', exact: true }).click();
+  const settings = page.getByRole('main', { name: 'アプリ設定' });
+  const general = settings.getByRole('checkbox', { name: '月の主要予定を進捗に含める', exact: true });
+  const timetable = settings.getByRole('checkbox', { name: '時間割を進捗に含める', exact: true });
+  await expect(general).not.toBeChecked(); await expect(timetable).not.toBeChecked();
+  await general.check(); await expect(timetable).not.toBeChecked();
+  await page.screenshot({ path: testInfo.outputPath('home-progress-inclusion.png'), animations: 'disabled' });
+  await page.reload(); await page.getByRole('button', { name: 'メニューを開く', exact: true }).click();
+  await expect(general).toBeChecked(); await expect(timetable).not.toBeChecked();
+  await timetable.check(); await general.uncheck();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('study-planner-study-progress:settings-page-user')))).toEqual({ includeGeneralEvents: false, includeTimetable: true });
+});
+
+for (const width of [390, 1280]) {
+  test(`home 100 percent stays inside its ring at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 }); await seed(page);
+    await page.addInitScript(({ date }) => {
+      const plan = JSON.parse(localStorage.getItem('studyplanner.plans'))[0];
+      localStorage.setItem('studyplanner.actuals', JSON.stringify([{ id: 'complete-study', userId: plan.userId, planId: plan.id,
+        occurrenceDate: date, actualStartTime: plan.startTime, actualEndTime: plan.endTime, title: plan.title,
+        subject: plan.subject, isAlignedToPlan: true, note: '', updatedAt: new Date().toISOString() }]));
+    }, { date: E2E_TODAY });
+    await page.goto('/');
+    const ring = page.locator('.weekly-progress-ring');
+    await expect(ring).toHaveAttribute('aria-label', '週全体の予定に対する達成率 100%');
+    const fits = await ring.evaluate(element => {
+      const box = element.getBoundingClientRect(); const label = element.querySelector('strong').getBoundingClientRect();
+      return label.left >= box.left && label.right <= box.right && label.top >= box.top && label.bottom <= box.bottom;
+    });
+    expect(fits).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`home-progress-100-${width}.png`), animations: 'disabled' });
+  });
+}
