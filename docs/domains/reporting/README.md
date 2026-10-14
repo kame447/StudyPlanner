@@ -13,3 +13,5 @@
 - [連続学習カレンダーとお休みチケット](work/20261014-study-streak-calendar-handoff.md)
 
 - [連続学習の1画面化・自動お休み券・今日の炎](work/20261014-study-streak-auto-rest-handoff.md)
+
+- [連続学習カレンダーと下部表示の読みやすさ](work/20261014-study-streak-readability-handoff.md)
