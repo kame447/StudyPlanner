@@ -646,7 +646,6 @@ export function BookshelfView({
         <section className="bookshelf-empty-dashboard">
           <BookOpen aria-hidden="true" />
           <h2>教材を追加してください</h2>
-          <p>階層構造を使わず、教材名だけ登録することもできます。</p>
           <button type="button" onClick={() => setEditingMaterial(null)}>
             教材を追加
           </button>
@@ -780,7 +779,6 @@ export function BookshelfView({
             <section className="bookshelf-settings-group">
               <div>
                 <strong>教材内構造を表示</strong>
-                <small>章・節・単元などの一覧を教材詳細に表示します。</small>
               </div>
               <label className="bookshelf-switch">
                 <input
@@ -801,9 +799,6 @@ export function BookshelfView({
                 <span aria-hidden="true" />
               </label>
             </section>
-            <p className="bookshelf-settings-note">
-              非表示中も登録した項目は保持されます。
-            </p>
             <button
               className="primary-button"
               type="button"
@@ -847,7 +842,6 @@ export function BookshelfView({
             <section className="bookshelf-settings-group">
               <div>
                 <strong>教材内構造を使う</strong>
-                <small>使わない場合は教材全体の進捗だけで管理します。</small>
               </div>
               <label className="bookshelf-switch">
                 <input
@@ -945,15 +939,8 @@ export function BookshelfView({
                   <Plus aria-hidden="true" />
                   項目を追加
                 </button>
-                <p className="bookshelf-settings-note">
-                  章・節に限らず、問題集の単元や動画レッスンなど任意の区切りで登録できます。
-                </p>
               </div>
-            ) : (
-              <p className="bookshelf-settings-note">
-                この教材は階層なしで登録できます。後から有効にしても構いません。
-              </p>
-            )}
+            ) : null}
 
             <div className="row-actions">
               <button className="primary-button" type="button" onClick={saveStructureEditor}>
@@ -1031,7 +1018,6 @@ export function BookshelfView({
             <div className="bookshelf-modal-title-row">
               <div>
                 <h2>よく使う教材</h2>
-                <p>星を付けた教材を優先して表示します。</p>
               </div>
               <button
                 type="button"

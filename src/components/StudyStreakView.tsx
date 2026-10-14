@@ -94,10 +94,9 @@ export function StudyStreakView({ today, model, onClose, pending = false, refres
         </div>
       </section>
 
-      <p className="study-streak-ticket-note">
-        <span>お休み券は自動で使います</span>
-        {model.studyDaysTowardNextTicket !== null && !error ? <span>次の1枚まで {7 - model.studyDaysTowardNextTicket}日</span> : null}
-      </p>
+      {model.studyDaysTowardNextTicket !== null && !error ? <p className="study-streak-ticket-note">
+        <span>次の1枚まで {7 - model.studyDaysTowardNextTicket}日</span>
+      </p> : null}
       {model.historyComplete && !error && unprotectedDates.size > 0 ? <p className="study-streak-use-note" role="status">
         学習記録の変更により、お休み{unprotectedDates.size}日分を連続学習に含められません（{[...unprotectedDates].slice(0, 3).map(date => date.split('-').join('/')).join('、')}{unprotectedDates.size > 3 ? ' ほか' : ''}）。点線の日を確認してください。
       </p> : null}
