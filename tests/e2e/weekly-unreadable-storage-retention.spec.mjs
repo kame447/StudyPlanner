@@ -86,7 +86,7 @@ for (const width of [1280, 390]) {
     await page.getByRole('button', { name: '新しいチャット', exact: true }).click();
     await expect(composer(page)).toBeEnabled();
     await composer(page).fill(NEW_TEXT);
-    await composer(page).press('Enter');
+    await page.getByRole('button', { name: '送信', exact: true }).click();
     await expect(page.locator('.ai-planning-message-row.user').getByText(NEW_TEXT, { exact: true })).toBeVisible();
     await expect(page.getByText(`テスト応答: ${NEW_TEXT}`, { exact: true })).toBeVisible();
     expect(await runtimeEvents(page), 'the observer records the one scripted dispatch').toHaveLength(1);

@@ -1,3 +1,4 @@
+import type { MonthEventEditRequest } from '../domain/recurringMonthEvent';
 import type { DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
 import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
 import type { MaterialEditBaseline } from './useActualMutationAdmission';
@@ -103,7 +104,7 @@ interface PlannerAppState {
   deleteActual: (actual: Actual) => Promise<void>;
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
   loadDayNotes: () => Promise<void>;
-  saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
+  saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string, edit?: MonthEventEditRequest) => Promise<void>;
   deleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
   saveTodo: (draft: TodoTaskDraft, targetTodoId?: string) => Promise<void>;
   scheduleTodoAsPlan: (todo: TodoTask, draft: PlanDraft) => Promise<Plan>;

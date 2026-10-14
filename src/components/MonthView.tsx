@@ -1,3 +1,4 @@
+import type { MonthEventEditRequest } from '../domain/recurringMonthEvent';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useExitMotion } from '../hooks/useExitMotion';
@@ -32,7 +33,7 @@ interface MonthViewProps {
   onChangeMonth: (date: string) => void;
   onOpenWeek: (date: string) => void;
   onOpenDay?: (date: string) => void;
-  onSaveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
+  onSaveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string, edit?: MonthEventEditRequest) => Promise<void>;
   onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
 }
 
