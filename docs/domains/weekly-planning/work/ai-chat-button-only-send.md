@@ -21,6 +21,7 @@ The 2026-10-14 user direction selects relevant tests rather than repeating the e
 - Updated affected real-AI-view browser fixtures to click Send. The separate legacy QuickEntry weekly modal keeps its existing keyboard behavior.
 - Added component regressions for Enter variants/IME, exact internal newlines, explicit Send, repeated clicks while preparation is pending, and recovery after preparation failure.
 - Extended the existing native keyboard spec to 390px and 1280px. Its synthetic IME events are only an event-boundary check, not a physical Japanese IME check.
+- Added this keyboard spec to the existing `webkit-mobile` project's `testMatch`, so the iPhone-emulated browser gate exercises the same 8 cases. This changes test selection only; it does not rerun unrelated local suites or change production behavior.
 
 Verified on base `e306e1a9` plus the local diff:
 
@@ -29,6 +30,7 @@ Verified on base `e306e1a9` plus the local diff:
 - `npm run typecheck:app`: passed. This checks the JSX/type surface and the new component tests; Worker types/runtime are unchanged.
 - `DEV_LAN_HOST=127.0.0.1 npm run build`: passed, with the existing large-chunk warning. This checks the production bundle containing the changed AI view.
 - Changed browser specs pass `node --check`. Keyboard/concurrency/failure-recovery discovery finds 11 tests.
+- Cross-browser configuration passes `node --check`; `playwright test --config=tests/e2e/playwright.cross-browser.config.mjs --project=webkit-mobile --list tests/e2e/weekly-keyboard.spec.mjs` discovers all 8 keyboard cases under `webkit-mobile`. This is discovery, not execution.
 - Native browser execution remains unverified: the cached Playwright package has no matching downloaded browser; the installed `/usr/bin/chromium` fails with `socket() failed: Operation not permitted`. Do not repeat local launch attempts; run relevant browser CI after publication approval.
 
 The initial test-config startup hit `uv_interface_addresses` in network-interface discovery. Setting the existing `DEV_LAN_HOST=127.0.0.1` override allowed the unchanged test configuration to run; no source workaround was added.
