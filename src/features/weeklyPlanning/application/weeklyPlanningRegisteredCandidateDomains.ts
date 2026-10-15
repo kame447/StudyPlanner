@@ -17,10 +17,14 @@ export const TEMPORAL_DATE_CHOICE_CALIBRATION: unknown = null;
 export function weeklyPlanningRegisteredCandidateDomains(host: ControlledCandidateDomainHost): ControlledCandidateRegistry {
   const domain = createNumericPendingRegisteredDomainV5(D5_EXACT_MINUTE_CANDIDATES, D5_DOMAIN_POLICY_VERSION);
   const options = createControlledCandidateChoiceOptions(domain, D5_CHOICE_CALIBRATION, host);
-  const dateDomain = createTemporalDateRegisteredDomainV5();
-  const dateOptions = createControlledCandidateChoiceOptions(dateDomain, TEMPORAL_DATE_CHOICE_CALIBRATION, host);
+  // Keep the uncalibrated date producer out of startup and the production bundle.
+  const dateDomain = TEMPORAL_DATE_CHOICE_CALIBRATION === null
+    ? null : createTemporalDateRegisteredDomainV5();
+  const dateOptions = dateDomain
+    ? createControlledCandidateChoiceOptions(dateDomain, TEMPORAL_DATE_CHOICE_CALIBRATION, host)
+    : undefined;
   return [
     ...(options ? [registerControlledCandidateDomain(domain, options)] : []),
-    ...(dateOptions ? [registerControlledCandidateDomain(dateDomain, dateOptions)] : []),
+    ...(dateDomain && dateOptions ? [registerControlledCandidateDomain(dateDomain, dateOptions)] : []),
   ];
 }
