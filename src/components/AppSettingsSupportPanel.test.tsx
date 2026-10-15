@@ -33,7 +33,8 @@ it('groups ordinary guidance in native disclosures and preserves the current ann
   expect(answer('画像やPDFから何を読み取れますか')).toContain('PDFの読み取りは現在未対応');
   expect(answer('教材の章や単元は登録しないといけませんか')).toContain('登録した項目は保持されます');
   expect(answer('教材はどのように登録しますか')).toContain('見つからなければ手入力できます');
-  expect(answer('計測補助の「反映」では何が変わりますか')).toContain('反映後、記録を保存');
+  // Actual recording no longer exposes the measurement-helper Apply action.
+  expect(questions).not.toContain('計測補助の「反映」では何が変わりますか');
   expect(answer('ポモドーロの時間とセット数はどう設定しますか')).toContain('カスタム');
   expect(answer('ポモドーロの時間とセット数はどう設定しますか')).toContain('1〜1440分の整数');
   expect(answer('ポモドーロの時間とセット数はどう設定しますか')).toContain('最後の休憩後に計測が止まり');
