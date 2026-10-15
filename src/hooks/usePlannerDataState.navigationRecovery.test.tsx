@@ -181,7 +181,7 @@ it('drops old selection operations on owner/reset/unmount while preserving the v
   }
 });
 
-it.each(['plan', 'todo'] as const)('preserves toolbar navigation after the actual %s editor closes while saving', async ui => {
+it.each(['plan', 'todo'] as const)('preserves explicit toolbar navigation while the actual %s editor is saving', async ui => {
   await mount(ui);
   const gate = deferred(); let submit: Promise<void> | undefined;
   if (ui === 'plan') {
@@ -194,9 +194,10 @@ it.each(['plan', 'todo'] as const)('preserves toolbar navigation after the actua
     await act(async () => { renderer!.root.findByProps({ 'aria-label': '予定にする' }).props.onClick(); });
     repo.scheduleTodoPlan.mockReturnValueOnce(gate.promise);
     await act(async () => { renderer!.root.findByType('form').props.onSubmit({ preventDefault() {} }); });
-    expect(renderer!.root.findAllByType('form')).toHaveLength(0);
+    expect(renderer!.root.findAllByType('form')).toHaveLength(1);
     expect(repo.scheduleTodoPlan).toHaveBeenCalledTimes(1);
     await act(async () => { renderer!.root.findAllByProps({ role: 'tab' }).find(tab => tab.children.join('') === '月')!.props.onClick(); });
+    expect(renderer!.root.findAllByType('form')).toHaveLength(0);
   }
   expect(state.selectedDate).toBe(SAVE);
   await act(async () => { renderer!.root.findByProps({ 'aria-label': '次の期間へ' }).props.onClick(); });

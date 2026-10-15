@@ -149,3 +149,73 @@ implementation and mandatory verify are complete; this is not an all-gates-green
 release candidate. Browser/remote CI and publication remain unverified/blocked.
 No remote Issue, branch or PR was created or updated; no branch was deleted. The
 local branch is retained for the existing Issue #437, which remains open.
+
+## Todo editor failure recovery — 2026-10-15
+
+Local follow-up scope: `fix/todo-editor-save-recovery`, base/initial HEAD
+`f8f09a17894fcabc93050c5f065515b0e75d804c`. No new Issue or PR is created.
+Current open PRs, Todo-related closed PRs, remote branches and worktrees were
+checked; #600 (target admission), #632 (compact form), #638 (linked deletion)
+are merged and do not retain failed editor input. This follow-up changes only
+Todo editor lifecycle and its regressions; repository admission stays intact.
+
+The existing component closes both editing and scheduling forms immediately
+when a mutation starts. The parent mutation reports failure and rolls back
+stored/display data, but cannot restore the discarded form input. Keeping the
+form pending with an editor-owned draft is the smallest recovery boundary;
+introducing durable drafts or changing repository writes would expand scope
+without addressing this local lifecycle directly.
+
+Next: reproduce failed edit/scheduling through the real view, data hook and
+local repository; retain input through failure and retry, lock duplicate and
+pending interactions, and fence late results by editor and owner lifetime.
+Complete when focused regressions and app typecheck pass with an exact diff.
+Full integration, native/browser and publication acceptance belong to the
+release owner and are not claimed by this local implementation checkpoint.
+
+### Local candidate verification
+
+- Real `TodoView` + planner hook + local repository reproduced both edit and
+  scheduling input loss on unchanged main (2 failing cases). The same tests now
+  retain title, subject, memo, deadline, date/start and custom duration through
+  rejection/optimistic rollback, then persist exactly one explicit retry.
+- Both forms remain open until success, expose a pending state and inline error,
+  and block field edits, duplicate submissions and dismissal while pending.
+  Existing per-Todo concurrency stays intact. Editor-session and owner tokens
+  prevent old completions, errors, input handlers or cancellation from affecting
+  another editor. Parent repository notices/admission/rollback are unchanged.
+- Focused command: `DEV_LAN_HOST=127.0.0.1 npm run test:run --
+  src/components/TodoView.pendingOperations.test.tsx
+  src/components/TodoView.saveRecovery.integration.test.tsx
+  src/components/TodoView.compactEdit.test.tsx
+  src/components/TodoView.completedSection.test.tsx
+  src/hooks/usePlannerDataState.navigationRecovery.test.tsx
+  src/hooks/usePlannerDataState.todoTargetAdmission.test.tsx
+  src/hooks/usePlannerDataState.todoReadRecovery.test.tsx
+  --maxWorkers 2 --minWorkers 1` — exit 0, 7 files / 159 tests passed.
+- Five prior execution cases asserted immediate form disposal. They now assert
+  pending retention and successful disposal, while preserving duplicate,
+  independent-Todo, explicit navigation and late-result assertions. A new test
+  initially attempted to serialize React element internals; that harness-only
+  circular-reference error was replaced with precise input-value comparisons.
+- `npm run typecheck:app` exit 0; `DEV_LAN_HOST=127.0.0.1 npm run build` exit 0
+  (5.17 s, existing large-chunk warning retained). No lint script exists. No
+  Worker or repository behavior changed; the full suite is reserved for the
+  integration owner rather than repeated by independent workers.
+- New browser spec covers edit and schedule failure/retry at 390 and 1280px,
+  canonical persisted data, reload, horizontal containment and screenshots.
+  `node --check` and Playwright collection pass (2 tests). Actual browser
+  execution/rendering remains unverified; no screenshots are claimed. Local
+  collection uses installed Playwright 1.62.1, whereas CI pins 1.64.0.
+- Environment: Node 24.19.0 / TypeScript 5.9.3 / Vitest 3.2.7, unchanged lockfile,
+  existing shared installation with worktree-local caches. No dependencies,
+  thresholds, workflows, account data or external services were changed.
+- Verified production file SHA-256: `TodoView.tsx`
+  `295b95f6ddda13ec079387ae638f57355ee6488b4f4d4bad9ebda0d0bc802f26`.
+  Exact candidate source/test/dependency receipts and logs are retained by the
+  integration owner. Subsequent integration needs its own content verification.
+
+Next: release-owner independent review, combined-content verification and native
+browser acceptance before any authorized publication. Local work is a verified
+candidate, not a production completion claim. No existing Issue/PR is closed,
+no branch is deleted, and no remote write/merge/deploy has been performed.
