@@ -167,3 +167,247 @@
     animation-delay: 0ms !important;
   }
 }
+
+/* Creation has two required fields. Keep them and its actions together, with
+ * optional information expanding inside one scrollable body. Editing retains
+ * the existing long-form layout and shared modal rules are not changed. */
+.bookshelf-view > .modal-overlay:has(> .bookshelf-modal.material-create-dialog) {
+  top: var(--material-create-viewport-top, 0px);
+  bottom: auto;
+  height: var(--material-create-viewport-height, 100dvh);
+  min-height: 0;
+  max-height: var(--material-create-viewport-height, 100dvh);
+}
+
+.bookshelf-view > .modal-overlay > .bookshelf-modal.material-create-dialog {
+  --material-create-surface: #fff;
+  max-height: min(92dvh, calc(var(--material-create-viewport-height, 100dvh) - 12px));
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+  background: var(--material-create-surface);
+}
+
+:root[data-theme='dark'] .bookshelf-modal.material-create-dialog {
+  --material-create-surface: #181f23;
+}
+
+:root[data-appearance='pixel'] .bookshelf-view .bookshelf-modal.material-create-dialog {
+  --material-create-surface: var(--pixel-paper);
+}
+
+.bookshelf-modal.material-create-dialog .material-create-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: inherit;
+}
+
+.bookshelf-view > .modal-overlay > .bookshelf-modal.material-create-dialog .section-header {
+  position: static;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  gap: 12px;
+  margin: 0;
+  padding: 12px 16px 8px;
+  background: var(--material-create-surface);
+}
+
+.bookshelf-modal.material-create-dialog h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  line-height: 1.4;
+}
+
+.bookshelf-modal.material-create-dialog .material-create-body {
+  display: grid;
+  align-content: start;
+  min-height: 0;
+  gap: 14px;
+  padding: 0 16px 14px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding-block: 12px;
+}
+
+.bookshelf-modal.material-create-dialog .material-create-footer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex: 0 0 auto;
+  gap: 10px;
+  padding: 12px 16px max(14px, env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border);
+  background: var(--material-create-surface);
+}
+
+.bookshelf-modal.material-create-dialog .ghost-button,
+.bookshelf-modal.material-create-dialog .primary-button,
+.bookshelf-modal.material-create-dialog summary {
+  min-height: 44px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.bookshelf-modal.material-create-dialog .ghost-button,
+.bookshelf-modal.material-create-dialog .primary-button {
+  padding: 9px 12px;
+}
+
+.bookshelf-modal.material-create-dialog .material-metadata-search {
+  gap: 6px;
+  padding: 0 0 8px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.bookshelf-modal.material-create-dialog .material-metadata-search-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.bookshelf-modal.material-create-dialog .material-metadata-search-heading > span {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.bookshelf-modal.material-create-dialog .material-metadata-search-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.bookshelf-modal.material-create-dialog .material-metadata-search-button {
+  width: auto;
+}
+
+.bookshelf-modal.material-create-dialog .field {
+  min-width: 0;
+  gap: 5px;
+}
+
+.bookshelf-modal.material-create-dialog .field > span {
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.bookshelf-modal.material-create-dialog .field input,
+.bookshelf-modal.material-create-dialog .field select {
+  min-height: 44px;
+  padding: 9px 10px;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.bookshelf-modal.material-create-dialog .bookshelf-material-edit-grid {
+  display: block;
+}
+
+.bookshelf-modal.material-create-dialog .bookshelf-material-edit-grid > .section-stack {
+  gap: 12px;
+}
+
+.bookshelf-modal.material-create-dialog .material-create-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 10px;
+}
+
+.bookshelf-modal.material-create-dialog .material-create-fields > .field:first-child {
+  grid-column: 1 / -1;
+}
+
+.bookshelf-modal.material-create-dialog .material-create-required {
+  margin-left: 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.bookshelf-modal.material-create-dialog .material-create-cover {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.bookshelf-modal.material-create-dialog .material-create-cover > div:last-child {
+  min-width: 0;
+}
+
+.bookshelf-modal.material-create-dialog .bookshelf-cover-preview {
+  width: 48px;
+  height: 60px;
+  flex: 0 0 48px;
+}
+
+.bookshelf-modal.material-create-dialog .bookshelf-cover-preview img {
+  object-fit: contain;
+}
+
+.bookshelf-modal.material-create-dialog .material-create-cover .row-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.bookshelf-modal.material-create-dialog .detail-note,
+.bookshelf-modal.material-create-dialog .inline-note,
+.bookshelf-modal.material-create-dialog .inline-error {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.bookshelf-modal.material-create-dialog .material-create-attribution summary {
+  padding-block: 10px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.bookshelf-modal.material-create-dialog summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.bookshelf-modal.material-create-dialog summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.bookshelf-modal.material-create-dialog .material-create-catalog summary {
+  padding-block: 12px;
+  font-weight: 600;
+}
+
+.bookshelf-modal.material-create-dialog .material-create-catalog {
+  border-bottom: 1px solid var(--border);
+}
+
+.bookshelf-modal.material-create-dialog .material-pace-settings {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.bookshelf-modal.material-create-dialog .material-pace-toggle {
+  min-height: 44px;
+  align-items: center;
+}
+
+.bookshelf-modal.material-create-dialog .material-pace-toggle input {
+  margin: 0;
+}
