@@ -82,13 +82,24 @@ it('limits the short selection cue to users who allow motion', () => {
   expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\)\s*\{\s*\.month-event-title-selected \.month-event-title-field input\s*\{\s*animation: month-event-title-selection 300ms ease-out;/);
 });
 
-it('always shows named colors, saves the choice, and can return to automatic color', async () => {
+it('discloses named radio choices below the times, saves the choice, and can return to automatic color', async () => {
   const { renderer, save } = mount();
   try {
-    expect(button(renderer, '自動').props['aria-pressed']).toBe(true);
-    act(() => button(renderer, '青').props.onClick());
-    expect(button(renderer, '青').props['aria-pressed']).toBe(true);
-    expect(button(renderer, '自動').props['aria-pressed']).toBe(false);
+    const body = renderer.root.findByType('fieldset');
+    const times = renderer.root.findByProps({ className: 'month-event-datetime-rows' }).parent!;
+    const colorSection = renderer.root.findByProps({ 'aria-label': '予定の色' });
+    expect(body.children.indexOf(colorSection.parent!)).toBe(body.children.indexOf(times) + 1);
+    expect(button(renderer, 'ラベル').props['aria-expanded']).toBe(false);
+    expect(renderer.root.findAllByProps({ type: 'radio' })).toHaveLength(0);
+    act(() => button(renderer, 'ラベル').props.onClick());
+    expect(renderer.root.findByProps({ 'aria-label': '自動' }).props.checked).toBe(true);
+    expect(renderer.root.findAllByProps({ type: 'radio' }).map(node => node.props['aria-label'])).toEqual(['自動', '緑', 'オレンジ', '紫', '青', 'ピンク']);
+    act(() => renderer.root.findByProps({ 'aria-label': '青' }).props.onChange());
+    expect(renderer.root.findByProps({ 'aria-label': '青' }).props.checked).toBe(true);
+    expect(renderer.root.findByProps({ 'aria-label': '自動' }).props.checked).toBe(false);
+    act(() => button(renderer, '完了').props.onClick());
+    expect(button(renderer, 'ラベル').findAllByType('span').some(span => span.children.includes('青'))).toBe(true);
+    expect(renderer.root.findAllByType('dialog')).toHaveLength(0);
     act(() => renderer.root.findByProps({ 'aria-label': 'タイトル' }).props.onChange({ target: { value: '青の予定' } }));
     await act(async () => { button(renderer, '保存').props.onClick(); });
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ title: '青の予定', color: 'blue' }), undefined);
@@ -100,12 +111,50 @@ it('always shows named colors, saves the choice, and can return to automatic col
   act(() => { edited = create(<MonthEventDialog openDate={date} userId="owner" initialEventId={event.id} monthEvents={[event]}
     onSave={editSave} onDelete={vi.fn()} onClose={vi.fn()} />); });
   try {
-    expect(button(edited, 'ピンク').props['aria-pressed']).toBe(true);
+    act(() => button(edited, 'ラベル').props.onClick());
+    expect(edited.root.findByProps({ 'aria-label': 'ピンク' }).props.checked).toBe(true);
     expect(edited.root.findByProps({ className: 'month-event-timeline-item active' }).props.style['--schedule-event-color']).toBe('#ef7b9f');
-    act(() => button(edited, '自動').props.onClick());
-    expect(button(edited, 'ピンク').props['aria-pressed']).toBe(false);
+    act(() => edited.root.findByProps({ 'aria-label': '自動' }).props.onChange());
+    expect(edited.root.findByProps({ 'aria-label': 'ピンク' }).props.checked).toBe(false);
+    act(() => button(edited, '完了').props.onClick());
     await act(async () => { button(edited, '保存').props.onClick(); });
     expect(editSave.mock.calls[0][0]).toHaveProperty('color', undefined);
     expect(editSave.mock.calls[0][1]).toBe(event.id);
   } finally { act(() => edited.unmount()); }
+});
+
+
+it.each(['single', 'future'] as const)('keeps the selected label in the recurring %s edit request', async scope => {
+  const event = { ...first, color: 'pink' as const, repeat: 'weekly' as const };
+  const save = vi.fn().mockResolvedValue(undefined);
+  let renderer!: ReactTestRenderer;
+  act(() => { renderer = create(<MonthEventDialog openDate={date} userId="owner" initialEventId={event.id}
+    monthEvents={[event]} onSave={save} onDelete={vi.fn()} onClose={vi.fn()} />); });
+  try {
+    act(() => button(renderer, 'ラベル').props.onClick());
+    act(() => renderer.root.findByProps({ 'aria-label': '青' }).props.onChange());
+    act(() => button(renderer, '完了').props.onClick());
+    await act(async () => { button(renderer, '保存').props.onClick(); });
+    expect(save).not.toHaveBeenCalled();
+    expect(button(renderer, 'ラベル').props.disabled).toBe(true);
+    act(() => button(renderer, 'ラベル').props.onClick());
+    expect(renderer.root.findAllByType('dialog')).toHaveLength(0);
+    await act(async () => { button(renderer, scope === 'single' ? 'この予定だけ変更' : 'これ以降も全部変更').props.onClick(); });
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ color: 'blue' }), event.id,
+      expect.objectContaining({ source: event, occurrenceDate: date, scope }));
+  } finally { act(() => renderer.unmount()); }
+});
+
+it('shows the newly selected event color instead of the previous draft choice', () => {
+  const { renderer } = mount();
+  try {
+    act(() => button(renderer, 'ラベル').props.onClick());
+    act(() => renderer.root.findByProps({ 'aria-label': '青' }).props.onChange());
+    act(() => button(renderer, '完了').props.onClick());
+    const rows = renderer.root.findAllByType('button').filter(node => node.props.className?.includes('month-event-timeline-item'));
+    act(() => rows[0].props.onClick());
+    expect(button(renderer, 'ラベル').props['aria-expanded']).toBe(false);
+    act(() => button(renderer, 'ラベル').props.onClick());
+    expect(renderer.root.findByProps({ 'aria-label': '自動' }).props.checked).toBe(true);
+  } finally { act(() => renderer.unmount()); }
 });
