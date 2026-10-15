@@ -1,3 +1,4 @@
+import { DEFAULT_STUDY_PROGRESS_PREFERENCES, type StudyProgressPreferences } from '../lib/studyProgressPolicy';
 import { useState, type ReactNode } from 'react';
 import { CalendarDays, ChevronDown, ChevronRight, Palette, RotateCcw, Sparkles, SunMoon } from 'lucide-react';
 import { useWeeklyPlanningPersonalization } from '../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext';
@@ -7,6 +8,9 @@ import { DEFAULT_HOME_SCENE_PREFERENCES, HOME_SCENE_STYLE_OPTIONS, type HomeScen
 import { HomeScene } from './home/HomeScene';
 
 export interface AppSettingsGeneralProps {
+  progressPreferences?: StudyProgressPreferences;
+  onChangeProgressPreferences?: (preferences: StudyProgressPreferences) => void;
+  progressPreferencesError?: string | null;
   appearance?: Appearance;
   onChangeAppearance?: (appearance: Appearance) => void;
   appearanceError?: string | null;
@@ -35,6 +39,7 @@ function SettingsGroup({ title, children }: { title: string; children: ReactNode
 }
 
 export function AppSettingsGeneral({
+  progressPreferences = DEFAULT_STUDY_PROGRESS_PREFERENCES, onChangeProgressPreferences, progressPreferencesError,
   appearance = 'standard', onChangeAppearance, appearanceError,
   homeScenePreferences = DEFAULT_HOME_SCENE_PREFERENCES,
   onChangeHomeSceneStyle, onChangeHomeSceneMotion, homeSceneError,
@@ -111,6 +116,20 @@ export function AppSettingsGeneral({
           onChange={event => onChangeHomeSceneMotion(event.target.checked)} />
       </label>
       {homeSceneError ? <p className="settings-inline-error settings-group-note" role="alert">{homeSceneError}</p> : null}
+    </SettingsGroup> : null}
+
+    {onChangeProgressPreferences ? <SettingsGroup title="ホームの学習進捗">
+      <p className="settings-group-note">ホームの進捗は学習予定と学習記録を集計します。主要予定・時間割も含めたい場合は選択してください。登録や時間の経過だけでは完了になりません。</p>
+      {([
+        ['includeGeneralEvents', '月の主要予定を進捗に含める'],
+        ['includeTimetable', '時間割を進捗に含める'],
+      ] as const).map(([key, label]) => <label className="settings-row settings-motion-row" key={key}>
+        <span className="settings-row-copy"><span>{label}</span></span>
+        <input type="checkbox" aria-label={label} checked={progressPreferences[key]}
+          onChange={event => onChangeProgressPreferences({ ...progressPreferences, [key]: event.target.checked })} />
+      </label>)}
+      <p className="settings-group-note">主要予定には通常の予定登録から追加した学習以外の予定も含みます。実績を記録できない予定は予定時間のみ集計します。</p>
+      {progressPreferencesError ? <p className="settings-inline-error settings-group-note" role="alert">{progressPreferencesError}</p> : null}
     </SettingsGroup> : null}
 
     <SettingsGroup title="カレンダーと学習">

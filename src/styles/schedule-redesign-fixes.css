@@ -654,3 +654,15 @@
     --home-nav-label-size: 0.8rem;
   }
 }
+
+/* Match day navigation while retaining the narrow weekly grid's native horizontal scroll. */
+.schedule-month-view,
+.week-timeline-toolbar {
+  touch-action: pan-y;
+}
+
+@media (min-width: 351px) {
+  .schedule-week-view {
+    touch-action: pan-y;
+  }
+}

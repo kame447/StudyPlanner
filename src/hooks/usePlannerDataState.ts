@@ -212,6 +212,7 @@ export interface UsePlannerDataStateResult {
   projectPlanSave: (savePlan: () => Promise<Plan>) => Promise<Plan>;
   movePlanOccurrence: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   deleteDayOccurrence: (occurrence: ScheduleOccurrence) => Promise<void>;
+  prepareDayTimetableRecord: (occurrence: ScheduleOccurrence) => Promise<Plan>;
   changeDayTimetableTime: (occurrence: ScheduleOccurrence, time: DayTimetableTimeChange) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
@@ -1058,7 +1059,7 @@ export function usePlannerDataState({
     }
   }
 
-  async function changeDayTimetableTime(occurrence: ScheduleOccurrence, time: DayTimetableTimeChange) {
+  async function materializeDayTimetable(occurrence: ScheduleOccurrence, time: DayTimetableTimeChange): Promise<Plan> {
     requireDayOccurrenceProjection();
     if (!userId || occurrence.ownerId !== userId) throw new PlannerMutationScopeExpiredError();
     const edit = buildDayTimetableTimeEdit({ ownerId: userId, occurrence, ...dayMutationData.current }, time);
@@ -1073,12 +1074,12 @@ export function usePlannerDataState({
     keys.forEach(key => pendingDayOccurrenceChanges.add(key));
     const lease = plannerDataReadAuthority.captureProjectionLease();
     try {
-      await plannerRepository.upsertPlan(plan);
+      const savedPlan = await plannerRepository.upsertPlan(plan);
       if (lease && plannerDataReadAuthority.isOwnerCurrent(lease)
         && !plannerDataReadAuthority.hasAcceptedProjectionChanged(lease)) {
-        setPlans(current => sortAndUpsertPlans(current, [plan]));
+        setPlans(current => sortAndUpsertPlans(current, [savedPlan]));
       }
-      showNotice('この日の時間を変更しました。', 'success');
+      return savedPlan;
     } catch (error) {
       if (lease) {
         keys.forEach(key => uncertainDaySources.set(key, lease));
@@ -1086,6 +1087,15 @@ export function usePlannerDataState({
       }
       throw error;
     } finally { keys.forEach(key => pendingDayOccurrenceChanges.delete(key)); }
+  }
+
+  async function changeDayTimetableTime(occurrence: ScheduleOccurrence, time: DayTimetableTimeChange) {
+    await materializeDayTimetable(occurrence, time);
+    showNotice('この日の時間を変更しました。', 'success');
+  }
+
+  async function prepareDayTimetableRecord(occurrence: ScheduleOccurrence) {
+    return materializeDayTimetable(occurrence, { startTime: occurrence.start.time, endTime: occurrence.end.time });
   }
 
   async function deleteDayOccurrence(occurrence: ScheduleOccurrence) {
@@ -2032,6 +2042,7 @@ export function usePlannerDataState({
       catalogIsbn13: draft.catalogIsbn13?.trim() || currentMaterial?.catalogIsbn13,
       aliases: draft.aliases ?? currentMaterial?.aliases ?? [],
       status: draft.status ?? currentMaterial?.status ?? 'active',
+      studyStatus: draft.studyStatus ?? currentMaterial?.studyStatus ?? 'studying',
       paceEnabled,
       progressUnit: draft.progressUnit ?? currentMaterial?.progressUnit ?? 'page',
       progressUnitLabel:
@@ -2521,6 +2532,7 @@ export function usePlannerDataState({
       withDayOccurrenceSourceWrite(`plan:${plan.id}`, () => movePlanOccurrence(plan, target)), ['plans-todos']),
     deleteDayOccurrence: trackMutation(deleteDayOccurrence, ['timetable', 'plans-todos', 'month-events']),
     changeDayTimetableTime: trackMutation(changeDayTimetableTime, ['plans-todos']),
+    prepareDayTimetableRecord: trackMutation(prepareDayTimetableRecord, ['plans-todos']),
     deletePlan: trackMutation(deletePlan, ['actual-material', 'plans-todos']),
     confirmRecurringPlanScope: trackMutation(confirmRecurringPlanScope),
     cancelRecurringPlanScope,

@@ -153,7 +153,7 @@ test('opens the learning report as a home secondary surface', async ({ page }) =
   const lifetimeCard = page.locator('.learning-report-summary-card').filter({ hasText: '累計' });
 
   await expect(todayCard).toContainText('1.5時間');
-  await expect(todayCard).toContainText('予定 2時間');
+  await expect(todayCard).toHaveAttribute('aria-label', /予定 2時間/);
   await expect(weekCard).toContainText('1.5時間');
   await expect(monthCard).toContainText('1.5時間');
   await expect(lifetimeCard).toContainText('2時間');
@@ -163,6 +163,9 @@ test('opens the learning report as a home secondary surface', async ({ page }) =
     'true',
   );
   await expect(page.getByRole('heading', { name: '学習時間の推移' })).toBeVisible();
+  await expect(page.locator('.learning-report-details')).not.toHaveAttribute('open', '');
+  await page.locator('.learning-report-details > summary').click();
+  await expect(page.getByRole('heading', { name: '予定との比較' })).toBeVisible();
   await expect(
     page.getByRole('heading', { name: '教材・科目別の学習時間' }),
   ).toBeVisible();
@@ -172,6 +175,7 @@ test('opens the learning report as a home secondary surface', async ({ page }) =
       .filter({ hasText: 'アルゴリズムイントロダクション' }),
   ).toBeVisible();
 
+  await page.locator('.learning-report-details > summary').click();
   const trend = page.getByRole('list', { name: /の学習時間 合計/ });
   await expect(trend).toBeVisible();
   await expect(trend.getByRole('listitem')).toHaveCount(7);
@@ -227,3 +231,80 @@ test.describe('mobile learning report containment', () => {
     });
   });
 });
+
+
+for (const appearance of ['standard', 'pixel']) {
+  test(`compact report overview and disclosure across sizes in ${appearance}`, async ({ page }, testInfo) => {
+    await seedLearningReport(page);
+    await page.addInitScript((value) => {
+      localStorage.setItem('study-planner-appearance', value);
+    }, appearance);
+    for (const viewport of [{ width: 320, height: 667 }, { width: 390, height: 844 }, { width: 1280, height: 800 }]) {
+      await page.setViewportSize(viewport);
+      await openLearningReport(page);
+      await expect(page.locator('html')).toHaveAttribute('data-appearance', appearance);
+      await page.evaluate(() => document.fonts.ready);
+      const summary = page.locator('.learning-report-details > summary');
+      for (const scope of ['日', '週', '月']) {
+        await page.getByRole('tab', { name: scope, exact: true }).click();
+        const metrics = await page.evaluate(() => {
+          const bounds = (selector) => document.querySelector(selector).getBoundingClientRect();
+          return {
+            chartBottom: bounds('.learning-report-chart').bottom,
+            detailBottom: bounds('.learning-report-details > summary').bottom,
+            navTop: bounds('.primary-bottom-nav').top,
+            pageWidth: document.documentElement.scrollWidth,
+            viewportWidth: document.documentElement.clientWidth,
+            scrollY: window.scrollY,
+          };
+        });
+        expect(metrics.scrollY).toBe(0);
+        expect(metrics.pageWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
+        expect(metrics.chartBottom).toBeLessThanOrEqual(metrics.navTop);
+        expect(metrics.detailBottom).toBeLessThanOrEqual(metrics.navTop);
+        if (scope === '月') {
+          const ticks = await page.locator('.learning-report-chart.scope-month .learning-report-chart-label strong').evaluateAll(elements =>
+            elements.filter(element => element.textContent.trim()).map(element => {
+              const range = document.createRange(); range.selectNodeContents(element);
+              const box = range.getBoundingClientRect();
+              return { text: element.textContent, lines: range.getClientRects().length, left: box.left, right: box.right };
+            }));
+          expect(ticks.length).toBeGreaterThan(1);
+          for (const [index, tick] of ticks.entries()) {
+            expect(tick.text).toMatch(/^\d{1,2}$/);
+            expect(tick.lines, tick.text).toBe(1);
+            if (index) expect(ticks[index - 1].right, `${ticks[index - 1].text} / ${tick.text}`).toBeLessThanOrEqual(tick.left);
+          }
+          await testInfo.attach(`month-ticks-${appearance}-${viewport.width}`, {
+            body: JSON.stringify(ticks, null, 2), contentType: 'application/json',
+          });
+        }
+      }
+      await testInfo.attach(`compact-report-${appearance}-${viewport.width}`, {
+        body: await page.screenshot(), contentType: 'image/png',
+      });
+      await summary.focus();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('.learning-report-details')).toHaveAttribute('open', '');
+      await expect(page.getByRole('heading', { name: '教材・科目別の学習時間' })).toBeVisible();
+      await summary.focus();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('.learning-report-details')).not.toHaveAttribute('open', '');
+    }
+    // Text enlargement may scroll, but details and complete values remain reachable.
+    await page.setViewportSize({ width: 320, height: 667 });
+    await openLearningReport(page);
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+    await page.locator('.learning-report-details > summary').click();
+    const breakdown = page.locator('.learning-report-breakdown-item').first();
+    await breakdown.scrollIntoViewIfNeeded();
+    await expect(breakdown).toBeVisible();
+    await expect(breakdown).toContainText('アルゴリズムイントロダクション');
+    const enlarged = await page.evaluate(() => ({
+      page: document.documentElement.scrollWidth, viewport: document.documentElement.clientWidth,
+      overflow: getComputedStyle(document.querySelector('.learning-report-view')).overflowY,
+    }));
+    expect(enlarged.page).toBeLessThanOrEqual(enlarged.viewport + 1);
+    expect(enlarged.overflow).not.toMatch(/hidden|clip/);
+  });
+}

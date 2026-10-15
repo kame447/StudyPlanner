@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createMonthEventOccurrenceDraft, MonthEventEditValidationError, type MonthEventEditRequest, type MonthEventEditScope } from '../domain/recurringMonthEvent';
 import {
   createEmptyMonthEventChecklistItem,
@@ -25,7 +25,7 @@ import {
   validateMonthEventDraft,
   type MonthEventDeleteScope,
 } from '../lib/monthEventEditor';
-import { getMonthEventColor, scheduleEventColorStyle } from '../lib/scheduleEventColor';
+import { getMonthEventColor, MONTH_EVENT_COLOR_OPTIONS, scheduleEventColorStyle } from '../lib/scheduleEventColor';
 import { DayCalendarDialog } from './DatePickerDialogs';
 import { TimeWheelPicker } from './TimeRangeFields';
 import type { MonthEvent, MonthEventDraft } from '../types/domain';
@@ -146,6 +146,7 @@ function MonthEventEditor({
   onDelete,
   onClose,
 }: MonthEventDialogProps & { openDate: string }) {
+  const addonId = useId();
   const initialEvent = initialEventId ? monthEvents.find(event => event.id === initialEventId) : undefined;
   const [waitingForInitialEvent, setWaitingForInitialEvent] = useState(Boolean(initialEventId && !initialEvent));
   const pendingMutation = useRef<object | null>(null);
@@ -265,8 +266,15 @@ function MonthEventEditor({
     setDatePickerTarget(null);
   }
 
-  function expandAddon(key: MonthEventAddonKey) {
-    setExpandedAddons((current) => new Set(current).add(key));
+  function toggleAddon(key: MonthEventAddonKey) {
+    if (pendingMutation.current || waitingForInitialEvent || editScopePrompt) return;
+    // Collapsing hides the field without discarding any entered values.
+    setExpandedAddons((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   function toggleAllDay(nextChecked: boolean) {
@@ -461,7 +469,10 @@ function MonthEventEditor({
         </section> : null}
 
         <fieldset className="month-event-editor-body" aria-label="予定の入力内容" disabled={isSavingMonthEvent || waitingForInitialEvent || Boolean(editScopePrompt)}>
-          <section className="month-event-core-section month-event-title-card">
+          <section
+            key={editingEventId ?? 'new'}
+            className={`month-event-core-section month-event-title-card${editingEventId ? ' month-event-title-selected' : ''}`}
+          >
             <label className="field month-event-title-field">
               <input
                 aria-label="タイトル"
@@ -475,6 +486,32 @@ function MonthEventEditor({
                 placeholder="タイトル"
               />
             </label>
+          </section>
+
+          <section className="month-event-core-section month-event-color-section" aria-label="予定の色">
+            <strong>色</strong>
+            <div className="month-event-color-options">
+              <button
+                className="month-event-color-chip"
+                type="button"
+                aria-pressed={!draft.color}
+                onClick={() => setDraft(current => ({ ...current, color: undefined }))}
+              >
+                自動
+              </button>
+              {MONTH_EVENT_COLOR_OPTIONS.map(option => (
+                <button
+                  key={option.key}
+                  className="month-event-color-chip"
+                  type="button"
+                  aria-pressed={draft.color === option.key}
+                  onClick={() => setDraft(current => ({ ...current, color: option.key }))}
+                >
+                  <span className="month-event-color-dot" style={{ backgroundColor: option.color }} aria-hidden="true" />
+                  {option.label}
+                </button>
+              ))}
+            </div>
           </section>
 
           <section className="month-event-core-section">
@@ -538,7 +575,7 @@ function MonthEventEditor({
             <div className="label-row">
               <strong>この日の予定</strong>
               <button className="ghost-button" onClick={handleNewEvent} type="button">
-                新規
+                追加
               </button>
             </div>
 
@@ -552,7 +589,8 @@ function MonthEventEditor({
                         ? 'month-event-timeline-item active'
                         : 'month-event-timeline-item'
                     }
-                    style={scheduleEventColorStyle(getMonthEventColor(monthEvent.id))}
+                    style={scheduleEventColorStyle(getMonthEventColor(monthEvent.id, monthEvent.color))}
+                    aria-pressed={editingEventId === monthEvent.id}
                     onClick={() => handleSelectEvent(monthEvent)}
                     type="button"
                   >
@@ -624,12 +662,13 @@ function MonthEventEditor({
                         : 'month-event-addon-chip'
                     }
                     key={addon.key}
-                    onClick={() => expandAddon(addon.key)}
+                    onClick={() => toggleAddon(addon.key)}
                     type="button"
-                    aria-pressed={isExpanded}
+                    aria-expanded={isExpanded}
+                    aria-controls={`${addonId}-${addon.key}`}
                   >
                     <span className="month-event-addon-plus" aria-hidden="true">
-                      ＋
+                      {isExpanded ? '−' : '＋'}
                     </span>
                     <span>{addon.label}</span>
                   </button>
@@ -638,7 +677,7 @@ function MonthEventEditor({
             </div>
 
             {expandedAddons.has('repeat') ? (
-              <section className="month-event-addon-panel">
+              <section id={`${addonId}-repeat`} className="month-event-addon-panel">
                 <div className="label-row">
                   <strong>繰り返し</strong>
                 </div>
@@ -664,7 +703,7 @@ function MonthEventEditor({
             ) : null}
 
             {expandedAddons.has('url') ? (
-              <section className="month-event-addon-panel">
+              <section id={`${addonId}-url`} className="month-event-addon-panel">
                 <div className="label-row">
                   <strong>URL</strong>
                 </div>
@@ -685,7 +724,7 @@ function MonthEventEditor({
             ) : null}
 
             {expandedAddons.has('location') ? (
-              <section className="month-event-addon-panel">
+              <section id={`${addonId}-location`} className="month-event-addon-panel">
                 <div className="label-row">
                   <strong>場所</strong>
                 </div>
@@ -706,7 +745,7 @@ function MonthEventEditor({
             ) : null}
 
             {expandedAddons.has('memo') ? (
-              <section className="month-event-addon-panel">
+              <section id={`${addonId}-memo`} className="month-event-addon-panel">
                 <div className="label-row">
                   <strong>メモ</strong>
                 </div>
@@ -728,7 +767,7 @@ function MonthEventEditor({
             ) : null}
 
             {expandedAddons.has('checklist') ? (
-              <section className="month-event-addon-panel month-event-checklist-card">
+              <section id={`${addonId}-checklist`} className="month-event-addon-panel month-event-checklist-card">
                 <div className="label-row">
                   <strong>チェックリスト</strong>
                   <div className="row-actions">

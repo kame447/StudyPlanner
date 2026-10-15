@@ -1,9 +1,11 @@
 import { getElapsedMs, type TrackerState } from './actualTracking';
 
-export type PomodoroPreset = '25-5' | '50-10';
+export type PomodoroPreset = '25-5' | '50-10' | 'custom';
 
 export interface PomodoroSettings {
   preset: PomodoroPreset;
+  customFocusMinutes?: number;
+  customBreakMinutes?: number;
   // null preserves the session's automatic planned goal or unplanned unlimited mode.
   setCount: number | null;
 }
@@ -32,6 +34,11 @@ export interface PomodoroProgress {
 }
 
 export const POMODORO_MAX_SETS = 12;
+export const POMODORO_MAX_MINUTES = 1440;
+
+export function isValidPomodoroMinutes(value: number): boolean {
+  return Number.isInteger(value) && value >= 1 && value <= POMODORO_MAX_MINUTES;
+}
 
 export function createDefaultPomodoroSettings(): PomodoroSettings {
   return { preset: '25-5', setCount: null };
@@ -48,8 +55,14 @@ export function resolvePomodoroSettings(
   if (settings.setCount !== null && !isValidPomodoroSetCount(settings.setCount)) {
     throw new RangeError('ポモドーロのセット数が範囲外です。');
   }
-  const focusMs = (settings.preset === '50-10' ? 50 : 25) * 60_000;
-  const breakMs = (settings.preset === '50-10' ? 10 : 5) * 60_000;
+  const focusMinutes = settings.preset === 'custom' ? settings.customFocusMinutes : settings.preset === '50-10' ? 50 : 25;
+  const breakMinutes = settings.preset === 'custom' ? settings.customBreakMinutes : settings.preset === '50-10' ? 10 : 5;
+  if (focusMinutes === undefined || breakMinutes === undefined
+    || !isValidPomodoroMinutes(focusMinutes) || !isValidPomodoroMinutes(breakMinutes)) {
+    throw new RangeError('集中と休憩は1〜1440分の整数で設定してください。');
+  }
+  const focusMs = focusMinutes * 60_000;
+  const breakMs = breakMinutes * 60_000;
   const cycleMs = focusMs + breakMs;
   const totalSets = settings.setCount ?? (plannedMs === null
     ? null : Math.max(1, Math.ceil(plannedMs / cycleMs)));

@@ -9,9 +9,10 @@ import { formatDateLabel } from '../lib/date';
 import { dayOccurrenceCancellationPresentation } from '../lib/dayOccurrenceCancellationPresentation';
 
 // Keep projected template identity separate from saved Plan mutation targets.
-export function DayTimetableDetailModal({ occurrence, onClose, onOpenTimetable, onDeleteOccurrence, onSaveTime }: {
+export function DayTimetableDetailModal({ occurrence, onClose, onOpenTimetable, onDeleteOccurrence, onSaveTime, onPrepareRecord }: {
   occurrence: ScheduleOccurrence;
   onClose: () => void;
+  onPrepareRecord?: () => Promise<void>;
   onOpenTimetable?: () => void;
   onDeleteOccurrence?: () => Promise<void>;
   onSaveTime?: (occurrence: ScheduleOccurrence, time: DayTimetableTimeChange) => Promise<void>;
@@ -19,7 +20,7 @@ export function DayTimetableDetailModal({ occurrence, onClose, onOpenTimetable, 
   const deletion = dayOccurrenceCancellationPresentation(occurrence);
   const [edit, setEdit] = useState<(DayTimetableTimeChange & { occurrence: ScheduleOccurrence }) | null>(null);
   const [error, setError] = useState('');
-  const [working, setWorking] = useState<'save' | 'delete' | null>(null);
+  const [working, setWorking] = useState<'save' | 'delete' | 'record' | null>(null);
   const pending = useRef<object | null>(null);
   const leaving = useRef(false);
   const active = useRef(false);
@@ -28,7 +29,7 @@ export function DayTimetableDetailModal({ occurrence, onClose, onOpenTimetable, 
   const close = () => { if (active.current && !pending.current && !leaving.current) { leaving.current = true; requestExit(); } };
   const { dialogRef, initialFocusRef } = useDialogFocus<HTMLElement>(true, close);
   const disabled = working !== null || isExiting;
-  async function run(kind: 'save' | 'delete', action: () => Promise<void>) {
+  async function run(kind: 'save' | 'delete' | 'record', action: () => Promise<void>) {
     if (!active.current || pending.current || leaving.current) return;
     const attempt = {};
     pending.current = attempt;
@@ -41,7 +42,7 @@ export function DayTimetableDetailModal({ occurrence, onClose, onOpenTimetable, 
       }
       return;
     }
-    if (pending.current === attempt) { pending.current = null; close(); }
+    if (pending.current === attempt) { pending.current = null; if (kind !== 'record') close(); }
   }
   return createPortal(
     <div className={`overlay modal-overlay daily-detail-modal-overlay schedule-action-overlay bottom-sheet-motion ${isExiting ? 'is-closing' : 'is-open'}`}
@@ -69,6 +70,8 @@ export function DayTimetableDetailModal({ occurrence, onClose, onOpenTimetable, 
               if (!pending.current && !leaving.current) { setEdit(null); setError(''); }
             }}>キャンセル</button>
           </form> : <>
+            {onPrepareRecord ? <button className="primary-button" type="button" disabled={disabled}
+              onClick={() => void run('record', onPrepareRecord)}>{working === 'record' ? '予定に反映中…' : '予定に反映して記録'}</button> : null}
             {onSaveTime ? <button className="primary-button" type="button" disabled={disabled} onClick={() => {
               if (!pending.current && !leaving.current) {
                 setError(''); setEdit({ occurrence, startTime: occurrence.start.time, endTime: occurrence.end.time });

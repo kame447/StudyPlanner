@@ -1,16 +1,24 @@
 import type { CSSProperties } from 'react';
 import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
-import type { Plan, PlanType } from '../types/domain';
+import type { MonthEventColor, Plan, PlanType } from '../types/domain';
 import { getSubjectTheme } from './subjectTheme';
 
 // Keep the existing month-calendar palette. A saved source identity, rather
 // than an occurrence date, title, or position in a list, owns its accent.
-const MONTH_EVENT_COLORS = ['#6ec9a2', '#f4b85c', '#a787ef', '#72aefa', '#ef7b9f'];
+export const MONTH_EVENT_COLOR_OPTIONS = [
+  { key: 'green', label: '緑', color: '#6ec9a2' },
+  { key: 'orange', label: 'オレンジ', color: '#f4b85c' },
+  { key: 'purple', label: '紫', color: '#a787ef' },
+  { key: 'blue', label: '青', color: '#72aefa' },
+  { key: 'pink', label: 'ピンク', color: '#ef7b9f' },
+] as const satisfies readonly { key: MonthEventColor; label: string; color: string }[];
 
-export function getMonthEventColor(sourceId: string): string {
+export function getMonthEventColor(sourceId: string, color?: MonthEventColor): string {
+  const selected = MONTH_EVENT_COLOR_OPTIONS.find(option => option.key === color);
+  if (selected) return selected.color;
   let hash = 0;
   for (const character of sourceId) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-  return MONTH_EVENT_COLORS[hash % MONTH_EVENT_COLORS.length];
+  return MONTH_EVENT_COLOR_OPTIONS[hash % MONTH_EVENT_COLOR_OPTIONS.length].color;
 }
 
 function planTypeForOccurrence(occurrence: ScheduleOccurrence): PlanType {
@@ -27,7 +35,7 @@ function planTypeForOccurrence(occurrence: ScheduleOccurrence): PlanType {
 
 export function getScheduleOccurrenceColor(occurrence: ScheduleOccurrence): string {
   return occurrence.source.backingKind === 'month-event'
-    ? getMonthEventColor(occurrence.source.backingId)
+    ? getMonthEventColor(occurrence.source.backingId, occurrence.color)
     : getSubjectTheme(occurrence.subject, planTypeForOccurrence(occurrence), occurrence.planSourceType).fill;
 }
 

@@ -51,6 +51,12 @@ localStorage fallbackも同じcanonical/legacy分離を使うが、これはdeve
 
 local/browser回帰では、legacy `studyplanner.plans` をmigration入力としてseedしても、cutover後の保存結果はcanonical `studyplanner.scheduleEvents.v1` の `ScheduleEvent`、または実repository facadeから再取得した `Plan` で検証する。凍結されたlegacy配列に新規書込が反映されないことを保存失敗と誤認せず、保存先の実schemaとowner/IDを確認し、reload後も対象の予定や教材への参照が保持されることを確かめる。
 
+## General-event display color
+
+一般予定の任意 `MonthEvent.color` / draft color は `green | orange | purple | blue | pink` の名前付きキーであり、canonical `ScheduleEvent.general.color` へ往復する。palette の実際の色値は `scheduleEventColor` の既存5色が所有し、保存値を任意CSSとして利用しない。色未指定または未知値は従来のsource identityに基づく自動色を維持する。既存データの書換えやschema version更新は不要。
+
+`ScheduleOccurrence.color` に選択キーを投影し、月・週・日の表示は共通色解決を使用する。色はbusy/recurrence/owner/identityを変更しない。編集draft・複製・繰返しのsingle/future分割は選択色を保持し、分割前の予定の色は変更しない。「自動」への変更はdraftに明示的な `color: undefined` を置く。canonical保存ではfieldを省略し、legacy Firestoreのmerge保存だけは既存overrideを `deleteField()` で取り除く。
+
 ## Identity
 
 canonical persistence IDはlegacy source kindを含める。
