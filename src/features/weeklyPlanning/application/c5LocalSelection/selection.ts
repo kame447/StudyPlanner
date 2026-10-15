@@ -1,7 +1,7 @@
+import { controlledCandidateTurnGates } from '../weeklyPlanningControlledCandidateGates';
 import { createCandidateManifest } from '../candidateSelection/manifest';
 import { selectApplicationCandidate, prepareCandidateSelectionCommit } from '../candidateSelection/transaction';
 import type { AtomicSelectionView, CandidateBasis, CandidateObservation, StagedCandidateSelection } from '../candidateSelection/contracts';
-import { resolveWeeklyPlanningQuestionPresentationFreshness } from '../../intake/weeklyPlanningQuestionPresentation';
 import { applyWeeklyPlanningFactLifecycleOperationV5 } from '../../semantic/weeklyPlanningFactLifecycleEngineV5';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from '../../semantic/weeklyPlanningActiveSchedulerGraphViewV5';
 import { resolveGenericWorkItemEstimate } from '../../semantic/weeklyPlanningGenericWorkEstimation';
@@ -41,28 +41,9 @@ function observe(input: TurnBasis, expected: CandidateBasis): CandidateObservati
   const current = input.getState();
   const graph = input.getGraph();
   const original = input.snapshot.intakeState;
-  const p = current.pendingTurn;
-  const beginMatches = current.revision === input.pending.baseRevision + 1
-    && current.weekStartDate === input.pending.weekStartDate
-    && p?.requestId === input.pending.requestId && p.turnId === input.pending.turnId
-    && p.conversationId === input.pending.conversationId && p.baseRevision === input.pending.baseRevision
-    && current.messages.length === input.snapshot.messages.length + 1
-    && serializeC5Value(current.messages.slice(0, -1)) === serializeC5Value(input.snapshot.messages)
-    && current.messages[current.messages.length - 1]?.id === `${input.pending.turnId}:user`
-    && current.messages[current.messages.length - 1]?.content === input.userText
-    && serializeC5ApplicationState(current.intakeState ?? null) === serializeC5ApplicationState(original ?? null);
-  const freshness = resolveWeeklyPlanningQuestionPresentationFreshness({
-    previousState: original, inputStateRevision: input.pending.baseRevision,
-    messages: input.snapshot.messages, graphRevision: graph.revision,
-  });
   const live = narrowC5EffortBasis(graph, expected.binding.target.id);
   const frozen = decodeC5Snapshot(original?.lastQuestionContext?.c5, input.ownerId, input.pending.conversationId);
-  const matchingQuestion = freshness.status === 'fresh' && frozen
-    && freshness.questionContext.actionId === frozen.question.id
-    && freshness.questionContext.topicId === frozen.target.id
-    && freshness.presentation.turnId === frozen.question.presentingTurnId
-    && freshness.presentation.assistantMessageId === frozen.question.presentingMessageId
-    && freshness.presentation.planningStateRevision === frozen.question.presentationRevision;
+  const { beginMatches, matchingQuestion } = controlledCandidateTurnGates(input, graph, frozen, current);
   return {
     binding: live ? { ...expected.binding, graphRevision: graph.revision, sources: live.sources, target: live.target, scope: live.scope,
       question: { ...expected.binding.question, presentedQuestion: boundC5PresentedQuestion(expected.binding.question, current.messages) ?? undefined } } : expected.binding,

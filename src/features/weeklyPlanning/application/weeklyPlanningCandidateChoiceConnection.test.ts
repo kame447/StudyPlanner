@@ -116,6 +116,68 @@ async function run(mode: 'accepted' | 'none' | 'low' | 'failure' | 'off' | 'unco
   return { h, choice, result, text, services, requests: (fetch as ReturnType<typeof vi.fn>).mock.calls.slice(fetchStart).map(call => JSON.parse(String(call[1]?.body))) };
 }
 
+it('J2c preserves native C5 candidate, fallback, persistence and trace bytes after D5 registration', async () => {
+  let uuid = 0;
+  vi.spyOn(crypto, 'randomUUID').mockImplementation(() => `00000000-0000-4000-8000-${String(++uuid).padStart(12, '0')}`);
+  const { choice, requests, result, h } = await run('accepted');
+  expect(result.accepted).toBe(true);
+  expect(choice).toHaveBeenCalledTimes(1);
+
+  const wireBytes = String(choice.mock.calls[0][1]?.body);
+  const wire = JSON.parse(wireBytes);
+  expect(wire).toMatchObject({
+    purpose: 'weekly_planning_semantic_normalizer',
+    messages: [{ role: 'user', content: '教材aは1問7分です。' }],
+    decisionContext: { purpose: 'candidate_choice', request: {
+      wholeUtterance: '教材aは1問7分です。',
+      context: {
+        question: { code: 'ambiguous_effort_estimate' },
+        target: { kind: 'workload', id: 'work-a' },
+        presentedQuestion: '教材aは1問5分と7分のどちらですか。',
+        scope: { replacement: 'retain_selected_active_fact_supersede_fixed_cohort',
+          workload: { id: 'work-a', quantityRole: 'target', amount: 10, unitCode: 'problem' } },
+      },
+      menu: { kind: 'leaves', depth: 0 },
+    } },
+  });
+  const menu = wire.decisionContext.request.menu.options as Array<{
+    kind: string; id: string; candidate?: { id: string; tuple: { minutes: number; targetFactId: string } };
+  }>;
+  expect(menu.filter(option => option.kind === 'none')).toEqual([{ kind: 'none', id: 'none' }]);
+  expect(menu.filter(option => option.kind === 'leaf').map(option => ({
+    id: option.candidate?.id, minutes: option.candidate?.tuple.minutes,
+    targetFactId: option.candidate?.tuple.targetFactId,
+  }))).toEqual([
+    { id: 'estimate-5', minutes: 5, targetFactId: 'work-a' },
+    { id: 'estimate-7', minutes: 7, targetFactId: 'work-a' },
+  ]);
+  expect(wire.decisionContext.request.candidateSetHash).toMatch(/^sha256:[a-f0-9]{64}$/);
+  expect(JSON.stringify(wire)).not.toContain('private-source-');
+  expect(requests.map(request => request.response_format?.json_schema?.name)).toEqual([
+    'weekly_planning_stable_v5_dialogue_response',
+  ]);
+
+  const saved = loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK })!;
+  expect(resolution(saved.graph, 'work-a')).toMatchObject({ ambiguous: false, estimatedMinutes: 70 });
+  expect(resolution(saved.graph, 'work-b')).toEqual(resolution(h.graph, 'work-b'));
+  expect(saved.planningState.intakeState?.c5SelectionLedger?.consumed).toHaveLength(1);
+
+  const observation = {
+    choice: choice.mock.calls.map(call => String(call[1]?.body)),
+    luna: requests, storage: [...memory.values.entries()],
+    trace: takeWeeklyPlanningStableV5DebugTrace(wire.decisionContext.request.requestId),
+  };
+  expect(observation.trace.map(event => event.stage)).toContain('runtime_scheduler_dialogue_evaluated');
+  expect(JSON.stringify(observation.trace)).toContain('durableConsumption');
+  const digest = Array.from(new Uint8Array(
+    await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(observation)))
+  )).map(byte => byte.toString(16).padStart(2, '0')).join('');
+  // Two independent Linux CI attempts on the integrated tree returned these identical
+  // bytes. The former f6fab... snapshot was tied to the pre-integration runtime.
+  // Keep the exact-byte sentinel in addition to the explicit semantic/authority checks.
+  expect(digest).toBe('e417c34bf548810d784bf02be632557974ea77d256ec07dcba90cf2b86ff3e04');
+});
+
 it('actual application entry accepts Choice with zero semantic Luna and real question continuation plus durable consumption', async () => {
   const { h, choice, result } = await run('accepted');
   expect(result.accepted).toBe(true); expect(choice).toHaveBeenCalledTimes(1);

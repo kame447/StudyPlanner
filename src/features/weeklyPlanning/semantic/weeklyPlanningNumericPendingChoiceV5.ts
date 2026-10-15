@@ -1,3 +1,4 @@
+import { numericPendingCompleteScopeV5 } from './weeklyPlanningNumericPendingScopeV5';
 import {
   canonicalCandidateSerialization, createCandidateManifest, selectApplicationCandidate,
   type ApplicationCandidate, type CalibratedChoicePolicy, type CandidateBinding, type CandidateChoiceRequest,
@@ -75,7 +76,12 @@ export function numericPendingBoundToInputV5(input: WeeklyPlanningSemanticNormal
   // Full workload scope is fixed by machine state, not merely an opaque hash or a label.
   const scope = { taskId: workload.taskId, componentId: workload.componentId, amount: workload.amount, unitCode: workload.unitCode,
     quantityRole: workload.quantityRole, rangeStart: workload.rangeStart, rangeEnd: workload.rangeEnd, perOccurrence: workload.perOccurrence, periodExpression: workload.periodExpression };
-  return canonicalCandidateSerialization(state.binding.scope) === canonicalCandidateSerialization(scope)
+  const complete = numericPendingCompleteScopeV5(input);
+  // Historical dormant PoC fixtures retain their original framing. The registered
+  // domain requires its fresh question snapshot and always supplies complete scope.
+  const boundScope = canonicalCandidateSerialization(state.binding.scope);
+  return complete !== null && (boundScope === canonicalCandidateSerialization(scope)
+      || boundScope === canonicalCandidateSerialization(complete))
     && canonicalCandidateSerialization(scope) === canonicalCandidateSerialization({ taskId: target.taskPublicId, componentId: target.component?.publicId ?? null,
       amount: target.amount, unitCode: target.unitCode, quantityRole: target.quantityRole, rangeStart: target.rangeStart, rangeEnd: target.rangeEnd, perOccurrence: target.perOccurrence, periodExpression: target.periodExpression });
 }
