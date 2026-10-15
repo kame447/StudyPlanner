@@ -98,6 +98,16 @@ Update the checkpoint after meaningful milestones and before intentionally handi
 - If a test fails, classify the cause before editing: production defect, stale/incorrect contract, harness/environment defect, or infrastructure/transient failure.
 - Never weaken a test, hide an error, or change an assertion solely to make CI green.
 
+### Admin Logs investigation path
+
+When diagnosing a production planning-conversation failure, first consult
+`docs/work/tooling-operations-runbook.md` ("Admin Logs: authenticated diagnostic drill-down").
+Use the authorized Admin Console Logs detail or its redacted Debug Bundle, not just
+the session list count. Correlate the exact session/request before attributing
+a generic user-facing error to the AI provider, conversation state, persistence,
+or app suspension. If detail access is unavailable, report the missing evidence;
+do not reconstruct an authenticated session by copying browser credential stores.
+
 ### Explanation and reporting clarity
 
 - When explaining implementation, architecture, bugs, refactors, or progress to the user, start with product concepts, responsibility boundaries, data flow, and observable behavior.
