@@ -12,6 +12,11 @@ on:
           - all
           - visual
           - cross-browser
+      spec:
+        description: Optional existing spec filename; manual WebKit mobile only, separate from the full gate
+        required: false
+        default: ''
+        type: string
   pull_request:
     branches:
       - main
@@ -45,7 +50,7 @@ concurrency:
 
 jobs:
   visual-regression:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'visual' }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.spec != '') && (github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'visual') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -106,7 +111,8 @@ jobs:
           retention-days: 14
 
   cross-browser-projects:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser' }}
+    name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'targeted-webkit' || 'cross-browser-projects' }} (${{ matrix.project }})
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.spec != '') || github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser' }}
     runs-on: ubuntu-latest
     # WebKit mobile took 23.4m for 288 passing tests; setup and artifact uploads
     # pushed the job past 25m. Keep all assertions and artifact gates intact.
@@ -114,7 +120,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [chromium-desktop, firefox-desktop, webkit-desktop, webkit-mobile]
+        project: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && fromJSON('["webkit-mobile"]') || fromJSON('["chromium-desktop","firefox-desktop","webkit-desktop","webkit-mobile"]') }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -147,13 +153,29 @@ jobs:
         run: npm run build
 
       - name: Run cross-browser smoke matrix
-        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.cross-browser.config.mjs --project=${{ matrix.project }}
+        shell: bash
+        env:
+          UI_EVENT_NAME: ${{ github.event_name }}
+          UI_SPEC: ${{ inputs.spec }}
+          UI_PROJECT: ${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          args=(test --config=tests/e2e/playwright.cross-browser.config.mjs "--project=$UI_PROJECT")
+          if [[ "$UI_EVENT_NAME" == workflow_dispatch && -n "$UI_SPEC" ]]; then
+            if [[ ! "$UI_SPEC" =~ ^[a-z0-9][a-z0-9-]*\.spec\.mjs$ ]] || [[ ! -f "tests/e2e/$UI_SPEC" || -L "tests/e2e/$UI_SPEC" ]]; then
+              echo 'spec must be one existing regular tests/e2e/*.spec.mjs filename' >&2
+              exit 2
+            fi
+            # Playwright treats file filters as regexes: anchor and escape the exact basename.
+            args+=("(^|/)${UI_SPEC//./\\.}$")
+          fi
+          ./tests/e2e/node_modules/.bin/playwright "${args[@]}"
 
       - name: Upload cross-browser artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ui-cross-browser-${{ matrix.project }}-${{ github.sha }}
+          name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'ui-targeted-webkit' || 'ui-cross-browser' }}-${{ matrix.project }}-${{ github.sha }}
           path: |
             artifacts/playwright-cross-browser-results/
             artifacts/playwright-cross-browser-report/
@@ -165,7 +187,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ui-cross-browser-diagnostics-${{ matrix.project }}-${{ github.sha }}
+          name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'ui-targeted-webkit' || 'ui-cross-browser' }}-diagnostics-${{ matrix.project }}-${{ github.sha }}
           path: |
             artifacts/playwright-cross-browser-results.json
             artifacts/playwright-cross-browser-results/**/error-context.md
@@ -176,7 +198,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ui-cross-browser-images-${{ matrix.project }}-${{ github.sha }}
+          name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'ui-targeted-webkit' || 'ui-cross-browser' }}-images-${{ matrix.project }}-${{ github.sha }}
           path: artifacts/playwright-cross-browser-results/**/*.png
           if-no-files-found: ignore
           retention-days: 14
@@ -184,7 +206,8 @@ jobs:
   # Preserve the existing required check while all project jobs run independently.
   # A failed, cancelled or skipped project must never become a successful gate.
   cross-browser-smoke:
-    if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser') }}
+    name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'targeted-webkit-summary' || 'cross-browser-smoke' }}
+    if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.spec != '') || github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser') }}
     needs: cross-browser-projects
     runs-on: ubuntu-latest
     timeout-minutes: 25

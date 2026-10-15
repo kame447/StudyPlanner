@@ -85,7 +85,7 @@ describe('strict independent purpose configuration', () => {
     expect(config.vars.JEV_MODE).toBe('canary');
     expect(config.vars.JEV_CANARY_PERCENT).toBe('100');
     for (const route of routes) {
-      const enabled = route.purpose === 'focused_authorization' || route.purpose === 'temporal_scope_repair';
+      const enabled = route.purpose === 'focused_authorization' || route.purpose === 'focused_contextual_answer' || route.purpose === 'temporal_scope_repair';
       expect(config.vars[`JEV_${route.prefix}_MODE`]).toBe(enabled ? 'canary' : 'off');
       expect(config.vars[`JEV_${route.prefix}_CANARY_PERCENT`]).toBe(enabled ? '100' : '0');
       expect(route.mode(config.vars)).toBe(enabled ? 'canary' : 'off');
