@@ -36,7 +36,7 @@ const allowedConsumers = new Set([
   // Date: reviewed fixed-clock/one-date producer and its existing formal correction bridge.
   'src/features/weeklyPlanning/semantic/weeklyPlanningTemporalDateChoiceV5.ts',
   'src/features/weeklyPlanning/semantic/weeklyPlanningTemporalDateCommitV5.ts',
-  'src/features/weeklyPlanning/semantic/weeklyPlanningTemporalDateDomainV5.ts',
+  'src/features/weeklyPlanning/semantic/weeklyPlanningTemporalDateRegisteredDomainV5.ts',
   ...numericConsumers,
 ]);
 const testOnlyHelpers = new Set([
