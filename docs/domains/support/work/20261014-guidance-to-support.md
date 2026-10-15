@@ -41,3 +41,18 @@ Next: wait for publication approval, then exact-head native/visual checks and an
 ## Separate confirmed follow-up
 
 The timetable upload button still says `画像/PDF` and its picker accepts PDF, while the existing payload/Worker accept only PNG/JPEG. The FAQ is now truthful, but the button/picker mismatch was identified after the exact combined run had started and is intentionally not changed in this snapshot. A future small UI correction should align those affordances without adding PDF processing or weakening validation.
+
+## Reaudit follow-up — 2026-10-15
+
+- Active local branch: `fix/retired-tracking-faq`, base `db752a8a48241bdf69a0b4a8e71cb4462fbf9692`. Existing umbrella #483; prior FAQ PR #656 and timer PR #664 are merged. Open PRs, FAQ issues, FAQ/support branches and the latest #483 checkpoint were read before implementation; no overlapping active FAQ repair was found. No new remote Issue/PR is created.
+- Request 12 removed measurement assistance from the Actual editor, but the FAQ still explains its unreachable Apply action and the support regression still requires that answer. Current App has no FloatingActualTrackingPanel mount; ActualEditorCard has no ActualTrackingTools import or rendering.
+- Repair scope: delete only that obsolete FAQ item and replace the stale assertion with a negative regression. Retain Pomodoro, save safety, other questions and all product behavior. Alternatives were leaving obsolete guidance (misleads users), rewriting it as new timer instructions (unrequested extra copy), and removing only the retired item (selected minimal consistent change).
+- Next: show the corrected contract fails against unchanged production, remove the stale item, run focused support/record/Pomodoro checks and app types, then hand the exact patch to the integration owner. Full integration verification, native acceptance and publication are not owned by this worker.
+
+### Focused repair verification — 2026-10-15 06:11 UTC
+
+- First changed only the stale support expectation to the current UI contract. On unchanged production source, the support suite failed exactly that assertion (1 failed / 2 passed); the obsolete FAQ item remained visible. This is a stale contract and obsolete help-content defect, not an assertion weakened for a green run.
+- Deleted only the obsolete four-line FAQ item. `DEV_LAN_HOST=127.0.0.1 node node_modules/vitest/vitest.mjs --config vite.config.mjs run src/components/AppSettingsSupportPanel.test.tsx src/components/PomodoroSettingsView.test.tsx src/components/ActualEditorCard.compact.test.tsx` exited 0: 3 files / 14 tests passed. The unchanged official Vite config was used with its supported manual LAN-host override.
+- `npm run typecheck:app -- --pretty false` and `git diff --check` exited 0. Runtime, persistence, CSS, timer and dependency files are unchanged.
+- Environment: Node24.19.0, Vitest3.2.7, React/react-test-renderer18.3.1, TypeScript5.9.3, Vite6.4.3, reused installed dependencies from the overnight integration workspace. Exact changed inputs and logs are under `/workspace/shared/laplans-26-reaudit-evidence-20261015/retired-faq-*`. Focused unit/app type evidence does not replace integration full verify/native checks.
+- No upstream push, main mutation, remote Issue/PR, workflow run, browser workaround or deployment. The integration owner must integrate and validate before claiming publication.
