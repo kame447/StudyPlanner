@@ -118,6 +118,14 @@ describe('published level', () => {
     expect(getMotionPreference()).toBe('reduced');
     expect(html().motion).toBe('reduced');
   });
+
+  it('falls back to standard when another tab clears all storage', () => {
+    installMotionPreference();
+    setMotionPreference('off');
+    env.clearFromAnotherTab();
+    expect(getMotionPreference()).toBe('standard');
+    expect(html().motion).toBe('standard');
+  });
 });
 
 describe('single owner', () => {

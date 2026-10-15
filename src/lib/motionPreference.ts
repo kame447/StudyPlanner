@@ -105,9 +105,10 @@ function publish() {
 function attachSources() {
   const query = systemQuery();
   const onSystemChange = () => publish();
-  // Another tab of this browser changed the stored choice.
+  // Another tab of this browser changed the stored choice; a null key means
+  // that tab cleared all storage, which resets the choice to the default.
   const onStorage = (event: StorageEvent) => {
-    if (event.key !== MOTION_STORAGE_KEY) return;
+    if (event.key !== MOTION_STORAGE_KEY && event.key !== null) return;
     preference = isMotionPreference(event.newValue) ? event.newValue : DEFAULT_MOTION_PREFERENCE;
     publish();
   };

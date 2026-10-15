@@ -37,6 +37,11 @@ export function installFakeMotionEnvironment() {
       values.set(key, value);
       target.dispatchEvent(Object.assign(new Event('storage'), { key, newValue: value }));
     },
+    /** Another tab of this browser cleared all of its storage. */
+    clearFromAnotherTab() {
+      values.clear();
+      target.dispatchEvent(Object.assign(new Event('storage'), { key: null, newValue: null }));
+    },
     restore() {
       resetMotionPreferenceForTests();
       vi.unstubAllGlobals();

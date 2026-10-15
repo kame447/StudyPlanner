@@ -160,6 +160,11 @@
   to { transform: rotate(360deg); }
 }
 
+/* Below standard the loading icon pulses in place instead of spinning. */
+:root:is([data-motion='reduced'], [data-motion='off']) .ai-planning-attachment-loading svg {
+  animation: motion-fade-in 0.9s ease-in-out infinite alternate;
+}
+
 .ai-planning-attachment-preview > span {
   min-width: 0;
   overflow: hidden;
