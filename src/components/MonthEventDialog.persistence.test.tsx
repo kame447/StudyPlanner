@@ -171,13 +171,16 @@ it('persists automatic color after reopening an existing explicitly colored even
     await act(async () => { await planner.saveMonthEvent({ ...createEmptyMonthEventDraft('owner-a', DATE), title: '色付き予定', color: 'pink' }); });
     const id = planner.monthEvents[0].id;
     await act(async () => { renderer.update(<Harness targetId={id} />); });
-    expect(button(renderer, 'ピンク').props['aria-pressed']).toBe(true);
-    await act(async () => { button(renderer, '自動').props.onClick(); });
+    await act(async () => { button(renderer, 'ラベル').props.onClick(); });
+    expect(renderer.root.findByProps({ 'aria-label': 'ピンク' }).props.checked).toBe(true);
+    await act(async () => { renderer.root.findByProps({ 'aria-label': '自動' }).props.onChange(); });
+    await act(async () => { button(renderer, '完了').props.onClick(); });
     await act(async () => { button(renderer, '保存').props.onClick(); });
     expect(planner.monthEvents[0].color).toBeUndefined();
     expect(repository.upsertMonthEvent.mock.calls[repository.upsertMonthEvent.mock.calls.length - 1][0].color).toBeUndefined();
     await act(async () => { renderer.update(<Harness openDate={null} />); });
     await act(async () => { renderer.update(<Harness targetId={id} />); });
-    expect(button(renderer, '自動').props['aria-pressed']).toBe(true);
+    await act(async () => { button(renderer, 'ラベル').props.onClick(); });
+    expect(renderer.root.findByProps({ 'aria-label': '自動' }).props.checked).toBe(true);
   } finally { act(() => renderer.unmount()); }
 });

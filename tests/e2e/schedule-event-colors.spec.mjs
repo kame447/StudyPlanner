@@ -64,7 +64,19 @@ for (const width of [390, 1280]) {
         const editor = page.locator('.month-event-modal');
         const editorBar = editor.locator('.month-event-timeline-item').filter({ hasText: TITLE }).locator('.month-event-timeline-bar');
         expect(await background(editorBar)).toBe(accent);
+        const trigger = editor.locator('.month-event-color-trigger');
+        expect(await background(trigger.locator('.month-event-color-dot'))).toBe(accent);
         await page.screenshot({ path: testInfo.outputPath('editor-colors.png'), animations: 'disabled' });
+        await trigger.click();
+        const picker = page.getByRole('dialog', { name: 'ラベルを選択' });
+        await expect(picker.getByRole('radio', { name: '自動', exact: true })).toBeChecked();
+        await expect(picker.getByRole('radio', { name: '自動', exact: true })).toBeFocused();
+        await page.screenshot({ path: testInfo.outputPath('editor-color-label-list.png'), animations: 'disabled' });
+        await page.keyboard.press('ArrowDown');
+        await expect(picker.getByRole('radio', { name: '緑', exact: true })).toBeChecked();
+        await page.keyboard.press('Escape');
+        await expect(picker).toHaveCount(0);
+        await expect(trigger).toBeFocused();
         await editor.getByRole('button', { name: '閉じる', exact: true }).click();
         await expectTint(pill, accent);
         await page.screenshot({ path: testInfo.outputPath('month-colors.png'), animations: 'disabled' });
@@ -110,8 +122,37 @@ for (const width of [390, 1280]) {
       };
       await page.goto('/'); await open();
       await expect(editor.getByRole('button', { name: '追加', exact: true })).toBeVisible();
-      await expect(editor.getByRole('button', { name: '自動', exact: true })).toHaveAttribute('aria-pressed', 'true');
-      await editor.getByRole('button', { name: '青', exact: true }).click();
+      const trigger = editor.locator('.month-event-color-trigger');
+      const picker = page.getByRole('dialog', { name: 'ラベルを選択' });
+      await expect(trigger).toHaveText('ラベル自動');
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      await expect(picker).toHaveCount(0);
+      const placement = await trigger.evaluate(element => {
+        const row = element.getBoundingClientRect();
+        const timeSection = element.closest('section').previousElementSibling.getBoundingClientRect();
+        return { rowTop: row.top, rowBottom: row.bottom, rowHeight: row.height, timeBottom: timeSection.bottom,
+          fontSize: parseFloat(getComputedStyle(element).fontSize) };
+      });
+      expect(placement.rowTop).toBeGreaterThanOrEqual(placement.timeBottom);
+      expect(placement.rowTop - placement.timeBottom).toBeLessThan(10);
+      expect(placement.rowHeight).toBeGreaterThanOrEqual(44);
+      expect(placement.fontSize).toBeGreaterThanOrEqual(16);
+      await trigger.click();
+      await expect(picker.getByRole('radio', { name: '自動', exact: true })).toBeChecked();
+      await picker.getByRole('radio', { name: '青', exact: true }).check();
+      await expect(picker.getByRole('radio', { name: '青', exact: true })).toBeChecked();
+      await expect(picker.getByRole('radio', { name: '自動', exact: true })).not.toBeChecked();
+      const pickerBounds = await picker.boundingBox();
+      expect(pickerBounds.x).toBeGreaterThanOrEqual(0);
+      expect(pickerBounds.x + pickerBounds.width).toBeLessThanOrEqual(width);
+      expect(pickerBounds.y).toBeGreaterThanOrEqual(0);
+      expect(pickerBounds.y + pickerBounds.height).toBeLessThanOrEqual(900);
+      for (const option of await picker.locator('.month-event-color-option').all()) {
+        expect((await option.boundingBox()).height).toBeGreaterThanOrEqual(44);
+      }
+      await picker.getByRole('button', { name: '完了', exact: true }).click();
+      await expect(trigger).toBeFocused();
+      await expect(trigger).toHaveText('ラベル青');
       await editor.getByRole('button', { name: /メモ/ }).click();
       await editor.getByLabel('メモ', { exact: true }).fill('色を確認');
       await editor.getByRole('button', { name: /メモ/ }).click();
@@ -119,16 +160,51 @@ for (const width of [390, 1280]) {
       await editor.getByRole('button', { name: '保存', exact: true }).click();
       await expect(editor).toHaveCount(0);
       await page.reload(); await open();
-      await expect(editor.getByRole('button', { name: '青', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await expect(trigger).toHaveText('ラベル青');
       await expect(editor.getByLabel('メモ', { exact: true })).toHaveValue('色を確認');
-      await editor.getByRole('button', { name: '自動', exact: true }).click();
+      await trigger.click();
+      await expect(picker.getByRole('radio', { name: '青', exact: true })).toBeChecked();
+      await picker.getByRole('radio', { name: '自動', exact: true }).check();
+      await picker.getByRole('button', { name: '完了', exact: true }).click();
       await editor.getByRole('button', { name: '保存', exact: true }).click();
       await expect(editor).toHaveCount(0);
       await page.reload(); await open();
-      await expect(editor.getByRole('button', { name: '自動', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await expect(trigger).toHaveText('ラベル自動');
+      await trigger.click();
+      await expect(picker.getByRole('radio', { name: '自動', exact: true })).toBeChecked();
     });
   });
 }
+
+test.describe('color sheet gesture isolation', () => {
+  test.use({ viewport: { width: 390, height: 844 }, contextOptions: { reducedMotion: 'reduce' } });
+  test('keeps the parent draft open when the label sheet header is dragged on a short screen', async ({ page }) => {
+    await seed(page, 'light');
+    await page.goto('/');
+    await nav(page, '予定').click();
+    await page.getByRole('grid', { name: '月間カレンダー' }).locator('[aria-selected="true"]').click();
+    await page.locator('.month-day-sheet-event').filter({ hasText: TITLE }).click();
+    const editor = page.locator('.month-event-modal');
+    const trigger = editor.locator('.month-event-color-trigger');
+    await editor.getByLabel('タイトル', { exact: true }).fill('未保存の予定');
+    await trigger.click();
+    await page.setViewportSize({ width: 320, height: 320 });
+    const picker = page.getByRole('dialog', { name: 'ラベルを選択' });
+    expect(await picker.evaluate(element => element.parentElement === document.body)).toBe(true);
+    expect(await picker.evaluate(element => element.closest('.month-event-modal'))).toBeNull();
+    const header = await picker.locator('.month-event-color-picker-header strong').boundingBox();
+    await page.mouse.move(header.x + header.width / 2, header.y + header.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(header.x + header.width / 2, header.y + header.height / 2 + 120, { steps: 5 });
+    await page.mouse.up();
+    await expect(picker).toBeVisible();
+    await expect(editor).toHaveCount(1);
+    await expect(editor.getByLabel('タイトル', { exact: true })).toHaveValue('未保存の予定');
+    await picker.getByRole('button', { name: '完了', exact: true }).click();
+    await expect(trigger).toBeFocused();
+    await expect(editor.getByLabel('タイトル', { exact: true })).toHaveValue('未保存の予定');
+  });
+});
 
 test.describe('calendar swipe navigation', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, contextOptions: { reducedMotion: 'reduce' } });
