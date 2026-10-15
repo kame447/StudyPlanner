@@ -188,10 +188,10 @@
   }
 }
 
-:root:not([data-motion='standard']) .ai-chat-week-reset-button,
-:root:not([data-motion='standard']) .ai-week-reset-confirm-layer,
-:root:not([data-motion='standard']) .ai-week-reset-confirm-sheet,
-:root:not([data-motion='standard']) .ai-week-reset-confirm {
+:root:is([data-motion='reduced'], [data-motion='off']) .ai-chat-week-reset-button,
+:root:is([data-motion='reduced'], [data-motion='off']) .ai-week-reset-confirm-layer,
+:root:is([data-motion='reduced'], [data-motion='off']) .ai-week-reset-confirm-sheet,
+:root:is([data-motion='reduced'], [data-motion='off']) .ai-week-reset-confirm {
   animation-duration: 1ms !important;
   animation-delay: 0ms !important;
   transition-duration: 1ms !important;

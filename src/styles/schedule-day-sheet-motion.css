@@ -12,7 +12,7 @@
 }
 
 /* Without spatial motion the FAB simply fades out of the sheet's way. */
-:root:not([data-motion='standard']) .schedule-add-fab.daily-add-fab {
+:root:is([data-motion='reduced'], [data-motion='off']) .schedule-add-fab.daily-add-fab {
   transition-property: opacity;
 }
 

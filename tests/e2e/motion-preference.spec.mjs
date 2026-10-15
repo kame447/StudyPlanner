@@ -59,7 +59,7 @@ for (const width of [390, 1280]) {
     await expect(motionGroup(settings).getByRole('button', { name: '標準' })).toHaveAttribute('aria-pressed', 'true');
     await motionGroup(settings).getByRole('button', { name: 'オフ' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-motion', 'off');
-    await expect(settings.getByRole('checkbox', { name: 'イラストをゆっくり動かす' })).toBeDisabled();
+    await expect(settings.getByRole('checkbox', { name: 'イラストをゆっくり動かす' })).toBeEnabled();
     await motionGroup(settings).scrollIntoViewIfNeeded();
     await testInfo.attach(`motion-setting-off-${width}`, { body: await settings.screenshot(), contentType: 'image/png' });
     expect(await settings.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(false);
@@ -113,7 +113,7 @@ test('the device reduced-motion setting caps standard and leaves fades only', as
   const settings = await openSettings(page);
   await expect(motionGroup(settings).getByRole('button', { name: '標準' })).toHaveAttribute('aria-pressed', 'true');
   await expect(settings.getByText('端末で動きを減らす設定が有効なため、控えめで表示しています。')).toBeVisible();
-  await expect(settings.getByRole('checkbox', { name: 'イラストをゆっくり動かす' })).toBeDisabled();
+  await expect(settings.getByRole('checkbox', { name: 'イラストをゆっくり動かす' })).toBeEnabled();
 
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await expect(page.locator('html')).toHaveAttribute('data-motion', 'standard');

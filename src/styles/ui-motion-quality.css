@@ -208,8 +208,8 @@
 /* Celebratory pops and the breathing status are spatial or looping: they run
    only at the standard level. Surface entries and press feedback already
    collapse to fades through the distance/scale tokens. */
-:root:not([data-motion='standard']) .home-streak-flame,
-:root:not([data-motion='standard']) .home-nav-active-circle,
-:root:not([data-motion='standard']) .ai-planning-typing::after {
+:root:is([data-motion='reduced'], [data-motion='off']) .home-streak-flame,
+:root:is([data-motion='reduced'], [data-motion='off']) .home-nav-active-circle,
+:root:is([data-motion='reduced'], [data-motion='off']) .ai-planning-typing::after {
   animation: none;
 }

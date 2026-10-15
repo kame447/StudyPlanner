@@ -272,8 +272,8 @@
   margin: 0;
 }
 
-:root:not([data-motion='standard']) .timetable-period-list-item,
-:root:not([data-motion='standard']) .timetable-period-delete-action {
+:root:is([data-motion='reduced'], [data-motion='off']) .timetable-period-list-item,
+:root:is([data-motion='reduced'], [data-motion='off']) .timetable-period-delete-action {
   transition: none;
 }
 

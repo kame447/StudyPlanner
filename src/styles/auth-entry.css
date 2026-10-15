@@ -319,9 +319,9 @@ html:has(#root .auth-entry-shell) :is(body, #root) {
   to { transform: translate3d(10px, -26px, 0); }
 }
 
-:root:not([data-motion='standard']) .auth-stars__layer { animation: none; }
+:root:is([data-motion='reduced'], [data-motion='off']) .auth-stars__layer { animation: none; }
 
-:root:not([data-motion='standard']) .auth-motion-toggle { display: none; }
+:root:is([data-motion='reduced'], [data-motion='off']) .auth-motion-toggle { display: none; }
 
 @media (max-width: 380px), (max-height: 700px) {
   .auth-entry-brand { margin-bottom: 20px; }

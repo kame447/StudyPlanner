@@ -133,7 +133,6 @@ export function AppSettingsGeneral({
           <small id="home-scene-motion-description">アニメーションが「標準」のときだけ動きます。</small>
         </span>
         <input type="checkbox" aria-label="イラストをゆっくり動かす" checked={homeScenePreferences.animated} aria-describedby="home-scene-motion-description"
-          disabled={motion.level !== 'standard'}
           onChange={event => onChangeHomeSceneMotion(event.target.checked)} />
       </label>
       {homeSceneError ? <p className="settings-inline-error settings-group-note" role="alert">{homeSceneError}</p> : null}

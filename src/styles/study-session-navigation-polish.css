@@ -41,7 +41,7 @@
   outline-offset: 2px;
 }
 
-:root:not([data-motion='standard']) .study-session-page {
+:root:is([data-motion='reduced'], [data-motion='off']) .study-session-page {
   animation: none !important;
   transition: none !important;
 }

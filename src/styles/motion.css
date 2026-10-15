@@ -13,7 +13,9 @@
  * - Animate only opacity and transform, so motion never causes layout shift.
  * - Features write keyframes in terms of the distance/scale tokens below. Under
  *   `reduced` those tokens collapse, so the same keyframe becomes a fade.
- * - Decorative loops are written under `:root[data-motion='standard']` only.
+ * - Decorative loops are written under `:root:not([data-motion='reduced'],
+ *   [data-motion='off'])` only. An absent attribute means the default,
+ *   standard, so a surface rendered without the policy never loses motion.
  * - Device reduced-motion is not queried in CSS; the policy module folds it
  *   into the level, so the user's 控えめ/オフ choice and the device agree.
  */

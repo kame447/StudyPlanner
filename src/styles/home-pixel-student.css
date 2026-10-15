@@ -1,22 +1,22 @@
 /* Static seated artwork is the fallback, including reduced motion and previews. */
 .home-pixel-student-walking { display: none; }
-:root[data-motion='standard'] [data-scene-motion='on'] [data-pixel-student='entering'] .home-pixel-student-walking {
+:root:not([data-motion='reduced'], [data-motion='off']) [data-scene-motion='on'] [data-pixel-student='entering'] .home-pixel-student-walking {
   display: inline;
   animation: home-pixel-student-enter 2.8s steps(22, end) both;
 }
 
-:root[data-motion='standard'] [data-scene-motion='on'] [data-pixel-student='entering'] .home-pixel-student-seated {
+:root:not([data-motion='reduced'], [data-motion='off']) [data-scene-motion='on'] [data-pixel-student='entering'] .home-pixel-student-seated {
   animation: home-pixel-student-sit 2.8s steps(1, end) both;
 }
 
-:root[data-motion='standard'] [data-scene-motion='on'] .home-pixel-student-step-front,
-:root[data-motion='standard'] [data-scene-motion='on'] .home-pixel-student-step-back {
+:root:not([data-motion='reduced'], [data-motion='off']) [data-scene-motion='on'] .home-pixel-student-step-front,
+:root:not([data-motion='reduced'], [data-motion='off']) [data-scene-motion='on'] .home-pixel-student-step-back {
   animation: home-pixel-student-step .4s steps(1, end) infinite;
 }
 
-:root[data-motion='standard'] [data-scene-motion='on'] .home-pixel-student-step-back { animation-delay: -.2s; }
+:root:not([data-motion='reduced'], [data-motion='off']) [data-scene-motion='on'] .home-pixel-student-step-back { animation-delay: -.2s; }
 
-:root[data-motion='standard'] [data-scene-motion='on'] [data-pixel-student='studying'] .home-pixel-student-writing {
+:root:not([data-motion='reduced'], [data-motion='off']) [data-scene-motion='on'] [data-pixel-student='studying'] .home-pixel-student-writing {
   animation: home-pixel-student-write 2.4s steps(2, end) infinite;
 }
 @keyframes home-pixel-student-enter {

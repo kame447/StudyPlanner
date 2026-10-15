@@ -46,11 +46,11 @@ describe('animation setting', () => {
     expect(pressed()).toEqual(['オフ']);
     expect(env.storage.getItem(MOTION_STORAGE_KEY)).toBe('off');
     expect(env.root.dataset.motion).toBe('off');
-    expect(sceneMotion().props.disabled).toBe(true);
+    expect(sceneMotion().props.disabled).toBeFalsy();
 
     act(() => motionButton('標準').props.onClick());
     expect(env.root.dataset.motion).toBe('standard');
-    expect(sceneMotion().props.disabled).toBe(false);
+    expect(sceneMotion().props.disabled).toBeFalsy();
   });
 
   it('restores the stored choice on the next visit', () => {
@@ -66,13 +66,13 @@ describe('animation setting', () => {
     expect(pressed()).toEqual(['標準']);
     expect(motionGroup().props['aria-describedby']).toBe('settings-motion-description');
     expect(renderer!.root.findByProps({ id: 'settings-motion-description' }).children.join('')).toContain('控えめ');
-    expect(sceneMotion().props.disabled).toBe(true);
-    // The stored illustration preference is untouched, only paused.
+    expect(sceneMotion().props.disabled).toBeFalsy();
+    // The illustration choice stays editable and stored; the level only pauses it.
     expect(sceneMotion().props.checked).toBe(true);
 
     setSystemReduced(false);
     expect(renderer!.root.findAllByProps({ id: 'settings-motion-description' })).toHaveLength(0);
-    expect(sceneMotion().props.disabled).toBe(false);
+    expect(sceneMotion().props.disabled).toBeFalsy();
   });
 
   it('announces a refused save and keeps the previous choice selected', () => {

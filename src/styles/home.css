@@ -711,9 +711,9 @@
   transform: rotate(45deg);
 }
 
-:root:not([data-motion='standard']) .home-add-action,
-:root:not([data-motion='standard']) .home-add-controls > .home-add-toggle,
-:root:not([data-motion='standard']) .home-add-toggle svg {
+:root:is([data-motion='reduced'], [data-motion='off']) .home-add-action,
+:root:is([data-motion='reduced'], [data-motion='off']) .home-add-controls > .home-add-toggle,
+:root:is([data-motion='reduced'], [data-motion='off']) .home-add-toggle svg {
   transition: none;
 }
 

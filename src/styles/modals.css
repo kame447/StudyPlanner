@@ -814,7 +814,7 @@
 }
 
 /* Selection changes remount only the title region; typing never restarts this cue. */
-:root[data-motion='standard'] .month-event-title-selected .month-event-title-field input {
+:root:not([data-motion='reduced'], [data-motion='off']) .month-event-title-selected .month-event-title-field input {
   animation: month-event-title-selection 300ms ease-out;
 }
 

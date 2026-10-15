@@ -195,8 +195,8 @@
   z-index: 2;
 }
 
-:root:not([data-motion='standard']) .mini-calendar-selection-knob,
-:root:not([data-motion='standard']) .mini-calendar-day {
+:root:is([data-motion='reduced'], [data-motion='off']) .mini-calendar-selection-knob,
+:root:is([data-motion='reduced'], [data-motion='off']) .mini-calendar-day {
   transition-duration: 1ms !important;
   transition-delay: 0ms !important;
 }

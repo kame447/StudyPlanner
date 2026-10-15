@@ -119,6 +119,6 @@
   outline-offset: 1px;
 }
 
-:root:not([data-motion='standard']) .schedule-week-drag-overlay {
+:root:is([data-motion='reduced'], [data-motion='off']) .schedule-week-drag-overlay {
   transition: none !important;
 }

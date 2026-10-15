@@ -51,8 +51,8 @@ describe('auth entry paint and motion contract', () => {
     root.walkAtRules('keyframes', rule => { rule.walkDecls(declaration => { frames.push(declaration.prop); }); });
     expect(frames).toEqual(['transform', 'transform']);
     expect(declarations(".auth-stars[data-paused='true'] .auth-stars__layer")['animation-play-state']).toBe('paused');
-    expect(declarations(":root:not([data-motion='standard']) .auth-stars__layer").animation).toBe('none');
-    expect(declarations(":root:not([data-motion='standard']) .auth-motion-toggle").display).toBe('none');
+    expect(declarations(":root:is([data-motion='reduced'], [data-motion='off']) .auth-stars__layer").animation).toBe('none');
+    expect(declarations(":root:is([data-motion='reduced'], [data-motion='off']) .auth-motion-toggle").display).toBe('none');
     expect(css).not.toMatch(/url\(|filter:\s*blur|backdrop-filter|will-change/);
     expect(declarations('.auth-stars')['pointer-events']).toBe('none');
   });
