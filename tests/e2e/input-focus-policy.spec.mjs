@@ -91,10 +91,15 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     'src/components/MonthView.tsx',
     'src/components/QuickAddMenu.tsx',
   ]);
-  // Settings and the user-opened Home disclosure may focus their non-input
-  // controls. Keep these statement-specific so new input focus in the same file
-  // still fails this guard. Browser tests assert the actual heading/tab/button.
+  // User-opened disclosures may focus non-text controls. Keep these statement-specific
+  // so new text-control or unrestricted focus in the same file still fails this guard.
+  // Browser tests assert the actual heading/tab/button or checked native radio.
   const allowedFocusStatements = new Map([
+    // Only the checked native radio in the user-opened label picker may receive focus.
+    // It cannot summon a text keyboard; color cases assert arrows and focus restoration.
+    ['src/components/MonthEventColorPicker.tsx', new Set([
+      "if (selectedRadio?.type === 'radio' && selectedRadio.checked) selectedRadio.focus();",
+    ])],
     // Auth Arrow/Home/End navigation focuses only an explicitly selected mode button.
     ['src/components/AuthScreen.tsx', new Set([
       'event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-intent="${nextIntent}"]`)?.focus();',
@@ -149,6 +154,16 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
       'if (origin.current.element?.isConnected) origin.current.element.focus({ preventScroll: true });',
     ])],
   ]);
+  const hasUnexpectedFocus = (fileName, line) => line.includes('.focus(')
+    && !allowedFocusFiles.has(fileName) && !allowedFocusStatements.get(fileName)?.has(line.trim());
+
+  // The radio exception must not permit text inputs, unchecked radios or generic focus.
+  for (const statement of [
+    'selectedInputRef.current?.focus();',
+    'selectedRadio.focus();',
+    "if (selectedRadio?.type === 'text' && selectedRadio.checked) selectedRadio.focus();",
+    "if (selectedRadio?.type === 'radio') selectedRadio.focus();",
+  ]) expect(hasUnexpectedFocus('src/components/MonthEventColorPicker.tsx', statement)).toBe(true);
 
   for (const file of files) {
     const source = fs.readFileSync(file, 'utf8');
@@ -158,8 +173,7 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     if (/contentEditable\s*=/.test(source)) contentEditableInputs.push(fileName);
 
     source.split('\n').forEach((line, index) => {
-      if (line.includes('.focus(') && !allowedFocusFiles.has(fileName)
-        && !allowedFocusStatements.get(fileName)?.has(line.trim())) {
+      if (hasUnexpectedFocus(fileName, line)) {
         unexpectedFocus.push(`${fileName}:${index + 1}:${line.trim()}`);
       }
     });

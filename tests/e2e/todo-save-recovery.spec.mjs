@@ -40,16 +40,20 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     await page.locator('.todo-view-item').getByRole('button', { name: '編集', exact: true }).click();
     const editor = page.locator('.todo-edit-modal');
     await editor.getByLabel('タイトル', { exact: true }).fill('再送で保存した課題');
-    await editor.getByLabel('メモ', { exact: true }).fill('失敗しても残すメモ');
+    const memo = editor.getByRole('textbox', { name: 'メモ', exact: true });
+    await expect(memo).toHaveAccessibleName('メモ');
+    await memo.fill('失敗しても残すメモ');
     await page.evaluate(() => { window.__todoWriteFailures = 1; });
     await editor.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(editor.getByRole('alert')).toBeVisible();
+    await expect(editor.getByRole('alert')).toHaveText('Fixture Todo storage failure');
+    expect(await page.evaluate(() => window.__todoWriteFailures)).toBe(0);
     await expect(editor.getByLabel('タイトル', { exact: true })).toHaveValue('再送で保存した課題');
-    await expect(editor.getByLabel('メモ', { exact: true })).toHaveValue('失敗しても残すメモ');
+    await expect(memo).toHaveValue('失敗しても残すメモ');
     await expect.poll(async () => (await readStored(page)).todos[0].title).toBe('入力を保持する課題');
     await editor.getByRole('button', { name: '保存', exact: true }).click();
     await expect(editor).toHaveCount(0);
-    await expect.poll(async () => (await readStored(page)).todos[0].title).toBe('再送で保存した課題');
+    await expect.poll(async () => (await readStored(page)).todos[0])
+      .toMatchObject({ title: '再送で保存した課題', memo: '失敗しても残すメモ' });
 
     await page.locator('.todo-view-item').getByRole('button', { name: '予定にする', exact: true }).click();
     await editor.getByLabel('日付', { exact: true }).fill(E2E_TODAY);
@@ -58,7 +62,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     await editor.getByLabel('自由入力（分）', { exact: true }).fill('75');
     await page.evaluate(() => { window.__todoWriteFailures = 1; });
     await editor.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(editor.getByRole('alert')).toBeVisible();
+    await expect(editor.getByRole('alert')).toHaveText('Fixture Todo storage failure');
+    expect(await page.evaluate(() => window.__todoWriteFailures)).toBe(0);
     await expect(editor.getByLabel('開始時刻', { exact: true })).toHaveValue('18:45');
     await expect(editor.getByLabel('自由入力（分）', { exact: true })).toHaveValue('75');
     await expect.poll(async () => (await readStored(page)).todos[0].status).toBe('open');
@@ -71,7 +76,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
     const saved = await readStored(page);
     expect(saved.todos).toHaveLength(1);
     expect(saved.events).toHaveLength(1);
-    expect(saved.events[0]).toMatchObject({ title: '再送で保存した課題', date: E2E_TODAY, startTime: '18:45', endTime: '20:00' });
+    expect(saved.events[0]).toMatchObject({ title: '再送で保存した課題', memo: '失敗しても残すメモ', date: E2E_TODAY, startTime: '18:45', endTime: '20:00' });
     await page.reload();
     expect(await readStored(page)).toEqual(saved);
   });

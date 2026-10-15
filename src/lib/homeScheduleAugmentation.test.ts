@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type {
+  Actual,
   MonthEvent,
   Plan,
   ScheduleTemplate,
@@ -262,4 +263,65 @@ it('deduplicates imported classes and applies timetable opt-in independently of 
     expect(included.weekActualMinutes).toBe(0);
     expect(included.missingActualPlans.map(item => item.id)).toEqual(plans.length ? ['imported'] : []);
   }
+});
+
+describe('major-event actual identity in Home progress', () => {
+  const event = monthEvent({ title: '塾バイト', startTime: '17:00', endTime: '21:30' });
+  const recorded: Actual = { id: 'event-actual', userId: event.userId, planId: event.id,
+    occurrenceDate: event.date, title: event.title, subject: '主要予定',
+    actualStartTime: '17:00', actualEndTime: '21:30', note: '', updatedAt: TIMESTAMP };
+  const options = { ownerId: event.userId, plans: [], monthEvents: [event], scheduleTemplates: [], startDate: event.date };
+
+  it.each([false, true])('honors general-event actual opt-in independently of timetable (%s)', includeTimetable => {
+    const plans = augmentHomePlansWithScheduleOccurrences(options);
+    const input = { plans, monthEvents: [event], actuals: [recorded], todos: [], now: new Date('2026-09-05T22:00:00') };
+    const snapshot = JSON.stringify(input);
+    expect(plans[0].id).not.toBe(recorded.planId);
+    for (const includeGeneralEvents of [false, true, false]) {
+      const dashboard = buildHomeDashboardModel({ ...input,
+        progressPreferences: { includeGeneralEvents, includeTimetable } });
+      const expected = includeGeneralEvents ? 270 : 0;
+      expect(dashboard.weekPlannedMinutes).toBe(expected);
+      expect(dashboard.weekActualMinutes).toBe(expected);
+      expect(dashboard.weekExpectedMinutesByNow).toBe(expected);
+      expect(dashboard.weekActualMinutesByNow).toBe(expected);
+      expect(dashboard.weekDays.find(day => day.date === event.date)?.actualMinutes).toBe(expected);
+      expect(dashboard.weekProgressPercent).toBe(includeGeneralEvents ? 100 : 0);
+      expect(dashboard.weekDeltaMinutesByNow).toBe(0);
+      expect(dashboard.currentStreak).toBe(includeGeneralEvents ? 1 : 0);
+      expect(dashboard.todayPlans.map(plan => plan.title)).toEqual([event.title]);
+      expect([...dashboard.actualByOccurrenceKey.values()]).toEqual([recorded]);
+    }
+    expect(JSON.stringify(input)).toBe(snapshot);
+  });
+
+  it('classifies recorded major events even when their current schedule is outside the display projection', () => {
+    const moved = { ...event, date: '2026-10-01' };
+    const plans = augmentHomePlansWithScheduleOccurrences({ ...options, monthEvents: [moved] });
+    expect(plans).toEqual([]);
+    const actuals = [recorded, { ...recorded, id: 'historic', occurrenceDate: '2026-08-01' }];
+    for (const includeGeneralEvents of [false, true]) {
+      const dashboard = buildHomeDashboardModel({ plans, monthEvents: [moved], actuals,
+        todos: [], now: new Date('2026-09-05T22:00:00'),
+        progressPreferences: { includeGeneralEvents, includeTimetable: false } });
+      expect(dashboard.weekPlannedMinutes).toBe(0);
+      expect(dashboard.weekActualMinutes).toBe(includeGeneralEvents ? 270 : 0);
+      expect(dashboard.currentStreak).toBe(includeGeneralEvents ? 1 : 0);
+      expect(dashboard.bestStreak).toBe(includeGeneralEvents ? 1 : 0);
+    }
+  });
+
+  it('keeps standalone and unknown-source records and deduplicates opted-in major-event records', () => {
+    const standalone = { ...recorded, id: 'standalone', planId: null, actualEndTime: '17:30' };
+    const orphan = { ...standalone, id: 'orphan', planId: 'deleted-study-plan', actualEndTime: '17:15' };
+    const older = { ...recorded, id: 'older', actualEndTime: '18:00', updatedAt: '2026-09-01T00:00:00Z' };
+    const actuals = [older, recorded, standalone, orphan];
+    const otherOwnersEvent = { ...event, id: orphan.planId, userId: 'another-owner' };
+    const plans = augmentHomePlansWithScheduleOccurrences(options);
+    for (const includeGeneralEvents of [false, true]) {
+      const dashboard = buildHomeDashboardModel({ plans, monthEvents: [event, otherOwnersEvent], actuals, todos: [],
+        now: new Date('2026-09-05T22:00:00'), progressPreferences: { includeGeneralEvents, includeTimetable: false } });
+      expect(dashboard.weekActualMinutes).toBe(includeGeneralEvents ? 315 : 45);
+    }
+  });
 });

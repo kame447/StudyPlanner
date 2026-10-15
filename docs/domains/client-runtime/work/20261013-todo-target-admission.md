@@ -219,3 +219,49 @@ Next: release-owner independent review, combined-content verification and native
 browser acceptance before any authorized publication. Local work is a verified
 candidate, not a production completion claim. No existing Issue/PR is closed,
 no branch is deleted, and no remote write/merge/deploy has been performed.
+
+### Browser failure follow-up — 2026-10-15
+
+Existing PR #677 remains the release unit. The repair is based on local
+integration `6ab99c4876edd4353d2735060104cf85fe4da871`; no replacement branch or PR
+is created. Chromium and mobile WebKit evidence for published `443f6ed9`
+(CI merge `990dc4dd`) shows the same two failures at 390 and 1280px. WebKit's
+remaining results are 354 passed / 3 skipped, with no flaky cases.
+
+The screenshots and accessibility snapshots disprove discarded memo input:
+the expected text remains present. Exact label-text lookup includes React's
+updated textarea text node, while the textbox accessible name remains `メモ`.
+The regression now locates that textbox by role and exact accessible name,
+consistent with the existing compact-form browser contract.
+
+A separate production defect was also exposed: the failure-message formatter
+treated every error code as a string. A real `QuotaExceededError` DOMException
+has numeric code 22, so formatting threw a TypeError and replaced the original
+storage error. Diagnostic fields are now narrowed at runtime before trimming.
+The original message survives, and provider string codes retain their existing
+format. Repository writes, rollback, admission and editor lifecycle are unchanged.
+
+Before this correction, both new DOMException integration cases failed with
+`firebaseError.code?.trim is not a function`; ordinary Error controls passed.
+The final integration matrix covers edit/schedule with ordinary Error, native
+DOMException and provider string-code errors, including the user notice,
+retained input, unchanged failed persistence and exactly one explicit retry.
+Browser assertions additionally require the injected storage-error message,
+consumed failure injection and persisted memo, preserving the original
+cardinality, schedule timing, reload and width assertions.
+
+Focused verification passed on the final three changed source/test files:
+8 files / 204 tests (TodoView saveRecovery, pendingOperations, compactEdit,
+completedSection; planner data-state base, navigationRecovery,
+todoTargetAdmission and todoReadRecovery), using `DEV_LAN_HOST=127.0.0.1 npm run
+test:run -- <those files> --maxWorkers 2 --minWorkers 1`. App typecheck, browser
+syntax, and separate Chromium/mobile-WebKit discovery of both cases also pass.
+Environment: Node 24.19.0, npm 11.9.0, TypeScript 5.9.3, Vitest 3.2.7,
+React 18.3.1 and local Playwright 1.62.1; installed dependencies were unchanged.
+
+Corrected native browser execution remains unverified locally: Chromium cannot
+create its process-singleton Unix socket in this execution environment, including
+the approved execution-mode retry. No browser threshold, timeout, skip, workflow
+or fixture failure condition was relaxed. Latest-main integration, full
+verification and corrected Chromium/mobile-WebKit CI remain required before
+completion; this focused repair does not claim those release gates passed.

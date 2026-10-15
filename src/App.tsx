@@ -379,7 +379,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
 
   return (
     <HomeDisplayClockProvider>
-    <StudyStreakProvider key={user.id} userId={user.id} plans={plans} actuals={actuals}
+    <StudyStreakProvider key={user.id} userId={user.id} plans={plans} actuals={actuals} monthEvents={monthEvents}
       active={isPlannerDataReadyForOwner(plannerDataAvailability, user.id)}
       blockedError={plannerDataAvailability.ownerId === user.id && ['unavailable', 'stale'].includes(plannerDataAvailability.status)
         ? '学習履歴を読み込めませんでした。' : null}
@@ -400,6 +400,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         user={user}
         plans={plans}
         actuals={actuals}
+        monthEvents={monthEvents}
         todos={todos}
         onOpenProfile={() => setIsMyPageOpen(true)}
         onOpenSettings={settingsNavigation.open}
@@ -629,6 +630,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
                 selectedDate={selectedDate}
                 plans={plans}
                 actuals={actuals}
+                monthEvents={monthEvents}
                 studySubjects={studySubjects}
                 studyMaterials={studyMaterials}
                 onBack={openHomeSurface}

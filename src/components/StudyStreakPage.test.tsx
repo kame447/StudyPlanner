@@ -11,7 +11,7 @@ vi.mock('../repositories', () => ({ studyStreakRepository: repository }));
 const actuals: Actual[] = Array.from({ length: 7 }, (_, index) => ({ id: `study-${index}`, userId: 'owner', planId: null,
   occurrenceDate: `2026-08-${11 + index}`, actualStartTime: '09:00', actualEndTime: '09:30', title: 'English', subject: '英語', note: '', updatedAt: '' }));
 const plans: Plan[] = [];
-const history: StudyStreakHistory = { userId: 'owner', plans, actuals, restDays: [], historyComplete: true };
+const history: StudyStreakHistory = { userId: 'owner', plans, actuals, monthEvents: [], restDays: [], historyComplete: true };
 let renderer: ReactTestRenderer | undefined;
 beforeEach(() => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-08-19T10:00:00'));

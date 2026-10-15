@@ -25,7 +25,8 @@ import {
   validateMonthEventDraft,
   type MonthEventDeleteScope,
 } from '../lib/monthEventEditor';
-import { getMonthEventColor, MONTH_EVENT_COLOR_OPTIONS, scheduleEventColorStyle } from '../lib/scheduleEventColor';
+import { getMonthEventColor, scheduleEventColorStyle } from '../lib/scheduleEventColor';
+import { MonthEventColorPicker } from './MonthEventColorPicker';
 import { DayCalendarDialog } from './DatePickerDialogs';
 import { TimeWheelPicker } from './TimeRangeFields';
 import type { MonthEvent, MonthEventDraft } from '../types/domain';
@@ -488,32 +489,6 @@ function MonthEventEditor({
             </label>
           </section>
 
-          <section className="month-event-core-section month-event-color-section" aria-label="予定の色">
-            <strong>色</strong>
-            <div className="month-event-color-options">
-              <button
-                className="month-event-color-chip"
-                type="button"
-                aria-pressed={!draft.color}
-                onClick={() => setDraft(current => ({ ...current, color: undefined }))}
-              >
-                自動
-              </button>
-              {MONTH_EVENT_COLOR_OPTIONS.map(option => (
-                <button
-                  key={option.key}
-                  className="month-event-color-chip"
-                  type="button"
-                  aria-pressed={draft.color === option.key}
-                  onClick={() => setDraft(current => ({ ...current, color: option.key }))}
-                >
-                  <span className="month-event-color-dot" style={{ backgroundColor: option.color }} aria-hidden="true" />
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </section>
-
           <section className="month-event-core-section">
             <div className="month-event-toggle-row">
               <span>終日</span>
@@ -570,6 +545,14 @@ function MonthEventEditor({
               </div>
             </div>
           </section>
+
+          <MonthEventColorPicker
+            key={`color-${editingEventId ?? 'new'}`}
+            color={draft.color}
+            automaticColor={editingEventId ? getMonthEventColor(editingEventId) : undefined}
+            disabled={isSavingMonthEvent || waitingForInitialEvent || Boolean(editScopePrompt)}
+            onChange={color => setDraft(current => ({ ...current, color }))}
+          />
 
           <section className="month-event-subtle-section month-event-list-card">
             <div className="label-row">

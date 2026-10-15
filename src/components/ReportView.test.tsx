@@ -1,7 +1,7 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ReportView } from './ReportView';
-import type { Actual } from '../types/domain';
+import type { Actual, MonthEvent } from '../types/domain';
 
 vi.mock('../lib/date', async (original) => ({
   ...await original<typeof import('../lib/date')>(),
@@ -62,4 +62,22 @@ it.each([
   const items = root.findAllByProps({ role: 'listitem' });
   expect(items).toHaveLength(Number(lastDay));
   expect(items[0].props['aria-label']).toMatch(/\d+\/1 /);
+});
+
+
+it('omits a recorded major event from learning summaries and chart while retaining standalone study', () => {
+  const event: MonthEvent = { id: 'job', userId: 'owner', date: '2026-08-24', title: '塾バイト',
+    startTime: '17:00', endTime: '21:30', repeat: 'none', repeatUntil: null, excludedDates: [],
+    url: '', memo: '', checklist: [], locationTags: [], createdAt: '', updatedAt: '' };
+  const records = [actual, { ...actual, id: 'job-actual', planId: event.id,
+    title: event.title, actualStartTime: '17:00', actualEndTime: '21:30' }];
+  act(() => { renderer = create(<ReportView selectedDate={event.date} plans={[]} monthEvents={[event]} actuals={records} onBack={() => {}} />); });
+  const root = renderer!.root;
+  expect(root.findAllByProps({ className: 'learning-report-summary-card' }).map(card => card.props['aria-label']))
+    .toEqual(['今日 1時間 予定なし', '今週 1時間 予定なし', '今月 1時間 予定なし', '累計 1時間 これまでの学習記録']);
+  for (const tab of root.findAllByProps({ role: 'tab' })) {
+    act(() => tab.props.onClick());
+    expect(root.findByProps({ role: 'list' }).props['aria-label']).toContain('合計 1時間');
+  }
+  expect(records).toHaveLength(2);
 });

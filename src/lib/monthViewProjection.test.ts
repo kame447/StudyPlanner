@@ -490,3 +490,13 @@ describe('month timetable visibility', () => {
     expect(JSON.stringify(input)).toBe(before);
   });
 });
+
+it('keeps major events visible while excluding their actuals from monthly study minutes', () => {
+  const event = { ...createMonthEvent('塾バイト', '17:00'), endTime: '21:30' };
+  const job = { ...actual, id: 'job-record', planId: event.id, actualStartTime: '17:00', actualEndTime: '21:30' };
+  const projection = buildMonthPanelProjection({ monthDate: '2026-08-01', userId: 'user-1',
+    plans: [plan], actuals: [actual, job], monthEvents: [event] });
+  const cell = projection.cells.find(cell => cell.date === event.date)!;
+  expect(cell.actualMinutes).toBe(60);
+  expect(cell.monthEvents.map(event => event.title)).toEqual(['塾バイト']);
+});

@@ -94,6 +94,7 @@ export function HomeScheduleView({
       homeScenePreferences={homeScenePreferences}
       plans={displayPlans}
       actuals={actuals}
+      monthEvents={monthEvents}
       todos={todos}
       studyMaterials={studyMaterials}
       primaryHeaderRef={primaryHeaderRef}

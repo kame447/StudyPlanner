@@ -10,14 +10,15 @@ vi.mock('../repositories', () => ({ plannerRepository: new Proxy({}, {
   get: (_target, key) => boundary.repository[key as keyof PlannerRepository],
 }) }));
 const originalTodo = todo({ status: 'open', scheduledPlanId: null, dueDate: null, dueTime: null, pinned: false });
+const showNotice = vi.fn();
 let state: UsePlannerDataStateResult;
 let renderer: ReactTestRenderer | undefined;
 function Harness() {
-  state = usePlannerDataState({ userId: 'owner', showNotice: () => undefined });
+  state = usePlannerDataState({ userId: 'owner', showNotice });
   return <TodoView userId="owner" selectedDate={state.selectedDate} todos={state.todos}
     onSaveTodo={state.saveTodo} onScheduleTodo={state.scheduleTodoAsPlan} onDeleteTodo={state.deleteTodo} />;
 }
-afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.restoreAllMocks(); });
+afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; showNotice.mockClear(); vi.restoreAllMocks(); });
 function field(root: ReactTestInstance, name: string) {
   return root.findAllByType('label').find(node => node.findAllByType('span').some(span => span.children.includes(name)))!
     .find(node => ['input', 'select', 'textarea'].includes(String(node.type)));
@@ -26,7 +27,11 @@ function change(name: string, value: string) {
   act(() => field(renderer!.root, name).props.onChange({ target: { value } }));
 }
 
-it.each(['edit', 'schedule'] as const)('retains failed Todo %s input through real rollback and persists one explicit retry', async operation => {
+it.each((['edit', 'schedule'] as const).flatMap(operation => [
+  { operation, failure: 'Error', createError: () => new Error('controlled save failure'), notice: 'controlled save failure' },
+  { operation, failure: 'DOMException', createError: () => new DOMException('controlled save failure', 'QuotaExceededError'), notice: 'controlled save failure' },
+  { operation, failure: 'provider error', createError: () => Object.assign(new Error('controlled save failure'), { code: ' storage/unavailable ' }), notice: 'storage/unavailable: controlled save failure' },
+]))('retains failed Todo $operation input after $failure and persists one explicit retry', async ({ operation, createError, notice }) => {
   const { repository } = createLocalFixture();
   await repository.upsertTodo(originalTodo);
   boundary.repository = { ...repository };
@@ -55,12 +60,13 @@ it.each(['edit', 'schedule'] as const)('retains failed Todo %s input through rea
   await act(async () => { submit({ preventDefault() {} }); submit({ preventDefault() {} }); });
   expect(write).toHaveBeenCalledTimes(1);
   const stayedOpenWhilePending = renderer!.root.findAllByType('form').length === 1;
-  await act(async () => { gate.reject(new Error('controlled save failure')); });
+  await act(async () => { gate.reject(createError()); });
   expect(await repository.getTodos('owner')).toEqual([originalTodo]);
   expect(await repository.getPlans('owner')).toEqual([]);
   expect.soft(stayedOpenWhilePending).toBe(true);
   expect(renderer!.root.findAllByType('form')).toHaveLength(1);
   expect(renderer!.root.findByProps({ role: 'alert' }).children.join('')).toContain('controlled save failure');
+  expect(showNotice).toHaveBeenCalledWith(notice, 'error');
   expect(field(renderer!.root, operation === 'edit' ? 'タイトル' : '開始時刻').props.value)
     .toBe(operation === 'edit' ? '失敗しても残す課題' : '18:45');
   if (operation === 'edit') {
