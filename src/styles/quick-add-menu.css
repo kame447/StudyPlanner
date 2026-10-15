@@ -187,8 +187,8 @@ body:has(> .month-event-dialog-motion .month-event-modal-overlay) .quick-add-opt
 :root:is([data-motion='reduced'], [data-motion='off']) .quick-add-option,
 :root:is([data-motion='reduced'], [data-motion='off']) .quick-add-option-icon,
 :root:is([data-motion='reduced'], [data-motion='off']) .quick-add-trigger .quick-add-trigger-icon {
-  animation-duration: 1ms !important;
+  animation-duration: 0s !important;
   animation-delay: 0ms !important;
-  transition-duration: 1ms !important;
+  transition-duration: 0s !important;
   transition-delay: 0ms !important;
 }

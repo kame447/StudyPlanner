@@ -342,6 +342,12 @@
   to { transform: translateX(0); opacity: 1; }
 }
 
+/* Below standard the drawer only fades in; it never slides. */
+:root:is([data-motion='reduced'], [data-motion='off']) .ai-chat-drawer {
+  animation-name: motion-fade-in;
+  animation-duration: var(--motion-duration-fade);
+}
+
 .ai-chat-drawer-header {
   display: flex;
   align-items: center;

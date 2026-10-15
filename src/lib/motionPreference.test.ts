@@ -137,4 +137,23 @@ describe('single owner', () => {
     walk(srcRoot);
     expect(offenders).toEqual(['lib/motionPreference.ts']);
   });
+
+  it('never lets a near-zero !important duration outrank the off guarantee', async () => {
+    const { readdirSync, statSync } = await import('node:fs');
+    const { join, relative } = await import('node:path');
+    const srcRoot = new URL('..', import.meta.url).pathname;
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const path = join(dir, name);
+        if (statSync(path).isDirectory()) { walk(path); continue; }
+        if (!name.endsWith('.css')) continue;
+        // A more specific `1ms !important` beats `:root[data-motion='off'] *`
+        // and leaves real (if tiny) motion and timing under off.
+        if (/(?<![\d.])(?:0?\.\d+|[1-9]\d*)ms\s*!important/.test(readFileSync(path, 'utf8'))) offenders.push(relative(srcRoot, path));
+      }
+    };
+    walk(srcRoot);
+    expect(offenders).toEqual([]);
+  });
 });

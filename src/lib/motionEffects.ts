@@ -1,4 +1,4 @@
-import { getMotionLevel, REDUCED_FADE_MS, type MotionLevel } from './motionPreference';
+import { getMotionLevel, REDUCED_FADE_MS, subscribeMotion, type MotionLevel } from './motionPreference';
 
 /**
  * One-shot feedback motion for elements that already exist in the DOM.
@@ -23,13 +23,30 @@ interface EffectSpec {
   reduced: Frames | null;
 }
 
-const running = new WeakMap<Element, Animation>();
+// Entries live only while an effect runs (finish/cancel removes them).
+const running = new Map<Element, Animation>();
+let playedLevel: MotionLevel | null = null;
+
+/** A level change also stops effects already in flight; nothing finishes at the old level. */
+function cancelRunningOnLevelChange() {
+  const next = getMotionLevel();
+  if (next === playedLevel) return;
+  playedLevel = next;
+  for (const animation of [...running.values()]) animation.cancel();
+  running.clear();
+}
 
 function play(element: Element | null | undefined, spec: EffectSpec, level: MotionLevel = getMotionLevel()): Animation | null {
-  if (!element || level === 'off' || typeof element.animate !== 'function') return null;
+  if (!element) return null;
+  // A newer effect, or a newer decision to show none, replaces the running one.
+  running.get(element)?.cancel();
+  running.delete(element);
+  if (level === 'off' || typeof element.animate !== 'function') return null;
   const frames = level === 'standard' ? spec.standard.frames : spec.reduced;
   if (!frames) return null;
-  running.get(element)?.cancel();
+  playedLevel = level;
+  // Subscribing the same function again is a no-op.
+  subscribeMotion(cancelRunningOnLevelChange);
   const animation = element.animate(frames, level === 'standard'
     ? { duration: spec.standard.duration, easing: spec.standard.easing }
     : { duration: REDUCED_FADE_MS, easing: 'ease-out' });

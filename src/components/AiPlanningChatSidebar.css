@@ -192,7 +192,7 @@
 :root:is([data-motion='reduced'], [data-motion='off']) .ai-week-reset-confirm-layer,
 :root:is([data-motion='reduced'], [data-motion='off']) .ai-week-reset-confirm-sheet,
 :root:is([data-motion='reduced'], [data-motion='off']) .ai-week-reset-confirm {
-  animation-duration: 1ms !important;
+  animation-duration: 0s !important;
   animation-delay: 0ms !important;
-  transition-duration: 1ms !important;
+  transition-duration: 0s !important;
 }

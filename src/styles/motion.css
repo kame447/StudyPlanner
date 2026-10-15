@@ -96,6 +96,13 @@
   scroll-behavior: auto !important;
 }
 
+/* Programmatic and CSS-requested scrolling jumps instead of gliding below
+   standard; `behavior: 'auto'` in script defers to this computed value. */
+:root:is([data-motion='reduced'], [data-motion='off']),
+:root:is([data-motion='reduced'], [data-motion='off']) * {
+  scroll-behavior: auto !important;
+}
+
 /* Disclosed content rises into place when it opens; closing is immediate.
    `backwards` fill leaves no transform behind, so fixed or sticky
    descendants are never re-parented once the reveal has finished. */

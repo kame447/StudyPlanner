@@ -197,6 +197,6 @@
 
 :root:is([data-motion='reduced'], [data-motion='off']) .mini-calendar-selection-knob,
 :root:is([data-motion='reduced'], [data-motion='off']) .mini-calendar-day {
-  transition-duration: 1ms !important;
+  transition-duration: 0s !important;
   transition-delay: 0ms !important;
 }

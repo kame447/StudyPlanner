@@ -48,6 +48,18 @@ describe('feedback motion by level', () => {
     expect(animations.every(animation => animation.options.duration === REDUCED_FADE_MS)).toBe(true);
   });
 
+  it('stops a running effect when the level drops or the next effect is suppressed', () => {
+    const { element, animations } = fakeElement();
+    playSettle(element);
+    setMotionPreference('reduced');
+    expect(animations[0].cancel).toHaveBeenCalledTimes(1);
+
+    playEntrance(element);
+    setMotionPreference('off');
+    expect(animations[1].cancel).toHaveBeenCalledTimes(1);
+    expect(playSettle(element)).toBeNull();
+  });
+
   it('does nothing at off', () => {
     setMotionPreference('off');
     expect(env.storage.getItem(MOTION_STORAGE_KEY)).toBe('off');
