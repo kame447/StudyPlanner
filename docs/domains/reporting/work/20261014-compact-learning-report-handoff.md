@@ -1,5 +1,16 @@
 # Compact learning report
 
+## Native repair checkpoint — 2026-10-15 10:12 UTC
+
+- Continue existing PR #686 / `fix/report-compact-readability`; no replacement branch or PR. Isolated detached worktree is based on local `33193ba17c4029a93e5938e1998d08a8d774211d`, the exact tree of published `99345ed2361de407809c4d329fa44007a0038956` (`fa611d3f848b09bb313eecc6978fcf04e087567f`).
+- Initial Chromium run38714154205:747passed/2failed. Pixel320/390 enlarged-value cases failed identically on initial/retry. The current expected containment must not be relaxed.
+- Actual artifact metrics show DotGothic16 text ranges35px high at24px font while line-height1.2 gives28.796875px lines, with4px top overshoot. The bundled font's hhea/Win envelope is1.448em. Normal12px ranges similarly exceed their14.39px line boxes. This is a production typography defect, not an unstable timing assertion.
+- Repair scope: enlarge only the report numeric line box to cover the font envelope; keep shared intrinsic rows, fixed proportional plot, normal first-screen behavior and unchanged month layout. Preserve containment assertions and capture diagnostics before asserting. Review and relevant local tests precede a single authorized update by the writer. Corrected native rendering remains unverified.
+- Minimal candidate: non-month line-height1.2→1.6 with font-metric rationale. At12px, the normal fixture's maximum two lines occupy38.4px inside the existing43.2px reservation. At200%, shared rows may grow; bars retain their equal explicit plot height. No clipping, padding workaround, timeout increase, or assertion relaxation.
+- Native evidence now includes WebKit's identical initial/retry failures at both widths: text is3.1015625px above the area, compared with Chromium4px. WebKit's overall35-minute cancellation has no final JSON; its observed report6pass/2fail is not an overall run success.
+- Added a source-level font-envelope regression: unmodified CSS fails1test, corrected CSS plus report/pixel/model tests passes28tests/4files. Fresh app types pass; production build passes5.49s. Chromium/mobile-WebKit collect8cases each with installed Playwright1.62.1; runtime CI1.64 remains pending.
+- Independent actual-diff review found no blocking issue. Existing native containment assertions are unchanged; line-height-versus-glyph-height and successive-line non-overlap assertions were added, and original metrics/screenshots are saved before assertion failure. Exact corrected native execution and visual acceptance are still required before completion.
+
 ## Active readability follow-up — 2026-10-15
 
 - Owner: `audit_report_single_screen`; integration/publication: `publish_approved_ui_fixes`.

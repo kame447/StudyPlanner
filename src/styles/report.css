@@ -362,7 +362,8 @@
   grid-template-rows: minmax(max-content, 1fr) max(32px, calc(var(--learning-report-chart-height) - 3.6em - 4px));
   gap: 4px;
   font-size: 0.75rem;
-  line-height: 1.2;
+  /* DotGothic16's 1.448em font envelope needs room at enlarged text sizes. */
+  line-height: 1.6;
 }
 
 .learning-report-chart-plot {

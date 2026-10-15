@@ -1,17 +1,17 @@
 import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
 
 const TITLE = '塾バイト';
-async function seed(page, theme) {
-  await page.addInitScript(({ date, theme, title }) => {
+async function seed(page, theme, { repeat = 'weekly', selectedEvent = {} } = {}) {
+  await page.addInitScript(({ date, theme, title, repeat, selectedEvent }) => {
     if (localStorage.getItem('event-colors-seeded')) return;
     const owner = 'event-colors-owner';
     const now = new Date().toISOString();
-    const base = { userId: owner, date, endDate: date, repeat: 'weekly', repeatUntil: null,
+    const base = { userId: owner, date, endDate: date, repeat, repeatUntil: null,
       excludedDates: [], url: '', memo: '', checklist: [], locationTags: [], createdAt: now, updatedAt: now };
     const entries = {
       'studyplanner.users': [{ id: owner, email: 'event-colors@example.test', username: '予定色', avatar: '', createdAt: now }],
       'studyplanner.monthEvents': [
-        { ...base, id: 'shift-1', title, startTime: '17:00', endTime: '21:30' },
+        { ...base, ...selectedEvent, id: 'shift-1', title, startTime: '17:00', endTime: '21:30' },
         { ...base, id: 'earlier-event', title: '先の予定', startTime: '15:00', endTime: '16:30' },
       ],
       'studyplanner.plans': [], 'studyplanner.actuals': [], 'studyplanner.todos.v1': [],
@@ -22,7 +22,7 @@ async function seed(page, theme) {
     localStorage.setItem('studyplanner.session', owner);
     localStorage.setItem('study-planner-theme-mode', theme);
     localStorage.setItem('event-colors-seeded', 'true');
-  }, { date: E2E_TODAY, theme, title: TITLE });
+  }, { date: E2E_TODAY, theme, title: TITLE, repeat, selectedEvent });
 }
 
 async function background(locator) {
@@ -43,6 +43,16 @@ async function expectTint(locator, accent) {
   expect(paint.actual).not.toBe('rgba(0, 0, 0, 0)');
 }
 const nav = (page, name) => page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name, exact: true });
+
+async function openSavedEventEditor(page) {
+  await nav(page, '予定').click();
+  await page.getByRole('tab', { name: '月', exact: true }).click();
+  await page.getByRole('grid', { name: '月間カレンダー' }).locator('[aria-selected="true"]').click();
+  await page.locator('.month-day-sheet-event').filter({ hasText: TITLE }).click();
+  const editor = page.locator('.month-event-modal');
+  await expect(editor.getByLabel('タイトル', { exact: true })).toHaveValue(TITLE);
+  return editor;
+}
 
 async function openSelectionEditor(page, reducedMotion) {
   await page.emulateMedia({ reducedMotion });
@@ -244,24 +254,10 @@ for (const width of [390, 1280]) {
 for (const width of [390, 1280]) {
   test.describe(`event editor controls ${width}px`, () => {
     test.use({ viewport: { width, height: 900 }, contextOptions: { reducedMotion: 'reduce' } });
-    test('persists explicit color and automatic reset and keeps addon fields', async ({ page }, testInfo) => {
-      await seed(page, 'light');
-      await page.addInitScript(() => {
-        if (localStorage.getItem('editor-controls-single')) return;
-        const events = JSON.parse(localStorage.getItem('studyplanner.monthEvents'));
-        events.forEach(event => { event.repeat = 'none'; });
-        localStorage.setItem('studyplanner.monthEvents', JSON.stringify(events));
-        localStorage.setItem('editor-controls-single', 'true');
-      });
-      const editor = page.locator('.month-event-modal');
-      const open = async () => {
-        await nav(page, '予定').click();
-        await page.getByRole('tab', { name: '月', exact: true }).click();
-        await page.getByRole('grid', { name: '月間カレンダー' }).locator('[aria-selected="true"]').click();
-        await page.locator('.month-day-sheet-event').filter({ hasText: TITLE }).click();
-        await expect(editor.getByLabel('タイトル', { exact: true })).toHaveValue(TITLE);
-      };
-      await page.goto('/'); await open();
+    test('lays out label choices and restores focus without closing the parent draft', async ({ page }) => {
+      await seed(page, 'light', { repeat: 'none' });
+      await page.goto('/');
+      const editor = await openSavedEventEditor(page);
       await expect(editor.getByRole('button', { name: '追加', exact: true })).toBeVisible();
       const trigger = editor.locator('.month-event-color-trigger');
       const picker = page.getByRole('dialog', { name: 'ラベルを選択' });
@@ -278,6 +274,7 @@ for (const width of [390, 1280]) {
       expect(placement.rowTop - placement.timeBottom).toBeLessThan(10);
       expect(placement.rowHeight).toBeGreaterThanOrEqual(44);
       expect(placement.fontSize).toBeGreaterThanOrEqual(16);
+      await editor.getByLabel('タイトル', { exact: true }).fill('未保存の予定');
       await trigger.click();
       await expect(picker.getByRole('radio', { name: '自動', exact: true })).toBeChecked();
       await picker.getByRole('radio', { name: '青', exact: true }).check();
@@ -292,6 +289,24 @@ for (const width of [390, 1280]) {
         expect((await option.boundingBox()).height).toBeGreaterThanOrEqual(44);
       }
       await picker.getByRole('button', { name: '完了', exact: true }).click();
+      await expect(picker).toHaveCount(0);
+      await expect(trigger).toBeFocused();
+      await expect(trigger).toHaveText('ラベル青');
+      await expect(editor).toHaveCount(1);
+      await expect(editor.getByLabel('タイトル', { exact: true })).toHaveValue('未保存の予定');
+    });
+
+    test('persists an explicit color with addon fields after reload', async ({ page }, testInfo) => {
+      await seed(page, 'light', { repeat: 'none' });
+      await page.goto('/');
+      const editor = await openSavedEventEditor(page);
+      const trigger = editor.locator('.month-event-color-trigger');
+      const picker = page.getByRole('dialog', { name: 'ラベルを選択' });
+      await expect(trigger).toHaveText('ラベル自動');
+      await trigger.click();
+      await expect(picker.getByRole('radio', { name: '自動', exact: true })).toBeChecked();
+      await picker.getByRole('radio', { name: '青', exact: true }).check();
+      await picker.getByRole('button', { name: '完了', exact: true }).click();
       await expect(trigger).toBeFocused();
       await expect(trigger).toHaveText('ラベル青');
       await editor.getByRole('button', { name: /メモ/ }).click();
@@ -300,19 +315,40 @@ for (const width of [390, 1280]) {
       await page.screenshot({ path: testInfo.outputPath(`event-editor-controls-${width}.png`), animations: 'disabled' });
       await editor.getByRole('button', { name: '保存', exact: true }).click();
       await expect(editor).toHaveCount(0);
-      await page.reload(); await open();
+      await page.reload(); await openSavedEventEditor(page);
       await expect(trigger).toHaveText('ラベル青');
       await expect(editor.getByLabel('メモ', { exact: true })).toHaveValue('色を確認');
       await trigger.click();
       await expect(picker.getByRole('radio', { name: '青', exact: true })).toBeChecked();
+      await expect(picker.getByRole('radio', { name: '青', exact: true })).toBeFocused();
+    });
+
+    test('persists automatic reset without changing existing addon fields', async ({ page }) => {
+      // Start from an independently seeded saved choice, never another test's save.
+      await seed(page, 'light', { repeat: 'none', selectedEvent: { color: 'blue', memo: '色を確認' } });
+      await page.goto('/');
+      const editor = await openSavedEventEditor(page);
+      const trigger = editor.locator('.month-event-color-trigger');
+      const picker = page.getByRole('dialog', { name: 'ラベルを選択' });
+      await expect(trigger).toHaveText('ラベル青');
+      await expect(editor.getByLabel('メモ', { exact: true })).toHaveValue('色を確認');
+      await trigger.click();
+      await expect(picker.getByRole('radio', { name: '青', exact: true })).toBeChecked();
+      await expect(picker.getByRole('radio', { name: '青', exact: true })).toBeFocused();
       await picker.getByRole('radio', { name: '自動', exact: true }).check();
+      await expect(picker.getByRole('radio', { name: '自動', exact: true })).toBeChecked();
+      await expect(picker.getByRole('radio', { name: '青', exact: true })).not.toBeChecked();
       await picker.getByRole('button', { name: '完了', exact: true }).click();
+      await expect(trigger).toBeFocused();
+      await expect(trigger).toHaveText('ラベル自動');
       await editor.getByRole('button', { name: '保存', exact: true }).click();
       await expect(editor).toHaveCount(0);
-      await page.reload(); await open();
+      await page.reload(); await openSavedEventEditor(page);
       await expect(trigger).toHaveText('ラベル自動');
+      await expect(editor.getByLabel('メモ', { exact: true })).toHaveValue('色を確認');
       await trigger.click();
       await expect(picker.getByRole('radio', { name: '自動', exact: true })).toBeChecked();
+      await expect(picker.getByRole('radio', { name: '自動', exact: true })).toBeFocused();
     });
   });
 }

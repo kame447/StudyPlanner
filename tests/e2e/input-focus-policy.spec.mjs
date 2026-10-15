@@ -95,6 +95,12 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
   // so new text-control or unrestricted focus in the same file still fails this guard.
   // Browser tests assert the actual heading/tab/button or checked native radio.
   const allowedFocusStatements = new Map([
+    // Selecting a catalog result may hand its focus to the non-text summary.
+    // A later user focus change cancels that request; material browser cases
+    // assert both the summary handoff and preservation of a newer input focus.
+    ['src/components/BookshelfMaterialDialog.tsx', new Set([
+      'if (catalogFocusRequest > 0) catalogSummaryRef.current?.focus();',
+    ])],
     // Only the checked native radio in the user-opened label picker may receive focus.
     // It cannot summon a text keyboard; color cases assert arrows and focus restoration.
     ['src/components/MonthEventColorPicker.tsx', new Set([
@@ -164,6 +170,18 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     "if (selectedRadio?.type === 'text' && selectedRadio.checked) selectedRadio.focus();",
     "if (selectedRadio?.type === 'radio') selectedRadio.focus();",
   ]) expect(hasUnexpectedFocus('src/components/MonthEventColorPicker.tsx', statement)).toBe(true);
+
+  // This exception permits neither an initial/unconditional focus nor text controls.
+  const materialDialogFile = 'src/components/BookshelfMaterialDialog.tsx';
+  for (const statement of [
+    'catalogSummaryRef.current?.focus();',
+    'if (catalogFocusRequest >= 0) catalogSummaryRef.current?.focus();',
+    'if (catalogFocusRequest > 0) nameInputRef.current?.focus();',
+    'if (catalogFocusRequest > 0) selectedInputRef.current?.focus();',
+  ]) expect(hasUnexpectedFocus(materialDialogFile, statement)).toBe(true);
+  const materialDialogSource = fs.readFileSync(path.join(repoRoot, materialDialogFile), 'utf8');
+  expect(materialDialogSource).toMatch(/<summary\b[^>]*\bref=\{catalogSummaryRef\}/);
+  expect(materialDialogSource.match(/\bref=\{catalogSummaryRef\}/g)).toHaveLength(1);
 
   for (const file of files) {
     const source = fs.readFileSync(file, 'utf8');

@@ -382,6 +382,7 @@ for (const appearance of ['standard', 'pixel']) {
                   bar: rect(bar), percent: parseFloat(bar.style.height),
                   value: value ? rect(value) : null,
                   fontSize: value ? parseFloat(getComputedStyle(value).fontSize) : null,
+                  lineHeight: value ? parseFloat(getComputedStyle(value).lineHeight) : null,
                   textRects: value ? [...range.getClientRects()].map(({ left, right, top, bottom }) => ({ left, right, top, bottom })) : [],
                 };
               }),
@@ -393,6 +394,13 @@ for (const appearance of ['standard', 'pixel']) {
               viewportWidth: document.documentElement.clientWidth,
               scrollY: window.scrollY,
             };
+          });
+          // Save the failing state too, rather than losing its metrics at the first assertion.
+          await testInfo.attach(`report-readability-${appearance}-${viewport.width}-${scope}-${textScale}-metrics`, {
+            body: JSON.stringify({ filterMetrics, ...metrics }, null, 2), contentType: 'application/json',
+          });
+          await testInfo.attach(`report-readability-${appearance}-${viewport.width}-${scope}-${textScale}`, {
+            body: await page.screenshot({ fullPage: textScale === 200 }), contentType: 'image/png',
           });
           expect(metrics.width).toBeLessThanOrEqual(metrics.viewportWidth + 1);
           if (textScale === 100) {
@@ -408,21 +416,17 @@ for (const appearance of ['standard', 'pixel']) {
             expect(Math.abs(entry.bar.height - entry.plot.height * entry.percent / 100)).toBeLessThanOrEqual(1);
             if (!entry.value) continue;
             expect(entry.fontSize).toBeGreaterThanOrEqual(12);
+            expect(entry.lineHeight).toBeGreaterThanOrEqual(Math.max(...entry.textRects.map(text => text.bottom - text.top)));
             expect(entry.value.bottom).toBeLessThanOrEqual(entry.plot.top);
-            for (const text of entry.textRects) {
+            for (const [index, text] of entry.textRects.entries()) {
               expect(text.top).toBeGreaterThanOrEqual(entry.area.top - 1);
               expect(text.top).toBeGreaterThanOrEqual(metrics.heading.bottom);
               expect(text.left).toBeGreaterThanOrEqual(entry.area.left - 1);
               expect(text.right).toBeLessThanOrEqual(entry.area.right + 1);
               expect(text.bottom).toBeLessThanOrEqual(entry.plot.top);
+              if (index > 0) expect(entry.textRects[index - 1].bottom).toBeLessThanOrEqual(text.top);
             }
           }
-          await testInfo.attach(`report-readability-${appearance}-${viewport.width}-${scope}-${textScale}-metrics`, {
-            body: JSON.stringify({ filterMetrics, ...metrics }, null, 2), contentType: 'application/json',
-          });
-          await testInfo.attach(`report-readability-${appearance}-${viewport.width}-${scope}-${textScale}`, {
-            body: await page.screenshot({ fullPage: textScale === 200 }), contentType: 'image/png',
-          });
         }
       }
     });
