@@ -1,5 +1,24 @@
 # Compact learning report
 
+## Active readability follow-up — 2026-10-15
+
+- Owner: `audit_report_single_screen`; integration/publication: `publish_approved_ui_fixes`.
+- Local branch `fix/report-compact-readability`, fixed base `bf53bc24cd72f5ce1bca9b10bc966e4d26f5a484`.
+- Preflight: existing umbrella #483 and latest comments, all open PRs, report-related closed/open PRs, all 163 remote branches checked. Original #664 is merged; no active overlapping report-layout work. #683/previous #678 concern aggregation boundaries, not this layout. No new remote Issue/PR or GitHub write.
+- Original IMG_2503 and existing native screenshots show the primary overview now fits 320×667 and390×844. Two remaining readability defects are confirmed: the default material option is clipped at320px; the maximum weekly bar overlaps its value text.
+- Scope: shorten only the default all-material label and reserve non-overlapping readable chart-value space inside the existing chart height. Keep disclosure, metrics, aggregation, filtering and accessibility semantics.
+- Next: focused regressions, fresh app types, exact diff, and add narrow native assertions/screenshots to the existing report suite. Integration owner owns the combined CI/native run and visual acceptance. Do not claim these two defects fixed until final-content native evidence is inspected.
+- Completion: readable default filter at320px, no label/bar or adjacent-label collision in day/week at320/390px, first-screen containment retained in both appearances, unchanged data/controls/disclosure behavior. Physical device verification remains unclaimed.
+
+### Local candidate and independent review
+
+- Default material option is now `全教材`; its stable filter value and individual material labels are unchanged.
+- Value text and proportional bars use separate rows. Day/week share the outer grid rows through subgrid, so the tallest wrapped value grows every column together. The plot height remains equal, including zero days, with a32px minimum. Month layout is unchanged; values are12px at normal root size.
+- Initial review caught the first candidate's fixed three-line value row overflowing at200% text. Replaced that fixed row with intrinsic growth and added dense100/200% day/week text-top, heading-separation, equal-scale, horizontal-fit, and normal first-screen assertions. Independent re-review found no blocking static issue in the corrected diff.
+- Regression RED:2fail/22pass against unmodified source (old option label; missing plot separation). GREEN: ReportView7 + learningReport17 + pixel3 =27pass. Fresh non-incremental app types passed. Final CSS build passed in5.71s. The corrected CSS/native-only follow-up did not change the TypeScript inputs covered by the27tests/types.
+- Native syntax and collection passed for8cases each in Chromium and mobile WebKit using the installed local Playwright1.62.1. The actual CI runner uses1.64.0; no native execution or post-fix screenshot acceptance is claimed. Existing source screenshots establish only the pre-fix defects and prior1-screen behavior.
+- Reused dependencies at `/workspace/scratch/3b7e1f5c90f6/studyplanner-durable-ai-turns-20261014/node_modules`, Node24.19.0/Vitest3.2.7; lock SHA256 `af5b37bbcc990a528621a18f545142430f8b9506460dde03f3f9be80fbb4b9ab`. No install or dependency change by this task. Full verify, Worker checks, exact native/visual and publication remain with the integration owner and required user authorization.
+
 ## Ownership and scope
 - UI request 15, existing umbrella #483. Implementation branch: `fix/compact-learning-report-20261014`; base `70953efd`.
 - Existing PR #200 owns the original report and #559 the pixel-control paint. Open report PR search returned no overlapping active implementation. No new remote Issue/PR or GitHub write was made by this worker.

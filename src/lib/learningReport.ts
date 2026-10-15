@@ -555,7 +555,7 @@ export function buildLearningReportMaterialOptions(
   materials: StudyMaterial[],
 ): LearningReportMaterialOption[] {
   return [
-    { value: ALL_MATERIALS_FILTER, label: 'すべての教材' },
+    { value: ALL_MATERIALS_FILTER, label: '全教材' },
     ...materials
       .slice()
       .sort((left, right) => left.name.localeCompare(right.name, 'ja'))

@@ -1,7 +1,7 @@
 import { expect, test } from './support/fixed-clock.mjs';
 
-async function seedLearningReport(page) {
-  await page.addInitScript(() => {
+async function seedLearningReport(page, { dense = false } = {}) {
+  await page.addInitScript(({ dense }) => {
     const toLocalDate = (date) => [
       date.getFullYear(),
       String(date.getMonth() + 1).padStart(2, '0'),
@@ -113,6 +113,26 @@ async function seedLearningReport(page) {
       },
     ];
 
+    if (dense) {
+      actuals.push(
+        { ...actuals[0], id: 'learning-report-today-second', planId: null, actualStartTime: '11:00', actualEndTime: '12:05' },
+        { ...actuals[0], id: 'learning-report-today-third', planId: null, actualStartTime: '15:00', actualEndTime: '17:45' },
+      );
+      const monday = new Date(todayDate);
+      monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7);
+      // Keep one zero day to verify that an absent label does not change its plot scale.
+      for (let day = 0; day < 6; day += 1) {
+        const date = new Date(monday);
+        date.setDate(monday.getDate() + day);
+        const occurrenceDate = toLocalDate(date);
+        if (occurrenceDate === today) continue;
+        actuals.push({
+          ...actuals[0], id: `learning-report-week-${day}`, planId: null,
+          occurrenceDate, actualStartTime: '08:00', actualEndTime: day % 2 ? '10:45' : '09:05',
+        });
+      }
+    }
+
     localStorage.setItem('studyplanner.users', JSON.stringify([user]));
     localStorage.setItem('studyplanner.session', user.id);
     localStorage.setItem('studyplanner.plans', JSON.stringify([plan]));
@@ -126,7 +146,7 @@ async function seedLearningReport(page) {
       'studyplanner.studyMaterials.v1',
       JSON.stringify([algorithmMaterial, researchMaterial]),
     );
-  });
+  }, { dense });
 }
 
 async function openLearningReport(page) {
@@ -307,4 +327,104 @@ for (const appearance of ['standard', 'pixel']) {
     expect(enlarged.page).toBeLessThanOrEqual(enlarged.viewport + 1);
     expect(enlarged.overflow).not.toMatch(/hidden|clip/);
   });
+}
+
+for (const appearance of ['standard', 'pixel']) {
+  for (const viewport of [{ width: 320, height: 667 }, { width: 390, height: 844 }]) {
+    test(`keeps report filter and populated chart values readable in ${appearance} at ${viewport.width}px`, async ({ page }, testInfo) => {
+      await seedLearningReport(page, { dense: true });
+      await page.addInitScript((value) => {
+        localStorage.setItem('study-planner-appearance', value);
+      }, appearance);
+      await page.setViewportSize(viewport);
+      await openLearningReport(page);
+      await expect(page.locator('html')).toHaveAttribute('data-appearance', appearance);
+      await page.evaluate(() => document.fonts.ready);
+
+      const filter = page.getByLabel('表示する教材');
+      await expect(filter.locator('option:checked')).toHaveText('全教材');
+      const filterMetrics = await filter.evaluate((select) => {
+        const style = getComputedStyle(select);
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+        return {
+          textWidth: context.measureText(select.selectedOptions[0].text).width,
+          availableWidth: select.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+          height: select.getBoundingClientRect().height,
+        };
+      });
+      expect(filterMetrics.textWidth).toBeLessThanOrEqual(filterMetrics.availableWidth);
+      expect(filterMetrics.height).toBeGreaterThanOrEqual(44);
+      for (const tab of await page.getByRole('tab').all()) {
+        expect((await tab.boundingBox()).height).toBeGreaterThanOrEqual(44);
+      }
+
+      for (const textScale of [100, 200]) {
+        await page.evaluate((scale) => { document.documentElement.style.fontSize = `${scale}%`; }, textScale);
+        for (const [scope, name, expectedValues] of [['day', '日', 3], ['week', '週', 6]]) {
+          await page.getByRole('tab', { name, exact: true }).click();
+          await expect(page.getByRole('tab', { name, exact: true })).toHaveAttribute('aria-selected', 'true');
+          await expect(page.locator('.learning-report-chart-value')).toHaveCount(expectedValues);
+          const metrics = await page.locator('.learning-report-chart').evaluate((chart) => {
+            const rect = (node) => {
+              const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
+              return { left, right, top, bottom, width, height };
+            };
+            return {
+              entries: [...chart.querySelectorAll('.learning-report-chart-bar-area')].map((area) => {
+                const value = area.querySelector('.learning-report-chart-value');
+                const range = document.createRange();
+                if (value) range.selectNodeContents(value);
+                const bar = area.querySelector('.learning-report-chart-bar');
+                return {
+                  area: rect(area), plot: rect(area.querySelector('.learning-report-chart-plot')),
+                  bar: rect(bar), percent: parseFloat(bar.style.height),
+                  value: value ? rect(value) : null,
+                  fontSize: value ? parseFloat(getComputedStyle(value).fontSize) : null,
+                  textRects: value ? [...range.getClientRects()].map(({ left, right, top, bottom }) => ({ left, right, top, bottom })) : [],
+                };
+              }),
+              chart: rect(chart),
+              heading: rect(document.querySelector('.learning-report-card-heading')),
+              details: rect(document.querySelector('.learning-report-details > summary')),
+              nav: rect(document.querySelector('.primary-bottom-nav')),
+              width: document.documentElement.scrollWidth,
+              viewportWidth: document.documentElement.clientWidth,
+              scrollY: window.scrollY,
+            };
+          });
+          expect(metrics.width).toBeLessThanOrEqual(metrics.viewportWidth + 1);
+          if (textScale === 100) {
+            expect(metrics.scrollY).toBe(0);
+            expect(metrics.chart.bottom).toBeLessThanOrEqual(metrics.nav.top);
+            expect(metrics.details.bottom).toBeLessThanOrEqual(metrics.nav.top);
+          }
+          const firstPlot = metrics.entries[0].plot;
+          for (const entry of metrics.entries) {
+            expect(Math.abs(entry.plot.height - firstPlot.height)).toBeLessThanOrEqual(1);
+            expect(Math.abs(entry.plot.bottom - firstPlot.bottom)).toBeLessThanOrEqual(1);
+            expect(entry.plot.height).toBeGreaterThanOrEqual(32);
+            expect(Math.abs(entry.bar.height - entry.plot.height * entry.percent / 100)).toBeLessThanOrEqual(1);
+            if (!entry.value) continue;
+            expect(entry.fontSize).toBeGreaterThanOrEqual(12);
+            expect(entry.value.bottom).toBeLessThanOrEqual(entry.plot.top);
+            for (const text of entry.textRects) {
+              expect(text.top).toBeGreaterThanOrEqual(entry.area.top - 1);
+              expect(text.top).toBeGreaterThanOrEqual(metrics.heading.bottom);
+              expect(text.left).toBeGreaterThanOrEqual(entry.area.left - 1);
+              expect(text.right).toBeLessThanOrEqual(entry.area.right + 1);
+              expect(text.bottom).toBeLessThanOrEqual(entry.plot.top);
+            }
+          }
+          await testInfo.attach(`report-readability-${appearance}-${viewport.width}-${scope}-${textScale}-metrics`, {
+            body: JSON.stringify({ filterMetrics, ...metrics }, null, 2), contentType: 'application/json',
+          });
+          await testInfo.attach(`report-readability-${appearance}-${viewport.width}-${scope}-${textScale}`, {
+            body: await page.screenshot({ fullPage: textScale === 200 }), contentType: 'image/png',
+          });
+        }
+      }
+    });
+  }
 }
