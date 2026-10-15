@@ -4,8 +4,8 @@ import {
   buildWeeklyStudySeries,
   calculateTodayStudyMinutes,
 } from './studyAnalytics';
-import { normalizeStudyRecordsForDisplay } from './studyRecords';
-import type { Actual, Plan, StudyMaterial, StudySubject } from '../types/domain';
+import { isStudyRecordForDisplay, normalizeStudyRecordsForDisplay } from './studyRecords';
+import type { Actual, MonthEvent, Plan, StudyMaterial, StudySubject } from '../types/domain';
 
 const timestamp = '2026-05-01T00:00:00.000Z';
 
@@ -191,4 +191,28 @@ it('preserves occurrence-specific history metadata after its plan is canceled', 
   expect(after).toHaveLength(1);
   expect(after[0]).toMatchObject({ title: '当日の特別授業', subject: 'English', type: 'school-event', durationMinutes: 60 });
   expect(after[0].title).toBe(before[0].title); expect(after[0].actual).toEqual(record);
+});
+
+
+it('resolves known major-event records before the unknown-source study fallback', () => {
+  const event: MonthEvent = { id: 'job', userId: 'user-1', date: '2026-10-01', title: '塾バイト',
+    startTime: '17:00', endTime: '21:30', repeat: 'none', repeatUntil: null, excludedDates: [],
+    url: '', memo: '', checklist: [], locationTags: [], createdAt: timestamp, updatedAt: timestamp };
+  const recorded = actual({ planId: event.id, title: '', subject: '', actualStartTime: '17:00', actualEndTime: '21:30' });
+  const standalone = actual({ id: 'standalone', title: event.title });
+  const orphan = actual({ id: 'orphan', planId: 'deleted-study' });
+  const foreign = { ...event, id: orphan.planId!, userId: 'other-owner' };
+  const input = { plans: [], monthEvents: [event, foreign], actuals: [recorded, standalone, orphan] };
+  const snapshot = JSON.stringify(input);
+  const records = normalizeStudyRecordsForDisplay(input);
+  expect(records.find(record => record.actualId === recorded.id)).toMatchObject({
+    linkKind: 'month-event', type: 'other', title: event.title, isLinkedToPlan: false, durationMinutes: 270,
+  });
+  expect(records.filter(isStudyRecordForDisplay).map(record => record.actualId).sort()).toEqual(['orphan', 'standalone']);
+  expect(JSON.stringify(input)).toBe(snapshot);
+  const existingPlan = plan({ id: event.id });
+  const [ambiguous] = normalizeStudyRecordsForDisplay({ ...input, plans: [existingPlan], actuals: [recorded] });
+  expect(ambiguous.linkKind).toBe('planned');
+  expect(ambiguous.monthEvent).toBeUndefined();
+  expect(isStudyRecordForDisplay(ambiguous)).toBe(true);
 });

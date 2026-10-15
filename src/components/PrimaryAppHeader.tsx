@@ -1,11 +1,12 @@
 import { forwardRef } from 'react';
-import type { Actual, Plan, TodoTask, User } from '../types/domain';
+import type { Actual, MonthEvent, Plan, TodoTask, User } from '../types/domain';
 import { HomeTopbar } from './HomeTopbar';
 
 interface PrimaryAppHeaderProps {
   user: User;
   plans: Plan[];
   actuals: Actual[];
+  monthEvents?: MonthEvent[];
   todos: TodoTask[];
   onOpenProfile: () => void;
   onOpenSettings: () => void;
@@ -19,6 +20,7 @@ export const PrimaryAppHeader = forwardRef<HTMLDivElement, PrimaryAppHeaderProps
       user,
       plans,
       actuals,
+      monthEvents,
       todos,
       onOpenProfile,
       onOpenSettings,
@@ -43,6 +45,7 @@ export const PrimaryAppHeader = forwardRef<HTMLDivElement, PrimaryAppHeaderProps
           user={user}
           plans={plans}
           actuals={actuals}
+          monthEvents={monthEvents}
           todos={todos}
           onOpenProfile={onOpenProfile}
           onOpenSettings={onOpenSettings}

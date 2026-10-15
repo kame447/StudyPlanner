@@ -255,6 +255,7 @@ export function buildMonthPanelProjection({
       ? normalizeStudyRecordsForDisplay({
           actuals,
           plans,
+          monthEvents,
           startDate: firstDate,
           endDate: lastDate,
         }).filter(isStudyRecordForDisplay)

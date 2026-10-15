@@ -27,6 +27,7 @@ import {
 import { formatMinutes, todayIsoDate } from '../lib/date';
 import type {
   Actual,
+  MonthEvent,
   Plan,
   StudyMaterial,
   StudySubject,
@@ -36,6 +37,7 @@ interface ReportViewProps {
   selectedDate: string;
   plans: Plan[];
   actuals: Actual[];
+  monthEvents?: MonthEvent[];
   studySubjects?: StudySubject[];
   studyMaterials?: StudyMaterial[];
   onBack: () => void;
@@ -92,6 +94,7 @@ function shouldShowMonthLabel(index: number, total: number): boolean {
 export function ReportView({
   plans,
   actuals,
+  monthEvents,
   studySubjects = [],
   studyMaterials = [],
   onBack,
@@ -106,10 +109,11 @@ export function ReportView({
         referenceDate,
         plans,
         actuals,
+        monthEvents,
         subjects: studySubjects,
         materials: studyMaterials,
       }),
-    [actuals, plans, referenceDate, studyMaterials, studySubjects],
+    [actuals, monthEvents, plans, referenceDate, studyMaterials, studySubjects],
   );
   const report = useMemo(
     () =>
@@ -119,11 +123,13 @@ export function ReportView({
         materialFilter,
         plans,
         actuals,
+        monthEvents,
         subjects: studySubjects,
         materials: studyMaterials,
       }),
     [
       actuals,
+      monthEvents,
       anchorDate,
       materialFilter,
       plans,

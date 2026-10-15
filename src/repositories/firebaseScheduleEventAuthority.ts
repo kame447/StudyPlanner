@@ -27,11 +27,10 @@ import {
   scheduleEventToMonthEvent,
   scheduleEventToPlan,
   type ScheduleEvent,
-  type ScheduleEventLegacyKind,
   type ScheduleEventMigrationCandidate,
   type ScheduleEventMigrationState,
 } from '../domain/scheduleEvent';
-import type { Actual, Plan } from '../types/domain';
+import type { Actual, MonthEvent, Plan } from '../types/domain';
 import {
   ScheduleEventMigrationCapabilityUnavailableError,
   type LegacyScheduleSnapshot,
@@ -138,21 +137,6 @@ async function listByUserId<T extends { userId: string }>(
     query(collection(firestoreDb, collectionName), where('userId', '==', userId)),
   );
   return snapshot.docs.map((document) => mapSnapshot<T>(document));
-}
-
-async function listScheduleProjection(
-  firestoreDb: Firestore,
-  userId: string,
-  legacyKind: ScheduleEventLegacyKind,
-): Promise<ScheduleEvent[]> {
-  // Match the compatibility projection, not presentation kind/category. A
-  // non-study Plan is still a Plan; all historical/recurring rows remain eligible.
-  const snapshot = await getDocs(query(
-    collection(firestoreDb, SCHEDULE_EVENTS_COLLECTION),
-    where('userId', '==', userId),
-    where('provenance.legacy.kind', '==', legacyKind),
-  ));
-  return snapshot.docs.map((document) => mapSnapshot<ScheduleEvent>(document));
 }
 
 async function listActualsByPlanId(
@@ -480,6 +464,7 @@ export function createFirebaseScheduleEventAuthority(
 
     async getScheduleSnapshot(userId) {
       const publish = studyHistory?.beginRead(userId, 'plans');
+      const publishMonthEvents = studyHistory?.beginRead(userId, 'monthEvents');
       try {
         const snapshot = await startupTiming.measure('schedule-canonical-snapshot', () => getDocs(
           query(collection(firestoreDb, SCHEDULE_EVENTS_COLLECTION), where('userId', '==', userId)),
@@ -487,11 +472,10 @@ export function createFirebaseScheduleEventAuthority(
         const events = snapshot.docs.map(row => mapSnapshot<ScheduleEvent>(row));
         assertOwnedRecords(userId, events, '予定取得');
         const plans = events.map(scheduleEventToPlan).filter((plan): plan is Plan => plan !== null);
+        const monthEvents = events.map(scheduleEventToMonthEvent).filter((event): event is MonthEvent => event !== null);
         publish?.(plans, snapshot.metadata);
-        return {
-          plans,
-          monthEvents: events.map(scheduleEventToMonthEvent).filter((event): event is NonNullable<typeof event> => event !== null),
-        };
+        publishMonthEvents?.(monthEvents, snapshot.metadata);
+        return { plans, monthEvents };
       } catch (error) {
         throw new Error(
           normalizeErrorMessage('予定を取得できませんでした。', error as FirebaseLikeError),
@@ -518,14 +502,17 @@ export function createFirebaseScheduleEventAuthority(
     },
 
     async getMonthEvents(userId) {
+      const publish = studyHistory?.beginRead(userId, 'monthEvents');
       try {
-        return (await startupTiming.measure('schedule-canonical-month-events', () => listScheduleProjection(
-          firestoreDb,
-          userId,
-          'month-event',
-        )))
-          .map(scheduleEventToMonthEvent)
-          .filter((event): event is NonNullable<typeof event> => event !== null);
+        const snapshot = await startupTiming.measure('schedule-canonical-month-events', () => getDocs(query(
+          collection(firestoreDb, SCHEDULE_EVENTS_COLLECTION), where('userId', '==', userId),
+          where('provenance.legacy.kind', '==', 'month-event'),
+        )));
+        const events = snapshot.docs.map(row => mapSnapshot<ScheduleEvent>(row));
+        assertOwnedRecords(userId, events, '予定取得');
+        const monthEvents = events.map(scheduleEventToMonthEvent).filter((event): event is MonthEvent => event !== null);
+        publish?.(monthEvents, snapshot.metadata);
+        return monthEvents;
       } catch (error) {
         throw new Error(
           normalizeErrorMessage('主要予定を取得できませんでした。', error as FirebaseLikeError),

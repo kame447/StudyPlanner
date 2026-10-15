@@ -8,7 +8,7 @@ vi.mock('./firebaseAuthRepository', () => ({ createFirebaseAuthRepository: () =>
 vi.mock('./observedPlannerRepository', () => ({ createObservedPlannerRepository: (repository: unknown) => repository }));
 import { createFirebaseRepositories } from './firebaseRepositories';
 
-const history = (userId: string): StudyStreakHistory => ({ userId, plans: [], actuals: [], restDays: [], historyComplete: true });
+const history = (userId: string): StudyStreakHistory => ({ userId, plans: [], monthEvents: [], actuals: [], restDays: [], historyComplete: true });
 let implementation: StudyStreakRepository;
 beforeEach(() => {
   implementation = { canUseRestDays: true, peek: vi.fn(() => null), read: vi.fn(async owner => history(owner)),
@@ -20,7 +20,7 @@ it('creates no reader at startup, shares one lazy instance, and forwards each ow
   const repository = createFirebaseRepositories().studyStreakRepository;
   expect(lazy.create).not.toHaveBeenCalled();
   expect(repository.peek?.('owner')).toBeNull();
-  const options = { today: '2026-10-09', hint: { plans: [], actuals: [] } };
+  const options = { today: '2026-10-09', hint: { plans: [], actuals: [], monthEvents: [] } };
   const [first, second] = await Promise.all([repository.read('owner', options), repository.read('other', options)]);
   expect(lazy.create).toHaveBeenCalledTimes(1);
   expect(first.userId).toBe('owner'); expect(second.userId).toBe('other');

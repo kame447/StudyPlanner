@@ -43,3 +43,32 @@ it.each(['plan', 'month-event', 'standalone-actual'] as const)(
     }
   },
 );
+
+
+it('only displays a major event in the actual column when a saved record exists', () => {
+  const event: MonthEvent = { id: 'job', userId: 'owner', date: '2026-10-14', title: '塾バイト',
+    startTime: '17:00', endTime: '21:30', repeat: 'none', repeatUntil: null, excludedDates: [],
+    url: '', memo: '', checklist: [], locationTags: [], createdAt: '', updatedAt: '' };
+  const actual: Actual = { id: 'job-record', userId: event.userId, planId: event.id,
+    occurrenceDate: event.date, title: event.title, subject: '主要予定',
+    actualStartTime: event.startTime, actualEndTime: event.endTime, note: '', updatedAt: '' };
+  const onSelectEntry = vi.fn();
+  const timeline = (actuals: Actual[]) => <DayTimeline dateLabel={event.date} plans={[]} monthEvents={[event]}
+    scheduleOccurrences={[]} actuals={actuals} onSelectEntry={onSelectEntry}
+    onPreviousDay={vi.fn()} onNextDay={vi.fn()} onPrint={vi.fn()} />;
+  let renderer!: ReactTestRenderer;
+  act(() => { renderer = create(timeline([])); });
+  try {
+    const blocks = (kind: 'plan' | 'actual') => renderer.root.findAllByType('button')
+      .filter(node => node.props.className?.split(' ').includes(`timeline-${kind}-block`));
+    expect(blocks('plan')).toHaveLength(1);
+    expect(blocks('actual')).toHaveLength(0);
+    act(() => renderer.update(timeline([actual])));
+    expect(blocks('plan')).toHaveLength(1);
+    expect(blocks('actual')).toHaveLength(1);
+    act(() => blocks('actual')[0].props.onClick());
+    expect(onSelectEntry).toHaveBeenCalledExactlyOnceWith({ kind: 'month-event', id: event.id });
+  } finally {
+    act(() => renderer.unmount());
+  }
+});

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Firestore } from 'firebase/firestore';
 import { addDays } from '../lib/date';
-import { actual } from './localPersistenceConcurrency.testUtils';
+import { actual, event } from './localPersistenceConcurrency.testUtils';
+import { scheduleEventFromMonthEvent } from '../domain/scheduleEvent';
 import { buildStudyStreakModel } from '../lib/studyStreak';
 import type { StudyRestState } from './studyStreakRepository';
 
@@ -37,16 +38,16 @@ beforeEach(() => {
 
 describe('server-confirmed streak history and serialized rest dates', () => {
   it('reuses complete history on same-owner reopen, reads only the rest document, and isolates other owners', async () => {
-    const repository = createFirebaseStudyStreakRepository({} as Firestore), hint = { plans: [], actuals: rows() };
+    const repository = createFirebaseStudyStreakRepository({} as Firestore), hint = { plans: [], actuals: rows(), monthEvents: [] };
     await repository.read('owner', { hint });
     const reads = mocks.getDocs.mock.calls.length;
     await repository.read('owner', { hint: JSON.parse(JSON.stringify(hint)) });
     expect(mocks.getDocs).toHaveBeenCalledTimes(reads);
     expect(mocks.getDoc.mock.calls.filter(call => call[0].collection === 'study_rest_days')).toHaveLength(2);
-    const other = await repository.read('other', { hint: { plans: [], actuals: rows('other') } });
+    const other = await repository.read('other', { hint: { plans: [], actuals: rows('other'), monthEvents: [] } });
     expect(other.actuals.every(row => row.userId === 'other')).toBe(true);
     expect(mocks.getDocs).toHaveBeenCalledTimes(reads + 2);
-    await repository.read('other', { hint: { plans: [], actuals: rows('other') }, refresh: true });
+    await repository.read('other', { hint: { plans: [], actuals: rows('other'), monthEvents: [] }, refresh: true });
     expect(mocks.getDocs).toHaveBeenCalledTimes(reads + 4);
   });
 
@@ -87,4 +88,37 @@ describe('server-confirmed streak history and serialized rest dates', () => {
     await expect(repository.useRestDay(history, '2026-10-11', '2026-10-12')).rejects.toThrow('チケット');
     expect(stored).toMatchObject({ revision: 1, dates: ['2026-10-08'] });
   });
+});
+
+it('confirms both source kinds in the same full owner schedule query and excludes major-event Actuals', async () => {
+  const job = event({ id: 'job', title: '塾バイト', date: '2026-10-07', endDate: '2026-10-07' });
+  mocks.getDocs.mockImplementation(async query => ({ metadata, docs: (query.collection === 'actuals'
+    ? [...rows().slice(0, 6), actual({ id: 'job-actual', planId: job.id, occurrenceDate: '2026-10-07' })]
+    : [scheduleEventFromMonthEvent(job)]).map(row => ({ id: row.id, data: () => row })) }));
+  stored = { schemaVersion: 1, userId: 'owner', revision: 1, dates: ['2026-10-08'] };
+  const previousStored = JSON.stringify(stored);
+  const repository = createFirebaseStudyStreakRepository({} as Firestore);
+  const history = await repository.read('owner');
+  expect(history.monthEvents).toEqual([expect.objectContaining(job)]);
+  expect(mocks.getDocs.mock.calls.find(([query]) => query.collection === 'schedule_events')![0].conditions)
+    .toEqual([{ field: 'userId', op: '==', value: 'owner' }]);
+  expect(buildStudyStreakModel({ ...history, today: '2026-10-09' }))
+    .toMatchObject({ earnedTickets: 0, protectedDates: [], unprotectedRestDates: ['2026-10-08'] });
+  expect(JSON.stringify(stored)).toBe(previousStored);
+  expect(mocks.transaction).not.toHaveBeenCalled();
+});
+
+it('rejects a foreign major-event source rather than certifying incomplete owner history', async () => {
+  mocks.getDocs.mockImplementation(async query => ({ metadata, docs: (query.collection === 'actuals' ? rows()
+    : [scheduleEventFromMonthEvent(event({ userId: 'other' }))]).map(row => ({ id: row.id, data: () => row })) }));
+  await expect(createFirebaseStudyStreakRepository({} as Firestore).read('owner')).rejects.toThrow('利用者');
+  expect(mocks.transaction).not.toHaveBeenCalled();
+});
+
+it('does not reuse a confirmed cache when only the major-event hint changes', async () => {
+  const repository = createFirebaseStudyStreakRepository({} as Firestore);
+  const hint = { plans: [], actuals: rows(), monthEvents: [] };
+  await repository.read('owner', { hint });
+  await repository.read('owner', { hint: { ...hint, monthEvents: [event()] } });
+  expect(mocks.getDocs).toHaveBeenCalledTimes(4);
 });

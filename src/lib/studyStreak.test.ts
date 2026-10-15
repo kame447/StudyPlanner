@@ -10,7 +10,7 @@ const actual = (date: string, overrides: Partial<Actual> = {}): Actual => ({
 });
 const days = (start: string, count: number) => Array.from({ length: count }, (_, index) => actual(addDays(start, index)));
 const input = (overrides: Partial<StudyStreakInput> = {}): StudyStreakInput => ({
-  userId: 'owner', plans: [], actuals: days('2026-10-01', 7), today: '2026-10-08', historyComplete: true, ...overrides,
+  userId: 'owner', plans: [], monthEvents: [], actuals: days('2026-10-01', 7), today: '2026-10-08', historyComplete: true, ...overrides,
 });
 
 describe('study streak and earned rest days', () => {

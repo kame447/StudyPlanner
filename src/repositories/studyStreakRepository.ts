@@ -1,16 +1,17 @@
 import { isStudyCalendarDate, studyRestDayBlockReason, type StudyRestDay } from '../lib/studyStreak';
-import type { Actual, Plan } from '../types/domain';
+import type { Actual, MonthEvent, Plan } from '../types/domain';
 import type { PlannerRepository } from './repositoryContracts';
 
 export interface StudyStreakHistory {
   userId: string;
   plans: Plan[];
+  monthEvents: MonthEvent[];
   actuals: Actual[];
   restDays: StudyRestDay[];
   historyComplete: true;
 }
 
-export interface StudyHistoryHint { plans: Plan[]; actuals: Actual[] }
+export interface StudyHistoryHint { plans: Plan[]; actuals: Actual[]; monthEvents: MonthEvent[] }
 export interface StudyRestState {
   schemaVersion: 1;
   userId: string;
@@ -45,9 +46,10 @@ export function readStudyRestState(value: unknown, userId: string): StudyRestSta
 }
 
 export function appendStudyRestDay(history: StudyStreakHistory, state: StudyRestState, date: string, today: string): StudyRestState {
-  if (history.userId !== state.userId || !history.historyComplete
+  if (history.userId !== state.userId || !history.historyComplete || !Array.isArray(history.monthEvents)
     || history.actuals.some(row => row.userId !== history.userId)
-    || history.plans.some(row => row.userId !== history.userId)) {
+    || history.plans.some(row => row.userId !== history.userId)
+    || history.monthEvents.some(row => row.userId !== history.userId)) {
     throw new Error('学習履歴を確認してから利用できます。');
   }
   // Retrying the exact date after an uncertain acknowledgement is idempotent.
@@ -60,6 +62,7 @@ export function appendStudyRestDay(history: StudyStreakHistory, state: StudyRest
 export function studyHistoryFingerprint(hint: StudyHistoryHint): string {
   return JSON.stringify({
     plans: [...hint.plans].sort((a, b) => a.id.localeCompare(b.id)),
+    monthEvents: [...hint.monthEvents].sort((a, b) => a.id.localeCompare(b.id)),
     actuals: [...hint.actuals].sort((a, b) => a.id.localeCompare(b.id)),
   });
 }
@@ -68,7 +71,7 @@ type WithLock = <T>(name: string, work: () => Promise<T>) => Promise<T>;
 
 export function createLocalStudyStreakRepository(
   storage: Storage,
-  planner: Pick<PlannerRepository, 'getPlans' | 'getActuals'>,
+  planner: Pick<PlannerRepository, 'getScheduleSnapshot' | 'getActuals'>,
   withLock: WithLock | null = typeof navigator !== 'undefined' && navigator.locks
     ? async (name, work) => await navigator.locks.request(name, work) : null,
 ): StudyStreakRepository {
@@ -83,7 +86,7 @@ export function createLocalStudyStreakRepository(
   function assertReadableHistoryStorage() {
     // The legacy local adapters deliberately default malformed JSON to empty.
     // That compatibility fallback cannot certify a complete reward history.
-    for (const source of ['studyplanner.actuals', 'studyplanner.plans',
+    for (const source of ['studyplanner.actuals', 'studyplanner.plans', 'studyplanner.monthEvents',
       'studyplanner.scheduleEvents.v1', 'studyplanner.scheduleEventMigrations.v1']) {
       const raw = storage.getItem(source);
       if (raw !== null && !Array.isArray(JSON.parse(raw))) {
@@ -94,9 +97,9 @@ export function createLocalStudyStreakRepository(
   async function read(userId: string): Promise<StudyStreakHistory> {
     assertStudyStreakOwner(userId);
     assertReadableHistoryStorage();
-    const [plans, actuals] = await Promise.all([planner.getPlans(userId), planner.getActuals(userId)]);
+    const [schedule, actuals] = await Promise.all([planner.getScheduleSnapshot(userId), planner.getActuals(userId)]);
     assertReadableHistoryStorage();
-    return { userId, plans, actuals, restDays: state(userId).dates.map(date => ({ date })), historyComplete: true };
+    return { userId, ...schedule, actuals, restDays: state(userId).dates.map(date => ({ date })), historyComplete: true };
   }
   return {
     canUseRestDays: withLock !== null,

@@ -1,6 +1,6 @@
 import { addDays, toIsoDate } from './date';
 import { isStudyRecordForDisplay, normalizeStudyRecordsForDisplay } from './studyRecords';
-import type { Actual, Plan } from '../types/domain';
+import type { Actual, MonthEvent, Plan } from '../types/domain';
 
 export interface StudyRestDay {
   date: string;
@@ -9,6 +9,7 @@ export interface StudyRestDay {
 export interface StudyStreakInput {
   userId: string;
   plans: Plan[];
+  monthEvents: MonthEvent[];
   actuals: Actual[];
   today: string;
   restDays?: readonly StudyRestDay[];
@@ -87,11 +88,12 @@ function projectStudyDates(dates: readonly string[], restDays: readonly StudyRes
   };
 }
 
-export function collectStudyDates(input: Pick<StudyStreakInput, 'userId' | 'plans' | 'actuals' | 'today'>): string[] {
+export function collectStudyDates(input: Pick<StudyStreakInput, 'userId' | 'plans' | 'actuals' | 'today'> & { monthEvents?: MonthEvent[] }): string[] {
   const actuals = input.actuals.filter(actual => actual.userId === input.userId
     && isStudyCalendarDate(actual.occurrenceDate) && actual.occurrenceDate <= input.today);
   const plans = input.plans.filter(plan => plan.userId === input.userId);
-  return normalizeStudyRecordsForDisplay({ actuals, plans })
+  const monthEvents = input.monthEvents?.filter(event => event.userId === input.userId);
+  return normalizeStudyRecordsForDisplay({ actuals, plans, monthEvents })
     .filter(record => isStudyRecordForDisplay(record)
       && Number.isFinite(record.durationMinutes) && record.durationMinutes > 0)
     .map(record => record.date);
@@ -101,7 +103,7 @@ export function buildStudyStreakModel(input: StudyStreakInput): StudyStreakModel
   if (!isStudyCalendarDate(input.today)) throw new Error('今日の日付を確認できませんでした。');
   const studyDates = collectStudyDates(input);
   const result = projectStudyDates(studyDates, input.restDays ?? [], input.today);
-  if (!input.historyComplete) {
+  if (!input.historyComplete || !Array.isArray(input.monthEvents)) {
     return {
       today: input.today, historyComplete: false, studyDates: result.studyDates,
       currentStreak: null, bestStreak: null, protectedDates: [], unprotectedRestDates: [], earnedTicketDates: [],
@@ -112,7 +114,7 @@ export function buildStudyStreakModel(input: StudyStreakInput): StudyStreakModel
 }
 
 export function studyRestDayBlockReason(input: StudyStreakInput, date: string): string | null {
-  if (!input.historyComplete) return '学習履歴を確認してから利用できます。';
+  if (!input.historyComplete || !Array.isArray(input.monthEvents)) return '学習履歴を確認してから利用できます。';
   if (!isStudyCalendarDate(date) || date >= input.today) return '日が終わった昨日以前にだけ自動で使用します。';
   if (input.restDays?.some(day => day.date === date)) return 'この日はすでに登録されています。';
   const current = buildStudyStreakModel(input);
@@ -129,7 +131,7 @@ export function studyRestDayBlockReason(input: StudyStreakInput, date: string): 
 // this after an acknowledged append covers longer absences without creating
 // study days, spending future awards, or displacing legacy manual protections.
 export function nextAutomaticStudyRestDate(input: StudyStreakInput): string | null {
-  if (!input.historyComplete) return null;
+  if (!input.historyComplete || !Array.isArray(input.monthEvents)) return null;
   const model = buildStudyStreakModel(input);
   const occupied = new Set([...model.studyDates, ...(input.restDays ?? []).map(day => day.date)]);
   const candidates = [...new Set([...model.studyDates, ...model.protectedDates]

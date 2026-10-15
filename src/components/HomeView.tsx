@@ -6,7 +6,7 @@ import { useHomeTextReflow } from './home/useHomeTextReflow';
 import type { HomeScenePreferences } from '../lib/homeScenePreferences';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { buildHomeDashboardModel } from '../lib/homeDashboard';
-import type { Actual, Plan, StudyMaterial, TodoTask } from '../types/domain';
+import type { Actual, MonthEvent, Plan, StudyMaterial, TodoTask } from '../types/domain';
 import {
   AttentionSection,
   DEFAULT_HOME_SECTION_ORDER,
@@ -23,6 +23,7 @@ interface HomeViewProps {
   homeScenePreferences?: HomeScenePreferences;
   plans: Plan[];
   actuals: Actual[];
+  monthEvents?: MonthEvent[];
   todos: TodoTask[];
   studyMaterials: StudyMaterial[];
   primaryHeaderRef: RefObject<HTMLDivElement | null>;
@@ -112,6 +113,7 @@ export function HomeView({
   homeScenePreferences,
   plans,
   actuals,
+  monthEvents,
   todos,
   studyMaterials,
   primaryHeaderRef,
@@ -127,8 +129,8 @@ export function HomeView({
   const publicPageOpen = usePublicPageNavigation()?.isPublicPage ?? false;
   const now = useHomeDisplayClock();
   const dashboard = useMemo(
-    () => buildHomeDashboardModel({ plans, actuals, todos, now, progressPreferences }),
-    [actuals, plans, todos, now, progressPreferences],
+    () => buildHomeDashboardModel({ plans, actuals, monthEvents, todos, now, progressPreferences }),
+    [actuals, monthEvents, plans, todos, now, progressPreferences],
   );
   const isGettingStarted =
     plans.length === 0 &&
