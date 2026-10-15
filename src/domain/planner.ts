@@ -244,6 +244,7 @@ export function createActualFromDraft(
     id: existingActual?.id ?? createId('actual'),
     userId,
     planId: draft.planId,
+    ...(existingActual?.progressSource ? { progressSource: { ...existingActual.progressSource } } : {}),
     occurrenceDate: draft.occurrenceDate,
     actualStartTime: draft.actualStartTime,
     actualEndTime: draft.actualEndTime,

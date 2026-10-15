@@ -1,3 +1,4 @@
+import { deleteMonthEventPreservingActualSources } from './firebaseActualSourcePreservation';
 import type { ConfirmedStudyHistory } from './confirmedStudyHistory';
 import type { Firestore } from 'firebase/firestore';
 import {
@@ -5,9 +6,11 @@ import {
   deleteField,
   deleteDoc,
   doc,
+  documentId,
   getDocs,
   getDocsFromServer,
   query,
+  runTransaction,
   setDoc,
   where,
   writeBatch,
@@ -210,28 +213,41 @@ async function upsertStudyMaterialDocument(
 async function upsertActualDocument(
   firestoreDb: Firestore,
   actual: Actual,
+  materials: readonly StudyMaterial[] = [],
 ): Promise<Actual> {
-  if (!actual.planId) {
-    return await upsertDocument(firestoreDb, 'actuals', actual);
-  }
-
-  const matchingActuals = await listActualsByPlanOccurrence(firestoreDb, actual);
-  const nextActual = stripUndefinedDeep(
-    resolveActualForUpsert(matchingActuals, actual),
-  );
-  const batch = writeBatch(firestoreDb);
-
-  batch.set(doc(firestoreDb, 'actuals', nextActual.id), nextActual, {
-    merge: true,
-  });
-  matchingActuals
-    .filter((matchingActual) => matchingActual.id !== nextActual.id)
-    .forEach((duplicateActual) => {
-      batch.delete(doc(firestoreDb, 'actuals', duplicateActual.id));
+  const matchingActuals = actual.planId ? await listActualsByPlanOccurrence(firestoreDb, actual) : [];
+  const nextActual = stripUndefinedDeep(resolveActualForUpsert(matchingActuals, actual));
+  // Missing documents are not readable under the existing owner-only Rules.
+  // Query the exact ID first, then transactionally reread an existing record.
+  const existing = await getDocs(query(collection(firestoreDb, 'actuals'),
+    where('userId', '==', actual.userId), where(documentId(), '==', nextActual.id)));
+  return runTransaction(firestoreDb, async transaction => {
+    const currentSnapshot = existing.docs.length > 0
+      ? await transaction.get(doc(firestoreDb, 'actuals', nextActual.id)) : null;
+    const duplicateSnapshots = await Promise.all(matchingActuals.filter(item => item.id !== nextActual.id)
+      .map(item => transaction.get(doc(firestoreDb, 'actuals', item.id))));
+    const current = currentSnapshot?.exists() ? currentSnapshot.data() as Actual : undefined;
+    if (current && current.userId !== actual.userId) throw new Error('記録の所有者が一致しません。');
+    if (nextActual.id !== actual.id && (!current || current.planId !== actual.planId
+      || current.occurrenceDate !== actual.occurrenceDate)) {
+      throw new Error('同じ予定の記録が変更されました。再読み込みしてから保存してください。');
+    }
+    const savedActual = !nextActual.progressSource && current?.progressSource
+      ? { ...nextActual, progressSource: current.progressSource } : nextActual;
+    transaction.set(doc(firestoreDb, 'actuals', savedActual.id), savedActual, { merge: true });
+    duplicateSnapshots.forEach(snapshot => {
+      if (!snapshot.exists()) return;
+      const currentDuplicate = snapshot.data() as Actual;
+      if (currentDuplicate.userId === savedActual.userId && currentDuplicate.planId === savedActual.planId
+        && currentDuplicate.occurrenceDate === savedActual.occurrenceDate) {
+        transaction.delete(doc(firestoreDb, 'actuals', snapshot.id));
+      }
     });
-
-  await batch.commit();
-  return nextActual;
+    materials.forEach(material => transaction.set(
+      doc(firestoreDb, 'study_materials', material.id), studyMaterialFirestorePayload(material), { merge: true },
+    ));
+    return savedActual;
+  });
 }
 
 export function createFirebasePlannerRepository(
@@ -546,36 +562,10 @@ export function createFirebasePlannerRepository(
     },
     async upsertActualWithMaterialProgress(mutation) {
       try {
-        const userId = mutation.actual.userId;
-        assertOwnedRecords(userId, [mutation.actual, ...mutation.materials], '記録保存');
-        const matchingActuals = mutation.actual.planId
-          ? await listActualsByPlanOccurrence(firestoreDb, mutation.actual)
-          : [];
-        const nextActual = stripUndefinedDeep(
-          mutation.actual.planId
-            ? resolveActualForUpsert(matchingActuals, mutation.actual)
-            : mutation.actual,
-        );
-        const batch = writeBatch(firestoreDb);
-        batch.set(doc(firestoreDb, 'actuals', nextActual.id), nextActual, { merge: true });
-        matchingActuals
-          .filter((actual) => actual.id !== nextActual.id)
-          .forEach((actual) => {
-            batch.delete(doc(firestoreDb, 'actuals', actual.id));
-          });
-        mutation.materials.forEach((material) => {
-          batch.set(
-            doc(firestoreDb, 'study_materials', material.id),
-            studyMaterialFirestorePayload(material),
-            { merge: true },
-          );
-        });
-        await batch.commit();
-        return nextActual;
+        assertOwnedRecords(mutation.actual.userId, [mutation.actual, ...mutation.materials], '記録保存');
+        return await upsertActualDocument(firestoreDb, mutation.actual, mutation.materials);
       } catch (error) {
-        throw new Error(
-          normalizeErrorMessage('記録を保存できませんでした。', error as FirebaseLikeError),
-        );
+        throw new Error(normalizeErrorMessage('記録を保存できませんでした。', error as FirebaseLikeError));
       }
     },
     async upsertStudySubjectWithMaterials(mutation) {
@@ -766,16 +756,11 @@ export function createFirebasePlannerRepository(
         );
       }
     },
-    async deleteMonthEvent(_userId, monthEventId) {
+    async deleteMonthEvent(userId, monthEventId) {
       try {
-        await deleteDoc(doc(firestoreDb, 'month_events', monthEventId));
+        await deleteMonthEventPreservingActualSources(firestoreDb, userId, monthEventId, 'legacy');
       } catch (error) {
-        throw new Error(
-          normalizeErrorMessage(
-            '主要予定を削除できませんでした。',
-            error as { message?: string | null },
-          ),
-        );
+        throw new Error(normalizeErrorMessage('主要予定を削除できませんでした。', error as FirebaseLikeError));
       }
     },
     async upsertTodo(todo) {

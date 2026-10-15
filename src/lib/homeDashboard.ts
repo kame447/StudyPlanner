@@ -11,7 +11,7 @@ import {
   expandPlansForDate,
   getActualOccurrenceKey,
 } from './planRecurrence';
-import { canRecordProgressActual, DEFAULT_STUDY_PROGRESS_PREFERENCES, isIncludedInStudyProgress, type StudyProgressPreferences } from './studyProgressPolicy';
+import { isActualProgressSourceIncluded, canRecordProgressActual, DEFAULT_STUDY_PROGRESS_PREFERENCES, isIncludedInStudyProgress, type StudyProgressPreferences } from './studyProgressPolicy';
 import {
   normalizeStudyRecordsForDisplay,
 } from './studyRecords';
@@ -94,7 +94,8 @@ function resolveStudyActuals(
     normalizeStudyRecordsForDisplay({ actuals, plans, monthEvents })
       .filter((record) => record.monthEvent
         ? preferences.includeGeneralEvents
-        : !record.plan || isIncludedInStudyProgress(record.plan, preferences))
+        : record.plan ? isIncludedInStudyProgress(record.plan, preferences)
+          : isActualProgressSourceIncluded(record.actual.progressSource, preferences))
       .map((record) => record.actualId),
   );
 

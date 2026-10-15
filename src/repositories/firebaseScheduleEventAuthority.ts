@@ -1,3 +1,4 @@
+import { deleteMonthEventPreservingActualSources } from './firebaseActualSourcePreservation';
 import { assertRecurringMonthEventWrite } from './plannerWritePreparation';
 import type { ConfirmedStudyHistory } from './confirmedStudyHistory';
 import { observeStartupDocument } from './observeStartupDocument';
@@ -5,7 +6,6 @@ import { startupTiming } from '../lib/startupTiming';
 import type { Firestore, Transaction, WriteBatch } from 'firebase/firestore';
 import {
   collection,
-  deleteDoc,
   doc,
   getDocs,
   getDocFromServer,
@@ -750,19 +750,11 @@ export function createFirebaseScheduleEventAuthority(
       }
     },
 
-    async deleteMonthEvent(_userId, monthEventId) {
+    async deleteMonthEvent(userId, monthEventId) {
       try {
-        await deleteDoc(
-          doc(
-            firestoreDb,
-            SCHEDULE_EVENTS_COLLECTION,
-            scheduleEventIdForLegacy({ kind: 'month-event', id: monthEventId }),
-          ),
-        );
+        await deleteMonthEventPreservingActualSources(firestoreDb, userId, monthEventId, 'canonical');
       } catch (error) {
-        throw new Error(
-          normalizeErrorMessage('主要予定を削除できませんでした。', error as FirebaseLikeError),
-        );
+        throw new Error(normalizeErrorMessage('主要予定を削除できませんでした。', error as FirebaseLikeError));
       }
     },
   };
