@@ -64,3 +64,40 @@ it('hides progress on untracked shelf rows while retaining a tracked zero percen
   expect(featured.find(row => row.findAllByType('strong').some(node => node.children.includes('Tracked zero')))!.findAllByProps({ className: 'bookshelf-progress-caption' })).toHaveLength(1);
   expect(find('Tracked zero').findByProps({ className: 'bookshelf-material-row-progress' }).findByType('small').children).toEqual(['進捗 ', '0', '%']);
 });
+
+it.each([undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+  'hides unconfigured progress on shelf cards and rows, matching material detail (total %s)',
+  (totalUnits) => {
+    const onSaveMaterial = vi.fn();
+    act(() => { renderer = create(<BookshelfView userId="owner" subjects={[subject]}
+      materials={[{ ...legacy, name: 'No usable total', paceEnabled: true, totalUnits }]}
+      plans={[]} actuals={[]} onSaveSubject={vi.fn()} onDeleteSubject={vi.fn()}
+      onCaptureMaterialBaseline={vi.fn()} onSaveMaterial={onSaveMaterial}
+      onDeleteMaterial={vi.fn()} onAddMaterialToPlan={vi.fn()} />); });
+
+    expect(renderer.root.findAllByProps({ className: 'bookshelf-featured-card' })).toHaveLength(1);
+    expect(renderer.root.findAllByProps({ className: 'bookshelf-material-list-row' })).toHaveLength(1);
+    expect.soft(renderer.root.findAllByProps({ className: 'bookshelf-progress-caption' })).toHaveLength(0);
+    expect.soft(renderer.root.findAllByProps({ className: 'bookshelf-material-row-progress' })).toHaveLength(0);
+
+    act(() => renderer.root.findAllByProps({ 'aria-label': 'No usable totalを開く' })[0].props.onClick({ stopPropagation: vi.fn() }));
+    expect(renderer.root.findAllByProps({ className: 'bookshelf-detail-progress-line' })).toHaveLength(0);
+    expect(onSaveMaterial).not.toHaveBeenCalled();
+  },
+);
+
+it.each([0, 25, 100])('preserves configured progress of %s percent on both shelf surfaces', (currentUnit) => {
+  act(() => { renderer = create(<BookshelfView userId="owner" subjects={[subject]}
+    materials={[{ ...legacy, paceEnabled: true, currentUnit, totalUnits: 100 }]}
+    plans={[]} actuals={[]} onSaveSubject={vi.fn()} onDeleteSubject={vi.fn()}
+    onCaptureMaterialBaseline={vi.fn()} onSaveMaterial={vi.fn()}
+    onDeleteMaterial={vi.fn()} onAddMaterialToPlan={vi.fn()} />); });
+
+  const featured = renderer.root.findByProps({ className: 'bookshelf-progress-caption' });
+  expect(featured.children.slice(-3)).toEqual(['進捗 ', String(currentUnit), '%']);
+  const row = renderer.root.findByProps({ className: 'bookshelf-material-row-progress' });
+  expect(row.findByType('small').children).toEqual(['進捗 ', String(currentUnit), '%']);
+  for (const progress of [featured, row]) {
+    expect(progress.findAll(node => node.props.style?.width === `${currentUnit}%`)).toHaveLength(1);
+  }
+});
