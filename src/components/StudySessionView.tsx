@@ -538,7 +538,7 @@ function StudySessionView({
           <span className="study-session-header-spacer" aria-hidden="true" />
         </header>
 
-        {storageUnavailable && isStarted ? <p role="status" className="study-session-error">このブラウザでは計測の一時保存ができません。ページを閉じたり再読み込みすると計測が失われます。</p> : null}
+        {storageUnavailable && isStarted ? <p role="status" className="study-session-error">この計測の一時保存ができません。ページを閉じたり再読み込みすると、この画面の計測や未保存の入力が失われることがあります。</p> : null}
         {phase === 'timer' ? (
           <main className="study-session-content study-session-timer-view">
             <section className="study-session-card study-session-primary-card">

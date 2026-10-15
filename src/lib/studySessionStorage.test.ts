@@ -101,3 +101,45 @@ it('does not clear another active snapshot when an older session completes', () 
   clearStudySession('owner', 'newer');
   expect(readStudySession('owner')).toBeNull();
 });
+
+it('refuses to replace a different active session snapshot', () => {
+  const current = { ...snapshot(), sessionId: 'current' };
+  expect(writeStudySession(current)).toBe(true);
+  expect(writeStudySession({ ...snapshot(), sessionId: 'retained' })).toBe(false);
+  expect(readStudySession('owner')).toEqual(current);
+});
+
+it('does not recreate a dispatched session snapshot after its recovery slot is cleared', async () => {
+  enableLocks();
+  const retained = snapshot();
+  writeStudySession(retained);
+  await saveStudySessionOnce('owner', retained.sessionId, async () => {}, () => false);
+  clearStudySession('owner', retained.sessionId);
+  expect(writeStudySession(retained)).toBe(false);
+  expect(readStudySession('owner')).toBeNull();
+});
+
+it('continues updating the current snapshot and permits a fresh session after discard', () => {
+  const original = snapshot();
+  expect(writeStudySession(original)).toBe(true);
+  const edited = { ...original, unplannedTitle: '編集した学習' };
+  expect(writeStudySession(edited)).toBe(true);
+  expect(readStudySession('owner')).toEqual(edited);
+  clearStudySession('owner', original.sessionId);
+  expect(writeStudySession({ ...snapshot(), sessionId: 'next' })).toBe(true);
+  expect(readStudySession('owner')?.sessionId).toBe('next');
+});
+
+it('preserves the inspection snapshot during an uncertain dispatch and permits updates after pre-dispatch rejection', async () => {
+  enableLocks();
+  const inspection = { ...snapshot(), requiresInspection: true };
+  writeStudySession(inspection);
+  const rejected = new Error('admission');
+  await expect(saveStudySessionOnce('owner', inspection.sessionId, async () => { throw rejected; }, error => error === rejected)).rejects.toThrow('admission');
+  expect(writeStudySession(snapshot())).toBe(true);
+  expect(readStudySession('owner')?.requiresInspection).toBe(false);
+  writeStudySession(inspection);
+  await expect(saveStudySessionOnce('owner', inspection.sessionId, async () => { throw new Error('network'); }, () => false)).rejects.toThrow('network');
+  expect(writeStudySession(snapshot())).toBe(false);
+  expect(readStudySession('owner')).toEqual(inspection);
+});

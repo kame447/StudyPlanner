@@ -767,3 +767,28 @@ it('blocks restored saves if protection storage becomes unavailable', async () =
   expect(button('記録を保存').props.disabled).toBe(true);
   expect(renderer!.root.findByProps({ role: 'alert' }).children.join('')).toContain('重複確認');
 });
+
+it.each(['saved', 'discarded'])('a retained tab cannot replace the recovery snapshot of a new timer after the original was %s', async outcome => {
+  await mount(); await click('勉強を開始'); await startAndFinish();
+  const first = renderer!;
+  await mount(); await click('計測中へ戻る');
+  const retained = renderer!;
+  try {
+    renderer = first;
+    if (outcome === 'saved') await click('記録を保存');
+    else { await back(); await click('計測を破棄'); }
+    vi.setSystemTime(new Date('2026-10-07T12:10:00'));
+    await click('勉強を開始');
+    await change({ 'aria-label': '勉強する内容' }, '次の学習');
+    await click('スタート');
+    const nextSnapshot = JSON.parse(window.localStorage.getItem('studyplanner.activeSession.v1.owner')!);
+    renderer = retained; await change({ rows: 3 }, '古い画面のメモ');
+    expect(JSON.parse(window.localStorage.getItem('studyplanner.activeSession.v1.owner')!).sessionId).toBe(nextSnapshot.sessionId);
+    await act(async () => { retained.unmount(); });
+    renderer = first; await reloadSession();
+    expect(renderer!.root.findByType('h2').children).toEqual(['次の学習']);
+    expect(button('一時停止')).toBeDefined();
+  } finally {
+    await act(async () => { first.unmount(); retained.unmount(); });
+  }
+});
