@@ -181,7 +181,8 @@
 
 .bookshelf-view > .modal-overlay > .bookshelf-modal.material-create-dialog {
   --material-create-surface: #fff;
-  width: min(100%, 720px);
+  /* Avoid percentage sizing against an intrinsic grid track in WebKit. */
+  width: min(100vw, 720px);
   max-width: 720px;
   height: min(92dvh, calc(var(--material-create-viewport-height, 100dvh) - 12px));
   max-height: min(92dvh, calc(var(--material-create-viewport-height, 100dvh) - 12px));

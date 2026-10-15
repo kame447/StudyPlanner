@@ -16,12 +16,14 @@ function declarations(css: postcss.Root, selector: string) {
 const creation = '.bookshelf-view > .modal-overlay > .bookshelf-modal.material-create-dialog';
 
 describe('material creation sheet size source contract', () => {
-  it('uses the Schedule width cap for new material creation', () => {
+  it('uses the Schedule width cap without a percentage-sized implicit grid track', () => {
     const schedule = declarations(scheduleCss, '.schedule-workspace-shell .quick-entry-modal');
     const material = declarations(materialCss, creation);
-    expect(material.width).toBe(schedule.width);
+    // A percentage width inside the centered overlay's implicit grid track
+    // shrinks to intrinsic content width in WebKit. Resolve against the
+    // viewport explicitly while retaining Schedule's independent width cap.
+    expect(material.width).toBe(`min(100vw, ${schedule['max-width']})`);
     expect(material['max-width']).toBe(schedule['max-width']);
-    expect(material.width).toBe('min(100%, 720px)');
   });
 
   it('fills the Schedule height limit while remaining inside the keyboard viewport', () => {
