@@ -1,4 +1,5 @@
 import { projectAiProviderFailure } from '../../../shared/aiProviderFailure';
+import { MATERIAL_CONTENTS_PHOTO_PROMPT, MATERIAL_CONTENTS_PHOTO_RESPONSE_FORMAT, parseMaterialContentsPhotoResult } from '../../../shared/materialContentsPhoto';
 import type { SemanticRequestRecorder } from '../../../shared/semanticDispatchRecorder';
 import { readBoundedOpenAiResponse } from './providerResponseBody';
 import { safeProviderErrorMetadata } from './providerErrorMetadata';
@@ -952,6 +953,10 @@ async function handlePlanningAttachmentRequest(
   if (observationContext) {
     observationContext.requestBody = { kind: 'parsed', payload: rawPayload, bytes: requestBytes };
   }
+  const contentsPhoto = isRecord(rawPayload) && rawPayload.purpose === 'material_contents_photo';
+  if (isRecord(rawPayload) && rawPayload.purpose !== undefined && !contentsPhoto) {
+    return jsonResponse(request, env, 400, { error: 'Unsupported image analysis purpose.' });
+  }
   const parsedPayload = parsePlanningAttachmentRequest(rawPayload);
   if (parsedPayload.error || !parsedPayload.payload) {
     return jsonResponse(request, env, 400, {
@@ -987,14 +992,14 @@ async function handlePlanningAttachmentRequest(
       messages: [
         {
           role: 'system',
-          content: PLANNING_ATTACHMENT_PROMPT,
+          content: contentsPhoto ? MATERIAL_CONTENTS_PHOTO_PROMPT : PLANNING_ATTACHMENT_PROMPT,
         },
         {
           role: 'user',
           content: [
             {
               type: 'text',
-              text: 'この添付画像を読み取り、学習計画に必要な事実だけを抽出してください。',
+              text: contentsPhoto ? 'この教材の目次を読み取ってください。' : 'この添付画像を読み取り、学習計画に必要な事実だけを抽出してください。',
             },
             {
               type: 'image_url',
@@ -1006,8 +1011,8 @@ async function handlePlanningAttachmentRequest(
           ],
         },
       ],
-      response_format: { type: 'json_object' },
-      max_completion_tokens: PLANNING_ATTACHMENT_MAX_OUTPUT_TOKENS,
+      response_format: contentsPhoto ? MATERIAL_CONTENTS_PHOTO_RESPONSE_FORMAT : { type: 'json_object' },
+      max_completion_tokens: contentsPhoto ? 8000 : PLANNING_ATTACHMENT_MAX_OUTPUT_TOKENS,
     }),
   });
   const upstreamText = await readBoundedOpenAiResponse(upstreamResponse);
@@ -1031,7 +1036,7 @@ async function handlePlanningAttachmentRequest(
         error: 'AI planning image analysis response was empty.',
       });
     }
-    const result = parsePlanningAttachmentResult(content);
+    const result = contentsPhoto ? parseMaterialContentsPhotoResult(JSON.parse(content)) : parsePlanningAttachmentResult(content);
     if (!result) {
       return jsonResponse(request, env, 502, {
         error: 'AI planning image analysis response could not be parsed.',

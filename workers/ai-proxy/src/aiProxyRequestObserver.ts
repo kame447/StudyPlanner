@@ -154,7 +154,8 @@ export function describeAiProxyOperation(
     return 'error' in resolution ? null : {
       operationKind: 'planning_attachment',
       provider: 'openai',
-      purpose: 'weekly_planning_attachment',
+      purpose: isRecord(payload) && payload.purpose === 'material_contents_photo'
+        ? 'material_contents_photo' : 'weekly_planning_attachment',
       phase: 'single',
       model: resolution.model,
     };

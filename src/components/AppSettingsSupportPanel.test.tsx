@@ -20,8 +20,12 @@ it('groups ordinary guidance in native disclosures and preserves the current ann
   const root = renderer!.root;
   expect(root.findAllByType('h3').map(node => node.children.join(''))).toEqual(['予定と学習', '本棚', '設定とAI', 'お知らせとデータ']);
   const items = root.findAllByType('details');
-  expect(items).toHaveLength(16);
-  expect(new Set(items.map(item => item.findByType('summary').children.join(''))).size).toBe(16);
+  const questions = items.map(item => item.findByType('summary').children.join(''));
+  expect(new Set(questions).size).toBe(questions.length);
+  for (const group of root.findAllByProps({ className: 'faq-group' })) {
+    expect(group.findAllByType('details').length).toBeGreaterThan(0);
+    expect(group.props['aria-labelledby']).toBe(group.findByType('h3').props.id);
+  }
   expect(items.every(item => !item.props.open && item.findAllByType('p').length === 1)).toBe(true);
   const answer = (question: string) => items.find(item => item.findByType('summary').children.includes(question))!.findByType('p').children.join('');
   expect(answer('月・日カレンダーの時間割表示をオフにするとどうなりますか')).toContain('AIの空き時間判定は変わりません');
@@ -30,6 +34,9 @@ it('groups ordinary guidance in native disclosures and preserves the current ann
   expect(answer('教材の章や単元は登録しないといけませんか')).toContain('登録した項目は保持されます');
   expect(answer('教材はどのように登録しますか')).toContain('見つからなければ手入力できます');
   expect(answer('計測補助の「反映」では何が変わりますか')).toContain('反映後、記録を保存');
+  expect(answer('ポモドーロの時間とセット数はどう設定しますか')).toContain('カスタム');
+  expect(answer('ポモドーロの時間とセット数はどう設定しますか')).toContain('1〜1440分の整数');
+  expect(answer('ポモドーロの時間とセット数はどう設定しますか')).toContain('最後の休憩後に計測が止まり');
   expect(answer('お休み券はいつ使われますか')).toContain('当日の先払いと手動使用はありません');
   expect(answer('お休み券はいつ使われますか')).toContain('7日');
   expect(answer('お休み券はいつ使われますか')).toContain('連続記録の中で');

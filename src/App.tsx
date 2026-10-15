@@ -1,3 +1,4 @@
+import { useStudyProgressPreference } from './hooks/useStudyProgressPreference';
 import { StudyStreakProvider } from './components/StudyStreakContext';
 import type { HomeAddEntry } from './components/home/TodayScheduleAddMenu';
 import { HomeDisplayClockProvider } from './components/home/HomeDisplayClockContext';
@@ -171,6 +172,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     completeWeeklyApprovalOperation,
     deleteDayOccurrence,
     changeDayTimetableTime,
+    prepareDayTimetableRecord,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
@@ -202,6 +204,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     openDay,
     setEditorDraft,
   } = state;
+  const studyProgressPreference = useStudyProgressPreference(user?.id);
   const monthTimetablePreference = useMonthTimetablePreference(user?.id);
   const dayTimetablePreference = useTimetableDisplayPreference('day', user?.id);
   const homeScenePreference = useHomeScenePreference();
@@ -467,8 +470,9 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
           onRetry={retryPlannerData}
         />
         {isHomeSurface ? (
-          <StudySessionProvider userId={user.id} materials={studyMaterials} onSaveActual={saveActual} onSaveStandaloneActual={saveStandaloneActual}>
+          <StudySessionProvider userId={user.id} subjects={studySubjects} materials={studyMaterials} onSaveActual={saveActual} onSaveStandaloneActual={saveStandaloneActual}>
             <HomeScheduleView
+              progressPreferences={studyProgressPreference.preferences}
               homeScenePreferences={homeScenePreference.preferences}
               userId={user.id}
               plans={plans}
@@ -562,6 +566,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
                 onDeletePlan={deletePlan}
                 onDeleteMonthEvent={deleteMonthEvent}
                 onOpenDay={openDay}
+                onChangeWeek={openWeek}
               />
             ) : null}
 
@@ -569,6 +574,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
               <DayView
                 onDeleteOccurrence={deleteDayOccurrence}
                 onChangeTimetableTime={changeDayTimetableTime}
+                onPrepareTimetableRecord={prepareDayTimetableRecord}
                 showTimetable={dayTimetablePreference.showTimetable}
                 selectedDate={selectedDate}
                 userId={user.id}
@@ -757,6 +763,9 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         showDayTimetable={dayTimetablePreference.showTimetable}
         onChangeDayTimetable={dayTimetablePreference.setShowTimetable}
         dayTimetableError={dayTimetablePreference.error}
+        progressPreferences={studyProgressPreference.preferences}
+        onChangeProgressPreferences={studyProgressPreference.setPreferences}
+        progressPreferencesError={studyProgressPreference.error}
         showMonthTimetable={monthTimetablePreference.showTimetable}
         onChangeMonthTimetable={monthTimetablePreference.setShowTimetable}
         monthTimetableError={monthTimetablePreference.error}

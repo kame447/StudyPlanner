@@ -11,9 +11,8 @@ import {
   expandPlansForDate,
   getActualOccurrenceKey,
 } from './planRecurrence';
-import { isStudyTimePlan } from './studyAnalytics';
+import { canRecordProgressActual, DEFAULT_STUDY_PROGRESS_PREFERENCES, isIncludedInStudyProgress, type StudyProgressPreferences } from './studyProgressPolicy';
 import {
-  isStudyRecordForDisplay,
   normalizeStudyRecordsForDisplay,
 } from './studyRecords';
 import type { Actual, Plan, TodoTask } from '../types/domain';
@@ -95,10 +94,10 @@ function buildUpcomingPlans(plans: Plan[], today: string): Plan[] {
   return sortByDateTime(projected).slice(0, 6);
 }
 
-function resolveStudyActuals(plans: Plan[], actuals: Actual[]): Actual[] {
+function resolveStudyActuals(plans: Plan[], actuals: Actual[], preferences: StudyProgressPreferences): Actual[] {
   const studyActualIds = new Set(
     normalizeStudyRecordsForDisplay({ actuals, plans })
-      .filter(isStudyRecordForDisplay)
+      .filter((record) => !record.plan || isIncludedInStudyProgress(record.plan, preferences))
       .map((record) => record.actualId),
   );
 
@@ -110,25 +109,27 @@ export function buildHomeDashboardModel({
   actuals,
   todos,
   now = new Date(),
+  progressPreferences = DEFAULT_STUDY_PROGRESS_PREFERENCES,
 }: {
   plans: Plan[];
   actuals: Actual[];
   todos: TodoTask[];
   now?: Date;
+  progressPreferences?: StudyProgressPreferences;
 }): HomeDashboardModel {
   const today = toIsoDate(now);
   const nowTime = timeNowLabel(now);
   const todayPlans = sortByDateTime(expandPlansForDate(plans, today));
-  const todayStudyPlans = todayPlans.filter(isStudyTimePlan);
+  const todayStudyPlans = todayPlans.filter((plan) => isIncludedInStudyProgress(plan, progressPreferences));
   const upcomingPlans = buildUpcomingPlans(plans, today);
-  const studyActuals = resolveStudyActuals(plans, actuals);
+  const studyActuals = resolveStudyActuals(plans, actuals, progressPreferences);
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
   );
   const nextPlan = todayPlans.find((plan) => plan.endTime > nowTime) ?? null;
   const missingActualPlans = todayStudyPlans.filter((plan) => {
     const occurrenceKey = buildPlanOccurrenceKey(plan.id, plan.date);
-    return plan.endTime <= nowTime && !actualByOccurrenceKey.has(occurrenceKey);
+    return canRecordProgressActual(plan) && plan.endTime <= nowTime && !actualByOccurrenceKey.has(occurrenceKey);
   });
 
   const nearDueLimit = addDays(today, 2);
@@ -145,7 +146,7 @@ export function buildHomeDashboardModel({
   let weekExpectedMinutesByNow = 0;
   let weekActualMinutesByNow = 0;
   const weekDays = getWeekDates(today).map((date) => {
-    const dayPlans = expandPlansForDate(plans, date).filter(isStudyTimePlan);
+    const dayPlans = expandPlansForDate(plans, date).filter((plan) => isIncludedInStudyProgress(plan, progressPreferences));
     const dayActuals = studyActuals.filter((actual) => actual.occurrenceDate === date);
 
     weekExpectedMinutesByNow += dayPlans.reduce(

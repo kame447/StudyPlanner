@@ -32,6 +32,11 @@ test('primary application surfaces match the approved visual baseline', async ({
   await installVisualGuards(page);
 
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+  // An empty-history fixture resolves to zero only after history hydration.
+  // Geometry can settle while the header still shows its unverified placeholder.
+  const streak = page.locator('.home-streak-card');
+  await expect(streak).toHaveAttribute('aria-label', '連続学習 0日、学習記録を開く');
+  await expect(streak).toHaveAttribute('aria-busy', 'false');
   await captureSurface(page, 'home', '.home-main > .home-dashboard');
 
   await clickPrimaryNav(page, '教材');

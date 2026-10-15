@@ -277,6 +277,7 @@
 
 .study-session-time-adjust label,
 .study-session-field-grid label {
+  min-width: 0;
   display: grid;
   gap: 6px;
   font-size: 0.84rem;
@@ -287,6 +288,9 @@
 .study-session-field-grid input,
 .study-session-progress-input-row input,
 .study-session-note-field textarea {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
   width: 100%;
   border: 1px solid var(--input-border);
   border-radius: 14px;
@@ -628,4 +632,54 @@
 .study-session-setup > :is(h2, .study-session-target-choice, .study-session-unplanned-setup),
 .study-session-setup > .study-session-details[open] {
   grid-column: 1 / -1;
+}
+
+/* Keep native iOS time controls inside their individual grid tracks. */
+.study-session-time-adjust input[type="time"] {
+  min-inline-size: 0;
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-height: 44px;
+  font-size: 16px;
+}
+
+.study-session-time-adjust input[type="time"]::-webkit-date-and-time-value {
+  min-width: 0;
+  text-align: center;
+}
+
+.study-session-pomodoro-presets {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.study-session-pomodoro-presets button {
+  padding-inline: 0.4rem;
+}
+
+@media (max-width: 360px) {
+  .study-session-pomodoro-presets { grid-template-columns: 1fr; }
+}
+
+.study-session-settings-view .study-session-field-grid label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.study-session-settings-view input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  background: var(--surface-strong);
+  color: inherit;
+  font: inherit;
+}
+
+/* Native focus scrolling must leave room for fractional-pixel rounding and
+   the focus outline on the final settings action, including enlarged text. */
+.study-session-page[data-phase="settings"] {
+  scroll-padding-bottom: 16px;
 }

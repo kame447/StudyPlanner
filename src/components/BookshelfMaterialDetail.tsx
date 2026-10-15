@@ -7,7 +7,7 @@ import {
   Clock3,
   MoreHorizontal,
 } from 'lucide-react';
-import { formatDateLabel, minutesBetween, todayIsoDate } from '../lib/date';
+import { formatDateLabel, todayIsoDate } from '../lib/date';
 import {
   buildMaterialActivitySummary,
   getCurrentStructureItem,
@@ -71,10 +71,12 @@ function getActualRangeLabel(actual: Actual, material: StudyMaterial): string | 
 function StructureRows({
   items,
   currentUnit,
+  showProgress,
   depth = 0,
 }: {
   items: MaterialStructureItem[];
   currentUnit?: number;
+  showProgress: boolean;
   depth?: number;
 }) {
   return (
@@ -85,7 +87,7 @@ function StructureRows({
 
         return (
           <div key={item.id}>
-            <div className="bookshelf-structure-row" style={style}>
+            <div className={`bookshelf-structure-row${showProgress ? '' : ' without-progress'}`} style={style}>
               <div className="bookshelf-structure-copy">
                 <strong>{item.title}</strong>
                 {typeof item.startUnit === 'number' && typeof item.endUnit === 'number' ? (
@@ -94,16 +96,19 @@ function StructureRows({
                   </small>
                 ) : null}
               </div>
-              <span>{Math.round(progress)}%</span>
-              <div className="bookshelf-inline-progress" aria-hidden="true">
-                <span style={{ width: `${progress}%` }} />
-              </div>
+              {showProgress ? (<>
+                <span>{Math.round(progress)}%</span>
+                <div className="bookshelf-inline-progress" aria-hidden="true">
+                  <span style={{ width: `${progress}%` }} />
+                </div>
+              </>) : null}
               <ChevronRight aria-hidden="true" size={18} />
             </div>
             {item.children?.length ? (
               <StructureRows
                 items={item.children}
                 currentUnit={currentUnit}
+                showProgress={showProgress}
                 depth={depth + 1}
               />
             ) : null}
@@ -141,7 +146,6 @@ export function BookshelfMaterialDetail({
   onBack,
   onOpenMenu,
   onEditStructure,
-  onOpenDisplaySettings,
   onAddToPlan,
 }: BookshelfMaterialDetailProps) {
   const today = todayIsoDate();
@@ -156,12 +160,13 @@ export function BookshelfMaterialDetail({
   const activeTab = tab === 'structure' && !canShowStructure ? 'overview' : tab;
   const currentStructureItem = useMemo(
     () =>
-      canShowStructure
+      canShowStructure && pace.enabled
         ? getCurrentStructureItem(preferences.structureItems, material.currentUnit)
         : null,
-    [canShowStructure, material.currentUnit, preferences.structureItems],
+    [canShowStructure, pace.enabled, material.currentUnit, preferences.structureItems],
   );
   const progressRate = pace.progressRate;
+  const hasProgress = pace.enabled && pace.totalUnits !== null && pace.totalUnits > 0;
   const unitLabel = getMaterialUnitLabel(material);
 
   return (
@@ -182,13 +187,13 @@ export function BookshelfMaterialDetail({
           <h2>{material.name}</h2>
           <p>{subject?.name ?? material.subjectName}</p>
           {preferences.favorite ? <span className="bookshelf-important-chip">よく使う</span> : null}
-          <div className="bookshelf-detail-progress-line">
+          {hasProgress ? <div className="bookshelf-detail-progress-line">
             <div className="bookshelf-detail-progress-track" aria-hidden="true">
               <span style={{ width: `${progressRate}%` }} />
             </div>
             <strong>進捗 {Math.round(progressRate)}%</strong>
-          </div>
-          {pace.enabled && pace.totalUnits !== null ? (
+          </div> : null}
+          {hasProgress ? (
             <small>
               {pace.currentUnit} / {pace.totalUnits} {unitLabel}
             </small>
@@ -233,7 +238,7 @@ export function BookshelfMaterialDetail({
             onClick={() => setTab('structure')}
             type="button"
           >
-            教材内構造
+            目次
           </button>
         ) : null}
         <button
@@ -253,110 +258,34 @@ export function BookshelfMaterialDetail({
       </nav>
 
       <div className="bookshelf-detail-content">
-        {activeTab === 'overview' ? (
+        {activeTab === 'overview' && (canShowStructure || hasProgress) ? (
           <div className="bookshelf-detail-section-stack">
-            {preferences.structureEnabled ? (
-              <section className="bookshelf-structure-status">
-                <div>
-                  <strong>
-                    教材内構造: {preferences.structureVisible ? '表示中' : '非表示'}
-                  </strong>
-                  <span>
-                    {preferences.structureVisible
-                      ? currentStructureItem
-                        ? `現在地: ${currentStructureItem.title}`
-                        : '項目を追加すると現在地を表示できます。'
-                      : '全体進捗だけでシンプルに管理しています。'}
-                  </span>
-                </div>
-                <button type="button" onClick={onOpenDisplaySettings}>表示設定</button>
-              </section>
-            ) : (
-              <section className="bookshelf-structure-status is-disabled">
-                <div>
-                  <strong>教材内構造は使用していません</strong>
-                  <span>章・節を登録しなくても、教材全体の進捗だけで管理できます。</span>
-                </div>
-                <button type="button" onClick={onEditStructure}>設定する</button>
-              </section>
-            )}
-
             {canShowStructure ? (
               <section>
                 <div className="bookshelf-detail-section-head">
-                  <h3>教材内構造</h3>
+                  <h3>目次</h3>
                   <button type="button" onClick={onEditStructure}>編集</button>
                 </div>
                 {preferences.structureItems.length > 0 ? (
                   <StructureRows
                     items={preferences.structureItems.slice(0, 5)}
-                    currentUnit={material.currentUnit}
+                    currentUnit={pace.enabled ? material.currentUnit : undefined}
+                    showProgress={pace.enabled}
                   />
                 ) : (
                   <div className="bookshelf-detail-empty">
                     <p>まだ章・節などの項目がありません。</p>
-                    <button type="button" onClick={onEditStructure}>項目を追加</button>
+                    <button type="button" onClick={onEditStructure}>章・節を追加</button>
                   </div>
                 )}
               </section>
-            ) : (
+            ) : hasProgress ? (
               <section className="bookshelf-aggregate-progress">
-                <div className="bookshelf-detail-section-head">
-                  <h3>現在の進捗</h3>
-                </div>
-                {pace.enabled && pace.totalUnits !== null ? (
-                  <p>
-                    現在 {pace.currentUnit} / {pace.totalUnits} {unitLabel}
-                  </p>
-                ) : (
-                  <p>教材ペース管理を有効にすると、全体の現在位置を表示できます。</p>
-                )}
+                <div className="bookshelf-detail-section-head"><h3>現在の進捗</h3></div>
+                <p>現在 {pace.currentUnit} / {pace.totalUnits} {unitLabel}</p>
               </section>
-            )}
+            ) : null}
 
-            <section>
-              <div className="bookshelf-detail-section-head">
-                <h3>最近の学習記録</h3>
-                <button type="button" onClick={() => setTab('logs')}>すべて見る</button>
-              </div>
-              {summary.recentActuals.length > 0 ? (
-                <div className="bookshelf-activity-list">
-                  {summary.recentActuals.slice(0, 2).map((actual) => (
-                    <div key={actual.id}>
-                      <span>{formatDateLabel(actual.occurrenceDate)}</span>
-                      <strong>
-                        {formatMinutes(
-                          Math.max(0, minutesBetween(actual.actualStartTime, actual.actualEndTime)),
-                        )}
-                      </strong>
-                      <small>{(getActualRangeLabel(actual, material) ?? actual.note) || '学習記録'}</small>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="bookshelf-detail-muted">この教材に紐づく学習記録はまだありません。</p>
-              )}
-            </section>
-
-            <section>
-              <div className="bookshelf-detail-section-head">
-                <h3>今後の予定</h3>
-                <button type="button" onClick={() => setTab('schedule')}>すべて見る</button>
-              </div>
-              {summary.upcomingPlans.length > 0 ? (
-                <div className="bookshelf-activity-list">
-                  {summary.upcomingPlans.slice(0, 2).map((plan) => (
-                    <div key={plan.id}>
-                      <span>{formatDateLabel(plan.date)}</span>
-                      <strong>{plan.startTime}–{plan.endTime}</strong>
-                      <small>{plan.title}</small>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="bookshelf-detail-muted">この教材の予定はまだありません。</p>
-              )}
-            </section>
           </div>
         ) : null}
 
@@ -364,7 +293,7 @@ export function BookshelfMaterialDetail({
           <section>
             <div className="bookshelf-detail-section-head">
               <div>
-                <h3>教材内構造</h3>
+                <h3>目次</h3>
                 {currentStructureItem ? <p>現在地: {currentStructureItem.title}</p> : null}
               </div>
               <button type="button" onClick={onEditStructure}>編集</button>
@@ -372,11 +301,12 @@ export function BookshelfMaterialDetail({
             {preferences.structureItems.length > 0 ? (
               <StructureRows
                 items={preferences.structureItems}
-                currentUnit={material.currentUnit}
+                currentUnit={pace.enabled ? material.currentUnit : undefined}
+                showProgress={pace.enabled}
               />
             ) : (
               <div className="bookshelf-detail-empty">
-                <button type="button" onClick={onEditStructure}>最初の項目を追加</button>
+                <button type="button" onClick={onEditStructure}>最初の章・節を追加</button>
               </div>
             )}
           </section>

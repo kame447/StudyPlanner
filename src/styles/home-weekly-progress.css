@@ -39,7 +39,15 @@
 
 .weekly-progress-ring strong {
   color: #25314a;
-  font-size: clamp(0.86rem, 2.8vw, 1rem);
+  font-size: clamp(0.68rem, 2.1vw, 0.8rem);
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.weekly-progress-ring strong small {
+  font-size: 0.7em;
 }
 
 .weekly-progress-summary {
@@ -74,7 +82,7 @@
 }
 
 .weekly-progress-negative { color: #eb3547; }
-.weekly-progress-positive { color: #1f9a69; }
+.weekly-progress-positive { color: #14754f; }
 
 .weekly-progress-chart {
   min-width: 0;

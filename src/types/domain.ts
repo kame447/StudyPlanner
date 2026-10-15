@@ -193,6 +193,7 @@ export interface StudySubjectDraft {
 }
 
 export type StudyMaterialStatus = 'active' | 'archived';
+export type MaterialStudyStatus = 'studying' | 'completed';
 export type StudyMaterialProgressUnit =
   | 'page'
   | 'problem'
@@ -216,6 +217,7 @@ export interface StudyMaterial {
   catalogIsbn13?: string;
   aliases?: string[];
   status?: StudyMaterialStatus;
+  studyStatus?: MaterialStudyStatus;
   paceEnabled?: boolean;
   progressUnit?: StudyMaterialProgressUnit;
   progressUnitLabel?: string;
@@ -242,6 +244,7 @@ export interface StudyMaterialDraft {
   catalogIsbn13?: string;
   aliases?: string[];
   status?: StudyMaterialStatus;
+  studyStatus?: MaterialStudyStatus;
   paceEnabled?: boolean;
   progressUnit?: StudyMaterialProgressUnit;
   progressUnitLabel?: string;
@@ -260,7 +263,10 @@ export interface MonthEventChecklistItem {
   checked: boolean;
 }
 
+export type MonthEventColor = 'green' | 'orange' | 'purple' | 'blue' | 'pink';
+
 export interface MonthEvent {
+  color?: MonthEventColor;
   id: string;
   userId: string;
   date: string;
@@ -279,6 +285,7 @@ export interface MonthEvent {
 }
 
 export interface MonthEventDraft {
+  color?: MonthEventColor;
   userId: string;
   date: string;
   title: string;

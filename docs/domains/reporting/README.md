@@ -15,3 +15,6 @@
 - [連続学習の1画面化・自動お休み券・今日の炎](work/20261014-study-streak-auto-rest-handoff.md)
 
 - [連続学習カレンダーと下部表示の読みやすさ](work/20261014-study-streak-readability-handoff.md)
+
+- [ホーム学習進捗の集計対象設定](work/20261014-home-progress-inclusion-handoff.md)
+- [学習レポートの概要1画面化](work/20261014-compact-learning-report-handoff.md)

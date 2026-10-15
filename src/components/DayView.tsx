@@ -2,6 +2,8 @@ import type { DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
 import type { ActualActionTarget } from '../hooks/useActualMutationAdmission';
 import {
   useEffect,
+  useLayoutEffect,
+  useRef,
   useMemo,
   useState,
   type MouseEvent as ReactMouseEvent,
@@ -70,6 +72,7 @@ interface DayViewProps {
   onMovePlan: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   onDeletePlan: (plan: Plan) => Promise<void>;
   onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
+  onPrepareTimetableRecord?: (occurrence: ScheduleOccurrence) => Promise<Plan>;
   onSavePlan: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   getActualActionBlockReason?: (target: ActualActionTarget) => string | null;
   onSaveActual: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
@@ -83,6 +86,7 @@ interface DayViewProps {
 
 type DayViewModalState =
   | { type: 'closed' }
+  | { type: 'timetable-record'; plan: Plan; ownerId: string; viewedDate: string }
   | { type: 'plan-detail'; planId: string }
   | { type: 'month-event-detail'; monthEventId: string }
   | { type: 'timetable-detail'; occurrenceId: string; ownerId: string; viewedDate: string }
@@ -147,6 +151,7 @@ export function DayView({
   onDeletePlan,
   onDeleteMonthEvent,
   onSavePlan,
+  onPrepareTimetableRecord,
   getActualActionBlockReason,
   onSaveActual,
   onSaveStandaloneActual,
@@ -156,7 +161,11 @@ export function DayView({
   onOpenBookshelf,
   onOpenAddMaterial,
 }: DayViewProps) {
+  const recordContext = useMemo(() => ({ userId, selectedDate }), [userId, selectedDate]);
+  const activeRecordContext = useRef<typeof recordContext | null>(null);
+  useLayoutEffect(() => { activeRecordContext.current = recordContext; return () => { activeRecordContext.current = null; }; }, [recordContext]);
   const [modalState, setModalState] = useState<DayViewModalState>({ type: 'closed' });
+  const [pendingTimetableRecord, setPendingTimetableRecord] = useState<{ context: typeof recordContext; occurrence: ScheduleOccurrence } | null>(null);
   const [pendingDetailDeletion, setPendingDetailDeletion] = useState<{ plan: Plan; viewedDate: string } | null>(null);
   const [actualOpenError, setActualOpenError] = useState('');
   const [quickMaterial, setQuickMaterial] = useState<StudyMaterial | null>(null);
@@ -336,7 +345,8 @@ export function DayView({
   const selectedPlan =
     modalState.type === 'plan-detail'
       ? dayPlanMap.get(modalState.planId) ?? (retainedDeletingPlan?.id === modalState.planId ? retainedDeletingPlan : null)
-      : null;
+      : modalState.type === 'timetable-record' && modalState.ownerId === userId && modalState.viewedDate === selectedDate
+        ? dayPlanMap.get(modalState.plan.id) ?? modalState.plan : null;
   const selectedMonthEvent =
     modalState.type === 'month-event-detail'
       ? dayMonthEventMap.get(modalState.monthEventId) ?? null
@@ -346,7 +356,8 @@ export function DayView({
     : null;
   const selectedTimetableOccurrence = modalState.type === 'timetable-detail'
     && modalState.ownerId === userId && modalState.viewedDate === selectedDate
-    ? dayOccurrenceById.get(modalState.occurrenceId) : undefined;
+    ? (pendingTimetableRecord?.context === recordContext && pendingTimetableRecord.occurrence.id === modalState.occurrenceId
+        ? pendingTimetableRecord.occurrence : dayOccurrenceById.get(modalState.occurrenceId)) : undefined;
   const detailTimetable = selectedTimetableOccurrence?.source.backingKind === 'timetable-template'
     ? selectedTimetableOccurrence : null;
   const selectedDetailPlan = selectedPlan ?? selectedMonthEventPlan;
@@ -354,7 +365,7 @@ export function DayView({
     occurrence.source.backingKind === (selectedMonthEvent ? 'month-event' : 'plan')
     && occurrence.source.backingId === selectedDetailPlan.id) : undefined;
 
-  const deletionPresentation = selectedDetailOccurrence ? dayOccurrenceCancellationPresentation(selectedDetailOccurrence) : undefined;
+  const deletionPresentation = selectedDetailOccurrence ? getDeletionPresentation(selectedDetailOccurrence) : undefined;
   const selectedDetailActual = selectedDetailPlan
     ? actualByOccurrenceKey.get(
         buildPlanOccurrenceKey(selectedDetailPlan.id, selectedDetailPlan.date),
@@ -377,8 +388,9 @@ export function DayView({
       setModalState({ type: 'closed' });
     }
 
+    if (modalState.type === 'timetable-record' && (modalState.ownerId !== userId || modalState.viewedDate !== selectedDate)) setModalState({ type: 'closed' });
     if (modalState.type === 'timetable-detail' && !detailTimetable) setModalState({ type: 'closed' });
-  }, [dayMonthEventMap, dayPlanMap, detailTimetable, modalState, retainedDeletingPlan]);
+  }, [dayMonthEventMap, dayPlanMap, detailTimetable, modalState, retainedDeletingPlan, userId, selectedDate]);
 
   useEffect(() => {
     setModalState({ type: 'closed' });
@@ -469,15 +481,23 @@ export function DayView({
   }
 
   function handleClickCapture(event: ReactMouseEvent<HTMLElement>) {
+    swipeNavigation.onClickCapture(event);
     if (!scheduleAction.shouldSuppressClick()) return;
     event.preventDefault();
     event.stopPropagation();
   }
 
+  function getDeletionPresentation(occurrence: ScheduleOccurrence) {
+    const source = occurrence.source.backingKind === 'month-event'
+      ? monthEvents.find(event => event.id === occurrence.source.backingId && event.userId === occurrence.ownerId)
+      : plans.find(plan => plan.id === occurrence.source.backingId && plan.userId === occurrence.ownerId);
+    return dayOccurrenceCancellationPresentation(occurrence, source);
+  }
+
   async function handleDeleteOccurrence(occurrence: ScheduleOccurrence) {
     if (onDeleteOccurrence) {
-      const copy = dayOccurrenceCancellationPresentation(occurrence);
-      if (copy.description && !window.confirm(`${occurrence.title}\n${copy.description}\nこの回だけ削除しますか？`)) return;
+      const copy = getDeletionPresentation(occurrence);
+      if (copy.description && !window.confirm(`${occurrence.title}\n${copy.description}\n${copy.label}しますか？`)) return;
       await onDeleteOccurrence(occurrence); return;
     }
     await deleteScheduleOccurrence({
@@ -511,10 +531,21 @@ export function DayView({
       {detailTimetable ? (
         <DayTimetableDetailModal key={detailTimetable.id} occurrence={detailTimetable}
           onClose={closeModal} onOpenTimetable={onOpenTimetable} onSaveTime={onChangeTimetableTime}
+          onPrepareRecord={onPrepareTimetableRecord ? async () => {
+            setPendingTimetableRecord({ context: recordContext, occurrence: detailTimetable });
+            try {
+              const plan = await onPrepareTimetableRecord(detailTimetable);
+              if (activeRecordContext.current !== recordContext) return;
+              setModalState({ type: 'timetable-record', plan, ownerId: userId, viewedDate: selectedDate });
+            } finally {
+              if (activeRecordContext.current === recordContext) setPendingTimetableRecord(null);
+            }
+          } : undefined}
           onDeleteOccurrence={onDeleteOccurrence ? () => onDeleteOccurrence(detailTimetable) : undefined} />
       ) : null}
       <DayDetailModal
         detailPlan={selectedDetailPlan}
+        openRecordInitially={modalState.type === 'timetable-record'}
         monthEvent={selectedMonthEvent}
         detailActual={selectedDetailActual}
         standaloneActual={selectedStandaloneActual}
@@ -522,6 +553,7 @@ export function DayView({
         actuals={actuals}
         onEditPlan={onEditPlan}
         onDeletePlan={deleteDetailPlan}
+        showWholePlanDelete={!onDeleteOccurrence || deletionPresentation?.isRecurring !== false}
         deleteOccurrenceLabel={deletionPresentation?.label}
         deleteOccurrenceDescription={deletionPresentation?.description}
         historyOnly={Boolean(selectedDetailPlan && !selectedDetailOccurrence && !retainedDeletingPlan

@@ -93,6 +93,7 @@ interface PlannerAppState {
   saveWeeklyApprovedPlan: (draft: PlanDraft) => Promise<Plan>;
   completeWeeklyApprovalOperation: (operation: WeeklyDraftApprovalOperation) => Promise<void>;
   deleteDayOccurrence: (occurrence: ScheduleOccurrence) => Promise<void>;
+  prepareDayTimetableRecord: (occurrence: ScheduleOccurrence) => Promise<Plan>;
   changeDayTimetableTime: (occurrence: ScheduleOccurrence, time: DayTimetableTimeChange) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
@@ -195,6 +196,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     movePlanOccurrence,
     deleteDayOccurrence,
     changeDayTimetableTime,
+    prepareDayTimetableRecord,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
@@ -395,6 +397,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     completeWeeklyApprovalOperation: approvalScope.bindMutation(completeWeeklyApprovalOperation),
     deleteDayOccurrence,
     changeDayTimetableTime,
+    prepareDayTimetableRecord,
     deletePlan,
     confirmRecurringPlanScope,
     cancelRecurringPlanScope,
