@@ -18,7 +18,12 @@ for (const width of [390, 1280]) for (const kind of ['plan', 'actual']) {
     if (kind === 'actual') await editor.getByRole('tab', { name: '記録', exact: true }).click();
     const title = kind === 'plan' ? '日をまたぐ学習予定' : '日をまたぐ学習記録';
     await editor.getByPlaceholder(kind === 'plan' ? '例: 英語課題 / 面接準備' : '例: 英語の復習').fill(title);
-    await editor.getByLabel('日付', { exact: true }).fill(E2E_TODAY);
+    const entryDate = editor.getByLabel('日付', { exact: true });
+    if (kind === 'actual') {
+      // A new record inherits the selected day; only its later editor can move it.
+      await expect(entryDate).toBeDisabled();
+    } else await entryDate.fill(E2E_TODAY);
+    await expect(entryDate).toHaveValue(E2E_TODAY);
     await editor.getByLabel('開始時刻', { exact: true }).fill('23:30');
     await editor.getByRole('button', { name: '60分', exact: true }).click();
     await editor.getByRole('button', { name: '保存', exact: true }).click();
@@ -31,12 +36,16 @@ for (const width of [390, 1280]) for (const kind of ['plan', 'actual']) {
     await page.reload();
     await page.locator('.primary-bottom-nav button').filter({ hasText: '予定' }).click();
     await page.getByRole('tab', { name: '日', exact: true }).click();
+    const selectedDay = page.locator('.schedule-day-strip [aria-current="date"]');
+    await expect(selectedDay).toHaveAttribute('aria-label', '2026年 8月19日 水');
     const row = () => kind === 'actual'
       ? page.locator('.timeline-actual-block').filter({ hasText: title })
       : page.getByRole('button', { name: `${title}。終日または日を跨ぐ予定。長押しで操作`, exact: true });
     await expect(row()).toHaveCount(1);
     if (kind === 'actual') await expect(row()).toHaveAttribute('aria-label', /23:30から24:00/);
-    await page.getByRole('button', { name: '翌日', exact: true }).click();
+    // The schedule toolbar owns navigation; the legacy Daily header is hidden.
+    await page.getByRole('button', { name: '次の期間へ', exact: true }).click();
+    await expect(selectedDay).toHaveAttribute('aria-label', '2026年 8月20日 木');
     await expect(row()).toHaveCount(1);
     if (kind === 'actual') {
       await expect(row()).toHaveAttribute('aria-label', /00:00から00:30/);
