@@ -161,6 +161,8 @@ for (const viewport of [
   { width: 390, height: 844 },
   { width: 360, height: 740 },
   { width: 320, height: 480 },
+  { width: 768, height: 1024 },
+  { width: 1024, height: 1366 },
   { width: 1280, height: 844 },
 ]) {
   test.describe(`compact material creation ${viewport.width}x${viewport.height}`, () => {
@@ -168,6 +170,14 @@ for (const viewport of [
     test('keeps the basic form readable and save/cancel in a stationary footer', async ({ page }, testInfo) => {
       const externalRequests = await boot(page, viewport.width);
       const dialog = page.getByRole('dialog', { name: '教材を追加', exact: true });
+      // Match the Schedule bottom sheet, including tablet/desktop width cap.
+      // The shell fills its height even while optional fields are collapsed.
+      const bounds = await dialog.boundingBox();
+      const expectedWidth = Math.min(viewport.width, 720);
+      expect(bounds.width).toBeCloseTo(expectedWidth, 0);
+      expect(bounds.x).toBeCloseTo((viewport.width - expectedWidth) / 2, 0);
+      expect(bounds.height).toBeCloseTo(viewport.height * 0.92, 0);
+      expect(bounds.y + bounds.height).toBeCloseTo(viewport.height, 0);
       const body = dialog.locator('.material-create-body');
       const footer = dialog.locator('.material-create-footer');
       const save = footer.getByRole('button', { name: '保存', exact: true });
@@ -200,11 +210,14 @@ for (const viewport of [
       expect(metrics.coverHeight).toBeLessThanOrEqual(80);
       for (const control of metrics.controls) {
         expect(control.height, `Rendered target: ${control.name}`).toBeGreaterThanOrEqual(44);
-        if (control.field) expect(control.fontSize).toBeGreaterThanOrEqual(16);
+        if (control.field) {
+          expect(control.fontSize).toBe(16);
+          expect(control.height).toBeLessThanOrEqual(60);
+        }
       }
       if (viewport.height >= 740) expect(metrics.bodyOverflow).toBeLessThanOrEqual(1);
       const initialFooter = await footer.boundingBox();
-      expect(initialFooter.y + initialFooter.height).toBeLessThanOrEqual(viewport.height + 1);
+      expect(initialFooter.y + initialFooter.height).toBeCloseTo(viewport.height, 0);
       await testInfo.attach(`material-add-initial-${viewport.width}x${viewport.height}`, {
         body: await page.screenshot(), contentType: 'image/png',
       });
