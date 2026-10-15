@@ -32,6 +32,28 @@ Each durable entry should record:
 
 Do not record credentials, secret values, access tokens, private user data, or raw sensitive logs here.
 
+## Admin Logs: authenticated diagnostic drill-down
+
+Last reviewed: 2026-10-16. The authenticated Admin Logs session listing was observed on the live Pages site. A listed entry count alone was not a successful detail retrieval; an actual mobile failure's cause cannot be inferred from this index.
+
+### Operation and supported procedure
+
+When a user reports a failed weekly-planning conversation, open the production Admin Console at `https://laplance.com/admin/logs` in an administrator-authorized browser (historical Pages origin: `https://studyplannner.pages.dev/admin/logs`). Match date/time and conversation to its session ID. Expand the session row and wait until detailed entries finish loading. Check indexed-range, missing/unreadable entry, pagination and byte-limit indicators. Open `Redacted detail` for individual entries; when needed, download `Session Debug Bundle` or a targeted `Request Bundle` (bounded, redacted JSON). Correlate session, request ID, event type, timestamp, state revision, outcome, failure classification and preceding successful stage. Distinguish AI interpretation/renderer failures, validation, state commit/persistence and background resume. Do not infer causes from the generic message shown to a user.
+
+### Established data-access boundary
+
+`src/components/AdminLogsPage.tsx` owns session expansion/detail/export controls. `src/services/adminObservabilityService.ts` queries the Worker via authenticated `GET /observability/admin/logs` (session index), `GET /observability/admin/log-entries?session=...` (detailed entries) and `GET /observability/admin/debug-bundle?session=...` (bounded export; optional `request` filter). Administrator/trace-reader authorization is checked by `workers/ai-proxy/src/productObservabilityAdminApi.ts` and the diagnostic adapter. Use this read path rather than unscoped data scans. `entryCount` and `turnCount` are indexed metadata, not proof that the corresponding details were retrieved or complete; missing entries/truncation must be reported. Debug Bundle exports have no built-in audit history.
+
+### Browser automation and prior failure mode
+
+Past investigations attempted headless Brave/Playwright with Chrome DevTools Protocol (CDP) for Admin Logs. CDP is a browser-control interface, not authorization. An AppleScript `execute javascript` permission failure does not imply that all browser controls or Admin Logs are unavailable. Prefer the existing legitimately signed-in graphical browser through supported controls. If using Playwright/CDP, obtain a fresh administrator-authorized browser session through the normal interactive login flow. Never duplicate or extract a user's browser profile, IndexedDB/session stores, cookies, tokens or Authorization headers to manufacture a second logged-in session. Never weaken origin checks or admin authentication. If the browser-control tool cannot operate an authorized session, ask the administrator to export the redacted session/request Debug Bundle and provide it for analysis. Do not repeat an unchanged failed control path or claim success from an index-only read.
+
+### Verification and cleanup
+
+Verify that the expected per-request entries actually arrived and that any read gaps/pagination/truncation were accounted for; otherwise classify the result as incomplete. Record the exact code/deployment version under investigation and distinguish observed cause from hypothesis. Keep only minimally necessary redacted diagnostics in authorized incident records and avoid publishing raw user content or secrets. Remove temporary export copies after authorized use.
+
+---
+
 ## Bounded live-model evaluation when workflow dispatch is unavailable
 
 Verified execution on 2026-10-14 for [PR #637](https://github.com/kame447/StudyPlanner/pull/637), [run 38505480239](https://github.com/kame447/StudyPlanner/actions/runs/38505480239). The connector exposed workflow reads and reruns but no dispatch; the server CLI and cloud browser had no authenticated session. This is a capability gap, not a permission denial. Use this fallback only with explicit authorization for the API call and the temporary repository workflow; never use it after a reviewer/access denial.
