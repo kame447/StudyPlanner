@@ -10,6 +10,32 @@ const candidate = { catalogEntryId: 'synthetic-name-catalog', title: '検索候�
 const sheet = page => page.locator('.bookshelf-modal');
 const nameInput = page => sheet(page).getByLabel('教材名', { exact: true });
 
+async function waitForMaterialSheet(page) {
+  const dialog = sheet(page);
+  await expect(dialog).toBeVisible();
+  // Visibility includes the opening keyframe: its 0.992 scale makes a 44px
+  // target measure 43.648px, and it can still be below the viewport. Observe
+  // completion instead of sleeping or changing the target-size contract.
+  await dialog.evaluate(async element => {
+    const overlay = element.closest('.modal-overlay');
+    await Promise.all([...element.getAnimations(), ...overlay.getAnimations()]
+      .map(animation => animation.finished.catch(() => undefined)));
+  });
+  await expect.poll(() => dialog.evaluate(element => {
+    const overlay = element.closest('.modal-overlay');
+    const style = getComputedStyle(element);
+    const transform = style.transform === 'none' || new DOMMatrixReadOnly(style.transform).isIdentity;
+    const bounds = element.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const top = viewport?.offsetTop ?? 0;
+    const bottom = top + (viewport?.height ?? innerHeight);
+    const painted = element.contains(document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + 20));
+    return transform && style.opacity === '1' && getComputedStyle(overlay).opacity === '1'
+      && bounds.top >= top - 1 && bounds.bottom <= bottom + 1 && painted;
+  }), { message: 'Material sheet must finish opening and be painted inside the visible viewport' }).toBe(true);
+}
+
+
 async function boot(page, width) {
   // Only synthetic fixtures and loopback-served production UI are permitted.
   // Let local app assets load directly; intercept only requests leaving this harness origin.
@@ -48,6 +74,7 @@ async function boot(page, width) {
   expect(viewport.reducedMotion).toBe(true);
   await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: '教材', exact: true }).click();
   await page.locator('.bookshelf-add-material-fab').click();
+  await waitForMaterialSheet(page);
   await expect(sheet(page)).toBeVisible();
   return externalRequests;
 }
@@ -109,6 +136,7 @@ for (const width of [390, 1280]) {
       await selectCatalog(page);
       await sheet(page).getByRole('button', { name: '閉じる', exact: true }).click();
       await page.locator('.bookshelf-add-material-fab').click();
+      await waitForMaterialSheet(page);
       await nameInput(page).fill('再表示後の下書き');
       await settle(page, '閉じた画面の古い教材名');
       await expect(nameInput(page)).toHaveValue('再表示後の下書き');
@@ -158,6 +186,7 @@ for (const viewport of [
           headingRight: heading.right, closeLeft: close.left,
           coverWidth: cover.width, coverHeight: cover.height,
           controls: controls.filter(node => node.getClientRects().length).map(node => ({
+            name: node.getAttribute('aria-label') || node.closest('label')?.textContent || node.textContent,
             height: node.getBoundingClientRect().height,
             fontSize: parseFloat(getComputedStyle(node).fontSize),
             field: node.matches('.field input, .field select'),
@@ -170,7 +199,7 @@ for (const viewport of [
       expect(metrics.coverWidth).toBeLessThanOrEqual(64);
       expect(metrics.coverHeight).toBeLessThanOrEqual(80);
       for (const control of metrics.controls) {
-        expect(control.height).toBeGreaterThanOrEqual(44);
+        expect(control.height, `Rendered target: ${control.name}`).toBeGreaterThanOrEqual(44);
         if (control.field) expect(control.fontSize).toBeGreaterThanOrEqual(16);
       }
       if (viewport.height >= 740) expect(metrics.bodyOverflow).toBeLessThanOrEqual(1);
@@ -258,7 +287,10 @@ test.describe('material creation expanded controls', () => {
     const footer = sheet(page).locator('.material-create-footer');
     const rect = await footer.boundingBox();
     expect(rect.y + rect.height).toBeLessThanOrEqual(441);
-    for (const label of ['単位', '総量', '現在位置', '目標日', '1単位あたりの目安時間', '1日の最大量']) {
+    // getByLabel reads the enclosing label's option text; the native select's
+    // accessible role/name is the exact contract shown in the browser snapshot.
+    await expectVisibleInBody(sheet(page).getByRole('combobox', { name: '単位', exact: true }), body);
+    for (const label of ['総量', '現在位置', '目標日', '1単位あたりの目安時間', '1日の最大量']) {
       await expectVisibleInBody(sheet(page).getByLabel(label, { exact: true }), body);
     }
     await sheet(page).getByLabel('1日の最大量', { exact: true }).focus();
@@ -267,6 +299,7 @@ test.describe('material creation expanded controls', () => {
     await testInfo.attach('material-add-simulated-keyboard', { body: await page.screenshot(), contentType: 'image/png' });
     await footer.getByRole('button', { name: 'キャンセル', exact: true }).click();
     await page.locator('.bookshelf-add-material-fab').click();
+    await waitForMaterialSheet(page);
     await expect(nameInput(page)).toHaveValue('');
     await expect(sheet(page).getByLabel('教材ペース管理を使う')).not.toBeChecked();
     expect(externalRequests).toEqual([]);
@@ -313,6 +346,7 @@ for (const theme of ['light', 'dark']) {
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: '教材', exact: true }).click();
       await page.locator('.bookshelf-add-material-fab').click();
+      await waitForMaterialSheet(page);
       await expect.poll(() => nameInput(page).evaluate(element => getComputedStyle(element).fontFamily)).toContain('DotGothic16');
       await page.evaluate(() => document.fonts.ready);
       expect(await page.evaluate(() => document.fonts.check('16px DotGothic16'))).toBe(true);
