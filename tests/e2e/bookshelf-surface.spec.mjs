@@ -204,6 +204,9 @@ test.describe('mobile bookshelf containment', () => {
 for (const width of [390, 1280]) {
   test(`table of contents editor has usable fields and spacing at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    // Load the optional pixel stylesheet through its real preference path before comparing surfaces.
+    await page.addInitScript(() => localStorage.setItem('study-planner-appearance', 'pixel'));
     await seedBookshelf(page);
     await openBookshelf(page);
     await page.getByText('アルゴリズム問題集').first().click();
@@ -214,6 +217,8 @@ for (const width of [390, 1280]) {
     const editor = page.locator('.bookshelf-structure-editor');
     await expect(editor.getByRole('heading', { name: '目次', exact: true })).toBeVisible();
     await expect(editor.getByLabel('章・節の名前 1', { exact: true })).toHaveValue('基礎編');
+    await expect.poll(() => editor.evaluate(element => getComputedStyle(element).fontFamily)).toContain('DotGothic16');
+    await page.evaluate(() => { document.documentElement.dataset.appearance = 'standard'; });
     const geometry = await editor.evaluate(element => {
       const row = element.querySelector('.bookshelf-structure-edit-row');
       const inputs = [...row.querySelectorAll('input')];
@@ -226,6 +231,50 @@ for (const width of [390, 1280]) {
     expect(geometry.gap).toBeGreaterThanOrEqual(16);
     expect(geometry.overflow).toBeLessThanOrEqual(1);
     await page.screenshot({ path: testInfo.outputPath(`material-contents-${width}.png`), animations: 'disabled' });
+    for (const appearance of ['standard', 'pixel']) {
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate(({ appearance, theme }) => {
+          document.documentElement.dataset.appearance = appearance;
+          document.documentElement.dataset.theme = theme;
+        }, { appearance, theme });
+        await page.evaluate(() => document.fonts.ready);
+        const surface = await editor.evaluate(element => {
+          const style = getComputedStyle(element);
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = 1;
+          const context = canvas.getContext('2d');
+          context.fillStyle = style.backgroundColor;
+          context.fillRect(0, 0, 1, 1);
+          const bounds = element.getBoundingClientRect();
+          const toggle = element.querySelector('.bookshelf-settings-group').getBoundingClientRect();
+          return {
+            alpha: context.getImageData(0, 0, 1, 1).data[3],
+            opacity: style.opacity,
+            clip: { x: Math.round(bounds.x + bounds.width / 2), y: Math.round(toggle.top - 12), width: 4, height: 4 },
+          };
+        });
+        expect(surface.alpha, `${appearance}/${theme} editor background`).toBe(255);
+        expect(surface.opacity).toBe('1');
+        const overlay = editor.locator('..');
+        const originalBackground = await overlay.evaluate(element => element.style.background);
+        try {
+          await overlay.evaluate(element => { element.style.background = 'rgb(255, 0, 0)'; });
+          await expect(overlay).toHaveCSS('background-color', 'rgb(255, 0, 0)');
+          const redBackdrop = await page.screenshot({ clip: surface.clip, animations: 'disabled' });
+          await overlay.evaluate(element => { element.style.background = 'rgb(0, 0, 255)'; });
+          await expect(overlay).toHaveCSS('background-color', 'rgb(0, 0, 255)');
+          const blueBackdrop = await page.screenshot({ clip: surface.clip, animations: 'disabled' });
+          expect(redBackdrop.equals(blueBackdrop), `${appearance}/${theme} editor must not blend its backdrop`).toBe(true);
+        } finally {
+          await overlay.evaluate((element, background) => { element.style.background = background; }, originalBackground);
+        }
+        await page.screenshot({ path: testInfo.outputPath(`material-contents-${width}-${appearance}-${theme}.png`), animations: 'disabled' });
+      }
+    }
+    await page.evaluate(() => {
+      document.documentElement.dataset.appearance = 'standard';
+      document.documentElement.dataset.theme = 'light';
+    });
     await editor.getByLabel('章・節の名前 1', { exact: true }).fill('一時編集');
     await editor.getByRole('button', { name: 'キャンセル', exact: true }).click();
     await page.getByRole('button', { name: '教材メニューを開く' }).click();
