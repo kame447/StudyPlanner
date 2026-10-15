@@ -69,7 +69,15 @@ export function readStudySession(userId: string): StudySessionSnapshot | null {
 
 export function writeStudySession(snapshot: StudySessionSnapshot): boolean {
   try {
-    window.localStorage.setItem(key(snapshot.userId), JSON.stringify(snapshot));
+    const storage = window.localStorage;
+    const current = readStudySession(snapshot.userId);
+    // A retained tab may still edit its copy after another tab saved/discarded
+    // that session and started a new one. It cannot own the newer recovery slot.
+    if (current && current.sessionId !== snapshot.sessionId) return false;
+    // Once dispatched, only the existing inspection snapshot may survive.
+    // Publishing another copy could resurrect a completed session after clear.
+    if (storage.getItem(dispatchKey(snapshot.userId, snapshot.sessionId)) !== null) return false;
+    storage.setItem(key(snapshot.userId), JSON.stringify(snapshot));
     return true;
   } catch { return false; }
 }
