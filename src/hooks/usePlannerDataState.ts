@@ -106,14 +106,14 @@ function getErrorDiagnostics(error: unknown): {
   }
 
   const firebaseError = error as {
-    code?: string | null;
-    message?: string | null;
+    code?: unknown;
+    message?: unknown;
     customData?: unknown;
   };
 
   return {
-    code: firebaseError.code?.trim() || null,
-    message: firebaseError.message?.trim() || null,
+    code: typeof firebaseError.code === 'string' ? firebaseError.code.trim() || null : null,
+    message: typeof firebaseError.message === 'string' ? firebaseError.message.trim() || null : null,
     customData: firebaseError.customData,
   };
 }

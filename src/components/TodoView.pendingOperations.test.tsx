@@ -62,8 +62,9 @@ describe('Todo pending operations', () => {
     expect(mutation).toHaveBeenCalledTimes(1);
     expectBusy(renderer.root, 'A', true);
     expectBusy(renderer.root, 'B', false);
-    expect(renderer.root.findAllByType('form')).toHaveLength(0);
+    expect(renderer.root.findAllByType('form')).toHaveLength(action === '編集' || action === '予定にする' ? 1 : 0);
     await act(async () => { pending.resolve(); await pending.promise; });
+    expect(renderer.root.findAllByType('form')).toHaveLength(0);
     expectBusy(renderer.root, 'A', false);
   });
 
@@ -155,8 +156,9 @@ describe('Todo pending operations', () => {
     act(() => { void invoke(); staleClicks.forEach(click => click()); });
     expect(props.onSaveTodo.mock.calls.length + props.onScheduleTodo.mock.calls.length +
       props.onDeleteTodo.mock.calls.length).toBe(1);
-    expect(renderer.root.findAllByType('form')).toHaveLength(0);
+    expect(renderer.root.findAllByType('form')).toHaveLength(action === '編集' || action === '予定にする' ? 1 : 0);
     await act(async () => { pending.resolve(); await pending.promise; });
+    expect(renderer.root.findAllByType('form')).toHaveLength(0);
   });
 
   it('does not dismiss a newer editor when another Todo settles', async () => {
@@ -184,4 +186,97 @@ describe('Todo pending operations', () => {
     await act(async () => invoke());
     expect(props.onSaveTodo).not.toHaveBeenCalled();
   });
+});
+
+describe('Todo editor save recovery', () => {
+  const editorActions = ['編集', '予定にする'] as const;
+  const cancel = (root: ReactTestInstance) => root.findAllByType('button').find(node => node.children.includes('キャンセル'))!;
+
+  it.each(editorActions)('locks %s fields and both dismissal routes synchronously, then restores controls after failure', async action => {
+    const { renderer, props } = mount();
+    const pending = deferred();
+    callback(props, action).mockReturnValueOnce(pending.promise);
+    const invoke = prepare(renderer.root, 'A', action);
+    const controls = renderer.root.findByType('form').findAll(node => ['input', 'select', 'textarea'].includes(String(node.type)));
+    const originalValues = controls.map(node => node.props.value);
+    const staleChanges = controls.map(node => node.props.onChange);
+    const close = cancel(renderer.root).props.onClick;
+    const overlayClose = renderer.root.findByProps({ className: 'overlay modal-overlay' }).props.onClick;
+    const staleChips = renderer.root.findAllByType('button').filter(node => node.props.className?.includes('quick-entry-chip')).map(node => node.props.onClick);
+    act(() => {
+      void invoke(); close(); overlayClose();
+      staleChanges.forEach(change => change({ target: { value: '27' } }));
+      staleChips.forEach(click => click());
+    });
+    expect(callback(props, action)).toHaveBeenCalledTimes(1);
+    expect(renderer.root.findByType('form').props['aria-busy']).toBe(true);
+    for (const control of renderer.root.findByType('form').findAll(node => ['input', 'select', 'textarea', 'button'].includes(String(node.type)))) {
+      expect(control.props.disabled).toBe(true);
+    }
+    expect(renderer.root.findByType('form').findAll(node => ['input', 'select', 'textarea'].includes(String(node.type))).map(node => node.props.value))
+      .toEqual(originalValues);
+    await act(async () => { pending.reject(new Error('保存を確認できません')); await pending.promise.catch(() => undefined); });
+    expect(renderer.root.findByType('form').props['aria-busy']).toBe(false);
+    expect(cancel(renderer.root).props.disabled).toBe(false);
+    expect(renderer.root.findByProps({ role: 'alert' }).children).toContain('保存を確認できません');
+    act(() => cancel(renderer.root).props.onClick());
+    expect(renderer.root.findAllByType('form')).toHaveLength(0);
+    prepare(renderer.root, 'A', action);
+    expect(renderer.root.findAllByProps({ role: 'alert' })).toHaveLength(0);
+  });
+
+  it.each(editorActions.flatMap(action => [false, true].map(reject => ({ action, reject }))))(
+    'keeps newer $action input when the earlier editor settles, rejection=$reject', async ({ action, reject }) => {
+      const { renderer, props } = mount();
+      const pending = deferred();
+      callback(props, action).mockReturnValueOnce(pending.promise);
+      const invoke = prepare(renderer.root, 'A', action);
+      act(() => { void invoke(); });
+      prepare(renderer.root, 'B', action);
+      act(() => renderer.root.findByType('form').findAllByType('input')[0].props.onChange({
+        target: { value: action === '編集' ? 'Bの新しい入力' : '2026-12-31' },
+      }));
+      const before = renderer.root.findByType('form').findAllByType('input').map(node => node.props.value);
+      await act(async () => {
+        if (reject) pending.reject(new Error('古い保存のエラー')); else pending.resolve();
+        await pending.promise.catch(() => undefined);
+      });
+      expect(renderer.root.findAllByType('form')).toHaveLength(1);
+      expect(renderer.root.findByType('form').findAllByType('input').map(node => node.props.value)).toEqual(before);
+      expect(renderer.root.findAllByProps({ role: 'alert' })).toHaveLength(0);
+    },
+  );
+
+  it.each(editorActions)('rejects retained %s submit, fields and close handlers after cancellation and reopening', async action => {
+    const { renderer, props } = mount();
+    const invoke = prepare(renderer.root, 'A', action);
+    const close = cancel(renderer.root).props.onClick;
+    const change = renderer.root.findByType('form').findAllByType('input')[0].props.onChange;
+    act(() => close());
+    prepare(renderer.root, 'B', action);
+    const expected = renderer.root.findByType('form').findAllByType('input')[0].props.value;
+    act(() => { void invoke(); change({ target: { value: 'stale input' } }); close(); });
+    expect(callback(props, action)).not.toHaveBeenCalled();
+    expect(renderer.root.findAllByType('form')).toHaveLength(1);
+    expect(renderer.root.findByType('form').findAllByType('input')[0].props.value).toBe(expected);
+  });
+
+  it.each(editorActions.flatMap(action => [false, true].map(reject => ({ action, reject }))))(
+    'ignores old-owner $action settlement after owner A → B → A, rejection=$reject', async ({ action, reject }) => {
+      const { renderer, props, update } = mount();
+      const pending = deferred();
+      callback(props, action).mockReturnValueOnce(pending.promise);
+      const invoke = prepare(renderer.root, 'A', action);
+      act(() => { void invoke(); });
+      update('other'); update('owner');
+      prepare(renderer.root, 'A', action);
+      await act(async () => {
+        if (reject) pending.reject(new Error('古いアカウントのエラー')); else pending.resolve();
+        await pending.promise.catch(() => undefined);
+      });
+      expect(renderer.root.findAllByType('form')).toHaveLength(1);
+      expect(renderer.root.findByType('form').props['aria-busy']).toBe(false);
+      expect(renderer.root.findAllByProps({ role: 'alert' })).toHaveLength(0);
+    },
+  );
 });

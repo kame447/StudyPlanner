@@ -175,6 +175,12 @@ function TodoViewSession({
     done: false,
   });
   const [editingTodo, setEditingTodo] = useState<TodoTask | null>(null);
+  const editSession = useRef<object | null>(null);
+  const scheduleSession = useRef<object | null>(null);
+  const [editError, setEditError] = useState('');
+  const [scheduleError, setScheduleError] = useState('');
+  const editSessionToken = editSession.current;
+  const scheduleSessionToken = scheduleSession.current;
   const [editDraft, setEditDraft] = useState<TodoTaskDraft | null>(null);
   const [schedulingTodo, setSchedulingTodo] = useState<TodoTask | null>(null);
   const [scheduleDate, setScheduleDate] = useState(selectedDate || todayIsoDate());
@@ -201,7 +207,11 @@ function TodoViewSession({
       !pendingTodoIds.current.has(todo.id);
   }
 
-  function runTodoOperation(todo: TodoTask, operation: () => Promise<unknown>) {
+  function runTodoOperation(
+    todo: TodoTask,
+    operation: () => Promise<unknown>,
+    settlement?: { onSuccess: () => void; onError: (error: unknown) => void },
+  ) {
     if (!canOperateTodo(todo)) return false;
     const owner = lifetime.current;
     pendingTodoIds.current.add(todo.id);
@@ -209,8 +219,10 @@ function TodoViewSession({
     void (async () => {
       try {
         await operation();
-      } catch {
-        // The parent mutation owns notices and recovery; this view owns only pending UI.
+        if (lifetime.current === owner) settlement?.onSuccess();
+      } catch (error) {
+        // The parent owns data rollback; the current editor retains its draft.
+        if (lifetime.current === owner) settlement?.onError(error);
       } finally {
         if (lifetime.current === owner) {
           pendingTodoIds.current.delete(todo.id);
@@ -250,6 +262,8 @@ function TodoViewSession({
     key: K,
     value: TodoTaskDraft[K],
   ) {
+    if (!editSessionToken || editSession.current !== editSessionToken ||
+      (editingTodo && pendingTodoIds.current.has(editingTodo.id))) return;
     setEditDraft((current) => {
       if (!current) {
         return current;
@@ -272,17 +286,25 @@ function TodoViewSession({
 
   function openEditModal(todo: TodoTask) {
     if (!canOperateTodo(todo)) return;
+    editSession.current = {};
+    setEditError('');
     setEditingTodo(todo);
     setEditDraft(createTodoDraftFromTask(todo));
   }
 
   function closeEditModal() {
+    if (!editSessionToken || editSession.current !== editSessionToken ||
+      (editingTodo && pendingTodoIds.current.has(editingTodo.id))) return;
+    editSession.current = null;
+    setEditError('');
     setEditingTodo(null);
     setEditDraft(null);
   }
 
   function openScheduleModal(todo: TodoTask) {
     if (!canOperateTodo(todo)) return;
+    scheduleSession.current = {};
+    setScheduleError('');
     setSchedulingTodo(todo);
     setScheduleDate(todo.dueDate ?? selectedDate ?? todayIsoDate());
     setScheduleStartTime('19:00');
@@ -304,6 +326,10 @@ function TodoViewSession({
   }
 
   function closeScheduleModal() {
+    if (!scheduleSessionToken || scheduleSession.current !== scheduleSessionToken ||
+      (schedulingTodo && pendingTodoIds.current.has(schedulingTodo.id))) return;
+    scheduleSession.current = null;
+    setScheduleError('');
     setSchedulingTodo(null);
     setScheduleDate(selectedDate || todayIsoDate());
     setScheduleStartTime('19:00');
@@ -319,7 +345,10 @@ function TodoViewSession({
       return;
     }
 
-    const started = runTodoOperation(editingTodo, () => onSaveTodo(
+    const session = editSessionToken;
+    if (!session || editSession.current !== session || !canOperateTodo(editingTodo)) return;
+    setEditError('');
+    runTodoOperation(editingTodo, () => onSaveTodo(
       {
         ...editDraft,
         userId,
@@ -331,8 +360,19 @@ function TodoViewSession({
         status: editingTodo.status,
       },
       editingTodo.id,
-    ));
-    if (started) closeEditModal();
+    ), {
+      onSuccess: () => {
+        if (editSession.current !== session) return;
+        editSession.current = null;
+        setEditingTodo(null);
+        setEditDraft(null);
+      },
+      onError: (error) => {
+        if (editSession.current === session) {
+          setEditError(error instanceof Error ? error.message : 'Todoを保存できませんでした。もう一度お試しください。');
+        }
+      },
+    });
   }
 
   function updateTodoStatus(todo: TodoTask, status: TodoStatus) {
@@ -362,7 +402,13 @@ function TodoViewSession({
     ));
   }
 
+  function canChangeSchedule() {
+    return scheduleSessionToken !== null && scheduleSession.current === scheduleSessionToken &&
+      schedulingTodo !== null && !pendingTodoIds.current.has(schedulingTodo.id);
+  }
+
   function applyScheduleDuration(value: DurationOptionValue) {
+    if (!canChangeSchedule()) return;
     if (value === 'custom') {
       setIsCustomScheduleDuration(true);
 
@@ -379,6 +425,7 @@ function TodoViewSession({
   }
 
   function updateCustomScheduleDuration(value: string) {
+    if (!canChangeSchedule()) return;
     setCustomScheduleDurationInput(value);
 
     const nextMinutes = Number(value);
@@ -400,7 +447,10 @@ function TodoViewSession({
       return;
     }
 
-    const started = runTodoOperation(schedulingTodo, () => onScheduleTodo(schedulingTodo, {
+    const session = scheduleSessionToken;
+    if (!session || scheduleSession.current !== session || !canOperateTodo(schedulingTodo)) return;
+    setScheduleError('');
+    runTodoOperation(schedulingTodo, () => onScheduleTodo(schedulingTodo, {
       userId,
       title: schedulingTodo.title.trim(),
       subject: schedulingTodo.subject.trim(),
@@ -415,8 +465,18 @@ function TodoViewSession({
       memo: schedulingTodo.memo.trim(),
       sourceType: 'todo',
       sourceId: schedulingTodo.id,
-    }));
-    if (started) closeScheduleModal();
+    }), {
+      onSuccess: () => {
+        if (scheduleSession.current !== session) return;
+        scheduleSession.current = null;
+        setSchedulingTodo(null);
+      },
+      onError: (error) => {
+        if (scheduleSession.current === session) {
+          setScheduleError(error instanceof Error ? error.message : '予定を保存できませんでした。もう一度お試しください。');
+        }
+      },
+    });
   }
 
   function renderTodo(todo: TodoTask) {
@@ -696,6 +756,7 @@ function TodoViewSession({
             className="modal-card todo-edit-modal"
             onClick={(event) => event.stopPropagation()}
             onSubmit={handleEditSubmit}
+            aria-busy={savingTodoIds.has(editingTodo.id)}
           >
             <div className="section-header todo-edit-header">
               <div>
@@ -709,6 +770,7 @@ function TodoViewSession({
             <label className="field">
               <span>タイトル</span>
               <input
+                disabled={savingTodoIds.has(editingTodo.id)}
                 value={editDraft.title}
                 onChange={(event) => updateEditDraft('title', event.target.value)}
               />
@@ -718,6 +780,7 @@ function TodoViewSession({
               <label className="field">
                 <span>教科</span>
                 <input
+                  disabled={savingTodoIds.has(editingTodo.id)}
                   value={editDraft.subject}
                   onChange={(event) =>
                     updateEditDraft('subject', event.target.value)
@@ -729,6 +792,7 @@ function TodoViewSession({
                 <label className="field">
                   <span>種別</span>
                   <select
+                    disabled={savingTodoIds.has(editingTodo.id)}
                     value={editDraft.type}
                     onChange={(event) =>
                       updateEditDraft('type', event.target.value as PlanType)
@@ -748,6 +812,7 @@ function TodoViewSession({
                     type="number"
                     min="0"
                     step="1"
+                    disabled={savingTodoIds.has(editingTodo.id)}
                     value={editDraft.estimatedMinutes ?? ''}
                     onChange={(event) =>
                       updateEditDraft(
@@ -764,6 +829,7 @@ function TodoViewSession({
                   <span>締切日</span>
                   <input
                     type="date"
+                    disabled={savingTodoIds.has(editingTodo.id)}
                     value={editDraft.dueDate ?? ''}
                     onChange={(event) =>
                       updateEditDraft('dueDate', event.target.value || null)
@@ -776,7 +842,7 @@ function TodoViewSession({
                   <input
                     type="time"
                     value={editDraft.dueTime ?? ''}
-                    disabled={!editDraft.dueDate}
+                    disabled={savingTodoIds.has(editingTodo.id) || !editDraft.dueDate}
                     onChange={(event) =>
                       updateEditDraft('dueTime', event.target.value || null)
                     }
@@ -788,15 +854,18 @@ function TodoViewSession({
             <label className="field">
               <span>メモ</span>
               <textarea
+                disabled={savingTodoIds.has(editingTodo.id)}
                 value={editDraft.memo}
                 onChange={(event) => updateEditDraft('memo', event.target.value)}
                 rows={3}
               />
             </label>
 
+            {editError && <p className="inline-error" role="alert">{editError}</p>}
             <div className="row-actions todo-edit-actions">
               <button
                 className="ghost-button"
+                disabled={savingTodoIds.has(editingTodo.id)}
                 onClick={closeEditModal}
                 type="button"
               >
@@ -807,7 +876,7 @@ function TodoViewSession({
                 disabled={savingTodoIds.has(editingTodo.id) || !editDraft.title.trim()}
                 type="submit"
               >
-                保存
+                {savingTodoIds.has(editingTodo.id) ? '保存中…' : '保存'}
               </button>
             </div>
           </form>
@@ -820,6 +889,7 @@ function TodoViewSession({
             className="modal-card todo-edit-modal todo-schedule-modal"
             onClick={(event) => event.stopPropagation()}
             onSubmit={handleScheduleSubmit}
+            aria-busy={savingTodoIds.has(schedulingTodo.id)}
           >
             <div className="section-header todo-edit-header">
               <div>
@@ -833,8 +903,9 @@ function TodoViewSession({
                 <span>日付</span>
                 <input
                   type="date"
+                  disabled={savingTodoIds.has(schedulingTodo.id)}
                   value={scheduleDate}
-                  onChange={(event) => setScheduleDate(event.target.value)}
+                  onChange={(event) => { if (canChangeSchedule()) setScheduleDate(event.target.value); }}
                 />
               </label>
 
@@ -842,8 +913,9 @@ function TodoViewSession({
                 <span>開始時刻</span>
                 <input
                   type="time"
+                  disabled={savingTodoIds.has(schedulingTodo.id)}
                   value={scheduleStartTime}
-                  onChange={(event) => setScheduleStartTime(event.target.value)}
+                  onChange={(event) => { if (canChangeSchedule()) setScheduleStartTime(event.target.value); }}
                 />
               </label>
             </div>
@@ -864,6 +936,7 @@ function TodoViewSession({
                       className={
                         isActive ? 'quick-entry-chip active' : 'quick-entry-chip'
                       }
+                      disabled={savingTodoIds.has(schedulingTodo.id)}
                       key={option.label}
                       onClick={() => applyScheduleDuration(option.value)}
                       type="button"
@@ -880,6 +953,7 @@ function TodoViewSession({
                     type="number"
                     min="1"
                     step="1"
+                    disabled={savingTodoIds.has(schedulingTodo.id)}
                     value={customScheduleDurationInput}
                     onChange={(event) =>
                       updateCustomScheduleDuration(event.target.value)
@@ -890,9 +964,11 @@ function TodoViewSession({
               ) : null}
             </section>
 
+            {scheduleError && <p className="inline-error" role="alert">{scheduleError}</p>}
             <div className="row-actions todo-edit-actions">
               <button
                 className="ghost-button"
+                disabled={savingTodoIds.has(schedulingTodo.id)}
                 onClick={closeScheduleModal}
                 type="button"
               >
@@ -909,7 +985,7 @@ function TodoViewSession({
                 }
                 type="submit"
               >
-                保存
+                {savingTodoIds.has(schedulingTodo.id) ? '保存中…' : '保存'}
               </button>
             </div>
           </form>
