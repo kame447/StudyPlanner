@@ -43,7 +43,7 @@ export async function createCandidateManifest<T extends CandidateTuple>(basis: C
   // Snapshot BEFORE await: caller-owned references cannot change what is hashed or returned.
   const snapshot = snapshotCandidateBasis(basis);
   const canonicalSerialization = serializeCandidateBasis(snapshot);
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalSerialization));
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalSerialization));
   const candidateSetHash = `sha256:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
   const manifest: CandidateManifest<T> = Object.freeze({ version: 1, ...snapshot, canonicalSerialization, candidateSetHash });
   manifests.add(manifest);

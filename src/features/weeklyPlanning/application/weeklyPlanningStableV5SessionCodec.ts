@@ -3,6 +3,7 @@ import { compactWeeklyPlanningApprovalRecovery, expandWeeklyPlanningApprovalReco
 import type { PlanningState } from '../types';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { parseWeeklyPlanningFactGraphV5, validateWeeklyPlanningFactGraphValueV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
+import { CONTROLLED_CANDIDATE_SESSION_CAPABILITY, validControlledCandidateSessionRecords } from './weeklyPlanningControlledCandidateQuestion';
 import { validC5SessionRecords } from './c5LocalSelection/basis';
 
 export const WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION =
@@ -16,7 +17,7 @@ const MAX_MESSAGES = MAX_WEEKLY_PLANNING_STORED_MESSAGES;
 export interface WeeklyPlanningStableV5PersistedSession {
   version: typeof WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION;
   /** Older strict readers reject this extension instead of silently dropping consumption. */
-  requiredCapabilities?: readonly [typeof WEEKLY_PLANNING_C5_SESSION_CAPABILITY | typeof WEEKLY_PLANNING_C5_BOUND_PRESENTATION_CAPABILITY];
+  requiredCapabilities?: readonly [typeof WEEKLY_PLANNING_C5_SESSION_CAPABILITY | typeof WEEKLY_PLANNING_C5_BOUND_PRESENTATION_CAPABILITY | typeof CONTROLLED_CANDIDATE_SESSION_CAPABILITY];
   ownerId: string;
   weekStartDate: string;
   conversationId: string;
@@ -117,7 +118,8 @@ function createPersistedEnvelope(params: {
   return {
     version: WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION,
     ...(params.planningState.intakeState?.c5SelectionLedger
-      ? { requiredCapabilities: [params.planningState.intakeState.lastQuestionContext?.c5?.question.presentedQuestion
+      ? { requiredCapabilities: [params.planningState.intakeState.controlledCandidateProtocolVersion === 1
+          ? CONTROLLED_CANDIDATE_SESSION_CAPABILITY : params.planningState.intakeState.lastQuestionContext?.c5?.question.presentedQuestion
           ? WEEKLY_PLANNING_C5_BOUND_PRESENTATION_CAPABILITY : WEEKLY_PLANNING_C5_SESSION_CAPABILITY] as const } : {}),
     ownerId: params.ownerId,
     weekStartDate: params.weekStartDate,
@@ -164,7 +166,7 @@ export function parseWeeklyPlanningStableV5PersistedSession(params: {
       ])
       || value.version !== WEEKLY_PLANNING_STABLE_V5_SESSION_STORAGE_VERSION
       || (value.requiredCapabilities !== undefined && (!Array.isArray(value.requiredCapabilities)
-        || value.requiredCapabilities.length !== 1 || !([WEEKLY_PLANNING_C5_SESSION_CAPABILITY, WEEKLY_PLANNING_C5_BOUND_PRESENTATION_CAPABILITY] as readonly unknown[]).includes(value.requiredCapabilities[0])))
+        || value.requiredCapabilities.length !== 1 || !([WEEKLY_PLANNING_C5_SESSION_CAPABILITY, WEEKLY_PLANNING_C5_BOUND_PRESENTATION_CAPABILITY, CONTROLLED_CANDIDATE_SESSION_CAPABILITY] as readonly unknown[]).includes(value.requiredCapabilities[0])))
       || value.ownerId !== params.ownerId
       || value.weekStartDate !== params.weekStartDate
       || !isNonEmptyString(value.conversationId)
@@ -176,9 +178,9 @@ export function parseWeeklyPlanningStableV5PersistedSession(params: {
     // V1 never grants selection authority, even if extension-shaped data was injected.
     if (value.requiredCapabilities === undefined && isRecord(value.planningState)
       && isRecord(value.planningState.intakeState)) {
-      const { c5SelectionLedger: _ledger, ...intake } = value.planningState.intakeState;
+      const { c5SelectionLedger: _ledger, controlledCandidateProtocolVersion: _protocol, ...intake } = value.planningState.intakeState;
       if (isRecord(intake.lastQuestionContext)) {
-        const { c5: _snapshot, ...question } = intake.lastQuestionContext;
+        const { c5: _snapshot, controlledCandidate: _controlled, ...question } = intake.lastQuestionContext;
         intake.lastQuestionContext = question;
       }
       value.planningState = { ...value.planningState, intakeState: intake };
@@ -195,10 +197,12 @@ export function parseWeeklyPlanningStableV5PersistedSession(params: {
       })) {
       return null;
     }
-    if (!validC5SessionRecords(value.planningState.intakeState, params.ownerId, value.conversationId)) return null;
+    if (!validC5SessionRecords(value.planningState.intakeState, params.ownerId, value.conversationId)
+      || !validControlledCandidateSessionRecords(value.planningState.intakeState, params.ownerId, value.conversationId)
+      || (value.requiredCapabilities?.[0] === CONTROLLED_CANDIDATE_SESSION_CAPABILITY && value.planningState.intakeState?.controlledCandidateProtocolVersion !== 1)) return null;
     return {
       version: value.version,
-      ...(value.requiredCapabilities !== undefined ? { requiredCapabilities: [value.requiredCapabilities[0] as typeof WEEKLY_PLANNING_C5_SESSION_CAPABILITY | typeof WEEKLY_PLANNING_C5_BOUND_PRESENTATION_CAPABILITY] as const } : {}),
+      ...(value.requiredCapabilities !== undefined ? { requiredCapabilities: [value.requiredCapabilities[0] as typeof WEEKLY_PLANNING_C5_SESSION_CAPABILITY | typeof WEEKLY_PLANNING_C5_BOUND_PRESENTATION_CAPABILITY | typeof CONTROLLED_CANDIDATE_SESSION_CAPABILITY] as const } : {}),
       ownerId: params.ownerId,
       weekStartDate: params.weekStartDate,
       conversationId: value.conversationId,
@@ -252,7 +256,8 @@ export function prepareWeeklyPlanningStableV5Checkpoint(params: {
   if (!graphBelongsToConversation(params.graph, params.conversationId)) {
     return { status: 'invalid' };
   }
-  if (!validC5SessionRecords(params.planningState.intakeState, params.ownerId, params.conversationId)) return { status: 'invalid' };
+  if (!validC5SessionRecords(params.planningState.intakeState, params.ownerId, params.conversationId)
+    || !validControlledCandidateSessionRecords(params.planningState.intakeState, params.ownerId, params.conversationId)) return { status: 'invalid' };
   const planningState = serializablePlanningState(params.planningState);
   if (!params.includeEmpty && isEmptySession(planningState, params.graph)) {
     return { status: 'empty' };

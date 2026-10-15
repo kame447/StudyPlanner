@@ -1,3 +1,7 @@
+import { isNumericPendingQuestionDomainCurrentV5, type NumericPendingPresentedQuestionV5, type NumericPendingQuestionDomainV5 } from './weeklyPlanningNumericPendingDomainV5';
+import type { WeeklyPlanningSemanticCanonicalizationResultV5 } from './weeklyPlanningSemanticCanonicalizerV5';
+import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticTypesV5';
+import { serializeC5ApplicationState } from '../application/c5LocalSelection/basis';
 import { canonicalCandidateSerialization, prepareCandidateSelectionCommit, type AtomicSelectionView, type StagedCandidateSelection, type SelectionLedger, type SelectionCommitOutcome, type SelectionFailure } from '../application/candidateSelection';
 import { numericPendingBoundToInputV5, numericPendingObservationV5, type NumericPendingStateV5, type StagedNumericPendingChoiceV5 } from './weeklyPlanningNumericPendingChoiceV5';
 import { readWeeklyPlanningPendingQuestionV5 } from './weeklyPlanningPendingQuestionV5';
@@ -15,7 +19,8 @@ export interface NumericPendingAtomicViewV5 {
   readonly turnId: string;
 }
 export type NumericPendingCommitPlanV5 = { readonly status: 'rejected'; readonly reason: SelectionFailure }
-  | { readonly status: 'prepared'; readonly graph: WeeklyPlanningFactGraphV5; readonly nextLedger: SelectionLedger };
+  | { readonly status: 'prepared'; readonly graph: WeeklyPlanningFactGraphV5; readonly nextLedger: SelectionLedger;
+      readonly semanticContribution: { readonly document: WeeklyPlanningSemanticDocumentV5; readonly canonicalization: WeeklyPlanningSemanticCanonicalizationResultV5 } };
 export interface NumericPendingControlledCommitPortV5 {
   /** D's controlled consumer must re-read, decide, finalize graph, reducer and checkpoint receipt together.
    * No await after decide; unknown retains recovery and blocks both retry and fallback mutation.
@@ -44,7 +49,8 @@ export function prepareNumericPendingCommitV5(staged: StagedNumericPendingChoice
     const added = applied.graph.effortEstimates.filter(e => !graph.effortEstimates.some(old => old.id === e.id));
     if (added.length !== 1 || added[0].targetFactId !== leaf.targetId || added[0].kind !== leaf.measurement
       || added[0].minutes !== leaf.minutes || added[0].precision !== leaf.precision || added[0].unitCode !== leaf.perUnit) return reject('invalid_leaf');
-    return { status: 'prepared', graph: applied.graph, nextLedger: decision.nextLedger };
+    return { status: 'prepared', graph: applied.graph, nextLedger: decision.nextLedger,
+      semanticContribution: { document: staged.document, canonicalization: applied } };
   } catch { return reject('observation_error'); }
 }
 export async function commitNumericPendingChoiceV5(staged: StagedNumericPendingChoiceV5, port: NumericPendingControlledCommitPortV5): Promise<SelectionCommitOutcome> {
@@ -74,6 +80,7 @@ export interface NumericPendingReducerBridgeV5<State, Receipt> {
 export function createNumericPendingControlledAdapterV5<State, Receipt>(staged: StagedNumericPendingChoiceV5, port: NumericPendingReducerBridgeV5<State, Receipt>): {
   readonly selected: { readonly selection: StagedCandidateSelection; readonly graph: WeeklyPlanningFactGraphV5 };
   readonly branch: 'd5_pending_selection';
+  readonly semanticContribution: { readonly document: WeeklyPlanningSemanticDocumentV5; readonly canonicalization: WeeklyPlanningSemanticCanonicalizationResultV5 };
   prepare(): Receipt | null;
 } | null {
   try {
@@ -87,7 +94,7 @@ export function createNumericPendingControlledAdapterV5<State, Receipt>(staged: 
     if (plan.status !== 'prepared' || canonicalCandidateSerialization(port.readRuntimeGraph()) !== canonicalCandidateSerialization(initial.input.committedGraph)) return null;
     const graph = plan.graph;
     return {
-      selected: { selection: staged.selection, graph }, branch: 'd5_pending_selection',
+      selected: { selection: staged.selection, graph }, branch: 'd5_pending_selection', semanticContribution: plan.semanticContribution,
       prepare() {
         try {
           const live = port.readCurrent();
@@ -98,13 +105,13 @@ export function createNumericPendingControlledAdapterV5<State, Receipt>(staged: 
             || canonicalCandidateSerialization(port.readRuntimeGraph()) !== canonicalCandidateSerialization(live.input.committedGraph)) return null;
           const observation = numericPendingObservationV5(live.state, live.domainMinutes, live.domainPolicyVersion);
           const ledger = projectLedger(live.ledger);
-          const evidence = canonicalCandidateSerialization({ input: live.input, observation, ledger: live.ledger, turnId: live.turnId });
+          const evidence = serializeC5ApplicationState({ input: live.input, observation, ledger: live.ledger, turnId: live.turnId });
           return port.prepareLocalCandidateReducerCommit({ selection: staged.selection, current: live.current, ledger: live.ledger,
             view: { observation, ledger, validateLeaf: candidate => canonicalCandidateSerialization(candidate) === canonicalCandidateSerialization(staged.selection.candidate) },
             revalidateFinalized() {
               try {
                 const current = port.readCurrent();
-                return matchingStateLedger(current) && canonicalCandidateSerialization({ input: current.input,
+                return matchingStateLedger(current) && serializeC5ApplicationState({ input: current.input,
                   observation: numericPendingObservationV5(current.state, current.domainMinutes, current.domainPolicyVersion), ledger: current.ledger, turnId: current.turnId }) === evidence
                   && canonicalCandidateSerialization(port.readRuntimeGraph()) === canonicalCandidateSerialization(graph);
               } catch { return false; }
@@ -114,4 +121,30 @@ export function createNumericPendingControlledAdapterV5<State, Receipt>(staged: 
       },
     };
   } catch { return null; }
+}
+
+/** Strict registered-domain handoff; no absent question-time record may reach a receipt. */
+export function createFrozenNumericPendingControlledAdapterV5<State, Receipt>(
+  staged: StagedNumericPendingChoiceV5,
+  port: NumericPendingReducerBridgeV5<State, Receipt> & { readPresentedQuestion(): NumericPendingPresentedQuestionV5 | null },
+  snapshot: NumericPendingQuestionDomainV5 | null,
+) {
+  if (!snapshot) return null;
+  const selected = staged.selection.manifest.binding;
+  const shown = (selected.question as typeof selected.question & { presentedQuestion?: NumericPendingPresentedQuestionV5 }).presentedQuestion;
+  try {
+    if (canonicalCandidateSerialization(selected.scope) !== canonicalCandidateSerialization(snapshot.binding.scope)
+      || canonicalCandidateSerialization(staged.selection.candidate.tuple.scope) !== canonicalCandidateSerialization(snapshot.binding.scope)
+      || !shown || canonicalCandidateSerialization(shown) !== canonicalCandidateSerialization(snapshot.presentedQuestion)) return null;
+  } catch { return null; }
+  return createNumericPendingControlledAdapterV5(staged, {
+    ...port,
+    readCurrent() {
+      const view = port.readCurrent();
+      if (!isNumericPendingQuestionDomainCurrentV5(snapshot, { input: view.input, state: view.state,
+        domainMinutes: view.domainMinutes, domainPolicyVersion: view.domainPolicyVersion,
+        presentedQuestion: port.readPresentedQuestion() })) throw new Error('Numeric question domain no longer current.');
+      return view;
+    },
+  });
 }
