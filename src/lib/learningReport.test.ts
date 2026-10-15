@@ -8,7 +8,7 @@ import {
   getLearningReportRange,
   shiftLearningReportAnchor,
 } from './learningReport';
-import type { Actual, Plan, StudyMaterial, StudySubject } from '../types/domain';
+import type { Actual, MonthEvent, Plan, StudyMaterial, StudySubject } from '../types/domain';
 
 const timestamp = '2026-08-01T00:00:00.000Z';
 
@@ -384,4 +384,28 @@ describe('learning report material options', () => {
       { value: 'material:material-math', label: '線形代数' },
     ]);
   });
+});
+
+
+it('excludes major-event actuals from every learning total without losing real study or unknown sources', () => {
+  const event: MonthEvent = { id: 'job', userId: 'user-1', date: '2026-10-01', title: '塾バイト',
+    startTime: '17:00', endTime: '21:30', repeat: 'none', repeatUntil: null, excludedDates: [],
+    url: '', memo: '', checklist: [], locationTags: [], createdAt: timestamp, updatedAt: timestamp };
+  const nonstudy = makeActual({ id: 'job-actual', planId: event.id, title: event.title,
+    actualStartTime: '17:00', actualEndTime: '21:30' });
+  const linked = makeActual({ planId: 'plan-1', actualEndTime: '09:30' });
+  const standalone = makeActual({ id: 'standalone', actualEndTime: '09:20' });
+  const orphan = makeActual({ id: 'orphan', planId: 'deleted-study', actualEndTime: '09:10' });
+  const input = { plans: [makePlan()], monthEvents: [event],
+    actuals: [nonstudy, { ...nonstudy, id: 'old-job', occurrenceDate: '2025-01-01' }, linked, standalone, orphan], subjects, materials };
+  const snapshot = JSON.stringify(input);
+  const overview = buildLearningReportOverview({ ...input, referenceDate: '2026-08-24' });
+  expect([overview.todayMinutes, overview.weekMinutes, overview.monthMinutes, overview.lifetimeMinutes]).toEqual([60, 60, 60, 60]);
+  for (const scope of ['day', 'week', 'month'] as const) {
+    const report = buildLearningReportModel({ ...input, scope, anchorDate: '2026-08-24', materialFilter: ALL_MATERIALS_FILTER });
+    expect(report.actualMinutes).toBe(60);
+    expect(report.buckets.reduce((sum, bucket) => sum + bucket.actualMinutes, 0)).toBe(60);
+    expect(report.breakdown.reduce((sum, entry) => sum + entry.minutes, 0)).toBe(60);
+  }
+  expect(JSON.stringify(input)).toBe(snapshot);
 });

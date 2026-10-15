@@ -1,7 +1,7 @@
 import { collection, doc, getDocFromServer, getDocsFromServer, query, runTransaction, where, type Firestore } from 'firebase/firestore';
-import { isCurrentScheduleEventMigration, scheduleEventToPlan, type ScheduleEvent } from '../domain/scheduleEvent';
+import { isCurrentScheduleEventMigration, scheduleEventToMonthEvent, scheduleEventToPlan, type ScheduleEvent } from '../domain/scheduleEvent';
 import { todayIsoDate } from '../lib/date';
-import type { Actual, Plan } from '../types/domain';
+import type { Actual, MonthEvent, Plan } from '../types/domain';
 import type { ConfirmedStudyHistory } from './confirmedStudyHistory';
 import { dedupeLinkedActualRecords, normalizeActualRecord } from './repositoryUtils';
 import {
@@ -37,17 +37,19 @@ export function createFirebaseStudyStreakRepository(db: Firestore, receipt?: Con
     const [marker, actuals, events] = await Promise.all([
       getDocFromServer(doc(db, 'schedule_event_migrations', userId)),
       getDocsFromServer(query(collection(db, 'actuals'), where('userId', '==', userId))),
-      getDocsFromServer(query(collection(db, 'schedule_events'), where('userId', '==', userId), where('provenance.legacy.kind', '==', 'plan'))),
+      getDocsFromServer(query(collection(db, 'schedule_events'), where('userId', '==', userId))),
     ]);
     for (const snapshot of [marker, actuals, events]) assertServerConfirmed(snapshot.metadata);
     if (!marker.exists() || !isCurrentScheduleEventMigration(marker.data())) {
       throw new Error('予定の読み込みが完了してから、もう一度開いてください。');
     }
-    const plans = events.docs.map(row => scheduleEventToPlan({ ...row.data(), id: row.id } as ScheduleEvent))
+    const scheduleEvents = events.docs.map(row => ({ ...row.data(), id: row.id } as ScheduleEvent));
+    const plans = scheduleEvents.map(scheduleEventToPlan)
       .filter((plan): plan is Plan => plan !== null);
+    const monthEvents = scheduleEvents.map(scheduleEventToMonthEvent).filter((event): event is MonthEvent => event !== null);
     const actualRows = dedupeLinkedActualRecords(actuals.docs.map(row => normalizeActualRecord({ ...row.data(), id: row.id } as Actual)));
-    if ([...plans, ...actualRows].some(row => row.userId !== userId)) throw new Error('学習履歴の利用者が一致しません。');
-    return { userId, plans, actuals: actualRows, historyComplete: true };
+    if ([...scheduleEvents, ...actualRows].some(row => row.userId !== userId)) throw new Error('学習履歴の利用者が一致しません。');
+    return { userId, plans, monthEvents, actuals: actualRows, historyComplete: true };
   }
   return {
     canUseRestDays: true,

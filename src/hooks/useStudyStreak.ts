@@ -22,7 +22,7 @@ export function useStudyStreak(userId: string, today: string, repository: StudyS
   const committed = useRef({ userId, today, repository, hint, active });
   useLayoutEffect(() => { committed.current = { userId, today, repository, hint, active }; });
   const matches = (previous: HistoryState) => previous.userId === userId && previous.repository === repository
-    && previous.hint?.plans === hint?.plans && previous.hint?.actuals === hint?.actuals;
+    && previous.hint?.plans === hint?.plans && previous.hint?.actuals === hint?.actuals && previous.hint?.monthEvents === hint?.monthEvents;
   const matchesInput = matches(state);
   const history = matchesInput ? state.history : null;
   const model = useMemo(() => history ? buildStudyStreakModel({ ...history, today }) : null, [history, today]);
@@ -40,7 +40,7 @@ export function useStudyStreak(userId: string, today: string, repository: StudyS
     const current = () => committed.current.active && epoch === lifetime.current && !controller.signal.aborted
       && committed.current.userId === userId && committed.current.repository === repository
       && committed.current.today === today && committed.current.hint?.plans === hint?.plans
-      && committed.current.hint?.actuals === hint?.actuals;
+      && committed.current.hint?.actuals === hint?.actuals && committed.current.hint?.monthEvents === hint?.monthEvents;
     setState(previous => ({ userId, repository, hint,
       history: matches(previous) ? previous.history : repository.peek?.(userId, hint) ?? null,
       refreshing: true, readError: null }));
@@ -51,7 +51,7 @@ export function useStudyStreak(userId: string, today: string, repository: StudyS
       try {
         accepted = await repository.read(userId, { hint, today, refresh: request.force });
         if (!current()) return;
-        if (accepted.userId !== userId || !accepted.historyComplete) throw new Error('学習履歴を確認できませんでした。');
+        if (accepted.userId !== userId || !accepted.historyComplete || !Array.isArray(accepted.monthEvents)) throw new Error('学習履歴を確認できませんでした。');
         setState({ userId, repository, hint, history: accepted, refreshing: true, readError: null });
       } catch (error) {
         if (current()) setState(previous => ({ ...previous, refreshing: false,
@@ -68,7 +68,7 @@ export function useStudyStreak(userId: string, today: string, repository: StudyS
             setSaving(true);
             const next = await repository.useRestDay(accepted, date, today, { signal: controller.signal });
             if (!current()) return;
-            if (next.userId !== userId || !next.historyComplete || !next.restDays.some(day => day.date === date)) {
+            if (next.userId !== userId || !next.historyComplete || !Array.isArray(next.monthEvents) || !next.restDays.some(day => day.date === date)) {
               throw new Error('お休みチケットの保存を確認できませんでした。');
             }
             accepted = next;
@@ -85,7 +85,7 @@ export function useStudyStreak(userId: string, today: string, repository: StudyS
       }
     })().finally(() => { if (epoch === lifetime.current) busy.current = false; });
     return () => { controller.abort(); lifetime.current += 1; busy.current = false; };
-  }, [userId, today, repository, hint?.plans, hint?.actuals, request, active]);
+  }, [userId, today, repository, hint?.plans, hint?.actuals, hint?.monthEvents, request, active]);
 
   useEffect(() => {
     if (!active || typeof window === 'undefined' || typeof document === 'undefined'

@@ -15,7 +15,7 @@ import { canRecordProgressActual, DEFAULT_STUDY_PROGRESS_PREFERENCES, isIncluded
 import {
   normalizeStudyRecordsForDisplay,
 } from './studyRecords';
-import type { Actual, Plan, TodoTask } from '../types/domain';
+import type { Actual, MonthEvent, Plan, TodoTask } from '../types/domain';
 import { calculateStudyStreaks } from './studyStreak';
 
 export interface HomeDayProgress {
@@ -94,10 +94,17 @@ function buildUpcomingPlans(plans: Plan[], today: string): Plan[] {
   return sortByDateTime(projected).slice(0, 6);
 }
 
-function resolveStudyActuals(plans: Plan[], actuals: Actual[], preferences: StudyProgressPreferences): Actual[] {
+function resolveStudyActuals(
+  plans: Plan[],
+  actuals: Actual[],
+  monthEvents: MonthEvent[],
+  preferences: StudyProgressPreferences,
+): Actual[] {
   const studyActualIds = new Set(
-    normalizeStudyRecordsForDisplay({ actuals, plans })
-      .filter((record) => !record.plan || isIncludedInStudyProgress(record.plan, preferences))
+    normalizeStudyRecordsForDisplay({ actuals, plans, monthEvents })
+      .filter((record) => record.monthEvent
+        ? preferences.includeGeneralEvents
+        : !record.plan || isIncludedInStudyProgress(record.plan, preferences))
       .map((record) => record.actualId),
   );
 
@@ -107,12 +114,14 @@ function resolveStudyActuals(plans: Plan[], actuals: Actual[], preferences: Stud
 export function buildHomeDashboardModel({
   plans,
   actuals,
+  monthEvents = [],
   todos,
   now = new Date(),
   progressPreferences = DEFAULT_STUDY_PROGRESS_PREFERENCES,
 }: {
   plans: Plan[];
   actuals: Actual[];
+  monthEvents?: MonthEvent[];
   todos: TodoTask[];
   now?: Date;
   progressPreferences?: StudyProgressPreferences;
@@ -122,7 +131,7 @@ export function buildHomeDashboardModel({
   const todayPlans = sortByDateTime(expandPlansForDate(plans, today));
   const todayStudyPlans = todayPlans.filter((plan) => isIncludedInStudyProgress(plan, progressPreferences));
   const upcomingPlans = buildUpcomingPlans(plans, today);
-  const studyActuals = resolveStudyActuals(plans, actuals, progressPreferences);
+  const studyActuals = resolveStudyActuals(plans, actuals, monthEvents, progressPreferences);
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
   );

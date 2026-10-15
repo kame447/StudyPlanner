@@ -7,13 +7,14 @@ import { SplashScreen } from './components/SplashScreen';
 import { RootStartupReadyProvider } from './components/RootStartupReadyContext';
 import { AuthScreen } from './components/AuthScreen';
 import { PrimaryAppHeader } from './components/PrimaryAppHeader';
+import { StudyStreakProvider } from './components/StudyStreakContext';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
 import { PlannerDataRecoveryNotice } from './components/PlannerDataRecoveryNotice';
 import { HomeScheduleView } from './components/HomeScheduleView';
 import { HomeAddFlow } from './components/HomeAddFlow';
 import { PrimaryBottomNav } from './components/PrimaryBottomNav';
 import { usePlannerAppState } from './hooks/usePlannerAppState';
-import type { User } from './types/domain';
+import type { MonthEvent, User } from './types/domain';
 
 const fixture = vi.hoisted(() => ({
   state: {} as Partial<ReturnType<typeof usePlannerAppState>>,
@@ -315,4 +316,22 @@ it.each(['owner-a', 'owner-b'])('defers first hidden planner layout and retains 
   await navigate('/');
   expect(renderer!.root.findByType(HomeScheduleView)).not.toBe(home);
   expect(fixture.homeSurfaceMount).toHaveBeenCalledTimes(2);
+});
+
+
+it('forwards the same major-event snapshot to streak history and the persistent header', () => {
+  const event: MonthEvent = { id: 'job', userId: 'owner-a', date: '2026-07-14', title: '塾バイト',
+    startTime: '17:00', endTime: '21:30', repeat: 'none', repeatUntil: null, excludedDates: [],
+    url: '', memo: '', checklist: [], locationTags: [], createdAt: '', updatedAt: '' };
+  fixture.state = { ...fixture.state, monthEvents: [event] };
+  act(() => { renderer = create(<App />); });
+  const verifySources = () => {
+    expect(renderer!.root.findByType(StudyStreakProvider).props.monthEvents).toBe(fixture.state.monthEvents);
+    expect(renderer!.root.findByType(PrimaryAppHeader).props.monthEvents).toBe(fixture.state.monthEvents);
+    expect(renderer!.root.findByType(HomeScheduleView).props.monthEvents).toBe(fixture.state.monthEvents);
+  };
+  verifySources();
+  fixture.state = { ...fixture.state, monthEvents: [{ ...event, date: '2026-08-01' }] };
+  act(() => renderer!.update(<App />));
+  verifySources();
 });

@@ -65,3 +65,25 @@ describe('rest-date persistence', () => {
     await expect(f.streak.useRestDay(history, '2026-10-08', '2026-10-09')).rejects.toThrow();
   });
 });
+
+it('reads complete local major-event sources, preserves rest storage, and refuses corrupt legacy event storage', async () => {
+  const f = await fixture();
+  const job = { id: 'job', userId: 'owner', title: '塾バイト', date: '2026-10-07', startTime: '17:00', endTime: '21:30',
+    repeat: 'none' as const, repeatUntil: null, excludedDates: [], url: '', memo: '', checklist: [], locationTags: [], createdAt: '', updatedAt: '' };
+  await f.repository.upsertMonthEvent(job);
+  await f.repository.upsertActual(actual({ id: 'actual-6', planId: job.id, occurrenceDate: '2026-10-07' }));
+  const restKey = 'studyplanner.studyRestDays.v1:owner';
+  const storedRest = JSON.stringify({ schemaVersion: 1, userId: 'owner', revision: 1, dates: ['2026-10-08'] });
+  f.storage.setItem(restKey, storedRest);
+  const actuals = await f.repository.getActuals('owner');
+  const history = await f.streak.read('owner');
+  expect(history.monthEvents).toEqual([expect.objectContaining(job)]);
+  expect(buildStudyStreakModel({ ...history, today: '2026-10-09' }))
+    .toMatchObject({ earnedTickets: 0, protectedDates: [], unprotectedRestDates: ['2026-10-08'] });
+  expect(f.storage.getItem(restKey)).toBe(storedRest);
+  expect(await f.repository.getActuals('owner')).toEqual(actuals);
+  f.storage.setItem('studyplanner.monthEvents', '{invalid');
+  await expect(f.streak.read('owner')).rejects.toThrow();
+  expect(f.storage.getItem('studyplanner.monthEvents')).toBe('{invalid');
+  expect(f.storage.getItem(restKey)).toBe(storedRest);
+});
