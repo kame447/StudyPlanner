@@ -2,6 +2,7 @@ import {
   getDefaultMaterialDetailPreferences,
   isRecordForMaterial,
   type MaterialDetailPreferences,
+  type MaterialStructureItem,
 } from './bookshelfMaterialDetails';
 import type { Actual, MaterialStudyStatus, StudyMaterial } from '../types/domain';
 
@@ -71,6 +72,14 @@ export function selectRecentBookshelfMaterials(
     .slice(0, 3);
 }
 
+function prepareStructureItems(items: MaterialStructureItem[]): MaterialStructureItem[] {
+  return items.map(item => ({
+    ...item,
+    title: item.title.trim(),
+    ...(item.children ? { children: prepareStructureItems(item.children) } : {}),
+  })).filter(item => item.title.length > 0);
+}
+
 export function prepareBookshelfStructurePreferences(
   preferences: MaterialDetailPreferences,
 ): MaterialDetailPreferences {
@@ -79,8 +88,6 @@ export function prepareBookshelfStructurePreferences(
     structureVisible: preferences.structureEnabled
       ? preferences.structureVisible
       : false,
-    structureItems: preferences.structureItems
-      .map((item) => ({ ...item, title: item.title.trim() }))
-      .filter((item) => item.title.length > 0),
+    structureItems: prepareStructureItems(preferences.structureItems),
   };
 }

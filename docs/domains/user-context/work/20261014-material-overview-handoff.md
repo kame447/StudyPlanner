@@ -1,5 +1,18 @@
 # Material overview and table of contents UI
 
+## Active follow-up: nested contents editing (2026-10-15 UTC)
+
+- Owner: UI umbrella #483. PR665 is merged; PR676 owns unconfigured totals and is not this editing repair. Current Issue483/comments, all open PRs and all remote branches were inspected before implementation; no active nested-editor owner found.
+- Branch: `fix/material-contents-nested-editing`, base/initial HEAD `db752a8a48241bdf69a0b4a8e71cb4462fbf9692`. No remote write or new Issue/PR by this worker.
+- Reproduction: photographed chapter/section/subsection persists and renders in details, but reopening the editor exposes only the root chapter. An independent component test fails expected 3 title inputs vs actual 1.
+- Scope: recursively edit the existing children tree, immutable ID-targeted update/remove, in-memory draft/display duplicate-ID repair (persisted only by explicit editor save), stable input keys, save/reload/cancel and descendant deletion tests. No new persistence schema or photo/provider changes.
+- Implemented: ordinary editor renders all descendants with stable unique keys and hierarchy labels; title/pages/progress update and deletion target one ID across the existing tree. A deleted parent takes its subtree, preserving the former root deletion contract. Empty names block saving rather than silently dropping descendants. Unique original IDs are preserved; cross-level/sibling/new-item ID collisions are repaired only in memory until the editor is explicitly saved.
+- Verification: 8 focused suites / 56 tests passed with the unmodified Vite config and supported `DEV_LAN_HOST=127.0.0.1` override. `npm run typecheck:app`, `node --check tests/e2e/bookshelf-surface.spec.mjs`, and `git diff --check` passed. Node24.19.0 / Vitest3.2.7 / existing shared dependencies; 2,258 non-doc source files and 19,329 installed dependency input files matched before/after (one Vitest result cache changed as expected; not an installed input). No dependency/config changes.
+- Failure classification: the initial old selector-model assertion deliberately preserved child whitespace because child editing was absent; it now asserts recursive title trimming plus full draft/other-field preservation. The initial duplicate-key warning came from the read-only detail rendering of malformed saved IDs; display and editor now use the same in-memory identity normalization without altering stored data until editor save. Tests were retained, not weakened.
+- Native acceptance prepared: the existing 390/1280 synthetic-photo cases now include three levels, saved reopen, editing a subsection's title/pages, focus retention, saved reload and precise subtree deletion. Syntax checked only; local browser EPERM was not retried or bypassed. Integration owner owns combined verification/build, exact-head browser/visual execution and publication. No main/push/PR action by this worker.
+
+## Historical initial implementation
+
 - Owner branch: `fix/material-overview-20261014`, base `70953efd`.
 - Tracking: existing UI umbrella #483. GitHub open PR search, material branch search and all-state bookshelf/目次 searches found no active matching UI implementation. Historical metadata/TOC work is #187; no new Issue or PR created by this worker.
 - Scope: hide unconfigured progress, remove disabled-feature prompts and duplicate logs/plans from overview, rename structure to 目次, clarify fields and fix narrow editor layout.

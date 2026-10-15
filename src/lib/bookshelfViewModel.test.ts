@@ -170,7 +170,7 @@ describe('selectRecentBookshelfMaterials', () => {
 });
 
 describe('prepareBookshelfStructurePreferences', () => {
-  it('trims top-level titles and drops empty items without changing nested data or the draft', () => {
+  it('trims titles at every editable level without mutating the draft or other item fields', () => {
     const preferences: MaterialDetailPreferences = {
       structureEnabled: true,
       structureVisible: true,
@@ -182,7 +182,7 @@ describe('prepareBookshelfStructurePreferences', () => {
           startUnit: 0,
           endUnit: 100,
           progressRate: 25,
-          children: [{ id: 'child', title: ' 子項目 ' }],
+          children: [{ id: 'child', title: ' 子項目 ', children: [{ id: 'grandchild', title: ' 小節 ' }] }],
         },
         { id: 'empty', title: ' \t　', children: [{ id: 'orphan', title: 'child' }] },
         { id: 'last', title: '応用編' },
@@ -195,7 +195,7 @@ describe('prepareBookshelfStructurePreferences', () => {
     expect(prepared).toEqual({
       ...original,
       structureItems: [
-        { ...original.structureItems[0], title: '基礎編' },
+        { ...original.structureItems[0], title: '基礎編', children: [{ id: 'child', title: '子項目', children: [{ id: 'grandchild', title: '小節' }] }] },
         original.structureItems[2],
       ],
     });
