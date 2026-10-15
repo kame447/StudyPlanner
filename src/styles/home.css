@@ -670,7 +670,7 @@
   visibility: hidden;
   transform: translateX(calc(50% + 22px)) scale(0.72);
   transition: opacity 180ms ease-out,
-    transform 320ms var(--ui-motion-spring), visibility 0s 320ms;
+    transform 320ms var(--motion-ease-emphasized), visibility 0s 320ms;
 }
 
 .is-open > .home-add-action {
@@ -694,7 +694,7 @@
   justify-self: center;
   width: 100%;
   z-index: 1;
-  transition: width 320ms var(--ui-motion-spring);
+  transition: width 320ms var(--motion-ease-emphasized);
   background: var(--accent);
   color: #fff;
 }
@@ -704,19 +704,17 @@
 }
 
 .home-add-toggle svg {
-  transition: transform 240ms var(--ui-motion-spring);
+  transition: transform 240ms var(--motion-ease-emphasized);
 }
 
 .home-add-toggle.is-open svg {
   transform: rotate(45deg);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .home-add-action,
-  .home-add-controls > .home-add-toggle,
-  .home-add-toggle svg {
-    transition: none;
-  }
+:root:not([data-motion='standard']) .home-add-action,
+:root:not([data-motion='standard']) .home-add-controls > .home-add-toggle,
+:root:not([data-motion='standard']) .home-add-toggle svg {
+  transition: none;
 }
 
 .home-add-action span {

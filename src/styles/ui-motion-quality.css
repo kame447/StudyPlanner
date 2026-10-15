@@ -6,11 +6,8 @@
  * decorative motion and avoid full-screen blur, which is expensive on mobile GPUs.
  */
 
-:root {
-  --ui-motion-fast: 150ms;
-  --ui-motion-base: 210ms;
-  --ui-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
-}
+/* Durations, easing and distances come from motion.css, so the user's
+   標準/控えめ/オフ level applies here without per-rule overrides. */
 
 /* Perceived loading ------------------------------------------------------- */
 /* Lazy routes should not replace the current shell with a second full-screen
@@ -38,19 +35,19 @@
 /* Home performs precise geometry measurements to fit the viewport. Keep its
    entrance opacity-only so animation transforms cannot perturb those readings. */
 .home-main > .home-dashboard {
-  animation: ui-surface-fade var(--ui-motion-fast) ease-out both;
+  animation: ui-surface-fade var(--motion-duration-fast) ease-out both;
 }
 
 .home-main > .ai-planning-view,
 .section-stack > .schedule-month-view,
 .section-stack > .bookshelf-view {
-  animation: ui-surface-enter var(--ui-motion-base) var(--ui-motion-spring) both;
+  animation: ui-surface-enter var(--motion-duration-base) var(--motion-ease-emphasized) both;
 }
 
 /* A transformed route would contain the timetable's fixed editor overlay.
    Fade only, and leave no animation-created stacking context after entry. */
 .section-stack > .timetable-view {
-  animation: ui-surface-fade var(--ui-motion-fast) ease-out backwards;
+  animation: ui-surface-fade var(--motion-duration-fast) ease-out backwards;
 }
 
 @keyframes ui-surface-fade {
@@ -66,7 +63,7 @@
 @keyframes ui-surface-enter {
   from {
     opacity: 0;
-    transform: translate3d(0, 7px, 0);
+    transform: translate3d(0, var(--motion-distance-sm), 0);
   }
 
   to {
@@ -78,7 +75,7 @@
 /* Home: reward and visual hierarchy -------------------------------------- */
 .home-streak-flame {
   transform-origin: 50% 82%;
-  animation: ui-streak-pop 520ms var(--ui-motion-spring) both;
+  animation: ui-streak-pop 520ms var(--motion-ease-emphasized) both;
 }
 
 @keyframes ui-streak-pop {
@@ -100,14 +97,14 @@
 
 .home-next-card {
   transition:
-    transform var(--ui-motion-base) var(--ui-motion-spring),
-    border-color var(--ui-motion-fast) ease-out,
-    box-shadow var(--ui-motion-base) ease-out;
+    transform var(--motion-duration-base) var(--motion-ease-emphasized),
+    border-color var(--motion-duration-fast) ease-out,
+    box-shadow var(--motion-duration-base) ease-out;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .home-next-card:hover {
-    transform: translate3d(0, -2px, 0);
+    transform: translate3d(0, calc(var(--motion-distance-sm) * -0.34), 0);
     border-color: color-mix(in srgb, var(--accent) 24%, var(--border) 76%);
     box-shadow: 0 12px 28px color-mix(in srgb, var(--accent-shadow) 54%, transparent);
   }
@@ -117,7 +114,7 @@
    changes, so this one-shot spring doubles as immediate navigation feedback. */
 .home-nav-active-circle {
   transform-origin: center;
-  animation: ui-nav-target-in 280ms var(--ui-motion-spring) both;
+  animation: ui-nav-target-in 280ms var(--motion-ease-emphasized) both;
 }
 
 @keyframes ui-nav-target-in {
@@ -170,13 +167,13 @@
 .timetable-view .timetable-grid-cell.has-class {
   transform-origin: center;
   transition:
-    transform var(--ui-motion-fast) var(--ui-motion-spring),
-    border-color var(--ui-motion-fast) ease-out,
-    background var(--ui-motion-fast) ease-out;
+    transform var(--motion-duration-fast) var(--motion-ease-emphasized),
+    border-color var(--motion-duration-fast) ease-out,
+    background var(--motion-duration-fast) ease-out;
 }
 
 .timetable-view .timetable-grid-cell.has-class:active {
-  transform: scale(0.965);
+  transform: scale(var(--motion-scale-press));
   border-color: color-mix(in srgb, var(--accent) 96%, white 4%);
   background: color-mix(in srgb, var(--accent) 16%, var(--surface-strong) 84%);
 }
@@ -186,15 +183,15 @@
 .bookshelf-view button.bookshelf-subject-toggle,
 .bookshelf-view .bookshelf-icon-button {
   transition:
-    transform var(--ui-motion-fast) var(--ui-motion-spring),
-    border-color var(--ui-motion-fast) ease-out,
-    background var(--ui-motion-fast) ease-out;
+    transform var(--motion-duration-fast) var(--motion-ease-emphasized),
+    border-color var(--motion-duration-fast) ease-out,
+    background var(--motion-duration-fast) ease-out;
 }
 
 .bookshelf-view button.bookshelf-material-list-row:active,
 .bookshelf-view button.bookshelf-subject-toggle:active,
 .bookshelf-view .bookshelf-icon-button:active {
-  transform: scale(0.975);
+  transform: scale(var(--motion-scale-press));
 }
 
 /* Accessible focus -------------------------------------------------------- */
@@ -208,23 +205,11 @@
   outline-offset: 2px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .home-main > .home-dashboard,
-  .home-main > .ai-planning-view,
-  .section-stack > .schedule-month-view,
-  .section-stack > .bookshelf-view,
-  .section-stack > .timetable-view,
-  .home-streak-flame,
-  .home-nav-active-circle,
-  .ai-planning-typing::after {
-    animation: none !important;
-  }
-
-  .home-next-card,
-  .timetable-view .timetable-grid-cell.has-class,
-  .bookshelf-view button.bookshelf-material-list-row,
-  .bookshelf-view button.bookshelf-subject-toggle,
-  .bookshelf-view .bookshelf-icon-button {
-    transition-duration: 1ms !important;
-  }
+/* Celebratory pops and the breathing status are spatial or looping: they run
+   only at the standard level. Surface entries and press feedback already
+   collapse to fades through the distance/scale tokens. */
+:root:not([data-motion='standard']) .home-streak-flame,
+:root:not([data-motion='standard']) .home-nav-active-circle,
+:root:not([data-motion='standard']) .ai-planning-typing::after {
+  animation: none;
 }

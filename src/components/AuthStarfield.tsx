@@ -1,23 +1,19 @@
 import { useEffect, useState } from 'react';
-
-const MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+import { useMotionLevel } from '../hooks/useMotionPreference';
 
 /** Two CSS-only layers: no canvas loop, media download, or per-frame React work. */
 export function AuthStarfield() {
   const [hidden, setHidden] = useState(() => typeof document !== 'undefined' && document.visibilityState === 'hidden');
-  const [reducedMotion, setReducedMotion] = useState(() => typeof window !== 'undefined' && window.matchMedia?.(MOTION_QUERY).matches === true);
+  // Ambient drift is decorative: only the standard motion level runs it.
+  const reducedMotion = useMotionLevel() !== 'standard';
   const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     const page = typeof document !== 'undefined' ? document : undefined;
-    const media = typeof window !== 'undefined' ? window.matchMedia?.(MOTION_QUERY) : undefined;
     const onVisibility = () => setHidden(page?.visibilityState === 'hidden');
-    const onMotion = () => setReducedMotion(media?.matches === true);
     page?.addEventListener('visibilitychange', onVisibility);
-    media?.addEventListener?.('change', onMotion);
     return () => {
       page?.removeEventListener('visibilitychange', onVisibility);
-      media?.removeEventListener?.('change', onMotion);
     };
   }, []);
 

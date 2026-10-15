@@ -100,7 +100,8 @@
   .study-streak-ticket-note { grid-column: 1; align-self: start; }
   .study-streak-status, .study-streak-use-note, .study-streak-error { grid-column: 1 / -1; }
 }
-@media (prefers-reduced-motion: reduce) { .study-streak-page *, .study-streak-page *::before { animation: none !important; transition: none !important; } }
+:root:not([data-motion='standard']) .study-streak-page *,
+:root:not([data-motion='standard']) .study-streak-page *::before { animation: none !important; transition: none !important; }
 
 /* Existing planner portals follow the hidden planner while this page is open. */
 body:has(.study-streak-page) > :is(.home-add-overlay, .home-title-overlay, .month-event-dialog-motion,

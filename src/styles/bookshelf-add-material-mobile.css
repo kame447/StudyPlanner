@@ -158,14 +158,12 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .bookshelf-view > .modal-overlay:has(> .bookshelf-modal .bookshelf-material-edit-grid),
-  .bookshelf-view
-    > .modal-overlay
-    > .bookshelf-modal:has(.bookshelf-material-edit-grid) {
-    animation-duration: 1ms !important;
-    animation-delay: 0ms !important;
-  }
+:root:not([data-motion='standard']) .bookshelf-view > .modal-overlay:has(> .bookshelf-modal .bookshelf-material-edit-grid),
+:root:not([data-motion='standard']) .bookshelf-view
+  > .modal-overlay
+  > .bookshelf-modal:has(.bookshelf-material-edit-grid) {
+  animation-duration: 1ms !important;
+  animation-delay: 0ms !important;
 }
 
 /* Creation has two required fields. Keep them and its actions together, with

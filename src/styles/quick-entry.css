@@ -1519,8 +1519,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .weekly-planning-typing-indicator span {
-    animation: none;
-  }
+:root:not([data-motion='standard']) .weekly-planning-typing-indicator span {
+  animation: none;
 }

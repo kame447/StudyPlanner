@@ -79,7 +79,7 @@ it('retains a collapsed field through reopening and saves its value while collap
 
 it('limits the short selection cue to users who allow motion', () => {
   const css = readFileSync(new URL('../styles/modals.css', import.meta.url), 'utf8');
-  expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\)\s*\{\s*\.month-event-title-selected \.month-event-title-field input\s*\{\s*animation: month-event-title-selection 300ms ease-out;/);
+  expect(css).toMatch(/:root\[data-motion='standard'\] \.month-event-title-selected \.month-event-title-field input\s*\{\s*animation: month-event-title-selection 300ms ease-out;/);
 });
 
 it('discloses named radio choices below the times, saves the choice, and can return to automatic color', async () => {

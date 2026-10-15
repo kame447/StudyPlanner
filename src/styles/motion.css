@@ -1,0 +1,124 @@
+/*
+ * Motion tokens and the policy-owned level switch (#690).
+ *
+ * `<html data-motion>` is written only by src/lib/motionPreference.ts.
+ *   standard – spatial motion and opted-in ambience
+ *   reduced  – no movement/scale/ambient loops; short opacity fades only
+ *   off      – no animation or transition at all
+ *
+ * Principles
+ * - Motion answers an action or explains a data change; it is short and never
+ *   delays input. Exits are faster than entries.
+ * - Animate only opacity and transform, so motion never causes layout shift.
+ * - Features write keyframes in terms of the distance/scale tokens below. Under
+ *   `reduced` those tokens collapse, so the same keyframe becomes a fade.
+ * - Decorative loops are written under `:root[data-motion='standard']` only.
+ * - Device reduced-motion is not queried in CSS; the policy module folds it
+ *   into the level, so the user's 控えめ/オフ choice and the device agree.
+ */
+
+:root {
+  --motion-duration-instant: 90ms;
+  --motion-duration-fast: 150ms;
+  --motion-duration-base: 210ms;
+  --motion-duration-slow: 300ms;
+  /* Mirror STANDARD_EXIT_MS / REDUCED_FADE_MS in src/lib/motionPreference.ts:
+     JS waits exactly this long before unmounting an exiting surface. */
+  --motion-duration-exit: 220ms;
+  --motion-duration-fade: 120ms;
+  --motion-delay-stagger: 70ms;
+  --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --motion-ease-emphasized: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-exit: cubic-bezier(0.4, 0, 0.65, 1);
+  --motion-distance-sm: 6px;
+  --motion-distance-md: 14px;
+  --motion-distance-sheet: calc(100% + 28px);
+  --motion-scale-press: 0.97;
+  --motion-scale-enter: 0.96;
+  --motion-scale-sheet: 0.992;
+  --motion-scale-pop-from: 0.84;
+  --motion-scale-pop-peak: 1.035;
+  /* Sheets and panels travel in `standard`; they fade instead under `reduced`. */
+  --motion-sheet-from-opacity: 0.72;
+  --motion-sheet-exit-opacity: 0.78;
+  --motion-panel-from-opacity: 1;
+}
+
+:root[data-motion='reduced'] {
+  --motion-duration-base: var(--motion-duration-fade);
+  --motion-duration-slow: var(--motion-duration-fade);
+  --motion-duration-exit: var(--motion-duration-fade);
+  --motion-delay-stagger: 0ms;
+  --motion-distance-sm: 0px;
+  --motion-distance-md: 0px;
+  --motion-distance-sheet: 0px;
+  --motion-scale-press: 1;
+  --motion-scale-enter: 1;
+  --motion-scale-sheet: 1;
+  --motion-scale-pop-from: 1;
+  --motion-scale-pop-peak: 1;
+  --motion-sheet-from-opacity: 0;
+  --motion-sheet-exit-opacity: 0;
+  --motion-panel-from-opacity: 0;
+}
+
+:root[data-motion='off'] {
+  --motion-duration-instant: 0ms;
+  --motion-duration-fast: 0ms;
+  --motion-duration-base: 0ms;
+  --motion-duration-slow: 0ms;
+  --motion-duration-exit: 0ms;
+  --motion-duration-fade: 0ms;
+  --motion-delay-stagger: 0ms;
+  --motion-distance-sm: 0px;
+  --motion-distance-md: 0px;
+  --motion-distance-sheet: 0px;
+  --motion-scale-press: 1;
+  --motion-scale-enter: 1;
+  --motion-scale-sheet: 1;
+  --motion-scale-pop-from: 1;
+  --motion-scale-pop-peak: 1;
+}
+
+/* `off` is a guarantee, not a per-feature opinion: it must also hold for
+   motion added after this file. Zero-length animations still apply their end
+   state, so surfaces land exactly where an animated run would have ended. */
+:root[data-motion='off'] *,
+:root[data-motion='off'] *::before,
+:root[data-motion='off'] *::after {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+/* Shared keyframes ------------------------------------------------------- */
+@keyframes motion-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes motion-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Rises into place; a pure fade under `reduced`. */
+@keyframes motion-rise-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, var(--motion-distance-sm), 0);
+  }
+}
+
+/* Newly placed or completed items settle with a small pop. */
+@keyframes motion-settle-in {
+  from {
+    opacity: 0;
+    transform: scale(var(--motion-scale-enter));
+  }
+}

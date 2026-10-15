@@ -148,6 +148,4 @@
   font-size: 0.82rem;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .study-session-mode-indicator { transition: none; }
-}
+:root:not([data-motion='standard']) .study-session-mode-indicator { transition: none; }

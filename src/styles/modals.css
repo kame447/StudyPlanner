@@ -814,10 +814,8 @@
 }
 
 /* Selection changes remount only the title region; typing never restarts this cue. */
-@media (prefers-reduced-motion: no-preference) {
-  .month-event-title-selected .month-event-title-field input {
-    animation: month-event-title-selection 300ms ease-out;
-  }
+:root[data-motion='standard'] .month-event-title-selected .month-event-title-field input {
+  animation: month-event-title-selection 300ms ease-out;
 }
 
 @keyframes month-event-title-selection {

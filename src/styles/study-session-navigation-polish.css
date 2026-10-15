@@ -41,9 +41,7 @@
   outline-offset: 2px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .study-session-page {
-    animation: none !important;
-    transition: none !important;
-  }
+:root:not([data-motion='standard']) .study-session-page {
+  animation: none !important;
+  transition: none !important;
 }

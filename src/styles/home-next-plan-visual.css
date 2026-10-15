@@ -212,19 +212,17 @@
   0%, 100% { transform: translateX(0); }
   50% { transform: translateX(2px); }
 }
-@media (prefers-reduced-motion: reduce) {
-  [data-scene-motion] .home-scene-cloud,
-  [data-scene-motion] .home-scene-steam,
-  [data-scene-motion] .home-scene-glint,
-  [data-scene-motion] .home-scene-cat-tail,
-  [data-scene-motion] .home-scene-cat-head,
-  [data-scene-motion] .home-scene-cat-eyes,
-  [data-scene-motion] .home-scene-turtle-walk,
-  [data-scene-motion] .home-scene-turtle-leg-front,
-  [data-scene-motion] .home-scene-turtle-leg-back,
-  [data-scene-motion] .home-scene-turtle-head {
-    animation: none;
-  }
+:root:not([data-motion='standard']) [data-scene-motion] .home-scene-cloud,
+:root:not([data-motion='standard']) [data-scene-motion] .home-scene-steam,
+:root:not([data-motion='standard']) [data-scene-motion] .home-scene-glint,
+:root:not([data-motion='standard']) [data-scene-motion] .home-scene-cat-tail,
+:root:not([data-motion='standard']) [data-scene-motion] .home-scene-cat-head,
+:root:not([data-motion='standard']) [data-scene-motion] .home-scene-cat-eyes,
+:root:not([data-motion='standard']) [data-scene-motion] .home-scene-turtle-walk,
+:root:not([data-motion='standard']) [data-scene-motion] .home-scene-turtle-leg-front,
+:root:not([data-motion='standard']) [data-scene-motion] .home-scene-turtle-leg-back,
+:root:not([data-motion='standard']) [data-scene-motion] .home-scene-turtle-head {
+  animation: none;
 }
 
 .home-scene-options {

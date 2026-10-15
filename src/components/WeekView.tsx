@@ -34,6 +34,7 @@ import {
   layoutWeekSpanningOccurrences,
 } from '../lib/scheduleOccurrencePresentation';
 import { acquireTimelineDragInteractionLock } from '../lib/timelineDragInteractionLock';
+import { allowsSpatialMotion } from '../lib/motionPreference';
 import {
   calculateWeekPlanVelocityTilt,
   hasWeekPlanMoveChanged,
@@ -441,9 +442,7 @@ export function WeekView({
       longPressTimer: null,
       releaseInteractionLock: null,
       target,
-      reducedMotion:
-        typeof window !== 'undefined' &&
-        window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      reducedMotion: !allowsSpatialMotion(),
     };
   }
 

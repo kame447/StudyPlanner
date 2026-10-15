@@ -183,14 +183,12 @@ body:has(> .month-event-dialog-motion .month-event-modal-overlay) .quick-add-opt
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .quick-add-backdrop,
-  .quick-add-option,
-  .quick-add-option-icon,
-  .quick-add-trigger .quick-add-trigger-icon {
-    animation-duration: 1ms !important;
-    animation-delay: 0ms !important;
-    transition-duration: 1ms !important;
-    transition-delay: 0ms !important;
-  }
+:root:not([data-motion='standard']) .quick-add-backdrop,
+:root:not([data-motion='standard']) .quick-add-option,
+:root:not([data-motion='standard']) .quick-add-option-icon,
+:root:not([data-motion='standard']) .quick-add-trigger .quick-add-trigger-icon {
+  animation-duration: 1ms !important;
+  animation-delay: 0ms !important;
+  transition-duration: 1ms !important;
+  transition-delay: 0ms !important;
 }

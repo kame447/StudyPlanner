@@ -1,7 +1,9 @@
 import { DEFAULT_STUDY_PROGRESS_PREFERENCES, type StudyProgressPreferences } from '../lib/studyProgressPolicy';
 import { useState, type ReactNode } from 'react';
-import { CalendarDays, ChevronDown, ChevronRight, Palette, RotateCcw, Sparkles, SunMoon } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronRight, Palette, RotateCcw, Sparkles, SunMoon, Wind } from 'lucide-react';
 import { useWeeklyPlanningPersonalization } from '../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext';
+import { useMotionPreference } from '../hooks/useMotionPreference';
+import { MOTION_PREFERENCE_OPTIONS } from '../lib/motionPreference';
 import type { Appearance } from '../lib/appearance';
 import { THEME_PALETTE_OPTIONS, type ThemeMode, type ThemePalette } from '../lib/themePalette';
 import { DEFAULT_HOME_SCENE_PREFERENCES, HOME_SCENE_STYLE_OPTIONS, type HomeScenePreferences, type HomeSceneStyle } from '../lib/homeScenePreferences';
@@ -50,6 +52,8 @@ export function AppSettingsGeneral({
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { weekStartsOn, setWeekStartsOn, resetProfile } = useWeeklyPlanningPersonalization();
   const selectedPalette = THEME_PALETTE_OPTIONS.find(option => option.id === themePalette) ?? THEME_PALETTE_OPTIONS[0];
+  const motion = useMotionPreference();
+  const motionCappedBySystem = motion.preference === 'standard' && motion.systemReduced;
 
   return <div className="settings-group-list">
     <SettingsGroup title="表示とデザイン">
@@ -95,6 +99,22 @@ export function AppSettingsGeneral({
         </div> : null}
       </div>
       {themeError ? <p className="settings-inline-error settings-group-note" role="alert">{themeError}</p> : null}
+      <div className="settings-row-block">
+        <div className="settings-row">
+          <span className="settings-field-label" id="settings-motion-label"><Wind aria-hidden="true" size={21} />アニメーション</span>
+          <div className="settings-segments" role="group" aria-labelledby="settings-motion-label"
+            aria-describedby={motionCappedBySystem ? 'settings-motion-description' : undefined}>
+            {MOTION_PREFERENCE_OPTIONS.map(option => <button key={option.id} type="button"
+              aria-pressed={motion.preference === option.id} onClick={() => motion.setPreference(option.id)}>
+              {option.label}
+            </button>)}
+          </div>
+        </div>
+        {motionCappedBySystem ? <p className="settings-group-note" id="settings-motion-description">
+          端末で動きを減らす設定が有効なため、控えめで表示しています。
+        </p> : null}
+        {motion.error ? <p className="settings-inline-error settings-group-note" role="alert">{motion.error}</p> : null}
+      </div>
     </SettingsGroup>
 
     {onChangeHomeSceneStyle && onChangeHomeSceneMotion ? <SettingsGroup title="ホームのイラスト">
@@ -110,9 +130,10 @@ export function AppSettingsGeneral({
       </div>
       <label className="settings-row settings-motion-row">
         <span className="settings-row-copy"><span>イラストをゆっくり動かす</span>
-          <small id="home-scene-motion-description">端末で動きを減らす設定が有効な場合は動きません。</small>
+          <small id="home-scene-motion-description">アニメーションが「標準」のときだけ動きます。</small>
         </span>
         <input type="checkbox" aria-label="イラストをゆっくり動かす" checked={homeScenePreferences.animated} aria-describedby="home-scene-motion-description"
+          disabled={motion.level !== 'standard'}
           onChange={event => onChangeHomeSceneMotion(event.target.checked)} />
       </label>
       {homeSceneError ? <p className="settings-inline-error settings-group-note" role="alert">{homeSceneError}</p> : null}

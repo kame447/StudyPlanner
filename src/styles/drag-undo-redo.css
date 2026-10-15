@@ -65,8 +65,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .drag-undo-redo-controls button:active:not(:disabled) {
-    transform: none;
-  }
+:root:not([data-motion='standard']) .drag-undo-redo-controls button:active:not(:disabled) {
+  transform: none;
 }

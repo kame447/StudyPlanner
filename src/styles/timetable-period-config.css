@@ -272,11 +272,9 @@
   margin: 0;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .timetable-period-list-item,
-  .timetable-period-delete-action {
-    transition: none;
-  }
+:root:not([data-motion='standard']) .timetable-period-list-item,
+:root:not([data-motion='standard']) .timetable-period-delete-action {
+  transition: none;
 }
 
 .timetable-period-form-card {
