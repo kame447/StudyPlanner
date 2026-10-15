@@ -17,14 +17,32 @@ vi.mock('../repositories',()=>({plannerRepository:new Proxy({},{get:(_t,k)=>boun
 // Portal placement is presentation-only; production Home, Bookshelf, editors and adapters remain intact.
 vi.mock('react-dom',async(importOriginal)=>({...await importOriginal<typeof import('react-dom')>(),createPortal:(children:unknown)=>children}));
 vi.mock('firebase/firestore',()=>({
+  documentId:()=> '__name__',
   collection:(_db:any,name:string)=>({name}), doc:(_db:any,collectionName:string,id:string)=>({collectionName,id}),
   where:(field:string,_op:string,value:any)=>({field,value}), query:(collection:any,...conditions:any[])=>({...collection,conditions}), deleteField:()=>null,
   getDocs:async(q:any)=>{if(q.name==='actuals' && q.conditions.some((c:any)=>c.field==='occurrenceDate') && sdk.gate){const g=sdk.gate;sdk.gate=null;sdk.entered=true;sdk.log.push('query-pending');await g;sdk.log.push('query-finished');}
-    const values=[...(sdk.rows.get(q.name)?.values()??[])].filter(row=>q.conditions.every((c:any)=>row[c.field]===c.value));
+    const values=[...(sdk.rows.get(q.name)?.values()??[])].filter(row=>q.conditions.every((c:any)=>(c.field==='__name__'?row.id:row[c.field])===c.value));
     return {docs:values.map(row=>({id:row.id,data:()=>structuredClone(row)}))};},
   deleteDoc:async(ref:any)=>{sdk.log.push('delete:'+ref.id);sdk.rows.get(ref.collectionName)?.delete(ref.id);},
   setDoc:async(ref:any,value:any)=>{let rows=sdk.rows.get(ref.collectionName);if(!rows)sdk.rows.set(ref.collectionName,rows=new Map());rows.set(ref.id,structuredClone(value));},
   writeBatch:()=>{const ops:any[]=[];return {set:(ref:any,value:any)=>ops.push({ref,value}),delete:(ref:any)=>ops.push({ref}),commit:async()=>{for(const {ref,value} of ops){let rows=sdk.rows.get(ref.collectionName);if(!rows)sdk.rows.set(ref.collectionName,rows=new Map());if(value){sdk.log.push('set:'+ref.id);rows.set(ref.id,structuredClone(value));}else rows.delete(ref.id);}}};},
+  runTransaction: async (_db:any, callback:any) => {
+    const ops:any[]=[];
+    const result = await callback({
+      get:async(ref:any)=>{
+        if(ops.length) throw Error('transaction read after write');
+        const value=sdk.rows.get(ref.collectionName)?.get(ref.id);
+        if(!value) throw Error('permission-denied');
+        return {id:ref.id,exists:()=>true,data:()=>structuredClone(value)};
+      },
+      set:(ref:any,value:any,options:any)=>ops.push({ref,value,options}), delete:(ref:any)=>ops.push({ref}),
+    });
+    for(const {ref,value,options} of ops){
+      let rows=sdk.rows.get(ref.collectionName);if(!rows)sdk.rows.set(ref.collectionName,rows=new Map());
+      if(value){sdk.log.push('set:'+ref.id);rows.set(ref.id,structuredClone(options?.merge?{...rows.get(ref.id),...value}:value));}else rows.delete(ref.id);
+    }
+    return result;
+  },
 }));
 import {createFirebasePlannerRepository} from '../repositories/firebasePlannerRepository';
 let renderer:ReactTestRenderer|undefined,state:UsePlannerDataStateResult;

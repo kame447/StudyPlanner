@@ -7,6 +7,7 @@ const sdk = vi.hoisted(() => ({ docs: vi.fn(), serverDocs: vi.fn(), doc: vi.fn()
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, collection: string, id: string) => ({ collection, id }),
   collection: (_db: unknown, name: string) => ({ name }),
+  documentId: () => '__name__',
   where: (field: string, op: string, value: string) => ({ field, op, value }),
   query: (collection: object, ...constraints: object[]) => ({ collection, constraints }),
   getDocs: sdk.docs, getDocsFromServer: sdk.serverDocs, getDocFromServer: sdk.doc,
@@ -80,8 +81,9 @@ describe('complete startup read evidence, without a second history fetch', () =>
     const { bundle, hint } = await startup();
     const history = await bundle.studyStreakRepository.read('owner', { hint, today: '2026-10-09' });
     await bundle.plannerRepository.upsertActual(actual({ planId: null }));
+    const transactionsAfterSave = sdk.transaction.mock.calls.length;
     await expect(bundle.studyStreakRepository.useRestDay(history, '2026-10-08', '2026-10-09')).rejects.toThrow('変更');
-    expect(sdk.transaction).not.toHaveBeenCalled();
+    expect(sdk.transaction).toHaveBeenCalledTimes(transactionsAfterSave);
     await bundle.studyStreakRepository.read('owner', { hint, today: '2026-10-09' });
     expect(sdk.serverDocs).toHaveBeenCalledTimes(2);
     await bundle.studyStreakRepository.read('owner', { hint, today: '2026-10-10' });
@@ -136,8 +138,9 @@ it.each(['upsert', 'delete', 'recurring'] as const)('invalidates issued history 
   if (kind === 'upsert') await bundle.plannerRepository.upsertMonthEvent(event({ id: 'job' }));
   else if (kind === 'delete') await bundle.plannerRepository.deleteMonthEvent('owner', 'job');
   else await bundle.plannerRepository.applyRecurringMonthEventMutation('owner', [event({ id: 'job' })]);
+  const transactionsAfterMutation = sdk.transaction.mock.calls.length;
   await expect(bundle.studyStreakRepository.useRestDay(history, '2026-10-08', '2026-10-09')).rejects.toThrow('変更');
-  expect(sdk.transaction).not.toHaveBeenCalled();
+  expect(sdk.transaction).toHaveBeenCalledTimes(transactionsAfterMutation);
   await bundle.studyStreakRepository.read('owner', { hint, today: '2026-10-09' });
   expect(sdk.serverDocs).toHaveBeenCalledTimes(2);
 });

@@ -1,4 +1,5 @@
 import { getEntryDurationMinutes, isValidPlanEntryTimeRange } from '../lib/entryTimeRange';
+import { prepareActualProgressSource, preserveMonthEventActualSources } from '../domain/actualProgressSource';
 import { buildRecurringMonthEventEdit, type MonthEventEditRequest } from '../domain/recurringMonthEvent';
 import { buildDayTimetableTimeEdit, type DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
 import { buildDayOccurrenceCancellation } from '../domain/dayOccurrenceCancellation';
@@ -1347,7 +1348,8 @@ export function usePlannerDataState({
     const existingActual = targetActualId
       ? requireCurrentActual(targetActualId)
       : actualAdmission.current().find((actual) => getActualOccurrenceKey(actual) === occurrenceKey);
-    const nextActual = createActualFromDraft(userId, draft, existingActual);
+    const nextActual = prepareActualProgressSource(createActualFromDraft(userId, draft, existingActual),
+      { plans: actualAdmission.plans(), monthEvents: actualAdmission.monthEvents() }, existingActual);
     // Dependencies include missing, disabled and clamped rows. Admission must
     // precede resolving the absolute payload, including for retained callbacks.
     const materialIds = existingActual ? [] : nextActual.materialProgressUpdates?.map(update => update.materialId) ?? [];
@@ -1512,7 +1514,7 @@ export function usePlannerDataState({
       throw new Error('この予定にはすでに記録があります。');
     }
 
-    const nextActual: Actual = {
+    const nextActual = prepareActualProgressSource({
       ...actual,
       planId: plan.id,
       title: actual.title?.trim() || plan.title,
@@ -1520,7 +1522,7 @@ export function usePlannerDataState({
       isAlignedToPlan: false,
       note: actual.note.trim(),
       updatedAt: new Date().toISOString(),
-    };
+    }, { plans: actualAdmission.plans(), monthEvents: actualAdmission.monthEvents() }, sourceActual);
 
     const releaseAdmission = admitActualMutation([sourceActual, nextActual]);
     const actualOperation = actualState.begin((current) =>
@@ -1716,12 +1718,16 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
+    const currentEvent = actualAdmission.monthEvents().find(event => event.userId === userId && event.id === monthEvent.id);
+    if (!currentEvent) throw new Error('主要予定を再読み込みしてから、もう一度削除してください。');
+    const actualOperation = actualState.begin(current => preserveMonthEventActualSources(current, currentEvent));
     const monthEventOperation = monthEventState.begin((current) =>
       sortMonthEvents(removeByKey(current, monthEvent.id, (item) => item.id)),
     );
     try {
       await plannerRepository.deleteMonthEvent(userId, monthEvent.id);
       monthEventState.commit(monthEventOperation);
+      actualState.commit(actualOperation);
       showDeleteUndoNotice(async () => {
         const undoProjection = plannerDataReadAuthority.captureProjectionLease();
         await plannerRepository.upsertMonthEvent(monthEvent);
@@ -1736,6 +1742,7 @@ export function usePlannerDataState({
       }, ['month-events']);
     } catch (error) {
       monthEventState.reject(monthEventOperation);
+      actualState.reject(actualOperation);
       showNotice(
         resolveErrorMessage(error, '月の主要予定を削除できませんでした。'),
         'error',
@@ -2549,7 +2556,7 @@ export function usePlannerDataState({
     saveMonthEvent: trackMutation((draft: MonthEventDraft, id?: string, edit?: MonthEventEditRequest) =>
       withDayOccurrenceSourceWrite(id ? `month-event:${id}` : undefined, () => saveMonthEvent(draft, id, edit)), ['month-events']),
     deleteMonthEvent: trackMutation((event: MonthEvent) =>
-      withDayOccurrenceSourceWrite(`month-event:${event.id}`, () => deleteMonthEvent(event)), ['month-events']),
+      withDayOccurrenceSourceWrite(`month-event:${event.id}`, () => deleteMonthEvent(event)), ['month-events', 'actual-material']),
     saveTodo: trackMutation(saveTodo, ['plans-todos']),
     scheduleTodoAsPlan: trackMutation(scheduleTodoAsPlan, ['plans-todos']),
     deleteTodo: trackMutation(deleteTodo, ['plans-todos']),

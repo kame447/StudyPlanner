@@ -1,3 +1,4 @@
+import { verifyActualProgressSourceRules } from './firestore-actual-progress-source-rules.mjs';
 import { verifyAnnouncementRules } from './firestore-announcement-rules.mjs';
 import { verifyClassAttendanceRules } from './firestore-class-attendance-rules.mjs';
 import { verifyStudyStreakRules } from './firestore-study-streak-rules.mjs';
@@ -437,6 +438,7 @@ try {
     throw new Error('Timetable date exception undo was not retained.');
   }
 
+  await verifyActualProgressSourceRules({ owner, intruder, expectPermissionDenied, projectId, firestoreHost, monthScheduleEvent });
   await verifyClassAttendanceRules({ owner, intruder, expectPermissionDenied, projectId, firestoreHost });
   await verifyStudyStreakRules({ owner, intruder, expectPermissionDenied, projectId, firestoreHost });
   await verifyInquiryRules({ owner, intruder, createContext, contexts, expectPermissionDenied, projectId, firestoreHost });

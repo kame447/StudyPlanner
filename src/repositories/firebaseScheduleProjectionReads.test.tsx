@@ -32,6 +32,7 @@ vi.mock('firebase/firestore', () => ({
 type Query = { source: { name: string }; clauses: { field: string; op: string; value: string }[] };
 const records = new Map<string, ScheduleEvent>();
 const reads: { query: Query; ids: string[] }[] = [];
+const actualQueries: Query[] = [];
 function seed(rows: ScheduleEvent[]) { for (const row of rows) records.set(row.id, row); }
 function repository() {
   const legacy = { ...createUnavailablePlannerRepository(), applyTimetableMutation: async () => undefined };
@@ -47,13 +48,14 @@ let renderer: ReactTestRenderer | undefined;
 let state: UsePlannerDataStateResult;
 function Harness() { state = usePlannerDataState({ userId: 'owner', showNotice: vi.fn() }); return null; }
 beforeEach(() => {
-  vi.resetAllMocks(); records.clear(); reads.length = 0;
+  vi.resetAllMocks(); records.clear(); reads.length = 0; actualQueries.length = 0;
   boundary.getDocFromServer.mockImplementation(async () => ({
     exists: () => true,
     data: () => ({ schemaVersion: 1, migrationVersion: 1, status: 'completed', userId: 'owner' }),
     metadata: { fromCache: false, hasPendingWrites: false },
   }));
   boundary.getDocs.mockImplementation(async (query: Query) => {
+    if (query.source.name === 'actuals') { actualQueries.push(query); return { docs: [] }; }
     const rows = [...records.values()].filter(row => query.clauses.every(({ field, op, value }) => {
       expect(op).toBe('==');
       const actual = field.split('.').reduce<unknown>((current, key) =>
@@ -66,6 +68,17 @@ beforeEach(() => {
   });
   boundary.setDoc.mockImplementation(async (ref: { id: string }, row: ScheduleEvent) => { records.set(ref.id, structuredClone(row)); });
   boundary.deleteDoc.mockImplementation(async (ref: { id: string }) => { records.delete(ref.id); });
+  boundary.runTransaction.mockImplementation(async (_db, callback) => {
+    const deleted: string[] = [];
+    await callback({
+      get: async (ref: { name: string; id: string }) => {
+        expect(ref.name).toBe('schedule_events');
+        return { id: ref.id, exists: () => records.has(ref.id), data: () => structuredClone(records.get(ref.id)) };
+      },
+      delete: (ref: { name: string; id: string }) => { expect(ref.name).toBe('schedule_events'); deleted.push(ref.id); },
+    });
+    deleted.forEach(id => records.delete(id));
+  });
 });
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; });
 
@@ -131,6 +144,10 @@ describe('canonical schedule projection query footprint', () => {
     await repo.deleteMonthEvent('owner', original.id);
     expect(await repository().getMonthEvents('owner')).toEqual([]);
     expect(reads.map(read => read.ids.length)).toEqual([1, 1, 0]);
+    expect(actualQueries).toEqual([{ source: { name: 'actuals' }, clauses: [
+      { field: 'userId', op: '==', value: 'owner' }, { field: 'planId', op: '==', value: original.id },
+    ] }]);
+    expect(boundary.runTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('keeps legacy capability fallback and checks the migration marker again on the next read', async () => {
