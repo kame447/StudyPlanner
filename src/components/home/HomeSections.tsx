@@ -1,3 +1,4 @@
+import { getEntryDurationMinutes } from '../../lib/entryTimeRange';
 import type { CSSProperties } from 'react';
 import {
   BookOpen,
@@ -10,7 +11,6 @@ import {
   Target,
 } from 'lucide-react';
 import { getPlanScheduleColor, scheduleEventColorStyle } from '../../lib/scheduleEventColor';
-import { minutesBetween } from '../../lib/date';
 import type { HomeDashboardModel } from '../../lib/homeDashboard';
 import {
   resolveHomeNextPlanPresentation,
@@ -245,7 +245,7 @@ export function NextPlanSection({
               </span>
               <span>
                 <Target aria-hidden="true" size={18} />
-                {nextPlanPresentation?.durationLabel} {formatMinutes(minutesBetween(nextPlan.startTime, nextPlan.endTime))}
+                {nextPlanPresentation?.durationLabel} {formatMinutes(getEntryDurationMinutes(nextPlan.startTime, nextPlan.endTime))}
               </span>
 
             </div>

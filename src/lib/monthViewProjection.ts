@@ -1,9 +1,10 @@
+import { getEntryDurationMinutes } from './entryTimeRange';
 import {
   createScheduleOccurrenceProjection,
   type ScheduleOccurrence,
 } from '../domain/scheduleOccurrence';
 import { getScheduleOccurrenceColor } from './scheduleEventColor';
-import { addDays, getMonthGrid, minutesBetween } from './date';
+import { addDays, getMonthGrid } from './date';
 import { sortMonthEvents } from './monthEvents';
 import {
   isStudyRecordForDisplay,
@@ -234,7 +235,7 @@ export function buildMonthPanelProjection({
     studyPlanMinutesByDate.set(
       occurrence.start.date,
       (studyPlanMinutesByDate.get(occurrence.start.date) ?? 0) +
-        minutesBetween(occurrence.start.time, occurrence.end.time),
+        getEntryDurationMinutes(occurrence.start.time, occurrence.end.time),
     );
   });
 

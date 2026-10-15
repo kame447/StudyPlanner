@@ -1,3 +1,4 @@
+import { entryTimeRangeForDate } from '../lib/entryTimeRange';
 import type { CSSProperties } from "react";
 import type { ScheduleOccurrence } from "../domain/scheduleOccurrence";
 import { supportsScopedRecurringPlanEdits } from "../domain/recurringPlan";
@@ -30,6 +31,7 @@ import { DragUndoRedoControls } from "./DragUndoRedoControls";
 import { TimelineDragOverlay } from "./TimelineDragOverlay";
 
 interface DayTimelineProps {
+  date?: string;
   dateLabel: string;
   plans: Plan[];
   monthEvents: MonthEvent[];
@@ -50,8 +52,8 @@ interface DayTimelineProps {
 }
 
 export type DayTimelineSelection =
-  | { kind: "plan"; id: string }
-  | { kind: "month-event"; id: string }
+  | { kind: "plan"; id: string; actualId?: string; occurrenceId?: string }
+  | { kind: "month-event"; id: string; actualId?: string; occurrenceId?: string }
   | { kind: "timetable"; id: string }
   | { kind: "standalone-actual"; id: string };
 
@@ -59,6 +61,7 @@ interface TimelineEntry {
   color?: MonthEvent["color"];
   id: string;
   targetId: string;
+  actualId?: string;
   selectionId: string;
   entryKind: DayTimelineSelection["kind"];
   title: string;
@@ -148,6 +151,7 @@ function planTypeForOccurrence(occurrence: ScheduleOccurrence): PlanType {
 }
 
 export function DayTimeline({
+  date,
   dateLabel,
   plans,
   monthEvents,
@@ -282,8 +286,9 @@ export function DayTimeline({
         return [
           {
             id: actual.id,
+            actualId: actual.id,
             targetId: plan.id,
-            selectionId: `plan:${plan.id}`,
+            selectionId: `actual:${actual.id}`,
             entryKind: "plan" as const,
             title: resolveActualTitle(plan, actual),
             subject: resolveActualSubject(plan, actual),
@@ -295,18 +300,19 @@ export function DayTimeline({
           },
         ];
       }),
-      ...actualMonthEventSources.flatMap((monthEvent) => {
-        const actual = actuals.find((candidate) => candidate.planId === monthEvent.id);
+      ...actuals.flatMap((actual) => {
+        const monthEvent = actualMonthEventSources.find((candidate) => candidate.id === actual.planId);
 
-        if (!actual) {
+        if (!monthEvent) {
           return [];
         }
 
         return [
           {
             id: actual.id,
+            actualId: actual.id,
             targetId: monthEvent.id,
-            selectionId: `month-event:${monthEvent.id}`,
+            selectionId: `actual:${actual.id}`,
             entryKind: "month-event" as const,
             title: actual.title?.trim() || monthEvent.title,
             color: monthEvent.color,
@@ -335,7 +341,12 @@ export function DayTimeline({
           alignedToPlan: false,
           standalone: true,
         })),
-    ]
+    ].flatMap((entry) => {
+      const actual = actuals.find((item) => item.id === entry.id);
+      if (!actual) return [];
+      const range = entryTimeRangeForDate(actual.occurrenceDate, actual.actualStartTime, actual.actualEndTime, date ?? actual.occurrenceDate);
+      return range ? [{ ...entry, ...range }] : [];
+    })
   );
   const legendMap = new Map<string, string>();
 
@@ -494,6 +505,7 @@ export function DayTimeline({
                           onSelectEntry({
                             kind: entryKind,
                             id: entryKind === "timetable" ? occurrence.id : occurrence.source.backingId,
+                            ...(entryKind === "timetable" ? {} : { occurrenceId: occurrence.id }),
                           })
                         }
                         onContextMenu={(event) => event.preventDefault()}
@@ -789,9 +801,9 @@ export function DayTimeline({
                         onClick={() =>
                           onSelectEntry(
                             entry.entryKind === "plan"
-                              ? { kind: "plan", id: entry.targetId }
+                              ? { kind: "plan", id: entry.targetId, actualId: entry.actualId }
                               : entry.entryKind === "month-event"
-                                ? { kind: "month-event", id: entry.targetId }
+                                ? { kind: "month-event", id: entry.targetId, actualId: entry.actualId }
                                 : { kind: "standalone-actual", id: entry.targetId }
                           )
                         }
