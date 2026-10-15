@@ -13,6 +13,6 @@ export function AnnouncementsButton({ userId }: { userId: string }) {
       event.currentTarget.focus({ preventScroll: true });
       navigation.open();
     }}><Bell aria-hidden="true" size={22} />{unread.status === 'unread' && <span className="announcement-bell-dot" role="img" aria-label="未読のお知らせあり" id="announcement-bell-unread" />}</button>
-    {navigation.isOpen && <Suspense fallback={<p role="status">お知らせを開いています</p>}><AnnouncementsPage key={userId} userId={userId} detailId={navigation.detailId} onOpenDetail={navigation.open} onBack={navigation.back} loadPage={unread.loadPage} onReadAcknowledged={unread.acknowledge} /></Suspense>}
+    {navigation.isOpen && <Suspense fallback={null}><AnnouncementsPage key={userId} userId={userId} detailId={navigation.detailId} onOpenDetail={navigation.open} onBack={navigation.back} loadPage={unread.loadPage} onReadAcknowledged={unread.acknowledge} /></Suspense>}
   </>;
 }
