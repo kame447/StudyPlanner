@@ -21,9 +21,10 @@ function probability(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
-function validConfiguration(value: unknown): value is WeeklyPlanningCandidateChoiceConfiguration {
+type DomainConfiguration<D extends string> = Omit<WeeklyPlanningCandidateChoiceConfiguration, 'domain'> & { domain: D };
+function validConfiguration<D extends string>(value: unknown, domain: D): value is DomainConfiguration<D> {
   if (!record(value) || !exact(value, ['domain', 'mode', 'choicePolicy', 'semanticPolicy', 'maximumChildrenPerMenu', 'maximumDecisions'])
-    || value.domain !== 'c5_effort' || !(value.mode === 'off' || value.mode === 'canary')
+    || value.domain !== domain || !(value.mode === 'off' || value.mode === 'canary')
     || !integer(value.maximumChildrenPerMenu, 2, 254) || !integer(value.maximumDecisions, 1, 16)) return false;
   const choice = value.choicePolicy;
   const semantic = value.semanticPolicy;
@@ -49,6 +50,17 @@ function validConfiguration(value: unknown): value is WeeklyPlanningCandidateCho
 export function validateWeeklyPlanningCandidateChoiceConfiguration(value: unknown): WeeklyPlanningCandidateChoiceConfiguration | undefined {
   try {
     const snapshot: unknown = structuredClone(value);
-    return validConfiguration(snapshot) ? snapshot : undefined;
+    return validConfiguration(snapshot, 'c5_effort') ? snapshot : undefined;
+  } catch { return undefined; }
+}
+
+/** A registered producer needs its own explicit artifact version and domain; C5 policy is never reused. */
+export function validateControlledCandidateChoiceConfiguration<D extends 'd5_numeric' | 'availability_date'>(value: unknown, domain: D, policyVersion: string): DomainConfiguration<D> | undefined {
+  try {
+    const snapshot: unknown = structuredClone(value);
+    if (!record(snapshot) || !exact(snapshot, ['domain', 'domainPolicyVersion', 'mode', 'choicePolicy', 'semanticPolicy', 'maximumChildrenPerMenu', 'maximumDecisions'])
+      || !text(snapshot.domainPolicyVersion) || snapshot.domainPolicyVersion !== policyVersion) return undefined;
+    const { domainPolicyVersion: _version, ...configuration } = snapshot;
+    return validConfiguration(configuration, domain) ? configuration : undefined;
   } catch { return undefined; }
 }
