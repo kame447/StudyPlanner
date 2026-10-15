@@ -1412,6 +1412,14 @@
   overflow-y: auto;
 }
 
+.modal-card.bookshelf-structure-editor {
+  background: #fff;
+}
+
+:root[data-theme='dark'] .modal-card.bookshelf-structure-editor {
+  background: #181f23;
+}
+
 .bookshelf-modal-title-row {
   display: flex;
   align-items: center;
