@@ -6,12 +6,12 @@ import { MONTH_EVENT_COLOR_OPTIONS } from '../lib/scheduleEventColor';
 
 vi.mock('react-dom', () => ({ createPortal: vi.fn((node: unknown) => node) }));
 
-function mount(color?: (typeof MONTH_EVENT_COLOR_OPTIONS)[number]['key'], disabled = false) {
+function mount(color?: (typeof MONTH_EVENT_COLOR_OPTIONS)[number]['key'], disabled = false, radioOverrides: Partial<{ type: string; checked: boolean }> = {}) {
   const onChange = vi.fn();
   const nativeDialog = { open: false, showModal: vi.fn(), close: vi.fn() };
   nativeDialog.showModal.mockImplementation(() => { nativeDialog.open = true; });
   nativeDialog.close.mockImplementation(() => { nativeDialog.open = false; });
-  const selectedRadio = { focus: vi.fn() };
+  const selectedRadio = { type: 'radio', checked: true, focus: vi.fn(), ...radioOverrides };
   let renderer!: ReactTestRenderer;
   act(() => { renderer = create(<MonthEventColorPicker color={color} automaticColor="#72aefa" disabled={disabled} onChange={onChange} />, {
     createNodeMock: element => element.type === 'dialog' ? nativeDialog : element.type === 'input' ? selectedRadio : null,
@@ -29,6 +29,7 @@ describe('compact event label picker', () => {
       act(() => trigger().props.onClick());
       expect(nativeDialog.showModal).toHaveBeenCalledTimes(1);
       expect(selectedRadio.focus).toHaveBeenCalledTimes(1);
+      expect(selectedRadio.focus).toHaveBeenCalledWith();
       const checked = renderer.root.findAllByProps({ type: 'radio' }).filter(input => input.props.checked);
       expect(checked).toHaveLength(1);
       expect(checked[0].props['aria-label']).toBe(expected?.label ?? '自動');
@@ -37,6 +38,19 @@ describe('compact event label picker', () => {
       expect(onChange).toHaveBeenCalledWith('blue');
     } finally { act(() => renderer.unmount()); }
     expect(nativeDialog.close).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { type: 'text', checked: true },
+    { type: 'radio', checked: false },
+    { type: 'checkbox', checked: true },
+  ])('never explicitly focuses a $type control with checked=$checked', radioOverrides => {
+    const { renderer, trigger, nativeDialog, selectedRadio } = mount('pink', false, radioOverrides);
+    try {
+      act(() => trigger().props.onClick());
+      expect(nativeDialog.showModal).toHaveBeenCalledTimes(1);
+      expect(selectedRadio.focus).not.toHaveBeenCalled();
+    } finally { act(() => renderer.unmount()); }
   });
 
   it.each(['done', 'escape', 'backdrop'] as const)('dismisses with %s without selecting or submitting', dismiss => {

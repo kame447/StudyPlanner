@@ -26,7 +26,9 @@ export function MonthEventColorPicker({ color, automaticColor, disabled, onChang
     const dialog = dialogRef.current;
     if (!open || disabled || !dialog) return;
     dialog.showModal();
-    selectedInputRef.current?.focus();
+    // Preserve native arrow-key selection without focusing a text-capable control.
+    const selectedRadio = selectedInputRef.current;
+    if (selectedRadio?.type === 'radio' && selectedRadio.checked) selectedRadio.focus();
     return () => { if (dialog.open) dialog.close(); };
   }, [open, disabled]);
 

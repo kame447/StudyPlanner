@@ -69,6 +69,7 @@ for (const width of [390, 1280]) {
         await page.screenshot({ path: testInfo.outputPath('editor-colors.png'), animations: 'disabled' });
         await trigger.click();
         const picker = page.getByRole('dialog', { name: 'ラベルを選択' });
+        await expect(picker).toHaveCSS('background-color', theme === 'dark' ? 'rgb(24, 31, 35)' : 'rgb(255, 255, 255)');
         await expect(picker.getByRole('radio', { name: '自動', exact: true })).toBeChecked();
         await expect(picker.getByRole('radio', { name: '自動', exact: true })).toBeFocused();
         await page.screenshot({ path: testInfo.outputPath('editor-color-label-list.png'), animations: 'disabled' });
@@ -177,8 +178,8 @@ for (const width of [390, 1280]) {
 }
 
 test.describe('color sheet gesture isolation', () => {
-  test.use({ viewport: { width: 390, height: 844 }, contextOptions: { reducedMotion: 'reduce' } });
-  test('keeps the parent draft open when the label sheet header is dragged on a short screen', async ({ page }) => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, contextOptions: { reducedMotion: 'reduce' } });
+  test('keeps the parent draft open when the label sheet header is dragged on a short screen', async ({ page, browserName }, testInfo) => {
     await seed(page, 'light');
     await page.goto('/');
     await nav(page, '予定').click();
@@ -187,21 +188,59 @@ test.describe('color sheet gesture isolation', () => {
     const editor = page.locator('.month-event-modal');
     const trigger = editor.locator('.month-event-color-trigger');
     await editor.getByLabel('タイトル', { exact: true }).fill('未保存の予定');
-    await trigger.click();
+    await trigger.tap();
     await page.setViewportSize({ width: 320, height: 320 });
     const picker = page.getByRole('dialog', { name: 'ラベルを選択' });
     expect(await picker.evaluate(element => element.parentElement === document.body)).toBe(true);
     expect(await picker.evaluate(element => element.closest('.month-event-modal'))).toBeNull();
+    await page.screenshot({ path: testInfo.outputPath('editor-color-label-list-320-top.png'), animations: 'disabled' });
     const header = await picker.locator('.month-event-color-picker-header strong').boundingBox();
     await page.mouse.move(header.x + header.width / 2, header.y + header.height / 2);
     await page.mouse.down();
     await page.mouse.move(header.x + header.width / 2, header.y + header.height / 2 + 120, { steps: 5 });
     await page.mouse.up();
+    // Chromium exposes native touch swipes through CDP. WebKit still exercises
+    // the touchscreen opener and Done actions without synthetic swipe claims.
+    if (browserName === 'chromium') {
+      await picker.evaluate(element => {
+        element.colorPickerTouchEvents = [];
+        for (const type of ['touchstart', 'touchmove', 'touchend']) {
+          element.addEventListener(type, event => element.colorPickerTouchEvents.push({ type, trusted: event.isTrusted }), { passive: true });
+        }
+      });
+      const session = await page.context().newCDPSession(page);
+      const x = header.x + header.width / 2;
+      const y = header.y + header.height / 2;
+      try {
+        await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, radiusX: 4, radiusY: 4, force: 1, id: 1 }] });
+        for (const dy of [30, 60, 90, 120]) {
+          await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + dy, radiusX: 4, radiusY: 4, force: 1, id: 1 }] });
+        }
+        await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        const events = await picker.evaluate(element => element.colorPickerTouchEvents);
+        expect(events.some(event => event.type === 'touchstart' && event.trusted)).toBe(true);
+        expect(events.some(event => event.type === 'touchmove' && event.trusted)).toBe(true);
+        await testInfo.attach('color-picker-native-touch-events', { contentType: 'application/json', body: JSON.stringify(events) });
+      } finally { await session.detach(); }
+    }
     await expect(picker).toBeVisible();
     await expect(editor).toHaveCount(1);
     await expect(editor.getByLabel('タイトル', { exact: true })).toHaveValue('未保存の予定');
-    await picker.getByRole('button', { name: '完了', exact: true }).click();
+    const lastChoice = picker.getByRole('radio', { name: 'ピンク', exact: true });
+    await lastChoice.scrollIntoViewIfNeeded();
+    await expect(lastChoice).toBeInViewport();
+    await lastChoice.tap();
+    await expect(lastChoice).toBeChecked();
+    await page.screenshot({ path: testInfo.outputPath('editor-color-label-list-320-bottom.png'), animations: 'disabled' });
+    await picker.getByRole('button', { name: '完了', exact: true }).tap();
     await expect(trigger).toBeFocused();
+    await expect(editor.getByLabel('タイトル', { exact: true })).toHaveValue('未保存の予定');
+    await trigger.tap();
+    await expect(lastChoice).toBeChecked();
+    await expect(lastChoice).toBeFocused();
+    await expect(lastChoice).toBeInViewport();
+    await page.screenshot({ path: testInfo.outputPath('editor-color-label-list-320-reopened-pink.png'), animations: 'disabled' });
+    await picker.getByRole('button', { name: '完了', exact: true }).tap();
     await expect(editor.getByLabel('タイトル', { exact: true })).toHaveValue('未保存の予定');
   });
 });

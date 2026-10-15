@@ -831,7 +831,7 @@
 }
 
 .month-event-color-section {
-  padding: 2px 0;
+  padding: 0;
 }
 
 .month-event-color-trigger {
@@ -885,10 +885,14 @@
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 20px;
-  background: var(--surface);
+  background: #fff;
   color: var(--text);
   box-shadow: 0 22px 60px rgb(15 23 42 / 0.28);
   overscroll-behavior: contain;
+}
+
+:root[data-theme='dark'] .month-event-color-dialog {
+  background: #181f23;
 }
 
 .month-event-color-dialog::backdrop {

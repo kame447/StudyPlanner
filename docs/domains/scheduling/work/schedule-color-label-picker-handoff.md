@@ -1,6 +1,6 @@
 # Schedule color label picker
 
-Status: active local implementation; not published.
+Status: active PR #672; browser correction awaiting exact-head integration and native verification.
 
 - Owner: existing UI umbrella #483; follow-up to merged #663.
 - Branch: `ui/schedule-color-label-picker`; base/initial HEAD `b4b82e578b777828fc87a0e4d87df306eeb4d652`.
@@ -44,3 +44,26 @@ The correction closes the dialog synchronously before removing it for all three 
 - Corrected changed-input digest, using the same seven-path map method: `808d2140b6dcfcec6e03f237da4775fc7e02ea7fabbd2f42a96ac0ff042c5cbf`. Runtime/tool versions and dependency installation remain as recorded above. Only this checkpoint changes after the final focused/type checks.
 
 No remote write, shared hook change, dependency/runner configuration change, history rewrite or new branch/PR was made for the correction.
+
+## PR #672 browser correction, 2026-10-15
+
+Reuse [PR #672](https://github.com/kame447/StudyPlanner/pull/672), branch `ui/schedule-color-label-picker`, under #483. The inspected published head was `928b1368e406b18ae3b22460415d5f549e504e13`, tree `fdd96c5f2f0b9ea5a15d3990c026fddba3d3dd56`; [Browser Regression run 38683957657](https://github.com/kame447/StudyPlanner/actions/runs/38683957657) tested its synthetic merge `4c83dc69a3a06cafb4eebf0b64cf296785d690d1`. The repair is isolated on detached local base `e1f3aa057e00a21eea2adab19adbe146577d43c7`, whose tree exactly matches that published tree. The publication owner retains the active branch; no replacement branch or PR is needed.
+
+Initial native evidence had 729 passing cases and two failures. At 390px the compact-row gap was 10px because the mobile editor's existing 8px gap and the new section's 2px padding were additive. The other failure was the source focus guard: native color cases already passed checked-radio focus, ArrowDown selection and Escape focus return, but the unrestricted input-ref focus statement was not a reviewed exception. Independent image review also found the parent editor's text visible through the color list's translucent surface.
+
+The correction is narrow:
+
+- Remove only the color section padding. The existing `<10px` placement assertion, 48px trigger minimum and other editor gaps remain unchanged. New browser measurement is still required; 8px is the CSS-derived expectation, not a measured result on the repair.
+- Focus only when the actual ref is a checked native radio. Register that exact guarded statement in the source guard; keep arbitrary input/text/general focus rejected. Removing focus would lose native arrow-key entry, and replacing radios with custom controls would enlarge the change. Keep native focus scrolling so a selected last row remains reachable on a short screen.
+- Make only the picker surface opaque, using the existing lesson-dialog colors: white in light theme and `#181f23` in dark theme. Darkening the whole backdrop or modifying global theme surfaces would affect unrelated UI. Native color cases now assert both opaque colors.
+- Preserve the existing 320x320 mouse/parent-draft assertions; add native touch opener/Done, Chromium trusted CDP touch start/move evidence, top/bottom screenshots and a selected-pink reopen focus/visibility check. WebKit exercises taps but does not claim native swipe coverage.
+
+Focused evidence on the exact five changed runtime/test files:
+
+- `DEV_LAN_HOST=127.0.0.1 npm run test:run -- src/components/MonthEventColorPicker.test.tsx src/components/MonthEventDialog.selection.test.tsx src/components/MonthEventDialog.persistence.test.tsx src/components/scheduleEventColorConsistency.test.tsx src/lib/scheduleEventColor.test.ts src/lib/monthEventEditor.test.ts src/domain/recurringMonthEvent.test.ts src/lib/bottomSheetDragDismiss.test.ts --maxWorkers=2`: 8 files / 83 tests passed, exit 0. Includes rejection of text, unchecked-radio and checkbox focus targets.
+- `npm run typecheck:app:full`: fresh non-incremental app check passed, exit 0.
+- Executed the exact source-guard callback without launching a browser. It passed, including four negative assertions; injecting each unrestricted/text/unchecked focus statement independently caused the guard to fail as required.
+- Both changed browser specs passed `node --check`; `git diff --check` passed. Existing Playwright collection found 12 Chromium cases across the two specs and 8 mobile WebKit color cases, exit 0. Collection is not execution.
+- Runtime/test SHA-256 digest (sorted path-to-SHA-256 JSON, compact separators): `587f08fdf5a2fc615eab9e621b75dd7c5e408736f18612eba6bc5de0a35781b0`. Only this checkpoint was changed after those checks. Node 24.19.0, TypeScript 5.9.3, React/react-test-renderer 18.3.1, Vitest 3.2.7, lucide-react 1.14.0, existing Playwright 1.62.1 for collection. Existing dependency installations were reused; no install, lockfile, runner or shared-hook change.
+
+Next/exit: the publication owner applies this exact repair to the same PR, runs final combined verification and existing native CI, and reviews the new desktop/mobile light/dark and 320px images. The known local socket restriction was not retried or bypassed. Native execution, repaired screenshots and full integration are unverified for this repair; focused results are not acceptance. The detached repair has no remote branch to clean up; the active PR branch remains until the authorized release workflow finishes.
