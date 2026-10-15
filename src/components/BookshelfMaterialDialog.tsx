@@ -1,3 +1,4 @@
+import { useMaterialCreateViewport } from '../hooks/useMaterialCreateViewport';
 import { useEditorMutation } from '../hooks/useEditorMutation';
 import { ActualMutationAdmissionError, materialUncertainMessage, type MaterialEditBaseline } from '../hooks/useActualMutationAdmission';
 import {
@@ -6,6 +7,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
 } from 'react';
 import { BookOpen, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { getMaterialUnitLabel } from '../lib/materialPace';
@@ -52,6 +54,14 @@ function catalogMeta(candidate: MaterialMetadataCandidate): string {
     .join(' ・ ');
 }
 
+function CreationLayout({ enabled, layoutClass, children }: {
+  enabled: boolean;
+  layoutClass?: string;
+  children: ReactNode;
+}) {
+  return enabled ? <div className={layoutClass}>{children}</div> : <>{children}</>;
+}
+
 export function BookshelfMaterialDialog(props: BookshelfMaterialDialogProps) {
   if (props.material && props.material.userId !== props.userId) return null;
   return <BookshelfMaterialDialogSession key={JSON.stringify([props.userId, props.material?.id ?? null])} {...props} />;
@@ -67,6 +77,8 @@ function BookshelfMaterialDialogSession({
   onDelete,
 }: BookshelfMaterialDialogProps) {
   const beginMutation = useEditorMutation();
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  useMaterialCreateViewport(overlayRef, !material);
   const [editBaseline] = useState(baseline);
   const [requiresInspection, setRequiresInspection] = useState(false);
   const firstSubject = subjects[0] ?? null;
@@ -82,6 +94,11 @@ function BookshelfMaterialDialogSession({
   );
   const [catalogCoverUrl, setCatalogCoverUrl] = useState(material?.coverImageUrl ?? '');
   const [catalogCandidate, setCatalogCandidate] = useState<MaterialMetadataCandidate | null>(null);
+  const [catalogFocusRequest, setCatalogFocusRequest] = useState(0);
+  const catalogSummaryRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (catalogFocusRequest > 0) catalogSummaryRef.current?.focus();
+  }, [catalogFocusRequest]);
   const [paceEnabled, setPaceEnabled] = useState(material?.paceEnabled === true);
   const [progressUnit, setProgressUnit] = useState<StudyMaterialProgressUnit>(
     material?.progressUnit ?? 'page',
@@ -135,6 +152,18 @@ function BookshelfMaterialDialogSession({
       : getMaterialUnitLabel({ progressUnit });
   const canSave = name.trim().length > 0 && Boolean(selectedSubject) && !isSubmitting && !requiresInspection && !isProcessingPhoto && !isResolvingCatalog;
   const coverPreviewSource = coverImageDataUrl || catalogCoverUrl;
+  const coverPreview = (
+    <div
+      className="bookshelf-cover-preview"
+      style={getSubjectStyle(getSubjectColor(selectedSubject))}
+    >
+      {coverPreviewSource ? (
+        <img src={coverPreviewSource} alt={name.trim() || '教材写真'} />
+      ) : (
+        <ImageIcon aria-hidden="true" size={34} strokeWidth={1.7} />
+      )}
+    </div>
+  );
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -279,13 +308,16 @@ function BookshelfMaterialDialogSession({
   }
 
   return (
-    <div className="overlay modal-overlay" onClick={onClose}>
+    <div ref={overlayRef} className="overlay modal-overlay" onClick={onClose}>
       <form
-        className="modal-card bookshelf-modal"
+        className={`modal-card bookshelf-modal${material ? '' : ' material-create-dialog'}`}
+        role={material ? undefined : 'dialog'}
+        aria-modal={material ? undefined : true}
+        aria-label={material ? undefined : '教材を追加'}
         onClick={(event) => event.stopPropagation()}
         onSubmit={handleSubmit}
       >
-        <div className="section-stack">
+        <div className={material ? 'section-stack' : 'material-create-layout'}>
           <div className="section-header">
             <div>
               <h2>{material ? '教材を編集' : '教材を追加'}</h2>
@@ -295,287 +327,303 @@ function BookshelfMaterialDialogSession({
             </button>
           </div>
 
-          {subjects.length === 0 ? (
-            <p className="inline-error">
-              教材を追加する前に教科を1つ作成してください。
-            </p>
-          ) : null}
+          <CreationLayout enabled={!material} layoutClass="material-create-body">
+            {subjects.length === 0 ? (
+              <p className="inline-error">
+                教材を追加する前に教科を1つ作成してください。
+              </p>
+            ) : null}
 
-          {!material ? (
-            <BookshelfMaterialSearch
-              onSelectionPendingChange={(pending) => {
-                pendingCatalogSelection.current = pending;
-                setIsResolvingCatalog(pending);
-                if (pending) {
-                  catalogNameRevision.current = nameRevision.current;
-                  catalogCoverRevision.current = beginCoverSelection();
-                  setStatus('');
-                }
-              }}
-              onSelect={(candidate) => {
-                setCatalogCandidate(candidate);
-                // A later typed name takes precedence over this delayed selection.
-                if (nameRevision.current === catalogNameRevision.current) {
-                  setName(candidate.title);
-                }
-                // Metadata remains selected even when a later custom photo wins.
-                if (coverRevision.current === catalogCoverRevision.current) {
-                  setCatalogCoverUrl(candidate.coverImageUrl ?? '');
-                  setCoverImageDataUrl('');
-                  setStatus('検索候補の教材情報を反映しました。');
-                  setStatusTone('info');
-                }
-              }}
-            />
-          ) : null}
+            {!material ? (
+              <BookshelfMaterialSearch
+                compact
+                onSelectionFocusReturn={() => setCatalogFocusRequest(request => request + 1)}
+                onSelectionPendingChange={(pending) => {
+                  pendingCatalogSelection.current = pending;
+                  setIsResolvingCatalog(pending);
+                  if (pending) {
+                    catalogNameRevision.current = nameRevision.current;
+                    catalogCoverRevision.current = beginCoverSelection();
+                    setStatus('');
+                  }
+                }}
+                onSelect={(candidate) => {
+                  setCatalogCandidate(candidate);
+                  // A later typed name takes precedence over this delayed selection.
+                  if (nameRevision.current === catalogNameRevision.current) {
+                    setName(candidate.title);
+                  }
+                  // Metadata remains selected even when a later custom photo wins.
+                  if (coverRevision.current === catalogCoverRevision.current) {
+                    setCatalogCoverUrl(candidate.coverImageUrl ?? '');
+                    setCoverImageDataUrl('');
+                    setStatus('');
+                    setStatusTone('info');
+                  }
+                }}
+              />
+            ) : null}
 
-          {material?.catalogEntryId ? (
-            <p className="detail-note">
-              教材DBに紐付け済み
-              {material.catalogTitle ? ` ・ ${material.catalogTitle}` : ''}
-              {material.catalogIsbn13
-                ? ` ・ ISBN ${material.catalogIsbn13}`
-                : material.catalogIsbn10
-                  ? ` ・ ISBN ${material.catalogIsbn10}`
-                  : ''}
-            </p>
-          ) : null}
+            {material?.catalogEntryId ? (
+              <p className="detail-note">
+                教材DBに紐付け済み
+                {material.catalogTitle ? ` ・ ${material.catalogTitle}` : ''}
+                {material.catalogIsbn13
+                  ? ` ・ ISBN ${material.catalogIsbn13}`
+                  : material.catalogIsbn10
+                    ? ` ・ ISBN ${material.catalogIsbn10}`
+                    : ''}
+              </p>
+            ) : null}
 
-          {catalogCandidate ? (
-            <section className="material-metadata-selected" aria-label="選択した教材の情報">
-              <div className="material-metadata-selected-cover" aria-hidden="true">
-                {catalogCandidate.coverImageUrl ? (
-                  <img src={catalogCandidate.coverImageUrl} alt="" />
-                ) : (
-                  <BookOpen size={30} strokeWidth={1.7} />
-                )}
+            {catalogCandidate ? (
+              <section aria-label="選択した教材の情報">
+                <details className="material-create-catalog">
+                  <summary ref={catalogSummaryRef}>書誌・目次を確認{catalogCandidate.tableOfContents?.length ? `（目次${catalogCandidate.tableOfContents.length}項目）` : ''}</summary>
+                  <div className="material-metadata-selected">
+                    <div className="material-metadata-selected-cover" aria-hidden="true">
+                      {catalogCandidate.coverImageUrl ? (
+                        <img src={catalogCandidate.coverImageUrl} alt="" />
+                      ) : (
+                        <BookOpen size={30} strokeWidth={1.7} />
+                      )}
+                    </div>
+                    <div className="material-metadata-selected-copy">
+                      <strong>{catalogCandidate.title}</strong>
+                      {catalogMeta(catalogCandidate) ? <small>{catalogMeta(catalogCandidate)}</small> : null}
+                      {catalogCandidate.pageCount ? (
+                        <p>{catalogCandidate.pageCount}ページ</p>
+                      ) : (
+                        <p className="detail-note">総ページ数は取得できませんでした。</p>
+                      )}
+                      <div className="material-metadata-selected-actions">
+                        {catalogCandidate.pageCount ? (
+                          <button className="ghost-button" onClick={applyCatalogPageCount} type="button">
+                            ページ数をペース管理に使う
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    {catalogCandidate.tableOfContents?.length ? (
+                      <div className="material-metadata-toc">
+                        <strong>取得できた教材構成</strong>
+                        <ul>
+                          {catalogCandidate.tableOfContents.slice(0, 10).map((title, index) => (
+                            <li key={`${title}-${index}`}>{title}</li>
+                          ))}
+                        </ul>
+                        {catalogCandidate.tableOfContents.length > 10 ? (
+                          <small>ほか {catalogCandidate.tableOfContents.length - 10} 項目</small>
+                        ) : null}
+                        <p className="detail-note">
+                          保存すると目次の初期項目として使います。あとから非表示・編集できます。
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                </details>
+              </section>
+            ) : null}
+
+            <div className="bookshelf-material-edit-grid">
+              {material ? coverPreview : null}
+
+              <div className="section-stack">
+                <CreationLayout enabled={!material} layoutClass="material-create-fields">
+                  <label className="field">
+                    <span>教材名{!material ? <small className="material-create-required" aria-hidden="true">必須</small> : null}</span>
+                    <input
+                      aria-label="教材名"
+                      aria-required={!material || undefined}
+                      value={name}
+                      onChange={(event) => {
+                        nameRevision.current += 1;
+                        setName(event.target.value);
+                      }}
+                      placeholder="黄色チャート"
+                    />
+                  </label>
+
+                  <label className="field">
+                    <span>教科{!material ? <small className="material-create-required" aria-hidden="true">必須</small> : null}</span>
+                    <select
+                      aria-label="教科"
+                      aria-required={!material || undefined}
+                      value={subjectId}
+                      onChange={(event) => setSubjectId(event.target.value)}
+                    >
+                      {subjects.map((subject) => (
+                        <option key={subject.id} value={subject.id}>
+                          {subject.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="field">
+                    <span>学習状態</span>
+                    <select
+                      aria-label="学習状態"
+                      value={studyStatus}
+                      onChange={(event) => setStudyStatus(event.target.value === 'completed' ? 'completed' : 'studying')}
+                    >
+                      <option value="studying">学習中</option>
+                      <option value="completed">学習済み</option>
+                    </select>
+                  </label>
+
+                </CreationLayout>
+                <CreationLayout enabled={!material} layoutClass="material-create-cover">
+                  {!material ? coverPreview : null}
+                  <CreationLayout enabled={!material}>
+                    <div className="row-actions">
+                      <button
+                        className="ghost-button"
+                        onClick={() => fileInputRef.current?.click()}
+                        type="button"
+                      >
+                        写真を選ぶ
+                      </button>
+                      {coverPreviewSource ? (
+                        <button
+                          className="ghost-button"
+                          onClick={() => {
+                            beginCoverSelection();
+                            setStatus('');
+                            setStatusTone('info');
+                            setCoverImageDataUrl('');
+                            setCatalogCoverUrl('');
+                          }}
+                          type="button"
+                        >
+                          写真を外す
+                        </button>
+                      ) : null}
+                      <input
+                        ref={fileInputRef}
+                        className="hidden-file-input"
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={handleFileChange}
+                        type="file"
+                      />
+                    </div>
+                    <p className="detail-note">
+                      {material ? '対応形式: JPEG / PNG / WebP' : '表紙は任意 · JPEG / PNG / WebP'}
+                    </p>
+                  </CreationLayout>
+                </CreationLayout>
               </div>
-              <div className="material-metadata-selected-copy">
-                <strong>{catalogCandidate.title}</strong>
-                {catalogMeta(catalogCandidate) ? <small>{catalogMeta(catalogCandidate)}</small> : null}
-                {catalogCandidate.pageCount ? (
-                  <p>{catalogCandidate.pageCount}ページ</p>
-                ) : (
-                  <p className="detail-note">総ページ数は取得できませんでした。</p>
-                )}
-                <div className="material-metadata-selected-actions">
-                  {catalogCandidate.pageCount ? (
-                    <button className="ghost-button" onClick={applyCatalogPageCount} type="button">
-                      ページ数をペース管理に使う
-                    </button>
+            </div>
+
+            <section className="material-pace-settings">
+              <label className="material-pace-toggle">
+                <input
+                  checked={paceEnabled}
+                  onChange={(event) => setPaceEnabled(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>
+                  <strong>教材ペース管理を使う</strong>
+                </span>
+              </label>
+
+              {paceEnabled ? (
+                <div className="material-pace-form-grid">
+                  <label className="field">
+                    <span>単位</span>
+                    <select
+                      value={progressUnit}
+                      onChange={(event) =>
+                        setProgressUnit(event.target.value as StudyMaterialProgressUnit)
+                      }
+                    >
+                      {PROGRESS_UNIT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {progressUnit === 'custom' ? (
+                    <label className="field">
+                      <span>単位名</span>
+                      <input
+                        value={progressUnitLabel}
+                        onChange={(event) => setProgressUnitLabel(event.target.value)}
+                        placeholder="例: レッスン"
+                      />
+                    </label>
                   ) : null}
-                </div>
-              </div>
-              {catalogCandidate.tableOfContents?.length ? (
-                <div className="material-metadata-toc">
-                  <strong>取得できた教材構成</strong>
-                  <ul>
-                    {catalogCandidate.tableOfContents.slice(0, 10).map((title, index) => (
-                      <li key={`${title}-${index}`}>{title}</li>
-                    ))}
-                  </ul>
-                  {catalogCandidate.tableOfContents.length > 10 ? (
-                    <small>ほか {catalogCandidate.tableOfContents.length - 10} 項目</small>
-                  ) : null}
-                  <p className="detail-note">
-                    保存すると目次の初期項目として使います。あとから非表示・編集できます。
-                  </p>
+
+                  <label className="field">
+                    <span>総量</span>
+                    <input
+                      min="0"
+                      step="1"
+                      value={totalUnits}
+                      onChange={(event) => setTotalUnits(event.target.value)}
+                      placeholder={`例: 300${unitLabel}`}
+                      type="number"
+                    />
+                  </label>
+
+                  <label className="field">
+                    <span>現在位置</span>
+                    <input
+                      max={parsedTotalUnits ?? undefined}
+                      min="0"
+                      step="1"
+                      value={currentUnit}
+                      onChange={(event) => setCurrentUnit(event.target.value)}
+                      placeholder={`例: 45${unitLabel}`}
+                      type="number"
+                    />
+                  </label>
+
+                  <label className="field">
+                    <span>目標日</span>
+                    <input
+                      value={targetDate}
+                      onChange={(event) => setTargetDate(event.target.value)}
+                      type="date"
+                    />
+                  </label>
+
+                  <label className="field">
+                    <span>1単位あたりの目安時間</span>
+                    <input
+                      min="0"
+                      step="1"
+                      value={estimatedMinutesPerUnit}
+                      onChange={(event) => setEstimatedMinutesPerUnit(event.target.value)}
+                      placeholder="分"
+                      type="number"
+                    />
+                  </label>
+
+                  <label className="field">
+                    <span>1日の最大量</span>
+                    <input
+                      min="0"
+                      step="1"
+                      value={maxUnitsPerDay}
+                      onChange={(event) => setMaxUnitsPerDay(event.target.value)}
+                      placeholder="任意"
+                      type="number"
+                    />
+                  </label>
                 </div>
               ) : null}
             </section>
-          ) : null}
 
-          <div className="bookshelf-material-edit-grid">
-            <div
-              className="bookshelf-cover-preview"
-              style={getSubjectStyle(getSubjectColor(selectedSubject))}
-            >
-              {coverPreviewSource ? (
-                <img src={coverPreviewSource} alt={name.trim() || '教材写真'} />
-              ) : (
-                <ImageIcon aria-hidden="true" size={34} strokeWidth={1.7} />
-              )}
-            </div>
-
-            <div className="section-stack">
-              <label className="field">
-                <span>教材名</span>
-                <input
-                  value={name}
-                  onChange={(event) => {
-                    nameRevision.current += 1;
-                    setName(event.target.value);
-                  }}
-                  placeholder="黄色チャート"
-                />
-              </label>
-
-              <label className="field">
-                <span>教科</span>
-                <select
-                  value={subjectId}
-                  onChange={(event) => setSubjectId(event.target.value)}
-                >
-                  {subjects.map((subject) => (
-                    <option key={subject.id} value={subject.id}>
-                      {subject.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="field">
-                <span>学習状態</span>
-                <select
-                  aria-label="学習状態"
-                  value={studyStatus}
-                  onChange={(event) => setStudyStatus(event.target.value === 'completed' ? 'completed' : 'studying')}
-                >
-                  <option value="studying">学習中</option>
-                  <option value="completed">学習済み</option>
-                </select>
-              </label>
-
-              <div className="row-actions">
-                <button
-                  className="ghost-button"
-                  onClick={() => fileInputRef.current?.click()}
-                  type="button"
-                >
-                  写真を選ぶ
-                </button>
-                {coverPreviewSource ? (
-                  <button
-                    className="ghost-button"
-                    onClick={() => {
-                      beginCoverSelection();
-                      setStatus('');
-                      setStatusTone('info');
-                      setCoverImageDataUrl('');
-                      setCatalogCoverUrl('');
-                    }}
-                    type="button"
-                  >
-                    写真を外す
-                  </button>
-                ) : null}
-                <input
-                  ref={fileInputRef}
-                  className="hidden-file-input"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={handleFileChange}
-                  type="file"
-                />
-              </div>
-              <p className="detail-note">
-                対応形式: JPEG / PNG / WebP
+            {!material && status ? (
+              <p role={statusTone === 'error' ? 'alert' : 'status'} className={statusTone === 'error' ? 'inline-error' : 'inline-note'}>
+                {status}
               </p>
-            </div>
-          </div>
-
-          <section className="material-pace-settings">
-            <label className="material-pace-toggle">
-              <input
-                checked={paceEnabled}
-                onChange={(event) => setPaceEnabled(event.target.checked)}
-                type="checkbox"
-              />
-              <span>
-                <strong>教材ペース管理を使う</strong>
-              </span>
-            </label>
-
-            {paceEnabled ? (
-              <div className="material-pace-form-grid">
-                <label className="field">
-                  <span>単位</span>
-                  <select
-                    value={progressUnit}
-                    onChange={(event) =>
-                      setProgressUnit(event.target.value as StudyMaterialProgressUnit)
-                    }
-                  >
-                    {PROGRESS_UNIT_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {progressUnit === 'custom' ? (
-                  <label className="field">
-                    <span>単位名</span>
-                    <input
-                      value={progressUnitLabel}
-                      onChange={(event) => setProgressUnitLabel(event.target.value)}
-                      placeholder="例: レッスン"
-                    />
-                  </label>
-                ) : null}
-
-                <label className="field">
-                  <span>総量</span>
-                  <input
-                    min="0"
-                    step="1"
-                    value={totalUnits}
-                    onChange={(event) => setTotalUnits(event.target.value)}
-                    placeholder={`例: 300${unitLabel}`}
-                    type="number"
-                  />
-                </label>
-
-                <label className="field">
-                  <span>現在位置</span>
-                  <input
-                    max={parsedTotalUnits ?? undefined}
-                    min="0"
-                    step="1"
-                    value={currentUnit}
-                    onChange={(event) => setCurrentUnit(event.target.value)}
-                    placeholder={`例: 45${unitLabel}`}
-                    type="number"
-                  />
-                </label>
-
-                <label className="field">
-                  <span>目標日</span>
-                  <input
-                    value={targetDate}
-                    onChange={(event) => setTargetDate(event.target.value)}
-                    type="date"
-                  />
-                </label>
-
-                <label className="field">
-                  <span>1単位あたりの目安時間</span>
-                  <input
-                    min="0"
-                    step="1"
-                    value={estimatedMinutesPerUnit}
-                    onChange={(event) => setEstimatedMinutesPerUnit(event.target.value)}
-                    placeholder="分"
-                    type="number"
-                  />
-                </label>
-
-                <label className="field">
-                  <span>1日の最大量</span>
-                  <input
-                    min="0"
-                    step="1"
-                    value={maxUnitsPerDay}
-                    onChange={(event) => setMaxUnitsPerDay(event.target.value)}
-                    placeholder="任意"
-                    type="number"
-                  />
-                </label>
-              </div>
             ) : null}
-          </section>
-
-          <div className="row-actions">
+          </CreationLayout>
+          <div className={material ? 'row-actions' : 'material-create-footer'}>
             <button className="primary-button" disabled={!canSave} type="submit">
               保存
             </button>
@@ -593,7 +641,7 @@ function BookshelfMaterialDialogSession({
                 削除
               </button>
             ) : null}
-            {status ? (
+            {material && status ? (
               <span className={statusTone === 'error' ? 'inline-error' : 'inline-note'}>
                 {status}
               </span>
