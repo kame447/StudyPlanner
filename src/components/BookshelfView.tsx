@@ -116,8 +116,11 @@ function MaterialCover({
   );
 }
 
-function formatProgress(material: StudyMaterial): number {
-  return calculateMaterialPace(material, todayIsoDate()).progressRate;
+function getDisplayProgress(material: StudyMaterial): number | null {
+  const pace = calculateMaterialPace(material, todayIsoDate());
+  return pace.enabled && pace.totalUnits !== null && pace.totalUnits > 0
+    ? pace.progressRate
+    : null;
 }
 
 function parseOptionalNumber(value: string): number | undefined {
@@ -479,7 +482,7 @@ export function BookshelfView({
             {frequentMaterials.map((material) => {
               const subject =
                 subjectsWithFallback.find((item) => item.id === material.subjectId) ?? null;
-              const progress = formatProgress(material);
+              const progress = getDisplayProgress(material);
               return (
                 <button
                   className="bookshelf-featured-card"
@@ -491,7 +494,7 @@ export function BookshelfView({
                   <span className="bookshelf-featured-copy">
                     <strong>{material.name}</strong>
                     <small>{subject?.name ?? material.subjectName}</small>
-                    {material.paceEnabled === true ? <span className="bookshelf-progress-caption">
+                    {progress !== null ? <span className="bookshelf-progress-caption">
                       <span className="bookshelf-inline-progress" aria-hidden="true">
                         <span style={{ width: `${progress}%` }} />
                       </span>
@@ -552,7 +555,7 @@ export function BookshelfView({
                     <div className="bookshelf-expanded-materials">
                       {subjectMaterials.length > 0 ? (
                         subjectMaterials.map((material) => {
-                          const progress = formatProgress(material);
+                          const progress = getDisplayProgress(material);
                           return (
                             <div
                               className="bookshelf-material-list-row"
@@ -573,7 +576,7 @@ export function BookshelfView({
                                 <strong>{material.name}</strong>
                                 <small>{material.subjectName} ・ {material.studyStatus === 'completed' ? '学習済み' : '学習中'}</small>
                               </span>
-                              {material.paceEnabled === true ? <span className="bookshelf-material-row-progress">
+                              {progress !== null ? <span className="bookshelf-material-row-progress">
                                 <small>進捗 {Math.round(progress)}%</small>
                                 <span className="bookshelf-inline-progress" aria-hidden="true">
                                   <span style={{ width: `${progress}%` }} />

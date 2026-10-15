@@ -279,6 +279,45 @@ test('untracked materials omit misleading progress but tracked zero remains visi
   await expect(page.locator('.bookshelf-detail-page')).not.toContainText('0%');
 });
 
+for (const width of [390, 1280]) {
+  test(`enabled progress without a total stays hidden on both shelf surfaces at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await seedBookshelf(page);
+    await openBookshelf(page);
+    const seededMaterials = await page.evaluate(() => {
+      const materials = JSON.parse(localStorage.getItem('studyplanner.studyMaterials.v1'));
+      const material = materials.find(item => item.id === 'bookshelf-e2e-material');
+      material.paceEnabled = true;
+      delete material.totalUnits;
+      material.studyStatus = 'completed';
+      localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify(materials));
+      return materials;
+    });
+    await page.reload();
+    await openBookshelf(page);
+    const subject = page.locator('.bookshelf-subject-toggle').filter({ hasText: '情報科学' });
+    if (await subject.getAttribute('aria-expanded') === 'false') await subject.click();
+    const featured = page.locator('.bookshelf-featured-card').filter({ hasText: 'アルゴリズム問題集' });
+    const row = page.locator('.bookshelf-material-list-row').filter({ hasText: 'アルゴリズム問題集' });
+    for (const surface of [featured, row]) {
+      await expect(surface).toBeVisible();
+      await expect(surface).not.toContainText('%');
+      await expect(surface.locator('.bookshelf-inline-progress')).toHaveCount(0);
+    }
+    await expect(featured.locator('.bookshelf-progress-caption')).toHaveCount(0);
+    await expect(row.locator('.bookshelf-material-row-progress')).toHaveCount(0);
+    await expect(row).toContainText('学習済み');
+    for (const selector of ['.bookshelf-featured-card', '.bookshelf-material-list-row']) {
+      const configured = page.locator(selector).filter({ hasText: 'ネットワーク演習' });
+      await expect(configured).toContainText('進捗 15%');
+      await expect(configured.locator('.bookshelf-inline-progress')).toHaveCount(1);
+    }
+    await page.screenshot({ path: testInfo.outputPath(`material-progress-without-total-${width}.png`), fullPage: true, animations: 'disabled' });
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.studyMaterials.v1')))).toEqual(seededMaterials);
+  });
+}
+
 test('photo import discloses its destination and leaves contents unchanged without AI login', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await seedBookshelf(page); await openBookshelf(page);
