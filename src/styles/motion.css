@@ -3,7 +3,8 @@
  *
  * `<html data-motion>` is written only by src/lib/motionPreference.ts.
  *   standard – spatial motion and opted-in ambience
- *   reduced  – no movement/scale/ambient loops; short opacity fades only
+ *   reduced  – no movement/scale/ambient loops; short fades on entry only,
+ *              exits are immediate
  *   off      – no animation or transition at all
  *
  * Principles
@@ -23,7 +24,7 @@
   --motion-duration-base: 210ms;
   --motion-duration-slow: 300ms;
   /* Mirror STANDARD_EXIT_MS / REDUCED_FADE_MS in src/lib/motionPreference.ts:
-     JS waits exactly this long before unmounting an exiting surface. */
+     JS waits exactly the exit duration before unmounting an exiting surface. */
   --motion-duration-exit: 220ms;
   --motion-duration-fade: 120ms;
   --motion-delay-stagger: 70ms;
@@ -47,7 +48,7 @@
 :root[data-motion='reduced'] {
   --motion-duration-base: var(--motion-duration-fade);
   --motion-duration-slow: var(--motion-duration-fade);
-  --motion-duration-exit: var(--motion-duration-fade);
+  --motion-duration-exit: 0ms;
   --motion-delay-stagger: 0ms;
   --motion-distance-sm: 0px;
   --motion-distance-md: 0px;
@@ -58,7 +59,6 @@
   --motion-scale-pop-from: 1;
   --motion-scale-pop-peak: 1;
   --motion-sheet-from-opacity: 0;
-  --motion-sheet-exit-opacity: 0;
   --motion-panel-from-opacity: 0;
 }
 
@@ -92,6 +92,13 @@
   transition-duration: 0s !important;
   transition-delay: 0s !important;
   scroll-behavior: auto !important;
+}
+
+/* Disclosed content rises into place when it opens; closing is immediate.
+   `backwards` fill leaves no transform behind, so fixed or sticky
+   descendants are never re-parented once the reveal has finished. */
+.motion-reveal {
+  animation: motion-rise-in var(--motion-duration-base) var(--motion-ease-emphasized) backwards;
 }
 
 /* Shared keyframes ------------------------------------------------------- */

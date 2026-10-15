@@ -47,6 +47,8 @@ import {
   scheduleOccurrenceTimesForDate,
   type WeekViewLane,
 } from '../lib/weekViewLayout';
+import { useDataChangeMotion } from '../hooks/useDataChangeMotion';
+import { usePeriodNavigationMotion } from '../hooks/usePeriodNavigationMotion';
 import { useScheduleItemActionPress } from '../hooks/useScheduleItemActionPress';
 import { useTimelineDragCancellation } from '../hooks/useTimelineDragCancellation';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
@@ -249,17 +251,21 @@ function getDistance(startX: number, startY: number, x: number, y: number): numb
   return Math.hypot(x - startX, y - startY);
 }
 
+// Stable defaults so absent optional data is not mistaken for a data change.
+const NO_MONTH_EVENTS: MonthEvent[] = [];
+const NO_DRAFT_BLOCKS: WeeklyPlanDraftBlock[] = [];
+
 export function WeekView({
   selectedDate,
   userId,
   plans,
   actuals,
-  monthEvents = [],
+  monthEvents = NO_MONTH_EVENTS,
   scheduleTemplates = [],
   timetableTermId,
   timetableTerm,
   timetableTerms = [],
-  weeklyDraftBlocks = [],
+  weeklyDraftBlocks = NO_DRAFT_BLOCKS,
   onRemoveWeeklyDraftBlock,
   onOpenPlan,
   onMovePlan,
@@ -280,6 +286,10 @@ export function WeekView({
     disabled: !onChangeWeek || Boolean(dragVisual || scheduleAction.activeAction),
   });
   const weekDates = getWeekDates(selectedDate);
+  const weekSectionRef = useRef<HTMLElement | null>(null);
+  useDataChangeMotion(weekSectionRef, `${weekDates[0]}:${timelineMode}`, [plans, actuals, monthEvents, weeklyDraftBlocks]);
+  const weekGridRef = useRef<HTMLDivElement | null>(null);
+  usePeriodNavigationMotion(weekGridRef, weekDates[0]);
   const weekStartDate = weekDates[0];
   const weekEndDate = weekDates[weekDates.length - 1];
   const scheduleProjection = useMemo(
@@ -892,6 +902,7 @@ export function WeekView({
   return (
     <>
       <section
+        ref={weekSectionRef}
         className="panel schedule-week-view"
         {...swipeNavigation}
         onPointerDownCapture={handleActionPointerDownCapture}
@@ -926,6 +937,7 @@ export function WeekView({
         <div className="weekly-draft-preview schedule-week-preview">
           <div className="weekly-draft-preview-scroll schedule-week-preview-scroll">
             <div
+              ref={weekGridRef}
               className="weekly-draft-preview-grid schedule-week-preview-grid"
               style={previewGridStyle}
             >
@@ -1097,6 +1109,8 @@ export function WeekView({
                                 dragVisual?.blockId === entry.id ? ' is-drag-source' : ''
                               }`}
                               key={entry.id}
+                              data-motion-key={`${date}:${entry.id}`}
+                              data-motion-signature={`${entry.startTime}-${entry.endTime} ${entry.title}`}
                               data-schedule-occurrence-id={entry.occurrence?.id}
                               style={buildBlockStyle(entry)}
                               title={`${entry.title} / ${entry.startTime}-${entry.endTime}`}
@@ -1124,6 +1138,8 @@ export function WeekView({
                           <span
                             className={blockClassName}
                             key={entry.id}
+                            data-motion-key={`${date}:${entry.draft ? 'draft' : 'entry'}:${entry.id}`}
+                            data-motion-signature={`${entry.startTime}-${entry.endTime} ${entry.title}`}
                             data-schedule-occurrence-id={
                               isReadOnlyTimetable ? undefined : entry.occurrence?.id
                             }

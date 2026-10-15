@@ -553,7 +553,7 @@ export function BookshelfView({
                   </button>
 
                   {expanded ? (
-                    <div className="bookshelf-expanded-materials">
+                    <div className="bookshelf-expanded-materials motion-reveal">
                       {subjectMaterials.length > 0 ? (
                         subjectMaterials.map((material) => {
                           const progress = getDisplayProgress(material);

@@ -31,10 +31,9 @@ describe('effective motion level', () => {
     expect(resolveMotionLevel('off', true)).toBe('off');
   });
 
-  it('never waits for an exit when off, and only for the short fade when reduced', () => {
+  it('only waits for an exit animation at the standard level', () => {
     expect(resolveExitDurationMs('standard', STANDARD_EXIT_MS)).toBe(STANDARD_EXIT_MS);
-    expect(resolveExitDurationMs('reduced', STANDARD_EXIT_MS)).toBe(REDUCED_FADE_MS);
-    expect(resolveExitDurationMs('reduced', 60)).toBe(60);
+    expect(resolveExitDurationMs('reduced', STANDARD_EXIT_MS)).toBe(0);
     expect(resolveExitDurationMs('off', STANDARD_EXIT_MS)).toBe(0);
     expect(resolveExitDurationMs('standard', 0)).toBe(0);
   });
@@ -43,7 +42,7 @@ describe('effective motion level', () => {
     const css = readFileSync(new URL('../styles/motion.css', import.meta.url), 'utf8');
     expect(css).toContain(`--motion-duration-exit: ${STANDARD_EXIT_MS}ms;`);
     expect(css).toContain(`--motion-duration-fade: ${REDUCED_FADE_MS}ms;`);
-    expect(css).toMatch(/:root\[data-motion='reduced'\] \{[^}]*--motion-duration-exit: var\(--motion-duration-fade\);/);
+    expect(css).toMatch(/:root\[data-motion='reduced'\] \{[^}]*--motion-duration-exit: 0ms;/);
     expect(css).toMatch(/:root\[data-motion='off'\] \{[^}]*--motion-duration-exit: 0ms;/);
   });
 });

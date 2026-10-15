@@ -11,7 +11,19 @@
   white-space: nowrap;
   border: 0;
 }
+/* Registered so the sky can blend between periods instead of jumping. The
+   change is colour only (no movement), so it runs at standard and reduced;
+   `off` removes it with every other transition. */
+@property --scene-atmosphere-sky { syntax: '<color>'; inherits: true; initial-value: #bfdde7; }
+@property --scene-atmosphere-cloud { syntax: '<color>'; inherits: true; initial-value: #f6fcff; }
+@property --scene-atmosphere-sun { syntax: '<color>'; inherits: true; initial-value: #efd6a3; }
+@property --scene-atmosphere-horizon { syntax: '<color>'; inherits: true; initial-value: #e9c69d; }
 [data-scene-period] {
+  transition:
+    --scene-atmosphere-sky 1.6s ease-in-out,
+    --scene-atmosphere-cloud 1.6s ease-in-out,
+    --scene-atmosphere-sun 1.6s ease-in-out,
+    --scene-atmosphere-horizon 1.6s ease-in-out;
   --scene-atmosphere-sky: #bfdde7;
   --scene-atmosphere-cloud: #f6fcff;
   --scene-atmosphere-sun: #efd6a3;

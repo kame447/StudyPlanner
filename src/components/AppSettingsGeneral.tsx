@@ -86,7 +86,7 @@ export function AppSettingsGeneral({
             {paletteOpen ? <ChevronDown aria-hidden="true" size={20} /> : <ChevronRight aria-hidden="true" size={20} />}
           </span>
         </button>
-        {paletteOpen ? <div className="settings-row-details" id="settings-palette-options">
+        {paletteOpen ? <div className="settings-row-details motion-reveal" id="settings-palette-options">
           <div className="theme-palette-grid" role="group" aria-label="配色">
             {THEME_PALETTE_OPTIONS.map(palette => <button key={palette.id} type="button"
               className={themePalette === palette.id ? 'theme-palette-button active' : 'theme-palette-button'}

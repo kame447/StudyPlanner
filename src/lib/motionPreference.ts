@@ -11,7 +11,8 @@
  * Levels:
  * - standard: spatial motion (movement, scale, sheets) and opted-in ambience.
  * - reduced:  no movement or scale and no ambient loops; short opacity fades
- *             only. The device reduced-motion setting caps `standard` here.
+ *             on entry only, exits are immediate. The device reduced-motion
+ *             setting caps `standard` here.
  * - off:      no animation or transition. Meaningful state changes must stay
  *             recognisable from colour, shape, text and focus alone.
  */
@@ -51,12 +52,12 @@ export function allowsSpatialMotion(): boolean {
 }
 
 /**
- * How long a surface may keep the user waiting for its exit animation.
- * `off` never waits; `reduced` waits only for the short fade.
+ * How long a surface may keep the user waiting for its exit animation. Only
+ * `standard` animates exits; below it a dismissed surface leaves at once, so
+ * motion never delays the next action.
  */
 export function resolveExitDurationMs(level: MotionLevel, standardMs: number): number {
-  if (level === 'off' || standardMs <= 0) return 0;
-  return level === 'reduced' ? Math.min(standardMs, REDUCED_FADE_MS) : standardMs;
+  return level === 'standard' ? Math.max(standardMs, 0) : 0;
 }
 
 function systemQuery(): MediaQueryList | null {
