@@ -110,7 +110,7 @@
 
 .quick-add-option:hover .quick-add-option-icon,
 .quick-add-option:focus-visible .quick-add-option-icon {
-  transform: scale(1.045);
+  transform: scale(calc(1 + 0.045 * var(--motion-spatial)));
   background: var(--accent);
   color: #fff;
 }

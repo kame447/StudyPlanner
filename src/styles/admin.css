@@ -148,7 +148,7 @@
 
 .admin-user-card:hover {
   border-color: var(--border-strong);
-  transform: translateY(-1px);
+  transform: translateY(calc(-1px * var(--motion-spatial)));
 }
 
 .admin-user-card-main {

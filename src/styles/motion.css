@@ -37,6 +37,8 @@
   --motion-distance-md: 14px;
   --motion-distance-sheet: calc(100% + 28px);
   --motion-scale-press: 0.97;
+  /* Multiplies hover lifts and press scales: 1 moves, 0 keeps them in place. */
+  --motion-spatial: 1;
   --motion-scale-enter: 0.96;
   --motion-scale-sheet: 0.992;
   --motion-scale-pop-from: 0.84;
@@ -56,6 +58,7 @@
   --motion-distance-md: 0px;
   --motion-distance-sheet: 0px;
   --motion-scale-press: 1;
+  --motion-spatial: 0;
   --motion-scale-enter: 1;
   --motion-scale-sheet: 1;
   --motion-scale-pop-from: 1;
@@ -76,6 +79,7 @@
   --motion-distance-md: 0px;
   --motion-distance-sheet: 0px;
   --motion-scale-press: 1;
+  --motion-spatial: 0;
   --motion-scale-enter: 1;
   --motion-scale-sheet: 1;
   --motion-scale-pop-from: 1;

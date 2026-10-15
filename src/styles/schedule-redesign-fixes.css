@@ -92,7 +92,7 @@
 }
 
 .schedule-period-step:active {
-  transform: scale(0.94);
+  transform: scale(calc(1 - 0.06 * var(--motion-spatial)));
 }
 
 .schedule-period-picker-trigger {

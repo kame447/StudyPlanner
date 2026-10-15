@@ -1031,7 +1031,7 @@
 .home-avatar-button:active,
 .home-start-button:active,
 .home-alert-card:active {
-  transform: scale(0.985);
+  transform: scale(calc(1 - 0.015 * var(--motion-spatial)));
 }
 
 /* Responsive --------------------------------------------------------- */

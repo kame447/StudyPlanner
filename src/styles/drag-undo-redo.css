@@ -41,7 +41,7 @@
 }
 
 .drag-undo-redo-controls button:active:not(:disabled) {
-  transform: scale(0.94);
+  transform: scale(calc(1 - 0.06 * var(--motion-spatial)));
 }
 
 .drag-undo-redo-controls button:focus-visible {

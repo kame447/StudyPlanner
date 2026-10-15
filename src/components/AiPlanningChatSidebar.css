@@ -29,7 +29,7 @@
 }
 
 .ai-chat-week-reset-button:hover:not(:disabled) {
-  transform: translateY(-1px);
+  transform: translateY(calc(-1px * var(--motion-spatial)));
   border-color: color-mix(in srgb, #ef4444 48%, var(--border, #dce4ee));
   background: color-mix(in srgb, #ef4444 9%, transparent);
 }

@@ -146,6 +146,31 @@ describe('single owner', () => {
     expect(offenders).toEqual(['lib/motionPreference.ts']);
   });
 
+  it('lets hover lifts and press scales move only at standard', async () => {
+    const { readdirSync, statSync } = await import('node:fs');
+    const { join, relative } = await import('node:path');
+    const srcRoot = new URL('..', import.meta.url).pathname;
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const path = join(dir, name);
+        if (statSync(path).isDirectory()) { walk(path); continue; }
+        if (!name.endsWith('.css')) continue;
+        const css = readFileSync(path, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+        for (const [, selector, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+          if (!/:(hover|active)/.test(selector) || selector.includes('data-motion')) continue;
+          const transform = /(?<![-\w])transform:\s*([^;]+)/.exec(body)?.[1].trim();
+          if (!transform || transform === 'none' || transform.includes('var(--motion')) continue;
+          if (/translate[XY3d]*\((?!0\)|0,\s*0)|scale\((?!1\))/.test(transform)) {
+            offenders.push(`${relative(srcRoot, path)}: ${selector.trim().split('\n').pop()}`);
+          }
+        }
+      }
+    };
+    walk(srcRoot);
+    expect(offenders).toEqual([]);
+  });
+
   it('never lets a near-zero !important duration outrank the off guarantee', async () => {
     const { readdirSync, statSync } = await import('node:fs');
     const { join, relative } = await import('node:path');
