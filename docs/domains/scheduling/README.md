@@ -38,6 +38,8 @@ Firestore Rules は Phase 3 merge 後に repository-owned な WIF workflow か�
 
 ## Active work
 
+- [Yearly quick entry](work/yearly-quick-entry-handoff.md) — schedule type ordering and annual structured recurrence, including persistence and scoped edits.
+
 - [Compact event label picker](work/schedule-color-label-picker-handoff.md) — replaces the always-visible color chips from merged #663 with a one-line label below the time fields; local implementation and focused checks, publication/native verification pending.
 
 - [Event editor selection and optional fields](work/event-editor-selection-handoff.md) — add wording, selection cue, color chips, and reversible disclosure; focused checks passed, combined/visual verification pending.

@@ -62,9 +62,9 @@ afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.unstu
 
 function deleteButton() { return renderer!.root.findAllByType('button').find(b => b.findAllByType('strong').some(label => label.children.join('') === '削除'))!; }
 function dialogs() { return renderer!.root.findAllByProps({ role: 'dialog' }); }
-it.each(['same-day', 'overnight', 'yearly'] as const)('retains a %s deletion menu through failure and retry', async mode => {
+it.each(['same-day', 'overnight'] as const)('retains a %s deletion menu through failure and retry', async mode => {
   const source = mode === 'overnight' ? { ...plan, date: '2026-08-13', startTime: '23:00', endTime: '01:00' }
-    : mode === 'yearly' ? { ...plan, date: '2025-08-14', repeat: 'yearly' as const } : plan;
+    : plan;
   repository.getPlans.mockResolvedValue([source]);
   await mount();
   const pending = deferred<void>(); repository.deletePlanWithDependents.mockReturnValueOnce(pending.promise);
@@ -121,12 +121,13 @@ it('isolates old success and failure after plan, owner, date or mounted-view rep
   }
 });
 
-it('preserves recurring scope selection and its existing failed-mutation retry boundary', async () => {
-  const recurring = { ...plan, repeat: 'weekly' as const, repeatUntil: '2026-09-30' };
+it.each(['weekly', 'yearly'] as const)('preserves %s scope selection and its failed-mutation retry boundary', async repeat => {
+  const recurring = { ...plan, repeat, date: repeat === 'yearly' ? '2025-08-14' : DATE, repeatUntil: '2027-09-30' };
   repository.getPlans.mockResolvedValue([recurring]); await mount();
   await act(async () => { deleteButton().props.onClick(); });
   expect(repository.deletePlanWithDependents).not.toHaveBeenCalled();
   expect(state.pendingRecurringPlanAction).toMatchObject({ kind: 'delete', plan: { id: plan.id } });
+  expect(state.pendingRecurringPlanAction).toMatchObject({ plan: { date: DATE, occurrenceDate: DATE, sourceDate: recurring.date } });
   expect(dialogs()).toHaveLength(0);
   const pending = deferred<void>(); repository.applyRecurringPlanMutation.mockReturnValueOnce(pending.promise);
   let operation!: Promise<void>; await act(async () => { operation = state.confirmRecurringPlanScope('single'); });
@@ -134,6 +135,11 @@ it('preserves recurring scope selection and its existing failed-mutation retry b
   expect(state.pendingRecurringPlanAction).toMatchObject({ kind: 'delete', plan: { id: plan.id } });
   await act(async () => { await state.confirmRecurringPlanScope('single'); });
   expect(state.pendingRecurringPlanAction).toBeNull(); expect(repository.applyRecurringPlanMutation).toHaveBeenCalledTimes(2);
+  for (const [, mutation] of repository.applyRecurringPlanMutation.mock.calls) {
+    expect(mutation.planDeletes).toEqual([]);
+    expect(mutation.planUpserts[0]).toMatchObject({ date: recurring.date, repeat, excludedDates: [DATE] });
+    expect(mutation.actualDeletes).toEqual([actual]);
+  }
 });
 
 it('does not start deletion after dismissal begins and still closes externally removed idle targets', async () => {

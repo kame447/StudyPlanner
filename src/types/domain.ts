@@ -30,7 +30,7 @@ export interface UserProfileDraft {
   avatar: string;
 }
 
-export type RecurrenceRuleKind = 'daily' | 'monthly' | 'day-type' | 'weekday' | 'date';
+export type RecurrenceRuleKind = 'daily' | 'monthly' | 'yearly' | 'day-type' | 'weekday' | 'date';
 
 export type RecurrenceDayType = 'weekday' | 'weekend';
 

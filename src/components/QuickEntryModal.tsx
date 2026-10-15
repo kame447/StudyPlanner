@@ -53,8 +53,8 @@ interface QuickEntryModalProps {
 }
 
 const MODE_OPTIONS: Array<{ value: QuickEntryMode; label: string }> = [
-  { value: 'later', label: 'Todo' },
   { value: 'scheduled', label: '時間指定' },
+  { value: 'later', label: 'Todo' },
   { value: 'repeat', label: '繰り返し' },
 ];
 
@@ -720,6 +720,7 @@ function QuickEntryEditor({
                             ['daily', '毎日'],
                             ['weekly', '毎週'],
                             ['monthly', '毎月'],
+                            ['yearly', '毎年'],
                           ] as const
                         ).map(([value, label]) => (
                           <button
