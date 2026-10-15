@@ -168,9 +168,9 @@
   }
 }
 
-/* Creation has two required fields. Keep them and its actions together, with
- * optional information expanding inside one scrollable body. Editing retains
- * the existing long-form layout and shared modal rules are not changed. */
+/* Creation uses Schedule's full-width, 720px-capped, 92dvh sheet geometry.
+ * Fill that space with a scrollable body, not taller inputs; keep the actions
+ * at the bottom. Editing retains its existing long-form layout. */
 .bookshelf-view > .modal-overlay:has(> .bookshelf-modal.material-create-dialog) {
   top: var(--material-create-viewport-top, 0px);
   bottom: auto;
@@ -181,6 +181,9 @@
 
 .bookshelf-view > .modal-overlay > .bookshelf-modal.material-create-dialog {
   --material-create-surface: #fff;
+  width: min(100%, 720px);
+  max-width: 720px;
+  height: min(92dvh, calc(var(--material-create-viewport-height, 100dvh) - 12px));
   max-height: min(92dvh, calc(var(--material-create-viewport-height, 100dvh) - 12px));
   display: flex;
   flex-direction: column;
@@ -201,6 +204,7 @@
 .bookshelf-modal.material-create-dialog .material-create-layout {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-height: 0;
   max-height: inherit;
 }
@@ -226,6 +230,7 @@
 
 .bookshelf-modal.material-create-dialog .material-create-body {
   display: grid;
+  flex: 1;
   align-content: start;
   min-height: 0;
   gap: 14px;
