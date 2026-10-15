@@ -19,7 +19,7 @@ for (const width of [390, 1280]) {
     await expect(tabs.filter({ hasText: '時間指定' })).toHaveClass(/active/);
     await editor.getByRole('button', { name: '繰り返し', exact: true }).click();
     await editor.getByPlaceholder('例: 英語課題 / 面接準備').fill('年に一度の予定');
-    await editor.getByLabel('種別', { exact: true }).selectOption('other');
+    await editor.getByRole('combobox', { name: '種別', exact: true }).selectOption('other');
     await editor.getByRole('button', { name: '毎年', exact: true }).click();
     // A prior-year anchor lets the real app demonstrate next-year expansion on
     // today's calendar without replacing storage or the app's selected date.
