@@ -8,6 +8,7 @@ const QUESTION_SOURCE_EXCERPT_LIMIT = 80;
 
 export type WeeklyPlanningStableV5MissingWorkIntent =
   | 'existing_target_progress'
+  | 'open_ended_session'
   | 'missing_task_identity'
   | 'all_requested_work_complete';
 
@@ -106,7 +107,8 @@ function progressQuestion(params: {
   if (params.material) {
     return concreteMaterialProgressQuestion(params.label);
   }
-  return `「${params.label}」は、全体の範囲を枚数などで決めず、完成を100%とすると今どこまで終わっているか、だいたいの割合で教えてください。`;
+  // This is an application goal, not a scripted user-facing reply.
+  return `相談対象: 「${params.label}」。全体の完成見積もりではなく、この計画期間に取り組む機会を確認する。`;
 }
 
 export function stableV5MissingSchedulableWorkQuestion(
@@ -234,7 +236,9 @@ export function stableV5MissingSchedulableWorkQuestion(
       questionCode: 'missing_schedulable_work',
       taskTitles,
       targetFactId: componentWithNoWorkload.id,
-      intent: 'existing_target_progress',
+      intent: componentWithNoWorkload.role === 'material' || scopeTotalForTarget({
+        workloads: active.workloads, targetFactId: componentWithNoWorkload.id, targetKind: 'component',
+      }) ? 'existing_target_progress' : 'open_ended_session',
     };
   }
   const taskWithNoWorkload = active.tasks.find(
@@ -259,7 +263,9 @@ export function stableV5MissingSchedulableWorkQuestion(
       questionCode: 'missing_schedulable_work',
       taskTitles,
       targetFactId: taskWithNoWorkload.id,
-      intent: 'existing_target_progress',
+      intent: scopeTotalForTarget({
+        workloads: active.workloads, targetFactId: taskWithNoWorkload.id, targetKind: 'task',
+      }) ? 'existing_target_progress' : 'open_ended_session',
     };
   }
 

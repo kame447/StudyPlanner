@@ -1,3 +1,4 @@
+import { tryProvisionalAllocationRouteV5 } from './weeklyPlanningProvisionalAllocationRouteV5';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClientTypes';
 import {
   focusedDecisionContextV5,
@@ -194,7 +195,7 @@ function createProvisionalTimeboxDocumentV5(): WeeklyPlanningSemanticDocumentV5 
 export async function tryFocusedContextualAnswerRouteV5(
   run: WeeklyPlanningSemanticNormalizerRunV5,
 ): Promise<WeeklyPlanningSemanticNormalizerResultV5 | null> {
-  if (!focusedContextualAnswerEligibleV5(run.input)) return null;
+  if (!focusedContextualAnswerEligibleV5(run.input)) return tryProvisionalAllocationRouteV5(run);
 
   const target = focusedContextualTargetV5(run.input);
   if (!target) return null;
