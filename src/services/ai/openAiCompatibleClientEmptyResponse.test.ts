@@ -59,7 +59,7 @@ describe('openAiCompatibleClient empty direct responses', () => {
     });
 
     const client = createOpenAiCompatibleClient(config);
-    let message = '';
+    let message = ''; let failure: unknown;
     try {
       await client.createChatCompletion({
         messages: [{ role: 'user', content: 'test' }],
@@ -67,12 +67,14 @@ describe('openAiCompatibleClient empty direct responses', () => {
       });
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
+      failure = (error as { providerFailure?: unknown }).providerFailure;
     }
 
     expect(message).toBe(
       'AI response was empty. finish_reason=length refusal=present completion_tokens=4800 reasoning_tokens=4790',
     );
     expect(message).not.toContain('private provider refusal text');
+    expect(failure).toMatchObject({ kind: 'empty_response', httpStatus: 200, completion: { finishReason: 'length', refusalPresent: true, reasoningTokens: 4790, effectiveMaxCompletionTokens: 4800 } });
   });
 
   it('uses explicit unknown markers when an empty response omits diagnostics', async () => {

@@ -1,3 +1,4 @@
+import { projectAiProviderFailure, type AiProviderFailure } from '../../../../shared/aiProviderFailure';
 import type { WeeklyPlanningTraceResponseSource } from './weeklyPlanningTraceTypes';
 
 export type WeeklyPlanningDialogueRendererTraceActionKind =
@@ -36,6 +37,7 @@ export interface WeeklyPlanningDialogueRendererTrace {
   response: {
     status: WeeklyPlanningDialogueRendererTraceStatus;
     reason: string | null;
+    providerFailure?: AiProviderFailure;
     rawResponse: string | null;
     renderedText: string | null;
   };
@@ -169,6 +171,7 @@ export function boundWeeklyPlanningDialogueRendererTraceForTransport(
     response: {
       status: trace.response.status,
       reason: boundedNullableText(trace.response.reason, 512),
+      ...(trace.response.providerFailure ? { providerFailure: projectAiProviderFailure(trace.response.providerFailure) } : {}),
       rawResponse: boundedNullableText(trace.response.rawResponse, 8_000),
       renderedText: boundedNullableText(trace.response.renderedText, 1_500),
     },

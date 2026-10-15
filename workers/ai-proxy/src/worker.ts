@@ -1,3 +1,4 @@
+import { projectAiProviderFailure } from '../../../shared/aiProviderFailure';
 import { MATERIAL_CONTENTS_PHOTO_PROMPT, MATERIAL_CONTENTS_PHOTO_RESPONSE_FORMAT, parseMaterialContentsPhotoResult } from '../../../shared/materialContentsPhoto';
 import type { SemanticRequestRecorder } from '../../../shared/semanticDispatchRecorder';
 import { readBoundedOpenAiResponse } from './providerResponseBody';
@@ -833,7 +834,9 @@ async function fetchChatCompletion(
   if (observationContext) {
     observationContext.providerCompletion = projectOpenAiCompletionMetadata(completionBudget);
   }
-  const upstreamResponse = await providerFetch(`${openAiBaseUrl}/chat/completions`, {
+  let upstreamResponse: Response;
+  try {
+    upstreamResponse = await providerFetch(`${openAiBaseUrl}/chat/completions`, {
     method: 'POST',
     redirect: 'manual',
     ...(signal ? { signal } : {}),
@@ -849,10 +852,25 @@ async function fetchChatCompletion(
       max_completion_tokens: maxCompletionTokens,
     }),
   });
-  const upstreamText = await readBoundedOpenAiResponse(upstreamResponse);
+  } catch (error) {
+    // A programming/dispatch error is not evidence of a network failure.
+    if (!(error instanceof DOMException) && !signal?.aborted) throw error;
+    const kind = signal?.reason?.name === 'TimeoutError' || (error instanceof Error && error.name === 'TimeoutError')
+      ? 'timeout' : signal?.aborted ? 'aborted' : 'network_error';
+    return jsonResponse(request, env, 502, { error: 'OpenAI request failed.',
+      providerFailure: projectAiProviderFailure({ kind, httpStatus: 502 }) });
+  }
+  let upstreamText: string | null;
+  try { upstreamText = await readBoundedOpenAiResponse(upstreamResponse); }
+  catch {
+    const kind = signal?.reason?.name === 'TimeoutError' ? 'timeout' : signal?.aborted ? 'aborted' : 'network_error';
+    return jsonResponse(request, env, 502, { error: 'OpenAI request failed.',
+      providerFailure: projectAiProviderFailure({ kind, httpStatus: 502, upstreamStatus: upstreamResponse.status }) });
+  }
   if (!upstreamResponse.ok || upstreamText === null) {
     console.warn('[AI Proxy] OpenAI upstream failed', { status: upstreamResponse.status });
-    return jsonResponse(request, env, 502, { error: 'OpenAI request failed.' });
+    return jsonResponse(request, env, 502, { error: 'OpenAI request failed.',
+      providerFailure: projectAiProviderFailure({ kind: upstreamResponse.ok ? 'response_too_large' : 'http_error', httpStatus: 502, upstreamStatus: upstreamResponse.status }) });
   }
 
   try {
@@ -866,6 +884,7 @@ async function fetchChatCompletion(
     if (upstreamJson.model !== model) {
       return jsonResponse(request, env, 502, {
         error: 'OpenAI response could not be parsed.',
+        providerFailure: projectAiProviderFailure({ kind: 'model_mismatch', httpStatus: 502, upstreamStatus: upstreamResponse.status }),
       });
     }
     if (observationContext) {
@@ -877,6 +896,8 @@ async function fetchChatCompletion(
     if (!content) {
       return jsonResponse(request, env, 502, {
         error: 'OpenAI response content was empty.',
+        providerFailure: projectAiProviderFailure({ kind: 'empty_response', httpStatus: 502, upstreamStatus: upstreamResponse.status,
+          completion: projectOpenAiCompletionMetadata({ ...completionBudget, response: upstreamJson }) }),
       });
     }
     return jsonResponse(request, env, 200, {
@@ -886,6 +907,7 @@ async function fetchChatCompletion(
   } catch {
     return jsonResponse(request, env, 502, {
       error: 'OpenAI response could not be parsed.',
+      providerFailure: projectAiProviderFailure({ kind: 'invalid_response', httpStatus: 502, upstreamStatus: upstreamResponse.status }),
     });
   }
 }

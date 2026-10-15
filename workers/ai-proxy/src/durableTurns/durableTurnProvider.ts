@@ -1,3 +1,4 @@
+import { AiProviderError, projectAiProviderFailure } from '../../../../shared/aiProviderFailure';
 import type { OpenAiCompatibleClient } from '../../../../src/services/ai/openAiCompatibleClientTypes';
 import { executeAuthenticatedChatRequest, type AiProxyWorkerEnv } from '../worker';
 import { jevExecutionMode, lunaBaselineFailure } from '../decision/decisionExecutionMarker';
@@ -25,7 +26,20 @@ export function createDurableTurnProvider(
         });
         const context = { identity: { kind: 'authenticated' as const, firebaseUid: ownerId } };
         const startedAtMs = Date.now();
-        const response = await executeAuthenticatedChatRequest(request, env, { uid: ownerId }, undefined, undefined, context);
+        let response: Response;
+        try {
+          response = await executeAuthenticatedChatRequest(request, env, { uid: ownerId }, undefined, undefined, context);
+        } catch (error) {
+          if (error instanceof TypeError) {
+            throw new AiProviderError('Durable AI transport failed.', { kind: 'network_error', httpStatus: 502 });
+          }
+          if (error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+            throw new AiProviderError('Durable AI transport was interrupted.', {
+              kind: error.name === 'TimeoutError' ? 'timeout' : 'aborted', httpStatus: 502,
+            });
+          }
+          throw error;
+        }
         const observerEnv = env as unknown as AiProxyRequestObserverEnv;
         if (isAiRequestObservabilityConfigured(observerEnv)) {
           // Await the existing best-effort metric boundary inside the alarm lifetime.
@@ -34,13 +48,19 @@ export function createDurableTurnProvider(
             decisionExecutionMode: jevExecutionMode(response), lunaBaselineFailure: lunaBaselineFailure(response),
           }).catch(() => undefined);
         }
-        if (!response.ok) throw new Error('Durable AI provider request failed.');
+        if (!response.ok) {
+          const payload = await response.clone().json().catch(() => null) as { providerFailure?: unknown } | null;
+          const detail = projectAiProviderFailure(payload?.providerFailure);
+          throw new AiProviderError('Durable AI provider request failed.', {
+            ...detail, kind: detail.kind === 'unknown' ? 'http_error' : detail.kind, httpStatus: response.status,
+          });
+        }
         return response.text();
       });
       const data = JSON.parse(raw) as { content?: string; decisionContext?: { requestId: string; inputRevision: number } };
       if (data.decisionContext && (data.decisionContext.requestId !== input.decisionContext?.requestId
-        || data.decisionContext.inputRevision !== input.decisionContext?.inputRevision)) throw new Error('Decision response context mismatch.');
-      if (!data.content?.trim()) throw new Error('Durable AI provider response was empty.');
+        || data.decisionContext.inputRevision !== input.decisionContext?.inputRevision)) throw new AiProviderError('Decision response context mismatch.', { kind: 'context_mismatch' });
+      if (!data.content?.trim()) throw new AiProviderError('Durable AI provider response was empty.', { kind: 'empty_response' });
       return data.content;
     },
   };

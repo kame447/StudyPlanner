@@ -1,3 +1,4 @@
+import type { AiProviderFailure } from '../../../../shared/aiProviderFailure';
 import type { WeeklyPlanningPreviewConstraintSatisfaction } from '../application/weeklyPlanningPreviewConstraintSatisfaction';
 import type { WeeklyPlanningFixedEventCommunicationFacts } from '../application/weeklyPlanningFixedEventOnlyInteraction';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClientTypes';
@@ -256,6 +257,7 @@ export type WeeklyPlanningStableV5DialogueRenderResult =
       status: 'fallback';
       reason: WeeklyPlanningStableV5DialogueFallbackReason;
       rawResponse: string | null;
+      providerFailure?: AiProviderFailure;
     };
 
 export interface WeeklyPlanningStableV5DialogueRenderer {

@@ -1,3 +1,4 @@
+import { providerFailureFromError } from '../../../../shared/aiProviderFailure';
 import type { ChatMessage, OpenAiCompatibleClient, JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClientTypes';
 import {
   WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
@@ -46,9 +47,11 @@ async function requestDialogueRender(params: {
   client: OpenAiCompatibleClient;
   input: WeeklyPlanningStableV5DialogueRenderInput;
   messages: ChatMessage[];
+  maxCompletionTokens?: number;
 }): Promise<WeeklyPlanningStableV5DialogueRenderResult> {
   const rawResponse = await params.client.createChatCompletion({
     messages: params.messages,
+    ...(params.maxCompletionTokens ? { maxCompletionTokens: params.maxCompletionTokens } : {}),
     temperature: 0.4,
     responseFormat: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
     purpose: 'weekly_planning_renderer',
@@ -115,9 +118,9 @@ async function verifyRecoveryReply(params: {
       responseFormat: RECOVERY_VERIFICATION_RESPONSE_FORMAT,
     });
     trace.rawResponse = raw;
-  } catch {
+  } catch (error) {
     trace.status = 'provider_error';
-    return { status: 'fallback', reason: 'provider_error', rawResponse: rendered.rawResponse };
+    return { status: 'fallback', reason: 'provider_error', providerFailure: providerFailureFromError(error), rawResponse: rendered.rawResponse };
   }
   let verdict: Record<string, unknown> | null = null;
   try {
@@ -157,7 +160,31 @@ export function createWeeklyPlanningStableV5DialogueRendererCore(
           || (input.actionKind === 'question' && !input.recoveryQuestionEvidence))) {
           return { status: 'fallback', reason: 'recovery_verification_failed', rawResponse: null };
         }
-        const initial = await requestDialogueRender({ client, input, messages: baseMessages });
+        let initial: WeeklyPlanningStableV5DialogueRenderResult;
+        let budgetRetried = false;
+        try {
+          initial = await requestDialogueRender({ client, input, messages: baseMessages });
+        } catch (error) {
+          const failure = providerFailureFromError(error);
+          const completion = failure.completion;
+          // Retry once only when a known output-budget exhaustion produced no text.
+          // Other provider errors, recovery verification, and semantic validation
+          // must not trigger an extra model call.
+          if (input.recovery || failure.kind !== 'empty_response'
+            || completion?.finishReason !== 'length'
+            || completion.effectiveMaxCompletionTokens !== 800) throw error;
+          budgetRetried = true;
+          promptContext.outputBudgetRetry = { initialFailure: failure, maxCompletionTokens: 1600 };
+          try {
+            initial = await requestDialogueRender({
+              client, input, messages: baseMessages, maxCompletionTokens: 1600,
+            });
+            (promptContext.outputBudgetRetry as Record<string, unknown>).result = initial.status;
+          } catch (retryError) {
+            (promptContext.outputBudgetRetry as Record<string, unknown>).result = 'provider_error';
+            throw retryError;
+          }
+        }
         // Recovery uses the existing two-call ceiling for generation + verification,
         // never generation + repair + verification. No extra call after a throw/stale turn.
         if (input.recovery) {
@@ -175,7 +202,7 @@ export function createWeeklyPlanningStableV5DialogueRendererCore(
           : initial.reason === 'grounding_contract_mismatch'
             ? GROUNDING_ACK_REPAIR_INSTRUCTION
             : null;
-        if (!repairInstruction) return initial;
+        if (!repairInstruction || budgetRetried) return initial;
         return await requestDialogueRender({
           client,
           input,
@@ -184,8 +211,8 @@ export function createWeeklyPlanningStableV5DialogueRendererCore(
             { role: 'user', content: repairInstruction },
           ],
         });
-      } catch {
-        return { status: 'fallback', reason: 'provider_error', rawResponse: null };
+      } catch (error) {
+        return { status: 'fallback', reason: 'provider_error', providerFailure: providerFailureFromError(error), rawResponse: null };
       }
     },
   };
