@@ -6,6 +6,4 @@
   0%, 100% { transform: rotate(-3deg) scale(1, 1); }
   50% { transform: rotate(3deg) scale(.97, 1.04); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .study-streak-flame.is-studied-today { animation: none; }
-}
+:root:is([data-motion='reduced'], [data-motion='off']) .study-streak-flame.is-studied-today { animation: none; }

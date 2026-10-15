@@ -315,7 +315,7 @@
 }
 
 .week-timeline-block:hover {
-  transform: translateY(-1px);
+  transform: translateY(calc(-1px * var(--motion-spatial)));
 }
 
 .week-timeline-entry-line,

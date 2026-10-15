@@ -6,6 +6,7 @@ import {
   type ScheduleOccurrence,
 } from '../domain/scheduleOccurrence';
 import { addDays } from '../lib/date';
+import { getMotionLevel, resolveExitDurationMs, STANDARD_EXIT_MS } from '../lib/motionPreference';
 import {
   doesMonthEventOccurOnDate,
   formatMonthEventTimeRangeForDate,
@@ -19,7 +20,7 @@ import type {
 } from '../types/domain';
 
 const WEEKDAY_LABELS = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
-const CLOSE_ANIMATION_MS = 280;
+const CLOSE_ANIMATION_MS = STANDARD_EXIT_MS;
 
 function formatHeading(dateString: string): string {
   const date = new Date(`${dateString}T00:00:00`);
@@ -184,11 +185,17 @@ export function MonthDaySheet({
 
     if (!renderedDate) return;
 
+    const exitMs = resolveExitDurationMs(getMotionLevel(), CLOSE_ANIMATION_MS);
+    if (exitMs <= 0) {
+      setRenderedDate(null);
+      return;
+    }
+
     setIsClosing(true);
     const closeTimer = setTimeout(() => {
       setRenderedDate(null);
       setIsClosing(false);
-    }, CLOSE_ANIMATION_MS);
+    }, exitMs);
 
     return () => clearTimeout(closeTimer);
   }, [openDate, renderedDate]);

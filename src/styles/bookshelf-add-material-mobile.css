@@ -45,12 +45,12 @@
 }
 
 .bookshelf-view .bookshelf-add-material-fab:hover {
-  transform: translateY(-2px);
+  transform: translateY(calc(-2px * var(--motion-spatial)));
   box-shadow: 0 12px 24px color-mix(in srgb, var(--bookshelf-blue) 34%, transparent);
 }
 
 .bookshelf-view .bookshelf-add-material-fab:active {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(0) scale(calc(1 - 0.02 * var(--motion-spatial)));
 }
 
 .bookshelf-view .bookshelf-add-material-fab:focus-visible {
@@ -158,14 +158,12 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .bookshelf-view > .modal-overlay:has(> .bookshelf-modal .bookshelf-material-edit-grid),
-  .bookshelf-view
-    > .modal-overlay
-    > .bookshelf-modal:has(.bookshelf-material-edit-grid) {
-    animation-duration: 1ms !important;
-    animation-delay: 0ms !important;
-  }
+:root:is([data-motion='reduced'], [data-motion='off']) .bookshelf-view > .modal-overlay:has(> .bookshelf-modal .bookshelf-material-edit-grid),
+:root:is([data-motion='reduced'], [data-motion='off']) .bookshelf-view
+  > .modal-overlay
+  > .bookshelf-modal:has(.bookshelf-material-edit-grid) {
+  animation-duration: 0s !important;
+  animation-delay: 0ms !important;
 }
 
 /* Creation uses Schedule's full-width, 720px-capped, 92dvh sheet geometry.

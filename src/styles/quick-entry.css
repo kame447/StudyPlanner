@@ -1152,7 +1152,7 @@
 
 .quick-entry-chip:hover,
 .quick-entry-weekday-chip:hover {
-  transform: translateY(-1px);
+  transform: translateY(calc(-1px * var(--motion-spatial)));
 }
 
 .quick-entry-chip:disabled,
@@ -1519,8 +1519,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .weekly-planning-typing-indicator span {
-    animation: none;
-  }
+:root:is([data-motion='reduced'], [data-motion='off']) .weekly-planning-typing-indicator span {
+  animation: none;
 }

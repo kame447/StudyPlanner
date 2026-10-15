@@ -660,7 +660,7 @@ function MonthEventEditor({
             </div>
 
             {expandedAddons.has('repeat') ? (
-              <section id={`${addonId}-repeat`} className="month-event-addon-panel">
+              <section id={`${addonId}-repeat`} className="month-event-addon-panel motion-reveal">
                 <div className="label-row">
                   <strong>繰り返し</strong>
                 </div>
@@ -686,7 +686,7 @@ function MonthEventEditor({
             ) : null}
 
             {expandedAddons.has('url') ? (
-              <section id={`${addonId}-url`} className="month-event-addon-panel">
+              <section id={`${addonId}-url`} className="month-event-addon-panel motion-reveal">
                 <div className="label-row">
                   <strong>URL</strong>
                 </div>
@@ -707,7 +707,7 @@ function MonthEventEditor({
             ) : null}
 
             {expandedAddons.has('location') ? (
-              <section id={`${addonId}-location`} className="month-event-addon-panel">
+              <section id={`${addonId}-location`} className="month-event-addon-panel motion-reveal">
                 <div className="label-row">
                   <strong>場所</strong>
                 </div>
@@ -728,7 +728,7 @@ function MonthEventEditor({
             ) : null}
 
             {expandedAddons.has('memo') ? (
-              <section id={`${addonId}-memo`} className="month-event-addon-panel">
+              <section id={`${addonId}-memo`} className="month-event-addon-panel motion-reveal">
                 <div className="label-row">
                   <strong>メモ</strong>
                 </div>

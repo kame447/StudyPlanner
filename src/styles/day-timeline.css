@@ -292,7 +292,7 @@
 
 .timeline-plan-block:hover,
 .timeline-actual-block:hover {
-  transform: translateY(-1px);
+  transform: translateY(calc(-1px * var(--motion-spatial)));
 }
 
 .timeline-draft-block:hover {

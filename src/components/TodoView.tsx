@@ -13,6 +13,7 @@ import {
   PinOff,
   Trash2,
 } from 'lucide-react';
+import { useDataChangeMotion } from '../hooks/useDataChangeMotion';
 import { resolveQuickEntryEndTime } from '../lib/quickEntryDrafts';
 import { PLAN_TYPE_OPTIONS, getPlanTypeLabel } from '../lib/plans';
 import type {
@@ -166,6 +167,8 @@ function TodoViewSession({
   onDeleteTodo,
 }: TodoViewProps) {
   const completedListId = useId();
+  const viewRef = useRef<HTMLElement | null>(null);
+  useDataChangeMotion(viewRef, 'todo', [todos]);
   const [sortDirection, setSortDirection] = useState<TodoSortDirection>('asc');
   const [expandedSections, setExpandedSections] = useState<
     Record<TodoSectionKey, boolean>
@@ -491,6 +494,8 @@ function TodoViewSession({
             : 'todo-item todo-view-item'
         }
         key={todo.id}
+        data-motion-key={`todo:${todo.id}`}
+        data-motion-signature={`${todo.status} ${todo.title}`}
       >
         <div className="todo-item-main">
           <div className="todo-item-title-row">
@@ -650,14 +655,15 @@ function TodoViewSession({
                 ) : (
                   <ChevronRight aria-hidden="true" size={18} strokeWidth={1.9} />
                 )}
-                <span className="todo-section-count">{sectionTodos.length}</span>
+                <span className="todo-section-count" data-motion-key="count:done"
+                  data-motion-signature={String(sectionTodos.length)}>{sectionTodos.length}</span>
               </button>
             </h3>
           </div>
           <div id={completedListId} hidden={!isExpanded}>
             {isExpanded ? (
               sectionTodos.length > 0 ? (
-                <div className="todo-list todo-view-list">
+                <div className="todo-list todo-view-list motion-reveal">
                   {sectionTodos.map(renderTodo)}
                 </div>
               ) : (
@@ -683,7 +689,8 @@ function TodoViewSession({
       <section className="todo-status-section" key={sectionKey}>
         <div className="todo-status-section-head">
           <h3>{TODO_SECTION_LABELS[sectionKey]}</h3>
-          <span className="todo-section-count">{sectionTodos.length}</span>
+          <span className="todo-section-count" data-motion-key={`count:${sectionKey}`}
+            data-motion-signature={String(sectionTodos.length)}>{sectionTodos.length}</span>
         </div>
         {renderedTodos.length > 0 ? (
           <div className="todo-list todo-view-list">
@@ -721,7 +728,7 @@ function TodoViewSession({
   }
 
   return (
-    <section className="panel todo-view">
+    <section ref={viewRef} className="panel todo-view">
       <div className="section-header todo-view-header">
         <div>
           <h2>Todo</h2>

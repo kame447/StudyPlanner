@@ -1,5 +1,5 @@
 import { entryTimeRangeForDate } from '../lib/entryTimeRange';
-import type { CSSProperties } from "react";
+import { useRef, type CSSProperties } from "react";
 import type { ScheduleOccurrence } from "../domain/scheduleOccurrence";
 import { supportsScopedRecurringPlanEdits } from "../domain/recurringPlan";
 import { minutesBetween, minutesFromTime } from "../lib/date";
@@ -17,6 +17,8 @@ import { isScheduleOccurrenceOutsideHourlyGrid } from "../lib/scheduleOccurrence
 import { getMonthEventColor, getPlanScheduleColor, getScheduleOccurrenceColor, scheduleEventColorStyle, scheduleEventWeekStyle } from "../lib/scheduleEventColor";
 import { getSubjectLabel, getSubjectTheme } from "../lib/subjectTheme";
 import type { WeekPlanMoveTarget } from "../lib/weekPlanDrag";
+import { useDataChangeMotion } from "../hooks/useDataChangeMotion";
+import { usePeriodNavigationMotion } from "../hooks/usePeriodNavigationMotion";
 import { useTimelineDragController } from "../hooks/useTimelineDragController";
 import { useUndoRedoHistory } from "../hooks/useUndoRedoHistory";
 import type { WeeklyPlanDraftBlock } from "../features/weeklyPlanning/types";
@@ -150,6 +152,9 @@ function planTypeForOccurrence(occurrence: ScheduleOccurrence): PlanType {
   return "other";
 }
 
+// Stable default so an absent draft list is not mistaken for a data change.
+const NO_DRAFT_BLOCKS: WeeklyPlanDraftBlock[] = [];
+
 export function DayTimeline({
   date,
   dateLabel,
@@ -159,7 +164,7 @@ export function DayTimeline({
   actuals,
   actualPlanSources = plans,
   actualMonthEventSources = monthEvents,
-  weeklyDraftBlocks = [],
+  weeklyDraftBlocks = NO_DRAFT_BLOCKS,
   onRemoveWeeklyDraftBlock,
   onMovePlan,
   selectedEntryId,
@@ -373,6 +378,10 @@ export function DayTimeline({
     </div>
   );
   const draggingEntry = planEntries.find((entry) => entry.id === dragController.dragVisual?.key);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  useDataChangeMotion(canvasRef, date ?? "", [plans, actuals, monthEvents, scheduleOccurrences, weeklyDraftBlocks]);
+  const timelineShellRef = useRef<HTMLDivElement | null>(null);
+  usePeriodNavigationMotion(timelineShellRef, date ?? "");
 
   function applyHistoryTarget(historyPlan: Plan, target: WeekPlanMoveTarget) {
     const currentPlan = plans.find((plan) => plan.id === historyPlan.id) ?? historyPlan;
@@ -536,7 +545,7 @@ export function DayTimeline({
               </div>
             ) : null}
 
-            <div className="timeline-shell split">
+            <div ref={timelineShellRef} className="timeline-shell split">
               <div className="timeline-hours">
                 {DAY_HOURS.map((hour) => (
                   <div
@@ -556,6 +565,7 @@ export function DayTimeline({
                 </div>
 
                 <div
+                  ref={canvasRef}
                   className="timeline-canvas split"
                   style={{ height: "calc(24 * var(--timeline-hour-height))" }}
                 >
@@ -604,6 +614,8 @@ export function DayTimeline({
                     return (
                       <button
                         key={entry.id}
+                        data-motion-key={`plan:${entry.id}`}
+                        data-motion-signature={`${entry.startTime}-${entry.endTime} ${entry.title}`}
                         className={[
                           "timeline-plan-block split",
                           draggablePlan ? "schedule-week-plan-button" : "",
@@ -697,6 +709,8 @@ export function DayTimeline({
                     return (
                       <div
                         key={`draft-${entry.id}`}
+                        data-motion-key={`draft:${entry.id}`}
+                        data-motion-signature={`${entry.startTime}-${entry.endTime} ${entry.title}`}
                         className={[
                           "timeline-plan-block split timeline-draft-block",
                           getTimelineDensityClass(
@@ -775,6 +789,8 @@ export function DayTimeline({
                     return (
                       <button
                         key={entry.id}
+                        data-motion-key={`actual:${entry.id}`}
+                        data-motion-signature={`${entry.startTime}-${entry.endTime} ${entry.title}`}
                         className={[
                           "timeline-actual-block split",
                           selectedEntryId === entry.selectionId ? "is-selected" : "",

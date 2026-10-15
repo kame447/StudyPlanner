@@ -2,6 +2,7 @@ import type { MonthEventEditRequest } from '../domain/recurringMonthEvent';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useExitMotion } from '../hooks/useExitMotion';
+import { usePeriodNavigationMotion } from '../hooks/usePeriodNavigationMotion';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { addMonths, todayIsoDate } from '../lib/date';
 import { buildMonthGrid } from '../lib/monthViewProjection';
@@ -73,6 +74,8 @@ export function MonthView({
   );
   const cellRefs = useRef(new Map<string, HTMLButtonElement>());
   const viewRef = useRef<HTMLElement | null>(null);
+  const monthGridRef = useRef<HTMLDivElement | null>(null);
+  usePeriodNavigationMotion(monthGridRef, monthDate);
   const shouldFocusSelectedCell = useRef(false);
   const pendingCellClickTimeout = useRef<number | null>(null);
   const lastCellClick = useRef<{ date: string; at: number } | null>(null);
@@ -249,7 +252,7 @@ export function MonthView({
 
   return (
     <section ref={viewRef} className="panel schedule-month-view" {...swipeNavigation}>
-      <div className="schedule-month-static-grid">
+      <div ref={monthGridRef} className="schedule-month-static-grid">
         <MonthGridPanel
           monthDate={monthDate}
           isCurrent

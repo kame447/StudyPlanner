@@ -232,7 +232,7 @@ for (const width of [390, 1280]) {
       await expect(page.locator('html')).toHaveAttribute('data-appearance', 'pixel');
       await expect(card(page, '自動表示の授業')).toHaveCount(0);
       await settings(page); await choose(page, '日', true);
-      await page.getByRole('button', { name: '標準', exact: true }).click();
+      await page.getByRole('group', { name: 'テーマ' }).getByRole('button', { name: '標準', exact: true }).click();
       await expect(page.locator('html')).toHaveAttribute('data-appearance', 'standard');
       await expect(group(page, '日').getByRole('button', { name: '表示する', exact: true })).toHaveAttribute('aria-pressed', 'true');
       await expect(group(page, '月').getByRole('button', { name: '表示する', exact: true })).toHaveAttribute('aria-pressed', 'true');
