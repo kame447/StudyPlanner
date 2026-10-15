@@ -416,7 +416,7 @@
 .segment:hover,
 .week-chip:hover,
 .month-cell:hover {
-  transform: translateY(-1px);
+  transform: translateY(calc(-1px * var(--motion-spatial)));
 }
 
 .danger {

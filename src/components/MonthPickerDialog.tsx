@@ -134,6 +134,25 @@ export function MonthPickerDialog({
     onClose();
   }
 
+  function selectYear(year: number) {
+    if (yearScrollTimeoutRef.current !== null) {
+      window.clearTimeout(yearScrollTimeoutRef.current);
+      yearScrollTimeoutRef.current = null;
+    }
+    setSelectedYear(year);
+    // An explicit choice must not be reinterpreted at an intermediate scroll position.
+    scrollToPickerValue(yearPickerRef.current, year, 'auto');
+  }
+
+  function selectMonth(month: number) {
+    if (monthScrollTimeoutRef.current !== null) {
+      window.clearTimeout(monthScrollTimeoutRef.current);
+      monthScrollTimeoutRef.current = null;
+    }
+    setSelectedMonth(month);
+    scrollToPickerValue(monthPickerRef.current, month, 'auto');
+  }
+
   function handleYearScroll() {
     if (!yearPickerRef.current) {
       return;
@@ -203,10 +222,7 @@ export function MonthPickerDialog({
                       : 'month-wheel-item'
                   }
                   data-value={year}
-                  onClick={() => {
-                    setSelectedYear(year);
-                    scrollToPickerValue(yearPickerRef.current, year, 'smooth');
-                  }}
+                  onClick={() => selectYear(year)}
                   type="button"
                 >
                   {year}年
@@ -231,14 +247,7 @@ export function MonthPickerDialog({
                       : 'month-wheel-item'
                   }
                   data-value={month.value}
-                  onClick={() => {
-                    setSelectedMonth(month.value);
-                    scrollToPickerValue(
-                      monthPickerRef.current,
-                      month.value,
-                      'smooth',
-                    );
-                  }}
+                  onClick={() => selectMonth(month.value)}
                   type="button"
                 >
                   {month.label}
@@ -255,10 +264,8 @@ export function MonthPickerDialog({
           <button
             className="ghost-button"
             onClick={() => {
-              setSelectedYear(currentYear);
-              setSelectedMonth(currentMonth);
-              scrollToPickerValue(yearPickerRef.current, currentYear, 'smooth');
-              scrollToPickerValue(monthPickerRef.current, currentMonth, 'smooth');
+              selectYear(currentYear);
+              selectMonth(currentMonth);
             }}
             type="button"
           >

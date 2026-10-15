@@ -45,6 +45,21 @@ it('retains controls and plan supplements even in an empty period', () => {
   expect(onBack).toHaveBeenCalledOnce();
 });
 
+it('keeps chart values separate from their proportional bar plot without changing values', () => {
+  act(() => { renderer = create(<ReportView selectedDate="2026-08-24" plans={[]} actuals={[actual]} onBack={() => {}} />); });
+  const root = renderer!.root;
+  const populated = root.findAllByProps({ className: 'learning-report-chart-bar-area' })
+    .find(area => area.findAllByProps({ className: 'learning-report-chart-value' }).length > 0)!;
+  const value = populated.findByProps({ className: 'learning-report-chart-value' });
+  const plot = populated.findByProps({ className: 'learning-report-chart-plot' });
+  expect(value.children.join('')).toBe('1時間');
+  expect(plot.findAllByProps({ className: 'learning-report-chart-value' })).toHaveLength(0);
+  expect(plot.findByProps({ className: 'learning-report-chart-bar' }).props.style.height).toBe('100%');
+  act(() => root.findAllByProps({ role: 'tab' })[2].props.onClick());
+  expect(root.findAllByProps({ className: 'learning-report-chart-value' })).toHaveLength(0);
+  expect(root.findAllByProps({ className: 'learning-report-chart-plot' })).toHaveLength(31);
+});
+
 it.each([
   [0, '2026-08-24', '31'],
   [4, '2026-04-24', '30'],

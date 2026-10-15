@@ -1,8 +1,8 @@
+import { elapsedEntryMinutes, getEntryDurationMinutes } from './entryTimeRange';
 import {
   addDays,
   getWeekDates,
   getWeekdayLabel,
-  minutesBetween,
   sortByDateTime,
   toIsoDate,
 } from './date';
@@ -11,7 +11,7 @@ import {
   expandPlansForDate,
   getActualOccurrenceKey,
 } from './planRecurrence';
-import { canRecordProgressActual, DEFAULT_STUDY_PROGRESS_PREFERENCES, isIncludedInStudyProgress, type StudyProgressPreferences } from './studyProgressPolicy';
+import { isActualProgressSourceIncluded, canRecordProgressActual, DEFAULT_STUDY_PROGRESS_PREFERENCES, isIncludedInStudyProgress, type StudyProgressPreferences } from './studyProgressPolicy';
 import {
   normalizeStudyRecordsForDisplay,
 } from './studyRecords';
@@ -50,25 +50,15 @@ function timeNowLabel(now: Date): string {
 }
 
 function studyMinutes(actual: Actual): number {
-  return Math.max(0, minutesBetween(actual.actualStartTime, actual.actualEndTime));
-}
-
-function elapsedMinutesByTime(startTime: string, endTime: string, nowTime: string): number {
-  if (nowTime <= startTime) return 0;
-  if (nowTime >= endTime) return Math.max(0, minutesBetween(startTime, endTime));
-  return Math.max(0, minutesBetween(startTime, nowTime));
+  return Math.max(0, getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime));
 }
 
 function plannedMinutesByNow(plan: Plan, date: string, today: string, nowTime: string): number {
-  if (date < today) return Math.max(0, minutesBetween(plan.startTime, plan.endTime));
-  if (date > today) return 0;
-  return elapsedMinutesByTime(plan.startTime, plan.endTime, nowTime);
+  return elapsedEntryMinutes(date, plan.startTime, plan.endTime, today, nowTime);
 }
 
 function actualMinutesByNow(actual: Actual, today: string, nowTime: string): number {
-  if (actual.occurrenceDate < today) return studyMinutes(actual);
-  if (actual.occurrenceDate > today) return 0;
-  return elapsedMinutesByTime(actual.actualStartTime, actual.actualEndTime, nowTime);
+  return elapsedEntryMinutes(actual.occurrenceDate, actual.actualStartTime, actual.actualEndTime, today, nowTime);
 }
 
 function buildStudyDateSet(actuals: Actual[]): Set<string> {
@@ -104,7 +94,8 @@ function resolveStudyActuals(
     normalizeStudyRecordsForDisplay({ actuals, plans, monthEvents })
       .filter((record) => record.monthEvent
         ? preferences.includeGeneralEvents
-        : !record.plan || isIncludedInStudyProgress(record.plan, preferences))
+        : record.plan ? isIncludedInStudyProgress(record.plan, preferences)
+          : isActualProgressSourceIncluded(record.actual.progressSource, preferences))
       .map((record) => record.actualId),
   );
 
@@ -135,10 +126,14 @@ export function buildHomeDashboardModel({
   const actualByOccurrenceKey = new Map(
     actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
   );
-  const nextPlan = todayPlans.find((plan) => plan.endTime > nowTime) ?? null;
+  const nextPlan = todayPlans.find((plan) =>
+    getEntryDurationMinutes(plan.startTime, plan.endTime) > plannedMinutesByNow(plan, today, today, nowTime)) ?? null;
   const missingActualPlans = todayStudyPlans.filter((plan) => {
     const occurrenceKey = buildPlanOccurrenceKey(plan.id, plan.date);
-    return canRecordProgressActual(plan) && plan.endTime <= nowTime && !actualByOccurrenceKey.has(occurrenceKey);
+    return canRecordProgressActual(plan)
+      && getEntryDurationMinutes(plan.startTime, plan.endTime) > 0
+      && plannedMinutesByNow(plan, today, today, nowTime) >= getEntryDurationMinutes(plan.startTime, plan.endTime)
+      && !actualByOccurrenceKey.has(occurrenceKey);
   });
 
   const nearDueLimit = addDays(today, 2);
@@ -171,7 +166,7 @@ export function buildHomeDashboardModel({
       date,
       label: getWeekdayLabel(date),
       plannedMinutes: dayPlans.reduce(
-        (sum, plan) => sum + Math.max(0, minutesBetween(plan.startTime, plan.endTime)),
+        (sum, plan) => sum + Math.max(0, getEntryDurationMinutes(plan.startTime, plan.endTime)),
         0,
       ),
       actualMinutes: dayActuals.reduce((sum, actual) => sum + studyMinutes(actual), 0),

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type PropsWithChildren } from 'react';
 
+import { allowsSpatialMotion, subscribeMotion } from '../lib/motionPreference';
 import type { StartupIntroOutcome } from '../lib/startupTiming';
 
 const MEDIA_WAIT_LIMIT_MS = 4_000;
-const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 export type StartupVideoOutcome = StartupIntroOutcome;
 const isHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
-const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.(REDUCED_MOTION_QUERY).matches === true;
+// The intro is decorative motion: 控えめ/オフ and device reduced-motion skip it.
+const reducedMotion = () => !allowsSpatialMotion();
 
 /** Owns media outcomes, never application readiness. Hidden playback is paused, not completed. */
 export function StartupVideo({ src, poster, canSkip = false, onComplete, children }: PropsWithChildren<{
@@ -52,13 +53,12 @@ export function StartupVideo({ src, poster, canSkip = false, onComplete, childre
 
   useEffect(() => { if (initialReducedMotion) reportOutcome.current?.('reduced-motion'); }, [initialReducedMotion]);
   useEffect(() => {
-    const motion = typeof window !== 'undefined' ? window.matchMedia?.(REDUCED_MOTION_QUERY) : undefined;
     const page = typeof document !== 'undefined' ? document : undefined;
-    const onMotion = (event: MediaQueryListEvent) => { if (event.matches) finish('reduced-motion'); };
+    const onMotion = () => { if (reducedMotion()) finish('reduced-motion'); };
     const onVisible = () => { if (!isHidden()) setHasBeenVisible(true); };
-    motion?.addEventListener?.('change', onMotion);
+    const stopMotion = subscribeMotion(onMotion);
     page?.addEventListener('visibilitychange', onVisible);
-    return () => { motion?.removeEventListener?.('change', onMotion); page?.removeEventListener('visibilitychange', onVisible); };
+    return () => { stopMotion(); page?.removeEventListener('visibilitychange', onVisible); };
   }, [finish]);
 
   useEffect(() => {

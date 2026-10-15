@@ -199,6 +199,10 @@
   35% { transform: translateY(-4px); opacity: 1; }
 }
 
+:root:is([data-motion='reduced'], [data-motion='off']) .ai-planning-typing span {
+  animation: none;
+}
+
 .ai-planning-plan-card {
   width: min(620px, calc(100% - 46px));
   margin: 4px 0 20px 46px;

@@ -5,6 +5,32 @@ const scripts = JSON.parse(fs.readFileSync(new URL('../../package.json', import.
 const ci = fs.readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
 
 describe('verification command safety boundary', () => {
+  it('verifies PR content events in drafts too without rerunning for review metadata', () => {
+    const triggers = ci.match(/^on:\n([\s\S]*?)\npermissions:/m)?.[1].trimEnd();
+    expect(triggers).toBe([
+      '  pull_request:',
+      '    branches:',
+      '      - main',
+      '    types:',
+      '      - opened',
+      '      - synchronize',
+      '      - reopened',
+      '  push:',
+      '    branches:',
+      '      - main',
+      '  workflow_dispatch:',
+    ].join('\n'));
+  });
+
+  it('does not replace the verify check with a skipped metadata gate or change cancellation scope', () => {
+    const verifySetup = ci.match(/^  verify:\n([\s\S]*?)^    steps:/m)?.[1];
+    expect(verifySetup).toBe('    runs-on: ubuntu-latest\n    timeout-minutes: 30\n');
+    expect(ci.match(/^concurrency:\n([\s\S]*?)\njobs:/m)?.[1].trimEnd()).toBe([
+      '  group: ci-${{ github.workflow }}-${{ github.ref }}',
+      '  cancel-in-progress: true',
+    ].join('\n'));
+  });
+
   it('keeps development app and Worker checks with separate worktree caches', () => {
     expect(scripts.typecheck).toBe('npm run typecheck:app && npm run typecheck:worker');
     expect(scripts['typecheck:app']).toBe('tsc --noEmit --incremental --tsBuildInfoFile .cache/typecheck/app.tsbuildinfo');

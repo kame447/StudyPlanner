@@ -1,5 +1,5 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BookshelfMaterialSearch } from './BookshelfMaterialSearch';
 
 const mocks = vi.hoisted(() => ({
@@ -11,6 +11,8 @@ vi.mock('../services/materialMetadataService', () => ({
   searchMaterialMetadata: mocks.searchMaterialMetadata,
   resolveMaterialMetadataCandidate: mocks.resolveMaterialMetadataCandidate,
 }));
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe('BookshelfMaterialSearch', () => {
   beforeEach(() => {
@@ -59,4 +61,50 @@ describe('BookshelfMaterialSearch', () => {
 
     expect(renderer.root.findAllByType('img')).toHaveLength(0);
   });
+});
+
+it('keeps compact source attribution and clears results only after applying a selection', async () => {
+  const candidate = { catalogEntryId: 'compact-candidate', title: '教材候補', authors: [], tableOfContents: ['章1'] };
+  mocks.searchMaterialMetadata.mockResolvedValue({ results: [candidate] });
+  mocks.resolveMaterialMetadataCandidate.mockResolvedValue(candidate);
+  const onSelect = vi.fn();
+  let renderer!: ReactTestRenderer;
+  act(() => { renderer = create(<BookshelfMaterialSearch compact onSelect={onSelect} />); });
+  expect(renderer.root.findByProps({ className: 'material-create-attribution' }).props.open).toBeUndefined();
+  const summary = renderer.root.findByType('summary');
+  expect(summary.findByProps({ href: 'https://ndlsearch.ndl.go.jp/' })).toBeDefined();
+  expect(summary.findByProps({ href: 'https://creativecommons.org/licenses/by/4.0/' })).toBeDefined();
+  expect(renderer.root.findByProps({ href: 'https://openbd.jp/' })).toBeDefined();
+  act(() => renderer.root.findByType('input').props.onChange({ target: { value: '教材' } }));
+  await act(async () => { await renderer.root.findByProps({ className: 'ghost-button material-metadata-search-button' }).props.onClick(); });
+  expect(renderer.root.findAllByProps({ className: 'material-metadata-result' })).toHaveLength(1);
+  await act(async () => { await renderer.root.findByProps({ className: 'material-metadata-result' }).props.onClick({ currentTarget: undefined }); });
+  expect(onSelect).toHaveBeenCalledWith(candidate);
+  expect(renderer.root.findAllByProps({ className: 'material-metadata-result' })).toHaveLength(0);
+  expect(renderer.root.findByType('input').props.value).toBe('教材');
+  act(() => renderer.unmount());
+});
+
+it.each([false, true])('returns selected-result focus only when the user has not moved elsewhere (%s)', async moved => {
+  const candidate = { catalogEntryId: 'focus-candidate', title: '教材候補', authors: [] };
+  const button = {}, body = {}, laterInput = {};
+  const document = Object.assign(new EventTarget(), { activeElement: button, body });
+  vi.stubGlobal('document', document);
+  let resolve!: (value: typeof candidate) => void;
+  mocks.searchMaterialMetadata.mockResolvedValue({ results: [candidate] });
+  mocks.resolveMaterialMetadataCandidate.mockReturnValue(new Promise(done => { resolve = done; }));
+  const onSelectionFocusReturn = vi.fn();
+  let renderer!: ReactTestRenderer;
+  act(() => { renderer = create(<BookshelfMaterialSearch compact onSelect={vi.fn()} onSelectionFocusReturn={onSelectionFocusReturn} />); });
+  act(() => renderer.root.findByType('input').props.onChange({ target: { value: '教材' } }));
+  await act(async () => { await renderer.root.findByProps({ className: 'ghost-button material-metadata-search-button' }).props.onClick(); });
+  act(() => renderer.root.findByProps({ className: 'material-metadata-result' }).props.onClick({ currentTarget: button }));
+  if (moved) {
+    document.activeElement = laterInput;
+    const event = new Event('focusin'); Object.defineProperty(event, 'target', { value: laterInput });
+    document.dispatchEvent(event);
+  }
+  await act(async () => { resolve(candidate); });
+  expect(onSelectionFocusReturn).toHaveBeenCalledTimes(moved ? 0 : 1);
+  act(() => renderer.unmount());
 });

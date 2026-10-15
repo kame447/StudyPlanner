@@ -174,7 +174,7 @@ describe('learning report overview', () => {
     expect(overview.monthPlannedMinutes).toBe(180);
   });
 
-  it('ignores invalid negative-duration records in current and lifetime totals', () => {
+  it.each([['11:00', '11:00'], ['25:00', '10:00'], ['11:00', '10:60']])('ignores invalid clocks %s–%s in current and lifetime totals', (actualStartTime, actualEndTime) => {
     const overview = buildLearningReportOverview({
       referenceDate: '2026-08-24',
       plans: [],
@@ -182,8 +182,8 @@ describe('learning report overview', () => {
         makeActual({ id: 'valid-record' }),
         makeActual({
           id: 'invalid-record',
-          actualStartTime: '11:00',
-          actualEndTime: '10:00',
+          actualStartTime,
+          actualEndTime,
         }),
       ],
       subjects,
@@ -345,7 +345,7 @@ describe('learning report model', () => {
     ).toBe(report.actualMinutes);
   });
 
-  it('drops invalid negative-duration records before all report projections', () => {
+  it.each([['11:00', '11:00'], ['25:00', '10:00'], ['11:00', '10:60']])('drops invalid clocks %s–%s before all report projections', (actualStartTime, actualEndTime) => {
     const report = buildLearningReportModel({
       scope: 'day',
       anchorDate: '2026-08-24',
@@ -355,8 +355,8 @@ describe('learning report model', () => {
         makeActual({ id: 'valid-record' }),
         makeActual({
           id: 'invalid-record',
-          actualStartTime: '11:00',
-          actualEndTime: '10:00',
+          actualStartTime,
+          actualEndTime,
         }),
       ],
       subjects,
@@ -376,7 +376,7 @@ describe('learning report model', () => {
 describe('learning report material options', () => {
   it('starts with all materials and uses stable material ids as filter values', () => {
     expect(buildLearningReportMaterialOptions(materials)).toEqual([
-      { value: ALL_MATERIALS_FILTER, label: 'すべての教材' },
+      { value: ALL_MATERIALS_FILTER, label: '全教材' },
       {
         value: 'material:material-algo',
         label: 'アルゴリズムイントロダクション',
@@ -409,3 +409,28 @@ it('excludes major-event actuals from every learning total without losing real s
   }
   expect(JSON.stringify(input)).toBe(snapshot);
 });
+
+
+it.each([['23:30', '00:30', 60], ['11:00', '10:00', 1380]] as const)(
+  'counts the complete overnight %s–%s record once on its start day',
+  (actualStartTime, actualEndTime, minutes) => {
+    const actuals = [makeActual({ id: 'overnight-record', actualStartTime, actualEndTime })];
+    const input = { plans: [], actuals, subjects, materials };
+    const overview = buildLearningReportOverview({ ...input, referenceDate: '2026-08-24' });
+    expect(overview).toMatchObject({
+      todayMinutes: minutes, weekMinutes: minutes, monthMinutes: minutes, lifetimeMinutes: minutes,
+    });
+    const model = (anchorDate: string) => buildLearningReportModel({
+      ...input, scope: 'day', anchorDate, materialFilter: ALL_MATERIALS_FILTER,
+    });
+    const firstDay = model('2026-08-24');
+    expect(firstDay.actualMinutes).toBe(minutes);
+    expect(firstDay.buckets).toHaveLength(1);
+    expect(firstDay.buckets[0].actualMinutes).toBe(minutes);
+    expect(firstDay.breakdown.reduce((sum, entry) => sum + entry.minutes, 0)).toBe(minutes);
+    expect(model('2026-08-25')).toMatchObject({ actualMinutes: 0, buckets: [], breakdown: [] });
+    expect(buildLearningReportOverview({ ...input, referenceDate: '2026-08-25' })).toMatchObject({
+      todayMinutes: 0, weekMinutes: minutes, monthMinutes: minutes, lifetimeMinutes: minutes,
+    });
+  },
+);

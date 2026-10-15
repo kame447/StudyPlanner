@@ -30,7 +30,7 @@ export interface UserProfileDraft {
   avatar: string;
 }
 
-export type RecurrenceRuleKind = 'daily' | 'monthly' | 'day-type' | 'weekday' | 'date';
+export type RecurrenceRuleKind = 'daily' | 'monthly' | 'yearly' | 'day-type' | 'weekday' | 'date';
 
 export type RecurrenceDayType = 'weekday' | 'weekend';
 
@@ -113,10 +113,17 @@ export interface Plan {
   weeklyPlanningObservationSource?: WeeklyPlanningMemoryPaceObservationSourceV1;
 }
 
+export interface ActualProgressSource {
+  kind: 'study' | 'general-event' | 'timetable';
+  sourceId: string;
+  planType?: PlanType;
+}
+
 export interface Actual {
   id: string;
   userId: string;
   planId: string | null;
+  progressSource?: ActualProgressSource;
   occurrenceDate: string;
   actualStartTime: string;
   actualEndTime: string;

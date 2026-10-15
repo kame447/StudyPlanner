@@ -1,6 +1,6 @@
 import { scheduleEventFromPlan } from '../domain/scheduleEvent';
 import type { ScheduleOccurrenceSource } from '../domain/scheduleOccurrence';
-import type { Plan } from '../types/domain';
+import type { ActualProgressSource, Plan } from '../types/domain';
 
 export interface StudyProgressPreferences {
   includeGeneralEvents: boolean;
@@ -30,4 +30,13 @@ export function isIncludedInStudyProgress(
 
 export function canRecordProgressActual(plan: StudyProgressPlan): boolean {
   return !plan.scheduleSource || plan.scheduleSource.backingKind === 'plan';
+}
+
+export function isActualProgressSourceIncluded(
+  source: ActualProgressSource | undefined,
+  preferences: StudyProgressPreferences = DEFAULT_STUDY_PROGRESS_PREFERENCES,
+): boolean {
+  if (source?.kind === 'general-event') return preferences.includeGeneralEvents;
+  if (source?.kind === 'timetable') return preferences.includeTimetable;
+  return true;
 }

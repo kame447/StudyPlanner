@@ -1,4 +1,5 @@
-import type { CSSProperties } from "react";
+import { entryTimeRangeForDate } from '../lib/entryTimeRange';
+import { useRef, type CSSProperties } from "react";
 import type { ScheduleOccurrence } from "../domain/scheduleOccurrence";
 import { supportsScopedRecurringPlanEdits } from "../domain/recurringPlan";
 import { minutesBetween, minutesFromTime } from "../lib/date";
@@ -16,6 +17,8 @@ import { isScheduleOccurrenceOutsideHourlyGrid } from "../lib/scheduleOccurrence
 import { getMonthEventColor, getPlanScheduleColor, getScheduleOccurrenceColor, scheduleEventColorStyle, scheduleEventWeekStyle } from "../lib/scheduleEventColor";
 import { getSubjectLabel, getSubjectTheme } from "../lib/subjectTheme";
 import type { WeekPlanMoveTarget } from "../lib/weekPlanDrag";
+import { useDataChangeMotion } from "../hooks/useDataChangeMotion";
+import { usePeriodNavigationMotion } from "../hooks/usePeriodNavigationMotion";
 import { useTimelineDragController } from "../hooks/useTimelineDragController";
 import { useUndoRedoHistory } from "../hooks/useUndoRedoHistory";
 import type { WeeklyPlanDraftBlock } from "../features/weeklyPlanning/types";
@@ -30,6 +33,7 @@ import { DragUndoRedoControls } from "./DragUndoRedoControls";
 import { TimelineDragOverlay } from "./TimelineDragOverlay";
 
 interface DayTimelineProps {
+  date?: string;
   dateLabel: string;
   plans: Plan[];
   monthEvents: MonthEvent[];
@@ -50,8 +54,8 @@ interface DayTimelineProps {
 }
 
 export type DayTimelineSelection =
-  | { kind: "plan"; id: string }
-  | { kind: "month-event"; id: string }
+  | { kind: "plan"; id: string; actualId?: string; occurrenceId?: string }
+  | { kind: "month-event"; id: string; actualId?: string; occurrenceId?: string }
   | { kind: "timetable"; id: string }
   | { kind: "standalone-actual"; id: string };
 
@@ -59,6 +63,7 @@ interface TimelineEntry {
   color?: MonthEvent["color"];
   id: string;
   targetId: string;
+  actualId?: string;
   selectionId: string;
   entryKind: DayTimelineSelection["kind"];
   title: string;
@@ -147,7 +152,11 @@ function planTypeForOccurrence(occurrence: ScheduleOccurrence): PlanType {
   return "other";
 }
 
+// Stable default so an absent draft list is not mistaken for a data change.
+const NO_DRAFT_BLOCKS: WeeklyPlanDraftBlock[] = [];
+
 export function DayTimeline({
+  date,
   dateLabel,
   plans,
   monthEvents,
@@ -155,7 +164,7 @@ export function DayTimeline({
   actuals,
   actualPlanSources = plans,
   actualMonthEventSources = monthEvents,
-  weeklyDraftBlocks = [],
+  weeklyDraftBlocks = NO_DRAFT_BLOCKS,
   onRemoveWeeklyDraftBlock,
   onMovePlan,
   selectedEntryId,
@@ -282,8 +291,9 @@ export function DayTimeline({
         return [
           {
             id: actual.id,
+            actualId: actual.id,
             targetId: plan.id,
-            selectionId: `plan:${plan.id}`,
+            selectionId: `actual:${actual.id}`,
             entryKind: "plan" as const,
             title: resolveActualTitle(plan, actual),
             subject: resolveActualSubject(plan, actual),
@@ -295,18 +305,19 @@ export function DayTimeline({
           },
         ];
       }),
-      ...actualMonthEventSources.flatMap((monthEvent) => {
-        const actual = actuals.find((candidate) => candidate.planId === monthEvent.id);
+      ...actuals.flatMap((actual) => {
+        const monthEvent = actualMonthEventSources.find((candidate) => candidate.id === actual.planId);
 
-        if (!actual) {
+        if (!monthEvent) {
           return [];
         }
 
         return [
           {
             id: actual.id,
+            actualId: actual.id,
             targetId: monthEvent.id,
-            selectionId: `month-event:${monthEvent.id}`,
+            selectionId: `actual:${actual.id}`,
             entryKind: "month-event" as const,
             title: actual.title?.trim() || monthEvent.title,
             color: monthEvent.color,
@@ -335,7 +346,12 @@ export function DayTimeline({
           alignedToPlan: false,
           standalone: true,
         })),
-    ]
+    ].flatMap((entry) => {
+      const actual = actuals.find((item) => item.id === entry.id);
+      if (!actual) return [];
+      const range = entryTimeRangeForDate(actual.occurrenceDate, actual.actualStartTime, actual.actualEndTime, date ?? actual.occurrenceDate);
+      return range ? [{ ...entry, ...range }] : [];
+    })
   );
   const legendMap = new Map<string, string>();
 
@@ -362,6 +378,10 @@ export function DayTimeline({
     </div>
   );
   const draggingEntry = planEntries.find((entry) => entry.id === dragController.dragVisual?.key);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  useDataChangeMotion(canvasRef, date ?? "", [plans, actuals, monthEvents, scheduleOccurrences, weeklyDraftBlocks]);
+  const timelineShellRef = useRef<HTMLDivElement | null>(null);
+  usePeriodNavigationMotion(timelineShellRef, date ?? "");
 
   function applyHistoryTarget(historyPlan: Plan, target: WeekPlanMoveTarget) {
     const currentPlan = plans.find((plan) => plan.id === historyPlan.id) ?? historyPlan;
@@ -494,6 +514,7 @@ export function DayTimeline({
                           onSelectEntry({
                             kind: entryKind,
                             id: entryKind === "timetable" ? occurrence.id : occurrence.source.backingId,
+                            ...(entryKind === "timetable" ? {} : { occurrenceId: occurrence.id }),
                           })
                         }
                         onContextMenu={(event) => event.preventDefault()}
@@ -524,7 +545,7 @@ export function DayTimeline({
               </div>
             ) : null}
 
-            <div className="timeline-shell split">
+            <div ref={timelineShellRef} className="timeline-shell split">
               <div className="timeline-hours">
                 {DAY_HOURS.map((hour) => (
                   <div
@@ -544,6 +565,7 @@ export function DayTimeline({
                 </div>
 
                 <div
+                  ref={canvasRef}
                   className="timeline-canvas split"
                   style={{ height: "calc(24 * var(--timeline-hour-height))" }}
                 >
@@ -592,6 +614,8 @@ export function DayTimeline({
                     return (
                       <button
                         key={entry.id}
+                        data-motion-key={`plan:${entry.id}`}
+                        data-motion-signature={`${entry.startTime}-${entry.endTime} ${entry.title}`}
                         className={[
                           "timeline-plan-block split",
                           draggablePlan ? "schedule-week-plan-button" : "",
@@ -685,6 +709,8 @@ export function DayTimeline({
                     return (
                       <div
                         key={`draft-${entry.id}`}
+                        data-motion-key={`draft:${entry.id}`}
+                        data-motion-signature={`${entry.startTime}-${entry.endTime} ${entry.title}`}
                         className={[
                           "timeline-plan-block split timeline-draft-block",
                           getTimelineDensityClass(
@@ -763,6 +789,8 @@ export function DayTimeline({
                     return (
                       <button
                         key={entry.id}
+                        data-motion-key={`actual:${entry.id}`}
+                        data-motion-signature={`${entry.startTime}-${entry.endTime} ${entry.title}`}
                         className={[
                           "timeline-actual-block split",
                           selectedEntryId === entry.selectionId ? "is-selected" : "",
@@ -789,9 +817,9 @@ export function DayTimeline({
                         onClick={() =>
                           onSelectEntry(
                             entry.entryKind === "plan"
-                              ? { kind: "plan", id: entry.targetId }
+                              ? { kind: "plan", id: entry.targetId, actualId: entry.actualId }
                               : entry.entryKind === "month-event"
-                                ? { kind: "month-event", id: entry.targetId }
+                                ? { kind: "month-event", id: entry.targetId, actualId: entry.actualId }
                                 : { kind: "standalone-actual", id: entry.targetId }
                           )
                         }

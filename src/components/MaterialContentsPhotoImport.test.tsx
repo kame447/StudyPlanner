@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import postcss from 'postcss';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MaterialContentsPhotoImport } from './MaterialContentsPhotoImport';
@@ -18,9 +19,15 @@ function mount(hasExistingItems = false) {
   return { renderer, onApply, button, select };
 }
 describe('contents photo review', () => {
-  it('keeps the photo touch target more specific than responsive modal buttons', () => {
-    const css = readFileSync(new URL('../styles/bookshelf.css', import.meta.url), 'utf8');
-    expect(css).toMatch(/\.modal-card\.bookshelf-structure-editor \.material-contents-photo-action\s*\{[^}]*min-height:\s*44px/);
+  it('declares an unconditional 44px minimum for the modal-specific photo action', () => {
+    const css = postcss.parse(readFileSync(new URL('../styles/bookshelf.css', import.meta.url), 'utf8'));
+    const rules: postcss.Rule[] = [];
+    css.walkRules('.modal-card.bookshelf-structure-editor .material-contents-photo-action', rule => { rules.push(rule); });
+    expect(rules).toHaveLength(1);
+    expect(rules[0].parent?.type).toBe('root');
+    const minHeights = rules[0].nodes.filter(node => node.type === 'decl' && node.prop === 'min-height');
+    expect(minHeights.map(node => node.type === 'decl' ? node.value : undefined)).toEqual(['44px']);
+    // The browser regression separately checks the computed minimum and actual button height.
   });
   it('uses the existing secondary action surface for the photo entry', () => {
     const view = mount();

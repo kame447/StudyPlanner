@@ -5,10 +5,15 @@
   transform-origin: center;
   opacity: 1;
   transition:
-    transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 150ms ease-out,
-    box-shadow 220ms ease-out;
+    transform var(--motion-duration-slow) var(--motion-ease-emphasized),
+    opacity var(--motion-duration-fast) ease-out,
+    box-shadow var(--motion-duration-base) ease-out;
   will-change: transform, opacity;
+}
+
+/* Without spatial motion the FAB simply fades out of the sheet's way. */
+:root:is([data-motion='reduced'], [data-motion='off']) .schedule-add-fab.daily-add-fab {
+  transition-property: opacity;
 }
 
 .schedule-workspace-shell:has(.month-day-sheet-overlay) .schedule-add-fab.daily-add-fab {
@@ -26,28 +31,28 @@
 }
 
 .month-day-sheet-overlay.is-open {
-  animation: month-day-sheet-backdrop-in 220ms ease-out both;
+  animation: month-day-sheet-backdrop-in var(--motion-duration-base) ease-out both;
 }
 
 .month-day-sheet-overlay.is-open .month-day-sheet {
-  animation: month-day-sheet-panel-in 410ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: month-day-sheet-panel-in var(--motion-duration-slow) var(--motion-ease-emphasized) both;
 }
 
 .month-day-sheet-overlay.is-open .month-day-sheet-add {
-  animation: month-day-sheet-add-in 300ms cubic-bezier(0.22, 1, 0.36, 1) 90ms both;
+  animation: month-day-sheet-add-in var(--motion-duration-slow) var(--motion-ease-emphasized) var(--motion-delay-stagger) both;
 }
 
 .month-day-sheet-overlay.is-closing {
   pointer-events: none;
-  animation: month-day-sheet-backdrop-out 280ms ease-in both;
+  animation: month-day-sheet-backdrop-out var(--motion-duration-exit) ease-in both;
 }
 
 .month-day-sheet-overlay.is-closing .month-day-sheet {
-  animation: month-day-sheet-panel-out 280ms cubic-bezier(0.4, 0, 0.65, 1) both;
+  animation: month-day-sheet-panel-out var(--motion-duration-exit) var(--motion-ease-exit) both;
 }
 
 .month-day-sheet-overlay.is-closing .month-day-sheet-add {
-  animation: month-day-sheet-add-out 150ms ease-in both;
+  animation: month-day-sheet-add-out var(--motion-duration-fade) ease-in both;
 }
 
 .month-day-sheet {
@@ -102,13 +107,16 @@
   }
 }
 
+/* Distances come from motion tokens: under `reduced` the panel fades in place. */
 @keyframes month-day-sheet-panel-in {
   0% {
-    transform: translate3d(0, calc(100% + 24px), 0) scale(0.99);
+    transform: translate3d(0, var(--motion-distance-sheet), 0) scale(var(--motion-scale-sheet));
+    opacity: var(--motion-panel-from-opacity);
   }
 
   72% {
-    transform: translate3d(0, -3px, 0) scale(1);
+    transform: translate3d(0, calc(var(--motion-distance-sm) * -0.5), 0) scale(1);
+    opacity: 1;
   }
 
   100% {
@@ -122,13 +130,14 @@
   }
 
   to {
-    transform: translate3d(0, calc(100% + 24px), 0) scale(0.99);
+    transform: translate3d(0, var(--motion-distance-sheet), 0) scale(var(--motion-scale-sheet));
+    opacity: var(--motion-panel-from-opacity);
   }
 }
 
 @keyframes month-day-sheet-add-in {
   from {
-    transform: translate3d(0, 26px, 0) scale(0.72);
+    transform: translate3d(0, var(--motion-distance-md), 0) scale(var(--motion-scale-pop-from));
     opacity: 0;
   }
 
@@ -145,18 +154,7 @@
   }
 
   to {
-    transform: translate3d(0, 18px, 0) scale(0.78);
+    transform: translate3d(0, var(--motion-distance-md), 0) scale(var(--motion-scale-pop-from));
     opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .schedule-add-fab.daily-add-fab,
-  .month-day-sheet-overlay,
-  .month-day-sheet,
-  .month-day-sheet-add {
-    animation-duration: 1ms !important;
-    animation-delay: 0ms !important;
-    transition-duration: 1ms !important;
   }
 }

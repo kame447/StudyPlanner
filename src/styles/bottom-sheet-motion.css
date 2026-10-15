@@ -7,7 +7,7 @@
 .month-event-dialog-motion.is-open .month-event-modal-overlay,
 .timetable-term-sheet-overlay,
 .ai-planning-preview-motion.is-open .ai-planning-preview-overlay-v2 {
-  animation: planner-sheet-overlay-in 180ms ease-out both;
+  animation: planner-sheet-overlay-in var(--motion-duration-fast) ease-out both;
 }
 
 .bottom-sheet-motion.is-open .schedule-action-sheet,
@@ -19,7 +19,7 @@
   transform-origin: 50% 100%;
   backface-visibility: hidden;
   will-change: transform, opacity;
-  animation: planner-bottom-sheet-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: planner-bottom-sheet-in var(--motion-duration-slow) var(--motion-ease-emphasized) both;
 }
 
 .bottom-sheet-motion.is-closing,
@@ -27,7 +27,7 @@
 .month-event-dialog-motion.is-closing .month-event-modal-overlay,
 .ai-planning-preview-motion.is-closing .ai-planning-preview-overlay-v2 {
   touch-action: none;
-  animation: planner-sheet-overlay-out 210ms ease-in both;
+  animation: planner-sheet-overlay-out var(--motion-duration-exit) ease-in both;
 }
 
 .bottom-sheet-motion.is-closing.is-bottom-sheet-drag-dismissing,
@@ -44,7 +44,7 @@
 .month-event-dialog-motion.is-closing .month-event-modal,
 .ai-planning-preview-motion.is-closing .ai-planning-preview-dialog-v2 {
   pointer-events: none;
-  animation: planner-bottom-sheet-out 220ms cubic-bezier(0.4, 0, 0.65, 1) both;
+  animation: planner-bottom-sheet-out var(--motion-duration-exit) var(--motion-ease-exit) both;
 }
 
 .bottom-sheet-motion.is-open .schedule-action-close,
@@ -54,7 +54,7 @@
 .timetable-term-sheet-overlay .section-header .ghost-button {
   transform-origin: center;
   will-change: transform, opacity;
-  animation: planner-sheet-control-in 240ms cubic-bezier(0.22, 1, 0.36, 1) 70ms both;
+  animation: planner-sheet-control-in var(--motion-duration-base) var(--motion-ease-emphasized) var(--motion-delay-stagger) both;
 }
 
 .month-event-dialog-motion .month-event-modal-overlay,
@@ -97,14 +97,15 @@
   }
 }
 
+/* Distances come from motion tokens: under `reduced` the sheet fades in place. */
 @keyframes planner-bottom-sheet-in {
   0% {
-    transform: translate3d(0, calc(100% + 28px), 0) scale(0.992);
-    opacity: 0.72;
+    transform: translate3d(0, var(--motion-distance-sheet), 0) scale(var(--motion-scale-sheet));
+    opacity: var(--motion-sheet-from-opacity);
   }
 
   72% {
-    transform: translate3d(0, -3px, 0) scale(1.002);
+    transform: translate3d(0, calc(var(--motion-distance-sm) * -0.5), 0) scale(1);
     opacity: 1;
   }
 
@@ -121,47 +122,24 @@
   }
 
   to {
-    transform: translate3d(0, calc(100% + 28px), 0) scale(0.992);
-    opacity: 0.78;
+    transform: translate3d(0, var(--motion-distance-sheet), 0) scale(var(--motion-scale-sheet));
+    opacity: var(--motion-sheet-exit-opacity);
   }
 }
 
 @keyframes planner-sheet-control-in {
   0% {
-    transform: translate3d(0, 8px, 0) scale(0.84);
+    transform: translate3d(0, var(--motion-distance-sm), 0) scale(var(--motion-scale-pop-from));
     opacity: 0;
   }
 
   62% {
-    transform: translate3d(0, -1px, 0) scale(1.035);
+    transform: translate3d(0, 0, 0) scale(var(--motion-scale-pop-peak));
     opacity: 1;
   }
 
   100% {
     transform: translate3d(0, 0, 0) scale(1);
     opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bottom-sheet-motion,
-  .bottom-sheet-motion .schedule-action-sheet,
-  .bottom-sheet-motion .schedule-record-sheet,
-  .bottom-sheet-motion .schedule-action-close,
-  .bottom-sheet-motion .schedule-action-back,
-  [data-weekly-planning-motion] .quick-entry-overlay,
-  [data-weekly-planning-motion] .quick-entry-modal,
-  [data-weekly-planning-motion] .quick-entry-close-button,
-  .month-event-dialog-motion .month-event-modal-overlay,
-  .month-event-dialog-motion .month-event-modal,
-  .month-event-dialog-motion .month-event-save-button,
-  .timetable-term-sheet-overlay,
-  .timetable-term-sheet,
-  .timetable-term-sheet-overlay .section-header .ghost-button,
-  .ai-planning-preview-overlay-v2,
-  .ai-planning-preview-dialog-v2 {
-    animation-duration: 1ms !important;
-    animation-delay: 0ms !important;
-    transition-duration: 1ms !important;
   }
 }

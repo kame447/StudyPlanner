@@ -34,6 +34,7 @@ import {
   resumeTracker,
   type TrackerState,
 } from '../lib/actualTracking';
+import { getEntryDurationMinutes } from '../lib/entryTimeRange';
 import { minutesBetween } from '../lib/date';
 import {
   buildActualMaterialProgressUpdatesFromInput,
@@ -252,7 +253,7 @@ function StudySessionView({
     };
   }, [visible]);
 
-  const plannedMinutes = plan ? Math.max(1, minutesBetween(plan.startTime, plan.endTime)) : null;
+  const plannedMinutes = plan ? Math.max(1, getEntryDurationMinutes(plan.startTime, plan.endTime)) : null;
   const plannedMs = plannedMinutes === null ? null : plannedMinutes * 60_000;
   const resolvedPomodoro = activePomodoro.current ?? resolvePomodoroSettings(pomodoroSettings, plannedMs);
   const readyConfiguration = useRef({ mode: studyMode, pomodoro: resolvedPomodoro });

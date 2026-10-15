@@ -1,5 +1,6 @@
+import { getEntryDurationMinutes } from './entryTimeRange';
 import { buildPlanOccurrenceKey } from './planRecurrence';
-import { minutesBetween, minutesFromTime } from './date';
+import { minutesFromTime } from './date';
 import type { Actual, Plan } from '../types/domain';
 
 export interface ActualPlanMatchInput {
@@ -37,7 +38,7 @@ function getInterval(startTime: string, endTime: string): { start: number; end: 
   const start = minutesFromTime(startTime);
   return {
     start,
-    end: start + minutesBetween(startTime, endTime),
+    end: start + getEntryDurationMinutes(startTime, endTime),
   };
 }
 
@@ -144,8 +145,8 @@ function hasMaterialTitleMatch(commonTitleTokens: string[]): boolean {
 
 function getDurationDiffMinutes(actual: ActualPlanMatchInput, plan: Plan): number {
   return Math.abs(
-    minutesBetween(actual.actualStartTime, actual.actualEndTime) -
-      minutesBetween(plan.startTime, plan.endTime),
+    getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime) -
+      getEntryDurationMinutes(plan.startTime, plan.endTime),
   );
 }
 

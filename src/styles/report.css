@@ -337,9 +337,40 @@
 }
 
 .learning-report-chart-bar-area {
-  position: relative;
   width: 100%;
   height: var(--learning-report-chart-height);
+  min-width: 0;
+}
+
+/* Shared rows grow for enlarged text without changing the scale between bars. */
+.learning-report-chart:not(.scope-month) {
+  grid-template-rows: minmax(var(--learning-report-chart-height), max-content) minmax(28px, auto);
+  row-gap: 7px;
+}
+
+.learning-report-chart:not(.scope-month) .learning-report-chart-item {
+  grid-row: 1 / span 2;
+  grid-template-rows: subgrid;
+  align-self: stretch;
+}
+
+.learning-report-chart:not(.scope-month) .learning-report-chart-bar-area {
+  height: auto;
+  min-height: var(--learning-report-chart-height);
+  align-self: stretch;
+  display: grid;
+  grid-template-rows: minmax(max-content, 1fr) max(32px, calc(var(--learning-report-chart-height) - 3.6em - 4px));
+  gap: 4px;
+  font-size: 0.75rem;
+  /* DotGothic16's 1.448em font envelope needs room at enlarged text sizes. */
+  line-height: 1.6;
+}
+
+.learning-report-chart-plot {
+  grid-row: 2;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: end;
   justify-content: center;
@@ -358,19 +389,13 @@
 }
 
 .learning-report-chart-value {
-  position: absolute;
-  left: 50%;
-  bottom: calc(min(100%, var(--learning-report-value-position, 0%)) + 4px);
-  transform: translateX(-50%);
+  grid-row: 1;
+  align-self: end;
+  min-width: 0;
   color: var(--accent-strong);
-  font-size: 0.61rem;
   font-weight: 800;
-  white-space: nowrap;
-}
-
-.learning-report-chart-bar-area:has(.learning-report-chart-value) .learning-report-chart-value {
-  bottom: auto;
-  top: 0;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .learning-report-chart-label {

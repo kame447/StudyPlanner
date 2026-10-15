@@ -316,11 +316,12 @@ export function ReportView({
                         {formatMinutes(bucket.actualMinutes)}
                       </span>
                     ) : null}
-                    <span
-                      className="learning-report-chart-bar"
-                      style={{ height: `${height}%` }}
-                      aria-hidden="true"
-                    />
+                    <span className="learning-report-chart-plot" aria-hidden="true">
+                      <span
+                        className="learning-report-chart-bar"
+                        style={{ height: `${height}%` }}
+                      />
+                    </span>
                   </div>
                   <div
                     className={

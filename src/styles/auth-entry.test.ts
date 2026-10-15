@@ -46,16 +46,13 @@ describe('auth entry paint and motion contract', () => {
     ]) expect(contrast(foreground, background)).toBeGreaterThanOrEqual(4.5);
   });
 
-  it('animates only transform on two layers, pauses while hidden, and disables animation for reduced motion', () => {
+  it('animates only transform on two layers, pauses while hidden, and disables animation below the standard motion level', () => {
     const frames: string[] = [];
     root.walkAtRules('keyframes', rule => { rule.walkDecls(declaration => { frames.push(declaration.prop); }); });
     expect(frames).toEqual(['transform', 'transform']);
     expect(declarations(".auth-stars[data-paused='true'] .auth-stars__layer")['animation-play-state']).toBe('paused');
-    const reducedRules: string[] = [];
-    root.walkAtRules('media', rule => {
-      if (rule.params === '(prefers-reduced-motion: reduce)') rule.walkDecls(declaration => { reducedRules.push(`${declaration.prop}: ${declaration.value}`); });
-    });
-    expect(reducedRules).toContain('animation: none');
+    expect(declarations(":root:is([data-motion='reduced'], [data-motion='off']) .auth-stars__layer").animation).toBe('none');
+    expect(declarations(":root:is([data-motion='reduced'], [data-motion='off']) .auth-motion-toggle").display).toBe('none');
     expect(css).not.toMatch(/url\(|filter:\s*blur|backdrop-filter|will-change/);
     expect(declarations('.auth-stars')['pointer-events']).toBe('none');
   });

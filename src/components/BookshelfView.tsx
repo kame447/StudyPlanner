@@ -1,4 +1,12 @@
 import { MaterialContentsPhotoImport } from './MaterialContentsPhotoImport';
+import { MaterialStructureEditorRows } from './MaterialStructureEditorRows';
+import {
+  createMaterialStructureDraft,
+  hasUnnamedMaterialStructureItem,
+  removeMaterialStructureItem,
+  updateMaterialStructureItem,
+  type MaterialStructurePatch,
+} from '../lib/materialStructureEditor';
 import type { MaterialEditBaseline } from '../hooks/useActualMutationAdmission';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -27,7 +35,6 @@ import {
   loadMaterialDetailPreferences,
   saveMaterialDetailPreferences,
   type MaterialDetailPreferences,
-  type MaterialStructureItem,
 } from '../lib/bookshelfMaterialDetails';
 import {
   filterBookshelfMaterials,
@@ -123,24 +130,12 @@ function getDisplayProgress(material: StudyMaterial): number | null {
     : null;
 }
 
-function parseOptionalNumber(value: string): number | undefined {
-  if (!value.trim()) {
-    return undefined;
-  }
-
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
 function clonePreferences(
   preferences: MaterialDetailPreferences,
 ): MaterialDetailPreferences {
   return {
     ...preferences,
-    structureItems: preferences.structureItems.map((item) => ({
-      ...item,
-      children: item.children?.map((child) => ({ ...child })),
-    })),
+    structureItems: createMaterialStructureDraft(preferences.structureItems),
   };
 }
 
@@ -168,6 +163,7 @@ export function BookshelfView({
   const [editingMaterialBaseline, setEditingMaterialBaseline] = useState<MaterialEditBaseline>();
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
   const [menuMaterialId, setMenuMaterialId] = useState<string | null>(null);
+  const [structureError, setStructureError] = useState('');
   const [studyStatusFilter, setStudyStatusFilter] = useState<'all' | 'studying' | 'completed'>('all');
   const [activeSubjectId, setActiveSubjectId] = useState<string>('all');
   const [expandedSubjectIds, setExpandedSubjectIds] = useState<string[]>(() =>
@@ -299,6 +295,7 @@ export function BookshelfView({
     setMenuMaterialId(null);
     setStructureEditorMaterialId(material.id);
     setStructureDraft(clonePreferences(getPreferences(material.id)));
+    setStructureError('');
   }
 
   function toggleFavorite(material: StudyMaterial) {
@@ -311,15 +308,14 @@ export function BookshelfView({
 
   function updateStructureItem(
     itemId: string,
-    patch: Partial<MaterialStructureItem>,
+    patch: MaterialStructurePatch,
   ) {
+    setStructureError('');
     setStructureDraft((current) =>
       current
         ? {
             ...current,
-            structureItems: current.structureItems.map((item) =>
-              item.id === itemId ? { ...item, ...patch } : item,
-            ),
+            structureItems: updateMaterialStructureItem(current.structureItems, itemId, patch),
           }
         : current,
     );
@@ -330,24 +326,25 @@ export function BookshelfView({
       current
         ? {
             ...current,
-            structureItems: [
+            structureItems: createMaterialStructureDraft([
               ...current.structureItems,
               {
                 id: createId('material-structure'),
                 title: '',
               },
-            ],
+            ]),
           }
         : current,
     );
   }
 
   function removeStructureItem(itemId: string) {
+    setStructureError('');
     setStructureDraft((current) =>
       current
         ? {
             ...current,
-            structureItems: current.structureItems.filter((item) => item.id !== itemId),
+            structureItems: removeMaterialStructureItem(current.structureItems, itemId),
           }
         : current,
     );
@@ -358,6 +355,10 @@ export function BookshelfView({
       return;
     }
 
+    if (hasUnnamedMaterialStructureItem(structureDraft.structureItems)) {
+      setStructureError('章・節の名前を入力するか、不要な項目を削除してください。');
+      return;
+    }
     persistPreferences(
       structureEditorMaterial.id,
       prepareBookshelfStructurePreferences(structureDraft),
@@ -387,7 +388,7 @@ export function BookshelfView({
       }
       plans={plans}
       actuals={actuals}
-      preferences={getPreferences(selectedMaterial.id)}
+      preferences={clonePreferences(getPreferences(selectedMaterial.id))}
       onBack={() => setSelectedMaterialId(null)}
       onOpenMenu={() => openMaterialMenu(selectedMaterial)}
       onEditStructure={() => openStructureEditor(selectedMaterial)}
@@ -552,7 +553,7 @@ export function BookshelfView({
                   </button>
 
                   {expanded ? (
-                    <div className="bookshelf-expanded-materials">
+                    <div className="bookshelf-expanded-materials motion-reveal">
                       {subjectMaterials.length > 0 ? (
                         subjectMaterials.map((material) => {
                           const progress = getDisplayProgress(material);
@@ -894,77 +895,22 @@ export function BookshelfView({
               key={`${userId}:${structureEditorMaterial.id}`}
               hasExistingItems={structureDraft.structureItems.length > 0}
               includePageRanges={(structureEditorMaterial.progressUnit ?? 'page') === 'page'}
-              onApply={(items) => setStructureDraft(current => current ? {
-                ...current, structureEnabled: true, structureVisible: true, structureItems: items,
-              } : current)}
+              onApply={(items) => {
+                setStructureError('');
+                setStructureDraft(current => current ? {
+                  ...current, structureEnabled: true, structureVisible: true, structureItems: createMaterialStructureDraft(items),
+                } : current);
+              }}
             />
 
             {structureDraft.structureEnabled ? (
               <div className="bookshelf-structure-edit-list">
-                {structureDraft.structureItems.map((item, index) => (
-                  <div className="bookshelf-structure-edit-row" key={item.id}>
-                    <label>
-                      <span>章・節の名前 {index + 1}</span>
-                      <input
-                        value={item.title}
-                        onChange={(event) =>
-                          updateStructureItem(item.id, { title: event.target.value })
-                        }
-                        placeholder="例: 第1章 アルゴリズムの基礎"
-                      />
-                    </label>
-                    <label>
-                      <span>開始（{getMaterialUnitLabel(structureEditorMaterial)}）</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={item.startUnit ?? ''}
-                        onChange={(event) =>
-                          updateStructureItem(item.id, {
-                            startUnit: parseOptionalNumber(event.target.value),
-                          })
-                        }
-                        placeholder="任意"
-                      />
-                    </label>
-                    <label>
-                      <span>終了（{getMaterialUnitLabel(structureEditorMaterial)}）</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={item.endUnit ?? ''}
-                        onChange={(event) =>
-                          updateStructureItem(item.id, {
-                            endUnit: parseOptionalNumber(event.target.value),
-                          })
-                        }
-                        placeholder="任意"
-                      />
-                    </label>
-                    <label>
-                      <span>進捗（%・任意）</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={item.progressRate ?? ''}
-                        onChange={(event) =>
-                          updateStructureItem(item.id, {
-                            progressRate: parseOptionalNumber(event.target.value),
-                          })
-                        }
-                        placeholder="自動"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => removeStructureItem(item.id)}
-                      aria-label={`${item.title || `項目${index + 1}`}を削除`}
-                    >
-                      <Trash2 aria-hidden="true" />
-                    </button>
-                  </div>
-                ))}
+                <MaterialStructureEditorRows
+                  items={structureDraft.structureItems}
+                  unitLabel={getMaterialUnitLabel(structureEditorMaterial)}
+                  onUpdate={updateStructureItem}
+                  onRemove={removeStructureItem}
+                />
                 <button
                   className="bookshelf-add-structure-row"
                   type="button"
@@ -976,6 +922,7 @@ export function BookshelfView({
               </div>
             ) : null}
 
+            {structureError ? <p role="alert" className="inline-error">{structureError}</p> : null}
             <div className="row-actions">
               <button className="primary-button" type="button" onClick={saveStructureEditor}>
                 保存

@@ -95,7 +95,7 @@
 }
 
 .bookshelf-material-card:hover {
-  transform: translateY(-1px);
+  transform: translateY(calc(-1px * var(--motion-spatial)));
   border-color: color-mix(in srgb, var(--subject-color) 38%, var(--border) 62%);
   box-shadow: 0 10px 20px rgba(22, 29, 33, 0.08);
 }
@@ -1410,6 +1410,14 @@
   width: min(760px, calc(100vw - 24px));
   max-height: min(82vh, 760px);
   overflow-y: auto;
+}
+
+.modal-card.bookshelf-structure-editor {
+  background: #fff;
+}
+
+:root[data-theme='dark'] .modal-card.bookshelf-structure-editor {
+  background: #181f23;
 }
 
 .bookshelf-modal-title-row {

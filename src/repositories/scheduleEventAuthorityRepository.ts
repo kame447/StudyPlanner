@@ -1,3 +1,4 @@
+import { prepareActualProgressSource } from '../domain/actualProgressSource';
 import { assertRecurringMonthEventWrite } from './plannerWritePreparation';
 import type { StartupSessionCapability } from '../lib/startupSessionScope';
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
@@ -83,8 +84,34 @@ export function createScheduleEventBackedPlannerRepository(
     return migration;
   };
 
+  async function prepareActual(actual: import('../types/domain').Actual) {
+    const actuals = await legacyRepository.getActuals(actual.userId);
+    const previous = actuals.find(item => item.id === actual.id && item.userId === actual.userId);
+    // Independent study saves do not need schedule migration or a schedule read.
+    if (!actual.planId && !previous?.planId) {
+      return prepareActualProgressSource(actual, { plans: [], monthEvents: [] }, previous);
+    }
+    const mode = await resolveSchedulePersistenceMode(actual.userId);
+    const sources = mode === 'canonical' ? await authorityRepository.getScheduleSnapshot(actual.userId)
+      : await legacyRepository.getScheduleSnapshot(actual.userId);
+    const prepared = prepareActualProgressSource(actual, sources, previous);
+    if (actual.planId && !prepared.progressSource
+      && (!previous || previous.planId !== actual.planId)) {
+      throw new Error('紐づけ先の予定が変更または削除されました。再読み込みしてから記録を保存してください。');
+    }
+    return prepared;
+  }
+
   return {
     ...legacyRepository,
+    async upsertActual(actual) {
+      return legacyRepository.upsertActual(await prepareActual(actual));
+    },
+    async upsertActualWithMaterialProgress(mutation) {
+      return legacyRepository.upsertActualWithMaterialProgress({
+        ...mutation, actual: await prepareActual(mutation.actual),
+      });
+    },
     observeStartupScheduleMarker: authorityRepository.observeStartupScheduleMarker
       ? (owner, scope) => authorityRepository.observeStartupScheduleMarker!(owner, scope)
       : undefined,

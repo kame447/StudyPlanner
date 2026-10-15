@@ -6,6 +6,7 @@ import {
   type TouchEvent as ReactTouchEvent,
 } from 'react';
 import { acquireTimelineDragInteractionLock } from '../lib/timelineDragInteractionLock';
+import { allowsSpatialMotion } from '../lib/motionPreference';
 import { useTimelineDragCancellation } from './useTimelineDragCancellation';
 import {
   calculateWeekPlanVelocityTilt,
@@ -175,9 +176,7 @@ export function useTimelineDragController<TItem>({
       longPressTimer: null,
       releaseInteractionLock: null,
       target: descriptor.original,
-      reducedMotion:
-        typeof window !== 'undefined' &&
-        window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      reducedMotion: !allowsSpatialMotion(),
     };
   }
 
