@@ -376,7 +376,7 @@ describe('learning report model', () => {
 describe('learning report material options', () => {
   it('starts with all materials and uses stable material ids as filter values', () => {
     expect(buildLearningReportMaterialOptions(materials)).toEqual([
-      { value: ALL_MATERIALS_FILTER, label: 'すべての教材' },
+      { value: ALL_MATERIALS_FILTER, label: '全教材' },
       {
         value: 'material:material-algo',
         label: 'アルゴリズムイントロダクション',
