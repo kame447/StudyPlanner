@@ -36,4 +36,35 @@ describe('generic Choice provider validation and dispatch accounting', () => {
     expect(catalog.candidate.instructions).toContain('entire text including outside spans');
     expect(JSON.parse(catalog.candidate.criteria['leaf:0'])).toEqual(r.menu.options[0].kind === 'leaf' ? r.menu.options[0].candidate : null);
   });
+
+  it('requires fixed date scope in each decision head without changing numeric heads', async () => {
+    const base = choiceRequest();
+    const dateRequest = { ...base, context: {
+      ...base.context, question: { ...base.context.question, code: 'missing_availability_date_scope' },
+      scope: { ...base.context.scope, answerKind: 'one_explicit_absolute_calendar_date',
+        kind: 'unavailable', startTime: '18:00', endTime: '20:00' },
+    } };
+    async function questionsFor(request: typeof base) {
+      let body: Record<string, unknown> = {};
+      const result = await evaluateCandidateChoice({
+        firebaseUid: 'fixture-owner', context: { purpose: 'candidate_choice', request },
+        env: { OPENROUTER_API_KEY: 'fixture', JEV_CANDIDATE_CHOICE_MODE: 'canary',
+          JEV_MODE: 'canary', JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' },
+        transport: async (_input, init) => {
+          body = JSON.parse(String(init?.body)); return Response.json(response());
+        },
+      });
+      expect(result.status).toBe('evaluated');
+      return body.questions as Record<string, { instructions: string }>;
+    }
+    const date = await questionsFor(dateRequest);
+    expect(date.candidate.instructions).toContain('all day');
+    expect(date.condition_change.instructions).toContain('all day');
+    expect(date.independent_meaning.instructions).toContain('all day');
+    const numeric = await questionsFor(base);
+    expect(numeric.candidate.instructions).not.toContain('all day');
+    expect(numeric.condition_change.instructions).not.toContain('all day');
+    expect(numeric.independent_meaning.instructions).not.toContain('all day');
+  });
+
 });
