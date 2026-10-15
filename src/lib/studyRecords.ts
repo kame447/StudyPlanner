@@ -1,4 +1,5 @@
-import { minutesBetween, sortByDateTime } from './date';
+import { getEntryDurationMinutes } from './entryTimeRange';
+import { sortByDateTime } from './date';
 import {
   buildPlanOccurrenceKey,
   expandPlansForDateRange,
@@ -237,7 +238,7 @@ export function normalizeStudyRecordForDisplay({
     date: actual.occurrenceDate,
     startTime: actual.actualStartTime,
     endTime: actual.actualEndTime,
-    durationMinutes: minutesBetween(actual.actualStartTime, actual.actualEndTime),
+    durationMinutes: getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime),
     title,
     label: title,
     subject,

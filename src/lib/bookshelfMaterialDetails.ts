@@ -1,4 +1,4 @@
-import { minutesBetween } from './date';
+import { getEntryDurationMinutes } from './entryTimeRange';
 import type { Actual, Plan, StudyMaterial } from '../types/domain';
 
 export interface MaterialStructureItem {
@@ -161,11 +161,11 @@ export function buildMaterialActivitySummary(
     );
   const actualMinutes = materialActuals.reduce(
     (sum, actual) =>
-      sum + Math.max(0, minutesBetween(actual.actualStartTime, actual.actualEndTime)),
+      sum + Math.max(0, getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime)),
     0,
   );
   const plannedMinutes = materialPlans.reduce(
-    (sum, plan) => sum + Math.max(0, minutesBetween(plan.startTime, plan.endTime)),
+    (sum, plan) => sum + Math.max(0, getEntryDurationMinutes(plan.startTime, plan.endTime)),
     0,
   );
 

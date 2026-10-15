@@ -1,8 +1,8 @@
+import { getEntryDurationMinutes } from './entryTimeRange';
 import {
   addDays,
   addMonths,
   getWeekDates,
-  minutesBetween,
   sortByDateTime,
   startOfMonth,
   startOfWeek,
@@ -58,7 +58,7 @@ export function buildActualByOccurrenceKey(actuals: Actual[]): Map<string, Actua
 }
 
 export function getActualMinutes(actual: Actual): number {
-  return minutesBetween(actual.actualStartTime, actual.actualEndTime);
+  return getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime);
 }
 
 function buildStudyRecordsInRange(
@@ -87,7 +87,7 @@ function calculateNormalizedStudyMinutesInRange(
 }
 
 export function getPlannedMinutes(plan: Plan): number {
-  return minutesBetween(plan.startTime, plan.endTime);
+  return getEntryDurationMinutes(plan.startTime, plan.endTime);
 }
 
 export function calculateActualStudyMinutes(

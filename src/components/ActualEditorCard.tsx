@@ -1,7 +1,8 @@
+import { getEntryDurationMinutes } from '../lib/entryTimeRange';
 import { isValidQuickEntryDate } from '../lib/quickEntryDrafts';
 import { ActualMutationAdmissionError } from '../hooks/useActualMutationAdmission';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { formatMinutes, minutesBetween } from '../lib/date';
+import { formatMinutes } from '../lib/date';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import { getPlanTypeLabel } from '../lib/plans';
 import { expandPlansForDate, getPlanOccurrenceDate } from '../lib/planRecurrence';
@@ -101,9 +102,9 @@ export function ActualEditorCard({
     }
   }
 
-  const planMinutes = minutesBetween(plan.startTime, plan.endTime);
+  const planMinutes = getEntryDurationMinutes(plan.startTime, plan.endTime);
   const actualMinutes = actual
-    ? minutesBetween(actual.actualStartTime, actual.actualEndTime)
+    ? getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime)
     : 0;
   const deltaMinutes = actual ? actualMinutes - planMinutes : null;
   const isScopedRecurringPlan = supportsScopedRecurringPlanEdits(plan);
@@ -145,8 +146,8 @@ export function ActualEditorCard({
       setError('有効な日付を入力してください。');
       return;
     }
-    if (minutesBetween(draft.actualStartTime, draft.actualEndTime) <= 0) {
-      setError('記録の終了時刻は開始時刻より後にしてください。');
+    if (getEntryDurationMinutes(draft.actualStartTime, draft.actualEndTime) <= 0) {
+      setError('有効な開始時刻と終了時刻を入力してください。');
       return;
     }
 

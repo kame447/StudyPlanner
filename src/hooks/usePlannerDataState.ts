@@ -1,3 +1,4 @@
+import { getEntryDurationMinutes, isValidPlanEntryTimeRange } from '../lib/entryTimeRange';
 import { buildRecurringMonthEventEdit, type MonthEventEditRequest } from '../domain/recurringMonthEvent';
 import { buildDayTimetableTimeEdit, type DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
 import { buildDayOccurrenceCancellation } from '../domain/dayOccurrenceCancellation';
@@ -896,9 +897,9 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    if (minutesBetween(target.startTime, target.endTime) <= 0) {
-      showNotice('終了時刻は開始時刻より後にしてください。', 'error');
-      throw new Error('終了時刻は開始時刻より後にしてください。');
+    if (!isValidPlanEntryTimeRange({ ...plan, ...target })) {
+      showNotice('有効な開始時刻と終了時刻を入力してください。', 'error');
+      throw new Error('有効な開始時刻と終了時刻を入力してください。');
     }
 
     const sourcePlan = resolveStoredPlan(plan);
@@ -948,8 +949,8 @@ export function usePlannerDataState({
     if (!userId || draft.userId !== userId) {
       throw new Error('ログイン状態と予定の所有者を確認してください。');
     }
-    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
-      throw new Error('終了時刻は開始時刻より後にしてください。');
+    if (!isValidPlanEntryTimeRange(draft)) {
+      throw new Error('有効な開始時刻と終了時刻を入力してください。');
     }
     // Independent create surfaces must not inherit the global editor's target
     // or resolve before a recurring-edit confirmation has actually persisted.
@@ -961,9 +962,9 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
-      showNotice('終了時刻は開始時刻より後にしてください。', 'error');
-      throw new Error('終了時刻は開始時刻より後にしてください。');
+    if (!isValidPlanEntryTimeRange(draft)) {
+      showNotice('有効な開始時刻と終了時刻を入力してください。', 'error');
+      throw new Error('有効な開始時刻と終了時刻を入力してください。');
     }
 
     if (editingPlan && isScopedRecurringEditCandidate(editingPlan)) {
@@ -1338,6 +1339,9 @@ export function usePlannerDataState({
   async function saveActual(_plan: Plan, draft: ActualDraft, targetActualId?: string) {
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     if (!userId) throw new Error('ログイン状態を確認できませんでした。');
+    if (getEntryDurationMinutes(draft.actualStartTime, draft.actualEndTime) <= 0) {
+      throw new Error('有効な開始時刻と終了時刻を入力してください。');
+    }
     if (draft.planId) requireLinkedTarget(draft.planId, draft.occurrenceDate);
     const occurrenceKey = draft.planId ? buildPlanOccurrenceKey(draft.planId, draft.occurrenceDate) : null;
     const existingActual = targetActualId
@@ -1401,9 +1405,9 @@ export function usePlannerDataState({
       showNotice('記録のタイトルを入力してください。', 'error');
       throw new Error('記録のタイトルを入力してください。');
     }
-    if (minutesBetween(draft.actualStartTime, draft.actualEndTime) <= 0) {
-      showNotice('終了時刻は開始時刻より後にしてください。', 'error');
-      throw new Error('終了時刻は開始時刻より後にしてください。');
+    if (getEntryDurationMinutes(draft.actualStartTime, draft.actualEndTime) <= 0) {
+      showNotice('有効な開始時刻と終了時刻を入力してください。', 'error');
+      throw new Error('有効な開始時刻と終了時刻を入力してください。');
     }
     const existingActual = targetActualId
       ? requireCurrentActual(targetActualId)
@@ -1803,9 +1807,9 @@ export function usePlannerDataState({
 
   async function scheduleTodoAsPlan(todo: TodoTask, draft: PlanDraft): Promise<Plan> {
     if (!userId) throw new Error('ログイン状態を確認できませんでした。');
-    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
-      showNotice('終了時刻は開始時刻より後にしてください。', 'error');
-      throw new Error('終了時刻は開始時刻より後にしてください。');
+    if (!isValidPlanEntryTimeRange(draft)) {
+      showNotice('有効な開始時刻と終了時刻を入力してください。', 'error');
+      throw new Error('有効な開始時刻と終了時刻を入力してください。');
     }
     if (draft.userId !== userId) throw new PlannerMutationScopeExpiredError();
     const admission = admitTodoMutation(todo.id, todo.userId);

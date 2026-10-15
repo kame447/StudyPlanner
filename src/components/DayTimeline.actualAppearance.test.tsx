@@ -37,7 +37,7 @@ it.each(['plan', 'month-event', 'standalone-actual'] as const)(
       expect(record.findByProps({ className: 'timeline-entry-title' }).children).toEqual([actual.title]);
       expect(record.findByProps({ className: 'timeline-entry-time' }).children.join('')).toBe('15:00-15:30');
       act(() => record.props.onClick());
-      expect(onSelectEntry).toHaveBeenCalledExactlyOnceWith({ kind, id: kind === 'standalone-actual' ? actual.id : source.id });
+      expect(onSelectEntry).toHaveBeenCalledExactlyOnceWith({ kind, id: kind === 'standalone-actual' ? actual.id : source.id, ...(kind === 'standalone-actual' ? {} : { actualId: actual.id }) });
     } finally {
       act(() => renderer.unmount());
     }
@@ -67,7 +67,7 @@ it('only displays a major event in the actual column when a saved record exists'
     expect(blocks('plan')).toHaveLength(1);
     expect(blocks('actual')).toHaveLength(1);
     act(() => blocks('actual')[0].props.onClick());
-    expect(onSelectEntry).toHaveBeenCalledExactlyOnceWith({ kind: 'month-event', id: event.id });
+    expect(onSelectEntry).toHaveBeenCalledExactlyOnceWith({ kind: 'month-event', id: event.id, actualId: actual.id });
   } finally {
     act(() => renderer.unmount());
   }

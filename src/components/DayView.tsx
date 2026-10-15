@@ -1,3 +1,5 @@
+import { scheduleOccurrenceCoversDate, scheduleOccurrenceTimesForDate } from '../lib/weekViewLayout';
+import { entryTimeRangeForDate } from '../lib/entryTimeRange';
 import type { DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
 import type { ActualActionTarget } from '../hooks/useActualMutationAdmission';
 import {
@@ -87,8 +89,8 @@ interface DayViewProps {
 type DayViewModalState =
   | { type: 'closed' }
   | { type: 'timetable-record'; plan: Plan; ownerId: string; viewedDate: string }
-  | { type: 'plan-detail'; planId: string }
-  | { type: 'month-event-detail'; monthEventId: string }
+  | { type: 'plan-detail'; planId: string; actualId?: string; actualOccurrenceDate?: string; occurrenceId?: string }
+  | { type: 'month-event-detail'; monthEventId: string; actualId?: string; actualOccurrenceDate?: string; occurrenceId?: string }
   | { type: 'timetable-detail'; occurrenceId: string; ownerId: string; viewedDate: string }
   | { type: 'standalone-actual-detail'; actual: Actual };
 
@@ -262,12 +264,13 @@ export function DayView({
     [dayMonthEvents, selectedDate, userId],
   );
   const dayActuals = useMemo(
-    () => actuals.filter(actual => actual.userId === userId && actual.occurrenceDate === selectedDate),
+    () => actuals.filter(actual => actual.userId === userId && entryTimeRangeForDate(actual.occurrenceDate, actual.actualStartTime, actual.actualEndTime, selectedDate)),
     [actuals, selectedDate, userId],
   );
-  const actualPlanSources = useMemo(() => plans.filter(plan => plan.userId === userId
-    && dayActuals.some(actual => actual.planId === plan.id)).map(plan => resolvePlanOccurrence(plan, selectedDate)),
-    [plans, dayActuals, selectedDate, userId]);
+  const actualPlanSources = useMemo(() => dayActuals.flatMap(actual => {
+    const plan = plans.find(plan => plan.userId === userId && plan.id === actual.planId);
+    return plan ? [resolvePlanOccurrence(plan, actual.occurrenceDate)] : [];
+  }), [plans, dayActuals, userId]);
   const actualMonthEventSources = useMemo(() => monthEvents.filter(event => event.userId === userId
     && dayActuals.some(actual => actual.planId === event.id)), [monthEvents, dayActuals, userId]);
   const dayPlanMap = useMemo(() => {
@@ -342,17 +345,48 @@ export function DayView({
   );
   const retainedDeletingPlan = pendingDetailDeletion?.plan.userId === userId && pendingDetailDeletion.viewedDate === selectedDate
     ? pendingDetailDeletion.plan : null;
+  const selectedActualReference = modalState.type === 'plan-detail' || modalState.type === 'month-event-detail'
+    ? modalState : null;
+  const selectedActualPlanId = selectedActualReference?.type === 'plan-detail' ? selectedActualReference.planId
+    : selectedActualReference?.type === 'month-event-detail' ? selectedActualReference.monthEventId : undefined;
+  const selectedTimelineActual = selectedActualReference?.actualId
+    ? dayActuals.find(actual => actual.id === selectedActualReference.actualId)
+      ?? dayActuals.find(actual => actual.planId === selectedActualPlanId
+        && actual.occurrenceDate === selectedActualReference.actualOccurrenceDate) : undefined;
+  const selectedActualOccurrenceDate = selectedActualReference?.actualOccurrenceDate ?? selectedTimelineActual?.occurrenceDate;
+  const selectedActualSourcePlan = selectedActualReference?.type === 'plan-detail' && selectedActualReference.actualId
+    ? plans.find(plan => plan.id === selectedActualReference.planId && plan.userId === userId) : undefined;
+  const selectedTimelineOccurrence = (modalState.type === 'plan-detail' || modalState.type === 'month-event-detail') && modalState.occurrenceId
+    ? dayOccurrenceById.get(modalState.occurrenceId) : undefined;
+  const selectedOccurrenceSourcePlan = selectedTimelineOccurrence?.source.backingKind === 'plan'
+    ? plans.find(plan => plan.id === selectedTimelineOccurrence.source.backingId && plan.userId === userId) : undefined;
   const selectedPlan =
     modalState.type === 'plan-detail'
-      ? dayPlanMap.get(modalState.planId) ?? (retainedDeletingPlan?.id === modalState.planId ? retainedDeletingPlan : null)
+      ? (modalState.occurrenceId
+          ? selectedOccurrenceSourcePlan && selectedTimelineOccurrence
+            ? resolvePlanOccurrence(selectedOccurrenceSourcePlan, selectedTimelineOccurrence.start.date) : null
+          : modalState.actualId
+            ? selectedActualSourcePlan && selectedActualOccurrenceDate
+              ? resolvePlanOccurrence(selectedActualSourcePlan, selectedActualOccurrenceDate) : null
+            : dayPlanMap.get(modalState.planId))
+        ?? (retainedDeletingPlan?.id === modalState.planId ? retainedDeletingPlan : null)
       : modalState.type === 'timetable-record' && modalState.ownerId === userId && modalState.viewedDate === selectedDate
         ? dayPlanMap.get(modalState.plan.id) ?? modalState.plan : null;
   const selectedMonthEvent =
     modalState.type === 'month-event-detail'
       ? dayMonthEventMap.get(modalState.monthEventId) ?? null
       : null;
+  const selectedMonthEventActualDate = selectedActualOccurrenceDate ?? selectedDate;
+  const selectedMonthEventOccurrence = selectedMonthEvent ? visibleDayOccurrences.find(occurrence =>
+    occurrence.source.backingKind === 'month-event' && occurrence.source.backingId === selectedMonthEvent.id
+    && scheduleOccurrenceCoversDate(occurrence, selectedMonthEventActualDate)) : undefined;
   const selectedMonthEventPlan = selectedMonthEvent
-    ? dayMonthEventPlanMap.get(selectedMonthEvent.id) ?? null
+    ? selectedActualOccurrenceDate && selectedMonthEventActualDate !== selectedDate
+      ? createMonthEventActualPlan({
+          ...selectedMonthEvent,
+          ...(selectedMonthEventOccurrence ? scheduleOccurrenceTimesForDate(selectedMonthEventOccurrence, selectedMonthEventActualDate) : {}),
+        }, userId, selectedMonthEventActualDate)
+      : dayMonthEventPlanMap.get(selectedMonthEvent.id) ?? null
     : null;
   const selectedTimetableOccurrence = modalState.type === 'timetable-detail'
     && modalState.ownerId === userId && modalState.viewedDate === selectedDate
@@ -361,36 +395,40 @@ export function DayView({
   const detailTimetable = selectedTimetableOccurrence?.source.backingKind === 'timetable-template'
     ? selectedTimetableOccurrence : null;
   const selectedDetailPlan = selectedPlan ?? selectedMonthEventPlan;
-  const selectedDetailOccurrence = selectedDetailPlan ? visibleDayOccurrences.find(occurrence =>
+  const selectedDetailOccurrence = selectedTimelineOccurrence ?? (selectedDetailPlan ? visibleDayOccurrences.find(occurrence =>
     occurrence.source.backingKind === (selectedMonthEvent ? 'month-event' : 'plan')
-    && occurrence.source.backingId === selectedDetailPlan.id) : undefined;
+    && occurrence.source.backingId === selectedDetailPlan.id
+    && (selectedMonthEvent
+      ? scheduleOccurrenceCoversDate(occurrence, selectedMonthEventActualDate)
+      : occurrence.start.date === (selectedActualOccurrenceDate ?? selectedDetailPlan.date))) : undefined);
 
   const deletionPresentation = selectedDetailOccurrence ? getDeletionPresentation(selectedDetailOccurrence) : undefined;
-  const selectedDetailActual = selectedDetailPlan
+  const selectedDetailActual = selectedTimelineActual ?? (selectedDetailPlan
     ? actualByOccurrenceKey.get(
         buildPlanOccurrenceKey(selectedDetailPlan.id, selectedDetailPlan.date),
       )
-    : undefined;
+    : undefined);
   const selectedStandaloneActual =
     modalState.type === 'standalone-actual-detail' && modalState.actual.userId === userId
       ? modalState.actual
       : null;
 
   useEffect(() => {
-    if (modalState.type === 'plan-detail' && !dayPlanMap.has(modalState.planId) && retainedDeletingPlan?.id !== modalState.planId) {
+    if (modalState.type === 'plan-detail' && !selectedPlan) {
       setModalState({ type: 'closed' });
     }
 
     if (
       modalState.type === 'month-event-detail' &&
-      !dayMonthEventMap.has(modalState.monthEventId)
+      (!dayMonthEventMap.has(modalState.monthEventId)
+        || Boolean(modalState.occurrenceId && !selectedTimelineOccurrence))
     ) {
       setModalState({ type: 'closed' });
     }
 
     if (modalState.type === 'timetable-record' && (modalState.ownerId !== userId || modalState.viewedDate !== selectedDate)) setModalState({ type: 'closed' });
     if (modalState.type === 'timetable-detail' && !detailTimetable) setModalState({ type: 'closed' });
-  }, [dayMonthEventMap, dayPlanMap, detailTimetable, modalState, retainedDeletingPlan, userId, selectedDate]);
+  }, [dayMonthEventMap, detailTimetable, modalState, selectedPlan, selectedTimelineActual, selectedTimelineOccurrence, userId, selectedDate]);
 
   useEffect(() => {
     setModalState({ type: 'closed' });
@@ -557,7 +595,7 @@ export function DayView({
         deleteOccurrenceLabel={deletionPresentation?.label}
         deleteOccurrenceDescription={deletionPresentation?.description}
         historyOnly={Boolean(selectedDetailPlan && !selectedDetailOccurrence && !retainedDeletingPlan
-          && (selectedMonthEvent ?? selectedDetailPlan).excludedDates.includes(selectedDate))}
+          && (selectedMonthEvent ?? selectedDetailPlan).excludedDates.includes(selectedActualOccurrenceDate ?? selectedDetailPlan.date))}
         onDeleteOccurrence={selectedDetailOccurrence && onDeleteOccurrence ? () => onDeleteOccurrence(selectedDetailOccurrence) : undefined}
         getActualActionBlockReason={getActualActionBlockReason}
         onSaveActual={onSaveActual}
@@ -590,6 +628,7 @@ export function DayView({
       />
 
       <DayTimeline
+        date={selectedDate}
         dateLabel={dayRangeLabel}
         plans={dayPlans}
         monthEvents={dayMonthEvents}
@@ -603,7 +642,7 @@ export function DayView({
         onRemoveWeeklyDraftBlock={onRemoveWeeklyDraftBlock}
         onMovePlan={onMovePlan}
         selectedEntryId={
-          detailTimetable
+          selectedTimelineActual ? `actual:${selectedTimelineActual.id}` : detailTimetable
             ? `timetable:${detailTimetable.id}`
             : selectedPlan
             ? `plan:${selectedPlan.id}`
@@ -627,9 +666,10 @@ export function DayView({
             return;
           }
           setActualOpenError('');
+          const actualOccurrenceDate = entry.actualId ? dayActuals.find(actual => actual.id === entry.actualId)?.occurrenceDate : undefined;
           setModalState(entry.kind === 'plan'
-            ? { type: 'plan-detail', planId: entry.id }
-            : { type: 'month-event-detail', monthEventId: entry.id });
+            ? { type: 'plan-detail', planId: entry.id, actualId: entry.actualId, actualOccurrenceDate, occurrenceId: entry.occurrenceId }
+            : { type: 'month-event-detail', monthEventId: entry.id, actualId: entry.actualId, actualOccurrenceDate, occurrenceId: entry.occurrenceId });
         }}
         onPreviousDay={() => onChangeDay(addDays(selectedDate, -1))}
         onNextDay={() => onChangeDay(addDays(selectedDate, 1))}

@@ -1,3 +1,4 @@
+import { entryTimeRangeForDate } from '../lib/entryTimeRange';
 import {
   useEffect,
   useMemo,
@@ -26,7 +27,6 @@ import {
 import {
   buildPlanOccurrenceKey,
   expandPlansForDate,
-  getActualOccurrenceKey,
   resolvePlanOccurrence,
 } from '../lib/planRecurrence';
 import {
@@ -337,9 +337,6 @@ export function WeekView({
     [scheduleProjection.occurrences],
   );
   const planById = new Map(plans.map((plan) => [plan.id, plan]));
-  const actualByOccurrenceKey = new Map(
-    actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
-  );
   const gridStyle = {
     gridTemplateColumns: '46px repeat(7, minmax(0, 1fr))',
   } as CSSProperties;
@@ -987,30 +984,12 @@ export function WeekView({
                   const timedDayNonPlanOccurrences = dayNonPlanOccurrences.filter(
                     (occurrence) => !isScheduleOccurrenceOutsideHourlyGrid(occurrence),
                   );
-                  const dayPlanKeys = new Set(
-                    dayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date)),
-                  );
-                  const linkedActuals = dayPlans.flatMap((plan) => {
-                    const actual = actualByOccurrenceKey.get(
-                      buildPlanOccurrenceKey(plan.id, plan.date),
-                    );
-                    return actual ? [{ actual, plan }] : [];
+                  const dayActuals = actuals.flatMap((actual) => {
+                    const range = entryTimeRangeForDate(actual.occurrenceDate, actual.actualStartTime, actual.actualEndTime, date);
+                    if (!range) return [];
+                    const source = actual.planId ? planById.get(actual.planId) : undefined;
+                    return [{ actual, plan: source ? resolvePlanOccurrence(source, actual.occurrenceDate) : undefined, range }];
                   });
-                  const standaloneActuals = actuals
-                    .filter(
-                      (actual) =>
-                        actual.occurrenceDate === date &&
-                        !dayPlanKeys.has(getActualOccurrenceKey(actual)),
-                    )
-                    .map((actual) => {
-                      const source = actual.planId ? planById.get(actual.planId) : undefined;
-                      return { actual, plan: source ? resolvePlanOccurrence(source, actual.occurrenceDate) : undefined };
-                    });
-                  const dayActuals = [...linkedActuals, ...standaloneActuals].sort(
-                    (left, right) =>
-                      minutesFromTime(left.actual.actualStartTime) -
-                      minutesFromTime(right.actual.actualStartTime),
-                  );
                   const dayDraftBlocks = weeklyDraftBlocks.filter(
                     (block) => block.date === date && block.status === 'draft',
                   );
@@ -1053,14 +1032,13 @@ export function WeekView({
                     })),
                   ]);
                   const actualBlocks = buildLanes<WeekPreviewBaseBlock>(
-                    dayActuals.map(({ actual, plan }) => ({
+                    dayActuals.map(({ actual, plan, range }) => ({
                       id: actual.id,
                       title: resolveActualTitle(actual, plan),
                       subject: resolveActualSubject(actual, plan),
                       type: plan?.type ?? 'other',
                       sourceType: plan?.sourceType,
-                      startTime: actual.actualStartTime,
-                      endTime: actual.actualEndTime,
+                      ...range,
                     })),
                   );
                   const visibleBlocks = timelineMode === 'plan' ? planBlocks : actualBlocks;
