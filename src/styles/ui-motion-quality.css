@@ -110,28 +110,16 @@
   }
 }
 
-/* Primary navigation: the active icon is inserted only when selection
-   changes, so this one-shot spring doubles as immediate navigation feedback. */
-.home-nav-active-circle {
-  transform-origin: center;
-  animation: ui-nav-target-in 280ms var(--motion-ease-emphasized) both;
+/* Primary navigation: the selected circle travels from the previous tab
+   (PrimaryBottomNav → playIndicatorTravel), so it needs no CSS entrance of
+   its own and the first paint stays still. Colours switch at once with the
+   selection; only a direct press dips the item. */
+.primary-bottom-nav button {
+  transition: transform var(--motion-duration-fast) var(--motion-ease-emphasized);
 }
 
-@keyframes ui-nav-target-in {
-  0% {
-    opacity: 0.62;
-    transform: scale(0.76);
-  }
-
-  70% {
-    opacity: 1;
-    transform: scale(1.08);
-  }
-
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
+.primary-bottom-nav button:active {
+  transform: scale(var(--motion-scale-press));
 }
 
 /* AI planning: keep the existing truthful status semantics, but make waiting
@@ -209,7 +197,6 @@
    only at the standard level. Surface entries and press feedback already
    collapse to fades through the distance/scale tokens. */
 :root:is([data-motion='reduced'], [data-motion='off']) .home-streak-flame,
-:root:is([data-motion='reduced'], [data-motion='off']) .home-nav-active-circle,
 :root:is([data-motion='reduced'], [data-motion='off']) .ai-planning-typing::after {
   animation: none;
 }
