@@ -57,6 +57,29 @@ function play(element: Element | null | undefined, spec: EffectSpec, level: Moti
   return animation;
 }
 
+/**
+ * Measures `element` where it rests once its running effect ends. Every
+ * effect here ends at the element's own place, so the end state is its layout
+ * position. The effect is parked at its end only for the measurement and then
+ * resumes untouched, so a caller can find an item's destination while it is
+ * still visibly moving.
+ */
+export function measureAtRest<T>(element: Element, measure: () => T): T {
+  const animation = running.get(element);
+  const end = animation?.effect?.getComputedTiming?.().endTime;
+  if (!animation || typeof end !== 'number' || typeof animation.pause !== 'function') return measure();
+  const wasPaused = animation.playState === 'paused';
+  const time = animation.currentTime;
+  animation.pause();
+  animation.currentTime = end;
+  try {
+    return measure();
+  } finally {
+    animation.currentTime = time;
+    if (!wasPaused) animation.play();
+  }
+}
+
 const ENTRANCE: EffectSpec = {
   standard: {
     frames: [

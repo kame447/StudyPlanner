@@ -129,3 +129,83 @@ describe('items pushed aside by a change', () => {
     expect(played.size).toBe(0);
   });
 });
+
+describe('a change that arrives while items are still gliding', () => {
+  // Persistent nodes whose drawn position includes the running glide's
+  // translate, like retained DOM nodes in a browser. The glide holds its
+  // starting offset until it ends (or is parked at its end).
+  type Glide = { offset: number; time: number; paused: boolean; cancelled: boolean };
+  const nodes = new Map<string, { layoutY: number; glide: Glide | null; starts: number[]; element: unknown }>();
+  let visible: string[] = [];
+
+  const nodeFor = (key: string) => {
+    let node = nodes.get(key);
+    if (node) return node;
+    const created = { layoutY: 0, glide: null as Glide | null, starts: [] as number[], element: null as unknown };
+    created.element = {
+      dataset: { motionKey: key, motionSignature: key },
+      getBoundingClientRect: () => {
+        const glide = created.glide;
+        const drawn = glide && !glide.cancelled && glide.time < 200 ? glide.offset : 0;
+        return { left: 10, top: 100 + created.layoutY + drawn, width: 200, height: 20 };
+      },
+      animate: (frames: Keyframe[]) => {
+        const offset = Number.parseFloat(String(frames[0].translate ?? '0 0').split(' ')[1]) || 0;
+        const glide: Glide = { offset, time: 0, paused: false, cancelled: false };
+        created.glide = glide;
+        created.starts.push(offset);
+        return {
+          get playState() { return glide.paused ? 'paused' : 'running'; },
+          get currentTime() { return glide.time; },
+          set currentTime(value: number) { glide.time = value; },
+          effect: { getComputedTiming: () => ({ endTime: 200 }) },
+          pause: () => { glide.paused = true; },
+          play: () => { glide.paused = false; },
+          cancel: () => { glide.cancelled = true; },
+          addEventListener: vi.fn(),
+        };
+      },
+    };
+    nodes.set(key, created);
+    return created;
+  };
+
+  const persistentContainer = {
+    getBoundingClientRect: () => ({ left: 10, top: 100, width: 200, height: 400 }),
+    querySelectorAll: () => visible.map(key => nodeFor(key).element),
+  } as unknown as Element;
+
+  function Column({ keys, data }: { keys: string[]; data: unknown }) {
+    useDataChangeMotion({ current: persistentContainer }, 'todo', [data]);
+    visible = keys;
+    keys.forEach((key, index) => { nodeFor(key).layoutY = index * 20; });
+    return null;
+  }
+
+  it('continues from where each item is drawn instead of jumping', () => {
+    nodes.clear();
+    let column: ReactTestRenderer | undefined;
+    const show = (keys: string[], data: number) => act(() => {
+      if (column) column.update(<Column keys={keys} data={data} />);
+      else column = create(<Column keys={keys} data={data} />);
+    });
+    try {
+      show(['a', 'b', 'c', 'd'], 1);
+      show(['b', 'c', 'd'], 2);
+      expect(nodeFor('d').starts).toEqual([20]);
+      const drawnBefore = (nodeFor('d').element as Element).getBoundingClientRect().top;
+
+      // A second removal while the first glide is still drawing d 20px lower.
+      show(['c', 'd'], 3);
+      expect(nodeFor('d').starts).toEqual([20, 40]);
+      expect((nodeFor('d').element as Element).getBoundingClientRect().top).toBe(drawnBefore);
+
+      // A follow-up commit that does not move d (e.g. the saved copy of the
+      // same change arriving) lets the running glide continue.
+      show(['c', 'd'], 4);
+      expect(nodeFor('d').starts).toEqual([20, 40]);
+    } finally {
+      act(() => column?.unmount());
+    }
+  });
+});

@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react';
-import { playEntrance, playSettle, playShift } from '../lib/motionEffects';
+import { measureAtRest, playEntrance, playSettle, playShift } from '../lib/motionEffects';
 
 /**
  * Explains data changes inside one view without re-rendering it.
@@ -25,7 +25,7 @@ export function useDataChangeMotion(
   data: readonly unknown[],
 ) {
   const previous = useRef<{ scope: string; data: readonly unknown[]; signatures: Map<string, string> } | null>(null);
-  const drawnBefore = useRef<{ data: readonly unknown[]; positions: Map<string, Point> } | null>(null);
+  const drawnBefore = useRef<{ data: readonly unknown[]; positions: Map<string, Placement> } | null>(null);
 
   // While rendering a data change the DOM still shows the previous layout, so
   // this is the one moment where "where it was drawn" can be read. Reading
@@ -60,10 +60,15 @@ export function useDataChangeMotion(
       else if (prior !== (element.dataset.motionSignature ?? '')) playSettle(element);
       else {
         const from = drawn && sameData(drawn.data, data) ? drawn.positions.get(key) : undefined;
-        const to = origin && positionOf(element, origin);
+        // Where it now rests, not where an earlier glide still draws it.
+        const to = origin && measureAtRest(element, () => positionOf(element, origin));
         if (!from || !to) continue;
-        const x = Math.round(from.x - to.x);
-        const y = Math.round(from.y - to.y);
+        // Its own place did not change: a glide still running from an earlier
+        // change simply continues.
+        if (Math.round(from.rest.x - to.x) === 0 && Math.round(from.rest.y - to.y) === 0) continue;
+        // The new glide replaces any running one and starts from the drawn point.
+        const x = Math.round(from.drawn.x - to.x);
+        const y = Math.round(from.drawn.y - to.y);
         if (x !== 0 || y !== 0) shifts.push({ element, x, y });
       }
     }
@@ -78,6 +83,8 @@ export function useDataChangeMotion(
 const MAX_SHIFTS = 24;
 
 interface Point { x: number; y: number }
+/** Where an item is drawn (including a running effect) and where it rests. */
+interface Placement { drawn: Point; rest: Point }
 
 function positionOf(element: Element, origin: Point | null): Point | null {
   if (typeof element.getBoundingClientRect !== 'function') return null;
@@ -86,14 +93,15 @@ function positionOf(element: Element, origin: Point | null): Point | null {
   return origin ? { x: box.left - origin.x, y: box.top - origin.y } : { x: box.left, y: box.top };
 }
 
-function readPositions(container: Element | null): Map<string, Point> {
-  const positions = new Map<string, Point>();
+function readPositions(container: Element | null): Map<string, Placement> {
+  const positions = new Map<string, Placement>();
   if (!container || typeof container.querySelectorAll !== 'function') return positions;
   const origin = positionOf(container, null);
   if (!origin) return positions;
   for (const element of Array.from(container.querySelectorAll<HTMLElement>('[data-motion-key]'))) {
-    const position = positionOf(element, origin);
-    if (position) positions.set(element.dataset.motionKey ?? '', position);
+    const drawn = positionOf(element, origin);
+    const rest = measureAtRest(element, () => positionOf(element, origin));
+    if (drawn && rest) positions.set(element.dataset.motionKey ?? '', { drawn, rest });
   }
   return positions;
 }
