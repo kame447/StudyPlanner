@@ -1,6 +1,10 @@
 # Defer administrator-only console styles
 
 Status: approved for publication; combined verification and native acceptance in progress.
+
+## Native probe baseline correction
+
+The first published production probe failed the dark/standard round-trip color comparison in Chromium desktop. Both attempts reached the same correct final color, but recorded different initial intermediate colors. The ordinary body stylesheet transitions inherited color for 0.2 seconds after the root theme attribute changes; reduced-motion emulation does not override that fixed duration. Trace timing placed baseline sampling immediately after the root-theme assertion. The probe now waits for the legal card to reach the non-transitioning root's final computed color before capturing its baseline. The original exact nine-property before/after comparison, lazy-CSS gate, all five width checks, theme/appearance combinations, and document/cache assertions remain unchanged. No runtime CSS or expectation is relaxed; native execution of the corrected probe remains required.
 Owner: Issue #542.
 Branch: `perf/defer-admin-console-styles`.
 Base: main `56a8e52212b72074e99f092d91b1bef488bc365f`, tree `9a4bf105d3c76b5290e24a2283669c14e0fbaca5`.

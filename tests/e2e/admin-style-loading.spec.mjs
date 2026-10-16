@@ -77,6 +77,10 @@ for (const theme of ['light', 'dark']) for (const appearance of ['standard', 'pi
         await expect(page.locator('.legal-page-card')).toHaveCSS('border-radius', '0px');
         await page.evaluate(() => document.fonts.ready);
       }
+      // The root has the final theme color while body is still transitioning.
+      // Do not store an intermediate inherited color as the round-trip baseline.
+      const settledColor = await page.locator('html').evaluate(element => getComputedStyle(element).color);
+      await expect(page.locator('.legal-page-card')).toHaveCSS('color', settledColor);
       const before = await publicCardStyle(page);
       expect(held.requests).toHaveLength(0);
       expect(await hasConsoleRules(page)).toBe(false);
