@@ -1,4 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import { WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS, measureWeeklyPlanningTraceJsonBytes } from '../../../../shared/weeklyPlanningTraceContract';
+import { prepareWeeklyPlanningTraceServerWrite } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
+import { createWeeklyPlanningSemanticNormalizerV5 } from '../semantic/weeklyPlanningSemanticNormalizerV5';
+import { WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5 } from '../semantic/weeklyPlanningSemanticMeaningPolicyV5';
+import recordedEffortResponses from '../semantic/testFixtures/recordedEffortSemanticResponses.json';
+import { resetWeeklyPlanningStableV5DebugTraceForTest, takeWeeklyPlanningStableV5DebugTrace } from './weeklyPlanningStableV5DebugTrace';
 import {
   createMemoryStorageHarness,
   installWeeklyPlanningTestStorage,
@@ -149,7 +156,83 @@ describe('Stable V5 trace runtime', () => {
 
   afterEach(() => {
     resetWeeklyPlanningStableV5TraceRuntimeForTest();
+    resetWeeklyPlanningStableV5DebugTraceForTest();
     setWeeklyPlanningTraceRepositoryForTests(undefined);
+  });
+
+  it('retains the actual effort meaning request through bounded diagnostic outbox retry and Worker preparation', async () => {
+    const restore = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
+    try {
+      const requestId = 'conversation-1:request:effort-contract';
+      const requests: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]> = [];
+      const captured = recordedEffortResponses.cases.find((row) => row.sourceRunId === 38064978826)!;
+      const normalized = await createWeeklyPlanningSemanticNormalizerV5({
+        async createChatCompletion(request) {
+          requests.push(request);
+          return captured.rawSemanticResponse;
+        },
+      }).normalize({ userText: recordedEffortResponses.userText, traceRequestId: requestId,
+        publicStateSummary: { futureEffortFixtureSentinel: 'future-effort-context' } });
+      expect(normalized.status).toBe('accepted');
+      expect(requests).toHaveLength(1);
+      const actualSystem = requests[0].messages[0].content;
+      const actualUser = requests[0].messages[1].content;
+      const effortInstruction = WEEKLY_PLANNING_SEMANTIC_MEANING_RULES_V5.find(
+        (rule) => rule.id === 'effort_measurement',
+      )!.instruction;
+      expect(actualSystem).toContain(effortInstruction);
+      const input = traceInput({ requestId, userText: recordedEffortResponses.userText,
+        assistantMessage: undefined, debugTraceEvents: takeWeeklyPlanningStableV5DebugTrace(requestId) });
+      const harness = createRepositoryHarness();
+      harness.failNext();
+      setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+      await recordWeeklyPlanningStableV5TurnTrace(input);
+      expect(harness.writes).toHaveLength(0);
+      const queued = listWeeklyPlanningTraceOutboxItems({ userId: input.userId,
+        conversationId: input.conversationId });
+      expect(queued).toHaveLength(1);
+      const queuedRequest = queued[0].input.debugTraceEvents?.find(
+        (event) => event.stage === 'semantic_provider_request',
+      )?.data as { attempt: string; requestBytes: number;
+        request: Pick<typeof requests[0], 'messages' | 'purpose' | 'maxCompletionTokens'> };
+      expect(queuedRequest.request.messages).toEqual(requests[0].messages);
+      expect(queuedRequest).toMatchObject({ attempt: 'initial', request: {
+        purpose: requests[0].purpose, maxCompletionTokens: requests[0].maxCompletionTokens,
+      } });
+      resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+      await recordWeeklyPlanningStableV5TurnTrace(traceInput({ requestId: 'conversation-1:request:after-effort', debugTraceEvents: [] }));
+      expect(harness.writes).toHaveLength(2);
+      const retried = harness.writes[0];
+      const entry = diagnosticEntry(retried);
+      expect(entry.requestId).toBe(requestId);
+      const persistedRequest = entry.aiInterpreter.input.requests[0];
+      expect(persistedRequest).toMatchObject({ attempt: queuedRequest.attempt,
+        purpose: requests[0].purpose, maxCompletionTokens: requests[0].maxCompletionTokens,
+        requestBytes: queuedRequest.requestBytes });
+      const persistedMessages = persistedRequest.messages;
+      expect(persistedMessages[1].content).toBe(actualUser);
+      expect(persistedMessages[1].content).toContain('future-effort-context');
+      const persistedSystem = persistedMessages[0].content;
+      const marker = '…[trace truncated]';
+      expect(persistedSystem.endsWith(marker)).toBe(true);
+      expect(actualSystem.startsWith(persistedSystem.slice(0, -marker.length))).toBe(true);
+      expect(persistedSystem).toContain(effortInstruction);
+      expect(entry.diagnostics.truncation?.fields).toContain('aiInterpreter.input.requests[0].messages[0].content');
+      expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+      const prepared = prepareWeeklyPlanningTraceServerWrite({
+        session: retried.session as unknown as Record<string, unknown>,
+        entries: retried.entries as unknown as Record<string, unknown>[],
+      }, { token: `wpt_${'e'.repeat(43)}`, epoch: '103' }, {
+        sessionId: 'weekly-trace-423e4567-e89b-52d3-a456-426614174000',
+        logicalConversationId: 'weekly-conversation-523e4567-e89b-52d3-a456-426614174000',
+      }, '2026-10-10T00:00:00.000Z');
+      expect(prepared.entries).toHaveLength(1);
+      expect(prepared.session.logicalConversationId).toBe('weekly-conversation-523e4567-e89b-52d3-a456-426614174000');
+      expect(prepared.entries[0].logicalConversationId).toBe(prepared.session.logicalConversationId);
+      expect(prepared.entries[0].aiInterpreter).toEqual(entry.aiInterpreter);
+      expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+      expect(listWeeklyPlanningTraceOutboxItems({ userId: input.userId, conversationId: input.conversationId })).toEqual([]);
+    } finally { restore(); }
   });
 
   it('persists exactly one bounded diagnostic record per user turn', async () => {

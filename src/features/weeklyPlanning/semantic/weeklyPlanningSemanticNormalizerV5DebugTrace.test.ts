@@ -9,6 +9,8 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import { createWeeklyPlanningSemanticNormalizerV5 } from './weeklyPlanningSemanticNormalizerV5';
+import { canonicalizeWeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticCanonicalizerV5';
+import recordedEffortResponses from './testFixtures/recordedEffortSemanticResponses.json';
 
 function document(): WeeklyPlanningSemanticDocumentV5 {
   return {
@@ -41,6 +43,50 @@ afterEach(() => {
 });
 
 describe('Stable V5 semantic normalizer debug trace', () => {
+  it.each([
+    { runId: 38057573433, expected: [
+      { kind: 'duration_per_unit', minutes: 3, targetLocalId: 'workload-1' },
+      { kind: 'session_duration', minutes: 30, targetLocalId: 'task-1' },
+    ] },
+    { runId: 38064978826, expected: [] },
+  ])('preserves captured effort facts without manufacturing missing facts: run $runId', async ({ runId, expected }) => {
+    // Recorded provider output is a fixed offline input, not evidence that the new prompt works.
+    const captured = recordedEffortResponses.cases.find((row) => row.sourceRunId === runId)!;
+    const requests: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]> = [];
+    const normalizer = createWeeklyPlanningSemanticNormalizerV5({
+      async createChatCompletion(request) {
+        requests.push(request);
+        return captured.rawSemanticResponse;
+      },
+    });
+    const normalized = await normalizer.normalize({
+      userText: recordedEffortResponses.userText,
+      traceRequestId: `captured-effort-${runId}`,
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ temperature: 0, maxCompletionTokens: 3200 });
+    expect(JSON.parse(requests[0].messages[1].content).userText).toBe(recordedEffortResponses.userText);
+    expect(requests[0].messages[0].content).toContain('co-stated kinds remain separate');
+    expect(normalized.status).toBe('accepted');
+    expect(normalized.document?.tasks.flatMap((task) => task.effortEstimates).map(
+      ({ kind, minutes, targetLocalId }) => ({ kind, minutes, targetLocalId }),
+    )).toEqual(expected);
+    const canonical = canonicalizeWeeklyPlanningSemanticDocumentV5({
+      document: normalized.document!,
+      context: { conversationId: 'captured-effort', turnId: `turn-${runId}`, expectedRevision: 0,
+        userText: recordedEffortResponses.userText },
+    });
+    expect(canonical.status).toBe('applied');
+    expect(canonical.graph.effortEstimates.map(({ kind, minutes, targetFactId }) =>
+      ({ kind, minutes, targetFactId }))).toEqual(expected.map(({ kind, minutes, targetLocalId }) =>
+      ({ kind, minutes, targetFactId: canonical.localToFactId[targetLocalId] })));
+    expect(canonical.graph.workloads).toEqual([
+      expect.objectContaining({ amount: 20, quantityRole: 'target', unitCode: 'problem' }),
+    ]);
+    // This is only the canonicalizer's no-invention boundary. It imposes no future
+    // scheduler/recovery policy that every empty effort array must ask a question.
+  });
+
   it('records the complete provider request, raw response and parsed document', async () => {
     const rawResponse = JSON.stringify(document());
     const normalizer = createWeeklyPlanningSemanticNormalizerV5(client([rawResponse]));
