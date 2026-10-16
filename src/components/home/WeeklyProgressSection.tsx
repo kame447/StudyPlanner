@@ -1,6 +1,7 @@
-import type { CSSProperties } from 'react';
+import { useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { HomeDashboardModel } from '../../lib/homeDashboard';
+import { playGrowth } from '../../lib/motionEffects';
 
 function formatGraphDuration(minutes: number): string {
   const normalized = Math.max(0, Math.round(minutes));
@@ -22,6 +23,10 @@ function formatAxisDuration(minutes: number): string {
   return `${hours}h${rest}m`;
 }
 
+function barHeight(minutes: number, maxMinutes: number): number {
+  return Math.max(3, Math.round((minutes / maxMinutes) * 100));
+}
+
 function buildChartScale(maxMinutes: number): { maxMinutes: number; ticks: number[] } {
   const interval = Math.max(60, Math.ceil(maxMinutes / 3 / 30) * 30);
   const chartMax = interval * 3;
@@ -29,6 +34,31 @@ function buildChartScale(maxMinutes: number): { maxMinutes: number; ticks: numbe
     maxMinutes: chartMax,
     ticks: [chartMax, interval * 2, interval, 0],
   };
+}
+
+/**
+ * When the week's numbers change while Home is open (a record saved, a plan
+ * added), each bar whose height changed grows from its previous height. The
+ * first paint and another week only show the bars.
+ */
+function useBarGrowth(barsRef: { current: HTMLElement | null }, week: string, heights: readonly number[]) {
+  const previous = useRef<{ week: string; heights: Map<string, number> } | null>(null);
+  const signature = heights.join(',');
+  useLayoutEffect(() => {
+    const bars = barsRef.current;
+    if (!bars || typeof bars.querySelectorAll !== 'function') return;
+    const current = new Map<string, number>();
+    const elements = Array.from(bars.querySelectorAll<HTMLElement>('[data-bar-key]'));
+    for (const element of elements) current.set(element.dataset.barKey ?? '', Number(element.dataset.barHeight));
+    const before = previous.current;
+    previous.current = { week, heights: current };
+    if (!before || before.week !== week) return;
+    for (const element of elements) {
+      const from = before.heights.get(element.dataset.barKey ?? '');
+      const to = Number(element.dataset.barHeight);
+      if (from !== undefined && to > 0 && from !== to) playGrowth(element, from / to);
+    }
+  }, [barsRef, week, signature]);
 }
 
 export function WeeklyProgressSection({
@@ -48,6 +78,12 @@ export function WeeklyProgressSection({
     '--weekly-progress': `${ringProgress * 3.6}deg`,
   } as CSSProperties;
   const difference = dashboard.weekDeltaMinutesByNow;
+  const barsRef = useRef<HTMLDivElement | null>(null);
+  const barHeights = dashboard.weekDays.flatMap((item) => [
+    barHeight(item.plannedMinutes, chartScale.maxMinutes),
+    barHeight(item.actualMinutes, chartScale.maxMinutes),
+  ]);
+  useBarGrowth(barsRef, dashboard.weekDays[0]?.date ?? '', barHeights);
 
   return (
     <section className="home-panel home-progress-panel" data-home-section="weekly-progress">
@@ -86,16 +122,10 @@ export function WeeklyProgressSection({
                 <span key={tick}>{formatAxisDuration(tick)}</span>
               ))}
             </div>
-            <div className="weekly-progress-bars">
+            <div ref={barsRef} className="weekly-progress-bars">
               {dashboard.weekDays.map((item) => {
-                const plannedHeight = Math.max(
-                  3,
-                  Math.round((item.plannedMinutes / chartScale.maxMinutes) * 100),
-                );
-                const actualHeight = Math.max(
-                  3,
-                  Math.round((item.actualMinutes / chartScale.maxMinutes) * 100),
-                );
+                const plannedHeight = barHeight(item.plannedMinutes, chartScale.maxMinutes);
+                const actualHeight = barHeight(item.actualMinutes, chartScale.maxMinutes);
                 return (
                   <div
                     className="weekly-progress-day"
@@ -103,8 +133,18 @@ export function WeeklyProgressSection({
                     title={`${item.label}: 予定 ${formatGraphDuration(item.plannedMinutes)} / 実績 ${formatGraphDuration(item.actualMinutes)}`}
                   >
                     <div className="weekly-progress-columns">
-                      <span className="weekly-progress-plan" style={{ height: `${plannedHeight}%` }} />
-                      <span className="weekly-progress-actual" style={{ height: `${actualHeight}%` }} />
+                      <span
+                        className="weekly-progress-plan"
+                        data-bar-key={`${item.date}:plan`}
+                        data-bar-height={plannedHeight}
+                        style={{ height: `${plannedHeight}%` }}
+                      />
+                      <span
+                        className="weekly-progress-actual"
+                        data-bar-key={`${item.date}:actual`}
+                        data-bar-height={actualHeight}
+                        style={{ height: `${actualHeight}%` }}
+                      />
                     </div>
                     <small>{item.label}</small>
                   </div>

@@ -18,6 +18,15 @@
   gap: clamp(5px, 1.5vw, 10px);
 }
 
+/* Registered so the ring can sweep to a new value when the week's progress
+   changes while Home is open (#696). A first paint has nothing to transition
+   from, and below standard the sweep is instant (--motion-spatial is 0). */
+@property --weekly-progress {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 .weekly-progress-ring {
   width: clamp(55px, 13vw, 64px);
   height: clamp(55px, 13vw, 64px);
@@ -26,6 +35,7 @@
   justify-self: start;
   border-radius: 50%;
   background: conic-gradient(var(--home-blue) var(--weekly-progress), #e8eef6 0);
+  transition: --weekly-progress calc(var(--motion-duration-slow) * 2 * var(--motion-spatial)) var(--motion-ease-emphasized);
 }
 
 .weekly-progress-ring > div {
@@ -181,6 +191,8 @@
 
 .weekly-progress-plan,
 .weekly-progress-actual {
+  /* A changed bar grows from the baseline (playGrowth). */
+  transform-origin: 50% 100%;
   width: clamp(4px, 1.3vw, 6px);
   min-height: 2px;
   border-radius: 2px 2px 0 0;

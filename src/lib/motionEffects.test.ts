@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MOTION_DURATION_MS, playEntrance, playNavigation, playSettle } from './motionEffects';
+import { MOTION_DURATION_MS, playEntrance, playGrowth, playNavigation, playSettle } from './motionEffects';
 import { MOTION_STORAGE_KEY, REDUCED_FADE_MS, setMotionPreference } from './motionPreference';
 import { installFakeMotionEnvironment } from './motionPreference.testUtils';
 import { readFileSync } from 'node:fs';
@@ -88,5 +88,24 @@ describe('feedback motion by level', () => {
     for (const [name, ms] of Object.entries(MOTION_DURATION_MS)) {
       expect(css).toContain(`--motion-duration-${name}: ${ms}ms;`);
     }
+  });
+});
+
+describe('value growth', () => {
+  it('grows a bar from its previous length along one axis at standard, clamped', () => {
+    const { element, animations } = fakeElement();
+    playGrowth(element, 0.5);
+    playGrowth(element, 9, 'x');
+    expect(animations.map(animation => animation.frames[0].scale)).toEqual(['1 0.5', '4 1']);
+    expect(animations[1].frames[animations[1].frames.length - 1].scale).toBe('1 1');
+  });
+
+  it('only brightens at reduced and does nothing at off', () => {
+    setMotionPreference('reduced');
+    const { element, animations } = fakeElement();
+    playGrowth(element, 0.5);
+    expect(animatedProperties(animations[0].frames)).toEqual(['opacity']);
+    setMotionPreference('off');
+    expect(playGrowth(element, 0.5)).toBeNull();
   });
 });

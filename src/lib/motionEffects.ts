@@ -113,3 +113,21 @@ export function playNavigation(element: Element | null | undefined, direction: N
     reduced: [{ opacity: 0.35 }, { opacity: 1 }],
   });
 }
+
+/**
+ * A bar or gauge whose value changed grows or shrinks from its previous
+ * length (`fromScale` of the new one) toward the new value, along `axis`
+ * from its CSS transform-origin. The value itself is already shown; below
+ * standard the bar only brightens briefly to mark the change.
+ */
+export function playGrowth(element: Element | null | undefined, fromScale: number, axis: 'x' | 'y' = 'y') {
+  const from = Math.min(Math.max(fromScale, 0), 4);
+  return play(element, {
+    standard: {
+      frames: [{ scale: axis === 'y' ? `1 ${from}` : `${from} 1` }, { scale: '1 1' }],
+      duration: MOTION_DURATION_MS.slow,
+      easing: EMPHASIZED,
+    },
+    reduced: [{ opacity: 0.45 }, { opacity: 1 }],
+  });
+}
