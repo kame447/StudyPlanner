@@ -494,6 +494,14 @@ export function resolvePlanOccurrence(plan: Plan, occurrenceDate: string): Plan 
     ? selectApplicableRecurrenceRule(plan.recurrenceRules, occurrenceDate)
     : null;
 
+  return projectPlanOccurrence(plan, occurrenceDate, matchingRule);
+}
+
+function projectPlanOccurrence(
+  plan: Plan,
+  occurrenceDate: string,
+  matchingRule: RecurrenceRule | null,
+): Plan {
   return {
     ...plan,
     title: matchingRule?.title ?? plan.title,
@@ -510,9 +518,21 @@ export function resolvePlanOccurrence(plan: Plan, occurrenceDate: string): Plan 
 }
 
 export function expandPlansForDate(plans: Plan[], targetDate: string): Plan[] {
-  return plans
-    .filter((plan) => doesPlanOccurOnDate(plan, targetDate))
-    .map((plan) => resolvePlanOccurrence(plan, targetDate));
+  const occurrences: Plan[] = [];
+
+  for (const plan of plans) {
+    if (plan.excludedDates.includes(targetDate)) continue;
+
+    if (plan.recurrenceRules.length > 0) {
+      // Admission and display use the same selected rule for this occurrence.
+      const matchingRule = selectApplicableRecurrenceRule(plan.recurrenceRules, targetDate);
+      if (matchingRule) occurrences.push(projectPlanOccurrence(plan, targetDate, matchingRule));
+    } else if (doesPlanOccurOnDateLegacy(plan, targetDate)) {
+      occurrences.push(projectPlanOccurrence(plan, targetDate, null));
+    }
+  }
+
+  return occurrences;
 }
 
 export function expandPlansForDateRange(
