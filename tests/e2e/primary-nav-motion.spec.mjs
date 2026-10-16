@@ -153,10 +153,22 @@ test('below standard a press does not animate its dip, even when the level chang
   await page.setViewportSize({ width: 390, height: 844 });
   await seed(page);
   await page.goto('/');
-  const duration = () => tab(page, '予定').evaluate(button => getComputedStyle(button).transitionDuration);
-  expect(await duration()).toBe('0.15s');
+  const press = tab(page, '予定');
+  const state = () => press.evaluate(button => ({
+    duration: getComputedStyle(button).transitionDuration,
+    transform: getComputedStyle(button).transform,
+    running: button.getAnimations().length,
+  }));
+  const box = await press.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect.poll(async () => (await state()).transform).toBe('matrix(0.97, 0, 0, 0.97, 0, 0)');
+  expect((await state()).duration).toBe('0.15s');
+
+  // The device asks for less motion while the press is still held: the dip
+  // is released at once instead of animating back.
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(page.locator('html')).toHaveAttribute('data-motion', 'reduced');
-  expect(await duration()).toBe('0s');
+  expect(await state()).toEqual({ duration: '0s', transform: 'matrix(1, 0, 0, 1, 0, 0)', running: 0 });
+  await page.mouse.up();
 });
-
