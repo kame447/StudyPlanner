@@ -1,4 +1,6 @@
+import { useLayoutEffect, useRef } from 'react';
 import type { HomeNextPlanVisualKind } from '../../lib/homeNextPlanVisual';
+import { playHop } from '../../lib/motionEffects';
 import { DEFAULT_HOME_SCENE_PREFERENCES, type HomeScenePreferences } from '../../lib/homeScenePreferences';
 import { useHomeDisplayClock } from './HomeDisplayClockContext';
 import { useScheduledPixelStudent, type PixelStudentPlan } from './useScheduledPixelStudent';
@@ -15,19 +17,38 @@ export function HomeScene({
   preview = false,
   atmosphere: suppliedAtmosphere,
   plan,
+  recordedMinutes,
 }: {
   kind: HomeNextPlanVisualKind;
   preferences?: HomeScenePreferences;
   preview?: boolean;
   atmosphere?: HomeSceneAtmosphere;
   plan?: PixelStudentPlan | null;
+  /** Study recorded so far this week; the companion hops when it grows. */
+  recordedMinutes?: number;
 }) {
   const now = useHomeDisplayClock();
   const student = useScheduledPixelStudent(plan, now, preferences.style === 'pixel' && !preview && kind !== 'other', preferences.animated);
   const currentAtmosphere = useHomeSceneAtmosphere();
   const atmosphere = suppliedAtmosphere ?? currentAtmosphere;
   const pixelStyle = preferences.style.startsWith('pixel');
+  const sceneRef = useRef<HTMLDivElement | null>(null);
+  const shownMinutes = useRef(recordedMinutes);
+  // The cat or turtle hops once when the user records more study while Home
+  // is open. It follows the illustration's own motion setting, never runs on
+  // first paint, on a hidden page or for a decrease, and leaves the
+  // time-of-day sky alone.
+  useLayoutEffect(() => {
+    const before = shownMinutes.current;
+    shownMinutes.current = recordedMinutes;
+    if (before === undefined || recordedMinutes === undefined || recordedMinutes <= before) return;
+    if (preview || !preferences.animated || !preferences.style.startsWith('pixel-')) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    const scene = sceneRef.current;
+    playHop(scene && typeof scene.querySelector === 'function' ? scene.querySelector('[data-scene-companion]') : null);
+  }, [preferences.animated, preferences.style, preview, recordedMinutes]);
   return <><div
+    ref={sceneRef}
     className={preview ? 'home-scene-preview' : 'home-study-scene'}
     data-scene-style={preferences.style}
     data-scene-kind={kind}

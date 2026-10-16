@@ -257,7 +257,8 @@ export function NextPlanSection({
         )}
       </div>
 
-      <HomeScene kind={nextPlanVisual.kind} preferences={homeScenePreferences} plan={nextPlan} />
+      <HomeScene kind={nextPlanVisual.kind} preferences={homeScenePreferences} plan={nextPlan}
+        recordedMinutes={dashboard.weekActualMinutesByNow} />
 
       <div className="home-actions">
       <button

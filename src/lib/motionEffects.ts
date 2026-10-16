@@ -113,3 +113,24 @@ export function playNavigation(element: Element | null | undefined, direction: N
     reduced: [{ opacity: 0.35 }, { opacity: 1 }],
   });
 }
+
+/**
+ * A decorative companion acknowledges something the user just achieved
+ * with one small hop, stepped to match pixel art. Standard only: it is
+ * ambience, so below standard nothing moves.
+ */
+export function playHop(element: Element | null | undefined) {
+  return play(element, {
+    standard: {
+      frames: [
+        { translate: '0 0' },
+        { translate: '0 -6px', offset: 0.35 },
+        { translate: '0 -2px', offset: 0.7 },
+        { translate: '0 0' },
+      ],
+      duration: MOTION_DURATION_MS.slow + 120,
+      easing: 'steps(6, end)',
+    },
+    reduced: null,
+  });
+}

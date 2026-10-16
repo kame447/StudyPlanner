@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MOTION_DURATION_MS, playEntrance, playNavigation, playSettle } from './motionEffects';
+import { MOTION_DURATION_MS, playEntrance, playHop, playNavigation, playSettle } from './motionEffects';
 import { MOTION_STORAGE_KEY, REDUCED_FADE_MS, setMotionPreference } from './motionPreference';
 import { installFakeMotionEnvironment } from './motionPreference.testUtils';
 import { readFileSync } from 'node:fs';
@@ -88,5 +88,23 @@ describe('feedback motion by level', () => {
     for (const [name, ms] of Object.entries(MOTION_DURATION_MS)) {
       expect(css).toContain(`--motion-duration-${name}: ${ms}ms;`);
     }
+  });
+});
+
+describe('companion hop', () => {
+  it('hops in pixel steps and lands in place at standard', () => {
+    const { element, animations } = fakeElement();
+    playHop(element);
+    expect(animatedProperties(animations[0].frames)).toEqual(['translate']);
+    expect(animations[0].options.easing).toBe('steps(6, end)');
+    expect(animations[0].frames[animations[0].frames.length - 1].translate).toBe('0 0');
+  });
+
+  it('is ambience, so nothing moves below standard', () => {
+    setMotionPreference('reduced');
+    const { element } = fakeElement();
+    expect(playHop(element)).toBeNull();
+    setMotionPreference('off');
+    expect(playHop(element)).toBeNull();
   });
 });
