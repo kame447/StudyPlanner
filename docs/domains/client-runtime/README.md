@@ -39,6 +39,8 @@ The requirements document is the specification; the Issue is the work-state owne
 
 Other active client-runtime work:
 
+- [Actual first-save permissions](work/actual-create-permission-handoff.md): correct the missing-document existence query while retaining owner-only Rules; local Emulator reproduction and verification, publication pending.
+
 - [Study-record editor date validation](work/actual-editor-date-validation-handoff.md): block blank/invalid dates before saving normal and standalone study records; local persistence proof and native-browser acceptance are tracked separately.
 
 - [Durable weekly-planning turns](work/ai-durable-turns-handoff.md): accepted whole-turn execution after browser suspension, invocation-local shared runtime, and GET-only recovery; production resource activation remains separately gated.

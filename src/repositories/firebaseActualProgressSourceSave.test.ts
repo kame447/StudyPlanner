@@ -73,11 +73,21 @@ const save = (api: 'actual' | 'material', row: Actual) => api === 'actual'
 beforeEach(() => {
   sdk.rows.clear(); sdk.transactions.length = 0; sdk.reads.length = 0; sdk.failCommit = false; sdk.beforeTransaction = () => {};
   sdk.getDocs.mockReset();
-  sdk.getDocs.mockImplementation(async (query: { name: string; conditions: { field: string; value: unknown }[] }) => ({
-    docs: [...sdk.rows.entries()].filter(([key, row]) => key.startsWith(query.name + '/')
-      && query.conditions.every(condition => (condition.field === '__name__' ? key.split('/')[1] : row[condition.field]) === condition.value))
-      .map(([key, row]) => { const snapshot = structuredClone(row); return { id: key.split('/')[1], data: () => snapshot }; }),
-  }));
+  sdk.getDocs.mockImplementation(async (query: { name: string; conditions: { field: string; op: string; value: unknown }[] }) => {
+    const exactId = query.conditions.find(condition => condition.field === '__name__' && condition.op === '==');
+    // A real Firestore equality target evaluates the absent resource under the
+    // owner-only Rules. Ordinary range queries instead evaluate query bounds.
+    if (exactId && !sdk.rows.has(`${query.name}/${exactId.value}`)) {
+      throw Object.assign(new Error('permission-denied'), { code: 'permission-denied' });
+    }
+    return { docs: [...sdk.rows.entries()].filter(([key, row]) => key.startsWith(query.name + '/')
+      && query.conditions.every(condition => {
+        const value = condition.field === '__name__' ? key.split('/')[1] : row[condition.field];
+        if (condition.op === '>=') return String(value) >= String(condition.value);
+        if (condition.op === '<=') return String(value) <= String(condition.value);
+        return value === condition.value;
+      })).map(([key, row]) => { const snapshot = structuredClone(row); return { id: key.split('/')[1], data: () => snapshot }; }) };
+  });
 });
 
 describe.each(['actual', 'material'] as const)('Firebase %s save provenance transaction', api => {
@@ -108,6 +118,14 @@ describe.each(['actual', 'material'] as const)('Firebase %s save provenance tran
     sdk.beforeTransaction = () => sdk.rows.set('actuals/actual', { ...actual({ planId: null, userId: 'other' }) });
     await expect(save(api, actual({ planId: null }))).rejects.toThrow('permission-denied');
     expect(sdk.rows.get('actuals/actual')?.userId).toBe('other');
+    expect(sdk.rows.has('study_materials/material')).toBe(false);
+    expect(sdk.transactions).toEqual([]);
+  });
+  it('fails closed when an enumerated Actual disappears before the transaction', async () => {
+    sdk.rows.set('actuals/actual', { ...actual({ planId: null }) });
+    sdk.beforeTransaction = () => { sdk.rows.delete('actuals/actual'); };
+    await expect(save(api, actual({ planId: null }))).rejects.toThrow('permission-denied');
+    expect(sdk.rows.has('actuals/actual')).toBe(false);
     expect(sdk.rows.has('study_materials/material')).toBe(false);
     expect(sdk.transactions).toEqual([]);
   });

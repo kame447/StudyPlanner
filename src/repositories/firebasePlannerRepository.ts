@@ -217,10 +217,12 @@ async function upsertActualDocument(
 ): Promise<Actual> {
   const matchingActuals = actual.planId ? await listActualsByPlanOccurrence(firestoreDb, actual) : [];
   const nextActual = stripUndefinedDeep(resolveActualForUpsert(matchingActuals, actual));
-  // Missing documents are not readable under the existing owner-only Rules.
-  // Query the exact ID first, then transactionally reread an existing record.
+  // An equality document-ID query evaluates a missing resource under the
+  // owner-only Rules and is denied. Equal inclusive range bounds keep this an
+  // owner-scoped query of exactly one ID, including legacy rows without id data.
   const existing = await getDocs(query(collection(firestoreDb, 'actuals'),
-    where('userId', '==', actual.userId), where(documentId(), '==', nextActual.id)));
+    where('userId', '==', actual.userId),
+    where(documentId(), '>=', nextActual.id), where(documentId(), '<=', nextActual.id)));
   return runTransaction(firestoreDb, async transaction => {
     const currentSnapshot = existing.docs.length > 0
       ? await transaction.get(doc(firestoreDb, 'actuals', nextActual.id)) : null;
