@@ -12,6 +12,7 @@ beforeEach(async () => {
     loaded.add('streak');
     return await importOriginal();
   });
+  vi.doMock('../components/MonthView', () => { loaded.add('month'); return {}; });
   vi.doMock('../components/AiPlanningView', () => { loaded.add('ai'); return {}; });
   vi.doMock('../components/WeekView', () => { loaded.add('week'); return {}; });
   vi.doMock('../components/DayView', () => ({}));
@@ -30,7 +31,7 @@ it('loads streak and AI code once without mounting their UI, reading history or 
   const first = preloader.preloadAppViews();
   expect(preloader.preloadAppViews()).toBe(first);
   await first;
-  expect(loaded).toEqual(new Set(['streak', 'ai', 'week']));
+  expect(loaded).toEqual(new Set(['streak', 'month', 'ai', 'week']));
   expect(preloader.preloadAppViews()).toBe(first);
   expect(streak.read).not.toHaveBeenCalled();
   expect(streak.useRestDay).not.toHaveBeenCalled();

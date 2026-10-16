@@ -3,7 +3,7 @@ import { expect, test, installStartupSkip } from './support/startup-ready.mjs';
 // Use a real performance clock (no date-dependent assertions). A fresh Playwright
 // context has an empty HTTP cache. Reload reuses that context; record actual
 // transfer sizes rather than assuming every response becomes a cache hit.
-const OPTIONAL_VIEWS = ['AiPlanningView', 'WeekView', 'DayView', 'TodoView', 'ReportView',
+const OPTIONAL_VIEWS = ['StudyStreakPage', 'MonthView', 'AiPlanningView', 'WeekView', 'DayView', 'TodoView', 'ReportView',
   'TimetableView', 'BookshelfView', 'QuickEntryModal', 'TimetableOcrImportDialog'];
 const optionalNames = resources => OPTIONAL_VIEWS.filter(name => resources.some(resource =>
   new URL(resource.name).pathname.match(new RegExp(`/assets/${name}-[^/]+\\.js$`))));

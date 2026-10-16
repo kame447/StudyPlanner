@@ -27,6 +27,8 @@ Execution tracking:
 
 - [Study streak preload after Home](work/streak-after-home-preload-handoff.md) — Issue #483; optional detail-module warming behind the existing readiness boundary.
 
+- [Bounded optional view preloading](work/bounded-view-preload-handoff.md) — Issues #483/#542; reuse settled preload slots under the existing eight-loader cap, with MonthView registration and measured tradeoffs kept separate.
+
 - [Timetable OCR save lifetime](work/timetable-ocr-save-lifetime-handoff.md) — Issue #437; preserve submitted drafts and editor ownership across pending saves.
 
 - [Acknowledged announcement receipt reads](work/20261015-announcement-receipt-reads.md) — Issue #542; owner-scoped read reduction with mock measurements and publication held.
