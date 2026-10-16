@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { HomeDashboardModel } from '../../lib/homeDashboard';
-import { playGrowth } from '../../lib/motionEffects';
+import { playGrowth, playSettle } from '../../lib/motionEffects';
 
 function formatGraphDuration(minutes: number): string {
   const normalized = Math.max(0, Math.round(minutes));
@@ -38,27 +38,55 @@ function buildChartScale(maxMinutes: number): { maxMinutes: number; ticks: numbe
 
 /**
  * When the week's numbers change while Home is open (a record saved, a plan
- * added), each bar whose height changed grows from its previous height. The
- * first paint and another week only show the bars.
+ * added), each bar whose height changed grows from the height it is drawn at
+ * toward its new one, and the ring's percentage settles. The first paint and
+ * another week only show the values.
+ *
+ * The drawn heights are read while the update renders, when the previous
+ * layout (and any growth still in flight) is still on screen, so a quick
+ * second update continues from what the user sees instead of snapping back.
  */
-function useBarGrowth(barsRef: { current: HTMLElement | null }, week: string, heights: readonly number[]) {
-  const previous = useRef<{ week: string; heights: Map<string, number> } | null>(null);
-  const signature = heights.join(',');
+function useProgressMotion(sectionRef: { current: HTMLElement | null }, week: string, signature: string) {
+  const committed = useRef<{ week: string; signature: string } | null>(null);
+  const drawnBefore = useRef<{ signature: string; heights: Map<string, number>; values: Map<string, string> } | null>(null);
+
+  const before = committed.current;
+  if (before && before.week === week && before.signature !== signature && drawnBefore.current?.signature !== signature) {
+    drawnBefore.current = { signature, ...readProgress(sectionRef.current) };
+  }
+
   useLayoutEffect(() => {
-    const bars = barsRef.current;
-    if (!bars || typeof bars.querySelectorAll !== 'function') return;
-    const current = new Map<string, number>();
-    const elements = Array.from(bars.querySelectorAll<HTMLElement>('[data-bar-key]'));
-    for (const element of elements) current.set(element.dataset.barKey ?? '', Number(element.dataset.barHeight));
-    const before = previous.current;
-    previous.current = { week, heights: current };
-    if (!before || before.week !== week) return;
-    for (const element of elements) {
-      const from = before.heights.get(element.dataset.barKey ?? '');
-      const to = Number(element.dataset.barHeight);
-      if (from !== undefined && to > 0 && from !== to) playGrowth(element, from / to);
+    const drawn = drawnBefore.current;
+    const previous = committed.current;
+    drawnBefore.current = null;
+    committed.current = { week, signature };
+    const section = sectionRef.current;
+    if (!section || !previous || previous.week !== week || previous.signature === signature || drawn?.signature !== signature) return;
+    for (const bar of Array.from(section.querySelectorAll<HTMLElement>('[data-bar-key]'))) {
+      const from = drawn.heights.get(bar.dataset.barKey ?? '');
+      const layoutHeight = bar.offsetHeight;
+      if (from === undefined || !(layoutHeight > 0) || Math.abs(from - layoutHeight) < 0.5) continue;
+      playGrowth(bar, from / layoutHeight);
     }
-  }, [barsRef, week, signature]);
+    for (const value of Array.from(section.querySelectorAll<HTMLElement>('[data-progress-value]'))) {
+      const prior = drawn.values.get(value.dataset.progressValue ?? '');
+      if (prior !== undefined && prior !== value.textContent) playSettle(value);
+    }
+  }, [sectionRef, week, signature]);
+}
+
+function readProgress(section: HTMLElement | null) {
+  const heights = new Map<string, number>();
+  const values = new Map<string, string>();
+  if (!section || typeof section.querySelectorAll !== 'function') return { heights, values };
+  for (const bar of Array.from(section.querySelectorAll<HTMLElement>('[data-bar-key]'))) {
+    // The drawn height, including a growth still in flight.
+    heights.set(bar.dataset.barKey ?? '', bar.getBoundingClientRect().height);
+  }
+  for (const value of Array.from(section.querySelectorAll<HTMLElement>('[data-progress-value]'))) {
+    values.set(value.dataset.progressValue ?? '', value.textContent ?? '');
+  }
+  return { heights, values };
 }
 
 export function WeeklyProgressSection({
@@ -78,15 +106,18 @@ export function WeeklyProgressSection({
     '--weekly-progress': `${ringProgress * 3.6}deg`,
   } as CSSProperties;
   const difference = dashboard.weekDeltaMinutesByNow;
-  const barsRef = useRef<HTMLDivElement | null>(null);
-  const barHeights = dashboard.weekDays.flatMap((item) => [
-    barHeight(item.plannedMinutes, chartScale.maxMinutes),
-    barHeight(item.actualMinutes, chartScale.maxMinutes),
-  ]);
-  useBarGrowth(barsRef, dashboard.weekDays[0]?.date ?? '', barHeights);
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const progressSignature = [
+    dashboard.weekProgressPercent,
+    ...dashboard.weekDays.flatMap((item) => [
+      barHeight(item.plannedMinutes, chartScale.maxMinutes),
+      barHeight(item.actualMinutes, chartScale.maxMinutes),
+    ]),
+  ].join(',');
+  useProgressMotion(sectionRef, dashboard.weekDays[0]?.date ?? '', progressSignature);
 
   return (
-    <section className="home-panel home-progress-panel" data-home-section="weekly-progress">
+    <section ref={sectionRef} className="home-panel home-progress-panel" data-home-section="weekly-progress">
       <div className="home-section-heading">
         <h2>今週の進捗</h2>
         <button type="button" onClick={onOpenReport}>
@@ -100,7 +131,7 @@ export function WeeklyProgressSection({
           style={ringStyle}
           aria-label={`週全体の予定に対する達成率 ${dashboard.weekProgressPercent}%`}
         >
-          <div><strong>{dashboard.weekProgressPercent}<small>%</small></strong></div>
+          <div><strong data-progress-value="week">{dashboard.weekProgressPercent}<small>%</small></strong></div>
         </div>
 
         <div className="weekly-progress-summary" aria-label="現時点までの予定と実績">
@@ -122,7 +153,7 @@ export function WeeklyProgressSection({
                 <span key={tick}>{formatAxisDuration(tick)}</span>
               ))}
             </div>
-            <div ref={barsRef} className="weekly-progress-bars">
+            <div className="weekly-progress-bars">
               {dashboard.weekDays.map((item) => {
                 const plannedHeight = barHeight(item.plannedMinutes, chartScale.maxMinutes);
                 const actualHeight = barHeight(item.actualMinutes, chartScale.maxMinutes);

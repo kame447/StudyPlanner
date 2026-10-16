@@ -2,7 +2,8 @@ import { expect, test, E2E_TODAY } from './support/fixed-clock.mjs';
 
 // Issue #696 S4: when a study record is saved while Home stays open, only
 // what changed reacts: the plan's completion dot, the bars whose height
-// changed, and the week ring sweeping to its new value. Home's measured row
+// changed, and the week percentage settling (the ring itself repaints at once:
+// motion is transform/opacity only). Home's measured row
 // and card boxes never move. The first paint stays still.
 
 async function seed(page, motion) {
@@ -24,7 +25,7 @@ async function seed(page, motion) {
     const original = Element.prototype.animate;
     window.__motionLog = [];
     Element.prototype.animate = function animate(frames, options) {
-      const key = this.dataset?.motionKey ?? this.dataset?.barKey;
+      const key = this.dataset?.motionKey ?? this.dataset?.barKey ?? (this.dataset?.progressValue ? `value:${this.dataset.progressValue}` : undefined);
       if (key) window.__motionLog.push({ key, properties: Object.keys((Array.isArray(frames) ? frames[0] : {}) ?? {}).filter(name => name !== 'offset').sort() });
       return original.call(this, frames, options);
     };
@@ -32,8 +33,7 @@ async function seed(page, motion) {
 }
 
 const motionLog = page => page.evaluate(() => window.__motionLog.splice(0));
-const ringTransition = page => page.locator('.weekly-progress-ring').evaluate(element =>
-  element.getAnimations().filter(animation => animation.transitionProperty === '--weekly-progress').length);
+const ringAnimations = page => page.locator('.weekly-progress-ring').evaluate(element => element.getAnimations().length);
 
 async function recordPlannedStudy(page) {
   await page.getByRole('button', { name: /勉強を開始/ }).click();
@@ -73,7 +73,8 @@ for (const width of [320, 390, 1280]) {
     const bars = log.filter(entry => entry.key.endsWith(':actual') || entry.key.endsWith(':plan'));
     expect(bars.length).toBeGreaterThan(0);
     expect(bars.every(entry => entry.properties.join() === 'scale')).toBe(true);
-    expect(await ringTransition(page)).toBe(1);
+    expect(log.find(entry => entry.key === 'value:week')?.properties).toEqual(['scale']);
+    expect(await ringAnimations(page)).toBe(0);
 
     expect(await measuredBoxesMoved(page)).toEqual([]);
   });
@@ -89,6 +90,6 @@ for (const level of ['reduced', 'off']) {
     const log = await motionLog(page);
     expect(log.filter(entry => entry.properties.some(name => name === 'scale' || name === 'translate'))).toEqual([]);
     if (level === 'off') expect(log).toEqual([]);
-    expect(await ringTransition(page)).toBe(0);
+    expect(await ringAnimations(page)).toBe(0);
   });
 }
