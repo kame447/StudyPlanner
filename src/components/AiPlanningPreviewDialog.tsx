@@ -141,10 +141,13 @@ export function AiPlanningPreviewDialog({
         .join('|'),
     [blocks],
   );
+  // Follows the blocks actually shown, so a new proposal's view and its rows
+  // change in the same commit (the shown blocks catch up with `blocks` one
+  // commit later).
   const previewGeneration = useMemo(() => {
-    previewIdentity.current = nextPreviewProposal(previewIdentity.current, blocks.map((block) => block.id));
+    previewIdentity.current = nextPreviewProposal(previewIdentity.current, editableBlocks.map((block) => block.id));
     return previewIdentity.current.generation;
-  }, [blocks]);
+  }, [editableBlocks]);
   const dateRange = useMemo(() => getAiPlanningPreviewDateRange(blocks), [blocks]);
   const datePages = useMemo(() => buildAiPlanningPreviewDatePages(blocks), [blocks]);
   const activePageIndex = clampAiPlanningPreviewPageIndex(pageIndex, datePages.length);
