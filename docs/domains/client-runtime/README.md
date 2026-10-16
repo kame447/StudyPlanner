@@ -21,6 +21,8 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Study streak preload after Home](work/streak-after-home-preload-handoff.md) — Issue #483; optional detail-module warming behind the existing readiness boundary.
+
 - [Timetable OCR save lifetime](work/timetable-ocr-save-lifetime-handoff.md) — Issue #437; preserve submitted drafts and editor ownership across pending saves.
 
 - [Acknowledged announcement receipt reads](work/20261015-announcement-receipt-reads.md) — Issue #542; owner-scoped read reduction with mock measurements and publication held.
