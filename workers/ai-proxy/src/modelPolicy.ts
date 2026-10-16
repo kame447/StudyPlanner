@@ -7,6 +7,7 @@
 // 検証してから OpenAI へ送る(purpose 由来でも allowlist をバイパスしない)。
 
 const INTERNAL_OPENAI_MODEL = 'gpt-6-luna';
+export const DEFAULT_GEMINI_OCR_MODEL = 'gemini-3.6-flash';
 
 export const AI_CHAT_PURPOSE_MODELS: Record<string, string> = {
   weekly_planning_interpreter: INTERNAL_OPENAI_MODEL,

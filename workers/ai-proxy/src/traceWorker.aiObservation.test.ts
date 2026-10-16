@@ -215,6 +215,15 @@ describe('traceWorker AI observation authentication', () => {
     expect(response.status).toBe(200);
     await Promise.all(tasks);
     expect(lookupCalls(fetchMock)).toHaveLength(2);
+    const geminiCalls = fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes('generativelanguage.googleapis.com'));
+    expect(geminiCalls).toHaveLength(1);
+    expect(String(geminiCalls[0][0])).toContain('/models/gemini-3.6-flash:generateContent');
+    const sent = JSON.parse(String(geminiCalls[0][1]?.body)) as {
+      generationConfig: Record<string, unknown>;
+    };
+    expect(sent.generationConfig).not.toHaveProperty('temperature');
+    expect(sent.generationConfig.responseMimeType).toBe('application/json');
     expect(store).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       firebaseUid: 'uid-user-a',
       payload: expect.objectContaining({ operationKind: 'timetable_ocr', status: 'success' }),
