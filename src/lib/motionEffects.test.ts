@@ -95,8 +95,8 @@ describe('value growth', () => {
   it('grows a bar from its previous length along one axis at standard, clamped', () => {
     const { element, animations } = fakeElement();
     playGrowth(element, 0.5);
-    playGrowth(element, 9, 'x');
-    expect(animations.map(animation => animation.frames[0].scale)).toEqual(['1 0.5', '4 1']);
+    playGrowth(element, 80, 'x');
+    expect(animations.map(animation => animation.frames[0].scale)).toEqual(['1 0.5', '50 1']);
     expect(animations[1].frames[animations[1].frames.length - 1].scale).toBe('1 1');
   });
 

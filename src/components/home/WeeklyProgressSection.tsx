@@ -48,7 +48,7 @@ function buildChartScale(maxMinutes: number): { maxMinutes: number; ticks: numbe
  */
 function useProgressMotion(sectionRef: { current: HTMLElement | null }, week: string, signature: string) {
   const committed = useRef<{ week: string; signature: string } | null>(null);
-  const drawnBefore = useRef<{ signature: string; heights: Map<string, number>; values: Map<string, string> } | null>(null);
+  const drawnBefore = useRef<{ signature: string; heights: Map<string, BarHeight>; values: Map<string, string> } | null>(null);
 
   const before = committed.current;
   if (before && before.week === week && before.signature !== signature && drawnBefore.current?.signature !== signature) {
@@ -63,10 +63,12 @@ function useProgressMotion(sectionRef: { current: HTMLElement | null }, week: st
     const section = sectionRef.current;
     if (!section || !previous || previous.week !== week || previous.signature === signature || drawn?.signature !== signature) return;
     for (const bar of Array.from(section.querySelectorAll<HTMLElement>('[data-bar-key]'))) {
-      const from = drawn.heights.get(bar.dataset.barKey ?? '');
+      const before = drawn.heights.get(bar.dataset.barKey ?? '');
       const layoutHeight = bar.offsetHeight;
-      if (from === undefined || !(layoutHeight > 0) || Math.abs(from - layoutHeight) < 0.5) continue;
-      playGrowth(bar, from / layoutHeight);
+      // Only a bar whose own value changed reacts; one still growing from an
+      // earlier update keeps going.
+      if (!before || !(layoutHeight > 0) || Math.abs(before.layout - layoutHeight) < 0.5) continue;
+      playGrowth(bar, before.drawn / layoutHeight);
     }
     for (const value of Array.from(section.querySelectorAll<HTMLElement>('[data-progress-value]'))) {
       const prior = drawn.values.get(value.dataset.progressValue ?? '');
@@ -75,13 +77,15 @@ function useProgressMotion(sectionRef: { current: HTMLElement | null }, week: st
   }, [sectionRef, week, signature]);
 }
 
+interface BarHeight { drawn: number; layout: number }
+
 function readProgress(section: HTMLElement | null) {
-  const heights = new Map<string, number>();
+  const heights = new Map<string, BarHeight>();
   const values = new Map<string, string>();
   if (!section || typeof section.querySelectorAll !== 'function') return { heights, values };
   for (const bar of Array.from(section.querySelectorAll<HTMLElement>('[data-bar-key]'))) {
-    // The drawn height, including a growth still in flight.
-    heights.set(bar.dataset.barKey ?? '', bar.getBoundingClientRect().height);
+    // Drawn includes a growth still in flight; layout is the bar's own value.
+    heights.set(bar.dataset.barKey ?? '', { drawn: bar.getBoundingClientRect().height, layout: bar.offsetHeight });
   }
   for (const value of Array.from(section.querySelectorAll<HTMLElement>('[data-progress-value]'))) {
     values.set(value.dataset.progressValue ?? '', value.textContent ?? '');

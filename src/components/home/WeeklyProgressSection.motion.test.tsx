@@ -53,20 +53,25 @@ const section = {
   },
 };
 
-const dashboard = (actual: number, week = '2026-10-12') => ({
-  weekDays: [{ date: week, label: '月', plannedMinutes: 180, actualMinutes: actual }],
+const dashboard = (actual: number, week = '2026-10-12', tuesday = 0) => ({
+  weekDays: [
+    { date: week, label: '月', plannedMinutes: 180, actualMinutes: actual },
+    { date: `${week}:tue`, label: '火', plannedMinutes: 0, actualMinutes: tuesday },
+  ],
   weekProgressPercent: Math.round((actual / 180) * 100),
   weekDeltaMinutesByNow: actual - 180, weekExpectedMinutesByNow: 180, weekActualMinutesByNow: actual,
 }) as unknown as HomeDashboardModel;
 
-function show(actual: number, week?: string) {
+function show(actual: number, week?: string, tuesday?: number) {
   act(() => {
-    const element = <WeeklyProgressSection dashboard={dashboard(actual, week)} onOpenReport={vi.fn()} />;
+    const element = <WeeklyProgressSection dashboard={dashboard(actual, week, tuesday)} onOpenReport={vi.fn()} />;
     if (renderer) renderer.update(element);
     else renderer = create(element, {
       createNodeMock: node => (String(node.props.className ?? '').includes('home-progress-panel') ? section : {}),
     });
   });
+  // Lay the bars out as the browser would after each commit.
+  section.querySelectorAll('[data-bar-key]');
 }
 
 beforeEach(() => { env = installFakeMotionEnvironment(); bars.clear(); ringSettles.length = 0; });
@@ -98,5 +103,21 @@ describe('weekly progress motion', () => {
     show(72, '2026-10-19');
     expect(barFor('2026-10-19:actual').starts).toEqual([]);
     expect(ringSettles).toHaveLength(0);
+  });
+
+  it('shrinks continuously when a large record is removed', () => {
+    show(180);
+    const drawn = actual().getBoundingClientRect().height;
+    show(0);
+    expect(actual().getBoundingClientRect().height).toBeCloseTo(drawn);
+  });
+
+  it('lets a bar that is still growing continue when another day changes', () => {
+    show(36);
+    show(72);
+    actual().scale = 0.75;
+    show(72, undefined, 36);
+    expect(actual().starts).toEqual([0.5]);
+    expect(barFor('2026-10-12:tue:actual').starts.length).toBe(1);
   });
 });

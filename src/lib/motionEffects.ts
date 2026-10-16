@@ -114,6 +114,8 @@ export function playNavigation(element: Element | null | undefined, direction: N
   });
 }
 
+const MAX_GROWTH_SCALE = 50;
+
 /**
  * A bar or gauge whose value changed grows or shrinks from its previous
  * length (`fromScale` of the new one) toward the new value, along `axis`
@@ -121,7 +123,8 @@ export function playNavigation(element: Element | null | undefined, direction: N
  * standard the bar only brightens briefly to mark the change.
  */
 export function playGrowth(element: Element | null | undefined, fromScale: number, axis: 'x' | 'y' = 'y') {
-  const from = Math.min(Math.max(fromScale, 0), 4);
+  // A bar can shrink from full length to its few-percent minimum (~33×).
+  const from = Math.min(Math.max(fromScale, 0), MAX_GROWTH_SCALE);
   return play(element, {
     standard: {
       frames: [{ scale: axis === 'y' ? `1 ${from}` : `${from} 1` }, { scale: '1 1' }],
