@@ -262,18 +262,18 @@
 }
 
 .learning-report-card-heading h2,
+.learning-report-empty h2 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
 /* Paging slides the chart, or the empty notice's text, in from the side
    (#696); each card keeps it inside so the page never gains a horizontal
    scroll. Neither card has focusable content to clip. */
 .learning-report-empty,
 .learning-report-trend-card {
   overflow-x: clip;
-}
-
-.learning-report-empty h2 {
-  margin: 0;
-  font-size: 1rem;
-  line-height: 1.35;
 }
 
 .learning-report-card-heading p,
