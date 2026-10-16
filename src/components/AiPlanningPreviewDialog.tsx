@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
+import { useDataChangeMotion } from '../hooks/useDataChangeMotion';
 import { useTimelineDragController } from '../hooks/useTimelineDragController';
 import { useUndoRedoHistory } from '../hooks/useUndoRedoHistory';
 import {
@@ -19,6 +20,7 @@ import {
   clampAiPlanningPreviewPageIndex,
   getAiPlanningPreviewDateRange,
 } from './aiPlanningPreviewPeriod';
+import { INITIAL_PREVIEW_PROPOSAL, nextPreviewProposal } from './aiPlanningPreviewIdentity';
 
 interface AiPlanningPreviewDialogProps {
   blocks: WeeklyPlanDraftBlock[];
@@ -127,6 +129,8 @@ export function AiPlanningPreviewDialog({
   const [activeActionBlockId, setActiveActionBlockId] = useState<string | null>(null);
   const actionPressRef = useRef<PreviewActionPress | null>(null);
   const moveHistory = useUndoRedoHistory<string, WeekPlanMoveTarget>();
+  const previewBodyRef = useRef<HTMLDivElement | null>(null);
+  const previewIdentity = useRef(INITIAL_PREVIEW_PROPOSAL);
   const sourceSignature = useMemo(
     () =>
       blocks
@@ -137,6 +141,10 @@ export function AiPlanningPreviewDialog({
         .join('|'),
     [blocks],
   );
+  const previewGeneration = useMemo(() => {
+    previewIdentity.current = nextPreviewProposal(previewIdentity.current, blocks.map((block) => block.id));
+    return previewIdentity.current.generation;
+  }, [blocks]);
   const dateRange = useMemo(() => getAiPlanningPreviewDateRange(blocks), [blocks]);
   const datePages = useMemo(() => buildAiPlanningPreviewDatePages(blocks), [blocks]);
   const activePageIndex = clampAiPlanningPreviewPageIndex(pageIndex, datePages.length);
@@ -179,6 +187,14 @@ export function AiPlanningPreviewDialog({
     gridTemplateColumns: `46px repeat(${Math.max(groups.length, 1)}, minmax(0, 1fr))`,
   } satisfies CSSProperties;
   const detailTimelineHeight = 24 * DAY_DETAIL_HOUR_HEIGHT;
+  // Moving, restoring (undo/redo) or excluding a proposed block is explained
+  // in place: the block lands at its new time, and the day counts update.
+  // Paging, switching overview/day and a new proposal only show the view.
+  useDataChangeMotion(
+    previewBodyRef,
+    `${mode}:${activePageIndex}:${mode === 'day' ? selectedDate : ''}:${previewGeneration}`,
+    [editableBlocks, plans],
+  );
 
   function clearActionPress() {
     const press = actionPressRef.current;
@@ -422,7 +438,7 @@ export function AiPlanningPreviewDialog({
               <p className="ai-planning-preview-hint">予定を長押しすると下の操作バーから除外できます。長押ししたまま動かすと日時を調整できます。日付をタップすると日別表示します。</p>
 
               <div className="ai-planning-preview-scroll ai-planning-preview-overview-scroll">
-                <div className="ai-planning-week-grid ai-planning-preview-overview-grid">
+                <div ref={previewBodyRef} className="ai-planning-week-grid ai-planning-preview-overview-grid">
                   <div className="ai-planning-week-header" style={overviewGridStyle}>
                     <span>時間</span>
                     {groups.map((group) => (
@@ -435,7 +451,9 @@ export function AiPlanningPreviewDialog({
                         onKeyDown={(event) => activateByKeyboard(event, () => openDay(group.date))}
                       >
                         <strong>{formatDateLabel(group.date)}</strong>
-                        <small>{group.blocks.length}件</small>
+                        <small data-motion-key={`count:${group.date}`} data-motion-signature={String(group.blocks.length)}>
+                          {group.blocks.length}件
+                        </small>
                       </div>
                     ))}
                   </div>
@@ -489,6 +507,8 @@ export function AiPlanningPreviewDialog({
                             <div
                               className="ai-planning-existing-block ai-planning-preview-overview-block"
                               key={plan.id}
+                              data-motion-key={`plan:${plan.id}`}
+                              data-motion-signature={`${plan.startTime}-${plan.endTime} ${plan.title}`}
                               style={overviewBlockStyle(plan.startTime, plan.endTime)}
                               title={`${plan.title} ${plan.startTime}-${plan.endTime}`}
                             >
@@ -531,6 +551,8 @@ export function AiPlanningPreviewDialog({
                                   .filter(Boolean)
                                   .join(' ')}
                                 data-ai-preview-action-block={block.id}
+                                data-motion-key={`block:${block.id}`}
+                                data-motion-signature={`${block.date} ${block.startTime}-${block.endTime} ${block.title}`}
                                 key={block.id}
                                 style={{
                                   ...overviewBlockStyle(block.startTime, block.endTime),
@@ -651,7 +673,7 @@ export function AiPlanningPreviewDialog({
               </div>
             </>
           ) : (
-            <div className="ai-planning-preview-day-detail">
+            <div ref={previewBodyRef} className="ai-planning-preview-day-detail">
               <div className="ai-planning-preview-day-nav">
                 <button
                   type="button"
@@ -663,7 +685,12 @@ export function AiPlanningPreviewDialog({
                 </button>
                 <div>
                   <strong>{selectedDate ? formatDateLabel(selectedDate) : '日別表示'}</strong>
-                  <small>{selectedGroup?.blocks.length ?? 0}件</small>
+                  <small
+                    data-motion-key={`count:${selectedDate}`}
+                    data-motion-signature={String(selectedGroup?.blocks.length ?? 0)}
+                  >
+                    {selectedGroup?.blocks.length ?? 0}件
+                  </small>
                 </div>
                 <button
                   type="button"
@@ -716,6 +743,8 @@ export function AiPlanningPreviewDialog({
                       <div
                         className="ai-planning-existing-block ai-planning-preview-detail-block"
                         key={plan.id}
+                        data-motion-key={`plan:${plan.id}`}
+                        data-motion-signature={`${plan.startTime}-${plan.endTime} ${plan.title}`}
                         style={detailBlockStyle(plan.startTime, plan.endTime)}
                       >
                         <strong>{plan.title}</strong>
@@ -756,6 +785,8 @@ export function AiPlanningPreviewDialog({
                             .filter(Boolean)
                             .join(' ')}
                           data-ai-preview-action-block={block.id}
+                          data-motion-key={`block:${block.id}`}
+                          data-motion-signature={`${block.date} ${block.startTime}-${block.endTime} ${block.title}`}
                           key={block.id}
                           style={detailBlockStyle(block.startTime, block.endTime)}
                           title={`${block.title} ${block.startTime}-${block.endTime}`}
