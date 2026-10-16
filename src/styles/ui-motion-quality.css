@@ -194,6 +194,13 @@
   transform: scale(var(--motion-scale-press));
 }
 
+/* Covers are decoration inside the control that opens them. While a cover
+   grows into its detail or back it can pass over other rows, so it never
+   takes their taps: hit testing reaches the row underneath. */
+.bookshelf-view [data-cover-of] {
+  pointer-events: none;
+}
+
 /* Accessible focus -------------------------------------------------------- */
 .primary-bottom-nav button:focus-visible,
 .home-dashboard button:focus-visible,

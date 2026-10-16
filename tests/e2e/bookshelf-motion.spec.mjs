@@ -31,7 +31,9 @@ async function seed(page, motion) {
     const original = Element.prototype.animate;
     window.__motionLog = [];
     Element.prototype.animate = function animate(frames, options) {
-      const key = this.dataset?.motionKey ?? (this.dataset?.coverOf ? `cover:${this.dataset.coverOf}:${this.closest('.bookshelf-detail-page') ? 'detail' : 'list'}` : undefined);
+      const section = this.closest('.bookshelf-detail-page') ? 'detail' : this.closest('.bookshelf-featured-grid') ? 'featured'
+        : this.closest('.bookshelf-subject-list') ? 'category' : 'recent';
+      const key = this.dataset?.motionKey ?? (this.dataset?.coverOf ? `cover:${this.dataset.coverOf}:${section}` : undefined);
       if (key) window.__motionLog.push({ key, properties: Object.keys((Array.isArray(frames) ? frames[0] : {}) ?? {}).filter(name => name !== 'offset').sort() });
       return original.call(this, frames, options);
     };
@@ -67,8 +69,20 @@ for (const width of [320, 390, 1280]) {
 
     await page.getByRole('button', { name: '教材一覧へ戻る' }).click();
     await expect(openInCategory(page)).toBeVisible();
+    // It returns to a copy that is on screen. A copy inside a clipping list
+    // arrives in place rather than having its travel cut off.
     const back = await motionLog(page);
-    expect(back).toEqual([{ key: 'cover:shelf-b:list', properties: ['scale', 'translate'] }]);
+    if (back.length === 0) {
+      // Nothing to return to on screen (the list starts at its top again on a
+      // short screen): no cover may move.
+      for (const cover of await page.locator('[data-cover-of="shelf-b"]').all()) await expect(cover).not.toBeInViewport({ ratio: 0.5 });
+      return;
+    }
+    expect(back).toHaveLength(1);
+    expect(back[0].key).toMatch(/^cover:shelf-b:(featured|category|recent)$/);
+    expect([['scale', 'translate'], ['opacity', 'scale', 'translate']]).toContainEqual(back[0].properties);
+    const target = page.locator(`.bookshelf-${{ featured: 'featured-grid', category: 'subject-list', recent: 'recent-list' }[back[0].key.split(':')[2]]} [data-cover-of="shelf-b"]`);
+    await expect(target).toBeInViewport({ ratio: 0.5 });
     await expect.poll(() => page.locator('[data-cover-of="shelf-b"]').first().evaluate(element => element.getAnimations().length)).toBe(0);
   });
 }
@@ -110,3 +124,35 @@ for (const level of ['reduced', 'off']) {
     expect(log.map(entry => entry.properties)).toEqual(level === 'off' ? [] : [['opacity']]);
   });
 }
+
+test('going back never picks a copy scrolled out of sight in the featured row', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seed(page);
+  await openBookshelf(page);
+  // The third featured card sits beyond the row's visible width.
+  const hidden = page.locator('.bookshelf-featured-grid [data-cover-of="shelf-c"]');
+  await expect(hidden).toHaveCount(1);
+  await page.locator('.bookshelf-subject-list').getByRole('button', { name: 'データベース入門を開く' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: '教材の詳細' })).toBeVisible();
+  await motionLog(page);
+  await page.getByRole('button', { name: '教材一覧へ戻る' }).click();
+  const back = await motionLog(page);
+  expect(back).toHaveLength(1);
+  const section = back[0].key.split(':')[2];
+  await expect(page.locator(`.bookshelf-${{ featured: 'featured-grid', category: 'subject-list', recent: 'recent-list' }[section]} [data-cover-of="shelf-c"]`))
+    .toBeInViewport({ ratio: 0.5 });
+});
+
+test('a cover never takes a tap while it moves', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seed(page);
+  await openBookshelf(page);
+  const pointerEvents = await page.locator('[data-cover-of]').evaluateAll(covers => [...new Set(covers.map(cover => getComputedStyle(cover).pointerEvents))]);
+  expect(pointerEvents).toEqual(['none']);
+  // A tap on a cover still opens its own material through the row.
+  const cover = page.locator('.bookshelf-subject-list [data-cover-of="shelf-b"]');
+  const box = await cover.boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.locator('.bookshelf-detail-page')).toHaveAttribute('aria-label', 'ネットワーク演習の詳細');
+});

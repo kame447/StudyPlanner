@@ -43,7 +43,7 @@ import {
   selectRecentBookshelfMaterials,
 } from '../lib/bookshelfViewModel';
 import { calculateMaterialPace, getMaterialUnitLabel } from '../lib/materialPace';
-import { playFromRect, type MotionRect } from '../lib/motionEffects';
+import { playEntrance, playFromRect, type MotionRect } from '../lib/motionEffects';
 import { useDataChangeMotion } from '../hooks/useDataChangeMotion';
 import { createId } from '../lib/id';
 import { todayIsoDate } from '../lib/date';
@@ -141,6 +141,48 @@ function clonePreferences(
     ...preferences,
     structureItems: createMaterialStructureDraft(preferences.structureItems),
   };
+}
+
+interface VisibleBox {
+  box: MotionRect;
+  /** The nearest ancestor that clips its content, if any. */
+  clip: MotionRect | null;
+}
+
+const toRect = (box: DOMRect): MotionRect => ({ left: box.left, top: box.top, width: box.width, height: box.height });
+
+/** Where `element` can actually be seen: at least half of it inside the screen and every clipping ancestor. */
+function visibleBox(element: Element): VisibleBox | null {
+  const box = toRect(element.getBoundingClientRect());
+  if (!(box.width > 0 && box.height > 0)) return null;
+  let area: MotionRect = { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+  let clip: MotionRect | null = null;
+  for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+    const style = getComputedStyle(parent);
+    if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+    const parentBox = toRect(parent.getBoundingClientRect());
+    clip ??= parentBox;
+    area = intersect(area, parentBox);
+  }
+  const seen = intersect(box, area);
+  return seen.width * seen.height >= (box.width * box.height) / 2 ? { box, clip } : null;
+}
+
+function intersect(a: MotionRect, b: MotionRect): MotionRect {
+  const left = Math.max(a.left, b.left);
+  const top = Math.max(a.top, b.top);
+  const right = Math.min(a.left + a.width, b.left + b.width);
+  const bottom = Math.min(a.top + a.height, b.top + b.height);
+  return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+}
+
+function contains(outer: MotionRect, inner: MotionRect): boolean {
+  return inner.left >= outer.left && inner.top >= outer.top
+    && inner.left + inner.width <= outer.left + outer.width && inner.top + inner.height <= outer.top + outer.height;
+}
+
+function distance(a: MotionRect, b: MotionRect): number {
+  return Math.hypot(a.left + a.width / 2 - (b.left + b.width / 2), a.top + a.height / 2 - (b.top + b.height / 2));
 }
 
 export function BookshelfView({
@@ -285,15 +327,22 @@ export function BookshelfView({
     const view = viewRef.current;
     if (!handoff || !view) return;
     const covers = Array.from(view.querySelectorAll(`[data-cover-of="${CSS.escape(handoff.materialId)}"]`));
-    // Back on the list the material may appear in several sections; grow the
-    // one on screen nearest to where the detail cover was.
-    const target = selectedMaterialId
-      ? covers[0]
-      : covers
-        .map((cover) => ({ cover, box: cover.getBoundingClientRect() }))
-        .filter(({ box }) => box.width > 0 && box.bottom > 0 && box.top < window.innerHeight)
-        .sort((a, b) => Math.abs(a.box.top - handoff.rect.top) - Math.abs(b.box.top - handoff.rect.top))[0]?.cover;
-    if (target) playFromRect(target, handoff.rect);
+    if (selectedMaterialId) {
+      if (covers[0]) playFromRect(covers[0], handoff.rect);
+      return;
+    }
+    // Back on the list the material may appear in several sections; use the
+    // copy that is actually visible (not scrolled away inside the featured
+    // row or outside the screen), nearest to where the detail cover was.
+    const target = covers
+      .map((cover) => ({ cover, visible: visibleBox(cover) }))
+      .filter((candidate): candidate is { cover: Element; visible: VisibleBox } => candidate.visible !== null)
+      .sort((a, b) => distance(a.visible.box, handoff.rect) - distance(b.visible.box, handoff.rect))[0];
+    if (!target) return;
+    // A clipping container would cut the travel off midway; then the cover
+    // simply arrives in its place.
+    if (target.visible.clip && !contains(target.visible.clip, handoff.rect)) playEntrance(target.cover);
+    else playFromRect(target.cover, handoff.rect);
   }, [selectedMaterialId]);
 
   // Saved changes (a material moved to another category, marked as a
@@ -302,7 +351,8 @@ export function BookshelfView({
   useDataChangeMotion(
     viewRef,
     `${selectedMaterialId ?? 'list'}:${activeSubjectId}:${studyStatusFilter}:${searchQuery}`,
-    [materials, subjects, preferencesByMaterialId],
+    // Records count too: they decide which materials are used most.
+    [materials, subjects, preferencesByMaterialId, actuals],
   );
 
   const selectedMaterial = selectedMaterialId
