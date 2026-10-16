@@ -21,6 +21,8 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Timetable OCR save lifetime](work/timetable-ocr-save-lifetime-handoff.md) — Issue #437; preserve submitted drafts and editor ownership across pending saves.
+
 - [Acknowledged announcement receipt reads](work/20261015-announcement-receipt-reads.md) — Issue #542; owner-scoped read reduction with mock measurements and publication held.
 
 - Issue #164
