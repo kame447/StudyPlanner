@@ -126,3 +126,37 @@ test('off shows the new selection at once with no motion and no press dip', asyn
   const pressed = await tab(page, '予定').evaluate(button => getComputedStyle(button).transitionDuration);
   expect(pressed.split(',').every(value => value.trim() === '0s')).toBe(true);
 });
+
+test('the travelling circle never takes a tap meant for the item it passes over', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seed(page);
+  await page.goto('/');
+  await tab(page, '時間割').click();
+  // Mid-flight, whatever is under the circle's centre is the item drawn there,
+  // never the circle (which would route the tap to the newly selected item).
+  const hit = await nav(page).evaluate(element => {
+    const circle = element.querySelector('.home-nav-active-circle');
+    const box = circle.getBoundingClientRect();
+    const target = document.elementFromPoint(box.left + box.width / 2, box.top + box.height - 4);
+    return { onCircle: Boolean(target?.closest('.home-nav-active-circle')), pointerEvents: getComputedStyle(circle).pointerEvents };
+  });
+  expect(hit).toEqual({ onCircle: false, pointerEvents: 'none' });
+
+  // A real tap on 教材's icon while the circle may still be passing over it.
+  const icon = await tab(page, '教材').locator('svg').boundingBox();
+  await page.mouse.click(icon.x + icon.width / 2, icon.y + icon.height / 2);
+  await expect(tab(page, '教材')).toHaveAttribute('aria-current', 'page');
+  await expectSettled(page);
+});
+
+test('below standard a press does not animate its dip, even when the level changes mid-press', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seed(page);
+  await page.goto('/');
+  const duration = () => tab(page, '予定').evaluate(button => getComputedStyle(button).transitionDuration);
+  expect(await duration()).toBe('0.15s');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(page.locator('html')).toHaveAttribute('data-motion', 'reduced');
+  expect(await duration()).toBe('0s');
+});
+

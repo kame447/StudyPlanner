@@ -113,9 +113,15 @@
 /* Primary navigation: the selected circle travels from the previous tab
    (PrimaryBottomNav → playIndicatorTravel), so it needs no CSS entrance of
    its own and the first paint stays still. Colours switch at once with the
-   selection; only a direct press dips the item. */
+   selection; only a direct press dips the item, and only at standard.
+   The circle is decoration: while it travels across other items it must not
+   take their taps, so hit testing always reaches the item underneath. */
 .primary-bottom-nav button {
-  transition: transform var(--motion-duration-fast) var(--motion-ease-emphasized);
+  transition: transform calc(var(--motion-duration-fast) * var(--motion-spatial)) var(--motion-ease-emphasized);
+}
+
+.primary-bottom-nav .home-nav-active-circle {
+  pointer-events: none;
 }
 
 .primary-bottom-nav button:active {
