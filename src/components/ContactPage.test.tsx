@@ -12,7 +12,7 @@ let renderer: ReactTestRenderer;
 let auth: ReturnType<typeof createFakeAuthSession>;
 const owner = { id: 'owner', requiresEmailVerification: false };
 const text = () => JSON.stringify(renderer.toJSON());
-function mount() { act(() => { renderer = create(<ContactPage authSession={auth.session} />); }); }
+async function mount() { await act(async () => { renderer = create(<ContactPage authSession={auth.session} />); await vi.dynamicImportSettled(); }); }
 function fill(body = '予定を保存できません') { act(() => renderer.root.findByType('textarea').props.onChange({ target: { value: body } })); }
 function submit() { renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); }
 
@@ -20,8 +20,8 @@ beforeEach(() => { vi.clearAllMocks(); auth = createFakeAuthSession(); });
 afterEach(() => { act(() => renderer?.unmount()); getInquiryDraft(auth.session).dispose(); });
 
 describe('email-free contact', () => {
-  it('waits for auth then requests login without sending or asking for an email', () => {
-    mount();
+  it('waits for auth then requests login without sending or asking for an email', async () => {
+    await mount();
     expect(text()).toContain('ログイン状態を確認');
     act(() => auth.emit(null));
     expect(text()).toContain('ログインしてください');
@@ -29,15 +29,15 @@ describe('email-free contact', () => {
     expect(text()).not.toContain('メール');
     expect(submitInquiry).not.toHaveBeenCalled();
   });
-  it('reports unavailable storage instead of providing fake local submission', () => {
-    auth = createFakeAuthSession({ available: false }); mount();
+  it('reports unavailable storage instead of providing fake local submission', async () => {
+    auth = createFakeAuthSession({ available: false }); await mount();
     expect(text()).toContain('接続できません');
     expect(renderer.root.findAllByType('form')).toHaveLength(0);
   });
   it('blocks whitespace and duplicate clicks, then displays only an acknowledged receipt', async () => {
     let finish!: (receipt: string) => void;
     vi.mocked(submitInquiry).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
-    mount(); act(() => auth.emit(owner));
+    await mount(); act(() => auth.emit(owner));
     fill('  \n '); act(submit);
     expect(submitInquiry).not.toHaveBeenCalled();
     fill();
@@ -57,7 +57,7 @@ describe('email-free contact', () => {
   });
   it('preserves exact content and request ID on an unknown result retry', async () => {
     vi.mocked(submitInquiry).mockRejectedValueOnce(new Error('network')).mockResolvedValueOnce('receipt');
-    mount(); act(() => auth.emit(owner)); fill();
+    await mount(); act(() => auth.emit(owner)); fill();
     await act(async () => submit());
     const first = vi.mocked(submitInquiry).mock.calls[0];
     expect(text()).toContain('送信結果を確認できません');
@@ -69,7 +69,7 @@ describe('email-free contact', () => {
   it('clears previous-owner content and ignores that owner’s late acknowledgement', async () => {
     let finish!: (receipt: string) => void;
     vi.mocked(submitInquiry).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
-    mount(); act(() => auth.emit(owner)); fill('private owner content'); act(submit);
+    await mount(); act(() => auth.emit(owner)); fill('private owner content'); act(submit);
     act(() => auth.emit({ ...owner, id: 'other' }));
     expect(renderer.root.findByType('textarea').props.value).toBe('');
     await act(async () => { finish('old-receipt'); });
@@ -80,21 +80,21 @@ describe('email-free contact', () => {
   });
   it('keeps the draft on same-document remount and never automatically resends an unknown result', async () => {
     vi.mocked(submitInquiry).mockRejectedValue(new Error('network'));
-    mount(); act(() => auth.emit(owner)); fill(); await act(async () => submit());
+    await mount(); act(() => auth.emit(owner)); fill(); await act(async () => submit());
     act(() => renderer.unmount());
-    mount(); act(() => auth.emit(owner));
+    await mount(); act(() => auth.emit(owner));
     expect(renderer.root.findByType('textarea').props.value).toBe('予定を保存できません');
     expect(submitInquiry).toHaveBeenCalledTimes(1);
   });
-  it('renders static HTML as auth-unresolved without exposing an in-memory owner or draft', () => {
-    mount(); act(() => auth.emit(owner)); fill('private owner draft');
+  it('renders static HTML as auth-unresolved without exposing an in-memory owner or draft', async () => {
+    await mount(); act(() => auth.emit(owner)); fill('private owner draft');
     const html = renderToStaticMarkup(<ContactPage authSession={auth.session} />);
     expect(html).toContain('ログイン状態を確認しています');
     expect(html).not.toContain('private owner draft'); expect(html).not.toContain('textarea');
   });
   it('creates a new receipt only after explicitly choosing another inquiry', async () => {
     vi.mocked(submitInquiry).mockResolvedValue('receipt');
-    mount(); act(() => auth.emit(owner)); fill(); await act(async () => submit());
+    await mount(); act(() => auth.emit(owner)); fill(); await act(async () => submit());
     act(() => renderer.root.findByType('button').props.onClick());
     fill(); await act(async () => submit());
     const calls = vi.mocked(submitInquiry).mock.calls;

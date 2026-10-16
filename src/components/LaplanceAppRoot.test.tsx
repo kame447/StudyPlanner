@@ -351,7 +351,7 @@ describe('LaplanceAppRoot', () => {
     }));
   }
 
-  it('retains the authenticated app, auth listener and completed intro on contact round-trip', () => {
+  it('retains the authenticated app, auth listener and completed intro on contact round-trip', async () => {
     navigableBrowser(); state.policy.status = 'accepted';
     state.personalization.profile = {
       schemaVersion: 2,
@@ -368,7 +368,7 @@ describe('LaplanceAppRoot', () => {
     const startup = renderer.root.findByType(StartupSurface);
     expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(0);
     expect(fake.session.subscribe).toHaveBeenCalledTimes(1);
-    clickLink('/contact');
+    await act(async () => { clickLink('/contact'); await vi.dynamicImportSettled(); });
     expect(renderer.root.findByType(App)).toBe(app);
     expect(renderer.root.findByType(StartupSurface)).toBe(startup);
     expect(fake.session.subscribe).toHaveBeenCalledTimes(2); // Contact owns its lightweight auth listener.
