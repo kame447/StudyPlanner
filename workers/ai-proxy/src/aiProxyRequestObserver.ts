@@ -5,7 +5,7 @@ import type {
   AiRequestMetricStatus,
   ObservabilityCorrelation,
 } from '../../../shared/productObservabilityContract';
-import { resolveChatModel } from './modelPolicy';
+import { DEFAULT_GEMINI_OCR_MODEL, resolveChatModel } from './modelPolicy';
 import {
   createAiRequestId,
   isAiRequestObservabilityConfigured,
@@ -56,7 +56,6 @@ interface ObservedOperation {
 
 const AI_REQUEST_ID_HEADER = 'X-StudyPlanner-AI-Request-Id';
 const APP_VERSION_HEADER = 'X-StudyPlanner-App-Version';
-const DEFAULT_GEMINI_MODEL = 'gemini-1.5-flash';
 const DEFAULT_TRANSCRIPTION_MODEL = 'gpt-4o-mini-transcribe';
 const OBSERVABLE_PATHS = new Set([
   '/',
@@ -175,7 +174,7 @@ export function describeAiProxyOperation(
       provider: 'gemini',
       purpose: 'timetable_ocr',
       phase: 'single',
-      model: env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL,
+      model: env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_OCR_MODEL,
     };
   }
   return null;
