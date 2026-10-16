@@ -110,7 +110,7 @@ describe('same-document public pages', () => {
     let finish!: (receipt: string) => void;
     vi.mocked(submitInquiry).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
     auth = createFakeAuthSession(); vi.mocked(createAuthSessionService).mockReturnValue(auth.session);
-    const b = browser(); mount(); click('/contact');
+    const b = browser(); mount(); await act(async () => { click('/contact'); await vi.dynamicImportSettled(); });
     act(() => auth.emit({ id: 'user', requiresEmailVerification: false }));
     act(() => renderer!.root.findByType('textarea').props.onChange({ target: { value: 'private draft' } }));
     act(() => renderer!.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }));
@@ -127,7 +127,7 @@ describe('same-document public pages', () => {
     let finish!: (receipt: string) => void;
     vi.mocked(submitInquiry).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
     auth = createFakeAuthSession(); vi.mocked(createAuthSessionService).mockReturnValue(auth.session);
-    const b = browser(); mount(); click('/contact');
+    const b = browser(); mount(); await act(async () => { click('/contact'); await vi.dynamicImportSettled(); });
     act(() => auth.emit({ id: 'user', requiresEmailVerification: false }));
     act(() => renderer!.root.findByType('textarea').props.onChange({ target: { value: 'private draft' } }));
     act(() => renderer!.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }));
