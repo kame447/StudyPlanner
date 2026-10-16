@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
 import type { HomeNextPlanVisualKind } from '../../lib/homeNextPlanVisual';
-import { playHop } from '../../lib/motionEffects';
+import { playHop, stopEffect } from '../../lib/motionEffects';
 import { DEFAULT_HOME_SCENE_PREFERENCES, type HomeScenePreferences } from '../../lib/homeScenePreferences';
 import { useHomeDisplayClock } from './HomeDisplayClockContext';
 import { useScheduledPixelStudent, type PixelStudentPlan } from './useScheduledPixelStudent';
@@ -17,15 +17,15 @@ export function HomeScene({
   preview = false,
   atmosphere: suppliedAtmosphere,
   plan,
-  recordedMinutes,
+  recorded,
 }: {
   kind: HomeNextPlanVisualKind;
   preferences?: HomeScenePreferences;
   preview?: boolean;
   atmosphere?: HomeSceneAtmosphere;
   plan?: PixelStudentPlan | null;
-  /** Study recorded so far this week; the companion hops when it grows. */
-  recordedMinutes?: number;
+  /** Study saved for this week (not clipped to the clock); the companion hops when it grows. */
+  recorded?: { week: string; minutes: number };
 }) {
   const now = useHomeDisplayClock();
   const student = useScheduledPixelStudent(plan, now, preferences.style === 'pixel' && !preview && kind !== 'other', preferences.animated);
@@ -33,20 +33,29 @@ export function HomeScene({
   const atmosphere = suppliedAtmosphere ?? currentAtmosphere;
   const pixelStyle = preferences.style.startsWith('pixel');
   const sceneRef = useRef<HTMLDivElement | null>(null);
-  const shownMinutes = useRef(recordedMinutes);
-  // The cat or turtle hops once when the user records more study while Home
-  // is open. It follows the illustration's own motion setting, never runs on
-  // first paint, on a hidden page or for a decrease, and leaves the
-  // time-of-day sky alone.
-  useLayoutEffect(() => {
-    const before = shownMinutes.current;
-    shownMinutes.current = recordedMinutes;
-    if (before === undefined || recordedMinutes === undefined || recordedMinutes <= before) return;
-    if (preview || !preferences.animated || !preferences.style.startsWith('pixel-')) return;
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+  const shownRecord = useRef(recorded);
+  const companionMoves = !preview && preferences.animated && preferences.style.startsWith('pixel-');
+  const companion = () => {
     const scene = sceneRef.current;
-    playHop(scene && typeof scene.querySelector === 'function' ? scene.querySelector('[data-scene-companion]') : null);
-  }, [preferences.animated, preferences.style, preview, recordedMinutes]);
+    return scene && typeof scene.querySelector === 'function' ? scene.querySelector('[data-scene-companion]') : null;
+  };
+  // The cat or turtle hops once when the user saves more study for this week
+  // while Home is open. Only saved records count (never the clock moving
+  // through a record), it follows the illustration's own motion setting,
+  // and it never runs on first paint, on a hidden page, for a decrease or
+  // when a new week begins. The time-of-day sky is left alone.
+  useLayoutEffect(() => {
+    const before = shownRecord.current;
+    shownRecord.current = recorded;
+    if (!before || !recorded || before.week !== recorded.week || recorded.minutes <= before.minutes) return;
+    if (!companionMoves) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    playHop(companion());
+  }, [companionMoves, recorded?.minutes, recorded?.week]);
+  // Turning the illustration's motion off stops a hop already in flight.
+  useLayoutEffect(() => {
+    if (!companionMoves) stopEffect(companion());
+  }, [companionMoves]);
   return <><div
     ref={sceneRef}
     className={preview ? 'home-scene-preview' : 'home-study-scene'}

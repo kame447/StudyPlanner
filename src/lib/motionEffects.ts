@@ -82,6 +82,13 @@ const SETTLE: EffectSpec = {
   reduced: [{ opacity: 0.45 }, { opacity: 1 }],
 };
 
+/** Stops `element`'s running effect at once, e.g. when a local motion setting is turned off. */
+export function stopEffect(element: Element | null | undefined) {
+  if (!element) return;
+  running.get(element)?.cancel();
+  running.delete(element);
+}
+
 /** A newly added item arrives in place. */
 export function playEntrance(element: Element | null | undefined) {
   return play(element, ENTRANCE);
