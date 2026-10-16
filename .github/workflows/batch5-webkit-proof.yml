@@ -1,0 +1,134 @@
+name: Batch 5 bounded WebKit evidence
+
+on:
+  push:
+    branches:
+      - test/batch5-mobile-proof-20261016
+    paths:
+      - '.github/workflows/batch5-webkit-proof.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: batch5-webkit-proof-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bounded-webkit:
+    name: bounded-webkit (${{ matrix.scope }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        scope: [remaining-mobile, contact-mobile]
+    env:
+      EXPECTED_HEAD: 0e3b6e759072bf46b6b08664f2af82eb0db06cd6
+      EXPECTED_TREE: 9a4bf105d3c76b5290e24a2283669c14e0fbaca5
+      PROOF_SCOPE: ${{ matrix.scope }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 0e3b6e759072bf46b6b08664f2af82eb0db06cd6
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify fixed candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          test -z "$(git status --porcelain)"
+          mkdir -p artifacts/batch5-proof
+          git show -s --format='head=%H%ntree=%T%nparents=%P' HEAD | tee artifacts/batch5-proof/source-identity.txt
+          sha256sum package.json package-lock.json tests/e2e/playwright.config.mjs tests/e2e/playwright.cross-browser.config.mjs > artifacts/batch5-proof/input-sha256.txt
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Snapshot application manifests before isolated test-runner install
+        shell: bash
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+
+      - name: Install isolated Playwright test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+
+      - name: Verify isolated test-runner install did not mutate application manifests
+        shell: bash
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+
+      - name: Install Chromium, Firefox and WebKit
+        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium firefox webkit
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Run bounded WebKit evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version > artifacts/batch5-proof/tool-versions.txt
+          ./tests/e2e/node_modules/.bin/playwright --version >> artifacts/batch5-proof/tool-versions.txt
+          config=tests/e2e/playwright.cross-browser.config.mjs
+          if [[ "$PROOF_SCOPE" == remaining-mobile ]]; then
+            specs=(month-event-range study-session-touch-swipe study-session-unplanned study-streak-calendar theme-storage-failure timetable-class-attendance todo-save-recovery weekly-durable-return weekly-keyboard yearly-quick-entry)
+            expected_tests=64
+          elif [[ "$PROOF_SCOPE" == contact-mobile ]]; then
+            specs=(contact-startup-loading public-page-navigation)
+            expected_tests=11
+            config=tests/e2e/playwright.batch5-proof.config.mjs
+            printf '%s\n' \
+              "import base from './playwright.cross-browser.config.mjs';" \
+              "export default { ...base, projects: base.projects.filter(p => p.name === 'webkit-mobile').map(p => ({ ...p, testMatch: [...p.testMatch, '**/contact-startup-loading.spec.mjs'] })) };" > "$config"
+            cp "$config" artifacts/batch5-proof/runner-wrapper.mjs
+          else
+            echo 'Unrecognized fixed proof scope' >&2
+            exit 2
+          fi
+          args=(test "--config=$config" --project=webkit-mobile)
+          for spec in "${specs[@]}"; do
+            test -f "tests/e2e/$spec.spec.mjs"
+            test ! -L "tests/e2e/$spec.spec.mjs"
+            args+=("(^|/)$spec\\.spec\\.mjs$")
+            sha256sum "tests/e2e/$spec.spec.mjs" >> artifacts/batch5-proof/input-sha256.txt
+          done
+          printf '%q ' ./tests/e2e/node_modules/.bin/playwright "${args[@]}" > artifacts/batch5-proof/command.txt
+          printf '\n' >> artifacts/batch5-proof/command.txt
+          ./tests/e2e/node_modules/.bin/playwright "${args[@]}" --list > artifacts/batch5-proof/collection.txt
+          grep -Eq "^Total: $expected_tests tests in [0-9]+ files$" artifacts/batch5-proof/collection.txt
+          for spec in "${specs[@]}"; do
+            grep -F "$spec.spec.mjs:" artifacts/batch5-proof/collection.txt > /dev/null
+          done
+          ./tests/e2e/node_modules/.bin/playwright "${args[@]}"
+
+      - name: Verify tracked inputs unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          git diff --exit-code
+          git diff --cached --exit-code
+          sha256sum -c artifacts/batch5-proof/input-sha256.txt
+          git status --porcelain > artifacts/batch5-proof/working-tree-after.txt
+
+      - name: Upload bounded proof and browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: batch5-webkit-${{ matrix.scope }}-0e3b6e759072bf46b6b08664f2af82eb0db06cd6
+          path: |
+            artifacts/batch5-proof/
+            artifacts/playwright-cross-browser-results/
+            artifacts/playwright-cross-browser-report/
+            artifacts/playwright-cross-browser-results.json
+          if-no-files-found: error
+          retention-days: 14
