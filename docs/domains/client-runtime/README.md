@@ -21,6 +21,8 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Month view startup loading](work/month-startup-loading-handoff.md) — Issue #542; defer month code while retaining navigation and add requests during delivery.
+
 - [Contact page startup loading](work/contact-startup-loading-handoff.md) — Issue #542; optional contact form/photo code leaves the initial module graph while return navigation stays synchronous; local measurement and native acceptance are separate.
 
 - [Study streak preload after Home](work/streak-after-home-preload-handoff.md) — Issue #483; optional detail-module warming behind the existing readiness boundary.

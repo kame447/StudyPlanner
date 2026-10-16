@@ -31,6 +31,7 @@ interface MonthViewProps {
   timetableTerm?: TimetableTerm | null;
   timetableTerms?: TimetableTerm[];
   createRequestId?: number;
+  initialCreateRequestId?: number;
   onSelectDate: (date: string) => void;
   onChangeMonth: (date: string) => void;
   onOpenWeek: (date: string) => void;
@@ -52,6 +53,7 @@ export function MonthView({
   timetableTerm,
   timetableTerms = [],
   createRequestId = 0,
+  initialCreateRequestId = createRequestId,
   onSelectDate,
   onChangeMonth,
   onOpenWeek,
@@ -79,7 +81,7 @@ export function MonthView({
   const shouldFocusSelectedCell = useRef(false);
   const pendingCellClickTimeout = useRef<number | null>(null);
   const lastCellClick = useRef<{ date: string; at: number } | null>(null);
-  const lastCreateRequestId = useRef(createRequestId);
+  const lastCreateRequestId = useRef(initialCreateRequestId);
   const todayDate = todayIsoDate();
   const swipeNavigation = useSwipeNavigation({
     onPrevious: () => onChangeMonth(addMonths(monthDate, -1)),
