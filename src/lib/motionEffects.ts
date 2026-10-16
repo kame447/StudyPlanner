@@ -67,8 +67,11 @@ function play(element: Element | null | undefined, spec: EffectSpec, level: Moti
 export function measureAtRest<T>(element: Element, measure: () => T): T {
   const animation = running.get(element);
   const end = animation?.effect?.getComputedTiming?.().endTime;
-  if (!animation || typeof end !== 'number' || typeof animation.pause !== 'function') return measure();
-  const wasPaused = animation.playState === 'paused';
+  // Only an effect that is still moving needs parking. A finished one
+  // already draws the rest position, and resuming it would restart it.
+  const state = animation?.playState;
+  if (!animation || (state !== 'running' && state !== 'paused') || typeof end !== 'number'
+    || typeof animation.pause !== 'function') return measure();
   const time = animation.currentTime;
   animation.pause();
   animation.currentTime = end;
@@ -76,7 +79,7 @@ export function measureAtRest<T>(element: Element, measure: () => T): T {
     return measure();
   } finally {
     animation.currentTime = time;
-    if (!wasPaused) animation.play();
+    if (state === 'running') animation.play();
   }
 }
 

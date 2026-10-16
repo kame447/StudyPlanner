@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MOTION_DURATION_MS, playEntrance, playNavigation, playSettle } from './motionEffects';
+import { measureAtRest, MOTION_DURATION_MS, playEntrance, playNavigation, playSettle, playShift } from './motionEffects';
 import { MOTION_STORAGE_KEY, REDUCED_FADE_MS, setMotionPreference } from './motionPreference';
 import { installFakeMotionEnvironment } from './motionPreference.testUtils';
 import { readFileSync } from 'node:fs';
@@ -88,5 +88,43 @@ describe('feedback motion by level', () => {
     for (const [name, ms] of Object.entries(MOTION_DURATION_MS)) {
       expect(css).toContain(`--motion-duration-${name}: ${ms}ms;`);
     }
+  });
+});
+
+describe('measuring at rest', () => {
+  function animatedElement(playState: AnimationPlayState) {
+    const calls: string[] = [];
+    let time = 120;
+    const animation = {
+      playState,
+      get currentTime() { return time; },
+      set currentTime(value: number) { time = value; calls.push(`seek:${value}`); },
+      effect: { getComputedTiming: () => ({ endTime: 210 }) },
+      pause: () => calls.push('pause'),
+      play: () => calls.push('play'),
+      cancel: vi.fn(),
+      addEventListener: vi.fn(),
+    };
+    const element = { animate: vi.fn(() => animation) } as unknown as Element;
+    playShift(element, 0, 20);
+    return { element, calls };
+  }
+
+  it('parks a running effect at its end for the measurement and resumes it where it was', () => {
+    const { element, calls } = animatedElement('running');
+    expect(measureAtRest(element, () => calls.length)).toBe(2);
+    expect(calls).toEqual(['pause', 'seek:210', 'seek:120', 'play']);
+  });
+
+  it('leaves a finished effect alone instead of restarting it', () => {
+    const { element, calls } = animatedElement('finished');
+    expect(measureAtRest(element, () => 'measured')).toBe('measured');
+    expect(calls).toEqual([]);
+  });
+
+  it('keeps a paused effect paused', () => {
+    const { element, calls } = animatedElement('paused');
+    measureAtRest(element, () => null);
+    expect(calls).toEqual(['pause', 'seek:210', 'seek:120']);
   });
 });
