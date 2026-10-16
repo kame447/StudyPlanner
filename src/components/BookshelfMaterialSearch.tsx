@@ -41,11 +41,20 @@ export function BookshelfMaterialSearch({
   const [isSearching, setIsSearching] = useState(false);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const selection = useRef<object | null>(null);
+  // State drives the button; this synchronous guard also covers same-turn Enter/clicks.
+  const search = useRef<object | null>(null);
+  const resolveSelection = useRef(resolveMaterialMetadataCandidate);
   const selectionFocusCleanup = useRef<(() => void) | null>(null);
   const mounted = useRef(false);
   useLayoutEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; selection.current = null; selectionFocusCleanup.current?.(); };
+    return () => {
+      mounted.current = false;
+      selection.current = null;
+      search.current = null;
+      resolveSelection.current = resolveMaterialMetadataCandidate;
+      selectionFocusCleanup.current?.();
+    };
   }, []);
 
   function cancelSelection() {
@@ -58,13 +67,19 @@ export function BookshelfMaterialSearch({
 
   async function handleSearch() {
     const trimmed = query.trim();
-    if (!trimmed || isSearching) return;
+    if (!mounted.current || !trimmed || search.current || selection.current) return;
+    const operation = {};
+    search.current = operation;
+    resolveSelection.current = resolveMaterialMetadataCandidate;
+    const current = () => mounted.current && search.current === operation;
 
     setIsSearching(true);
     setStatus('教材と表紙を検索しています...');
     setResults([]);
     try {
       const response = await searchMaterialMetadata(trimmed);
+      if (!current()) return;
+      resolveSelection.current = response.resolveSelection ?? resolveMaterialMetadataCandidate;
       setResults(response.results);
       const coverCount = response.results.filter((candidate) => Boolean(candidate.coverImageUrl)).length;
       setStatus(
@@ -73,13 +88,17 @@ export function BookshelfMaterialSearch({
           : '候補が見つかりませんでした。下の教材名から手入力できます。',
       );
     } catch (error) {
+      if (!current()) return;
       setStatus(
         error instanceof Error
           ? error.message
           : '教材検索を利用できません。下の教材名から手入力できます。',
       );
     } finally {
-      setIsSearching(false);
+      if (current()) {
+        search.current = null;
+        setIsSearching(false);
+      }
     }
   }
 
@@ -105,7 +124,7 @@ export function BookshelfMaterialSearch({
     setResolvingId(candidate.catalogEntryId);
     setStatus('教材の表紙・ページ数・版・目次を確認しています...');
     try {
-      const resolved = await resolveMaterialMetadataCandidate(candidate);
+      const resolved = await resolveSelection.current(candidate);
       if (!mounted.current || selection.current !== operation) return;
       onSelect(resolved);
       if (compact) setResults([]);

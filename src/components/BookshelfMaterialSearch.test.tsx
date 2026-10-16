@@ -108,3 +108,83 @@ it.each([false, true])('returns selected-result focus only when the user has not
   expect(onSelectionFocusReturn).toHaveBeenCalledTimes(moved ? 0 : 1);
   act(() => renderer.unmount());
 });
+
+it('uses only the current search receipt and resets it for a later result without one', async () => {
+  const candidate = { catalogEntryId: 'same-id', title: '教材候補', authors: [] };
+  const receipt = vi.fn(async (value: typeof candidate) => ({ ...value, pageCount: 123 }));
+  mocks.searchMaterialMetadata.mockResolvedValueOnce({ results: [candidate], resolveSelection: receipt });
+  mocks.searchMaterialMetadata.mockResolvedValueOnce({ results: [candidate] });
+  mocks.resolveMaterialMetadataCandidate.mockResolvedValue({ ...candidate, pageCount: 456 });
+  const onSelect = vi.fn();
+  let renderer!: ReactTestRenderer;
+  act(() => { renderer = create(<BookshelfMaterialSearch onSelect={onSelect} />); });
+  act(() => renderer.root.findByType('input').props.onChange({ target: { value: '教材' } }));
+  await act(async () => { renderer.root.findByProps({ className: 'ghost-button material-metadata-search-button' }).props.onClick(); });
+  await act(async () => { renderer.root.findByProps({ className: 'material-metadata-result' }).props.onClick({}); });
+  expect(receipt).toHaveBeenCalledTimes(1);
+  expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ pageCount: 123 }));
+  const priorSearches = mocks.searchMaterialMetadata.mock.calls.length;
+  await act(async () => { renderer.root.findByProps({ className: 'ghost-button material-metadata-search-button' }).props.onClick(); });
+  expect(mocks.searchMaterialMetadata).toHaveBeenCalledTimes(priorSearches + 1);
+  await act(async () => { renderer.root.findByProps({ className: 'material-metadata-result' }).props.onClick({}); });
+  expect(receipt).toHaveBeenCalledTimes(1);
+  expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ pageCount: 456 }));
+  act(() => renderer.unmount());
+});
+
+it('coalesces same-turn searches and ignores a search response after unmount', async () => {
+  let finish!: (value: object) => void;
+  mocks.searchMaterialMetadata.mockReset();
+  mocks.searchMaterialMetadata.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  const onSelect = vi.fn();
+  let renderer!: ReactTestRenderer;
+  act(() => { renderer = create(<BookshelfMaterialSearch onSelect={onSelect} />); });
+  act(() => renderer.root.findByType('input').props.onChange({ target: { value: '教材' } }));
+  const search = renderer.root.findByProps({ className: 'ghost-button material-metadata-search-button' }).props.onClick;
+  act(() => { search(); search(); });
+  expect(mocks.searchMaterialMetadata).toHaveBeenCalledTimes(1);
+  act(() => renderer.unmount());
+  await act(async () => { finish({ results: [{ catalogEntryId: 'late', title: 'late', authors: [] }] }); });
+  act(() => search());
+  expect(mocks.searchMaterialMetadata).toHaveBeenCalledTimes(1);
+  expect(onSelect).not.toHaveBeenCalled();
+});
+
+it.each(['cancel', 'unmount'])('does not apply a result receipt after %s', async stop => {
+  const candidate = { catalogEntryId: 'receipt', title: '教材候補', authors: [] };
+  mocks.searchMaterialMetadata.mockResolvedValue({ results: [candidate], resolveSelection: async () => candidate });
+  const onSelect = vi.fn();
+  const onSelectionPendingChange = vi.fn();
+  let renderer!: ReactTestRenderer;
+  act(() => { renderer = create(<BookshelfMaterialSearch onSelect={onSelect} onSelectionPendingChange={onSelectionPendingChange} />); });
+  act(() => renderer.root.findByType('input').props.onChange({ target: { value: '教材' } }));
+  await act(async () => { renderer.root.findByProps({ className: 'ghost-button material-metadata-search-button' }).props.onClick(); });
+  act(() => { renderer.root.findByProps({ className: 'material-metadata-result' }).props.onClick({}); });
+  act(() => {
+    if (stop === 'unmount') renderer.unmount();
+    else renderer.root.findAllByType('button').find(button => button.props.children === '教材の選択を取り消す')!.props.onClick();
+  });
+  await act(async () => { await Promise.resolve(); });
+  expect(onSelect).not.toHaveBeenCalled();
+  if (stop === 'cancel') {
+    expect(onSelectionPendingChange).toHaveBeenLastCalledWith(false);
+    act(() => renderer.unmount());
+  }
+});
+
+it('does not start another search through Enter while a selection is pending', async () => {
+  const candidate = { catalogEntryId: 'pending', title: '教材候補', authors: [] };
+  let finish!: (value: typeof candidate) => void;
+  mocks.searchMaterialMetadata.mockReset().mockResolvedValue({ results: [candidate], resolveSelection: () => new Promise(resolve => { finish = resolve; }) });
+  let renderer!: ReactTestRenderer;
+  act(() => { renderer = create(<BookshelfMaterialSearch onSelect={vi.fn()} />); });
+  act(() => renderer.root.findByType('input').props.onChange({ target: { value: '教材' } }));
+  await act(async () => { renderer.root.findByProps({ className: 'ghost-button material-metadata-search-button' }).props.onClick(); });
+  act(() => { renderer.root.findByProps({ className: 'material-metadata-result' }).props.onClick({}); });
+  act(() => { renderer.root.findByType('input').props.onKeyDown({ key: 'Enter', preventDefault: vi.fn() }); });
+  expect(mocks.searchMaterialMetadata).toHaveBeenCalledTimes(1);
+  expect(renderer.root.findByProps({ className: 'ghost-button material-metadata-search-button' }).props.disabled).toBe(true);
+  await act(async () => { finish(candidate); });
+  expect(renderer.root.findByProps({ className: 'ghost-button material-metadata-search-button' }).props.disabled).toBe(false);
+  act(() => renderer.unmount());
+});

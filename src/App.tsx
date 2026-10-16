@@ -19,7 +19,7 @@ import { usePublicPageNavigation } from './components/PublicPageLink';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
 import { AppViewSwitcher } from './components/AppViewSwitcher';
 import type { BookshelfInitialAction } from './components/BookshelfView';
-import { MonthView } from './components/MonthView';
+import { DeferredMonthView as MonthView } from './components/DeferredMonthView';
 import { MyPageDialog } from './components/MyPageDialog';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
 import { PlannerDataRecoveryNotice } from './components/PlannerDataRecoveryNotice';

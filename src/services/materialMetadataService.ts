@@ -51,13 +51,14 @@ function normalizeDetailsResponse(value: WorkerResponse): MaterialMetadataDetail
     : null;
 }
 
-async function workerRequest(endpoint: string, query: string): Promise<WorkerResponse> {
+async function workerRequest(endpoint: string, query: string) {
   const firebaseAuth = getFirebaseAuth();
   if (!firebaseAuth?.currentUser) {
     throw new Error('教材検索にはログインが必要です。手入力で登録できます。');
   }
 
-  const idToken = await firebaseAuth.currentUser.getIdToken();
+  const owner = firebaseAuth.currentUser;
+  const idToken = await owner.getIdToken();
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -72,34 +73,48 @@ async function workerRequest(endpoint: string, query: string): Promise<WorkerRes
       payload.error || '教材情報を一時的に利用できません。手入力で登録できます。',
     );
   }
-  return payload;
+  return { payload, owner };
+}
+
+interface ResolvedMaterialDetails {
+  candidate: MaterialMetadataCandidate;
+  owner?: object;
+}
+
+async function resolveMaterialDetails(
+  candidate: MaterialMetadataCandidate,
+): Promise<ResolvedMaterialDetails> {
+  const proxyUrl = getCloudflareAiProxyUrl();
+  if (!proxyUrl) return { candidate };
+
+  const query = candidate.isbn13 ?? candidate.isbn10 ?? candidate.title;
+  try {
+    const { payload, owner } = await workerRequest(buildMaterialMetadataDetailsEndpoint(proxyUrl), query);
+    const normalized = normalizeDetailsResponse(payload);
+    if (!normalized?.candidate) return { candidate };
+
+    return {
+      owner,
+      candidate: {
+        ...normalized.candidate,
+        catalogEntryId: candidate.catalogEntryId,
+        ...(candidate.subjectHint ? { subjectHint: candidate.subjectHint } : {}),
+        ...(candidate.materialKind ? { materialKind: candidate.materialKind } : {}),
+        ...(candidate.aliases?.length ? { aliases: candidate.aliases } : {}),
+        ...(candidate.resolutionRequired !== undefined
+          ? { resolutionRequired: candidate.resolutionRequired }
+          : {}),
+      },
+    };
+  } catch {
+    return { candidate };
+  }
 }
 
 export async function resolveMaterialMetadataCandidate(
   candidate: MaterialMetadataCandidate,
 ): Promise<MaterialMetadataCandidate> {
-  const proxyUrl = getCloudflareAiProxyUrl();
-  if (!proxyUrl) return candidate;
-
-  const query = candidate.isbn13 ?? candidate.isbn10 ?? candidate.title;
-  try {
-    const payload = await workerRequest(buildMaterialMetadataDetailsEndpoint(proxyUrl), query);
-    const normalized = normalizeDetailsResponse(payload);
-    if (!normalized?.candidate) return candidate;
-
-    return {
-      ...normalized.candidate,
-      catalogEntryId: candidate.catalogEntryId,
-      ...(candidate.subjectHint ? { subjectHint: candidate.subjectHint } : {}),
-      ...(candidate.materialKind ? { materialKind: candidate.materialKind } : {}),
-      ...(candidate.aliases?.length ? { aliases: candidate.aliases } : {}),
-      ...(candidate.resolutionRequired !== undefined
-        ? { resolutionRequired: candidate.resolutionRequired }
-        : {}),
-    };
-  } catch {
-    return candidate;
-  }
+  return (await resolveMaterialDetails(candidate)).candidate;
 }
 
 export function isCompatibleAutomaticEnrichment(
@@ -157,15 +172,32 @@ export async function enrichBuiltInMaterialSearchResults(
   return enriched;
 }
 
+export interface MaterialMetadataSearchResult extends MaterialMetadataSearchResponse {
+  resolveSelection?: typeof resolveMaterialMetadataCandidate;
+}
+
 export async function searchMaterialMetadata(
   query: string,
-): Promise<MaterialMetadataSearchResponse> {
+): Promise<MaterialMetadataSearchResult> {
   const builtInResults = searchBuiltInMaterialCatalog(query);
   if (builtInResults.length > 0) {
-    const results = await enrichBuiltInMaterialSearchResults(builtInResults);
+    // This receipt belongs only to this returned result, never a global cache.
+    // Failed/incompatible enrichment and a different auth session still resolve
+    // normally on selection. Object identity also excludes edited candidates.
+    const resolvedOwners = new Map<MaterialMetadataCandidate, object>();
+    const results = await enrichBuiltInMaterialSearchResults(builtInResults, async candidate => {
+      const resolved = await resolveMaterialDetails(candidate);
+      if (resolved.owner) resolvedOwners.set(resolved.candidate, resolved.owner);
+      return resolved.candidate;
+    });
     return {
       results,
       cacheHit: true,
+      resolveSelection: async candidate => {
+        if (resolvedOwners.has(candidate)
+          && resolvedOwners.get(candidate) === getFirebaseAuth()?.currentUser) return candidate;
+        return resolveMaterialMetadataCandidate(candidate);
+      },
     };
   }
 
@@ -174,7 +206,7 @@ export async function searchMaterialMetadata(
     throw new Error('教材検索の接続先が設定されていません。手入力で登録できます。');
   }
 
-  const payload = await workerRequest(buildMaterialMetadataEndpoint(proxyUrl), query);
+  const { payload } = await workerRequest(buildMaterialMetadataEndpoint(proxyUrl), query);
   const normalized = normalizeWorkerResponse(payload);
   if (!normalized) {
     throw new Error('教材検索の結果を読み取れませんでした。手入力で登録できます。');

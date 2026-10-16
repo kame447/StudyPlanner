@@ -12,6 +12,8 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAdminStatus } from '../hooks/useAdminStatus';
 import { createAuthSessionService, type AuthSessionService } from '../services/authSession';
+import '../styles/admin-console.css';
+import '../styles/admin-overview-range-safety.css';
 import '../styles/admin-phase5.css';
 import '../styles/admin-phase6.css';
 import '../styles/admin-phase7.css';

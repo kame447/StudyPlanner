@@ -84,6 +84,7 @@ const click = async (node: ReactTestInstance) => { await act(async () => { node.
 async function openManualEntry() {
   await click(renderer!.root.findByProps({ 'aria-label': 'クイック追加メニューを開く' }));
   await click(button('予定を追加'));
+  await act(async () => { await vi.dynamicImportSettled(); });
   expect(renderer!.root.findAllByType(MonthEventDialog)).toHaveLength(1);
   expect(renderer!.root.findByProps({ 'aria-label': 'タイトル' }).props.value).toBe('');
 }

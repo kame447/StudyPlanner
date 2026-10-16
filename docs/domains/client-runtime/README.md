@@ -21,9 +21,13 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Month view startup loading](work/month-startup-loading-handoff.md) — Issue #542; defer month code while retaining navigation and add requests during delivery.
+
 - [Contact page startup loading](work/contact-startup-loading-handoff.md) — Issue #542; optional contact form/photo code leaves the initial module graph while return navigation stays synchronous; local measurement and native acceptance are separate.
 
 - [Study streak preload after Home](work/streak-after-home-preload-handoff.md) — Issue #483; optional detail-module warming behind the existing readiness boundary.
+
+- [Bounded optional view preloading](work/bounded-view-preload-handoff.md) — Issues #483/#542; reuse settled preload slots under the existing eight-loader cap, with MonthView registration and measured tradeoffs kept separate.
 
 - [Timetable OCR save lifetime](work/timetable-ocr-save-lifetime-handoff.md) — Issue #437; preserve submitted drafts and editor ownership across pending saves.
 
@@ -60,3 +64,5 @@ Other active client-runtime work:
 Client-first does not imply client-authoritative shared state. Authentication, owner isolation, reconciliation, cross-device consistency and server-side security boundaries remain explicit requirements.
 
 - [Admin mobile navigation and announcement actions](work/admin-mobile-navigation-handoff.md): visible return, same-document navigation and direct draft/publication actions; local follow-up awaiting publication approval.
+
+- [Administrator console style loading](work/admin-console-style-loading-handoff.md): Issue #542; local-only deferral of administrator-specific CSS, preserving shared shell cascade and all media/theme behavior.
