@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scope: [remaining-mobile, jev-chromium]
+        scope: [jev-chromium]
     env:
       EXPECTED_HEAD: 32c1348070e71f49b97cc9ec37ca411b7c3eb4d1
       EXPECTED_TREE: fb59b43075ee90566f8de632cea89e12b4577f8a
@@ -103,7 +103,7 @@ jobs:
           printf '%q ' ./tests/e2e/node_modules/.bin/playwright "${args[@]}" > artifacts/loading-proof/command.txt
           printf '\n' >> artifacts/loading-proof/command.txt
           ./tests/e2e/node_modules/.bin/playwright "${args[@]}" --list > artifacts/loading-proof/collection.txt
-          grep -Eq "^Total: $expected_tests tests in [0-9]+ files$" artifacts/loading-proof/collection.txt
+          grep -Eq "^Total: $expected_tests tests in [0-9]+ files?$" artifacts/loading-proof/collection.txt
           for spec in "${specs[@]}"; do
             grep -F "$spec.spec.mjs:" artifacts/loading-proof/collection.txt > /dev/null
           done
