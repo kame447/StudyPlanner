@@ -113,3 +113,20 @@ export function playNavigation(element: Element | null | undefined, direction: N
     reduced: [{ opacity: 0.35 }, { opacity: 1 }],
   });
 }
+
+/**
+ * An unchanged item was pushed to a new place by a neighbouring change (a
+ * removal closing up, an insertion making room). It glides from where it was
+ * drawn (`x`, `y` px relative to its new place). Below standard it simply
+ * appears in its new place: a fade would suggest the item itself changed.
+ */
+export function playShift(element: Element | null | undefined, x: number, y: number) {
+  return play(element, {
+    standard: {
+      frames: [{ translate: `${x}px ${y}px` }, { translate: '0 0' }],
+      duration: MOTION_DURATION_MS.base,
+      easing: EMPHASIZED,
+    },
+    reduced: null,
+  });
+}
