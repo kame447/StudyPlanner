@@ -104,8 +104,8 @@ test('the report chart and streak calendar slide from the side the user paged to
     .toEqual([['learning-report-chart', true]]);
 
   // Switching week/month is not paging: nothing slides.
-  await page.getByRole('tablist', { name: '集計期間' }).getByRole('tab').nth(1).click();
-  await page.getByRole('tablist', { name: '集計期間' }).getByRole('tab').nth(0).click();
+  await page.getByRole('tablist', { name: '集計期間' }).getByRole('tab', { name: '月', exact: true }).click();
+  await page.getByRole('tablist', { name: '集計期間' }).getByRole('tab', { name: '週', exact: true }).click();
   expect(periodContent(await motionLog(page))).toEqual([]);
 
   // The streak calendar pages the same way.
@@ -120,3 +120,27 @@ test('the report chart and streak calendar slide from the side the user paged to
   await page.getByRole('button', { name: '今日' }).click();
   expect(of(await motionLog(page), 'TABLE').map(entry => Number.parseFloat(entry.translate) > 0)).toEqual([true]);
 });
+
+for (const width of [320, 390]) {
+  test(`paging forward never widens the page, even at the first frame, at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 700 });
+    await seed(page);
+    await page.goto('/');
+    await page.getByRole('button', { name: '詳細を見る' }).click();
+    await page.getByRole('button', { name: '前の期間を表示' }).click();
+    await page.getByRole('button', { name: '次の期間を表示' }).click();
+    const frozen = await page.locator('.learning-report-chart').evaluate(element => {
+      const animation = element.getAnimations()[0];
+      animation?.pause();
+      if (animation) animation.currentTime = 0;
+      const right = element.getBoundingClientRect().right;
+      const result = { running: Boolean(animation), right, innerWidth: window.innerWidth,
+        pageOverflow: document.documentElement.scrollWidth - window.innerWidth };
+      animation?.play();
+      return result;
+    });
+    console.log('FORWARD', width, JSON.stringify(frozen));
+    expect(frozen.running).toBe(true);
+    expect(frozen.pageOverflow).toBeLessThanOrEqual(0);
+  });
+}
