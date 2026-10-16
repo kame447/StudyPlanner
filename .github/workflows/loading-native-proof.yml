@@ -1,0 +1,138 @@
+name: Loading release bounded native evidence
+
+on:
+  push:
+    branches:
+      - test/loading-release-native-proof
+    paths:
+      - '.github/workflows/loading-native-proof.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: loading-native-proof-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bounded-native:
+    name: bounded-native (${{ matrix.scope }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        scope: [remaining-mobile, jev-chromium]
+    env:
+      EXPECTED_HEAD: 32c1348070e71f49b97cc9ec37ca411b7c3eb4d1
+      EXPECTED_TREE: fb59b43075ee90566f8de632cea89e12b4577f8a
+      PROOF_SCOPE: ${{ matrix.scope }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 32c1348070e71f49b97cc9ec37ca411b7c3eb4d1
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify fixed candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          test -z "$(git status --porcelain)"
+          mkdir -p artifacts/loading-proof
+          git show -s --format='head=%H%ntree=%T%nparents=%P' HEAD | tee artifacts/loading-proof/source-identity.txt
+          sha256sum package.json package-lock.json tests/e2e/playwright.config.mjs tests/e2e/playwright.cross-browser.config.mjs > artifacts/loading-proof/input-sha256.txt
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Snapshot application manifests before isolated test-runner install
+        shell: bash
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+
+      - name: Install isolated Playwright test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+
+      - name: Verify isolated test-runner install did not mutate application manifests
+        shell: bash
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+
+      - name: Install Chromium, Firefox and WebKit
+        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium firefox webkit
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Run bounded native evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version > artifacts/loading-proof/tool-versions.txt
+          ./tests/e2e/node_modules/.bin/playwright --version >> artifacts/loading-proof/tool-versions.txt
+          test "$(./tests/e2e/node_modules/.bin/playwright --version)" = 'Version 1.64.0'
+          config=tests/e2e/playwright.cross-browser.config.mjs
+          project=webkit-mobile
+          repeat=1
+          if [[ "$PROOF_SCOPE" == remaining-mobile ]]; then
+            specs=(study-session-pomodoro-settings study-session-touch-swipe study-session-unplanned study-streak-calendar theme-storage-failure timetable-class-attendance todo-save-recovery weekly-durable-return weekly-keyboard yearly-quick-entry)
+            expected_tests=63
+          elif [[ "$PROOF_SCOPE" == jev-chromium ]]; then
+            specs=(ai-planning-jev-first-authority)
+            config=tests/e2e/playwright.config.mjs
+            project=chromium
+            repeat=3
+            expected_tests=15
+          else
+            echo 'Unrecognized fixed proof scope' >&2
+            exit 2
+          fi
+          args=(test "--config=$config" "--project=$project" "--repeat-each=$repeat")
+          for spec in "${specs[@]}"; do
+            test -f "tests/e2e/$spec.spec.mjs"
+            test ! -L "tests/e2e/$spec.spec.mjs"
+            args+=("(^|/)$spec\\.spec\\.mjs$")
+            sha256sum "tests/e2e/$spec.spec.mjs" >> artifacts/loading-proof/input-sha256.txt
+          done
+          printf '%q ' ./tests/e2e/node_modules/.bin/playwright "${args[@]}" > artifacts/loading-proof/command.txt
+          printf '\n' >> artifacts/loading-proof/command.txt
+          ./tests/e2e/node_modules/.bin/playwright "${args[@]}" --list > artifacts/loading-proof/collection.txt
+          grep -Eq "^Total: $expected_tests tests in [0-9]+ files$" artifacts/loading-proof/collection.txt
+          for spec in "${specs[@]}"; do
+            grep -F "$spec.spec.mjs:" artifacts/loading-proof/collection.txt > /dev/null
+          done
+          ./tests/e2e/node_modules/.bin/playwright "${args[@]}"
+
+      - name: Verify tracked inputs unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          git diff --exit-code
+          git diff --cached --exit-code
+          sha256sum -c artifacts/loading-proof/input-sha256.txt
+          git status --porcelain > artifacts/loading-proof/working-tree-after.txt
+
+      - name: Upload bounded proof and browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: loading-native-${{ matrix.scope }}-32c1348070e71f49b97cc9ec37ca411b7c3eb4d1
+          path: |
+            artifacts/loading-proof/
+            artifacts/playwright-results/
+            artifacts/playwright-report/
+            artifacts/playwright-results.json
+            artifacts/playwright-cross-browser-results/
+            artifacts/playwright-cross-browser-report/
+            artifacts/playwright-cross-browser-results.json
+          if-no-files-found: error
+          retention-days: 14
