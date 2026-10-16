@@ -146,7 +146,7 @@ export function ReportView({
   );
   const rangeLabel = formatLearningReportRangeLabel(scope, anchorDate);
   // Paging to an earlier or later period slides the chart (or the empty
-  // notice) from that side;
+  // notice's text, inside its card) from that side;
   // switching week/month or the material filter only redraws it.
   const chartRef = useRef<HTMLElement | null>(null);
   const setChartElement = (element: HTMLElement | null) => { chartRef.current = element; };
@@ -263,11 +263,11 @@ export function ReportView({
       </div>
 
       {report.actualMinutes === 0 ? (
-        <section ref={setChartElement} className="learning-report-empty" aria-live="polite">
+        <section className="learning-report-empty" aria-live="polite">
           <div className="learning-report-empty-icon" aria-hidden="true">
             <BookOpen />
           </div>
-          <div>
+          <div ref={setChartElement} className="learning-report-empty-copy">
             <h2>この期間にはまだ学習記録がありません</h2>
           </div>
         </section>

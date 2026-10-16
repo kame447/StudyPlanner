@@ -95,10 +95,10 @@ test('the report chart and streak calendar slide from the side the user paged to
   // Sliding never adds horizontal page scroll.
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   // This week has a record (chart); the previous one is empty (notice).
-  const periodContent = log => log.filter(entry => ['learning-report-chart', 'learning-report-empty'].includes(entry.target));
+  const periodContent = log => log.filter(entry => ['learning-report-chart', 'learning-report-empty-copy'].includes(entry.target));
   const back = periodContent(await motionLog(page));
   expect(back.map(entry => [entry.target, entry.properties, Number.parseFloat(entry.translate) < 0]))
-    .toEqual([['learning-report-empty', ['opacity', 'translate'], true]]);
+    .toEqual([['learning-report-empty-copy', ['opacity', 'translate'], true]]);
   await page.getByRole('button', { name: '次の期間を表示' }).click();
   expect(periodContent(await motionLog(page)).map(entry => [entry.target, Number.parseFloat(entry.translate) > 0]))
     .toEqual([['learning-report-chart', true]]);
@@ -129,18 +129,30 @@ for (const width of [320, 390]) {
     await page.getByRole('button', { name: '詳細を見る' }).click();
     await page.getByRole('button', { name: '前の期間を表示' }).click();
     await page.getByRole('button', { name: '次の期間を表示' }).click();
-    const frozen = await page.locator('.learning-report-chart').evaluate(element => {
-      const animation = element.getAnimations()[0];
-      animation?.pause();
-      if (animation) animation.currentTime = 0;
-      const right = element.getBoundingClientRect().right;
-      const result = { running: Boolean(animation), right, innerWidth: window.innerWidth,
-        pageOverflow: document.documentElement.scrollWidth - window.innerWidth };
-      animation?.play();
-      return result;
-    });
-    console.log('FORWARD', width, JSON.stringify(frozen));
+    const frozen = await page.locator('.learning-report-chart').evaluate(freezeFirstFrame);
+    console.log('FORWARD chart', width, JSON.stringify(frozen));
     expect(frozen.running).toBe(true);
     expect(frozen.pageOverflow).toBeLessThanOrEqual(0);
+
+    // The empty notice sits outside the card's inset: check it too, paging
+    // forward between two weeks without records.
+    await page.getByRole('button', { name: '前の期間を表示' }).click();
+    await page.getByRole('button', { name: '前の期間を表示' }).click();
+    await page.getByRole('button', { name: '次の期間を表示' }).click();
+    const empty = await page.locator('.learning-report-empty-copy').evaluate(freezeFirstFrame);
+    console.log('FORWARD empty', width, JSON.stringify(empty));
+    expect(empty.running).toBe(true);
+    expect(empty.pageOverflow).toBeLessThanOrEqual(0);
   });
+}
+
+/** Pauses an element's period slide at its first frame and measures the page. */
+function freezeFirstFrame(element) {
+  const animation = element.getAnimations()[0];
+  animation?.pause();
+  if (animation) animation.currentTime = 0;
+  const result = { running: Boolean(animation), right: element.getBoundingClientRect().right, innerWidth: window.innerWidth,
+    pageOverflow: document.documentElement.scrollWidth - window.innerWidth };
+  animation?.play();
+  return result;
 }
