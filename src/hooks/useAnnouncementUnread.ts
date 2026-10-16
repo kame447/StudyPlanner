@@ -43,7 +43,11 @@ export function useAnnouncementUnread(owner: string, isOpen: boolean) {
       if (!live()) throw new Error('ログイン状態が変わりました。');
       const page = await listAnnouncements(owner, cursor);
       if (!live()) throw new Error('ログイン状態が変わりました。');
-      const read = await getAnnouncementReadState(owner, page.items);
+      // Persisted receipts and the bulk watermark only advance (Rules disallow
+      // deletion/rollback). Reuse this session's known read evidence, but still
+      // refresh publications, unknown/newer receipts and the owner summary.
+      const unchecked = page.items.filter(item => isAnnouncementUnread(item, session.read));
+      const read = await getAnnouncementReadState(owner, unchecked);
       if (!live()) throw new Error('ログイン状態が変わりました。');
       for (const item of page.items) {
         const previous = session.items.get(item.id);
