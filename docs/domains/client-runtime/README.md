@@ -21,6 +21,8 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Acknowledged announcement receipt reads](work/20261015-announcement-receipt-reads.md) — Issue #542; owner-scoped read reduction with mock measurements and publication held.
+
 - Issue #164
 - [Normal Plan deletion and linked Todo admission](work/20261013-linked-todo-plan-delete.md) — Issue #437; compound-delete reservation and persisted race regression
 - [Todo target admission](work/20261013-todo-target-admission.md) — Issue #437; local deleted-target and in-flight command protection, with remote/browser acceptance separate
