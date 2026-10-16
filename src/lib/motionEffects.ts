@@ -113,3 +113,37 @@ export function playNavigation(element: Element | null | undefined, direction: N
     reduced: [{ opacity: 0.35 }, { opacity: 1 }],
   });
 }
+
+export interface MotionRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The same thing the user just touched reappears in a new place (a cover
+ * opening into its detail, or back). It grows from where it was, so the eye
+ * keeps hold of it. Below standard it only fades in; with no usable origin
+ * it simply appears.
+ */
+export function playFromRect(element: Element | null | undefined, from: MotionRect) {
+  if (!element || typeof element.getBoundingClientRect !== 'function') return null;
+  const to = element.getBoundingClientRect();
+  if (!(to.width > 0 && to.height > 0 && from.width > 0 && from.height > 0)) return null;
+  const x = Math.round(from.left + from.width / 2 - (to.left + to.width / 2));
+  const y = Math.round(from.top + from.height / 2 - (to.top + to.height / 2));
+  const scaleX = (from.width / to.width).toFixed(3);
+  const scaleY = (from.height / to.height).toFixed(3);
+  return play(element, {
+    standard: {
+      frames: [
+        { translate: `${x}px ${y}px`, scale: `${scaleX} ${scaleY}` },
+        { translate: '0 0', scale: '1 1' },
+      ],
+      duration: MOTION_DURATION_MS.slow,
+      easing: EMPHASIZED,
+    },
+    reduced: [{ opacity: 0 }, { opacity: 1 }],
+  });
+}

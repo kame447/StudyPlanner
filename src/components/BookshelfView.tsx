@@ -8,7 +8,7 @@ import {
   type MaterialStructurePatch,
 } from '../lib/materialStructureEditor';
 import type { MaterialEditBaseline } from '../hooks/useActualMutationAdmission';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   CalendarDays,
@@ -43,6 +43,8 @@ import {
   selectRecentBookshelfMaterials,
 } from '../lib/bookshelfViewModel';
 import { calculateMaterialPace, getMaterialUnitLabel } from '../lib/materialPace';
+import { playFromRect, type MotionRect } from '../lib/motionEffects';
+import { useDataChangeMotion } from '../hooks/useDataChangeMotion';
 import { createId } from '../lib/id';
 import { todayIsoDate } from '../lib/date';
 import { BookshelfMaterialDetail } from './BookshelfMaterialDetail';
@@ -102,6 +104,7 @@ function MaterialCover({
     return (
       <img
         className={compact ? 'bookshelf-list-cover' : 'bookshelf-featured-cover'}
+        data-cover-of={material.id}
         src={material.coverImageDataUrl || material.coverImageUrl}
         alt={material.name}
       />
@@ -116,6 +119,7 @@ function MaterialCover({
           : 'bookshelf-featured-cover bookshelf-cover-placeholder'
       }
       style={getSubjectStyle(color)}
+      data-cover-of={material.id}
       aria-hidden="true"
     >
       <BookOpen size={compact ? 18 : 26} strokeWidth={1.8} />
@@ -162,6 +166,10 @@ export function BookshelfView({
   );
   const [editingMaterialBaseline, setEditingMaterialBaseline] = useState<MaterialEditBaseline>();
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
+  const viewRef = useRef<HTMLElement | null>(null);
+  // The cover the user opened (or left) and where it was drawn, carried
+  // across the list ⇄ detail swap so the new cover can grow from it.
+  const coverHandoff = useRef<{ materialId: string; rect: MotionRect } | null>(null);
   const [menuMaterialId, setMenuMaterialId] = useState<string | null>(null);
   const [structureError, setStructureError] = useState('');
   const [studyStatusFilter, setStudyStatusFilter] = useState<'all' | 'studying' | 'completed'>('all');
@@ -249,6 +257,52 @@ export function BookshelfView({
   const recentMaterials = useMemo(
     () => selectRecentBookshelfMaterials(filteredMaterials),
     [filteredMaterials],
+  );
+
+  function rememberCover(materialId: string, cover: Element | null | undefined) {
+    const box = cover?.getBoundingClientRect();
+    coverHandoff.current = box && box.width > 0
+      ? { materialId, rect: { left: box.left, top: box.top, width: box.width, height: box.height } }
+      : null;
+  }
+
+  function openMaterial(materialId: string, source?: Element | null) {
+    const entry = typeof source?.closest === 'function' ? source.closest('[data-material-entry]') : null;
+    rememberCover(materialId, entry?.querySelector('[data-cover-of]'));
+    setSelectedMaterialId(materialId);
+  }
+
+  function closeMaterialDetail() {
+    if (selectedMaterialId) {
+      rememberCover(selectedMaterialId, viewRef.current?.querySelector('.bookshelf-detail-page [data-cover-of]'));
+    }
+    setSelectedMaterialId(null);
+  }
+
+  useLayoutEffect(() => {
+    const handoff = coverHandoff.current;
+    coverHandoff.current = null;
+    const view = viewRef.current;
+    if (!handoff || !view) return;
+    const covers = Array.from(view.querySelectorAll(`[data-cover-of="${CSS.escape(handoff.materialId)}"]`));
+    // Back on the list the material may appear in several sections; grow the
+    // one on screen nearest to where the detail cover was.
+    const target = selectedMaterialId
+      ? covers[0]
+      : covers
+        .map((cover) => ({ cover, box: cover.getBoundingClientRect() }))
+        .filter(({ box }) => box.width > 0 && box.bottom > 0 && box.top < window.innerHeight)
+        .sort((a, b) => Math.abs(a.box.top - handoff.rect.top) - Math.abs(b.box.top - handoff.rect.top))[0]?.cover;
+    if (target) playFromRect(target, handoff.rect);
+  }, [selectedMaterialId]);
+
+  // Saved changes (a material moved to another category, marked as a
+  // favourite, added, removed, its progress or status updated) are explained
+  // in place. Filtering, searching and opening a category only show results.
+  useDataChangeMotion(
+    viewRef,
+    `${selectedMaterialId ?? 'list'}:${activeSubjectId}:${studyStatusFilter}:${searchQuery}`,
+    [materials, subjects, preferencesByMaterialId],
   );
 
   const selectedMaterial = selectedMaterialId
@@ -389,7 +443,7 @@ export function BookshelfView({
       plans={plans}
       actuals={actuals}
       preferences={clonePreferences(getPreferences(selectedMaterial.id))}
-      onBack={() => setSelectedMaterialId(null)}
+      onBack={closeMaterialDetail}
       onOpenMenu={() => openMaterialMenu(selectedMaterial)}
       onEditStructure={() => openStructureEditor(selectedMaterial)}
       onOpenDisplaySettings={() => setDisplaySettingsMaterialId(selectedMaterial.id)}
@@ -488,7 +542,10 @@ export function BookshelfView({
                 <button
                   className="bookshelf-featured-card"
                   key={material.id}
-                  onClick={() => setSelectedMaterialId(material.id)}
+                  data-material-entry
+                  data-motion-key={`featured:${material.id}`}
+                  data-motion-signature={`${material.name} ${progress === null ? '' : Math.round(progress)}`}
+                  onClick={(event) => openMaterial(material.id, event?.currentTarget)}
                   type="button"
                 >
                   <MaterialCover material={material} subject={subject} />
@@ -543,7 +600,9 @@ export function BookshelfView({
                     </span>
                     <span>
                       <strong>{subject.name}</strong>
-                      <small>{subjectMaterials.length}冊の教材</small>
+                      <small data-motion-key={`count:${subject.id}`} data-motion-signature={String(subjectMaterials.length)}>
+                        {subjectMaterials.length}冊の教材
+                      </small>
                     </span>
                     {expanded ? (
                       <ChevronDown aria-hidden="true" />
@@ -561,7 +620,10 @@ export function BookshelfView({
                             <div
                               className="bookshelf-material-list-row"
                               key={material.id}
-                              onClick={() => setSelectedMaterialId(material.id)}
+                              data-material-entry
+                              data-motion-key={`row:${subject.id}:${material.id}`}
+                              data-motion-signature={`${material.name} ${material.studyStatus} ${progress === null ? '' : Math.round(progress)}`}
+                              onClick={(event) => openMaterial(material.id, event?.currentTarget)}
                             >
                               <button
                                 className="bookshelf-row-open-button"
@@ -569,7 +631,7 @@ export function BookshelfView({
                                 aria-label={`${material.name}を開く`}
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  setSelectedMaterialId(material.id);
+                                  openMaterial(material.id, event?.currentTarget);
                                 }}
                               />
                               <MaterialCover material={material} subject={subject} compact />
@@ -626,7 +688,10 @@ export function BookshelfView({
                 <div
                   className="bookshelf-recent-row"
                   key={material.id}
-                  onClick={() => setSelectedMaterialId(material.id)}
+                  data-material-entry
+                  data-motion-key={`recent:${material.id}`}
+                  data-motion-signature={`${material.name} ${material.studyStatus}`}
+                  onClick={(event) => openMaterial(material.id, event?.currentTarget)}
                 >
                   <button
                     className="bookshelf-row-open-button"
@@ -634,7 +699,7 @@ export function BookshelfView({
                     aria-label={`${material.name}を開く`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      setSelectedMaterialId(material.id);
+                      openMaterial(material.id, event?.currentTarget);
                     }}
                   />
                   <MaterialCover material={material} subject={subject} compact />
@@ -688,7 +753,7 @@ export function BookshelfView({
   );
 
   return (
-    <section className="bookshelf-view">
+    <section ref={viewRef} className="bookshelf-view">
       {bookshelfContent}
 
       {menuMaterial ? (
