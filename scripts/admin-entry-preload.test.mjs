@@ -35,7 +35,7 @@ describe('Admin entry preload recovery', () => {
   });
 
   it('keeps native lazy imports and CSS gating in real Vite output without preloading the Admin entry', async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'studyplanner-admin-preload-'));
+    const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'studyplanner-admin-preload-'));
     temporaryDirectories.push(root);
     const files = {
       'index.html': '<script type="module" src="/main.js"></script>',
