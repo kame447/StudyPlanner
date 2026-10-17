@@ -176,3 +176,225 @@ for (const { viewport, theme } of [
     await expectLargeTextReachability(page, ready);
   });
 }
+
+// Tall desktop viewports use the circular face rather than the <=800px compact
+// row. Keep rendered text-fragment bounds inside that face when users enlarge text; a
+// fitting outer clock element alone does not prove its rendered text fits.
+async function recordDesktopTimerGeometry(page, dialog, testInfo, name) {
+  await page.evaluate(() => document.fonts.ready);
+  const clock = dialog.locator('[data-study-session-elapsed]');
+  await clock.scrollIntoViewIfNeeded();
+  const geometry = await clock.evaluate(element => {
+    const rect = node => {
+      const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
+      return { left, right, top, bottom, width, height };
+    };
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const pane = element.closest('.study-session-page');
+    const inner = element.closest('.study-session-timer-inner');
+    const ring = element.closest('.study-session-timer-ring');
+    const style = getComputedStyle(element);
+    const ringStyle = getComputedStyle(ring);
+    const badge = inner.querySelector('b');
+    const badgeRange = document.createRange();
+    if (badge) badgeRange.selectNodeContents(badge);
+    return {
+      viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
+      visualViewport: window.visualViewport ? {
+        width: visualViewport.width, height: visualViewport.height, scale: visualViewport.scale,
+      } : null,
+      rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+      appearance: document.documentElement.dataset.appearance,
+      theme: document.documentElement.dataset.theme,
+      mode: ring.dataset.studyMode,
+      elapsed: element.textContent,
+      font: { family: style.fontFamily, size: parseFloat(style.fontSize), weight: style.fontWeight,
+        lineHeight: style.lineHeight, letterSpacing: style.letterSpacing,
+        loaded: document.fonts.check(`${style.fontSize} ${style.fontFamily}`, element.textContent),
+        pixelFaceLoaded: [...document.fonts].some(face => face.family.replace(/["']/g, '') === 'DotGothic16' && face.status === 'loaded') },
+      ring: { ...rect(ring), padding: {
+        left: parseFloat(ringStyle.paddingLeft), right: parseFloat(ringStyle.paddingRight),
+        top: parseFloat(ringStyle.paddingTop), bottom: parseFloat(ringStyle.paddingBottom),
+      } }, inner: rect(inner), clock: rect(element),
+      badge: badge ? { ...rect(badge), text: badge.textContent,
+        textRects: [...badgeRange.getClientRects()].map(({ left, right, top, bottom, width, height }) =>
+          ({ left, right, top, bottom, width, height })) } : null,
+      textRects: [...range.getClientRects()].map(({ left, right, top, bottom, width, height }) =>
+        ({ left, right, top, bottom, width, height })),
+      pane: { ...rect(pane), scrollWidth: pane.scrollWidth, clientWidth: pane.clientWidth,
+        scrollHeight: pane.scrollHeight, clientHeight: pane.clientHeight, overflowY: getComputedStyle(pane).overflowY },
+    };
+  });
+  // Keep the failing geometry and pixels before assertions, including both
+  // scales/states via soft geometry assertions below. These are local fixtures.
+  await testInfo.attach(`${name}-geometry`, {
+    body: JSON.stringify({ revision: process.env.GITHUB_SHA ?? null, project: testInfo.project.name, ...geometry }, null, 2),
+    contentType: 'application/json',
+  });
+  await testInfo.attach(`${name}-screen`, { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
+  return geometry;
+}
+
+function expectDesktopTimerContainment(geometry) {
+  expect.soft(geometry.font.loaded).toBe(true);
+  expect.soft(geometry.mode).toBe('normal');
+  // This plain-text hh:mm:ss clock must stay on one line, not wrap to fit.
+  expect.soft(geometry.textRects).toHaveLength(1);
+  expect.soft(geometry.inner.width).toBeGreaterThan(0);
+  // Growing the face must preserve the circle and its surrounding ring rather
+  // than stretch the inner grid into an ellipse or through the ring padding.
+  expect.soft(Math.abs(geometry.ring.width - geometry.ring.height)).toBeLessThanOrEqual(1);
+  expect.soft(geometry.inner.left).toBeGreaterThanOrEqual(geometry.ring.left + geometry.ring.padding.left - 1);
+  expect.soft(geometry.inner.right).toBeLessThanOrEqual(geometry.ring.right - geometry.ring.padding.right + 1);
+  expect.soft(geometry.inner.top).toBeGreaterThanOrEqual(geometry.ring.top + geometry.ring.padding.top - 1);
+  expect.soft(geometry.inner.bottom).toBeLessThanOrEqual(geometry.ring.bottom - geometry.ring.padding.bottom + 1);
+  for (const text of geometry.textRects) {
+    expect.soft(text.width).toBeGreaterThan(0);
+    expect.soft(text.height).toBeGreaterThan(0);
+    expect.soft(text.left).toBeGreaterThanOrEqual(geometry.inner.left - 1);
+    expect.soft(text.right).toBeLessThanOrEqual(geometry.inner.right + 1);
+    expect.soft(text.top).toBeGreaterThanOrEqual(geometry.inner.top - 1);
+    expect.soft(text.bottom).toBeLessThanOrEqual(geometry.inner.bottom + 1);
+  }
+  if (geometry.badge) {
+    expect.soft(geometry.badge.top).toBeGreaterThanOrEqual(geometry.clock.bottom - 1);
+    expect.soft(geometry.badge.left).toBeGreaterThanOrEqual(geometry.inner.left - 1);
+    expect.soft(geometry.badge.right).toBeLessThanOrEqual(geometry.inner.right + 1);
+    expect.soft(geometry.badge.bottom).toBeLessThanOrEqual(geometry.inner.bottom + 1);
+    for (const text of geometry.badge.textRects) {
+      expect.soft(text.left).toBeGreaterThanOrEqual(geometry.badge.left - 1);
+      expect.soft(text.right).toBeLessThanOrEqual(geometry.badge.right + 1);
+      expect.soft(text.top).toBeGreaterThanOrEqual(geometry.badge.top - 1);
+      expect.soft(text.bottom).toBeLessThanOrEqual(geometry.badge.bottom + 1);
+    }
+  }
+  expect.soft(geometry.pane.scrollWidth).toBeLessThanOrEqual(geometry.pane.clientWidth + 1);
+  // Enlarged text may scroll vertically. Clipping it to pass a one-screen
+  // assertion would violate the existing keyboard/long-content contract.
+  expect.soft(geometry.pane.overflowY).not.toMatch(/hidden|clip/);
+}
+
+for (const viewport of [
+  { width: 1280, height: 900 },
+  { width: 1440, height: 900 },
+  { width: 1920, height: 1080 },
+]) {
+  for (const appearance of ['standard', 'pixel']) {
+    test(`desktop ordinary timer text stays inside its face at ${viewport.width}x${viewport.height} (${appearance}, 200 percent)`, async ({ page }, testInfo) => {
+      await page.setViewportSize(viewport);
+      await page.addInitScript(value => {
+        localStorage.setItem('study-planner-appearance', value);
+        localStorage.setItem('study-planner-theme-mode', 'light');
+      }, appearance);
+      const ready = await openStart(page, 'unplanned');
+      await expect(page.locator('html')).toHaveAttribute('data-appearance', appearance);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+      await ready.getByRole('button', { name: '通常タイマー', exact: true }).click();
+      await expect(ready.getByRole('button', { name: '通常タイマー', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      if (appearance === 'pixel') {
+        await expect.poll(() => ready.locator('[data-study-session-elapsed]')
+          .evaluate(element => getComputedStyle(element).fontFamily)).toContain('DotGothic16');
+      }
+      await page.evaluate(() => document.fonts.ready);
+      // Freeze after entry motion settles. Advance the real timer below rather
+      // than injecting elapsed text or replacing its DOM with a layout mock.
+      await page.clock.pauseAt(new Date(`${E2E_TODAY}T12:00:00+09:00`));
+      for (const [state, elapsed] of [['ready', '00:00:00'], ['paused', '01:01:01']]) {
+        const dialog = page.getByRole('dialog', { name: state === 'ready' ? '学習を開始' : '学習中', exact: true });
+        await expect(dialog.locator('[data-study-session-elapsed]')).toHaveText(elapsed);
+        let control;
+        for (const textScale of [100, 200]) {
+          await page.evaluate(scale => document.documentElement.style.setProperty('font-size', `${scale}%`, 'important'), textScale);
+          const name = `ordinary-timer-${viewport.width}x${viewport.height}-${appearance}-${state}-${textScale}`;
+          const geometry = await recordDesktopTimerGeometry(page, dialog, testInfo, name);
+          expect.soft(geometry.viewport.width).toBe(viewport.width);
+          expect.soft(geometry.viewport.height).toBe(viewport.height);
+          expect.soft(geometry.elapsed).toBe(elapsed);
+          if (appearance === 'pixel') {
+            expect.soft(geometry.font.family).toContain('DotGothic16');
+            expect.soft(geometry.font.pixelFaceLoaded).toBe(true);
+          }
+          if (textScale === 100) control = geometry;
+          else {
+            expect.soft(geometry.rootFontSize).toBeCloseTo(control.rootFontSize * 2, 1);
+            // The current viewport-based clamp grows by1.83x at1280 and2x at
+            // wider targets. Do not hide overflow by making enlarged text tiny.
+            expect.soft(geometry.font.size).toBeGreaterThanOrEqual(control.font.size * 1.5);
+          }
+          expectDesktopTimerContainment(geometry);
+        }
+        if (state === 'ready') {
+          const start = dialog.getByRole('button', { name: 'スタート', exact: true });
+          await start.focus();
+          await expect(start).toBeInViewport({ ratio: 1 });
+          await page.keyboard.press('Enter');
+          const running = page.getByRole('dialog', { name: '学習中', exact: true });
+          await page.clock.fastForward(3_661_000);
+          await expect(running.locator('[data-study-session-elapsed]')).toHaveText('01:01:01');
+          await running.getByRole('button', { name: '一時停止', exact: true }).click();
+          await expect(running.getByRole('button', { name: '再開', exact: true })).toBeVisible();
+        } else {
+          const finish = dialog.getByRole('button', { name: '終了する', exact: true });
+          await finish.focus();
+          await expect(finish).toBeInViewport({ ratio: 1 });
+        }
+      }
+    });
+  }
+}
+
+
+test('desktop planned ordinary timer keeps remaining badge separate at 1440x900 (pixel, 200 percent)', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    localStorage.setItem('study-planner-appearance', 'pixel');
+    localStorage.setItem('study-planner-theme-mode', 'light');
+  });
+  const ready = await openStart(page, 'planned');
+  await expect(page.locator('html')).toHaveAttribute('data-appearance', 'pixel');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await ready.getByRole('button', { name: '通常タイマー', exact: true }).click();
+  await expect(ready.getByRole('button', { name: '通常タイマー', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.evaluate(() => document.fonts.ready);
+  await page.clock.pauseAt(new Date(`${E2E_TODAY}T12:00:00+09:00`));
+  for (const [state, elapsed, remaining] of [
+    ['ready', '00:00:00', null],
+    ['remaining', '00:01:01', '残り 00:58:59'],
+    ['overrun', '01:01:01', '残り 00:00:00'],
+  ]) {
+    const dialog = page.getByRole('dialog', { name: state === 'ready' ? '学習を開始' : '学習中', exact: true });
+    await expect(dialog.locator('[data-study-session-elapsed]')).toHaveText(elapsed);
+    let control;
+    for (const textScale of [100, 200]) {
+      await page.evaluate(scale => document.documentElement.style.setProperty('font-size', `${scale}%`, 'important'), textScale);
+      const geometry = await recordDesktopTimerGeometry(page, dialog, testInfo, `planned-timer-1440x900-pixel-${state}-${textScale}`);
+      expect.soft(geometry.viewport.width).toBe(1440);
+      expect.soft(geometry.viewport.height).toBe(900);
+      expect.soft(geometry.elapsed).toBe(elapsed);
+      expect.soft(geometry.font.family).toContain('DotGothic16');
+      expect.soft(geometry.font.pixelFaceLoaded).toBe(true);
+      expect.soft(geometry.badge?.text ?? null).toBe(remaining);
+      if (textScale === 100) control = geometry;
+      else {
+        expect.soft(geometry.rootFontSize).toBeCloseTo(control.rootFontSize * 2, 1);
+        expect.soft(geometry.font.size).toBeGreaterThanOrEqual(control.font.size * 1.5);
+      }
+      expectDesktopTimerContainment(geometry);
+    }
+    if (state === 'overrun') {
+      const finish = dialog.getByRole('button', { name: '終了する', exact: true });
+      await finish.focus();
+      await expect(finish).toBeInViewport({ ratio: 1 });
+    } else {
+      const action = dialog.getByRole('button', { name: state === 'ready' ? 'スタート' : '再開', exact: true });
+      await action.focus();
+      await expect(action).toBeInViewport({ ratio: 1 });
+      await page.keyboard.press('Enter');
+      const running = page.getByRole('dialog', { name: '学習中', exact: true });
+      await page.clock.fastForward(state === 'ready' ? 61_000 : 3_600_000);
+      await running.getByRole('button', { name: '一時停止', exact: true }).click();
+      await expect(running.getByRole('button', { name: '再開', exact: true })).toBeVisible();
+    }
+  }
+});
