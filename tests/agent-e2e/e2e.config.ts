@@ -4,6 +4,8 @@ import type { E2EConfig } from 'e2e';
 import { web } from '@e2e-dev/web';
 import { openai } from '@ai-sdk/openai';
 import { chatgpt } from 'e2e/oauth/chatgpt';
+import { copilot } from 'e2e/oauth/copilot';
+import { claudeCliExecutor } from './claude-cli-executor';
 
 const projectDir = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(projectDir, '../..');
@@ -31,10 +33,14 @@ export default {
   trace: 'retain-on-failure',
   cache: process.env.CI ? 'off' : 'read-write',
   agents: {
-    default: {
-      model: process.env.LAPLANCE_AGENT_E2E_AUTH === 'chatgpt'
-        ? chatgpt('gpt-6-luna')
-        : openai(process.env.LAPLANCE_AGENT_E2E_MODEL?.trim() || 'gpt-5-mini'),
+    default: process.env.LAPLANCE_AGENT_E2E_AUTH === 'claude-cli'
+      ? { executor: claudeCliExecutor, maxModelCalls: 8 }
+      : {
+      model: process.env.LAPLANCE_AGENT_E2E_AUTH === 'copilot'
+        ? copilot(process.env.LAPLANCE_AGENT_E2E_MODEL?.trim() || 'gpt-6-luna')
+        : process.env.LAPLANCE_AGENT_E2E_AUTH === 'chatgpt'
+          ? chatgpt(process.env.LAPLANCE_AGENT_E2E_MODEL?.trim() || 'gpt-6-luna')
+          : openai(process.env.LAPLANCE_AGENT_E2E_MODEL?.trim() || 'gpt-5-mini'),
       system: 'You test the Laplance Japanese planning UI. Carry out only the requested user interaction. Never approve or save a plan unless explicitly requested. Do not use test-only hooks or internal application state.',
     },
   },
