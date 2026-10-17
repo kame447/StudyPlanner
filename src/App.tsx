@@ -753,6 +753,9 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
         onSaveProfile={saveUserProfile}
         onSignOut={signOut}
         onClose={() => setIsMyPageOpen(false)}
+        onBeforeOpenAdmin={() => !weeklyPlanning.chat.dirty || window.confirm(
+          'AIチャットの保存できていない内容が失われる可能性があります。管理者画面へ移動しますか？',
+        )}
       />
 
     </div>

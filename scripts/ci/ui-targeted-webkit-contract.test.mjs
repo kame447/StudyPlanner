@@ -31,7 +31,10 @@ describe('manual targeted WebKit execution contract', () => {
     expect(workflow).toContain(`name: \${{ ${focused} && 'ui-targeted-webkit' || 'ui-cross-browser' }}-diagnostics-`);
     expect(workflow).toContain('timeout-minutes: 35');
     expect(workflow).toContain('permissions:\n  contents: read\n');
-    expect(workflow).toContain('group: ui-regression-${{ github.ref }}\n  cancel-in-progress: true');
+    expect(workflow.match(/^concurrency:\n([\s\S]*?)\njobs:/m)?.[1].trimEnd()).toBe([
+      `  group: \${{ ${focused} && 'ui-targeted-webkit' || 'ui-regression' }}-\${{ github.ref }}`,
+      '  cancel-in-progress: true',
+    ].join('\n'));
     expect(workflow).toContain('run: test "$PROJECT_RESULT" = success');
     expect(workflow).not.toMatch(/--pass-with-no-tests|continue-on-error|--timeout/);
   });
@@ -61,5 +64,39 @@ describe('manual targeted WebKit execution contract', () => {
     const r = invoke('workflow_dispatch', 'linked.spec.mjs', { symlink: true });
     expect(r.status).toBe(2);
     expect(r.args).toBe(null);
+  });
+});
+
+// Evaluate only the small boolean/string expression used by this workflow. The
+// fixtures use the same literal event, input and ref values as GitHub's contexts.
+function concurrencyGroup(event, spec, ref) {
+  const group = workflow.match(/^concurrency:\n  group: (.+)$/m)?.[1];
+  expect(group).toBeTruthy();
+  return group.replace(/\$\{\{ (.*?) \}\}/g, (_, expression) =>
+    new Function('github', 'inputs', `return (${expression});`)({ event_name: event, ref }, { spec }));
+}
+
+describe('full and targeted Matrix concurrency boundaries', () => {
+  it.each(['refs/heads/main', 'refs/heads/review-branch'])('isolates targeted dispatch from full dispatch on %s', ref => {
+    expect(concurrencyGroup('workflow_dispatch', 'yearly-quick-entry.spec.mjs', ref))
+      .not.toBe(concurrencyGroup('workflow_dispatch', '', ref));
+  });
+  it('isolates a targeted main dispatch from a main push', () => {
+    expect(concurrencyGroup('workflow_dispatch', 'yearly-quick-entry.spec.mjs', 'refs/heads/main'))
+      .not.toBe(concurrencyGroup('push', '', 'refs/heads/main'));
+  });
+  it('preserves ordinary same-ref replacement and the original group identity', () => {
+    const ref = 'refs/heads/main';
+    expect(concurrencyGroup('push', '', ref)).toBe('ui-regression-' + ref);
+    expect(concurrencyGroup('workflow_dispatch', '', ref)).toBe(concurrencyGroup('push', '', ref));
+    expect(concurrencyGroup('pull_request', 'ignored-input', 'refs/pull/714/merge'))
+      .toBe('ui-regression-refs/pull/714/merge');
+  });
+  it('keeps targeted runs in their own bounded same-ref replacement group', () => {
+    const ref = 'refs/heads/review-branch';
+    expect(concurrencyGroup('workflow_dispatch', 'yearly-quick-entry.spec.mjs', ref))
+      .toBe('ui-targeted-webkit-' + ref);
+    expect(concurrencyGroup('workflow_dispatch', 'month-event-range.spec.mjs', ref))
+      .toBe(concurrencyGroup('workflow_dispatch', 'yearly-quick-entry.spec.mjs', ref));
   });
 });

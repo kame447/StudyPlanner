@@ -118,6 +118,9 @@ export interface PlannerRepository {
   getScheduleSnapshot(userId: string): Promise<PlannerScheduleSnapshot>;
   getPlans(userId: string): Promise<Plan[]>;
   getActuals(userId: string): Promise<Actual[]>;
+  // Optional targeted equivalent of getActuals(...).find(id), including its
+  // normalized duplicate winner. Partial reads never certify complete history.
+  getActualForWritePreparation?(userId: string, actualId: string): Promise<Actual | undefined>;
   // Deferred first hydration can require confirmed server absence/history.
   // Local adapters read their canonical local storage; default behavior is unchanged.
   getDayNotes(userId: string, options?: { requireServer: true }): Promise<DayNote[]>;

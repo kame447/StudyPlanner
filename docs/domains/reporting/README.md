@@ -10,6 +10,8 @@
 
 進行中の作業:
 
+- [自動お休み券の反復計算削減と復元検証](work/study-rest-calculation-handoff.md)
+
 - [連続学習カレンダーとお休みチケット](work/20261014-study-streak-calendar-handoff.md)
 
 - [連続学習の1画面化・自動お休み券・今日の炎](work/20261014-study-streak-auto-rest-handoff.md)

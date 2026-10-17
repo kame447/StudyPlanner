@@ -1,8 +1,9 @@
-import { useLayoutEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Image, LogOut, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { useAdminStatus } from '../hooks/useAdminStatus';
 import { createAvatarDataUrl, isImageAvatar } from '../lib/avatarImage';
 import { AVATAR_OPTIONS, getUserDisplayName } from '../lib/userProfile';
+import { APP_HISTORY_CHANGE } from '../lib/appHistory';
 import type { User, UserProfileDraft } from '../types/domain';
 import { UserAvatar } from './UserAvatar';
 
@@ -12,6 +13,7 @@ interface MyPageDialogProps {
   onSaveProfile: (draft: UserProfileDraft) => Promise<User>;
   onSignOut: () => Promise<void>;
   onClose: () => void;
+  onBeforeOpenAdmin: () => boolean;
 }
 
 export function MyPageDialog({
@@ -20,6 +22,7 @@ export function MyPageDialog({
   onSaveProfile,
   onSignOut,
   onClose,
+  onBeforeOpenAdmin,
 }: MyPageDialogProps) {
   const [username, setUsername] = useState(user.username);
   const [avatar, setAvatar] = useState(user.avatar);
@@ -35,6 +38,13 @@ export function MyPageDialog({
   const latestSave = useRef<object | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { isAdmin } = useAdminStatus(open ? user.id : null);
+  const navigationScope = useMemo(() => ({}), [open, user.id]);
+  const adminEntry = useRef<{ scope: object; allowed: boolean; confirm: () => boolean } | null>(null);
+  useLayoutEffect(() => {
+    const entry = { scope: navigationScope, allowed: open && isAdmin, confirm: onBeforeOpenAdmin };
+    adminEntry.current = entry;
+    return () => { if (adminEntry.current === entry) adminEntry.current = null; };
+  }, [navigationScope, open, isAdmin, onBeforeOpenAdmin]);
 
   useLayoutEffect(() => {
     session.current = null;
@@ -103,6 +113,19 @@ export function MyPageDialog({
     selection.current = null;
     pendingPhoto.current = null;
     onClose();
+  }
+
+  function handleOpenAdmin() {
+    const owner = session.current;
+    const entry = adminEntry.current;
+    if (!owner || !entry?.allowed || entry.scope !== navigationScope) return;
+    if (!entry.confirm()) return;
+    // A confirmation may outlive this owner/dialog; a retained click cannot
+    // navigate or close the replacement profile after its authority changes.
+    if (session.current !== owner || adminEntry.current !== entry) return;
+    window.history.pushState({}, '', '/admin/users');
+    window.dispatchEvent(new Event(APP_HISTORY_CHANGE));
+    handleClose();
   }
 
   function markDraftEdited() {
@@ -299,10 +322,7 @@ export function MyPageDialog({
             {isAdmin ? (
               <button
                 className="ghost-button"
-                onClick={() => {
-                  handleClose();
-                  window.location.assign('/admin/users');
-                }}
+                onClick={handleOpenAdmin}
                 type="button"
               >
                 <ShieldCheck aria-hidden="true" size={20} strokeWidth={1.9} />

@@ -21,6 +21,11 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Targeted Actual save preparation](work/actual-save-targeted-read-handoff.md) — Issue #542; exact runtime/unit recovery, reconstructed real-SDK regression evidence and combined integration gates.
+
+- [Overlapping streak history confirmation](work/streak-inflight-history-handoff.md) — Issue #542; identical unsettled read sharing with preserved mutation/refresh boundaries and controlled SDK-call counts.
+- [Same-document administrator entry](work/admin-entry-navigation-handoff.md) — Issue #542; avoid the My Page entry reload while preserving the existing unsaved-chat leave warning and owner/access boundaries.
+
 - [Month view startup loading](work/month-startup-loading-handoff.md) — Issue #542; defer month code while retaining navigation and add requests during delivery.
 
 - [Contact page startup loading](work/contact-startup-loading-handoff.md) — Issue #542; optional contact form/photo code leaves the initial module graph while return navigation stays synchronous; local measurement and native acceptance are separate.

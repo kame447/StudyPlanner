@@ -85,8 +85,10 @@ export function createScheduleEventBackedPlannerRepository(
   };
 
   async function prepareActual(actual: import('../types/domain').Actual) {
-    const actuals = await legacyRepository.getActuals(actual.userId);
-    const previous = actuals.find(item => item.id === actual.id && item.userId === actual.userId);
+    const previous = legacyRepository.getActualForWritePreparation
+      ? await legacyRepository.getActualForWritePreparation(actual.userId, actual.id)
+      : (await legacyRepository.getActuals(actual.userId))
+        .find(item => item.id === actual.id && item.userId === actual.userId);
     // Independent study saves do not need schedule migration or a schedule read.
     if (!actual.planId && !previous?.planId) {
       return prepareActualProgressSource(actual, { plans: [], monthEvents: [] }, previous);

@@ -21,6 +21,8 @@ export function createFirebaseStudyStreakRepository(db: Firestore, receipt?: Con
   let requestSequence = 0;
   let historyEpoch = 0;
   let failedGeneration: number | undefined | null = null;
+  let pendingRead: { userId: string; day: string; generation: number | undefined; hint: string | null;
+    sequence: number; promise: Promise<StudyStreakHistory> } | null = null;
   const issued = new WeakMap<StudyStreakHistory, { generation: number | undefined; epoch: number }>();
   const changedHistory = () => new Error('学習記録が変更されました。確認し直してください。');
   function assertGeneration(generation: number | undefined) {
@@ -58,32 +60,43 @@ export function createFirebaseStudyStreakRepository(db: Firestore, receipt?: Con
     },
     async read(userId, options) {
       assertStudyStreakOwner(userId);
-      const sequence = ++requestSequence;
       const day = options?.today ?? todayIsoDate();
       const generation = receipt?.generation;
       assertGeneration(generation);
       const hint = options?.hint ? studyHistoryFingerprint(options.hint) : null;
-      const shared = failedGeneration !== generation && !options?.refresh && options?.hint ? receipt?.read(userId, options.hint, day) : null;
-      const reusable = shared ?? (cache?.userId === userId && hint !== null && cache.hint === hint
-        && cache.day === day && cache.generation === generation && !options?.refresh ? cache.history : null);
-      const epoch = reusable ? historyEpoch : ++historyEpoch;
-      if (!reusable) { cache = null; failedGeneration = generation; }
-      const [history, rest] = await Promise.all([
-        reusable ?? fetchComplete(userId).catch(error => {
-          if (sequence === requestSequence) { cache = null; failedGeneration = generation; }
-          throw error;
-        }),
-        getDocFromServer(doc(db, REST_COLLECTION, userId)),
-      ]);
-      assertGeneration(generation);
-      if (epoch !== historyEpoch) throw changedHistory();
-      assertServerConfirmed(rest.metadata);
-      const state = readStudyRestState(rest.exists() ? rest.data() : null, userId);
-      if (sequence === requestSequence) {
-        cache = { userId, hint: hint ?? studyHistoryFingerprint(history), day, generation, history };
-        failedGeneration = null;
-      }
-      return remember({ ...history, restDays: state.dates.map(date => ({ date })) }, generation, sequence, epoch);
+      // Share only the current unsettled confirmation. A forced refresh, changed
+      // input, or intervening rest-day transaction must start its own request.
+      if (!options?.refresh && pendingRead?.userId === userId && pendingRead.day === day
+        && pendingRead.generation === generation && pendingRead.hint === hint
+        && pendingRead.sequence === requestSequence) return pendingRead.promise;
+      const sequence = ++requestSequence;
+      pendingRead = null;
+      const confirmation = (async () => {
+        const shared = failedGeneration !== generation && !options?.refresh && options?.hint ? receipt?.read(userId, options.hint, day) : null;
+        const reusable = shared ?? (cache?.userId === userId && hint !== null && cache.hint === hint
+          && cache.day === day && cache.generation === generation && !options?.refresh ? cache.history : null);
+        const epoch = reusable ? historyEpoch : ++historyEpoch;
+        if (!reusable) { cache = null; failedGeneration = generation; }
+        const [history, rest] = await Promise.all([
+          reusable ?? fetchComplete(userId).catch(error => {
+            if (sequence === requestSequence) { cache = null; failedGeneration = generation; }
+            throw error;
+          }),
+          getDocFromServer(doc(db, REST_COLLECTION, userId)),
+        ]);
+        assertGeneration(generation);
+        if (epoch !== historyEpoch) throw changedHistory();
+        assertServerConfirmed(rest.metadata);
+        const state = readStudyRestState(rest.exists() ? rest.data() : null, userId);
+        if (sequence === requestSequence) {
+          cache = { userId, hint: hint ?? studyHistoryFingerprint(history), day, generation, history };
+          failedGeneration = null;
+        }
+        return remember({ ...history, restDays: state.dates.map(date => ({ date })) }, generation, sequence, epoch);
+      })();
+      if (!options?.refresh) pendingRead = { userId, day, generation, hint, sequence, promise: confirmation };
+      try { return await confirmation; }
+      finally { if (pendingRead?.promise === confirmation) pendingRead = null; }
     },
     async useRestDay(history, date, today, options) {
       assertStudyStreakOwner(history.userId);
