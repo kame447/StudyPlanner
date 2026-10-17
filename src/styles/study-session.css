@@ -577,6 +577,22 @@
   display: contents;
 }
 
+/* At enlarged text sizes the ordinary clock's intrinsic width can exceed the
+   fixed circular face. Let the outer ring grow with that same content instead
+   of allowing only its inner grid to expand past the circle. Keep the existing
+   minimum size and font scaling; compact screens retain their shallow layout. */
+@media (min-width: 1024px) and (min-height: 801px) {
+  .study-session-timer-ring[data-study-mode="normal"] {
+    width: max-content;
+    min-width: min(260px, 30dvh, 100%);
+    max-width: 100%;
+  }
+
+  .study-session-timer-ring[data-study-mode="normal"] .study-session-timer-inner strong {
+    white-space: nowrap;
+  }
+}
+
 /* A shallow timer leaves room for inputs and actions on small phones and in
    landscape. Its content can grow naturally when fonts or content are larger. */
 @media (max-height: 800px) {
