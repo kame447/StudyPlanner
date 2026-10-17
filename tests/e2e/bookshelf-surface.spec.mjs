@@ -462,3 +462,79 @@ for (const width of [390, 1280]) {
     expect(afterDelete.structureItems[0].children).toEqual([expect.objectContaining({ title: '次の節' })]);
   });
 }
+
+const deliveryNav = (page, name) => page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name, exact: true });
+const persistedShelfInputs = page => page.evaluate(() => Object.fromEntries([
+  'studyplanner.session', 'studyplanner.plans', 'studyplanner.actuals', 'studyplanner.todos.v1',
+  'studyplanner.studySubjects.v1', 'studyplanner.studyMaterials.v1',
+].map(key => [key, localStorage.getItem(key)])));
+async function prepareShelfDelivery(page) {
+  await seedBookshelf(page);
+  await page.addInitScript(() => {
+    // Control optional warming only; the foreground module and app remain real.
+    window.requestIdleCallback = () => 1;
+    window.cancelIdleCallback = () => {};
+    window.__bookshelfDeliveryDocument = 'retained';
+  });
+}
+
+test('bookshelf delivery failure retains Home navigation and data on cached reentry', async ({ page }) => {
+  await prepareShelfDelivery(page);
+  let attempts = 0, documents = 0;
+  page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents++; });
+  await page.route('**/BookshelfView-*.js', route => { attempts++; return route.abort('failed'); });
+  await page.goto('/');
+  await expect(page.locator('.home-main')).toBeVisible();
+  const persisted = await persistedShelfInputs(page);
+  expect(attempts).toBe(0);
+  for (let entry = 0; entry < 2; entry++) {
+    await deliveryNav(page, '教材').click();
+    await expect(page.getByRole('alert')).toHaveText('教材を読み込めませんでした。');
+    await expect(page.locator('.primary-app-header')).toBeVisible();
+    await expect(deliveryNav(page, 'ホーム')).toBeVisible();
+    await expect(page.getByRole('button', { name: '再読み込み', exact: true })).toHaveCount(0);
+    await deliveryNav(page, 'ホーム').click();
+    await expect(page.locator('.home-main')).toBeVisible();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(deliveryNav(page, 'ホーム')).toHaveAttribute('aria-current', 'page');
+  }
+  expect(attempts).toBe(1);
+  expect(documents).toBe(1);
+  expect(await page.evaluate(() => window.__bookshelfDeliveryDocument)).toBe('retained');
+  expect(await persistedShelfInputs(page)).toEqual(persisted);
+});
+
+test('leaving a pending bookshelf entry prevents late failure from replacing Home', async ({ page }) => {
+  await prepareShelfDelivery(page);
+  let release, finish;
+  const pending = new Promise(resolve => { release = resolve; });
+  const rejected = new Promise(resolve => { finish = resolve; });
+  let attempts = 0, documents = 0;
+  page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents++; });
+  await page.route('**/BookshelfView-*.js', async route => {
+    attempts++;
+    await pending;
+    await route.abort('failed');
+    finish();
+  });
+  try {
+    await page.goto('/');
+    await expect(page.locator('.home-main')).toBeVisible();
+    const persisted = await persistedShelfInputs(page);
+    await deliveryNav(page, '教材').click();
+    await expect.poll(() => attempts).toBe(1);
+    await expect(page.locator('.bookshelf-view')).toHaveCount(0);
+    await deliveryNav(page, 'ホーム').click();
+    release(); await rejected;
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(page.locator('.home-main')).toBeVisible();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await deliveryNav(page, '教材').click();
+    await expect(page.getByRole('alert')).toHaveText('教材を読み込めませんでした。');
+    await deliveryNav(page, 'ホーム').click();
+    await expect(page.locator('.home-main')).toBeVisible();
+    expect(attempts).toBe(1);
+    expect(documents).toBe(1);
+    expect(await persistedShelfInputs(page)).toEqual(persisted);
+  } finally { release(); }
+});

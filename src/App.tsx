@@ -19,6 +19,7 @@ import { usePublicPageNavigation } from './components/PublicPageLink';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
 import { AppViewSwitcher } from './components/AppViewSwitcher';
 import type { BookshelfInitialAction } from './components/BookshelfView';
+import { DeferredBookshelfView as BookshelfView } from './components/DeferredBookshelfView';
 import { DeferredMonthView as MonthView } from './components/DeferredMonthView';
 import { MyPageDialog } from './components/MyPageDialog';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
@@ -49,11 +50,6 @@ const HomeAddFlow = lazy(() => import('./components/HomeAddFlow').then((module) 
 const AiPlanningView = lazy(() =>
   import('./components/AiPlanningView').then((module) => ({
     default: module.AiPlanningView,
-  })),
-);
-const BookshelfView = lazy(() =>
-  import('./components/BookshelfView').then((module) => ({
-    default: module.BookshelfView,
   })),
 );
 const DayView = lazy(() =>

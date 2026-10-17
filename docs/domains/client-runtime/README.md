@@ -21,6 +21,8 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Bookshelf module failure recovery](work/bookshelf-load-recovery-handoff.md) — Issue #542; retain Home navigation and app/session owners when optional Materials delivery fails.
+
 - [UI request acceptance gaps](work/ui-request-acceptance-handoff.md): No14 same-record subject editing through Day and No10 inner-disc percentage containment; test-only local work, native browser acceptance pending.
 
 - [Announcement module failure recovery](work/announcement-load-recovery-handoff.md) — Issue #542; preserve Home, owner-qualified history and bell focus when optional announcement delivery fails.
