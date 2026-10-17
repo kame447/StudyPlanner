@@ -338,8 +338,8 @@ Publication and execution still require the applicable repository authorization.
 ## Browser Regression chromium job cancelled at its 30-minute limit with no failed test
 
 - Operation / symptom: the Browser Regression `chromium` job ends `cancelled` with `##[error]The operation was canceled.` while every test that ran had passed.
-- Known error signature: job duration ≈30 min (`timeout-minutes: 30` in `.github/workflows/browser-regression.yml`); the run reports `Running 842 tests using 1 worker` and the log ends before the last test with no `✘` lines.
-- Root cause or strongest current explanation: runner slowness against the 30-minute job limit; main's runs of the same workflow took about 23–26 minutes on 2026-10-17. Examples: PR #717 run 39026081165 attempt 1 at `da83eeda` (cancelled after test 788 of 842, none failed; attempt 2 succeeded) and run 39055322663 at `e3078e77` (cancelled at 30.4 min, no failures).
+- Known error signature: job duration ≈30 min (`timeout-minutes: 30` in `.github/workflows/browser-regression.yml`); the log's `Running N tests using 1 worker` total is never reached (no `✘` lines) when the job is cancelled.
+- Root cause or strongest current explanation: runner slowness against the 30-minute job limit; main's runs of the same workflow took about 23–26 minutes on 2026-10-17. Examples: PR #717 run 39026081165 attempt 1 at `da83eeda` (`Running 792 tests`; cancelled after test 788, none failed; attempt 2 succeeded) and run 39055322663 at `e3078e77` (`Running 842 tests`; cancelled at 30.4 min, none failed).
 - Safe workaround: confirm from the job log that no test failed, then rerun that job once on the same commit.
 - Required permissions / preconditions: permission to rerun workflow jobs.
 - What not to do: do not treat a cancelled job as success; do not rerun repeatedly without new evidence (repeat-action guard); do not drop tests or raise the limit to avoid the timeout. Do not confuse this with `cancel-in-progress` replacement by a newer run of the same ref, which is not a timeout.
