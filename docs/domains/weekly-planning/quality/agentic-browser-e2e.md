@@ -30,6 +30,23 @@ npm run test:agentic:smoke
 npm run test:agentic
 ```
 
+この端末のようにClaude Code CLIへログイン済みなら、追加APIキーなしで `StepExecutor` からローカルClaude CLI（既定モデル: haiku）を呼び、AIが選んだ画面操作をTesterArmyの認可・記録付きブラウザ操作として実行できる。これはGitHub Actionsでは実行しない。テスト対象は合成データを使うローカルfixtureのみであり、CLIにはテスト画面のテキストが渡される。
+
+```sh
+cd tests/agent-e2e
+claude auth status
+LAPLANCE_AGENT_E2E_AUTH=claude-cli npm run test:agent -- --no-cache
+```
+
+GitHub Copilotが使える環境では、既存の`gh auth login`でログイン済みなら下記のようにGitHub CLIの認証を利用できる。認証情報はローカルのe2e資格情報ストアへ保存し、Git管理・ログ・Issueへ書き込まない。`gpt-6-luna`がそのCopilotプランで有効な場合にのみ実行し、利用可能モデルは `e2e models github-copilot` で都度確認する。ただしモデル一覧の有効表示は実際の推論権限を保証せず、Copilotが`MODEL_UNAVAILABLE`を返す場合はモデル名を無制限に再試行しない。標準のGitHub Actionsでこの認証は使わず、個人認証の操作テストはローカル限定とする。
+
+```sh
+cd tests/agent-e2e
+npx e2e login github-copilot --from-gh
+npx e2e models github-copilot
+LAPLANCE_AGENT_E2E_AUTH=copilot npm run test:agent -- --no-cache
+```
+
 ChatGPTの対応サブスクリプションを使いたい場合は、`cd tests/agent-e2e && npx e2e login openai` で別途認証し、`LAPLANCE_AGENT_E2E_AUTH=chatgpt npm run test:agent` として実行できる。利用可能なモデルは `npx e2e models openai` で確かめる。APIキー方式とこのOAuth方式は混同しない。
 
 必要に応じて `npm --prefix tests/agent-e2e run test:agent -- --no-cache` でキャッシュなしのモデル操作を検証できる。ローカルは成功した操作のreplayを許し、CIはcacheを無効にする。replay成功は新しい探索をした証拠ではないため、重大な変更時には`--no-cache`で再試行し、失敗traceを確認する。
