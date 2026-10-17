@@ -124,6 +124,7 @@ function MaterialCover({ material }: { material: StudyMaterial }) {
     return (
       <img
         className="bookshelf-detail-cover-image"
+        data-cover-of={material.id}
         src={material.coverImageDataUrl || material.coverImageUrl}
         alt={material.name}
       />
@@ -131,7 +132,7 @@ function MaterialCover({ material }: { material: StudyMaterial }) {
   }
 
   return (
-    <div className="bookshelf-detail-cover-placeholder" aria-hidden="true">
+    <div className="bookshelf-detail-cover-placeholder" data-cover-of={material.id} aria-hidden="true">
       <BookOpen size={38} strokeWidth={1.7} />
     </div>
   );
