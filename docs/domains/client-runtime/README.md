@@ -21,6 +21,8 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Attendance reads across an in-flight save](work/attendance-read-lifetime-handoff.md) — fresh lesson history after a pending save survives close/reopen, with owner-scoped pending-operation coordination.
+
 - [Confirmed preference save lifetime](work/preference-save-lifetime-handoff.md) — Issue #542; preserve the mounted planner during week-start saves and show retryable failures without reloading its history.
 
 - [Bookshelf module failure recovery](work/bookshelf-load-recovery-handoff.md) — Issue #542; retain Home navigation and app/session owners when optional Materials delivery fails.
