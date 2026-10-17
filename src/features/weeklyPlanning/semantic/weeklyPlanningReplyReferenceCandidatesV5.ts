@@ -78,7 +78,7 @@ export function createReplyReferenceSnapshotV5(input: {
   inputStateRevision?: number;
 }): ReplyReferenceSnapshotV5 | null {
   if (!Number.isSafeInteger(input.graph.revision) || input.graph.revision < 0
-    || !Number.isSafeInteger(input.inputStateRevision) || (input.inputStateRevision ?? -1) < 0
+    || typeof input.inputStateRevision !== 'number' || !Number.isSafeInteger(input.inputStateRevision) || input.inputStateRevision < 0
     || new Set(input.messages.map(message => message.id)).size !== input.messages.length) return null;
   const graph = createWeeklyPlanningActiveSchedulerGraphViewV5(input.graph);
   const selectedMessages = input.messages.filter(message => message.role === 'user')
