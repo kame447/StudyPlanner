@@ -1,5 +1,5 @@
 # Local template: bind immutable reviewed application source before publication.
-name: Material Control Actionability Acceptance
+name: Material Detail Purpose Acceptance
 permissions:
   contents: read
 concurrency:
@@ -22,14 +22,14 @@ jobs:
           browsers: webkit
     env:
       CI: 'true'
-      SOURCE_SHA: a2037ff15b3218c611525818c312223578bcb776
-      SOURCE_TREE: 4c7b737b20074388c67d792b3d35ec4d8b84e73e
+      SOURCE_SHA: 5dfcb11f624c13775947e9fd2d14952b7e17ab3d
+      SOURCE_TREE: 4870e76c1a8820d6fe6aad519bcac34463658a78
       PROOF_WORKFLOW_SHA: ${{ github.sha }}
       PROOF_PROJECT: ${{ matrix.project }}
     steps:
     - uses: actions/checkout@v7
       with:
-        ref: a2037ff15b3218c611525818c312223578bcb776
+        ref: 5dfcb11f624c13775947e9fd2d14952b7e17ab3d
         fetch-depth: 1
         persist-credentials: false
     - name: Verify immutable application source
@@ -76,23 +76,26 @@ jobs:
       shell: bash
       run: "cat > artifacts/desktop-four-proof/run-selected.mjs <<'NODE'\nimport assert from 'node:assert/strict';\n\
         import crypto from 'node:crypto';\nimport fs from 'node:fs';\nimport { spawnSync } from 'node:child_process';\n\
-        const selected = {\n  \"chromium\": {\n    \"count\": 1,\n    \"sha256\": \"e25692a379dc9a65c40ccb92d6eb5e4057b36b173bb52e9a585753c4c503b071\"\
+        const selected = {\n  \"chromium\": {\n    \"count\": 16,\n    \"sha256\": \"568a34ce3bd9bfe56966ca366353a900221a08420c62875860ef1a3d6d8e4f7b\"\
         ,\n    \"projects\": [\n      \"chromium\"\n    ],\n    \"args\": [\n      \"test\",\n      \"--config=tests/e2e/playwright.config.mjs\"\
         ,\n      \"--project=chromium\",\n      \"(^|/)bookshelf-surface\\\\.spec\\\\.mjs$\",\n      \"--grep\"\
-        ,\n      \"material long text 1280x600 keeps full text and long editor actions reachable at 200%$\"\n  \
-        \  ]\n  },\n  \"cross\": {\n    \"count\": 5,\n    \"sha256\": \"9133d38647b1b65b7b63d6efcb3b84e2371741cce351bb78debdb6a9a3f32bf4\"\
-        ,\n    \"projects\": [\n      \"webkit-mobile\"\n    ],\n    \"args\": [\n      \"test\",\n      \"--config=tests/e2e/playwright.cross-browser.config.mjs\"\
+        ,\n      \"(?:keeps full detail text and cancels unsaved chapter edits at 100%|keeps full detail text and\
+        \ cancels unsaved chapter edits at 200%|saves the last chapter and preserves it after full reload at 100%|saves\
+        \ the last chapter and preserves it after full reload at 200%)$\"\n    ]\n  },\n  \"cross\": {\n    \"count\"\
+        : 16,\n    \"sha256\": \"8a105becf3fec4605086e0b503446f7aa135328ac429105cdfdce92915bf5887\",\n    \"projects\"\
+        : [\n      \"webkit-mobile\"\n    ],\n    \"args\": [\n      \"test\",\n      \"--config=tests/e2e/playwright.cross-browser.config.mjs\"\
         ,\n      \"--project=webkit-mobile\",\n      \"(^|/)bookshelf-surface\\\\.spec\\\\.mjs$\",\n      \"--grep\"\
-        ,\n      \"material long text (?:(?:1440x900|1920x1080) keeps full text and long editor actions reachable\
-        \ at (?:100|200)%|390x844 keeps full text and long editor actions reachable at 200%)$\"\n    ]\n  }\n};\n\
-        const mode = process.argv[2];\nconst expected = selected[mode];\nassert.ok(expected, 'Unknown proof selection');\n\
-        const prefix = `artifacts/desktop-four-proof/${mode}`;\nfs.writeFileSync(`${prefix}-arguments.json`, JSON.stringify(expected.args,\
-        \ null, 2));\nconst collectionProcess = spawnSync('./tests/e2e/node_modules/.bin/playwright', [...expected.args,\
-        \ '--list', '--reporter=json'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });\nfs.writeFileSync(`${prefix}-collection.json`,\
-        \ collectionProcess.stdout ?? '');\nassert.equal(collectionProcess.status, 0, collectionProcess.stderr ||\
-        \ String(collectionProcess.error));\nconst collection = JSON.parse(collectionProcess.stdout);\nassert.deepEqual(collection.errors,\
-        \ []);\nconst identities = new Set();\nfunction visit(suite, parents = []) {\n  const titles = [...parents,\
-        \ suite.title];\n  for (const spec of suite.specs ?? []) for (const test of spec.tests) {\n    assert.ok(expected.projects.includes(test.projectName),\
+        ,\n      \"(?:keeps full detail text and cancels unsaved chapter edits at 100%|keeps full detail text and\
+        \ cancels unsaved chapter edits at 200%|saves the last chapter and preserves it after full reload at 100%|saves\
+        \ the last chapter and preserves it after full reload at 200%)$\"\n    ]\n  }\n};\nconst mode = process.argv[2];\n\
+        const expected = selected[mode];\nassert.ok(expected, 'Unknown proof selection');\nconst prefix = `artifacts/desktop-four-proof/${mode}`;\n\
+        fs.writeFileSync(`${prefix}-arguments.json`, JSON.stringify(expected.args, null, 2));\nconst collectionProcess\
+        \ = spawnSync('./tests/e2e/node_modules/.bin/playwright', [...expected.args, '--list', '--reporter=json'],\
+        \ { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });\nfs.writeFileSync(`${prefix}-collection.json`, collectionProcess.stdout\
+        \ ?? '');\nassert.equal(collectionProcess.status, 0, collectionProcess.stderr || String(collectionProcess.error));\n\
+        const collection = JSON.parse(collectionProcess.stdout);\nassert.deepEqual(collection.errors, []);\nconst\
+        \ identities = new Set();\nfunction visit(suite, parents = []) {\n  const titles = [...parents, suite.title];\n\
+        \  for (const spec of suite.specs ?? []) for (const test of spec.tests) {\n    assert.ok(expected.projects.includes(test.projectName),\
         \ 'Unexpected project');\n    const identity = JSON.stringify([test.projectName, spec.file, ...titles, spec.title]);\n\
         \    assert.ok(!identities.has(identity), `Duplicate case: ${identity}`);\n    identities.add(identity);\n\
         \  }\n  for (const child of suite.suites ?? []) visit(child, titles);\n}\nfor (const suite of collection.suites)\
@@ -108,7 +111,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: material-control-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt
+        name: material-purpose-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt
           }}
         path: 'artifacts/desktop-four-proof/
 
