@@ -212,6 +212,10 @@ firebaseUid <-> actorSubjectId
 
 管理者が既知ユーザーからログへdrill downする場合、admin-authorized resolverがUIDをactorSubjectIdへ変換する。逆方向にuser profileを表示する場合もrestricted resolverを経由する。
 
+管理者のemail完全一致検索はFirebase Authのserver-managed user recordを正本とし、`emailVerified == true`の現在emailだけを照合する。利用者が編集できる`profiles.email`は検索条件にも検索結果のemailにも使わない。Auth上のUIDを先に確定し、profileは表示名・登録日時の付加情報としてだけ読むため、profileが未作成・旧emailのままでも確認済みemailから調査できる。UID・ユーザー名の完全一致検索は従来のprofile検索と最大5件の境界を維持し、選択済みUIDを1回のAuth batch lookupへ渡して結果emailを取得する。Authに存在しない、またはメール未確認のUIDもUID/表示名の調査対象として保持するが、確認済みemailは空欄とし、UIは「確認済みメールなし」と表示する。ユーザー名は自己申告の表示名であり、本人確認済み識別情報として扱わない。
+
+Workerは既存service-account credential providerを再利用し、Auth専用に`https://www.googleapis.com/auth/identitytoolkit` scopeのOAuth tokenを取得・再利用する。既存Firestore callerの`datastore` scopeは変更しない。`POST https://identitytoolkit.googleapis.com/v1/projects/{projectId}/accounts:lookup`にはWorker service accountの対象projectに対するIAM permission `firebaseauth.users.get`が必要である（[公式API契約](https://docs.cloud.google.com/identity-platform/docs/reference/rest/v1/projects.accounts/lookup)）。権限・credential・API設定の不足やAuth障害、応答検証失敗はこの管理者本人検索の明示的な503とし、profile emailへfallbackしない。他の管理readや利用者のログイン・予定保存はこの追加Auth lookupを呼ばない。メール・token・provider error本文をログへ記録しない。本番IAMの現状確認・権限変更はこのコード修正の検証範囲に含まず、運用ownerが配備前に必要権限を確認する。
+
 actor directoryはaccount deletionに追随し、deleted accountを永久に再識別できるmappingとして残さない。
 
 ## 8. Idempotency and delivery

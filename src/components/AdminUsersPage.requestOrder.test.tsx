@@ -76,6 +76,25 @@ afterEach(() => {
 });
 
 describe('Admin exact-profile search ownership', () => {
+  it('labels verified email and explains that the display name is self-reported', async () => {
+    await show();
+    await query('A@example.test'); await enter(); await resolve(0, ['A']);
+    expect(text()).toContain('確認済みメール: A@example.test');
+    expect(text()).toContain('ユーザー名は自己申告の表示名です。');
+  });
+
+  it('shows an explicit missing-verified-email state while preserving UID and actor navigation', async () => {
+    await show();
+    await query('uid-A'); await enter();
+    await act(async () => { requests[0].resolve(response({ ok: true, matches: [{ ...match('A'), email: '' }] })); });
+    expect(text()).toContain('確認済みメールなし');
+    expect(text()).toContain('uid-A');
+    await act(async () => {
+      renderer!.root.findByProps({ className: 'admin-identity-result' }).findByType('button').props.onClick();
+    });
+    expect(navigate).toHaveBeenCalledWith('/admin/users/actor-A');
+  });
+
   it.each(['A@example.test', 'Uid-CaseSensitive', 'ユーザー名'])('preserves the exact lookup identity for %s and opens its actor history', async (value) => {
     await show();
     await query(`  ${value}  `);

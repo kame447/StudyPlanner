@@ -74,6 +74,12 @@ function installFetchMock(options: {
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, init });
+    if (url.includes('/projects/test-project/accounts:lookup')) {
+      const body = JSON.parse(String(init?.body)) as { localId?: string[]; email?: string[] };
+      return Response.json({ users: (body.localId ?? ['firebase-user-1']).map(localId => ({
+        localId, email: body.email?.[0] ?? 'verified@example.com', emailVerified: true,
+      })) });
+    }
     if (url.includes('identitytoolkit.googleapis.com')) {
       return new Response(JSON.stringify({
         users: [{ localId: 'admin-uid', emailVerified: true }],
@@ -339,7 +345,7 @@ describe('traceWorker admin subrequest budget', () => {
     ['/observability/admin/ai?from=2026-06-25&to=2026-09-25', 5],
     ['/observability/admin/planning?from=2026-06-25&to=2026-09-25', 4],
     ['/observability/admin/system', 6],
-    ['/observability/admin/user-identity?q=firebase-user-1', 6],
+    ['/observability/admin/user-identity?q=firebase-user-1', 8],
     ['/observability/admin/users?actor=actor-aaaaaaaa&limit=100', 6],
     ['/observability/admin/logs?limit=50', 5],
     [`/observability/admin/log-entries?session=${SESSION_ID}&limit=20`, 6],
@@ -381,6 +387,54 @@ describe('traceWorker admin subrequest budget', () => {
     if (path.includes('/user-identity')) {
       expect((body as { matches?: unknown[] }).matches).toHaveLength(5);
     }
+  });
+
+  it.each(['anonymous', 'non-admin'] as const)('requires admin authorization before server identity lookup: %s', async caller => {
+    const calls = installFetchMock();
+    if (caller === 'non-admin') {
+      const fetcher = globalThis.fetch;
+      vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) =>
+        String(input).includes('/documents/admins/') ? new Response(null, { status: 404 }) : fetcher(input, init));
+    }
+    const response = await traceWorker.fetch(new Request('https://worker.example/observability/admin/user-identity?q=user@example.com', {
+      headers: caller === 'anonymous' ? {} : { Authorization: 'Bearer firebase-id-token' },
+    }), env);
+    expect(response.status).toBe(403);
+    expect(calls.some(call => call.url.includes('/projects/test-project/accounts:lookup'))).toBe(false);
+    expect(calls.some(call => call.url.endsWith(':runQuery'))).toBe(false);
+  });
+
+  it('resolves email through Auth before reading profiles on the authenticated HTTP path', async () => {
+    const calls = installFetchMock();
+    const response = await adminGet('/observability/admin/user-identity?q=victim@example.test');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ matches: [{
+      firebaseUid: 'firebase-user-1', email: 'victim@example.test', actorSubjectId: 'actor-aaaaaaaa',
+    }] });
+    // The synthetic profile has a different email. Username/email profile
+    // queries would also return unrelated users, so they must not run here.
+    expect(calls.some(call => call.url.endsWith(':runQuery'))).toBe(false);
+    const authCall = calls.find(call => call.url.includes('/projects/test-project/accounts:lookup'));
+    expect(JSON.parse(String(authCall?.init?.body))).toEqual({ email: ['victim@example.test'] });
+    expect(calls).toHaveLength(7);
+  });
+
+  it('returns a sanitized 503 for Auth permission failure without falling back to profile email', async () => {
+    const calls = installFetchMock();
+    const fetcher = globalThis.fetch;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).includes('/projects/test-project/accounts:lookup')
+        ? new Response('private email/token sentinel', { status: 403 }) : fetcher(input, init));
+    const response = await adminGet('/observability/admin/user-identity?q=victim@example.test');
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'Observability read model is temporarily unavailable.' });
+    expect(console.error).toHaveBeenCalledWith('[Product Observability] admin read failed', {
+      message: 'observability_auth_identity_lookup_failed',
+    });
+    expect(calls.some(call => call.url.endsWith(':runQuery') || call.url.endsWith(':batchGet'))).toBe(false);
+    // The scoped Auth credential is lazy and does not affect other admin reads.
+    const overview = await adminGet('/observability/admin/overview?from=2026-09-25&to=2026-09-25');
+    expect(overview.status).toBe(200);
   });
 
   it.each(['observability_active_user_windows', 'observability_rollup_state'])('keeps Overview %s read failures sanitized', async (collection) => {
