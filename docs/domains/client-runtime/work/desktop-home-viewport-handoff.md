@@ -427,3 +427,37 @@ the new contrast assertion and existing interaction/geometry checks. Both visual
 cases must match the four individually approved baseline images with unchanged
 comparison thresholds. Source/build/collection success does not close these
 native gates, and retry-only success is not accepted as a clean result.
+
+## Integer capture-boundary correction (2026-10-17 16:20 UTC)
+
+The final 11 native cases passed ten on the first attempt: both visual cases,
+all three light AI proposals, the other two Chromium Home sizes and all three
+mobile-WebKit Home cases. Only Chromium 1280px dark failed, identically twice,
+before contrast: its button is 460.734375×44 at x=146.765625/y=287.546875, while
+its element screenshot is 462×45. The prior raw-size ±1 check rejected the
+1.265625px width difference. This is a capture enclosure issue, not product scale.
+Pinned Playwright 1.64 encloses element document bounds with floor(left+.001)
+and ceil(right-.001), explaining that actual image exactly. Five other native
+captures and the failing retry are recorded for comparison.
+
+Options were widening a tolerance, retaining backend-dependent element bounds,
+or specifying an integer viewport clip from the measured rectangle. The last is
+used: `page.screenshot` receives that exact integer clip, the decoded PNG must
+match its dimensions exactly, and label coordinates map one-to-one from the
+known clip origin. No proportional coordinate stretch remains. The full clip
+must lie within the viewport; nonfinite/empty bounds, document scrolling or
+post-capture button/label/viewport changes fail. Existing opacity, opaque PNG,
+text-fill-only masking, one-pixel label margin and minimum 4.5 checks remain.
+
+Only this test helper and this checkpoint change. All production code, styles,
+fixtures and approved baselines remain exact. Nine existing pixel probes still
+pass, and the actual helper is exercised against all six recorded browser/size
+rectangles: valid clips pass, low-contrast pixels fail, and wrong DPR or even a
+one-pixel dimension mismatch is rejected. These are source-only probes, not a
+new browser pass. Source syntax and test-definition AST equality also pass.
+No build, typecheck or whole suite is repeated for unchanged product inputs.
+
+Next: run only the 1280px dark Home case in Chromium and mobile-WebKit. These two
+native cases directly cover fractional-origin enclosure and DPR3 CSS-pixel
+capture. Preserve the other exact-input acceptance evidence, and do not claim
+this final boundary resolved until both cases pass without a retry-only result.

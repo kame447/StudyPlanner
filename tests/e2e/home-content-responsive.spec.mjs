@@ -78,22 +78,34 @@ async function readableDarkStartAction(page, info) {
       ancestors.push({ opacity: computed.opacity, filter: computed.filter });
     }
     return { foreground, foregroundColor, textShadow: style.textShadow, labels, ancestors,
-      button: element.getBoundingClientRect().toJSON(), backgroundColor: style.backgroundColor, backgroundImage: style.backgroundImage };
+      button: element.getBoundingClientRect().toJSON(), viewport: { width: innerWidth, height: innerHeight, scrollX, scrollY },
+      backgroundColor: style.backgroundColor, backgroundImage: style.backgroundImage };
   });
+  // Pin the CSS-pixel capture origin explicitly. Element screenshots enclose
+  // fractional backend bounds differently; their PNG can exceed raw width by >1px.
+  if (![...Object.values(paint.button), ...Object.values(paint.viewport)].every(Number.isFinite) || paint.button.width <= 0 || paint.button.height <= 0) throw new Error('Invalid capture bounds');
+  const x = Math.floor(paint.button.left + 0.001), y = Math.floor(paint.button.top + 0.001);
+  paint.clip = { x, y, width: Math.ceil(paint.button.right - 0.001) - x, height: Math.ceil(paint.button.bottom - 0.001) - y };
+  if (paint.clip.width <= 0 || paint.clip.height <= 0) throw new Error('Empty capture clip');
+  expect(paint.viewport.scrollX).toBe(0); expect(paint.viewport.scrollY).toBe(0);
+  expect(paint.clip.x).toBeGreaterThanOrEqual(0); expect(paint.clip.y).toBeGreaterThanOrEqual(0);
+  expect(paint.clip.x + paint.clip.width).toBeLessThanOrEqual(paint.viewport.width);
+  expect(paint.clip.y + paint.clip.height).toBeLessThanOrEqual(paint.viewport.height);
   await info.attach('desktop-home-start-paint', { body: JSON.stringify(paint), contentType: 'application/json' });
   expect(paint.labels.length).toBeGreaterThan(0);
   expect(paint.textShadow).toBe('none');
   for (const ancestor of paint.ancestors) expect(ancestor).toEqual({ opacity: '1', filter: 'none' });
   // Suppress only text fill during this capture. Unlike changing color, this
   // preserves currentColor-dependent backgrounds and the actual ancestor gradients.
-  const backgroundPng = await button.screenshot({ scale: 'css', style: '.home-start-button { -webkit-text-fill-color: transparent !important; }' });
+  const backgroundPng = await page.screenshot({ clip: paint.clip, scale: 'css', style: '.home-start-button { -webkit-text-fill-color: transparent !important; }' });
   await info.attach('desktop-home-start-background', { body: backgroundPng, contentType: 'image/png' });
   expect(backgroundPng.length).toBeGreaterThan(0);
-  const after = await button.evaluate(element => ({ button: element.getBoundingClientRect().toJSON(),
+  const after = await button.evaluate(element => ({ button: element.getBoundingClientRect().toJSON(), viewport: { width: innerWidth, height: innerHeight, scrollX, scrollY },
     labels: [...element.childNodes].filter(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim()).flatMap(node => {
       const range = document.createRange(); range.selectNodeContents(node);
       return [...range.getClientRects()].map(rect => rect.toJSON());
     }) }));
+  expect(after.viewport).toEqual(paint.viewport);
   expect(after.labels).toHaveLength(paint.labels.length);
   for (const [beforeBox, afterBox] of [[paint.button, after.button], ...paint.labels.map((label, index) => [label, after.labels[index]])]) {
     for (const field of ['x', 'y', 'width', 'height']) expect(afterBox[field]).toBeCloseTo(beforeBox[field], 2);
@@ -105,7 +117,7 @@ async function readableDarkStartAction(page, info) {
       canvas.width = bitmap.width; canvas.height = bitmap.height;
       const context = canvas.getContext('2d');
       if (!context || !bitmap.width || !bitmap.height) throw new Error('Invalid contrast image');
-      if (Math.abs(bitmap.width - paint.button.width) > 1 || Math.abs(bitmap.height - paint.button.height) > 1) throw new Error('Unexpected screenshot scale');
+      if (bitmap.width !== paint.clip.width || bitmap.height !== paint.clip.height) throw new Error('Unexpected screenshot scale or clip');
       context.drawImage(bitmap, 0, 0);
       const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
       for (let index = 3; index < pixels.length; index += 4) if (pixels[index] !== 255) throw new Error('Contrast image must be opaque');
@@ -116,11 +128,10 @@ async function readableDarkStartAction(page, info) {
       let minimumRatio = Infinity, sampleCount = 0, minimumBackground;
       const sampledRects = paint.labels.map(label => {
         if (label.width <= 0 || label.height <= 0 || label.left < paint.button.left || label.top < paint.button.top || label.right > paint.button.right || label.bottom > paint.button.bottom) throw new Error('Label is outside button image');
-        const scaleX = bitmap.width / paint.button.width, scaleY = bitmap.height / paint.button.height;
-        // Element screenshot clips may round fractional origins. Include a
-        // clamped one-CSS-pixel margin so no edge backing pixel is missed.
-        const rect = { left: Math.max(0, Math.floor((label.left - paint.button.left - 1) * scaleX)), top: Math.max(0, Math.floor((label.top - paint.button.top - 1) * scaleY)),
-          right: Math.min(bitmap.width, Math.ceil((label.right - paint.button.left + 1) * scaleX)), bottom: Math.min(bitmap.height, Math.ceil((label.bottom - paint.button.top + 1) * scaleY)) };
+        // The integer clip gives a one-to-one CSS-pixel map, without stretching
+        // the label coordinates. Retain a clamped one-pixel edge margin.
+        const rect = { left: Math.max(0, Math.floor(label.left - paint.clip.x - 1)), top: Math.max(0, Math.floor(label.top - paint.clip.y - 1)),
+          right: Math.min(bitmap.width, Math.ceil(label.right - paint.clip.x + 1)), bottom: Math.min(bitmap.height, Math.ceil(label.bottom - paint.clip.y + 1)) };
         if (rect.left < 0 || rect.top < 0 || rect.right > bitmap.width || rect.bottom > bitmap.height || rect.right <= rect.left || rect.bottom <= rect.top) throw new Error('Invalid label sampling coordinates');
         for (let y = rect.top; y < rect.bottom; y++) for (let x = rect.left; x < rect.right; x++) {
           const index = (y * bitmap.width + x) * 4;
