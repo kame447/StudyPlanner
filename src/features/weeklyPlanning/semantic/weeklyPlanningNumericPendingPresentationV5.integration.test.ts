@@ -59,7 +59,7 @@ beforeEach(() => {
 });
 afterEach(() => { resetWeeklyPlanningStableV5TraceRuntimeForTest(); restore?.(); resetWeeklyPlanningStableV5RuntimeSessionsForTest(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
-it('default unconfigured D5 stays inert while a real two-turn effort answer reaches existing Luna', async () => {
+it('default unconfigured D5 stays inert while an exact bound effort answer uses zero AI calls', async () => {
   let state = createInitialPlanningState(week);
   const session = createWeeklyPlanningControllerSession(owner, week, conversation);
   const submit = (userText: string) => submitWeeklyPlanningApplicationTurn({ session, userId: owner, ownerId: owner,
@@ -81,7 +81,8 @@ it('default unconfigured D5 stays inert while a real two-turn effort answer reac
   const beforeAnswer = schemas.length;
   expect((await submit('1問3分です')).accepted).toBe(true);
   expect(schemas.slice(beforeAnswer).filter(name => name.includes('semantic') || name.includes('focused_contextual')))
-    .toEqual(['weekly_planning_focused_contextual_answer_v5']);
+    // The full-utterance #735 grammar has already constructed the typed document.
+    .toEqual([]);
   const answered = loadWeeklyPlanningStableV5PersistedSession({ ownerId: owner, weekStartDate: week })!;
   expect(answered.graph.effortEstimates).toMatchObject([{ kind: 'duration_per_unit', minutes: 3, precision: 'exact', unitCode: 'problem' }]);
   expect(answered.graph.workloads).toHaveLength(1);
