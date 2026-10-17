@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type PropsWithChildren,
 } from 'react';
@@ -22,7 +23,8 @@ import {
   interpretUserPlanningContextNaturalLanguageV2,
   userPlanningContextExternalOwnerMessageV2,
 } from './userPlanningContextNaturalLanguageV2';
-import { getUserPlanningContextRepositoryV1 } from './userPlanningContextRepository';
+import { getUserPlanningContextRepositoryV1, type UserPlanningContextRepositoryStateV1 } from './userPlanningContextRepository';
+import { semanticMemoryApplication } from './semanticMemory/index/semanticMemoryApplication';
 import { subscribeUserPlanningContextCommittedV1 } from './userPlanningContextSyncEvents';
 import type {
   UserPlanningContextRecordV1,
@@ -90,11 +92,10 @@ export function UserPlanningContextProvider({
   const [syncing, setSyncing] = useState(false);
   const [shared, setShared] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const semanticScope = useRef<ReturnType<typeof semanticMemoryApplication.connect> | null>(null);
 
-  const applyRepositoryState = useCallback((next: {
-    snapshot: UserPlanningContextSnapshotV1;
-    shared: boolean;
-  }) => {
+  const applyRepositoryState = useCallback((next: UserPlanningContextRepositoryStateV1) => {
+    if (next.snapshot.ownerId !== ownerId) return;
     hydrateUserPlanningContextSnapshotV1(next.snapshot);
     setSnapshot(loadUserPlanningContextSnapshotV1({
       ownerId: next.snapshot.ownerId,
@@ -102,10 +103,14 @@ export function UserPlanningContextProvider({
     }));
     setShared(next.shared);
     setError(null);
-  }, []);
+    if (next.shared) semanticScope.current?.publish({ ownerId: next.snapshot.ownerId,
+      revision: next.revision, records: next.snapshot.records });
+  }, [ownerId]);
 
   useEffect(() => {
     let active = true;
+    const scope = semanticMemoryApplication.connect(ownerId);
+    semanticScope.current = scope;
     let unsubscribeRemote: () => void = () => undefined;
     let unsubscribeCommitted: () => void = () => undefined;
 
@@ -157,6 +162,8 @@ export function UserPlanningContextProvider({
     void initialize();
     return () => {
       active = false;
+      scope.dispose();
+      if (semanticScope.current === scope) semanticScope.current = null;
       unsubscribeRemote();
       unsubscribeCommitted();
     };

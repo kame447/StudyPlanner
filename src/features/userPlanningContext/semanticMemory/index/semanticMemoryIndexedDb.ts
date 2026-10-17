@@ -11,6 +11,39 @@ const CATALOG = `${PREFIX}catalog`;
 const CHANNEL = `${PREFIX}invalidation`;
 const localInvalidators = new Set<(name: string) => void>();
 
+function announceInvalidation(name: string): void {
+  localInvalidators.forEach((invalidate) => invalidate(name));
+  if (typeof BroadcastChannel !== 'undefined') {
+    const channel = new BroadcastChannel(CHANNEL);
+    channel.postMessage(name);
+    channel.close();
+  }
+}
+
+/** Account cleanup discovers/deletes existing databases without opening or creating any. */
+export async function deleteAllSemanticMemoryIndexDatabases(factory = globalThis.indexedDB): Promise<{
+  status: 'ok';
+} | { status: 'unavailable'; reason: 'storage_unavailable' | 'quota_exceeded' }> {
+  try {
+    if (!factory?.databases) throw new Error('database enumeration unavailable');
+    for (const database of await factory.databases()) {
+      if (!database.name?.startsWith(PREFIX)) continue;
+      const name = database.name;
+      announceInvalidation(name);
+      await new Promise<void>((resolve, reject) => {
+        const pending = factory.deleteDatabase(name);
+        pending.onsuccess = () => resolve();
+        pending.onerror = () => reject(pending.error);
+        pending.onblocked = () => reject(new SemanticMemoryUnavailableError('storage_unavailable'));
+      });
+    }
+    return { status: 'ok' };
+  } catch (error) {
+    return { status: 'unavailable', reason: semanticMemoryStorageError(error).reason === 'quota_exceeded'
+      ? 'quota_exceeded' : 'storage_unavailable' };
+  }
+}
+
 interface Fence {
   revision: number;
   snapshot: string;
@@ -88,7 +121,7 @@ async function registrations(factory: IDBFactory): Promise<Registration[]> {
 }
 
 async function eraseDatabase(factory: IDBFactory, name: string): Promise<void> {
-  localInvalidators.forEach((invalidate) => invalidate(name));
+  announceInvalidation(name);
   const db = await open(factory, name);
   try {
     const tx = db.transaction(['entries', 'state'], 'readwrite');
@@ -104,11 +137,6 @@ async function eraseDatabase(factory: IDBFactory, name: string): Promise<void> {
     };
     await done;
   } finally { db.close(); }
-  if (typeof BroadcastChannel !== 'undefined') {
-    const channel = new BroadcastChannel(CHANNEL);
-    channel.postMessage(name);
-    channel.close();
-  }
 }
 
 /** Erases vectors, preserving only hashed names and revision/generation tombstones. */
@@ -138,7 +166,7 @@ export class SemanticMemoryIndexedDbStore {
   private opening: Promise<IDBDatabase> | undefined;
   private name = '';
   private readonly invalidate = (name: string) => {
-    if (name === this.name) this.invalidated = true;
+    if (name === this.name) { this.invalidated = true; this.db?.close(); }
   };
 
   constructor(private readonly ownerId: string, private readonly model: SemanticMemoryModelDescriptor,
