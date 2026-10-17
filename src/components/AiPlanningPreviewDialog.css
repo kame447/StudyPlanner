@@ -424,3 +424,96 @@
     font-size: 0.43rem;
   }
 }
+
+/* The v2 dialog is a sibling of .ai-planning-view, so ancestor-scoped legacy
+   theme rules do not reach it. Keep its dark surfaces and text paired here. */
+:root[data-theme='dark'] .ai-planning-preview-dialog-v2,
+:root[data-theme='dark'] .ai-planning-preview-dialog-v2 :is(
+  .ai-planning-preview-mode-tabs,
+  .ai-planning-preview-overview-scroll,
+  .ai-planning-week-header,
+  .ai-planning-preview-day-detail,
+  .ai-planning-preview-day-scroll,
+  .ai-planning-preview-day-column-detail
+) {
+  background: var(--surface-strong);
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .ai-planning-preview-dialog-v2 :is(
+  .ai-planning-preview-period-nav,
+  .ai-planning-preview-day-axis,
+  .ai-planning-preview-total
+) {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .ai-planning-preview-dialog-v2 :is(
+  .ai-planning-preview-header h2,
+  .ai-planning-week-header strong,
+  .ai-planning-preview-period-nav strong,
+  .ai-planning-preview-day-nav strong
+) {
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .ai-planning-preview-dialog-v2 :is(
+  .ai-planning-preview-header p,
+  .ai-planning-week-header small,
+  .ai-planning-preview-period-nav small,
+  .ai-planning-preview-day-nav small,
+  .ai-planning-preview-hint,
+  .ai-planning-time-axis span,
+  .ai-planning-preview-day-axis > span
+) {
+  color: var(--text-muted);
+}
+
+:root[data-theme='dark'] .ai-planning-preview-dialog-v2 :is(
+  .ai-planning-preview-header button,
+  .ai-planning-preview-mode-tabs button,
+  .ai-planning-preview-period-nav button,
+  .ai-planning-preview-day-nav button,
+  .ai-planning-secondary-action
+) {
+  background: var(--surface-strong);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .ai-planning-preview-dialog-v2 :is(
+  .ai-planning-preview-mode-tabs button.active,
+  .ai-planning-preview-header > span,
+  .ai-planning-primary-action
+) {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .ai-planning-preview-dialog-v2 :is(
+  .ai-planning-preview-header,
+  .ai-planning-preview-period-nav,
+  .ai-planning-preview-hint,
+  .ai-planning-preview-overview-grid,
+  .ai-planning-week-header,
+  .ai-planning-week-header > span,
+  .ai-planning-week-header > div,
+  .ai-planning-time-axis,
+  .ai-planning-preview-overview-day,
+  .ai-planning-hour-line,
+  .ai-planning-preview-day-scroll,
+  .ai-planning-preview-day-axis,
+  .ai-planning-preview-total,
+  .ai-planning-preview-actions
+) {
+  border-color: var(--border);
+}
+
+:root[data-theme='dark'] .ai-planning-preview-dialog-v2 :is(
+  .ai-planning-preview-period-nav button:disabled,
+  .ai-planning-preview-day-nav button:disabled
+) {
+  border-color: var(--border);
+  color: var(--text-muted);
+}

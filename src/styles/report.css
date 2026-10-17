@@ -638,6 +638,19 @@
 .learning-report-breakdown-copy strong,
 .learning-report-breakdown-copy span { white-space: normal; overflow-wrap: anywhere; }
 
+/* Small emphasized text needs the readable text token on dark surfaces.
+   Keep accent colors for the bars and for the existing light-theme text. */
+:root[data-theme='dark'] .learning-report-chart-value,
+:root[data-theme='dark'] .learning-report-details > summary,
+:root[data-theme='dark'] .learning-report-insight strong {
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .learning-report-scope-tabs button.active {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+
 @media (max-width: 520px) {
   .app-shell:has(.learning-report-view) { width: 100%; padding-inline: 10px; }
   .learning-report-summary-grid { gap: 6px; }

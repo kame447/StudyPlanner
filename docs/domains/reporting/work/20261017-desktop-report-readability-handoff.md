@@ -39,3 +39,56 @@ Exact-size post-change rendering, screenshots, physical-device behavior and visu
 ## Source review follow-up — 2026-10-17 14:28 UTC
 
 Independent source review found no blocking layout or ownership issue. Raising the numeric font changes the em-based plot reservation, so only equal bar scale/formulas are preserved, not identical absolute pixel geometry. The enlarged-text native check covers the first disclosed breakdown title and keyboard disclosure; it does not establish 200% containment of every chart label/value or every detail row. Exact-size desktop Firefox/WebKit remain unverified. At the reviewer's request, enlarged metrics/screenshots are now attached before geometry assertions so failures retain diagnostics. The six test identities and every assertion are unchanged; syntax was rechecked after this diagnostic-order-only edit.
+
+## PR #737 native correction: dark emphasized text
+
+The first bounded native run on source `fb018e4` (tree `638cc9aa`) passed all
+14 Report geometry cases in Chromium, but actual dark screenshots exposed weak
+chart-value and disclosure text. The solid chart foreground `#2f8f84` against
+observed pixel paper `#1c2d34` has a 3.651:1 contrast ratio. Larger placement alone
+did not address this small-text readability problem.
+
+A separate correction based on the same integration tree changes only three dark
+text selectors (chart values, details disclosure and insight heading) to the
+existing body-text token. The selected day/week/month tab is a fourth, separately
+verified case: its actual white ink against `#59b7ab` measures only 2.390:1.
+Dark selected tabs now use the existing selected-surface/body-text token pair;
+the native check composites that translucent surface over its opaque parent
+paper before measuring contrast. Light colors, bars, typography, geometry, data and
+scroll ownership stay unchanged. With the current dark body token `#e8f2ef`, the
+same observed background gives 12.466:1. This arithmetic is evidence for the
+observed colors, not a universal contrast certificate for every theme or paint
+layer. The native matrix now records actual computed ink/paper colors, requires
+opaque colors, checks at least 4.5:1 against the opaque pixel chart paper and
+checks dark emphasized text matches body text. Wallpaper and gradient paint
+still require image review.
+
+Alternatives considered: enlarging these labels alone would alter geometry and
+would not fix the dark token; globally changing the accent would affect other
+screens; a Report-only dark body-text override directly addresses the observed
+failure with the smallest color-only scope.
+
+The WebKit-mobile project also timed out on its first 1920×1080 light fixture,
+then passed on retry. Trace evidence shows all three scope screenshots and the
+200% full-page screenshot completed, consuming 17.17 seconds of the 30-second
+budget; the deadline arrived near the final disclosure close. This remains a
+failed/flaky acceptance result. The six desktop definitions now capture at CSS
+pixel scale instead of device pixel scale. The mobile project's DPR, viewport,
+DOM geometry, keyboard checks, assertions and timeout are unchanged. This avoids
+encoding nine image pixels per CSS pixel at DPR 3; its effectiveness still needs
+a fresh native run. It does not change existing mobile-only cases.
+
+Local verification for the correction:
+- Initial direct Vitest startup could not enumerate network interfaces. Supplying
+  the repository-supported explicit loopback development host avoided that unused
+  discovery step; no browser/server was started.
+- Exact new source regression before CSS fix: 1 failed, existing 3 passed.
+- Related Report style/component and pixel style tests: 3 files, 14 passed.
+- Fresh application typecheck passed before the final selected-tab test was added;
+  final combined typecheck remains with the integration owner.
+- Selected-tab regression: 1 failed/4 existing passed before the tab fix, then
+  all 5 style cases passed. Final native syntax and collection passed.
+- No local browser launch or native pass is claimed. The publisher owns the
+  combined build and fresh Chromium/mobile Report acceptance, including the
+  previously flaky case and dark image review. Do not accept a retry pass as a
+  clean first-attempt result.

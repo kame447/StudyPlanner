@@ -16,7 +16,7 @@ describe('desktop Home source layout contract', () => {
     const media = css.nodes.filter(node => node.type === 'atrule');
     expect(media).toHaveLength(1);
     expect(media[0]).toMatchObject({ name: 'media', params: '(min-width: 1200px)' });
-    css.walkRules(rule => { expect(rule.selector.startsWith(home)).toBe(true); });
+    css.walkRules(rule => { expect(rule.selector.replace(":root[data-theme='dark'] ", '').startsWith(home)).toBe(true); });
     expect(imports.indexOf('home-desktop.css')).toBeGreaterThan(imports.indexOf('home-content-reflow.css'));
   });
   it('uses meaningful columns and leaves overflow with the Home body', () => {
@@ -38,6 +38,46 @@ describe('desktop Home source layout contract', () => {
     expect(values(`${home} .home-next-meta`)['font-size']).toBe('0.875rem');
     css.walkDecls('font-size', decl => { expect(decl.value).toMatch(/^[\d.]+rem$/); expect(parseFloat(decl.value)).toBeGreaterThanOrEqual(0.75); });
     css.walkDecls(decl => { expect(['transform', 'zoom']).not.toContain(decl.prop); });
+  });
+  it('uses the accessible theme-muted color for normal-size material progress text', () => {
+    expect(values(`${home} .home-material-copy small`).color).toBe('var(--text-muted)');
+    const base = postcss.parse(readFileSync(new URL('./base.css', import.meta.url), 'utf8'));
+    let foreground = '';
+    base.walkRules(':root', rule => rule.walkDecls('--text-muted', declaration => { foreground = declaration.value; }));
+    expect(foreground).toMatch(/^#[\da-f]{6}$/i);
+    const channels = foreground.slice(1).match(/.{2}/g)!.map(channel => parseInt(channel, 16) / 255)
+      .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+    const luminance = 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+    // Native axe measured this existing white material-list background.
+    expect(1.05 / (luminance + 0.05)).toBeGreaterThanOrEqual(4.5);
+  });
+  it('pairs the dark desktop start label with a readable surface without changing control geometry', () => {
+    const selector = `:root[data-theme='dark'] ${home} .home-start-button`;
+    expect(values(selector)).toEqual({ color: 'var(--text-primary)', background: 'var(--surface-selected)' });
+    const base = postcss.parse(readFileSync(new URL('./base.css', import.meta.url), 'utf8'));
+    const tokens: Record<string, string> = {};
+    base.walkRules(":root[data-theme='dark']", rule => rule.walkDecls(decl => { tokens[decl.prop] = decl.value; }));
+    const foreground = tokens['--text-primary'].slice(1).match(/.{2}/g)!.map(channel => parseInt(channel, 16));
+    const surface = tokens['--surface-selected'].match(/[\d.]+/g)!.map(Number);
+    // Conservative white behind the translucent dark surface bounds every darker backing.
+    const background = surface.slice(0, 3).map(channel => channel * surface[3] + 255 * (1 - surface[3]));
+    const luminance = (rgb: number[]) => rgb.map(channel => channel / 255)
+      .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+      .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+    expect((luminance(foreground) + 0.05) / (luminance(background) + 0.05)).toBeGreaterThanOrEqual(4.5);
+  });
+  it('uses smaller vertical gaps on short desktops without shrinking type or cards', () => {
+    const compact: string[] = [];
+    css.walkAtRules('media', rule => {
+      if (rule.params !== '(max-height: 850px)') return;
+      expect(rule.parent).toMatchObject({ type: 'atrule', name: 'media', params: '(min-width: 1200px)' });
+      rule.walkDecls(declaration => {
+        expect(declaration.prop).toBe('row-gap');
+        expect(declaration.value).toBe('8px');
+      });
+      rule.walkRules(child => { compact.push(...child.selectors); });
+    });
+    expect(compact).toEqual([home, `${home} .home-core-sections`]);
   });
   it('gives progress labels readable type and room that grows with text', () => {
     for (const selector of ['.weekly-progress-summary', '.weekly-progress-legend', '.weekly-progress-axis', '.weekly-progress-day small']) {

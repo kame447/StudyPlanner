@@ -51,3 +51,13 @@ light desktop cases retain their identities, now assert the resolved theme, and
 have six dark counterparts. That extends the definitions; dark rendering is
 still unverified. The combined checkpoint owns current checks, base, next action
 and publication limits, rather than replacing the original evidence above.
+
+## PR737 rendered dark-preview correction
+
+The pinned four-surface native run39043107215 verified all15 AI surface cases geometrically on source fb018e4d/tree638cc9aa. Independent image review nevertheless found unreadable pale headings/date labels on white preview panels in all three dark desktop sizes. Geometry success is not readability acceptance.
+
+The v2 preview is a sibling of the legacy `.ai-planning-view`; existing ancestor-scoped dark rules therefore miss it. That structure and the hardcoded white surfaces already exist on the release base. The correction adds dark-only component-local surface/text/border token pairs. The same paired dark tokens repair the proposal-card preview action and count badge, whose white-on-accent text was also confirmed by image review. Light styling, geometry, event tones, motion, conversation and persistence stay unchanged.
+
+Related source checks pass17 tests across preview theme, desktop presentation and period paging. The ordinary Vite configuration cannot enumerate network interfaces in this restricted executor; an equivalent Node-only source-test config was used for these pure CSS/period tests. This is not an app-build or browser result. The integration owner performs one combined app type/build check.
+
+Native definitions retain all15 existing AI surface identities and add one390px dark preview guard. The three existing dark desktop proposal cases now attach contrast samples before asserting4.5:1 for the specified overview/detail labels and actions; a white backing conservatively bounds translucent dark surfaces. This checks those labels, not a whole-page WCAG audit. New source rendering and contrast results remain pending the bounded CI follow-up.

@@ -252,3 +252,12 @@
     padding-block: 7px;
   }
 }
+
+/* The proposal's preview action and count badge need a readable dark pair too. */
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-plan-card :is(
+  .ai-planning-preview-button,
+  .ai-planning-plan-card-head b
+) {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}

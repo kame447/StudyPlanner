@@ -373,6 +373,60 @@ async function captureDesktopGeometry(page, testInfo, stage, selectors) {
   return geometry;
 }
 
+async function expectPreviewContrast(page, testInfo, stage) {
+  const root = stage.endsWith('card') ? '.ai-planning-plan-card' : '.ai-planning-preview-dialog-v2';
+  const samples = await page.locator(root).evaluate((dialog, selectedStage) => {
+    const rgb = value => {
+      const match = value.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/);
+      if (!match) throw new Error(`Unsupported computed color: ${value}`);
+      const channels = match.slice(1, 4).map(Number);
+      const alpha = match[4] === undefined ? 1 : Number(match[4]);
+      if (channels.some(channel => channel < 0 || channel > 255) || alpha < 0 || alpha > 1) throw new Error(`Invalid computed color: ${value}`);
+      return [...channels, alpha];
+    };
+    const over = (front, back) => front.slice(0, 3).map((channel, i) => channel * front[3] + back[i] * (1 - front[3]));
+    const luminance = color => color.map(channel => {
+      const v = channel / 255;
+      return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    }).reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
+    const cardTargets = ['.ai-planning-preview-button', '.ai-planning-plan-card-head b'];
+    const selectors = selectedStage.endsWith('card') ? cardTargets : [
+      '.ai-planning-preview-header h2', '.ai-planning-preview-header p',
+      '.ai-planning-week-header strong', '.ai-planning-week-header small',
+      '.ai-planning-preview-period-nav strong', '.ai-planning-preview-period-nav small',
+      '.ai-planning-preview-hint', '.ai-planning-time-axis span',
+      '.ai-planning-preview-day-nav strong', '.ai-planning-preview-day-nav small',
+      '.ai-planning-preview-day-axis > span', '.ai-planning-preview-detail-block strong',
+      '.ai-planning-preview-detail-block small', '.ai-planning-primary-action', '.ai-planning-secondary-action',
+    ];
+    const required = selectedStage.endsWith('card') ? cardTargets : ['.ai-planning-preview-header h2', '.ai-planning-preview-header p', '.ai-planning-primary-action', '.ai-planning-secondary-action',
+      ...(selectedStage.endsWith('overview')
+        ? ['.ai-planning-week-header strong', '.ai-planning-week-header small', '.ai-planning-preview-period-nav strong', '.ai-planning-preview-hint', '.ai-planning-time-axis span']
+        : ['.ai-planning-preview-day-nav strong', '.ai-planning-preview-day-nav small', '.ai-planning-preview-day-axis > span', '.ai-planning-preview-detail-block strong', '.ai-planning-preview-detail-block small'])];
+    for (const selector of required) if (!dialog.querySelector(selector)) throw new Error(`Missing contrast target: ${selector}`);
+    return selectors.flatMap(selector => [...dialog.querySelectorAll(selector)].map(element => {
+      const style = getComputedStyle(element);
+      const layers = [];
+      for (let ancestor = element; ancestor; ancestor = ancestor.parentElement) {
+        layers.push(rgb(getComputedStyle(ancestor).backgroundColor));
+        if (layers.at(-1)[3] === 1) break;
+      }
+      // White is a conservative backing for pale text on these dark, translucent
+      // token surfaces. This does not claim to sample arbitrary page gradients.
+      const background = layers.reverse().reduce((back, layer) => over(layer, back), [255, 255, 255]);
+      const foreground = over(rgb(style.color), background);
+      const values = [luminance(foreground), luminance(background)].sort((a, b) => a - b);
+      return { selector, text: element.textContent, foreground, background, ratio: (values[1] + 0.05) / (values[0] + 0.05) };
+    }));
+  }, stage);
+  await testInfo.attach(`${stage}-contrast`, {
+    body: JSON.stringify({ scope: 'specified preview labels and actions; conservative white backing', samples }, null, 2),
+    contentType: 'application/json',
+  });
+  expect(samples.length).toBeGreaterThan(0);
+  for (const sample of samples) expect(sample.ratio, `${stage}: ${sample.selector} ${sample.text}`).toBeGreaterThanOrEqual(4.5);
+}
+
 function expectInsideViewport(rect, viewport) {
   expect(rect).not.toBeNull();
   expect(rect.width).toBeGreaterThan(0);
@@ -448,6 +502,7 @@ for (const { viewport, theme } of [
       conversation: '.ai-planning-conversation', card: '.ai-planning-plan-card', composer: '.ai-planning-composer',
       primaryHeader: '.ai-planning-primary-header',
     });
+    if (theme === 'dark') await expectPreviewContrast(page, testInfo, 'desktop-ai-proposal-card');
     expectInsideViewport(card.elements.primaryHeader, viewport);
     expect(card.elements.card.width).toBeGreaterThan(card.elements.conversation.width * 0.85);
     expect(card.elements.conversation.scrollHeight).toBeGreaterThan(card.elements.conversation.clientHeight);
@@ -463,6 +518,7 @@ for (const { viewport, theme } of [
       calendar: '.ai-planning-preview-overview-body', actions: '.ai-planning-preview-actions',
       primary: '.ai-planning-primary-action', date: '.ai-planning-week-header strong',
     });
+    if (theme === 'dark') await expectPreviewContrast(page, testInfo, 'desktop-ai-proposal-overview');
     expect(overview.document.width).toBeLessThanOrEqual(viewport.width);
     expect(overview.elements.dialog.width).toBeGreaterThan(viewport.width * 0.9);
     for (const name of ['dialog', 'header', 'calendar', 'actions', 'primary']) {
@@ -491,6 +547,7 @@ for (const { viewport, theme } of [
       scroll: '.ai-planning-preview-day-scroll', label: '.ai-planning-preview-detail-block strong',
       actions: '.ai-planning-preview-actions', header: '.ai-planning-preview-header',
     });
+    if (theme === 'dark') await expectPreviewContrast(page, testInfo, 'desktop-ai-proposal-detail');
     expect(detail.elements.scroll.scrollHeight).toBeGreaterThan(detail.elements.scroll.clientHeight);
     expect(detail.elements.scroll.overflowY).toBe('auto');
     expect(detail.elements.label.fontSize).toBeGreaterThanOrEqual(14);
@@ -504,3 +561,27 @@ for (const { viewport, theme } of [
     await expect(page.locator('.ai-planning-conversation')).toHaveCSS('overflow-y', 'auto');
   });
 }
+
+test('dark compact AI proposal retains readable overview and day detail', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedMultiweekDraftPlan(page, 12, 30);
+  await page.addInitScript(() => localStorage.setItem('study-planner-theme-mode', 'dark'));
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.locator('.primary-bottom-nav button').first().click();
+  await page.getByRole('button', { name: '計画プレビューを確認' }).click();
+  const preview = page.getByRole('dialog', { name: '計画プレビュー' });
+  await waitForVisualReady(page, '.ai-planning-preview-dialog-v2');
+  await captureDesktopGeometry(page, testInfo, 'compact-ai-proposal-overview', {
+    dialog: '.ai-planning-preview-dialog-v2', header: '.ai-planning-preview-header',
+  });
+  await expectPreviewContrast(page, testInfo, 'compact-ai-proposal-overview');
+  await preview.getByRole('tab', { name: '日別', exact: true }).click();
+  await waitForVisualReady(page, '.ai-planning-preview-day-detail');
+  await captureDesktopGeometry(page, testInfo, 'compact-ai-proposal-detail', {
+    dialog: '.ai-planning-preview-dialog-v2', header: '.ai-planning-preview-header',
+  });
+  await expectPreviewContrast(page, testInfo, 'compact-ai-proposal-detail');
+  await preview.getByRole('button', { name: '閉じる', exact: true }).click();
+  await expect(preview).toBeHidden();
+});

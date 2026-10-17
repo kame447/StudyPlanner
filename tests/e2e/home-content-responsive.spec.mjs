@@ -59,6 +59,45 @@ async function readableProgress(page, info, minimumFontSize) {
     if (geometry) await info.attach(`progress-labels-${minimumFontSize}px`, { body: JSON.stringify(geometry), contentType: 'application/json' });
   }
 }
+async function readableDarkStartAction(page, info) {
+  const paint = await page.locator('.home-start-button').evaluate(button => {
+    const rgb = value => {
+      const match = value.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/);
+      if (!match) throw new Error(`Unsupported computed color: ${value}`);
+      const channels = match.slice(1, 4).map(Number);
+      const alpha = match[4] === undefined ? 1 : Number(match[4]);
+      if (channels.some(channel => channel < 0 || channel > 255) || alpha < 0 || alpha > 1) throw new Error(`Invalid computed color: ${value}`);
+      return [...channels, alpha];
+    };
+    const over = (front, back) => front.slice(0, 3).map((channel, index) => channel * front[3] + back[index] * (1 - front[3]));
+    const luminance = channels => channels.map(channel => channel / 255)
+      .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+      .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+    const ratio = (front, back) => {
+      const levels = [luminance(front), luminance(back)].sort((a, b) => a - b);
+      return (levels[1] + 0.05) / (levels[0] + 0.05);
+    };
+    const style = getComputedStyle(button);
+    const layers = [];
+    for (let element = button; element; element = element.parentElement) {
+      const ancestor = getComputedStyle(element);
+      layers.push({ color: rgb(ancestor.backgroundColor), image: ancestor.backgroundImage });
+      if (layers.at(-1).color[3] === 1) break;
+    }
+    const background = [...layers].reverse().reduce((back, layer) => over(layer.color, back), [255, 255, 255]);
+    // The button is solid/translucent, not a gradient. Also test white behind its
+    // own dark layer: this conservative bound does not depend on ancestor images.
+    const worstWhiteBackground = over(rgb(style.backgroundColor), [255, 255, 255]);
+    return { color: style.color, backgroundColor: style.backgroundColor, backgroundImage: style.backgroundImage,
+      layers, background, worstWhiteBackground,
+      ratio: ratio(over(rgb(style.color), background), background),
+      worstWhiteRatio: ratio(over(rgb(style.color), worstWhiteBackground), worstWhiteBackground) };
+  });
+  await info.attach('desktop-home-start-contrast', { body: JSON.stringify(paint), contentType: 'application/json' });
+  expect(paint.backgroundImage).toBe('none');
+  expect(paint.ratio).toBeGreaterThanOrEqual(4.5);
+  expect(paint.worstWhiteRatio).toBeGreaterThanOrEqual(4.5);
+}
 async function actions(page) {
   const add = page.getByRole('button', { name: '今日の予定に追加', exact: true });
   await add.scrollIntoViewIfNeeded(); await add.click({ trial: true, timeout: 5000 }); await add.focus(); await page.keyboard.press('Enter');
@@ -173,39 +212,66 @@ for (const [width, height] of [[1280, 720], [1440, 900], [1920, 1080]]) {
       expect(viewport).toMatchObject({ width, height });
       await info.attach('desktop-viewport', { body: JSON.stringify(viewport), contentType: 'application/json' });
       await separated(page);
-      await expect.poll(() => home.evaluate(element => {
-        const next = element.querySelector('.home-next-card').getBoundingClientRect();
-        const today = element.querySelector('.home-today-panel').getBoundingClientRect();
-        const title = element.querySelector('.home-next-copy h1');
-        const meta = element.querySelector('.home-next-meta');
-        return {
-          columns: Math.abs(next.top - today.top) <= 1 && next.right + 8 <= today.left,
-          titleReadable: parseFloat(getComputedStyle(title).fontSize) >= 24,
-          metadataReadable: parseFloat(getComputedStyle(meta).fontSize) >= 14,
-          bodyFits: element.scrollHeight <= element.clientHeight + 1,
-          bodyWidthFits: element.scrollWidth <= element.clientWidth + 1,
-          documentFits: document.documentElement.scrollHeight <= window.innerHeight + 1,
-          noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth + 1,
-        };
-      })).toEqual({ columns: true, titleReadable: true, metadataReadable: true, bodyFits: true, bodyWidthFits: true, documentFits: true, noHorizontalOverflow: true });
+      try {
+        await expect.poll(() => home.evaluate(element => {
+          const next = element.querySelector('.home-next-card').getBoundingClientRect();
+          const today = element.querySelector('.home-today-panel').getBoundingClientRect();
+          const title = element.querySelector('.home-next-copy h1');
+          const meta = element.querySelector('.home-next-meta');
+          return {
+            columns: Math.abs(next.top - today.top) <= 1 && next.right + 8 <= today.left,
+            titleReadable: parseFloat(getComputedStyle(title).fontSize) >= 24,
+            metadataReadable: parseFloat(getComputedStyle(meta).fontSize) >= 14,
+            bodyFits: element.scrollHeight <= element.clientHeight + 1,
+            bodyWidthFits: element.scrollWidth <= element.clientWidth + 1,
+            documentFits: document.documentElement.scrollHeight <= window.innerHeight + 1,
+            noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth + 1,
+          };
+        })).toEqual({ columns: true, titleReadable: true, metadataReadable: true, bodyFits: true, bodyWidthFits: true, documentFits: true, noHorizontalOverflow: true });
+      } finally {
+        await info.attach('desktop-home-geometry', {
+          body: JSON.stringify(await home.evaluate(element => ({
+            theme: document.documentElement.dataset.theme,
+            viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
+            document: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight },
+            home: { rect: element.getBoundingClientRect().toJSON(), clientWidth: element.clientWidth, scrollWidth: element.scrollWidth, clientHeight: element.clientHeight, scrollHeight: element.scrollHeight },
+            cards: Object.fromEntries(['.home-next-card', '.home-today-panel', '.home-alert-grid', '.home-progress-panel', '.home-actions'].map(selector => [selector, element.querySelector(selector).getBoundingClientRect().toJSON()])),
+            titleFontSize: getComputedStyle(element.querySelector('.home-next-copy h1')).fontSize,
+            metadataFontSize: getComputedStyle(element.querySelector('.home-next-meta')).fontSize,
+          }))),
+          contentType: 'application/json',
+        });
+      }
       await readableProgress(page, info, 12);
-      await info.attach('desktop-home-geometry', {
-        body: JSON.stringify(await home.evaluate(element => ({
-          theme: document.documentElement.dataset.theme,
-          viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
-          document: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight },
-          home: { rect: element.getBoundingClientRect().toJSON(), clientWidth: element.clientWidth, scrollWidth: element.scrollWidth, clientHeight: element.clientHeight, scrollHeight: element.scrollHeight },
-          cards: Object.fromEntries(['.home-next-card', '.home-today-panel', '.home-alert-grid', '.home-progress-panel', '.home-actions'].map(selector => [selector, element.querySelector(selector).getBoundingClientRect().toJSON()])),
-          titleFontSize: getComputedStyle(element.querySelector('.home-next-copy h1')).fontSize,
-          metadataFontSize: getComputedStyle(element.querySelector('.home-next-meta')).fontSize,
-        }))),
-        contentType: 'application/json',
-      });
       await page.screenshot({ path: info.outputPath(`desktop-home-${width}-${theme}.png`) });
+      if (theme === 'dark') await readableDarkStartAction(page, info);
       const list = home.locator('.home-schedule-list');
       await expect.poll(() => list.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
       await list.evaluate(element => { element.scrollTop = element.scrollHeight; });
-      await expect(page.getByRole('button', { name: '今日の予定に追加', exact: true })).toBeInViewport();
+      const add = page.getByRole('button', { name: '今日の予定に追加', exact: true });
+      await expect(add).toBeInViewport();
+      let addGeometry;
+      try {
+        await expect.poll(async () => {
+          addGeometry = await add.evaluate(button => {
+            const list = button.closest('.home-schedule-list');
+            const box = list.getBoundingClientRect();
+            const client = { left: box.left + list.clientLeft, top: box.top + list.clientTop };
+            return {
+              client: { ...client, right: client.left + list.clientWidth, bottom: client.top + list.clientHeight },
+              scrollHeight: list.scrollHeight, clientHeight: list.clientHeight, scrollTop: list.scrollTop,
+              button: button.getBoundingClientRect().toJSON(),
+              icon: button.querySelector('svg').getBoundingClientRect().toJSON(),
+            };
+          });
+          const contained = box => box.left >= addGeometry.client.left - 1 && box.right <= addGeometry.client.right + 1
+            && box.top >= addGeometry.client.top - 1 && box.bottom <= addGeometry.client.bottom + 1;
+          return { fullButton: contained(addGeometry.button), touchHeight: addGeometry.button.height >= 44,
+            visibleIcon: addGeometry.icon.width > 0 && addGeometry.icon.height > 0 && contained(addGeometry.icon) };
+        }).toEqual({ fullButton: true, touchHeight: true, visibleIcon: true });
+      } finally {
+        if (addGeometry) await info.attach('desktop-home-add-geometry', { body: JSON.stringify(addGeometry), contentType: 'application/json' });
+      }
       await actions(page);
     });
   }

@@ -218,3 +218,119 @@ at 1280×720, 1440×900 and 1920×1080 in both themes. Diagnose every related fa
 or flaky result before merge. Normal viewport fit, enlarged text, actual loaded
 fonts and visual balance remain open until those results are available. Existing
 root/navigation guards and mobile interactions remain required acceptance.
+
+## First native Home corrections (2026-10-17 15:08 UTC)
+
+- PR #737 source `fb018e4` / tree `638cc9aa` reached native rendering. The bounded
+  Chromium run passed 79/81 cases; only Home's 1280×720 light/dark normal body-fit
+  checks failed on both attempts. Columns, type floors, horizontal bounds and
+  document containment passed. Actual images show the bottom material card
+  meeting the Home scroll boundary, while Today remains a bounded inner list.
+  The original failing test did not attach its numeric scroll/client heights
+  before the assertion; the exact excess is therefore unmeasured, not zero.
+- Alternatives considered were shrinking type, reducing card content, and
+  reducing inter-card whitespace on short desktops. The first two conflict with
+  readable text/content reachability. Only the two vertical gaps change from
+  12px to 8px at width≥1200px/height≤850px, recovering 8px while preserving card
+  floors, chart tracks, fonts, horizontal spacing and the strict body-fit check.
+  This is a candidate correction until the same native cases pass. No claim of
+  exact required clearance is made from the screenshot alone.
+- Automated contrast also failed for the now-visible material progress helper:
+  native axe measured `#788399` on `#ffffff`, 12px normal, ratio 3.81 against 4.5.
+  The helper inherited an existing light-only color. The desktop override now
+  uses the existing `--text-muted` token; light `#5d6c69` clears 4.5 on that white
+  background, and dark continues to resolve the same token it already used.
+  No font reduction, global theme change or accessibility exclusion is added.
+- Two new source regressions failed against the old rules, then all eight
+  desktop CSS contracts passed after these changes. Native diagnostics now
+  attach actual Home/card/scroll geometry in `finally`, retaining evidence on
+  failures as well as success. All native predicates and identities are kept.
+- The old visual Home count difference (1 missing / 90 minutes versus 0 / 0)
+  predates this work: main's `324106fc` excludes timetable plans by default,
+  while the baseline `0d7d657a` predates that policy. Current main/candidate
+  fixture, model and policy bytes are identical. Today's thin blue strip is the
+  partially visible final add row in its scroll region, not a compressed button;
+  full visibility and keyboard/click reachability still require native proof.
+  The six existing desktop cases now additionally require the complete scrolled
+  add-button rectangle inside the list client area, at least 44px height, and
+  its nonempty plus SVG inside that area. This retains the viewport and
+  click/focus/Enter checks. Scroll/client heights and both rectangles are attached
+  even on failure. A source-only harness rejects partial, short and clipped-icon
+  fixtures and preserves diagnostics; it is not native execution.
+
+No baseline image is accepted by this source correction. Re-run the affected
+Home/contrast acceptance and inspect new exact-tree captures before replacing
+the desktop Home baselines. AI dark-preview readability is a separate parallel
+correction; existing passed geometry alone does not establish visual legibility.
+
+## Native dark Home start-label follow-up (2026-10-17 15:26 UTC)
+
+- The same first native desktop images exposed another paint defect: the dark
+  primary start label is pure white over the bright accent gradient. The exact
+  1440px dark image measured 2.686–3.124:1 across text-bearing rows, while the
+  light image measured 6.303–7.612:1. The image hashes, row coordinates and
+  samples are preserved with the visual review. A vertical gradient permits
+  comparison with unobscured background at the same y-coordinate.
+- Alternatives were changing only the text over the existing multi-stop
+  gradient, changing the shared accent palette, or using an existing paired
+  surface locally. The last has the smallest verifiable scope: desktop dark
+  Home's start button uses `--text-primary` on `--surface-selected`. Light,
+  mobile, dimensions, focus/active behavior and disabled semantics are untouched.
+- The new source assertion failed on the old declarations, then all nine Home
+  CSS contracts passed. The three existing dark desktop cases now attach actual
+  foreground/background layers and require 4.5:1 both after ancestor alpha
+  composition and against conservative white beneath the button's own layer.
+  The latter also bounds unknown ancestor gradient pixels. No case identity or
+  existing geometry, scrolling or keyboard assertion is removed.
+- Native rendering/contrast, short-height fit and full Today add-button
+  containment remain pending on the combined corrected tree. This follow-up
+  does not approve old baseline images or erase the first-attempt failures.
+
+## Combined native correction checkpoint (2026-10-17 15:30 UTC)
+
+The initial native results remain evidence of failure until the corrected tree
+passes the same acceptance. Chromium was 79/81 with two Home 1280×720 body-fit
+failures. Mobile was 52 clean passes, three known skips, those same two Home
+failures and one Report 1920px light timeout that only passed on retry. Automated
+quality found the light Home material helper contrast failure. Actual images
+also exposed dark Home CTA, AI preview and Report text/tab contrast problems.
+
+- The combined executable checkpoint is `10fa7b8b` / tree `75c578b6`, based on
+  initial approved integration `28ce47f4` / tree `638cc9aa`. It composes reviewed
+  Home `750cdbc6` plus CTA `ca7299b3`, Report `f2b96900` and AI `bf685a78`.
+  All 13 changed files exactly match their owner commits, and the other 2,862
+  tracked initial-release inputs remain unchanged. There were no conflicts.
+- Home retains all previous geometry and interactions, adds full 44px Today
+  add-button/plus containment and failure diagnostics, and corrects the measured
+  short-height/paint defects. The dark CTA correction and its native coverage
+  concern standard appearance. Existing pixel-appearance `!important` button
+  paint is unchanged; no claim of pixel-appearance contrast repair is made.
+- AI supplies component-local dark surfaces/labels/actions, preserves disabled
+  navigation differentiation, and adds contrast assertions plus one compact dark
+  case. Report pairs dark text/tab tokens and asserts contrast in its existing
+  desktop cases. Its screenshots use CSS-pixel encoding to avoid the observed
+  DPR3 capture cost; viewport, DPR, timeout, keyboard and geometry stay intact.
+- One fresh app typecheck and one combined production build passed (5.34s), using
+  the documented `DEV_LAN_HOST=127.0.0.1` input. Exact-byte owner focused results
+  are reused rather than rerun: Home nine CSS contracts, AI 17 source contracts,
+  and Report 14 focused checks plus the five-test final selected-tab check.
+  Emitted output preserves the prior nine layout rules and Admin's native import,
+  CSS dependency and own-entry preload exclusion; the seven new correction
+  targets are also present. Existing bundle/import warnings remain unchanged.
+- The follow-up selection has 48 identities: 22 Chromium, 22 mobile-WebKit,
+  two visual and two quality. The first 46 were freshly collected locally on
+  this executable tree; the two quality definitions are carried from prior
+  actual evidence with their eight inputs unchanged because the local axe
+  package is absent. CI must freshly admit all 48 with its existing pinned axe.
+  This is a bounded selection, not a repeated whole-suite run.
+- No baseline PNG is changed. The old Home 1-count/90-minute expected image
+  predates main's timetable-policy change; current fixture/model/policy inputs
+  are untouched. Only corrected exact-tree native images, functional scrolling
+  and quality results can justify four desktop Home/AI baseline replacements.
+
+Next: the sole publisher runs the mapped native/quality/visual checks, then the
+image reviewers examine all three desktop sizes in both themes. Confirm normal
+1280px fit, full Today add-button reachability, dark labels/actions and Report
+capture stability. Diagnose failures or flakiness rather than accepting retries.
+Mobile retention, enlarged text and loaded-font limits remain explicit in the
+native receipts; source/type/build success is not rendered acceptance.

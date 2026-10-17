@@ -468,7 +468,36 @@ for (const viewport of [{ width: 1280, height: 720 }, { width: 1440, height: 900
             const range = document.createRange(); range.selectNodeContents(element);
             return [...range.getClientRects()].map(({ left, right, top, bottom }) => ({ left, right, top, bottom }));
           };
+          const rgba = color => {
+            const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+            const context = canvas.getContext('2d');
+            context.fillStyle = color; context.fillRect(0, 0, 1, 1);
+            return [...context.getImageData(0, 0, 1, 1).data];
+          };
+          const luminance = rgb => rgb.slice(0, 3).map(channel => channel / 255)
+            .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+            .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+          const paper = rgba(getComputedStyle(report.querySelector('.learning-report-card')).backgroundColor);
+          const paperLuminance = luminance(paper);
+          const activeTab = report.querySelector('.learning-report-scope-tabs button.active');
+          const tabInk = rgba(getComputedStyle(activeTab).color);
+          const tabPaint = rgba(getComputedStyle(activeTab).backgroundColor);
+          const tabBase = rgba(getComputedStyle(activeTab.parentElement).backgroundColor);
+          const tabPaper = tabPaint.slice(0, 3).map((channel, index) => channel * tabPaint[3] / 255 + tabBase[index] * (1 - tabPaint[3] / 255));
+          const tabContrast = (Math.max(luminance(tabInk), luminance(tabPaper)) + 0.05)
+            / (Math.min(luminance(tabInk), luminance(tabPaper)) + 0.05);
+          const emphasizedText = [...report.querySelectorAll('.learning-report-chart-value, .learning-report-details > summary, .learning-report-insight strong')]
+            .map(element => {
+              const color = getComputedStyle(element).color;
+              const ink = rgba(color);
+              const inkLuminance = luminance(ink);
+              return { text: element.textContent, color, ink,
+                contrastAgainstChartPaper: (Math.max(inkLuminance, paperLuminance) + 0.05) / (Math.min(inkLuminance, paperLuminance) + 0.05) };
+            });
           return {
+            // The pixel fixture has opaque chart paper. The canvas resolves current
+            // CSS color syntax; native screenshots still cover wallpaper/gradient paint.
+            contrast: { paper, bodyColor: getComputedStyle(report).color, emphasizedText, activeTab: { ink: tabInk, paint: tabPaint, base: tabBase, paper: tabPaper, ratio: tabContrast } },
             viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio },
             scrollY, pageWidth: document.documentElement.scrollWidth,
             report: rect(report), shell: rect(report.closest('.app-shell')),
@@ -494,11 +523,22 @@ for (const viewport of [{ width: 1280, height: 720 }, { width: 1440, height: 900
           };
         });
         await testInfo.attach(`desktop-report-${viewport.width}-${theme}-${scope}-metrics`, {
-          body: JSON.stringify({ project: testInfo.project.name, loadedFonts, ...metrics }, null, 2), contentType: 'application/json',
+          body: JSON.stringify({ project: testInfo.project.name, screenshotScale: 'css', loadedFonts, ...metrics }, null, 2), contentType: 'application/json',
         });
+        // Keep CSS-pixel geometry and DPR, without encoding 9x image pixels in mobile projects.
         await testInfo.attach(`desktop-report-${viewport.width}-${theme}-${scope}`, {
-          body: await page.screenshot(), contentType: 'image/png',
+          body: await page.screenshot({ scale: 'css' }), contentType: 'image/png',
         });
+        expect(metrics.contrast.paper[3]).toBe(255);
+        expect(metrics.contrast.activeTab.ink[3]).toBe(255);
+        expect(metrics.contrast.activeTab.base[3]).toBe(255);
+        expect(metrics.contrast.activeTab.ratio).toBeGreaterThanOrEqual(4.5);
+        expect(metrics.contrast.emphasizedText.length).toBeGreaterThan(0);
+        for (const text of metrics.contrast.emphasizedText) {
+          expect(text.ink[3], text.text).toBe(255);
+          expect(text.contrastAgainstChartPaper, text.text).toBeGreaterThanOrEqual(4.5);
+          if (theme === 'dark') expect(text.color, text.text).toBe(metrics.contrast.bodyColor);
+        }
         expect(metrics.viewport.width).toBe(viewport.width);
         expect(metrics.viewport.height).toBe(viewport.height);
         expect(metrics.scrollY).toBe(0);
@@ -577,10 +617,10 @@ for (const viewport of [{ width: 1280, height: 720 }, { width: 1440, height: 900
         };
       });
       await testInfo.attach(`desktop-report-${viewport.width}-${theme}-enlarged-metrics`, {
-        body: JSON.stringify(enlarged, null, 2), contentType: 'application/json',
+        body: JSON.stringify({ screenshotScale: 'css', ...enlarged }, null, 2), contentType: 'application/json',
       });
       await testInfo.attach(`desktop-report-${viewport.width}-${theme}-enlarged-details`, {
-        body: await page.screenshot({ fullPage: true }), contentType: 'image/png',
+        body: await page.screenshot({ fullPage: true, scale: 'css' }), contentType: 'image/png',
       });
       await expect(breakdown).toBeInViewport();
       expect(enlarged.fontSize).toBeGreaterThanOrEqual(normalSize * 1.9);

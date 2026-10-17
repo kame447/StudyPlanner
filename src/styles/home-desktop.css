@@ -77,6 +77,11 @@
     font-size: 1rem;
   }
 
+  :root[data-theme='dark'] .home-main > .home-dashboard-default .home-start-button {
+    color: var(--text-primary);
+    background: var(--surface-selected);
+  }
+
   .home-main > .home-dashboard-default .home-today-panel {
     grid-area: today;
     block-size: clamp(17rem, 30dvh, 21rem);
@@ -138,7 +143,7 @@
   }
 
   .home-main > .home-dashboard-default .home-material-title-line strong { font-size: 0.875rem; }
-  .home-main > .home-dashboard-default .home-material-copy small { font-size: 0.75rem; }
+  .home-main > .home-dashboard-default .home-material-copy small { font-size: 0.75rem; color: var(--text-muted); }
 
   /* The phone graph caps axis/day text below 8px. Grow its text tracks too:
    * four axis lines need 3.75rem before spacing at the supporting-text size. */
@@ -156,6 +161,14 @@
   .home-main > .home-dashboard-default .weekly-progress-day {
     height: auto;
     grid-template-rows: var(--weekly-progress-plot-height) auto;
+  }
+
+  /* A 720px desktop needs less inter-card whitespace, not smaller text. */
+  @media (max-height: 850px) {
+    .home-main > .home-dashboard-default,
+    .home-main > .home-dashboard-default .home-core-sections {
+      row-gap: 8px;
+    }
   }
 
   /* Keep natural heights and focus-outline clearance when type is enlarged. */
