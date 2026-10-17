@@ -480,9 +480,14 @@ async function prepareShelfDelivery(page) {
 
 test('bookshelf delivery failure retains Home navigation and data on cached reentry', async ({ page }) => {
   await prepareShelfDelivery(page);
-  let attempts = 0, documents = 0;
+  let attempts = 0, documents = 0, initialAttempts;
+  const failedUrls = new Set();
   page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents++; });
-  await page.route('**/BookshelfView-*.js', route => { attempts++; return route.abort('failed'); });
+  await page.route('**/BookshelfView-*.js', route => {
+    attempts++;
+    failedUrls.add(route.request().url());
+    return route.abort('failed');
+  });
   await page.goto('/');
   await expect(page.locator('.home-main')).toBeVisible();
   const persisted = await persistedShelfInputs(page);
@@ -490,6 +495,15 @@ test('bookshelf delivery failure retains Home navigation and data on cached reen
   for (let entry = 0; entry < 2; entry++) {
     await deliveryNav(page, '教材').click();
     await expect(page.getByRole('alert')).toHaveText('教材を読み込めませんでした。');
+    if (entry === 0) {
+      // A preload and the foreground import may each request the same failed asset.
+      expect(failedUrls.size).toBe(1);
+      expect(attempts).toBeGreaterThanOrEqual(1);
+      expect(attempts).toBeLessThanOrEqual(2);
+      initialAttempts = attempts;
+    } else {
+      expect(attempts).toBe(initialAttempts);
+    }
     await expect(page.locator('.primary-app-header')).toBeVisible();
     await expect(deliveryNav(page, 'ホーム')).toBeVisible();
     await expect(page.getByRole('button', { name: '再読み込み', exact: true })).toHaveCount(0);
@@ -498,7 +512,7 @@ test('bookshelf delivery failure retains Home navigation and data on cached reen
     await expect(page.getByRole('alert')).toHaveCount(0);
     await expect(deliveryNav(page, 'ホーム')).toHaveAttribute('aria-current', 'page');
   }
-  expect(attempts).toBe(1);
+  expect(attempts).toBe(initialAttempts);
   expect(documents).toBe(1);
   expect(await page.evaluate(() => window.__bookshelfDeliveryDocument)).toBe('retained');
   expect(await persistedShelfInputs(page)).toEqual(persisted);

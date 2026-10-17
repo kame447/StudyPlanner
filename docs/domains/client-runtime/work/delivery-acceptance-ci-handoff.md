@@ -32,3 +32,22 @@ WebKit-specific follow-through:
 - No new local browser launch was attempted; the existing launch restriction remains in force.
 
 Next: independent diff review, publisher composition into the existing PR, then native CI on the exact new head. Completion requires the related delivery tests to pass on the configured browser matrix without masking production failure. Until then these corrections are locally inspected, not a verified native fix.
+
+## Standard Chromium Bookshelf transport follow-up
+
+The standard Chromium first attempt failed only the Bookshelf final request-count
+assertion (expected 1, received 2); its retry passed, which remains a failed
+`failOnFlakyTests` gate until corrected and rerun. The stored trace shows both JS
+requests during the first entry (357064.852 and 357083.808 ms), before Home
+(357163.248 ms) and cached reentry (357260.156 ms). No new JS request followed
+reentry. The same initial preload/import distinction therefore applies to this
+fixture. Production retry/guard failure, incorrect transport-count assumption,
+and a transient runner failure were compared; exact action/network evidence
+supports the second explanation. A request after reentry would falsify it.
+
+The immediate-failure case now requires one unique failed asset, bounds initial
+transports to 1–2, records that count at the first fallback, and requires exact
+zero additional requests on cached reentry and return. All Home, retained data,
+no-reload, no-retry-button and document assertions remain. The pending-failure
+case is unchanged. No runtime code changes. Syntax and exact browser test
+collection are checked locally; native execution remains the PR CI gate.
