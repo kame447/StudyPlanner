@@ -21,6 +21,8 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Announcement module failure recovery](work/announcement-load-recovery-handoff.md) — Issue #542; preserve Home, owner-qualified history and bell focus when optional announcement delivery fails.
+
 - [Administrator module failure recovery](work/admin-lazy-load-recovery-handoff.md) — Issue #542; retain normal return and explicit reload after lazy module delivery fails.
 
 - [Targeted Actual source preparation](work/actual-source-targeted-read-handoff.md) — Issue #542; select the persisted linked source without scanning all canonical schedules, preserving provenance and complete-history boundaries.

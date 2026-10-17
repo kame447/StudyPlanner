@@ -24,3 +24,30 @@ describe('announcement full-screen scrolling source contract', () => {
     expect(values).toMatchObject({ position: 'fixed', inset: '0', width: '100%', height: '100%', 'box-sizing': 'border-box', 'overflow-y': 'auto', 'overscroll-behavior': 'contain' });
   });
 });
+
+describe('announcement delivery-failure surface source contract', () => {
+  it('uses initial styles and greater specificity than shared modal geometry', () => {
+    const initial = postcss.parse(readFileSync(new URL('./announcement-bell.css', import.meta.url), 'utf8'));
+    const rules: postcss.Rule[] = [];
+    initial.walkRules('dialog.announcement-load-failure', rule => { rules.push(rule); });
+    expect(rules).toHaveLength(1);
+    const declarations: Record<string, string> = {};
+    rules[0].walkDecls(decl => { declarations[decl.prop] = decl.value; });
+    expect(declarations).toMatchObject({ position: 'fixed', inset: '0', width: 'min(480px, calc(100vw - 32px))', 'max-height': 'calc(100dvh - 32px)', margin: 'auto' });
+    // The explicit dialog type makes (0,1,1) stronger than shared (0,1,0),
+    // including later responsive rules. This is a source guard, not browser QA.
+    for (const file of ['./modals.css', './responsive.css']) {
+      const shared = postcss.parse(readFileSync(new URL(file, import.meta.url), 'utf8'));
+      shared.walkRules(rule => {
+        if (!rule.selectors.includes('.modal-card')) return;
+        rule.walkDecls(decl => {
+          if (['position', 'inset', 'width', 'max-height', 'margin', 'margin-top', 'margin-inline'].includes(decl.prop)) expect(Boolean(decl.important)).toBe(false);
+        });
+      });
+    }
+    const source = readFileSync(new URL('../components/AnnouncementsButton.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("import '../styles/announcement-bell.css'");
+    expect(source).toContain('className="modal-card announcement-load-failure"');
+    expect(source).not.toContain("import '../styles/announcements.css'");
+  });
+});
