@@ -4,11 +4,21 @@ import { AppSettingsDialog } from './AppSettingsDialog';
 import type { UserPlanningContextRecordV1 } from '../features/userPlanningContext/userPlanningContextTypes';
 
 const state = vi.hoisted(() => ({
-  memory: { records: [] as UserPlanningContextRecordV1[], shared: true, syncing: false, error: null,
+  memory: { snapshot: { ownerId: 'u' }, records: [] as UserPlanningContextRecordV1[], shared: true, syncing: false, error: null,
     saveNaturalLanguage: vi.fn(async () => undefined), removeRecord: vi.fn(async () => undefined) },
+  semanticMemoryOptIn: {
+    read: vi.fn(async (_ownerId: string) => false),
+    set: vi.fn(async (_ownerId: string, _enabled: boolean) => true),
+    clear: vi.fn(async (_ownerId: string) => true),
+  },
   weekStartsOn: 'monday', setWeekStartsOn: vi.fn(async () => true), resetProfile: vi.fn(async () => true),
 }));
 vi.mock('../features/userPlanningContext/UserPlanningContextContext', () => ({ useOptionalUserPlanningContextV1: () => state.memory }));
+vi.mock('../features/userPlanningContext/semanticMemory/semanticMemoryOptIn', () => ({
+  readSemanticMemoryOptIn: state.semanticMemoryOptIn.read,
+  setSemanticMemoryOptIn: state.semanticMemoryOptIn.set,
+  clearSemanticMemoryOptIn: state.semanticMemoryOptIn.clear,
+}));
 vi.mock('../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext', () => ({ useWeeklyPlanningPersonalization: () => state }));
 let renderer: ReactTestRenderer;
 const props = { open: true, themeMode: 'light' as const, themePalette: 'forest' as const,
@@ -17,8 +27,17 @@ const focus = vi.fn();
 function mount() { act(() => { renderer = create(<AppSettingsDialog {...props} />, { createNodeMock: () => ({ focus, scrollTop: 0 }) }); }); }
 const button = (text: string) => renderer.root.findAllByType('button').find(node => node.children.includes(text))!;
 function selectTab(id: string) { act(() => renderer.root.findByProps({ id: `app-settings-tab-${id}` }).props.onClick()); }
-beforeEach(() => { vi.clearAllMocks(); state.memory.records = []; state.memory.syncing = false; state.memory.saveNaturalLanguage.mockResolvedValue(undefined); });
-afterEach(() => { act(() => renderer?.unmount()); vi.unstubAllGlobals(); });
+beforeEach(() => {
+  vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'false');
+  vi.clearAllMocks();
+  state.memory.records = [];
+  state.memory.syncing = false;
+  state.memory.saveNaturalLanguage.mockResolvedValue(undefined);
+  state.semanticMemoryOptIn.read.mockResolvedValue(false);
+  state.semanticMemoryOptIn.set.mockResolvedValue(true);
+  state.semanticMemoryOptIn.clear.mockResolvedValue(true);
+});
+afterEach(() => { act(() => renderer?.unmount()); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe('standalone readable settings', () => {
   it('exposes a named page, focusable heading, grouped settings and a Back action without a modal', () => {
@@ -87,6 +106,33 @@ describe('standalone readable settings', () => {
     await act(async () => button('覚えておく').props.onClick());
     expect(state.memory.saveNaturalLanguage).toHaveBeenLastCalledWith({ existingRecordId: null, text: '短い時間で集中したい' });
     expect(renderer.root.findAllByType('textarea')).toHaveLength(0);
+  });
+
+  it('hides semantic search when the build flag is off and lets the user opt in or erase it', async () => {
+    vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'false');
+    mount(); selectTab('memory');
+    expect(renderer.root.findAllByProps({ role: 'switch' })).toHaveLength(0);
+    expect(JSON.stringify(renderer.toJSON())).not.toContain('端末内で記憶を検索');
+    expect(state.semanticMemoryOptIn.read).not.toHaveBeenCalled();
+
+    vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'true');
+    act(() => renderer.update(<AppSettingsDialog {...props} />));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    const toggle = () => renderer.root.findByProps({ role: 'switch' });
+    expect(toggle().props.checked).toBe(false);
+    expect(state.semanticMemoryOptIn.read).toHaveBeenCalledWith('u');
+    const disclosureText = renderer.root.findByType('small').children.join('');
+    expect(disclosureText).toContain('約118 MB');
+    expect(disclosureText).toContain('この検索のために記憶や埋め込みを外部へ送信しません');
+
+    await act(async () => { await toggle().props.onChange({ currentTarget: { checked: true } }); });
+    expect(state.semanticMemoryOptIn.set).toHaveBeenCalledWith('u', true);
+    expect(toggle().props.checked).toBe(true);
+
+    await act(async () => { await toggle().props.onChange({ currentTarget: { checked: false } }); });
+    expect(state.semanticMemoryOptIn.clear).toHaveBeenCalledWith('u');
+    expect(toggle().props.checked).toBe(false);
   });
 
   it('resets transient controls on close/reopen and disables editing while syncing', () => {
