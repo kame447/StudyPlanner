@@ -191,3 +191,43 @@ evidence. No product CSS, component, shared helper, configuration, timeout or
 geometry threshold changes in this correction. Next: run those sixteen
 successors and inspect the complete detail/editor/scroll/save results before
 acceptance. Evidence: `laplans-material-detail-reachability-evidence-20261017`.
+
+## 2026-10-17: remove duplicate action preparation in long-detail acceptance
+
+- Exact preceding source: `0ce2b3c9` / tree `0e6524bf`; run `39060551709`.
+  Chromium's eight split-scale cases passed on their first attempt. Mobile had
+  four first-attempt passes, one flaky result and three cumulative 30s timeouts.
+  All reported root-clipping false positives were resolved; this does not make
+  the remaining timeouts acceptable.
+- Seven retained failed traces show repeated explicit scroll preparation taking
+  roughly 1–5.7s, in addition to the following normal trial-click checks. The
+  wide mobile cases also spend time on navigation, tab clicks and editor reopen.
+  Explicit PNG capture is only part of the total. Screencast metadata describes
+  a DPR3 screen, but the actual encoded JPEG/video is 800px wide, not 5760px.
+- Compared options: (1) a product scrolling/rendering defect, which would require
+  specific motion/position evidence before changing CSS; (2) recording overhead,
+  which needs a controlled comparison and is not established by image metadata;
+  (3) duplicate test preparation. Choose (3) as the narrowest independently
+  inspectable correction. A fresh native failure would falsify the claim that
+  this change is sufficient; no speed or product-performance guarantee is made.
+- The helper now focuses the real control and performs the same unforced trial
+  click before measuring its final position. Playwright still checks stability,
+  visibility, enabled state, scrolling and pointer hit-target reachability.
+  All viewport, overflow-ancestor and focused-control assertions remain intact.
+  Failed actions still attempt diagnostic attachment and rethrow the original
+  failure, including when diagnostic capture itself fails.
+- Product bytes, fixtures, test definitions, DPR, viewport, font, 30s timeout,
+  retries, trace, video and explicit screenshots are unchanged. The change does
+  not claim that a complete visible frame or actual pointer activation occurred
+  where the test only used a trial click; Save/Cancel still use real Enter input.
+- Local evidence: syntax/diff checks; nine source-extracted async sequencing and
+  rejection probes; exact geometry callback/assertion and case-body comparison;
+  1,768 runtime/support/build input hashes unchanged. The probe's initial empty
+  cross-VM array comparison was corrected in the probe matcher only. A separate
+  boundary script had an unused lambda syntax error and trailing-newline slice
+  mismatch; both were corrected without changing the candidate assertions.
+- Evidence: `/workspace/shared/laplans-material-control-actionability-evidence-20261017/`.
+  New native execution remains required. No new application build is warranted
+  by this test-only helper change; previous product build evidence remains tied
+  to its recorded inputs. The editor's existing fixed input-text size at 200%
+  remains a separate limitation, not an all-input text-resizing acceptance.

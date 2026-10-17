@@ -582,8 +582,15 @@ async function captureMaterialText(locator, boundary, testInfo, name) {
 }
 
 async function reachMaterialControl(control, testInfo, name) {
-  await control.scrollIntoViewIfNeeded();
-  await control.focus();
+  // Focus uses native scrolling; the trial click performs the normal stable,
+  // visible, enabled and hit-target checks before we inspect its final position.
+  let actionError;
+  try {
+    await control.focus();
+    await control.click({ trial: true });
+  } catch (error) {
+    actionError = error;
+  }
   const metrics = await control.evaluate(element => {
     const box = element.getBoundingClientRect();
     const blockers = [];
@@ -603,15 +610,16 @@ async function reachMaterialControl(control, testInfo, name) {
     }
     return { left: box.left, right: box.right, top: box.top, bottom: box.bottom,
       width: innerWidth, height: innerHeight, fontSize: getComputedStyle(element).fontSize, blockers, clippingFrames };
-  });
-  await testInfo.attach(name, { body: JSON.stringify(metrics), contentType: 'application/json' });
+  }).catch(error => { throw actionError ?? error; });
+  await testInfo.attach(name, { body: JSON.stringify({ ...metrics, actionabilityError: actionError?.message ?? null }), contentType: 'application/json' })
+    .catch(error => { throw actionError ?? error; });
+  if (actionError) throw actionError;
   expect(metrics.left).toBeGreaterThanOrEqual(-1);
   expect(metrics.right).toBeLessThanOrEqual(metrics.width + 1);
   expect(metrics.top).toBeGreaterThanOrEqual(-1);
   expect(metrics.bottom).toBeLessThanOrEqual(metrics.height + 1);
   expect(metrics.blockers).toEqual([]);
   await expect(control).toBeFocused();
-  await control.click({ trial: true });
 }
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 1080 }, { width: 1280, height: 600 }, { width: 390, height: 844 }]) {
