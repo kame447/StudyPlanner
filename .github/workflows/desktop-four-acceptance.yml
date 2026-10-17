@@ -1,5 +1,5 @@
-# LOCAL TEMPLATE: bind both source SHA occurrences and source tree before publication.
-name: Desktop Home Clip Acceptance
+# LOCAL TEMPLATE: final immutable source SHA/tree pending publisher.
+name: Home Desktop Regression Acceptance
 permissions:
   contents: read
 concurrency:
@@ -22,14 +22,14 @@ jobs:
           browsers: chromium firefox webkit
     env:
       CI: 'true'
-      SOURCE_SHA: 7fc1cf55ce1ed317b6ade406473ea2c93710125c
-      SOURCE_TREE: a055a3b3e9e3f1a7c6279f71d63e6e18d6cc92ef
+      SOURCE_SHA: cb9f50377007f53ec548a699484cd97d8de35446
+      SOURCE_TREE: ee6e0ec5156df5a5838a24c9af0bddb6d30920d3
       PROOF_WORKFLOW_SHA: ${{ github.sha }}
       PROOF_PROJECT: ${{ matrix.project }}
     steps:
     - uses: actions/checkout@v7
       with:
-        ref: 7fc1cf55ce1ed317b6ade406473ea2c93710125c
+        ref: cb9f50377007f53ec548a699484cd97d8de35446
         fetch-depth: 1
         persist-credentials: false
     - name: Verify immutable application source
@@ -46,7 +46,10 @@ jobs:
         \ src/components/AiPlanningPreviewDialog.css src/styles/report.css tests/e2e/quality-gates.spec.mjs tests/e2e/visual-regression.spec.mjs\
         \ tests/e2e/playwright.quality.config.mjs tests/e2e/playwright.visual.config.mjs >> artifacts/desktop-four-proof/inputs.sha256\n\
         sha256sum tests/e2e/visual-regression.spec.mjs-snapshots/{home,ai-planning}-desktop-{light,dark}-linux.png\
-        \ >> artifacts/desktop-four-proof/inputs.sha256\n"
+        \ >> artifacts/desktop-four-proof/inputs.sha256\nsha256sum tests/e2e/home-add-entry.spec.mjs tests/e2e/home-containment-responsive.spec.mjs\
+        \ tests/e2e/home-device-responsive.spec.mjs tests/e2e/home-add-touch.spec.mjs tests/e2e/home-add-motion-theme.spec.mjs\
+        \ tests/e2e/support/home-add-fixture.mjs tests/e2e/support/home-add-motion-checks.mjs tests/e2e/support/layout-containment.mjs\
+        \ src/styles/home.css src/components/home/TodayScheduleAddMenu.tsx >> artifacts/desktop-four-proof/inputs.sha256\n"
     - uses: actions/setup-node@v7
       with:
         node-version-file: .node-version
@@ -72,27 +75,56 @@ jobs:
       shell: bash
       run: "cat > artifacts/desktop-four-proof/run-selected.mjs <<'NODE'\nimport assert from 'node:assert/strict';\n\
         import crypto from 'node:crypto';\nimport fs from 'node:fs';\nimport { spawnSync } from 'node:child_process';\n\
-        const selected = {\n  \"chromium\": {\n    \"count\": 1,\n    \"sha256\": \"3d5cb50d38f2c96d0480a0d5b5cd1ef2bc3edbd63d5547cc165f88e63211336c\"\
+        const selected = {\n  \"chromium\": {\n    \"count\": 44,\n    \"sha256\": \"ca1a33027c4487d172ebce6a6ce6b5afa571fdda9219d262a860daf767171b33\"\
         ,\n    \"projects\": [\n      \"chromium\"\n    ],\n    \"args\": [\n      \"test\",\n      \"--config=tests/e2e/playwright.config.mjs\"\
-        ,\n      \"--project=chromium\",\n      \"(^|/)home\\\\-content\\\\-responsive\\\\.spec\\\\.mjs$\",\n  \
-        \    \"--grep\",\n      \"(?:desktop\\\\ 1280x720\\\\ dark\\\\ uses\\\\ readable\\\\ columns\\\\ inside\\\
-        \\ one\\\\ viewport)$\"\n    ]\n  },\n  \"webkit-mobile\": {\n    \"count\": 1,\n    \"sha256\": \"02e1629df5502f3fea6c3afb0fd78d93f2527d3ac7d5635494120e0dc4f6827b\"\
+        ,\n      \"--project=chromium\",\n      \"(^|/)(?:home-add-entry\\\\.spec\\\\.mjs|home-containment-responsive\\\
+        \\.spec\\\\.mjs|home-device-responsive\\\\.spec\\\\.mjs|home-add-touch\\\\.spec\\\\.mjs)$\",\n      \"--grep\"\
+        ,\n      \"(?:Home adds an event or study without Calendar navigation at 390px|Home adds an event or study\
+        \ without Calendar navigation at 1280px|Home inline choices fit 300x844 standard light with 0 plans|Home\
+        \ inline choices fit 320x844 pixel dark with 0 plans|Home inline choices fit 360x844 standard dark with\
+        \ 0 plans|Home inline choices fit 390x844 pixel light with 0 plans|Home inline choices fit 430x844 standard\
+        \ light with 0 plans|Home inline choices fit 768x844 pixel dark with 0 plans|Home inline choices fit 1280x844\
+        \ standard dark with 0 plans|Home inline choices fit 390x1200 standard light with 0 plans|Home inline choices\
+        \ fit 390x1200 standard light with 1 plans|Home inline choices fit 1024x1366 pixel dark with 0 plans|Home\
+        \ inline choices fit 1024x1366 pixel dark with 1 plans|small-phone 320x568 keeps 1 schedule row\\\\(s\\\\\
+        ) inside today's card|small-phone 320x568 keeps 4 schedule row\\\\(s\\\\) inside today's card|short-landscape\
+        \ 852x393 keeps 1 schedule row\\\\(s\\\\) inside today's card|short-landscape 852x393 keeps 4 schedule row\\\
+        \\(s\\\\) inside today's card|compact-phone 360x640 keeps 1 schedule row\\\\(s\\\\) inside today's card|compact-phone\
+        \ 360x640 keeps 4 schedule row\\\\(s\\\\) inside today's card|modern-phone 390x844 keeps 1 schedule row\\\
+        \\(s\\\\) inside today's card|modern-phone 390x844 keeps 4 schedule row\\\\(s\\\\) inside today's card|large-phone\
+        \ 430x932 keeps 1 schedule row\\\\(s\\\\) inside today's card|large-phone 430x932 keeps 4 schedule row\\\
+        \\(s\\\\) inside today's card|wide-devtools 768x710 keeps 1 schedule row\\\\(s\\\\) inside today's card|wide-devtools\
+        \ 768x710 keeps 4 schedule row\\\\(s\\\\) inside today's card|tablet-landscape 1024x768 keeps 1 schedule\
+        \ row\\\\(s\\\\) inside today's card|tablet-landscape 1024x768 keeps 4 schedule row\\\\(s\\\\) inside today's\
+        \ card|compact-laptop 1366x768 keeps 1 schedule row\\\\(s\\\\) inside today's card|compact-laptop 1366x768\
+        \ keeps 4 schedule row\\\\(s\\\\) inside today's card|desktop-short 1536x864 keeps 1 schedule row\\\\(s\\\
+        \\) inside today's card|desktop-short 1536x864 keeps 4 schedule row\\\\(s\\\\) inside today's card|desktop-reference\
+        \ 1440x900 keeps 1 schedule row\\\\(s\\\\) inside today's card|desktop-reference 1440x900 keeps 4 schedule\
+        \ row\\\\(s\\\\) inside today's card|desktop-full-hd 1920x1080 keeps 1 schedule row\\\\(s\\\\) inside today's\
+        \ card|desktop-full-hd 1920x1080 keeps 4 schedule row\\\\(s\\\\) inside today's card|desktop-qhd 2560x1440\
+        \ keeps 1 schedule row\\\\(s\\\\) inside today's card|desktop-qhd 2560x1440 keeps 4 schedule row\\\\(s\\\
+        \\) inside today's card|tablet-portrait 1024x1366 keeps 1 schedule row\\\\(s\\\\) inside today's card|tablet-portrait\
+        \ 1024x1366 keeps 4 schedule row\\\\(s\\\\) inside today's card|keeps containment while resizing between\
+        \ phone, laptop, desktop, and tablet layouts|prioritizes the core dashboard without clipping the add row|uses\
+        \ most of the tablet width and keeps the bottom area filled|stays proportionally large without horizontal\
+        \ overflow|native touch opens and saves Home study after another action has focus at 1280px)$\"\n    ]\n\
+        \  },\n  \"webkit-mobile\": {\n    \"count\": 1,\n    \"sha256\": \"8ae503d968f0f7ccc53fe85b287a5215de04b695d4647d03923a2bb2e0fc8ef3\"\
         ,\n    \"projects\": [\n      \"webkit-mobile\"\n    ],\n    \"args\": [\n      \"test\",\n      \"--config=tests/e2e/playwright.cross-browser.config.mjs\"\
-        ,\n      \"--project=webkit-mobile\",\n      \"(^|/)home\\\\-content\\\\-responsive\\\\.spec\\\\.mjs$\"\
-        ,\n      \"--grep\",\n      \"(?:desktop\\\\ 1280x720\\\\ dark\\\\ uses\\\\ readable\\\\ columns\\\\ inside\\\
-        \\ one\\\\ viewport)$\"\n    ]\n  }\n};\nconst mode = process.argv[2];\nconst expected = selected[mode];\n\
-        assert.ok(expected, 'Unknown proof selection');\nconst prefix = `artifacts/desktop-four-proof/${mode}`;\n\
-        fs.writeFileSync(`${prefix}-arguments.json`, JSON.stringify(expected.args, null, 2));\nconst collectionProcess\
-        \ = spawnSync('./tests/e2e/node_modules/.bin/playwright', [...expected.args, '--list', '--reporter=json'],\
-        \ { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });\nfs.writeFileSync(`${prefix}-collection.json`, collectionProcess.stdout\
-        \ ?? '');\nassert.equal(collectionProcess.status, 0, collectionProcess.stderr || String(collectionProcess.error));\n\
-        const collection = JSON.parse(collectionProcess.stdout);\nassert.deepEqual(collection.errors, []);\nconst\
-        \ identities = new Set();\nfunction visit(suite, parents = []) {\n  const titles = [...parents, suite.title];\n\
-        \  for (const spec of suite.specs ?? []) for (const test of spec.tests) {\n    assert.ok(expected.projects.includes(test.projectName),\
-        \ 'Unexpected project');\n    const identity = JSON.stringify([test.projectName, spec.file, ...titles, spec.title]);\n\
-        \    assert.ok(!identities.has(identity), `Duplicate case: ${identity}`);\n    identities.add(identity);\n\
-        \  }\n  for (const child of suite.suites ?? []) visit(child, titles);\n}\nfor (const suite of collection.suites)\
-        \ visit(suite);\nassert.equal(identities.size, expected.count);\nconst sha256 = crypto.createHash('sha256').update(JSON.stringify([...identities].sort())).digest('hex');\n\
+        ,\n      \"--project=webkit-mobile\",\n      \"(^|/)home-add-touch\\\\.spec\\\\.mjs$\",\n      \"--grep\"\
+        ,\n      \"(?:native touch opens and saves Home study after another action has focus at 1280px)$\"\n   \
+        \ ]\n  }\n};\nconst mode = process.argv[2];\nconst expected = selected[mode];\nassert.ok(expected, 'Unknown\
+        \ proof selection');\nconst prefix = `artifacts/desktop-four-proof/${mode}`;\nfs.writeFileSync(`${prefix}-arguments.json`,\
+        \ JSON.stringify(expected.args, null, 2));\nconst collectionProcess = spawnSync('./tests/e2e/node_modules/.bin/playwright',\
+        \ [...expected.args, '--list', '--reporter=json'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });\n\
+        fs.writeFileSync(`${prefix}-collection.json`, collectionProcess.stdout ?? '');\nassert.equal(collectionProcess.status,\
+        \ 0, collectionProcess.stderr || String(collectionProcess.error));\nconst collection = JSON.parse(collectionProcess.stdout);\n\
+        assert.deepEqual(collection.errors, []);\nconst identities = new Set();\nfunction visit(suite, parents =\
+        \ []) {\n  const titles = [...parents, suite.title];\n  for (const spec of suite.specs ?? []) for (const\
+        \ test of spec.tests) {\n    assert.ok(expected.projects.includes(test.projectName), 'Unexpected project');\n\
+        \    const identity = JSON.stringify([test.projectName, spec.file, ...titles, spec.title]);\n    assert.ok(!identities.has(identity),\
+        \ `Duplicate case: ${identity}`);\n    identities.add(identity);\n  }\n  for (const child of suite.suites\
+        \ ?? []) visit(child, titles);\n}\nfor (const suite of collection.suites) visit(suite);\nassert.equal(identities.size,\
+        \ expected.count);\nconst sha256 = crypto.createHash('sha256').update(JSON.stringify([...identities].sort())).digest('hex');\n\
         assert.equal(sha256, expected.sha256, 'Selected identities differ from review');\nfs.writeFileSync(`${prefix}-selection.json`,\
         \ JSON.stringify({ mode, count: identities.size, sha256 }, null, 2));\nconst run = spawnSync('./tests/e2e/node_modules/.bin/playwright',\
         \ expected.args, { stdio: 'inherit' });\nif (run.error) throw run.error;\nprocess.exit(run.status ?? 1);\n\
@@ -104,7 +136,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: desktop-home-clip-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt
+        name: home-desktop-regression-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt
           }}
         path: 'artifacts/desktop-four-proof/
 
