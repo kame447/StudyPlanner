@@ -58,10 +58,11 @@ import type { DecisionEnv } from './decision/decisionPolicy';
 import { resolveJevPurposeRollout } from './decision/jevPurposeRollout';
 import { isCandidateChoiceDecisionContext } from '../../../shared/candidateChoiceDecision';
 import { evaluateCandidateChoice } from './decision/candidateChoiceDispatch';
+import { queryHyMemoryCandidateIds, type HyMemoryCandidateEnv } from './hyMemoryCandidateService';
 
 export { AiQuotaDurableObject };
 
-export interface AiProxyWorkerEnv extends WeeklyPlanningTraceApiEnv, DecisionEnv {
+export interface AiProxyWorkerEnv extends WeeklyPlanningTraceApiEnv, DecisionEnv, HyMemoryCandidateEnv {
   OPENAI_API_KEY: string;
   OPENAI_BASE_URL?: string;
   OPENAI_TRANSCRIPTION_MODEL?: string;
@@ -1191,6 +1192,50 @@ async function handleTraceRequest(
   return jsonResponse(request, env, result.status, result.body);
 }
 
+async function handleHyMemoryCandidateRequest(request: Request, env: Env): Promise<Response> {
+  const origin = corsOrigin(request, env);
+  if (origin === '') return jsonResponse(request, env, 403, { error: 'Origin is not allowed.' });
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: responseHeaders(request, env) });
+  }
+  if (request.method !== 'POST') {
+    return jsonResponse(request, env, 405, { error: 'Method not allowed.' });
+  }
+  const session = await requireFirebaseSession(request, env);
+  if (session instanceof Response) return session;
+
+  // A disabled index never adds provider traffic or consumes model-call quota.
+  if (env.HY_MEMORY_CANDIDATE_MODE !== 'shadow') {
+    return jsonResponse(request, env, 200, { status: 'unavailable' });
+  }
+  const size = Number(request.headers.get('Content-Length'));
+  if (Number.isFinite(size) && size > 4096) {
+    return jsonResponse(request, env, 413, { error: 'Request is too large.' });
+  }
+  const requestText = await request.text();
+  if (getUtf8ByteLength(requestText) > 4096) {
+    return jsonResponse(request, env, 413, { error: 'Request is too large.' });
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(requestText);
+  } catch {
+    return jsonResponse(request, env, 400, { error: 'Invalid JSON.' });
+  }
+  if (!isRecord(parsed) || Object.keys(parsed).some((key) => !['query', 'sourceRevision'].includes(key))
+    || typeof parsed.query !== 'string' || !parsed.query.trim() || parsed.query.length > 1000
+    || !Number.isSafeInteger(parsed.sourceRevision) || (parsed.sourceRevision as number) < 0) {
+    return jsonResponse(request, env, 400, { error: 'Invalid candidate query.' });
+  }
+  const denied = await enforceQuota(request, env, session.uid, 'chat');
+  if (denied) return denied;
+  const result = await queryHyMemoryCandidateIds({
+    env, ownerId: session.uid, sourceRevision: parsed.sourceRevision as number,
+    query: parsed.query as string,
+  });
+  return jsonResponse(request, env, 200, result);
+}
+
 const worker = {
   async fetch(
     request: Request,
@@ -1203,6 +1248,10 @@ const worker = {
     const pathname = new URL(request.url).pathname;
     if (isWeeklyPlanningTracePath(pathname)) {
       return await handleTraceRequest(request, env, tokenProvider);
+    }
+
+    if (pathname === '/user-context/hy-memory/search') {
+      return await handleHyMemoryCandidateRequest(request, env);
     }
 
     if (pathname === '/planning-transcription') {
