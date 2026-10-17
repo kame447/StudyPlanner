@@ -1,7 +1,7 @@
 # Repository refactoring patterns
 
 Status: current repository-wide refactoring knowledge
-Updated: 2026-08-30
+Updated: 2026-10-08
 
 この文書は、StudyPlanner で過去のバグ・修正・リファクタリングから繰り返し確認された「壊れやすい構造」を形式知化するための正本です。
 
@@ -289,3 +289,24 @@ test harness、mock、local build、production proxy、GitHub Actions の差を�
 新しい entry は、単なる好みや一般論ではなく、StudyPlanner の実際の failure / review / refactor evidence がある場合に追加します。同じ構造なら既存 entry を更新し、似た名前の pattern を増殖させません。
 
 feature-specific な設計判断は owning domain に置き、この文書には repository-wide に再利用できる抽象化だけを残します。
+
+
+## F11. Test growth without independent guarantee ownership
+
+優先度: High。関連する構造はF5の非同期lifecycle分散とF10のharness境界混同である。[2026-10-08監査](../archive/audits/20261008-property-based-test-audit.md)では、配置結果を空にしても5個のpropertyが成功し、revision検査でも観測結果をno-opに置き換えた一つのpropertyが成功した。これは限定したoracle probeであり、production故障や全suiteの無効性を意味しない。
+
+### Trigger
+
+同じ故障を直すたびに準備処理と個別ケースだけが増え、どの検査がどの契約を所有するか説明できない。生成試行が多くても空出力、全拒否、常時staleで通る。実装結果を見て期待する受理可否を決めている。テスト/本体の行数比やファイルサイズだけではこのpatternと判定しない。
+
+### Preferred direction
+
+契約・実production入口・境界・独立oracle・故障型を対応付ける。小さい有限集合は全列挙、値の広がりはproperty、状態列はモデル、外部境界は実integrationに分担する。保存commitとack、UI projectionとdurable stateを分け、完了条件のある入力では前進性も検査する。各domainの仕様と権限境界を共有モデルが上書きしない。
+
+準備・観測の重複は安定した接続口でまとめるが、各契約の期待値は独立して読めるままにする。既存のpure/domain境界から始め、property導入を理由にproduction全体を先に再設計しない。テストが長いからと全削除したり、万能runnerに条件分岐を移しただけで整理完了としない。
+
+### Verification
+
+元実装でのgreenと代表故障でのredを移管前後で比較する。反例を縮小し、同じ内容・依存・seed/path/操作列でreplayする。有限全列挙の集合と深さ、生成した探索クラス、制御しない外部境界を記録する。実ブラウザ、native repository、Worker、Firestore、実モデルに固有の保証を下位propertyの成功で置き換えない。
+
+統合・削除は保証移管の証拠ができてから行う。テスト数・行数・実行時間・故障検出数を別々に報告し、減少率を先にノルマ化しない。週間計画の検証契約は[domain test philosophy](../domains/weekly-planning/quality/test-philosophy.md)、現在の横断監査は[Issue #382](https://github.com/kame447/StudyPlanner/issues/382)が所有する。
