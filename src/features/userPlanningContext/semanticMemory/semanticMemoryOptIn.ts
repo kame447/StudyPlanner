@@ -1,4 +1,4 @@
-import { eraseAllSemanticMemoryIndexes as eraseIndexes } from './index/semanticMemoryIndexedDb';
+import { eraseAllSemanticMemoryIndexes as eraseIndexes, deleteAllSemanticMemoryIndexDatabases } from './index/semanticMemoryIndexedDb';
 import { semanticMemoryHash } from './index/semanticMemoryFingerprint';
 import type { SemanticMemoryUnavailableReason } from './semanticMemoryContract';
 
@@ -37,10 +37,13 @@ export async function clearSemanticMemoryOptIn(ownerId: string): Promise<boolean
 
 /** Call on sign-out/account switch before constructing the next owner's index. */
 export async function eraseAllSemanticMemoryIndexes(): ReturnType<typeof eraseIndexes> {
+  let consentCleared = true;
   try {
     const storage = globalThis.localStorage;
     const keys = Array.from({ length: storage.length }, (_, index) => storage.key(index));
     keys.forEach((key) => { if (key?.startsWith(PREFIX)) storage.removeItem(key); });
-  } catch { /* IndexedDB erasure also invalidates already running instances. */ }
-  return eraseIndexes();
+  } catch { consentCleared = false; }
+  const result = await deleteAllSemanticMemoryIndexDatabases();
+  return result.status === 'ok' && !consentCleared
+    ? { status: 'unavailable', reason: 'storage_unavailable' } : result;
 }

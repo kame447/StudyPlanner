@@ -226,6 +226,37 @@ describe('disposable semantic index safety (synthetic records; no network)', () 
     const fresh = create(); expect(await fresh.recall('math')).toEqual({ status: 'no_match' });
   });
 
+  it('flag-off account cleanup with no leftovers never opens IndexedDB and clears consent', async () => {
+    vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'true');
+    await setSemanticMemoryOptIn('owner-a', true);
+    vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'false');
+    const open = vi.spyOn(factory, 'open');
+    expect(await eraseAllSemanticMemoryIndexes()).toEqual({ status: 'ok' });
+    expect(open).not.toHaveBeenCalled(); expect(globalThis.localStorage.length).toBe(0);
+    expect(await factory.databases()).toEqual([]);
+  });
+
+  it('flag-off account cleanup deletes existing indexes without opening them or touching other databases', async () => {
+    const index = create(); await index.sync();
+    await new Promise<void>((resolve) => {
+      const pending = factory.open('unrelated-planner-data');
+      pending.onsuccess = () => { pending.result.close(); resolve(); };
+    });
+    vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'false');
+    const open = vi.spyOn(factory, 'open');
+    expect(await eraseAllSemanticMemoryIndexes()).toEqual({ status: 'ok' });
+    expect(open).not.toHaveBeenCalled();
+    expect((await factory.databases()).map((database) => database.name)).toEqual(['unrelated-planner-data']);
+    expect(await index.recall('math')).toMatchObject({ status: 'unavailable' });
+  });
+
+  it('does not report account cleanup success when consent could not be removed', async () => {
+    vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'true');
+    await setSemanticMemoryOptIn('owner-a', true);
+    vi.spyOn(globalThis.localStorage, 'removeItem').mockImplementation(() => { throw new DOMException('denied', 'SecurityError'); });
+    expect(await eraseAllSemanticMemoryIndexes()).toEqual({ status: 'unavailable', reason: 'storage_unavailable' });
+  });
+
   it('discards old model vectors and carries the last canonical revision fence across models', async () => {
     const first = create(); await first.sync(); view = { ...view, revision: 4, records: [] }; await first.sync();
     const fake = embedder(); fake.model.revision = 'next-model';
@@ -272,5 +303,14 @@ describe('disposable semantic index safety (synthetic records; no network)', () 
     expect(await selectHybridUserPlanningContextPromptRecords({ ...params, enabled: false })).toEqual(baseline);
     view = { ...view, revision: 2, records: view.records.map((item) => ({ ...item, status: 'revoked' })) };
     expect(await selectHybridUserPlanningContextPromptRecords(params)).toEqual([]);
+  });
+
+  it('hybrid never returns the next owner records when owner changes during revalidation', async () => {
+    const index = create(); await index.sync(); const semantic = await index.recall('math');
+    let reads = 0;
+    const result = await selectHybridUserPlanningContextPromptRecords({ ownerId: 'owner-a', semantic, enabled: true,
+      getCanonicalView: () => ++reads === 1 ? view : { ownerId: 'owner-b', revision: 2,
+        records: [record('secret-b', { ownerId: 'owner-b' })] } });
+    expect(result).toEqual([]);
   });
 });

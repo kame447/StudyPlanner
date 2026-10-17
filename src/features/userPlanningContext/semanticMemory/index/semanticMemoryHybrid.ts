@@ -16,12 +16,14 @@ export async function selectHybridUserPlanningContextPromptRecords(params: {
   maxAdditions?: number;
 }): Promise<UserPlanningContextPromptRecordV2[]> {
   const view = params.getCanonicalView();
+  if (view.ownerId !== params.ownerId) return [];
   const baseline = selectUserPlanningContextPromptRecordsV2({ records: view.records,
     relevantScopeKeys: params.relevantScopeKeys });
-  if (!params.enabled || params.semantic.status !== 'ok' || view.ownerId !== params.ownerId) return baseline;
+  if (!params.enabled || params.semantic.status !== 'ok') return baseline;
   try {
     const valid = await revalidateSemanticMemoryCandidates(params.ownerId, params.semantic.candidates, view);
     const latest = params.getCanonicalView();
+    if (latest.ownerId !== params.ownerId) return [];
     if (latest.ownerId !== view.ownerId || latest.revision !== view.revision
       || JSON.stringify(latest.records) !== JSON.stringify(view.records)) {
       return selectUserPlanningContextPromptRecordsV2({ records: latest.records,

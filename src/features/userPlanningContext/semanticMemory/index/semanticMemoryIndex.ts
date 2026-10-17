@@ -11,8 +11,8 @@ import { semanticMemoryAccess } from '../semanticMemoryOptIn';
 import { semanticMemoryEmbeddedText, semanticMemoryHash, semanticMemoryRecordFingerprint } from './semanticMemoryFingerprint';
 import { SemanticMemoryIndexedDbStore, semanticMemoryStorageError } from './semanticMemoryIndexedDb';
 
-/** Provisional model-specific threshold: calibrate with eval before enabling; this is not a quality claim. */
-export const DEFAULT_SEMANTIC_MEMORY_MIN_SCORE = 0.75;
+/** Tuning set only, no holdout: provisional 0.84; calibrate with eval before enabling. */
+export const DEFAULT_SEMANTIC_MEMORY_MIN_SCORE = 0.84;
 
 export type SemanticMemorySyncResult =
   | { status: 'ok'; indexed: number; remaining: number }
