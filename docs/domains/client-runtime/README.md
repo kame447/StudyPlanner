@@ -21,6 +21,8 @@ Supporting architecture:
 
 Execution tracking:
 
+- [AI planning desktop layout](work/ai-planning-desktop-layout-handoff.md) — responsive proposal/starter widths and readable desktop controls; six fixture captures await native acceptance.
+
 - [Day, timetable and report delivery recovery](work/workspace-load-recovery-handoff.md) — Issue #542; local optional-view failure boundaries retain app navigation and session/history owners.
 
 - [Attendance reads across an in-flight save](work/attendance-read-lifetime-handoff.md) — fresh lesson history after a pending save survives close/reopen, with owner-scoped pending-operation coordination.
@@ -34,6 +36,8 @@ Execution tracking:
 - [Bookshelf module failure recovery](work/bookshelf-load-recovery-handoff.md) — Issue #542; retain Home navigation and app/session owners when optional Materials delivery fails.
 
 - [Confirmed preference save lifetime](work/preference-save-lifetime-handoff.md) — Issue #542; preserve the mounted planner during week-start saves and show retryable failures without reloading its history.
+
+- [Desktop Home viewport and readability](work/desktop-home-viewport-handoff.md) — desktop-only layout and next-plan type; startup size investigation remains unverified.
 
 - [Targeted Actual source preparation](work/actual-source-targeted-read-handoff.md) — Issue #542; select the persisted linked source without scanning all canonical schedules, preserving provenance and complete-history boundaries.
 

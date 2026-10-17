@@ -1,0 +1,203 @@
+/* Desktop needs usable columns rather than the phone height-compression rules.
+ * Keep this below the compact/reflow rules; mobile and shared chrome stay owned
+ * by their existing styles. The body can still scroll for enlarged/long text. */
+@media (min-width: 1200px) {
+  .home-main > .home-dashboard-default {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 2px;
+    scroll-padding: 2px;
+  }
+
+  .home-main > .home-dashboard-default .home-core-sections {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(17rem, auto) minmax(9rem, auto);
+    grid-template-areas: 'next today' 'attention progress';
+    gap: 12px;
+  }
+
+  .home-main > .home-dashboard-default .home-next-card {
+    grid-area: next;
+    height: auto;
+    min-height: 17rem;
+    padding: 18px 18px 70px;
+  }
+
+  .home-main > .home-dashboard-default .home-next-copy {
+    width: 72%;
+    min-width: 0;
+  }
+
+  .home-main > .home-dashboard-default .home-next-copy h1 {
+    margin-bottom: 12px;
+    font-size: 1.5rem;
+    line-height: 1.25;
+  }
+
+  .home-main > .home-dashboard-default .home-eyebrow {
+    margin-bottom: 8px;
+    font-size: 0.875rem;
+    line-height: 1.3;
+  }
+
+  .home-main > .home-dashboard-default .home-next-meta {
+    gap: 6px;
+    font-size: 0.875rem;
+    line-height: 1.35;
+  }
+
+  .home-main > .home-dashboard-default .home-next-meta span {
+    min-height: 20px;
+    gap: 6px;
+  }
+
+  .home-main > .home-dashboard-default .home-next-meta svg {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+  }
+
+  .home-main > .home-dashboard-default .home-empty-copy {
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  .home-main > .home-dashboard-default .home-study-scene { width: 38%; }
+
+  .home-main > .home-dashboard-default .home-actions {
+    left: 18px;
+    right: 18px;
+    bottom: 14px;
+    min-height: 44px;
+    font-size: 1rem;
+  }
+
+  :root[data-theme='dark'] .home-main > .home-dashboard-default .home-start-button {
+    color: var(--text-primary);
+    background: var(--surface-selected);
+  }
+
+  .home-main > .home-dashboard-default .home-today-panel {
+    grid-area: today;
+    block-size: clamp(17rem, 30dvh, 21rem);
+  }
+
+  .home-main > .home-dashboard-default .home-next-card:has(.home-plan-inspect) {
+    padding-bottom: 14px;
+  }
+  .home-main > .home-dashboard-default .home-next-card:has(.home-plan-inspect) .home-actions {
+    inset: auto;
+  }
+
+  .home-main > .home-dashboard-default .home-alert-grid { grid-area: attention; }
+  .home-main > .home-dashboard-default .home-progress-panel { grid-area: progress; }
+
+  .home-main > .home-dashboard-default .home-panel {
+    padding: 12px;
+  }
+
+  .home-main > .home-dashboard-default .home-section-heading h2 {
+    font-size: 1rem;
+  }
+
+  .home-main > .home-dashboard-default .home-section-heading button {
+    font-size: 0.75rem;
+  }
+
+  .home-main > .home-dashboard-default .home-schedule-list {
+    max-height: none;
+  }
+
+  .home-main > .home-dashboard-default :is(.home-schedule-row, .home-schedule-empty) {
+    min-height: 64px;
+    padding-block: 8px;
+  }
+
+  .home-main > .home-dashboard-default .home-schedule-content strong { font-size: 1rem; }
+  .home-main > .home-dashboard-default .home-schedule-content time { font-size: 0.875rem; }
+  .home-main > .home-dashboard-default .home-schedule-content small { font-size: 0.75rem; }
+  .home-main > .home-dashboard-default .home-schedule-add-row { min-height: 44px; }
+
+  .home-main > .home-dashboard-default .home-alert-card {
+    padding: 12px;
+    align-self: stretch;
+  }
+
+  .home-main > .home-dashboard-default .home-alert-heading { font-size: 0.8125rem; }
+  .home-main > .home-dashboard-default .home-alert-body small { font-size: 0.75rem; }
+  .home-main > .home-dashboard-default .home-alert-body strong { font-size: 0.875rem; }
+
+  .home-main > .home-dashboard-default > .home-material-panel {
+    flex: 0 0 auto;
+    padding: 12px;
+  }
+
+  .home-main > .home-dashboard-default .home-material-row {
+    min-height: 60px;
+    padding-block: 8px;
+  }
+
+  .home-main > .home-dashboard-default .home-material-title-line strong { font-size: 0.875rem; }
+  .home-main > .home-dashboard-default .home-material-copy small { font-size: 0.75rem; color: var(--text-muted); }
+
+  /* The phone graph caps axis/day text below 8px. Grow its text tracks too:
+   * four axis lines need 3.75rem before spacing at the supporting-text size. */
+  .home-main > .home-dashboard-default .weekly-progress-summary { font-size: 0.75rem; line-height: 1.25; }
+  .home-main > .home-dashboard-default .weekly-progress-legend { font-size: 0.75rem; line-height: 1.25; }
+  .home-main > .home-dashboard-default .weekly-progress-axis { font-size: 0.75rem; line-height: 1.25; }
+  .home-main > .home-dashboard-default .weekly-progress-day small { font-size: 0.75rem; line-height: 1.25; }
+
+  .home-main > .home-dashboard-default .weekly-progress-plot {
+    --weekly-progress-plot-height: 4.5rem;
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+
+  .home-main > .home-dashboard-default .weekly-progress-bars { height: auto; }
+  .home-main > .home-dashboard-default .weekly-progress-day {
+    height: auto;
+    grid-template-rows: var(--weekly-progress-plot-height) auto;
+  }
+
+  /* A 720px desktop needs less inter-card whitespace, not smaller text. */
+  @media (max-height: 850px) {
+    .home-main > .home-dashboard-default,
+    .home-main > .home-dashboard-default .home-core-sections {
+      row-gap: 8px;
+    }
+  }
+
+  /* Keep natural heights and focus-outline clearance when type is enlarged. */
+  .home-main > .home-dashboard-default[data-content-scroll='true'] {
+    padding: 5px;
+    scroll-padding: 5px;
+  }
+
+  .home-main > .home-dashboard-default[data-content-scroll='true'] .home-core-sections {
+    min-block-size: min-content;
+    grid-template-rows: auto auto;
+  }
+
+  .home-main > .home-dashboard-default[data-content-scroll='true'] .home-today-panel {
+    block-size: auto;
+  }
+
+  .home-main > .home-dashboard-default[data-content-scroll='true'] .weekly-progress-layout {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+  .home-main > .home-dashboard-default[data-content-scroll='true'] .weekly-progress-chart {
+    grid-column: 1 / -1;
+  }
+
+  .home-main > .home-dashboard-default[data-content-scroll='true'] .home-next-card {
+    padding-bottom: 12px;
+  }
+
+  .home-main > .home-dashboard-default[data-content-scroll='true'] .home-actions {
+    inset: auto;
+  }
+}
