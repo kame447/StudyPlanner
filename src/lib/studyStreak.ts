@@ -133,8 +133,19 @@ export function studyRestDayBlockReason(input: StudyStreakInput, date: string): 
 export function nextAutomaticStudyRestDate(input: StudyStreakInput): string | null {
   if (!input.historyComplete || !Array.isArray(input.monthEvents)) return null;
   const model = buildStudyStreakModel(input);
+  // With no earned ticket there is no first gap that could be protected. Do not
+  // use availableTickets here: an earlier repair can earn later replacement
+  // tickets while preserving already-protected days.
+  if (model.earnedTickets === 0) return null;
   const occupied = new Set([...model.studyDates, ...(input.restDays ?? []).map(day => day.date)]);
   const candidates = [...new Set([...model.studyDates, ...model.protectedDates]
     .map(date => addDays(date, 1)))].filter(date => date < input.today && !occupied.has(date)).sort();
-  return candidates.find(date => studyRestDayBlockReason(input, date) === null) ?? null;
+  return candidates.find(date => {
+    // Candidates are valid ended, unoccupied dates. Keep the same calendar
+    // projection and protection rules without renormalizing all actuals/plans
+    // or rebuilding the unchanged current model for every historical gap.
+    const next = projectStudyDates(model.studyDates, [...(input.restDays ?? []), { date }], input.today);
+    return next.protectedDates.includes(date)
+      && model.protectedDates.every(existing => next.protectedDates.includes(existing));
+  }) ?? null;
 }
