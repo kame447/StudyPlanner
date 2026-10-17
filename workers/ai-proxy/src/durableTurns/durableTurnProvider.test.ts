@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createDurableTurnProvider } from './durableTurnProvider';
+import { createDurableTurnProvider, createDurableReplyReferenceChoicePort } from './durableTurnProvider';
+import { choiceRequest, choiceEvaluation } from '../../../../shared/candidateChoiceFixtures.testUtils';
 import type { AiProxyWorkerEnv } from '../worker';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -44,4 +45,46 @@ describe('durable provider uses the existing proxy policy', () => {
       expect(fetch).toHaveBeenCalledTimes(1);
     });
 
+});
+
+
+describe('durable Jev reference choice journaling', () => {
+  const request = () => {
+    const original = choiceRequest();
+    return { ...original, context: { ...original.context,
+      question: { id: 'reply-target', code: 'reply_reference_target' },
+      target: { kind: 'reply_reference', id: 'current_conversation' },
+      scope: { referenceKind: 'existing_fact', selectionKind: 'target_slot_only' } } };
+  };
+
+  it('checks the frozen choice even when a durable replay returns cached provider evidence', async () => {
+    const r = request();
+    const before = vi.fn();
+    const dispatch = vi.fn(async (_body: string, _send: () => Promise<string>) => JSON.stringify(choiceEvaluation(r)));
+    const port = createDurableReplyReferenceChoicePort(
+      {} as AiProxyWorkerEnv, 'owner', dispatch,
+      { calibrationEvidenceId: 'test-only', maximumConditionChange: 0.01, maximumIndependentMeaning: 0.01 });
+    const selected = await port.choose(r, before);
+    expect(before).toHaveBeenCalledTimes(1);
+    expect(selected).toMatchObject({
+      nodeId: r.menu.nodeId, optionId: 'leaf:0', semanticSufficiency: 'only_candidate_meaning',
+    });
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(dispatch.mock.calls[0][0]);
+    expect(body.purpose).toBe('weekly_planning_semantic_normalizer');
+    expect(body.decisionContext.request).toEqual(r);
+    expect(body).not.toHaveProperty('ownerId');
+  });
+
+  it('rejects invalid or extra-meaning answers without changing the durable transcript', async () => {
+    const r = request();
+    const policy = { calibrationEvidenceId: 'test-only',
+      maximumConditionChange: 0.01, maximumIndependentMeaning: 0.01 };
+    const extra = createDurableReplyReferenceChoicePort({} as AiProxyWorkerEnv, 'owner',
+      async () => JSON.stringify({ ...choiceEvaluation(r), independentMeaning: 0.5 }), policy);
+    expect(await extra.choose(r, () => {})).toMatchObject({ semanticSufficiency: 'extra_or_uncertain_meaning' });
+    const bad = createDurableReplyReferenceChoicePort({} as AiProxyWorkerEnv, 'owner',
+      async () => JSON.stringify({ ...choiceEvaluation(r), candidateSetHash: 'sha256:tampered' }), policy);
+    await expect(bad.choose(r, () => {})).rejects.toThrow('Invalid durable Jev reference choice result');
+  });
 });

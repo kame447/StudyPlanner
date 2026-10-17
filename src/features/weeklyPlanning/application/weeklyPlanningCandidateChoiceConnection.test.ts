@@ -117,6 +117,8 @@ async function run(mode: 'accepted' | 'none' | 'low' | 'failure' | 'off' | 'unco
 }
 
 it('J2c preserves native C5 candidate, fallback, persistence and trace bytes after D5 registration', async () => {
+  // This historical byte contract was established on CI Linux (UTC), not in local timezone.
+  vi.stubEnv('TZ', 'UTC');
   let uuid = 0;
   vi.spyOn(crypto, 'randomUUID').mockImplementation(() => `00000000-0000-4000-8000-${String(++uuid).padStart(12, '0')}`);
   const { choice, requests, result, h } = await run('accepted');

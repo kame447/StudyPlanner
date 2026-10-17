@@ -8,6 +8,9 @@ import {
 import {
   resolveWeeklyPlanningTemporalConstraintsV5,
 } from '../semantic/weeklyPlanningResolvedTemporalConstraintsV5';
+import type { selectReplyReferenceHintV5 } from '../semantic/weeklyPlanningReplyReferenceChoiceV5';
+import { boundReplyReferenceTextV5, type ReplyReferenceCandidateV5 } from '../semantic/weeklyPlanningReplyReferenceCandidatesV5';
+import { compileGenericSchedulerInput } from '../semantic/weeklyPlanningGenericSchedulerInput';
 import type { createWeeklyPlanningSemanticNormalizerV5 } from '../semantic/weeklyPlanningSemanticNormalizerV5';
 import {
   createWeeklyPlanningSemanticPipelineV5,
@@ -78,6 +81,9 @@ export async function executeWeeklyPlanningStableV5SemanticTurnCore(
     session: WeeklyPlanningStableV5RuntimeSession;
     selectContext: NonNullable<Parameters<typeof createStableV5SemanticPublicStateSummary>[1]>;
     recordFailure: NonNullable<Parameters<typeof createWeeklyPlanningSemanticPipelineV5>[1]>;
+    resolveReplyReferenceHint?: (args: Pick<Parameters<typeof selectReplyReferenceHintV5>[0],
+      'source' | 'readCurrent' | 'userText' | 'ownerId' | 'conversationId' | 'requestId' | 'onDiagnostic'>)
+      => Promise<ReplyReferenceCandidateV5 | null>;
   },
 ): Promise<WeeklyPlanningStableV5SemanticTurnResult> {
   const temporal = stableV5RequestContextForInput(input);
@@ -126,10 +132,44 @@ export async function executeWeeklyPlanningStableV5SemanticTurnCore(
     studyMaterials: input.studyMaterials ?? [],
   }, ports.selectContext);
   const initialSchedulerContext = createWeeklyPlanningSchedulerContext({
-    ownerId: input.userId,
-    horizon: fallbackHorizon,
-    requestContext,
+    ownerId: input.userId, horizon: fallbackHorizon, requestContext,
   });
+  if (ports.resolveReplyReferenceHint && !input.supplementalContext?.trim()
+    && !input.selectedStarterTarget && input.inputStateRevision !== undefined) {
+    const readReferenceSource = () => ({
+      graph: runtimeSession.graph, messages: input.messages, conversationId: input.conversationId,
+      previousState: input.previousState, inputStateRevision: input.inputStateRevision,
+      compilation: { graphRevision: runtimeSession.graph.revision,
+        issues: compileGenericSchedulerInput({
+          graph: createWeeklyPlanningActiveSchedulerGraphViewV5(runtimeSession.graph),
+          context: initialSchedulerContext,
+        }).issues },
+    });
+    try {
+      const selected = await ports.resolveReplyReferenceHint({
+        source: readReferenceSource(), readCurrent: readReferenceSource,
+        userText: input.userText, ownerId: input.userId,
+        conversationId: input.conversationId, requestId: input.traceRequestId,
+        onDiagnostic: diagnostic => recordWeeklyPlanningStableV5DebugTrace({ requestId: input.traceRequestId,
+          stage: 'reply_reference_candidates', data: diagnostic }),
+      });
+      if (selected) {
+        stateSummary.replyReferenceHint = {
+          sourceMessageId: selected.sourceMessageId,
+          sourceUtteranceExcerpt: boundReplyReferenceTextV5(input.messages.find(message => message.id === selected.sourceMessageId)?.content ?? '', 600),
+          targetKind: selected.targetKind,
+          targetFactId: selected.targetFactId,
+          taskFactId: selected.taskFactId,
+          componentPath: selected.componentPath,
+          slot: selected.slot, operation: selected.operation,
+          graphRevision: runtimeSession.graph.revision,
+          authority: 'non_authoritative_semantic_hint',
+        };
+      }
+    } catch {
+      // A Jev routing failure leaves the full utterance to the existing Luna path.
+    }
+  }
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: input.traceRequestId,
     stage: 'runtime_session_context_prepared',

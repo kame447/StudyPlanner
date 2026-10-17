@@ -37,6 +37,8 @@ const allowedConsumers = new Set([
   'src/features/weeklyPlanning/semantic/weeklyPlanningTemporalDateChoiceV5.ts',
   'src/features/weeklyPlanning/semantic/weeklyPlanningTemporalDateCommitV5.ts',
   'src/features/weeklyPlanning/semantic/weeklyPlanningTemporalDateDomainV5.ts',
+  // #305 reference routing: read-only manifest/selection consumer, no graph commit authority.
+  'src/features/weeklyPlanning/semantic/weeklyPlanningReplyReferenceChoiceV5.ts',
   ...numericConsumers,
 ]);
 const testOnlyHelpers = new Set([

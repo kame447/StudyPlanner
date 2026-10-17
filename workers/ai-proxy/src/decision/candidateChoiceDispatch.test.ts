@@ -3,6 +3,8 @@ import { evaluateCandidateChoice } from './candidateChoiceDispatch';
 import { choiceRequest } from '../../../../shared/candidateChoiceFixtures.testUtils';
 import { JEV_MODEL } from './decisionPolicy';
 import { createSemanticRequestRecorder } from '../../../../shared/semanticDispatchRecorder';
+import { createHash } from 'node:crypto';
+import { CANDIDATE_CHOICE_QUESTION_CODES, isCandidateChoiceEvaluation } from '../../../../shared/candidateChoiceDecision';
 function response() { return { model: JEV_MODEL.request, answers: { candidate: { type: 'choice', choice: 'leaf:0', confidence: 0.999, probabilities: { 'leaf:0': 0.999, none: 0.001 } }, condition_change: { type: 'noul', noul: 0.001 }, independent_meaning: { type: 'noul', noul: 0.001 } } }; }
 describe('generic Choice provider validation and dispatch accounting', () => {
   it('records one actual dispatch with missing usage as NA, including provider failure', async () => {
@@ -13,6 +15,80 @@ describe('generic Choice provider validation and dispatch accounting', () => {
       expect(result.status).toBe(fails ? 'unavailable' : 'evaluated'); recorder.finishMain(); await recorder.settle();
       expect(recorder.snapshot().dispatches).toHaveLength(1); expect(recorder.snapshot().dispatches[0].usage).toEqual({ inputTokens: null, outputTokens: null, costUsd: null });
     }
+  });
+  it('selects a prior utterance and slot without treating the unseen value as a complete candidate', async () => {
+    const r = choiceRequest();
+    const reference = { ...r, wholeUtterance: 'さっきの微積分を1問3分くらい',
+      context: { ...r.context,
+        question: { id: 'reply-target', code: 'reply_reference_target' },
+        target: { kind: 'reply_reference', id: 'current_conversation' },
+        scope: { referenceKind: 'existing_fact', selectionKind: 'target_slot_only',
+          pendingQuestion: { messageOrdinal: 2, questionCode: 'stable_v5:missing_effort_estimate', candidateKeys: ['candidate-1'] },
+          dialogueHistory: [
+            { messageOrdinal: 1, role: 'user', content: '数学を20問進めたい' },
+            { messageOrdinal: 2, role: 'assistant', content: '1問何分かかりますか？' },
+          ],
+        } } };
+    let body: Record<string, unknown> = {};
+    const result = await evaluateCandidateChoice({
+      firebaseUid: 'fixture-owner', context: { purpose: 'candidate_choice', request: reference },
+      env: { OPENROUTER_API_KEY: 'fixture', JEV_CANDIDATE_CHOICE_MODE: 'canary',
+        JEV_MODE: 'canary', JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' },
+      transport: async (_input, init) => {
+        body = JSON.parse(String(init?.body)); return Response.json(response());
+      },
+    });
+    expect(result.status).toBe('evaluated');
+    expect(result).toMatchObject({ acceptanceScope: 'pending_question_answer' });
+    expect(isCandidateChoiceEvaluation({ ...result, acceptanceScope: 'explicit_reference' }, reference)).toBe(false);
+    const questions = body.questions as Record<string, { instructions: string; criteria: Record<string, string> }>;
+    expect(questions.candidate.instructions).toContain('prior utterance');
+    expect(questions.candidate.instructions).toContain('dialogueHistory');
+    expect(questions.condition_change.instructions).toContain('current user reply only');
+    expect((body.state as { context: { scope: { dialogueHistory: unknown[] } } }).context.scope.dialogueHistory)
+      .toEqual(reference.context.scope.dialogueHistory);
+    expect(questions.candidate.instructions).toContain('separate semantic extractor');
+    expect(questions.condition_change.instructions).toContain('ordinary value');
+    expect(questions.independent_meaning.instructions).toContain('multiple targets');
+    // Both the question and true/false criteria must use the open-answer baseline.
+    // A destination-only menu cannot require the free value to equal a full leaf.
+    for (const key of ['condition_change', 'independent_meaning']) {
+      expect(questions[key].instructions).toContain('pendingQuestion');
+      expect(questions[key].criteria.false).not.toContain('complete candidate');
+      expect(questions[key].criteria.false).toContain('value');
+    }
+    expect((body.state as { context: { scope: unknown } }).context.scope).toEqual(reference.context.scope);
+    const none = (questions.candidate as { criteria: Record<string, string> }).criteria.none;
+    expect(none).toContain('extracted separately');
+  });
+  it.each(CANDIDATE_CHOICE_QUESTION_CODES.filter(code => code !== 'reply_reference_target'))(
+    'preserves the exact c8c32d12 non-reference catalog bytes for %s', async code => {
+      const base = choiceRequest();
+      const request = { ...base, context: { ...base.context, question: { ...base.context.question, code },
+        ...(code === 'ambiguous_effort_estimate' ? { presentedQuestion: 'Which complete effort estimate?' } : {}) } };
+      let serializedQuestions = '';
+      const result = await evaluateCandidateChoice({ firebaseUid: 'fixture-owner', context: { purpose: 'candidate_choice', request },
+        env: { OPENROUTER_API_KEY: 'fixture', JEV_CANDIDATE_CHOICE_MODE: 'canary', JEV_MODE: 'canary',
+          JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' },
+        transport: async (_input, init) => {
+          serializedQuestions = JSON.stringify(JSON.parse(String(init?.body)).questions);
+          return Response.json(response());
+        } });
+      expect(result.status).toBe('evaluated');
+      // SHA-256 snapshot from c8c32d12's complete questions object with choiceRequest().
+      // Captured from that immutable dispatcher, not regenerated from the current code.
+      expect(createHash('sha256').update(serializedQuestions).digest('hex'))
+        .toBe('97bd2b873a1825321e7d1a1fea00e48289c94e02f92050f2cec05668a8ae3a01');
+      expect(result).not.toHaveProperty('acceptanceScope');
+    });
+  it('marks a non-pending reference separately even when the provider heads report sufficiency', async () => {
+    const base = choiceRequest();
+    const request = { ...base, context: { ...base.context, question: { id: 'q', code: 'reply_reference_target' },
+      scope: { pendingQuestion: null } } };
+    const result = await evaluateCandidateChoice({ firebaseUid: 'fixture-owner', context: { purpose: 'candidate_choice', request },
+      env: { OPENROUTER_API_KEY: 'fixture', JEV_CANDIDATE_CHOICE_MODE: 'canary', JEV_MODE: 'canary',
+        JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' }, transport: async () => Response.json(response()) });
+    expect(result).toMatchObject({ status: 'evaluated', acceptanceScope: 'explicit_reference', conditionChange: 0.001, independentMeaning: 0.001 });
   });
   it('off/shadow/invalid question expose no provider state', async () => {
     let calls = 0;
