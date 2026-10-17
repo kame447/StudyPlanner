@@ -1224,7 +1224,8 @@ async function handleHyMemoryCandidateRequest(request: Request, env: Env): Promi
   }
   if (!isRecord(parsed) || Object.keys(parsed).some((key) => !['query', 'sourceRevision'].includes(key))
     || typeof parsed.query !== 'string' || !parsed.query.trim() || parsed.query.length > 1000
-    || !Number.isSafeInteger(parsed.sourceRevision) || (parsed.sourceRevision as number) < 0) {
+    || typeof parsed.sourceRevision !== 'number' || !Number.isSafeInteger(parsed.sourceRevision)
+    || parsed.sourceRevision < 0) {
     return jsonResponse(request, env, 400, { error: 'Invalid candidate query.' });
   }
   const denied = await enforceQuota(request, env, session.uid, 'chat');
