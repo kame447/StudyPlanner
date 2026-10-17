@@ -130,15 +130,8 @@ export default defineConfig({
         '**/.dev.vars.*',
         '**/.cert/**',
         '**/.wrangler/**',
-        // Local tool settings, caches, test reports, and generated artifacts are not app assets.
+        // Local Claude settings may contain machine-specific values and credentials.
         '**/.claude/settings.local.json',
-        '**/.cache/**',
-        '**/.npm-cache/**',
-        '**/.stryker-tmp/**',
-        '**/reports/stryker/**',
-        '**/artifacts/**',
-        '**/playwright-report/**',
-        '**/test-results/**',
       ],
     },
     https: resolveLocalHttpsOptions(),

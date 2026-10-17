@@ -26,7 +26,7 @@ async function createFixtureRoot() {
   await fs.mkdir(path.join(root, 'workers', 'x'), { recursive: true });
   await fs.mkdir(path.join(root, '.wrangler', 'state'), { recursive: true });
   await fs.mkdir(path.join(root, '.cert'), { recursive: true });
-  await fs.mkdir(path.join(root, '.cache'), { recursive: true });
+  await fs.mkdir(path.join(root, '.cache', 'j1-old-worker'), { recursive: true });
   await fs.mkdir(path.join(root, '.claude'), { recursive: true });
   await fs.writeFile(path.join(root, 'index.html'), '<script type="module" src="/src/main.js"></script>');
   await fs.writeFile(path.join(root, 'src', 'main.js'), 'export const ready = true;');
@@ -35,7 +35,10 @@ async function createFixtureRoot() {
   await fs.writeFile(path.join(root, 'workers', 'x', '.dev.vars'), 'SYNTHETIC_SECRET=worker');
   await fs.writeFile(path.join(root, '.wrangler', 'state', 'x'), 'SYNTHETIC_STATE=local');
   await fs.writeFile(path.join(root, '.cert', 'local-key.pem'), 'SYNTHETIC_KEY=local');
-  await fs.writeFile(path.join(root, '.cache', 'local-state'), 'SYNTHETIC_CACHE=local');
+  await fs.writeFile(
+    path.join(root, '.cache', 'j1-old-worker', 'worker-bundle.mjs'),
+    'export const generatedWorkerBundle = true;',
+  );
   await fs.writeFile(path.join(root, '.claude', 'settings.local.json'), '{"synthetic":true}');
   return root;
 }
@@ -144,7 +147,6 @@ describe('Vite local development server security', () => {
       ['workers/x/.dev.vars', '/workers/x/.dev.vars'],
       ['.wrangler/state/x', '/.wrangler/state/x'],
       ['.cert/local-key.pem', '/.cert/local-key.pem'],
-      ['.cache/local-state', '/.cache/local-state'],
       ['.claude/settings.local.json', '/.claude/settings.local.json'],
     ];
 
@@ -164,5 +166,11 @@ describe('Vite local development server security', () => {
     const sourceResponse = await fetch(new URL('/src/main.js', origin));
     assert.equal(sourceResponse.status, 200);
     assert.match(await sourceResponse.text(), /ready = true/);
+
+    const generatedBundleResponse = await fetch(
+      new URL('/.cache/j1-old-worker/worker-bundle.mjs', origin),
+    );
+    assert.equal(generatedBundleResponse.status, 200);
+    assert.match(await generatedBundleResponse.text(), /generatedWorkerBundle = true/);
   });
 });
