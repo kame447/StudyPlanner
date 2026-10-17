@@ -6,6 +6,7 @@ import {
   type FirestoreTokenProvider,
 } from './firestoreServiceAccountClient';
 import { ProductObservabilityAdminAnalysisService } from './productObservabilityAdminAnalysisService';
+import { FirebaseAuthIdentityClient } from './firebaseAuthIdentityClient';
 import { ProductObservabilityAdminPlanningAnalysisService } from './productObservabilityAdminPlanningAnalysisService';
 import {
   ProductObservabilityReadModelService,
@@ -245,6 +246,8 @@ export async function handleProductObservabilityAdminApi(
     firestore,
     readModel,
     new ProductObservabilityStore(env, firestore),
+    undefined,
+    new FirebaseAuthIdentityClient(env, undefined, undefined, invocationTokenProvider.subrequestObserver),
   );
   const planningAnalysis = new ProductObservabilityAdminPlanningAnalysisService(env, firestore);
   try {

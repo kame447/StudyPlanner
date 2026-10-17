@@ -265,7 +265,7 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
       <section className="admin-identity-search panel">
         <div>
           <strong>プロフィールから調査を開始</strong>
-          <p>メールアドレス、Firebase UID、またはユーザー名の完全一致で検索します。個人情報はanalyticsへ保存しません。</p>
+          <p>確認済みメールアドレス、Firebase UID、またはユーザー名の完全一致で検索します。ユーザー名は自己申告の表示名です。個人情報はanalyticsへ保存しません。</p>
         </div>
         <div className="admin-identity-search-row">
           <label className="admin-search-field">
@@ -294,7 +294,7 @@ export function AdminUsersPage({ navigate }: { navigate: (path: string) => void 
               <article className="admin-identity-result" key={match.firebaseUid}>
                 <div>
                   <strong>{match.username}</strong>
-                  <span>{match.email || 'メール未設定'}</span>
+                  <span>{match.email ? `確認済みメール: ${match.email}` : '確認済みメールなし'}</span>
                   <small>登録 {formatTimestamp(match.registeredAt)}</small>
                   <code>{match.firebaseUid}</code>
                 </div>

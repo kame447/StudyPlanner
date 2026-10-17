@@ -308,6 +308,7 @@ export class FirestoreServiceAccountTokenProvider implements FirestoreTokenProvi
     private readonly fetcher: typeof fetch = workerSafeFetch,
     private readonly cryptoApi: Crypto = crypto,
     readonly subrequestObserver?: WorkerSubrequestObserver,
+    private readonly scope: string = FIRESTORE_SCOPE,
   ) {}
 
   async getToken(): Promise<string> {
@@ -341,7 +342,7 @@ export class FirestoreServiceAccountTokenProvider implements FirestoreTokenProvi
       iss: email,
       sub: email,
       aud: OAUTH_TOKEN_URL,
-      scope: FIRESTORE_SCOPE,
+      scope: this.scope,
       iat: issuedAt,
       exp: issuedAt + 3600,
     }));
