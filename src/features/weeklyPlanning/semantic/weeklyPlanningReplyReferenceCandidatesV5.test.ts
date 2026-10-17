@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningMessage } from '../types';
+import { createWeeklyPlanningSemanticBaseMessagesV5 } from './weeklyPlanningSemanticPromptAssemblyV5';
 import { createEmptyWeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 import { selectReplyReferenceHintV5, type ReplyReferenceChoiceCalibrationV5 } from './weeklyPlanningReplyReferenceChoiceV5';
 import {
@@ -169,5 +170,24 @@ describe('calibrated read-only Jev reference choice', () => {
         return response(request, chosen.key);
       } },
     })).toBeNull();
+  });
+});
+
+describe('reference hint stays presentation-only for Luna', () => {
+  it('does not change the default prompt and requires semantic interpretation when present', () => {
+    const baseline = createWeeklyPlanningSemanticBaseMessagesV5({
+      userText: '1問3分くらい', publicStateSummary: {},
+    });
+    const hinted = createWeeklyPlanningSemanticBaseMessagesV5({
+      userText: '1問3分くらい', publicStateSummary: {
+        replyReferenceHint: { targetFactId: 'work', slot: 'duration_per_unit',
+          authority: 'non_authoritative_semantic_hint' },
+      },
+    });
+    expect(baseline[0].content).not.toContain('replyReferenceHint');
+    expect(hinted[0].content).toContain('non-authoritative');
+    expect(hinted[0].content).toContain('independently extract and validate');
+    expect(hinted[1].content).toContain('replyReferenceHint');
+    expect(baseline[1].content).not.toContain('replyReferenceHint');
   });
 });
