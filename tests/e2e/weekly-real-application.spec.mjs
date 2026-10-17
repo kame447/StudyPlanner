@@ -67,16 +67,6 @@ async function promoteAndApprovePreview(page) {
 }
 
 test.describe('real weekly application browser lifecycle through AiPlanningView', () => {
-  test('a completed turn crosses the real application/controller/reducer boundary once', async ({ page }) => {
-    await page.goto(REAL_WEEKLY_URL);
-    await submitWeekly(page, '最初の条件');
-
-    await expect.poll(async () => (await events(page, 'real-runtime-complete')).length).toBe(1);
-    await expect(conversation(page).getByText('最初の条件', { exact: true })).toHaveCount(1);
-    await expect(conversation(page).getByText('テスト応答: 最初の条件', { exact: true })).toHaveCount(1);
-    expect(await events(page, 'real-runtime-execute')).toHaveLength(1);
-  });
-
   test('two sequential turns preserve user-assistant ordering without replay or duplication', async ({ page }) => {
     await page.goto(REAL_WEEKLY_URL);
 

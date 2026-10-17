@@ -1,4 +1,7 @@
+import assert from 'node:assert/strict';
+import { surfaceOf } from '@e2e-dev/web';
 import { expect, test } from 'e2e';
+import { weeklyWebEngine } from '../weekly-web-engine';
 
 const vagueRequest = '来週は研究を進めたいけど、内容はまだ決まっていない';
 
@@ -24,6 +27,20 @@ test('smoke: weekly planning conversation accepts one user turn', async ({ app, 
 
   await expect(screen.getByText(vagueRequest, { exact: true })).toBeVisible();
   await expect(screen.getByText(`テスト応答: ${vagueRequest}`, { exact: true })).toBeVisible();
+
+  // Keep the exact-once controller/reducer and rendered-message guarantees
+  // when moving this synthetic 1-turn contract from the Playwright suite.
+  const page = surfaceOf(weeklyWebEngine)?.page();
+  assert.ok(page, 'The shared TesterArmy web surface must be active');
+  const conversation = page.locator('.ai-planning-conversation');
+  assert.equal(await conversation.getByText(vagueRequest, { exact: true }).count(), 1);
+  assert.equal(await conversation.getByText(`テスト応答: ${vagueRequest}`, { exact: true }).count(), 1);
+
+  const counts = await page.evaluate(() => ({
+    execute: (window.__realWeeklyEvents ?? []).filter((event) => event.type === 'real-runtime-execute').length,
+    complete: (window.__realWeeklyEvents ?? []).filter((event) => event.type === 'real-runtime-complete').length,
+  }));
+  assert.deepEqual(counts, { execute: 1, complete: 1 });
 });
 
 test('smoke: preview promotion stops at the separate approval gate', async ({ app, screen }) => {
