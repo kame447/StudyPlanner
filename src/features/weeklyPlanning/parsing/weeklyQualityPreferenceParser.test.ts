@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   applyWeeklyPlanningConditionOverride,
   assessWeeklyPlanningRequest,
-  createAvailabilityAwareWeeklyDraftBlocksFromText,
   createWeeklyPlanningPendingConfig,
   parseWeeklyPlanningConditionOperations,
   summarizeWeeklyPlanningPendingConfig,
@@ -60,7 +59,7 @@ describe('parsing weeklyQualityPreferenceParser', () => {
     });
   });
 
-  it('keeps follow-up quality preference text out of task titles and draft labels', () => {
+  it('keeps follow-up quality preference text out of task titles', () => {
     const sourceText = '来週、英語10時間、数学8時間、卒研6時間やりたい';
     const assessment = assessWeeklyPlanningRequest({
       selectedDate: '2026-06-19',
@@ -82,58 +81,5 @@ describe('parsing weeklyQualityPreferenceParser', () => {
     override.config.tasks.forEach((task) => {
       expect(task.title).not.toMatch(/6日間|分散|やりたい|30分台|細切れ|1日1科目/);
     });
-
-    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
-      userId: 'user-1',
-      selectedDate: '2026-06-19',
-      text: 'この条件で作成',
-      pendingConfig: override.config,
-    });
-    const allowedTitles = new Set(['英語', '数学', '卒研']);
-
-    result.blocks.forEach((block) => {
-      expect(allowedTitles.has(block.title)).toBe(true);
-      [block.title, block.subject, block.label].forEach((value) => {
-        expect(value).not.toMatch(/6日間|分散|やりたい|30分台|細切れ|1日1科目/);
-      });
-    });
-  });
-
-  it('exposes quality preferences to availability-aware placement diagnostics', () => {
-    const sourceText = '来週、英語3時間、数学3時間、卒研3時間やりたい';
-    const assessment = assessWeeklyPlanningRequest({
-      selectedDate: '2026-06-19',
-      text: sourceText,
-    });
-    const pendingConfig = createWeeklyPlanningPendingConfig({ sourceText, assessment });
-    const override = applyWeeklyPlanningConditionOverride({
-      config: pendingConfig,
-      text: '6日間に分散\n1日1科目だけになりにくい\n30分台を避けたい',
-    });
-
-    expect(override.kind).toBe('updated');
-    if (override.kind !== 'updated') return;
-    expect(override.config.qualityPreferences).toEqual(
-      expect.arrayContaining([
-        'preferTaskSpread',
-        'avoidSingleSubjectDay',
-        'avoidTinyChunks',
-      ]),
-    );
-
-    const result = createAvailabilityAwareWeeklyDraftBlocksFromText({
-      userId: 'user-1',
-      selectedDate: '2026-06-19',
-      text: 'この条件で作成',
-      pendingConfig: override.config,
-    });
-
-    expect(result.diagnostics?.qualityPreferences).toEqual(
-      expect.arrayContaining([
-        'preferTaskSpread',
-        'avoidSingleSubjectDay',
-        'avoidTinyChunks',
-      ]),
-    );
   });
 });

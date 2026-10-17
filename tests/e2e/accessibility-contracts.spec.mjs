@@ -34,8 +34,16 @@ test.describe('browser accessibility contracts', () => {
   });
 
   test('weekly preview controls are internally consistent if they declare the tab pattern', async ({ page }) => {
-    await page.goto(`${HARNESS_URL}/?scenario=preview`);
-    const previewTabList = page.getByRole('tablist').filter({ hasText: '全体' });
+    await page.goto(`${HARNESS_URL}/real-weekly.html?preview=1`);
+    const input = page.locator('.ai-planning-composer textarea');
+    await expect(input).toBeVisible();
+    await input.fill('プレビューのタブを検査する条件');
+    await page.getByRole('button', { name: '送信', exact: true }).click();
+    await page.getByRole('button', { name: '計画プレビューを確認' }).click();
+    const preview = page.getByRole('dialog', { name: '計画プレビュー' });
+    await expect(preview).toBeVisible();
+    const previewTabList = preview.getByRole('tablist', { name: '計画プレビュー表示' });
+    await expect(previewTabList).toHaveCount(1);
     await assertDeclaredTabListIntegrity(previewTabList);
   });
 
