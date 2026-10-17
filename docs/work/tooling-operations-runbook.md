@@ -335,15 +335,15 @@ Publication and execution still require the applicable repository authorization.
 - Verification / cleanup: `npm run test:run -- scripts/admin-entry-preload.test.mjs` passes with the real-path `TMPDIR` (4/4); after PR #745 it must pass with the default `TMPDIR`. Reproduced on untouched main `8261300b`.
 - Last verified: 2026-10-18
 
-## Browser Regression chromium job cancelled at its 30-minute limit with no failed test
+## Browser Regression Chromium shard cancelled at its 30-minute limit
 
-- Operation / symptom: the Browser Regression `chromium` job ends `cancelled` with `##[error]The operation was canceled.` while every test that ran had passed.
-- Known error signature: job duration ≈30 min (`timeout-minutes: 30` in `.github/workflows/browser-regression.yml`); the log's `Running N tests using 1 worker` total is never reached (no `✘` lines) when the job is cancelled.
-- Root cause or strongest current explanation: runner slowness against the 30-minute job limit; main's runs of the same workflow took about 23–26 minutes on 2026-10-17. Examples: PR #717 run 39026081165 attempt 1 at `da83eeda` (`Running 792 tests`; cancelled after test 788, none failed; attempt 2 succeeded) and run 39055322663 at `e3078e77` (`Running 842 tests`; cancelled at 30.4 min, none failed).
-- Safe workaround: confirm from the job log that no test failed, then rerun that job once on the same commit.
+- Operation / symptom: a Browser Regression `chromium (shard N/2)` job ends `cancelled` with `##[error]The operation was canceled.`; the aggregate `chromium` check then fails.
+- Known error signature: shard duration ≈30 min (`timeout-minutes: 30` in `.github/workflows/browser-regression.yml`); the shard log's `Running N tests using 1 worker` total is never reached.
+- Root cause or strongest current explanation: runner slowness against the job limit. Before [Issue #757](https://github.com/kame447/StudyPlanner/issues/757) the whole suite ran in one job; at ≈890 tests it was cancelled on main itself (`b91ef7b5`, 30.4 min), and Playwright's file order meant the same alphabetical tail never ran: every `weekly-*` spec, `workspace-load-recovery` and `yearly-quick-entry` (2026-10-18, four cancelled attempts at two #382 heads executed 784–817 of 889–893 tests, 0 failed). #757 splits the run into two Playwright shards with the same limit, worker count and tests; a wrapper preflight fails a shard whose listing is empty, because Playwright 1.64 otherwise passes an empty shard.
+- Safe workaround: a cancelled shard is missing evidence, not a pass. "0 failed before cancellation" says nothing about the tests it never reached. Rerun that shard job once on the same commit; merge only on a completed run of both shards.
 - Required permissions / preconditions: permission to rerun workflow jobs.
-- What not to do: do not treat a cancelled job as success; do not rerun repeatedly without new evidence (repeat-action guard); do not drop tests or raise the limit to avoid the timeout. Do not confuse this with `cancel-in-progress` replacement by a newer run of the same ref, which is not a timeout.
-- Verification / cleanup: the rerun must complete within the limit with all tests passing; if the same commit times out again, stop and investigate.
+- What not to do: do not merge on a cancelled shard; do not rerun repeatedly without new evidence (repeat-action guard); do not drop tests, raise the limit or add `--pass-with-no-tests` to avoid the timeout. Do not confuse this with `cancel-in-progress` replacement by a newer run of the same ref, which is not a timeout.
+- Verification / cleanup: the rerun must complete within the limit with all of its tests passing; if the same commit times out again, stop and investigate (for example, whether one shard has become too large and the shard count needs review).
 - Last verified: 2026-10-18
 
 ## UI Regression Matrix webkit-mobile job cancelled at its 35-minute limit

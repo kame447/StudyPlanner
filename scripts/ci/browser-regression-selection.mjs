@@ -100,13 +100,24 @@ export function selectFromEvent(root, eventName, event) {
   }
 }
 
-export function playwrightArgs(selection) {
+export function playwrightArgs(selection, shard) {
+  if (shard !== undefined && (typeof shard !== 'string'
+    || !/^[1-9][0-9]*\/[1-9][0-9]*$/.test(shard)
+    || BigInt(shard.split('/')[0]) > BigInt(shard.split('/')[1]))) {
+    throw new Error('Invalid BROWSER_REGRESSION_SHARD: expected i/n with 1 <= i <= n');
+  }
   const args = ['test', '--config=tests/e2e/playwright.config.mjs'];
-  if (selection.mode === 'full' && selection.specs.length === 0) return args;
-  if (selection.mode !== 'specs' || !selection.specs.length
-    || selection.specs.some(file => !isolatedSpecs.includes(file))) throw new Error('Invalid browser execution selection');
-  // Reuse the manual WebKit exact-file convention: Playwright filters are regexes.
-  return [...args, ...selection.specs.map(file => `(^|/)${file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)];
+  if (selection.mode !== 'full' || selection.specs.length !== 0) {
+    if (selection.mode !== 'specs' || !selection.specs.length
+      || selection.specs.some(file => !isolatedSpecs.includes(file))) throw new Error('Invalid browser execution selection');
+    // Reuse the manual WebKit exact-file convention: Playwright filters are regexes.
+    args.push(...selection.specs.map(file => `(^|/)${file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
+  }
+  // An undersized narrowed selection runs in every leg, without sharding.
+  // Bounded duplication preserves strict no-tests failure; full always shards.
+  if (shard !== undefined && (selection.mode === 'full'
+    || BigInt(selection.specs.length) >= BigInt(shard.split('/')[1]))) args.push(`--shard=${shard}`);
+  return args;
 }
 
 export function main(root, command, env = process.env) {
@@ -123,7 +134,30 @@ export function main(root, command, env = process.env) {
   }
   if (command === 'run') {
     const selection = JSON.parse(fs.readFileSync(path.join(root, reportPath), 'utf8'));
-    const result = spawnSync('./tests/e2e/node_modules/.bin/playwright', playwrightArgs(selection), { cwd: root, stdio: 'inherit' });
+    const args = playwrightArgs(selection, env.BROWSER_REGRESSION_SHARD);
+    const shardArg = args.find(arg => arg.startsWith('--shard='));
+    process.stdout.write(`Browser execution: ${selection.mode}, ${shardArg
+      ? `sharded ${shardArg.slice('--shard='.length)}`
+      : env.BROWSER_REGRESSION_SHARD !== undefined ? 'unsharded-narrow' : 'unsharded'}\n`);
+    // Playwright permits empty shards even without --pass-with-no-tests.
+    // Prove this leg contains tests before starting any browser or server.
+    if (shardArg) {
+      const listed = spawnSync('./tests/e2e/node_modules/.bin/playwright', [...args, '--list', '--reporter=json'], {
+        cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
+      });
+      if (listed.error) throw listed.error;
+      if (listed.status !== 0) {
+        process.stderr.write(listed.stderr || listed.stdout || 'Browser shard listing failed\n');
+        return listed.status ?? 1;
+      }
+      const report = JSON.parse(listed.stdout);
+      const hasTests = suite => suite.specs?.some(spec => spec.tests?.length > 0) || suite.suites?.some(hasTests);
+      if (!Array.isArray(report.errors) || report.errors.length
+        || !Array.isArray(report.suites) || !report.suites.some(hasTests)) {
+        throw new Error(`Empty or invalid browser shard listing: ${shardArg}`);
+      }
+    }
+    const result = spawnSync('./tests/e2e/node_modules/.bin/playwright', args, { cwd: root, stdio: 'inherit' });
     if (result.error) throw result.error;
     return result.status ?? 1;
   }

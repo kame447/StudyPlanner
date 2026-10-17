@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { classifyChanges, isolatedSpecs, main, parseNameStatus, playwrightArgs, selectFromEvent } from './browser-regression-selection.mjs';
 
@@ -129,6 +129,20 @@ describe('runner and stable workflow gate', () => {
     }
     expect(playwrightArgs({ mode: 'full', specs: [] })).toEqual(args.slice(0, 2));
   });
+  it('shards full selections and duplicates undersized narrowed selections without allowing no tests', () => {
+    for (const shard of ['1/2', '2/2']) {
+      const fullArgs = playwrightArgs({ mode: 'full', specs: [] }, shard);
+      expect(fullArgs).toEqual(['test', '--config=tests/e2e/playwright.config.mjs', `--shard=${shard}`]);
+      const selection = { mode: 'specs', specs: isolatedSpecs };
+      expect(playwrightArgs(selection, shard)).toEqual([...playwrightArgs(selection), `--shard=${shard}`]);
+      const narrow = { mode: 'specs', specs: [isolatedSpecs[0]] };
+      expect(playwrightArgs(narrow, shard)).toEqual(playwrightArgs(narrow));
+      expect(fullArgs).not.toContain('--pass-with-no-tests');
+    }
+    for (const shard of ['', '0/2', '1/0', '3/2', '01/2', '1/02', '1', '1/2/3', '1.5/2', '-1/2', ' 1/2', '1/2\n', '--shard=1/2', null]) {
+      expect(() => playwrightArgs({ mode: 'full', specs: [] }, shard), String(shard)).toThrow('Invalid BROWSER_REGRESSION_SHARD');
+    }
+  });
   it.each([{ mode: 'none', specs: [] }, { mode: 'specs', specs: [] }, { mode: 'full', specs: ['x'] }, { mode: 'specs', specs: ['--pass-with-no-tests'] }])('rejects invalid execution receipt %j', selection => expect(() => playwrightArgs(selection)).toThrow());
   it('emits explicit none evidence and preserves a nonzero runner exit status', () => {
     const { root, base } = repository(); write(root, 'README.md', 'docs'); const head = commit(root, 'docs');
@@ -139,8 +153,27 @@ describe('runner and stable workflow gate', () => {
     expect(fs.readFileSync(env.GITHUB_STEP_SUMMARY, 'utf8')).toContain('not a full-browser pass');
     expect(() => main(root, 'run')).toThrow('Invalid browser execution selection');
     write(root, 'artifacts/browser-selection.json', JSON.stringify({ mode: 'specs', specs: isolatedSpecs }));
-    write(root, 'tests/e2e/node_modules/.bin/playwright', '#!/bin/sh\nexit 17\n'); fs.chmodSync(path.join(root, 'tests/e2e/node_modules/.bin/playwright'), 0o755);
-    expect(main(root, 'run')).toBe(17);
+    write(root, 'runner-listing', JSON.stringify({ suites: [{ suites: [{ specs: [{ tests: [{}] }] }] }], errors: [] }));
+    write(root, 'tests/e2e/node_modules/.bin/playwright', '#!/bin/sh\nfor arg do\n  if [ "$arg" = "--list" ]; then cat runner-listing; exit 0; fi\ndone\nprintf "%s\\n" "$@" > runner-args\nexit 17\n'); fs.chmodSync(path.join(root, 'tests/e2e/node_modules/.bin/playwright'), 0o755);
+    expect(main(root, 'run', { BROWSER_REGRESSION_SHARD: '2/2' })).toBe(17);
+    expect(fs.readFileSync(path.join(root, 'runner-args'), 'utf8')).toContain('--shard=2/2\n');
+    write(root, 'artifacts/browser-selection.json', JSON.stringify({ mode: 'specs', specs: [isolatedSpecs[0]] }));
+    expect(main(root, 'run', { BROWSER_REGRESSION_SHARD: '2/2' })).toBe(17);
+    expect(fs.readFileSync(path.join(root, 'runner-args'), 'utf8').trim().split('\n'))
+      .toEqual(playwrightArgs({ mode: 'specs', specs: [isolatedSpecs[0]] }));
+    fs.unlinkSync(path.join(root, 'runner-args'));
+    expect(() => main(root, 'run', { BROWSER_REGRESSION_SHARD: '3/2' })).toThrow('Invalid BROWSER_REGRESSION_SHARD');
+    expect(fs.existsSync(path.join(root, 'runner-args'))).toBe(false);
+    write(root, 'artifacts/browser-selection.json', JSON.stringify({ mode: 'full', specs: [] }));
+    for (const listing of [
+      { suites: [], errors: [] },
+      { suites: [{ specs: [{ tests: [] }] }], errors: [] },
+      { suites: [{ specs: [{ tests: [{}] }] }], errors: [{ message: 'load error' }] },
+    ]) {
+      write(root, 'runner-listing', JSON.stringify(listing));
+      expect(() => main(root, 'run', { BROWSER_REGRESSION_SHARD: '2/2' })).toThrow('Empty or invalid browser shard listing');
+      expect(fs.existsSync(path.join(root, 'runner-args'))).toBe(false);
+    }
   });
   it('fails on unreadable/malformed event data instead of emitting none', () => {
     const { root } = repository(); write(root, 'broken.json', '{');
@@ -148,7 +181,10 @@ describe('runner and stable workflow gate', () => {
     expect(fs.existsSync(path.join(root, 'artifacts/browser-selection.json'))).toBe(false);
   });
   it('retains the existing chromium check, triggers and timeout and conditions all expensive steps', () => {
-    expect(workflow).toContain('  chromium:\n    runs-on: ubuntu-latest\n    timeout-minutes: 30');
+    expect(workflow).toContain('  chromium-shard:\n    name: chromium (shard ${{ matrix.shard }}/2)\n    runs-on: ubuntu-latest\n    timeout-minutes: 30');
+    expect(workflow).toContain('fail-fast: false\n      matrix:\n        shard: [1, 2]');
+    expect(workflow).toContain('BROWSER_REGRESSION_SHARD: ${{ matrix.shard }}/2');
+    expect(workflow.match(/BROWSER_REGRESSION_SHARD:/g)).toHaveLength(1);
     expect(workflow).toContain('fetch-depth: 0');
     expect(workflow).not.toMatch(/paths:|paths-ignore:|continue-on-error|pass-with-no-tests|pull_request_target/);
     for (const name of ['Install application dependencies', 'Snapshot application manifests before isolated test-runner install', 'Install isolated Playwright test runner', 'Verify isolated test-runner install did not mutate application manifests', 'Install Chromium', 'Build production bundle', 'Run browser regression tests']) {
@@ -156,7 +192,16 @@ describe('runner and stable workflow gate', () => {
     }
     expect(workflow).toContain('run: node scripts/ci/browser-regression-selection.mjs select');
     expect(workflow).toContain('run: node scripts/ci/browser-regression-selection.mjs run');
-    expect(workflow).toContain('name: browser-selection-${{ github.sha }}');
+    for (const artifact of ['browser-selection', 'browser-regression-artifacts', 'browser-ui-images']) {
+      expect(workflow).toContain(`name: ${artifact}-\${{ github.sha }}-shard-\${{ matrix.shard }}`);
+    }
+    expect(workflow).toContain('  chromium:\n    name: chromium\n    needs: chromium-shard\n    if: always()');
+    expect(workflow).toContain('SHARD_RESULT: ${{ needs.chromium-shard.result }}');
+    const gate = workflow.split('      - name: Require every Chromium shard to succeed\n')[1].split('        run: |\n')[1];
+    for (const result of ['success', 'failure', 'cancelled', 'skipped', '']) {
+      expect(spawnSync('bash', ['-c', gate], { env: { ...process.env, SHARD_RESULT: result } }).status, result)
+        .toBe(result === 'success' ? 0 : 1);
+    }
     expect(workflow).toContain('if-no-files-found: error');
     expect(workflow).toContain('permissions:\n  contents: read');
   });
