@@ -50,7 +50,7 @@ export function AppSettingsGeneral({
   themeMode, themePalette, themeError, onChangeTheme, onChangeThemePalette,
 }: AppSettingsGeneralProps) {
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const { weekStartsOn, setWeekStartsOn, resetProfile } = useWeeklyPlanningPersonalization();
+  const { weekStartsOn, setWeekStartsOn, resetProfile, saving: preferenceSaving, error: preferenceError } = useWeeklyPlanningPersonalization();
   const selectedPalette = THEME_PALETTE_OPTIONS.find(option => option.id === themePalette) ?? THEME_PALETTE_OPTIONS[0];
   const motion = useMotionPreference();
   const motionCappedBySystem = motion.preference === 'standard' && motion.systemReduced;
@@ -176,18 +176,20 @@ export function AppSettingsGeneral({
       <div className="settings-row-block">
         <div className="settings-row">
           <span className="settings-field-label" id="settings-week-label"><CalendarDays aria-hidden="true" size={21} />週の始まり</span>
-          <div className="settings-segments" role="group" aria-labelledby="settings-week-label" aria-describedby="settings-week-description">
+          <div className="settings-segments" role="group" aria-labelledby="settings-week-label" aria-describedby="settings-week-description" aria-busy={preferenceSaving}>
             {(['monday', 'sunday'] as const).map(day => <button key={day} type="button"
-              aria-pressed={weekStartsOn === day} onClick={() => void setWeekStartsOn(day)}>
+              disabled={preferenceSaving} aria-pressed={weekStartsOn === day} onClick={() => void setWeekStartsOn(day)}>
               {day === 'monday' ? '月曜日' : '日曜日'}
             </button>)}
           </div>
         </div>
         <p className="settings-group-note" id="settings-week-description">「今週」「来週」の解釈と週間計画の保存単位に反映されます。</p>
       </div>
-      <button className="settings-row settings-row-button settings-reset-row" type="button" onClick={() => {
+      <button className="settings-row settings-row-button settings-reset-row" type="button" disabled={preferenceSaving} onClick={() => {
         if (window.confirm('学習設定を初期化しますか？')) void resetProfile();
       }}><span className="settings-field-label"><RotateCcw aria-hidden="true" size={20} />学習設定を初期化</span><ChevronRight aria-hidden="true" size={20} /></button>
+      {preferenceSaving ? <p className="settings-group-note" role="status">学習設定を保存しています…</p> : null}
+      {preferenceError ? <p className="settings-inline-error settings-group-note" role="alert">{preferenceError}</p> : null}
     </SettingsGroup>
 
     <SettingsGroup title="AIについて">
