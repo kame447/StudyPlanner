@@ -14,7 +14,7 @@ export async function lookupHyMemoryCandidateRecords(params: {
   query: string;
   fetcher?: typeof fetch;
 }): Promise<ResolvedHyMemoryCandidates> {
-  const unavailable = { status: 'unavailable', records: [] } as const;
+  const unavailable: ResolvedHyMemoryCandidates = { status: 'unavailable', records: [] };
   if (import.meta.env.VITE_HY_MEMORY_CANDIDATES !== 'shadow') return unavailable;
   const proxyUrl = getCloudflareAiProxyUrl();
   const currentUser = getFirebaseAuth()?.currentUser;
