@@ -1,13 +1,26 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app';
 import {
-  collection, connectFirestoreEmulator, doc, documentId, getDocFromServer,
+  collection, connectFirestoreEmulator, deleteDoc, doc, documentId, getDocFromServer,
   getDocsFromServer, getFirestore, query, setDoc, terminate, where, type Firestore,
 } from 'firebase/firestore';
 import { createFirebasePlannerRepository } from '../../src/repositories/firebasePlannerRepository';
 import { createFirebaseScheduleEventAuthority } from '../../src/repositories/firebaseScheduleEventAuthority';
 import { createScheduleEventBackedPlannerRepository } from '../../src/repositories/scheduleEventAuthorityRepository';
 import type { Actual, MonthEvent } from '../../src/types/domain';
+import { createConfirmedStudyHistory } from '../../src/repositories/confirmedStudyHistory';
+
+// A deterministic interleaving hook; every read/write still uses the real SDK
+// against the loopback Emulator and unchanged owner Rules.
+const queryReads = vi.hoisted(() => ({ afterRead: null as null | ((snapshot: { docs: readonly { id: string }[] }) => Promise<void>) }));
+vi.mock('firebase/firestore', async importOriginal => {
+  const sdk = await importOriginal<typeof import('firebase/firestore')>();
+  return { ...sdk, getDocs: async (...args: Parameters<typeof sdk.getDocs>) => {
+    const snapshot = await sdk.getDocs(...args);
+    await queryReads.afterRead?.(snapshot);
+    return snapshot;
+  } };
+});
 
 // This is an actual SDK + Rules boundary, never a live Firebase project.
 // All names, dates and times below are synthetic regression fixtures.
@@ -45,6 +58,7 @@ describe.skipIf(!host)('Actual first save through real Firestore repository and 
   let ownerDb: Firestore, foreignDb: Firestore;
   const owner = `actual-owner-${Date.now()}`, foreign = `actual-foreign-${Date.now()}`;
   beforeAll(() => { ownerDb = client(owner); foreignDb = client(foreign); });
+  afterEach(() => { queryReads.afterRead = null; });
   afterAll(async () => { await Promise.all(clients.map(async ({ app, db }) => { await terminate(db); await deleteApp(app); })); });
 
   it('reproduces the absent equality-target failure and permits only the exact owner range', async () => {
@@ -102,6 +116,65 @@ describe.skipIf(!host)('Actual first save through real Firestore repository and 
     await expect(getDocsFromServer(exactRange(ownerDb, foreign, input.id))).rejects.toMatchObject({ code: 'permission-denied' });
     await expect(createFirebasePlannerRepository(ownerDb).upsertActual({ ...input, userId: owner })).rejects.toThrow('permission-denied');
     expect((await getDocFromServer(doc(foreignDb, 'actuals', input.id))).data()).toEqual(input);
+  });
+
+  it('matches full-history duplicate winners with legacy dates, old occurrences and owner isolation without certifying a partial read', async () => {
+    const receipt = createConfirmedStudyHistory(() => '2026-09-10');
+    receipt.confirmMigration(owner);
+    const clean = { fromCache: false, hasPendingWrites: false };
+    receipt.beginRead(owner, 'plans')([], clean);
+    receipt.beginRead(owner, 'monthEvents')([], clean);
+    const repository = createFirebasePlannerRepository(ownerDb, receipt);
+    const linkedPlan = 'targeted-recurring-source';
+    const winner = { ...actual(owner, 'targeted-legacy-winner', linkedPlan), occurrenceDate: '2000-01-03', updatedAt: '2026-09-11T00:00:00.000Z' };
+    const loser = { ...actual(owner, 'targeted-older-duplicate', linkedPlan), occurrenceDate: winner.occurrenceDate };
+    const { id, occurrenceDate, ...legacy } = winner;
+    const otherOccurrence = { ...actual(owner, 'targeted-old-occurrence', linkedPlan), occurrenceDate: '1999-12-27' };
+    const foreignRow = { ...actual(foreign, 'targeted-foreign', linkedPlan), occurrenceDate, updatedAt: '2026-09-12T00:00:00.000Z' };
+    await Promise.all([
+      setDoc(doc(ownerDb, 'actuals', id), { ...legacy, date: occurrenceDate }),
+      setDoc(doc(ownerDb, 'actuals', loser.id), loser),
+      setDoc(doc(ownerDb, 'actuals', otherOccurrence.id), otherOccurrence),
+      setDoc(doc(foreignDb, 'actuals', foreignRow.id), foreignRow),
+    ]);
+    const selected = await repository.getActualForWritePreparation!(owner, id);
+    expect(selected).toMatchObject(winner);
+    expect(await repository.getActualForWritePreparation!(owner, loser.id)).toBeUndefined();
+    expect(await repository.getActualForWritePreparation!(owner, foreignRow.id)).toBeUndefined();
+    expect(await repository.getActualForWritePreparation!(owner, otherOccurrence.id)).toMatchObject(otherOccurrence);
+    expect(receipt.read(owner, { plans: [], actuals: [selected!], monthEvents: [] }, '2026-09-10')).toBeNull();
+    const complete = await repository.getActuals(owner);
+    expect(complete.find(row => row.id === id)).toEqual(selected);
+    expect(complete.some(row => row.id === loser.id || row.id === foreignRow.id)).toBe(false);
+  });
+
+  it('fails closed before stale unlink writes when the real ID read is followed by deletion or relinking', async () => {
+    for (const change of ['delete', 'relink'] as const) {
+      const input = { ...actual(owner, `targeted-race-${change}`, `source-${change}`),
+        progressSource: { kind: 'general-event' as const, sourceId: `source-${change}` } };
+      await setDoc(doc(ownerDb, 'actuals', input.id), input);
+      const materialId = `targeted-material-${change}`;
+      await setDoc(doc(ownerDb, 'study_materials', materialId), { userId: owner, currentUnit: 5 });
+      const raw = createFirebasePlannerRepository(ownerDb);
+      const repository = createScheduleEventBackedPlannerRepository(raw, createFirebaseScheduleEventAuthority(ownerDb));
+      let interleaved = false;
+      queryReads.afterRead = async snapshot => {
+        if (interleaved || !snapshot.docs.some(row => row.id === input.id)) return;
+        interleaved = true;
+        queryReads.afterRead = null;
+        if (change === 'delete') await deleteDoc(doc(ownerDb, 'actuals', input.id));
+        else await setDoc(doc(ownerDb, 'actuals', input.id), { ...input, planId: 'changed-source' });
+      };
+      await expect(repository.upsertActualWithMaterialProgress({ actual: actual(owner, input.id), materials: [{
+        id: materialId, userId: owner, name: 'Book', subjectId: '', subjectName: '',
+        status: 'active', paceEnabled: true, currentUnit: 999, createdAt: stamp, updatedAt: stamp,
+      }] })).rejects.toThrow('再読み込み');
+      expect(interleaved).toBe(true);
+      const after = await getDocsFromServer(exactRange(ownerDb, owner, input.id));
+      if (change === 'delete') expect(after.empty).toBe(true);
+      else expect(after.docs[0]?.data()).toMatchObject({ ...input, planId: 'changed-source' });
+      expect((await getDocFromServer(doc(ownerDb, 'study_materials', materialId))).data()?.currentUnit).toBe(5);
+    }
   });
 
   it('rejects unauthenticated first-save queries and writes', async () => {

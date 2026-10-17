@@ -288,6 +288,26 @@ export function createFirebasePlannerRepository(
         );
       }
     },
+    async getActualForWritePreparation(userId, actualId) {
+      // Keep missing resources owner-queryable under the unchanged Rules. A
+      // partial lookup must not publish a complete-history receipt.
+      const snapshot = await getDocs(query(collection(firestoreDb, 'actuals'),
+        where('userId', '==', userId),
+        where(documentId(), '>=', actualId), where(documentId(), '<=', actualId)));
+      const candidate = snapshot.docs.map(row => normalizeActualRecord({ ...row.data(), id: row.id } as Actual))
+        .find(row => row.id === actualId && row.userId === userId);
+      if (!candidate?.planId) return candidate;
+      // getActuals hides non-winning duplicates. Read this source's complete
+      // group so legacy date-only rows participate in the same normalization.
+      const linked = await listActualsByPlanId(firestoreDb, userId, candidate.planId);
+      // A disappearing/relinked candidate is not evidence of a new record.
+      // In particular, an unlink must not recreate it without its old source.
+      if (!linked.some(row => row.id === actualId && row.userId === userId)) {
+        throw new Error('記録が変更または削除されました。再読み込みしてから保存してください。');
+      }
+      return dedupeLinkedActualRecords(linked.map(normalizeActualRecord))
+        .find(row => row.id === actualId && row.userId === userId);
+    },
     async getDayNotes(userId, options) {
       try {
         if (options?.requireServer) {
