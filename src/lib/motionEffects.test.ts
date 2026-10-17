@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { measureAtRest, MOTION_DURATION_MS, playEntrance, playFromRect, playGrowth, playIndicatorTravel, playNavigation, playSettle, playShift } from './motionEffects';
+import { measureAtRest, MOTION_DURATION_MS, playEntrance, playFromRect, playGrowth, playHop, playIndicatorTravel, playNavigation, playSettle, playShift } from './motionEffects';
 import { MOTION_STORAGE_KEY, REDUCED_FADE_MS, setMotionPreference } from './motionPreference';
 import { installFakeMotionEnvironment } from './motionPreference.testUtils';
 import { readFileSync } from 'node:fs';
@@ -194,5 +194,23 @@ describe('growing from another surface', () => {
     expect(animatedProperties(animations[0].frames)).toEqual(['opacity']);
     setMotionPreference('off');
     expect(playFromRect(element, { left: 10, top: 20, width: 60, height: 80 })).toBeNull();
+  });
+});
+
+describe('companion hop', () => {
+  it('hops in pixel steps and lands in place at standard', () => {
+    const { element, animations } = fakeElement();
+    playHop(element);
+    expect(animatedProperties(animations[0].frames)).toEqual(['translate']);
+    expect(animations[0].options.easing).toBe('steps(6, end)');
+    expect(animations[0].frames[animations[0].frames.length - 1].translate).toBe('0 0');
+  });
+
+  it('is ambience, so nothing moves below standard', () => {
+    setMotionPreference('reduced');
+    const { element } = fakeElement();
+    expect(playHop(element)).toBeNull();
+    setMotionPreference('off');
+    expect(playHop(element)).toBeNull();
   });
 });
