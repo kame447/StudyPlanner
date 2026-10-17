@@ -26,12 +26,6 @@ async function expectNoSecondSubmitAction(page) {
 }
 
 test.describe('QuickEntryModal weekly UI harness contracts', () => {
-  test('an existing weekly session opens directly in a usable weekly planning mode', async ({ page }) => {
-    await openWeeklyHarness(page);
-    await expect(page.getByLabel('週間計画にしたいこと')).toBeVisible();
-    await expect(page.getByRole('button', { name: '送信', exact: true })).toBeVisible();
-  });
-
   test('plain Enter keeps editing while Ctrl+Enter submits one user turn', async ({ page }) => {
     await openWeeklyHarness(page);
 

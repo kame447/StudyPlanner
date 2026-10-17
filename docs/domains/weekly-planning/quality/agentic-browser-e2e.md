@@ -53,7 +53,13 @@ ChatGPTの対応サブスクリプションを使いたい場合は、`cd tests/
 
 ## GitHub Actions
 
-`.github/workflows/agentic-browser-e2e.yml` は対象ファイルを変更したPRで無課金smokeを実行する。手動の`workflow_dispatch`では`run_agent=true`と、GitHub Actions Secret `OPENAI_API_KEY` を設定した場合のみモデルを使った検証を実行する。秘密情報はコミット・issue・traceへ含めず、専用の合成データしか操作しない。ランナーは匿名telemetryを明示的に無効化し、`.e2e/`の成果物を短期間保存する。
+`.github/workflows/agentic-browser-e2e.yml` はmain向け全PRとmainへのpushで無課金smokeを実行する。手動の`workflow_dispatch`では`run_agent=true`と、GitHub Actions Secret `OPENAI_API_KEY` を設定した場合のみモデルを使った検証を実行する。秘密情報はコミット・issue・traceへ含めず、専用の合成データしか操作しない。ランナーは匿名telemetryを明示的に無効化し、`.e2e/`の成果物を短期間保存する。
+
+## 既存Playwrightとの契約比較（Issue #730）
+
+旧 `tests/e2e/weekly-planning-modal.spec.mjs` の「existing weekly session opens directly ...」は `/?weekly=1` で入力欄・送信ボタンが見えることのみを検査していた。同ファイルの送信とpendingのテストもこの状態を前提に検査しているため、検出範囲が重複する。2026-10-17に `tests/agent-e2e/tests/weekly-conversation.e2e.ts` の `smoke: an existing weekly session has a usable accessible composer` へ移管。新テストは同じ実ブラウザの合成harnessで、入力欄と送信ボタンの可視性に加えて、入力時に送信ボタンが有効になることを検査する。CIはmain向け全PRとmain pushでこのmodel-free smokeを実行するため、変更時の回帰監視を省略しない。
+
+同じ「週間計画」でも、`weekly-planning-modal.spec.mjs` のEnter/Ctrl+Enter・pending中のキャンセルと再送抑止、`weekly-preview-approval.spec.mjs` のイベントpayload・二重promote防止、`weekly-real-application.spec.mjs` のcontroller/reducer・保存・reload等は別の故障を検査するため保持する。モデル操作の成功のみを根拠に状態不変条件を置き換えない。
 
 ## 移行条件と次の拡張
 
