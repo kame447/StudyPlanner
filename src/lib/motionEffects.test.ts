@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { measureAtRest, MOTION_DURATION_MS, playEntrance, playIndicatorTravel, playNavigation, playSettle, playShift } from './motionEffects';
+import { measureAtRest, MOTION_DURATION_MS, playEntrance, playGrowth, playIndicatorTravel, playNavigation, playSettle, playShift } from './motionEffects';
 import { MOTION_STORAGE_KEY, REDUCED_FADE_MS, setMotionPreference } from './motionPreference';
 import { installFakeMotionEnvironment } from './motionPreference.testUtils';
 import { readFileSync } from 'node:fs';
@@ -149,5 +149,24 @@ describe('measuring at rest', () => {
     const { element, calls } = animatedElement('paused');
     measureAtRest(element, () => null);
     expect(calls).toEqual(['pause', 'seek:210', 'seek:120']);
+  });
+});
+
+describe('value growth', () => {
+  it('grows a bar from its previous length along one axis at standard, clamped', () => {
+    const { element, animations } = fakeElement();
+    playGrowth(element, 0.5);
+    playGrowth(element, 80, 'x');
+    expect(animations.map(animation => animation.frames[0].scale)).toEqual(['1 0.5', '50 1']);
+    expect(animations[1].frames[animations[1].frames.length - 1].scale).toBe('1 1');
+  });
+
+  it('only brightens at reduced and does nothing at off', () => {
+    setMotionPreference('reduced');
+    const { element, animations } = fakeElement();
+    playGrowth(element, 0.5);
+    expect(animatedProperties(animations[0].frames)).toEqual(['opacity']);
+    setMotionPreference('off');
+    expect(playGrowth(element, 0.5)).toBeNull();
   });
 });
