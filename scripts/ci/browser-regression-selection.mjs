@@ -113,10 +113,10 @@ export function playwrightArgs(selection, shard) {
     // Reuse the manual WebKit exact-file convention: Playwright filters are regexes.
     args.push(...selection.specs.map(file => `(^|/)${file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
   }
-  // An undersized narrowed selection runs in every leg, without sharding.
-  // Bounded duplication preserves strict no-tests failure; full always shards.
-  if (shard !== undefined && (selection.mode === 'full'
-    || BigInt(selection.specs.length) >= BigInt(shard.split('/')[1]))) args.push(`--shard=${shard}`);
+  // A narrowed selection runs in every leg, without sharding: Playwright shards
+  // by test group, so even two selected files can leave one shard empty.
+  // Duplication is bounded by the isolated-spec allowlist; full always shards.
+  if (shard !== undefined && selection.mode === 'full') args.push(`--shard=${shard}`);
   return args;
 }
 

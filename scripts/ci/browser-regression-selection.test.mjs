@@ -129,12 +129,13 @@ describe('runner and stable workflow gate', () => {
     }
     expect(playwrightArgs({ mode: 'full', specs: [] })).toEqual(args.slice(0, 2));
   });
-  it('shards full selections and duplicates undersized narrowed selections without allowing no tests', () => {
+  it('shards full selections and runs every narrowed selection unsharded without allowing no tests', () => {
     for (const shard of ['1/2', '2/2']) {
       const fullArgs = playwrightArgs({ mode: 'full', specs: [] }, shard);
       expect(fullArgs).toEqual(['test', '--config=tests/e2e/playwright.config.mjs', `--shard=${shard}`]);
+      // Playwright shards by test group: both allowlisted files can land in shard 1.
       const selection = { mode: 'specs', specs: isolatedSpecs };
-      expect(playwrightArgs(selection, shard)).toEqual([...playwrightArgs(selection), `--shard=${shard}`]);
+      expect(playwrightArgs(selection, shard)).toEqual(playwrightArgs(selection));
       const narrow = { mode: 'specs', specs: [isolatedSpecs[0]] };
       expect(playwrightArgs(narrow, shard)).toEqual(playwrightArgs(narrow));
       expect(fullArgs).not.toContain('--pass-with-no-tests');
@@ -152,15 +153,15 @@ describe('runner and stable workflow gate', () => {
     expect(fs.readFileSync(env.GITHUB_OUTPUT, 'utf8')).toBe('mode=none\n');
     expect(fs.readFileSync(env.GITHUB_STEP_SUMMARY, 'utf8')).toContain('not a full-browser pass');
     expect(() => main(root, 'run')).toThrow('Invalid browser execution selection');
-    write(root, 'artifacts/browser-selection.json', JSON.stringify({ mode: 'specs', specs: isolatedSpecs }));
+    write(root, 'artifacts/browser-selection.json', JSON.stringify({ mode: 'full', specs: [] }));
     write(root, 'runner-listing', JSON.stringify({ suites: [{ suites: [{ specs: [{ tests: [{}] }] }] }], errors: [] }));
     write(root, 'tests/e2e/node_modules/.bin/playwright', '#!/bin/sh\nfor arg do\n  if [ "$arg" = "--list" ]; then cat runner-listing; exit 0; fi\ndone\nprintf "%s\\n" "$@" > runner-args\nexit 17\n'); fs.chmodSync(path.join(root, 'tests/e2e/node_modules/.bin/playwright'), 0o755);
     expect(main(root, 'run', { BROWSER_REGRESSION_SHARD: '2/2' })).toBe(17);
     expect(fs.readFileSync(path.join(root, 'runner-args'), 'utf8')).toContain('--shard=2/2\n');
-    write(root, 'artifacts/browser-selection.json', JSON.stringify({ mode: 'specs', specs: [isolatedSpecs[0]] }));
+    write(root, 'artifacts/browser-selection.json', JSON.stringify({ mode: 'specs', specs: isolatedSpecs }));
     expect(main(root, 'run', { BROWSER_REGRESSION_SHARD: '2/2' })).toBe(17);
     expect(fs.readFileSync(path.join(root, 'runner-args'), 'utf8').trim().split('\n'))
-      .toEqual(playwrightArgs({ mode: 'specs', specs: [isolatedSpecs[0]] }));
+      .toEqual(playwrightArgs({ mode: 'specs', specs: isolatedSpecs }));
     fs.unlinkSync(path.join(root, 'runner-args'));
     expect(() => main(root, 'run', { BROWSER_REGRESSION_SHARD: '3/2' })).toThrow('Invalid BROWSER_REGRESSION_SHARD');
     expect(fs.existsSync(path.join(root, 'runner-args'))).toBe(false);
