@@ -108,6 +108,13 @@ const SETTLE: EffectSpec = {
   reduced: [{ opacity: 0.45 }, { opacity: 1 }],
 };
 
+/** Stops `element`'s running effect at once, e.g. when a local motion setting is turned off. */
+export function stopEffect(element: Element | null | undefined) {
+  if (!element) return;
+  running.get(element)?.cancel();
+  running.delete(element);
+}
+
 /** A newly added item arrives in place. */
 export function playEntrance(element: Element | null | undefined) {
   return play(element, ENTRANCE);
@@ -245,5 +252,26 @@ export function playStepChange(element: Element | null | undefined) {
       easing: EMPHASIZED,
     },
     reduced: [{ opacity: 0.35 }, { opacity: 1 }],
+  });
+}
+
+/**
+ * A decorative companion acknowledges something the user just achieved
+ * with one small hop, stepped to match pixel art. Standard only: it is
+ * ambience, so below standard nothing moves.
+ */
+export function playHop(element: Element | null | undefined) {
+  return play(element, {
+    standard: {
+      frames: [
+        { translate: '0 0' },
+        { translate: '0 -6px', offset: 0.35 },
+        { translate: '0 -2px', offset: 0.7 },
+        { translate: '0 0' },
+      ],
+      duration: MOTION_DURATION_MS.slow + 120,
+      easing: 'steps(6, end)',
+    },
+    reduced: null,
   });
 }

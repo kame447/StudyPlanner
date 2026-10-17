@@ -275,7 +275,8 @@ export function NextPlanSection({
         )}
       </div>
 
-      <HomeScene kind={nextPlanVisual.kind} preferences={homeScenePreferences} plan={nextPlan} />
+      <HomeScene kind={nextPlanVisual.kind} preferences={homeScenePreferences} plan={nextPlan}
+        recorded={{ week: dashboard.weekDays[0]?.date ?? dashboard.today, minutes: dashboard.weekActualMinutes }} />
 
       <div className="home-actions">
       <button
