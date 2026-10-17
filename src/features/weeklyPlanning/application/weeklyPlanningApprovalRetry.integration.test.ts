@@ -155,6 +155,80 @@ async function interruptedBatch(count: number, failedIndex: number, metadata: bo
 }
 
 describe('approval batch identity across partial-save recovery', () => {
+  it('reuses durable approval identity after reload loses the save response, ledger and recovery receipt', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-18T00:00:00.000Z'));
+      const conversationId = 'reload-before-ack';
+      const graph = createEmptyWeeklyPlanningFactGraphV5();
+      const block = createWeeklyPlanningTestDraftBlock({
+        id: 'reload-block',
+        previewMetadata: {
+          previewId: 'reload-preview', conversationId, stateRevision: graph.revision,
+          assumptionDependencies: [], approvalEligibility: 'eligible', stale: false,
+          authorizedUserId: 'user-1',
+        },
+      });
+      block.behaviorMetadata = {
+        ...block.behaviorMetadata!, conversationId,
+        compatibility: {
+          workItemSemantic: 'generic_semantic_task',
+          schedulerInputSource: 'stable_v5_generic_scheduler_input', candidateSource: 'stable_v5',
+        },
+      };
+      let state = weeklyPlanningReducer(createInitialPlanningState('2026-07-13'), {
+        type: 'add_draft_blocks', blocks: [block],
+      });
+      const checkpoint = { ownerId: 'user-1', weekStartDate: state.weekStartDate,
+        conversationId, graph, planningState: state, savedAt: new Date().toISOString() };
+      const encoded = largestWeeklyPlanningStableV5Checkpoint(checkpoint);
+      expect(encoded).not.toBeNull();
+      const db = createWeeklyPlanningApprovalMemoryState();
+      const repository = createMemoryWeeklyPlanningApprovalPlanRepository(db);
+      let operations: WeeklyDraftApprovalOperation[] = [];
+      const run = (loseResponse: boolean) => approveWeeklyPlanningDraftBlocks({
+        userId: 'user-1', plans: [], approvalOperations: operations,
+        getState: () => state, dispatch: (action) => (state = weeklyPlanningReducer(state, action)),
+        onOperationCompleted: (operation) => { operations = [operation]; },
+        completeWeeklyApprovalOperation: (operation) => repository.completeOperation(operation),
+        async saveWeeklyApprovedPlan(draft) {
+          const saved = await repository.saveApprovedPlan(draft);
+          if (loseResponse) throw new Error('response-lost-after-durable-commit');
+          return saved;
+        },
+      }, { recordApprovalStarted() {}, recordApprovalCompleted() {}, recordApprovalFailure() {} });
+      hydrateWeeklyPlanningStableV5RuntimeSession(checkpoint);
+      await expect(run(true)).rejects.toThrow('一部の仮予定');
+      expect(db.metrics.planWrites).toBe(1);
+      expect(state.approvalRecovery).toBeDefined();
+      const originalOperationId = operations[0].approvalOperationId;
+      const originalPlanId = [...db.plans.keys()][0];
+
+      // Reload from the last pre-approval checkpoint: neither the failed
+      // response's receipt nor the local ledger reached durable client storage.
+      resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+      operations = [];
+      const restored = parseWeeklyPlanningStableV5PersistedSession({ ...checkpoint, raw: encoded!.raw });
+      expect(restored).not.toBeNull();
+      state = restored!.planningState;
+      expect(state.pendingApproval).toBeUndefined();
+      expect(state.approvalRecovery).toBeUndefined();
+      expect(state.draftBlocks).toHaveLength(1);
+      hydrateWeeklyPlanningStableV5RuntimeSession(restored!);
+      vi.setSystemTime(new Date('2026-10-18T00:01:00.000Z'));
+      await run(false);
+
+      expect(db.metrics.planWrites).toBe(1);
+      expect([...db.plans.keys()]).toEqual([originalPlanId]);
+      expect(operations[0].approvalOperationId).toBe(originalOperationId);
+      expect(operations[0].status).toBe('completed');
+      expect(state.draftBlocks).toEqual([]);
+    } finally {
+      resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+      vi.useRealTimers();
+    }
+  });
+
   it('does not duplicate B when A is acknowledged, B commits without a response, and the ledger is lost', async () => {
     const trace = vi.spyOn(approvalTrace, 'recordWeeklyPlanningApprovalTrace');
     try {
