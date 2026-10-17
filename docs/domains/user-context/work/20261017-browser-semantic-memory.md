@@ -44,7 +44,9 @@ threshold sweepでは、v1で0.75にするとnegative 6/6に候補が出た。0.
 
 runtimeの `DEFAULT_SEMANTIC_MEMORY_MIN_SCORE=0.84` は暫定値として扱う。これは合成データによる候補品質の測定であり、実言語の人手gold、十分なprecision評価、実端末の性能評価を終えたthresholdではない。
 
-親実行のdesktop browser結果: Chromium 156はlifecycle checks全件pass。WebKit 27.2はcold embed、abort、cache eraseがpassした一方、offline reloadはfailした。put成功を報告した後にcache entryがreload後に消える事象は調査中。**iPhone Safariは未実行**。
+親実行のdesktop browser結果（Playwright、最終snapshot `d42ceb9a`）: Chromium 156（WASM）、WebKit 27.2（WebGPU）、WebKit 27.2（WASM強制）の3 targetで、cold embed・WASM強制・cache保存・online reload（model/runtime通信を遮断）・offline reload・cache消去後offlineのunavailable・download中abortの8 checkが全件pass。診断cacheなしのWebKit WASM経路も8/8 pass。model load は8.2〜14.0秒、steady embed はChromium/WebKit WASMで約13ms、WebKit WebGPUで55〜74ms。公開model/tokenizerの取得量は135,138,425 bytes、通信method/body違反0件。
+
+WebKitで判明した2点: (1) 約150MiBの単一Cache API entryは `Blob loading failed` で保存できない（quotaは1000MiB、1/50MiBは成功）。そのためmodel fileを32MiB以下のchunkとmanifest（最後に公開）で保存する。(2) Playwright WebKitのephemeral contextはpage reloadでCache API entryを失う（20 byte probeで再現、persistent contextでは保持）。WebKit lifecycleは新規の一時persistent profileで実行し、この差はtest環境のartifactとして記録した。**iPhone Safari実機は未実行**であり、desktop WebKitのpassを実機offline・低memory・PWA挙動の保証とみなさない。
 
 親の評価結果にはcontext bytesとlatencyの数値が含まれていないため、ここでは未計測値を補わない。
 
@@ -63,11 +65,11 @@ Issue comment [6232696407](https://github.com/kame447/StudyPlanner/issues/294#is
 | Gate | 状態 | 根拠 / 残り |
 | --- | --- | --- |
 | 1. bounded lexical/entity baselineと日本語paraphrase missを比較し、embedding unavailable時は現行結果を保持する | 検証済み | Node ONNX実モデルでv1/holdout比較を実施。index testはembedding unavailable時にbyte-identical lexical outputを確認。品質結果とthreshold限界は上記表を参照。 |
-| 2. 小型多言語modelを端末内で遅延実行し、download/memory、iPhone Safari/WebKit WASM CPUとWebGPUを計測。Web Workerでmain threadを塞がない | 未検証 | desktop browser smokeの一部はpass。iPhone Safari、実端末のdownload/memory・WASM CPU/WebGPU計測は未実行。 |
-| 3. versioned・owner-scoped・破棄可能なlocal indexをcanonical ID/revision/lifecycle/deleteに結び、recall時に再検証 | 検証済み | Chromium 156のlifecycle checksは全件pass。WebKitのoffline reload問題はgate 4に記録。 |
-| 4. multi-tab/pending write、cancel、quota/eviction、offline reload、model failure、device switch、低memory Safariでlexicalへ安全にdegrade | 未検証 | Chromium lifecycle checksはpass。WebKit 27.2のoffline reloadがfailし、cache entry消失を調査中。全端末・quota・低memory条件の完了証拠はない。 |
+| 2. 小型多言語modelを端末内で遅延実行し、download/memory、iPhone Safari/WebKit WASM CPUとWebGPUを計測。Web Workerでmain threadを塞がない | 一部検証 | desktop Chromium/WebKitでWorker内の遅延読込、WebGPU/WASM、download量・load/embed時間を計測済み。iPhone Safari実機、Worker内memoryは未計測。 |
+| 3. versioned・owner-scoped・破棄可能なlocal indexをcanonical ID/revision/lifecycle/deleteに結び、recall時に再検証 | 一部検証 | fake-indexeddbでowner/revision/lifecycle/forget/再検証/multi-tab fenceをunit test。実browserでのIndexedDB multi-tab E2Eは未実行。 |
+| 4. multi-tab/pending write、cancel、quota/eviction、offline reload、model failure、device switch、低memory Safariでlexicalへ安全にdegrade | 一部検証 | desktop Chromium/WebKitでoffline reload・cache消去・abort・WASM強制がpass。quota超過・storage不可はunit testでlexical byte一致。実機の低memory・eviction・device switchは未検証。 |
 | 5a. 人手レビュー可能な日本語synthetic corpusとlexical/vector/hybridの比較指標 | 検証済み | v1は37 records/36 queries、holdoutは新規24 queries。focused Vitest 4件pass。Node ONNX実モデル指標を上記に記録。fake値は品質証拠ではない。 |
-| 5b. 実モデルのparaphrase・false positive・top-k・byte・latency品質とdesktop/iPhone Safari browser E2E | 未検証 | 実モデルrecall・negative・trap比較とdesktop smokeを実施したが、WebKit offline reloadはfail、iPhone Safariは未実行。context bytes・latency値と実端末precision評価も未報告。 |
+| 5b. 実モデルのparaphrase・false positive・top-k・byte・latency品質とdesktop/iPhone Safari browser E2E | 一部検証 | 実モデルrecall・negative・trap比較とdesktop Chromium/WebKit lifecycle E2Eはpass。iPhone Safari実機、実言語の人手gold、precision調整は未実施。 |
 | 6. Draft PR #719をon-device実装としてmergeせず、production deployment前にsecurity/forget/real-device gatesを完了 | 検証済み | 本workは既存client branch上のsynthetic evaluationのみ。PR #719のserver codeを再利用せず、production deploymentを行っていない。残りgateを満たすまでrollout不可。 |
 
 ### このwork unitで実行した検証
