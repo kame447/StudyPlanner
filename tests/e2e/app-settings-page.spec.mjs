@@ -9,8 +9,8 @@ const test = fixedClockTest.extend({
   }, { timeout: 30_000 }],
 });
 
-async function seed(page) {
-  await page.addInitScript(({ today }) => {
+async function seed(page, { complete = false, appearance, theme } = {}) {
+  await page.addInitScript(({ today, complete, appearance, theme }) => {
     if (localStorage.getItem('settings-page-seeded')) return;
     const now = new Date().toISOString();
     const user = { id: 'settings-page-user', email: 'settings@example.test', username: '設定テスト', avatar: '', createdAt: now };
@@ -23,8 +23,15 @@ async function seed(page) {
     for (const key of ['studyplanner.actuals', 'studyplanner.todos.v1', 'studyplanner.studySubjects.v1', 'studyplanner.studyMaterials.v1']) {
       localStorage.setItem(key, '[]');
     }
+    if (complete) localStorage.setItem('studyplanner.actuals', JSON.stringify([{
+      id: 'complete-study', userId: plan.userId, planId: plan.id, occurrenceDate: today,
+      actualStartTime: plan.startTime, actualEndTime: plan.endTime, title: plan.title,
+      subject: plan.subject, isAlignedToPlan: true, note: '', updatedAt: now,
+    }]));
+    if (appearance) localStorage.setItem('study-planner-appearance', appearance);
+    if (theme) localStorage.setItem('study-planner-theme-mode', theme);
     localStorage.setItem('settings-page-seeded', 'true');
-  }, { today: E2E_TODAY });
+  }, { today: E2E_TODAY, complete, appearance, theme });
 }
 
 async function assertReadable(page) {
@@ -238,21 +245,74 @@ test('study progress defaults exclude general events and timetable and persists 
 
 for (const width of [390, 1280]) {
   test(`home 100 percent stays inside its ring at ${width}px`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width, height: 900 }); await seed(page);
-    await page.addInitScript(({ date }) => {
-      const plan = JSON.parse(localStorage.getItem('studyplanner.plans'))[0];
-      localStorage.setItem('studyplanner.actuals', JSON.stringify([{ id: 'complete-study', userId: plan.userId, planId: plan.id,
-        occurrenceDate: date, actualStartTime: plan.startTime, actualEndTime: plan.endTime, title: plan.title,
-        subject: plan.subject, isAlignedToPlan: true, note: '', updatedAt: new Date().toISOString() }]));
-    }, { date: E2E_TODAY });
+    await page.setViewportSize({ width, height: 900 }); await seed(page, { complete: true });
     await page.goto('/');
     const ring = page.locator('.weekly-progress-ring');
     await expect(ring).toHaveAttribute('aria-label', '週全体の予定に対する達成率 100%');
-    const fits = await ring.evaluate(element => {
-      const box = element.getBoundingClientRect(); const label = element.querySelector('strong').getBoundingClientRect();
-      return label.left >= box.left && label.right <= box.right && label.top >= box.top && label.bottom <= box.bottom;
-    });
-    expect(fits).toBe(true);
+    await page.evaluate(() => document.fonts.ready);
+    await expectPercentageWithinDiscBounds(ring);
     await page.screenshot({ path: testInfo.outputPath(`home-progress-100-${width}.png`), animations: 'disabled' });
+  });
+}
+
+async function expectPercentageWithinDiscBounds(ring, testInfo, receiptName) {
+  await expect(ring.locator('strong')).toHaveText('100%');
+  const bounds = await ring.evaluate(element => {
+    const rect = node => {
+      const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
+      return { left, right, top, bottom, width, height };
+    };
+    const label = element.querySelector('strong');
+    const text = document.createRange();
+    text.selectNodeContents(label);
+    return { outer: rect(element), inner: rect(element.firstElementChild), label: rect(label), text: rect(text),
+      fontFamily: getComputedStyle(label).fontFamily, fontSize: getComputedStyle(label).fontSize,
+      rootFontSize: getComputedStyle(document.documentElement).fontSize };
+  });
+  if (testInfo) await testInfo.attach(receiptName, { body: JSON.stringify(bounds, null, 2), contentType: 'application/json' });
+  expect(bounds.inner.width).toBeLessThan(bounds.outer.width);
+  expect(bounds.inner.height).toBeLessThan(bounds.outer.height);
+  // Keep the original outer-ring check, then require both the label and its
+  // inline text bounds to fit the smaller disc. These are layout bounds, not ink pixels.
+  for (const box of [bounds.outer, bounds.inner]) for (const label of [bounds.label, bounds.text]) {
+    expect(label.width).toBeGreaterThan(0);
+    expect(label.height).toBeGreaterThan(0);
+    expect(label.left).toBeGreaterThanOrEqual(box.left);
+    expect(label.right).toBeLessThanOrEqual(box.right);
+    expect(label.top).toBeGreaterThanOrEqual(box.top);
+    expect(label.bottom).toBeLessThanOrEqual(box.bottom);
+  }
+  return bounds;
+}
+
+for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
+  test(`loaded pixel 100 percent stays within inner-disc bounds with enlarged text at ${width}px ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await seed(page, { complete: true, appearance: 'pixel', theme });
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('data-appearance', 'pixel');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    const ring = page.locator('.weekly-progress-ring');
+    await expect(ring).toHaveAttribute('aria-label', '週全体の予定に対する達成率 100%');
+    await expect.poll(() => ring.locator('strong').evaluate(element => getComputedStyle(element).fontFamily)).toContain('DotGothic16');
+    const loaded = await page.evaluate(async () => {
+      const faces = await document.fonts.load('700 16px "DotGothic16"', '100%');
+      await document.fonts.ready;
+      return faces.map(face => ({ family: face.family.replaceAll('"', ''), status: face.status }));
+    });
+    expect(loaded).toEqual([{ family: 'DotGothic16', status: 'loaded' }]);
+    const normalRootSize = await page.locator('html').evaluate(element => parseFloat(getComputedStyle(element).fontSize));
+    let normalLabelSize;
+    for (const scale of [100, 200]) {
+      if (scale === 200) await page.addStyleTag({ content: ':root { font-size: 200% !important; }' });
+      const receiptName = `progress-inner-disc-${width}-${theme}-${scale}`;
+      await testInfo.attach(`${receiptName}-image`, { body: await ring.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
+      const bounds = await expectPercentageWithinDiscBounds(ring, testInfo, receiptName);
+      if (scale === 100) normalLabelSize = parseFloat(bounds.fontSize);
+      else expect(parseFloat(bounds.fontSize)).toBeGreaterThan(normalLabelSize);
+      expect(parseFloat(bounds.rootFontSize)).toBe(normalRootSize * scale / 100);
+      expect(bounds.fontFamily).toContain('DotGothic16');
+      expect(await page.evaluate(() => document.fonts.check('700 16px "DotGothic16"', '100%'))).toBe(true);
+    }
   });
 }
