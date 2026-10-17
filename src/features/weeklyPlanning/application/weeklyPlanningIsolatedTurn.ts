@@ -44,11 +44,10 @@ export async function executeIsolatedWeeklyPlanningTurn(
   let failure: WeeklyPlanningStableV5RecordedFailure | null = null;
   let stagedContextFacts: UserPlanningContextSemanticFactV1[] = [];
   const calibration = replyReferencePort ? readReplyReferenceCalibrationV5() : null;
-  const referenceResolver = calibration && replyReferencePort
-    ? (args: Parameters<typeof selectReplyReferenceHintV5>[0] extends infer P
-      ? Pick<P, 'source' | 'readCurrent' | 'userText' | 'ownerId' | 'conversationId' | 'requestId'>
-      : never) => selectReplyReferenceHintV5({ ...args, calibration, port: replyReferencePort })
-    : null;
+  const referenceResolver: NonNullable<Parameters<typeof executeWeeklyPlanningStableV5SemanticTurnCore>[1]['resolveReplyReferenceHint']> | null =
+    calibration && replyReferencePort
+      ? args => selectReplyReferenceHintV5({ ...args, calibration, port: replyReferencePort })
+      : null;
   try {
     const core = await executeWeeklyPlanningStableV5RuntimeTurnCore(input, {
       semanticTurn: (runtimeInput) => executeWeeklyPlanningStableV5SemanticTurnCore(runtimeInput, {
