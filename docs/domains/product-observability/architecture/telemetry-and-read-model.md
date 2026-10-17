@@ -531,6 +531,26 @@ client telemetry送信失敗はproduct action成功後に切り離して処理�
 
 bounded retryは許可するが、無限queueやlocalStorageへの無期限raw event蓄積は行わない。
 
+### Counter domains and retained-event exclusions (#715)
+
+Shared numeric observation domains are `OBSERVABILITY_COUNTER_LIMITS` in `shared/productObservabilityContract.ts`. Admission rejects values outside those domains using the existing telemetry validation errors; unknown measurements remain `null`. These are telemetry safety bounds, not new planning lifecycle limits.
+
+| Counter | Inclusive maximum | Product evidence and headroom |
+| --- | ---: | --- |
+| `turnIndex` | 100,000 | `weeklyPlanningStateCodec.ts` retains 200 messages; `weeklyPlanningTracePrivacy.ts` admits at most 100,000 session entries. Trace turn indexes increment once per turn (`weeklyPlanningTraceRuntime.ts`). This permits hundreds of times a normal retained conversation. |
+| payload/correlation `stateRevision`, AI decision `inputRevision` | 1,000,000 | The planning graph starts at zero and revisions advance through accepted contributions; `weeklyPlanningStableV5SessionCodec.ts` bounds persisted sessions to 2 MiB. No hard lifetime turn/revision ceiling exists, so this observation bound deliberately allows ten revisions per 100,000-turn envelope, rather than claiming the retained-message cap limits lifetime revisions. |
+| `previewCount`, `unscheduledCount` | 100,000 each | `weeklyPlanningStateCodec.ts` admits 500 persisted draft/preview items, and `weeklyPlanningNumericSafetyV5.ts` bounds generated chunks at 512 per workload. 100,000 permits about 200 such sets, including multi-task unscheduled work. |
+| AI token counters, including optional cache/reasoning/completion metadata | 10,000,000 each | The chat request contract currently allows 4,096 output tokens and 160,000 input content characters (`shared/aiProxyContract.ts`); the observation domain leaves substantial room for other operations and future model budgets. It does not assert a provider context limit or estimate unknown tokens. |
+| AI request/response bytes | 64 MiB each | Worker attachment/transcription bodies are bounded at 5/6 MiB (`worker.ts`); allow more than ten times the larger input and ample response headroom. |
+| AI duration | 24 hours | A single synchronous provider attempt is an interactive operation; allow an entire day for runtime pauses and long failure observation. Fractional milliseconds remain valid. |
+| AI estimated cost | 1,000,000,000 micros ($1,000) | A single bounded MVP model/attachment request, not account lifetime spend; deliberately generous headroom over the current versioned pricing catalog (`aiUsagePricing.ts`). Decision-reported USD uses the equivalent bound. |
+
+Product activity has no payload counter; its optional correlation revision uses the same revision domain. Server AI metric admission applies the same shared checks before identity/storage work. Semantic-turn census is a separate bounded population and is not included in these activity/API/planning rollups.
+
+Previously stored out-of-domain counter events are excluded from **all** activity, user, daily and planning projections. A numeric addition that would overflow an aggregate has the same exclusion policy. No values are clamped, zeroed or converted to unknown. Each event's projection candidates are staged separately and become visible only after every numeric invariant passes. The rollup checkpoint and accepted projections commit atomically with the cursor: `processedEventCount` counts projected events; `rejectedEventCount` counts excluded events; `lastRejectedEvent` retains the latest journal document pointer, observed time, environment and typed reason (`counter_out_of_domain` or `aggregate_counter_overflow`). The cumulative count and latest pointer are intentionally bounded evidence, not a new unbounded journal or complete rejection history. The original event remains under its existing retention policy.
+
+Legacy checkpoints without rejection evidence mean zero exclusions. Overview preserves the evidence in its checkpoint; System exposes the count and latest reason, marks aggregation warning when exclusions exist, and displays the evidence through its existing component detail. These checkpoint counters cover all environments, like the existing processed-event counter. An operator must not interpret freshness after exclusions as complete measurement. Only the typed numeric overflow is recoverable this way: malformed structural data, transaction conflicts, Firestore failures and unrelated projection errors retain the existing fail/retry contract.
+
 ### AI metric persistence failure
 
 AI provider callが成功している場合、metric保存失敗を理由にprovider resultを捨てない。

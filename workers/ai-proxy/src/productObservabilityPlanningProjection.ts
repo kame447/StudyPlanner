@@ -18,6 +18,8 @@ import {
 } from '../../../shared/productObservabilityPlanningReadModel';
 import { observabilityReportingDate } from './productObservabilityReadModelProjection';
 
+import { ObservabilityAggregateOverflowError } from './productObservabilityCounterSafety';
+
 const MAX_DIMENSION_VALUES = 32;
 const OTHER_DIMENSION_KEY = '__other__';
 const UNKNOWN_DIMENSION_KEY = 'unknown';
@@ -275,7 +277,8 @@ function applyAggregateDelta(
   const updated = { ...current };
   for (const field of aggregateFields) {
     const value = current[field] - previous[field] + next[field];
-    if (!Number.isSafeInteger(value) || value < 0) throw new Error('invalid_planning_cohort_delta');
+    if (value < 0) throw new Error('invalid_planning_cohort_delta');
+    if (!Number.isSafeInteger(value)) throw new ObservabilityAggregateOverflowError();
     updated[field] = value;
   }
   return updated;
