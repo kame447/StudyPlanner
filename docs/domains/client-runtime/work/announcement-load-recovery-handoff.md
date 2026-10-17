@@ -42,3 +42,25 @@ The fallback uses only already-loaded shared modal styles plus a scoped rule in 
 Independent review verified all nine frozen input hashes and found no remaining blocking source defect. The initial modal-cascade concern was resolved by the scoped selector and focused source guard. Only this checkpoint wording changed after review.
 
 Next: local commit handoff to the integration owner. Before publication, the final combined content still needs full `npm run verify`, production build and native browser/visual acceptance. No upstream/main write, branch deletion, production account or production API was used.
+
+## PR #729 source focus-policy reconciliation (2026-10-17 12:09 UTC)
+
+The standard browser run on release head679f9d5e had817 passes and one failure:
+the source-only no-input-autofocus policy did not recognize the newly added
+failure dialog's explicit Back-button focus. This is a policy registration gap,
+not evidence of an input receiving focus. The runtime ref is typed as a button
+and attached to that one `type="button"` control; its native behavior is retained.
+
+The narrow correction adds only this exact statement to the existing per-file
+statement list. New checks reject input/textarea/generic-dialog focus and a
+changed focus statement, require the typed button ref, and require one matching
+button attachment. No file-wide exception, input focus permission or production
+code change is introduced.
+
+The exact source-only assertion body and its file-discovery helpers were executed
+with the installed Playwright expect library, without its browser/server fixtures:
+baseline fails on the same lone line as CI; candidate passes, including the new
+negative controls. This is source-policy proof, not a native browser run. Syntax
+and collection pass; the combined two-spec collection retains11 standard and28
+cross-browser definitions. Integration/native gates remain separate. Exact logs
+and input hashes are in `/workspace/shared/laplans-pr729-focus-admin-evidence-20261017/`.

@@ -45,3 +45,53 @@ The integration owner approved the reproduced Admin-only repair. The local bound
 - Evidence directory: `/workspace/shared/laplans-admin-load-evidence-20261017/`. Baseline, red/green, focused, typecheck, browser collection and final exact-input receipts are separate. An independent reviewer checked all eight frozen input hashes, the final runtime/browser definitions and verification evidence; no blocking source defect was found. Only this superseded-checkpoint wording was cleaned up afterward.
 
 Next: hand the exact local commit to the integration owner. Before publication, the final combined content still needs full `npm run verify`, production build and native browser gates. No external write, main change, branch deletion, production account or production API was used.
+
+## PR #729 WebKit reload follow-up (2026-10-17 12:09 UTC)
+
+Current release base: remote `679f9d5e` / local `ac5dfb89`, tree
+`af19cf6c97a4ff3ac5c0a2bb9ac0f4960e9e7e18`. The existing PR remains the
+release owner; no new external branch/PR is created by this follow-up worker.
+Triage confirmed newer main `b1ee5e03` changes five separate agent/test paths,
+with no Admin/Vite/focus-policy overlap; the integration owner will reconcile it.
+
+The native WebKit desktop first attempt and retry both prove a genuine failed
+recovery: the explicit button obtains a second HTML document and its normal
+scripts, but never requests the Admin entry JS again after its first HTTP503.
+The fresh document shows the same import-failure alert. Therefore the earlier
+assumption that changing inspector abort to HTTP503 alone fixes this engine was
+incorrect. The successful-response assertion must not be removed.
+
+Three explanations were checked: a missing response event despite successful
+recovery (disconfirmed by the repeated error UI); a same-document React cached
+rejection (disconfirmed by two HTML documents and fresh root-script execution);
+and a failed preload retained by WebKit (matches both traces and the browser
+project's [bug270357](https://bugs.webkit.org/show_bug.cgi?id=270357)). Its
+[upstream fix](https://github.com/WebKit/WebKit/pull/71726) documents an actual
+HTTP-error reproduction across reload. The exact fix inclusion in the installed
+WebKit revision is not established; this candidate is assessed by native behavior.
+
+The narrow mitigation uses Vite6's existing dependency resolver to omit only the
+AdminApp entry itself from its own JavaScript preload list. Its normal dynamic
+import still runs; Vite still appends/waits for CSS; shared dependencies, HTML
+entry preloads and every other optional entry remain unchanged. There is no
+URL/cache busting, automatic retry, user-agent branch, authentication change or
+error suppression. The tradeoff is that Admin entry JS starts after CSS finishes,
+rather than in parallel. This does not protect every other failed dependency and
+is not claimed as a general performance improvement.
+
+Four focused tests fail on the baseline and pass with the mitigation. They check
+exact filtering, HTML/non-Admin identity, and actual Vite output from a small
+synthetic two-entry build: Admin native import retained, its CSS gate retained,
+its own preload absent, Report preload preserved. This does not execute a browser.
+The existing production HTTP503 case additionally asserts that the failed Admin
+JS was not module-preloaded; it retains the same-URL HTTP200 recovery, real
+second-document/session counter and signed-out guard checks without relaxed
+timeouts/retries. Its existing seven definitions collect in ordinary Chromium
+and each of the four cross-browser projects. Native new-candidate execution and
+actual application build output remain integration gates.
+
+Local evidence: `/workspace/shared/laplans-pr729-focus-admin-evidence-20261017/`.
+The original failed traces and logs remain intact. Worktree:
+`fix/pr729-focus-and-admin-recovery`. Next: independent exact-input review,
+commit handoff, integration config/build checks and ordinary native CI. No local
+browser/server launch, external write or main mutation was performed.

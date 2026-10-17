@@ -91,6 +91,16 @@ function resolveVendorChunk(id) {
 export default defineConfig({
   plugins: [react(), preferredNetworkUrlPlugin()],
   build: {
+    modulePreload: {
+      resolveDependencies(filename, dependencies, { hostType }) {
+        // WebKit can retain a failed modulepreload across a real page reload
+        // (bug 270357). Keep the Admin entry on its native import path only;
+        // Vite still loads its CSS before import, and other preloads stay intact.
+        return hostType === 'js' && /(?:^|\/)AdminApp-[^/]+\.js$/.test(filename)
+          ? dependencies.filter(dependency => dependency !== filename)
+          : dependencies;
+      },
+    },
     rollupOptions: {
       output: {
         manualChunks: resolveVendorChunk,

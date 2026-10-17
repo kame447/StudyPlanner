@@ -161,8 +161,8 @@ for (const resource of ['js', 'css']) {
     const failedUrls = new Set();
     const reject = route => {
       attempts += 1; failedUrls.add(route.request().url());
-      // A temporary server failure can recover on reload. WebKit's inspector
-      // abort retains its blocked module across documents without a new request.
+      // Keep a real HTTP failure. The build must avoid preloading this entry,
+      // so WebKit cannot pin a failed preload across the explicit reload.
       return route.fulfill({ status: 503, headers: { 'cache-control': 'no-store' },
         contentType: resource === 'js' ? 'application/javascript' : 'text/css', body: '/* temporary delivery failure */' });
     };
@@ -173,11 +173,15 @@ for (const resource of ['js', 'css']) {
     await expect(page.getByRole('button', { name: '再読み込み', exact: true })).toBeVisible();
     await expect(page.locator('.admin-console-layout')).toHaveCount(0);
     expect(documents).toHaveLength(1);
-    // Vite's modulepreload and foreground import may each request failed JS.
+    // Keep initial delivery bounded before the user requests any recovery.
     expect(failedUrls.size).toBe(1);
     expect(attempts).toBeGreaterThanOrEqual(1);
     expect(attempts).toBeLessThanOrEqual(resource === 'js' ? 2 : 1);
     const initialAttempts = attempts;
+    if (resource === 'js') {
+      const preloads = await page.locator('link[rel="modulepreload"]').evaluateAll(links => links.map(link => link.href));
+      expect(preloads.filter(url => failedAsset.test(url))).toEqual([]);
+    }
     await info.attach(`admin-${resource}-failure`, { body: await page.screenshot(), contentType: 'image/png' });
     await page.evaluate(() => { window.__adminBeforeRecovery = 'old document'; });
     expect(await page.evaluate(() => sessionStorage.getItem('admin-recovery-document-loads'))).toBe('1');
