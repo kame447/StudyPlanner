@@ -15,7 +15,8 @@ import type {
  * or unsupported form falls back to the existing Jev/Luna semantic pipeline.
  */
 const MAX_INPUT_CODEPOINTS = 36;
-const MAX_TOTAL_MINUTES = 7 * 24 * 60;
+// Extremely long totals need contextual interpretation, even with an explicit unit.
+const MAX_TOTAL_MINUTES = 24 * 60;
 const MAX_PER_UNIT_MINUTES = 12 * 60;
 
 const RATE_MARKERS = {
