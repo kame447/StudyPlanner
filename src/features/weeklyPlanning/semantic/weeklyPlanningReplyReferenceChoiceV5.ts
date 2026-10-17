@@ -39,7 +39,7 @@ export async function selectReplyReferenceHintV5(params: {
   if (!params.calibration || !params.userText.trim() || !params.requestId.trim()
     || !params.ownerId.trim() || !params.conversationId.trim()) return null;
   const frozen = createReplyReferenceSnapshotV5(params.source);
-  const latest = params.source.messages.at(-1);
+  const latest = params.source.messages[params.source.messages.length - 1];
   if (!frozen || !latest || frozen.planningStateRevision + 1 > Number.MAX_SAFE_INTEGER) return null;
   const candidates: CandidateBasis<CandidateTuple>['candidates'] = frozen.candidates.map(candidate => {
     const messageOrdinal = frozen.conversationMessageIds.indexOf(candidate.sourceMessageId) + 1;
