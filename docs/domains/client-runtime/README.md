@@ -21,17 +21,19 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Day, timetable and report delivery recovery](work/workspace-load-recovery-handoff.md) — Issue #542; local optional-view failure boundaries retain app navigation and session/history owners.
+
 - [Attendance reads across an in-flight save](work/attendance-read-lifetime-handoff.md) — fresh lesson history after a pending save survives close/reopen, with owner-scoped pending-operation coordination.
 
-- [Confirmed preference save lifetime](work/preference-save-lifetime-handoff.md) — Issue #542; preserve the mounted planner during week-start saves and show retryable failures without reloading its history.
-
-- [Bookshelf module failure recovery](work/bookshelf-load-recovery-handoff.md) — Issue #542; retain Home navigation and app/session owners when optional Materials delivery fails.
-
-- [UI request acceptance gaps](work/ui-request-acceptance-handoff.md): No14 same-record subject editing through Day and No10 inner-disc percentage containment; test-only local work, native browser acceptance pending.
+- [Administrator module failure recovery](work/admin-lazy-load-recovery-handoff.md) — Issue #542; retain normal return and explicit reload after lazy module delivery fails.
 
 - [Announcement module failure recovery](work/announcement-load-recovery-handoff.md) — Issue #542; preserve Home, owner-qualified history and bell focus when optional announcement delivery fails.
 
-- [Administrator module failure recovery](work/admin-lazy-load-recovery-handoff.md) — Issue #542; retain normal return and explicit reload after lazy module delivery fails.
+- [UI request acceptance gaps](work/ui-request-acceptance-handoff.md): No14 same-record subject editing through Day and No10 inner-disc percentage containment; test-only local work, native browser acceptance pending.
+
+- [Bookshelf module failure recovery](work/bookshelf-load-recovery-handoff.md) — Issue #542; retain Home navigation and app/session owners when optional Materials delivery fails.
+
+- [Confirmed preference save lifetime](work/preference-save-lifetime-handoff.md) — Issue #542; preserve the mounted planner during week-start saves and show retryable failures without reloading its history.
 
 - [Targeted Actual source preparation](work/actual-source-targeted-read-handoff.md) — Issue #542; select the persisted linked source without scanning all canonical schedules, preserving provenance and complete-history boundaries.
 
