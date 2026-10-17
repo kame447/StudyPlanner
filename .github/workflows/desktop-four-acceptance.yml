@@ -1,5 +1,5 @@
-# Local template: bind immutable reviewed application source before publication.
-name: Timer Navigation Integration Acceptance
+# Read-only bounded diagnostic; success is measurement completion, not acceptance.
+name: Material Motion Off Reduced Diagnostic
 permissions:
   contents: read
 concurrency:
@@ -14,41 +14,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
-        - project: chromium
-          timeout: 30
-          browsers: chromium
         - project: cross
           timeout: 35
           browsers: webkit
     env:
       CI: 'true'
-      SOURCE_SHA: ebc34e4f8d9a6737d1dac587e8688b88162f48ec
-      SOURCE_TREE: 3abf01df53d10ad7512d0e87d0a9f53749a68987
+      SOURCE_SHA: 5dfcb11f624c13775947e9fd2d14952b7e17ab3d
+      SOURCE_TREE: 4870e76c1a8820d6fe6aad519bcac34463658a78
       PROOF_WORKFLOW_SHA: ${{ github.sha }}
       PROOF_PROJECT: ${{ matrix.project }}
     steps:
     - uses: actions/checkout@v7
       with:
-        ref: ebc34e4f8d9a6737d1dac587e8688b88162f48ec
+        ref: 5dfcb11f624c13775947e9fd2d14952b7e17ab3d
         fetch-depth: 1
         persist-credentials: false
     - name: Verify immutable application source
       shell: bash
-      run: 'set -euo pipefail
-
+      run: |
+        set -euo pipefail
         test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-
-        test "$(git rev-parse ''HEAD^{tree}'')" = "$SOURCE_TREE"
-
+        test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
         mkdir -p artifacts/desktop-four-proof
-
-        printf ''{"sourceSha":"%s","sourceTree":"%s","workflowSha":"%s","project":"%s"}\n'' "$SOURCE_SHA" "$SOURCE_TREE"
-        "$PROOF_WORKFLOW_SHA" "$PROOF_PROJECT" > artifacts/desktop-four-proof/source.json
-
-        git ls-files -z src tests/e2e package.json package-lock.json .node-version vite.config.mjs index.html public/fonts
-        | xargs -0 sha256sum > artifacts/desktop-four-proof/inputs.sha256
-
-        '
+        printf '{"sourceSha":"%s","sourceTree":"%s","workflowSha":"%s","project":"%s"}\n' "$SOURCE_SHA" "$SOURCE_TREE" "$PROOF_WORKFLOW_SHA" "$PROOF_PROJECT" > artifacts/desktop-four-proof/source.json
+        git ls-files -z src tests/e2e package.json package-lock.json .node-version vite.config.mjs index.html public/fonts | xargs -0 sha256sum > artifacts/desktop-four-proof/inputs.sha256
     - uses: actions/setup-node@v7
       with:
         node-version-file: .node-version
@@ -71,63 +60,354 @@ jobs:
       id: build
       env:
         DEV_LAN_HOST: 127.0.0.1
+    - name: Generate only reviewed diagnostic inputs
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(sha256sum tests/e2e/bookshelf-surface.spec.mjs | cut -d ' ' -f1)" = "1a3293101b00ed9c0bcc482a6fe8187bb12d77a0a94dfd062470117222e4f810"
+        test ! -e tests/e2e/material-frame-diagnostic.spec.mjs
+        cat > tests/e2e/material-frame-diagnostic.spec.mjs <<'REVIEWED_DIAGNOSTIC_0'
+        import { performance as nodePerformance } from 'node:perf_hooks';
+        import { expect, test } from './support/fixed-clock.mjs';
+
+        async function seedBookshelf(page) {
+          await page.addInitScript(() => {
+            if (localStorage.getItem('bookshelf-surface-seeded')) return;
+            localStorage.setItem('bookshelf-surface-seeded', 'true');
+            const today = new Date().toLocaleDateString('sv-SE');
+            const tomorrowDate = new Date(`${today}T00:00:00`);
+            tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+            const tomorrow = [
+              tomorrowDate.getFullYear(),
+              String(tomorrowDate.getMonth() + 1).padStart(2, '0'),
+              String(tomorrowDate.getDate()).padStart(2, '0'),
+            ].join('-');
+            const now = new Date().toISOString();
+            const user = {
+              id: 'bookshelf-e2e-user',
+              email: 'bookshelf-e2e@example.com',
+              username: 'bookshelf-e2e',
+              avatar: '',
+              createdAt: now,
+            };
+            const subject = {
+              id: 'bookshelf-e2e-subject',
+              userId: user.id,
+              name: '情報科学',
+              color: '#2f6fc2',
+              createdAt: now,
+              updatedAt: now,
+            };
+            const material = {
+              id: 'bookshelf-e2e-material',
+              userId: user.id,
+              name: 'アルゴリズム問題集',
+              subjectId: subject.id,
+              subjectName: subject.name,
+              color: subject.color,
+              status: 'active',
+              paceEnabled: true,
+              progressUnit: 'page',
+              totalUnits: 200,
+              currentUnit: 80,
+              targetDate: tomorrow,
+              createdAt: now,
+              updatedAt: now,
+            };
+            const secondMaterial = {
+              ...material,
+              id: 'bookshelf-e2e-material-2',
+              name: 'ネットワーク演習',
+              currentUnit: 30,
+            };
+            const plan = {
+              id: 'bookshelf-e2e-plan',
+              seriesId: 'bookshelf-e2e-plan',
+              userId: user.id,
+              title: 'アルゴリズム問題集を進める',
+              subject: subject.name,
+              date: tomorrow,
+              startTime: '19:00',
+              endTime: '20:00',
+              repeat: 'none',
+              repeatUntil: null,
+              excludedDates: [],
+              recurrenceRules: [],
+              type: 'study',
+              memo: '',
+              sourceType: 'manual',
+              materialId: material.id,
+              materialName: material.name,
+              createdAt: now,
+              updatedAt: now,
+            };
+            const actual = {
+              id: 'bookshelf-e2e-actual',
+              userId: user.id,
+              planId: null,
+              occurrenceDate: today,
+              actualStartTime: '18:00',
+              actualEndTime: '18:45',
+              title: 'アルゴリズム演習',
+              subject: subject.name,
+              isAlignedToPlan: false,
+              note: '動的計画法を復習',
+              updatedAt: now,
+              materialId: material.id,
+              materialName: material.name,
+              materialProgressUpdates: [
+                {
+                  materialId: material.id,
+                  progressUnit: 'page',
+                  progressUnitLabel: 'ページ',
+                  fromUnit: 60,
+                  toUnit: 80,
+                  deltaUnits: 20,
+                },
+              ],
+            };
+
+            localStorage.setItem('studyplanner.users', JSON.stringify([user]));
+            localStorage.setItem('studyplanner.session', user.id);
+            localStorage.setItem('studyplanner.plans', JSON.stringify([plan]));
+            localStorage.setItem('studyplanner.actuals', JSON.stringify([actual]));
+            localStorage.setItem('studyplanner.todos.v1', '[]');
+            localStorage.setItem('studyplanner.studySubjects.v1', JSON.stringify([subject]));
+            localStorage.setItem(
+              'studyplanner.studyMaterials.v1',
+              JSON.stringify([material, secondMaterial]),
+            );
+            localStorage.setItem(
+              `studyplanner:material-detail:v1:${user.id}:${material.id}`,
+              JSON.stringify({
+                structureEnabled: true,
+                structureVisible: true,
+                favorite: true,
+                structureItems: [
+                  { id: 'structure-1', title: '基礎編', startUnit: 0, endUnit: 100 },
+                  { id: 'structure-2', title: '応用編', startUnit: 100, endUnit: 200 },
+                ],
+              }),
+            );
+          });
+        }
+
+        async function openBookshelf(page) {
+          await page.goto('/');
+          await expect(page.locator('.primary-bottom-nav')).toBeVisible();
+          await page
+            .locator('.primary-bottom-nav button')
+            .filter({ hasText: '教材' })
+            .click();
+          await expect(page.locator('.bookshelf-view')).toBeVisible();
+        }
+
+        // Diagnostic only: compare supported off/reduced motion on the same seeded app.
+        // Passing this file does not accept any material editing/persistence contract.
+        async function materialFrameSnapshot(control) {
+          return control.evaluate(element => {
+            const rect = e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; };
+            const ancestors = [];
+            for (let node = element; node; node = node.parentElement) {
+              const css = getComputedStyle(node);
+              ancestors.push({ tag: node.tagName, className: node.className, rect: rect(node),
+                animationName: css.animationName, animationDuration: css.animationDuration,
+                transitionProperty: css.transitionProperty, transitionDuration: css.transitionDuration,
+                transform: css.transform, scrollBehavior: css.scrollBehavior });
+            }
+            const animations = document.getAnimations().map(animation => {
+              const effect = animation.effect;
+              const timing = effect?.getComputedTiming();
+              const target = effect?.target;
+              return { playState: animation.playState, currentTime: String(animation.currentTime),
+                targetTag: target?.tagName ?? null, targetClass: target?.className ?? null,
+                duration: String(timing?.duration), progress: timing?.progress ?? null };
+            });
+            return { width: innerWidth, height: innerHeight, dpr: devicePixelRatio,
+              visibility: document.visibilityState, focused: document.hasFocus(),
+              reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+              coarsePointer: matchMedia('(pointer: coarse)').matches,
+              rootFont: getComputedStyle(document.documentElement).fontSize,
+              motionAttribute: document.documentElement.getAttribute('data-motion'),
+              theme: document.documentElement.getAttribute('data-theme'),
+              appearance: document.documentElement.getAttribute('data-appearance'),
+              domElementCount: document.querySelectorAll('*').length, styleSheetCount: document.styleSheets.length,
+              target: rect(element), ancestors, animations };
+          });
+        }
+
+        async function sampleMaterialPageFrames(control) {
+          // This is page-world rAF under the flowing fixed clock. It is supplemental
+          // to Node elapsed time and the utility-world stable waits retained in trace.
+          return control.evaluate(element => new Promise(resolve => {
+            const frames = [];
+            const sample = timestamp => {
+              const rect = element.getBoundingClientRect();
+              frames.push({ timestamp, pagePerformanceNow: performance.now(),
+                visibility: document.visibilityState,
+                rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
+              if (frames.length === 4) resolve(frames);
+              else requestAnimationFrame(sample);
+            };
+            requestAnimationFrame(sample);
+          }));
+        }
+
+        test.describe('material motion diagnostic', () => {
+          test.use({ viewport: { width: 1920, height: 1080 }, screen: { width: 1920, height: 1080 },
+            contextOptions: { reducedMotion: 'reduce' } });
+          for (const motionPreference of ['off', 'reduced']) {
+            test(`compares normal actionability with motion ${motionPreference}`, async ({ page }, testInfo) => {
+              const diagnostics = { motionPreference, comparisonPurpose: 'Diagnostic only; no release acceptance',
+                comparisonLimit: 'One fixed-order off/reduced pair; changing runner load and warm-up remain confounders',
+                clockScope: 'Existing flowing fixed-clock fixture; page-world rAF and utility-world trace are distinct',
+                startedAt: new Date().toISOString(), phases: [], trials: [] };
+              let failure;
+              const timed = async (name, work) => {
+                const start = nodePerformance.now();
+                try { return await work(); }
+                finally { diagnostics.phases.push({ name, nodeElapsedMs: nodePerformance.now() - start }); }
+              };
+              try {
+                await page.addInitScript(preference => {
+                  localStorage.setItem('study-planner-appearance', 'pixel');
+                  localStorage.setItem('study-planner-theme-mode', 'light');
+                  localStorage.setItem('study-planner-motion', preference);
+                }, motionPreference);
+                let control;
+                await timed('setup', async () => {
+                  await seedBookshelf(page);
+                  await page.goto('/');
+                  await expect(page.locator('.primary-bottom-nav')).toBeVisible();
+                  control = page.locator('.primary-bottom-nav button').filter({ hasText: '教材' });
+                  diagnostics.homeBeforeNavigation = await materialFrameSnapshot(control);
+                  expect(diagnostics.homeBeforeNavigation.motionAttribute).toBe(motionPreference);
+                  await timed('initial-home-navigation-click', () => control.click());
+                  await expect(page.locator('.bookshelf-view')).toBeVisible();
+                  await expect(control).toBeVisible();
+                  await page.evaluate(() => document.fonts.ready);
+                });
+                diagnostics.initial = await materialFrameSnapshot(control);
+                expect(diagnostics.initial.width).toBe(1920); expect(diagnostics.initial.height).toBe(1080);
+                expect(diagnostics.initial.dpr).toBe(3); expect(diagnostics.initial.reducedMotion).toBe(true);
+                expect(diagnostics.initial.visibility).toBe('visible');
+                expect(diagnostics.initial.motionAttribute).toBe(motionPreference);
+                diagnostics.beforeFrames = await timed('page-world-raf-before', () => sampleMaterialPageFrames(control));
+                for (let index = 0; index < 3; index++) {
+                  const trial = { index, before: await materialFrameSnapshot(control) };
+                  diagnostics.trials.push(trial);
+                  const start = nodePerformance.now();
+                  try { await control.click({ trial: true }); trial.completed = true; }
+                  catch (error) { trial.error = String(error); throw error; }
+                  finally { trial.nodeElapsedMs = nodePerformance.now() - start; }
+                  trial.after = await materialFrameSnapshot(control);
+                }
+                diagnostics.afterFrames = await timed('page-world-raf-after', () => sampleMaterialPageFrames(control));
+                diagnostics.final = await materialFrameSnapshot(control);
+                await testInfo.attach(`diagnostic-motion-${motionPreference}-surface`, {
+                  body: await timed('explicit-screenshot-after-measurement', () => page.screenshot({ scale: 'css' })), contentType: 'image/png' });
+              } catch (error) { failure = error; diagnostics.error = String(error); }
+              try { await testInfo.attach(`diagnostic-motion-${motionPreference}-timings`, { body: JSON.stringify(diagnostics), contentType: 'application/json' }); }
+              catch (error) { throw failure ?? error; }
+              if (failure) throw failure;
+            });
+          }
+        });
+        REVIEWED_DIAGNOSTIC_0
+        printf '%s  %s\n' '6b0a4b78b51f17fad6537fb3395c395a452b4ad651a4a5af9c86e229f2478025' 'tests/e2e/material-frame-diagnostic.spec.mjs' | sha256sum -c -
+        cp tests/e2e/material-frame-diagnostic.spec.mjs artifacts/desktop-four-proof/material-frame-diagnostic.spec.mjs
+        test ! -e tests/e2e/material-frame-diagnostic.config.mjs
+        cat > tests/e2e/material-frame-diagnostic.config.mjs <<'REVIEWED_DIAGNOSTIC_1'
+        import { defineConfig } from '@playwright/test';
+        import crossBrowserConfig from './playwright.cross-browser.config.mjs';
+
+        const mobileProject = crossBrowserConfig.projects.find(project => project.name === 'webkit-mobile');
+        if (!mobileProject) throw new Error('Expected existing webkit-mobile project');
+
+        // QA-only diagnostic. Keep production config and actionability settings intact;
+        // retain successful traces so utility-world stable waits can be compared.
+        export default defineConfig({
+          ...crossBrowserConfig,
+          use: { ...crossBrowserConfig.use, trace: 'on' },
+          projects: [{ ...mobileProject, testMatch: '**/material-frame-diagnostic.spec.mjs' }],
+        });
+        REVIEWED_DIAGNOSTIC_1
+        printf '%s  %s\n' '23558f52de2faf36fa7b6ecd00d612d7092d5d64a1c2625c80c69443ff9778f3' 'tests/e2e/material-frame-diagnostic.config.mjs' | sha256sum -c -
+        cp tests/e2e/material-frame-diagnostic.config.mjs artifacts/desktop-four-proof/material-frame-diagnostic.config.mjs
+        sha256sum tests/e2e/material-frame-diagnostic.spec.mjs tests/e2e/material-frame-diagnostic.config.mjs > artifacts/desktop-four-proof/diagnostic-inputs.sha256
+        git diff --exit-code
     - name: Write exact reviewed collection admission
       id: admission
       shell: bash
-      run: "cat > artifacts/desktop-four-proof/run-selected.mjs <<'NODE'\nimport assert from 'node:assert/strict';\n\
-        import crypto from 'node:crypto';\nimport fs from 'node:fs';\nimport { spawnSync } from 'node:child_process';\n\
-        const selected = {\n  \"chromium\": {\n    \"count\": 3,\n    \"sha256\": \"2fa26ec0ea24d4d7c3142cfc724a9455eb6f0b74d72947d87d43442105544159\"\
-        ,\n    \"projects\": [\n      \"chromium\"\n    ],\n    \"args\": [\n      \"test\",\n      \"--config=tests/e2e/playwright.config.mjs\"\
-        ,\n      \"--project=chromium\",\n      \"(^|/)study-session-(?:pomodoro-settings|unplanned)\\\\.spec\\\\\
-        .mjs$\",\n      \"--grep\",\n      \"(?:unset-subject timer record is edited from Day and reloads with the\
-        \ same identity at 1280px|class title, inspection and unplanned start remain separate at 1280x844 / (?:100|200)%)$\"\
-        \n    ]\n  },\n  \"cross\": {\n    \"count\": 3,\n    \"sha256\": \"584165cb67e1d35717162c2cf81dc2afdc658f6bf92451b2b3438c77dcb8b77a\"\
-        ,\n    \"projects\": [\n      \"webkit-mobile\"\n    ],\n    \"args\": [\n      \"test\",\n      \"--config=tests/e2e/playwright.cross-browser.config.mjs\"\
-        ,\n      \"--project=webkit-mobile\",\n      \"(^|/)study-session-(?:pomodoro-settings|unplanned)\\\\.spec\\\
-        \\.mjs$\",\n      \"--grep\",\n      \"(?:unset-subject timer record is edited from Day and reloads with\
-        \ the same identity at 1280px|class title, inspection and unplanned start remain separate at 1280x844 /\
-        \ (?:100|200)%)$\"\n    ]\n  }\n};\nconst mode = process.argv[2];\nconst expected = selected[mode];\nassert.ok(expected,\
-        \ 'Unknown proof selection');\nconst prefix = `artifacts/desktop-four-proof/${mode}`;\nfs.writeFileSync(`${prefix}-arguments.json`,\
-        \ JSON.stringify(expected.args, null, 2));\nconst collectionProcess = spawnSync('./tests/e2e/node_modules/.bin/playwright',\
-        \ [...expected.args, '--list', '--reporter=json'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });\n\
-        fs.writeFileSync(`${prefix}-collection.json`, collectionProcess.stdout ?? '');\nassert.equal(collectionProcess.status,\
-        \ 0, collectionProcess.stderr || String(collectionProcess.error));\nconst collection = JSON.parse(collectionProcess.stdout);\n\
-        assert.deepEqual(collection.errors, []);\nconst identities = new Set();\nfunction visit(suite, parents =\
-        \ []) {\n  const titles = [...parents, suite.title];\n  for (const spec of suite.specs ?? []) for (const\
-        \ test of spec.tests) {\n    assert.ok(expected.projects.includes(test.projectName), 'Unexpected project');\n\
-        \    const identity = JSON.stringify([test.projectName, spec.file, ...titles, spec.title]);\n    assert.ok(!identities.has(identity),\
-        \ `Duplicate case: ${identity}`);\n    identities.add(identity);\n  }\n  for (const child of suite.suites\
-        \ ?? []) visit(child, titles);\n}\nfor (const suite of collection.suites) visit(suite);\nassert.equal(identities.size,\
-        \ expected.count);\nconst sha256 = crypto.createHash('sha256').update(JSON.stringify([...identities].sort())).digest('hex');\n\
-        assert.equal(sha256, expected.sha256, 'Selected identities differ from review');\nfs.writeFileSync(`${prefix}-selection.json`,\
-        \ JSON.stringify({ mode, count: identities.size, sha256 }, null, 2));\nconst run = spawnSync('./tests/e2e/node_modules/.bin/playwright',\
-        \ expected.args, { stdio: 'inherit' });\nif (run.error) throw run.error;\nprocess.exit(run.status ?? 1);\n\
-        NODE\n"
-    - name: Run only reviewed related native cases
+      run: |
+        cat > artifacts/desktop-four-proof/run-selected.mjs <<'NODE'
+        import assert from 'node:assert/strict';
+        import crypto from 'node:crypto';
+        import fs from 'node:fs';
+        import { spawnSync } from 'node:child_process';
+        const selected = {
+          "cross": {
+            "count": 2,
+            "sha256": "2fb1dbfa6b59ca9ec5245c630b7d4ea5c17a5fad4fc3e20271b2e040f9d104f3",
+            "projects": [
+              "webkit-mobile"
+            ],
+            "args": [
+              "test",
+              "--config=tests/e2e/material-frame-diagnostic.config.mjs",
+              "--project=webkit-mobile",
+              "(^|/)material-frame-diagnostic\\.spec\\.mjs$"
+            ]
+          }
+        };
+        const mode = process.argv[2];
+        const expected = selected[mode];
+        assert.ok(expected, 'Unknown proof selection');
+        const prefix = `artifacts/desktop-four-proof/${mode}`;
+        fs.writeFileSync(`${prefix}-arguments.json`, JSON.stringify(expected.args, null, 2));
+        const collectionProcess = spawnSync('./tests/e2e/node_modules/.bin/playwright', [...expected.args, '--list', '--reporter=json'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+        fs.writeFileSync(`${prefix}-collection.json`, collectionProcess.stdout ?? '');
+        assert.equal(collectionProcess.status, 0, collectionProcess.stderr || String(collectionProcess.error));
+        const collection = JSON.parse(collectionProcess.stdout);
+        assert.deepEqual(collection.errors, []);
+        const identities = new Set();
+        function visit(suite, parents = []) {
+          const titles = [...parents, suite.title];
+          for (const spec of suite.specs ?? []) for (const test of spec.tests) {
+            assert.ok(expected.projects.includes(test.projectName), 'Unexpected project');
+            const identity = JSON.stringify([test.projectName, spec.file, ...titles, spec.title]);
+            assert.ok(!identities.has(identity), `Duplicate case: ${identity}`);
+            identities.add(identity);
+          }
+          for (const child of suite.suites ?? []) visit(child, titles);
+        }
+        for (const suite of collection.suites) visit(suite);
+        assert.equal(identities.size, expected.count);
+        const sha256 = crypto.createHash('sha256').update(JSON.stringify([...identities].sort())).digest('hex');
+        assert.equal(sha256, expected.sha256, 'Selected identities differ from review');
+        fs.writeFileSync(`${prefix}-selection.json`, JSON.stringify({ mode, count: identities.size, sha256 }, null, 2));
+        const run = spawnSync('./tests/e2e/node_modules/.bin/playwright', expected.args, { stdio: 'inherit' });
+        if (run.error) throw run.error;
+        process.exit(run.status ?? 1);
+        NODE
+    - name: Measure only two diagnostic conditions
       shell: bash
       run: node artifacts/desktop-four-proof/run-selected.mjs "$PROOF_PROJECT"
     - name: Upload source proof, results and screenshot attachments
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: timer-navigation-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt
+        name: material-motion-diagnostic-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt
           }}
-        path: 'artifacts/desktop-four-proof/
-
+        path: |+
+          artifacts/desktop-four-proof/
           artifacts/playwright-results/
-
           artifacts/playwright-report/
-
           artifacts/playwright-results.json
-
           artifacts/playwright-cross-browser-results/
-
           artifacts/playwright-cross-browser-report/
-
           artifacts/playwright-cross-browser-results.json
 
-
-          '
         if-no-files-found: error
         retention-days: 14
 'on':
