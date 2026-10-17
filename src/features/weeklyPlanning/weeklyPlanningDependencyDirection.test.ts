@@ -5,6 +5,8 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const config = ts.readConfigFile(join(repository, 'tsconfig.json'), ts.sys.readFile);
+const compilerConfig = ts.parseJsonConfigFileContent(config.config ?? {}, ts.sys, repository);
 const weekly = 'src/features/weeklyPlanning/';
 const semantic = `${weekly}semantic/`;
 const dialogue = `${weekly}dialogue/`;
@@ -40,9 +42,30 @@ type Rule = 'semantic-provider' | 'semantic-dialogue-persistence' | 'legacy-pars
 interface Edge { from: string; line: number; specifier: string | null; to: string | null }
 interface Violation { entry: string; rule: Rule; path: Edge[] }
 
-function runtimeImports(file: string, text: string) {
+function runtimeImports(file: string, text: string, options: ts.CompilerOptions) {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const imports: { specifier: string | null; line: number }[] = [];
+  const referencedNames = new Set<string>();
+  function collectNames(node: ts.Node) {
+    if (ts.isImportDeclaration(node)) return;
+    if (ts.isIdentifier(node)) referencedNames.add(node.text);
+    ts.forEachChild(node, collectNames);
+  }
+  collectNames(source);
+  let emittedModules: Set<string> | undefined;
+  function survivesEmit(specifier: ts.Expression) {
+    if (!ts.isStringLiteralLike(specifier)) return true;
+    if (!emittedModules) {
+      // Delegate type-position/elision decisions to the configured compiler, not
+      // a second type-syntax classifier. Keep source nodes for diagnostic lines.
+      const emitted = ts.transpileModule(text, { fileName: file, compilerOptions: {
+        ...options, noEmit: false, declaration: false, emitDeclarationOnly: false,
+        sourceMap: false, inlineSourceMap: false,
+      } }).outputText;
+      emittedModules = new Set(ts.preProcessFile(emitted, true, true).importedFiles.map(entry => entry.fileName));
+    }
+    return emittedModules.has(specifier.text);
+  }
   const allTypes = (bindings: ts.NamedImportBindings | undefined) =>
     bindings && ts.isNamedImports(bindings) && bindings.elements.length > 0
       && bindings.elements.every(element => element.isTypeOnly);
@@ -55,13 +78,24 @@ function runtimeImports(file: string, text: string) {
   function visit(node: ts.Node) {
     if (ts.isImportDeclaration(node)) {
       const clause = node.importClause;
-      if (!clause || !(clause.isTypeOnly || (!clause.name && allTypes(clause.namedBindings)))) {
-        add(node, node.moduleSpecifier);
+      if (!clause) add(node, node.moduleSpecifier);
+      else if (!clause.isTypeOnly) {
+        const bindings = clause.namedBindings;
+        const names = [clause.name, ...(bindings
+          ? ts.isNamespaceImport(bindings) ? [bindings.name] : bindings.elements.map(element => element.name)
+          : [])].filter((name): name is ts.Identifier => name !== undefined);
+        const explicitTypes = !clause.name && allTypes(bindings);
+        // An entirely unused declaration supplies no type-use evidence; retain
+        // it conservatively (noUnusedLocals separately rejects unused bindings).
+        if ((!explicitTypes && options.noUnusedLocals && names.length > 0
+          && !names.some(name => referencedNames.has(name.text)))
+          || survivesEmit(node.moduleSpecifier)) add(node, node.moduleSpecifier);
       }
     } else if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
       const names = node.exportClause;
-      if (!(node.isTypeOnly || (names && ts.isNamedExports(names) && names.elements.length > 0
-        && names.elements.every(element => element.isTypeOnly)))) add(node, node.moduleSpecifier);
+      const explicitTypes = names && ts.isNamedExports(names) && names.elements.length > 0
+        && names.elements.every(element => element.isTypeOnly);
+      if (!node.isTypeOnly && (!explicitTypes || survivesEmit(node.moduleSpecifier))) add(node, node.moduleSpecifier);
     } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
       if (!node.isTypeOnly) add(node, node.moduleReference.expression);
     } else if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword
@@ -94,7 +128,7 @@ function checkDirections(root: string, entries: string[], options: ts.CompilerOp
     if (!edges) {
       const source = host.readFile?.(file);
       if (source === undefined) throw new Error(`Cannot inspect ${file}`);
-      edges = runtimeImports(file, source).map(imported => {
+      edges = runtimeImports(file, source, options).map(imported => {
         const resolved = imported.specifier === null ? undefined
           : ts.resolveModuleName(imported.specifier, file, options, host, cache).resolvedModule;
         const edge = { ...imported, from: portable(relative(root, file)),
@@ -143,7 +177,7 @@ function checkDirections(root: string, entries: string[], options: ts.CompilerOp
 
 const fixtureSemantic = `${semantic}model.ts`;
 const fixtureDialogue = `${dialogue}renderer.ts`;
-function fixture(source: string, entry = fixtureSemantic, extra: Record<string, string> = {}) {
+function fixture(source: string, entry = fixtureSemantic, extra: Record<string, string> = {}, overrides: ts.CompilerOptions = {}) {
   const sources = new Map(Object.entries({
     [entry]: source,
     'src/repositories/backend.ts': 'export interface Contract {} export const persist = () => {};',
@@ -165,8 +199,8 @@ function fixture(source: string, entry = fixtureSemantic, extra: Record<string, 
     fileExists: file => sources.has(file), readFile: file => sources.get(file),
     directoryExists: directory => directories.has(directory), getCurrentDirectory: () => repository,
   };
-  const options: ts.CompilerOptions = { module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Bundler, baseUrl: repository, paths: { '@fixture/*': ['src/*'] } };
+  const options: ts.CompilerOptions = { ...compilerConfig.options,
+    baseUrl: repository, paths: { '@fixture/*': ['src/*'] }, ...overrides };
   return checkDirections(repository, [resolve(repository, entry)], options, host);
 }
 
@@ -177,14 +211,12 @@ function assertDirections(result: ReturnType<typeof checkDirections>) {
 
 describe('weekly planning module dependency directions', () => {
   it('holds on the resolved production graph without exceptions', () => {
-    const config = ts.readConfigFile(join(repository, 'tsconfig.json'), ts.sys.readFile);
     expect(config.error).toBeUndefined();
-    const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, repository);
-    expect(parsed.errors).toEqual([]);
+    expect(compilerConfig.errors).toEqual([]);
     const entries = productionFiles(join(repository, weekly));
     expect(entries.filter(file => portable(file).includes('/semantic/')).length).toBeGreaterThan(100);
     expect(entries.filter(file => portable(file).includes('/dialogue/')).length).toBeGreaterThan(10);
-    const result = checkDirections(repository, entries, parsed.options, ts.sys);
+    const result = checkDirections(repository, entries, compilerConfig.options, ts.sys);
     expect(result.inspectedModules).toBeGreaterThan(entries.length);
     assertDirections(result);
   });
@@ -266,6 +298,65 @@ describe('weekly planning module dependency directions', () => {
       // import '@fixture/repositories/backend';
       const text = "import('@fixture/repositories/backend')";
     `));
+  });
+
+  it('allows a normal contract import used only as an exported type after compiler erasure', () => {
+    assertDirections(fixture("import { Contract } from '@fixture/repositories/backend'; export type Result = Contract;"));
+  });
+
+  it.each([
+    "import { Contract as Port } from '@fixture/repositories/backend'; export type Result = Port;",
+    "import * as Backend from '@fixture/repositories/backend'; export type Result = Backend.Contract;",
+    "import Model from '@fixture/repositories/backend'; export type Result = Model;",
+    "import { persist } from '@fixture/repositories/backend'; export type Result = typeof persist;",
+  ])('allows erased alias/namespace/default/type-query imports: %s', source => {
+    assertDirections(fixture(source, fixtureSemantic, {
+      'src/repositories/backend.ts': 'export interface Contract {} export default class Model {} export const persist = () => {};',
+    }));
+  });
+
+  it.each([
+    "import { Contract, persist } from '@fixture/repositories/backend'; export type Result = Contract; persist();",
+    "import Model from '@fixture/repositories/backend'; export class Result extends Model {}",
+  ])('retains mixed/default imports with actual value use: %s', source => {
+    const result = fixture(source, fixtureSemantic, {
+      'src/repositories/backend.ts': 'export interface Contract {} export default class Model {} export const persist = () => {};',
+    });
+    expect(result.incomplete).toEqual([]);
+    expect(result.violations.map(hit => hit.rule)).toEqual(['semantic-dialogue-persistence']);
+  });
+
+  it.each([
+    "import { Contract } from '@fixture/repositories/backend'; export type Result = Contract;",
+    "import { type Contract } from '@fixture/repositories/backend'; export type Result = Contract;",
+    "export { type Contract } from '@fixture/repositories/backend';",
+  ])('follows verbatimModuleSyntax when a type spelling still emits an edge: %s', source => {
+    assertDirections(fixture(source, fixtureSemantic, {}, { verbatimModuleSyntax: false }));
+    const result = fixture(source, fixtureSemantic, {}, { verbatimModuleSyntax: true });
+    expect(result.incomplete).toEqual([]);
+    expect(result.violations.map(hit => hit.rule)).toEqual(['semantic-dialogue-persistence']);
+  });
+
+  it('still erases whole import-type declarations in verbatim mode', () => {
+    assertDirections(fixture("import type { Contract } from '@fixture/repositories/backend'; export type Result = Contract;",
+      fixtureSemantic, {}, { verbatimModuleSyntax: true }));
+  });
+
+  it.each([false, true])('lets compiler erasure handle type use with isolatedModules=%s', isolatedModules => {
+    assertDirections(fixture("import { Contract } from '@fixture/repositories/backend'; export type Result = Contract;",
+      fixtureSemantic, {}, { isolatedModules }));
+  });
+
+  it('does not impose an unused-binding restriction when the compiler allows it', () => {
+    assertDirections(fixture("import { Contract } from '@fixture/repositories/backend';",
+      fixtureSemantic, {}, { noUnusedLocals: false }));
+  });
+
+  it('handles an empty named import according to compiler emission', () => {
+    assertDirections(fixture("import {} from '@fixture/repositories/backend';"));
+    const result = fixture("import {} from '@fixture/repositories/backend';", fixtureSemantic, {}, { verbatimModuleSyntax: true });
+    expect(result.incomplete).toEqual([]);
+    expect(result.violations.map(hit => hit.rule)).toEqual(['semantic-dialogue-persistence']);
   });
 
   it('allows provider construction in the dialogue adapter and persistence in application', () => {
