@@ -30,4 +30,6 @@ SEMANTIC_MEMORY_EVAL_EMBEDDER_MODULE=/absolute/path/to/local-evaluation-adapter.
 node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/userPlanningContext/semanticMemory/evaluation/realModel.optIn.test.ts
 ```
 
+`nodeRealModelAdapter.ts` is such an adapter: it runs the same public model, pinned revision, int8 dtype, prefixes and pooling as the browser runtime on the local Node ONNX backend (public weights are downloaded once into `SEMANTIC_MEMORY_EVAL_CACHE_DIR`). It gives model retrieval-quality evidence on the synthetic corpus only, not browser or device evidence.
+
 The adapter must use the local browser/device runtime and public model weights only. Never pass real user records, use a hosted embedding API, or treat a Vitest run as iPhone Safari evidence. Device/browser evidence must be recorded separately.
