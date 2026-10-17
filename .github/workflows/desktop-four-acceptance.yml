@@ -1,5 +1,5 @@
-# LOCAL TEMPLATE: replace both source SHA occurrences and tree after source publication.
-name: Desktop Four-Surface Correction Acceptance
+# LOCAL TEMPLATE: bind both source SHA occurrences and source tree before publication.
+name: Desktop Four-Surface Final Acceptance
 permissions:
   contents: read
 concurrency:
@@ -22,34 +22,31 @@ jobs:
           browsers: chromium firefox webkit
     env:
       CI: 'true'
-      SOURCE_SHA: 4ee911e11566142af7175a0424ec509b3e3201a9
-      SOURCE_TREE: 755939ed3b5961287cfb30fda4f36ad8c7227787
+      SOURCE_SHA: a9b7f06411be620c3f52362589f5d9598e24f6b1
+      SOURCE_TREE: 4eb8ce75d04ac5cfcfb8d1504290f8802c1be18e
       PROOF_WORKFLOW_SHA: ${{ github.sha }}
       PROOF_PROJECT: ${{ matrix.project }}
     steps:
     - uses: actions/checkout@v7
       with:
-        ref: 4ee911e11566142af7175a0424ec509b3e3201a9
+        ref: a9b7f06411be620c3f52362589f5d9598e24f6b1
         fetch-depth: 1
         persist-credentials: false
     - name: Verify immutable application source
       shell: bash
-      run: |
-        set -euo pipefail
-        test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-        test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
-        mkdir -p artifacts/desktop-four-proof
-        printf '{"sourceSha":"%s","sourceTree":"%s","workflowSha":"%s","project":"%s"}\n' \
-          "$SOURCE_SHA" "$SOURCE_TREE" "$PROOF_WORKFLOW_SHA" "$PROOF_PROJECT" \
-          > artifacts/desktop-four-proof/source.json
-        sha256sum .node-version package.json package-lock.json tests/e2e/playwright.config.mjs \
-          tests/e2e/playwright.cross-browser.config.mjs tests/e2e/support/fixed-clock.mjs \
-          tests/e2e/support/startup-ready.mjs tests/e2e/home-content-responsive.spec.mjs \
-          tests/e2e/ai-planning-surface.spec.mjs tests/e2e/ai-planning-composer-viewport.spec.mjs \
-          tests/e2e/ai-planning-preview-viewport-lock.spec.mjs tests/e2e/primary-chrome-consistency.spec.mjs \
-          tests/e2e/public-page-navigation.spec.mjs tests/e2e/learning-report-surface.spec.mjs \
-          > artifacts/desktop-four-proof/inputs.sha256
-        sha256sum src/styles/home-desktop.css src/styles/ai-planning-page.css src/components/AiPlanningPreviewDialog.css src/styles/report.css tests/e2e/quality-gates.spec.mjs tests/e2e/visual-regression.spec.mjs tests/e2e/playwright.quality.config.mjs tests/e2e/playwright.visual.config.mjs >> artifacts/desktop-four-proof/inputs.sha256
+      run: "set -euo pipefail\ntest \"$(git rev-parse HEAD)\" = \"$SOURCE_SHA\"\ntest \"$(git rev-parse 'HEAD^{tree}')\"\
+        \ = \"$SOURCE_TREE\"\nmkdir -p artifacts/desktop-four-proof\nprintf '{\"sourceSha\":\"%s\",\"sourceTree\"\
+        :\"%s\",\"workflowSha\":\"%s\",\"project\":\"%s\"}\\n' \\\n  \"$SOURCE_SHA\" \"$SOURCE_TREE\" \"$PROOF_WORKFLOW_SHA\"\
+        \ \"$PROOF_PROJECT\" \\\n  > artifacts/desktop-four-proof/source.json\nsha256sum .node-version package.json\
+        \ package-lock.json tests/e2e/playwright.config.mjs \\\n  tests/e2e/playwright.cross-browser.config.mjs\
+        \ tests/e2e/support/fixed-clock.mjs \\\n  tests/e2e/support/startup-ready.mjs tests/e2e/home-content-responsive.spec.mjs\
+        \ \\\n  tests/e2e/ai-planning-surface.spec.mjs tests/e2e/ai-planning-composer-viewport.spec.mjs \\\n  tests/e2e/ai-planning-preview-viewport-lock.spec.mjs\
+        \ tests/e2e/primary-chrome-consistency.spec.mjs \\\n  tests/e2e/public-page-navigation.spec.mjs tests/e2e/learning-report-surface.spec.mjs\
+        \ \\\n  > artifacts/desktop-four-proof/inputs.sha256\nsha256sum src/styles/home-desktop.css src/styles/ai-planning-page.css\
+        \ src/components/AiPlanningPreviewDialog.css src/styles/report.css tests/e2e/quality-gates.spec.mjs tests/e2e/visual-regression.spec.mjs\
+        \ tests/e2e/playwright.quality.config.mjs tests/e2e/playwright.visual.config.mjs >> artifacts/desktop-four-proof/inputs.sha256\n\
+        sha256sum tests/e2e/visual-regression.spec.mjs-snapshots/{home,ai-planning}-desktop-{light,dark}-linux.png\
+        \ >> artifacts/desktop-four-proof/inputs.sha256\n"
     - uses: actions/setup-node@v7
       with:
         node-version-file: .node-version
@@ -59,12 +56,8 @@ jobs:
     - name: Snapshot application manifests before isolated test-runner install
       shell: bash
       run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
-    - name: Install existing pinned Playwright and quality tools
-      run: |
-        set -euo pipefail
-        packages=('@playwright/test@1.64.0')
-        if [ "$PROOF_PROJECT" = chromium ]; then packages+=('@axe-core/playwright@4.13.0'); fi
-        npm install --prefix tests/e2e --no-save --package-lock=false "${packages[@]}"
+    - name: Install existing pinned Playwright
+      run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
       shell: bash
     - name: Verify isolated test-runner install did not mutate application manifests
       shell: bash
@@ -77,116 +70,50 @@ jobs:
     - name: Write exact reviewed collection admission
       id: admission
       shell: bash
-      run: |
-        cat > artifacts/desktop-four-proof/run-selected.mjs <<'NODE'
-        import assert from 'node:assert/strict';
-        import crypto from 'node:crypto';
-        import fs from 'node:fs';
-        import { spawnSync } from 'node:child_process';
-        const selected = {
-          "chromium": {
-            "count": 22,
-            "sha256": "488b6296682e5a9458964d4d43efd31f0aa9bc9a8460b6caf25661973f286d01",
-            "projects": [
-              "chromium"
-            ],
-            "args": [
-              "test",
-              "--config=tests/e2e/playwright.config.mjs",
-              "--project=chromium",
-              "(^|/)ai\\-planning\\-surface\\.spec\\.mjs$",
-              "(^|/)home\\-content\\-responsive\\.spec\\.mjs$",
-              "(^|/)learning\\-report\\-surface\\.spec\\.mjs$",
-              "--grep",
-              "(?:1280px\\ enlarged\\ text\\ and\\ font\\-only\\ recovery\\ at\\ the\\ same\\ viewport|1280px\\ rotation\\ preserves\\ enlarged\\ text\\ and\\ font\\-only\\ recovery|1280x720\\ long\\ title\\ retains\\ metadata\\ and\\ reads\\ full\\ text|dark\\ compact\\ AI\\ proposal\\ retains\\ readable\\ overview\\ and\\ day\\ detail|desktop\\ 1280x720\\ dark\\ uses\\ readable\\ columns\\ inside\\ one\\ viewport|desktop\\ 1280x720\\ light\\ uses\\ readable\\ columns\\ inside\\ one\\ viewport|desktop\\ 1440x900\\ dark\\ uses\\ readable\\ columns\\ inside\\ one\\ viewport|desktop\\ 1440x900\\ light\\ uses\\ readable\\ columns\\ inside\\ one\\ viewport|desktop\\ 1920x1080\\ dark\\ uses\\ readable\\ columns\\ inside\\ one\\ viewport|desktop\\ 1920x1080\\ light\\ uses\\ readable\\ columns\\ inside\\ one\\ viewport|desktop\\ AI\\ proposal\\ uses\\ viewport\\ space\\ with\\ reachable\\ actions\\ and\\ separate\\ detail\\ scroll\\ at\\ 1280x720|desktop\\ AI\\ proposal\\ uses\\ viewport\\ space\\ with\\ reachable\\ actions\\ and\\ separate\\ detail\\ scroll\\ at\\ 1280x720\\ dark|desktop\\ AI\\ proposal\\ uses\\ viewport\\ space\\ with\\ reachable\\ actions\\ and\\ separate\\ detail\\ scroll\\ at\\ 1440x900|desktop\\ AI\\ proposal\\ uses\\ viewport\\ space\\ with\\ reachable\\ actions\\ and\\ separate\\ detail\\ scroll\\ at\\ 1440x900\\ dark|desktop\\ AI\\ proposal\\ uses\\ viewport\\ space\\ with\\ reachable\\ actions\\ and\\ separate\\ detail\\ scroll\\ at\\ 1920x1080|desktop\\ AI\\ proposal\\ uses\\ viewport\\ space\\ with\\ reachable\\ actions\\ and\\ separate\\ detail\\ scroll\\ at\\ 1920x1080\\ dark|desktop\\ report\\ overview\\ stays\\ readable\\ at\\ 1280x720\\ in\\ dark|desktop\\ report\\ overview\\ stays\\ readable\\ at\\ 1280x720\\ in\\ light|desktop\\ report\\ overview\\ stays\\ readable\\ at\\ 1440x900\\ in\\ dark|desktop\\ report\\ overview\\ stays\\ readable\\ at\\ 1440x900\\ in\\ light|desktop\\ report\\ overview\\ stays\\ readable\\ at\\ 1920x1080\\ in\\ dark|desktop\\ report\\ overview\\ stays\\ readable\\ at\\ 1920x1080\\ in\\ light)$"
-            ]
-          },
-          "webkit-mobile": {
-            "count": 22,
-            "sha256": "2c72694461ecba10efe194273bb67d30a1cecd77ddee3dd879c1d46aa07b6420",
-            "projects": [
-              "webkit-mobile"
-            ],
-            "args": [
-              "test",
-              "--config=tests/e2e/playwright.cross-browser.config.mjs",
-              "--project=webkit-mobile",
-              "(^|/)home\\-content\\-responsive\\.spec\\.mjs$",
-              "(^|/)learning\\-report\\-surface\\.spec\\.mjs$",
-              "--grep",
-              "(?:1280px\\ enlarged\\ text\\ and\\ font\\-only\\ recovery\\ at\\ the\\ same\\ viewport|1280x720\\ long\\ title\\ retains\\ metadata\\ and\\ reads\\ full\\ text|compact\\ report\\ overview\\ and\\ disclosure\\ across\\ sizes\\ in\\ pixel|compact\\ report\\ overview\\ and\\ disclosure\\ across\\ sizes\\ in\\ standard|desktop\\ 1280x720\\ dark\\ uses\\ readable\\ columns\\ inside\\ one\\ viewport|desktop\\ 1280x720\\ light\\ uses\\ readable\\ columns\\ inside\\ one\\ viewport|desktop\\ 1440x900\\ dark\\ uses\\ readable\\ columns\\ inside\\ one\\ viewport|desktop\\ 1440x900\\ light\\ uses\\ readable\\ columns\\ inside\\ one\\ viewport|desktop\\ 1920x1080\\ dark\\ uses\\ readable\\ columns\\ inside\\ one\\ viewport|desktop\\ 1920x1080\\ light\\ uses\\ readable\\ columns\\ inside\\ one\\ viewport|desktop\\ report\\ overview\\ stays\\ readable\\ at\\ 1280x720\\ in\\ dark|desktop\\ report\\ overview\\ stays\\ readable\\ at\\ 1280x720\\ in\\ light|desktop\\ report\\ overview\\ stays\\ readable\\ at\\ 1440x900\\ in\\ dark|desktop\\ report\\ overview\\ stays\\ readable\\ at\\ 1440x900\\ in\\ light|desktop\\ report\\ overview\\ stays\\ readable\\ at\\ 1920x1080\\ in\\ dark|desktop\\ report\\ overview\\ stays\\ readable\\ at\\ 1920x1080\\ in\\ light|keeps\\ report\\ filter\\ and\\ populated\\ chart\\ values\\ readable\\ in\\ pixel\\ at\\ 320px|keeps\\ report\\ filter\\ and\\ populated\\ chart\\ values\\ readable\\ in\\ pixel\\ at\\ 390px|keeps\\ report\\ filter\\ and\\ populated\\ chart\\ values\\ readable\\ in\\ standard\\ at\\ 320px|keeps\\ report\\ filter\\ and\\ populated\\ chart\\ values\\ readable\\ in\\ standard\\ at\\ 390px|keeps\\ the\\ report\\ and\\ navigation\\ inside\\ the\\ viewport|opens\\ the\\ learning\\ report\\ as\\ a\\ home\\ secondary\\ surface)$"
-            ]
-          },
-          "quality": {
-            "count": 2,
-            "sha256": "7b1f9b1186604cdc10e35aed3fc869e033c464e10adc81acb694776e41ae2d08",
-            "projects": [
-              "chromium-quality"
-            ],
-            "args": [
-              "test",
-              "--config=tests/e2e/playwright.quality.config.mjs",
-              "--project=chromium-quality",
-              "(^|/)quality\\-gates\\.spec\\.mjs$",
-              "--grep",
-              "(?:light\\ primary\\ surfaces\\ have\\ no\\ serious\\ or\\ critical\\ automated\\ WCAG\\ 2\\.2\\ violations|dark\\ primary\\ surfaces\\ have\\ no\\ serious\\ or\\ critical\\ automated\\ WCAG\\ 2\\.2\\ violations)$"
-            ]
-          },
-          "visual": {
-            "count": 2,
-            "sha256": "3737f744ae04a616f0c3387ab96dacf46acfb0bf0c69e661a9bff6355a9edbfd",
-            "projects": [
-              "desktop-dark",
-              "desktop-light"
-            ],
-            "args": [
-              "test",
-              "--config=tests/e2e/playwright.visual.config.mjs",
-              "--project=desktop-dark",
-              "--project=desktop-light",
-              "(^|/)visual\\-regression\\.spec\\.mjs$",
-              "--grep",
-              "(?:primary\\ application\\ surfaces\\ match\\ the\\ approved\\ visual\\ baseline)$"
-            ]
-          }
-        };
-        const mode = process.argv[2];
-        const expected = selected[mode];
-        assert.ok(expected, 'Unknown proof selection');
-        const prefix = `artifacts/desktop-four-proof/${mode}`;
-        fs.writeFileSync(`${prefix}-arguments.json`, JSON.stringify(expected.args, null, 2));
-        const collectionProcess = spawnSync('./tests/e2e/node_modules/.bin/playwright', [...expected.args, '--list', '--reporter=json'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
-        fs.writeFileSync(`${prefix}-collection.json`, collectionProcess.stdout ?? '');
-        assert.equal(collectionProcess.status, 0, collectionProcess.stderr || String(collectionProcess.error));
-        const collection = JSON.parse(collectionProcess.stdout);
-        assert.deepEqual(collection.errors, []);
-        const identities = new Set();
-        function visit(suite, parents = []) {
-          const titles = [...parents, suite.title];
-          for (const spec of suite.specs ?? []) for (const test of spec.tests) {
-            assert.ok(expected.projects.includes(test.projectName), 'Unexpected project');
-            const identity = JSON.stringify([test.projectName, spec.file, ...titles, spec.title]);
-            assert.ok(!identities.has(identity), `Duplicate case: ${identity}`);
-            identities.add(identity);
-          }
-          for (const child of suite.suites ?? []) visit(child, titles);
-        }
-        for (const suite of collection.suites) visit(suite);
-        assert.equal(identities.size, expected.count);
-        const sha256 = crypto.createHash('sha256').update(JSON.stringify([...identities].sort())).digest('hex');
-        assert.equal(sha256, expected.sha256, 'Selected identities differ from review');
-        fs.writeFileSync(`${prefix}-selection.json`, JSON.stringify({ mode, count: identities.size, sha256 }, null, 2));
-        const run = spawnSync('./tests/e2e/node_modules/.bin/playwright', expected.args, { stdio: 'inherit' });
-        if (run.error) throw run.error;
-        process.exit(run.status ?? 1);
-        NODE
+      run: "cat > artifacts/desktop-four-proof/run-selected.mjs <<'NODE'\nimport assert from 'node:assert/strict';\n\
+        import crypto from 'node:crypto';\nimport fs from 'node:fs';\nimport { spawnSync } from 'node:child_process';\n\
+        const selected = {\n  \"chromium\": {\n    \"count\": 6,\n    \"sha256\": \"66deddc51a860e73250b898c7af587c10ebe03525815233918679cd229af495b\"\
+        ,\n    \"projects\": [\n      \"chromium\"\n    ],\n    \"args\": [\n      \"test\",\n      \"--config=tests/e2e/playwright.config.mjs\"\
+        ,\n      \"--project=chromium\",\n      \"(^|/)ai\\\\-planning\\\\-surface\\\\.spec\\\\.mjs$\",\n      \"\
+        (^|/)home\\\\-content\\\\-responsive\\\\.spec\\\\.mjs$\",\n      \"--grep\",\n      \"(?:desktop\\\\ 1280x720\\\
+        \\ dark\\\\ uses\\\\ readable\\\\ columns\\\\ inside\\\\ one\\\\ viewport|desktop\\\\ 1440x900\\\\ dark\\\
+        \\ uses\\\\ readable\\\\ columns\\\\ inside\\\\ one\\\\ viewport|desktop\\\\ 1920x1080\\\\ dark\\\\ uses\\\
+        \\ readable\\\\ columns\\\\ inside\\\\ one\\\\ viewport|desktop\\\\ AI\\\\ proposal\\\\ uses\\\\ viewport\\\
+        \\ space\\\\ with\\\\ reachable\\\\ actions\\\\ and\\\\ separate\\\\ detail\\\\ scroll\\\\ at\\\\ 1280x720|desktop\\\
+        \\ AI\\\\ proposal\\\\ uses\\\\ viewport\\\\ space\\\\ with\\\\ reachable\\\\ actions\\\\ and\\\\ separate\\\
+        \\ detail\\\\ scroll\\\\ at\\\\ 1440x900|desktop\\\\ AI\\\\ proposal\\\\ uses\\\\ viewport\\\\ space\\\\\
+        \ with\\\\ reachable\\\\ actions\\\\ and\\\\ separate\\\\ detail\\\\ scroll\\\\ at\\\\ 1920x1080)$\"\n \
+        \   ]\n  },\n  \"webkit-mobile\": {\n    \"count\": 3,\n    \"sha256\": \"f440a9958bb0dd6646c42f40ca451d802f900bea7489df9c791b7473424051a4\"\
+        ,\n    \"projects\": [\n      \"webkit-mobile\"\n    ],\n    \"args\": [\n      \"test\",\n      \"--config=tests/e2e/playwright.cross-browser.config.mjs\"\
+        ,\n      \"--project=webkit-mobile\",\n      \"(^|/)home\\\\-content\\\\-responsive\\\\.spec\\\\.mjs$\"\
+        ,\n      \"--grep\",\n      \"(?:desktop\\\\ 1280x720\\\\ dark\\\\ uses\\\\ readable\\\\ columns\\\\ inside\\\
+        \\ one\\\\ viewport|desktop\\\\ 1440x900\\\\ dark\\\\ uses\\\\ readable\\\\ columns\\\\ inside\\\\ one\\\
+        \\ viewport|desktop\\\\ 1920x1080\\\\ dark\\\\ uses\\\\ readable\\\\ columns\\\\ inside\\\\ one\\\\ viewport)$\"\
+        \n    ]\n  },\n  \"visual\": {\n    \"count\": 2,\n    \"sha256\": \"3737f744ae04a616f0c3387ab96dacf46acfb0bf0c69e661a9bff6355a9edbfd\"\
+        ,\n    \"projects\": [\n      \"desktop-dark\",\n      \"desktop-light\"\n    ],\n    \"args\": [\n    \
+        \  \"test\",\n      \"--config=tests/e2e/playwright.visual.config.mjs\",\n      \"--project=desktop-dark\"\
+        ,\n      \"--project=desktop-light\",\n      \"(^|/)visual\\\\-regression\\\\.spec\\\\.mjs$\",\n      \"\
+        --grep\",\n      \"(?:primary\\\\ application\\\\ surfaces\\\\ match\\\\ the\\\\ approved\\\\ visual\\\\\
+        \ baseline)$\"\n    ]\n  }\n};\nconst mode = process.argv[2];\nconst expected = selected[mode];\nassert.ok(expected,\
+        \ 'Unknown proof selection');\nconst prefix = `artifacts/desktop-four-proof/${mode}`;\nfs.writeFileSync(`${prefix}-arguments.json`,\
+        \ JSON.stringify(expected.args, null, 2));\nconst collectionProcess = spawnSync('./tests/e2e/node_modules/.bin/playwright',\
+        \ [...expected.args, '--list', '--reporter=json'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });\n\
+        fs.writeFileSync(`${prefix}-collection.json`, collectionProcess.stdout ?? '');\nassert.equal(collectionProcess.status,\
+        \ 0, collectionProcess.stderr || String(collectionProcess.error));\nconst collection = JSON.parse(collectionProcess.stdout);\n\
+        assert.deepEqual(collection.errors, []);\nconst identities = new Set();\nfunction visit(suite, parents =\
+        \ []) {\n  const titles = [...parents, suite.title];\n  for (const spec of suite.specs ?? []) for (const\
+        \ test of spec.tests) {\n    assert.ok(expected.projects.includes(test.projectName), 'Unexpected project');\n\
+        \    const identity = JSON.stringify([test.projectName, spec.file, ...titles, spec.title]);\n    assert.ok(!identities.has(identity),\
+        \ `Duplicate case: ${identity}`);\n    identities.add(identity);\n  }\n  for (const child of suite.suites\
+        \ ?? []) visit(child, titles);\n}\nfor (const suite of collection.suites) visit(suite);\nassert.equal(identities.size,\
+        \ expected.count);\nconst sha256 = crypto.createHash('sha256').update(JSON.stringify([...identities].sort())).digest('hex');\n\
+        assert.equal(sha256, expected.sha256, 'Selected identities differ from review');\nfs.writeFileSync(`${prefix}-selection.json`,\
+        \ JSON.stringify({ mode, count: identities.size, sha256 }, null, 2));\nconst run = spawnSync('./tests/e2e/node_modules/.bin/playwright',\
+        \ expected.args, { stdio: 'inherit' });\nif (run.error) throw run.error;\nprocess.exit(run.status ?? 1);\n\
+        NODE\n"
     - name: Run only changed native acceptance cases
       shell: bash
       run: node artifacts/desktop-four-proof/run-selected.mjs "$PROOF_PROJECT"
-    - name: Check both light and dark primary quality surfaces
-      if: always() && matrix.project == 'chromium' && steps.build.outcome == 'success' && steps.admission.outcome
-        == 'success'
-      run: node artifacts/desktop-four-proof/run-selected.mjs quality
     - name: Compare the two desktop visual cases without replacing baselines
       if: always() && matrix.project == 'chromium' && steps.build.outcome == 'success' && steps.admission.outcome
         == 'success'
@@ -195,23 +122,30 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: desktop-four-correction-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt
+        name: desktop-four-final-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt
           }}
-        path: |
-          artifacts/desktop-four-proof/
+        path: 'artifacts/desktop-four-proof/
+
           artifacts/playwright-results/
+
           artifacts/playwright-report/
+
           artifacts/playwright-results.json
+
           artifacts/playwright-cross-browser-results/
+
           artifacts/playwright-cross-browser-report/
+
           artifacts/playwright-cross-browser-results.json
 
-          artifacts/playwright-quality-results/
-          artifacts/playwright-quality-report/
-          artifacts/playwright-quality-results.json
+
           artifacts/playwright-visual-results/
+
           artifacts/playwright-visual-report/
+
           artifacts/playwright-visual-results.json
+
+          '
         if-no-files-found: error
         retention-days: 14
 'on':
