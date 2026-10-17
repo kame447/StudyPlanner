@@ -20,7 +20,12 @@ describe('generic Choice provider validation and dispatch accounting', () => {
       context: { ...r.context,
         question: { id: 'reply-target', code: 'reply_reference_target' },
         target: { kind: 'reply_reference', id: 'current_conversation' },
-        scope: { referenceKind: 'existing_fact', selectionKind: 'target_slot_only' } } };
+        scope: { referenceKind: 'existing_fact', selectionKind: 'target_slot_only',
+          dialogueHistory: [
+            { messageOrdinal: 1, role: 'user', content: '数学を20問進めたい' },
+            { messageOrdinal: 2, role: 'assistant', content: '1問何分かかりますか？' },
+          ],
+        } } };
     let body: Record<string, unknown> = {};
     const result = await evaluateCandidateChoice({
       firebaseUid: 'fixture-owner', context: { purpose: 'candidate_choice', request: reference },
@@ -33,6 +38,10 @@ describe('generic Choice provider validation and dispatch accounting', () => {
     expect(result.status).toBe('evaluated');
     const questions = body.questions as Record<string, { instructions: string }>;
     expect(questions.candidate.instructions).toContain('prior utterance');
+    expect(questions.candidate.instructions).toContain('dialogueHistory');
+    expect(questions.condition_change.instructions).toContain('current user reply only');
+    expect((body.state as { context: { scope: { dialogueHistory: unknown[] } } }).context.scope.dialogueHistory)
+      .toEqual(reference.context.scope.dialogueHistory);
     expect(questions.candidate.instructions).toContain('separate semantic extractor');
     expect(questions.condition_change.instructions).toContain('ordinary value');
     expect(questions.independent_meaning.instructions).toContain('multiple targets');
