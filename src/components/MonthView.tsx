@@ -1,6 +1,7 @@
 import type { MonthEventEditRequest } from '../domain/recurringMonthEvent';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useDataChangeMotion } from '../hooks/useDataChangeMotion';
 import { useExitMotion } from '../hooks/useExitMotion';
 import { usePeriodNavigationMotion } from '../hooks/usePeriodNavigationMotion';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
@@ -78,6 +79,8 @@ export function MonthView({
   const viewRef = useRef<HTMLElement | null>(null);
   const monthGridRef = useRef<HTMLDivElement | null>(null);
   usePeriodNavigationMotion(monthGridRef, monthDate);
+  // Added, changed and pushed-aside items in the month grid explain a save.
+  useDataChangeMotion(monthGridRef, monthDate, [plans, actuals, monthEvents]);
   const shouldFocusSelectedCell = useRef(false);
   const pendingCellClickTimeout = useRef<number | null>(null);
   const lastCellClick = useRef<{ date: string; at: number } | null>(null);
