@@ -1,18 +1,50 @@
 import rawCorpus from './fixtures/japaneseSyntheticCorpus.v1.json';
+import rawHoldout from './fixtures/japaneseSyntheticQueries.holdout.v1.json';
 import type { SyntheticEvaluationCorpus } from './evaluationTypes';
+
+export const SYNTHETIC_EVALUATION_DATASETS = ['v1', 'holdout'] as const;
+
+interface SyntheticHoldoutFixture {
+  version: 1;
+  dataset: 'holdout';
+  description: string;
+  queries: SyntheticEvaluationCorpus['queries'];
+}
 
 /** Synthetic-only fixture; it contains no production user memory or embeddings. */
 export const JAPANESE_SYNTHETIC_CORPUS = rawCorpus as SyntheticEvaluationCorpus;
+const japaneseHoldoutFixture = rawHoldout as SyntheticHoldoutFixture;
 
-export function validateSyntheticCorpus(corpus: SyntheticEvaluationCorpus): string[] {
+/** Held-out wording shares only the unchanged synthetic record set with v1. */
+export const JAPANESE_SYNTHETIC_HOLDOUT_CORPUS: SyntheticEvaluationCorpus = {
+  ...JAPANESE_SYNTHETIC_CORPUS,
+  description: japaneseHoldoutFixture.description,
+  queries: japaneseHoldoutFixture.queries,
+};
+
+/** Select a fixed synthetic query set for unit or opt-in local-model evaluation. */
+export function selectJapaneseSyntheticEvaluationCorpus(
+  dataset: string = 'v1',
+): SyntheticEvaluationCorpus {
+  if (dataset === 'v1') return JAPANESE_SYNTHETIC_CORPUS;
+  if (dataset === 'holdout') return JAPANESE_SYNTHETIC_HOLDOUT_CORPUS;
+  throw new Error(
+    `Unknown synthetic evaluation dataset "${dataset}" (expected ${SYNTHETIC_EVALUATION_DATASETS.join(' or ')})`,
+  );
+}
+
+export function validateSyntheticCorpus(
+  corpus: SyntheticEvaluationCorpus,
+  queryCountBounds: { min: number; max: number } = { min: 30, max: 40 },
+): string[] {
   const errors: string[] = [];
   const recordsById = new Map(corpus.records.map((record) => [record.id, record]));
 
   if (corpus.records.length < 30 || corpus.records.length > 50) {
     errors.push(`record count must be 30–50 (received ${corpus.records.length})`);
   }
-  if (corpus.queries.length < 30 || corpus.queries.length > 40) {
-    errors.push(`query count must be 30–40 (received ${corpus.queries.length})`);
+  if (corpus.queries.length < queryCountBounds.min || corpus.queries.length > queryCountBounds.max) {
+    errors.push(`query count must be ${queryCountBounds.min}–${queryCountBounds.max} (received ${corpus.queries.length})`);
   }
   if (recordsById.size !== corpus.records.length) errors.push('record ids must be unique');
   if (new Set(corpus.queries.map((query) => query.id)).size !== corpus.queries.length) {
