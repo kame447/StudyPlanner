@@ -2,7 +2,6 @@ import type { CandidateChoiceRequest, CalibratedChoicePolicy, CandidateBasis, Ca
 import { buildCandidateHierarchy } from '../application/candidateSelection/hierarchy';
 import { gateCandidateChoice } from '../application/candidateSelection/gate';
 import { createCandidateManifest } from '../application/candidateSelection/manifest';
-import type { CandidateSemanticGatePolicy } from '../../../services/ai/candidateChoiceClient';
 import { createReplyReferenceSnapshotV5, resolveReplyReferenceCandidateV5,
   type ReplyReferenceCandidateV5 } from './weeklyPlanningReplyReferenceCandidatesV5';
 
@@ -18,7 +17,11 @@ export interface ReplyReferenceChoicePortV5 {
  */
 export interface ReplyReferenceChoiceCalibrationV5 {
   readonly policy: CalibratedChoicePolicy;
-  readonly semanticPolicy: CandidateSemanticGatePolicy;
+  readonly semanticPolicy: {
+    readonly calibrationEvidenceId: string;
+    readonly maximumConditionChange: number;
+    readonly maximumIndependentMeaning: number;
+  };
   readonly maximumChildrenPerMenu: number;
 }
 export const WEEKLY_PLANNING_REPLY_REFERENCE_CALIBRATION_V5: ReplyReferenceChoiceCalibrationV5 | null = null;
