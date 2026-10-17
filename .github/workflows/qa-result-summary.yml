@@ -40,10 +40,20 @@ jobs:
 
             const { data: jobsData } = await github.rest.actions.listJobsForWorkflowRun({ owner, repo, run_id: run.id, per_page: 100 });
             const jobs = jobsData.jobs.map((job) => ({ name: job.name, status: job.status, conclusion: job.conclusion, url: job.html_url }));
-            const marker = `<!-- studyplanner-qa-summary:${run.name} -->`;
+            const isMatrix = run.name === 'UI Regression Matrix';
+            const targetedJobs = jobs.some((job) => job.name === 'targeted-webkit-summary' || job.name.startsWith('targeted-webkit ('));
+            const standardJobs = jobs.some((job) => job.name === 'cross-browser-smoke' || job.name.startsWith('cross-browser-projects (') || (job.name === 'visual-regression' && job.status === 'completed' && ['success', 'failure', 'timed_out'].includes(job.conclusion)));
+            // Job identities are emitted by the selected Matrix branch. A cancelled
+            // run with missing or mixed identities cannot overwrite either summary.
+            if (isMatrix && targetedJobs === standardJobs) {
+              core.notice('Matrix result scope is missing or ambiguous; preserving existing QA summaries.');
+              return;
+            }
+            const isTargeted = isMatrix && targetedJobs;
+            const marker = `<!-- studyplanner-qa-summary:${run.name}${isTargeted ? ':targeted-webkit' : ''} -->`;
             const rows = jobs.map((job) => `| ${job.name} | ${job.status} | ${job.conclusion || '-'} | [log](${job.url}) |`).join('\n');
-            const payload = { schemaVersion: 1, workflow: run.name, runId: run.id, status: run.status, conclusion: run.conclusion, headBranch: run.head_branch, headSha: run.head_sha, runUrl: run.html_url, jobs };
-            const body = [marker, `QA summary: ${run.name}`, '', `Run conclusion: \`${run.conclusion || run.status}\``, '', '| Job | Status | Conclusion | Details |', '| --- | --- | --- | --- |', rows || '| no jobs | - | - | - |', '', '<details><summary>Machine-readable result</summary>', '', '```json', JSON.stringify(payload, null, 2), '```', '</details>'].join('\n');
+            const payload = { schemaVersion: 1, workflow: run.name, runId: run.id, status: run.status, conclusion: run.conclusion, headBranch: run.head_branch, headSha: run.head_sha, runUrl: run.html_url, jobs, ...(isTargeted ? { scope: 'targeted-webkit' } : {}) };
+            const body = [marker, `QA summary: ${run.name}${isTargeted ? ' (targeted WebKit)' : ''}`, ...(isTargeted ? ['', 'Diagnostic only: this result does not replace the full UI Regression Matrix gate.'] : []), '', `Run conclusion: \`${run.conclusion || run.status}\``, '', '| Job | Status | Conclusion | Details |', '| --- | --- | --- | --- |', rows || '| no jobs | - | - | - |', '', '<details><summary>Machine-readable result</summary>', '', '```json', JSON.stringify(payload, null, 2), '```', '</details>'].join('\n');
 
             for (const pr of pulls) {
               const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number: pr.number, per_page: 100 });
