@@ -40,8 +40,10 @@ export async function lookupHyMemoryCandidateRecords(params: {
       body: JSON.stringify({ sourceRevision: params.sourceRevision, query: params.query }),
       signal: controller.signal,
     });
+    if (getFirebaseAuth()?.currentUser !== currentUser || currentUser.uid !== params.ownerId) return unavailable;
     if (!response.ok) return unavailable;
     const indexRead: unknown = await response.json();
+    if (getFirebaseAuth()?.currentUser !== currentUser || currentUser.uid !== params.ownerId) return unavailable;
     if (!indexRead || typeof indexRead !== 'object' || Array.isArray(indexRead)) return unavailable;
     const candidate = indexRead as Record<string, unknown>;
     if (candidate.status !== 'ready' || candidate.ownerId !== params.ownerId
