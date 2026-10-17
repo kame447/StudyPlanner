@@ -40,6 +40,13 @@ describe('desktop Home source layout contract', () => {
     css.walkDecls('font-size', decl => { expect(decl.value).toMatch(/^[\d.]+rem$/); expect(parseFloat(decl.value)).toBeGreaterThanOrEqual(0.75); });
     css.walkDecls(decl => { expect(['transform', 'zoom']).not.toContain(decl.prop); });
   });
+  it('keeps inline add controls within the original row height', () => {
+    const selector = `${home} .home-inline-add`;
+    expect(values(selector)).toEqual({ 'padding-block': '0' });
+    expect(css.toString().indexOf(selector)).toBeGreaterThan(css.toString().indexOf(`${home} :is(.home-schedule-row, .home-schedule-empty)`));
+    const base = readFileSync(new URL('./home.css', import.meta.url), 'utf8');
+    expect(base).toMatch(/\.home-add-controls\s*\{[^}]*min-height: inherit;/);
+  });
   it('uses the accessible theme-muted color for normal-size material progress text', () => {
     expect(values(`${home} .home-material-copy small`).color).toBe('var(--text-muted)');
     const base = postcss.parse(readFileSync(new URL('./base.css', import.meta.url), 'utf8'));

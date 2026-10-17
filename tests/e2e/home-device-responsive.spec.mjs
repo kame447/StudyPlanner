@@ -1,4 +1,5 @@
 import { expect, test } from './support/fixed-clock.mjs';
+import { expectRectContained, expectOrderedWithoutOverlap } from './support/layout-containment.mjs';
 
 async function seedHome(page) {
   await page.addInitScript(() => {
@@ -56,6 +57,8 @@ async function readMetrics(page) {
       const rect = element.getBoundingClientRect();
       return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
     };
+    const rect = selector => document.querySelector(selector)?.getBoundingClientRect().toJSON() ?? null;
+    const home = document.querySelector('.home-main > .home-dashboard-default');
     const shell = document.querySelector('.home-app-shell');
     const nav = document.querySelector('.home-bottom-nav');
     const core = document.querySelector('.home-core-sections');
@@ -76,6 +79,13 @@ async function readMetrics(page) {
       viewportHeight: document.documentElement.clientHeight,
       pageWidth: document.documentElement.scrollWidth,
       pageHeight: document.documentElement.scrollHeight,
+      desktopLayout: matchMedia('(min-width: 1200px)').matches,
+      home: home?.getBoundingClientRect().toJSON(),
+      nextCard: rect('.home-next-card'), today: rect('.home-today-panel'),
+      attention: rect('.home-alert-grid'), progress: rect('.home-progress-panel'),
+      material: material?.getBoundingClientRect().toJSON() ?? null,
+      homeClientWidth: home?.clientWidth, homeScrollWidth: home?.scrollWidth,
+      homeClientHeight: home?.clientHeight, homeScrollHeight: home?.scrollHeight,
       shellWidth: shell?.getBoundingClientRect().width ?? 0,
       navWidth: nav?.getBoundingClientRect().width ?? 0,
       bottomGap: navTop - lastVisibleBottom,
@@ -96,7 +106,28 @@ function expectCommonBounds(metrics) {
   expect(metrics.pageWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
   expect(metrics.pageHeight).toBeLessThanOrEqual(metrics.viewportHeight + 1);
   expect(metrics.bottomGap).toBeGreaterThanOrEqual(-1);
-  expect(metrics.bottomGap).toBeLessThanOrEqual(24);
+  if (metrics.desktopLayout) {
+    // Natural desktop card heights do not expand just to fill the footer gap.
+    for (const card of [metrics.nextCard, metrics.today, metrics.attention, metrics.progress, metrics.material]) {
+      expectRectContained(metrics.home, card);
+      expect(card.width).toBeGreaterThan(0); expect(card.height).toBeGreaterThan(0);
+    }
+    expect(metrics.homeScrollWidth).toBeLessThanOrEqual(metrics.homeClientWidth + 1);
+    expect(metrics.homeScrollHeight).toBeLessThanOrEqual(metrics.homeClientHeight + 1);
+    for (const [left, right] of [[metrics.nextCard, metrics.today], [metrics.attention, metrics.progress]]) {
+      expect(Math.abs(left.top - right.top)).toBeLessThanOrEqual(1);
+      expect(left.right + 8).toBeLessThanOrEqual(right.left);
+    }
+    expect(Math.abs(metrics.nextCard.left - metrics.attention.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(metrics.today.left - metrics.progress.left)).toBeLessThanOrEqual(1);
+    expect(Math.max(metrics.nextCard.bottom, metrics.today.bottom)).toBeLessThanOrEqual(Math.min(metrics.attention.top, metrics.progress.top) + 1);
+    expectOrderedWithoutOverlap(metrics.nextCard, metrics.attention);
+    expectOrderedWithoutOverlap(metrics.today, metrics.progress);
+    expectOrderedWithoutOverlap(metrics.attention, metrics.material);
+    expectOrderedWithoutOverlap(metrics.progress, metrics.material);
+  } else {
+    expect(metrics.bottomGap).toBeLessThanOrEqual(24);
+  }
   expect(metrics.materialCount).toBeLessThanOrEqual(1);
   if (metrics.nextMetaBottom !== null && metrics.startButtonTop !== null) {
     expect(metrics.nextMetaBottom).toBeLessThanOrEqual(metrics.startButtonTop - 2);
@@ -121,13 +152,14 @@ const galaxyUse = {
 test.describe('Galaxy-class 360x640 mobile viewport', () => {
   test.use(galaxyUse);
 
-  test('prioritizes the core dashboard without clipping the add row', async ({ page }) => {
+  test('prioritizes the core dashboard without clipping the add row', async ({ page }, testInfo) => {
     await seedHome(page);
     await page.goto('/');
     await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
     await page.waitForTimeout(500);
 
     const metrics = await readMetrics(page);
+    await testInfo.attach('home-device-metrics', { contentType: 'application/json', body: JSON.stringify(metrics) });
     expectCommonBounds(metrics);
     expect(metrics.materialCount).toBe(0);
     expect(metrics.shellWidth).toBeGreaterThanOrEqual(350);
@@ -146,13 +178,14 @@ const ipadPortraitUse = {
 test.describe('iPad-class portrait viewport', () => {
   test.use(ipadPortraitUse);
 
-  test('uses most of the tablet width and keeps the bottom area filled', async ({ page }) => {
+  test('uses most of the tablet width and keeps the bottom area filled', async ({ page }, testInfo) => {
     await seedHome(page);
     await page.goto('/');
     await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
     await page.waitForTimeout(700);
 
     const metrics = await readMetrics(page);
+    await testInfo.attach('home-device-metrics', { contentType: 'application/json', body: JSON.stringify(metrics) });
     expectCommonBounds(metrics);
     expect(metrics.shellWidth / metrics.viewportWidth).toBeGreaterThanOrEqual(0.9);
     expect(Math.abs(metrics.navWidth - metrics.shellWidth)).toBeLessThanOrEqual(2);
@@ -168,13 +201,14 @@ const ipadLandscapeUse = {
 test.describe('iPad-class landscape viewport', () => {
   test.use(ipadLandscapeUse);
 
-  test('stays proportionally large without horizontal overflow', async ({ page }) => {
+  test('stays proportionally large without horizontal overflow', async ({ page }, testInfo) => {
     await seedHome(page);
     await page.goto('/');
     await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
     await page.waitForTimeout(700);
 
     const metrics = await readMetrics(page);
+    await testInfo.attach('home-device-metrics', { contentType: 'application/json', body: JSON.stringify(metrics) });
     expectCommonBounds(metrics);
     expect(metrics.shellWidth).toBeGreaterThanOrEqual(1000);
     expect(Math.abs(metrics.navWidth - metrics.shellWidth)).toBeLessThanOrEqual(2);
