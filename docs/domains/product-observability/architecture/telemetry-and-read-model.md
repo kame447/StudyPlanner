@@ -531,6 +531,14 @@ client telemetry送信失敗はproduct action成功後に切り離して処理�
 
 bounded retryは許可するが、無限queueやlocalStorageへの無期限raw event蓄積は行わない。
 
+### Telemetry admission budget (#715)
+
+`/observability/events` authenticates Firebase UID, then consumes only `telemetry:uid:minute` and `telemetry:uid:day` through the existing `AI_QUOTA` Durable Object. The object name is `telemetry:uid:` plus the complete URI-encoded UID; there is no truncated key or shared IP bucket. Client activity, planning outcomes and optional client census share this admission budget; provider-generated AI metrics use their existing server path. No AI request budget or other endpoint is consumed or changed. Preflight, disallowed origin and unauthenticated requests consume no telemetry quota. Authenticated malformed requests still consume admission, before JSON/storage work.
+
+The fixed policy is **1,200 requests per minute and 20,000 per Asia/Tokyo day** (same daily reset as AI quotas), with no client batching or retry amplification. The client sends one HTTP request per event (`productTelemetryRemoteSink.ts`); `observedPlannerRepository.ts` emits one activity per successful mutation, one per plan/material in bulk mutations, and one app-active marker per loaded user. Planning emits typed lifecycle/quality events (`weeklyPlanningOutcomeObservability.ts`), and optional census adds start/closure (`semanticTurnCensus.ts`). The 500-item persisted preview bound permits a large save burst, so 1,200 allows two such sets plus lifecycle/census headroom. The daily budget allows about ten outcomes for each of the existing 1,000 daily chat requests plus twenty 500-item saves; normal human telemetry is much lower. These are admission limits, not scheduling or save limits.
+
+An exhausted budget returns JSON `429` with `retryAfterSeconds` and `Retry-After`, retaining CORS/no-store conventions. If the binding/RPC is unavailable, admission **fails closed with 503** and performs no telemetry storage work. This preserves the resource protection during quota outages: best effort means observation may be absent while product work succeeds, not that an unmetered persistence path must remain open. The client port absorbs asynchronous HTTP failures; no new queue or retries are added. Actual plan create/update and planning-save telemetry are verified against a real synthetic 429 sink. Operators should treat quota-related omission as missing telemetry, not proof of no activity.
+
 ### Counter domains and retained-event exclusions (#715)
 
 Shared numeric observation domains are `OBSERVABILITY_COUNTER_LIMITS` in `shared/productObservabilityContract.ts`. Admission rejects values outside those domains using the existing telemetry validation errors; unknown measurements remain `null`. These are telemetry safety bounds, not new planning lifecycle limits.
