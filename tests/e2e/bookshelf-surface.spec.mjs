@@ -587,16 +587,22 @@ async function reachMaterialControl(control, testInfo, name) {
   const metrics = await control.evaluate(element => {
     const box = element.getBoundingClientRect();
     const blockers = [];
+    const clippingFrames = [];
     for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
       const style = getComputedStyle(ancestor);
       if (/(auto|scroll|hidden|clip)/.test(style.overflowY)) {
         const frame = ancestor.getBoundingClientRect();
-        const top = frame.top + ancestor.clientTop;
-        if (box.top < top - 1 || box.bottom > top + ancestor.clientHeight + 1) blockers.push(ancestor.className);
+        // Root overflow is applied to the viewport. Its clientHeight is also
+        // viewport-sized, while its bounding rect moves with document scroll.
+        const top = ancestor === document.documentElement ? 0 : frame.top + ancestor.clientTop;
+        const bottom = top + ancestor.clientHeight;
+        clippingFrames.push({ tag: ancestor.tagName, className: ancestor.className,
+          top, bottom, rectTop: frame.top, scrollTop: ancestor.scrollTop, overflowY: style.overflowY });
+        if (box.top < top - 1 || box.bottom > bottom + 1) blockers.push(`${ancestor.tagName}.${ancestor.className}`);
       }
     }
     return { left: box.left, right: box.right, top: box.top, bottom: box.bottom,
-      width: innerWidth, height: innerHeight, fontSize: getComputedStyle(element).fontSize, blockers };
+      width: innerWidth, height: innerHeight, fontSize: getComputedStyle(element).fontSize, blockers, clippingFrames };
   });
   await testInfo.attach(name, { body: JSON.stringify(metrics), contentType: 'application/json' });
   expect(metrics.left).toBeGreaterThanOrEqual(-1);
@@ -611,50 +617,54 @@ async function reachMaterialControl(control, testInfo, name) {
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 1080 }, { width: 1280, height: 600 }, { width: 390, height: 844 }]) {
   test.describe(`material long text ${viewport.width}x${viewport.height}`, () => {
     test.use({ viewport, screen: viewport, contextOptions: { reducedMotion: 'reduce' } });
-    test('keeps full text and long editor actions reachable at 100% and 200%', async ({ page }, testInfo) => {
-      await seedBookshelf(page);
-      await openBookshelf(page);
-      // Mutate only this already-seeded fixture, avoiding init-script ordering assumptions.
-      await page.evaluate(({ name, subject, activity }) => {
-        const materials = JSON.parse(localStorage.getItem('studyplanner.studyMaterials.v1'));
-        Object.assign(materials[0], { name, subjectName: subject });
-        localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify(materials));
-        const subjects = JSON.parse(localStorage.getItem('studyplanner.studySubjects.v1'));
-        subjects[0].name = subject;
-        localStorage.setItem('studyplanner.studySubjects.v1', JSON.stringify(subjects));
-        const plans = JSON.parse(localStorage.getItem('studyplanner.plans'));
-        Object.assign(plans[0], { title: activity, subject, materialName: name });
-        localStorage.setItem('studyplanner.plans', JSON.stringify(plans));
-        // First entry has already migrated plans. Update the same owned
-        // canonical record rather than leaving its displayed title unchanged.
-        const events = JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1'));
-        const event = events.find(row => row.userId === plans[0].userId
-          && row.provenance?.legacy.kind === 'plan' && row.provenance.legacy.id === plans[0].id);
-        if (!event?.plan) throw new Error('Expected the seeded material plan to be migrated');
-        Object.assign(event, { title: activity });
-        Object.assign(event.plan, { subject, materialName: name });
-        localStorage.setItem('studyplanner.scheduleEvents.v1', JSON.stringify(events));
-        const actuals = JSON.parse(localStorage.getItem('studyplanner.actuals'));
-        Object.assign(actuals[0], { note: activity, materialName: name });
-        delete actuals[0].materialProgressUpdates;
-        localStorage.setItem('studyplanner.actuals', JSON.stringify(actuals));
-        const key = 'studyplanner:material-detail:v1:bookshelf-e2e-user:bookshelf-e2e-material';
-        const preferences = JSON.parse(localStorage.getItem(key));
-        preferences.structureItems = Array.from({ length: 24 }, (_, index) => ({ id: `long-${index}`, title: `${name}${index + 1}`, startUnit: index * 8, endUnit: (index + 1) * 8 }));
-        localStorage.setItem(key, JSON.stringify(preferences));
-        localStorage.setItem('study-planner-appearance', 'pixel');
-        localStorage.setItem('study-planner-theme-mode', 'light');
-      }, { name: longMaterialName, subject: longMaterialSubject, activity: longMaterialActivity });
-      await openBookshelf(page);
-      await page.locator('.bookshelf-featured-card').filter({ hasText: longMaterialName }).click();
-      const detail = page.locator('.bookshelf-detail-page');
-      await expect(detail.locator('.bookshelf-detail-hero-copy h2')).toHaveText(longMaterialName);
-      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-      await expect.poll(() => detail.evaluate(element => getComputedStyle(element).fontFamily)).toContain('DotGothic16');
-      await page.evaluate(() => document.fonts.ready);
-      expect(await page.evaluate(() => document.fonts.check('16px DotGothic16'))).toBe(true);
-      let initialFont;
-      for (const percent of [100, 200]) {
+    for (const percent of [100, 200]) {
+      test(`keeps full text and long editor actions reachable at ${percent}%`, async ({ page }, testInfo) => {
+        await seedBookshelf(page);
+        await openBookshelf(page);
+        // Mutate only this already-seeded fixture, avoiding init-script ordering assumptions.
+        await page.evaluate(({ name, subject, activity }) => {
+          const materials = JSON.parse(localStorage.getItem('studyplanner.studyMaterials.v1'));
+          Object.assign(materials[0], { name, subjectName: subject });
+          localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify(materials));
+          const subjects = JSON.parse(localStorage.getItem('studyplanner.studySubjects.v1'));
+          subjects[0].name = subject;
+          localStorage.setItem('studyplanner.studySubjects.v1', JSON.stringify(subjects));
+          const plans = JSON.parse(localStorage.getItem('studyplanner.plans'));
+          Object.assign(plans[0], { title: activity, subject, materialName: name });
+          localStorage.setItem('studyplanner.plans', JSON.stringify(plans));
+          // First entry has already migrated plans. Update the same owned
+          // canonical record rather than leaving its displayed title unchanged.
+          const events = JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1'));
+          const event = events.find(row => row.userId === plans[0].userId
+            && row.provenance?.legacy.kind === 'plan' && row.provenance.legacy.id === plans[0].id);
+          if (!event?.plan) throw new Error('Expected the seeded material plan to be migrated');
+          Object.assign(event, { title: activity });
+          Object.assign(event.plan, { subject, materialName: name });
+          localStorage.setItem('studyplanner.scheduleEvents.v1', JSON.stringify(events));
+          const actuals = JSON.parse(localStorage.getItem('studyplanner.actuals'));
+          Object.assign(actuals[0], { note: activity, materialName: name });
+          delete actuals[0].materialProgressUpdates;
+          localStorage.setItem('studyplanner.actuals', JSON.stringify(actuals));
+          const key = 'studyplanner:material-detail:v1:bookshelf-e2e-user:bookshelf-e2e-material';
+          const preferences = JSON.parse(localStorage.getItem(key));
+          preferences.structureItems = Array.from({ length: 24 }, (_, index) => ({ id: `long-${index}`, title: `${name}${index + 1}`, startUnit: index * 8, endUnit: (index + 1) * 8 }));
+          localStorage.setItem(key, JSON.stringify(preferences));
+          localStorage.setItem('study-planner-appearance', 'pixel');
+          localStorage.setItem('study-planner-theme-mode', 'light');
+        }, { name: longMaterialName, subject: longMaterialSubject, activity: longMaterialActivity });
+        await openBookshelf(page);
+        await page.locator('.bookshelf-featured-card').filter({ hasText: longMaterialName }).click();
+        const detail = page.locator('.bookshelf-detail-page');
+        await expect(detail.locator('.bookshelf-detail-hero-copy h2')).toHaveText(longMaterialName);
+        await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+        await expect.poll(() => detail.evaluate(element => getComputedStyle(element).fontFamily)).toContain('DotGothic16');
+        await page.evaluate(() => document.fonts.ready);
+        expect(await page.evaluate(() => document.fonts.check('16px DotGothic16'))).toBe(true);
+        // Each scale has its own complete save/reopen/reload scenario. Preserve
+        // the dynamic 100→200% transition without sharing a 30s interaction budget.
+        expect(await page.locator('html').evaluate(element => getComputedStyle(element).fontSize)).toBe('16px');
+        const initialFont = await detail.locator('.bookshelf-detail-hero-copy h2')
+          .evaluate(element => parseFloat(getComputedStyle(element).fontSize));
         await page.evaluate(percent => { document.documentElement.style.fontSize = `${percent}%`; }, percent);
         const name = `${viewport.width}x${viewport.height}-${percent}`;
         const metadata = await page.evaluate(() => ({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio, root: getComputedStyle(document.documentElement).fontSize }));
@@ -665,8 +675,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 108
         await testInfo.attach(`material-detail-${name}`, { body: await page.screenshot({ scale: 'css', animations: 'disabled' }), contentType: 'image/png' });
         const heading = detail.locator('.bookshelf-detail-hero-copy h2');
         const font = await heading.evaluate(element => parseFloat(getComputedStyle(element).fontSize));
-        if (percent === 100) initialFont = font;
-        else expect(font).toBeGreaterThan(initialFont * 1.9);
+        if (percent === 200) expect(font).toBeGreaterThan(initialFont * 1.9);
         await captureMaterialText(heading, '.bookshelf-detail-page', testInfo, `material-name-${name}`);
         await expect(detail.locator('.bookshelf-detail-hero-copy p')).toHaveText(longMaterialSubject);
         await captureMaterialText(detail.locator('.bookshelf-detail-hero-copy p'), '.bookshelf-detail-page', testInfo, `material-subject-${name}`);
@@ -701,18 +710,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 108
         await reachMaterialControl(editor.getByRole('button', { name: 'キャンセル', exact: true }), testInfo, `material-cancel-${name}`);
         await page.keyboard.press('Enter');
         await expect(editor).toHaveCount(0);
-        // Restore the last title for the next scale without changing the long material name.
-        if (percent === 100) {
-          await detail.getByRole('button', { name: '編集', exact: true }).click();
-          await editor.getByLabel('章・節の名前 24', { exact: true }).fill(`${longMaterialName}24`);
-          await editor.getByRole('button', { name: '保存', exact: true }).click();
-        }
-      }
-      await openBookshelf(page);
-      await page.locator('.bookshelf-featured-card').filter({ hasText: longMaterialName }).click();
-      await page.getByRole('button', { name: '教材メニューを開く' }).click();
-      await page.getByRole('button', { name: '目次を編集', exact: true }).click();
-      await expect(page.getByLabel('章・節の名前 24', { exact: true })).toHaveValue('保存した章 200');
-    });
+        await openBookshelf(page);
+        await page.locator('.bookshelf-featured-card').filter({ hasText: longMaterialName }).click();
+        await page.getByRole('button', { name: '教材メニューを開く' }).click();
+        await page.getByRole('button', { name: '目次を編集', exact: true }).click();
+        await expect(page.getByLabel('章・節の名前 24', { exact: true })).toHaveValue(`保存した章 ${percent}`);
+      });
+    }
   });
 }

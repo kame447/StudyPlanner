@@ -147,3 +147,47 @@ media, importance and the floor/enlargement formula. This does not prove browser
 rendering. QA maps both narrow standard and coarse-pointer creation consumers,
 plus the eight corrected long-detail project cases, for bounded reacceptance.
 Timer runtime/native inputs and previous timer image evidence are unaffected.
+
+## Detail reachability measurement and independent scale scenarios
+
+The correction run `39059512430` used application `cf4512af` / tree
+`1b43714e`. All six selected creation cases passed on their first attempt,
+including the three wide mobile-WebKit cases with input text enlarged to
+32px. The eight detail cases passed the previously failing 100% activity-title
+expectation, then stopped at a later reachability assertion or cumulative timeout.
+They are not accepted yet.
+
+The reachability helper treated every overflow ancestor as an ordinary box.
+For the document root it combined a scroll-shifted bounding rectangle with
+viewport-sized `clientHeight`. This is not the root overflow coordinate
+system. A native 390px trace records root scrollTop 454 while the last editor
+input is at viewport y385.047–431.047; the old source calculation incorrectly
+limits that root clip to y390. The first diagnostics recorded only an empty
+class name, so the new diagnostic also records each ancestor's tag, rectangle,
+scroll offset and clipping frame. Only the document root uses a zero-origin
+viewport frame. Body/editor clipping, viewport bounds, focus and trial-click
+assertions are retained.
+
+This follows [root overflow viewport propagation](https://drafts.csswg.org/css-overflow-3/#overflow-propagation)
+and [root clientHeight](https://drafts.csswg.org/cssom-view/#dom-element-clientheight).
+An extracted actual-callback probe reproduces the old false blocker and checks
+the corrected calculation, including negatives for editor, body and viewport
+clipping. It is a source-level probe, not new browser rendering.
+
+The 1920px mobile trace completes the 100% editor save, reopen and cancel
+sequence. Both attempts exhaust the shared 30-second budget during the later
+200% activity-tab interaction. Trace timings show cumulative scrolling and
+action-stability waits; screenshots alone do not explain the duration. The
+two scales are now separate scenarios with the same timeout, viewport,
+pointer actions, fixture and assertions. Each 200% scenario first measures
+the actual loaded 100% font, then changes that same document to 200% and keeps
+the greater-than-1.9 enlargement check. Both scales now finish with their own
+save, reopen, cancel and page reload. The inter-scale restore write is no
+longer needed.
+
+The eight prior failed project-qualified identities have sixteen explicit
+successors. Earlier clean creation/timer results remain historical input-bound
+evidence. No product CSS, component, shared helper, configuration, timeout or
+geometry threshold changes in this correction. Next: run those sixteen
+successors and inspect the complete detail/editor/scroll/save results before
+acceptance. Evidence: `laplans-material-detail-reachability-evidence-20261017`.
