@@ -1,3 +1,4 @@
+import { readObservabilityRejectionEvidence } from '../../../shared/productObservabilityReadModel';
 import type { ObservabilityEnvironment } from '../../../shared/productObservabilityContract';
 import { listObservabilityDatesInclusive, shiftObservabilityDate as addDays } from '../../../shared/productObservabilityDateRange';
 import {
@@ -168,6 +169,7 @@ function readCheckpoint(value: Record<string, unknown> | null): ObservabilityRol
     processedEventCount: Number.isSafeInteger(value?.processedEventCount)
       ? Math.max(0, Number(value?.processedEventCount))
       : 0,
+    ...readObservabilityRejectionEvidence(value),
     activeUserDirtySources: checkpointDirtySources(value?.activeUserDirtySources),
     lastRunStartedAt: typeof value?.lastRunStartedAt === 'string' ? value.lastRunStartedAt : null,
     lastSuccessfulRunAt: typeof value?.lastSuccessfulRunAt === 'string'

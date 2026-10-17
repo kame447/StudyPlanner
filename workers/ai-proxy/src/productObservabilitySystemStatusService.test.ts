@@ -30,6 +30,17 @@ describe('Phase 8 system observability projection', () => {
     expect(model.components.find((item) => item.key === 'trace_availability')?.status).toBe('healthy');
     expect(model.components.find((item) => item.key === 'aggregation_read_model')?.status).toBe('healthy');
     expect(model.overallStatus).toBe('unknown');
+    expect(model.aggregation.rejectedEventCount).toBe(0);
+    expect(model.aggregation.lastRejectedEvent).toBeNull();
+  });
+
+  it('warns about excluded measurements even when the rollup is current', () => {
+    const model = buildObservabilitySystemReadModel({ environment: 'production', generatedAt,
+      telemetryProbe: { ok: true, value: { observedAt: generatedAt } }, traceProbe: { ok: true, value: { retained: false, lastActivityAt: null } },
+      aggregationProbe: { ok: true, value: { processedEventCount: 1, rejectedEventCount: 1, dirtySourceCount: 0,
+        lastRunStartedAt: generatedAt, lastSuccessfulRunAt: generatedAt, lastFailureAt: null, lastFailureCategory: null } } });
+    expect(model.components.find((item) => item.key === 'aggregation_read_model')).toMatchObject({ status: 'warning',
+      summary: expect.stringContaining('measurements are incomplete'), detail: expect.stringContaining('Excluded events') });
   });
 
   it('warns when a five-minute rollup has not succeeded within the freshness window', () => {
@@ -83,6 +94,9 @@ describe('Phase 8 system observability projection', () => {
         if (collection !== 'observability_rollup_state') return null;
         return {
           processedEventCount: 300,
+          rejectedEventCount: 2,
+          lastRejectedEvent: { documentName: 'observability_events/poison', observedAt: generatedAt,
+            environment: 'production', reason: 'counter_out_of_domain' },
           activeUserDirtySources: [
             { environment: 'production', localDate: '2026-08-30', revision: 1 },
             { environment: 'preview', localDate: '2026-08-30', revision: 1 },
@@ -132,6 +146,11 @@ describe('Phase 8 system observability projection', () => {
     expect(model.components.find((item) => item.key === 'telemetry_ingestion')?.lastObservedAt)
       .toBe('2026-08-30T11:59:40.000Z');
     expect(model.aggregation.dirtySourceCount).toBe(1);
+    expect(model.aggregation.rejectedEventCount).toBe(2);
+    expect(model.aggregation.lastRejectedEvent?.reason).toBe('counter_out_of_domain');
+    expect(model.components.find((item) => item.key === 'aggregation_read_model')).toMatchObject({
+      status: 'warning', detail: expect.stringContaining('Excluded events (all environments): 2'),
+    });
     expect(queryCalls.find((call) => call.collection === 'observability_events')).toEqual({
       collection: 'observability_events',
       filters: undefined,

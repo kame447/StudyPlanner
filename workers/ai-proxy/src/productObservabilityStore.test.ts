@@ -124,6 +124,15 @@ function createStore(firestore: MemoryFirestore) {
 }
 
 describe('ProductObservabilityStore', () => {
+  it('rejects out-of-domain AI counters before any identity or event writes', async () => {
+    const firestore = new MemoryFirestore();
+    const store = new ProductObservabilityStore({ OBSERVABILITY_IDENTITY_SECRET: '0123456789abcdef0123456789abcdef' } as never, firestore as never);
+    await expect(store.storeAiRequestMetric({ firebaseUid: 'private-uid', requestId: 'request-12345678',
+      occurredAt: '2026-08-28T00:00:00.000Z', appVersion: '1.0',
+      payload: { ...validAiMetricPayload(), totalTokens: Number.MAX_SAFE_INTEGER } })).rejects.toThrow('Telemetry AI request counters are invalid.');
+    expect(firestore.documents.size).toBe(0);
+  });
+
   it('keeps bounded completion metadata inside existing immutable metric retention', async () => {
     const firestore = new MemoryFirestore();
     const store = createStore(firestore);

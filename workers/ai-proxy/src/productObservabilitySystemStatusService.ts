@@ -1,3 +1,4 @@
+import { readObservabilityRejectionEvidence, type ObservabilityRejectedEvent } from '../../../shared/productObservabilityReadModel';
 import type { ObservabilityEnvironment } from '../../../shared/productObservabilityContract';
 import {
   PRODUCT_OBSERVABILITY_ROLLUP_WARNING_AFTER_SECONDS,
@@ -36,6 +37,8 @@ interface ProbeResult<T> {
 
 interface AggregationProbe {
   processedEventCount: number;
+  rejectedEventCount?: number;
+  lastRejectedEvent?: ObservabilityRejectedEvent | null;
   dirtySourceCount: number;
   lastRunStartedAt: string | null;
   lastSuccessfulRunAt: string | null;
@@ -79,6 +82,7 @@ function aggregationProbe(
   }).length;
   return {
     processedEventCount,
+    ...readObservabilityRejectionEvidence(value),
     dirtySourceCount,
     lastRunStartedAt: isoTimestamp(value.lastRunStartedAt),
     lastSuccessfulRunAt: isoTimestamp(value.lastSuccessfulRunAt),
@@ -182,7 +186,8 @@ export function buildObservabilitySystemReadModel(params: {
     );
     const stale = successAge !== null
       && successAge > PRODUCT_OBSERVABILITY_ROLLUP_WARNING_AFTER_SECONDS;
-    const warning = failedAfterSuccess || stale || aggregation.dirtySourceCount > 0;
+    const rejected = aggregation.rejectedEventCount ?? 0;
+    const warning = failedAfterSuccess || stale || aggregation.dirtySourceCount > 0 || rejected > 0;
     components.push({
       key: 'aggregation_read_model',
       status: warning ? 'warning' : aggregation.lastSuccessfulRunAt ? 'healthy' : 'unknown',
@@ -192,12 +197,16 @@ export function buildObservabilitySystemReadModel(params: {
           ? 'The rollup checkpoint is older than the expected freshness window.'
           : aggregation.dirtySourceCount > 0
             ? 'Rollup succeeded, but active-user snapshots still have dirty sources.'
-            : aggregation.lastSuccessfulRunAt
-              ? 'Aggregation checkpoint is current.'
-              : 'No successful aggregation run has been recorded yet.',
+            : rejected > 0
+              ? 'Aggregation advanced with excluded events; measurements are incomplete.'
+              : aggregation.lastSuccessfulRunAt
+                ? 'Aggregation checkpoint is current.'
+                : 'No successful aggregation run has been recorded yet.',
       lastObservedAt: aggregation.lastSuccessfulRunAt,
       ageSeconds: successAge,
-      detail: aggregation.lastFailureCategory,
+      detail: [aggregation.lastFailureCategory, rejected > 0
+        ? `Excluded events (all environments): ${rejected}. Latest reason: ${aggregation.lastRejectedEvent?.reason ?? 'unknown'}.`
+        : null].filter(Boolean).join(' ') || null,
     });
   }
 
@@ -232,6 +241,8 @@ export function buildObservabilitySystemReadModel(params: {
     components,
     aggregation: {
       processedEventCount: aggregation?.processedEventCount ?? null,
+      rejectedEventCount: aggregation ? aggregation.rejectedEventCount ?? 0 : null,
+      lastRejectedEvent: aggregation?.lastRejectedEvent ?? null,
       dirtySourceCount: aggregation?.dirtySourceCount ?? null,
       lastRunStartedAt: aggregation?.lastRunStartedAt ?? null,
       lastSuccessfulRunAt: aggregation?.lastSuccessfulRunAt ?? null,

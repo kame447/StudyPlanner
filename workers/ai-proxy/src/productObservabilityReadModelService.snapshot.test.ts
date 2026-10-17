@@ -38,7 +38,7 @@ function fixture(days: number) {
     updatedAt: now, expireAt: '2027-01-01T00:00:00.000Z',
   };
   const checkpoint = {
-    schemaVersion: 1, cursor: null, processedEventCount: 0, activeUserDirtySources: [],
+    schemaVersion: 1, cursor: null, processedEventCount: 0, rejectedEventCount: 0, lastRejectedEvent: null, activeUserDirtySources: [],
     lastRunStartedAt: null, lastSuccessfulRunAt: null,
     lastFailureAt: null, lastFailureCategory: null, updatedAt: now,
   };
