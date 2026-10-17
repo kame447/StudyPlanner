@@ -12,6 +12,17 @@ afterEach(() => {
 });
 
 describe('Stable V5 debug trace collector', () => {
+  it('retains only typed reason and counts for reply-reference eligibility diagnostics', () => {
+    recordWeeklyPlanningStableV5DebugTrace({ requestId: 'reference-counts', stage: 'reply_reference_candidates',
+      data: { reason: 'pruned', openSlotCount: 71, excludedAncestorCount: 2, ambiguousPendingTargetCount: 1, candidateCountBeforePrune: 69,
+        candidateCount: 64, prunedCount: 5, userText: 'private utterance', actionId: 'private-action' } });
+    expect(peekWeeklyPlanningStableV5DebugTraceForTest('reference-counts')[0].data).toEqual({
+      reason: 'pruned', openSlotCount: 71, excludedAncestorCount: 2, ambiguousPendingTargetCount: 1, candidateCountBeforePrune: 69, candidateCount: 64, prunedCount: 5 });
+    recordWeeklyPlanningStableV5DebugTrace({ requestId: 'reference-counts', stage: 'reply_reference_candidates',
+      data: { reason: 'private-reason-text', openSlotCount: -1, candidateCount: 'private' } });
+    const serialized = JSON.stringify(peekWeeklyPlanningStableV5DebugTraceForTest('reference-counts'));
+    expect(serialized).not.toContain('private');
+  });
   it('stores a bounded provider projection without cloning the runtime graph', () => {
     beginWeeklyPlanningStableV5DebugTrace('request-1');
     const prompt = `${'system-rule\n'.repeat(1_200)}Use recentConversation and publicStateSummary`;
