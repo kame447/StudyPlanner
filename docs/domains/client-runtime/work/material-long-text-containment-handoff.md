@@ -259,3 +259,62 @@ source-bound carryover must be reviewed before publication/merge acceptance.
 
 Evidence: `laplans-timer-material-latest-evidence-20261017`. Next: independent
 composition review and the pending material-control native/visual acceptance.
+
+## Separate detail/cancel and chapter-save acceptance contracts
+
+The immutable six-case run on `a2037ff1` did not resolve wide mobile completion:
+short-height Chromium and 390px mobile passed initially, while 1440px/100% was
+flaky and the other three wide mobile cases timed out. Those outcomes remain
+failed/flaky historical evidence. The helper sequencing change is retained for
+its single actionability preparation, without a timing-improvement claim.
+
+The new local candidate starts from `c2de23bc` (published `71365334` tree), with
+latest-main composition preserved. It changes only this handoff and the final
+material detail test family. The old 16 project-qualified definitions become
+32 successors: four viewports × two text scales × two independent purposes ×
+the existing Chromium/mobile-WebKit projects.
+
+- A, detail/cancel: retain the six full-text fragment measurements, material
+  title/subject/activity/current-chapter expectations, editor title and 24-item
+  fixture. Retain the plan button's focus/trial/clip reachability. Edit chapter
+  one without saving, activate Cancel with the same keyboard/focus/clip checks,
+  require the complete stored preferences to equal the pre-edit value, and
+  reload the actual App to verify the original first and last chapter values.
+- B, save/reload: retain the editor title and 24-item fixture, last-field
+  focus/trial/clip bounds, real fill, Save focus/trial/clip and keyboard
+  activation, stored count/value assertions, immediate same-App editor reopening
+  with the rendered saved value, and actual App reload followed by editor
+  reopening and the same rendered last-chapter value.
+- Both independently start at root 16px and, for 200%, change the same document
+  to root 32px with the original >1.9 heading-font growth assertion. Viewport,
+  DPR, loaded font, screenshots, reduced-motion, the 30-second per-test limit,
+  retry/trace/video settings and all geometry helpers remain unchanged.
+
+B retains both immediate same-document post-save reopening and the subsequent
+persisted UI reopening after a real reload. These prove separate live-state and
+durable-state boundaries; the first review draft incorrectly treated the latter
+as sufficient and was corrected before acceptance. The uninterrupted combined
+read→Save→reopen→Cancel→reload sequence is no longer the acceptance contract.
+No prior bounds threshold or failure is suppressed. Plan action acceptance is
+still focus/trial reachability, not a claim of plan creation.
+
+Three explanations were considered: a production motion/scroll defect,
+recording/rendering overhead, and cumulative work from independent user
+contracts sharing one test deadline. Seven retained traces show completed
+stable waits totaling 19.1–21.4 seconds, while snapshot collection is only
+0.36–0.58 seconds. Most long stable waits have no unstable-position retry, and
+some already occur in the normal initial fixture. This does not establish the
+cause of slow rAF/layout responses or eliminate a product performance concern.
+It supports separate, independently meaningful acceptance contracts without
+changing product behavior or observability settings. Further native failure
+would require renewed diagnosis rather than a timeout increase.
+
+Source verification: one valid and eight negative contract-preservation probes;
+unchanged helper/prior-spec prefix; relocated fixture/scaling, full-text,
+editor-title, Save and reload blocks verified after whitespace/comment-only
+normalization; all 2,101 recorded latest-build inputs byte-identical; syntax and
+diff checks pass. The negative reload probe specifically removes B's final
+actual reload, rather than an unrelated existing setup call. No browser, type
+or application build was rerun locally. All 32 successors still require native
+execution and rendered-image review. Evidence:
+`laplans-material-detail-contracts-evidence-20261017`.
