@@ -231,3 +231,31 @@ acceptance. Evidence: `laplans-material-detail-reachability-evidence-20261017`.
   by this test-only helper change; previous product build evidence remains tied
   to its recorded inputs. The editor's existing fixed input-text size at 200%
   remains a separate limitation, not an all-input text-resizing acceptance.
+
+## Latest-main composition for the timer/material release
+
+The release candidate `70a90774` was combined without conflicts with official
+main `237500d9` (previous main `a39defd8`). The 24 external paths from #717/#718
+are preserved exactly: planning reply-reference code/tests and its Worker
+connection, plus five repository skill/document files. No external path was
+rewritten to resolve this composition. Timer/material product, fixture, native
+specification, font, shared modal/input style, bootstrap and Playwright settings
+remain identical to the candidate.
+
+The old 1,974-input native manifest is not wholly identical: eight existing
+weekly-planning source/test inputs changed and five new source/test inputs were
+added. Shared/Worker changes are also recorded separately. These functions serve
+planning turns, and the new reply-reference calibration remains null; the tested
+local timer/material journeys do not submit those turns. This is a source-based
+consumer boundary, not new native execution on latest main.
+
+Because the application imports changed, one fresh production build was run
+with the existing lock and shared installation: pass, Vite 5.93s. A broader
+2,101-input build manifest includes shared/Worker inputs, and all ten emitted
+CSS assets remain byte-identical to the prior reviewed product build. No native
+or typecheck was duplicated for this clean composition. The separate immutable
+six-case run still belongs to its recorded `a2037ff1` source. Its result and the
+source-bound carryover must be reviewed before publication/merge acceptance.
+
+Evidence: `laplans-timer-material-latest-evidence-20261017`. Next: independent
+composition review and the pending material-control native/visual acceptance.

@@ -1,4 +1,6 @@
 import { AiProviderError, projectAiProviderFailure } from '../../../../shared/aiProviderFailure';
+import { isCandidateChoiceDecisionContext, isCandidateChoiceEvaluation } from '../../../../shared/candidateChoiceDecision';
+import type { ReplyReferenceChoiceCalibrationV5, ReplyReferenceChoicePortV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningReplyReferenceChoiceV5';
 import type { OpenAiCompatibleClient } from '../../../../src/services/ai/openAiCompatibleClientTypes';
 import { executeAuthenticatedChatRequest, type AiProxyWorkerEnv } from '../worker';
 import { jevExecutionMode, lunaBaselineFailure } from '../decision/decisionExecutionMarker';
@@ -62,6 +64,69 @@ export function createDurableTurnProvider(
         || data.decisionContext.inputRevision !== input.decisionContext?.inputRevision)) throw new AiProviderError('Decision response context mismatch.', { kind: 'context_mismatch' });
       if (!data.content?.trim()) throw new AiProviderError('Durable AI provider response was empty.', { kind: 'empty_response' });
       return data.content;
+    },
+  };
+}
+
+
+/**
+ * Reuses the durable dispatch journal for Jev reference choices. A replay must
+ * invoke the identical beforeDispatch gate even when the journal has a cached response.
+ * The choice never writes graph state; Luna remains the value/meaning authority.
+ */
+export function createDurableReplyReferenceChoicePort(
+  env: AiProxyWorkerEnv,
+  ownerId: string,
+  dispatch: Parameters<DurableTurnExecute>[1],
+  semanticPolicy: ReplyReferenceChoiceCalibrationV5['semanticPolicy'],
+  sourceIp = 'unknown',
+  deadlineAt = Date.now() + 14 * 60_000,
+): ReplyReferenceChoicePortV5 {
+  return {
+    async choose(request, beforeDispatch) {
+      const context = { purpose: 'candidate_choice' as const, request };
+      if (!isCandidateChoiceDecisionContext(context)) {
+        throw new Error('Invalid durable reference candidate context.');
+      }
+      const body = JSON.stringify({
+        purpose: 'weekly_planning_semantic_normalizer',
+        messages: [{ role: 'user', content: request.wholeUtterance }],
+        decisionContext: context,
+      });
+      // Immutable owner and captured candidate bytes; the durable journal owns resend/receipt.
+      beforeDispatch();
+      const raw = await dispatch(body, async () => {
+        const proxyRequest = new Request('https://durable-turn.internal/chat/completions', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': sourceIp }, body,
+          signal: AbortSignal.timeout(Math.max(1, Math.min(90_000, deadlineAt - Date.now()))),
+        });
+        const authContext = { identity: { kind: 'authenticated' as const, firebaseUid: ownerId } };
+        const startedAtMs = Date.now();
+        const response = await executeAuthenticatedChatRequest(
+          proxyRequest, env, { uid: ownerId }, undefined, undefined, authContext);
+        const observerEnv = env as unknown as AiProxyRequestObserverEnv;
+        if (isAiRequestObservabilityConfigured(observerEnv)) {
+          await observeAiProxyRequest({ request: proxyRequest, response: response.clone(),
+            context: authContext, env: observerEnv, startedAtMs,
+            occurredAt: new Date(startedAtMs).toISOString(),
+            decisionExecutionMode: jevExecutionMode(response), lunaBaselineFailure: lunaBaselineFailure(response),
+          }).catch(() => undefined);
+        }
+        if (!response.ok) throw new Error('Durable Jev reference choice unavailable.');
+        return response.text();
+      });
+      const parsed: unknown = JSON.parse(raw);
+      if (!isCandidateChoiceEvaluation(parsed, context.request)) {
+        throw new Error('Invalid durable Jev reference choice result.');
+      }
+      return {
+        nodeId: parsed.nodeId, requestId: parsed.requestId,
+        selectionEpoch: parsed.selectionEpoch, candidateSetHash: parsed.candidateSetHash,
+        optionId: parsed.optionId, probabilities: parsed.probabilities,
+        semanticSufficiency: parsed.conditionChange <= semanticPolicy.maximumConditionChange
+          && parsed.independentMeaning <= semanticPolicy.maximumIndependentMeaning
+          ? 'only_candidate_meaning' as const : 'extra_or_uncertain_meaning' as const,
+      };
     },
   };
 }
