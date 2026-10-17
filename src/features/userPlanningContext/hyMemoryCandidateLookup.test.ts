@@ -71,4 +71,24 @@ describe('Hy Memory candidate client lookup', () => {
     });
     expect(result).toEqual({ status: 'unavailable', records: [] });
   });
+  it('rejects a completed request if the signed-in account changes in flight', async () => {
+    const original = user.active;
+    const fetcher = vi.fn(async () => {
+      user.active = { uid: 'other-owner', getIdToken: original.getIdToken };
+      return new Response(JSON.stringify({
+        status: 'ready', ownerId: 'owner-1', sourceRevision: 5,
+        recordIds: ['valid'],
+      }));
+    });
+    try {
+      const result = await lookupHyMemoryCandidateRecords({
+        ownerId: 'owner-1', sourceRevision: 5, query: '数学',
+        records: [record('valid')], fetcher: fetcher as typeof fetch,
+      });
+      expect(result).toEqual({ status: 'unavailable', records: [] });
+    } finally {
+      user.active = original;
+    }
+  });
+
 });
