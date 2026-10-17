@@ -181,6 +181,8 @@
 
 .weekly-progress-plan,
 .weekly-progress-actual {
+  /* A changed bar grows from the baseline (playGrowth). */
+  transform-origin: 50% 100%;
   width: clamp(4px, 1.3vw, 6px);
   min-height: 2px;
   border-radius: 2px 2px 0 0;
