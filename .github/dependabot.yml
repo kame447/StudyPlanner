@@ -20,6 +20,15 @@ updates:
           - minor
           - patch
 
+  - package-ecosystem: npm
+    directory: /tools/firebase-tools
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: '04:30'
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
