@@ -36,6 +36,8 @@ describe('generic Choice provider validation and dispatch accounting', () => {
     expect(questions.candidate.instructions).toContain('separate semantic extractor');
     expect(questions.condition_change.instructions).toContain('ordinary value');
     expect(questions.independent_meaning.instructions).toContain('multiple targets');
+    const none = (questions.candidate as { criteria: Record<string, string> }).criteria.none;
+    expect(none).toContain('extracted separately');
   });
   it('off/shadow/invalid question expose no provider state', async () => {
     let calls = 0;
