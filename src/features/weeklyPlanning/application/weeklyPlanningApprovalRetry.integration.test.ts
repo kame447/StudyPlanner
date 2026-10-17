@@ -219,10 +219,17 @@ describe('approval batch identity across partial-save recovery', () => {
       await run(false);
 
       expect(db.metrics.planWrites).toBe(1);
-      expect([...db.plans.keys()]).toEqual([originalPlanId]);
-      expect(operations[0].approvalOperationId).toBe(originalOperationId);
+      expect([...db.plans.values()]).toEqual([expect.objectContaining({
+        userId: 'user-1', title: block.title, subject: block.subject, type: block.type,
+        date: block.date, startTime: block.startTime, endTime: block.endTime,
+      })]);
+      expect(operations).toHaveLength(1);
       expect(operations[0].status).toBe('completed');
       expect(state.draftBlocks).toEqual([]);
+      expect(state.pendingApproval).toBeUndefined();
+      expect(state.approvalRecovery).toBeUndefined();
+      expect([...db.plans.keys()]).toEqual([originalPlanId]);
+      expect(operations[0].approvalOperationId).toBe(originalOperationId);
     } finally {
       resetWeeklyPlanningStableV5RuntimeSessionsForTest();
       vi.useRealTimers();
