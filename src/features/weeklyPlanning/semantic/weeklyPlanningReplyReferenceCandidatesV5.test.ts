@@ -30,6 +30,10 @@ function fixture() {
   graph.workloads.push({ id: 'work', taskId: 'task', componentId: 'topic', quantityRole: 'target',
     amount: 20, unitCode: 'problem', unitLabel: '問', rangeStart: null, rangeEnd: null,
     perOccurrence: false, periodExpression: null, source: source('c:request:2'), createdRevision: 3 });
+  graph.factLifecycles = [...graph.tasks, ...graph.components, ...graph.workloads].map(fact => ({
+    factId: fact.id, status: 'active' as const,
+    createdRevision: fact.createdRevision, terminalRevision: null, supersededByFactId: null,
+  }));
   return graph;
 }
 function question(): PlanningIntakeState {
@@ -99,7 +103,10 @@ describe('bounded historical reply-reference candidates', () => {
     expect(createReplyReferenceSnapshotV5({ graph, messages, inputStateRevision: 7, conversationId: 'c' })).toBeNull();
     const crowded = fixture();
     for (let i = 0; i < 20; i += 1) {
-      crowded.workloads.push({ ...crowded.workloads[0], id: 'work-' + i });
+      const fact = { ...crowded.workloads[0], id: 'work-' + i };
+      crowded.workloads.push(fact);
+      crowded.factLifecycles.push({ factId: fact.id, status: 'active',
+        createdRevision: fact.createdRevision, terminalRevision: null, supersededByFactId: null });
     }
     expect(createReplyReferenceSnapshotV5({ graph: crowded, messages, inputStateRevision: 7, conversationId: 'c' })).toBeNull();
   });
