@@ -23,8 +23,11 @@ vi.mock('../lib/bottomSheetDragDismiss', () => ({ installBottomSheetDragDismiss:
 let renderer: ReactTestRenderer;
 let fake: ReturnType<typeof createFakeAuthSession>;
 let win: ReturnType<typeof browser>;
-const dialogNode = { showModal: vi.fn(), close: vi.fn() };
-const backNode = { focus: vi.fn() };
+const dialogNode = { showModal: vi.fn(), close: vi.fn(), focus: vi.fn(),
+  getClientRects: () => [{}], getAttribute: () => null,
+  contains: (node: unknown) => node === dialogNode || node === backNode, querySelectorAll: () => [backNode] };
+const backNode = { focus: vi.fn(() => { Object.defineProperty(document, 'activeElement', { value: backNode, configurable: true }); }),
+  getClientRects: () => [{}], getAttribute: () => null };
 function browser(initial: Record<string, unknown> = { foreign: true }) {
   const entries = [initial]; let index = 0;
   const history = { get state() { return entries[index]; }, get length() { return entries.length; },
@@ -120,4 +123,18 @@ describe('announcement delivery failure under the actual application root', () =
     expect(renderer.root.findAllByType('dialog')).toHaveLength(0);
     expect(home()).toBeDefined();
   });
+});
+
+
+it('keeps forward and reverse Tab on the failure dialog recovery action', async () => {
+  await mount(); await open();
+  for (const shiftKey of [false, true]) {
+    backNode.focus.mockClear();
+    const event = Object.assign(new Event('keydown', { cancelable: true }), { key: 'Tab', shiftKey });
+    act(() => { win.dispatchEvent(event); });
+    expect(event.defaultPrevented).toBe(true);
+    expect(backNode.focus).toHaveBeenCalledOnce();
+    expect(renderer.root.findAllByType('dialog')).toHaveLength(1);
+    expect(win.history.back).not.toHaveBeenCalled();
+  }
 });

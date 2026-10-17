@@ -16,18 +16,20 @@ afterEach(() => { act(() => renderer?.unmount()); vi.unstubAllGlobals(); vi.rest
 it('ignores delivery after pending Back or owner change and scopes cached failure to the reopened owner', async () => {
   const entries: Record<string, unknown>[] = [{}]; let index = 0;
   const browser = Object.assign(new EventTarget(), {
+    requestAnimationFrame: () => 1, cancelAnimationFrame() {},
     history: { get state() { return entries[index]; }, get length() { return entries.length; },
       pushState(state: Record<string, unknown>) { entries.splice(index + 1); entries.push(state); index++; },
       replaceState(state: Record<string, unknown>) { entries[index] = state; }, back: vi.fn() },
   });
   vi.stubGlobal('window', browser);
+  vi.stubGlobal('HTMLElement', class {});
   vi.stubGlobal('document', Object.assign(new EventTarget(), { body: {}, visibilityState: 'visible' }));
   vi.spyOn(console, 'error').mockImplementation(() => {});
   const showModal = vi.fn(), close = vi.fn(), focus = vi.fn();
   const open = () => renderer.root.findByProps({ 'aria-label': 'お知らせを開く' }).props.onClick({ currentTarget: { focus } });
   const render = (owner: string) => <main><p>Home</p><AnnouncementsButton userId={owner} /></main>;
   await act(async () => { renderer = create(render('first'), {
-    createNodeMock: element => element.type === 'dialog' ? { showModal, close } : element.type === 'button' ? { focus } : null,
+    createNodeMock: element => element.type === 'dialog' ? { showModal, close, focus, contains: () => false, getClientRects: () => [], getAttribute: () => null } : element.type === 'button' ? { focus } : null,
   }); });
   await act(async () => { open(); await delivery.starting; });
   expect(renderer.root.findAllByType('dialog')).toHaveLength(0);

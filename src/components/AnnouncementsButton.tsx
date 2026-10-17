@@ -3,6 +3,7 @@ import { Component, lazy, Suspense, useId, useLayoutEffect, useRef, type PropsWi
 import { createPortal } from 'react-dom';
 import { useAnnouncementsNavigation } from '../hooks/useAnnouncementsNavigation';
 import { useAnnouncementUnread } from '../hooks/useAnnouncementUnread';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import '../styles/announcement-bell.css';
 const AnnouncementsPage = lazy(() => import('./AnnouncementsPage').then((module) => ({ default: module.AnnouncementsPage })));
 
@@ -10,7 +11,7 @@ interface FailureNavigation { detailId: string | null; onBack: () => void }
 
 function AnnouncementLoadFailure({ detailId, onBack }: FailureNavigation) {
   const titleId = useId();
-  const dialog = useRef<HTMLDialogElement>(null);
+  const { dialogRef: dialog } = useDialogFocus<HTMLDialogElement>(true, onBack);
   const back = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
     const element = dialog.current;

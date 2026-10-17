@@ -87,3 +87,5 @@ Client-first does not imply client-authoritative shared state. Authentication, o
 - [Admin mobile navigation and announcement actions](work/admin-mobile-navigation-handoff.md): visible return, same-document navigation and direct draft/publication actions; local follow-up awaiting publication approval.
 
 - [Administrator console style loading](work/admin-console-style-loading-handoff.md): Issue #542; local-only deferral of administrator-specific CSS, preserving shared shell cascade and all media/theme behavior.
+
+- [Optional delivery native acceptance](work/delivery-acceptance-ci-handoff.md): PR #729 fixture, emitted-asset and browser-transport corrections; native rerun tracked separately.

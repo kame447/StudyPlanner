@@ -31,19 +31,28 @@ async function start(page, theme = 'light') {
 for (const resource of ['js', 'css']) for (const theme of ['light', 'dark']) {
   test(`failed production announcement ${resource} keeps Home, history and focus at ${theme}`, async ({ page }, info) => {
     const sameDocument = await start(page, theme);
-    const asset = new RegExp(`/assets/AnnouncementsPage-[^/]+\\.${resource}(?:\\?.*)?$`);
+    const asset = resource === 'css'
+      ? /\/assets\/announcements-[^/]+\.css(?:\?.*)?$/
+      : /\/assets\/AnnouncementsPage-[^/]+\.js(?:\?.*)?$/;
     let attempts = 0;
-    await page.route(asset, route => { attempts += 1; return route.abort('failed'); });
+    const failedUrls = new Set();
+    await page.route(asset, route => { attempts += 1; failedUrls.add(route.request().url()); return route.abort('failed'); });
     const bell = page.getByRole('button', { name: 'お知らせを開く', exact: true });
     await bell.click();
     const dialog = page.getByRole('dialog', { name: 'お知らせ', exact: true });
     const back = dialog.getByRole('button', { name: 'ホームへ戻る', exact: true });
     await expect(dialog.getByRole('alert')).toHaveText('お知らせを読み込めませんでした。');
     await expect(back).toBeFocused();
-    expect(attempts).toBe(1);
+    // Vite may fetch JS once as modulepreload and again as the foreground import.
+    expect(failedUrls.size).toBe(1);
+    expect(attempts).toBeGreaterThanOrEqual(1);
+    expect(attempts).toBeLessThanOrEqual(resource === 'js' ? 2 : 1);
+    const initialAttempts = attempts;
     await sameDocument();
     await page.keyboard.press('Tab');
     expect(await dialog.evaluate(element => element.contains(document.activeElement))).toBe(true);
+    await page.keyboard.press('Shift+Tab');
+    await expect(back).toBeFocused();
     expect(await dialog.evaluate(element => {
       const rect = element.getBoundingClientRect();
       return rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth + 1 && rect.bottom <= innerHeight + 1 && element.scrollWidth <= element.clientWidth + 1;
@@ -54,10 +63,11 @@ for (const resource of ['js', 'css']) for (const theme of ['light', 'dark']) {
     await page.goForward();
     await expect(dialog).toBeVisible();
     await expect(back).toBeFocused();
-    expect(attempts).toBe(1);
+    expect(attempts).toBe(initialAttempts);
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0); await expect(bell).toBeFocused();
     await bell.click(); await expect(dialog).toBeVisible();
+    expect(attempts).toBe(initialAttempts);
     await page.goBack();
     await expect(dialog).toHaveCount(0); await expect(bell).toBeFocused();
     await page.getByRole('button', { name: 'マイページを開く', exact: true }).click();

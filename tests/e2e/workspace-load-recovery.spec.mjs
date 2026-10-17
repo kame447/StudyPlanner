@@ -1,4 +1,4 @@
-import { expect, test } from './support/fixed-clock.mjs';
+import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
 
 const entries = [
   { view: 'Day', message: 'この日の予定を読み込めませんでした。' },
@@ -13,7 +13,7 @@ async function open(page, view) {
   else await page.getByRole('button', { name: /詳細を見る/ }).click();
 }
 async function prepare(page) {
-  await page.addInitScript(() => {
+  await page.addInitScript(today => {
     // Suppress only optional warming; keep the production foreground imports.
     window.requestIdleCallback = () => 1;
     window.cancelIdleCallback = () => {};
@@ -23,7 +23,14 @@ async function prepare(page) {
     for (const key of ['plans', 'actuals', 'todos.v1', 'monthEvents', 'studySubjects.v1', 'studyMaterials.v1', 'scheduleTemplates.v1', 'timetablePeriods.v1', 'timetableTerms.v1']) {
       localStorage.setItem(`studyplanner.${key}`, '[]');
     }
-  });
+    // The Day/Report entrypoints belong to the populated dashboard, not setup.
+    localStorage.setItem('studyplanner.plans', JSON.stringify([{
+      id: 'delivery-plan', seriesId: 'delivery-plan', userId: user.id,
+      title: 'Delivery fixture plan', subject: 'Math', type: 'study', date: today,
+      startTime: '11:00', endTime: '11:30', memo: '', recurrence: null,
+      createdAt: user.createdAt, updatedAt: user.createdAt,
+    }]));
+  }, E2E_TODAY);
 }
 const data = page => page.evaluate(() => Object.fromEntries([
   'studyplanner.session', 'studyplanner.plans', 'studyplanner.actuals', 'studyplanner.todos.v1',
@@ -34,15 +41,25 @@ for (const { view, message } of entries) {
   test(`${view} delivery failure keeps Home available through cached reentry`, async ({ page }) => {
     await prepare(page);
     let requests = 0, documents = 0;
+    const failedUrls = new Set();
     page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents++; });
-    await page.route(`**/${view}View-*.js`, route => { requests++; return route.abort('failed'); });
+    await page.route(`**/${view}View-*.js`, route => { requests++; failedUrls.add(route.request().url()); return route.abort('failed'); });
     await page.goto('/');
-    await expect(page.locator('.home-main')).toBeVisible();
+    await expect(page.locator('.home-dashboard-default')).toBeVisible();
     const before = await data(page);
     expect(requests).toBe(0);
+    let initialRequests;
     for (let visit = 0; visit < 2; visit++) {
       await open(page, view);
       await expect(page.getByRole('alert')).toHaveText(message);
+      if (visit === 0) {
+        // One lazy evaluation may issue modulepreload plus foreground JS fetches.
+        expect(failedUrls.size).toBe(1);
+        expect(requests).toBeGreaterThanOrEqual(1);
+        expect(requests).toBeLessThanOrEqual(2);
+        initialRequests = requests;
+      }
+      expect(requests).toBe(initialRequests);
       await expect(home(page)).toBeVisible();
       await expect(page.getByRole('button', { name: '再読み込み', exact: true })).toHaveCount(0);
       await home(page).click();
@@ -50,7 +67,7 @@ for (const { view, message } of entries) {
       await expect(page.getByRole('alert')).toHaveCount(0);
       await expect(home(page)).toHaveAttribute('aria-current', 'page');
     }
-    expect(requests).toBe(1);
+    expect(requests).toBe(initialRequests);
     expect(documents).toBe(1);
     expect(await data(page)).toEqual(before);
   });
@@ -64,7 +81,7 @@ for (const { view, message } of entries) {
     await page.route(`**/${view}View-*.js`, async route => { requests++; await pending; await route.abort('failed'); finish(); });
     try {
       await page.goto('/');
-      await expect(page.locator('.home-main')).toBeVisible();
+      await expect(page.locator('.home-dashboard-default')).toBeVisible();
       const before = await data(page);
       await open(page, view);
       await expect.poll(() => requests).toBe(1);
