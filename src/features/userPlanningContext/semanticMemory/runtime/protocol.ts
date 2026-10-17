@@ -6,9 +6,11 @@ export interface EmbeddingRequest {
   id: number;
   texts: string[];
   role: 'query' | 'passage';
+  backendPreference?: 'auto' | 'wasm';
+  debugCache?: boolean;
 }
 export type EmbeddingResponse =
-  | { type: 'result'; id: number; backend: SemanticMemoryBackend; vectors: Float32Array[]; timings?: { modelLoadMs: number; embedMs: number } }
+  | { type: 'result'; id: number; backend: SemanticMemoryBackend; vectors: Float32Array[]; timings?: { modelLoadMs: number; embedMs: number; publicModelDownloadBytes?: number } }
   | { type: 'error'; id: number; reason: SemanticMemoryUnavailableReason };
 
 export function validateEmbeddingInput(texts: readonly string[], role: string): void {

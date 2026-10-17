@@ -29,6 +29,17 @@ describe('lazy bounded worker transport', () => {
     expect(() => createSemanticMemoryEmbedder({ enabled: true, optedIn: false, workerFactory: factory })).toThrowError(expect.objectContaining({ reason: 'not_opted_in' }));
     expect(factory).not.toHaveBeenCalled(); expect(fetcher).not.toHaveBeenCalled();
   });
+  it('defaults backend policy to auto and carries explicit WASM policy independently of text', async () => {
+    for (const preference of [undefined, 'wasm'] as const) {
+      const worker = new FakeWorker();
+      const embedder = createSemanticMemoryEmbedder({ enabled: true, optedIn: true,
+        backendPreference: preference, workerFactory: () => worker });
+      const result = embedder.embed(['webgpu wasm are arbitrary user words'], 'query');
+      expect(worker.postMessage).toHaveBeenCalledWith(expect.objectContaining({ backendPreference: preference ?? 'auto' }));
+      worker.reply({ type: 'result', id: 1, backend: 'wasm', vectors: [vector()] });
+      await result; await embedder.dispose();
+    }
+  });
   it('is lazy, caps input, correlates out-of-order IDs and accepts backend after warm-up', async () => {
     const worker = new FakeWorker(); const factory = vi.fn(() => worker);
     const embedder = createSemanticMemoryEmbedder({ enabled: true, optedIn: true, workerFactory: factory });
@@ -99,6 +110,12 @@ describe('worker engine', () => {
     expect(pipeline).toHaveBeenNthCalledWith(3, ['passage: 合成テキスト']);
     expect(fetcher).not.toHaveBeenCalled();
   });
+  it('never requests a GPU adapter when explicitly forced to WASM', async () => {
+    const pipeline = fakePipeline(); const adapter = vi.fn(async () => ({})); const load = vi.fn(async () => pipeline);
+    const engine = createEmbeddingEngine({ requestAdapter: adapter, load });
+    expect(await engine.handle({ ...request(1), backendPreference: 'wasm' })).toMatchObject({ type: 'result', backend: 'wasm' });
+    expect(adapter).not.toHaveBeenCalled(); expect(load).toHaveBeenCalledExactlyOnceWith('wasm');
+  });
   it('falls back on adapter rejection and on GPU warm-up failure', async () => {
     const gpu = fakePipeline(); vi.mocked(gpu).mockRejectedValueOnce(Error('unsupported kernel'));
     const wasm = fakePipeline(); const load = vi.fn(async (backend: string) => backend === 'webgpu' ? gpu : wasm);
@@ -166,6 +183,17 @@ describe('public artifact network boundary', () => {
         headers: { 'content-range': contentRange, 'content-length': '1' } }));
       await expect(oversized(base + 'onnx/model_int8.onnx', { headers: { Range: 'bytes=0-0' } })).rejects.toMatchObject({ reason: 'model_download_failed' });
     }
+  });
+  it('counts only public artifact bytes locally, excluding runtime assets and absent probes', async () => {
+    const counted = vi.fn();
+    const runtimeUrl = 'https://app.example/assets/runtime.wasm';
+    const fetcher = vi.fn(async () => new Response('abc'));
+    const fetchPublic = createPublicModelFetch(fetcher, [runtimeUrl], counted);
+    expect(await (await fetchPublic(base + 'config.json')).text()).toBe('abc');
+    expect(await (await fetchPublic(runtimeUrl)).text()).toBe('abc');
+    expect((await fetchPublic(base + 'optional.json')).status).toBe(404);
+    expect(counted.mock.calls.reduce((sum, [bytes]) => sum + bytes, 0)).toBe(3);
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
   it('bounds weights before downloading and while streaming without content-length', async () => {
     const big = vi.fn(async () => new Response('x', { headers: { 'content-length': String(SEMANTIC_MEMORY_MODEL.maxWeightBytes + 1) } }));
