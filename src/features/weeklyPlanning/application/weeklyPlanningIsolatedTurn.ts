@@ -3,6 +3,8 @@ import type { WeeklyPlanningTurnExecutionInput, WeeklyPlanningTurnExecutionResul
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import type { UserPlanningContextRecordV1, UserPlanningContextSemanticFactV1 } from '../../userPlanningContext/userPlanningContextTypes';
 import { selectUserPlanningContextPromptRecordsV2 } from '../../userPlanningContext/userPlanningContextPromptSelectionV2Core';
+import { readReplyReferenceCalibrationV5, selectReplyReferenceHintV5,
+  type ReplyReferenceChoicePortV5 } from '../semantic/weeklyPlanningReplyReferenceChoiceV5';
 import { executeWeeklyPlanningStableV5SemanticTurnCore } from './weeklyPlanningStableV5SemanticTurnCore';
 import { executeWeeklyPlanningStableV5RuntimeTurnCore } from './weeklyPlanningStableV5RuntimeExecutorCore';
 import { createWeeklyPlanningSemanticNormalizerV5 } from '../semantic/weeklyPlanningSemanticNormalizerV5';
@@ -33,6 +35,7 @@ export interface IsolatedWeeklyPlanningTurnResult {
 export async function executeIsolatedWeeklyPlanningTurn(
   payload: IsolatedWeeklyPlanningTurnInput,
   client: OpenAiCompatibleClient,
+  replyReferencePort?: ReplyReferenceChoicePortV5,
 ): Promise<IsolatedWeeklyPlanningTurnResult> {
   const input = { ...payload.input, isCurrentTurn: () => true };
   const session = { ownerId: input.userId, conversationId: input.conversationId,
@@ -40,9 +43,16 @@ export async function executeIsolatedWeeklyPlanningTurn(
   let graph = session.graph;
   let failure: WeeklyPlanningStableV5RecordedFailure | null = null;
   let stagedContextFacts: UserPlanningContextSemanticFactV1[] = [];
+  const calibration = replyReferencePort ? readReplyReferenceCalibrationV5() : null;
+  const referenceResolver = calibration && replyReferencePort
+    ? (args: Parameters<typeof selectReplyReferenceHintV5>[0] extends infer P
+      ? Pick<P, 'source' | 'readCurrent' | 'userText' | 'ownerId' | 'conversationId' | 'requestId'>
+      : never) => selectReplyReferenceHintV5({ ...args, calibration, port: replyReferencePort })
+    : null;
   try {
     const core = await executeWeeklyPlanningStableV5RuntimeTurnCore(input, {
       semanticTurn: (runtimeInput) => executeWeeklyPlanningStableV5SemanticTurnCore(runtimeInput, {
+        ...(referenceResolver ? { resolveReplyReferenceHint: referenceResolver } : {}),
         normalizer: createWeeklyPlanningSemanticNormalizerV5(client), session,
         selectContext: ({ relevantScopeKeys }) => selectUserPlanningContextPromptRecordsV2({
           records: payload.userContextRecords, relevantScopeKeys,
