@@ -910,9 +910,11 @@ describe('Stable V5 explicit local workload identity versus pending answer ident
     const task = document.tasks[0];
     task.existingPublicId = null;
     task.title = '直前の質問対象';
-    task.sourceText = '30分です';
-    task.effortEstimates[0].sourceText = '30分です';
-    const { result, calls } = await runPendingDurationReading(f, document, 'unqualified-pending-control', '30分です');
+    // Deliberately outside #735's closed atomic grammar: this case checks the
+    // existing AI fallback and unqualified local task-shell binding, not the fast path.
+    task.sourceText = '30分を予定しています';
+    task.effortEstimates[0].sourceText = '30分を予定しています';
+    const { result, calls } = await runPendingDurationReading(f, document, 'unqualified-pending-control', '30分を予定しています');
     expect(calls).toHaveLength(2);
     expect(result.normalization.status, JSON.stringify(result.normalization, null, 2)).toBe('accepted');
     expect(result.normalization.document).toEqual(document);
@@ -921,7 +923,7 @@ describe('Stable V5 explicit local workload identity versus pending answer ident
     expect(result.graph.workloads).toEqual(f.graph.workloads);
     expect(result.graph.effortEstimates).toEqual([expect.objectContaining({
       taskId: f.own, targetFactId: f.a, kind: 'total_duration', minutes: 30, unitCode: null,
-      source: expect.objectContaining({ semanticLocalId: 'contextual-effort-answer', sourceText: '30分です' }),
+      source: expect.objectContaining({ semanticLocalId: 'contextual-effort-answer', sourceText: '30分を予定しています' }),
     })]);
     expect(result.graph.revision).toBe(f.graph.revision + 1);
     expect(parseWeeklyPlanningFactGraphV5(serializeWeeklyPlanningFactGraphV5(result.graph)).graph).toEqual(result.graph);

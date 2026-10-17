@@ -63,7 +63,13 @@ export async function runPairedNumericCase(test: NumericPairedCase, adapters: Nu
       domainPolicyVersion = supplied.domainPolicyVersion; commonPort ??= supplied;
     }
     const staged = port ? await tryNumericPendingChoiceRouteV5(new WeeklyPlanningSemanticNormalizerRunV5(luna, input), port) : null;
-    const result = staged ?? await createWeeklyPlanningSemanticNormalizerV5(luna).normalize(input);
+    // This historical paired harness compares Jev choice vs. an actual Luna
+    // provider send. Keep its provider-only baseline independent of #735's
+    // atomic no-provider optimization, while using the original committed
+    // graph below for the identical formal binder/commit comparison.
+    const providerOnlyBaselineInput = arm === 'luna'
+      ? { ...input, committedGraph: undefined } : input;
+    const result = staged ?? await createWeeklyPlanningSemanticNormalizerV5(luna).normalize(providerOnlyBaselineInput);
     // One shared complete-document/leaf gate for EVERY arm, including Luna; the binder cannot silently
     // accept a partial effort from a document that also carries independent meaning or altered precision.
     const current = commonPort?.readCurrent(input);

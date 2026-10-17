@@ -1,4 +1,5 @@
 import { tryProvisionalAllocationRouteV5 } from './weeklyPlanningProvisionalAllocationRouteV5';
+import { parseMachineBoundEffortAnswerV5 } from './weeklyPlanningMachineBoundEffortParserV5';
 import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClientTypes';
 import {
   focusedDecisionContextV5,
@@ -205,6 +206,44 @@ export async function tryFocusedContextualAnswerRouteV5(
     && target.estimateForWorkload !== null;
   const bindingSnapshot = createFocusedContextualBindingSnapshotV5(run.input);
   if (!bindingSnapshot) return null;
+
+  // #735: a tiny, fully consumed, typed effort grammar is cheaper and faster
+  // than Jev or Luna. Do not interpret free-form text or create a second
+  // semantic commit path; the normal pipeline canonicalizes this document.
+  // A missing/stale graph, unspecified measurement, two-target question, or
+  // any non-matching utterance always takes the existing AI route.
+  const rawPending = run.input.publicStateSummary?.pendingQuestion;
+  const pending = rawPending && typeof rawPending === 'object' && !Array.isArray(rawPending)
+    ? rawPending as Record<string, unknown> : null;
+  const pendingMeasurement = pending?.effortMeasurement;
+  if (run.input.committedGraph && run.input.traceRequestId?.trim()
+    && !run.input.selectedStarterTarget && !run.input.supplementalContext?.trim()
+    && target.questionCode === 'missing_effort_estimate'
+    && target.questionBasis === null && target.estimateForWorkload === null
+    && (pendingMeasurement === 'total_duration' || pendingMeasurement === 'duration_per_unit')) {
+    const parsed = parseMachineBoundEffortAnswerV5({
+      userText: run.input.userText,
+      measurement: pendingMeasurement,
+      unitCode: target.unitCode,
+    });
+    if (parsed && isFocusedContextualBindingCurrentV5(bindingSnapshot, run.input)) {
+      const document = createFocusedContextualAnswerDocumentV5({ input: run.input, decision: parsed });
+      if (document) {
+        const result: WeeklyPlanningSemanticNormalizerResultV5 = {
+          status: 'accepted',
+          document,
+          diagnostics: run.diagnostics({
+            attemptCount: 0, repairAttempted: false,
+            validationErrors: [], providerError: null,
+            requestBytes: [], responseLengths: [],
+          }),
+        };
+        run.recordDecision(result, { route: 'machine_bound_effort_no_provider' });
+        return result;
+      }
+    }
+  }
+
   const baseMessages = createExtendedContextualMessagesV5(
     run.input, bindingSnapshot.context.state.pendingQuestion.target,
   );
