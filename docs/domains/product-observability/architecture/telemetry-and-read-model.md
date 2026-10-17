@@ -222,7 +222,9 @@ client-origin eventはclient-generated correlation IDをそのままFirestore do
 
 weekly-planning lifecycleのようにstate revisionを持つeventは、可能な場合`featureSessionId + stateRevision + eventType`をstable dedupe materialとして利用する。
 
-AI request metricはrequestId / attempt identityでdedupeする。
+AI request metricのeventIdは、観測対象のserver invocationごとにserverが生成する。実際のprovider呼出しが再度発生するclient retryは別のusageとして記録し、同じinvocationの同じmetric writeの再送だけを既存のactor-scoped immutable keyでdedupeする。
+
+`X-StudyPlanner-AI-Request-Id`は保存identityやquotaのauthorityではなく、8〜160文字の既存ID形式を満たす場合だけ`correlation.requestId`に保持する。Jevが実行された場合の既存parent-turn correlationを優先し、有効なclient correlationがない場合はserver event IDを相関のfallbackとする。管理read modelとtraceのjoinは引き続き相関情報を利用し、eventIdの一致を要求しない。
 
 retryで同じeventが再送されてもaggregateを二重加算しない。
 

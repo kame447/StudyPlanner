@@ -251,6 +251,13 @@ Prefer updating an existing entry when the new evidence is the same failure clas
 - Do not lower the dependency audit threshold, omit dev dependencies, or disable certificate verification to hide a tooling vulnerability
 
 
+## Firestore Rules deployment privileges and pins
+
+- Issue #715: `.github/workflows/deploy-firestore-rules.yml` runs emulator regression in a `test` job with only `contents: read`. Only the dependent `deploy` job grants `id-token: write` for the existing WIF identity; it installs no npm dependencies and runs only the Node built-in-only Rules API deployment and read-back scripts. Its actions use full commit SHAs and setup-node's package-manager cache is disabled.
+- Firebase CLI `15.34.0` was the registry's stable `latest` on 2026-10-17; its Node engine includes `.node-version`'s 22.23.0 and its emulator requires Java 21. It is an exact devDependency in private `tools/firebase-tools`, with its own lockfile and Dependabot entry. Install with `npm ci --prefix tools/firebase-tools --ignore-scripts`; the npm test/manual deploy commands use that local CLI and fail with an installation hint if missing. Production deployment uses WIF above.
+- The isolated CLI still includes unpatched `braces` ([GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)). Previously the same chain was fetched unpinned in a job with OIDC permission; now it runs only in the unprivileged test job against the demo emulator project. Keep the app's dependency graph and high-severity audit unchanged; do not suppress the advisory or force an incompatible watcher override. Review upstream CLI updates through Dependabot.
+- A merge changing this workflow triggers production deployment even with unchanged rules. Preserve the WIF settings, serialized concurrency, repository guard, production ruleset read-back and repository SHA-256 comparison; unchanged `firestore.rules` must deploy identical content. Do not dispatch production deployment merely to verify job isolation.
+
 ## Temporary Firestore Node transport security pin
 
 - Last verified: 2026-10-03; owner: [Issue #387](https://github.com/kame447/StudyPlanner/issues/387)
