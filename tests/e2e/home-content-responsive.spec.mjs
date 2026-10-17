@@ -1,23 +1,27 @@
 import { test, expect } from './support/fixed-clock.mjs';
 const TITLE = '情報資源総論の重要事項を確認する学習予定'.repeat(6);
-async function seed(page) {
-  await page.addInitScript(title => {
+async function seed(page, planCount = 1) {
+  await page.addInitScript(({ title, planCount }) => {
     const now = new Date().toISOString(), date = new Date().toLocaleDateString('sv-SE');
     const user = { id: 'home-content-qa', email: 'home-content@example.test', username: '表示確認', avatar: '', createdAt: now };
     const plan = { id: 'qa-plan', seriesId: 'qa-plan', userId: user.id, title, subject: '情報科学', type: 'study', date, startTime: '19:00', endTime: '20:00', memo: '', recurrence: null, createdAt: now, updatedAt: now };
     localStorage.setItem('studyplanner.users', JSON.stringify([user]));
     localStorage.setItem('studyplanner.session', user.id);
-    localStorage.setItem('studyplanner.plans', JSON.stringify([plan]));
+    localStorage.setItem('studyplanner.plans', JSON.stringify(Array.from({ length: planCount }, (_, index) => ({ ...plan, id: index === 0 ? plan.id : `qa-plan-${index}`, seriesId: index === 0 ? plan.seriesId : `qa-plan-${index}` }))));
     for (const key of ['studyplanner.actuals', 'studyplanner.todos.v1', 'studyplanner.studyMaterials.v1', 'studyplanner.studySubjects.v1']) localStorage.setItem(key, '[]');
-  }, TITLE);
+  }, { title: TITLE, planCount });
 }
 async function separated(page) {
   await expect.poll(() => page.evaluate(() => {
     const r = selector => document.querySelector(selector).getBoundingClientRect();
-    return { metaBeforeCta: r('.home-next-meta').bottom <= r('.home-start-button').top - 2,
+    const home = document.querySelector('.home-main > .home-dashboard-default');
+    const hero = r('.home-next-card'), actions = r('.home-actions');
+    return { noHomeHorizontalOverflow: home.scrollWidth <= home.clientWidth + 1,
+      actionsContained: actions.left >= hero.left && actions.right <= hero.right + 1 && actions.bottom <= hero.bottom + 1,
+      metaBeforeCta: r('.home-next-meta').bottom <= r('.home-start-button').top - 2,
       todayBeforeAttention: r('.home-today-panel').bottom <= r('.home-alert-grid').top + 1,
       noHorizontalOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1 };
-  })).toEqual({ metaBeforeCta: true, todayBeforeAttention: true, noHorizontalOverflow: true });
+  })).toEqual({ noHomeHorizontalOverflow: true, actionsContained: true, metaBeforeCta: true, todayBeforeAttention: true, noHorizontalOverflow: true });
 }
 async function actions(page) {
   const add = page.getByRole('button', { name: '今日の予定に追加', exact: true });
@@ -29,7 +33,7 @@ async function actions(page) {
     await target.scrollIntoViewIfNeeded(); await target.click({ trial: true, timeout: 5000 }); await target.focus(); await expect(target).toBeFocused();
   }
 }
-for (const [width,height] of [[360,640],[390,844],[412,915],[430,932],[768,1024],[1024,768],[1280,720],[1920,1080]]) {
+for (const [width,height] of [[360,640],[390,844],[412,915],[430,932],[768,1024],[1024,768],[1280,720],[1440,900],[1920,1080]]) {
   test(`${width}x${height} long title retains metadata and reads full text`, async ({page},info) => {
     await page.setViewportSize({width,height}); await seed(page); await page.goto('/');
     await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible(); await separated(page);
@@ -114,4 +118,57 @@ for (const width of [390, 1280]) {
     await expect(trigger).toBeFocused();
     expect(await page.evaluate(() => localStorage.getItem('studyplanner.plans'))).toBe(saved);
   });
+}
+
+
+for (const [width, height] of [[1280, 720], [1440, 900], [1920, 1080]]) {
+  for (const theme of ['light', 'dark']) {
+    test(`desktop ${width}x${height} ${theme} uses readable columns inside one viewport`, async ({ page }, info) => {
+      await page.setViewportSize({ width, height });
+      await seed(page, 10);
+      await page.addInitScript(theme => localStorage.setItem('study-planner-theme-mode', theme), theme);
+      await page.goto('/');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      const home = page.locator('.home-main > .home-dashboard-default');
+      await expect(home).toBeVisible();
+      await expect(home.locator(':scope > .home-material-panel')).toBeVisible();
+      const viewport = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio }));
+      expect(viewport).toMatchObject({ width, height });
+      await info.attach('desktop-viewport', { body: JSON.stringify(viewport), contentType: 'application/json' });
+      await separated(page);
+      await expect.poll(() => home.evaluate(element => {
+        const next = element.querySelector('.home-next-card').getBoundingClientRect();
+        const today = element.querySelector('.home-today-panel').getBoundingClientRect();
+        const title = element.querySelector('.home-next-copy h1');
+        const meta = element.querySelector('.home-next-meta');
+        return {
+          columns: Math.abs(next.top - today.top) <= 1 && next.right + 8 <= today.left,
+          titleReadable: parseFloat(getComputedStyle(title).fontSize) >= 24,
+          metadataReadable: parseFloat(getComputedStyle(meta).fontSize) >= 14,
+          bodyFits: element.scrollHeight <= element.clientHeight + 1,
+          bodyWidthFits: element.scrollWidth <= element.clientWidth + 1,
+          documentFits: document.documentElement.scrollHeight <= window.innerHeight + 1,
+          noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth + 1,
+        };
+      })).toEqual({ columns: true, titleReadable: true, metadataReadable: true, bodyFits: true, bodyWidthFits: true, documentFits: true, noHorizontalOverflow: true });
+      await info.attach('desktop-home-geometry', {
+        body: JSON.stringify(await home.evaluate(element => ({
+          theme: document.documentElement.dataset.theme,
+          viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
+          document: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight },
+          home: { rect: element.getBoundingClientRect().toJSON(), clientWidth: element.clientWidth, scrollWidth: element.scrollWidth, clientHeight: element.clientHeight, scrollHeight: element.scrollHeight },
+          cards: Object.fromEntries(['.home-next-card', '.home-today-panel', '.home-alert-grid', '.home-progress-panel', '.home-actions'].map(selector => [selector, element.querySelector(selector).getBoundingClientRect().toJSON()])),
+          titleFontSize: getComputedStyle(element.querySelector('.home-next-copy h1')).fontSize,
+          metadataFontSize: getComputedStyle(element.querySelector('.home-next-meta')).fontSize,
+        }))),
+        contentType: 'application/json',
+      });
+      await page.screenshot({ path: info.outputPath(`desktop-home-${width}-${theme}.png`) });
+      const list = home.locator('.home-schedule-list');
+      await expect.poll(() => list.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+      await list.evaluate(element => { element.scrollTop = element.scrollHeight; });
+      await expect(page.getByRole('button', { name: '今日の予定に追加', exact: true })).toBeInViewport();
+      await actions(page);
+    });
+  }
 }

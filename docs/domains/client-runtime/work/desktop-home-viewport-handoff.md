@@ -1,0 +1,130 @@
+# Desktop Home viewport and readability
+
+Status: combined local candidate; publication and rendered acceptance pending
+Base: 219019abf8c24f106dac5aaa65ae5f5f8a91387c
+Branch: fix/desktop-home-viewport
+
+## Scope and ownership
+
+The current user request calls for a balanced desktop viewport, legible next-plan
+text, and investigation of startup sizing. Home's desktop layout is owned here;
+AI content and Study/Report/settings are separate coordinated lanes. Existing
+motion PRs #702, #705 and #708 retain component/motion ownership. PR #729 delivery
+recovery and its progress-ring correction remain a separate release.
+
+## Observed baseline
+
+Actual CI screenshots from PR #729 head 22db200e / merge 676e9ebc show Home at
+1280×720 and 1920×1080. The former uses a stretched single column with a 15.36px
+next-plan title and 9.28px metadata, matching the active width≥700/height≤850
+CSS. The latter retains the 1080px shell cap and distributes spare vertical room
+through the one-column fit algorithm. No 1440×900 screenshot was available.
+
+Three explanations were compared: user-data length, an incorrect desktop layout
+policy, and a browser/zoom-specific rendering failure. Short synthetic titles
+also show tiny type in the native baseline, while the CSS explicitly chooses
+these sizes on desktop. Layout policy is the strongest supported cause. Long
+content and enlarged text remain separate accessibility cases and must scroll.
+
+## Local correction
+
+Use two columns for the four existing core Home sections on desktop (≥1200px),
+restore readable next-plan and supporting type, and stop the phone-only vertical
+fit/relaxation calculation on that layout. Keep the original components, actions,
+semantic order, mobile layout, and shared header/footer geometry. Excess content
+must remain reachable by scrolling the Home body; do not reduce type to fit.
+
+Startup uses a supplied portrait video with object-fit:contain. Its intended
+size complaint is not yet reproduced. Do not crop or stretch that artwork based
+only on inference. Local native browser launch remains denied; no retry or
+workaround is authorized. Existing CI screenshots and source checks are the
+current evidence; new 1280×720, 1440×900, 1920×1080 native screenshots and mobile/
+enlarged-text checks are required before claiming the visual outcome is fixed.
+
+The local change stops desktop vertical relaxation, keeps one supplemental
+material row, arranges the existing sections in semantic reading order, and
+caps the normal schedule list rather than stretching cards with spare height.
+Shared shell/header/footer widths remain unchanged. The existing chart
+summary/legend/axis and shared footer label sizes are also unchanged; this
+candidate does not establish a blanket minimum font size for the entire Home. At enlarged text the list
+returns to natural height and the Home body remains the scroll owner.
+
+## Verification checkpoint
+
+- Five related unit/source files passed 35 tests before review adjustments.
+- The two changed test/source files were rerun after the final layout and
+  hidden-desktop guard adjustments: 10 passed. A further CSS cascade guard (in-flow inspection actions and
+  enlarged-text focus clearance) passed all four source tests after review.
+  Alongside seven runtime tests and 26 unchanged tests, this is 37 distinct
+  related tests, not a whole-suite run.
+- A first desktop-to-phone test missed the next animation frame that removes
+  the old supplemental row. It now dispatches the actual registered resize
+  listener and flushes both expected phases; runtime code was unchanged.
+- Type feedback caught use of Array.at in the test, unsupported by this repo's
+  lib target. Replaced with indexed access; no compiler configuration changes.
+- The existing browser spec retains long-title, 200% text, keyboard/focus and
+  retained-history cases, adds 1440×900, and adds six desktop light/dark cases.
+  The long-list fixture has ten rows so scroll assertions are meaningful even
+  on the tallest requested viewport. Collection: 23 standard Chromium plus
+  23 mobile WebKit definitions, zero errors. Collection is not execution.
+- Syntax and diff whitespace checks pass. Fresh app typecheck recorded in the
+  exact local evidence manifest. No native browser, build or full suite was run.
+
+The original Home candidate completed independent exact-input review without a
+source blocker. Native screenshots at all three desktop sizes, mobile and 200%
+text interaction remain required. Splash sizing and a possible shared desktop
+shell width change remain unresolved; do not report those complaints as fixed.
+
+
+## Combined Home + AI checkpoint (2026-10-17)
+
+- Branch: `integrate/desktop-home-ai`. This is the local composition of Home
+  `919e91ad43af4797f13a41bb417fa788c0571cba` and
+  [AI presentation](ai-planning-desktop-layout-handoff.md)
+  `cd7444fc6805f30603690e056db3c40f5f704188`.
+- Runtime base: `9acdc0c2463f1c4b2bcfd2e73ff8a1b6ed05c0f3`, tree
+  `5cfbb2836a171931d3166961367b3195e72eee9d`. This is the exact local tree of
+  PR #729 correction 4, remote `73225b408ab7bde31dac3e1363ce0f4a01d79b69`,
+  and includes verified main `b1ee5e0389fd44c1dd81c3272da28bcf66968adc`.
+  It is a pending-runtime-based preview candidate, not a claim that #729 merged.
+- All reviewed production Home/AI files are byte-preserved. The shared README
+  retains every prior entry plus both new links. Existing root/navigation/error
+  guards, the progress-ring fix, motion-owned components, package manifests and
+  Vite configuration remain byte-identical to the runtime base.
+- The only further test changes add explicit light/dark theme setup and resolved
+  theme evidence to the AI desktop cases, and resolved-theme/geometry evidence
+  to Home. Preventive AI-header viewport bounds preserve the shared chrome
+  boundary. The suspected Home selector collision was rejected after inspecting
+  the actual JSX: the primary header is a sibling of main, not its child; no CSS
+  repair was needed. Home's normal screenshot now precedes the deliberate list scroll.
+  No existing geometry, navigation, persistence, retry, timeout or test identity
+  is removed. Three legacy readiness checks (AI entry, primary chrome and public
+  return) awaited the compact-fit marker even at 1280px. They now require exact
+  marker absence on desktop and the exact viewport key below 1200px; all three
+  retain or add font/image/stable-geometry readiness before visible assertions.
+  The two additional existing specs are included because this runtime boundary
+  directly affects them, not as an unrelated broader suite.
+- Fresh combined check: **54 tests passed across 10 related files**. Fresh
+  non-incremental app types and the production build pass. Emitted CSS contains
+  Home's two-column/title rules and both AI width rule groups. The emitted Admin
+  import/CSS and its correction-4 preload exclusion remain intact. These are
+  source/build checks, not computed-style or native-browser evidence.
+- Native collection: **67 standard Chromium definitions** across Home content,
+  AI surface, composer viewport, preview viewport-lock, primary chrome and public
+  navigation specs; **44 WebKit mobile definitions** across Home content,
+  composer viewport and public navigation. The standard
+  set contains 18 new desktop cases: three sizes × two themes × Home, AI choices
+  and AI populated proposals. Existing mobile, long-title, keyboard, draft,
+  history and enlarged-text checks remain selected.
+- No full suite, native browser, preview deployment or GitHub write was run for
+  this composition. The known browser-launch denial is still respected. The
+  build retains its existing large-chunk warning; no bundle-budget claim is made.
+
+Next: bind independent composition review, then obtain publication approval and
+run the exact related native specs on an authorized runner. Existing manual UI
+CI can select one WebKit-mobile spec; its current Chromium workflow has no
+related-spec input and would select the full suite for this CSS change. A narrow
+manual Chromium route requires a separately approved runner/workflow change;
+never label collection or the existing correction-4 preview as Home/AI visual
+acceptance. Inspect the three sizes in both themes before declaring the desktop
+complaints fixed. Splash experiments are excluded from this candidate.

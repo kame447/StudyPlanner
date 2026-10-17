@@ -200,6 +200,23 @@ export function HomeView({
           return;
         }
 
+        // Desktop uses a two-column content layout. The compact fit algorithm
+        // below assumes vertically stacked sections and would stretch/clamp the
+        // wrong rows here. Keep one supplemental material and let long content
+        // scroll without reducing text size.
+        if (window.innerWidth >= 1200) {
+          for (const property of Array.from(dashboardElement.style)) {
+            if (property.startsWith('--home-relax-') || property === '--home-dynamic-schedule-max') {
+              dashboardElement.style.removeProperty(property);
+            }
+          }
+          header.style.removeProperty('--home-relax-topbar');
+          delete header.dataset.homeChromeViewport;
+          layoutRelaxationRef.current = emptyLayoutRelaxation();
+          setSupplementalMaterialRows(supplementalMaterialCandidates[0] ?? null);
+          return;
+        }
+
         if (dashboardElement.dataset.contentScroll === 'true') return;
 
         const chromeViewportKey = `${window.innerWidth}x${window.innerHeight}`;

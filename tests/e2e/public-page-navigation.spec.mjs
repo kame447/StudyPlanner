@@ -1,4 +1,5 @@
 import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
+import { waitForVisualReady } from './support/ui-regression.mjs';
 
 async function seed(page, { withPlan = true } = {}) {
   await page.addInitScript(({ today, withPlan }) => {
@@ -164,7 +165,8 @@ for (const width of [1280, 390]) {
     await expect(home).toBeVisible();
     const homeNode = await home.elementHandle();
     const header = page.locator('.home-primary-header');
-    await expect.poll(() => header.getAttribute('data-home-chrome-viewport')).toBe(`${width}x844`);
+    await expect.poll(() => header.getAttribute('data-home-chrome-viewport')).toBe(width >= 1200 ? null : `${width}x844`);
+    await waitForVisualReady(page, '.home-core-sections');
     expect((await home.boundingBox()).height).toBeGreaterThan(0);
     expect((await page.locator('.home-schedule-list').boundingBox()).height).toBeGreaterThan(0);
     await page.goBack(); await expect(home).toBeHidden();

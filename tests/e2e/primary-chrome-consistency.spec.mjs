@@ -1,5 +1,6 @@
 import { mkdir } from 'node:fs/promises';
 import { expect, test } from './support/startup-ready.mjs';
+import { waitForVisualReady } from './support/ui-regression.mjs';
 
 const VIEWPORTS = [
   { name: 'small-phone-320x568', width: 320, height: 568 },
@@ -232,7 +233,8 @@ for (const viewport of VIEWPORTS) {
     } else {
       await expect
         .poll(() => page.locator('.primary-app-header').getAttribute('data-home-chrome-viewport'))
-        .not.toBeNull();
+        .toBe(viewport.width >= 1200 ? null : `${viewport.width}x${viewport.height}`);
+      await waitForVisualReady(page, '.home-main > .home-dashboard-default');
     }
     await markPersistentChrome(page);
     await page.waitForTimeout(250);
