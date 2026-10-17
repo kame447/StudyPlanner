@@ -1,5 +1,5 @@
-# Read-only bounded diagnostic; success is measurement completion, not acceptance.
-name: Material Motion Off Reduced Diagnostic
+# Read-only bounded native acceptance. Final source binding is required before publication.
+name: Timer Latest Motion Acceptance
 permissions:
   contents: read
 concurrency:
@@ -14,19 +14,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
+        - project: chromium
+          timeout: 30
+          browsers: chromium
         - project: cross
           timeout: 35
           browsers: webkit
     env:
       CI: 'true'
-      SOURCE_SHA: 5dfcb11f624c13775947e9fd2d14952b7e17ab3d
-      SOURCE_TREE: 4870e76c1a8820d6fe6aad519bcac34463658a78
+      SOURCE_SHA: dbecbe5ebbf8197732dd47652152fe02a5c26cc7
+      SOURCE_TREE: 3eb70a4e6e511acada30f1647500f293b6996a5c
       PROOF_WORKFLOW_SHA: ${{ github.sha }}
       PROOF_PROJECT: ${{ matrix.project }}
     steps:
     - uses: actions/checkout@v7
       with:
-        ref: 5dfcb11f624c13775947e9fd2d14952b7e17ab3d
+        ref: dbecbe5ebbf8197732dd47652152fe02a5c26cc7
         fetch-depth: 1
         persist-credentials: false
     - name: Verify immutable application source
@@ -60,282 +63,6 @@ jobs:
       id: build
       env:
         DEV_LAN_HOST: 127.0.0.1
-    - name: Generate only reviewed diagnostic inputs
-      shell: bash
-      run: |
-        set -euo pipefail
-        test "$(sha256sum tests/e2e/bookshelf-surface.spec.mjs | cut -d ' ' -f1)" = "1a3293101b00ed9c0bcc482a6fe8187bb12d77a0a94dfd062470117222e4f810"
-        test ! -e tests/e2e/material-frame-diagnostic.spec.mjs
-        cat > tests/e2e/material-frame-diagnostic.spec.mjs <<'REVIEWED_DIAGNOSTIC_0'
-        import { performance as nodePerformance } from 'node:perf_hooks';
-        import { expect, test } from './support/fixed-clock.mjs';
-
-        async function seedBookshelf(page) {
-          await page.addInitScript(() => {
-            if (localStorage.getItem('bookshelf-surface-seeded')) return;
-            localStorage.setItem('bookshelf-surface-seeded', 'true');
-            const today = new Date().toLocaleDateString('sv-SE');
-            const tomorrowDate = new Date(`${today}T00:00:00`);
-            tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-            const tomorrow = [
-              tomorrowDate.getFullYear(),
-              String(tomorrowDate.getMonth() + 1).padStart(2, '0'),
-              String(tomorrowDate.getDate()).padStart(2, '0'),
-            ].join('-');
-            const now = new Date().toISOString();
-            const user = {
-              id: 'bookshelf-e2e-user',
-              email: 'bookshelf-e2e@example.com',
-              username: 'bookshelf-e2e',
-              avatar: '',
-              createdAt: now,
-            };
-            const subject = {
-              id: 'bookshelf-e2e-subject',
-              userId: user.id,
-              name: '情報科学',
-              color: '#2f6fc2',
-              createdAt: now,
-              updatedAt: now,
-            };
-            const material = {
-              id: 'bookshelf-e2e-material',
-              userId: user.id,
-              name: 'アルゴリズム問題集',
-              subjectId: subject.id,
-              subjectName: subject.name,
-              color: subject.color,
-              status: 'active',
-              paceEnabled: true,
-              progressUnit: 'page',
-              totalUnits: 200,
-              currentUnit: 80,
-              targetDate: tomorrow,
-              createdAt: now,
-              updatedAt: now,
-            };
-            const secondMaterial = {
-              ...material,
-              id: 'bookshelf-e2e-material-2',
-              name: 'ネットワーク演習',
-              currentUnit: 30,
-            };
-            const plan = {
-              id: 'bookshelf-e2e-plan',
-              seriesId: 'bookshelf-e2e-plan',
-              userId: user.id,
-              title: 'アルゴリズム問題集を進める',
-              subject: subject.name,
-              date: tomorrow,
-              startTime: '19:00',
-              endTime: '20:00',
-              repeat: 'none',
-              repeatUntil: null,
-              excludedDates: [],
-              recurrenceRules: [],
-              type: 'study',
-              memo: '',
-              sourceType: 'manual',
-              materialId: material.id,
-              materialName: material.name,
-              createdAt: now,
-              updatedAt: now,
-            };
-            const actual = {
-              id: 'bookshelf-e2e-actual',
-              userId: user.id,
-              planId: null,
-              occurrenceDate: today,
-              actualStartTime: '18:00',
-              actualEndTime: '18:45',
-              title: 'アルゴリズム演習',
-              subject: subject.name,
-              isAlignedToPlan: false,
-              note: '動的計画法を復習',
-              updatedAt: now,
-              materialId: material.id,
-              materialName: material.name,
-              materialProgressUpdates: [
-                {
-                  materialId: material.id,
-                  progressUnit: 'page',
-                  progressUnitLabel: 'ページ',
-                  fromUnit: 60,
-                  toUnit: 80,
-                  deltaUnits: 20,
-                },
-              ],
-            };
-
-            localStorage.setItem('studyplanner.users', JSON.stringify([user]));
-            localStorage.setItem('studyplanner.session', user.id);
-            localStorage.setItem('studyplanner.plans', JSON.stringify([plan]));
-            localStorage.setItem('studyplanner.actuals', JSON.stringify([actual]));
-            localStorage.setItem('studyplanner.todos.v1', '[]');
-            localStorage.setItem('studyplanner.studySubjects.v1', JSON.stringify([subject]));
-            localStorage.setItem(
-              'studyplanner.studyMaterials.v1',
-              JSON.stringify([material, secondMaterial]),
-            );
-            localStorage.setItem(
-              `studyplanner:material-detail:v1:${user.id}:${material.id}`,
-              JSON.stringify({
-                structureEnabled: true,
-                structureVisible: true,
-                favorite: true,
-                structureItems: [
-                  { id: 'structure-1', title: '基礎編', startUnit: 0, endUnit: 100 },
-                  { id: 'structure-2', title: '応用編', startUnit: 100, endUnit: 200 },
-                ],
-              }),
-            );
-          });
-        }
-
-        async function openBookshelf(page) {
-          await page.goto('/');
-          await expect(page.locator('.primary-bottom-nav')).toBeVisible();
-          await page
-            .locator('.primary-bottom-nav button')
-            .filter({ hasText: '教材' })
-            .click();
-          await expect(page.locator('.bookshelf-view')).toBeVisible();
-        }
-
-        // Diagnostic only: compare supported off/reduced motion on the same seeded app.
-        // Passing this file does not accept any material editing/persistence contract.
-        async function materialFrameSnapshot(control) {
-          return control.evaluate(element => {
-            const rect = e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; };
-            const ancestors = [];
-            for (let node = element; node; node = node.parentElement) {
-              const css = getComputedStyle(node);
-              ancestors.push({ tag: node.tagName, className: node.className, rect: rect(node),
-                animationName: css.animationName, animationDuration: css.animationDuration,
-                transitionProperty: css.transitionProperty, transitionDuration: css.transitionDuration,
-                transform: css.transform, scrollBehavior: css.scrollBehavior });
-            }
-            const animations = document.getAnimations().map(animation => {
-              const effect = animation.effect;
-              const timing = effect?.getComputedTiming();
-              const target = effect?.target;
-              return { playState: animation.playState, currentTime: String(animation.currentTime),
-                targetTag: target?.tagName ?? null, targetClass: target?.className ?? null,
-                duration: String(timing?.duration), progress: timing?.progress ?? null };
-            });
-            return { width: innerWidth, height: innerHeight, dpr: devicePixelRatio,
-              visibility: document.visibilityState, focused: document.hasFocus(),
-              reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
-              coarsePointer: matchMedia('(pointer: coarse)').matches,
-              rootFont: getComputedStyle(document.documentElement).fontSize,
-              motionAttribute: document.documentElement.getAttribute('data-motion'),
-              theme: document.documentElement.getAttribute('data-theme'),
-              appearance: document.documentElement.getAttribute('data-appearance'),
-              domElementCount: document.querySelectorAll('*').length, styleSheetCount: document.styleSheets.length,
-              target: rect(element), ancestors, animations };
-          });
-        }
-
-        async function sampleMaterialPageFrames(control) {
-          // This is page-world rAF under the flowing fixed clock. It is supplemental
-          // to Node elapsed time and the utility-world stable waits retained in trace.
-          return control.evaluate(element => new Promise(resolve => {
-            const frames = [];
-            const sample = timestamp => {
-              const rect = element.getBoundingClientRect();
-              frames.push({ timestamp, pagePerformanceNow: performance.now(),
-                visibility: document.visibilityState,
-                rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
-              if (frames.length === 4) resolve(frames);
-              else requestAnimationFrame(sample);
-            };
-            requestAnimationFrame(sample);
-          }));
-        }
-
-        test.describe('material motion diagnostic', () => {
-          test.use({ viewport: { width: 1920, height: 1080 }, screen: { width: 1920, height: 1080 },
-            contextOptions: { reducedMotion: 'reduce' } });
-          for (const motionPreference of ['off', 'reduced']) {
-            test(`compares normal actionability with motion ${motionPreference}`, async ({ page }, testInfo) => {
-              const diagnostics = { motionPreference, comparisonPurpose: 'Diagnostic only; no release acceptance',
-                comparisonLimit: 'One fixed-order off/reduced pair; changing runner load and warm-up remain confounders',
-                clockScope: 'Existing flowing fixed-clock fixture; page-world rAF and utility-world trace are distinct',
-                startedAt: new Date().toISOString(), phases: [], trials: [] };
-              let failure;
-              const timed = async (name, work) => {
-                const start = nodePerformance.now();
-                try { return await work(); }
-                finally { diagnostics.phases.push({ name, nodeElapsedMs: nodePerformance.now() - start }); }
-              };
-              try {
-                await page.addInitScript(preference => {
-                  localStorage.setItem('study-planner-appearance', 'pixel');
-                  localStorage.setItem('study-planner-theme-mode', 'light');
-                  localStorage.setItem('study-planner-motion', preference);
-                }, motionPreference);
-                let control;
-                await timed('setup', async () => {
-                  await seedBookshelf(page);
-                  await page.goto('/');
-                  await expect(page.locator('.primary-bottom-nav')).toBeVisible();
-                  control = page.locator('.primary-bottom-nav button').filter({ hasText: '教材' });
-                  diagnostics.homeBeforeNavigation = await materialFrameSnapshot(control);
-                  expect(diagnostics.homeBeforeNavigation.motionAttribute).toBe(motionPreference);
-                  await timed('initial-home-navigation-click', () => control.click());
-                  await expect(page.locator('.bookshelf-view')).toBeVisible();
-                  await expect(control).toBeVisible();
-                  await page.evaluate(() => document.fonts.ready);
-                });
-                diagnostics.initial = await materialFrameSnapshot(control);
-                expect(diagnostics.initial.width).toBe(1920); expect(diagnostics.initial.height).toBe(1080);
-                expect(diagnostics.initial.dpr).toBe(3); expect(diagnostics.initial.reducedMotion).toBe(true);
-                expect(diagnostics.initial.visibility).toBe('visible');
-                expect(diagnostics.initial.motionAttribute).toBe(motionPreference);
-                diagnostics.beforeFrames = await timed('page-world-raf-before', () => sampleMaterialPageFrames(control));
-                for (let index = 0; index < 3; index++) {
-                  const trial = { index, before: await materialFrameSnapshot(control) };
-                  diagnostics.trials.push(trial);
-                  const start = nodePerformance.now();
-                  try { await control.click({ trial: true }); trial.completed = true; }
-                  catch (error) { trial.error = String(error); throw error; }
-                  finally { trial.nodeElapsedMs = nodePerformance.now() - start; }
-                  trial.after = await materialFrameSnapshot(control);
-                }
-                diagnostics.afterFrames = await timed('page-world-raf-after', () => sampleMaterialPageFrames(control));
-                diagnostics.final = await materialFrameSnapshot(control);
-                await testInfo.attach(`diagnostic-motion-${motionPreference}-surface`, {
-                  body: await timed('explicit-screenshot-after-measurement', () => page.screenshot({ scale: 'css' })), contentType: 'image/png' });
-              } catch (error) { failure = error; diagnostics.error = String(error); }
-              try { await testInfo.attach(`diagnostic-motion-${motionPreference}-timings`, { body: JSON.stringify(diagnostics), contentType: 'application/json' }); }
-              catch (error) { throw failure ?? error; }
-              if (failure) throw failure;
-            });
-          }
-        });
-        REVIEWED_DIAGNOSTIC_0
-        printf '%s  %s\n' '6b0a4b78b51f17fad6537fb3395c395a452b4ad651a4a5af9c86e229f2478025' 'tests/e2e/material-frame-diagnostic.spec.mjs' | sha256sum -c -
-        cp tests/e2e/material-frame-diagnostic.spec.mjs artifacts/desktop-four-proof/material-frame-diagnostic.spec.mjs
-        test ! -e tests/e2e/material-frame-diagnostic.config.mjs
-        cat > tests/e2e/material-frame-diagnostic.config.mjs <<'REVIEWED_DIAGNOSTIC_1'
-        import { defineConfig } from '@playwright/test';
-        import crossBrowserConfig from './playwright.cross-browser.config.mjs';
-
-        const mobileProject = crossBrowserConfig.projects.find(project => project.name === 'webkit-mobile');
-        if (!mobileProject) throw new Error('Expected existing webkit-mobile project');
-
-        // QA-only diagnostic. Keep production config and actionability settings intact;
-        // retain successful traces so utility-world stable waits can be compared.
-        export default defineConfig({
-          ...crossBrowserConfig,
-          use: { ...crossBrowserConfig.use, trace: 'on' },
-          projects: [{ ...mobileProject, testMatch: '**/material-frame-diagnostic.spec.mjs' }],
-        });
-        REVIEWED_DIAGNOSTIC_1
-        printf '%s  %s\n' '23558f52de2faf36fa7b6ecd00d612d7092d5d64a1c2625c80c69443ff9778f3' 'tests/e2e/material-frame-diagnostic.config.mjs' | sha256sum -c -
-        cp tests/e2e/material-frame-diagnostic.config.mjs artifacts/desktop-four-proof/material-frame-diagnostic.config.mjs
-        sha256sum tests/e2e/material-frame-diagnostic.spec.mjs tests/e2e/material-frame-diagnostic.config.mjs > artifacts/desktop-four-proof/diagnostic-inputs.sha256
-        git diff --exit-code
     - name: Write exact reviewed collection admission
       id: admission
       shell: bash
@@ -346,18 +73,35 @@ jobs:
         import fs from 'node:fs';
         import { spawnSync } from 'node:child_process';
         const selected = {
+          "chromium": {
+            "count": 13,
+            "projects": [
+              "chromium"
+            ],
+            "args": [
+              "test",
+              "--config=tests/e2e/playwright.config.mjs",
+              "--project=chromium",
+              "(^|/)(study-session-compact|study-session-pomodoro-settings|study-report-motion)\\.spec\\.mjs$",
+              "--grep",
+              "(?:desktop ordinary timer text stays inside its face at 1280x900 \\(standard, 200 percent\\)$|desktop ordinary timer text stays inside its face at 1280x900 \\(pixel, 200 percent\\)$|desktop ordinary timer text stays inside its face at 1440x900 \\(standard, 200 percent\\)$|desktop ordinary timer text stays inside its face at 1440x900 \\(pixel, 200 percent\\)$|desktop ordinary timer text stays inside its face at 1920x1080 \\(standard, 200 percent\\)$|desktop ordinary timer text stays inside its face at 1920x1080 \\(pixel, 200 percent\\)$|desktop planned ordinary timer keeps remaining badge separate at 1440x900 \\(pixel, 200 percent\\)$|the study session reacts to each step, not to the clock, at 320px$|the study session reacts to each step, not to the clock, at 390px$|the study session reacts to each step, not to the clock, at 1280px$|at off the study session shows each step with no motion$|unset-subject timer record is edited from Day and reloads with the same identity at 1280px$|settings allow enlarged text to scroll without clipping controls$)"
+            ],
+            "sha256": "4998b692369af854c20b32f3d16515e4cd5f6b305165cb8f8a49aed21384527f"
+          },
           "cross": {
             "count": 2,
-            "sha256": "2fb1dbfa6b59ca9ec5245c630b7d4ea5c17a5fad4fc3e20271b2e040f9d104f3",
             "projects": [
               "webkit-mobile"
             ],
             "args": [
               "test",
-              "--config=tests/e2e/material-frame-diagnostic.config.mjs",
+              "--config=tests/e2e/playwright.cross-browser.config.mjs",
               "--project=webkit-mobile",
-              "(^|/)material-frame-diagnostic\\.spec\\.mjs$"
-            ]
+              "(^|/)study-session-pomodoro-settings\\.spec\\.mjs$",
+              "--grep",
+              "(?:unset-subject timer record is edited from Day and reloads with the same identity at 1280px$|settings allow enlarged text to scroll without clipping controls$)"
+            ],
+            "sha256": "14fcab4a431e4e25b00e8734429a0a8cdfee51c3777e1d11dcad4a3eaee9947e"
           }
         };
         const mode = process.argv[2];
@@ -390,14 +134,14 @@ jobs:
         if (run.error) throw run.error;
         process.exit(run.status ?? 1);
         NODE
-    - name: Measure only two diagnostic conditions
+    - name: Run only reviewed related native cases
       shell: bash
       run: node artifacts/desktop-four-proof/run-selected.mjs "$PROOF_PROJECT"
     - name: Upload source proof, results and screenshot attachments
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: material-motion-diagnostic-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt
+        name: timer-latest-motion-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt
           }}
         path: |+
           artifacts/desktop-four-proof/
