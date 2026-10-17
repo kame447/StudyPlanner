@@ -278,8 +278,11 @@ export async function observeAiProxyRequest(params: {
     : await resolveFirebaseUid(params.request, params.env);
   if (!firebaseUid) return;
 
-  const requestId = validRequestId(params.request.headers.get(AI_REQUEST_ID_HEADER))
-    ?? createAiRequestId();
+  // Each provider invocation owns its event identity; client retries can incur new usage.
+  const requestId = createAiRequestId();
+  const clientRequestId = validRequestId(params.request.headers.get(AI_REQUEST_ID_HEADER));
+  const correlation = resolveAiProxyMetricCorrelation(requestPayload, params.decisionExecutionMode)
+    ?? (clientRequestId ? { requestId: clientRequestId } : undefined);
   const appVersion = params.request.headers.get(APP_VERSION_HEADER)?.trim() || 'unknown';
   const usage = params.usage
     ?? (operation.provider === 'openai' ? parseOpenAiUsage(responsePayload) : null);
@@ -289,10 +292,7 @@ export async function observeAiProxyRequest(params: {
     firestoreTokenProvider: params.firestoreTokenProvider,
     firebaseUid,
     requestId,
-    correlation: resolveAiProxyMetricCorrelation(
-      requestPayload,
-      params.decisionExecutionMode,
-    ),
+    correlation,
     occurredAt: params.occurredAt,
     appVersion,
     operationKind: operation.operationKind,
