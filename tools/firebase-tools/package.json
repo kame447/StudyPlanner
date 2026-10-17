@@ -1,0 +1,8 @@
+{
+  "name": "studyplanner-firestore-rules-tools",
+  "version": "0.0.0",
+  "private": true,
+  "devDependencies": {
+    "firebase-tools": "15.34.0"
+  }
+}

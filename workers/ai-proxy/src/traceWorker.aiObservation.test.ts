@@ -6,6 +6,30 @@ import * as aiProxyObserver from './aiProxyRequestObserver';
 import traceWorker from './traceWorker';
 import { JEV_MODEL } from './decision/decisionPolicy';
 
+const persistAiRequestMetric = ProductObservabilityStore.prototype.storeAiRequestMetric;
+
+function useImmutableMetricStore(env: ReturnType<typeof setup>['env']) {
+  const documents = new Map<string, Record<string, unknown>>();
+  const getDocument = async (collection: string, id: string) =>
+    documents.get(`${collection}/${id}`) ?? null;
+  const store = new ProductObservabilityStore(env, {
+    getDocument,
+    batchGetDocuments: (collection, ids) => Promise.all(ids.map((id) => getDocument(collection, id))),
+    async setImmutableDocument(collection, id, value) {
+      const key = `${collection}/${id}`;
+      if (documents.has(key)) throw new Error('already exists');
+      documents.set(key, value);
+    },
+  });
+  return {
+    persist: (params: Parameters<typeof persistAiRequestMetric>[0]) =>
+      persistAiRequestMetric.call(store, params),
+    events: () => [...documents.entries()]
+      .filter(([path]) => path.startsWith('observability_events/'))
+      .map(([, event]) => event),
+  };
+}
+
 const routes = [
   { path: '/', operationKind: 'chat_completion' },
   { path: '/chat/completions', operationKind: 'chat_completion' },
@@ -101,6 +125,75 @@ afterEach(() => {
 });
 
 describe('traceWorker AI observation authentication', () => {
+  it.each([...routes, { path: '/timetable-ocr' }])(
+    'records distinct $path provider invocations despite a reused client request id',
+    async ({ path }) => {
+      const { env, store, fetchMock } = setup();
+      const metrics = useImmutableMetricStore(env);
+      store.mockImplementation(metrics.persist);
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const { response, tasks } = await invoke(makeRequest(path).request, env);
+        expect(response.status).toBe(200);
+        await Promise.all(tasks);
+      }
+
+      const providerCalls = fetchMock.mock.calls.filter(([input]) =>
+        !String(input).includes('accounts:lookup'));
+      expect(providerCalls).toHaveLength(2);
+      const events = metrics.events();
+      expect(events).toHaveLength(2);
+      expect(new Set(events.map((event) => event.eventId)).size).toBe(2);
+      for (const event of events) {
+        expect(event.eventId).toMatch(/^ai-request-/);
+        expect(event.eventId).not.toBe('request-user-a');
+        expect(event.correlation).toEqual({ requestId: 'request-user-a' });
+      }
+    },
+  );
+
+  it('deduplicates duplicate writes of one server invocation while isolating users', async () => {
+    const { env, store } = setup();
+    const metrics = useImmutableMetricStore(env);
+    store.mockImplementation(async (params) => {
+      await metrics.persist(params);
+      await metrics.persist(params);
+    });
+    for (const token of ['user-a', 'user-b']) {
+      const { request } = makeRequest('/chat/completions', token);
+      request.headers.set('X-StudyPlanner-AI-Request-Id', 'same-client-request-id');
+      const { response, tasks } = await invoke(request, env);
+      expect(response.status).toBe(200);
+      await Promise.all(tasks);
+    }
+    expect(store).toHaveBeenCalledTimes(2);
+    for (const result of store.mock.results) {
+      await expect(result.value).resolves.toBeUndefined();
+    }
+    expect(metrics.events()).toHaveLength(2);
+    expect(new Set(metrics.events().map((event) => event.actorSubjectId)).size).toBe(2);
+    expect(new Set(metrics.events().map((event) => event.eventId)).size).toBe(2);
+  });
+
+  it.each(['invalid/client/request', 'x'.repeat(161)])(
+    'ignores malformed or oversized client correlation: %s',
+    async (header) => {
+      const { env, store } = setup();
+      const metrics = useImmutableMetricStore(env);
+      store.mockImplementation(metrics.persist);
+      const { request } = makeRequest('/chat/completions');
+      request.headers.set('X-StudyPlanner-AI-Request-Id', header);
+      const { response, tasks } = await invoke(request, env);
+      expect(response.status).toBe(200);
+      await Promise.all(tasks);
+      expect(metrics.events()).toHaveLength(1);
+      const [event] = metrics.events();
+      expect(event.eventId).toMatch(/^ai-request-/);
+      expect(event.correlation).toEqual({ requestId: event.eventId });
+      expect(JSON.stringify(event)).not.toContain(header);
+    },
+  );
+
   describe.each(routes)('$path', ({ path, operationKind }) => {
     it('records a failure after authentication and body consumption with one lookup', async () => {
       const { env, store, fetchMock } = setup();
@@ -167,7 +260,8 @@ describe('traceWorker AI observation authentication', () => {
         expect(tasks).toHaveLength(1);
         expect(store).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
           firebaseUid: 'uid-user-a',
-          requestId: 'request-user-a',
+          requestId: expect.stringMatching(/^ai-request-/),
+          correlation: { requestId: 'request-user-a' },
           appVersion: 'test-version',
           payload: expect.objectContaining({
             operationKind,
@@ -204,9 +298,11 @@ describe('traceWorker AI observation authentication', () => {
       invoke(makeRequest('/chat/completions', token).request, env)));
     await Promise.all(results.flatMap(({ tasks }) => tasks));
     expect(lookupCalls(fetchMock)).toHaveLength(2);
-    expect(store.mock.calls.map(([metric]) => [metric.requestId, metric.firebaseUid]).sort()).toEqual([
+    expect(store.mock.calls.map(([metric]) => [metric.correlation?.requestId, metric.firebaseUid]).sort()).toEqual([
       ['request-user-a', 'uid-user-a'], ['request-user-b', 'uid-user-b'],
     ]);
+    expect(new Set(store.mock.calls.map(([metric]) => metric.requestId)).size).toBe(2);
+    store.mock.calls.forEach(([metric]) => expect(metric.requestId).toMatch(/^ai-request-/));
   });
 
   it('preserves the explicit legacy OCR lookup fallback', async () => {
@@ -365,7 +461,8 @@ describe('traceWorker completion metadata stays inside existing observation', ()
     expect(tasks).toHaveLength(1);
     expect(store).toHaveBeenCalledTimes(1);
     const metric = store.mock.calls[0][0];
-    expect(metric).toMatchObject({ firebaseUid: 'uid-user-a', requestId: 'request-completion-baseline',
+    expect(metric).toMatchObject({ firebaseUid: 'uid-user-a', requestId: expect.stringMatching(/^ai-request-/),
+      correlation: { requestId: 'request-completion-baseline' },
       payload: { purpose: row.purpose, status: row.metricStatus } });
     expect(JSON.stringify(metric.payload)).not.toMatch(/private-input-sentinel|private-response-sentinel|private-refusal-sentinel|client-private-sentinel/);
     expect(metric.payload).toHaveProperty('providerCompletion', {
@@ -508,7 +605,8 @@ describe('traceWorker completion evidence belongs to the actual Luna attempt', (
       expect(completions).toHaveLength(row.lunaCalls);
       if (completions.length > 0) {
         expect(completions[0]).toMatchObject({
-          requestId: 'completion-jev-comparison', firebaseUid: 'uid-user-a',
+          requestId: expect.stringMatching(/^ai-request-/), firebaseUid: 'uid-user-a',
+          correlation: { requestId: decisionContext.requestId, stateRevision: decisionContext.inputRevision },
           payload: { provider: 'openai', status: 'success', promptTokens: 40, completionTokens: 11,
             providerCompletion: expectedCompletion },
         });

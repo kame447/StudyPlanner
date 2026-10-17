@@ -196,6 +196,17 @@ function service(firestore: MemoryReadFirestore): ProductObservabilityReadModelS
 }
 
 describe('ProductObservabilityReadModelService', () => {
+  it('preserves exclusion evidence and defaults legacy checkpoints to no exclusions', async () => {
+    const firestore = new MemoryReadFirestore();
+    const query = { environment: 'production' as const, fromDate: '2026-08-29', toDate: '2026-08-29' };
+    firestore.setDocument('observability_rollup_state', 'main', checkpoint());
+    expect((await service(firestore).getOverview(query)).rollupCheckpoint).toMatchObject({ rejectedEventCount: 0, lastRejectedEvent: null });
+    const evidence = { rejectedEventCount: 2, lastRejectedEvent: { documentName: 'observability_events/poison',
+      observedAt: '2026-08-29T01:00:00.000Z', environment: 'production', reason: 'counter_out_of_domain' } };
+    firestore.setDocument('observability_rollup_state', 'main', { ...checkpoint(), ...evidence });
+    expect((await service(firestore).getOverview(query)).rollupCheckpoint).toMatchObject(evidence);
+  });
+
   describe.each(['getDailyRollups', 'getOverview', 'getUserTrend'] as const)('%s date range', (method) => {
     it('accepts exactly 93 inclusive days', async () => {
       const firestore = new MemoryReadFirestore();
