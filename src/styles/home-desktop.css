@@ -140,6 +140,24 @@
   .home-main > .home-dashboard-default .home-material-title-line strong { font-size: 0.875rem; }
   .home-main > .home-dashboard-default .home-material-copy small { font-size: 0.75rem; }
 
+  /* The phone graph caps axis/day text below 8px. Grow its text tracks too:
+   * four axis lines need 3.75rem before spacing at the supporting-text size. */
+  .home-main > .home-dashboard-default .weekly-progress-summary { font-size: 0.75rem; line-height: 1.25; }
+  .home-main > .home-dashboard-default .weekly-progress-legend { font-size: 0.75rem; line-height: 1.25; }
+  .home-main > .home-dashboard-default .weekly-progress-axis { font-size: 0.75rem; line-height: 1.25; }
+  .home-main > .home-dashboard-default .weekly-progress-day small { font-size: 0.75rem; line-height: 1.25; }
+
+  .home-main > .home-dashboard-default .weekly-progress-plot {
+    --weekly-progress-plot-height: 4.5rem;
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+
+  .home-main > .home-dashboard-default .weekly-progress-bars { height: auto; }
+  .home-main > .home-dashboard-default .weekly-progress-day {
+    height: auto;
+    grid-template-rows: var(--weekly-progress-plot-height) auto;
+  }
+
   /* Keep natural heights and focus-outline clearance when type is enlarged. */
   .home-main > .home-dashboard-default[data-content-scroll='true'] {
     padding: 5px;
@@ -153,6 +171,13 @@
 
   .home-main > .home-dashboard-default[data-content-scroll='true'] .home-today-panel {
     block-size: auto;
+  }
+
+  .home-main > .home-dashboard-default[data-content-scroll='true'] .weekly-progress-layout {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+  .home-main > .home-dashboard-default[data-content-scroll='true'] .weekly-progress-chart {
+    grid-column: 1 / -1;
   }
 
   .home-main > .home-dashboard-default[data-content-scroll='true'] .home-next-card {

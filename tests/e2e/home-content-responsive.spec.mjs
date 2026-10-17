@@ -23,6 +23,42 @@ async function separated(page) {
       noHorizontalOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1 };
   })).toEqual({ noHomeHorizontalOverflow: true, actionsContained: true, metaBeforeCta: true, todayBeforeAttention: true, noHorizontalOverflow: true });
 }
+async function readableProgress(page, info, minimumFontSize) {
+  let geometry;
+  try {
+    await expect.poll(async () => {
+      geometry = await page.locator('.home-progress-panel').evaluate(panel => {
+        const labels = [...panel.querySelectorAll('.weekly-progress-summary span, .weekly-progress-legend span, .weekly-progress-axis span, .weekly-progress-day small')];
+        return {
+          panel: panel.getBoundingClientRect().toJSON(),
+          widthFits: panel.scrollWidth <= panel.clientWidth + 1,
+          labels: labels.map(label => {
+            const range = document.createRange();
+            range.selectNodeContents(label);
+            return {
+              text: label.textContent,
+              axis: Boolean(label.closest('.weekly-progress-axis')),
+              day: Boolean(label.closest('.weekly-progress-day')),
+              fontSize: parseFloat(getComputedStyle(label).fontSize),
+              textBounds: range.getBoundingClientRect().toJSON(),
+            };
+          }),
+        };
+      });
+      const axis = geometry.labels.filter(label => label.axis);
+      const days = geometry.labels.filter(label => label.day);
+      return {
+        widthFits: geometry.widthFits,
+        fontFloor: geometry.labels.length === 16 && geometry.labels.every(label => label.fontSize >= minimumFontSize),
+        textContained: geometry.labels.every(({ textBounds: box }) => box.left >= geometry.panel.left - 1 && box.right <= geometry.panel.right + 1 && box.top >= geometry.panel.top - 1 && box.bottom <= geometry.panel.bottom + 1),
+        axisSeparated: axis.every((label, index) => index === 0 || label.textBounds.top >= axis[index - 1].textBounds.bottom - 1),
+        daysSeparated: days.every((label, index) => index === 0 || label.textBounds.left >= days[index - 1].textBounds.right - 1),
+      };
+    }).toEqual({ widthFits: true, fontFloor: true, textContained: true, axisSeparated: true, daysSeparated: true });
+  } finally {
+    if (geometry) await info.attach(`progress-labels-${minimumFontSize}px`, { body: JSON.stringify(geometry), contentType: 'application/json' });
+  }
+}
 async function actions(page) {
   const add = page.getByRole('button', { name: '今日の予定に追加', exact: true });
   await add.scrollIntoViewIfNeeded(); await add.click({ trial: true, timeout: 5000 }); await add.focus(); await page.keyboard.press('Enter');
@@ -65,6 +101,7 @@ async function checkEnlargedText(page, info, width, height, rotate) {
   const style = await page.addStyleTag({ content: ':root {font-size:200%!important}' });
   await actions(page); await expect(home).toHaveAttribute('data-content-scroll', 'true');
   await separated(page); await actions(page);
+  if (width >= 1200) await readableProgress(page, info, 24);
   await page.screenshot({ path: info.outputPath('text200.png') });
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight + 1)).toBe(true);
   if (rotate) {
@@ -151,6 +188,7 @@ for (const [width, height] of [[1280, 720], [1440, 900], [1920, 1080]]) {
           noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth + 1,
         };
       })).toEqual({ columns: true, titleReadable: true, metadataReadable: true, bodyFits: true, bodyWidthFits: true, documentFits: true, noHorizontalOverflow: true });
+      await readableProgress(page, info, 12);
       await info.attach('desktop-home-geometry', {
         body: JSON.stringify(await home.evaluate(element => ({
           theme: document.documentElement.dataset.theme,

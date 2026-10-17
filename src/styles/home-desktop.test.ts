@@ -39,4 +39,25 @@ describe('desktop Home source layout contract', () => {
     css.walkDecls('font-size', decl => { expect(decl.value).toMatch(/^[\d.]+rem$/); expect(parseFloat(decl.value)).toBeGreaterThanOrEqual(0.75); });
     css.walkDecls(decl => { expect(['transform', 'zoom']).not.toContain(decl.prop); });
   });
+  it('gives progress labels readable type and room that grows with text', () => {
+    for (const selector of ['.weekly-progress-summary', '.weekly-progress-legend', '.weekly-progress-axis', '.weekly-progress-day small']) {
+      expect(values(`${home} ${selector}`)).toMatchObject({ 'font-size': '0.75rem', 'line-height': '1.25' });
+    }
+    expect(values(`${home} .weekly-progress-plot`)).toMatchObject({
+      '--weekly-progress-plot-height': '4.5rem',
+      'grid-template-columns': 'max-content minmax(0, 1fr)',
+    });
+    expect(values(`${home} .weekly-progress-bars`).height).toBe('auto');
+    expect(values(`${home} .weekly-progress-day`)).toMatchObject({ height: 'auto', 'grid-template-rows': 'var(--weekly-progress-plot-height) auto' });
+  });
+  it('gives the enlarged progress chart its own row without overriding bar motion or hiding text', () => {
+    expect(values(`${home}[data-content-scroll='true'] .weekly-progress-layout`)['grid-template-columns']).toBe('max-content minmax(0, 1fr)');
+    expect(values(`${home}[data-content-scroll='true'] .weekly-progress-chart`)['grid-column']).toBe('1 / -1');
+    css.walkRules(rule => {
+      if (rule.selector.includes('weekly-progress')) {
+        expect(rule.selector).not.toMatch(/weekly-progress-(plan|actual|columns|ring)(?:\b|\s)/);
+        rule.walkDecls(decl => { expect(['transform', 'overflow', 'text-overflow']).not.toContain(decl.prop); });
+      }
+    });
+  });
 });

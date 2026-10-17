@@ -120,7 +120,8 @@ shell width change remain unresolved; do not report those complaints as fixed.
   this composition. The known browser-launch denial is still respected. The
   build retains its existing large-chunk warning; no bundle-budget claim is made.
 
-Next: bind independent composition review, then obtain publication approval and
+Independent composition review bound clean `9ad86be2d05bfc3e4a2ca6e8a36dc13af3681887`
+without a source blocker. Next: obtain publication approval and
 run the exact related native specs on an authorized runner. Existing manual UI
 CI can select one WebKit-mobile spec; its current Chromium workflow has no
 related-spec input and would select the full suite for this CSS change. A narrow
@@ -128,3 +129,54 @@ manual Chromium route requires a separately approved runner/workflow change;
 never label collection or the existing correction-4 preview as Home/AI visual
 acceptance. Inspect the three sizes in both themes before declaring the desktop
 complaints fixed. Splash experiments are excluded from this candidate.
+
+## Desktop progress-label follow-up (2026-10-17)
+
+- Branch: `fix/desktop-progress-readability`, based on frozen Home + AI
+  `9ad86be2d05bfc3e4a2ca6e8a36dc13af3681887`. Official main was independently
+  fetched as `e6a18d0dc12422c50ad65d15ece4f298bdcaf581`, tree
+  `5cfbb2836a171931d3166961367b3195e72eee9d`. Its content exactly matches the
+  frozen candidate's runtime parent, so application has no content conflict.
+  The earlier 54-test/type/build proof was not repeated.
+- The remaining weekly graph label sizes are a separate confirmed source cause:
+  at the default 16px root, axis/day caps are 7.84/8px at all three desktop
+  sizes; summary/legend are 9.28/8.32px at 1280×720 and 11.2/9.92px at the
+  larger requested sizes. The old native 1280×720 screenshot supports the
+  tiny-text complaint; it is not a rendering of this follow-up.
+- Three options were compared. Font-only enlargement leaves four 15px axis
+  lines in the existing short 42px plot and the day label in a fixed 12px row.
+  Scaling the entire chart would also transform the bars and change motion
+  ownership. The selected narrow change uses desktop-only 0.75rem labels,
+  a 4.5rem plot, intrinsic axis width and day-label height. At enlarged text,
+  the chart gets its own full-width row. This gives the text room without
+  changing the chart's data domain, percentage heights, ring or bar styles.
+  The claim would be disproved by the existing viewport-fit tests or the new
+  native text-bounds checks failing; native results remain required.
+- The latest #705 head `116daab810128d553dfc54a7939ad2c40154566f` changes motion
+  only. Its CSS adds bar transform origins; its DOM/motion keys and percentage
+  formula are left untouched. No motion-owned component or stylesheet changes
+  here. All new rules remain scoped to Home at width≥1200px; mobile and shared
+  chrome keep their current rules. This is not a blanket font-size guarantee:
+  the ring suffix, shared footer and other surfaces are outside this follow-up.
+- New source regressions first failed as expected (4 existing passed, 2 new
+  failed), then the final desktop source and existing progress-ring contracts
+  passed **9 tests in 2 files**. Syntax and whitespace checks pass.
+- The existing Home native spec gains 12px label floors, actual text-bound
+  containment, adjacent axis/day non-overlap, and 24px floors at 200% root text.
+  The existing normal body-fit, long-list scrolling, focus, history and mobile
+  assertions remain. Collection retains the exact **23 Chromium + 23 mobile
+  WebKit identities**, with no duplicates, added retries or removed assertions.
+  Collection is not execution. Review additionally keeps the last measured
+  label geometry as an attachment even when a polling assertion fails. The
+  source-test title was clarified: plot pixel height changes, while the bar
+  percentage formula and direct motion/style declarations remain unchanged.
+  These review edits change no source-test assertion or native test identity;
+  syntax/identity checks cover them without repeating the passing source tests.
+  This label acceptance uses the default appearance. A loaded pixel-font
+  appearance is not established by these checks.
+
+Independent exact-input review found no source blocker. Next: carry this small
+follow-up into the authorized Home/AI preview acceptance. No native browser, full suite,
+build/type repetition, GitHub write or publication occurred here. New desktop
+pixels, mobile boundaries and 200% text behavior remain unverified. Keep the
+original combined candidate frozen until this follow-up is accepted separately.
