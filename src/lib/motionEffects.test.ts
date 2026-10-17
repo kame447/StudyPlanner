@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MOTION_DURATION_MS, playEntrance, playNavigation, playSettle } from './motionEffects';
+import { MOTION_DURATION_MS, playEntrance, playIndicatorTravel, playNavigation, playSettle } from './motionEffects';
 import { MOTION_STORAGE_KEY, REDUCED_FADE_MS, setMotionPreference } from './motionPreference';
 import { installFakeMotionEnvironment } from './motionPreference.testUtils';
 import { readFileSync } from 'node:fs';
@@ -88,5 +88,28 @@ describe('feedback motion by level', () => {
     for (const [name, ms] of Object.entries(MOTION_DURATION_MS)) {
       expect(css).toContain(`--motion-duration-${name}: ${ms}ms;`);
     }
+  });
+});
+
+describe('selection indicator travel', () => {
+  it('travels from the previous place with individual properties at standard and ends in place', () => {
+    const { element, animations } = fakeElement();
+    playIndicatorTravel(element, -84);
+    expect(animatedProperties(animations[0].frames)).toEqual(['scale', 'translate']);
+    expect(animations[0].frames[0].translate).toBe('-84px 0');
+    expect(animations[0].frames[animations[0].frames.length - 1]).toMatchObject({ translate: '0 0', scale: '1' });
+    expect(animations[0].options.fill).toBeUndefined();
+  });
+
+  it('fades in place at reduced and does nothing at off', () => {
+    setMotionPreference('reduced');
+    const { element, animations } = fakeElement();
+    playIndicatorTravel(element, 120);
+    expect(animatedProperties(animations[0].frames)).toEqual(['opacity']);
+    expect(animations[0].options.duration).toBe(REDUCED_FADE_MS);
+
+    setMotionPreference('off');
+    expect(animations[0].cancel).toHaveBeenCalledTimes(1);
+    expect(playIndicatorTravel(element, 120)).toBeNull();
   });
 });
