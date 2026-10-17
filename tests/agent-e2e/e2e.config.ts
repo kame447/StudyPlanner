@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { E2EConfig } from 'e2e';
-import { web } from '@e2e-dev/web';
+import { weeklyWebEngine } from './weekly-web-engine';
 import { openai } from '@ai-sdk/openai';
 import { chatgpt } from 'e2e/oauth/chatgpt';
 import { copilot } from 'e2e/oauth/copilot';
@@ -14,7 +14,7 @@ export default {
   tests: 'tests/**/*.e2e.ts',
   targets: [{
     name: 'weekly-local-harness',
-    engine: web({ browser: 'chromium', locale: 'ja-JP', timezoneId: 'Asia/Tokyo' }),
+    engine: weeklyWebEngine,
     app: {
       url: 'http://127.0.0.1:4174',
       readyUrl: 'http://127.0.0.1:4174/real-weekly.html',
