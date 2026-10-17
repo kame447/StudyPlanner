@@ -17,9 +17,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  chromium:
+  chromium-shard:
+    name: chromium (shard ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -63,13 +68,15 @@ jobs:
 
       - name: Run browser regression tests
         if: steps.selection.outputs.mode != 'none'
+        env:
+          BROWSER_REGRESSION_SHARD: ${{ matrix.shard }}/2
         run: node scripts/ci/browser-regression-selection.mjs run
 
       - name: Upload browser selection evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: browser-selection-${{ github.sha }}
+          name: browser-selection-${{ github.sha }}-shard-${{ matrix.shard }}
           path: artifacts/browser-selection.json
           if-no-files-found: error
           retention-days: 14
@@ -78,7 +85,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: browser-regression-artifacts-${{ github.sha }}
+          name: browser-regression-artifacts-${{ github.sha }}-shard-${{ matrix.shard }}
           path: artifacts/
           if-no-files-found: ignore
           retention-days: 14
@@ -87,7 +94,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: browser-ui-images-${{ github.sha }}
+          name: browser-ui-images-${{ github.sha }}-shard-${{ matrix.shard }}
           path: |
             artifacts/playwright-results/**/home-add-chooser.png
             artifacts/playwright-results/**/week-date-labels.png
@@ -96,3 +103,16 @@ jobs:
             artifacts/playwright-results/**/attachments/*.png
           if-no-files-found: ignore
           retention-days: 14
+
+  chromium:
+    name: chromium
+    needs: chromium-shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every Chromium shard to succeed
+        env:
+          SHARD_RESULT: ${{ needs.chromium-shard.result }}
+        run: |
+          echo "Chromium shards result: $SHARD_RESULT"
+          test "$SHARD_RESULT" = success
