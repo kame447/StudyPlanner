@@ -2,6 +2,7 @@ import type { CandidateChoiceRequest, CalibratedChoicePolicy, CandidateBasis, Ca
 import { buildCandidateHierarchy } from '../application/candidateSelection/hierarchy';
 import { gateCandidateChoice } from '../application/candidateSelection/gate';
 import { createCandidateManifest } from '../application/candidateSelection/manifest';
+import type { CandidateSemanticGatePolicy } from '../../../services/ai/candidateChoiceClient';
 import { createReplyReferenceSnapshotV5, resolveReplyReferenceCandidateV5,
   type ReplyReferenceCandidateV5 } from './weeklyPlanningReplyReferenceCandidatesV5';
 
@@ -17,9 +18,13 @@ export interface ReplyReferenceChoicePortV5 {
  */
 export interface ReplyReferenceChoiceCalibrationV5 {
   readonly policy: CalibratedChoicePolicy;
+  readonly semanticPolicy: CandidateSemanticGatePolicy;
   readonly maximumChildrenPerMenu: number;
 }
 export const WEEKLY_PLANNING_REPLY_REFERENCE_CALIBRATION_V5: ReplyReferenceChoiceCalibrationV5 | null = null;
+export function readReplyReferenceCalibrationV5(): ReplyReferenceChoiceCalibrationV5 | null {
+  return WEEKLY_PLANNING_REPLY_REFERENCE_CALIBRATION_V5;
+}
 
 export async function selectReplyReferenceHintV5(params: {
   readonly source: ReferenceSource;
@@ -40,7 +45,8 @@ export async function selectReplyReferenceHintV5(params: {
     const messageOrdinal = frozen.conversationMessageIds.indexOf(candidate.sourceMessageId) + 1;
     return {
       id: candidate.key,
-      label: '発話' + messageOrdinal + ' / ' + candidate.label,
+      label: '発話' + messageOrdinal + ' / ' + candidate.label + ' / ' +
+        (params.source.messages.find(message => message.id === candidate.sourceMessageId)?.content.slice(0, 120) ?? ''),
       // The provider sees descriptions and opaque option keys, not canonical Fact IDs or owner IDs.
       tuple: { messageOrdinal, targetKind: candidate.targetKind, slot: candidate.slot,
         operation: candidate.operation, path: [...candidate.componentPath] },
