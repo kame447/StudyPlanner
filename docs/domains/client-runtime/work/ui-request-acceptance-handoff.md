@@ -1,6 +1,20 @@
 # UI request acceptance gaps: subject editing and percentage disc
 
-Status: active local test-only work for UI request umbrella [Issue #483](https://github.com/kame447/StudyPlanner/issues/483). Branch: `test/ui-request-acceptance`. Base: `7f953920c830ce88ad54b281c339656e21c3f79b`. No remote branch/PR or publication approval.
+## PR729 compact percentage correction
+
+Current local branch: `fix/progress-disc-text-fit`, based on `50908b6030a187b7ae1a63f33c268f4ee8e899bd`. The existing PR729 native run established a product defect in the new No10 acceptance path: at 390px and 200% root text, the loaded DotGothic16 `100%` label/text range is 41px wide in Chromium while the inner disc is 40px. Both light/dark cases fail; Firefox independently reports the same overflow (about 40.22px into 40px). The 1280px cases fit. Screenshots and metrics were inspected; this is no longer only an unverified acceptance gap.
+
+The correction raises both compact ring diameters and their reserved grid column from a 52px floor to 56px. At the observed compact height, the unchanged 12px inset leaves a 44px inner disc. The font, enlargement, stroke inset, existing larger-screen overrides and all native containment assertions remain unchanged. This intentionally addresses the demonstrated `100%` label at 200% text; arbitrary larger percentages and other text-enlargement levels are not newly verified.
+
+- New source-contract tests fail against the original CSS (two geometry failures, one text-preservation pass), then pass with the correction.
+- Focused verification: four files / 19 tests pass. Command: `DEV_LAN_HOST=127.0.0.1 node node_modules/vitest/vitest.mjs --config vite.config.mjs run src/styles/home-weekly-progress.test.ts src/styles/appearance-pixel.test.ts src/components/home/WeeklyProgressSection.test.tsx src/components/HomeLiveClock.test.tsx --reporter=verbose`.
+- Independent review inspected the native metrics/image, exact CSS and source test, preserved native spec hash, baseline failures and focused pass. No source blocker was found.
+- Local evidence: `artifacts/progress-disc/receipt.json`, `ci-metrics-summary.json`, `style-baseline.log`, `focused.log`. The source-contract check is not a native layout pass.
+- Next: the integration owner combines this scoped correction with independently reviewed delivery-test corrections, builds once, and observes the unchanged native geometry assertions and rendered result. Corrected native rendering is still unverified; do not call No10 resolved until that gate passes. No local browser launch or duplicate full suite was performed here.
+
+## Original acceptance-only checkpoint
+
+Historical status: active local test-only work for UI request umbrella [Issue #483](https://github.com/kame447/StudyPlanner/issues/483). Branch: `test/ui-request-acceptance`. Base: `7f953920c830ce88ad54b281c339656e21c3f79b`. No remote branch/PR or publication approval.
 
 Scope: No14's unset-subject timer save → Day editor → subject update → same-ID reload, and No10's 100% label containment within the inner progress disc with the loaded bundled pixel font and 200% text. Existing unit tests already exercise same-ID subject updating; existing browser coverage enters a subject before the first save and checks only outer-ring fit. These are missing acceptance paths, not established product defects.
 
