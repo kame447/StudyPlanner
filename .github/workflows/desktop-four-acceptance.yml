@@ -1,5 +1,5 @@
 # Read-only bounded diagnostic; success is measurement completion, not acceptance.
-name: Material Frame Origin Diagnostic
+name: Material DPR Frame Diagnostic
 permissions:
   contents: read
 concurrency:
@@ -202,7 +202,7 @@ jobs:
           await expect(page.locator('.bookshelf-view')).toBeVisible();
         }
 
-        // Diagnostic only: observe page/preserved-native frames during the same initial navigation.
+        // Diagnostic only: compare DPR3/1 with the same preserved-native frame observer.
         // Passing this file does not accept any material editing/persistence contract.
         async function materialFrameSnapshot(control) {
           return control.evaluate(element => {
@@ -327,13 +327,16 @@ jobs:
           if (observerResult.status === 'rejected') throw observerResult.reason;
         }
 
-        test.describe('material frame origin diagnostic', () => {
+        test.describe('material DPR frame diagnostic', () => {
           test.use({ viewport: { width: 1920, height: 1080 }, screen: { width: 1920, height: 1080 },
             contextOptions: { reducedMotion: 'reduce' } });
-          for (const observerOrigin of ['page', 'native']) {
-            test(`compares initial navigation with ${observerOrigin} rAF observer`, async ({ page }, testInfo) => {
-              const diagnostics = { observerOrigin, motionPreference: 'reduced', comparisonPurpose: 'Diagnostic only; no release acceptance',
-                comparisonLimit: 'One fixed-order page/native pair; observer-induced rendering, changing runner load and warm-up remain confounders',
+          for (const density of [3, 1]) {
+            test.describe(`DPR ${density}`, () => {
+              test.use({ deviceScaleFactor: density });
+              test(`measures initial navigation with DPR ${density}`, async ({ page }, testInfo) => {
+              const observerOrigin = 'native';
+              const diagnostics = { observerOrigin, deviceScaleFactor: density, motionPreference: 'reduced', comparisonPurpose: 'Diagnostic only; no release acceptance',
+                comparisonLimit: 'One fixed-order DPR3/DPR1 pair; observer-induced rendering, changing runner load and warm-up remain confounders',
                 measurementLimit: 'Preserved main-world native rAF is not a direct utility-world observer; compare trace call boundaries without subtracting different time origins',
                 clockScope: 'Existing flowing fixed-clock fixture; page-world rAF and utility-world trace are distinct',
                 startedAt: new Date().toISOString(), phases: [], trials: [] };
@@ -357,6 +360,7 @@ jobs:
                   control = page.locator('.primary-bottom-nav button').filter({ hasText: '教材' });
                   diagnostics.homeBeforeNavigation = await materialFrameSnapshot(control);
                   expect(diagnostics.homeBeforeNavigation.motionAttribute).toBe('reduced');
+                  expect(diagnostics.homeBeforeNavigation.dpr).toBe(density);
                   await timed('initial-home-navigation-pair', () => observeInitialMaterialNavigation(control, observerOrigin, diagnostics));
                   await expect(page.locator('.bookshelf-view')).toBeVisible();
                   await expect(control).toBeVisible();
@@ -364,7 +368,7 @@ jobs:
                 });
                 diagnostics.initial = await materialFrameSnapshot(control);
                 expect(diagnostics.initial.width).toBe(1920); expect(diagnostics.initial.height).toBe(1080);
-                expect(diagnostics.initial.dpr).toBe(3); expect(diagnostics.initial.reducedMotion).toBe(true);
+                expect(diagnostics.initial.dpr).toBe(density); expect(diagnostics.initial.reducedMotion).toBe(true);
                 expect(diagnostics.initial.visibility).toBe('visible');
                 expect(diagnostics.initial.motionAttribute).toBe('reduced');
                 diagnostics.beforeFrames = await timed('page-world-raf-before', () => sampleMaterialPageFrames(control));
@@ -379,17 +383,18 @@ jobs:
                 }
                 diagnostics.afterFrames = await timed('page-world-raf-after', () => sampleMaterialPageFrames(control));
                 diagnostics.final = await materialFrameSnapshot(control);
-                await testInfo.attach(`diagnostic-frame-${observerOrigin}-surface`, {
+                await testInfo.attach(`diagnostic-dpr-${density}-surface`, {
                   body: await timed('explicit-screenshot-after-measurement', () => page.screenshot({ scale: 'css' })), contentType: 'image/png' });
               } catch (error) { failure = error; diagnostics.error = String(error); }
-              try { await testInfo.attach(`diagnostic-frame-${observerOrigin}-timings`, { body: JSON.stringify(diagnostics), contentType: 'application/json' }); }
+              try { await testInfo.attach(`diagnostic-dpr-${density}-timings`, { body: JSON.stringify(diagnostics), contentType: 'application/json' }); }
               catch (error) { throw failure ?? error; }
               if (failure) throw failure;
+              });
             });
           }
         });
         REVIEWED_DIAGNOSTIC_0
-        printf '%s  %s\n' 'd63b93c3afd783d06ab976867a9da1f162ce6598bfd4fc4113724a983b676dd1' 'tests/e2e/material-frame-diagnostic.spec.mjs' | sha256sum -c -
+        printf '%s  %s\n' '77046f93ae40fd60ffb1e6233370e367561833782c3083568b67acfe0cf7ddae' 'tests/e2e/material-frame-diagnostic.spec.mjs' | sha256sum -c -
         cp tests/e2e/material-frame-diagnostic.spec.mjs artifacts/desktop-four-proof/material-frame-diagnostic.spec.mjs
         test ! -e tests/e2e/material-frame-diagnostic.config.mjs
         cat > tests/e2e/material-frame-diagnostic.config.mjs <<'REVIEWED_DIAGNOSTIC_1'
@@ -423,7 +428,7 @@ jobs:
         const selected = {
           "cross": {
             "count": 2,
-            "sha256": "4b62b11199db289dacf4041015bb7ab9f2d192f9ee01140d7a154280cc920b21",
+            "sha256": "0b0cbf011fba493f778e0412d153c8357a2731365f7b19a1a3e0931853cc8591",
             "projects": [
               "webkit-mobile"
             ],
@@ -472,7 +477,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: material-frame-origin-diagnostic-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{
+        name: material-dpr-frame-diagnostic-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{
           github.run_attempt }}
         path: |+
           artifacts/desktop-four-proof/
