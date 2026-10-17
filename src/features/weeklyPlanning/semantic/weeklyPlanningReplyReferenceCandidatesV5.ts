@@ -76,19 +76,30 @@ export function createReplyReferenceSnapshotV5(input: {
   messages: readonly WeeklyPlanningMessage[];
   previousState?: PlanningIntakeState;
   inputStateRevision?: number;
-  conversationId?: string;
+  conversationId: string;
 }): ReplyReferenceSnapshotV5 | null {
-  if (!Number.isSafeInteger(input.graph.revision) || input.graph.revision < 0
+  if (!input.conversationId || !Number.isSafeInteger(input.graph.revision) || input.graph.revision < 0
     || typeof input.inputStateRevision !== 'number' || !Number.isSafeInteger(input.inputStateRevision) || input.inputStateRevision < 0
     || new Set(input.messages.map(message => message.id)).size !== input.messages.length) return null;
   const graph = createWeeklyPlanningActiveSchedulerGraphViewV5(input.graph);
-  if (input.conversationId && [...graph.tasks, ...graph.components, ...graph.workloads]
+  if ([...graph.tasks, ...graph.components, ...graph.workloads]
     .some(fact => fact.source.conversationId !== input.conversationId)) return null;
   const selectedMessages = input.messages.filter(message => message.role === 'user')
     .slice(-REPLY_REFERENCE_SOURCE_TURN_LIMIT_V5);
-  const turnMessages = new Map(selectedMessages
-    .filter(message => message.id.endsWith(':user') && message.content.trim())
-    .map(message => [message.id.slice(0, -':user'.length), message]));
+  // The dialogue envelope stores "conversation:turn:N:user", while committed facts
+  // record the same turn's "conversation:request:N". Only this machine-owned
+  // sequence relationship may bind a historical utterance to its fact.
+  const turnPrefix = input.conversationId + ':turn:';
+  const userSuffix = ':user';
+  const turnMessages = new Map<string, WeeklyPlanningMessage>();
+  for (const message of selectedMessages) {
+    if (!message.id.startsWith(turnPrefix) || !message.id.endsWith(userSuffix)
+      || !message.content.trim()) continue;
+    const sequence = message.id.slice(turnPrefix.length, -userSuffix.length);
+    const value = Number(sequence);
+    if (!Number.isSafeInteger(value) || value < 1 || String(value) !== sequence) continue;
+    turnMessages.set(input.conversationId + ':request:' + sequence, message);
+  }
   const tasks = new Map(graph.tasks.map(task => [task.id, task]));
   if (tasks.size !== graph.tasks.length) return null;
 
