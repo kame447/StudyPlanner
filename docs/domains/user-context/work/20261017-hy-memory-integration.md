@@ -1,6 +1,6 @@
 # Hy Memory 2.0 — local bridge connectivity checkpoint
 
-Status: local synthetic SDK/HTTP integration verified; not deployed or used for production user memories
+Status: real offline multilingual embeddings + SDK/HTTP verified on Mac; not deployed for production users
 Date: 2026-10-17
 Owner: #294
 Draft PR: #719
@@ -41,3 +41,40 @@ Worker-only configuration requires \`HY_MEMORY_CANDIDATE_MODE=shadow\`, \`HY_MEM
 4. Evaluate human-reviewed Japanese semantic retrieval cases against the lexical/entity baseline, covering false/stale recall, owner confusion, deletion/rehydration, p50/p95 latency, token/context budget and costs. Evaluate \`pro\` extraction and Jev rerank separately. Do not replace V5 or add another canonical memory database.
 
 No actual user memories were exported or indexed, and no production service was deployed. The PR is Draft and #294 stays open.
+
+## Offline-only embedding decision (2026-10-17)
+
+Product constraint: Keep the existing conversation AI provider. Do not send raw user memories to Tencent or add a remote embedding/LLM service solely for Hy Memory. The open-source Python SDK is allowed as a locally executed dependency, but production must additionally use host-level outbound-network restrictions.
+
+The experimental memory bridge now starts a local 384-dimensional multilingual embedding model through FastEmbed/ONNX (model: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, Apache-2.0, FastEmbed 0.9.0). Inference runs in the same private Python service process. A small authenticated OpenAI-compatible embedding endpoint binds only to an ephemeral `127.0.0.1` port. The SDK's `MEMORY_EMBEDDER_BASE_URL`, `MEMORY_LLM_BASE_URL`, keys, model and dimensionality are forced to that loopback process; accidental LLM calls hit an unsupported local URL, never a cloud fallback. Chroma stays on local persistent disk under `MEMORY_DATA_DIR`. Run mode is pinned to `lite`.
+
+Weights are fetched from Hugging Face only in an explicit bootstrap command using public model metadata; no user memory is involved. Runtime uses `local_files_only=True`, `HF_HUB_OFFLINE=1`, disabled anonymous telemetry, disabled proxy inheritance, and an explicit model cache. Startup fails when model files are absent instead of downloading or using a cloud embedding model.
+
+### Local setup (synthetic test; no real user data)
+
+```sh
+# One-time public model download. Use a private absolute model-cache path.
+CACHE_DIR="$HOME/.cache/laplance/hymemory-models"
+uv run --no-project --python 3.11 --with fastembed==0.9.0 -- \
+  python scripts/hy_memory_local_embeddings.py \
+  --download-model --model-cache-dir "$CACHE_DIR"
+
+# Cached model only; run the real SDK + HTTP bridge + Japanese synthetic tests.
+uv run --no-project --python 3.11 \
+  --with hy-memory==2.0.2 --with fastembed==0.9.0 -- \
+  python scripts/hy_memory_offline_e2e_smoke.py --model-cache-dir "$CACHE_DIR"
+
+# The private service itself remains localhost only until a trusted private host exists.
+# Set MEMORY_DATA_DIR, HY_MEMORY_MODEL_CACHE_DIR and HY_MEMORY_BRIDGE_TOKEN
+# before running scripts/hy_memory_bridge.py.
+```
+
+### Observed evidence
+
+On the authorized Mac, the real FastEmbed model produced 384-dimensional embeddings and its cache was usable offline. With `hy-memory==2.0.2`, the real SDK stored three synthetic Japanese facts and recalled them from three unambiguous paraphrased queries through the authenticated local HTTP bridge. Revision mismatch and forget were rejected/processed correctly. A socket guard observed zero non-loopback connection attempts throughout the SDK add/search/delete lifecycle. The Python bridge and local endpoint tests passed (8/8).
+
+A less specific Japanese query ("英語の試験で目指すスコアは？") did not recover the "TOEICの目標点数は800点" item and ranked unrelated candidates higher when inspected without the score gate. This limitation is retained as evaluation evidence; the successful smoke is neither a Japanese retrieval accuracy benchmark nor permission to lower production thresholds. Exact-entity lexical baseline and human-reviewed holdouts remain necessary.
+
+### Production preconditions remain
+
+The Mac is a development machine, not a production memory server. The runtime cannot be deployed on Cloudflare Workers as a Python/ONNX package without a separate managed host. Worker and browser selectors remain opt-in/disabled, and there is no Firestore committed-event publisher. Do not merge or enable for users until the private server, trusted synchronization/forget, provenance, data routing, outbound egress restrictions, cost/latency evidence, and Japanese retrieval evaluation are established. Existing conversational AI calls remain unchanged. Do not represent a model package license or a single local socket test as a universal privacy/security guarantee.

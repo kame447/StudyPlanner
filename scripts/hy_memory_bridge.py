@@ -271,23 +271,35 @@ def main() -> None:
     if not data_dir:
         parser.error("MEMORY_DATA_DIR must be an explicit persistent private path")
     os.umask(0o077)
-    os.environ.setdefault("MEMORY_MODE", "lite")
-    os.environ.setdefault("MEMORY_LOG_LEVEL", "WARNING")
-    if os.environ["MEMORY_MODE"] != "lite":
-        parser.error("Only lite is permitted until pro provenance is independently verified")
+    model_cache = os.environ.get("HY_MEMORY_MODEL_CACHE_DIR", "")
+    if not model_cache or not Path(model_cache).is_absolute():
+        parser.error("HY_MEMORY_MODEL_CACHE_DIR must be an absolute local cache path")
 
-    from hy_memory import HyMemoryClient
+    from hy_memory_local_embeddings import LocalEmbeddingService, load_local_model
 
-    index = HyMemoryIndex(
-        HyMemoryClient(mode="lite"),
-        str(Path(data_dir) / "laplance-index-state.sqlite3"),
-    )
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(index, token))
+    # A missing cached model is a startup error, never a reason to call a
+    # remote embedding service (including the SDK's OpenAI default).
+    local_model = load_local_model(model_cache, download=False)
+    local_embeddings = LocalEmbeddingService(local_model)
+    local_embeddings.start()
+    local_embeddings.configure_hy_memory(data_dir)
+    index = None
+    server = None
     try:
+        from hy_memory import HyMemoryClient
+
+        index = HyMemoryIndex(
+            HyMemoryClient(mode="lite"),
+            str(Path(data_dir) / "laplance-index-state.sqlite3"),
+        )
+        server = ThreadingHTTPServer((args.host, args.port), make_handler(index, token))
         server.serve_forever()
     finally:
-        server.server_close()
-        index.close()
+        if server is not None:
+            server.server_close()
+        if index is not None:
+            index.close()
+        local_embeddings.close()
 
 
 if __name__ == "__main__":
