@@ -15,10 +15,12 @@ export interface EmbeddingEngineDependencies {
 export function createEmbeddingEngine(dependencies: EmbeddingEngineDependencies) {
   let loaded: Promise<{ pipeline: EmbeddingPipeline; backend: SemanticMemoryBackend; modelLoadMs: number }> | undefined;
   let queue = Promise.resolve();
-  async function loadAndWarm() {
+  async function loadAndWarm(backendPreference: 'auto' | 'wasm') {
     const started = performance.now();
     let hasAdapter = false;
-    try { hasAdapter = Boolean(await dependencies.requestAdapter()); } catch { /* WASM remains available. */ }
+    if (backendPreference === 'auto') {
+      try { hasAdapter = Boolean(await dependencies.requestAdapter()); } catch { /* WASM remains available. */ }
+    }
     const backends: SemanticMemoryBackend[] = hasAdapter ? ['webgpu', 'wasm'] : ['wasm'];
     for (const backend of backends) {
       let pipeline: EmbeddingPipeline | undefined;
@@ -44,7 +46,7 @@ export function createEmbeddingEngine(dependencies: EmbeddingEngineDependencies)
         try {
           validateEmbeddingInput(request.texts, request.role);
           if (request.texts.length === 0) return { type: 'result', id: request.id, backend: 'wasm', vectors: [] };
-          loaded ??= loadAndWarm().catch(error => { loaded = undefined; throw error; });
+          loaded ??= loadAndWarm(request.backendPreference ?? 'auto').catch(error => { loaded = undefined; throw error; });
           const { pipeline, backend, modelLoadMs } = await loaded;
           const prefix = request.role === 'query' ? SEMANTIC_MEMORY_MODEL.queryPrefix : SEMANTIC_MEMORY_MODEL.passagePrefix;
           const started = performance.now();

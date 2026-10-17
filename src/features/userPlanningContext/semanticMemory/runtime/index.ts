@@ -16,6 +16,8 @@ export interface SemanticMemoryEmbedderOptions {
   /** Tests inject a transport; production always uses the module Worker. */
   workerFactory?: () => EmbeddingWorkerPort;
   timeoutMs?: number;
+  /** Explicit device policy; never inferred from input text. */
+  backendPreference?: 'auto' | 'wasm';
   /** Local privacy-safe benchmark hook; never contains text or vectors. */
   onMetrics?: (metrics: { backend: SemanticMemoryBackend; modelLoadMs: number; embedMs: number }) => void;
 }
@@ -84,7 +86,7 @@ export function createSemanticMemoryEmbedder(options: SemanticMemoryEmbedderOpti
         pending.set(id, { resolve, reject, cleanup: () => { clearTimeout(timeout); signal?.removeEventListener('abort', abort); } });
         signal?.addEventListener('abort', abort, { once: true });
         if (signal?.aborted) { abort(); return; }
-        try { transport.postMessage({ type: 'embed', id, texts: [...texts], role }); }
+        try { transport.postMessage({ type: 'embed', id, texts: [...texts], role, backendPreference: options.backendPreference ?? 'auto' }); }
         catch { stop('model_load_failed'); }
       });
     },

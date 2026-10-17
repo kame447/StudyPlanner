@@ -6,6 +6,7 @@ export interface EmbeddingRequest {
   id: number;
   texts: string[];
   role: 'query' | 'passage';
+  backendPreference?: 'auto' | 'wasm';
 }
 export type EmbeddingResponse =
   | { type: 'result'; id: number; backend: SemanticMemoryBackend; vectors: Float32Array[]; timings?: { modelLoadMs: number; embedMs: number } }

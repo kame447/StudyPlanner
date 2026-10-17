@@ -29,6 +29,17 @@ describe('lazy bounded worker transport', () => {
     expect(() => createSemanticMemoryEmbedder({ enabled: true, optedIn: false, workerFactory: factory })).toThrowError(expect.objectContaining({ reason: 'not_opted_in' }));
     expect(factory).not.toHaveBeenCalled(); expect(fetcher).not.toHaveBeenCalled();
   });
+  it('defaults backend policy to auto and carries explicit WASM policy independently of text', async () => {
+    for (const preference of [undefined, 'wasm'] as const) {
+      const worker = new FakeWorker();
+      const embedder = createSemanticMemoryEmbedder({ enabled: true, optedIn: true,
+        backendPreference: preference, workerFactory: () => worker });
+      const result = embedder.embed(['webgpu wasm are arbitrary user words'], 'query');
+      expect(worker.postMessage).toHaveBeenCalledWith(expect.objectContaining({ backendPreference: preference ?? 'auto' }));
+      worker.reply({ type: 'result', id: 1, backend: 'wasm', vectors: [vector()] });
+      await result; await embedder.dispose();
+    }
+  });
   it('is lazy, caps input, correlates out-of-order IDs and accepts backend after warm-up', async () => {
     const worker = new FakeWorker(); const factory = vi.fn(() => worker);
     const embedder = createSemanticMemoryEmbedder({ enabled: true, optedIn: true, workerFactory: factory });
@@ -98,6 +109,12 @@ describe('worker engine', () => {
     expect(pipeline).toHaveBeenNthCalledWith(2, ['query: 合成テキスト']);
     expect(pipeline).toHaveBeenNthCalledWith(3, ['passage: 合成テキスト']);
     expect(fetcher).not.toHaveBeenCalled();
+  });
+  it('never requests a GPU adapter when explicitly forced to WASM', async () => {
+    const pipeline = fakePipeline(); const adapter = vi.fn(async () => ({})); const load = vi.fn(async () => pipeline);
+    const engine = createEmbeddingEngine({ requestAdapter: adapter, load });
+    expect(await engine.handle({ ...request(1), backendPreference: 'wasm' })).toMatchObject({ type: 'result', backend: 'wasm' });
+    expect(adapter).not.toHaveBeenCalled(); expect(load).toHaveBeenCalledExactlyOnceWith('wasm');
   });
   it('falls back on adapter rejection and on GPU warm-up failure', async () => {
     const gpu = fakePipeline(); vi.mocked(gpu).mockRejectedValueOnce(Error('unsupported kernel'));
