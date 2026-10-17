@@ -42,7 +42,7 @@ type Rule = 'semantic-provider' | 'semantic-dialogue-persistence' | 'legacy-pars
 interface Edge { from: string; line: number; specifier: string | null; to: string | null }
 interface Violation { entry: string; rule: Rule; path: Edge[] }
 
-function runtimeImports(file: string, text: string, options: ts.CompilerOptions) {
+function runtimeImports(file: string, text: string, options: ts.CompilerOptions, inspectElision = true, onEmit?: () => void) {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const imports: { specifier: string | null; line: number }[] = [];
   const referencedNames = new Set<string>();
@@ -51,17 +51,15 @@ function runtimeImports(file: string, text: string, options: ts.CompilerOptions)
     if (ts.isIdentifier(node)) referencedNames.add(node.text);
     ts.forEachChild(node, collectNames);
   }
-  collectNames(source);
+  if (inspectElision) collectNames(source);
   let emittedModules: Set<string> | undefined;
   function survivesEmit(specifier: ts.Expression) {
     if (!ts.isStringLiteralLike(specifier)) return true;
     if (!emittedModules) {
       // Delegate type-position/elision decisions to the configured compiler, not
       // a second type-syntax classifier. Keep source nodes for diagnostic lines.
-      const emitted = ts.transpileModule(text, { fileName: file, compilerOptions: {
-        ...options, noEmit: false, declaration: false, emitDeclarationOnly: false,
-        sourceMap: false, inlineSourceMap: false,
-      } }).outputText;
+      onEmit?.();
+      const emitted = ts.transpileModule(text, { fileName: file, compilerOptions: options }).outputText;
       emittedModules = new Set(ts.preProcessFile(emitted, true, true).importedFiles.map(entry => entry.fileName));
     }
     return emittedModules.has(specifier.text);
@@ -87,7 +85,9 @@ function runtimeImports(file: string, text: string, options: ts.CompilerOptions)
         const explicitTypes = !clause.name && allTypes(bindings);
         // An entirely unused declaration supplies no type-use evidence; retain
         // it conservatively (noUnusedLocals separately rejects unused bindings).
-        if ((!explicitTypes && options.noUnusedLocals && names.length > 0
+        if (!inspectElision) {
+          if (!explicitTypes || options.verbatimModuleSyntax) add(node, node.moduleSpecifier);
+        } else if ((!explicitTypes && options.noUnusedLocals && names.length > 0
           && !names.some(name => referencedNames.has(name.text)))
           || survivesEmit(node.moduleSpecifier)) add(node, node.moduleSpecifier);
       }
@@ -95,7 +95,8 @@ function runtimeImports(file: string, text: string, options: ts.CompilerOptions)
       const names = node.exportClause;
       const explicitTypes = names && ts.isNamedExports(names) && names.elements.length > 0
         && names.elements.every(element => element.isTypeOnly);
-      if (!node.isTypeOnly && (!explicitTypes || survivesEmit(node.moduleSpecifier))) add(node, node.moduleSpecifier);
+      if (!node.isTypeOnly && (!explicitTypes || (inspectElision
+        ? survivesEmit(node.moduleSpecifier) : options.verbatimModuleSyntax))) add(node, node.moduleSpecifier);
     } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
       if (!node.isTypeOnly) add(node, node.moduleReference.expression);
     } else if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword
@@ -120,59 +121,102 @@ function productionFiles(directory: string): string[] {
 // The same checker runs against real sources and isolated in-memory fixture sources.
 function checkDirections(root: string, entries: string[], options: ts.CompilerOptions, host: ts.ModuleResolutionHost) {
   const cache = ts.createModuleResolutionCache(root, value => value, options);
-  const modules = new Map<string, (Edge & { resolved?: ts.ResolvedModuleFull })[]>();
+  const emitOptions: ts.CompilerOptions = { ...options, noEmit: false, declaration: false,
+    emitDeclarationOnly: false, sourceMap: false, inlineSourceMap: false };
+  type ResolvedEdge = Edge & { resolved?: ts.ResolvedModuleFull };
+  const modules = new Map<string, { source: string; raw: ResolvedEdge[]; exact?: ResolvedEdge[] }>();
+  const rules: Rule[] = ['semantic-provider', 'semantic-dialogue-persistence', 'legacy-parser'];
+  const candidatePaths = new Map(rules.map(rule => [rule, new Set<string>()]));
+  const inspectionCandidates = new Set<string>();
+  const reverse = new Map<string, Set<string>>();
+  let compilerEmits = 0;
+  const noteEmit = () => { compilerEmits++; };
   const incomplete = new Set<string>();
   const violations: Violation[] = [];
-  function dependencies(file: string) {
-    let edges = modules.get(file);
-    if (!edges) {
+  function matchesTarget(rule: Rule, to: string) {
+    if (rule === 'semantic-provider') return providerImplementations.has(to)
+      || /(?:^|\/)node_modules\/(?:firebase|@firebase)\//.test(to);
+    if (rule === 'semantic-dialogue-persistence') return to.startsWith('src/repositories/') || planningPersistence.has(to);
+    // PROJECT_MAP.md:147; current-contract-v5.md:32,42,52 forbid legacy fallback.
+    return to.startsWith('src/services/natural-language/') || to === 'src/services/naturalLanguagePlanner.ts';
+  }
+  const localScript = (edge: ResolvedEdge) => edge.resolved && !edge.resolved.isExternalLibraryImport
+    && edge.to && !edge.to.includes('node_modules/') && script.test(edge.to) && !edge.to.endsWith('.d.ts');
+  const uninspectable = (edge: ResolvedEdge) => !edge.resolved && !(edge.specifier && asset.test(edge.specifier));
+  function resolveImports(file: string, imports: ReturnType<typeof runtimeImports>): ResolvedEdge[] {
+    return imports.map(imported => {
+      const resolved = imported.specifier === null ? undefined
+        : ts.resolveModuleName(imported.specifier, file, options, host, cache).resolvedModule;
+      return { ...imported, from: portable(relative(root, file)),
+        to: resolved ? portable(relative(root, resolved.resolvedFileName)) : null, resolved };
+    });
+  }
+  function dependencies(file: string, relevant?: Rule[]) {
+    let module = modules.get(file);
+    if (!module) {
       const source = host.readFile?.(file);
       if (source === undefined) throw new Error(`Cannot inspect ${file}`);
-      edges = runtimeImports(file, source, options).map(imported => {
-        const resolved = imported.specifier === null ? undefined
-          : ts.resolveModuleName(imported.specifier, file, options, host, cache).resolvedModule;
-        const edge = { ...imported, from: portable(relative(root, file)),
-          to: resolved ? portable(relative(root, resolved.resolvedFileName)) : null, resolved };
-        if (!resolved && !(imported.specifier && asset.test(imported.specifier))) {
-          incomplete.add(`${edge.from}:${edge.line} -> ${edge.specifier ?? '<computed import>'}`);
-        }
-        return edge;
-      });
-      modules.set(file, edges);
+      module = { source, raw: resolveImports(file, runtimeImports(file, source, emitOptions, false)) };
+      modules.set(file, module);
     }
-    return edges;
+    if (relevant && !module.exact && (inspectionCandidates.has(portable(relative(root, file)))
+      || module.raw.some(edge => edge.to && relevant.some(rule => candidatePaths.get(rule)!.has(edge.to!))))) {
+      module.exact = resolveImports(file, runtimeImports(file, module.source, emitOptions, true, noteEmit));
+    }
+    return module.exact ?? module.raw;
   }
+
+  // Cheap syntactic superset first. Propagate forbidden destinations backwards,
+  // so type-only imports through otherwise allowed barrels also get an emit verdict.
+  const pending = [...new Set(entries)];
+  const discovered = new Set(pending);
+  for (let index = 0; index < pending.length; index++) {
+    for (const edge of dependencies(pending[index])) {
+      if (uninspectable(edge)) inspectionCandidates.add(edge.from);
+      if (!edge.to) continue;
+      if (!reverse.has(edge.to)) reverse.set(edge.to, new Set());
+      reverse.get(edge.to)!.add(edge.from);
+      for (const rule of rules) if (matchesTarget(rule, edge.to)) candidatePaths.get(rule)!.add(edge.to);
+      if (localScript(edge) && !discovered.has(edge.resolved!.resolvedFileName)) {
+        discovered.add(edge.resolved!.resolvedFileName);
+        pending.push(edge.resolved!.resolvedFileName);
+      }
+    }
+  }
+  for (const candidates of [...candidatePaths.values(), inspectionCandidates]) {
+    const queue = [...candidates];
+    for (let index = 0; index < queue.length; index++) {
+      for (const from of reverse.get(queue[index]) ?? []) {
+        if (!candidates.has(from)) { candidates.add(from); queue.push(from); }
+      }
+    }
+  }
+
   for (const entry of entries) {
     const entryPath = portable(relative(root, entry));
+    const relevant = rules.filter(rule => rule === 'legacy-parser' || entryPath.startsWith(semantic)
+      || (rule === 'semantic-dialogue-persistence' && entryPath.startsWith(dialogue)));
+    // Every source is already scanned. An emitted subset cannot create a route
+    // absent from the syntactic graph, so safe origins need no second traversal.
+    if (!inspectionCandidates.has(entryPath) && !relevant.some(rule => candidatePaths.get(rule)!.has(entryPath))) continue;
     const seen = new Set<string>();
     const queue = [{ file: entry, path: [] as Edge[] }];
     for (let index = 0; index < queue.length; index++) {
       const item = queue[index];
       if (seen.has(item.file)) continue;
       seen.add(item.file);
-      for (const edge of dependencies(item.file)) {
+      for (const edge of dependencies(item.file, relevant)) {
+        if (uninspectable(edge)) incomplete.add(`${edge.from}:${edge.line} -> ${edge.specifier ?? '<computed import>'}`);
         if (!edge.resolved || !edge.to) continue;
         const path = [...item.path, { from: edge.from, line: edge.line, specifier: edge.specifier, to: edge.to }];
-        const rules: Rule[] = [];
-        if (entryPath.startsWith(semantic) && (providerImplementations.has(edge.to)
-          || /(?:^|\/)node_modules\/(?:firebase|@firebase)\//.test(edge.to))) rules.push('semantic-provider');
-        if ((entryPath.startsWith(semantic) || entryPath.startsWith(dialogue))
-          && (edge.to.startsWith('src/repositories/') || planningPersistence.has(edge.to))) {
-          rules.push('semantic-dialogue-persistence');
-        }
-        // PROJECT_MAP.md:147; current-contract-v5.md:32,42,52 forbid legacy fallback.
-        if (edge.to.startsWith('src/services/natural-language/') || edge.to === 'src/services/naturalLanguagePlanner.ts') {
-          rules.push('legacy-parser');
-        }
-        for (const rule of rules) violations.push({ entry: entryPath, rule, path });
-        if (!edge.resolved.isExternalLibraryImport && !edge.to.includes('node_modules/')
-          && script.test(edge.to) && !edge.to.endsWith('.d.ts')) {
+        for (const rule of relevant) if (matchesTarget(rule, edge.to)) violations.push({ entry: entryPath, rule, path });
+        if (localScript(edge)) {
           queue.push({ file: edge.resolved.resolvedFileName, path });
         }
       }
     }
   }
-  return { violations, incomplete: [...incomplete], inspectedModules: modules.size };
+  return { violations, incomplete: [...incomplete], inspectedModules: modules.size, compilerEmits };
 }
 
 const fixtureSemantic = `${semantic}model.ts`;
@@ -210,6 +254,8 @@ function assertDirections(result: ReturnType<typeof checkDirections>) {
 }
 
 describe('weekly planning module dependency directions', () => {
+  // Repository scan measured 0.8–1.5s isolated / 2.7–4.8s under npm run verify.
+  // Allow shared-runner scheduling variance after restricting compiler emit.
   it('holds on the resolved production graph without exceptions', () => {
     expect(config.error).toBeUndefined();
     expect(compilerConfig.errors).toEqual([]);
@@ -219,7 +265,7 @@ describe('weekly planning module dependency directions', () => {
     const result = checkDirections(repository, entries, compilerConfig.options, ts.sys);
     expect(result.inspectedModules).toBeGreaterThan(entries.length);
     assertDirections(result);
-  });
+  }, 10_000);
 
   it.each([
     "import { persist } from '@fixture/repositories/backend';",
@@ -357,6 +403,47 @@ describe('weekly planning module dependency directions', () => {
     const result = fixture("import {} from '@fixture/repositories/backend';", fixtureSemantic, {}, { verbatimModuleSyntax: true });
     expect(result.incomplete).toEqual([]);
     expect(result.violations.map(hit => hit.rule)).toEqual(['semantic-dialogue-persistence']);
+  });
+
+  it('does not emit ordinary allowed dependencies just to build the graph', () => {
+    const result = fixture("import { unit } from '@fixture/types/domain'; export const selected = unit;", fixtureSemantic, {
+      'src/types/domain.ts': 'export const unit = 1;',
+    });
+    assertDirections(result);
+    expect(result.compilerEmits).toBe(0);
+  });
+
+  it('still checks compiler erasure through a barrel that can reach persistence', () => {
+    const result = fixture("import { Contract } from '../../../../shared/barrel'; export type Result = Contract;", fixtureSemantic, {
+      'shared/barrel.ts': "export * from '../src/repositories/backend';",
+    });
+    assertDirections(result);
+    expect(result.compilerEmits).toBe(1);
+  });
+
+  it('keeps an executable alternate path when a type-only path to the same barrel is erased', () => {
+    const result = fixture(`
+      import { Contract } from '../../../../shared/barrel';
+      import '../../../../shared/bridge';
+      export type Result = Contract;
+    `, fixtureSemantic, {
+      'shared/barrel.ts': "export * from '../src/repositories/backend';",
+      'shared/bridge.ts': "export * from './barrel';",
+    });
+    expect(result.incomplete).toEqual([]);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].path.map(edge => edge.to)).toEqual([
+      'shared/bridge.ts', 'shared/barrel.ts', 'src/repositories/backend.ts',
+    ]);
+    expect(result.compilerEmits).toBe(1);
+  });
+
+  it('does not report uninspectable code reached only through an erased type import', () => {
+    const result = fixture("import { Contract } from '../../../../shared/helper'; export type Result = Contract;", fixtureSemantic, {
+      'shared/helper.ts': "export interface Contract {} const target = './backend'; import(target);",
+    });
+    assertDirections(result);
+    expect(result.compilerEmits).toBe(1);
   });
 
   it('allows provider construction in the dialogue adapter and persistence in application', () => {
