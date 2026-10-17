@@ -14,6 +14,8 @@ Owner Issue: #294
 
 実装インターフェースは [read/writeサービスの詳細設計](architecture/context-service-contract.md) が補足する。これはsupporting target architectureであり、canonical contractの上書きや実装済みの宣言ではない。実行順は [Current roadmap](roadmap/current.md)、ファイル単位の変更・依存・受入条件・rollbackは [段階実装work](work/20260912-context-harness-delivery.md)、最新のactive branch/PRとexact HEADは [Issue #294](https://github.com/kame447/StudyPlanner/issues/294) とそのactive PRを参照する。
 
+Issue #294のブラウザ内semantic memoryについて、実モデル比較・browser結果・未完了gateは [評価・実装work record](work/20261017-browser-semantic-memory.md) を参照する。
+
 Agents APIの用途は、複数情報源を調べる学習相談の助言候補生成だけに限定する。利用範囲・有効化前の評価は [external-integrationsのwork](../external-integrations/work/20260912-managed-agent-runtime-evaluation.md)、相談の正仕様は [weekly-planningの学習相談](../weekly-planning/spec/learning-consultation-and-advice.md) を参照する。このdomainは [相談agentへの読取境界](architecture/managed-execution-boundary.md) を提供するだけで、記憶抽出・統合・定期要約・検索engineや通常planningをAPIへ委譲しない。利用方針の合意と実装・実API試験・本番有効化は区別する。
 
 ## Core boundary

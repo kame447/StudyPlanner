@@ -1,6 +1,6 @@
 # ブラウザ内 semantic memory の評価・実装記録
 
-Status: active evaluation work / runtime・index integration not complete
+Status: active evaluation / rollout gates not complete
 Updated: 2026-10-17
 Owner Issue: #294
 
@@ -27,6 +27,27 @@ Laplanceの長期記憶について、既存のbounded lexical/entity検索を�
 
 指標はpositive queryのmacro recall@k/precision@k、negativeのfalse-positive件数、trap違反数、選択record JSONのUTF-8 byte数、index準備時間、query latencyの平均/p50/p95。test用fake embedderの値は配線・順位計算の動作確認に限り、semantic qualityやdevice性能の証拠ではない。実モデル比較は環境変数で明示有効化し、adapter経由で実行する。feature flag `VITE_SEMANTIC_MEMORY_ENABLED` はOFF既定、さらに利用者の明示opt-inが必要。
 
+## 親実行の実モデル・browser結果
+
+2026-10-17に、架空fixtureだけを使い、`Xenova/multilingual-e5-small@761b726d` のint8版をNode ONNX adapterで評価した。top-5の比較にはscore thresholdを適用していない。
+
+| セット | retriever | recall@5 | negative FP records | FPありnegative queries |
+| --- | --- | ---: | ---: | ---: |
+| v1（28 positive / 6 negative） | lexical-baseline | 0.679 | 5 | 3/6 |
+| v1 | vector | 0.929 | 30 | 6/6 |
+| v1 | hybrid-rrf | 0.929 | 30 | 6/6 |
+| holdout（18 positive / 4 negative） | lexical-baseline | 0.778 | 8 | 記録なし |
+| holdout | vector | 1.000 | 20 | 記録なし |
+| holdout | hybrid-rrf | 1.000 | 20 | 記録なし |
+
+threshold sweepでは、v1で0.75にするとnegative 6/6に候補が出た。0.84ではrecall 0.929かつnegative 0/6、0.86ではrecall 0.857だった。holdoutは0.84でrecall 18/18、negative 0/4だったが、negativeの最高scoreは0.826で差が小さい。positive 18 queries中14 queriesで、無関係な別recordも0.84以上になった。hybridは追加候補を最大3件に制限する。
+
+runtimeの `DEFAULT_SEMANTIC_MEMORY_MIN_SCORE=0.84` は暫定値として扱う。これは合成データによる候補品質の測定であり、実言語の人手gold、十分なprecision評価、実端末の性能評価を終えたthresholdではない。
+
+親実行のdesktop browser結果: Chromium 156はlifecycle checks全件pass。WebKit 27.2はcold embed、abort、cache eraseがpassした一方、offline reloadはfailした。put成功を報告した後にcache entryがreload後に消える事象は調査中。**iPhone Safariは未実行**。
+
+親の評価結果にはcontext bytesとlatencyの数値が含まれていないため、ここでは未計測値を補わない。
+
 ## Privacy / safety
 
 - fixtureは架空の記録・owner・会話IDだけを使う。実ユーザーの記憶やembeddingをfixture、log、評価出力へ含めない。
@@ -41,12 +62,12 @@ Issue comment [6232696407](https://github.com/kame447/StudyPlanner/issues/294#is
 
 | Gate | 状態 | 根拠 / 残り |
 | --- | --- | --- |
-| 1. bounded lexical/entity baselineと日本語paraphrase missを比較し、embedding unavailable時は現行結果を保持する | 未検証 | baseline・fixture・指標を用意。real modelとの品質比較は未実行。 |
-| 2. 小型多言語modelを端末内で遅延実行し、download/memory、iPhone Safari/WebKit WASM CPUとWebGPUを計測。Web Workerでmain threadを塞がない | 未検証 | runtimeと実機計測が必要。 |
-| 3. versioned・owner-scoped・破棄可能なlocal indexをcanonical ID/revision/lifecycle/deleteに結び、recall時に再検証 | 未検証 | index同期・forget・stale cacheの統合検証が必要。 |
-| 4. multi-tab/pending write、cancel、quota/eviction、offline reload、model failure、device switch、低memory Safariでlexicalへ安全にdegrade | 未検証 | runtime/indexのfailure・lifecycle gateが必要。 |
-| 5a. 人手レビュー可能な日本語synthetic corpusとlexical/vector/hybridの比較指標 | 検証済み | fixture 37件/queries 36件とharnessを作成。focused test 3件pass。通常testのfake値は品質証拠ではない。 |
-| 5b. 実モデルのparaphrase・false positive・top-k・byte・latency品質とdesktop/iPhone Safari browser E2E | 未検証 | 実モデル/実browser実行が必要。 |
+| 1. bounded lexical/entity baselineと日本語paraphrase missを比較し、embedding unavailable時は現行結果を保持する | 検証済み | Node ONNX実モデルでv1/holdout比較を実施。index testはembedding unavailable時にbyte-identical lexical outputを確認。品質結果とthreshold限界は上記表を参照。 |
+| 2. 小型多言語modelを端末内で遅延実行し、download/memory、iPhone Safari/WebKit WASM CPUとWebGPUを計測。Web Workerでmain threadを塞がない | 未検証 | desktop browser smokeの一部はpass。iPhone Safari、実端末のdownload/memory・WASM CPU/WebGPU計測は未実行。 |
+| 3. versioned・owner-scoped・破棄可能なlocal indexをcanonical ID/revision/lifecycle/deleteに結び、recall時に再検証 | 検証済み | Chromium 156のlifecycle checksは全件pass。WebKitのoffline reload問題はgate 4に記録。 |
+| 4. multi-tab/pending write、cancel、quota/eviction、offline reload、model failure、device switch、低memory Safariでlexicalへ安全にdegrade | 未検証 | Chromium lifecycle checksはpass。WebKit 27.2のoffline reloadがfailし、cache entry消失を調査中。全端末・quota・低memory条件の完了証拠はない。 |
+| 5a. 人手レビュー可能な日本語synthetic corpusとlexical/vector/hybridの比較指標 | 検証済み | v1は37 records/36 queries、holdoutは新規24 queries。focused Vitest 4件pass。Node ONNX実モデル指標を上記に記録。fake値は品質証拠ではない。 |
+| 5b. 実モデルのparaphrase・false positive・top-k・byte・latency品質とdesktop/iPhone Safari browser E2E | 未検証 | 実モデルrecall・negative・trap比較とdesktop smokeを実施したが、WebKit offline reloadはfail、iPhone Safariは未実行。context bytes・latency値と実端末precision評価も未報告。 |
 | 6. Draft PR #719をon-device実装としてmergeせず、production deployment前にsecurity/forget/real-device gatesを完了 | 検証済み | 本workは既存client branch上のsynthetic evaluationのみ。PR #719のserver codeを再利用せず、production deploymentを行っていない。残りgateを満たすまでrollout不可。 |
 
 ### このwork unitで実行した検証
@@ -55,13 +76,12 @@ Issue comment [6232696407](https://github.com/kame447/StudyPlanner/issues/294#is
 | --- | --- |
 | `npm ci --cache /private/tmp/studyplanner-npm-cache` | 成功。npm audit summaryでmoderate vulnerability 2件を報告（このworkでは調査・修正対象外）。 |
 | `npx tsc --noEmit -p tsconfig.json` | pass |
-| `node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/userPlanningContext/semanticMemory/evaluation` | pass: 3 passed、実モデルopt-in 1 skipped（既定）。 |
+| `node ./node_modules/vitest/vitest.mjs --config vite.config.mjs run src/features/userPlanningContext/semanticMemory/evaluation` | pass: 4 passed、実モデルopt-in 1 skipped（既定）。 |
 | `npm run build` | pass。既存repository entryのdynamic-import警告と500 kB超chunk警告を出力。 |
 | `git diff --check` | pass |
 
 ### NOT RUN
 
-- 実モデルadapterによるopt-in test（通常はskip。モデル比較の実行証拠はない）。
-- このevaluation harnessからのdesktop実機browser E2E、WebGPU/WASM、model download、memory、Worker計測（parentからruntime smoke passの報告はあるが、retrieval比較は別途未実行）。
+- 実端末でのretrieval比較・latency・context bytes測定、WebGPU/WASM CPUとの性能比較、download/memoryの定量測定。
 - **iPhone Safari real device / WebKit PWA**。実端末の性能・quota・offline・lifecycle・account switchは未検証。
-- runtime/indexとの統合、複数tab、forget/revocation伝播、production build/deployment。
+- production deployment。gate 6のとおり、残るsecurity/forget/real-device gatesを満たすまでrolloutしない。
