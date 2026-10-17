@@ -113,3 +113,23 @@ export function playNavigation(element: Element | null | undefined, direction: N
     reduced: [{ opacity: 0.35 }, { opacity: 1 }],
   });
 }
+
+/**
+ * A selection indicator moved to another control. It travels from where it
+ * was (`fromOffsetX`, in px relative to its new place) instead of reappearing,
+ * so the eye follows the selection. Below standard it only fades in place.
+ */
+export function playIndicatorTravel(element: Element | null | undefined, fromOffsetX: number) {
+  return play(element, {
+    standard: {
+      frames: [
+        { translate: `${fromOffsetX}px 0`, scale: '0.88' },
+        { translate: '0 0', scale: '1.06', offset: 0.72 },
+        { translate: '0 0', scale: '1' },
+      ],
+      duration: MOTION_DURATION_MS.slow,
+      easing: EMPHASIZED,
+    },
+    reduced: [{ opacity: 0.4 }, { opacity: 1 }],
+  });
+}
