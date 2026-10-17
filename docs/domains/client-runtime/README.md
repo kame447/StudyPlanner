@@ -21,6 +21,9 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Desktop ordinary-timer intrinsic face](work/desktop-timer-intrinsic-face-handoff.md) — existing CI image confirms enlarged clock overflow; local intrinsic-size correction awaits authorized native rendering.
+- [Material long-text containment](work/material-long-text-containment-handoff.md) — local wrapping candidate and wide/short-window acceptance definitions; native rendering pending.
+
 - [AI planning desktop layout](work/ai-planning-desktop-layout-handoff.md) — responsive proposal/starter widths and readable desktop controls; six fixture captures await native acceptance.
 
 - [Day, timetable and report delivery recovery](work/workspace-load-recovery-handoff.md) — Issue #542; local optional-view failure boundaries retain app navigation and session/history owners.

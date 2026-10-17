@@ -552,3 +552,158 @@ test('leaving a pending bookshelf entry prevents late failure from replacing Hom
     expect(await persistedShelfInputs(page)).toEqual(persisted);
   } finally { release(); }
 });
+
+// These long values are written through the existing isolated local fixture.
+// They deliberately have no spaces; normal Japanese prose already has break opportunities.
+const longMaterialName = 'MATERIALTOKEN'.repeat(20);
+const longMaterialSubject = 'SUBJECTTOKEN'.repeat(14);
+const longMaterialActivity = 'ACTIVITYTOKEN'.repeat(20);
+
+async function captureMaterialText(locator, boundary, testInfo, name) {
+  const metrics = await locator.evaluate((element, boundarySelector) => {
+    const box = element.getBoundingClientRect();
+    const frame = element.closest(boundarySelector).getBoundingClientRect();
+    const range = document.createRange(); range.selectNodeContents(element);
+    const rect = value => ({ left: value.left, right: value.right, top: value.top, bottom: value.bottom, width: value.width, height: value.height });
+    return { text: element.textContent, box: rect(box), frame: rect(frame),
+      fragments: [...range.getClientRects()].map(rect),
+      font: getComputedStyle(element).fontFamily, fontSize: getComputedStyle(element).fontSize,
+      overflowWrap: getComputedStyle(element).overflowWrap };
+  }, boundary);
+  await testInfo.attach(name, { body: JSON.stringify(metrics), contentType: 'application/json' });
+  expect(metrics.fragments.length).toBeGreaterThan(0);
+  expect(metrics.box.width).toBeGreaterThan(0);
+  for (const fragment of metrics.fragments) {
+    expect.soft(fragment.left, name).toBeGreaterThanOrEqual(metrics.box.left - 1);
+    expect.soft(fragment.right, name).toBeLessThanOrEqual(metrics.box.right + 1);
+    expect.soft(fragment.left, name).toBeGreaterThanOrEqual(metrics.frame.left - 1);
+    expect.soft(fragment.right, name).toBeLessThanOrEqual(metrics.frame.right + 1);
+  }
+}
+
+async function reachMaterialControl(control, testInfo, name) {
+  await control.scrollIntoViewIfNeeded();
+  await control.focus();
+  const metrics = await control.evaluate(element => {
+    const box = element.getBoundingClientRect();
+    const blockers = [];
+    for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      const style = getComputedStyle(ancestor);
+      if (/(auto|scroll|hidden|clip)/.test(style.overflowY)) {
+        const frame = ancestor.getBoundingClientRect();
+        const top = frame.top + ancestor.clientTop;
+        if (box.top < top - 1 || box.bottom > top + ancestor.clientHeight + 1) blockers.push(ancestor.className);
+      }
+    }
+    return { left: box.left, right: box.right, top: box.top, bottom: box.bottom,
+      width: innerWidth, height: innerHeight, fontSize: getComputedStyle(element).fontSize, blockers };
+  });
+  await testInfo.attach(name, { body: JSON.stringify(metrics), contentType: 'application/json' });
+  expect(metrics.left).toBeGreaterThanOrEqual(-1);
+  expect(metrics.right).toBeLessThanOrEqual(metrics.width + 1);
+  expect(metrics.top).toBeGreaterThanOrEqual(-1);
+  expect(metrics.bottom).toBeLessThanOrEqual(metrics.height + 1);
+  expect(metrics.blockers).toEqual([]);
+  await expect(control).toBeFocused();
+  await control.click({ trial: true });
+}
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 1080 }, { width: 1280, height: 600 }, { width: 390, height: 844 }]) {
+  test.describe(`material long text ${viewport.width}x${viewport.height}`, () => {
+    test.use({ viewport, screen: viewport, contextOptions: { reducedMotion: 'reduce' } });
+    test('keeps full text and long editor actions reachable at 100% and 200%', async ({ page }, testInfo) => {
+      await seedBookshelf(page);
+      await openBookshelf(page);
+      // Mutate only this already-seeded fixture, avoiding init-script ordering assumptions.
+      await page.evaluate(({ name, subject, activity }) => {
+        const materials = JSON.parse(localStorage.getItem('studyplanner.studyMaterials.v1'));
+        Object.assign(materials[0], { name, subjectName: subject });
+        localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify(materials));
+        const subjects = JSON.parse(localStorage.getItem('studyplanner.studySubjects.v1'));
+        subjects[0].name = subject;
+        localStorage.setItem('studyplanner.studySubjects.v1', JSON.stringify(subjects));
+        const plans = JSON.parse(localStorage.getItem('studyplanner.plans'));
+        Object.assign(plans[0], { title: activity, subject, materialName: name });
+        localStorage.setItem('studyplanner.plans', JSON.stringify(plans));
+        const actuals = JSON.parse(localStorage.getItem('studyplanner.actuals'));
+        Object.assign(actuals[0], { note: activity, materialName: name });
+        delete actuals[0].materialProgressUpdates;
+        localStorage.setItem('studyplanner.actuals', JSON.stringify(actuals));
+        const key = 'studyplanner:material-detail:v1:bookshelf-e2e-user:bookshelf-e2e-material';
+        const preferences = JSON.parse(localStorage.getItem(key));
+        preferences.structureItems = Array.from({ length: 24 }, (_, index) => ({ id: `long-${index}`, title: `${name}${index + 1}`, startUnit: index * 8, endUnit: (index + 1) * 8 }));
+        localStorage.setItem(key, JSON.stringify(preferences));
+        localStorage.setItem('study-planner-appearance', 'pixel');
+        localStorage.setItem('study-planner-theme-mode', 'light');
+      }, { name: longMaterialName, subject: longMaterialSubject, activity: longMaterialActivity });
+      await openBookshelf(page);
+      await page.locator('.bookshelf-featured-card').filter({ hasText: longMaterialName }).click();
+      const detail = page.locator('.bookshelf-detail-page');
+      await expect(detail.locator('.bookshelf-detail-hero-copy h2')).toHaveText(longMaterialName);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+      await expect.poll(() => detail.evaluate(element => getComputedStyle(element).fontFamily)).toContain('DotGothic16');
+      await page.evaluate(() => document.fonts.ready);
+      expect(await page.evaluate(() => document.fonts.check('16px DotGothic16'))).toBe(true);
+      let initialFont;
+      for (const percent of [100, 200]) {
+        await page.evaluate(percent => { document.documentElement.style.fontSize = `${percent}%`; }, percent);
+        const name = `${viewport.width}x${viewport.height}-${percent}`;
+        const metadata = await page.evaluate(() => ({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio, root: getComputedStyle(document.documentElement).fontSize }));
+        await testInfo.attach(`material-viewport-${name}`, { body: JSON.stringify(metadata), contentType: 'application/json' });
+        expect(metadata.width).toBe(viewport.width); expect(metadata.height).toBe(viewport.height);
+        expect(parseFloat(metadata.root)).toBe(16 * percent / 100);
+        await detail.locator('.bookshelf-detail-hero-copy h2').scrollIntoViewIfNeeded();
+        await testInfo.attach(`material-detail-${name}`, { body: await page.screenshot({ scale: 'css', animations: 'disabled' }), contentType: 'image/png' });
+        const heading = detail.locator('.bookshelf-detail-hero-copy h2');
+        const font = await heading.evaluate(element => parseFloat(getComputedStyle(element).fontSize));
+        if (percent === 100) initialFont = font;
+        else expect(font).toBeGreaterThan(initialFont * 1.9);
+        await captureMaterialText(heading, '.bookshelf-detail-page', testInfo, `material-name-${name}`);
+        await expect(detail.locator('.bookshelf-detail-hero-copy p')).toHaveText(longMaterialSubject);
+        await captureMaterialText(detail.locator('.bookshelf-detail-hero-copy p'), '.bookshelf-detail-page', testInfo, `material-subject-${name}`);
+        for (const label of ['学習記録', '予定']) {
+          await detail.getByRole('button', { name: label, exact: true }).click();
+          const text = detail.locator('.bookshelf-activity-list small');
+          await expect(text).toHaveText(longMaterialActivity);
+          await captureMaterialText(text, '.bookshelf-activity-list', testInfo, `material-${label}-${name}`);
+        }
+        await detail.getByRole('button', { name: '目次', exact: true }).click();
+        await expect(detail.locator('.bookshelf-detail-section-head p')).toContainText(longMaterialName);
+        await captureMaterialText(detail.locator('.bookshelf-detail-section-head p'), '.bookshelf-detail-page', testInfo, `material-current-chapter-${name}`);
+        await reachMaterialControl(detail.getByRole('button', { name: 'この教材を予定に追加', exact: true }), testInfo, `material-plan-action-${name}`);
+        await detail.getByRole('button', { name: '編集', exact: true }).click();
+        const editor = page.locator('.bookshelf-structure-editor');
+        await expect(editor.getByLabel('章・節の名前 24', { exact: true })).toHaveValue(`${longMaterialName}24`);
+        await testInfo.attach(`material-editor-${name}`, { body: await page.screenshot({ scale: 'css', animations: 'disabled' }), contentType: 'image/png' });
+        await expect(editor.locator('.bookshelf-modal-title-row p')).toHaveText(longMaterialName);
+        await captureMaterialText(editor.locator('.bookshelf-modal-title-row p'), '.bookshelf-structure-editor', testInfo, `material-editor-title-${name}`);
+        const last = editor.getByLabel('章・節の名前 24', { exact: true });
+        await reachMaterialControl(last, testInfo, `material-last-field-${name}`);
+        await last.fill(`保存した章 ${percent}`);
+        const save = editor.getByRole('button', { name: '保存', exact: true });
+        await reachMaterialControl(save, testInfo, `material-save-${name}`);
+        await page.keyboard.press('Enter');
+        await expect(editor).toHaveCount(0);
+        const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner:material-detail:v1:bookshelf-e2e-user:bookshelf-e2e-material')));
+        expect(saved.structureItems).toHaveLength(24);
+        expect(saved.structureItems[23].title).toBe(`保存した章 ${percent}`);
+        await detail.getByRole('button', { name: '編集', exact: true }).click();
+        await expect(editor.getByLabel('章・節の名前 24', { exact: true })).toHaveValue(`保存した章 ${percent}`);
+        await reachMaterialControl(editor.getByRole('button', { name: 'キャンセル', exact: true }), testInfo, `material-cancel-${name}`);
+        await page.keyboard.press('Enter');
+        await expect(editor).toHaveCount(0);
+        // Restore the last title for the next scale without changing the long material name.
+        if (percent === 100) {
+          await detail.getByRole('button', { name: '編集', exact: true }).click();
+          await editor.getByLabel('章・節の名前 24', { exact: true }).fill(`${longMaterialName}24`);
+          await editor.getByRole('button', { name: '保存', exact: true }).click();
+        }
+      }
+      await openBookshelf(page);
+      await page.locator('.bookshelf-featured-card').filter({ hasText: longMaterialName }).click();
+      await page.getByRole('button', { name: '教材メニューを開く' }).click();
+      await page.getByRole('button', { name: '目次を編集', exact: true }).click();
+      await expect(page.getByLabel('章・節の名前 24', { exact: true })).toHaveValue('保存した章 200');
+    });
+  });
+}
