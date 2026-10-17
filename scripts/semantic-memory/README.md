@@ -126,3 +126,85 @@ Parent integration owns full `npm run verify`, production consumer integration,
 Japanese retrieval quality, index lifecycle, real browser model execution,
 low-memory behavior, product offline/PWA integration and all physical iPhone Safari acceptance.
 This proof of concept must remain OFF by default until those gates pass.
+
+## WebKit cache investigation and physical entry bounds
+
+The parent's real desktop run proved cold inference, then exposed an independent
+WebKit cache failure: successful Cache API `put()` promises were followed by an
+empty model cache and failed offline reload. Tiny Window/Worker synthetic puts,
+real pinned `config.json` puts (native, copied headers, clean headers), and tiny
+Worker-to-Window visibility including Worker termination all passed. Those probes
+falsified missing Worker Cache API, general stream/header rejection, and universal
+Worker lifetime loss. Storage probing reported an origin quota of 1,000 MiB;
+1/50 MiB entries persisted, while a 150 MiB entry failed with `TypeError: Blob
+loading failed`. This supports a large individual entry/body limitation over a
+small total-origin quota; the exact WebKit failure threshold is not established.
+
+The production Worker now configures Transformers' supported `env.customCache`
+interface over the **same** named Cache API cache, with physical entries bounded
+to 32 MiB. Small artifacts remain direct entries. Larger artifact bodies are read
+incrementally into chunks; all chunk writes finish before an original-URL manifest
+is published. Lookup validates that every chunk exists, then exposes a streaming
+Response with the original byte length/type. Partial, malformed or evicted chunks
+are cache misses. Failed writes clean their newly created generation and preserve
+any previous original entry. The complete namespace still contains only public
+artifacts and is removed by the same cache-erasure function.
+
+Generation-specific keys prevent a partial concurrent writer from becoming a
+model hit. Old completed generations are retained while readers may still use
+them; successful concurrent replacement or Worker termination during a put can
+leave disposable orphan chunks until namespace erasure. Model URLs/revisions are
+immutable, so ordinary loads hit the completed artifact rather than replacing it.
+Cache quotas/eviction can still cause a miss; this adapter is not a durability
+promise. Chunking limits individual Cache API entries, not the full model's
+inference memory, so physical iPhone/low-memory acceptance remains **NOT RUN**.
+
+Diagnostic modes use only public synthetic bytes and the fixed public config:
+
+```sh
+# Tiny buffer/stream/public-key and real config metadata comparisons.
+SEMANTIC_MEMORY_CACHE_PROBE_ONLY=1 ... node scripts/semantic-memory/measure.mjs
+# Independent 1/50/150 MiB synthetic entries plus storage.estimate().
+SEMANTIC_MEMORY_STORAGE_PROBE_ONLY=1 SEMANTIC_MEMORY_BROWSER_TARGETS=webkit-wasm ... node scripts/semantic-memory/measure.mjs
+# Disconfirm diagnostic/probe effects using the normal production cache path.
+SEMANTIC_MEMORY_DEBUG_CACHE=0 SEMANTIC_MEMORY_SKIP_CACHE_PROBE=1 SEMANTIC_MEMORY_BROWSER_TARGETS=webkit-wasm ... node scripts/semantic-memory/measure.mjs
+```
+
+Replace `...` with the `SEMANTIC_MEMORY_PLAYWRIGHT` (and optional report/dist)
+settings from the main command. `SEMANTIC_MEMORY_BENCH_PORT` can override 4184;
+bundle-only mode creates no preview server. Debug cache logging is a typed factory
+option OFF in production. The synthetic benchmark defaults it ON to record public
+cache origin/path/outcome/error metadata, never query strings, user text or bodies.
+`consoleWarnings` captures swallowed library cache errors. `cacheBeforeDispose`
+versus `cacheAfterCold` separates pre-existing loss from Worker termination.
+
+A second, independent runner issue was reproduced with only **20 bytes written by
+Window Cache API**: Playwright WebKit's ephemeral `newContext()` lost entry
+visibility after an online page reload, while a fresh `launchPersistentContext()`
+retained the same entry. Cache names and estimated disk usage alone were not proof
+of a usable cache. The normal WebKit/WebKit-WASM lifecycle targets now use fresh,
+empty temporary persistent profiles, close them and delete them after each target.
+No existing browser profiles, cookies or credentials are used. The dedicated
+`SEMANTIC_MEMORY_RELOAD_PROBE_ONLY=1` mode retains the ephemeral/persistent comparison
+as reproducible harness evidence. The online route-blocked reload control remains
+separate from strict `context.setOffline(true)` reload, and **both gates remain**;
+no failed assertion was removed to obtain a green result. Real Safari/iPhone/PWA
+acceptance is independent of this Playwright profile correction.
+
+For download disclosure the runtime exports
+`SEMANTIC_MEMORY_MODEL_WEIGHT_BYTES = 118054593` independently of the enforced
+`model.maxWeightBytes = 120000000`. This is the ONNX weight alone; tokenizer and
+runtime files add overhead. To avoid missing Playwright worker-response bodies,
+benchmark metrics also count public artifact response bytes in the Worker's
+existing bounded reader. `publicModelDownloadBytes` is locally observed decoded
+response-body bytes (including tiny metadata probes), not wire compression,
+request headers, or inference memory. Same-origin runtime downloads are excluded.
+No request text or response body is logged or sent anywhere by this counter.
+
+Parent desktop run 9 passed all **8/8 lifecycle gates** on Chromium WASM, WebKit
+WebGPU and WebKit forced WASM; a separate WebKit WASM run also passed 8/8 with
+`SEMANTIC_MEMORY_DEBUG_CACHE=0 SEMANTIC_MEMORY_SKIP_CACHE_PROBE=1`. This validates
+the model/cache path independently of diagnostics and cache priming. That run
+preceded the final scalar byte-counter addition; the parent will re-run the
+frozen snapshot and retain its exact output as the final measurement artifact.
+Physical iPhone Safari remains **NOT RUN**.

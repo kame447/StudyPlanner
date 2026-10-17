@@ -17,6 +17,8 @@ export const SEMANTIC_MEMORY_MODEL: Readonly<SemanticMemoryModelDescriptor> = Ob
   passagePrefix: 'passage: ',
   maxWeightBytes: 120_000_000,
 });
+// Exact pinned ONNX weight size for the opt-in download disclosure (not runtime overhead).
+export const SEMANTIC_MEMORY_MODEL_WEIGHT_BYTES = 118_054_593;
 export const SEMANTIC_MEMORY_MODEL_CACHE = 'laplance-semantic-memory-model-v1';
 export const MAX_EMBEDDING_BATCH = 8;
 export const MAX_EMBEDDING_TEXT_LENGTH = 2048;

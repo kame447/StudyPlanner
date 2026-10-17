@@ -2,19 +2,71 @@
 <p>Synthetic, local-only semantic memory runtime measurement. No account or canonical memory data.</p>
 <script type="module">
 import { createSemanticMemoryEmbedder, clearSemanticMemoryModelCache, SEMANTIC_MEMORY_MODEL_CACHE } from '../../src/features/userPlanningContext/semanticMemory/runtime/index.ts';
+import { probeCache, PROBE_CACHE } from './cacheProbe.mjs';
+window.probeCache = async () => {
+  if (typeof caches !== 'undefined') await caches.delete(PROBE_CACHE);
+  const page = await probeCache('window');
+  const worker = new Worker(new URL('./cacheProbe.worker.mjs', import.meta.url), { type: 'module' });
+  try {
+    const workerResult = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(Error('cache probe Worker timeout')), 5000);
+      worker.onmessage = event => { clearTimeout(timer); resolve(event.data); };
+      worker.onerror = () => { clearTimeout(timer); reject(Error('cache probe Worker error')); };
+      worker.postMessage({ type: 'probe' });
+    });
+    let windowSeesWorkerBuffer = false;
+    if (typeof caches !== 'undefined') {
+      const cache = await caches.open(PROBE_CACHE);
+      windowSeesWorkerBuffer = Boolean(await cache.match(new URL('/__cache_probe_worker_buffer', location.href).href));
+    }
+    worker.terminate();
+    await new Promise(resolve => setTimeout(resolve, 50));
+    let windowSeesWorkerAfterTermination = false;
+    if (typeof caches !== 'undefined') {
+      const cache = await caches.open(PROBE_CACHE);
+      windowSeesWorkerAfterTermination = Boolean(await cache.match(new URL('/__cache_probe_worker_buffer', location.href).href));
+    }
+    return { page, worker: workerResult, windowSeesWorkerBuffer, windowSeesWorkerAfterTermination };
+  } finally { worker.terminate(); if (typeof caches !== 'undefined') await caches.delete(PROBE_CACHE); }
+};
+window.probeStorageSizes = async () => {
+  const before = navigator.storage?.estimate ? await navigator.storage.estimate() : null;
+  const worker = new Worker(new URL('./cacheProbe.worker.mjs', import.meta.url), { type: 'module' });
+  try {
+    const result = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(Error('storage-size probe timeout')), 45000);
+      worker.onmessage = event => { clearTimeout(timer); resolve(event.data); };
+      worker.onerror = () => { clearTimeout(timer); reject(Error('storage-size Worker error')); };
+      worker.postMessage({ type: 'storage-sizes' });
+    });
+    return { pageBefore: before, worker: result, pageAfter: navigator.storage?.estimate ? await navigator.storage.estimate() : null };
+  } finally { worker.terminate(); }
+};
 window.clearModelCache = clearSemanticMemoryModelCache;
 window.inspectModelCache = async () => {
-  const exists = (await caches.keys()).includes(SEMANTIC_MEMORY_MODEL_CACHE);
-  if (!exists) return { exists: false, entries: [] };
+  const cacheNames = await caches.keys();
+  const exists = cacheNames.includes(SEMANTIC_MEMORY_MODEL_CACHE);
+  if (!exists) return { exists: false, cacheNames, entries: [] };
   const cache = await caches.open(SEMANTIC_MEMORY_MODEL_CACHE);
-  return { exists: true, entries: (await cache.keys()).map(request => {
+  const configKey = (await cache.keys()).find(request => new URL(request.url).pathname.endsWith('/config.json'));
+  let configMatch = null;
+  if (configKey) {
+    const byUrl = await cache.match(configKey.url);
+    const byStoredRequest = await cache.match(configKey);
+    const ignoringVary = await cache.match(configKey.url, { ignoreVary: true });
+    configMatch = { byUrl: Boolean(byUrl), byStoredRequest: Boolean(byStoredRequest), ignoringVary: Boolean(ignoringVary),
+      vary: (byUrl ?? byStoredRequest ?? ignoringVary)?.headers.get('vary') ?? null,
+      keyMethod: configKey.method, keyHeaders: [...configKey.headers.keys()] };
+    await Promise.all([byUrl, byStoredRequest, ignoringVary].map(response => response?.body?.cancel()));
+  }
+  return { exists: true, configMatch, cacheNames, storageEstimate: navigator.storage?.estimate ? await navigator.storage.estimate() : null, entries: (await cache.keys()).map(request => {
     const url = new URL(request.url); return { origin: url.origin, path: url.pathname };
   }) };
 };
-window.measure = async ({ clearCache = true, backendPreference = 'auto', steadyCount = 5 } = {}) => {
+window.measure = async ({ clearCache = true, backendPreference = 'auto', steadyCount = 5, debugCache = true } = {}) => {
   if (clearCache) await clearSemanticMemoryModelCache();
   const measurements = [];
-  const embedder = createSemanticMemoryEmbedder({ enabled: true, optedIn: true, backendPreference, timeoutMs: 240000, onMetrics: value => measurements.push(value) });
+  const embedder = createSemanticMemoryEmbedder({ enabled: true, optedIn: true, backendPreference, debugCache, timeoutMs: 240000, onMetrics: value => measurements.push(value) });
   const started = performance.now();
   try {
     const vectors = await embedder.embed(['朝は数学の復習を短い時間で進めたい'], 'passage');
@@ -25,8 +77,9 @@ window.measure = async ({ clearCache = true, backendPreference = 'auto', steadyC
       await embedder.embed(['午前の勉強方法を相談したい'], 'query');
       steadyCallMs.push(performance.now() - before);
     }
-    return { status: 'ok', model: embedder.model, backend: embedder.backend, backendPreference, firstCallMs, steadyCallMs,
+    return { cacheBeforeDispose: await window.inspectModelCache(), status: 'ok', model: embedder.model, backend: embedder.backend, backendPreference, firstCallMs, steadyCallMs,
       vectorCount: vectors.length, dimensions: vectors[0]?.length, allFinite: vectors.every(vector => vector.every(Number.isFinite)),
+      publicModelDownloadBytes: measurements[0].publicModelDownloadBytes,
       modelLoadMs: measurements[0].modelLoadMs, firstEmbedMs: measurements[0].embedMs,
       steadyEmbedMs: measurements.slice(1).map(value => value.embedMs),
       browserOnline: navigator.onLine, crossOriginIsolated, wasmThreads: 1, mainThreadHeapBytes: performance.memory?.usedJSHeapSize ?? null,
@@ -36,10 +89,10 @@ window.measure = async ({ clearCache = true, backendPreference = 'auto', steadyC
     return { status: 'unavailable', reason: error.reason ?? 'unknown', elapsedMs: performance.now() - started };
   } finally { await embedder.dispose(); }
 };
-window.startAbortProbe = ({ backendPreference = 'auto' } = {}) => {
+window.startAbortProbe = ({ backendPreference = 'auto', debugCache = true } = {}) => {
   const controller = new AbortController();
   let metricsCount = 0;
-  const embedder = createSemanticMemoryEmbedder({ enabled: true, optedIn: true, backendPreference, timeoutMs: 45000,
+  const embedder = createSemanticMemoryEmbedder({ enabled: true, optedIn: true, backendPreference, debugCache, timeoutMs: 45000,
     onMetrics: () => { metricsCount++; } });
   const started = performance.now();
   window.abortActiveEmbed = () => controller.abort();

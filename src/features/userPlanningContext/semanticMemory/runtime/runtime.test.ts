@@ -184,6 +184,17 @@ describe('public artifact network boundary', () => {
       await expect(oversized(base + 'onnx/model_int8.onnx', { headers: { Range: 'bytes=0-0' } })).rejects.toMatchObject({ reason: 'model_download_failed' });
     }
   });
+  it('counts only public artifact bytes locally, excluding runtime assets and absent probes', async () => {
+    const counted = vi.fn();
+    const runtimeUrl = 'https://app.example/assets/runtime.wasm';
+    const fetcher = vi.fn(async () => new Response('abc'));
+    const fetchPublic = createPublicModelFetch(fetcher, [runtimeUrl], counted);
+    expect(await (await fetchPublic(base + 'config.json')).text()).toBe('abc');
+    expect(await (await fetchPublic(runtimeUrl)).text()).toBe('abc');
+    expect((await fetchPublic(base + 'optional.json')).status).toBe(404);
+    expect(counted.mock.calls.reduce((sum, [bytes]) => sum + bytes, 0)).toBe(3);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
   it('bounds weights before downloading and while streaming without content-length', async () => {
     const big = vi.fn(async () => new Response('x', { headers: { 'content-length': String(SEMANTIC_MEMORY_MODEL.maxWeightBytes + 1) } }));
     await expect(createPublicModelFetch(big)(base + 'onnx/model_int8.onnx')).rejects.toMatchObject({ reason: 'model_download_failed' });

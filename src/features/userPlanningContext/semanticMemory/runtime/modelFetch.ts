@@ -6,7 +6,7 @@ const MODEL_BASE = `https://huggingface.co/${SEMANTIC_MEMORY_MODEL.modelId}/reso
 const MODEL_FILES = new Set(['config.json', 'tokenizer.json', 'tokenizer_config.json', 'special_tokens_map.json', 'onnx/model_int8.onnx']);
 
 /** A fixed public artifact allowlist: neither URLs nor bodies can contain input text. */
-export function createPublicModelFetch(fetcher: typeof fetch, runtimeUrls: readonly string[] = []): typeof fetch {
+export function createPublicModelFetch(fetcher: typeof fetch, runtimeUrls: readonly string[] = [], onPublicBytes?: (bytes: number) => void): typeof fetch {
   return async (input, init) => {
     const url = String(input);
     const file = url.startsWith(MODEL_BASE) ? url.slice(MODEL_BASE.length) : '';
@@ -55,6 +55,7 @@ export function createPublicModelFetch(fetcher: typeof fetch, runtimeUrls: reado
           const next = await reader.read();
           if (next.done) { controller.close(); return; }
           received += next.value.byteLength;
+          onPublicBytes?.(next.value.byteLength);
           if (received > bodyLimit) {
             await reader.cancel();
             throw new SemanticMemoryUnavailableError('model_download_failed');

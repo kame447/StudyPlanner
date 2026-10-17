@@ -1,7 +1,7 @@
 import { SemanticMemoryUnavailableError, type SemanticMemoryEmbedder, type SemanticMemoryBackend, type SemanticMemoryUnavailableReason } from '../semanticMemoryContract';
 import { EMBEDDING_TIMEOUT_MS, MAX_PENDING_EMBEDDINGS, SEMANTIC_MEMORY_MODEL, SEMANTIC_MEMORY_MODEL_CACHE } from './model';
 import { validateEmbeddingInput, type EmbeddingResponse, type EmbeddingRequest } from './protocol';
-export { SEMANTIC_MEMORY_MODEL, SEMANTIC_MEMORY_MODEL_CACHE } from './model';
+export { SEMANTIC_MEMORY_MODEL, SEMANTIC_MEMORY_MODEL_CACHE, SEMANTIC_MEMORY_MODEL_WEIGHT_BYTES } from './model';
 
 export interface EmbeddingWorkerPort {
   postMessage(message: EmbeddingRequest): void;
@@ -18,8 +18,10 @@ export interface SemanticMemoryEmbedderOptions {
   timeoutMs?: number;
   /** Explicit device policy; never inferred from input text. */
   backendPreference?: 'auto' | 'wasm';
+  /** Local public-artifact diagnostics for the synthetic harness. OFF by default. */
+  debugCache?: boolean;
   /** Local privacy-safe benchmark hook; never contains text or vectors. */
-  onMetrics?: (metrics: { backend: SemanticMemoryBackend; modelLoadMs: number; embedMs: number }) => void;
+  onMetrics?: (metrics: { backend: SemanticMemoryBackend; modelLoadMs: number; embedMs: number; publicModelDownloadBytes?: number }) => void;
 }
 
 /** Synchronous gate; no Worker, import, fetch or cache access before an embed. */
@@ -86,7 +88,7 @@ export function createSemanticMemoryEmbedder(options: SemanticMemoryEmbedderOpti
         pending.set(id, { resolve, reject, cleanup: () => { clearTimeout(timeout); signal?.removeEventListener('abort', abort); } });
         signal?.addEventListener('abort', abort, { once: true });
         if (signal?.aborted) { abort(); return; }
-        try { transport.postMessage({ type: 'embed', id, texts: [...texts], role, backendPreference: options.backendPreference ?? 'auto' }); }
+        try { transport.postMessage({ type: 'embed', id, texts: [...texts], role, backendPreference: options.backendPreference ?? 'auto', debugCache: options.debugCache === true }); }
         catch { stop('model_load_failed'); }
       });
     },
