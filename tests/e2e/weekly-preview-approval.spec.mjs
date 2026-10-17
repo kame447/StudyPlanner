@@ -70,9 +70,11 @@ test.describe('production weekly preview and draft boundaries', () => {
   });
 
   test('preview can be inspected and removed without promoting or approving it', async ({ page }) => {
+    const revision = (await planningState(page)).revision;
     await removeExactBlock(page);
 
     await expect.poll(async () => (await planningState(page)).previewCandidates).toEqual([]);
+    expect((await planningState(page)).revision).toBe(revision + 1);
     expect((await planningState(page)).draftBlocks).toEqual([]);
     await expect(previewDialog(page)).toHaveCount(0);
     await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
@@ -80,16 +82,24 @@ test.describe('production weekly preview and draft boundaries', () => {
   });
 
   test('preview promotion preserves the user-visible task and schedule at the draft boundary', async ({ page }) => {
+    const revision = (await planningState(page)).revision;
     await previewDialog(page).getByRole('button', { name: 'この内容で仮予定にする' }).click();
     await expectOneDraft(page);
+    // One accepted mutation: a create/clear/recreate promotion would end in the
+    // same visible state but advance the revision more than once.
+    expect((await planningState(page)).revision).toBe(revision + 1);
   });
 
   test('a draft can be removed locally without invoking approval', async ({ page }) => {
+    const promotedFrom = (await planningState(page)).revision;
     await previewDialog(page).getByRole('button', { name: 'この内容で仮予定にする' }).click();
     await expectOneDraft(page);
+    const revision = (await planningState(page)).revision;
+    expect(revision).toBe(promotedFrom + 1);
     await removeExactBlock(page);
 
     await expect.poll(async () => (await planningState(page)).draftBlocks).toEqual([]);
+    expect((await planningState(page)).revision).toBe(revision + 1);
     expect((await planningState(page)).previewCandidates).toEqual([]);
     await expect(previewDialog(page)).toHaveCount(0);
     await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
