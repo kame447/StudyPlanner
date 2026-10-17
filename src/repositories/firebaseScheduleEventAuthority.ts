@@ -483,6 +483,27 @@ export function createFirebaseScheduleEventAuthority(
       }
     },
 
+    async getActualProgressSources(userId, sourceId) {
+      // Source identity is persisted provenance, not a canonical document name.
+      // Keep both kinds and complete recurrence, without publishing partial history.
+      try {
+        const snapshot = await getDocs(query(
+          collection(firestoreDb, SCHEDULE_EVENTS_COLLECTION),
+          where('userId', '==', userId),
+          where('provenance.legacy.id', '==', sourceId),
+        ));
+        const events = snapshot.docs.map(row => mapSnapshot<ScheduleEvent>(row));
+        assertOwnedRecords(userId, events, '予定取得');
+        const plans = events.map(scheduleEventToPlan).filter((plan): plan is Plan => plan !== null);
+        const monthEvents = events.map(scheduleEventToMonthEvent).filter((event): event is MonthEvent => event !== null);
+        return { plans, monthEvents };
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('予定を取得できませんでした。', error as FirebaseLikeError),
+        );
+      }
+    },
+
     async getPlans(userId) {
       const publish = studyHistory?.beginRead(userId, 'plans');
       try {

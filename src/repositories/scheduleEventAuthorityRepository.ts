@@ -30,6 +30,9 @@ export interface ScheduleEventAuthorityRepository {
     loadLegacy: () => Promise<LegacyScheduleSnapshot>,
   ): Promise<void>;
   getScheduleSnapshot(userId: string): Promise<PlannerScheduleSnapshot>;
+  // Both source kinds with this persisted legacy ID, including full recurrence.
+  // This partial read must not certify complete study history.
+  getActualProgressSources?(userId: string, sourceId: string): Promise<PlannerScheduleSnapshot>;
   getPlans(userId: string): Promise<Plan[]>;
   getMonthEvents(userId: string): Promise<MonthEvent[]>;
   applyRecurringPlanMutation(
@@ -89,12 +92,16 @@ export function createScheduleEventBackedPlannerRepository(
       ? await legacyRepository.getActualForWritePreparation(actual.userId, actual.id)
       : (await legacyRepository.getActuals(actual.userId))
         .find(item => item.id === actual.id && item.userId === actual.userId);
+    const sourceId = actual.planId || previous?.planId;
     // Independent study saves do not need schedule migration or a schedule read.
-    if (!actual.planId && !previous?.planId) {
+    if (!sourceId) {
       return prepareActualProgressSource(actual, { plans: [], monthEvents: [] }, previous);
     }
     const mode = await resolveSchedulePersistenceMode(actual.userId);
-    const sources = mode === 'canonical' ? await authorityRepository.getScheduleSnapshot(actual.userId)
+    const sources = mode === 'canonical'
+      ? authorityRepository.getActualProgressSources
+        ? await authorityRepository.getActualProgressSources(actual.userId, sourceId)
+        : await authorityRepository.getScheduleSnapshot(actual.userId)
       : await legacyRepository.getScheduleSnapshot(actual.userId);
     const prepared = prepareActualProgressSource(actual, sources, previous);
     if (actual.planId && !prepared.progressSource
