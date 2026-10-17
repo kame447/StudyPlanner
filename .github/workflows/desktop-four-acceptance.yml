@@ -1,5 +1,5 @@
 # Local template: bind immutable reviewed application source before publication.
-name: Timer and Material Related Acceptance
+name: Material Readability Correction Acceptance
 permissions:
   contents: read
 concurrency:
@@ -19,17 +19,17 @@ jobs:
           browsers: chromium
         - project: cross
           timeout: 35
-          browsers: chromium firefox webkit
+          browsers: webkit
     env:
       CI: 'true'
-      SOURCE_SHA: d8ad91330bdc55a918fd238758cc52511180bdd0
-      SOURCE_TREE: 03ff4c04b45697972c03bf6eb65f890533c99b8a
+      SOURCE_SHA: cf4512afd4481d48ba177d8814c86b637406b994
+      SOURCE_TREE: 1b43714e9c2b7795e2d4d2b72f6d890152e4f9dd
       PROOF_WORKFLOW_SHA: ${{ github.sha }}
       PROOF_PROJECT: ${{ matrix.project }}
     steps:
     - uses: actions/checkout@v7
       with:
-        ref: d8ad91330bdc55a918fd238758cc52511180bdd0
+        ref: cf4512afd4481d48ba177d8814c86b637406b994
         fetch-depth: 1
         persist-credentials: false
     - name: Verify immutable application source
@@ -76,42 +76,26 @@ jobs:
       shell: bash
       run: "cat > artifacts/desktop-four-proof/run-selected.mjs <<'NODE'\nimport assert from 'node:assert/strict';\n\
         import crypto from 'node:crypto';\nimport fs from 'node:fs';\nimport { spawnSync } from 'node:child_process';\n\
-        const selected = {\n  \"chromium\": {\n    \"count\": 82,\n    \"sha256\": \"2273244182718e0c4072fca5b4a3592596c5bc3b7f0643e62e3cc23bd81f541d\"\
+        const selected = {\n  \"chromium\": {\n    \"count\": 5,\n    \"sha256\": \"299fae72d2415716ed128a46e6fdf83f964ff7671ce46ffa41554ee86999f980\"\
         ,\n    \"projects\": [\n      \"chromium\"\n    ],\n    \"args\": [\n      \"test\",\n      \"--config=tests/e2e/playwright.config.mjs\"\
         ,\n      \"--project=chromium\",\n      \"(^|/)(?:bookshelf-surface\\\\.spec\\\\.mjs|bookshelf-material-name-order\\\
-        \\.spec\\\\.mjs|study-session-compact\\\\.spec\\\\.mjs|bookshelf-material-handoff\\\\.spec\\\\.mjs|issue167-ui-regressions\\\
-        \\.spec\\\\.mjs|study-session-pomodoro-settings\\\\.spec\\\\.mjs|study-session-unplanned\\\\.spec\\\\.mjs|public-page-navigation\\\
-        \\.spec\\\\.mjs|planner-reconciliation-recovery\\\\.spec\\\\.mjs)$\",\n      \"--grep\",\n      \"(?:bookshelf-surface\\\
-        \\.spec\\\\.mjs(?: |$)|bookshelf-material-name-order\\\\.spec\\\\.mjs(?: |$)|study-session-compact\\\\.spec\\\
-        \\.mjs(?: |$)|bookshelf-material-handoff\\\\.spec\\\\.mjs(?: |$)|(?:preserves bookshelf row keyboard actions\
-        \ without nested interactive roles|custom pomodoro survives Home and reload and saves a reviewed subject\
-        \ at 1280px|unset-subject timer record is edited from Day and reloads with the same identity at 1280px|class\
-        \ title, inspection and unplanned start remain separate at 1280x844 / 100%|class title, inspection and unplanned\
-        \ start remain separate at 1280x844 / 200%|public pages keep a running study session and scroll under its\
-        \ body lock at 1280px|same-material Study Sessions preserve busy draft, retry from committed progress and\
-        \ reload desktop-light)$)\"\n    ]\n  },\n  \"cross\": {\n    \"count\": 66,\n    \"sha256\": \"d4f3c31a47ded1b07125d2d3c943f66856d0022deb1e2b78692e566228e40476\"\
-        ,\n    \"projects\": [\n      \"chromium-desktop\",\n      \"firefox-desktop\",\n      \"webkit-desktop\"\
-        ,\n      \"webkit-mobile\"\n    ],\n    \"args\": [\n      \"test\",\n      \"--config=tests/e2e/playwright.cross-browser.config.mjs\"\
-        ,\n      \"--project=chromium-desktop\",\n      \"--project=firefox-desktop\",\n      \"--project=webkit-desktop\"\
+        \\.spec\\\\.mjs)$\",\n      \"--grep\",\n      \"(?:keeps full text and long editor actions reachable at\
+        \ 100% and 200%|allows 200% text and dark mode without losing controls or exposing the background)$\"\n\
+        \    ]\n  },\n  \"cross\": {\n    \"count\": 9,\n    \"sha256\": \"083dbb7d8a5df1e961011491db9326050bc9ca86753159dd1720bacaea156f09\"\
+        ,\n    \"projects\": [\n      \"webkit-desktop\",\n      \"webkit-mobile\"\n    ],\n    \"args\": [\n  \
+        \    \"test\",\n      \"--config=tests/e2e/playwright.cross-browser.config.mjs\",\n      \"--project=webkit-desktop\"\
         ,\n      \"--project=webkit-mobile\",\n      \"(^|/)(?:bookshelf-surface\\\\.spec\\\\.mjs|bookshelf-material-name-order\\\
-        \\.spec\\\\.mjs|study-session-pomodoro-settings\\\\.spec\\\\.mjs|study-session-unplanned\\\\.spec\\\\.mjs|public-page-navigation\\\
-        \\.spec\\\\.mjs)$\",\n      \"--grep\",\n      \"(?:bookshelf-surface\\\\.spec\\\\.mjs(?: |$)|bookshelf-material-name-order\\\
-        \\.spec\\\\.mjs(?: |$)|(?:custom pomodoro survives Home and reload and saves a reviewed subject at 1280px|unset-subject\
-        \ timer record is edited from Day and reloads with the same identity at 1280px|settings stay separate, preserve\
-        \ inputs and remain accessible at 320px standard light|settings stay separate, preserve inputs and remain\
-        \ accessible at 320px pixel light|settings stay separate, preserve inputs and remain accessible at 390px\
-        \ pixel dark|class title, inspection and unplanned start remain separate at 1280x844 / 100%|class title,\
-        \ inspection and unplanned start remain separate at 1280x844 / 200%|unplanned study without any setup saves\
-        \ one Actual at 390px \\\\(reduce, light\\\\)|public pages keep a running study session and scroll under\
-        \ its body lock at 1280px)$)\"\n    ]\n  }\n};\nconst mode = process.argv[2];\nconst expected = selected[mode];\n\
-        assert.ok(expected, 'Unknown proof selection');\nconst prefix = `artifacts/desktop-four-proof/${mode}`;\n\
-        fs.writeFileSync(`${prefix}-arguments.json`, JSON.stringify(expected.args, null, 2));\nconst collectionProcess\
-        \ = spawnSync('./tests/e2e/node_modules/.bin/playwright', [...expected.args, '--list', '--reporter=json'],\
-        \ { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });\nfs.writeFileSync(`${prefix}-collection.json`, collectionProcess.stdout\
-        \ ?? '');\nassert.equal(collectionProcess.status, 0, collectionProcess.stderr || String(collectionProcess.error));\n\
-        const collection = JSON.parse(collectionProcess.stdout);\nassert.deepEqual(collection.errors, []);\nconst\
-        \ identities = new Set();\nfunction visit(suite, parents = []) {\n  const titles = [...parents, suite.title];\n\
-        \  for (const spec of suite.specs ?? []) for (const test of spec.tests) {\n    assert.ok(expected.projects.includes(test.projectName),\
+        \\.spec\\\\.mjs)$\",\n      \"--grep\",\n      \"(?:(?:keeps full text and long editor actions reachable\
+        \ at 100% and 200%|allows 200% text and dark mode without losing controls or exposing the background)$|(?:^|\
+        \ )webkit-mobile .*retains the approved frame and all fields at 100% and 200% text$)\"\n    ]\n  }\n};\n\
+        const mode = process.argv[2];\nconst expected = selected[mode];\nassert.ok(expected, 'Unknown proof selection');\n\
+        const prefix = `artifacts/desktop-four-proof/${mode}`;\nfs.writeFileSync(`${prefix}-arguments.json`, JSON.stringify(expected.args,\
+        \ null, 2));\nconst collectionProcess = spawnSync('./tests/e2e/node_modules/.bin/playwright', [...expected.args,\
+        \ '--list', '--reporter=json'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });\nfs.writeFileSync(`${prefix}-collection.json`,\
+        \ collectionProcess.stdout ?? '');\nassert.equal(collectionProcess.status, 0, collectionProcess.stderr ||\
+        \ String(collectionProcess.error));\nconst collection = JSON.parse(collectionProcess.stdout);\nassert.deepEqual(collection.errors,\
+        \ []);\nconst identities = new Set();\nfunction visit(suite, parents = []) {\n  const titles = [...parents,\
+        \ suite.title];\n  for (const spec of suite.specs ?? []) for (const test of spec.tests) {\n    assert.ok(expected.projects.includes(test.projectName),\
         \ 'Unexpected project');\n    const identity = JSON.stringify([test.projectName, spec.file, ...titles, spec.title]);\n\
         \    assert.ok(!identities.has(identity), `Duplicate case: ${identity}`);\n    identities.add(identity);\n\
         \  }\n  for (const child of suite.suites ?? []) visit(child, titles);\n}\nfor (const suite of collection.suites)\
@@ -127,7 +111,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: timer-material-related-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt
+        name: material-correction-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt
           }}
         path: 'artifacts/desktop-four-proof/
 
