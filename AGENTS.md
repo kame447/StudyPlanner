@@ -376,6 +376,10 @@ When a test fails during refactoring or feature work, classify the cause before 
 
 Never delete or weaken a regression solely to obtain green CI. AI wording and one exact semantic phrasing should not be treated as universal truth unless a deterministic UI contract explicitly requires exact text.
 
+### Agent-guided browser E2E
+
+TesterArmy/e2e is an optional, isolated browser interaction runner for weekly-planning dialogue exploration. See `docs/domains/weekly-planning/quality/agentic-browser-e2e.md` for install, authentication, scope, CI, and cache policy. Do not replace Playwright's deterministic UI contracts, approval/persistence/reload/idempotency checks, cross-browser checks, or the real-provider/Worker/Firestore boundary with a model's subjective completion claim. Keep assertions independent of the agent and compare detection strength before deleting an old regression. The local fixture uses a stubbed AI gateway; call it a UI harness, not online E2E. Never run credentialed agent tests against real user data; use explicit opt-in and isolated fixtures. The no-model smoke must pass before evaluating model-guided operation; classify agent, contract, and environment failures separately.
+
 ## GitHub workflow policy
 
 This section applies whenever ChatGPT performs Git or GitHub work in this repository.

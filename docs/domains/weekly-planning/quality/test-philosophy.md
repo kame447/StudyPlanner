@@ -114,6 +114,10 @@ Issue #246のanswer pathでは、さらに次を見る。
 - unaccepted adviceを「決定した方針」として話さない
 - stale adviceを「そのまま予定にします」と表現しない
 
+## Agent-guided browser exploration
+
+[TesterArmy/e2eの限定導入と運用手順](agentic-browser-e2e.md)は、自然言語でのUI操作を補助する独立runnerであり、判定はdeterministic assertionsと既存の実API/保存・復元・WebKit gateが所有する。stubbed harnessの成功はonline E2Eの成功ではない。
+
 ## Real API / human review
 
 model behaviorが関係する経路はturn-by-turnでsemantic output、accepted delta、Fact Graph、repair agenda、application decision、renderer、scheduler/previewを必要に応じて読む。

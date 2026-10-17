@@ -28,6 +28,7 @@ These documents supplement the canonical owners above; they do not override them
 - [Semantic schema reference](architecture/weekly-planning-semantic-schema-v5.md)
 - [Conversation trace architecture](architecture/weekly-planning-conversation-trace.md)
 - [Real-API evaluation policy](quality/real-api-eval-policy.md)
+- [Agent-guided browser E2E pilot](quality/agentic-browser-e2e.md)
 - [Personalization index](personalization/README.md)
 
 ## Responsibility map
