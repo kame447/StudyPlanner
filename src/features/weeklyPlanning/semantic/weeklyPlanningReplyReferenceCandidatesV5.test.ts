@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import type { WeeklyPlanningMessage } from '../types';
 import { createEmptyWeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
+import { selectReplyReferenceHintV5, type ReplyReferenceChoiceCalibrationV5 } from './weeklyPlanningReplyReferenceChoiceV5';
 import {
   createReplyReferenceSnapshotV5, extractReplyReferenceEvidenceV5,
   resolveReplyReferenceCandidateV5,
@@ -100,5 +101,73 @@ describe('bounded historical reply-reference candidates', () => {
     expect(extractReplyReferenceEvidenceV5(userText, { start: -1, end: 2 })).toBeNull();
     expect(extractReplyReferenceEvidenceV5(userText, { start: 4, end: 5 })).toBeNull();
     expect(extractReplyReferenceEvidenceV5(userText, { start: 0, end: 0 })).toBeNull();
+  });
+});
+
+describe('calibrated read-only Jev reference choice', () => {
+  const sourceInput = () => ({ graph: fixture(), messages, previousState: question(), inputStateRevision: 7 });
+  function calibration(): ReplyReferenceChoiceCalibrationV5 {
+    const count = createReplyReferenceSnapshotV5(sourceInput())!.candidates.length + 1;
+    return { maximumChildrenPerMenu: 64,
+      policy: { id: 'test-only', calibrationEvidenceId: 'mock-calibration-not-for-production',
+        rules: [{ menuKind: 'leaves', optionCount: count, depth: 0, minimumTopProbability: 0.9, minimumMargin: 0.7 }] },
+      semanticPolicy: { calibrationEvidenceId: 'mock-only', maximumConditionChange: 0.01, maximumIndependentMeaning: 0.01 },
+    };
+  }
+  function response(request: Parameters<Parameters<typeof selectReplyReferenceHintV5>[0]['port']['choose']>[0],
+    selectedKey: string, semanticSufficiency: 'only_candidate_meaning' | 'extra_or_uncertain_meaning' = 'only_candidate_meaning') {
+    const selected = request.menu.options.find(option => option.kind === 'leaf' && option.candidate.id === selectedKey)!;
+    return { requestId: request.requestId, nodeId: request.menu.nodeId,
+      selectionEpoch: request.selectionEpoch, candidateSetHash: request.candidateSetHash,
+      optionId: selected.id, semanticSufficiency,
+      probabilities: request.menu.options.map(option => ({ optionId: option.id,
+        probability: option.id === selected.id ? 0.99 : option.id === 'none' ? 0.01 : 0 })),
+    };
+  }
+
+  it('returns only an anchored target/slot after an explicit gate and leaves graph untouched', async () => {
+    const input = sourceInput();
+    const before = structuredClone(input.graph);
+    const chosen = createReplyReferenceSnapshotV5(input)!.candidates.find(
+      item => item.sourceMessageId === 't3:assistant' && item.slot === 'duration_per_unit')!;
+    const selected = await selectReplyReferenceHintV5({
+      source: input, readCurrent: () => input, userText: '1問3分くらい',
+      ownerId: 'owner', conversationId: 'c', requestId: 'next',
+      calibration: calibration(),
+      port: { choose: async (request, beforeDispatch) => {
+        expect(request.context.question.code).toBe('reply_reference_target');
+        expect(JSON.stringify(request)).not.toContain('"taskFactId"');
+        beforeDispatch();
+        return response(request, chosen.key);
+      } },
+    });
+    expect(selected).toMatchObject({ key: chosen.key, targetFactId: 'work', slot: 'duration_per_unit' });
+    expect(input.graph).toEqual(before);
+  });
+
+  it('abstains without calibration, with extra meaning or after source revision drift', async () => {
+    const input = sourceInput();
+    const chosen = createReplyReferenceSnapshotV5(input)!.candidates[0];
+    let calls = 0;
+    const base = {
+      source: input, readCurrent: () => input, userText: 'それで',
+      ownerId: 'owner', conversationId: 'c', requestId: 'next',
+      port: { choose: async (request: Parameters<Parameters<typeof selectReplyReferenceHintV5>[0]['port']['choose']>[0],
+        beforeDispatch: () => void) => {
+        calls++; beforeDispatch(); return response(request, chosen.key, 'extra_or_uncertain_meaning');
+      } },
+    };
+    expect(await selectReplyReferenceHintV5({ ...base, calibration: null })).toBeNull();
+    expect(calls).toBe(0);
+    expect(await selectReplyReferenceHintV5({ ...base, calibration: calibration() })).toBeNull();
+    const drift = sourceInput();
+    expect(await selectReplyReferenceHintV5({ ...base, calibration: calibration(),
+      readCurrent: () => drift,
+      port: { choose: async (request, beforeDispatch) => {
+        beforeDispatch();
+        drift.graph.revision++;
+        return response(request, chosen.key);
+      } },
+    })).toBeNull();
   });
 });
