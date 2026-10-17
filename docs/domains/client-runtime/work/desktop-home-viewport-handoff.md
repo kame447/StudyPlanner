@@ -180,3 +180,41 @@ follow-up into the authorized Home/AI preview acceptance. No native browser, ful
 build/type repetition, GitHub write or publication occurred here. New desktop
 pixels, mobile boundaries and 200% text behavior remain unverified. Keep the
 original combined candidate frozen until this follow-up is accepted separately.
+
+## Approved four-surface integration (2026-10-17 14:51 UTC)
+
+- The user approved publication and main integration of Home, AI planning,
+  Home's weekly graph and [Report readability](../../reporting/work/20261017-desktop-report-readability-handoff.md).
+  Branch `integrate/desktop-four-approved` starts from freshly verified official
+  main `e6a18d0dc12422c50ad65d15ece4f298bdcaf581` / tree `5cfbb283`.
+  Splash experiments, materials and timer candidates are excluded.
+- Three logical cherry-picks compose Home/AI `9ad86be2`, graph `2e1371e4` and
+  Report `7d4ea90a` without conflicts. The first two intermediate trees exactly
+  reproduce the reviewed candidates (`59039674` and `cfd1cc54`). The composed
+  product tree is `c948d5a5` at local `436d3077`, before this checkpoint-only
+  documentation update. All 20 changed files match the union of owner final
+  hashes; all other 2,854 tracked main files remain byte-identical.
+- Existing focused tests and fresh app type results are reused only for their
+  exact unchanged executable inputs. No whole suite or duplicate source/type
+  run was performed. The new combined CSS input warranted one production build,
+  which passed in 5.39s. Emitted output contains the Home columns, AI width rules,
+  weekly label/plot rules and Report width/type rules. Admin's native import,
+  CSS dependency and own-entry preload exclusion remain intact. The existing
+  large-chunk and static/dynamic import warnings remain; this is not a bundle
+  performance claim.
+- QA collected the exact bounded union once: **81 Chromium and 58 mobile-WebKit
+  definitions**, retaining the prior 67/44 plus Report's 14/14 without duplicates
+  or omissions. Graph checks are already included in Home. The Chromium set
+  contains 24 desktop definitions: three sizes × two themes × Home, AI choices,
+  AI proposal and Report. Wide viewport cases in a mobile project keep its mobile
+  user agent/DPR and do not establish desktop-Safari behavior.
+- Independent source composition inspection found no overlap blocker and
+  confirmed the reviewed owner hash union. Final receipt binds this checkpoint
+  separately; no rendered acceptance is inferred from the source review/build.
+
+Next: the sole publication owner publishes the exact reviewed tree, runs the
+bounded native selection through the authorized route, and inspects captures
+at 1280×720, 1440×900 and 1920×1080 in both themes. Diagnose every related failure
+or flaky result before merge. Normal viewport fit, enlarged text, actual loaded
+fonts and visual balance remain open until those results are available. Existing
+root/navigation guards and mobile interactions remain required acceptance.
