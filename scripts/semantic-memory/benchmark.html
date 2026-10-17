@@ -1,0 +1,31 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Synthetic semantic memory runtime measurement</title></head><body>
+<p>Synthetic, local-only semantic memory runtime measurement. No account or canonical memory data.</p>
+<script type="module">
+import { createSemanticMemoryEmbedder, clearSemanticMemoryModelCache } from '../../src/features/userPlanningContext/semanticMemory/runtime/index.ts';
+window.measure = async () => {
+  await clearSemanticMemoryModelCache();
+  const measurements = [];
+  const embedder = createSemanticMemoryEmbedder({ enabled: true, optedIn: true, timeoutMs: 240000, onMetrics: value => measurements.push(value) });
+  const started = performance.now();
+  try {
+    await embedder.embed(['朝は数学の復習を短い時間で進めたい'], 'passage');
+    const firstCallMs = performance.now() - started;
+    const steadyCallMs = [];
+    for (let i = 0; i < 5; i++) {
+      const before = performance.now();
+      await embedder.embed(['午前の勉強方法を相談したい'], 'query');
+      steadyCallMs.push(performance.now() - before);
+    }
+    const result = { status: 'ok', model: embedder.model, backend: embedder.backend, firstCallMs, steadyCallMs,
+      modelLoadMs: measurements[0].modelLoadMs, firstEmbedMs: measurements[0].embedMs,
+      steadyEmbedMs: measurements.slice(1).map(value => value.embedMs),
+      crossOriginIsolated, wasmThreads: 1, mainThreadHeapBytes: performance.memory?.usedJSHeapSize ?? null,
+      heapLimitation: 'Main page heap only; Worker/WASM/GPU allocation is not measured by performance.memory.',
+      webgpuExposed: Boolean(navigator.gpu) };
+    await embedder.dispose();
+    // Reload-from-cache/offline and erasure are actual browser checks, not model mocks.
+    return result;
+  } catch (error) { await embedder.dispose(); return { status: 'unavailable', reason: error.reason ?? 'unknown', elapsedMs: performance.now() - started }; }
+};
+window.runtimeReady = true;
+</script></body></html>

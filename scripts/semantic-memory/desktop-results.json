@@ -1,0 +1,72 @@
+{
+  "timestamp": "2026-10-17T10:25:17.844Z",
+  "platform": "darwin",
+  "arch": "arm64",
+  "transformers": "4.3.0",
+  "playwright": "1.64.0",
+  "realIPhoneSafari": "NOT RUN — no physical device available",
+  "browsers": [
+    {
+      "name": "chromium",
+      "status": "NOT RUN",
+      "stage": "browser_launch",
+      "reason": "sandbox MachPortRendezvousServer permission denied (1100)"
+    },
+    {
+      "name": "webkit",
+      "status": "NOT RUN",
+      "stage": "browser_launch",
+      "reason": "WebKit browser launch aborted (SIGABRT) before page execution"
+    }
+  ],
+  "bundle": [
+    {
+      "file": "benchmark-DLu_J9IP.js",
+      "bytes": 4138,
+      "gzipBytes": 2145
+    },
+    {
+      "file": "embedding.worker-TTm8MLSL.js",
+      "bytes": 5060,
+      "gzipBytes": 2395
+    },
+    {
+      "file": "ort-wasm-simd-threaded-4byDm7i3.wasm",
+      "bytes": 14264838,
+      "gzipBytes": 3704583
+    },
+    {
+      "file": "ort-wasm-simd-threaded-BQJNh0bu.mjs",
+      "bytes": 24381,
+      "gzipBytes": 9131
+    },
+    {
+      "file": "ort-wasm-simd-threaded.asyncify-CxOG5pUO.wasm",
+      "bytes": 26861777,
+      "gzipBytes": 6690348
+    },
+    {
+      "file": "ort-wasm-simd-threaded.asyncify-DXIbolS2.mjs",
+      "bytes": 53057,
+      "gzipBytes": 19418
+    },
+    {
+      "file": "transformers.web-mkS0LQH7.js",
+      "bytes": 592481,
+      "gzipBytes": 172443
+    }
+  ],
+  "initialGraph": {
+    "entry": "assets/benchmark-DLu_J9IP.js",
+    "files": [
+      "assets/benchmark-DLu_J9IP.js"
+    ]
+  },
+  "bundleTimestamp": "2026-10-17T10:27:30.908Z",
+  "workerGraph": {
+    "file": "embedding.worker-TTm8MLSL.js",
+    "dynamicImports": [
+      "./transformers.web-mkS0LQH7.js"
+    ]
+  }
+}
