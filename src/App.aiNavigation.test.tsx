@@ -7,6 +7,7 @@ import type { PlannerAppSnapshot } from './components/PlannerAppBootstrap';
 import { PrimaryBottomNav } from './components/PrimaryBottomNav';
 import { PrimaryAppHeader } from './components/PrimaryAppHeader';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
+import { MyPageDialog } from './components/MyPageDialog';
 import { createMemoryStorageHarness } from './features/weeklyPlanning/testUtils/weeklyPlanningApplicationTestHarness';
 import { createReadyPlannerDataAvailability } from './features/weeklyPlanning/testUtils/plannerDataAvailabilityTest';
 import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './features/weeklyPlanning/application/weeklyPlanningStableV5RuntimeSession';
@@ -38,10 +39,10 @@ const aiShellActive = () => renderer!.root.findAllByType('div')
 const application = () => renderer!.root.findByType(AiPlanningView).props.application;
 beforeEach(() => {
   const { storage } = createMemoryStorageHarness();
-  vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: storage, sessionStorage: storage,
+  vi.stubGlobal('window', Object.assign(new EventTarget(), { location: { pathname: '/' }, localStorage: storage, sessionStorage: storage,
     matchMedia: () => ({ matches: true }), requestAnimationFrame: () => 1, cancelAnimationFrame() {},
-    addEventListener() {}, removeEventListener() {}, setTimeout, clearTimeout, performance, scrollTo() {},
-    history: { state: {}, length: 1, pushState() {}, replaceState() {} } });
+    setTimeout, clearTimeout, performance, scrollTo() {},
+    history: { state: {}, length: 1, pushState() {}, replaceState() {} } }));
   vi.stubGlobal('HTMLElement', class {});
   vi.stubGlobal('document', Object.assign(new EventTarget(), {
     documentElement: { dataset: {}, style: {} }, body: { style: {} }, visibilityState: 'visible',
@@ -92,6 +93,51 @@ it('preserves the same AI composer and attachment across repeated Home/Schedule 
   expect(boundary.todos).not.toHaveBeenCalled();
   expect(boundary.materials).not.toHaveBeenCalled();
   expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+});
+
+it('uses the existing unsaved-chat warning condition for Admin entry and clears it after checkpoint recovery', async () => {
+  const confirm = vi.fn(() => false);
+  Object.assign(window, { confirm });
+  const warnsBeforeUnload = () => {
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  await act(async () => { renderer = create(<App state={state} />); });
+  await act(async () => { nav().onOpenAiPlanning(); });
+  await act(async () => { input().props.onChange({ target: { value: 'Retained composer' } }); });
+  await act(async () => { renderer!.root.findByType(PrimaryAppHeader).props.onOpenProfile(); });
+  const myPage = () => renderer!.root.findByType(MyPageDialog).props;
+  const chat = application().chat;
+  expect(chat.dirty).toBe(false);
+  expect(warnsBeforeUnload()).toBe(false);
+  expect(myPage().onBeforeOpenAdmin()).toBe(true);
+  expect(confirm).not.toHaveBeenCalled();
+
+  const write = window.localStorage.setItem.bind(window.localStorage);
+  const storageFailure = vi.spyOn(window.localStorage, 'setItem').mockImplementation((key, value) => {
+    if (key.includes('.chat.v1.')) throw new Error('injected checkpoint write failure');
+    write(key, value);
+  });
+  await act(async () => {
+    expect(chat.checkpoint()).toEqual({ status: 'blocked', reason: 'snapshot-write-failed' });
+  });
+  expect(chat.dirty).toBe(true);
+  expect(warnsBeforeUnload()).toBe(true);
+  expect(myPage().onBeforeOpenAdmin()).toBe(false);
+  expect(confirm).toHaveBeenCalledOnce();
+  expect(myPage().open).toBe(true);
+  expect(input().props.value).toBe('Retained composer');
+  confirm.mockReturnValueOnce(true);
+  expect(myPage().onBeforeOpenAdmin()).toBe(true);
+  expect(chat.dirty).toBe(true);
+
+  storageFailure.mockRestore();
+  await act(async () => { expect(chat.retry()).toEqual({ status: 'saved' }); });
+  expect(chat.dirty).toBe(false);
+  expect(warnsBeforeUnload()).toBe(false);
+  expect(myPage().onBeforeOpenAdmin()).toBe(true);
+  expect(confirm).toHaveBeenCalledTimes(2);
 });
 
 it('pauses the retained surface during settings and drops it for owner changes and sign-out', async () => {

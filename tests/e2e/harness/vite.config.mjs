@@ -27,6 +27,15 @@ const runtimeGatewayStubPlugin = {
     const normalizedImporter = importer
       ? path.normalize(stripViteQuery(importer))
       : '';
+    if (source === './LaplanceAppRoot' && normalizedImporter.endsWith(path.normalize('src/components/ApplicationRouteRoot.tsx'))) {
+      return path.resolve(harnessDir, 'admin-entry-root.jsx');
+    }
+    if (source === '../services/adminService' && normalizedImporter.endsWith(path.normalize('src/hooks/useAdminStatus.ts'))) {
+      return path.resolve(harnessDir, 'admin-entry-access.fixture.js');
+    }
+    if (source === '../services/adminObservabilityService' && normalizedImporter.includes(`${path.sep}src${path.sep}components${path.sep}Admin`)) {
+      return path.resolve(harnessDir, '../admin-overview-harness/adminObservabilityService.phase8.stub.js');
+    }
     if (['./firebaseClient', './aiConfig'].includes(source)
       && normalizedImporter.endsWith(path.normalize('src/lib/materialContentsPhoto.ts'))) {
       return path.resolve(harnessDir, 'material-contents-photo-auth.fixture.js');

@@ -17,7 +17,7 @@ let renderer: ReactTestRenderer;
 function Harness({ open = true }: { open?: boolean }) {
   state = useAuthSessionState({ showNotice: notice });
   return state.user ? <MyPageDialog open={open} user={state.user} onSaveProfile={state.saveUserProfile}
-    onSignOut={state.signOut} onClose={() => undefined} /> : null;
+    onSignOut={state.signOut} onClose={() => undefined} onBeforeOpenAdmin={() => true} /> : null;
 }
 const save = () => renderer.root.findAllByType('button').find(node => node.props.children === 'プロフィールを保存')!;
 const name = () => renderer.root.findByProps({ placeholder: '未入力ならメールアドレスを使います' });

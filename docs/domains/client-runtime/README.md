@@ -22,6 +22,7 @@ Supporting architecture:
 Execution tracking:
 
 - [Overlapping streak history confirmation](work/streak-inflight-history-handoff.md) — Issue #542; identical unsettled read sharing with preserved mutation/refresh boundaries and controlled SDK-call counts.
+- [Same-document administrator entry](work/admin-entry-navigation-handoff.md) — Issue #542; avoid the My Page entry reload while preserving the existing unsaved-chat leave warning and owner/access boundaries.
 
 - [Month view startup loading](work/month-startup-loading-handoff.md) — Issue #542; defer month code while retaining navigation and add requests during delivery.
 
