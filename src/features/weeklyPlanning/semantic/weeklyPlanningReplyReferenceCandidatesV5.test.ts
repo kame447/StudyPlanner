@@ -84,6 +84,15 @@ describe('bounded historical reply-reference candidates', () => {
       .some(item => item.targetFactId === 'work')).toBe(false);
   });
 
+  it('rejects an active fact imported from another conversation', () => {
+    expect(createReplyReferenceSnapshotV5({
+      graph: fixture(), messages, inputStateRevision: 7, conversationId: 'other-conversation',
+    })).toBeNull();
+    expect(createReplyReferenceSnapshotV5({
+      graph: fixture(), messages, inputStateRevision: 7, conversationId: 'c',
+    })).not.toBeNull();
+  });
+
   it('fails closed for missing ancestors and a domain wider than its explicit bound', () => {
     const graph = fixture();
     graph.components[1].parentComponentId = 'absent';
