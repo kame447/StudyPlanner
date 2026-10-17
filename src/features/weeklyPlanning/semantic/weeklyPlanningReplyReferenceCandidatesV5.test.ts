@@ -13,30 +13,30 @@ const source = (turnId: string) => ({
   conversationId: 'c', turnId, semanticLocalId: 'local', sourceText: 'ユーザーの入力', origin: 'user' as const,
 });
 const messages: WeeklyPlanningMessage[] = [
-  { id: 't1:user', role: 'user', content: '数学をやりたい', createdAt: '2026-10-17T00:00:00Z' },
-  { id: 't2:user', role: 'user', content: '青チャートの微積分を20問', createdAt: '2026-10-17T00:01:00Z' },
-  { id: 't3:assistant', role: 'assistant', content: '1問あたりの時間は？', createdAt: '2026-10-17T00:02:00Z' },
+  { id: 'c:turn:1:user', role: 'user', content: '数学をやりたい', createdAt: '2026-10-17T00:00:00Z' },
+  { id: 'c:turn:2:user', role: 'user', content: '青チャートの微積分を20問', createdAt: '2026-10-17T00:01:00Z' },
+  { id: 'c:turn:3:assistant', role: 'assistant', content: '1問あたりの時間は？', createdAt: '2026-10-17T00:02:00Z' },
 ];
 function fixture() {
   const graph = createEmptyWeeklyPlanningFactGraphV5();
   graph.revision = 3;
-  graph.tasks.push({ id: 'task', title: '数学', category: 'study', source: source('t1'), createdRevision: 1 });
+  graph.tasks.push({ id: 'task', title: '数学', category: 'study', source: source('c:request:1'), createdRevision: 1 });
   graph.components.push(
     { id: 'material', taskId: 'task', parentComponentId: null, label: '青チャート',
-      role: 'material', source: source('t2'), createdRevision: 2 },
+      role: 'material', source: source('c:request:2'), createdRevision: 2 },
     { id: 'topic', taskId: 'task', parentComponentId: 'material', label: '微積分',
-      role: 'topic', source: source('t2'), createdRevision: 2 },
+      role: 'topic', source: source('c:request:2'), createdRevision: 2 },
   );
   graph.workloads.push({ id: 'work', taskId: 'task', componentId: 'topic', quantityRole: 'target',
     amount: 20, unitCode: 'problem', unitLabel: '問', rangeStart: null, rangeEnd: null,
-    perOccurrence: false, periodExpression: null, source: source('t2'), createdRevision: 3 });
+    perOccurrence: false, periodExpression: null, source: source('c:request:2'), createdRevision: 3 });
   return graph;
 }
 function question(): PlanningIntakeState {
   return { lastQuestionContext: {
     kind: 'missing', targetSlot: 'stable_v5:missing_effort_estimate', topicId: 'work',
     presentation: {
-      version: 1, turnId: 't3', assistantMessageId: 't3:assistant',
+      version: 1, turnId: 'c:turn:3', assistantMessageId: 'c:turn:3:assistant',
       planningStateRevision: 7, graphRevision: 3,
       content: { responseSource: 'deterministic_fallback', currentTurnGrounding: 'none',
         selfRepairNotice: false, groundingContext: { proposed: 0, contested: 0 },
@@ -46,13 +46,13 @@ function question(): PlanningIntakeState {
 }
 describe('bounded historical reply-reference candidates', () => {
   it('binds a reply to a real message, full task ancestry and typed slot without extracting values', () => {
-    const input = { graph: fixture(), messages, previousState: question(), inputStateRevision: 7 };
+    const input = { graph: fixture(), messages, previousState: question(), inputStateRevision: 7, conversationId: 'c' };
     const snapshot = createReplyReferenceSnapshotV5(input)!;
-    const amount = snapshot.candidates.find(item => item.sourceMessageId === 't2:user'
+    const amount = snapshot.candidates.find(item => item.sourceMessageId === 'c:turn:2:user'
       && item.targetFactId === 'work' && item.slot === 'quantity')!;
     expect(amount).toMatchObject({ targetKind: 'workload', taskFactId: 'task',
       componentPath: ['青チャート', '微積分'], operation: 'set_value' });
-    expect(snapshot.candidates.some(item => item.sourceMessageId === 't3:assistant'
+    expect(snapshot.candidates.some(item => item.sourceMessageId === 'c:turn:3:assistant'
       && item.targetFactId === 'work' && item.slot === 'duration_per_unit')).toBe(true);
     expect(resolveReplyReferenceCandidateV5(snapshot, amount.key, input)).toEqual(amount);
     expect(resolveReplyReferenceCandidateV5(snapshot, 'missing', input)).toBeNull();
@@ -60,7 +60,7 @@ describe('bounded historical reply-reference candidates', () => {
 
   it('never turns a changed graph, stale question or old message into an authoritative anchor', () => {
     const graph = fixture();
-    const current = { graph, messages, previousState: question(), inputStateRevision: 7 };
+    const current = { graph, messages, previousState: question(), inputStateRevision: 7, conversationId: 'c' };
     const snapshot = createReplyReferenceSnapshotV5(current)!;
     const updated = structuredClone(graph);
     updated.revision += 1;
@@ -70,7 +70,7 @@ describe('bounded historical reply-reference candidates', () => {
     const stale = createReplyReferenceSnapshotV5({
       ...current, inputStateRevision: 8,
     })!;
-    expect(stale.candidates.every(candidate => candidate.sourceMessageId !== 't3:assistant')).toBe(true);
+    expect(stale.candidates.every(candidate => candidate.sourceMessageId !== 'c:turn:3:assistant')).toBe(true);
     const removed = structuredClone(graph);
     removed.factLifecycles = [
       ...[...removed.tasks, ...removed.components].map(fact => ({
@@ -96,12 +96,12 @@ describe('bounded historical reply-reference candidates', () => {
   it('fails closed for missing ancestors and a domain wider than its explicit bound', () => {
     const graph = fixture();
     graph.components[1].parentComponentId = 'absent';
-    expect(createReplyReferenceSnapshotV5({ graph, messages, inputStateRevision: 7 })).toBeNull();
+    expect(createReplyReferenceSnapshotV5({ graph, messages, inputStateRevision: 7, conversationId: 'c' })).toBeNull();
     const crowded = fixture();
     for (let i = 0; i < 20; i += 1) {
       crowded.workloads.push({ ...crowded.workloads[0], id: 'work-' + i });
     }
-    expect(createReplyReferenceSnapshotV5({ graph: crowded, messages, inputStateRevision: 7 })).toBeNull();
+    expect(createReplyReferenceSnapshotV5({ graph: crowded, messages, inputStateRevision: 7, conversationId: 'c' })).toBeNull();
   });
 
   it('copies only independently validated source offsets without parsing Japanese meaning', () => {
@@ -115,7 +115,7 @@ describe('bounded historical reply-reference candidates', () => {
 });
 
 describe('calibrated read-only Jev reference choice', () => {
-  const sourceInput = () => ({ graph: fixture(), messages, previousState: question(), inputStateRevision: 7 });
+  const sourceInput = () => ({ graph: fixture(), messages, previousState: question(), inputStateRevision: 7, conversationId: 'c' });
   function calibration(): ReplyReferenceChoiceCalibrationV5 {
     const count = createReplyReferenceSnapshotV5(sourceInput())!.candidates.length + 1;
     return { maximumChildrenPerMenu: 64,
@@ -139,7 +139,7 @@ describe('calibrated read-only Jev reference choice', () => {
     const input = sourceInput();
     const before = structuredClone(input.graph);
     const chosen = createReplyReferenceSnapshotV5(input)!.candidates.find(
-      item => item.sourceMessageId === 't3:assistant' && item.slot === 'duration_per_unit')!;
+      item => item.sourceMessageId === 'c:turn:3:assistant' && item.slot === 'duration_per_unit')!;
     const selected = await selectReplyReferenceHintV5({
       source: input, readCurrent: () => input, userText: '1問3分くらい',
       ownerId: 'owner', conversationId: 'c', requestId: 'next',
