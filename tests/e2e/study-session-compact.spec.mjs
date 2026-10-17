@@ -184,6 +184,10 @@ async function recordDesktopTimerGeometry(page, dialog, testInfo, name) {
   await page.evaluate(() => document.fonts.ready);
   const clock = dialog.locator('[data-study-session-elapsed]');
   await clock.scrollIntoViewIfNeeded();
+  // Pause now settles the ring through WAAPI. Measure the same resting state
+  // captured below, without disabling motion or advancing the timer clock.
+  await expect.poll(() => clock.evaluate(element => element.closest('.study-session-timer-ring')
+    .getAnimations({ subtree: true }).length)).toBe(0);
   const geometry = await clock.evaluate(element => {
     const rect = node => {
       const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
@@ -208,6 +212,7 @@ async function recordDesktopTimerGeometry(page, dialog, testInfo, name) {
       appearance: document.documentElement.dataset.appearance,
       theme: document.documentElement.dataset.theme,
       mode: ring.dataset.studyMode,
+      motionCount: ring.getAnimations({ subtree: true }).length,
       elapsed: element.textContent,
       font: { family: style.fontFamily, size: parseFloat(style.fontSize), weight: style.fontWeight,
         lineHeight: style.lineHeight, letterSpacing: style.letterSpacing,
@@ -239,6 +244,7 @@ async function recordDesktopTimerGeometry(page, dialog, testInfo, name) {
 function expectDesktopTimerContainment(geometry) {
   expect.soft(geometry.font.loaded).toBe(true);
   expect.soft(geometry.mode).toBe('normal');
+  expect.soft(geometry.motionCount).toBe(0);
   // This plain-text hh:mm:ss clock must stay on one line, not wrap to fit.
   expect.soft(geometry.textRects).toHaveLength(1);
   expect.soft(geometry.inner.width).toBeGreaterThan(0);

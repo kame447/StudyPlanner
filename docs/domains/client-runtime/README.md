@@ -21,7 +21,7 @@ Supporting architecture:
 
 Execution tracking:
 
-- [Desktop ordinary-timer intrinsic face](work/desktop-timer-intrinsic-face-handoff.md) — enlarged desktop clock and planned remaining badge verified in bounded native cases; timer-only release preserves current main.
+- [Desktop ordinary-timer intrinsic face](work/desktop-timer-intrinsic-face-handoff.md) — enlarged clock and remaining-badge containment; latest-main motion integration awaits bounded native acceptance.
 
 - [AI planning desktop layout](work/ai-planning-desktop-layout-handoff.md) — responsive proposal/starter widths and readable desktop controls; six fixture captures await native acceptance.
 

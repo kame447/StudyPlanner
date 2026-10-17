@@ -1,9 +1,47 @@
 # Desktop ordinary-timer intrinsic face
 
-Status: timer-only release candidate on current main. The narrow timer correction
-has passed bounded native checks and image review. Final-base app type/build
-checks passed; composition review and navigation-specific verification remain
-release gates.
+Status: timer-only PR #754 is being integrated with main `393b7aa4` after its
+Study/Report motion merge. The earlier bounded native results remain historical;
+independent composition review found no source blocker. Fresh final-base native
+acceptance remains pending; the material-detail release is separate and unaccepted.
+
+## Recovered integration checkpoint, 2026-10-17 21:06 UTC
+
+- The execution server disconnected at about 20:17 UTC. On its return at
+  21:02 UTC, the prior `laplans-*` working trees and local evidence files were
+  absent. This is an evidence-loss incident; missing review originals have not
+  been recreated or claimed as recovered.
+- A single fresh official checkout recovered published PR #754 source
+  `ebc34e4f8d9a6737d1dac587e8688b88162f48ec`, tree
+  `3abf01df53d10ad7512d0e87d0a9f53749a68987`. Its five changed paths were
+  byte-identical on recovery. The merge with official main
+  `393b7aa458a69463367f937a7e89c8561e61a380` (tree `9aa4edd5`) had no conflict.
+- Main now calls ring settle on Start/Pause/Resume and content step motion on
+  timer/settings/record changes. Timer CSS and the existing effect runner are
+  unchanged, but these direct component changes invalidate unconditional reuse
+  of the old final-base acceptance. All 30 new-main paths are preserved.
+- The desktop geometry helper now waits for the ring's real animation to end
+  before measurement and records zero active ring animations. This keeps its
+  static-circle proof separate from the existing motion tests; it does not
+  disable production motion or change the clock, timeouts, actions or bounds.
+- A fresh lockfile install, four related test files (83 tests), non-incremental
+  app typecheck, and production build passed on the recovered integration.
+  Vite completed in 5.34s; 2,105 recorded build inputs were unchanged throughout.
+  No full suite or browser was run locally.
+- QA recovered the original native archives by verified GitHub artifact digest:
+  six first-attempt passes belong to `ebc34e4f`; 49 belong to `d8ad9133`.
+  They are historical results, not new-main executions. The new bounded plan is
+  15 fresh cases: seven desktop geometry, four timer-motion, two No14 save/edit/
+  reload, and two enlarged-settings focus/scroll cases. The other 46 identities
+  are listed as historical carryover in the final selection receipt. QA collected
+  the exact 15 definitions once (13 Chromium + 2 mobile WebKit), bound 1,990
+  executable inputs, and found no duplicate identities. The seven desktop
+  geometry cases cover standard/pixel appearance in light, not two themes.
+- Independent review bound the five changed paths, all 30 external-main paths,
+  2,895 protected main blobs and the build evidence with no source blocker.
+- Next: publish the exact reviewed candidate through the sole authorized writer,
+  run the bounded native selection and inspect new timer images before merge.
+  Failures return to diagnosis; material work is excluded.
 
 ## Finding and correction
 
@@ -20,7 +58,7 @@ calculation, circle styling, and meaningful vertical scrolling are retained.
 Planned and unplanned ordinary clocks share this selector. The ≤800px shallow
 layout, narrower screens and Pomodoro rules are unchanged.
 
-## Timer-only composition
+## Previous published timer-only composition (historical)
 
 - Branch: `fix/desktop-timer-release`.
 - Official base: `69991c17a25d12c80c736f9723cac6b62d0bc43e`, tree
@@ -63,13 +101,15 @@ The artifact's source record and input hashes bind the application separately.
 
 The dedicated visual receipt is `native-visual-acceptance.json`, SHA256
 `33e5db75dd4d69e92ab0eca2256dd2788e1b3fc986bc898ed8a3db728b116eb9`, in the
-retained timer native-release evidence. Original PNG/metric hashes are included.
+former timer native-release evidence. That local receipt is now missing; its
+original hash is historical. Public native archives and PNG/metrics have been
+recovered and independently rebound, without claiming that receipt was restored.
 This is observed raster acceptance for the recorded cases, not a universal
 mathematical circular-ink guarantee. Vertical scrolling is permitted; initial
 single-screen fit, dark tall timers, browser zoom, three-digit hours and tall
 Pomodoro are not newly certified.
 
-## Current-main boundary and remaining gates
+## Previous #702-only main boundary (historical)
 
 Main now includes #702 navigation motion and newer weekly-planning changes.
 The current timer CSS, component, typography, font, native spec and configuration
