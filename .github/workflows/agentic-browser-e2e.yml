@@ -2,9 +2,11 @@ name: Agentic Browser E2E
 
 on:
   pull_request:
-    paths:
-      - 'tests/agent-e2e/**'
-      - '.github/workflows/agentic-browser-e2e.yml'
+    branches:
+      - main
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       run_agent:
