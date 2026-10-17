@@ -26,6 +26,16 @@ export interface CandidateChoiceWireRequest {
   };
 }
 export interface ChoiceCandidate { readonly id: string; readonly label: string; readonly tuple: ChoiceTuple }
+export type CandidateChoiceAcceptanceScope = 'pending_question_answer' | 'explicit_reference';
+/** Mechanical destination membership only; semantic sufficiency still requires both calibrated heads. */
+export function candidateChoiceAcceptanceScope(request: CandidateChoiceWireRequest, optionId: string): CandidateChoiceAcceptanceScope {
+  const pending = request.context.scope.pendingQuestion;
+  const option = request.menu.options.find(item => item.id === optionId);
+  const keys = typeof pending === 'object' && pending !== null && !Array.isArray(pending)
+    ? (pending as ChoiceTuple).candidateKeys : null;
+  return request.context.question.code === 'reply_reference_target' && option?.kind === 'leaf'
+    && Array.isArray(keys) && keys.includes(option.candidate.id) ? 'pending_question_answer' : 'explicit_reference';
+}
 export interface CandidateChoiceDecisionContext {
   readonly purpose: 'candidate_choice';
   readonly request: CandidateChoiceWireRequest;
@@ -43,10 +53,13 @@ export interface CandidateChoiceEvaluation {
   readonly probabilities: readonly { readonly optionId: string; readonly probability: number }[];
   /** Raw auxiliary scores; only an explicitly calibrated application policy can interpret them. */
   // For reply_reference_target the baseline is one destination plus its open
-  // value interpreted in the machine-bound pending question. These scores mean
+  // value answering the machine-bound pending question. Without that referent,
+  // explicit historical references require a separate bound evaluation. Scores mean
   // residual conditions/meaning outside that answer, not the value being supplied.
   readonly conditionChange: number;
   readonly independentMeaning: number;
+  /** Reply-reference only; derived by code from selected key membership, never a provider head. */
+  readonly acceptanceScope?: CandidateChoiceAcceptanceScope;
 }
 export type CandidateChoiceResult = CandidateChoiceEvaluation | { readonly status: 'unavailable'; readonly reason: string };
 
@@ -105,10 +118,12 @@ export function isCandidateChoiceDecisionContext(v: unknown): v is CandidateChoi
 }
 
 export function isCandidateChoiceEvaluation(v: unknown, r: CandidateChoiceWireRequest): v is CandidateChoiceEvaluation {
-  if (!record(v) || !exact(v, ['status', 'catalogVersion', 'requestId', 'selectionEpoch', 'candidateSetHash', 'nodeId', 'optionId', 'probabilities', 'conditionChange', 'independentMeaning'])
+  if (!record(v) || !exact(v, ['status', 'catalogVersion', 'requestId', 'selectionEpoch', 'candidateSetHash', 'nodeId', 'optionId', 'probabilities', 'conditionChange', 'independentMeaning', ...(v.acceptanceScope === undefined ? [] : ['acceptanceScope'])])
     || v.status !== 'evaluated' || v.catalogVersion !== CANDIDATE_CHOICE_CATALOG_VERSION
     || v.requestId !== r.requestId || v.selectionEpoch !== r.selectionEpoch || v.candidateSetHash !== r.candidateSetHash || v.nodeId !== r.menu.nodeId
     || !probability(v.conditionChange) || !probability(v.independentMeaning)
+    || (v.acceptanceScope !== undefined && (r.context.question.code !== 'reply_reference_target'
+      || typeof v.optionId !== 'string' || v.acceptanceScope !== candidateChoiceAcceptanceScope(r, v.optionId)))
     || !Array.isArray(v.probabilities) || v.probabilities.length !== r.menu.options.length) return false;
   const ids = new Set<string>(); let sum = 0; let selected = -1; let maximum = -1;
   for (const p of v.probabilities) {

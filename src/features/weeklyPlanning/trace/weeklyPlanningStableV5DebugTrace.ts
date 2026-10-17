@@ -425,6 +425,16 @@ function projectStageData(stage: string, value: unknown): unknown {
         model: stringValue(data.model),
         configError: stringValue(data.configError),
       };
+    case 'reply_reference_candidates': {
+      // This stage is a count-only census. Never retain arbitrary reason text,
+      // candidate labels, utterances, graph IDs or any unexpected payload field.
+      const reasons = ['eligible', 'pruned', 'invalid_source', 'missing_compilation', 'stale_compilation',
+        'no_open_slots', 'no_anchored_candidates', 'pending_over_limit', 'group_menu', 'invalid_request'];
+      const count = (key: string) => Number.isSafeInteger(data[key]) && Number(data[key]) >= 0 ? data[key] : null;
+      return { reason: typeof data.reason === 'string' && reasons.includes(data.reason) ? data.reason : 'invalid_source',
+        openSlotCount: count('openSlotCount'), excludedAncestorCount: count('excludedAncestorCount'),
+        candidateCountBeforePrune: count('candidateCountBeforePrune'), candidateCount: count('candidateCount'), prunedCount: count('prunedCount') };
+    }
     case 'runtime_session_context_prepared':
       return {
         graphRevision: numberValue(data.graphRevision),
