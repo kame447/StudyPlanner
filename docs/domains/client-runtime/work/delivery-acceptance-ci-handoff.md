@@ -51,3 +51,24 @@ zero additional requests on cached reentry and return. All Home, retained data,
 no-reload, no-retry-button and document assertions remain. The pending-failure
 case is unchanged. No runtime code changes. Syntax and exact browser test
 collection are checked locally; native execution remains the PR CI gate.
+
+## Workspace Home readiness selector follow-up
+
+Correction 2 native Chromium reached 140 passes, with all six remaining
+workspace cases stopping at initial Home readiness: the styling class
+`.home-dashboard-default` belongs to both the persistent header and the named
+Home section. Both matches are visible and Playwright correctly rejected the
+ambiguous locator. The readiness check now selects the accessible Home region
+by its exact name. It does not use first(), suppress strictness, or omit the
+populated-Home prerequisite. The same two definitions generate all six cases.
+
+Production navigation failure, ambiguous harness selection, and transient
+rendering were considered. The native strict-mode diagnostic names both source
+elements, directly supporting harness selection. All delivery, retained-data,
+no-new-request, history and document assertions remain unchanged. Pending
+transport count 1 remains strict: previous native Timetable passed that path,
+and correction 2 never reached it. A held preload can be shared by foreground
+import; the earlier immediate-abort evidence alone does not establish that a
+held preload must issue two transports. Diagnose a new native violation before
+changing this contract. Syntax/diff and test collection are local checks; the
+next exact-head native run remains required.

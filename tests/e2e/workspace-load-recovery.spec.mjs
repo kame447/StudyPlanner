@@ -45,7 +45,7 @@ for (const { view, message } of entries) {
     page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents++; });
     await page.route(`**/${view}View-*.js`, route => { requests++; failedUrls.add(route.request().url()); return route.abort('failed'); });
     await page.goto('/');
-    await expect(page.locator('.home-dashboard-default')).toBeVisible();
+    await expect(page.getByRole('region', { name: 'ホーム', exact: true })).toBeVisible();
     const before = await data(page);
     expect(requests).toBe(0);
     let initialRequests;
@@ -81,7 +81,7 @@ for (const { view, message } of entries) {
     await page.route(`**/${view}View-*.js`, async route => { requests++; await pending; await route.abort('failed'); finish(); });
     try {
       await page.goto('/');
-      await expect(page.locator('.home-dashboard-default')).toBeVisible();
+      await expect(page.getByRole('region', { name: 'ホーム', exact: true })).toBeVisible();
       const before = await data(page);
       await open(page, view);
       await expect.poll(() => requests).toBe(1);
