@@ -57,6 +57,32 @@ function play(element: Element | null | undefined, spec: EffectSpec, level: Moti
   return animation;
 }
 
+/**
+ * Measures `element` where it rests once its running effect ends. Every
+ * effect here ends at the element's own place, so the end state is its layout
+ * position. The effect is parked at its end only for the measurement and then
+ * resumes untouched, so a caller can find an item's destination while it is
+ * still visibly moving.
+ */
+export function measureAtRest<T>(element: Element, measure: () => T): T {
+  const animation = running.get(element);
+  const end = animation?.effect?.getComputedTiming?.().endTime;
+  // Only an effect that is still moving needs parking. A finished one
+  // already draws the rest position, and resuming it would restart it.
+  const state = animation?.playState;
+  if (!animation || (state !== 'running' && state !== 'paused') || typeof end !== 'number'
+    || typeof animation.pause !== 'function') return measure();
+  const time = animation.currentTime;
+  animation.pause();
+  animation.currentTime = end;
+  try {
+    return measure();
+  } finally {
+    animation.currentTime = time;
+    if (state === 'running') animation.play();
+  }
+}
+
 const ENTRANCE: EffectSpec = {
   standard: {
     frames: [
@@ -131,5 +157,22 @@ export function playIndicatorTravel(element: Element | null | undefined, fromOff
       easing: EMPHASIZED,
     },
     reduced: [{ opacity: 0.4 }, { opacity: 1 }],
+  });
+}
+
+/**
+ * An unchanged item was pushed to a new place by a neighbouring change (a
+ * removal closing up, an insertion making room). It glides from where it was
+ * drawn (`x`, `y` px relative to its new place). Below standard it simply
+ * appears in its new place: a fade would suggest the item itself changed.
+ */
+export function playShift(element: Element | null | undefined, x: number, y: number) {
+  return play(element, {
+    standard: {
+      frames: [{ translate: `${x}px ${y}px` }, { translate: '0 0' }],
+      duration: MOTION_DURATION_MS.base,
+      easing: EMPHASIZED,
+    },
+    reduced: null,
   });
 }
