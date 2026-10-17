@@ -76,11 +76,14 @@ export function createReplyReferenceSnapshotV5(input: {
   messages: readonly WeeklyPlanningMessage[];
   previousState?: PlanningIntakeState;
   inputStateRevision?: number;
+  conversationId?: string;
 }): ReplyReferenceSnapshotV5 | null {
   if (!Number.isSafeInteger(input.graph.revision) || input.graph.revision < 0
     || typeof input.inputStateRevision !== 'number' || !Number.isSafeInteger(input.inputStateRevision) || input.inputStateRevision < 0
     || new Set(input.messages.map(message => message.id)).size !== input.messages.length) return null;
   const graph = createWeeklyPlanningActiveSchedulerGraphViewV5(input.graph);
+  if (input.conversationId && [...graph.tasks, ...graph.components, ...graph.workloads]
+    .some(fact => fact.source.conversationId !== input.conversationId)) return null;
   const selectedMessages = input.messages.filter(message => message.role === 'user')
     .slice(-REPLY_REFERENCE_SOURCE_TURN_LIMIT_V5);
   const turnMessages = new Map(selectedMessages
