@@ -1,5 +1,5 @@
 # Local template: bind immutable reviewed application source before publication.
-name: Material Readability Correction Acceptance
+name: Material Detail Scale Acceptance
 permissions:
   contents: read
 concurrency:
@@ -22,14 +22,14 @@ jobs:
           browsers: webkit
     env:
       CI: 'true'
-      SOURCE_SHA: cf4512afd4481d48ba177d8814c86b637406b994
-      SOURCE_TREE: 1b43714e9c2b7795e2d4d2b72f6d890152e4f9dd
+      SOURCE_SHA: 0ce2b3c9ef0913c5f62fb5a229236b4db0b62e90
+      SOURCE_TREE: 0e6524bf6099c512fcedb0368a54031a8da63469
       PROOF_WORKFLOW_SHA: ${{ github.sha }}
       PROOF_PROJECT: ${{ matrix.project }}
     steps:
     - uses: actions/checkout@v7
       with:
-        ref: cf4512afd4481d48ba177d8814c86b637406b994
+        ref: 0ce2b3c9ef0913c5f62fb5a229236b4db0b62e90
         fetch-depth: 1
         persist-credentials: false
     - name: Verify immutable application source
@@ -76,19 +76,15 @@ jobs:
       shell: bash
       run: "cat > artifacts/desktop-four-proof/run-selected.mjs <<'NODE'\nimport assert from 'node:assert/strict';\n\
         import crypto from 'node:crypto';\nimport fs from 'node:fs';\nimport { spawnSync } from 'node:child_process';\n\
-        const selected = {\n  \"chromium\": {\n    \"count\": 5,\n    \"sha256\": \"299fae72d2415716ed128a46e6fdf83f964ff7671ce46ffa41554ee86999f980\"\
+        const selected = {\n  \"chromium\": {\n    \"count\": 8,\n    \"sha256\": \"f0e6f6eb6744f5ff70e25ff8e07c85f470d732cbbb5082e8a1e5b193327d19f1\"\
         ,\n    \"projects\": [\n      \"chromium\"\n    ],\n    \"args\": [\n      \"test\",\n      \"--config=tests/e2e/playwright.config.mjs\"\
-        ,\n      \"--project=chromium\",\n      \"(^|/)(?:bookshelf-surface\\\\.spec\\\\.mjs|bookshelf-material-name-order\\\
-        \\.spec\\\\.mjs)$\",\n      \"--grep\",\n      \"(?:keeps full text and long editor actions reachable at\
-        \ 100% and 200%|allows 200% text and dark mode without losing controls or exposing the background)$\"\n\
-        \    ]\n  },\n  \"cross\": {\n    \"count\": 9,\n    \"sha256\": \"083dbb7d8a5df1e961011491db9326050bc9ca86753159dd1720bacaea156f09\"\
-        ,\n    \"projects\": [\n      \"webkit-desktop\",\n      \"webkit-mobile\"\n    ],\n    \"args\": [\n  \
-        \    \"test\",\n      \"--config=tests/e2e/playwright.cross-browser.config.mjs\",\n      \"--project=webkit-desktop\"\
-        ,\n      \"--project=webkit-mobile\",\n      \"(^|/)(?:bookshelf-surface\\\\.spec\\\\.mjs|bookshelf-material-name-order\\\
-        \\.spec\\\\.mjs)$\",\n      \"--grep\",\n      \"(?:(?:keeps full text and long editor actions reachable\
-        \ at 100% and 200%|allows 200% text and dark mode without losing controls or exposing the background)$|(?:^|\
-        \ )webkit-mobile .*retains the approved frame and all fields at 100% and 200% text$)\"\n    ]\n  }\n};\n\
-        const mode = process.argv[2];\nconst expected = selected[mode];\nassert.ok(expected, 'Unknown proof selection');\n\
+        ,\n      \"--project=chromium\",\n      \"(^|/)bookshelf-surface\\\\.spec\\\\.mjs$\",\n      \"--grep\"\
+        ,\n      \"keeps full text and long editor actions reachable at (?:100|200)%$\"\n    ]\n  },\n  \"cross\"\
+        : {\n    \"count\": 8,\n    \"sha256\": \"73b21b24e30a1d6015bfa5798e885682b8e6793987f82abd0869e41ffa374dcd\"\
+        ,\n    \"projects\": [\n      \"webkit-mobile\"\n    ],\n    \"args\": [\n      \"test\",\n      \"--config=tests/e2e/playwright.cross-browser.config.mjs\"\
+        ,\n      \"--project=webkit-mobile\",\n      \"(^|/)bookshelf-surface\\\\.spec\\\\.mjs$\",\n      \"--grep\"\
+        ,\n      \"keeps full text and long editor actions reachable at (?:100|200)%$\"\n    ]\n  }\n};\nconst mode\
+        \ = process.argv[2];\nconst expected = selected[mode];\nassert.ok(expected, 'Unknown proof selection');\n\
         const prefix = `artifacts/desktop-four-proof/${mode}`;\nfs.writeFileSync(`${prefix}-arguments.json`, JSON.stringify(expected.args,\
         \ null, 2));\nconst collectionProcess = spawnSync('./tests/e2e/node_modules/.bin/playwright', [...expected.args,\
         \ '--list', '--reporter=json'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });\nfs.writeFileSync(`${prefix}-collection.json`,\
@@ -111,7 +107,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: material-correction-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt
+        name: material-detail-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt
           }}
         path: 'artifacts/desktop-four-proof/
 
