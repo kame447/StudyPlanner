@@ -7,6 +7,11 @@ import { resolvePreferredLanIp } from './scripts/dev-network-config.mjs';
 
 const workspaceDir = path.dirname(fileURLToPath(import.meta.url));
 const certDirectory = path.join(workspaceDir, '.cert');
+const loopbackHost = '127.0.0.1';
+
+function resolveDevelopmentHost() {
+  return process.env.STUDYPLANNER_DEV_HOST?.trim() || loopbackHost;
+}
 
 function resolveLocalHttpsOptions() {
   const certFilePath =
@@ -28,8 +33,10 @@ function resolveLocalHttpsOptions() {
 
 function preferredNetworkUrlPlugin() {
   const preferredLanIp = resolvePreferredLanIp();
-  const printPreferredUrl = (protocol, port) => {
-    if (!preferredLanIp || !port) {
+  const printPreferredUrl = (protocol, port, host) => {
+    const isLoopbackHost =
+      !host || host === loopbackHost || host === 'localhost' || host === '::1';
+    if (isLoopbackHost || !preferredLanIp || !port) {
       return;
     }
 
@@ -41,13 +48,17 @@ function preferredNetworkUrlPlugin() {
     configureServer(server) {
       server.httpServer?.once('listening', () => {
         const protocol = server.config.server.https ? 'https' : 'http';
-        printPreferredUrl(protocol, server.config.server.port);
+        printPreferredUrl(protocol, server.config.server.port, server.config.server.host);
       });
     },
     configurePreviewServer(server) {
       server.httpServer?.once('listening', () => {
         const protocol = server.config.preview.https ? 'https' : 'http';
-        printPreferredUrl(protocol, server.config.preview.port ?? 4173);
+        printPreferredUrl(
+          protocol,
+          server.config.preview.port ?? 4173,
+          server.config.preview.host,
+        );
       });
     },
   };
@@ -104,11 +115,36 @@ export default defineConfig({
     ],
   },
   server: {
-    host: '0.0.0.0',
+    host: resolveDevelopmentHost(),
+    fs: {
+      deny: [
+        // Keep Vite's default deny entries: env files, private keys/certificates, and Git internals.
+        '.env',
+        '.env.*',
+        '*.{crt,pem}',
+        '**/.git/**',
+        // Worker secrets, generated local HTTPS keys, and Wrangler's local state.
+        '.dev.vars',
+        '.dev.vars.*',
+        '**/.dev.vars',
+        '**/.dev.vars.*',
+        '**/.cert/**',
+        '**/.wrangler/**',
+        // Local tool settings, caches, test reports, and generated artifacts are not app assets.
+        '**/.claude/settings.local.json',
+        '**/.cache/**',
+        '**/.npm-cache/**',
+        '**/.stryker-tmp/**',
+        '**/reports/stryker/**',
+        '**/artifacts/**',
+        '**/playwright-report/**',
+        '**/test-results/**',
+      ],
+    },
     https: resolveLocalHttpsOptions(),
   },
   preview: {
-    host: '0.0.0.0',
+    host: resolveDevelopmentHost(),
     https: resolveLocalHttpsOptions(),
   },
 });
