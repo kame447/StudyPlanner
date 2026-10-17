@@ -133,7 +133,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurnCore(
   if (ports.resolveReplyReferenceHint && !input.supplementalContext?.trim()
     && !input.selectedStarterTarget && input.inputStateRevision !== undefined) {
     const readReferenceSource = () => ({
-      graph: runtimeSession.graph, messages: input.messages,
+      graph: runtimeSession.graph, messages: input.messages, conversationId: input.conversationId,
       previousState: input.previousState, inputStateRevision: input.inputStateRevision,
     });
     try {
