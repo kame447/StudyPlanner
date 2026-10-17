@@ -51,25 +51,28 @@ function ConsentedLaplanceApp({
   onStartupPending: () => void;
 }) {
   const personalization = useWeeklyPlanningPersonalizationProfile(userId);
+  // A write retains this owner's confirmed preference. Keep its planner and
+  // drafts mounted; only an unread/missing preference belongs to startup.
+  const initialPreferenceLoading = personalization.loading && !personalization.profile?.weekStartsOn;
   const finishProfileObservation = useStartupProfileObservation({
     ownerId: userId, scope: startupScope,
-    preferenceStatus: personalization.error ? 'blocked' : personalization.loading ? 'loading' : personalization.profile?.weekStartsOn ? 'ready' : 'blocked',
+    preferenceStatus: personalization.error ? 'blocked' : initialPreferenceLoading ? 'loading' : personalization.profile?.weekStartsOn ? 'ready' : 'blocked',
   });
   const finishStartup = useCallback(() => {
     finishProfileObservation();
     onStartupReady();
   }, [finishProfileObservation, onStartupReady]);
-  useStartupWait('preferences', personalization.loading, Boolean(personalization.error));
+  useStartupWait('preferences', initialPreferenceLoading, Boolean(personalization.error));
 
   useLayoutEffect(() => {
-    if (personalization.loading) {
+    if (initialPreferenceLoading) {
       onStartupPending();
     } else if (!personalization.profile?.weekStartsOn) {
       finishStartup();
     }
-  }, [finishStartup, onStartupPending, personalization.loading, personalization.profile?.weekStartsOn]);
+  }, [finishStartup, onStartupPending, initialPreferenceLoading, personalization.profile?.weekStartsOn]);
 
-  if (personalization.loading) {
+  if (initialPreferenceLoading) {
     return null;
   }
 
@@ -95,6 +98,8 @@ function ConsentedLaplanceApp({
           <UserPlanningContextProvider ownerId={userId}>
             <WeeklyPlanningPersonalizationProvider
               profile={profile}
+              saving={personalization.loading}
+              error={personalization.error}
               setWeekStartsOn={personalization.setWeekStartsOn}
               resetProfile={personalization.resetProfile}
             >

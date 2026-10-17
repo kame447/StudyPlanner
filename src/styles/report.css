@@ -638,6 +638,19 @@
 .learning-report-breakdown-copy strong,
 .learning-report-breakdown-copy span { white-space: normal; overflow-wrap: anywhere; }
 
+/* Small emphasized text needs the readable text token on dark surfaces.
+   Keep accent colors for the bars and for the existing light-theme text. */
+:root[data-theme='dark'] .learning-report-chart-value,
+:root[data-theme='dark'] .learning-report-details > summary,
+:root[data-theme='dark'] .learning-report-insight strong {
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .learning-report-scope-tabs button.active {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+
 @media (max-width: 520px) {
   .app-shell:has(.learning-report-view) { width: 100%; padding-inline: 10px; }
   .learning-report-summary-grid { gap: 6px; }
@@ -655,4 +668,26 @@
   .learning-report-summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .learning-report-summary-copy { grid-template-columns: minmax(0, 1fr); }
   .learning-report-summary-copy strong { text-align: left; }
+}
+
+/* Use the existing desktop shell for data, while keeping disclosed prose readable.
+   Chart rows still grow for enlarged text; no viewport clipping is introduced. */
+@media (min-width: 1100px) {
+  .learning-report-view { width: min(100%, 960px); }
+  .learning-report-details-content { max-width: 760px; margin-inline: auto; }
+
+  .learning-report-summary-copy > span,
+  .learning-report-card-heading p,
+  .learning-report-period-total span,
+  .learning-report-chart-label strong,
+  .learning-report-chart-label span,
+  .learning-report-breakdown-copy strong,
+  .learning-report-breakdown-copy span,
+  .learning-report-breakdown-value strong,
+  .learning-report-breakdown-value span,
+  .learning-report-insight strong,
+  .learning-report-insight p,
+  .learning-report-chart:not(.scope-month) .learning-report-chart-bar-area {
+    font-size: 0.875rem;
+  }
 }

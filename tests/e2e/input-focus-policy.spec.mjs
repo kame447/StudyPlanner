@@ -137,6 +137,7 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     // The dedicated announcement browser cases assert both, including detail/history.
     ['src/components/AnnouncementsButton.tsx', new Set([
       'event.currentTarget.focus({ preventScroll: true });',
+      'back.current?.focus({ preventScroll: true });',
     ])],
     ['src/components/AnnouncementsPage.tsx', new Set([
       "dialog.current?.querySelector<HTMLButtonElement>('.announcements-back')?.focus({ preventScroll: true });",
@@ -182,6 +183,20 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
   const materialDialogSource = fs.readFileSync(path.join(repoRoot, materialDialogFile), 'utf8');
   expect(materialDialogSource).toMatch(/<summary\b[^>]*\bref=\{catalogSummaryRef\}/);
   expect(materialDialogSource.match(/\bref=\{catalogSummaryRef\}/g)).toHaveLength(1);
+
+  // Delivery failure focuses only its explicit, non-input Back button.
+  // Keep the exception tied to that unique button ref, not an entire file.
+  const announcementButtonFile = 'src/components/AnnouncementsButton.tsx';
+  for (const statement of [
+    'inputRef.current?.focus({ preventScroll: true });',
+    'textareaRef.current?.focus({ preventScroll: true });',
+    'back.current?.focus();',
+    'dialog.current?.focus({ preventScroll: true });',
+  ]) expect(hasUnexpectedFocus(announcementButtonFile, statement)).toBe(true);
+  const announcementButtonSource = fs.readFileSync(path.join(repoRoot, announcementButtonFile), 'utf8');
+  expect(announcementButtonSource).toContain('const back = useRef<HTMLButtonElement>(null);');
+  expect(announcementButtonSource).toMatch(/<button\b[^>]*\bref=\{back\}[^>]*\btype="button"/);
+  expect(announcementButtonSource.match(/\bref=\{back\}/g)).toHaveLength(1);
 
   for (const file of files) {
     const source = fs.readFileSync(file, 'utf8');

@@ -10,3 +10,13 @@
   background: var(--danger, #db5050);
   pointer-events: none;
 }
+
+/* Available before the optional page stylesheet has loaded. */
+dialog.announcement-load-failure {
+  position: fixed;
+  inset: 0;
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  color: var(--text-primary);
+}

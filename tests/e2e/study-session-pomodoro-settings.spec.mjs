@@ -1,7 +1,8 @@
 import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
 
-async function openStart(page, appearance = 'standard', theme = 'light') {
-  await page.addInitScript(({ appearance, theme, date }) => {
+async function openStart(page, appearance = 'standard', theme = 'light', { preserveOnReload = false } = {}) {
+  await page.addInitScript(({ appearance, theme, date, preserveOnReload }) => {
+    if (preserveOnReload && localStorage.getItem('pomodoro-settings-seeded')) return;
     const user = { id: 'pomodoro-settings', email: 'pomodoro@example.test', username: 'Study', avatar: '', createdAt: `${date}T00:00:00Z` };
     localStorage.setItem('studyplanner.users', JSON.stringify([user]));
     localStorage.setItem('studyplanner.session', user.id);
@@ -11,7 +12,8 @@ async function openStart(page, appearance = 'standard', theme = 'light') {
     localStorage.setItem('studyplanner.studyMaterials.v1', '[]');
     localStorage.setItem('study-planner-appearance', appearance);
     localStorage.setItem('study-planner-theme-mode', theme);
-  }, { appearance, theme, date: E2E_TODAY });
+    if (preserveOnReload) localStorage.setItem('pomodoro-settings-seeded', '1');
+  }, { appearance, theme, date: E2E_TODAY, preserveOnReload });
   await page.goto('/');
   await page.getByRole('button', { name: '勉強を開始' }).click();
   const ready = page.getByRole('dialog', { name: '学習を開始', exact: true });
@@ -318,5 +320,65 @@ for (const width of [390, 1280]) {
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]'))).toEqual([
       expect.objectContaining({ planId: null, subject: '復習', occurrenceDate: E2E_TODAY, actualStartTime: '12:00', actualEndTime: '12:18' }),
     ]);
+  });
+}
+
+for (const width of [390, 1280]) {
+  test(`unset-subject timer record is edited from Day and reloads with the same identity at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    // This journey must reload the real saved row, rather than re-seed an empty store.
+    const ready = await openStart(page, 'standard', 'light', { preserveOnReload: true });
+    await ready.getByRole('button', { name: '通常タイマー', exact: true }).click();
+    const title = 'あとから科目を付ける記録';
+    const note = '科目を付けても時刻とこのメモを残す';
+    await ready.getByRole('textbox', { name: '勉強する内容' }).fill(title);
+    await page.clock.pauseAt(new Date(`${E2E_TODAY}T12:00:00+09:00`));
+    await ready.getByRole('button', { name: 'スタート', exact: true }).click();
+    const running = page.getByRole('dialog', { name: '学習中', exact: true });
+    await expect(running).toBeVisible();
+    await page.clock.fastForward(125_000);
+    await running.getByRole('button', { name: '終了する', exact: true }).click();
+    const record = page.getByRole('dialog', { name: '学習を記録', exact: true });
+    await expect(record.getByLabel('科目を入力', { exact: true })).toHaveValue('');
+    await record.getByRole('textbox', { name: 'メモ・気づき', exact: true }).fill(note);
+    await record.getByRole('button', { name: '記録を保存', exact: true }).click();
+    await expect(record).toHaveCount(0);
+    const readActuals = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]'));
+    await expect.poll(async () => (await readActuals()).length).toBe(1);
+    const [saved] = await readActuals();
+    expect(saved.id).toEqual(expect.any(String));
+    expect(saved.id.length).toBeGreaterThan(0);
+    expect(saved).toMatchObject({ planId: null, subject: '', title, note, occurrenceDate: E2E_TODAY,
+      actualStartTime: '12:00', actualEndTime: '12:02' });
+    const preserved = { id: saved.id, userId: saved.userId, planId: saved.planId, title: saved.title,
+      occurrenceDate: saved.occurrenceDate, actualStartTime: saved.actualStartTime,
+      actualEndTime: saved.actualEndTime, note: saved.note };
+    const editor = page.locator('.standalone-actual-editor-card');
+    const openSavedRecord = async () => {
+      await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: '予定', exact: true }).click();
+      await page.getByRole('tab', { name: '日', exact: true }).click();
+      const row = page.locator('.timeline-actual-block').filter({ hasText: title });
+      await expect(row).toHaveCount(1);
+      await row.click();
+      await expect(editor).toBeVisible();
+    };
+    await openSavedRecord();
+    await expect(editor.getByRole('textbox', { name: '科目', exact: true })).toHaveValue('');
+    await expect(editor.getByRole('textbox', { name: 'メモ', exact: true })).toHaveValue(note);
+    await editor.getByRole('textbox', { name: '科目', exact: true }).fill('数学');
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    await expect.poll(readActuals).toEqual([expect.objectContaining({ ...preserved, subject: '数学' })]);
+    const afterEdit = await readActuals();
+    await page.reload();
+    await openSavedRecord();
+    await expect(editor.getByRole('textbox', { name: '科目', exact: true })).toHaveValue('数学');
+    await expect(editor.getByRole('textbox', { name: 'タイトル', exact: true })).toHaveValue(title);
+    await expect(editor.getByRole('textbox', { name: 'メモ', exact: true })).toHaveValue(note);
+    expect(await readActuals()).toEqual(afterEdit);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.plans') ?? '[]'))).toEqual([]);
+    await testInfo.attach(`unset-subject-day-reload-${width}`, { body: JSON.stringify({ before: saved, after: afterEdit }, null, 2), contentType: 'application/json' });
+    await testInfo.attach(`unset-subject-day-editor-${width}`, { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
   });
 }

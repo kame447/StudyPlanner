@@ -25,7 +25,7 @@ let props: ComponentProps<typeof HomeView>;
 class Element {
   dataset: Record<string, string> = {};
   values = new Map<string, string>();
-  style = { getPropertyValue: (key: string) => this.values.get(key) ?? '',
+  style = { [Symbol.iterator]: () => this.values.keys(), getPropertyValue: (key: string) => this.values.get(key) ?? '',
     setProperty: vi.fn((key: string, value: string) => { this.values.set(key, value); }),
     removeProperty: vi.fn((key: string) => { this.values.delete(key); }) };
   children: Element[] = [];
@@ -71,7 +71,8 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.unstubAllGlobals(); });
 
-it('does not measure, write layout variables or lock chrome from hidden zero-sized geometry', () => {
+it.each([390, 1280])('does not measure hidden zero-sized geometry at %ipx', (width) => {
+  window.innerWidth = width;
   visible = false; render(false); flush();
   expect(core.getBoundingClientRect).not.toHaveBeenCalled();
   expect(header.dataset.homeChromeViewport).toBeUndefined();
@@ -97,4 +98,36 @@ it('retains layout while public content is open and measures again on return wit
   act(() => renderer!.unmount()); renderer = undefined;
   act(() => fontReady.forEach(callback => callback()));
   expect(frames.size).toBe(0);
+});
+
+
+it.each([1280, 1440, 1920])('uses desktop columns without the compact height fit at %ipx', (width) => {
+  window.innerWidth = width;
+  dashboard.values.set('--home-relax-hero', '90px');
+  dashboard.values.set('--home-dynamic-schedule-max', '40px');
+  dashboard.values.set('--unrelated-token', 'keep');
+  header.values.set('--home-relax-topbar', '20px');
+  header.dataset.homeChromeViewport = '390x844';
+  render(false); flush();
+  expect(dashboard.values.has('--home-relax-hero')).toBe(false);
+  expect(dashboard.values.has('--home-dynamic-schedule-max')).toBe(false);
+  expect(dashboard.values.get('--unrelated-token')).toBe('keep');
+  expect(header.values.has('--home-relax-topbar')).toBe(false);
+  expect(header.dataset.homeChromeViewport).toBeUndefined();
+  expect(dashboard.style.setProperty).not.toHaveBeenCalled();
+  expect(core.getBoundingClientRect).toHaveBeenCalledTimes(1); // Visibility only, no vertical stack arithmetic.
+});
+
+it('resumes the compact fit when a desktop Home returns to a phone viewport', () => {
+  window.innerWidth = 1280;
+  render(false); flush();
+  const instance = renderer!.root.findByType(HomeView);
+  window.innerWidth = 390;
+  const resizeListeners = vi.mocked(window.addEventListener).mock.calls.filter(call => call[0] === 'resize');
+  const onResize = resizeListeners[resizeListeners.length - 1][1] as () => void;
+  act(() => onResize());
+  flush(); // Retire the desktop supplemental row.
+  flush(); // The next frame measures the restored compact structure.
+  expect(renderer!.root.findByType(HomeView)).toBe(instance);
+  expect(header.dataset.homeChromeViewport).toBe('390x844');
 });

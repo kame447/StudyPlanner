@@ -432,3 +432,211 @@ for (const appearance of ['standard', 'pixel']) {
     });
   }
 }
+
+for (const viewport of [{ width: 1280, height: 720 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }]) {
+  for (const theme of ['light', 'dark']) {
+    test(`desktop report overview stays readable at ${viewport.width}x${viewport.height} in ${theme}`, async ({ page }, testInfo) => {
+      await seedLearningReport(page, { dense: true });
+      await page.addInitScript((value) => {
+        localStorage.setItem('study-planner-appearance', 'pixel');
+        localStorage.setItem('study-planner-theme-mode', value);
+      }, theme);
+      await page.setViewportSize(viewport);
+      await openLearningReport(page);
+      await expect(page.locator('html')).toHaveAttribute('data-appearance', 'pixel');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      const loadedFonts = await page.evaluate(async () => {
+        const fonts = await document.fonts.load('14px "DotGothic16"', '学習時間123');
+        await document.fonts.ready;
+        return fonts.map(font => ({ family: font.family, status: font.status }));
+      });
+      expect(loadedFonts.some(font => font.family.includes('DotGothic16') && font.status === 'loaded')).toBe(true);
+      const details = page.locator('.learning-report-details');
+      const summary = details.locator(':scope > summary');
+      await expect(details).not.toHaveAttribute('open', '');
+
+      for (const [scope, name, values] of [['day', '日', 3], ['week', '週', 6], ['month', '月', 0]]) {
+        await page.getByRole('tab', { name, exact: true }).click();
+        await expect(page.locator(`.learning-report-chart.scope-${scope}`)).toBeVisible();
+        await expect(page.locator('.learning-report-chart-value')).toHaveCount(values);
+        const metrics = await page.locator('.learning-report-view').evaluate(report => {
+          const rect = element => {
+            const { left, right, top, bottom, width, height } = element.getBoundingClientRect();
+            return { left, right, top, bottom, width, height };
+          };
+          const textRects = element => {
+            const range = document.createRange(); range.selectNodeContents(element);
+            return [...range.getClientRects()].map(({ left, right, top, bottom }) => ({ left, right, top, bottom }));
+          };
+          const rgba = color => {
+            const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+            const context = canvas.getContext('2d');
+            context.fillStyle = color; context.fillRect(0, 0, 1, 1);
+            return [...context.getImageData(0, 0, 1, 1).data];
+          };
+          const luminance = rgb => rgb.slice(0, 3).map(channel => channel / 255)
+            .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+            .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+          const paper = rgba(getComputedStyle(report.querySelector('.learning-report-card')).backgroundColor);
+          const paperLuminance = luminance(paper);
+          const activeTab = report.querySelector('.learning-report-scope-tabs button.active');
+          const tabInk = rgba(getComputedStyle(activeTab).color);
+          const tabPaint = rgba(getComputedStyle(activeTab).backgroundColor);
+          const tabBase = rgba(getComputedStyle(activeTab.parentElement).backgroundColor);
+          const tabPaper = tabPaint.slice(0, 3).map((channel, index) => channel * tabPaint[3] / 255 + tabBase[index] * (1 - tabPaint[3] / 255));
+          const tabContrast = (Math.max(luminance(tabInk), luminance(tabPaper)) + 0.05)
+            / (Math.min(luminance(tabInk), luminance(tabPaper)) + 0.05);
+          const emphasizedText = [...report.querySelectorAll('.learning-report-chart-value, .learning-report-details > summary, .learning-report-insight strong')]
+            .map(element => {
+              const color = getComputedStyle(element).color;
+              const ink = rgba(color);
+              const inkLuminance = luminance(ink);
+              return { text: element.textContent, color, ink,
+                contrastAgainstChartPaper: (Math.max(inkLuminance, paperLuminance) + 0.05) / (Math.min(inkLuminance, paperLuminance) + 0.05) };
+            });
+          return {
+            // The pixel fixture has opaque chart paper. The canvas resolves current
+            // CSS color syntax; native screenshots still cover wallpaper/gradient paint.
+            contrast: { paper, bodyColor: getComputedStyle(report).color, emphasizedText, activeTab: { ink: tabInk, paint: tabPaint, base: tabBase, paper: tabPaper, ratio: tabContrast } },
+            viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio },
+            scrollY, pageWidth: document.documentElement.scrollWidth,
+            report: rect(report), shell: rect(report.closest('.app-shell')),
+            chart: rect(report.querySelector('.learning-report-chart')),
+            heading: rect(report.querySelector('.learning-report-card-heading')),
+            disclosure: rect(report.querySelector('.learning-report-details > summary')),
+            nav: rect(document.querySelector('.primary-bottom-nav')),
+            controls: [...report.querySelectorAll('button, select')].map(rect),
+            labels: [...report.querySelectorAll('.learning-report-summary-copy > span, .learning-report-card-heading p, .learning-report-period-total span, .learning-report-chart-label strong, .learning-report-chart-label span')]
+              .filter(element => element.getClientRects().length && element.textContent.trim() && getComputedStyle(element).visibility !== 'hidden')
+              .map(element => ({ text: element.textContent, fontSize: parseFloat(getComputedStyle(element).fontSize), fontFamily: getComputedStyle(element).fontFamily })),
+            axis: [...report.querySelectorAll('.learning-report-chart-label')]
+              .filter(element => getComputedStyle(element).visibility !== 'hidden' && element.textContent.trim())
+              .map(element => ({ item: rect(element.closest('.learning-report-chart-item')),
+                texts: [...element.children].filter(child => child.textContent.trim()).map(textRects).flat() })),
+            entries: [...report.querySelectorAll('.learning-report-chart-bar-area')].map(area => {
+              const value = area.querySelector('.learning-report-chart-value');
+              const bar = area.querySelector('.learning-report-chart-bar');
+              return { area: rect(area), plot: rect(area.querySelector('.learning-report-chart-plot')),
+                bar: rect(bar), percent: parseFloat(bar.style.height),
+                value: value ? rect(value) : null, text: value ? textRects(value) : [] };
+            }),
+          };
+        });
+        await testInfo.attach(`desktop-report-${viewport.width}-${theme}-${scope}-metrics`, {
+          body: JSON.stringify({ project: testInfo.project.name, screenshotScale: 'css', loadedFonts, ...metrics }, null, 2), contentType: 'application/json',
+        });
+        // Keep CSS-pixel geometry and DPR, without encoding 9x image pixels in mobile projects.
+        await testInfo.attach(`desktop-report-${viewport.width}-${theme}-${scope}`, {
+          body: await page.screenshot({ scale: 'css' }), contentType: 'image/png',
+        });
+        expect(metrics.contrast.paper[3]).toBe(255);
+        expect(metrics.contrast.activeTab.ink[3]).toBe(255);
+        expect(metrics.contrast.activeTab.base[3]).toBe(255);
+        expect(metrics.contrast.activeTab.ratio).toBeGreaterThanOrEqual(4.5);
+        expect(metrics.contrast.emphasizedText.length).toBeGreaterThan(0);
+        for (const text of metrics.contrast.emphasizedText) {
+          expect(text.ink[3], text.text).toBe(255);
+          expect(text.contrastAgainstChartPaper, text.text).toBeGreaterThanOrEqual(4.5);
+          if (theme === 'dark') expect(text.color, text.text).toBe(metrics.contrast.bodyColor);
+        }
+        expect(metrics.viewport.width).toBe(viewport.width);
+        expect(metrics.viewport.height).toBe(viewport.height);
+        expect(metrics.scrollY).toBe(0);
+        expect(metrics.pageWidth).toBeLessThanOrEqual(viewport.width + 1);
+        expect(metrics.report.width).toBeGreaterThan(760);
+        expect(metrics.report.left).toBeGreaterThanOrEqual(metrics.shell.left);
+        expect(metrics.report.right).toBeLessThanOrEqual(metrics.shell.right);
+        expect(metrics.chart.bottom).toBeLessThanOrEqual(metrics.nav.top);
+        expect(metrics.disclosure.bottom).toBeLessThanOrEqual(metrics.nav.top);
+        expect(metrics.nav.bottom).toBeLessThanOrEqual(viewport.height + 1);
+        for (const control of metrics.controls) {
+          expect(control.height).toBeGreaterThanOrEqual(44);
+          expect(control.top).toBeGreaterThanOrEqual(0);
+          expect(control.bottom).toBeLessThanOrEqual(metrics.nav.top);
+          expect(control.left).toBeGreaterThanOrEqual(0);
+          expect(control.right).toBeLessThanOrEqual(viewport.width);
+        }
+        expect(metrics.labels.length).toBeGreaterThan(4);
+        for (const label of metrics.labels) {
+          expect(label.fontSize, label.text).toBeGreaterThanOrEqual(14);
+          expect(label.fontFamily).toContain('DotGothic16');
+        }
+        for (const [index, axis] of metrics.axis.entries()) {
+          for (const text of axis.texts) {
+            expect(text.bottom).toBeLessThanOrEqual(metrics.disclosure.top);
+            expect(text.left).toBeGreaterThanOrEqual(metrics.chart.left - 1);
+            expect(text.right).toBeLessThanOrEqual(metrics.chart.right + 1);
+            if (scope !== 'month') {
+              expect(text.left).toBeGreaterThanOrEqual(axis.item.left - 1);
+              expect(text.right).toBeLessThanOrEqual(axis.item.right + 1);
+            }
+          }
+          if (scope === 'month') {
+            expect(axis.texts).toHaveLength(1);
+            if (index) expect(metrics.axis[index - 1].texts[0].right).toBeLessThanOrEqual(axis.texts[0].left);
+          }
+        }
+        if (scope !== 'month') {
+          const firstPlot = metrics.entries[0].plot;
+          for (const entry of metrics.entries) {
+            expect(Math.abs(entry.plot.height - firstPlot.height)).toBeLessThanOrEqual(1);
+            expect(Math.abs(entry.plot.bottom - firstPlot.bottom)).toBeLessThanOrEqual(1);
+            expect(Math.abs(entry.bar.height - entry.plot.height * entry.percent / 100)).toBeLessThanOrEqual(1);
+            if (!entry.value) continue;
+            expect(entry.value.bottom).toBeLessThanOrEqual(entry.plot.top);
+            for (const text of entry.text) {
+              expect(text.top).toBeGreaterThanOrEqual(Math.max(entry.area.top - 1, metrics.heading.bottom));
+              expect(text.left).toBeGreaterThanOrEqual(entry.area.left - 1);
+              expect(text.right).toBeLessThanOrEqual(entry.area.right + 1);
+              expect(text.bottom).toBeLessThanOrEqual(entry.plot.top);
+            }
+          }
+        }
+      }
+
+      // Expanded details may scroll. Keyboard access and scalable text must survive.
+      await summary.focus();
+      await page.keyboard.press('Enter');
+      await expect(details).toHaveAttribute('open', '');
+      const breakdown = page.locator('.learning-report-breakdown-item').first();
+      await breakdown.scrollIntoViewIfNeeded();
+      await expect(breakdown).toBeVisible();
+      const normalSize = await breakdown.locator('.learning-report-breakdown-copy strong').evaluate(element => parseFloat(getComputedStyle(element).fontSize));
+      expect(normalSize).toBeGreaterThanOrEqual(14);
+      await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+      await breakdown.scrollIntoViewIfNeeded();
+      const enlarged = await breakdown.locator('.learning-report-breakdown-copy strong').evaluate(element => {
+        const range = document.createRange(); range.selectNodeContents(element);
+        const { left, right, top, bottom } = element.getBoundingClientRect();
+        return {
+          fontSize: parseFloat(getComputedStyle(element).fontSize), text: element.textContent,
+          width: document.documentElement.scrollWidth, viewport: document.documentElement.clientWidth,
+          overflow: getComputedStyle(element.closest('.learning-report-view')).overflowY,
+          box: { left, right, top, bottom },
+          textRects: [...range.getClientRects()].map(({ left, right, top, bottom }) => ({ left, right, top, bottom })),
+        };
+      });
+      await testInfo.attach(`desktop-report-${viewport.width}-${theme}-enlarged-metrics`, {
+        body: JSON.stringify({ screenshotScale: 'css', ...enlarged }, null, 2), contentType: 'application/json',
+      });
+      await testInfo.attach(`desktop-report-${viewport.width}-${theme}-enlarged-details`, {
+        body: await page.screenshot({ fullPage: true, scale: 'css' }), contentType: 'image/png',
+      });
+      await expect(breakdown).toBeInViewport();
+      expect(enlarged.fontSize).toBeGreaterThanOrEqual(normalSize * 1.9);
+      expect(enlarged.text).toContain('アルゴリズムイントロダクション');
+      expect(enlarged.width).toBeLessThanOrEqual(enlarged.viewport + 1);
+      expect(enlarged.overflow).not.toMatch(/hidden|clip/);
+      for (const text of enlarged.textRects) {
+        expect(text.left).toBeGreaterThanOrEqual(enlarged.box.left - 1);
+        expect(text.right).toBeLessThanOrEqual(enlarged.box.right + 1);
+        expect(text.top).toBeGreaterThanOrEqual(enlarged.box.top - 1);
+        expect(text.bottom).toBeLessThanOrEqual(enlarged.box.bottom + 1);
+      }
+      await summary.focus();
+      await expect(summary).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(details).not.toHaveAttribute('open', '');
+    });
+  }
+}

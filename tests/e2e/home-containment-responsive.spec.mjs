@@ -127,6 +127,9 @@ async function readContainmentMetrics(page) {
       pageWidth: document.documentElement.scrollWidth,
       pageHeight: document.documentElement.scrollHeight,
       home: serializeRect(home),
+      desktopLayout: matchMedia('(min-width: 1200px)').matches,
+      homeClientWidth: home?.clientWidth, homeScrollWidth: home?.scrollWidth,
+      homeClientHeight: home?.clientHeight, homeScrollHeight: home?.scrollHeight,
       topbar: serializeRect(topbar),
       nextCard: serializeRect(nextCard),
       nextMeta: serializeRect(nextMeta),
@@ -157,10 +160,31 @@ function expectContainment(metrics, scrollBody = false) {
   if (metrics.nextMeta && metrics.startButton) {
     expect(metrics.nextMeta.bottom).toBeLessThanOrEqual(metrics.startButton.top - 2);
   }
-  expectOrderedWithoutOverlap(metrics.nextCard, metrics.today);
-  expectOrderedWithoutOverlap(metrics.today, metrics.attention);
-  expectOrderedWithoutOverlap(metrics.attention, metrics.progress);
-  expectOrderedWithoutOverlap(metrics.progress, metrics.material);
+  if (metrics.desktopLayout) {
+    // Desktop has two aligned rows; a vertical chain would reject valid peers.
+    for (const card of [metrics.nextCard, metrics.today, metrics.attention, metrics.progress, metrics.material]) {
+      expectRectContained(metrics.home, card);
+      expect(card.width).toBeGreaterThan(0); expect(card.height).toBeGreaterThan(0);
+    }
+    expect(metrics.homeScrollWidth).toBeLessThanOrEqual(metrics.homeClientWidth + 1);
+    expect(metrics.homeScrollHeight).toBeLessThanOrEqual(metrics.homeClientHeight + 1);
+    for (const [left, right] of [[metrics.nextCard, metrics.today], [metrics.attention, metrics.progress]]) {
+      expect(Math.abs(left.top - right.top)).toBeLessThanOrEqual(1);
+      expect(left.right + 8).toBeLessThanOrEqual(right.left);
+    }
+    expect(Math.abs(metrics.nextCard.left - metrics.attention.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(metrics.today.left - metrics.progress.left)).toBeLessThanOrEqual(1);
+    expect(Math.max(metrics.nextCard.bottom, metrics.today.bottom)).toBeLessThanOrEqual(Math.min(metrics.attention.top, metrics.progress.top) + 1);
+    expectOrderedWithoutOverlap(metrics.nextCard, metrics.attention);
+    expectOrderedWithoutOverlap(metrics.today, metrics.progress);
+    expectOrderedWithoutOverlap(metrics.attention, metrics.material);
+    expectOrderedWithoutOverlap(metrics.progress, metrics.material);
+  } else {
+    expectOrderedWithoutOverlap(metrics.nextCard, metrics.today);
+    expectOrderedWithoutOverlap(metrics.today, metrics.attention);
+    expectOrderedWithoutOverlap(metrics.attention, metrics.progress);
+    expectOrderedWithoutOverlap(metrics.progress, metrics.material);
+  }
 
   const lastContent = metrics.material ?? metrics.progress;
   if (!scrollBody && lastContent && metrics.nav) {
@@ -177,7 +201,9 @@ for (const viewport of VIEWPORTS) {
       await expect(page.locator('.home-main > .home-dashboard-default')).toBeVisible();
       await page.waitForTimeout(650);
 
-      expectContainment(await readContainmentMetrics(page), viewport.scrollBody);
+      const metrics = await readContainmentMetrics(page);
+      await testInfo.attach('home-containment-metrics', { contentType: 'application/json', body: JSON.stringify(metrics) });
+      expectContainment(metrics, viewport.scrollBody);
       if (viewport.scrollBody) {
         await expectCompactHomeReachable(page, testInfo, `home-containment-${viewport.name}-${planCount}`, { browserName, isMobile });
       }
@@ -194,7 +220,9 @@ test('keeps containment while resizing between phone, laptop, desktop, and table
   for (const viewport of RESIZE_SEQUENCE) {
     await page.setViewportSize(viewport);
     await page.waitForTimeout(450);
-    expectContainment(await readContainmentMetrics(page), viewport.scrollBody);
+    const metrics = await readContainmentMetrics(page);
+    await testInfo.attach(`home-resize-${viewport.width}-${viewport.height}-metrics`, { contentType: 'application/json', body: JSON.stringify(metrics) });
+    expectContainment(metrics, viewport.scrollBody);
     if (viewport.scrollBody) {
       await expectCompactHomeReachable(page, testInfo, `home-resize-${viewport.width}-${viewport.height}`, { browserName, isMobile });
     }

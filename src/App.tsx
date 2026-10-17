@@ -19,6 +19,10 @@ import { usePublicPageNavigation } from './components/PublicPageLink';
 import { AppSettingsDialog } from './components/AppSettingsDialog';
 import { AppViewSwitcher } from './components/AppViewSwitcher';
 import type { BookshelfInitialAction } from './components/BookshelfView';
+import { DeferredBookshelfView as BookshelfView } from './components/DeferredBookshelfView';
+import { DeferredDayView as DayView } from './components/DeferredDayView';
+import { DeferredTimetableView as TimetableView } from './components/DeferredTimetableView';
+import { DeferredReportView as ReportView } from './components/DeferredReportView';
 import { DeferredMonthView as MonthView } from './components/DeferredMonthView';
 import { MyPageDialog } from './components/MyPageDialog';
 import { PlanEditorPanel } from './components/PlanEditorPanel';
@@ -51,29 +55,9 @@ const AiPlanningView = lazy(() =>
     default: module.AiPlanningView,
   })),
 );
-const BookshelfView = lazy(() =>
-  import('./components/BookshelfView').then((module) => ({
-    default: module.BookshelfView,
-  })),
-);
-const DayView = lazy(() =>
-  import('./components/DayView').then((module) => ({
-    default: module.DayView,
-  })),
-);
 const QuickEntryModal = lazy(() =>
   import('./components/QuickEntryModal').then((module) => ({
     default: module.QuickEntryModal,
-  })),
-);
-const ReportView = lazy(() =>
-  import('./components/ReportView').then((module) => ({
-    default: module.ReportView,
-  })),
-);
-const TimetableView = lazy(() =>
-  import('./components/TimetableView').then((module) => ({
-    default: module.TimetableView,
   })),
 );
 const TodoView = lazy(() =>
@@ -627,6 +611,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
 
             {viewMode === 'report' ? (
               <ReportView
+                key={user.id}
                 selectedDate={selectedDate}
                 plans={plans}
                 actuals={actuals}

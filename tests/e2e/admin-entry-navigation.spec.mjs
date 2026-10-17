@@ -112,3 +112,27 @@ test('Back remains available while the lazy Admin module is pending and a late f
     await sameDocument();
   } finally { fail(); }
 });
+
+test('failed Admin delivery keeps normal return and cached Back/Forward recovery in the same document', async ({ page }, info) => {
+  const sameDocument = await start(page);
+  let attempts = 0;
+  await page.route(/\/AdminApp\.tsx(?:\?.*)?$/, route => { attempts += 1; return route.abort('failed'); });
+  await openProfile(page);
+  await page.getByRole('button', { name: '管理者画面', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('管理者画面を読み込めませんでした');
+  await expect(page.getByRole('button', { name: '再読み込み', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Users', exact: true })).toHaveCount(0);
+  await sameDocument();
+  expect(attempts).toBe(1);
+  await info.attach('admin-delivery-failure', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.getByRole('button', { name: '通常画面へ戻る', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'マイページを開く', exact: true })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('alert')).toContainText('管理者画面を読み込めませんでした');
+  expect(attempts).toBe(1);
+  await page.goForward();
+  await expect(page.getByRole('button', { name: 'マイページを開く', exact: true })).toBeVisible();
+  await openProfile(page);
+  await expect(page.getByPlaceholder('未入力ならメールアドレスを使います')).toHaveValue('Entry fixture');
+  await sameDocument();
+});

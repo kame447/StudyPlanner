@@ -47,6 +47,40 @@ if (new URLSearchParams(location.search).get('preferenceWait') === '1') {
   });
 }
 
+// Opt-in save latency/failure. Only repository promise settlement is controlled;
+// the real hook/root/context and the real local adapter own state and persistence.
+if (new URLSearchParams(location.search).get('preferenceSave') === '1') {
+  if (new URLSearchParams(location.search).get('preferenceWait') === '1') {
+    throw new Error('Select preference read or write settlement, not both');
+  }
+  const local = createLocalWeeklyPlanningPersonalizationRepository();
+  const pending = [];
+  const control = window.__preferenceSaveHarness = {
+    reads: 0, writes: 0, resets: 0,
+    get pending() { return pending.length; },
+    async resolveNext() {
+      const request = pending.shift();
+      if (!request) throw new Error('No pending preference save');
+      try { request.resolve(await local.setWeekStartsOn(...request.args)); }
+      catch (error) { request.reject(error); }
+    },
+    rejectNext() {
+      const request = pending.shift();
+      if (!request) throw new Error('No pending preference save');
+      request.reject(new Error('学習設定の保存に失敗しました（検証用）。'));
+    },
+    readDurable() { return local.getProfile(ownerId); },
+  };
+  setWeeklyPlanningPersonalizationRepositoryForTests({
+    getProfile(...args) { control.reads += 1; return local.getProfile(...args); },
+    setWeekStartsOn(...args) {
+      control.writes += 1;
+      return new Promise((resolve, reject) => pending.push({ args, resolve, reject }));
+    },
+    resetProfile(...args) { control.resets += 1; return local.resetProfile(...args); },
+  });
+}
+
 // Opt-in profile-rejection fixture. Only external promise settlement is held;
 // the real root, memory provider, restore hook and planner admission stay intact.
 if (new URLSearchParams(location.search).get('profileRecovery') === '1') {

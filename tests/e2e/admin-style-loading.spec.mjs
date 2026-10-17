@@ -146,3 +146,55 @@ test('direct production admin entry waits for its real lazy stylesheet', async (
     await expectAdminReady(page);
   } finally { held.release(); }
 });
+
+for (const resource of ['js', 'css']) {
+  test(`production Admin ${resource} delivery failure offers explicit reload and recovers the real guarded entry`, async ({ page }, info) => {
+    await page.route('**/*', route => ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(route.request().url()).hostname)
+      ? route.continue() : route.abort());
+    await page.addInitScript(() => {
+      sessionStorage.setItem('admin-recovery-document-loads', String(Number(sessionStorage.getItem('admin-recovery-document-loads') || 0) + 1));
+    });
+    const documents = [];
+    page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents.push(request.url()); });
+    const failedAsset = new RegExp(`/assets/AdminApp-[^/]+\\.${resource}(?:\\?.*)?$`);
+    let attempts = 0;
+    const failedUrls = new Set();
+    const reject = route => {
+      attempts += 1; failedUrls.add(route.request().url());
+      // Keep a real HTTP failure. The build must avoid preloading this entry,
+      // so WebKit cannot pin a failed preload across the explicit reload.
+      return route.fulfill({ status: 503, headers: { 'cache-control': 'no-store' },
+        contentType: resource === 'js' ? 'application/javascript' : 'text/css', body: '/* temporary delivery failure */' });
+    };
+    await page.route(failedAsset, reject);
+    await page.goto('/admin/users', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('alert')).toContainText('管理者画面を読み込めませんでした');
+    await expect(page.getByRole('button', { name: '通常画面へ戻る', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '再読み込み', exact: true })).toBeVisible();
+    await expect(page.locator('.admin-console-layout')).toHaveCount(0);
+    expect(documents).toHaveLength(1);
+    // Keep initial delivery bounded before the user requests any recovery.
+    expect(failedUrls.size).toBe(1);
+    expect(attempts).toBeGreaterThanOrEqual(1);
+    expect(attempts).toBeLessThanOrEqual(resource === 'js' ? 2 : 1);
+    const initialAttempts = attempts;
+    if (resource === 'js') {
+      const preloads = await page.locator('link[rel="modulepreload"]').evaluateAll(links => links.map(link => link.href));
+      expect(preloads.filter(url => failedAsset.test(url))).toEqual([]);
+    }
+    await info.attach(`admin-${resource}-failure`, { body: await page.screenshot(), contentType: 'image/png' });
+    await page.evaluate(() => { window.__adminBeforeRecovery = 'old document'; });
+    expect(await page.evaluate(() => sessionStorage.getItem('admin-recovery-document-loads'))).toBe('1');
+    expect(attempts).toBe(initialAttempts);
+    await page.unroute(failedAsset, reject);
+    const recoveredAsset = page.waitForResponse(response => failedAsset.test(response.url()) && response.status() === 200);
+    await page.getByRole('button', { name: '再読み込み', exact: true }).click();
+    await recoveredAsset;
+    await expect(page).toHaveURL(/\/admin\/users$/);
+    await expectAdminReady(page);
+    expect(documents).toHaveLength(2);
+    // The fixed clock replaces Performance entries; observe the document itself.
+    expect(await page.evaluate(() => sessionStorage.getItem('admin-recovery-document-loads'))).toBe('2');
+    expect(await page.evaluate(() => window.__adminBeforeRecovery)).toBeUndefined();
+  });
+}

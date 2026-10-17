@@ -20,3 +20,5 @@
 
 - [ホーム学習進捗の集計対象設定](work/20261014-home-progress-inclusion-handoff.md)
 - [学習レポートの概要1画面化](work/20261014-compact-learning-report-handoff.md)
+
+- [デスクトップ学習レポートの幅・可読性](work/20261017-desktop-report-readability-handoff.md)

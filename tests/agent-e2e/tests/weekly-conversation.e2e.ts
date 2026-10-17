@@ -2,6 +2,18 @@ import { expect, test } from 'e2e';
 
 const vagueRequest = '来週は研究を進めたいけど、内容はまだ決まっていない';
 
+test('smoke: an existing weekly session has a usable accessible composer', async ({ app, screen }) => {
+  await app.open('/?weekly=1');
+
+  const composer = screen.getByRole('textbox', { name: /週間計画にしたいこと/ });
+  const send = screen.getByRole('button', { name: '送信' });
+
+  await expect(composer).toBeVisible();
+  await expect(send).toBeVisible();
+  await composer.fill('来週の予定を立てたい');
+  await expect(send).toBeEnabled();
+});
+
 test('smoke: weekly planning conversation accepts one user turn', async ({ app, screen }) => {
   await app.open('/real-weekly.html');
 
