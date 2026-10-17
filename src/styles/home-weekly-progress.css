@@ -242,15 +242,16 @@
 
   .weekly-progress-layout {
     grid-template-columns:
-      clamp(52px, 13%, 58px)
+      clamp(56px, 13%, 58px)
       clamp(76px, 21%, 94px)
       minmax(0, 1fr);
     gap: clamp(4px, 1vw, 7px);
   }
 
   .weekly-progress-ring {
-    width: clamp(52px, 11vw, 56px);
-    height: clamp(52px, 11vw, 56px);
+    /* Keep the enlarged percentage inside the disc without shrinking text. */
+    width: 56px;
+    height: 56px;
   }
 
   .weekly-progress-ring > div {
@@ -278,13 +279,13 @@
 
 @media (max-width: 390px) {
   .weekly-progress-layout {
-    grid-template-columns: 52px 76px minmax(0, 1fr);
+    grid-template-columns: 56px 76px minmax(0, 1fr);
     gap: 4px;
   }
 
   .weekly-progress-ring {
-    width: 52px;
-    height: 52px;
+    width: 56px;
+    height: 56px;
   }
 
   .weekly-progress-summary {

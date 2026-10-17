@@ -1,6 +1,28 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AttendanceStatus, ClassAttendance } from '../domain/classAttendance';
 import type { ClassAttendanceRepository } from '../repositories/classAttendanceRepository';
+
+// A detail may be closed while its admitted write is still settling. Keep only
+// those pending operations, never history, so a reopened detail reads afterward.
+const pendingSaves = new WeakMap<ClassAttendanceRepository, Map<string, Set<Promise<void>>>>();
+const saveScope = (userId: string, templateId: string) => JSON.stringify([userId, templateId]);
+
+function beginSave(repository: ClassAttendanceRepository, userId: string, templateId: string) {
+  let scopes = pendingSaves.get(repository);
+  if (!scopes) pendingSaves.set(repository, scopes = new Map());
+  const key = saveScope(userId, templateId);
+  let saves = scopes.get(key);
+  if (!saves) scopes.set(key, saves = new Set());
+  let settle!: () => void;
+  const pending = new Promise<void>(resolve => { settle = resolve; });
+  saves.add(pending);
+  return () => {
+    saves.delete(pending);
+    if (saves.size === 0) scopes.delete(key);
+    if (scopes.size === 0) pendingSaves.delete(repository);
+    settle();
+  };
+}
 
 type LoadState =
   | { kind: 'loading'; records: ClassAttendance[] }
@@ -14,15 +36,27 @@ export function useClassAttendance(userId: string, templateId: string, repositor
   const [loadRevision, setLoadRevision] = useState(0);
   const lifetime = useRef(0);
   const pending = useRef(false);
+  // Retire delayed reads at commit, before a save continuation can run ahead of
+  // passive cleanup. Loading itself remains in the passive effect below.
+  useLayoutEffect(() => () => { lifetime.current += 1; }, [userId, templateId, repository]);
   useEffect(() => {
     const revision = ++lifetime.current;
     setState({ kind: 'loading', records: [] });
     setSaveError(null);
-    void repository.list(userId, templateId).then(records => {
-      if (revision === lifetime.current) setState({ kind: 'ready', records });
-    }, () => {
-      if (revision === lifetime.current) setState({ kind: 'error', records: [], message: '出欠を読み込めませんでした。' });
-    });
+    void (async () => {
+      try {
+        let saves: Set<Promise<void>> | undefined;
+        while ((saves = pendingSaves.get(repository)?.get(saveScope(userId, templateId)))?.size) {
+          await Promise.all(saves);
+          if (revision !== lifetime.current) return;
+        }
+        if (revision !== lifetime.current) return;
+        const records = await repository.list(userId, templateId);
+        if (revision === lifetime.current) setState({ kind: 'ready', records });
+      } catch {
+        if (revision === lifetime.current) setState({ kind: 'error', records: [], message: '出欠を読み込めませんでした。' });
+      }
+    })();
     return () => { lifetime.current += 1; };
   }, [userId, templateId, repository, loadRevision]);
 
@@ -32,6 +66,7 @@ export function useClassAttendance(userId: string, templateId: string, repositor
     const revision = lifetime.current;
     setSaving(true);
     setSaveError(null);
+    const finishSave = beginSave(repository, userId, templateId);
     try {
       const record = await repository.save({ userId, templateId, date, status });
       if (revision !== lifetime.current) return false;
@@ -42,6 +77,7 @@ export function useClassAttendance(userId: string, templateId: string, repositor
       if (revision === lifetime.current) setSaveError(error instanceof Error ? error.message : '出欠を保存できませんでした。');
       return false;
     } finally {
+      finishSave();
       pending.current = false;
       if (revision === lifetime.current) setSaving(false);
     }

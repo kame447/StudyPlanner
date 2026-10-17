@@ -20,7 +20,8 @@ vi.mock('../features/weeklyPlanning/trace/configureWeeklyPlanningTraceRepository
 vi.mock('../features/weeklyPlanning/trace/useWeeklyPlanningTracePolicy', () => ({ useWeeklyPlanningTracePolicy: () => ({ status: fixture.policy }) }));
 vi.mock('../features/weeklyPlanning/personalization/useWeeklyPlanningPersonalizationProfile', () => ({
   useWeeklyPlanningPersonalizationProfile: () => ({ loading: fixture.preferenceLoading,
-    profile: fixture.weekStartsOn ? { weekStartsOn: { value: fixture.weekStartsOn } } : null, error: fixture.preferenceError }) }));
+    // Initial reads expose no confirmed profile; confirmed writes have a separate real-hook regression.
+    profile: !fixture.preferenceLoading && fixture.weekStartsOn ? { weekStartsOn: { value: fixture.weekStartsOn } } : null, error: fixture.preferenceError }) }));
 vi.mock('../features/userPlanningContext/userPlanningContextRepository', () => ({ getUserPlanningContextRepositoryV1: () => ({
   initialize: fixture.memory, subscribe: () => () => {},
 }) }));
