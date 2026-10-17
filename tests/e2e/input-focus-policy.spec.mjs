@@ -7,7 +7,7 @@ import { clickPrimaryNav, seedRegressionUser } from './support/ui-regression.mjs
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(configDir, '../..');
 const srcRoot = path.join(repoRoot, 'src');
-const WEEKLY_HARNESS_URL = 'http://127.0.0.1:4174/?weekly=1';
+const REAL_WEEKLY_URL = 'http://127.0.0.1:4174/real-weekly.html?gate=real-weekly';
 const AUTH_HARNESS_URL = 'http://127.0.0.1:4174/?scenario=auth';
 const TEXT_CONTROL_SELECTOR = [
   'textarea',
@@ -77,7 +77,7 @@ async function expectVisibleTextControlsAtLeast16px(page, rootSelector = 'body')
 }
 
 async function releaseWeeklyGate(page) {
-  const released = await page.evaluate(() => window.__quickEntryHarness.release('weekly'));
+  const released = await page.evaluate(() => window.__realWeeklyRuntime.release());
   expect(released).toBe(true);
 }
 
@@ -290,20 +290,24 @@ test.describe('mobile browser input focus policy', () => {
   });
 
   test('weekly cancellation leaves the composer unfocused while preserving direct user focus', async ({ page }) => {
-    await page.goto(`${WEEKLY_HARNESS_URL}&gate=weekly`);
-    let input = page.getByLabel('週間計画にしたいこと');
+    await page.goto(REAL_WEEKLY_URL);
+    let input = page.locator('.ai-planning-composer textarea');
     await expect(input).toBeVisible();
     await expect(input).not.toBeFocused();
     await expectVisibleTextControlsAtLeast16px(page);
 
     await input.fill('来週の予定');
-    await input.press('Control+Enter');
+    await page.getByRole('button', { name: '送信', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.__realWeeklyRuntime.pending())).toBe(1);
     await page.getByRole('button', { name: '処理をキャンセル' }).click();
     await releaseWeeklyGate(page);
-    await expect.poll(() => page.evaluate(() => window.__quickEntryEvents.filter((event) => event.type === 'ignore-weekly-turn').length)).toBe(1);
+    await expect.poll(() => page.evaluate(() => window.__realWeeklyEvents.filter((event) => event.type === 'real-runtime-complete').length)).toBe(1);
+    await expect(page.locator('.ai-planning-conversation').getByText('テスト応答: 来週の予定', { exact: true })).toHaveCount(0);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
 
-    input = page.getByLabel('週間計画にしたいこと');
+    input = page.locator('.ai-planning-composer textarea');
     await expect(input).toBeVisible();
+    await expect(input).toBeEnabled();
     await expect(input).not.toBeFocused();
     await input.click();
     await expect(input).toBeFocused();
