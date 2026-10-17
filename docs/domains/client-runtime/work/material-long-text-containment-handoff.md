@@ -318,3 +318,54 @@ actual reload, rather than an unrelated existing setup call. No browser, type
 or application build was rerun locally. All 32 successors still require native
 execution and rendered-image review. Evidence:
 `laplans-material-detail-contracts-evidence-20261017`.
+
+
+## Local-only PR #741 continuation after Timer release (2026-10-17)
+
+The current public PR remains `fix/timer-material-readability` at
+`5dfcb11f624c13775947e9fd2d14952b7e17ab3d` (tree `4870e76c`). This checkpoint
+belongs to its local continuation `integration/pr741-material-main`; it is not
+a replacement PR or a published update. The public head is preserved at local
+`refs/backup/pr741-before-main-cleanup-20261017`, with its original patch and
+tree inventory recorded before integration.
+
+A normal two-parent merge integrates verified main
+`8ccfa68089f62ebe0bdb7f1e62197a4fda6f6526` (tree `3f5c7a60`) into that PR
+ancestry. Rebase was rejected because it rewrites published history; copying
+material changes onto a fresh main branch was rejected because it drops the
+existing PR ancestry. The latest main includes released Timer #754 and the
+subsequent Browser sharding workflow. No external ref is changed.
+
+The three merge conflicts are resolved explicitly: Timer's handoff and compact
+native spec use the exact current-main versions, including the settled-motion
+measurement guard; the shared index retains all main content plus its original
+material link. All six dedicated material code/test files retain exact public
+`5df` bytes. This handoff retains its complete original prefix. Every other
+current-main blob, including external Bookshelf/motion owners and the new CI
+selection workflow, is preserved. No diagnostic payload or temporary workflow
+is added. The PR net diff is material-only: six code/test files, this handoff,
+and the material index link.
+
+The last material purpose run on immutable `5df` is still 28 first-attempt
+passes, one flaky case and three wide-mobile timeouts across 32 cases. Native
+frame-arrival delays were observed even without active motion. Two diagnostic
+DPR orderings show a density-sensitive delay, but neither identifies a safe
+production repair or proves completion of the long editor journey. Those
+diagnostics do not lower the acceptance DPR, change timeouts, or convert the
+failed/flaky cases to passes. No CI/browser rerun is authorized for this cleanup.
+Historical results remain bound to their original source, not this composition.
+
+Local verification: all 16 tests across the two material stylesheet contracts
+and Detail/structure-editor boundaries passed. Both preserved native specs pass
+syntax checks. One combined Vite build passed in 5.37 seconds; the emitted CSS
+contains both the full-text wrapping and the local 16px-floor/1rem-growth rule.
+The build used Node 24.19.0, npm 11.9.0, Vite 6.4.3 and the unchanged lock with
+the already installed shared dependencies; no install occurred in this worktree.
+The documented local DEV_LAN_HOST setting avoided LAN autodetection. Full tests,
+types and native/CI execution were not repeated: app/Worker TypeScript and shared
+configuration are exact main, while the material/native inputs are preserved.
+Those scoped checks do not imply full verification or native acceptance.
+
+Next: independent exact-input review of this local-only merge; keep PR #741
+draft and obtain authorization before any external update. Evidence is recorded
+in `laplans-material-main-cleanup-evidence-20261017`.

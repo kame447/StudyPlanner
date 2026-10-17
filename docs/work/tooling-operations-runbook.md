@@ -1,7 +1,7 @@
 # Repository tooling operations runbook
 
 Status: current repository-wide operational guide
-Updated: 2026-10-08
+Updated: 2026-10-18
 
 This document stores durable operational knowledge about repository tooling, GitHub/CI integration failures, recurring tool limitations, and verified workarounds.
 
@@ -323,3 +323,47 @@ The existing UI Regression Matrix workflow accepts an optional `spec` filename o
 This manual selection produces `targeted-webkit` and `targeted-webkit-summary` check names and `ui-targeted-webkit*` artifacts. Targeted dispatches use a separate same-ref concurrency group, so they cannot cancel a standard main-push or full manual Matrix run. Their PR summary has a separate diagnostic-only identity; missing or mixed Matrix job identities preserve existing summaries rather than overwriting a full result. It does not replace the normal `cross-browser-smoke` gate. Preserve the full-matrix cancellation separately and attach the exact checkout SHA, source/tree identity, targeted test results and images to the owning release receipt. The ordinary pull-request/push matrix, blank-spec manual dispatch, permissions, concurrency, 35-minute limit, assertions and retry policy remain unchanged. A nonempty spec takes precedence over the visual/all suite selector so the bounded request never silently runs another suite instead.
 
 Publication and execution still require the applicable repository authorization. Updating a feature branch can trigger its ordinary automatic CI; a subsequent manual dispatch requests only the selected spec and must not be described as a full-suite success. Before dispatch, read back the exact published head and wait for the automatic UI workflow started by that publication to be terminal. Also check for any active run in the selected scope’s concurrency group: `ui-targeted-webkit-${{ github.ref }}` for a targeted dispatch, or `ui-regression-${{ github.ref }}` for a standard run. The retained `cancel-in-progress: true` can replace an older same-ref run within that scope. Record the observed run IDs, terminal states and ref before the manual dispatch. Do not cancel an unrelated running job as part of this operation.
+
+## Local Vite build test fails under a symlinked macOS TMPDIR
+
+- Operation / symptom: `scripts/admin-entry-preload.test.mjs` ("keeps native lazy imports and CSS gating in real Vite output without preloading the Admin entry") fails during local `npm run verify` on macOS; Linux CI passes.
+- Known error signature: `RollupError: [vite:build-html] The "fileName" or "name" properties of emitted chunks and assets must be strings that are neither absolute nor relative paths, received "../../../../../../private/var/folders/…/index.html"`.
+- Root cause: the test builds inside `os.tmpdir()`. On macOS that is `/var/folders/…`, a symlink to `/private/var/folders/…`. Vite's root keeps the symlinked path while the HTML module id is the real path, so the emitted HTML name is a `../` path escaping the root.
+- Safe workaround: until [PR #745](https://github.com/kame447/StudyPlanner/pull/745) ([Issue #744](https://github.com/kame447/StudyPlanner/issues/744)) is on main, run local verification with `TMPDIR` set to the real path, e.g. ``TMPDIR=$(node -p "require('fs').realpathSync(require('os').tmpdir())") npm run verify``.
+- Required permissions / preconditions: none.
+- What not to do: do not edit the test's assertions or Vite config to make it pass; do not treat the local failure as a CI failure.
+- Verification / cleanup: `npm run test:run -- scripts/admin-entry-preload.test.mjs` passes with the real-path `TMPDIR` (4/4); after PR #745 it must pass with the default `TMPDIR`. Reproduced on untouched main `8261300b`.
+- Last verified: 2026-10-18
+
+## Browser Regression Chromium shard cancelled at its 30-minute limit
+
+- Operation / symptom: a Browser Regression `chromium (shard N/2)` job ends `cancelled` with `##[error]The operation was canceled.`; the aggregate `chromium` check then fails.
+- Known error signature: shard duration ≈30 min (`timeout-minutes: 30` in `.github/workflows/browser-regression.yml`); the shard log's `Running N tests using 1 worker` total is never reached.
+- Root cause or strongest current explanation: runner slowness against the job limit. Before [Issue #757](https://github.com/kame447/StudyPlanner/issues/757) the whole suite ran in one job; at ≈890 tests it was cancelled on main itself (`b91ef7b5`, 30.4 min), and Playwright's file order meant the same alphabetical tail never ran: every `weekly-*` spec, `workspace-load-recovery` and `yearly-quick-entry` (2026-10-18, four cancelled attempts at two #382 heads executed 784–817 of 889–893 tests, 0 failed). #757 splits the run into two Playwright shards with the same limit, worker count and tests; a wrapper preflight fails a shard whose listing is empty, because Playwright 1.64 otherwise passes an empty shard.
+- Safe workaround: a cancelled shard is missing evidence, not a pass. "0 failed before cancellation" says nothing about the tests it never reached. Rerun that shard job once on the same commit; merge only on a completed run of both shards.
+- Required permissions / preconditions: permission to rerun workflow jobs.
+- What not to do: do not merge on a cancelled shard; do not rerun repeatedly without new evidence (repeat-action guard); do not drop tests, raise the limit or add `--pass-with-no-tests` to avoid the timeout. Do not confuse this with `cancel-in-progress` replacement by a newer run of the same ref, which is not a timeout.
+- Verification / cleanup: the rerun must complete within the limit with all of its tests passing; if the same commit times out again, stop and investigate (for example, whether one shard has become too large and the shard count needs review).
+- Last verified: 2026-10-18
+
+## UI Regression Matrix webkit-mobile job cancelled at its 35-minute limit
+
+- Operation / symptom: `cross-browser-projects (webkit-mobile)` ends `cancelled` after about 35 minutes and the `cross-browser-smoke` aggregate turns red.
+- Known error signature: job duration ≈35.4 min (`timeout-minutes: 35` in `.github/workflows/ui-regression.yml`), `##[error]The operation was canceled.`, no failed test in the executed part (e.g. PR #717 run 39057646772 at `c2865da6`: 345 passed, 0 failed when cancelled).
+- Root cause or strongest current explanation: WebKit mobile emulation is slower than the job limit on current runners; main itself is cancelled the same way (`56a8e522` on 2026-10-16; `a39defd8`, `8261300b`, `332cdaa1`, `e6a18d0d` on 2026-10-17). It is pre-existing and not caused by the PR under review.
+- Safe workaround: confirm zero failed tests in the log and compare with main's latest run of the same job; record both run IDs in the PR. For a specific spec, use the targeted WebKit dispatch described above.
+- Required permissions / preconditions: none to read logs; rerun permission for an optional rerun.
+- What not to do: do not report the job as passed; do not raise the 35-minute limit or remove WebKit coverage to make the aggregate green.
+- Verification / cleanup: PR evidence lists the cancelled job, its executed/failed counts and main's matching cancelled run.
+- Last verified: 2026-10-18
+
+## bundle-budget fails on main and on every PR (repository-wide overrun)
+
+- Operation / symptom: the UI Quality Automation `bundle-budget` job fails on main and on all PRs.
+- Known error signature: `scripts/ci/check-bundle-budget.mjs` reports violations such as JavaScript totalRaw ≈2.58 MB against the 2,265,000-byte limit; 8 metrics are over on main `a39defd8` (2026-10-17).
+- Root cause or strongest current explanation: accumulated application code, not a dependency update. With the same installed dependencies, controlled historical builds first exceed the JavaScript total limits at `ee815b47` (#566); its predecessor `9f0e0911` is within all limits; other metrics cross later (#610, #634, #653, #674). Analysis: [Issue #321](https://github.com/kame447/StudyPlanner/issues/321).
+- Safe workaround: judge a PR by its own delta against the main baseline artifact of the same run date (e.g. PR #717 `c8c32d12` → `da83eeda`: JS +1,798 B raw / +585 B gzip, CSS ±0) and record it in the PR.
+- Required permissions / preconditions: none.
+- What not to do: do not raise thresholds, weaken the guard or remove features to make it pass; any budget-policy change needs a human decision (#321).
+- Verification / cleanup: return to normal threshold judgement once a reviewed improvement lands on main.
+- Last verified: 2026-10-18
