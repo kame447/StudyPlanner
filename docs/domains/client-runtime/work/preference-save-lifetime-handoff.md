@@ -58,3 +58,34 @@ Independent review found no blocking code or fixture-contract issue and verified
 Local evidence is held under this worktree's ignored `artifacts/preference-save/`: exact-test baseline, final focused/typecheck logs, immutable measured test snapshot and receipt with content hashes. Preserve these logs when integrating; do not treat a later commit alone as a new test pass.
 
 At the final ownership check (2026-10-17 08:44 UTC), GitHub main advanced to `bd71dcc888664a572033581d9e3bfbe2faabfcae` via external #722. The coordinator's exact commit read contains only the observability contract, Worker request observer and its test, with no overlap here. This tested local candidate remains based on `e6ce0109`; an integration owner must preserve that newer external merge. No rebase or broader test pass is implied.
+
+## Separate native acceptance candidate
+
+Status: test-only local follow-up; browser execution and publication unverified.
+Branch: `test/preference-save-lifetime`. Parent integration snapshot:
+`7c98becf3016bf32640b433e812345ffbdebf362` (the frozen six-candidate integration is unchanged).
+
+The existing startup-gates harness can hold preference reads but not writes. Add an
+opt-in write-settlement control around the existing local preference repository and
+use the real root, planner, AI composer and settings UI to verify pending/success/
+failure/retry preserve an unsent composer draft and settings disclosure. No AI turn
+is submitted. This is synthetic repository latency/failure, not a remote Firestore
+experiment. Keep all old harness modes and existing read-recovery cases unchanged.
+
+Related native definition collection passed: the existing four preference read/setup
+cases remain, and four save success/failure cases (390/1280px) are added in both the
+standard Chromium and configured mobile WebKit projects, 4 → 8 each. Node spec syntax,
+JSX transpilation syntax and diff checks passed. Old harness bytes outside the opt-in
+addition and all four existing case bodies are identical. Independent review found
+no blocker in the exact local test definitions or opt-in harness: it independently
+checked the source/evidence hashes, collection identities, actual local-adapter
+settlement and retained DOM checks. No browser was launched; the new assertions
+and screenshots remain unverified.
+
+The acceptance checks hold the actual save before persistence, verify disabled pending
+controls and the unchanged confirmed day, then settle success or failure and explicit
+retry. They compare the original real AI textarea and settings DOM identities, unsent
+text, open palette disclosure, persisted preference and untouched plans. No AI request
+is sent, no arbitrary active-turn behavior or remote read-cost saving is claimed.
+Other startup-gates harness consumers retain their existing query modes. Do not retry
+the denied native browser launch.
