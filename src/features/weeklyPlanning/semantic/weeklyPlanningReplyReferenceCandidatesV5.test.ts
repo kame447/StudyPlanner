@@ -52,6 +52,11 @@ describe('bounded historical reply-reference candidates', () => {
   it('binds a reply to a real message, full task ancestry and typed slot without extracting values', () => {
     const input = { graph: fixture(), messages, previousState: question(), inputStateRevision: 7, conversationId: 'c' };
     const snapshot = createReplyReferenceSnapshotV5(input)!;
+    expect(snapshot.dialogueHistory).toEqual([
+      { messageOrdinal: 1, role: 'user', content: '数学をやりたい' },
+      { messageOrdinal: 2, role: 'user', content: '青チャートの微積分を20問' },
+      { messageOrdinal: 3, role: 'assistant', content: '1問あたりの時間は？' },
+    ]);
     const amount = snapshot.candidates.find(item => item.sourceMessageId === 'c:turn:2:user'
       && item.targetFactId === 'work' && item.slot === 'quantity')!;
     expect(amount).toMatchObject({ targetKind: 'workload', taskFactId: 'task',
@@ -70,6 +75,12 @@ describe('bounded historical reply-reference candidates', () => {
     updated.revision += 1;
     expect(resolveReplyReferenceCandidateV5(snapshot, snapshot.candidates[0].key, {
       ...current, graph: updated,
+    })).toBeNull();
+    // A transcript edit with stable message IDs must also invalidate the model's choice.
+    const rewritten = messages.map(message => message.id === 'c:turn:3:assistant'
+      ? { ...message, content: '今日は掃除の時間を決めましょう' } : message);
+    expect(resolveReplyReferenceCandidateV5(snapshot, snapshot.candidates[0].key, {
+      ...current, messages: rewritten,
     })).toBeNull();
     const stale = createReplyReferenceSnapshotV5({
       ...current, inputStateRevision: 8,
@@ -153,6 +164,11 @@ describe('calibrated read-only Jev reference choice', () => {
       calibration: calibration(),
       port: { choose: async (request, beforeDispatch) => {
         expect(request.context.question.code).toBe('reply_reference_target');
+        expect(request.context.scope.dialogueHistory).toEqual([
+          { messageOrdinal: 1, role: 'user', content: '数学をやりたい' },
+          { messageOrdinal: 2, role: 'user', content: '青チャートの微積分を20問' },
+          { messageOrdinal: 3, role: 'assistant', content: '1問あたりの時間は？' },
+        ]);
         expect(JSON.stringify(request)).not.toContain('"taskFactId"');
         beforeDispatch();
         return response(request, chosen.key);
