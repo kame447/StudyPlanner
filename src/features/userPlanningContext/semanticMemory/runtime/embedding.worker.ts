@@ -23,7 +23,9 @@ const engine = createEmbeddingEngine({
     env.allowLocalModels = false;
     env.allowRemoteModels = true;
     env.remoteHost = 'https://huggingface.co/';
-    env.remotePathTemplate = '{model}/resolve/{revision}/';
+    // 4.3.0 registry probes omit revision internally. Force every probe and
+    // actual download to the immutable revision, including their cache keys.
+    env.remotePathTemplate = `{model}/resolve/${SEMANTIC_MEMORY_MODEL.revision}/`;
     env.useBrowserCache = typeof caches !== 'undefined';
     env.cacheKey = SEMANTIC_MEMORY_MODEL_CACHE;
     env.useFSCache = false;

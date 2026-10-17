@@ -135,6 +135,38 @@ describe('public artifact network boundary', () => {
     await expect(fetchPublic(base + 'config.json', { method: 'POST', body: 'private' })).rejects.toMatchObject({ reason: 'model_download_failed' });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
+  it('answers optional pinned-model probes with local 404 without network access', async () => {
+    const fetcher = vi.fn(async () => new Response('unused'));
+    const fetchPublic = createPublicModelFetch(fetcher);
+    for (const file of ['generation_config.json', 'preprocessor_config.json', 'onnx/model_int8.onnx_data']) {
+      const response = await fetchPublic(base + file, { method: 'GET', headers: { Range: 'bytes=0-0' } });
+      expect(response.status).toBe(404);
+      expect(await response.text()).toBe('');
+    }
+    await expect(fetchPublic(base + 'optional.json', { method: 'POST' })).rejects.toMatchObject({ reason: 'model_download_failed' });
+    await expect(fetchPublic(base + 'optional.json', { body: 'private' })).rejects.toMatchObject({ reason: 'model_download_failed' });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it('preserves only the fixed metadata Range header, including 206 total size', async () => {
+    const fetcher = vi.fn(async () => new Response('x', { status: 206,
+      headers: { 'content-range': 'bytes 0-0/118054593', 'content-length': '1' } }));
+    const fetchPublic = createPublicModelFetch(fetcher);
+    const response = await fetchPublic(base + 'onnx/model_int8.onnx', { method: 'GET',
+      headers: { Range: 'bytes=0-0', Authorization: 'discard', 'X-Private': 'discard' } });
+    expect(response.status).toBe(206);
+    expect(response.headers.get('content-range')).toBe('bytes 0-0/118054593');
+    expect(await response.text()).toBe('x');
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith(base + 'onnx/model_int8.onnx', {
+      method: 'GET', credentials: 'omit', referrerPolicy: 'no-referrer', headers: { Range: 'bytes=0-0' }, cache: 'no-store',
+    });
+    await expect(fetchPublic(base + 'config.json', { headers: { Range: 'bytes=0-100' } })).rejects.toMatchObject({ reason: 'model_download_failed' });
+    await expect(fetchPublic(base + 'onnx/model_int8.onnx')).rejects.toMatchObject({ reason: 'model_download_failed' });
+    for (const contentRange of ['bytes 0-0/120000001', 'bytes 0-0/*', 'bytes 0-1/100', 'malformed']) {
+      const oversized = createPublicModelFetch(async () => new Response('x', { status: 206,
+        headers: { 'content-range': contentRange, 'content-length': '1' } }));
+      await expect(oversized(base + 'onnx/model_int8.onnx', { headers: { Range: 'bytes=0-0' } })).rejects.toMatchObject({ reason: 'model_download_failed' });
+    }
+  });
   it('bounds weights before downloading and while streaming without content-length', async () => {
     const big = vi.fn(async () => new Response('x', { headers: { 'content-length': String(SEMANTIC_MEMORY_MODEL.maxWeightBytes + 1) } }));
     await expect(createPublicModelFetch(big)(base + 'onnx/model_int8.onnx')).rejects.toMatchObject({ reason: 'model_download_failed' });
