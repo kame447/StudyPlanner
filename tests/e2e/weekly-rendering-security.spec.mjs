@@ -1,13 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const WEEKLY_HARNESS_URL = 'http://127.0.0.1:4174/?weekly=1';
 const REAL_WEEKLY_URL = 'http://127.0.0.1:4174/real-weekly.html';
-
-async function harnessEvents(page, type) {
-  return page.evaluate((eventType) => (
-    window.__quickEntryEvents.filter((event) => event.type === eventType)
-  ), type);
-}
 
 async function realEvents(page, type) {
   return page.evaluate((eventType) => (
@@ -22,21 +15,33 @@ async function realComposer(page) {
 }
 
 test.describe('weekly conversation rendering browser contracts', () => {
-  test('HTML-like user and assistant content is rendered as text rather than executable markup', async ({ page }) => {
-    await page.goto(WEEKLY_HARNESS_URL);
-    await page.evaluate(() => {
-      window.__weeklyXssExecuted = false;
+  test('production chat renders HTML-like user and assistant messages as literal text', async ({ page }) => {
+    const pageErrors = [];
+    const dialogs = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    page.on('dialog', async (dialog) => {
+      dialogs.push(dialog.message());
+      await dialog.dismiss();
     });
+    await page.goto(REAL_WEEKLY_URL);
 
-    const payload = '<img src=x onerror="window.__weeklyXssExecuted=true">';
-    const input = page.getByLabel('週間計画にしたいこと');
+    const payload = '<img src="x" onerror="window.__weeklyXssExecuted=true"><script>window.__weeklyXssExecuted=true</script>';
+    const input = await realComposer(page);
     await input.fill(payload);
-    await input.press('Control+Enter');
+    await page.getByRole('button', { name: '送信', exact: true }).click();
 
-    await expect.poll(async () => (await harnessEvents(page, 'complete-weekly-turn')).length).toBe(1);
-    await expect(page.getByText(payload, { exact: true })).toHaveCount(1);
-    await expect(page.getByLabel('週間計画の会話履歴').locator('img')).toHaveCount(0);
-    expect(await page.evaluate(() => window.__weeklyXssExecuted)).toBe(false);
+    await expect.poll(async () => (await realEvents(page, 'real-runtime-complete')).length).toBe(1);
+    const messages = page.locator('.ai-planning-conversation');
+    const userMessage = messages.locator('.ai-planning-message-row.user .ai-planning-bubble');
+    const assistantMessage = messages.locator('.ai-planning-message-row.assistant .ai-planning-bubble');
+    await expect(userMessage).toHaveText(payload);
+    await expect(userMessage).toBeVisible();
+    await expect(assistantMessage).toHaveText(`テスト応答: ${payload}`);
+    await expect(assistantMessage).toBeVisible();
+    await expect(messages.locator('img[src="x"], script')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__weeklyXssExecuted)).toBeUndefined();
+    expect(pageErrors).toEqual([]);
+    expect(dialogs).toEqual([]);
   });
 
   test('AI planning composer maximum length agrees with the real controlled-turn boundary', async ({ page }) => {
