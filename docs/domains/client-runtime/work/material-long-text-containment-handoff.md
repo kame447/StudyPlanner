@@ -85,3 +85,65 @@ contract. Independent source/definition review is requested before any publicati
 Evidence: `laplans-material-long-text-evidence-20261017` contains the exact patch,
 red/green logs, font arithmetic, collection identities, emitted rule, toolchain
 and protected-input hashes. No new material asset was generated or replaced.
+
+## First native run and fixture correction — 2026-10-17
+
+The approved bounded run `39057872767` checked application `d8ad9133`
+(tree `03ff4c04`) through QA workflow `98a8a46f`. Standard Chromium completed
+78 of 82 selected cases successfully. The four new long-detail cases all
+stopped at the same expected-text assertion in the upcoming-plan tab: the old
+fixture title was displayed instead of the intended long token. Their 200%
+and editor Save/reload paths were not reached and remain unverified.
+
+The fixture first opens the application, which migrates legacy plans into
+the canonical schedule-event collection. Its subsequent long-text mutation
+updated only the legacy plan. The actual repository correctly continued to
+project the already-migrated record. This is a fixture-authority mismatch,
+not evidence of a failed text-wrapping rule.
+
+The correction updates the same owned, legacy-ID-matched canonical event's
+title and plan subject/material name alongside the existing fixture changes.
+It throws if that expected migrated plan is missing. No runtime code, CSS,
+shared fixture, assertion, timeout, viewport, screenshot or test identity is
+changed. The retained 720px/92dvh frame contract is unchanged.
+
+A small source-level check executes the actual seed/mutation callbacks
+extracted from this spec against the real local planner repository. The old
+callback reproduced the stale title (one failure, two intentionally unselected
+checks). The corrected callback passed all three checks: long text survives
+fresh repository projection, unrelated records and the migration receipt are
+preserved, and a missing owned target fails explicitly. These checks do not
+replace native rendering. Evidence is in
+`laplans-material-authority-fixture-evidence-20261017`.
+
+Next: run the four corrected long-detail definitions in their existing
+Chromium and mobile-WebKit projects, then inspect complete 100%/200% geometry,
+editor actions and reload results. Earlier passes remain separately bound to
+their execution source; this correction does not create a blanket new pass.
+
+## Separate coarse-pointer text-size correction
+
+The first cross-project run also had three mobile-WebKit creation-sheet
+failures, distinct from the four mobile detail fixture failures. At all three
+wide/short viewports, root text was 32px but input text remained 16px. Actual
+images show enlarged labels/actions beside unchanged input/select text.
+The global input-focus rule applies on narrow viewports or a coarse pointer
+and fixes text controls to `16px !important`, overriding this sheet's `1rem`.
+This is a pre-existing enlargement constraint exposed by the new acceptance,
+not a font-loading failure or wrong viewport measurement.
+
+The correction is limited to text-capable inputs and selects in the material
+creation dialog's fields under that same media condition. It uses
+`max(1rem, 16px) !important`: normal/reduced root text keeps the focus-zoom
+floor; enlarged root text can reach 32px. The input selector repeats the global
+six type exclusions and adds the local dialog/field prefix, so its specificity
+actually wins. Checkbox, radio, range, color, file and hidden inputs are not
+changed. The global policy, other editors, frame, interaction and all existing
+native assertions remain unchanged.
+
+One new source regression failed on the old rule, then eleven related style
+checks passed. The exact CSS assertion checks matching exclusions, local scope,
+media, importance and the floor/enlargement formula. This does not prove browser
+rendering. QA maps both narrow standard and coarse-pointer creation consumers,
+plus the eight corrected long-detail project cases, for bounded reacceptance.
+Timer runtime/native inputs and previous timer image evidence are unaffected.

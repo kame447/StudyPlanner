@@ -625,6 +625,15 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 108
         const plans = JSON.parse(localStorage.getItem('studyplanner.plans'));
         Object.assign(plans[0], { title: activity, subject, materialName: name });
         localStorage.setItem('studyplanner.plans', JSON.stringify(plans));
+        // First entry has already migrated plans. Update the same owned
+        // canonical record rather than leaving its displayed title unchanged.
+        const events = JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1'));
+        const event = events.find(row => row.userId === plans[0].userId
+          && row.provenance?.legacy.kind === 'plan' && row.provenance.legacy.id === plans[0].id);
+        if (!event?.plan) throw new Error('Expected the seeded material plan to be migrated');
+        Object.assign(event, { title: activity });
+        Object.assign(event.plan, { subject, materialName: name });
+        localStorage.setItem('studyplanner.scheduleEvents.v1', JSON.stringify(events));
         const actuals = JSON.parse(localStorage.getItem('studyplanner.actuals'));
         Object.assign(actuals[0], { note: activity, materialName: name });
         delete actuals[0].materialProgressUpdates;
