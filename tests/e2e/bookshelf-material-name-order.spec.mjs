@@ -389,3 +389,82 @@ for (const theme of ['light', 'dark']) {
     });
   });
 }
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 1080 }, { width: 1280, height: 600 }]) {
+  test.describe(`desktop expanded material sheet ${viewport.width}x${viewport.height}`, () => {
+    test.use({ viewport, screen: viewport });
+    test('retains the approved frame and all fields at 100% and 200% text', async ({ page }, testInfo) => {
+      const externalRequests = await boot(page, viewport.width);
+      const dialog = page.getByRole('dialog', { name: '教材を追加', exact: true });
+      const body = dialog.locator('.material-create-body');
+      const footer = dialog.locator('.material-create-footer');
+      const savedName = `Desktop${viewport.width}_` + 'LONGMATERIALTOKEN'.repeat(16);
+      await nameInput(page).fill(savedName);
+      await dialog.getByLabel('教材ペース管理を使う').check();
+      await dialog.getByLabel('総量', { exact: true }).fill('240');
+      await dialog.getByLabel('現在位置', { exact: true }).fill('12');
+      let initialFieldFont;
+      for (const percent of [100, 200]) {
+        await page.evaluate(percent => { document.documentElement.style.fontSize = `${percent}%`; }, percent);
+        await page.evaluate(() => document.fonts.ready);
+        const metrics = await dialog.evaluate(element => {
+          const rect = node => {
+            const box = node.getBoundingClientRect();
+            return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height };
+          };
+          const body = element.querySelector('.material-create-body');
+          return { viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio },
+            root: getComputedStyle(document.documentElement).fontSize,
+            dialog: rect(element), body: rect(body), footer: rect(element.querySelector('.material-create-footer')),
+            fieldFont: getComputedStyle(element.querySelector('input')).fontSize,
+            horizontalOverflow: element.scrollWidth - element.clientWidth,
+            bodyHorizontalOverflow: body.scrollWidth - body.clientWidth,
+            controls: [...element.querySelectorAll('button, input:not([type="checkbox"]), select')]
+              .filter(node => node.getClientRects().length).map(node => ({ name: node.getAttribute('aria-label') || node.closest('label')?.textContent || node.textContent, ...rect(node) })) };
+        });
+        const name = `${viewport.width}x${viewport.height}-${percent}`;
+        await testInfo.attach(`material-expanded-geometry-${name}`, { body: JSON.stringify(metrics), contentType: 'application/json' });
+        await testInfo.attach(`material-expanded-${name}`, { body: await page.screenshot({ scale: 'css', animations: 'disabled' }), contentType: 'image/png' });
+        expect(metrics.viewport.width).toBe(viewport.width); expect(metrics.viewport.height).toBe(viewport.height);
+        expect(parseFloat(metrics.root)).toBe(16 * percent / 100);
+        expect(metrics.dialog.width).toBeCloseTo(720, 0);
+        expect(metrics.dialog.left).toBeCloseTo((viewport.width - 720) / 2, 0);
+        expect(metrics.dialog.height).toBeCloseTo(viewport.height * 0.92, 0);
+        expect(metrics.dialog.bottom).toBeCloseTo(viewport.height, 0);
+        expect(metrics.horizontalOverflow).toBeLessThanOrEqual(1);
+        expect(metrics.bodyHorizontalOverflow).toBeLessThanOrEqual(1);
+        expect(metrics.body.height).toBeGreaterThan(44);
+        if (percent === 100) initialFieldFont = parseFloat(metrics.fieldFont);
+        else expect(parseFloat(metrics.fieldFont)).toBeGreaterThan(initialFieldFont * 1.9);
+        for (const control of metrics.controls) {
+          expect(control.height, control.name).toBeGreaterThanOrEqual(44);
+          expect(control.left, control.name).toBeGreaterThanOrEqual(metrics.dialog.left - 1);
+          expect(control.right, control.name).toBeLessThanOrEqual(metrics.dialog.right + 1);
+        }
+        for (const label of ['教材名', '教科', '学習状態', '総量', '現在位置', '目標日', '1単位あたりの目安時間', '1日の最大量']) {
+          await expectVisibleInBody(dialog.getByLabel(label, { exact: true }), body);
+        }
+        await expectVisibleInBody(dialog.getByRole('combobox', { name: '単位', exact: true }), body);
+        const footerAfter = await footer.boundingBox();
+        expect(footerAfter.y).toBeCloseTo(metrics.footer.top, 0);
+        expect(footerAfter.y + footerAfter.height).toBeLessThanOrEqual(viewport.height + 1);
+        await dialog.getByLabel('1日の最大量', { exact: true }).focus();
+        await page.keyboard.press('Tab');
+        await expect(footer.getByRole('button', { name: '保存', exact: true })).toBeFocused();
+        await footer.getByRole('button', { name: '保存', exact: true }).click({ trial: true });
+      }
+      await page.keyboard.press('Enter');
+      await expect(dialog).toHaveCount(0);
+      const saved = await page.evaluate(() => window.__plannerRecoveryRepository.readDurable());
+      const material = saved.materials.find(item => item.name === savedName);
+      expect(material).toMatchObject({ name: savedName, paceEnabled: true, totalUnits: 240, currentUnit: 12 });
+      await page.evaluate(() => sessionStorage.setItem('studyplanner.e2e.preserve-next-reload', 'true'));
+      await page.reload();
+      await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: '教材', exact: true }).click();
+      await expect(page.locator('.bookshelf-view')).toContainText(savedName);
+      const reloaded = await page.evaluate(() => window.__plannerRecoveryRepository.readDurable());
+      expect(reloaded.materials.find(item => item.id === material.id)).toMatchObject({ name: savedName, totalUnits: 240, currentUnit: 12 });
+      expect(externalRequests).toEqual([]);
+    });
+  });
+}
