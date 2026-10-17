@@ -8,7 +8,7 @@ Tracking: [Issue #726](https://github.com/kame447/StudyPlanner/issues/726)
 
 TesterArmy/e2eは、自然言語の操作目標を `agent.act` へ与え、ブラウザ上で探索的なユーザー操作を行う補助runner。判定の正本は `expect(screen...)` による独立した画面contractと、必要な場合の既存Playwright・domain・実API側の証拠とする。
 
-本pilotでは `tests/agent-e2e/` が独立したnpm依存と`e2e.config.ts`を所有し、既存の`tests/e2e/`や`browser-regression.yml`には手を加えない。UIの操作しやすさを調べる用途と、Firestore保存・再読込・重複防止を保証する用途を混同しない。
+`tests/agent-e2e/` は独立したnpm依存と`e2e.config.ts`を所有する。合成UIの保証が新runnerへ厳密に移管できた旧Playwrightケースだけ個別に整理し、`browser-regression.yml`や独立した保存・再読込・二重操作の保証は維持する。UIの操作しやすさを調べる用途と、Firestore永続化を保証する用途を混同しない。
 
 初期ケースでは、アプリ本体のAI計画コンポーネントを使うローカルharness（`/real-weekly.html`）と、プレビューharness（`/?scenario=preview`）を操作する。ただし会話のruntime gatewayと保存先はstubであり、AIプロバイダ・Cloudflare Worker・Firestoreの意味解釈と永続化は通らない。会話の日本語品質やオンラインE2E成功をこのpilot単体で主張しない。
 
@@ -60,6 +60,12 @@ ChatGPTの対応サブスクリプションを使いたい場合は、`cd tests/
 旧 `tests/e2e/weekly-planning-modal.spec.mjs` の「existing weekly session opens directly ...」は `/?weekly=1` で入力欄・送信ボタンが見えることのみを検査していた。同ファイルの送信とpendingのテストもこの状態を前提に検査しているため、検出範囲が重複する。2026-10-17に `tests/agent-e2e/tests/weekly-conversation.e2e.ts` の `smoke: an existing weekly session has a usable accessible composer` へ移管。新テストは同じ実ブラウザの合成harnessで、入力欄と送信ボタンの可視性に加えて、入力時に送信ボタンが有効になることを検査する。CIはmain向け全PRとmain pushでこのmodel-free smokeを実行するため、変更時の回帰監視を省略しない。
 
 同じ「週間計画」でも、`weekly-planning-modal.spec.mjs` のEnter/Ctrl+Enter・pending中のキャンセルと再送抑止、`weekly-preview-approval.spec.mjs` のイベントpayload・二重promote防止、`weekly-real-application.spec.mjs` のcontroller/reducer・保存・reload等は別の故障を検査するため保持する。モデル操作の成功のみを根拠に状態不変条件を置き換えない。
+
+## 1ターン完了の重複保証移管（Issue #739）
+
+旧 `tests/e2e/weekly-real-application.spec.mjs` の最初の1ケースは、`/real-weekly.html` における「送信したユーザー発話とアプリ応答がそれぞれ1回表示され、controlled runtimeのexecute/completeも1回ずつ」を検査していた。新runnerに既存の合成UI送信smokeがあるため、`weekly-web-engine.ts` の共有web engineとTesterArmy公式の `surfaceOf` を使用して、同じDOMメッセージ件数と `__realWeeklyEvents` の正確な発火回数を独立したassertionで追加した。これは画面上の成功をAIが推測する判定ではなく、runnerの通常CIでモデルを呼ばず実行する。
+
+同じsynthetic Vite harnessでの旧Playwright 1件と新TesterArmy smoke 3件を移行前に成功確認。runtime-executeイベントだけを合成fixtureで1件余分に記録する一時故障を注入すると、新smokeが `execute: 2` を検出して失敗した。fixtureをSHA-256一致で復元し、元の契約の検査を再度成功確認したうえで旧1ケースだけ削除。2ターン順序、キャンセル、修復、承認・保存・reloadや複数viewportなど、旧ファイルの他のテストは保持する。既存Worker・Firestoreの通信保証を移したとは扱わない。
 
 ## 移行条件と次の拡張
 
