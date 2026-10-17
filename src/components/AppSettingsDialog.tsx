@@ -3,6 +3,7 @@ import { ArrowLeft, Brain, CircleHelp, Pencil, Plus, SlidersHorizontal, Trash2 }
 import { useOptionalUserPlanningContextV1 } from '../features/userPlanningContext/UserPlanningContextContext';
 import { userPlanningContextDisplayTextV1 } from '../features/userPlanningContext/userPlanningContextSpace';
 import type { UserPlanningContextRecordV1 } from '../features/userPlanningContext/userPlanningContextTypes';
+import { SemanticMemoryOptInToggle } from '../features/userPlanningContext/semanticMemory/SemanticMemoryOptInToggle';
 import { AppSettingsSupportPanel } from './AppSettingsSupportPanel';
 import { AppSettingsGeneral, type AppSettingsGeneralProps } from './AppSettingsGeneral';
 import '../styles/app-settings-page.css';
@@ -123,6 +124,10 @@ export function AppSettingsDialog({ open, onClose, ...generalProps }: AppSetting
                       追加
                     </button>
                   </div>
+
+                  {import.meta.env.VITE_SEMANTIC_MEMORY_ENABLED === 'true'
+                    ? <SemanticMemoryOptInToggle key={memory.snapshot.ownerId} ownerId={memory.snapshot.ownerId} />
+                    : null}
 
                   {editorOpen ? (
                     <section className="assistant-settings-card memory-editor-card">

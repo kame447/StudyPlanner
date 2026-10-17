@@ -42,6 +42,7 @@
     "test:agentic": "npm --prefix tests/agent-e2e run test:agent"
   },
   "dependencies": {
+    "@huggingface/transformers": "4.3.0",
     "firebase": "^12.12.0",
     "lucide-react": "^1.14.0",
     "react": "^18.3.1",
@@ -54,6 +55,7 @@
     "@types/react-test-renderer": "^18.3.1",
     "@vitejs/plugin-basic-ssl": "^1.2.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "fake-indexeddb": "6.2.5",
     "fast-check": "^4.10.2",
     "react-test-renderer": "^18.3.1",
     "typescript": "^5.6.3",

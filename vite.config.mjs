@@ -90,6 +90,9 @@ function resolveVendorChunk(id) {
 
 export default defineConfig({
   plugins: [react(), preferredNetworkUrlPlugin()],
+  // Worker dynamic imports must remain split; no inference dependency in app entry.
+  worker: { format: 'es' },
+  optimizeDeps: { exclude: ['@huggingface/transformers', 'onnxruntime-web'] },
   build: {
     rollupOptions: {
       output: {

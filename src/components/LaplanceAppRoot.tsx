@@ -9,6 +9,7 @@ import { startupTiming } from '../lib/startupTiming';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import App from '../App';
 import { UserPlanningContextProvider } from '../features/userPlanningContext/UserPlanningContextContext';
+import { semanticMemoryApplication } from '../features/userPlanningContext/semanticMemory/index/semanticMemoryApplication';
 import {
   WeeklyPlanningPersonalizationProvider,
 } from '../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext';
@@ -220,6 +221,9 @@ function LaplanceAppRootContent({
       const previous = currentSession.current;
       if (previous.userId === userId && previous.scope.isCurrent()) return;
       previous.scope.invalidate();
+      if (typeof previous.userId === 'string' && previous.userId !== userId) {
+        semanticMemoryApplication.ownerChanged();
+      }
       const next = { userId, epoch: previous.epoch + 1, scope: createStartupSessionScope() };
       // Revoke the prior session synchronously, including batched A→null→A events.
       currentSession.current = next;
