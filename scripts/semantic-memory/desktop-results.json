@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-17T10:25:17.844Z",
+  "timestamp": "2026-10-17T11:21:58.151Z",
   "platform": "darwin",
   "arch": "arm64",
   "transformers": "4.3.0",
@@ -8,27 +8,301 @@
   "browsers": [
     {
       "name": "chromium",
-      "status": "NOT RUN",
-      "stage": "browser_launch",
-      "reason": "sandbox MachPortRendezvousServer permission denied (1100)"
+      "version": "156.0.8078.4",
+      "status": "ok",
+      "model": {
+        "modelId": "Xenova/multilingual-e5-small",
+        "revision": "761b726dd34fb83930e26aab4e9ac3899aa1fa78",
+        "dimensions": 384,
+        "queryPrefix": "query: ",
+        "passagePrefix": "passage: ",
+        "maxWeightBytes": 120000000
+      },
+      "backend": "wasm",
+      "firstCallMs": 12704,
+      "steadyCallMs": [
+        17,
+        14.300000011920929,
+        14.300000011920929,
+        14.299999982118607,
+        14.200000017881393
+      ],
+      "modelLoadMs": 12674.5,
+      "firstEmbedMs": 21.299999982118607,
+      "steadyEmbedMs": [
+        14.5,
+        14.199999988079071,
+        14.200000017881393,
+        14.099999994039536,
+        14.099999994039536
+      ],
+      "crossOriginIsolated": false,
+      "wasmThreads": 1,
+      "mainThreadHeapBytes": 10000000,
+      "heapLimitation": "Main page heap only; Worker/WASM/GPU allocation is not measured by performance.memory.",
+      "webgpuExposed": true,
+      "publicModelDownloadBytes": null,
+      "resources": [
+        {
+          "origin": "http://127.0.0.1:4184",
+          "path": "/scripts/semantic-memory/benchmark.html",
+          "status": 200,
+          "bytes": 322
+        },
+        {
+          "origin": "http://127.0.0.1:4184",
+          "path": "/assets/benchmark-h92qFQjm.js",
+          "status": 200,
+          "bytes": 4138
+        },
+        {
+          "origin": "http://127.0.0.1:4184",
+          "path": "/assets/embedding.worker-BDLF5ugI.js",
+          "status": 200,
+          "bytes": 5671
+        },
+        {
+          "origin": "http://127.0.0.1:4184",
+          "path": "/assets/transformers.web-mkS0LQH7.js",
+          "status": 200,
+          "bytes": 592481
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/Xenova/multilingual-e5-small/resolve/761b726dd34fb83930e26aab4e9ac3899aa1fa78/config.json",
+          "status": 307,
+          "bytes": null
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/api/resolve-cache/models/Xenova/multilingual-e5-small/761b726dd34fb83930e26aab4e9ac3899aa1fa78/config.json",
+          "status": 200,
+          "bytes": 658
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/Xenova/multilingual-e5-small/resolve/761b726dd34fb83930e26aab4e9ac3899aa1fa78/tokenizer_config.json",
+          "status": 307,
+          "bytes": null
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/api/resolve-cache/models/Xenova/multilingual-e5-small/761b726dd34fb83930e26aab4e9ac3899aa1fa78/tokenizer_config.json",
+          "status": 206,
+          "bytes": 1
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/Xenova/multilingual-e5-small/resolve/761b726dd34fb83930e26aab4e9ac3899aa1fa78/tokenizer.json",
+          "status": 302,
+          "bytes": null
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/Xenova/multilingual-e5-small/resolve/761b726dd34fb83930e26aab4e9ac3899aa1fa78/onnx/model_int8.onnx",
+          "status": 302,
+          "bytes": null
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/Xenova/multilingual-e5-small/resolve/761b726dd34fb83930e26aab4e9ac3899aa1fa78/tokenizer_config.json",
+          "status": 307,
+          "bytes": null
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/api/resolve-cache/models/Xenova/multilingual-e5-small/761b726dd34fb83930e26aab4e9ac3899aa1fa78/tokenizer_config.json",
+          "status": 200,
+          "bytes": 443
+        },
+        {
+          "origin": "https://us.aws.cdn.hf.co",
+          "path": "/xet-bridge-us/64a04c4d7b57fab3a5d1e5eb/1c8f7c8fd9b7c56a43be9844713bdd468b7a17ed5170311ce768adfc6e2d41ea",
+          "status": 200,
+          "bytes": null
+        },
+        {
+          "origin": "https://us.aws.cdn.hf.co",
+          "path": "/xet-bridge-us/64a04c4d7b57fab3a5d1e5eb/282762e9f940a7d562180cbea99f22f02a1b0af19160a3d13273189715d46efc",
+          "status": 200,
+          "bytes": null
+        },
+        {
+          "origin": "http://127.0.0.1:4184",
+          "path": "/assets/ort-wasm-simd-threaded-BQJNh0bu.mjs",
+          "status": 200,
+          "bytes": 24381
+        },
+        {
+          "origin": "http://127.0.0.1:4184",
+          "path": "/assets/ort-wasm-simd-threaded-4byDm7i3.wasm",
+          "status": 200,
+          "bytes": 14264838
+        },
+        {
+          "origin": "http://127.0.0.1:4184",
+          "path": "http://127.0.0.1:4184/85006d97-fe99-4158-8754-6cb7d711614f",
+          "status": 200,
+          "bytes": 24323
+        }
+      ],
+      "networkMethodOrBodyViolations": [],
+      "consoleErrors": []
     },
     {
       "name": "webkit",
-      "status": "NOT RUN",
-      "stage": "browser_launch",
-      "reason": "WebKit browser launch aborted (SIGABRT) before page execution"
+      "version": "27.2",
+      "status": "ok",
+      "model": {
+        "modelId": "Xenova/multilingual-e5-small",
+        "revision": "761b726dd34fb83930e26aab4e9ac3899aa1fa78",
+        "dimensions": 384,
+        "queryPrefix": "query: ",
+        "passagePrefix": "passage: ",
+        "maxWeightBytes": 120000000
+      },
+      "backend": "webgpu",
+      "firstCallMs": 13667,
+      "steadyCallMs": [
+        110,
+        67,
+        69,
+        64,
+        65
+      ],
+      "modelLoadMs": 13572,
+      "firstEmbedMs": 88,
+      "steadyEmbedMs": [
+        109,
+        67,
+        69,
+        64,
+        65
+      ],
+      "crossOriginIsolated": false,
+      "wasmThreads": 1,
+      "mainThreadHeapBytes": null,
+      "heapLimitation": "Main page heap only; Worker/WASM/GPU allocation is not measured by performance.memory.",
+      "webgpuExposed": true,
+      "publicModelDownloadBytes": null,
+      "resources": [
+        {
+          "origin": "http://127.0.0.1:4184",
+          "path": "/scripts/semantic-memory/benchmark.html",
+          "status": 200,
+          "bytes": 322
+        },
+        {
+          "origin": "http://127.0.0.1:4184",
+          "path": "/assets/benchmark-h92qFQjm.js",
+          "status": 200,
+          "bytes": 4138
+        },
+        {
+          "origin": "http://127.0.0.1:4184",
+          "path": "/assets/embedding.worker-BDLF5ugI.js",
+          "status": 200,
+          "bytes": 5671
+        },
+        {
+          "origin": "http://127.0.0.1:4184",
+          "path": "/assets/transformers.web-mkS0LQH7.js",
+          "status": 200,
+          "bytes": 592481
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/Xenova/multilingual-e5-small/resolve/761b726dd34fb83930e26aab4e9ac3899aa1fa78/config.json",
+          "status": 307,
+          "bytes": null
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/api/resolve-cache/models/Xenova/multilingual-e5-small/761b726dd34fb83930e26aab4e9ac3899aa1fa78/config.json",
+          "status": 200,
+          "bytes": 658
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/Xenova/multilingual-e5-small/resolve/761b726dd34fb83930e26aab4e9ac3899aa1fa78/tokenizer_config.json",
+          "status": 307,
+          "bytes": null
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/api/resolve-cache/models/Xenova/multilingual-e5-small/761b726dd34fb83930e26aab4e9ac3899aa1fa78/tokenizer_config.json",
+          "status": 206,
+          "bytes": 1
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/Xenova/multilingual-e5-small/resolve/761b726dd34fb83930e26aab4e9ac3899aa1fa78/tokenizer_config.json",
+          "status": 307,
+          "bytes": null
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/Xenova/multilingual-e5-small/resolve/761b726dd34fb83930e26aab4e9ac3899aa1fa78/tokenizer.json",
+          "status": 302,
+          "bytes": null
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/Xenova/multilingual-e5-small/resolve/761b726dd34fb83930e26aab4e9ac3899aa1fa78/onnx/model_int8.onnx",
+          "status": 302,
+          "bytes": null
+        },
+        {
+          "origin": "https://huggingface.co",
+          "path": "/api/resolve-cache/models/Xenova/multilingual-e5-small/761b726dd34fb83930e26aab4e9ac3899aa1fa78/tokenizer_config.json",
+          "status": 200,
+          "bytes": 443
+        },
+        {
+          "origin": "https://us.aws.cdn.hf.co",
+          "path": "/xet-bridge-us/64a04c4d7b57fab3a5d1e5eb/1c8f7c8fd9b7c56a43be9844713bdd468b7a17ed5170311ce768adfc6e2d41ea",
+          "status": 200,
+          "bytes": 17082730
+        },
+        {
+          "origin": "https://us.aws.cdn.hf.co",
+          "path": "/xet-bridge-us/64a04c4d7b57fab3a5d1e5eb/282762e9f940a7d562180cbea99f22f02a1b0af19160a3d13273189715d46efc",
+          "status": 200,
+          "bytes": null
+        },
+        {
+          "origin": "http://127.0.0.1:4184",
+          "path": "/assets/ort-wasm-simd-threaded.asyncify-DXIbolS2.mjs",
+          "status": 200,
+          "bytes": 53057
+        },
+        {
+          "origin": "http://127.0.0.1:4184",
+          "path": "/assets/ort-wasm-simd-threaded.asyncify-CxOG5pUO.wasm",
+          "status": 200,
+          "bytes": 26861777
+        },
+        {
+          "origin": "http://127.0.0.1:4184",
+          "path": "http://127.0.0.1:4184/8c01a96f-3fa2-49cf-9d35-ae50c9380600",
+          "status": 200,
+          "bytes": 52999
+        }
+      ],
+      "networkMethodOrBodyViolations": [],
+      "consoleErrors": []
     }
   ],
   "bundle": [
     {
-      "file": "benchmark-DLu_J9IP.js",
+      "file": "benchmark-h92qFQjm.js",
       "bytes": 4138,
-      "gzipBytes": 2145
+      "gzipBytes": 2147
     },
     {
-      "file": "embedding.worker-TTm8MLSL.js",
-      "bytes": 5060,
-      "gzipBytes": 2395
+      "file": "embedding.worker-BDLF5ugI.js",
+      "bytes": 5671,
+      "gzipBytes": 2641
     },
     {
       "file": "ort-wasm-simd-threaded-4byDm7i3.wasm",
@@ -56,15 +330,15 @@
       "gzipBytes": 172443
     }
   ],
+  "bundleTimestamp": "2026-10-17T11:21:58.151Z",
   "initialGraph": {
-    "entry": "assets/benchmark-DLu_J9IP.js",
+    "entry": "assets/benchmark-h92qFQjm.js",
     "files": [
-      "assets/benchmark-DLu_J9IP.js"
+      "assets/benchmark-h92qFQjm.js"
     ]
   },
-  "bundleTimestamp": "2026-10-17T10:27:30.908Z",
   "workerGraph": {
-    "file": "embedding.worker-TTm8MLSL.js",
+    "file": "embedding.worker-BDLF5ugI.js",
     "dynamicImports": [
       "./transformers.web-mkS0LQH7.js"
     ]
