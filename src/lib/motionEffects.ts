@@ -231,3 +231,19 @@ export function playFromRect(element: Element | null | undefined, from: MotionRe
     reduced: [{ opacity: 0 }, { opacity: 1 }],
   });
 }
+
+/**
+ * One step of a flow replaced the previous one in the same place (a timer
+ * becoming its record form). The new step comes forward without moving
+ * sideways, so it never widens a scroll area while it appears.
+ */
+export function playStepChange(element: Element | null | undefined) {
+  return play(element, {
+    standard: {
+      frames: [{ opacity: 0.35, scale: '0.985' }, { opacity: 1, scale: '1' }],
+      duration: MOTION_DURATION_MS.base,
+      easing: EMPHASIZED,
+    },
+    reduced: [{ opacity: 0.35 }, { opacity: 1 }],
+  });
+}

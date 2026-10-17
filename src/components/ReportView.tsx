@@ -1,5 +1,6 @@
 import {
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ComponentType,
@@ -25,6 +26,7 @@ import {
   type LearningReportScope,
 } from '../lib/learningReport';
 import { formatMinutes, todayIsoDate } from '../lib/date';
+import { usePeriodNavigationMotion } from '../hooks/usePeriodNavigationMotion';
 import type {
   Actual,
   MonthEvent,
@@ -143,6 +145,12 @@ export function ReportView({
     [studyMaterials],
   );
   const rangeLabel = formatLearningReportRangeLabel(scope, anchorDate);
+  // Paging to an earlier or later period slides the chart (or the empty
+  // notice's text, inside its card) from that side;
+  // switching week/month or the material filter only redraws it.
+  const chartRef = useRef<HTMLElement | null>(null);
+  const setChartElement = (element: HTMLElement | null) => { chartRef.current = element; };
+  usePeriodNavigationMotion(chartRef, anchorDate);
   const maxBucketMinutes = Math.max(
     60,
     ...report.buckets.map((bucket) => bucket.actualMinutes),
@@ -259,7 +267,7 @@ export function ReportView({
           <div className="learning-report-empty-icon" aria-hidden="true">
             <BookOpen />
           </div>
-          <div>
+          <div ref={setChartElement} className="learning-report-empty-copy">
             <h2>この期間にはまだ学習記録がありません</h2>
           </div>
         </section>
@@ -279,6 +287,7 @@ export function ReportView({
           </div>
 
           <div
+            ref={setChartElement}
             className={`learning-report-chart scope-${scope}`}
             role="list"
             aria-label={`${rangeLabel}の学習時間 合計 ${formatMinutes(report.actualMinutes)}`}
