@@ -81,7 +81,7 @@ Issue #246 の planned consultation extension でもこの責任境界を維持�
 
 外部 API は provider 固有 response を product domain へ直接流さず、Cloudflare Worker 上の integration boundary で正規化します。書籍教材の初期実装では共有 catalog を先に参照し、miss 時だけ NDL Search へ問い合わせることで外部依存と不要な request を抑えます。
 
-テストには Vitest、fast-check、Playwright を使用し、CI は GitHub Actions で実行します。
+テストには Vitest、fast-check、Playwright を使用し、CI は GitHub Actions で実行します。会話のブラウザ操作を補助するTesterArmy/e2e pilotは独立runnerで、`npm ci --prefix tests/agent-e2e`後に`npm run test:agentic:smoke`でモデル不要の検証を実行できます。モデル利用やonline検証の区別は[専用ガイド](./docs/domains/weekly-planning/quality/agentic-browser-e2e.md)を参照してください。
 
 実装上の責務と主要ディレクトリは [`PROJECT_MAP.md`](./PROJECT_MAP.md) にまとめています。
 

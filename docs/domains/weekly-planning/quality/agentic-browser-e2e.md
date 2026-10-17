@@ -1,0 +1,45 @@
+# 会話型 Agentic Browser E2E（TesterArmy）
+
+Status: supporting quality guide
+Owner: [週間計画テスト方針](test-philosophy.md)
+Tracking: [Issue #726](https://github.com/kame447/StudyPlanner/issues/726)
+
+## 検証責務
+
+TesterArmy/e2eは、自然言語の操作目標を `agent.act` へ与え、ブラウザ上で探索的なユーザー操作を行う補助runner。判定の正本は `expect(screen...)` による独立した画面contractと、必要な場合の既存Playwright・domain・実API側の証拠とする。
+
+本pilotでは `tests/agent-e2e/` が独立したnpm依存と`e2e.config.ts`を所有し、既存の`tests/e2e/`や`browser-regression.yml`には手を加えない。UIの操作しやすさを調べる用途と、Firestore保存・再読込・重複防止を保証する用途を混同しない。
+
+初期ケースでは、アプリ本体のAI計画コンポーネントを使うローカルharness（`/real-weekly.html`）と、プレビューharness（`/?scenario=preview`）を操作する。ただし会話のruntime gatewayと保存先はstubであり、AIプロバイダ・Cloudflare Worker・Firestoreの意味解釈と永続化は通らない。会話の日本語品質やオンラインE2E成功をこのpilot単体で主張しない。
+
+## ローカル実行
+
+リポジトリrootで次を実行する。root依存はアプリのVite harness、nested依存は固定したTesterArmy専用runnerを提供する。
+
+```sh
+npm ci
+npm ci --prefix tests/agent-e2e
+npm run test:agentic:smoke
+```
+
+初回はブラウザエンジンが必要。自動導入に失敗した場合は `./tests/agent-e2e/node_modules/.bin/e2e-web install chromium` を実行する。
+
+モデルを使用する探索テストでは、環境変数 `OPENAI_API_KEY` に有効なAPIキーを与えた上で次を実行する。モデルの既定値は`gpt-5-mini`で、`LAPLANCE_AGENT_E2E_MODEL`で変更できる。モデル呼出は有料であり、通常のsmokeはモデル不要。
+
+```sh
+npm run test:agentic
+```
+
+ChatGPTの対応サブスクリプションを使いたい場合は、`cd tests/agent-e2e && npx e2e login openai` で別途認証し、`LAPLANCE_AGENT_E2E_AUTH=chatgpt npm run test:agent` として実行できる。利用可能なモデルは `npx e2e models openai` で確かめる。APIキー方式とこのOAuth方式は混同しない。
+
+必要に応じて `npm --prefix tests/agent-e2e run test:agent -- --no-cache` でキャッシュなしのモデル操作を検証できる。ローカルは成功した操作のreplayを許し、CIはcacheを無効にする。replay成功は新しい探索をした証拠ではないため、重大な変更時には`--no-cache`で再試行し、失敗traceを確認する。
+
+## GitHub Actions
+
+`.github/workflows/agentic-browser-e2e.yml` は対象ファイルを変更したPRで無課金smokeを実行する。手動の`workflow_dispatch`では`run_agent=true`と、GitHub Actions Secret `OPENAI_API_KEY` を設定した場合のみモデルを使った検証を実行する。秘密情報はコミット・issue・traceへ含めず、専用の合成データしか操作しない。ランナーは匿名telemetryを明示的に無効化し、`.e2e/`の成果物を短期間保存する。
+
+## 移行条件と次の拡張
+
+既存Playwrightの決定論的な検証を先に削除しない。同一契約・対象環境・故障検出を新runnerが保持し、継続CIが通り、費用・安定性・保守負担が下がることを観測した場合にだけ、重複部分の置換を検討する。
+
+実プロバイダ会話から予定保存までのE2Eは、既存のonline手順と隔離テストアカウント、厳密な保存/reload/重複検査を維持する。モデルだけに「保存できた」と判断させない。ライブアカウント・本番ユーザーデータの使用、モデルにtest hookを許可する設計、実際に到達していない状態を肯定する`agent.assert`は行わない。Issue #488の実装作業とこのテストrunner導入は別責務とする。

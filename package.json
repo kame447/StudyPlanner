@@ -37,7 +37,9 @@
     "typecheck:worker": "npm run types:worker && tsc --noEmit -p tsconfig.worker.json --incremental --tsBuildInfoFile .cache/typecheck/worker.tsbuildinfo",
     "typecheck:app:full": "tsc --noEmit --incremental false",
     "typecheck:worker:full": "npm run types:worker && tsc --noEmit -p tsconfig.worker.json --incremental false",
-    "typecheck:full": "npm run typecheck:app:full && npm run typecheck:worker:full"
+    "typecheck:full": "npm run typecheck:app:full && npm run typecheck:worker:full",
+    "test:agentic:smoke": "npm --prefix tests/agent-e2e run test:smoke",
+    "test:agentic": "npm --prefix tests/agent-e2e run test:agent"
   },
   "dependencies": {
     "firebase": "^12.12.0",
