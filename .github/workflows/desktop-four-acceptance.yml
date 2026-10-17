@@ -1,0 +1,161 @@
+name: Desktop Four-Surface Acceptance
+
+# Temporary supplemental proof. Existing required PR/main checks are unchanged.
+# Pinned to the published PR737 source; never substitute a moving branch ref.
+on:
+  push:
+    branches:
+      - test/desktop-four-acceptance
+    paths:
+      - '.github/workflows/desktop-four-acceptance.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-four-acceptance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  related-native:
+    if: github.repository == 'kame447/StudyPlanner'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: chromium
+            timeout: 30
+            browsers: chromium
+          - project: webkit-mobile
+            timeout: 35
+            browsers: chromium firefox webkit
+    env:
+      CI: 'true'
+      SOURCE_SHA: fb018e4da41d77aa685e094ddf5c703166a95cce
+      SOURCE_TREE: 638cc9aac207fb388e0896f37d0eec401a1f2c2b
+      PROOF_WORKFLOW_SHA: ${{ github.sha }}
+      PROOF_PROJECT: ${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fb018e4da41d77aa685e094ddf5c703166a95cce
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify immutable application source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
+          mkdir -p artifacts/desktop-four-proof
+          printf '{"sourceSha":"%s","sourceTree":"%s","workflowSha":"%s","project":"%s"}\n' \
+            "$SOURCE_SHA" "$SOURCE_TREE" "$PROOF_WORKFLOW_SHA" "$PROOF_PROJECT" \
+            > artifacts/desktop-four-proof/source.json
+          sha256sum .node-version package.json package-lock.json tests/e2e/playwright.config.mjs \
+            tests/e2e/playwright.cross-browser.config.mjs tests/e2e/support/fixed-clock.mjs \
+            tests/e2e/support/startup-ready.mjs tests/e2e/home-content-responsive.spec.mjs \
+            tests/e2e/ai-planning-surface.spec.mjs tests/e2e/ai-planning-composer-viewport.spec.mjs \
+            tests/e2e/ai-planning-preview-viewport-lock.spec.mjs tests/e2e/primary-chrome-consistency.spec.mjs \
+            tests/e2e/public-page-navigation.spec.mjs tests/e2e/learning-report-surface.spec.mjs \
+            > artifacts/desktop-four-proof/inputs.sha256
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Snapshot application manifests before isolated test-runner install
+        shell: bash
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+
+      - name: Install isolated Playwright test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+
+      - name: Verify isolated test-runner install did not mutate application manifests
+        shell: bash
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+
+      - name: Install existing project browsers
+        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps ${{ matrix.browsers }}
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Collect and run only the related source-bound cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$PROOF_PROJECT" in
+            chromium)
+              args=(test --config=tests/e2e/playwright.config.mjs --project=chromium
+                '(^|/)home-content-responsive\.spec\.mjs$'
+                '(^|/)ai-planning-surface\.spec\.mjs$'
+                '(^|/)ai-planning-composer-viewport\.spec\.mjs$'
+                '(^|/)ai-planning-preview-viewport-lock\.spec\.mjs$'
+                '(^|/)primary-chrome-consistency\.spec\.mjs$'
+                '(^|/)public-page-navigation\.spec\.mjs$'
+                '(^|/)learning-report-surface\.spec\.mjs$')
+              ;;
+            webkit-mobile)
+              args=(test --config=tests/e2e/playwright.cross-browser.config.mjs --project=webkit-mobile
+                '(^|/)home-content-responsive\.spec\.mjs$'
+                '(^|/)ai-planning-composer-viewport\.spec\.mjs$'
+                '(^|/)public-page-navigation\.spec\.mjs$'
+                '(^|/)learning-report-surface\.spec\.mjs$')
+              ;;
+            *) echo 'Unexpected project' >&2; exit 1 ;;
+          esac
+          ./tests/e2e/node_modules/.bin/playwright "${args[@]}" --list --reporter=json \
+            > artifacts/desktop-four-proof/collection.json
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+          const collection = JSON.parse(fs.readFileSync('artifacts/desktop-four-proof/collection.json', 'utf8'));
+          assert.deepEqual(collection.errors, []);
+          const project = process.env.PROOF_PROJECT;
+          const expected = {
+            chromium: { count: 81, sha256: '48d68491a3878e6c9c546361715338fc4962db161341f1aa205b0e9c1b2fc926' },
+            'webkit-mobile': { count: 58, sha256: 'e06062e9ca74a7ba99305cdbc8ed90637d90d82a2cd6a486530d48f311440fe4' },
+          }[project];
+          assert.ok(expected, 'Unknown project');
+          const identities = new Set();
+          function visit(suite, parents = []) {
+            const titles = [...parents, suite.title];
+            for (const spec of suite.specs ?? []) for (const test of spec.tests) {
+              assert.equal(test.projectName, project);
+              const identity = JSON.stringify([test.projectName, spec.file, ...titles, spec.title]);
+              assert.ok(!identities.has(identity), `Duplicate case: ${identity}`);
+              identities.add(identity);
+            }
+            for (const child of suite.suites ?? []) visit(child, titles);
+          }
+          for (const suite of collection.suites) visit(suite);
+          assert.equal(identities.size, expected.count);
+          const sha256 = crypto.createHash('sha256').update(JSON.stringify([...identities].sort())).digest('hex');
+          assert.equal(sha256, expected.sha256, 'Selected case identities differ from reviewed source');
+          fs.writeFileSync('artifacts/desktop-four-proof/selection.json', JSON.stringify({ project, count: identities.size, sha256 }, null, 2));
+          NODE
+          ./tests/e2e/node_modules/.bin/playwright "${args[@]}"
+
+      - name: Upload source proof, results and screenshot attachments
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-four-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/desktop-four-proof/
+            artifacts/playwright-results/
+            artifacts/playwright-report/
+            artifacts/playwright-results.json
+            artifacts/playwright-cross-browser-results/
+            artifacts/playwright-cross-browser-report/
+            artifacts/playwright-cross-browser-results.json
+          if-no-files-found: error
+          retention-days: 14
