@@ -1,0 +1,126 @@
+name: PR 729 Missing Mobile Acceptance
+
+# Temporary, supplemental proof only. Never replace a required PR check.
+# The three complete specs below are the 22 cases missing from run 39031792799.
+on:
+  push:
+    branches:
+      - test/pr729-missing-mobile-proof
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr729-missing-mobile-proof-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  missing-mobile-acceptance:
+    if: github.repository == 'kame447/StudyPlanner'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      SOURCE_SHA: 73225b408ab7bde31dac3e1363ce0f4a01d79b69
+      SOURCE_TREE: 5cfbb2836a171931d3166961367b3195e72eee9d
+      PROOF_WORKFLOW_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 73225b408ab7bde31dac3e1363ce0f4a01d79b69
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify immutable application source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
+          mkdir -p artifacts/pr729-missing-mobile-proof
+          printf '{"sourceSha":"%s","sourceTree":"%s","workflowSha":"%s"}\n' \
+            "$SOURCE_SHA" "$SOURCE_TREE" "$PROOF_WORKFLOW_SHA" \
+            > artifacts/pr729-missing-mobile-proof/source.json
+          sha256sum package.json package-lock.json tests/e2e/playwright.config.mjs \
+            tests/e2e/playwright.cross-browser.config.mjs \
+            tests/e2e/study-session-pomodoro-settings.spec.mjs \
+            tests/e2e/timetable-class-attendance.spec.mjs \
+            tests/e2e/workspace-load-recovery.spec.mjs \
+            > artifacts/pr729-missing-mobile-proof/inputs.sha256
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Snapshot application manifests before isolated test-runner install
+        shell: bash
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+
+      - name: Install isolated Playwright test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+
+      - name: Verify isolated test-runner install did not mutate application manifests
+        shell: bash
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+
+      - name: Install Chromium, Firefox and WebKit
+        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium firefox webkit
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Collect and run only the 22 missing mobile cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(test --config=tests/e2e/playwright.cross-browser.config.mjs --project=webkit-mobile
+            '(^|/)study-session-pomodoro-settings\.spec\.mjs$'
+            '(^|/)timetable-class-attendance\.spec\.mjs$'
+            '(^|/)workspace-load-recovery\.spec\.mjs$')
+          ./tests/e2e/node_modules/.bin/playwright "${args[@]}" --list --reporter=json \
+            > artifacts/pr729-missing-mobile-proof/collection.json
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          const collection = JSON.parse(fs.readFileSync('artifacts/pr729-missing-mobile-proof/collection.json', 'utf8'));
+          assert.deepEqual(collection.errors, []);
+          const expected = new Map([
+            ['study-session-pomodoro-settings.spec.mjs', 13],
+            ['timetable-class-attendance.spec.mjs', 3],
+            ['workspace-load-recovery.spec.mjs', 6],
+          ]);
+          const counts = new Map([...expected.keys()].map(file => [file, 0]));
+          const identities = new Set();
+          function visit(suite, parents = []) {
+            const titles = [...parents, suite.title];
+            for (const spec of suite.specs ?? []) for (const test of spec.tests) {
+              assert.equal(test.projectName, 'webkit-mobile');
+              assert.ok(expected.has(spec.file), `Unexpected spec: ${spec.file}`);
+              const identity = JSON.stringify([test.projectName, spec.file, ...titles, spec.title]);
+              assert.ok(!identities.has(identity), `Duplicate case: ${identity}`);
+              identities.add(identity);
+              counts.set(spec.file, counts.get(spec.file) + 1);
+            }
+            for (const child of suite.suites ?? []) visit(child, titles);
+          }
+          for (const suite of collection.suites) visit(suite);
+          assert.deepEqual(counts, expected);
+          assert.equal(identities.size, 22);
+          NODE
+          ./tests/e2e/node_modules/.bin/playwright "${args[@]}"
+
+      - name: Upload missing-case proof and native results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr729-missing-mobile-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/pr729-missing-mobile-proof/
+            artifacts/playwright-cross-browser-results/
+            artifacts/playwright-cross-browser-report/
+            artifacts/playwright-cross-browser-results.json
+          if-no-files-found: error
+          retention-days: 14
