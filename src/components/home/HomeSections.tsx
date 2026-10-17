@@ -1,5 +1,5 @@
 import { getEntryDurationMinutes } from '../../lib/entryTimeRange';
-import type { CSSProperties } from 'react';
+import { useRef, type CSSProperties } from 'react';
 import {
   BookOpen,
   CalendarDays,
@@ -20,6 +20,7 @@ import { DEFAULT_HOME_SCENE_PREFERENCES, type HomeScenePreferences } from '../..
 import { HomeScene } from './HomeScene';
 import { HomePlanTitle } from './HomePlanTitle';
 import { buildPlanOccurrenceKey } from '../../lib/planRecurrence';
+import { useDataChangeMotion } from '../../hooks/useDataChangeMotion';
 import type { Actual, Plan, StudyMaterial, TodoTask } from '../../types/domain';
 import { useStudySessionLauncher } from '../StudySessionView';
 import { TodayScheduleAddMenu, type HomeAddEntry } from './TodayScheduleAddMenu';
@@ -94,10 +95,18 @@ function HomeScheduleRow({
       type="button"
       onClick={() => onOpenDay(plan.date)}
     >
-      <span className={actual ? 'home-time-dot completed' : 'home-time-dot'}>
+      <span
+        className={actual ? 'home-time-dot completed' : 'home-time-dot'}
+        data-motion-key={`done:${buildPlanOccurrenceKey(plan.id, plan.date)}`}
+        data-motion-signature={actual ? 'done' : 'open'}
+      >
         <Clock size={13} aria-hidden="true" />
       </span>
-      <span className="home-schedule-content">
+      <span
+        className="home-schedule-content"
+        data-motion-key={`plan:${buildPlanOccurrenceKey(plan.id, plan.date)}`}
+        data-motion-signature={`${plan.startTime}-${plan.endTime} ${plan.title}`}
+      >
         <time>
           {plan.startTime} - {plan.endTime}
         </time>
@@ -211,6 +220,10 @@ export function NextPlanSection({
 }) {
   const startStudySession = useStudySessionLauncher();
   const nextPlan = dashboard.nextPlan;
+  // Home measures this card's box to fit the screen, so only its copy moves:
+  // a different next plan arrives, an edited one settles.
+  const nextCardRef = useRef<HTMLElement | null>(null);
+  useDataChangeMotion(nextCardRef, 'next-plan', [nextPlan]);
   const nextPlanPresentation = nextPlan
     ? resolveHomeNextPlanPresentation(nextPlan, studyMaterials)
     : null;
@@ -227,12 +240,17 @@ export function NextPlanSection({
 
   return (
     <section
+      ref={nextCardRef}
       className="home-next-card"
       data-home-section="next-plan"
       data-next-plan-visual={nextPlanVisual.kind}
       data-next-plan-semantic={nextPlanPresentation?.semanticKind ?? 'empty'}
     >
-      <div className="home-next-copy">
+      <div
+        className="home-next-copy"
+        data-motion-key={`next:${nextPlan ? buildPlanOccurrenceKey(nextPlan.id, nextPlan.date) : 'none'}`}
+        data-motion-signature={nextPlan ? `${nextPlan.startTime}-${nextPlan.endTime} ${nextPlan.title}` : ''}
+      >
         <p className="home-eyebrow">次の予定</p>
         {nextPlan ? (
           <>
@@ -257,7 +275,8 @@ export function NextPlanSection({
         )}
       </div>
 
-      <HomeScene kind={nextPlanVisual.kind} preferences={homeScenePreferences} plan={nextPlan} />
+      <HomeScene kind={nextPlanVisual.kind} preferences={homeScenePreferences} plan={nextPlan}
+        recorded={{ week: dashboard.weekDays[0]?.date ?? dashboard.today, minutes: dashboard.weekActualMinutes }} />
 
       <div className="home-actions">
       <button
@@ -291,13 +310,18 @@ export function TodayScheduleSection({
   onOpenDay: (date: string) => void;
   onAddEntry: (entry: HomeAddEntry) => void;
 }) {
+  // Rows are measured to fit Home, so only their content and completion dot
+  // react: an added plan arrives, an edited one settles, a recorded one
+  // marks its dot as done.
+  const scheduleListRef = useRef<HTMLDivElement | null>(null);
+  useDataChangeMotion(scheduleListRef, dashboard.today, [dashboard.todayPlans, dashboard.actualByOccurrenceKey]);
   return (
     <section className="home-panel home-today-panel" data-home-section="today-schedule">
       <div className="home-section-heading">
         <h2>今日の予定</h2>
         <button type="button" onClick={() => onOpenDay(dashboard.today)}>すべて見る <ChevronRight size={16} aria-hidden="true" /></button>
       </div>
-      <div className="home-schedule-list">
+      <div ref={scheduleListRef} className="home-schedule-list">
         {dashboard.todayPlans.length > 0 ? (
           <>
             {dashboard.todayPlans.map((plan) => {

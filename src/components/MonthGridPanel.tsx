@@ -365,6 +365,8 @@ export function MonthGridPanel({
                       return (
                         <span
                           key={`${segment.monthEvent.id}-${week[0]?.date ?? weekIndex}-${segment.startIndex}`}
+                          data-motion-key={`range:${segment.monthEvent.id}:${week[0]?.date ?? weekIndex}`}
+                          data-motion-signature={`${segment.startIndex}-${segment.endIndex} ${timeLabel} ${segment.monthEvent.title}`}
                           className={[
                             'month-range-segment',
                             segment.continuesBefore ? 'continues-before' : '',
@@ -407,7 +409,11 @@ export function MonthGridPanel({
                       ) : null}
                     </div>
 
-                    <p className="month-study-summary">
+                    <p
+                      className="month-study-summary"
+                      data-motion-key={`summary:${cell.date}`}
+                      data-motion-signature={`${cell.targetMinutes} ${cell.actualMinutes}`}
+                    >
                       <span>目標 {formatCompactMinutes(cell.targetMinutes)}</span>
                       <span>記録 {formatCompactMinutes(cell.actualMinutes)}</span>
                     </p>
@@ -428,6 +434,8 @@ export function MonthGridPanel({
                         return (
                           <span
                             key={monthEvent.id}
+                            data-motion-key={`event:${cell.date}:${monthEvent.id}`}
+                            data-motion-signature={`${timeLabel} ${monthEvent.title}`}
                             className="event-pill month-major-event-pill"
                             style={scheduleEventColorStyle(projection.eventColors.get(monthEvent.id)!)}
                             title={`${timeLabel} ${monthEvent.title}`}
@@ -441,7 +449,11 @@ export function MonthGridPanel({
                       })}
 
                       {hiddenEventCount > 0 ? (
-                        <span className="month-event-more">+{hiddenEventCount}件</span>
+                        <span
+                          className="month-event-more"
+                          data-motion-key={`more:${cell.date}`}
+                          data-motion-signature={String(hiddenEventCount)}
+                        >+{hiddenEventCount}件</span>
                       ) : null}
                     </div>
                   </button>
