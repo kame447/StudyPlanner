@@ -433,6 +433,7 @@ function projectStageData(stage: string, value: unknown): unknown {
       const count = (key: string) => Number.isSafeInteger(data[key]) && Number(data[key]) >= 0 ? data[key] : null;
       return { reason: typeof data.reason === 'string' && reasons.includes(data.reason) ? data.reason : 'invalid_source',
         openSlotCount: count('openSlotCount'), excludedAncestorCount: count('excludedAncestorCount'),
+        ambiguousPendingTargetCount: count('ambiguousPendingTargetCount'),
         candidateCountBeforePrune: count('candidateCountBeforePrune'), candidateCount: count('candidateCount'), prunedCount: count('prunedCount') };
     }
     case 'runtime_session_context_prepared':

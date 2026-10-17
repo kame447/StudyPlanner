@@ -156,7 +156,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurnCore(
       if (selected) {
         stateSummary.replyReferenceHint = {
           sourceMessageId: selected.sourceMessageId,
-          sourceText: boundReplyReferenceTextV5(input.messages.find(message => message.id === selected.sourceMessageId)?.content ?? '', 600),
+          sourceUtteranceExcerpt: boundReplyReferenceTextV5(input.messages.find(message => message.id === selected.sourceMessageId)?.content ?? '', 600),
           targetKind: selected.targetKind,
           targetFactId: selected.targetFactId,
           taskFactId: selected.taskFactId,

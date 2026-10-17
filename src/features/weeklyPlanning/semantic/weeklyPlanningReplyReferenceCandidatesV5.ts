@@ -51,6 +51,7 @@ export interface ReplyReferenceDiagnosticsV5 {
     | 'no_open_slots' | 'no_anchored_candidates' | 'pending_over_limit' | 'group_menu' | 'invalid_request';
   readonly openSlotCount: number;
   readonly excludedAncestorCount: number;
+  readonly ambiguousPendingTargetCount: number;
   readonly candidateCountBeforePrune: number;
   readonly candidateCount: number;
   readonly prunedCount: number;
@@ -112,7 +113,8 @@ export function buildReplyReferenceSnapshotV5(input: ReplyReferenceSourceV5): {
   snapshot: ReplyReferenceSnapshotV5 | null;
   diagnostics: ReplyReferenceDiagnosticsV5;
 } {
-  const counts = { openSlotCount: 0, excludedAncestorCount: 0, candidateCountBeforePrune: 0, candidateCount: 0, prunedCount: 0 };
+  const counts = { openSlotCount: 0, excludedAncestorCount: 0, ambiguousPendingTargetCount: 0,
+    candidateCountBeforePrune: 0, candidateCount: 0, prunedCount: 0 };
   const disabled = (reason: ReplyReferenceDiagnosticsV5['reason']) => ({ snapshot: null,
     diagnostics: Object.freeze({ reason, ...counts }) });
   if (!input.conversationId || !Number.isSafeInteger(input.graph.revision) || input.graph.revision < 0
@@ -173,6 +175,11 @@ export function buildReplyReferenceSnapshotV5(input: ReplyReferenceSourceV5): {
   });
   const pending = freshness.status === 'fresh' && isWeeklyPlanningQuestionPresentationDirect(freshness.presentation.content)
     ? freshness : null;
+  // Completed-work evidence and the workload being estimated are two possible
+  // destinations. A single pending key cannot certify which one the answer means.
+  const ambiguousPendingTarget = pending !== null && (pending.questionContext.estimateForWorkloadFactId !== undefined
+    || pending.questionContext.questionBasis !== undefined);
+  counts.ambiguousPendingTargetCount = ambiguousPendingTarget ? 1 : 0;
   const openSlots = listReplyReferenceOpenSlotsV5({ graph, compilation: input.compilation,
     pending: pending?.questionContext ?? null });
   counts.openSlotCount = openSlots.length;
@@ -184,7 +191,7 @@ export function buildReplyReferenceSnapshotV5(input: ReplyReferenceSourceV5): {
     const task = tasks.get(workload.taskId);
     const path = componentPath(graph, workload.taskId, workload.componentId);
     if (!task || !task.title.trim() || !path) { counts.excludedAncestorCount++; continue; }
-    const matchesPending = pending !== null && pending.questionContext.topicId === workload.id
+    const matchesPending = pending !== null && !ambiguousPendingTarget && pending.questionContext.topicId === workload.id
       && pending.questionContext.targetSlot === 'stable_v5:' + open.questionCode
       && (pending.questionContext.estimateForWorkloadFactId ?? null) === open.estimateForWorkloadFactId
       && (pending.questionContext.questionBasis ?? null) === open.questionBasis

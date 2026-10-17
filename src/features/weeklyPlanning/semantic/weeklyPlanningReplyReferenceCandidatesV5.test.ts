@@ -51,6 +51,7 @@ describe('compiler-owned open reply destinations', () => {
     expect(snapshot.candidates).toEqual([expect.objectContaining({ sourceMessageId: 'c:turn:2:user', sourceTurnId: 'c:request:2',
       targetKind: 'workload', targetFactId: 'work', componentPath: ['青チャート', '微積分'], slot: 'duration_per_unit' })]);
     expect(snapshot.pendingQuestion).toEqual({ messageOrdinal: 3, questionCode: 'stable_v5:missing_effort_estimate', candidateKeys: [snapshot.candidates[0].key] });
+    expect(snapshot.diagnostics.ambiguousPendingTargetCount).toBe(0);
     expect(snapshot.dialogueHistory).toEqual(messages.map((message, index) => ({ messageOrdinal: index + 1, role: message.role, content: message.content })));
     expect(resolveReplyReferenceCandidateV5(snapshot, snapshot.candidates[0].key, current)).toEqual(snapshot.candidates[0]);
     expect(resolveReplyReferenceCandidateV5(snapshot, 'missing', current)).toBeNull();
@@ -104,7 +105,7 @@ describe('compiler-owned open reply destinations', () => {
     expect(buildReplyReferenceSnapshotV5({ ...current, compilation: undefined }).diagnostics.reason).toBe('missing_compilation');
     expect(buildReplyReferenceSnapshotV5({ ...current, compilation: { ...current.compilation!, graphRevision: 2 } }).diagnostics.reason).toBe('stale_compilation');
   });
-  it('validates compiler-provided completed-work evidence and its separate scheduling workload', () => {
+  it('keeps valid completed-work evidence diagnostic-only when the question also estimates another workload', async () => {
     const graph = fixture(); graph.workloads[0].quantityRole = 'completed';
     graph.workloads.push({ ...graph.workloads[0], id: 'remaining', quantityRole: 'remaining' });
     graph.factLifecycles.push({ ...graph.factLifecycles.find(item => item.factId === 'work')!, factId: 'remaining' });
@@ -114,7 +115,18 @@ describe('compiler-owned open reply destinations', () => {
     Object.assign(current.previousState!.lastQuestionContext!, { intent: 'total_duration', estimateForWorkloadFactId: 'remaining', questionBasis: 'completed_workload_total' });
     const snapshot = createReplyReferenceSnapshotV5(current)!;
     expect(snapshot.candidates[0]).toMatchObject({ targetFactId: 'work', slot: 'total_duration' });
-    expect(snapshot.pendingQuestion?.candidateKeys).toEqual([snapshot.candidates[0].key]);
+    expect(snapshot.pendingQuestion).toBeNull();
+    expect(snapshot.diagnostics.ambiguousPendingTargetCount).toBe(1);
+    expect(await selectReplyReferenceHintV5({ ...args(current), port: { choose: async (request, beforeDispatch) => {
+      expect(request.context.scope.pendingQuestion).toBeNull();
+      beforeDispatch(); return response(request, snapshot.candidates[0].key);
+    } } })).toBeNull();
+    for (const omittedField of ['estimateForWorkloadFactId', 'questionBasis'] as const) {
+      const variant = structuredClone(current);
+      delete variant.previousState!.lastQuestionContext![omittedField];
+      expect(createReplyReferenceSnapshotV5(variant)?.pendingQuestion).toBeNull();
+      expect(createReplyReferenceSnapshotV5(variant)?.diagnostics.ambiguousPendingTargetCount).toBe(1);
+    }
     graph.factLifecycles.find(item => item.factId === 'remaining')!.status = 'removed';
     expect(createReplyReferenceSnapshotV5(current)).toBeNull();
   });
