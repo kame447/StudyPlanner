@@ -1,5 +1,5 @@
 # Read-only bounded diagnostic; success is measurement completion, not acceptance.
-name: Material DPR Frame Diagnostic
+name: Material DPR Order Diagnostic
 permissions:
   contents: read
 concurrency:
@@ -330,13 +330,13 @@ jobs:
         test.describe('material DPR frame diagnostic', () => {
           test.use({ viewport: { width: 1920, height: 1080 }, screen: { width: 1920, height: 1080 },
             contextOptions: { reducedMotion: 'reduce' } });
-          for (const density of [3, 1]) {
+          for (const density of [1, 3]) {
             test.describe(`DPR ${density}`, () => {
               test.use({ deviceScaleFactor: density });
               test(`measures initial navigation with DPR ${density}`, async ({ page }, testInfo) => {
               const observerOrigin = 'native';
               const diagnostics = { observerOrigin, deviceScaleFactor: density, motionPreference: 'reduced', comparisonPurpose: 'Diagnostic only; no release acceptance',
-                comparisonLimit: 'One fixed-order DPR3/DPR1 pair; observer-induced rendering, changing runner load and warm-up remain confounders',
+                comparisonLimit: 'One order-reversed DPR1/DPR3 pair; observer-induced rendering, changing runner load and warm-up remain confounders',
                 measurementLimit: 'Preserved main-world native rAF is not a direct utility-world observer; compare trace call boundaries without subtracting different time origins',
                 clockScope: 'Existing flowing fixed-clock fixture; page-world rAF and utility-world trace are distinct',
                 startedAt: new Date().toISOString(), phases: [], trials: [] };
@@ -394,7 +394,7 @@ jobs:
           }
         });
         REVIEWED_DIAGNOSTIC_0
-        printf '%s  %s\n' '77046f93ae40fd60ffb1e6233370e367561833782c3083568b67acfe0cf7ddae' 'tests/e2e/material-frame-diagnostic.spec.mjs' | sha256sum -c -
+        printf '%s  %s\n' 'f0425744ee6d9268f52052c9a2a25ce3706dab3a425a0c91565ce541a77ec389' 'tests/e2e/material-frame-diagnostic.spec.mjs' | sha256sum -c -
         cp tests/e2e/material-frame-diagnostic.spec.mjs artifacts/desktop-four-proof/material-frame-diagnostic.spec.mjs
         test ! -e tests/e2e/material-frame-diagnostic.config.mjs
         cat > tests/e2e/material-frame-diagnostic.config.mjs <<'REVIEWED_DIAGNOSTIC_1'
@@ -477,7 +477,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: material-dpr-frame-diagnostic-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{
+        name: material-dpr-order-diagnostic-${{ matrix.project }}-${{ env.SOURCE_SHA }}-${{ github.run_id }}-${{
           github.run_attempt }}
         path: |+
           artifacts/desktop-four-proof/
