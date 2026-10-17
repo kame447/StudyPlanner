@@ -146,3 +146,30 @@ test('direct production admin entry waits for its real lazy stylesheet', async (
     await expectAdminReady(page);
   } finally { held.release(); }
 });
+
+for (const resource of ['js', 'css']) {
+  test(`production Admin ${resource} delivery failure offers explicit reload and recovers the real guarded entry`, async ({ page }, info) => {
+    await page.route('**/*', route => ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(route.request().url()).hostname)
+      ? route.continue() : route.abort());
+    const documents = [];
+    page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents.push(request.url()); });
+    const failedAsset = new RegExp(`/assets/AdminApp-[^/]+\\.${resource}(?:\\?.*)?$`);
+    let attempts = 0;
+    const reject = route => { attempts += 1; return route.abort('failed'); };
+    await page.route(failedAsset, reject);
+    await page.goto('/admin/users', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('alert')).toContainText('管理者画面を読み込めませんでした');
+    await expect(page.getByRole('button', { name: '通常画面へ戻る', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '再読み込み', exact: true })).toBeVisible();
+    await expect(page.locator('.admin-console-layout')).toHaveCount(0);
+    expect(documents).toHaveLength(1);
+    expect(attempts).toBe(1);
+    await info.attach(`admin-${resource}-failure`, { body: await page.screenshot(), contentType: 'image/png' });
+    await page.unroute(failedAsset, reject);
+    await page.getByRole('button', { name: '再読み込み', exact: true }).click();
+    await expect(page).toHaveURL(/\/admin\/users$/);
+    await expectAdminReady(page);
+    expect(documents).toHaveLength(2);
+    expect(await page.evaluate(() => performance.getEntriesByType('navigation')[0].type)).toBe('reload');
+  });
+}
