@@ -21,15 +21,25 @@ export interface ReplyReferenceCandidateV5 {
   readonly label: string;
 }
 
+export interface ReplyReferenceDialogueTurnV5 {
+  readonly messageOrdinal: number;
+  readonly role: 'user' | 'assistant';
+  readonly content: string;
+}
+
 export interface ReplyReferenceSnapshotV5 {
   readonly graphRevision: number;
   readonly planningStateRevision: number;
   readonly conversationMessageIds: readonly string[];
+  /** A role-ordered, bounded excerpt of real messages, not reconstructed AI instructions. */
+  readonly dialogueHistory: readonly ReplyReferenceDialogueTurnV5[];
   readonly candidates: readonly ReplyReferenceCandidateV5[];
 }
 
 export const REPLY_REFERENCE_SOURCE_TURN_LIMIT_V5 = 8;
 export const REPLY_REFERENCE_CANDIDATE_LIMIT_V5 = 64;
+export const REPLY_REFERENCE_DIALOGUE_RECENT_MESSAGE_LIMIT_V5 = 16;
+export const REPLY_REFERENCE_DIALOGUE_MAX_CHARS_PER_MESSAGE_V5 = 600;
 
 type CandidateWithoutKey = Omit<ReplyReferenceCandidateV5, 'key'>;
 type CandidateGraph = ReturnType<typeof createWeeklyPlanningActiveSchedulerGraphViewV5>;
@@ -159,6 +169,26 @@ export function createReplyReferenceSnapshotV5(input: {
   }
 
   if (candidates.length === 0 || candidates.length > REPLY_REFERENCE_CANDIDATE_LIMIT_V5) return null;
+
+  // Preserve recent user/assistant context in its real chronological order, and include
+  // older candidate anchors even when intervening assistant turns pushed them outside
+  // the recent window. The bounded transcript is provider context, never state authority.
+  const anchorMessageIds = new Set(candidates.map(candidate => candidate.sourceMessageId));
+  const recentMessageIds = new Set(input.messages.slice(-REPLY_REFERENCE_DIALOGUE_RECENT_MESSAGE_LIMIT_V5)
+    .map(message => message.id));
+  const dialogueHistory = input.messages.flatMap((message, index) => {
+    if (!recentMessageIds.has(message.id) && !anchorMessageIds.has(message.id)) return [];
+    const content = Array.from(message.content)
+      .slice(0, REPLY_REFERENCE_DIALOGUE_MAX_CHARS_PER_MESSAGE_V5).join('');
+    return [{
+      messageOrdinal: index + 1,
+      role: message.role,
+      content,
+    } satisfies ReplyReferenceDialogueTurnV5];
+  });
+  // At most 8 source-user anchors plus the latest 16 user/assistant messages.
+  if (dialogueHistory.length > REPLY_REFERENCE_SOURCE_TURN_LIMIT_V5
+    + REPLY_REFERENCE_DIALOGUE_RECENT_MESSAGE_LIMIT_V5) return null;
   // Different messages may refer to the same fact; they are separate semantic options.
   const keyed = candidates.map((candidate, index) => Object.freeze({
     ...candidate, componentPath: Object.freeze([...candidate.componentPath]),
@@ -168,6 +198,7 @@ export function createReplyReferenceSnapshotV5(input: {
     graphRevision: graph.revision,
     planningStateRevision: input.inputStateRevision!,
     conversationMessageIds: Object.freeze(input.messages.map(message => message.id)),
+    dialogueHistory: Object.freeze(dialogueHistory.map(turn => Object.freeze(turn))),
     candidates: Object.freeze(keyed),
   });
 }
