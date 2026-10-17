@@ -1,7 +1,7 @@
 # Repository tooling operations runbook
 
 Status: current repository-wide operational guide
-Updated: 2026-10-08
+Updated: 2026-10-18
 
 This document stores durable operational knowledge about repository tooling, GitHub/CI integration failures, recurring tool limitations, and verified workarounds.
 
@@ -323,3 +323,52 @@ The existing UI Regression Matrix workflow accepts an optional `spec` filename o
 This manual selection produces `targeted-webkit` and `targeted-webkit-summary` check names and `ui-targeted-webkit*` artifacts. Targeted dispatches use a separate same-ref concurrency group, so they cannot cancel a standard main-push or full manual Matrix run. Their PR summary has a separate diagnostic-only identity; missing or mixed Matrix job identities preserve existing summaries rather than overwriting a full result. It does not replace the normal `cross-browser-smoke` gate. Preserve the full-matrix cancellation separately and attach the exact checkout SHA, source/tree identity, targeted test results and images to the owning release receipt. The ordinary pull-request/push matrix, blank-spec manual dispatch, permissions, concurrency, 35-minute limit, assertions and retry policy remain unchanged. A nonempty spec takes precedence over the visual/all suite selector so the bounded request never silently runs another suite instead.
 
 Publication and execution still require the applicable repository authorization. Updating a feature branch can trigger its ordinary automatic CI; a subsequent manual dispatch requests only the selected spec and must not be described as a full-suite success. Before dispatch, read back the exact published head and wait for the automatic UI workflow started by that publication to be terminal. Also check for any active run in the selected scope’s concurrency group: `ui-targeted-webkit-${{ github.ref }}` for a targeted dispatch, or `ui-regression-${{ github.ref }}` for a standard run. The retained `cancel-in-progress: true` can replace an older same-ref run within that scope. Record the observed run IDs, terminal states and ref before the manual dispatch. Do not cancel an unrelated running job as part of this operation.
+
+---
+
+## macOS のシンボリックリンク TMPDIR による scripts/admin-entry-preload.test.mjs の Vite 解決失敗
+
+- 最終確認日: 2026-10-17
+- 現象 / 症状: macOS 環境で `scripts/admin-entry-preload.test.mjs` を実行した際、Vite / Rollup が `RollupError: fileName ... must be strings that are neither absolute nor relative paths` を送出して失敗する。
+- 原因: macOS のデフォルト `os.tmpdir()`（`/var/folders/...`）が `/private/var/folders/...` へのシンボリックリンクであるため、Vite / Rollup 内部のパス正規化で絶対・相対パス判定の不整合が生じる。Linux CI では TMPDIR がシンボリックリンクではないため再現しない。
+- 確認された証跡: 未変更の `main`（commit `8261300b`）で再現確認。`TMPDIR` に `os.tmpdir()` の実パス（realpath）を指定すると pass する。Linux CI は正常終了（green）。[Issue #744](https://github.com/kame447/StudyPlanner/issues/744) / [PR #745](https://github.com/kame447/StudyPlanner/pull/745) でテストが `fs.realpath(os.tmpdir())` 配下に作業ディレクトリを作るよう修正する。
+- 安全な回避策: PR #745 が反映されるまでの間、ローカル検証時は環境変数 `TMPDIR` に `os.tmpdir()` の実パス（例: `/private/var/...`）を設定して実行する。
+  - 例: `TMPDIR=$(node -p "require('fs').realpathSync(require('os').tmpdir())") npm run verify`
+- やってはいけないこと: テストのアサーションや期待値を書き換えてテストを無理に通過させない。
+- 検証と事後処理: `TMPDIR` を実パスに設定して `npm run test:run -- scripts/admin-entry-preload.test.mjs` が成功することを確認する。環境変数はコマンドスコープで渡す。PR #745 の反映後は既定の `TMPDIR` のままで成功することを確認する。
+
+---
+
+## Browser Regression の chromium ジョブにおける 30 分タイムアウトによるキャンセル
+
+- 最終確認日: 2026-10-17
+- 現象 / 症状: Browser Regression ワークフローの `chromium` ジョブが 30 分のジョブ上限時間に達し、実行途中でキャンセル（cancelled）される。実行されたテストはすべて成功（例: 788/788 passed）している。
+- 原因: テストの回帰やアプリケーション欠陥ではなく、GitHub Actions ランナー自体の極端な低速化および同時実行負荷によるタイムアウト。
+- 確認された証跡: 2026-10-17 の [PR #717](https://github.com/kame447/StudyPlanner/pull/717)（HEAD `da83eeda`）で発生。788 件中 788 件すべて pass の状態で 30 分到達。`main` の同一ワークフローは通常 23〜26 分で完了しており、当時別ブランチのジョブも並行してタイムアウトしていた。
+- 分類と対応方針: 分類は「ランナー遅延・タイムアウト（runner slowness/timeout）」であり、テスト失敗ではない。ログを精査してテスト失敗（failed tests）が 0 件であることを確認した上で、同一 commit に対して 1 回のみ再実行（rerun）を行う。
+- やってはいけないこと: キャンセルされたジョブを成功（green）とみなさない。ログのテスト失敗ゼロを確認せずに無差別な再試行を繰り返さない。タイムアウトを避けるためにテストを間引いたりアサーションを削ったりしない。
+- 検証と事後処理: 再実行されたジョブが制限時間内に exit 0 で完了することを確認する。同一 commit で再現する場合は repeat-action guard に従い停止する。
+
+---
+
+## UI Regression Matrix の cross-browser-projects (webkit-mobile) における 35 分上限によるキャンセル
+
+- 最終確認日: 2026-10-16
+- 現象 / 症状: UI Regression Matrix ワークフローの `cross-browser-projects (webkit-mobile)` ジョブが 35 分の上限（cap）に達し、キャンセル（cancelled）される。テスト失敗（failures）は 0 件。
+- 原因: WebKit Mobile エミュレーションの実行負荷と GitHub ランナーの性能変動・並行負荷による処理遅延。
+- 確認された証跡: 2026-10-16、[PR #705](https://github.com/kame447/StudyPlanner/pull/705)、[PR #706](https://github.com/kame447/StudyPlanner/pull/706)、[PR #708](https://github.com/kame447/StudyPlanner/pull/708)、および `main`（commit `56a8e522`）で同時に発生。いずれもテスト失敗は 0 件。
+- 分類と対応方針: Browser Regression と同一の分類ルールを適用する。ランナーの遅延・タイムアウトであり、テストコードの欠陥ではない。ログでテスト失敗が 0 件であることを確認した上で、同一 commit に対して 1 回のみ再実行を行う。特定 spec のみ検証したい場合は手動の `targeted-webkit` dispatch を検討する。
+- やってはいけないこと: キャンセルされたジョブを合格扱いとしない。上限時間の安易な引き上げやテスト削除を行わない。
+- 検証と事後処理: 再実行で全件完了・合格することを確認する。
+
+---
+
+## UI Quality Automation の bundle-budget 全体超過と PR 差分比較評価
+
+- 最終確認日: 2026-10-17
+- 現象 / 症状: UI Quality Automation ワークフローの `bundle-budget` ジョブが、`main` ブランチおよびすべての PR で継続して失敗する（例: JavaScript totalRaw が約 2.58 MB であり、上限 2.265 MB を超過）。
+- 原因: 依存パッケージの更新ではなく、アプリケーションコードの蓄積による超過（同じ installed dependencies のまま、JS 合計が初めて上限を超えたのは `ee815b47`（#566）。直前の `9f0e0911` は全上限内）。PR 個別の変更起因ではない。原因の分析と最小の改善は [Issue #321](https://github.com/kame447/StudyPlanner/issues/321) で進行中。
+- 確認された証跡: 2026-10-17 時点の `main` および当日のすべての PR で超過が再現（例: PR #717 `c8c32d12` → `da83eeda` の差分は JS raw +1,798 bytes / gzip +585 bytes、CSS ±0 で、超過の大半は既存分）。
+- 安全な対応方針: 当該 PR 起因の回帰であるかを判断するため、PR の成果物と `main` のベースライン成果物（artifact）をダウンロードし、PR 自身の差分（delta）を比較・評価する。PR 単体で不当な増大がないことを確認する。
+- やってはいけないこと: PR を通すために `bundle-budget` の閾値を引き上げたりガードを弱めたりしない。失敗を単に無視して無根拠に成功と報告しない。
+- 検証と事後処理: `main` ベースラインとの差分ログを証跡として PR レビューに記録する。[Issue #321](https://github.com/kame447/StudyPlanner/issues/321) の改善が main に反映された後は、通常の閾値判定へ戻る。
