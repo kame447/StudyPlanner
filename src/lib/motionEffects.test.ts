@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { measureAtRest, MOTION_DURATION_MS, playEntrance, playGrowth, playIndicatorTravel, playNavigation, playSettle, playShift } from './motionEffects';
+import { measureAtRest, MOTION_DURATION_MS, playEntrance, playFromRect, playGrowth, playIndicatorTravel, playNavigation, playSettle, playShift } from './motionEffects';
 import { MOTION_STORAGE_KEY, REDUCED_FADE_MS, setMotionPreference } from './motionPreference';
 import { installFakeMotionEnvironment } from './motionPreference.testUtils';
 import { readFileSync } from 'node:fs';
@@ -168,5 +168,31 @@ describe('value growth', () => {
     expect(animatedProperties(animations[0].frames)).toEqual(['opacity']);
     setMotionPreference('off');
     expect(playGrowth(element, 0.5)).toBeNull();
+  });
+});
+
+describe('growing from another surface', () => {
+  const placed = () => {
+    const { element, animations } = fakeElement();
+    Object.assign(element, { getBoundingClientRect: () => ({ left: 100, top: 200, width: 120, height: 160 }) });
+    return { element, animations };
+  };
+
+  it('starts at the origin rectangle and ends in place at standard', () => {
+    const { element, animations } = placed();
+    playFromRect(element, { left: 10, top: 20, width: 60, height: 80 });
+    // Centres (40, 60) → (160, 280); half the size.
+    expect(animations[0].frames[0]).toEqual({ translate: '-120px -220px', scale: '0.500 0.500' });
+    expect(animations[0].frames[1]).toEqual({ translate: '0 0', scale: '1 1' });
+  });
+
+  it('fades at reduced, does nothing at off or without a usable origin', () => {
+    const { element, animations } = placed();
+    expect(playFromRect(element, { left: 0, top: 0, width: 0, height: 0 })).toBeNull();
+    setMotionPreference('reduced');
+    playFromRect(element, { left: 10, top: 20, width: 60, height: 80 });
+    expect(animatedProperties(animations[0].frames)).toEqual(['opacity']);
+    setMotionPreference('off');
+    expect(playFromRect(element, { left: 10, top: 20, width: 60, height: 80 })).toBeNull();
   });
 });
