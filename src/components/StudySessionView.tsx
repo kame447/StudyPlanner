@@ -1,5 +1,6 @@
 import { createStudySessionIdentity, supportsStudySessionRecovery, saveStudySessionOnce, clearStudySession, readStudySession, writeStudySession, type StudySessionSnapshot } from '../lib/studySessionStorage';
 import './StudySessionResume.css';
+import { playSettle, playStepChange } from '../lib/motionEffects';
 import { ActualMutationAdmissionError, materialUncertainMessage } from '../hooks/useActualMutationAdmission';
 import {
   ArrowLeft,
@@ -13,17 +14,7 @@ import {
   Settings2,
   TimerReset,
 } from 'lucide-react';
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type PropsWithChildren,
-} from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PropsWithChildren } from 'react';
 import { createStudySessionDraft, sessionCrossesLocalDate, type StudySessionRequest, type StudySessionTarget } from '../lib/studySessionTarget';
 import {
   formatDurationDisplay,
@@ -57,6 +48,10 @@ type StudySessionLauncher = (request: StudySessionRequest) => void;
 type SessionPhase = 'timer' | 'record' | 'settings';
 
 const StudySessionLaunchContext = createContext<StudySessionLauncher | null>(null);
+
+function sessionPart(page: HTMLElement | null, selector: string): Element | null {
+  return page && typeof page.querySelector === 'function' ? page.querySelector(selector) : null;
+}
 
 export function useStudySessionLauncher(): StudySessionLauncher | null {
   return useContext(StudySessionLaunchContext);
@@ -265,6 +260,25 @@ function StudySessionView({
   const isPomodoroComplete = studyMode === 'pomodoro' && pomodoroProgress.isComplete;
   const elapsedMs = studyMode === 'pomodoro' ? pomodoroProgress.elapsedMs : measuredElapsedMs;
   const isStarted = tracker.anchorMs !== null;
+  const isRunning = tracker.runningFromMs !== null;
+  // Moving to the record step, the timer's settings or back brings the new
+  // step forward in place (the page itself already slid in). Starting,
+  // pausing and resuming settle the timer ring once. A restored session and
+  // the running clock itself never animate.
+  const shownPhase = useRef(phase);
+  const shownRunning = useRef<boolean | null>(null);
+  useLayoutEffect(() => {
+    const before = shownPhase.current;
+    shownPhase.current = phase;
+    if (before === phase) return;
+    playStepChange(sessionPart(pageRef.current, '.study-session-content'));
+  }, [phase]);
+  useLayoutEffect(() => {
+    const before = shownRunning.current;
+    shownRunning.current = isRunning;
+    if (before === null || before === isRunning) return;
+    playSettle(sessionPart(pageRef.current, '.study-session-timer-ring'));
+  }, [isRunning]);
   const remainingMs = plannedMs === null ? null : Math.max(plannedMs - elapsedMs, 0);
   const normalProgressDegrees = plannedMs === null ? 0 : clampPercent((elapsedMs / plannedMs) * 100) * 3.6;
   const pomodoroIsFocus = pomodoroProgress.phase === 'focus';

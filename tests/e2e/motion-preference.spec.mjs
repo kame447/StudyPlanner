@@ -145,7 +145,7 @@ test('off removes sheet motion and closes without waiting', async ({ page }) => 
   await expect(sheet).toHaveCount(0, { timeout: 100 });
 });
 
-test('a plan dropped on another day arrives there, and no other card moves', async ({ page }) => {
+test('a plan dropped on another day arrives there, and other cards only make room', async ({ page }) => {
   await page.goto('http://127.0.0.1:4174/week-plan-drag.html');
   const plan = page.getByRole('button', { name: /数学の復習.*タップで編集/ });
   await expect(plan).toBeVisible();
@@ -162,9 +162,14 @@ test('a plan dropped on another day arrives there, and no other card moves', asy
     .map(element => ({ label: element.getAttribute('aria-label') ?? '', properties: element.getAnimations()
       .flatMap(animation => animation.effect.getKeyframes().flatMap(frame => Object.keys(frame)))
       .filter(key => ['scale', 'translate', 'opacity'].includes(key)) })));
-  expect(animated).toHaveLength(1);
-  expect(animated[0].label).toContain('数学の復習');
+  const arrived = animated.filter(entry => entry.label.includes('数学の復習'));
+  expect(arrived).toHaveLength(1);
   // A card on another day is a new placement: it rises and fades into place.
-  expect([...new Set(animated[0].properties)].sort()).toEqual(['opacity', 'scale', 'translate']);
+  expect([...new Set(arrived[0].properties)].sort()).toEqual(['opacity', 'scale', 'translate']);
+  // Cards it lands beside (#696) do not replay as changed: at most they glide
+  // aside to share the column, without fading or scaling.
+  for (const other of animated.filter(entry => !entry.label.includes('数学の復習'))) {
+    expect([...new Set(other.properties)]).toEqual(['translate']);
+  }
   await expect(moved).toBeVisible();
 });

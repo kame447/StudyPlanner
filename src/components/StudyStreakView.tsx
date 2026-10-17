@@ -1,6 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, ShieldCheck, Ticket } from 'lucide-react';
 import { StudyStreakFlame } from './StudyStreakFlame';
+import { usePeriodNavigationMotion } from '../hooks/usePeriodNavigationMotion';
 import { addMonths, formatMonthLabel, getMonthGrid, getWeekdayLabels, startOfMonth } from '../lib/date';
 import type { StudyStreakModel } from '../lib/studyStreak';
 import '../styles/study-streak.css';
@@ -31,6 +32,9 @@ export function StudyStreakView({ today, model, onClose, pending = false, refres
   const rows = Array.from({ length: 6 }, (_, index) => grid.slice(index * 7, index * 7 + 7))
     .filter(row => row.some(cell => cell.inCurrentMonth));
   const currentMonth = startOfMonth(today);
+  // Another month slides in from the side the user moved toward.
+  const calendarRef = useRef<HTMLTableElement | null>(null);
+  usePeriodNavigationMotion(calendarRef, month);
   useLayoutEffect(() => {
     titleRef.current?.focus({ preventScroll: true });
   }, []);
@@ -73,7 +77,7 @@ export function StudyStreakView({ today, model, onClose, pending = false, refres
             <button className="study-streak-today" type="button" onClick={() => setMonth(currentMonth)}>今日</button>
           </div>
         </header>
-        <table aria-labelledby={monthId}>
+        <table ref={calendarRef} aria-labelledby={monthId}>
           <thead><tr>{getWeekdayLabels().map(day => <th key={day} scope="col">{day}</th>)}</tr></thead>
           <tbody>{rows.map(row => <tr key={row[0].date}>{row.map(cell => {
             if (!cell.inCurrentMonth) return <td key={cell.date} aria-hidden="true" />;
