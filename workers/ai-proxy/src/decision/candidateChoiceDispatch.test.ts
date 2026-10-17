@@ -14,6 +14,29 @@ describe('generic Choice provider validation and dispatch accounting', () => {
       expect(recorder.snapshot().dispatches).toHaveLength(1); expect(recorder.snapshot().dispatches[0].usage).toEqual({ inputTokens: null, outputTokens: null, costUsd: null });
     }
   });
+  it('selects a prior utterance and slot without treating the unseen value as a complete candidate', async () => {
+    const r = choiceRequest();
+    const reference = { ...r, wholeUtterance: 'さっきの微積分を1問3分くらい',
+      context: { ...r.context,
+        question: { id: 'reply-target', code: 'reply_reference_target' },
+        target: { kind: 'reply_reference', id: 'current_conversation' },
+        scope: { referenceKind: 'existing_fact', selectionKind: 'target_slot_only' } } };
+    let body: Record<string, unknown> = {};
+    const result = await evaluateCandidateChoice({
+      firebaseUid: 'fixture-owner', context: { purpose: 'candidate_choice', request: reference },
+      env: { OPENROUTER_API_KEY: 'fixture', JEV_CANDIDATE_CHOICE_MODE: 'canary',
+        JEV_MODE: 'canary', JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' },
+      transport: async (_input, init) => {
+        body = JSON.parse(String(init?.body)); return Response.json(response());
+      },
+    });
+    expect(result.status).toBe('evaluated');
+    const questions = body.questions as Record<string, { instructions: string }>;
+    expect(questions.candidate.instructions).toContain('prior utterance');
+    expect(questions.candidate.instructions).toContain('separate semantic extractor');
+    expect(questions.condition_change.instructions).toContain('ordinary value');
+    expect(questions.independent_meaning.instructions).toContain('multiple targets');
+  });
   it('off/shadow/invalid question expose no provider state', async () => {
     let calls = 0;
     for (const mode of ['off', 'shadow']) expect((await evaluateCandidateChoice({ firebaseUid: 'fixture-owner', context: { purpose: 'candidate_choice', request: choiceRequest() }, env: { JEV_CANDIDATE_CHOICE_MODE: mode, JEV_MODE: mode }, transport: async () => { calls++; return Response.json(response()); } })).status).toBe('unavailable');
