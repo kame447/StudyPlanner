@@ -118,6 +118,9 @@
     padding-block: 8px;
   }
 
+  /* Controls inherit the row minimum; wrapper padding must not add to it. */
+  .home-main > .home-dashboard-default .home-inline-add { padding-block: 0; }
+
   .home-main > .home-dashboard-default .home-schedule-content strong { font-size: 1rem; }
   .home-main > .home-dashboard-default .home-schedule-content time { font-size: 0.875rem; }
   .home-main > .home-dashboard-default .home-schedule-content small { font-size: 0.75rem; }

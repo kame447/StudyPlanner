@@ -461,3 +461,52 @@ Next: run only the 1280px dark Home case in Chromium and mobile-WebKit. These tw
 native cases directly cover fractional-origin enclosure and DPR3 CSS-pixel
 capture. Preserve the other exact-input acceptance evidence, and do not claim
 this final boundary resolved until both cases pass without a retry-only result.
+
+## Post-merge responsive follow-up (2026-10-17 17:02 UTC)
+
+The delayed standard Chromium job on PR #737's exact tree `a055a3b3` finished
+with 828 passes and 14 failures after the bounded selection had passed. Official
+main `332cdaa19ae19b74eac6f9d3200347dd55c8d022` contains that same tree. The
+three omitted Home specs are now explicitly part of this follow-up; the earlier
+bounded success did not establish their acceptance.
+
+The failure families are distinct:
+
+- Two add-entry cases expose a real empty-row regression: desktop block padding
+  overrides the inline wrapper's zero padding, while its controls inherit the
+  64px row minimum. The resulting wrapper is 80px. The existing 64px-equivalence
+  assertions are kept unchanged; one desktop-only `padding-block: 0` rule restores
+  the original wrapper/child sizing contract. Controls, motion, data and fonts
+  are untouched.
+- Eleven containment cases still require Next then Today in a vertical chain.
+  Actual trace rectangles show aligned, separated desktop peers. The test now
+  checks both two-column rows, horizontal alignment/separation, row ordering,
+  material below both lower cards, body containment and footer bounds. The
+  compact-width vertical contract is unchanged.
+- One 1366px landscape device case requires spare height to be stretched until
+  the footer gap is at most 24px. That contradicts the approved natural-height
+  desktop cards. Its desktop branch instead checks the actual two-column/body
+  containment, retaining footer non-overlap, inline-action and shell-width checks.
+  Its compact branch retains the original 24px maximum.
+
+Alternatives considered were shrinking/stacking the product to satisfy old
+contracts, loosening the assertions, or separating the demonstrated padding bug
+from obsolete desktop relations. Native trace values and representative images
+support the third approach. No assertion precision, timeout, plan fixture or
+baseline image is changed. The 13-case add-entry spec remains byte-identical.
+
+Local evidence: the 10 Home stylesheet checks pass; 22 probes of the actual
+assertion functions reject column overlap, wrong row order, offscreen material,
+Home overflow and compact footer-gap violations. Existing trace geometry matches
+all 11 desktop row relationships, but lacks the newly recorded client/scroll
+measurements, so these probes are not a new native pass. Syntax and diff checks
+pass; one production build passes in 5.45s and contains the scoped zero-padding
+rule. The first standalone probe attempts exposed only its own export/fixture
+adapter omissions; those are recorded and corrected. No full suite or typecheck
+is repeated for this CSS/test-only delta.
+
+Next: independent exact-input review, then the sole publisher runs the bounded
+three-spec set plus directly affected inline touch/motion cases. Preserve the
+original two add-entry height assertions and every interaction check. Attach
+geometry before failures. Keep the release follow-up open until the exact new
+native cases pass cleanly and the publisher confirms deployment of the repair.
