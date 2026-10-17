@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import postcss from 'postcss';
 import { describe, expect, it } from 'vitest';
+import { getThemePaletteCssVariables, THEME_PALETTE_OPTIONS } from '../lib/themePalette';
 
 const css = postcss.parse(readFileSync(new URL('./home-desktop.css', import.meta.url), 'utf8'));
 const imports = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
@@ -54,17 +55,12 @@ describe('desktop Home source layout contract', () => {
   it('pairs the dark desktop start label with a readable surface without changing control geometry', () => {
     const selector = `:root[data-theme='dark'] ${home} .home-start-button`;
     expect(values(selector)).toEqual({ color: 'var(--text-primary)', background: 'var(--surface-selected)' });
-    const base = postcss.parse(readFileSync(new URL('./base.css', import.meta.url), 'utf8'));
-    const tokens: Record<string, string> = {};
-    base.walkRules(":root[data-theme='dark']", rule => rule.walkDecls(decl => { tokens[decl.prop] = decl.value; }));
-    const foreground = tokens['--text-primary'].slice(1).match(/.{2}/g)!.map(channel => parseInt(channel, 16));
-    const surface = tokens['--surface-selected'].match(/[\d.]+/g)!.map(Number);
-    // Conservative white behind the translucent dark surface bounds every darker backing.
-    const background = surface.slice(0, 3).map(channel => channel * surface[3] + 255 * (1 - surface[3]));
-    const luminance = (rgb: number[]) => rgb.map(channel => channel / 255)
-      .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
-      .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
-    expect((luminance(foreground) + 0.05) / (luminance(background) + 0.05)).toBeGreaterThanOrEqual(4.5);
+    // The runtime palette replaces base.css's high-opacity fallback. Contrast
+    // must include the rendered ancestor images, tested by the native pixel check.
+    for (const palette of THEME_PALETTE_OPTIONS) {
+      const selected = getThemePaletteCssVariables(palette.id, 'dark')['--surface-selected'];
+      expect(selected).toMatch(/^rgba\(\d+, \d+, \d+, 0\.24\)$/);
+    }
   });
   it('uses smaller vertical gaps on short desktops without shrinking type or cards', () => {
     const compact: string[] = [];

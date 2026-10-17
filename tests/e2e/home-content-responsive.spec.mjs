@@ -60,43 +60,84 @@ async function readableProgress(page, info, minimumFontSize) {
   }
 }
 async function readableDarkStartAction(page, info) {
-  const paint = await page.locator('.home-start-button').evaluate(button => {
-    const rgb = value => {
-      const match = value.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/);
-      if (!match) throw new Error(`Unsupported computed color: ${value}`);
-      const channels = match.slice(1, 4).map(Number);
-      const alpha = match[4] === undefined ? 1 : Number(match[4]);
-      if (channels.some(channel => channel < 0 || channel > 255) || alpha < 0 || alpha > 1) throw new Error(`Invalid computed color: ${value}`);
-      return [...channels, alpha];
-    };
-    const over = (front, back) => front.slice(0, 3).map((channel, index) => channel * front[3] + back[index] * (1 - front[3]));
-    const luminance = channels => channels.map(channel => channel / 255)
-      .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
-      .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
-    const ratio = (front, back) => {
-      const levels = [luminance(front), luminance(back)].sort((a, b) => a - b);
-      return (levels[1] + 0.05) / (levels[0] + 0.05);
-    };
-    const style = getComputedStyle(button);
-    const layers = [];
-    for (let element = button; element; element = element.parentElement) {
-      const ancestor = getComputedStyle(element);
-      layers.push({ color: rgb(ancestor.backgroundColor), image: ancestor.backgroundImage });
-      if (layers.at(-1).color[3] === 1) break;
+  const button = page.locator('.home-start-button');
+  const paint = await button.evaluate(element => {
+    const style = getComputedStyle(element);
+    const foregroundColor = style.getPropertyValue('-webkit-text-fill-color') || style.color;
+    const match = foregroundColor.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/);
+    if (!match) throw new Error(`Unsupported foreground color: ${foregroundColor}`);
+    const foreground = [...match.slice(1, 4).map(Number), match[4] === undefined ? 1 : Number(match[4])];
+    if (foreground.slice(0, 3).some(channel => channel < 0 || channel > 255) || foreground[3] !== 1) throw new Error('Expected opaque, valid foreground');
+    const labels = [...element.childNodes].filter(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim()).flatMap(node => {
+      const range = document.createRange(); range.selectNodeContents(node);
+      return [...range.getClientRects()].map(rect => rect.toJSON());
+    });
+    const ancestors = [];
+    for (let ancestor = element; ancestor; ancestor = ancestor.parentElement) {
+      const computed = getComputedStyle(ancestor);
+      ancestors.push({ opacity: computed.opacity, filter: computed.filter });
     }
-    const background = [...layers].reverse().reduce((back, layer) => over(layer.color, back), [255, 255, 255]);
-    // The button is solid/translucent, not a gradient. Also test white behind its
-    // own dark layer: this conservative bound does not depend on ancestor images.
-    const worstWhiteBackground = over(rgb(style.backgroundColor), [255, 255, 255]);
-    return { color: style.color, backgroundColor: style.backgroundColor, backgroundImage: style.backgroundImage,
-      layers, background, worstWhiteBackground,
-      ratio: ratio(over(rgb(style.color), background), background),
-      worstWhiteRatio: ratio(over(rgb(style.color), worstWhiteBackground), worstWhiteBackground) };
+    return { foreground, foregroundColor, textShadow: style.textShadow, labels, ancestors,
+      button: element.getBoundingClientRect().toJSON(), backgroundColor: style.backgroundColor, backgroundImage: style.backgroundImage };
   });
-  await info.attach('desktop-home-start-contrast', { body: JSON.stringify(paint), contentType: 'application/json' });
-  expect(paint.backgroundImage).toBe('none');
-  expect(paint.ratio).toBeGreaterThanOrEqual(4.5);
-  expect(paint.worstWhiteRatio).toBeGreaterThanOrEqual(4.5);
+  await info.attach('desktop-home-start-paint', { body: JSON.stringify(paint), contentType: 'application/json' });
+  expect(paint.labels.length).toBeGreaterThan(0);
+  expect(paint.textShadow).toBe('none');
+  for (const ancestor of paint.ancestors) expect(ancestor).toEqual({ opacity: '1', filter: 'none' });
+  // Suppress only text fill during this capture. Unlike changing color, this
+  // preserves currentColor-dependent backgrounds and the actual ancestor gradients.
+  const backgroundPng = await button.screenshot({ scale: 'css', style: '.home-start-button { -webkit-text-fill-color: transparent !important; }' });
+  await info.attach('desktop-home-start-background', { body: backgroundPng, contentType: 'image/png' });
+  expect(backgroundPng.length).toBeGreaterThan(0);
+  const after = await button.evaluate(element => ({ button: element.getBoundingClientRect().toJSON(),
+    labels: [...element.childNodes].filter(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim()).flatMap(node => {
+      const range = document.createRange(); range.selectNodeContents(node);
+      return [...range.getClientRects()].map(rect => rect.toJSON());
+    }) }));
+  expect(after.labels).toHaveLength(paint.labels.length);
+  for (const [beforeBox, afterBox] of [[paint.button, after.button], ...paint.labels.map((label, index) => [label, after.labels[index]])]) {
+    for (const field of ['x', 'y', 'width', 'height']) expect(afterBox[field]).toBeCloseTo(beforeBox[field], 2);
+  }
+  const contrast = await page.evaluate(async ({ bytes, paint }) => {
+    const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: 'image/png' }));
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width; canvas.height = bitmap.height;
+      const context = canvas.getContext('2d');
+      if (!context || !bitmap.width || !bitmap.height) throw new Error('Invalid contrast image');
+      if (Math.abs(bitmap.width - paint.button.width) > 1 || Math.abs(bitmap.height - paint.button.height) > 1) throw new Error('Unexpected screenshot scale');
+      context.drawImage(bitmap, 0, 0);
+      const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+      for (let index = 3; index < pixels.length; index += 4) if (pixels[index] !== 255) throw new Error('Contrast image must be opaque');
+      const luminance = channels => channels.map(channel => channel / 255)
+        .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+        .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+      const foreground = luminance(paint.foreground.slice(0, 3));
+      let minimumRatio = Infinity, sampleCount = 0, minimumBackground;
+      const sampledRects = paint.labels.map(label => {
+        if (label.width <= 0 || label.height <= 0 || label.left < paint.button.left || label.top < paint.button.top || label.right > paint.button.right || label.bottom > paint.button.bottom) throw new Error('Label is outside button image');
+        const scaleX = bitmap.width / paint.button.width, scaleY = bitmap.height / paint.button.height;
+        // Element screenshot clips may round fractional origins. Include a
+        // clamped one-CSS-pixel margin so no edge backing pixel is missed.
+        const rect = { left: Math.max(0, Math.floor((label.left - paint.button.left - 1) * scaleX)), top: Math.max(0, Math.floor((label.top - paint.button.top - 1) * scaleY)),
+          right: Math.min(bitmap.width, Math.ceil((label.right - paint.button.left + 1) * scaleX)), bottom: Math.min(bitmap.height, Math.ceil((label.bottom - paint.button.top + 1) * scaleY)) };
+        if (rect.left < 0 || rect.top < 0 || rect.right > bitmap.width || rect.bottom > bitmap.height || rect.right <= rect.left || rect.bottom <= rect.top) throw new Error('Invalid label sampling coordinates');
+        for (let y = rect.top; y < rect.bottom; y++) for (let x = rect.left; x < rect.right; x++) {
+          const index = (y * bitmap.width + x) * 4;
+          const background = [...pixels.slice(index, index + 3)];
+          const backLuminance = luminance(background);
+          const ratio = (Math.max(foreground, backLuminance) + 0.05) / (Math.min(foreground, backLuminance) + 0.05);
+          sampleCount++;
+          if (ratio < minimumRatio) { minimumRatio = ratio; minimumBackground = { x, y, rgb: background }; }
+        }
+        return rect;
+      });
+      if (!sampleCount || !Number.isFinite(minimumRatio)) throw new Error('No valid contrast samples');
+      return { width: bitmap.width, height: bitmap.height, sampledRects, sampleCount, minimumRatio, minimumBackground };
+    } finally { bitmap.close(); }
+  }, { bytes: [...backgroundPng], paint });
+  await info.attach('desktop-home-start-contrast', { body: JSON.stringify({ method: 'rendered background under each label pixel; text-fill-only mask', ...contrast }), contentType: 'application/json' });
+  expect(contrast.minimumRatio).toBeGreaterThanOrEqual(4.5);
 }
 async function actions(page) {
   const add = page.getByRole('button', { name: '今日の予定に追加', exact: true });

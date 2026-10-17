@@ -63,3 +63,13 @@ describe('AI v2 preview dark theme', () => {
     });
   });
 });
+
+
+describe('AI v2 preview light confirmation action', () => {
+  it('pairs only the light preview confirmation action with existing readable theme tokens', () => {
+    const selector = ":root[data-theme='light'] .ai-planning-preview-dialog-v2 .ai-planning-primary-action";
+    const values: Record<string, string> = {};
+    css.walkRules(selector, rule => rule.walkDecls(declaration => { values[declaration.prop] = declaration.value; }));
+    expect(values).toEqual({ background: 'var(--surface-selected)', color: 'var(--text-primary)' });
+  });
+});

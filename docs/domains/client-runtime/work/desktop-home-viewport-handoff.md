@@ -334,3 +334,96 @@ image reviewers examine all three desktop sizes in both themes. Confirm normal
 capture stability. Diagnose failures or flakiness rather than accepting retries.
 Mobile retention, enlarged text and loaded-font limits remain explicit in the
 native receipts; source/type/build success is not rendered acceptance.
+
+
+## Rendered Home CTA measurement correction (2026-10-17 15:50 UTC)
+
+Correction #1's actual layout and paint are retained. Both quality scans passed;
+Chromium passed AI's seven affected cases and Report's six, while mobile's other
+19 cases passed on the first attempt. Home 1280px normal fit now passes. The only
+six related native failures are dark Home's new contrast helper at three sizes
+in each project; its reported 1.063 is not the rendered pixel ratio.
+
+The runtime palette replaces base.css's 94%-opaque selected fallback with a
+24%-opaque accent. Every Home ancestor uses dark background images rather than
+an opaque backgroundColor. The helper ignored those images and substituted a
+white canvas. Independently sampled corrected 1440px image pixels instead give
+8.84–9.08:1 for the label. This separates the failed conservative model from the
+actual screenshot; it does not discard the native failures or lower 4.5.
+
+Alternatives were parsing arbitrary CSS gradients, changing already-readable
+product paint, or sampling the real rendered backdrop. The test now records the
+button and direct label Range, captures a small CSS-pixel PNG with only text fill
+temporarily transparent, and samples every pixel beneath the recorded label.
+Original foreground must be opaque; unexpected shadow/filter/opacity, decode,
+scale, transparency, empty/out-of-bounds regions or button/label geometry changes
+fail closed. A clamped one-CSS-pixel label margin covers fractional clip rounding.
+The normal screenshot is still captured first. The temporary text-fill override
+preserves currentColor and layout; all previous fit, scroll, keyboard and action
+checks remain. Numeric acceptance stays at minimum 4.5 across the entire label.
+
+The source contract now reads all actual runtime palette tokens rather than
+calculating a misleading base.css fallback ratio. Nine related source tests pass.
+A source-only execution of the exact native pixel callback accepts the sampled
+dark background, rejects low-contrast pixels anywhere under the label, and fails
+on invalid image/coordinate inputs. This proves calculation behavior only. The
+corrected Home native cases must still execute once through the permitted CI
+route, and the corrected image/baseline review remains required. Runtime CSS and
+all product code are byte-identical to correction #1; no new build is warranted.
+
+
+## Scoped desktop baseline adoption (2026-10-17 15:55 UTC)
+
+The image reviewer directly inspected correction #1's four 1440×900 actual PNGs
+(Home and empty AI, light/dark; artifact 12105722079, source tree 755939ed) and
+approved them as the intended readable two-column Home/three-choice AI layout.
+Only those four desktop baseline files are copied byte-for-byte from the first
+native attempt; each is identical to its retry image. The other 12 baselines,
+thresholds, clocks and fixture data remain unchanged. The old Home progress count
+is already explained by the pre-existing timetable-policy change above.
+
+This adoption is explicit and limited: Today initially shows the edge of its
+last action within the scrolling list. Full action/plus containment and keyboard
+reachability remain native gates; successful light cases do not substitute for
+the remaining dark cases. Empty AI baseline images do not test proposal-preview
+controls. Home's test-only background-measurement correction changes no product
+paint. Any later change affecting a pictured surface requires fresh images.
+The final corrected Home native cases, AI light preview CTA, and exact baseline
+comparison still have to pass before release; replacing images is not that pass.
+
+## Final narrow correction integration (2026-10-17 15:58 UTC)
+
+The executable checkpoint `d5752d8d` / tree `79c53163` combines the reviewed
+Home rendered-background helper `d04b8230`, explicitly reviewed four-image
+baseline adoption `ba419066`, and light AI preview CTA correction `42d1d84e`.
+All 11 changed paths match their owner commits; the other 2,864 tracked inputs
+from correction #1 (`7ebd7b38` / tree `755939ed`) remain byte-identical.
+
+The only product delta is the light v2 preview confirmation button's existing
+foreground/background token pair. Image/source measurement had found its old
+white-on-blue text at 4.146:1. Home paint, geometry, interactions, Report and dark
+AI are untouched in this batch. Home's previous six failures were the incomplete
+background model described above; corrected native capture still must prove the
+replacement helper and reach the later action checks.
+
+- Exact owner checks are reused: Home nine source contracts plus nine pixel
+  callback scenarios; AI 11 source checks plus its hardened contrast probes.
+  No type/full-suite rerun is claimed or needed for unchanged app TypeScript.
+- The changed AI CSS warranted one combined production build, passing in 6.17s.
+  Its emitted light CTA pair, the seven previous correction rules, nine desktop
+  layout targets and Admin import/CSS/preload boundary are verified. Existing
+  bundle/import warnings remain. No browser was launched locally.
+- QA freshly collected exactly 11 final definitions on this executable tree:
+  Chromium's three dark Home plus three light AI proposal cases, mobile-WebKit's
+  three dark Home cases, and two desktop visual cases. The 1,968 selected input
+  hashes include the four adopted baseline PNGs. A missing local ignored runner
+  link was resolved by linking the existing runner, without install or browser
+  execution; the initial failed collection precondition remains in the receipt.
+
+Next: the sole publisher executes these 11 cases on the exact final source.
+Home's six dark cases must pass the actual rendered-background contrast, full
+Today add-button and keyboard/action checks. The three light AI cases must pass
+the new contrast assertion and existing interaction/geometry checks. Both visual
+cases must match the four individually approved baseline images with unchanged
+comparison thresholds. Source/build/collection success does not close these
+native gates, and retry-only success is not accepted as a clean result.

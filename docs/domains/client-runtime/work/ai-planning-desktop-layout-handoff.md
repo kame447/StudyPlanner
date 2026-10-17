@@ -61,3 +61,25 @@ The v2 preview is a sibling of the legacy `.ai-planning-view`; existing ancestor
 Related source checks pass17 tests across preview theme, desktop presentation and period paging. The ordinary Vite configuration cannot enumerate network interfaces in this restricted executor; an equivalent Node-only source-test config was used for these pure CSS/period tests. This is not an app-build or browser result. The integration owner performs one combined app type/build check.
 
 Native definitions retain all15 existing AI surface identities and add one390px dark preview guard. The three existing dark desktop proposal cases now attach contrast samples before asserting4.5:1 for the specified overview/detail labels and actions; a white backing conservatively bounds translucent dark surfaces. This checks those labels, not a whole-page WCAG audit. New source rendering and contrast results remain pending the bounded CI follow-up.
+
+
+## Light confirmation action follow-up (2026-10-17)
+
+Current-source native artifact `12105722079` confirms the light v2 preview confirmation
+action uses the legacy white-on-`#0878f9` pair at 14px. Its observed opaque pixel pair
+is 4.146:1, below the existing 4.5:1 small-text target. This predates the desktop
+layout change. The approved follow-up changes only that light dialog action to
+the existing `surface-selected` / `text-primary` pair; event handling, disabled
+opacity, dark paint, dimensions and motion are unchanged.
+
+The existing three light desktop proposal definitions now check this action in
+both overview and detail. Dark checks retain their prior targets. No definitions
+are added. The missing-rule source test failed before the CSS change (six prior
+checks passed); the final two related source files pass 11 checks. Syntax and
+ten extracted-helper probes pass. New native execution and actual corrected
+light pixels remain pending. The final combined build and collection are owned
+by the integration checkpoint rather than duplicated here.
+
+The light-only contrast path requires a real opaque background and rejects
+background images before reaching it. It cannot silently assume white behind
+dark text. The existing dark conservative-bound path is unchanged.

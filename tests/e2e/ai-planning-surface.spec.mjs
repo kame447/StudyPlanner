@@ -390,7 +390,8 @@ async function expectPreviewContrast(page, testInfo, stage) {
       return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
     }).reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
     const cardTargets = ['.ai-planning-preview-button', '.ai-planning-plan-card-head b'];
-    const selectors = selectedStage.endsWith('card') ? cardTargets : [
+    const lightPrimaryOnly = selectedStage.endsWith('light-primary');
+    const selectors = lightPrimaryOnly ? ['.ai-planning-primary-action'] : selectedStage.endsWith('card') ? cardTargets : [
       '.ai-planning-preview-header h2', '.ai-planning-preview-header p',
       '.ai-planning-week-header strong', '.ai-planning-week-header small',
       '.ai-planning-preview-period-nav strong', '.ai-planning-preview-period-nav small',
@@ -399,7 +400,7 @@ async function expectPreviewContrast(page, testInfo, stage) {
       '.ai-planning-preview-day-axis > span', '.ai-planning-preview-detail-block strong',
       '.ai-planning-preview-detail-block small', '.ai-planning-primary-action', '.ai-planning-secondary-action',
     ];
-    const required = selectedStage.endsWith('card') ? cardTargets : ['.ai-planning-preview-header h2', '.ai-planning-preview-header p', '.ai-planning-primary-action', '.ai-planning-secondary-action',
+    const required = lightPrimaryOnly ? ['.ai-planning-primary-action'] : selectedStage.endsWith('card') ? cardTargets : ['.ai-planning-preview-header h2', '.ai-planning-preview-header p', '.ai-planning-primary-action', '.ai-planning-secondary-action',
       ...(selectedStage.endsWith('overview')
         ? ['.ai-planning-week-header strong', '.ai-planning-week-header small', '.ai-planning-preview-period-nav strong', '.ai-planning-preview-hint', '.ai-planning-time-axis span']
         : ['.ai-planning-preview-day-nav strong', '.ai-planning-preview-day-nav small', '.ai-planning-preview-day-axis > span', '.ai-planning-preview-detail-block strong', '.ai-planning-preview-detail-block small'])];
@@ -408,9 +409,12 @@ async function expectPreviewContrast(page, testInfo, stage) {
       const style = getComputedStyle(element);
       const layers = [];
       for (let ancestor = element; ancestor; ancestor = ancestor.parentElement) {
-        layers.push(rgb(getComputedStyle(ancestor).backgroundColor));
+        const ancestorStyle = getComputedStyle(ancestor);
+        if (lightPrimaryOnly && ancestorStyle.backgroundImage !== 'none') throw new Error('Unsupported light confirmation background image');
+        layers.push(rgb(ancestorStyle.backgroundColor));
         if (layers.at(-1)[3] === 1) break;
       }
+      if (lightPrimaryOnly && layers.at(-1)?.[3] !== 1) throw new Error('Light confirmation requires an opaque background');
       // White is a conservative backing for pale text on these dark, translucent
       // token surfaces. This does not claim to sample arbitrary page gradients.
       const background = layers.reverse().reduce((back, layer) => over(layer, back), [255, 255, 255]);
@@ -519,6 +523,7 @@ for (const { viewport, theme } of [
       primary: '.ai-planning-primary-action', date: '.ai-planning-week-header strong',
     });
     if (theme === 'dark') await expectPreviewContrast(page, testInfo, 'desktop-ai-proposal-overview');
+    else await expectPreviewContrast(page, testInfo, 'desktop-ai-proposal-overview-light-primary');
     expect(overview.document.width).toBeLessThanOrEqual(viewport.width);
     expect(overview.elements.dialog.width).toBeGreaterThan(viewport.width * 0.9);
     for (const name of ['dialog', 'header', 'calendar', 'actions', 'primary']) {
@@ -548,6 +553,7 @@ for (const { viewport, theme } of [
       actions: '.ai-planning-preview-actions', header: '.ai-planning-preview-header',
     });
     if (theme === 'dark') await expectPreviewContrast(page, testInfo, 'desktop-ai-proposal-detail');
+    else await expectPreviewContrast(page, testInfo, 'desktop-ai-proposal-detail-light-primary');
     expect(detail.elements.scroll.scrollHeight).toBeGreaterThan(detail.elements.scroll.clientHeight);
     expect(detail.elements.scroll.overflowY).toBe('auto');
     expect(detail.elements.label.fontSize).toBeGreaterThanOrEqual(14);

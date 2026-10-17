@@ -517,3 +517,10 @@
   border-color: var(--border);
   color: var(--text-muted);
 }
+
+/* The light v2 confirmation action also needs a paired foreground; the legacy
+   white-on-blue paint is below 4.5:1 at its existing small text size. */
+:root[data-theme='light'] .ai-planning-preview-dialog-v2 .ai-planning-primary-action {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
