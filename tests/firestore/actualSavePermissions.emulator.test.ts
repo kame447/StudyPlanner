@@ -7,7 +7,8 @@ import {
 import { createFirebasePlannerRepository } from '../../src/repositories/firebasePlannerRepository';
 import { createFirebaseScheduleEventAuthority } from '../../src/repositories/firebaseScheduleEventAuthority';
 import { createScheduleEventBackedPlannerRepository } from '../../src/repositories/scheduleEventAuthorityRepository';
-import type { Actual, MonthEvent } from '../../src/types/domain';
+import type { Actual, MonthEvent, Plan } from '../../src/types/domain';
+import { scheduleEventIdForLegacy } from '../../src/domain/scheduleEvent';
 import { createConfirmedStudyHistory } from '../../src/repositories/confirmedStudyHistory';
 
 // A deterministic interleaving hook; every read/write still uses the real SDK
@@ -182,4 +183,58 @@ describe.skipIf(!host)('Actual first save through real Firestore repository and 
     await expect(getDocsFromServer(exactRange(db, owner, 'unauthenticated'))).rejects.toMatchObject({ code: 'permission-denied' });
     await expect(createFirebasePlannerRepository(db).upsertActual(actual(owner, 'unauthenticated'))).rejects.toThrow('permission-denied');
   });
+
+  it('queries both canonical source kinds by persisted identity with owner isolation and no partial receipt', async () => {
+    const receipt = createConfirmedStudyHistory(() => '2026-09-10');
+    const authority = createFirebaseScheduleEventAuthority(ownerDb, receipt);
+    const repository = createScheduleEventBackedPlannerRepository(createFirebasePlannerRepository(ownerDb), authority);
+    const id = 'source-lookup-collision';
+    const source: Plan = { id, seriesId: id, userId: owner, title: 'Synthetic old Plan', subject: 'Math',
+      date: '2000-01-01', startTime: '14:00', endTime: '17:30', repeat: 'weekly', repeatUntil: null,
+      excludedDates: ['2026-09-10'], recurrenceRules: [], type: 'study', memo: '', createdAt: stamp, updatedAt: stamp };
+    await repository.upsertPlan(source);
+    await repository.upsertMonthEvent({ ...event(owner, id, true), date: '2000-01-01', endDate: '2000-01-01', repeat: 'monthly' });
+    const foreignRepository = createScheduleEventBackedPlannerRepository(createFirebasePlannerRepository(foreignDb), createFirebaseScheduleEventAuthority(foreignDb));
+    await foreignRepository.upsertMonthEvent(event(foreign, 'source-lookup-foreign', false));
+    const generation = receipt.generation;
+    const selected = await authority.getActualProgressSources!(owner, id);
+    expect(selected.plans).toHaveLength(1); expect(selected.monthEvents).toHaveLength(1);
+    expect(selected.plans[0]).toMatchObject(source);
+    expect(selected.monthEvents[0]).toMatchObject({ id, userId: owner, date: '2000-01-01', repeat: 'monthly' });
+    expect(receipt.generation).toBe(generation);
+    expect(receipt.read(owner, { ...selected, actuals: [] }, '2026-09-10')).toBeNull();
+    expect(await authority.getActualProgressSources!(owner, 'source-lookup-missing')).toEqual({ plans: [], monthEvents: [] });
+    expect(await authority.getActualProgressSources!(owner, 'source-lookup-foreign')).toEqual({ plans: [], monthEvents: [] });
+    await expect(authority.getActualProgressSources!(foreign, 'source-lookup-foreign')).rejects.toThrow('permission-denied');
+    // Existing provenance resolution does not impose occurrence-admission filtering.
+    const saved = await repository.upsertActual(actual(owner, 'source-lookup-excluded-day', id));
+    expect(saved.progressSource).toEqual({ kind: 'study', sourceId: id, planType: 'study' });
+  });
+
+  it.each(['actual', 'material'] as const)('refreshes selected source and fails closed for new/relinked deleted sources via %s API', async route => {
+    const repository = createScheduleEventBackedPlannerRepository(createFirebasePlannerRepository(ownerDb), createFirebaseScheduleEventAuthority(ownerDb));
+    const id = `source-lookup-fresh-${route}`;
+    const source: Plan = { id, seriesId: id, userId: owner, title: 'Synthetic Plan', subject: 'Math',
+      date: '2026-09-10', startTime: '14:00', endTime: '17:30', repeat: 'none', repeatUntil: null,
+      excludedDates: [], recurrenceRules: [], type: 'study', memo: '', createdAt: stamp, updatedAt: stamp };
+    const save = (input: Actual) => route === 'actual' ? repository.upsertActual(input)
+      : repository.upsertActualWithMaterialProgress({ actual: input, materials: [] });
+    await repository.upsertPlan(source);
+    const first = await save(actual(owner, `${id}-actual`, id));
+    expect(first.progressSource?.kind).toBe('study');
+    await repository.upsertPlan({ ...source, type: 'school-event' });
+    const changed = await save({ ...first, note: 'source changed' });
+    expect(changed.progressSource).toEqual({ kind: 'general-event', sourceId: id, planType: 'school-event' });
+    await deleteDoc(doc(ownerDb, 'schedule_events', scheduleEventIdForLegacy({ kind: 'plan', id })));
+    const retained = await save({ ...changed, note: 'source deleted' });
+    expect(retained.progressSource).toEqual(changed.progressSource);
+    const orphan = actual(owner, `${id}-new`, id);
+    await expect(save(orphan)).rejects.toThrow('再読み込み');
+    expect((await getDocsFromServer(exactRange(ownerDb, owner, orphan.id))).empty).toBe(true);
+    await expect(save({ ...retained, planId: 'source-lookup-deleted-other' })).rejects.toThrow('再読み込み');
+    expect((await getDocFromServer(doc(ownerDb, 'actuals', retained.id))).data()).toMatchObject(retained);
+    const unlinked = await save({ ...retained, planId: null });
+    expect(unlinked.progressSource).toEqual(retained.progressSource);
+  });
+
 });
