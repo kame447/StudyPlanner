@@ -6,9 +6,9 @@ import { weeklyWebEngine } from '../weekly-web-engine';
 const vagueRequest = '来週は研究を進めたいけど、内容はまだ決まっていない';
 
 test('smoke: an existing weekly session has a usable accessible composer', async ({ app, screen }) => {
-  await app.open('/?weekly=1');
+  await app.open('/real-weekly.html');
 
-  const composer = screen.getByRole('textbox', { name: /週間計画にしたいこと/ });
+  const composer = screen.getByRole('textbox');
   const send = screen.getByRole('button', { name: '送信' });
 
   await expect(composer).toBeVisible();
@@ -44,11 +44,28 @@ test('smoke: weekly planning conversation accepts one user turn', async ({ app, 
 });
 
 test('smoke: preview promotion stops at the separate approval gate', async ({ app, screen }) => {
-  await app.open('/?scenario=preview');
+  await app.open('/real-weekly.html?preview=1');
+
+  await screen.getByRole('textbox').fill('来週の予定を立てたい');
+  await screen.getByRole('button', { name: '送信' }).click();
+  await screen.getByRole('button', { name: '計画プレビューを確認' }).click();
 
   await expect(screen.getByRole('button', { name: 'この内容で仮予定にする' })).toBeVisible();
   await screen.getByRole('button', { name: 'この内容で仮予定にする' }).click();
-  await expect(screen.getByRole('button', { name: '一括承認して保存' })).toBeVisible();
+  await expect(screen.getByRole('button', { name: 'この内容で保存' })).toBeVisible();
+
+  const page = surfaceOf(weeklyWebEngine)?.page();
+  assert.ok(page, 'The shared TesterArmy web surface must be active');
+  const boundary = await page.evaluate(() => ({
+    mode: window.__realWeeklyState.mode,
+    drafts: window.__realWeeklyState.draftBlocks.length,
+    pendingApproval: window.__realWeeklyState.pendingApproval,
+    saves: (window.__realWeeklyEvents ?? []).filter((event) => event.type === 'real-save-approved-plan').length,
+    completions: (window.__realWeeklyEvents ?? []).filter((event) => event.type === 'real-complete-approved-plan').length,
+  }));
+  assert.deepEqual(boundary, {
+    mode: 'awaiting_approval', drafts: 1, pendingApproval: undefined, saves: 0, completions: 0,
+  });
 });
 
 test('agentic: a vague student request can be submitted through the visible UI', async ({ app, agent, screen }) => {
