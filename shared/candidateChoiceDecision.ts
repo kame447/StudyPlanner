@@ -42,6 +42,9 @@ export interface CandidateChoiceEvaluation {
   readonly optionId: string;
   readonly probabilities: readonly { readonly optionId: string; readonly probability: number }[];
   /** Raw auxiliary scores; only an explicitly calibrated application policy can interpret them. */
+  // For reply_reference_target the baseline is one destination plus its open
+  // value interpreted in the machine-bound pending question. These scores mean
+  // residual conditions/meaning outside that answer, not the value being supplied.
   readonly conditionChange: number;
   readonly independentMeaning: number;
 }

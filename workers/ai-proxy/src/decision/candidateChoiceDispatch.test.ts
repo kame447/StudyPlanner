@@ -21,6 +21,7 @@ describe('generic Choice provider validation and dispatch accounting', () => {
         question: { id: 'reply-target', code: 'reply_reference_target' },
         target: { kind: 'reply_reference', id: 'current_conversation' },
         scope: { referenceKind: 'existing_fact', selectionKind: 'target_slot_only',
+          pendingQuestion: { messageOrdinal: 2, questionCode: 'stable_v5:missing_effort_estimate', candidateKeys: ['c:0'] },
           dialogueHistory: [
             { messageOrdinal: 1, role: 'user', content: '数学を20問進めたい' },
             { messageOrdinal: 2, role: 'assistant', content: '1問何分かかりますか？' },
@@ -36,7 +37,7 @@ describe('generic Choice provider validation and dispatch accounting', () => {
       },
     });
     expect(result.status).toBe('evaluated');
-    const questions = body.questions as Record<string, { instructions: string }>;
+    const questions = body.questions as Record<string, { instructions: string; criteria: Record<string, string> }>;
     expect(questions.candidate.instructions).toContain('prior utterance');
     expect(questions.candidate.instructions).toContain('dialogueHistory');
     expect(questions.condition_change.instructions).toContain('current user reply only');
@@ -45,6 +46,14 @@ describe('generic Choice provider validation and dispatch accounting', () => {
     expect(questions.candidate.instructions).toContain('separate semantic extractor');
     expect(questions.condition_change.instructions).toContain('ordinary value');
     expect(questions.independent_meaning.instructions).toContain('multiple targets');
+    // Both the question and true/false criteria must use the open-answer baseline.
+    // A destination-only menu cannot require the free value to equal a full leaf.
+    for (const key of ['condition_change', 'independent_meaning']) {
+      expect(questions[key].instructions).toContain('pendingQuestion');
+      expect(questions[key].criteria.false).not.toContain('complete candidate');
+      expect(questions[key].criteria.false).toContain('value');
+    }
+    expect((body.state as { context: { scope: unknown } }).context.scope).toEqual(reference.context.scope);
     const none = (questions.candidate as { criteria: Record<string, string> }).criteria.none;
     expect(none).toContain('extracted separately');
   });

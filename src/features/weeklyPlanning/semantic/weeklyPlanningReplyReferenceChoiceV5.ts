@@ -62,8 +62,15 @@ export async function selectReplyReferenceHintV5(params: {
       binding: {
         ownerId: params.ownerId, conversationId: params.conversationId, requestId: params.requestId,
         inputRevision: frozen.planningStateRevision, graphRevision: frozen.graphRevision,
-        sources: [], target: { kind: 'reply_reference', id: 'current_conversation' },
+        sources: frozen.pendingQuestionBinding === null ? []
+          : [{ id: 'pending_question', revision: frozen.pendingQuestionBinding }],
+        target: { kind: 'reply_reference', id: 'current_conversation' },
         scope: { referenceKind: 'existing_fact', selectionKind: 'target_slot_only',
+          pendingQuestion: frozen.pendingQuestion ? {
+            messageOrdinal: frozen.pendingQuestion.messageOrdinal,
+            questionCode: frozen.pendingQuestion.questionCode,
+            candidateKeys: [...frozen.pendingQuestion.candidateKeys],
+          } : null,
           dialogueHistory: frozen.dialogueHistory.map(turn => ({
             messageOrdinal: turn.messageOrdinal, role: turn.role, content: turn.content,
           })),

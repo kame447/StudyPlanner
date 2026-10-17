@@ -1,12 +1,13 @@
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
-import { resolveWeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
+import { isWeeklyPlanningQuestionPresentationDirect, resolveWeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
 import type { WeeklyPlanningMessage } from '../types';
 import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './weeklyPlanningActiveSchedulerGraphViewV5';
 import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
+import { isWeeklyPlanningEffortMeasurementV5 } from './weeklyPlanningEffortQuestionPolicyV5';
 
 export type ReplyReferenceSlotV5 =
   | 'task_title' | 'component_label' | 'quantity' | 'quantity_role'
-  | 'duration_per_unit' | 'total_duration' | 'preferred_window';
+  | 'duration_per_unit' | 'total_duration' | 'session_duration' | 'preferred_window';
 
 export interface ReplyReferenceCandidateV5 {
   readonly key: string;
@@ -33,6 +34,14 @@ export interface ReplyReferenceSnapshotV5 {
   readonly conversationMessageIds: readonly string[];
   /** A role-ordered, bounded excerpt of real messages, not reconstructed AI instructions. */
   readonly dialogueHistory: readonly ReplyReferenceDialogueTurnV5[];
+  /** Only a fresh, active, machine-bound question may supply an omitted reply target. */
+  readonly pendingQuestion: {
+    readonly messageOrdinal: number;
+    readonly questionCode: string;
+    readonly candidateKeys: readonly string[];
+  } | null;
+  /** Private application binding, hashed and revalidated but never sent as model context. */
+  readonly pendingQuestionBinding: string | null;
   readonly candidates: readonly ReplyReferenceCandidateV5[];
 }
 
@@ -65,13 +74,13 @@ function slotsFor(kind: CandidateWithoutKey['targetKind']): readonly ReplyRefere
   switch (kind) {
     case 'task': return ['task_title', 'total_duration', 'preferred_window'];
     case 'component': return ['component_label', 'total_duration', 'preferred_window'];
-    case 'workload': return ['quantity', 'quantity_role', 'duration_per_unit', 'total_duration'];
+    case 'workload': return ['quantity', 'quantity_role', 'duration_per_unit', 'total_duration', 'session_duration'];
   }
 }
 
-function questionSlots(code: string | undefined): readonly ReplyReferenceSlotV5[] {
+function questionSlots(code: string | undefined, intent: string | undefined): readonly ReplyReferenceSlotV5[] {
   if (code === 'stable_v5:missing_effort_estimate' || code === 'stable_v5:ambiguous_effort_estimate') {
-    return ['duration_per_unit', 'total_duration'];
+    return isWeeklyPlanningEffortMeasurementV5(intent) ? [intent] : [];
   }
   if (code === 'stable_v5:quantity_role_unresolved') return ['quantity_role'];
   return [];
@@ -113,6 +122,31 @@ export function createReplyReferenceSnapshotV5(input: {
   const tasks = new Map(graph.tasks.map(task => [task.id, task]));
   if (tasks.size !== graph.tasks.length) return null;
 
+  // A reference to an active task/component can address its existing descendants.
+  // Prefer the fact's own utterance, then the nearest anchored ancestor. This is
+  // formal graph ancestry, never a claim inferred from the words in the utterance.
+  const sourceAnchor = (taskId: string, componentId: string | null, ownTurnId: string) => {
+    const turnIds = [ownTurnId];
+    const seen = new Set<string>();
+    let current = componentId;
+    while (current !== null) {
+      if (seen.has(current)) return null;
+      seen.add(current);
+      const components = graph.components.filter(item => item.id === current && item.taskId === taskId);
+      if (components.length !== 1) return null;
+      turnIds.push(components[0].source.turnId);
+      current = components[0].parentComponentId;
+    }
+    const task = tasks.get(taskId);
+    if (!task) return null;
+    turnIds.push(task.source.turnId);
+    for (const turnId of turnIds) {
+      const message = turnMessages.get(turnId);
+      if (message) return { message, turnId };
+    }
+    return null;
+  };
+
   const candidates: CandidateWithoutKey[] = [];
   const add = (messageId: string, turnId: string, kind: CandidateWithoutKey['targetKind'],
     targetFactId: string, taskId: string, path: string[], allowed?: readonly ReplyReferenceSlotV5[]) => {
@@ -136,44 +170,61 @@ export function createReplyReferenceSnapshotV5(input: {
   for (const component of graph.components) {
     const path = componentPath(graph, component.taskId, component.id);
     if (!path) return null;
-    const message = turnMessages.get(component.source.turnId);
-    if (message && !add(message.id, component.source.turnId, 'component',
+    const anchor = sourceAnchor(component.taskId, component.parentComponentId, component.source.turnId);
+    if (anchor && !add(anchor.message.id, anchor.turnId, 'component',
       component.id, component.taskId, path)) return null;
   }
   for (const workload of graph.workloads) {
     const path = componentPath(graph, workload.taskId, workload.componentId);
     if (!path) return null;
-    const message = turnMessages.get(workload.source.turnId);
-    if (message && !add(message.id, workload.source.turnId, 'workload',
+    const anchor = sourceAnchor(workload.taskId, workload.componentId, workload.source.turnId);
+    if (anchor && !add(anchor.message.id, anchor.turnId, 'workload',
       workload.id, workload.taskId, path)) return null;
   }
 
+  let pendingQuestion: { messageId: string; questionCode: string } | null = null;
+  let pendingQuestionBinding: string | null = null;
   // Only the machine-bound pending question may be an assistant-turn anchor.
   // Other assistant prose has no authoritative slot identity.
   const freshness = resolveWeeklyPlanningQuestionPresentationFreshness({
     previousState: input.previousState, inputStateRevision: input.inputStateRevision,
     messages: input.messages, graphRevision: graph.revision,
   });
-  if (freshness.status === 'fresh') {
+  if (freshness.status === 'fresh' && isWeeklyPlanningQuestionPresentationDirect(freshness.presentation.content)
+    && Array.from(input.messages[input.messages.length - 1].content).length <= REPLY_REFERENCE_DIALOGUE_MAX_CHARS_PER_MESSAGE_V5) {
     const context = freshness.questionContext;
-    const allowed = questionSlots(context.targetSlot);
-    if (allowed.length > 0 && context.topicId) {
+    if (context.topicId) {
       const workload = graph.workloads.filter(item => item.id === context.topicId);
       if (workload.length === 1) {
+        const allowed = questionSlots(context.targetSlot, context.intent);
         const path = componentPath(graph, workload[0].taskId, workload[0].componentId);
         if (!path || !add(freshness.presentation.assistantMessageId,
           freshness.presentation.turnId, 'workload', workload[0].id,
           workload[0].taskId, path, allowed)) return null;
+        if (allowed.length > 0) {
+          pendingQuestion = {
+            messageId: freshness.presentation.assistantMessageId, questionCode: context.targetSlot!,
+          };
+          pendingQuestionBinding = JSON.stringify(context);
+        }
       }
     }
   }
 
-  if (candidates.length === 0 || candidates.length > REPLY_REFERENCE_CANDIDATE_LIMIT_V5) return null;
+  // One semantic destination has one option. A fresh assistant question takes
+  // precedence over the user source of the same slot, avoiding split probability
+  // mass between two equivalent options. Other slots retain their user anchor.
+  const destinations = new Map<string, CandidateWithoutKey>();
+  for (const candidate of candidates) {
+    destinations.set(JSON.stringify([candidate.targetKind, candidate.targetFactId, candidate.slot]), candidate);
+  }
+  const uniqueCandidates = [...destinations.values()];
+  if (uniqueCandidates.length === 0 || uniqueCandidates.length > REPLY_REFERENCE_CANDIDATE_LIMIT_V5) return null;
 
   // Preserve recent user/assistant context in its real chronological order, and include
   // older candidate anchors even when intervening assistant turns pushed them outside
   // the recent window. The bounded transcript is provider context, never state authority.
-  const anchorMessageIds = new Set(candidates.map(candidate => candidate.sourceMessageId));
+  const anchorMessageIds = new Set(uniqueCandidates.map(candidate => candidate.sourceMessageId));
   const recentMessageIds = new Set(input.messages.slice(-REPLY_REFERENCE_DIALOGUE_RECENT_MESSAGE_LIMIT_V5)
     .map(message => message.id));
   const dialogueHistory = input.messages.flatMap((message, index) => {
@@ -189,16 +240,23 @@ export function createReplyReferenceSnapshotV5(input: {
   // At most 8 source-user anchors plus the latest 16 user/assistant messages.
   if (dialogueHistory.length > REPLY_REFERENCE_SOURCE_TURN_LIMIT_V5
     + REPLY_REFERENCE_DIALOGUE_RECENT_MESSAGE_LIMIT_V5) return null;
-  // Different messages may refer to the same fact; they are separate semantic options.
-  const keyed = candidates.map((candidate, index) => Object.freeze({
+  const keyed = uniqueCandidates.map((candidate, index) => Object.freeze({
     ...candidate, componentPath: Object.freeze([...candidate.componentPath]),
     key: 'reply-ref:' + index,
   }));
+  const pending = pendingQuestion;
   return Object.freeze({
     graphRevision: graph.revision,
     planningStateRevision: input.inputStateRevision!,
     conversationMessageIds: Object.freeze(input.messages.map(message => message.id)),
     dialogueHistory: Object.freeze(dialogueHistory.map(turn => Object.freeze(turn))),
+    pendingQuestionBinding,
+    pendingQuestion: pending ? Object.freeze({
+      messageOrdinal: input.messages.findIndex(message => message.id === pending.messageId) + 1,
+      questionCode: pending.questionCode,
+      candidateKeys: Object.freeze(keyed.filter(candidate => candidate.sourceMessageId === pending.messageId)
+        .map(candidate => candidate.key)),
+    }) : null,
     candidates: Object.freeze(keyed),
   });
 }
