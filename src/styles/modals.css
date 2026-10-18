@@ -65,27 +65,6 @@
   overflow-wrap: anywhere;
 }
 
-.plan-input-modal {
-  width: min(760px, calc(100vw - 40px));
-  max-width: 760px;
-  overflow: hidden;
-}
-
-.plan-input-modal .section-stack,
-.plan-input-modal .form-grid,
-.plan-input-modal .field,
-.plan-input-modal .row-actions,
-.plan-input-modal .segmented-control,
-.plan-input-modal .primary-button {
-  min-width: 0;
-}
-
-.plan-input-modal .field input,
-.plan-input-modal .field select,
-.plan-input-modal .field textarea {
-  width: 100%;
-}
-
 .plan-editor-modal {
   width: min(680px, calc(100vw - 40px));
 }
@@ -340,10 +319,6 @@
   display: none;
 }
 
-.actual-tracking-launch-button {
-  justify-self: flex-start;
-}
-
 .floating-tracking-event-shield {
   position: fixed;
   inset: 0;
@@ -497,10 +472,6 @@
   line-height: 1.45;
 }
 
-.floating-tracking-panel .tracking-apply-note {
-  color: var(--text-muted);
-}
-
 .floating-tracking-panel .row-actions {
   gap: 6px;
 }
@@ -518,46 +489,6 @@
 
 .actual-editor-actions {
   justify-content: flex-start;
-}
-
-.actual-editor-save-footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 4;
-  display: grid;
-  gap: 7px;
-  margin: 2px -2px 0;
-  padding: 10px 2px max(10px, env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface) 0%, transparent) 0%,
-      color-mix(in srgb, var(--surface) 94%, transparent) 18%,
-      var(--surface) 100%
-    );
-  backdrop-filter: blur(10px);
-}
-
-.actual-editor-save-summary {
-  margin: 0;
-  overflow: hidden;
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  font-weight: 800;
-  line-height: 1.25;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.daily-detail-modal .actual-editor-save-button {
-  width: 100%;
-  min-height: 54px;
-  border-radius: 15px;
-  font-size: 0.96rem;
-  font-weight: 900;
-  box-shadow: 0 14px 26px color-mix(in srgb, var(--primary) 28%, transparent);
 }
 
 .month-event-modal-overlay {
@@ -625,15 +556,6 @@
   padding: 0 2px 4px;
 }
 
-.month-event-editor-card {
-  display: grid;
-  gap: 8px;
-  padding: 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--surface-strong) 82%, var(--surface-soft) 18%);
-}
-
 .month-event-core-section,
 .month-event-subtle-section,
 .month-event-addons,
@@ -655,12 +577,6 @@
 .month-event-title-card {
   border-color: color-mix(in srgb, var(--border) 68%, transparent);
   background: transparent;
-}
-
-.month-event-card-title {
-  display: flex;
-  align-items: center;
-  min-width: 0;
 }
 
 .month-event-card-title strong,
@@ -748,22 +664,6 @@
 
 .month-event-all-day-switch input:checked + span::after {
   transform: translateX(20px);
-}
-
-.month-event-repeat-card {
-  grid-template-columns: minmax(0, 0.44fr) minmax(0, 1fr);
-  align-items: end;
-}
-
-.month-event-optional-card .collapsible-toggle {
-  min-height: 38px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-.month-event-optional-card .collapsible-panel {
-  gap: 8px;
 }
 
 .month-event-modal .field {
@@ -1203,12 +1103,6 @@
   font-size: 0.72rem;
   line-height: 1.35;
   color: var(--text-muted);
-}
-
-.month-picker-trigger {
-  min-width: 136px;
-  justify-content: center;
-  font-weight: 700;
 }
 
 .month-picker-overlay {
@@ -1831,10 +1725,6 @@
   .month-event-datetime-row {
     grid-template-columns: 34px minmax(112px, 1fr) minmax(78px, 0.54fr);
     gap: 6px;
-  }
-
-  .month-event-repeat-card {
-    grid-template-columns: 1fr;
   }
 
   .modal-card.month-event-modal .field input,
