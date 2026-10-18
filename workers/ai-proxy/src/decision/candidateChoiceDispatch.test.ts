@@ -98,7 +98,7 @@ describe('generic Choice provider validation and dispatch accounting', () => {
     expect(calls).toBe(0);
   });
   it('malformed distribution/model/unknown option cannot become a selection', async () => {
-    for (const root of [{ ...response(), model: 'wrong' }, { ...response(), answers: { ...response().answers, candidate: { ...response().answers.candidate, choice: 'unknown' } } }, { ...response(), answers: { ...response().answers, candidate: { ...response().answers.candidate, probabilities: { 'leaf:0': 0.999, none: 0.01 } } } }]) {
+    for (const root of [{ ...response(), model: 'wrong' }, { ...response(), answers: { ...response().answers, candidate: { ...response().answers.candidate, choice: 'unknown' } } }, { ...response(), answers: { ...response().answers, candidate: { ...response().answers.candidate, probabilities: { 'leaf:0': 0.999, none: 0.1 } } } }]) {
       expect((await evaluateCandidateChoice({ firebaseUid: 'fixture-owner', context: { purpose: 'candidate_choice', request: choiceRequest() }, env: { OPENROUTER_API_KEY: 'fixture', JEV_CANDIDATE_CHOICE_MODE: 'canary', JEV_MODE: 'canary', JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' }, transport: async () => Response.json(root) })).status).toBe('unavailable');
     }
   });
@@ -111,5 +111,44 @@ describe('generic Choice provider validation and dispatch accounting', () => {
     expect(catalog.candidate.instructions).toContain('ordinal/deictic');
     expect(catalog.candidate.instructions).toContain('entire text including outside spans');
     expect(JSON.parse(catalog.candidate.criteria['leaf:0'])).toEqual(r.menu.options[0].kind === 'leaf' ? r.menu.options[0].candidate : null);
+  });
+  describe('2-decimal rounded distributions', () => {
+    const env = { OPENROUTER_API_KEY: 'fixture', JEV_CANDIDATE_CHOICE_MODE: 'canary', JEV_MODE: 'canary', JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' };
+    const run = (probabilities: Record<string, number>, choice = 'leaf:0') => {
+      const root = response(); root.answers.candidate = { ...root.answers.candidate, choice, probabilities };
+      return evaluateCandidateChoice({ firebaseUid: 'fixture-owner', context: { purpose: 'candidate_choice', request: choiceRequest() }, env, transport: async () => Response.json(root) });
+    };
+    it('1.01 sum: scaled down, argmax kept, top and margin only shrink', async () => {
+      const result = await run({ 'leaf:0': 0.9, none: 0.11 });
+      expect(result).toMatchObject({ status: 'evaluated', optionId: 'leaf:0' });
+      if (result.status !== 'evaluated') return;
+      expect(result.probabilities[0].probability).toBeLessThan(0.9);
+      expect(result.probabilities.reduce((t, p) => t + p.probability, 0)).toBeCloseTo(1, 12);
+    });
+    it('0.99 sum: missing mass goes to the runner-up, selected probability is never raised', async () => {
+      const result = await run({ 'leaf:0': 0.89, none: 0.1 });
+      expect(result).toMatchObject({ status: 'evaluated', optionId: 'leaf:0' });
+      if (result.status !== 'evaluated') return;
+      expect(result.probabilities[0].probability).toBe(0.89);
+      expect(result.probabilities[1].probability).toBeCloseTo(0.11, 12);
+    });
+    it('leaves an exact vector byte-identical', async () => {
+      const result = await run({ 'leaf:0': 0.9, none: 0.1 });
+      expect(result).toMatchObject({ probabilities: [{ probability: 0.9 }, { probability: 0.1 }] });
+    });
+    it('rejects sums outside the rounding tolerance for the menu size with the provider reason', async () => {
+      for (const none of [0.13, 0.07]) {
+        expect(await run({ 'leaf:0': 0.9, none })).toEqual({ status: 'unavailable', reason: 'invalid_response' });
+      }
+      // Provider keeps its fixed 0.02 (shared by live purposes); the tighter 2-option rounding bound applies here.
+      for (const none of [0.115, 0.085]) {
+        expect(await run({ 'leaf:0': 0.9, none })).toEqual({ status: 'unavailable', reason: 'invalid_dispatch_response' });
+      }
+    });
+    it('a repair that overtakes the selected option is rejected with the dispatch reason; a tie stays a tie for the gate to abstain on', async () => {
+      expect(await run({ 'leaf:0': 0.495, none: 0.495 })).toEqual({ status: 'unavailable', reason: 'invalid_dispatch_response' });
+      const tied = await run({ 'leaf:0': 0.5, none: 0.49 });
+      expect(tied.status === 'evaluated' && tied.probabilities[0].probability === tied.probabilities[1].probability).toBe(true);
+    });
   });
 });

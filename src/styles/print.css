@@ -61,10 +61,6 @@
     margin-bottom: 2px;
   }
 
-  .view-titlebar h2 {
-    font-size: 0.92rem;
-  }
-
   p,
   .summary-chip,
   .week-day-link,
@@ -141,21 +137,6 @@
   .timeline-actual-block {
     padding: 2px 5px;
     border-radius: 10px;
-  }
-
-  .timeline-chip {
-    padding: 1px 5px;
-    font-size: 0.58rem;
-  }
-
-  .notebook-summary-grid {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-
-  .summary-chip {
-    min-width: 0;
-    padding: 4px 6px;
   }
 
   .timeline-legend {

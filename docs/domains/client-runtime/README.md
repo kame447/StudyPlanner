@@ -56,6 +56,8 @@ Execution tracking:
 
 - [Contact page startup loading](work/contact-startup-loading-handoff.md) — Issue #542; optional contact form/photo code leaves the initial module graph while return navigation stays synchronous; local measurement and native acceptance are separate.
 
+- [Streak automatic-write retirement](work/streak-commit-retirement-handoff.md) — stop retired hook continuations and transaction callback retries at the committed owner boundary.
+
 - [Study streak preload after Home](work/streak-after-home-preload-handoff.md) — Issue #483; optional detail-module warming behind the existing readiness boundary.
 
 - [Bounded optional view preloading](work/bounded-view-preload-handoff.md) — Issues #483/#542; reuse settled preload slots under the existing eight-loader cap, with MonthView registration and measured tradeoffs kept separate.
