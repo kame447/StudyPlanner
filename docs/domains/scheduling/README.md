@@ -38,6 +38,8 @@ Firestore Rules は Phase 3 merge 後に repository-owned な WIF workflow か�
 
 ## Active work
 
+- [Restore the accepted major event on Undo](work/month-event-undo-latest-handoff.md) — local two-reference correction with real-Local persistence and progress regression coverage; publication/native pending.
+
 - [Calendar recurrence evaluation](work/calendar-recurrence-evaluation-handoff.md) — reuse the selected occurrence rule; exact-content publication verification in progress.
 
 - [Yearly quick entry](work/yearly-quick-entry-handoff.md) — schedule type ordering and annual structured recurrence, including persistence and scoped edits.

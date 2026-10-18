@@ -1,5 +1,5 @@
 import { BrowserEventTarget } from '../lib/timelineDragInteractionLock.testUtils';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentProps, ReactNode } from 'react';
 import { DayView } from './DayView';
@@ -144,4 +144,82 @@ it.each(['day', 'week'] as const)('%s React capture ignores an unrelated pointer
   const edit = { identifier: 1, clientX: 220, clientY: 260 };
   native('touchmove', [edit]); native('touchend', [edit]);
   expect(ui.callbacks.onEditPlan).toHaveBeenCalledOnce();
+});
+
+
+// Deliver the actual ancestor capture handlers before the rendered button's
+// callback; calling only onClick would miss a calendar-level click interception.
+function clickRenderedButton(button: ReactTestInstance) {
+  const event = { target: new FakeElement(), preventDefault: vi.fn(), stopPropagation: vi.fn() };
+  const ancestors: ReactTestInstance[] = [];
+  for (let node = button.parent; node; node = node.parent) ancestors.unshift(node);
+  act(() => {
+    for (const node of ancestors) {
+      if (typeof node.type === 'string') node.props.onClickCapture?.(event);
+      if (event.stopPropagation.mock.calls.length) return;
+    }
+    button.props.onClick(event);
+  });
+  return event;
+}
+function flick(ui: ReturnType<typeof setup>, x: number, y: number) {
+  act(() => { ui.section().props.onTouchStartCapture(ui.event()); vi.advanceTimersByTime(170); });
+  const point = { identifier: 1, clientX: x, clientY: y };
+  native('touchmove', [point]); native('touchend', [point]);
+}
+it('day Move can end immediately without losing the original card click guard', () => {
+  const ui = setup('day');
+  flick(ui, 80, 260);
+  const end = renderer!.root.findAllByType('button').find(node => node.children.includes('終了'))!;
+  expect(clickRenderedButton(end).preventDefault).not.toHaveBeenCalled();
+  expect(renderer!.root.findAllByType(ScheduleMoveModeBanner)).toHaveLength(0);
+  expect(ui.callbacks.onMovePlan).not.toHaveBeenCalled();
+  const cardClick = ui.event();
+  act(() => ui.section().props.onClickCapture(cardClick));
+  expect(cardClick.preventDefault).toHaveBeenCalledOnce();
+});
+it('day Move opens the date dialog and cancels immediately through real capture', () => {
+  const ui = setup('day');
+  flick(ui, 80, 260);
+  const specify = renderer!.root.findAllByType('button').find(node => node.children.includes('日時で指定'))!;
+  expect(clickRenderedButton(specify).preventDefault).not.toHaveBeenCalled();
+  expect(renderer!.root.findAllByProps({ role: 'dialog', 'aria-label': '数学を移動' })).toHaveLength(1);
+  const cancel = renderer!.root.findAllByType('button').find(node => node.children.includes('キャンセル'))!;
+  expect(clickRenderedButton(cancel).preventDefault).not.toHaveBeenCalled();
+  expect(renderer!.root.findAllByProps({ role: 'dialog', 'aria-label': '数学を移動' })).toHaveLength(0);
+  expect(ui.callbacks.onMovePlan).not.toHaveBeenCalled();
+});
+it('day record sheet closes immediately after its flick without a save', () => {
+  const ui = setup('day');
+  flick(ui, 80, 340);
+  expect(renderer!.root.findAll(node => typeof node.type === 'string' && node.props.className?.includes('schedule-record-sheet'))).toHaveLength(1);
+  const close = renderer!.root.findAllByType('button').find(node => node.props['aria-label'] === '閉じる')!;
+  expect(clickRenderedButton(close).preventDefault).not.toHaveBeenCalled();
+  expect(renderer!.root.findAll(node => typeof node.type === 'string' && node.props.className?.includes('schedule-record-sheet'))).toHaveLength(0);
+  expect(ui.callbacks.onSaveActual).not.toHaveBeenCalled();
+});
+it('week toolbar can change mode immediately after cancelling a held ring', () => {
+  const ui = setup('week');
+  act(() => { ui.section().props.onTouchStartCapture(ui.event()); vi.advanceTimersByTime(170); });
+  native('touchcancel', [{ identifier: 1, clientX: 150, clientY: 300 }]);
+  const records = renderer!.root.findAllByType('button').find(node => node.children.includes('記録'))!;
+  expect(clickRenderedButton(records).preventDefault).not.toHaveBeenCalled();
+  expect(records.props.className).toBe('segment active');
+  expect(ui.callbacks.onMovePlan).not.toHaveBeenCalled();
+  expect(ui.callbacks.onSaveActual).not.toHaveBeenCalled();
+});
+it('day moved plan can be undone immediately through calendar capture', async () => {
+  const ui = setup('day');
+  flick(ui, 80, 260);
+  const card = () => renderer!.root.findAll(node => node.props['data-schedule-occurrence-id'] === ui.occurrence.id && node.props.onTouchStart)[0];
+  act(() => { ui.section().props.onTouchStartCapture(ui.event()); card().props.onTouchStart(ui.event()); });
+  const moved = { ...ui.event(), touches: [{ identifier: 1, clientX: 150, clientY: 360 }] };
+  act(() => { ui.section().props.onTouchMoveCapture(moved); card().props.onTouchMove(moved); });
+  await act(async () => { ui.section().props.onTouchEndCapture(moved); card().props.onTouchEnd(moved); });
+  expect(ui.callbacks.onMovePlan).toHaveBeenCalledOnce();
+  const undo = renderer!.root.findAllByType('button').find(node => node.props['aria-label'] === '変更を元に戻す')!;
+  await act(async () => { expect(clickRenderedButton(undo).preventDefault).not.toHaveBeenCalled(); });
+  expect(ui.callbacks.onMovePlan).toHaveBeenCalledTimes(2);
+  expect(ui.callbacks.onMovePlan).toHaveBeenLastCalledWith(expect.objectContaining({ id: plan.id }),
+    expect.objectContaining({ startTime: '11:00', endTime: '12:00' }));
 });

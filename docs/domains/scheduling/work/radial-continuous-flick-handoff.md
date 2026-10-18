@@ -71,3 +71,34 @@ Do not describe the local candidate as delivered or as an iPhone vibration fix.
 - [Previous gesture contract](https://github.com/kame447/StudyPlanner/pull/783)
 - [Remaining actual iPhone validation](https://github.com/kame447/StudyPlanner/issues/780)
 - [Vibration API limitations](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/vibrate)
+
+## Post-publication click-boundary correction
+
+PR #785 source `2487984a` passed Core after the rollback fixture was updated for
+held release. Its first native run still failed four Day interaction cases on
+both attempts: Move Undo, Move end, record-sheet close, and ending a cancelled
+armed drag. Each final click completed, but its following five-second state
+assertion failed. The section-wide 700 ms compatibility-click guard intercepted
+these new controls as well as the original event card.
+
+The Day/Week guard now suppresses only clicks that resolve to a current schedule
+card. The original card's compatibility click remains suppressed; explicit
+controls outside cards can work immediately. Swipe suppression, gesture ownership,
+release/cancel timing, action callbacks, persistence, owner checks and rollback
+are unchanged. Five real consumer tests deliver ancestor capture before button
+callbacks, including immediate Undo. The first four reproduce red on the prior
+source; all thirteen integration tests pass after the boundary correction.
+
+A separate source-only focus check failed because a 200-character regex could no
+longer span added menu attributes. JSX parsing now binds the unique focus ref to
+its actual button and menuitem role. The exact allowed first-focus statement now
+includes the existing non-gesture guard; unconditional focus remains rejected.
+The entire static callback and in-memory negative probes were checked without
+starting a browser.
+
+Final local verification: 297 tests in thirteen related files, fresh App types,
+and production build (13.15 seconds) pass. All tracked inputs were identical
+before and after these checks; this checkpoint was added afterwards. The prior
+native failures are retained. Corrected browser behavior and complete native
+journeys still require the ordinary CI results; no timeout, viewport, recording,
+assertion, or persistence expectation was relaxed.

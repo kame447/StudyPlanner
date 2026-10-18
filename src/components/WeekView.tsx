@@ -890,7 +890,7 @@ export function WeekView({
   function handleActionClickCapture(event: ReactMouseEvent<HTMLElement>) {
     if (isScheduleActionMenuTarget(event.target)) return;
     swipeNavigation.onClickCapture(event);
-    if (!scheduleAction.shouldSuppressClick()) return;
+    if (!resolveScheduleActionTarget(event.target) || !scheduleAction.shouldSuppressClick()) return;
     event.preventDefault();
     event.stopPropagation();
   }
