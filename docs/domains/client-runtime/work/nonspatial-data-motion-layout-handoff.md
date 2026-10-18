@@ -1,5 +1,19 @@
 # Non-spatial data motion: skip unused geometry
 
+## Current release status (2026-10-18)
+
+[PR #782](https://github.com/kame447/StudyPlanner/pull/782) was merged normally as `522004730f57f726c95b25c412cdaba672128bc3`, preserving the accepted tree `d8448e81a04767470de2ec4460700b3e34f29cbb`. Public head `e3b8a3b6` and CI checkout `0fa1b564` have that same tree. The pending-release statements below describe earlier checkpoints.
+
+The accepted PR source passed 63 related native cases on their first attempt: 55 Chromium and 8 mobile WebKit, with no failures, retries or skips. Of these, 62 used the production preview and one used the Week development harness. Results came from the ordinary [Browser](https://github.com/kame447/StudyPlanner/actions/runs/39144971758) and [Matrix](https://github.com/kame447/StudyPlanner/actions/runs/39144971837) runs; [Core](https://github.com/kame447/StudyPlanner/actions/runs/39144971817) also passed. Independent acceptance inspected 18 PNGs. These are PR-source results; they are not additional post-main executions.
+
+Limits remain: the 24 added gesture-consumer cases (23 Day/Week and one AI planning case) ran in Chromium only; this does not establish physical-iPhone behavior. Two mobile Todo cases passed their interaction/persistence checks, but their screenshots were outside the uploaded artifact and were not visually reviewed. Existing toast overlaps remain. The 300-to-zero rectangle-call result is a DOM-mock operation count, not a measured browser speedup. Neither #741 acceptance nor the separate, unexecuted WPE observation is completed by this release.
+
+The [post-main Quality report](https://github.com/kame447/StudyPlanner/actions/runs/39147319103) matches the accepted PR report except for its generation timestamp. Browser quality passed; the six existing bundle-budget violations remain failures. Relative to main `2d0aaefa` after #783, total JavaScript changed by +27 raw bytes / +44 gzip bytes, while CSS metrics are unchanged. Broader post-main CI and deployment are tracked separately; this document does not assert their completion.
+
+## Historical investigation and integration checkpoints
+
+The original record below is preserved verbatim. Its status, environment limitations and next steps apply to their respective earlier source snapshots, not the current release status above.
+
 Status: approved release integration; native acceptance pending
 Base: d5de705e07faa7213f02f741895a8d6204acc93f (2026-10-18)
 
