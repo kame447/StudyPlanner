@@ -1081,6 +1081,7 @@ export function AiPlanningView({
           </button>
           <textarea
             ref={inputRef}
+            aria-label="週間計画にしたいこと"
             value={text}
             onChange={(event) => {
               if (recoveryOperation.current) return;
