@@ -5,6 +5,8 @@
   pointer-events: none;
   box-sizing: border-box;
   padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  /* Keep the ring clear of the bottom navigation (clearance already includes the safe area). */
+  padding-bottom: var(--app-bottom-nav-clearance, env(safe-area-inset-bottom, 0px));
 }
 
 .schedule-radial-ring { position: absolute; width: 0; height: 0; }

@@ -577,7 +577,12 @@ export function DayView({
         scheduleAction.open(target.occurrence.id, target.occurrence, target.occurrence.title, target.element);
       }}
     >
-      {radialActions.notice ? <p className={`app-notice print-hide ${radialActions.notice.tone}`} role="status">{radialActions.notice.text}</p> : null}
+      {radialActions.notice ? (
+        // Floating like the app toast so the calendar layout never shifts.
+        <div className="app-toast-layer print-hide bottom" aria-live="polite">
+          <p className={`app-notice app-toast ${radialActions.notice.tone}`} role="status">{radialActions.notice.text}</p>
+        </div>
+      ) : null}
       {radialActions.movingPlan ? <ScheduleMoveDialog key={`${userId}:${selectedDate}:${radialActions.movingPlan.id}`} plan={radialActions.movingPlan} onClose={radialActions.closeMove}
         onMove={(plan, target) => moveWithHistory.current ? moveWithHistory.current(plan, target) : onMovePlan(plan, target)} /> : null}
       {actualOpenError ? <p className="inline-error" role="alert">{actualOpenError}</p> : null}

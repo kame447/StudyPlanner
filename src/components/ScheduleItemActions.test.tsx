@@ -147,7 +147,8 @@ describe.each(['day', 'week'] as const)('%s radial wiring', kind => {
     ui.open(); await ui.select('完了');
     expect(renderer!.root.findByProps({ role: 'status' }).children.join('')).toBe('保存失敗');
     ui.open(); await ui.select('完了'); expect(ui.callbacks.onSaveActual).toHaveBeenCalledTimes(2);
-    expect(renderer!.root.findByProps({ role: 'status' }).children.join('')).toContain('記録しました');
+    // Success is confirmed by the app-wide save toast; the stale failure message is cleared.
+    expect(renderer!.root.findAllByProps({ role: 'status' })).toHaveLength(0);
   });
   it('passes the existing actual into the shared editor without writing it', async () => {
     const actual = { ...createCompletionDraft(plan), id: 'a', actualStartTime: '12:30', updatedAt: '' };
@@ -178,8 +179,12 @@ describe.each(['day', 'week'] as const)('%s radial wiring', kind => {
     expect(event).toEqual(before);
   });
   it('clears transient completion feedback after four seconds', async () => {
-    const ui = setup(kind); ui.open(); await ui.select('完了');
-    expect(renderer!.root.findByProps({ role: 'status' }).props.className).toContain('app-notice');
+    const actual = { ...createCompletionDraft(plan), id: 'a', updatedAt: '' };
+    const ui = setup(kind, [actual]); ui.open(); await ui.select('完了');
+    expect(ui.callbacks.onSaveActual).not.toHaveBeenCalled();
+    const status = renderer!.root.findByProps({ role: 'status' });
+    expect(status.children.join('')).toContain('記録済み');
+    expect(status.props.className).toContain('app-toast');
     act(() => { vi.advanceTimersByTime(3999); });
     expect(renderer!.root.findAllByProps({ role: 'status' })).toHaveLength(1);
     act(() => { vi.advanceTimersByTime(1); });

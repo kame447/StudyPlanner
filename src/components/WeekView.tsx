@@ -978,7 +978,12 @@ export function WeekView({
           scheduleAction.open(target.occurrence.id, target.occurrence, target.occurrence.title, target.element);
         }}
       >
-        {radialActions.notice ? <p className={`app-notice print-hide ${radialActions.notice.tone}`} role="status">{radialActions.notice.text}</p> : null}
+        {radialActions.notice ? (
+        // Floating like the app toast so the calendar layout never shifts.
+        <div className="app-toast-layer print-hide bottom" aria-live="polite">
+          <p className={`app-notice app-toast ${radialActions.notice.tone}`} role="status">{radialActions.notice.text}</p>
+        </div>
+      ) : null}
         <div className="week-timeline-toolbar print-hide">
           <div className="segmented-control week-timeline-mode-control">
             <button

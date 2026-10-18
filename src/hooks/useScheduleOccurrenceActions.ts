@@ -90,7 +90,9 @@ export function useScheduleOccurrenceActions(options: {
         if (admission === 'existing') { notify('この予定の実績は記録済みです'); return; }
         if (admission === 'pending') return;
         let saved = false;
-        try { await options.onSaveActual(plan, createCompletionDraft(plan)); saved = true; notify('予定通りの実績を記録しました', 'success'); }
+        try { await options.onSaveActual(plan, createCompletionDraft(plan)); saved = true;
+          // The app-wide save toast confirms success; clear any stale inline message.
+          if (activeContext.current === context) dismissNotice(); }
         finally { guard.finish(plan, saved); }
       }
     } catch (error) { notify(error instanceof Error ? error.message : '操作を完了できませんでした。もう一度お試しください', 'error'); }
