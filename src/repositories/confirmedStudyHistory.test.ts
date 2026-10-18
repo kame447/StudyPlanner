@@ -207,3 +207,66 @@ it('revokes previously issued spend authority on both sides of an in-flight majo
   await expect(bundle.studyStreakRepository.useRestDay(history, '2026-10-08', '2026-10-09')).rejects.toThrow('変更');
   expect(sdk.transaction).not.toHaveBeenCalled();
 });
+
+it.each([1, 1000])('reuses complete new startup history after A to B to A with %i Actuals', async count => {
+  const queryResult = (query: Parameters<typeof list>[0]) => {
+    if (query.collection.name !== 'actuals') return list(query);
+    const owner = query.constraints.find(item => item.field === 'userId')!.value;
+    return { metadata: clean, docs: Array.from({ length: count }, (_, i) => {
+      const row = actual({ id: `actual-${i}`, userId: owner, planId: null,
+        occurrenceDate: i === 0 ? '2010-01-01' : '2026-10-08' });
+      return { id: row.id, data: () => row };
+    }) };
+  };
+  sdk.docs.mockImplementation(async query => queryResult(query));
+  sdk.serverDocs.mockImplementation(async query => queryResult(query));
+  const bundle = createFirebaseRepositories();
+  for (const owner of ['owner-a', 'owner-b']) {
+    const { hint } = await startup(bundle, owner);
+    await bundle.studyStreakRepository.read(owner, { hint, today: '2026-10-09' });
+  }
+  sdk.docs.mockClear(); sdk.serverDocs.mockClear(); sdk.doc.mockClear();
+  const { hint } = await startup(bundle, 'owner-a');
+  const history = await bundle.studyStreakRepository.read('owner-a', { hint, today: '2026-10-09' });
+  const results = await Promise.all([...sdk.docs.mock.results, ...sdk.serverDocs.mock.results].map(result => result.value));
+  console.log('owner-return-query-counts', JSON.stringify({ actualCount: count,
+    startupQueries: sdk.docs.mock.calls.length, streakHistoryQueries: sdk.serverDocs.mock.calls.length,
+    directReads: sdk.doc.mock.calls.map(([ref]) => ref.collection),
+    returnedQueryDocuments: results.reduce((total, result) => total + result.docs.length, 0),
+  }));
+  expect(history).toMatchObject({ userId: 'owner-a', plans: hint.plans, actuals: hint.actuals, monthEvents: hint.monthEvents });
+  expect(history.actuals).toHaveLength(count);
+  expect(history.actuals.some(row => row.occurrenceDate === '2010-01-01')).toBe(true);
+  expect(sdk.docs).toHaveBeenCalledTimes(2);
+  expect(sdk.serverDocs).not.toHaveBeenCalled();
+});
+
+
+it.each([{ ...clean, fromCache: true }, { ...clean, hasPendingWrites: true }, undefined])(
+  'an owner return does not certify fresh history from unconfirmed collection metadata %j', async metadata => {
+    const bundle = createFirebaseRepositories();
+    const first = await startup(bundle, 'owner-a');
+    const oldHistory = await bundle.studyStreakRepository.read('owner-a', { hint: first.hint, today: '2026-10-09' });
+    await startup(bundle, 'owner-b');
+    sdk.docs.mockImplementation(async query => ({ ...list(query), metadata }));
+    sdk.serverDocs.mockClear();
+    const returned = await startup(bundle, 'owner-a');
+    await expect(bundle.studyStreakRepository.useRestDay(oldHistory, '2026-10-08', '2026-10-09')).rejects.toThrow('変更');
+    expect(sdk.transaction).not.toHaveBeenCalled();
+    await bundle.studyStreakRepository.read('owner-a', { hint: returned.hint, today: '2026-10-09' });
+    expect(sdk.serverDocs).toHaveBeenCalledTimes(2);
+  },
+);
+
+it('fails an owner-return marker read without publishing history, and permits a fresh explicit retry', async () => {
+  const bundle = createFirebaseRepositories();
+  await startup(bundle, 'owner-a'); await startup(bundle, 'owner-b');
+  sdk.doc.mockRejectedValueOnce(new Error('marker unavailable'));
+  await expect(startup(bundle, 'owner-a')).rejects.toThrow('marker unavailable');
+  expect(sdk.serverDocs).not.toHaveBeenCalled();
+  const returned = await startup(bundle, 'owner-a');
+  await bundle.studyStreakRepository.read('owner-a', { hint: returned.hint, today: '2026-10-09' });
+  expect(sdk.serverDocs).not.toHaveBeenCalled();
+  expect(sdk.set).not.toHaveBeenCalled();
+  expect(sdk.transaction).not.toHaveBeenCalled();
+});

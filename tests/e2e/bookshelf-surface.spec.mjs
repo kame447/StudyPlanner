@@ -552,3 +552,62 @@ test('leaving a pending bookshelf entry prevents late failure from replacing Hom
     expect(await persistedShelfInputs(page)).toEqual(persisted);
   } finally { release(); }
 });
+test('contents save rejection retains edited input and persists a successful retry', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedBookshelf(page); await openBookshelf(page);
+  const key = 'studyplanner:material-detail:v1:bookshelf-e2e-user:bookshelf-e2e-material';
+  const openEditor = async () => {
+    await page.getByText('アルゴリズム問題集', { exact: true }).first().click();
+    await page.getByRole('button', { name: '教材メニューを開く' }).click();
+    await page.getByRole('button', { name: '目次を編集', exact: true }).click();
+  };
+  await openEditor();
+  const editor = page.locator('.bookshelf-structure-editor');
+  const firstTitle = editor.getByLabel('章・節の名前 1', { exact: true });
+  const secondTitle = editor.getByLabel('章・節の名前 2', { exact: true });
+  const before = await page.evaluate(key => localStorage.getItem(key), key);
+  expect(before).not.toBeNull();
+  const expected = JSON.parse(before);
+  expected.structureItems[0].title = '保存を再試行する基礎編';
+  await firstTitle.fill(expected.structureItems[0].title);
+
+  // Fail only this real browser write. Other storage keys and reads stay live.
+  // A failed assertion disposes this test's page/context and its prototype patch.
+  await page.evaluate(key => {
+    const original = Storage.prototype.setItem;
+    window.__contentsSaveFailure = {
+      attempts: 0,
+      restore: () => { Storage.prototype.setItem = original; },
+    };
+    Storage.prototype.setItem = function (name, value) {
+      if (this === localStorage && name === key) {
+        window.__contentsSaveFailure.attempts += 1;
+        throw new DOMException('Fixture contents write rejected', 'QuotaExceededError');
+      }
+      return original.call(this, name, value);
+    };
+  }, key);
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(editor).toBeVisible();
+  await expect(editor.getByRole('alert')).toHaveText('目次を保存できませんでした。入力内容は残っています。もう一度保存してください。');
+  await expect(firstTitle).toHaveValue(expected.structureItems[0].title);
+  await expect(secondTitle).toHaveValue(expected.structureItems[1].title);
+  expect(await page.evaluate(() => window.__contentsSaveFailure.attempts)).toBe(1);
+  expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(before);
+  await page.screenshot({ path: testInfo.outputPath('material-contents-save-rejected.png'), animations: 'disabled', scale: 'css' });
+
+  // Restore the actual Storage API before retry; do not simulate success.
+  await page.evaluate(() => {
+    window.__contentsSaveFailure.restore();
+    delete window.__contentsSaveFailure;
+  });
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(editor).toBeHidden();
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key)).toEqual(expected);
+  await expect(page.getByText(expected.structureItems[0].title, { exact: true })).toBeVisible();
+  await openBookshelf(page); await openEditor();
+  await expect(firstTitle).toHaveValue(expected.structureItems[0].title);
+  await expect(secondTitle).toHaveValue(expected.structureItems[1].title);
+  await expect(editor.getByRole('alert')).toHaveCount(0);
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key)).toEqual(expected);
+});

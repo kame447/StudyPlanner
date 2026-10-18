@@ -160,6 +160,12 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     ['src/hooks/useStudyStreakNavigation.ts', new Set([
       'if (origin.current.element?.isConnected) origin.current.element.focus({ preventScroll: true });',
     ])],
+    // A keyboard promotion disables the focused promote button; focus moves to the
+    // preview dialog sheet itself (not Save, not a text control). The weekly preview
+    // browser case asserts the dialog keeps focus and further Enter/Space are inert.
+    ['src/components/AiPlanningPreviewDialog.tsx', new Set([
+      'dialogRef.current?.focus({ preventScroll: true });',
+    ])],
   ]);
   const hasUnexpectedFocus = (fileName, line) => line.includes('.focus(')
     && !allowedFocusFiles.has(fileName) && !allowedFocusStatements.get(fileName)?.has(line.trim());
@@ -183,6 +189,17 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
   const materialDialogSource = fs.readFileSync(path.join(repoRoot, materialDialogFile), 'utf8');
   expect(materialDialogSource).toMatch(/<summary\b[^>]*\bref=\{catalogSummaryRef\}/);
   expect(materialDialogSource.match(/\bref=\{catalogSummaryRef\}/g)).toHaveLength(1);
+
+  // The preview exception permits only the dialog sheet, never its inputs or Save.
+  const previewDialogFile = 'src/components/AiPlanningPreviewDialog.tsx';
+  for (const statement of [
+    'dialogRef.current?.focus();',
+    'saveRef.current?.focus({ preventScroll: true });',
+    'inputRef.current?.focus({ preventScroll: true });',
+  ]) expect(hasUnexpectedFocus(previewDialogFile, statement)).toBe(true);
+  const previewDialogSource = fs.readFileSync(path.join(repoRoot, previewDialogFile), 'utf8');
+  expect(previewDialogSource.match(/\bref=\{dialogRef\}/g)).toHaveLength(1);
+  expect(previewDialogSource).toMatch(/ref=\{dialogRef\}\s+tabIndex=\{-1\}[\s\S]{0,200}role="dialog"/);
 
   // Delivery failure focuses only its explicit, non-input Back button.
   // Keep the exception tied to that unique button ref, not an entire file.
