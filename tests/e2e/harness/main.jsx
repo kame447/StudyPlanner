@@ -147,6 +147,18 @@ const scenarioPlans = scenario === 'linked-actual' || scenario === 'recorded-act
   : [];
 const scenarioActuals = scenario === 'recorded-actual' ? [recordedActual] : [];
 
+// Opt-in deferred callbacks exercise pending entry controls without a provider.
+const deferAuthActions = new URLSearchParams(location.search).get('authDeferred') === '1';
+function waitForAuthAction() {
+  return new Promise((resolve, reject) => {
+    window.__settleAuthAction = (failed = false) => {
+      delete window.__settleAuthAction;
+      if (failed) reject(new Error('Synthetic auth callback failure'));
+      else resolve();
+    };
+  });
+}
+
 function AuthHarness() {
   return (
     <AuthScreen
@@ -154,16 +166,20 @@ function AuthHarness() {
       onDismissNotice={() => record('auth-dismiss-notice')}
       onSignUpWithPassword={async (email, password, username) => {
         record('auth-sign-up', { email, password, username });
+        if (deferAuthActions) await waitForAuthAction();
         return false;
       }}
       onSignInWithPassword={async (email, password) => {
         record('auth-sign-in', { email, password });
+        if (deferAuthActions) await waitForAuthAction();
       }}
       onSignInWithGoogle={async () => {
         record('auth-google-sign-in');
+        if (deferAuthActions) await waitForAuthAction();
       }}
       onSendPasswordReset={async (email) => {
         record('auth-password-reset', { email });
+        if (deferAuthActions) await waitForAuthAction();
       }}
     />
   );
