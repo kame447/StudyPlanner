@@ -1,8 +1,17 @@
 # UI request acceptance gaps: subject editing and percentage disc
 
-## PR729 compact percentage correction
+## Current status — 2026-10-18
 
-Current local branch: `fix/progress-disc-text-fit`, based on `50908b6030a187b7ae1a63f33c268f4ee8e899bd`. The existing PR729 native run established a product defect in the new No10 acceptance path: at 390px and 200% root text, the loaded DotGothic16 `100%` label/text range is 41px wide in Chromium while the inner disc is 40px. Both light/dark cases fail; Firefox independently reports the same overflow (about 40.22px into 40px). The 1280px cases fit. Screenshots and metrics were inspected; this is no longer only an unverified acceptance gap.
+Both scoped acceptance paths were published and merged. The local-only and pending-native statements below describe earlier checkpoints, not the current release state. This documentation reconciliation does not execute new tests on current main.
+
+- **No10, percentage-disc containment:** [PR #729](https://github.com/kame447/StudyPlanner/pull/729) merged on 2026-10-17 as `e6a18d0dc12422c50ad65d15ece4f298bdcaf581`, accepting source `73225b408ab7bde31dac3e1363ce0f4a01d79b69` / tree `5cfbb2836a171931d3166961367b3195e72eee9d`. Its published correction and final-acceptance records confirm the compact CSS correction and native containment passes. The Chromium/Firefox correction results include four percentage cases per browser on the first attempt and independent inspection of all 32 associated metric/image attachments. The original local No10 review files are no longer available after workspace replacement; this status cites the preserved public release record rather than claiming those originals were recovered.
+- **No14, same-record subject editing:** the journey shipped in PR #729 and was subsequently rechecked in [PR #754](https://github.com/kame447/StudyPlanner/pull/754), merged on 2026-10-17 as `b91ef7b58ba5b79fd42a1de315a63a5d858b514f`. [Run 39070227281](https://github.com/kame447/StudyPlanner/actions/runs/39070227281) executed source `dbecbe5ebbf8197732dd47652152fe02a5c26cc7` / tree `3eb70a4e6e511acada30f1647500f293b6996a5c`. The exact `unset-subject timer record is edited from Day and reloads with the same identity at 1280px` case passed on its first attempt in Chromium and mobile WebKit. It preserves the Actual ID and unrelated saved fields while changing the subject and checking reload. These two cases are part of that run's 15 fresh passes; its other 46 historical results are not fresh executions.
+
+Acceptance limits remain explicit: No10 checks loaded bundled-font text at the selected 390/1280px widths, light/dark themes and 100%/200% root-text states against the inner disc's rectangular bounds. It does not establish arbitrary percentages, circular-edge ink containment or physical-device zoom. No14's latest two-case result uses a 1280px emulated viewport; it is not real-device or live Firestore acceptance. Neither release record proves newly rendered behavior for every later main change. PR #729's cancelled broad job wrappers remain cancelled even though the scoped native results completed.
+
+## Historical PR729 compact percentage correction checkpoint
+
+Local branch at this checkpoint: `fix/progress-disc-text-fit`, based on `50908b6030a187b7ae1a63f33c268f4ee8e899bd`. The existing PR729 native run established a product defect in the new No10 acceptance path: at 390px and 200% root text, the loaded DotGothic16 `100%` label/text range is 41px wide in Chromium while the inner disc is 40px. Both light/dark cases fail; Firefox independently reports the same overflow (about 40.22px into 40px). The 1280px cases fit. Screenshots and metrics were inspected; this is no longer only an unverified acceptance gap.
 
 The correction raises both compact ring diameters and their reserved grid column from a 52px floor to 56px. At the observed compact height, the unchanged 12px inset leaves a 44px inner disc. The font, enlargement, stroke inset, existing larger-screen overrides and all native containment assertions remain unchanged. This intentionally addresses the demonstrated `100%` label at 200% text; arbitrary larger percentages and other text-enlargement levels are not newly verified.
 
@@ -10,7 +19,7 @@ The correction raises both compact ring diameters and their reserved grid column
 - Focused verification: four files / 19 tests pass. Command: `DEV_LAN_HOST=127.0.0.1 node node_modules/vitest/vitest.mjs --config vite.config.mjs run src/styles/home-weekly-progress.test.ts src/styles/appearance-pixel.test.ts src/components/home/WeeklyProgressSection.test.tsx src/components/HomeLiveClock.test.tsx --reporter=verbose`.
 - Independent review inspected the native metrics/image, exact CSS and source test, preserved native spec hash, baseline failures and focused pass. No source blocker was found.
 - Local evidence: `artifacts/progress-disc/receipt.json`, `ci-metrics-summary.json`, `style-baseline.log`, `focused.log`. The source-contract check is not a native layout pass.
-- Next: the integration owner combines this scoped correction with independently reviewed delivery-test corrections, builds once, and observes the unchanged native geometry assertions and rendered result. Corrected native rendering is still unverified; do not call No10 resolved until that gate passes. No local browser launch or duplicate full suite was performed here.
+- Next at this checkpoint: the integration owner combines this scoped correction with independently reviewed delivery-test corrections, builds once, and observes the unchanged native geometry assertions and rendered result. Corrected native rendering is still unverified; do not call No10 resolved until that gate passes. No local browser launch or duplicate full suite was performed here.
 
 ## Original acceptance-only checkpoint
 
@@ -22,7 +31,7 @@ Implement only focused additions to the two existing browser specs. Preserve exi
 
 The bounded journeys, pinned Playwright 1.64.0 collection, related unit checks and independent source review are recorded below. Final integration and authorized native screenshots remain required for behavioral acceptance.
 
-## Local candidate and verification
+## Historical local candidate and verification
 
 - No14 adds two real-app journeys at 390/1280px. Each starts and ends an unplanned timer, verifies the initially saved subject is empty, opens the row through Schedule → Day, changes only its subject, then reloads/reopens it. Assertions retain one persisted row, its generated ID, owner, title, date, start/end times and note; no plan is created. A per-test opt-in seed guard prevents the new reload from clearing the saved row. Existing session cases retain their prior seeding behavior.
 - Time expectation follows `createStudySessionDraft` → `buildMeasuredRange`: start at the fixed local 12:00 and advance 125 seconds, then `formatClockTime` records 12:00–12:02 without rounding the end to another minute. The first saved values are also retained as the edit/reload baseline.
