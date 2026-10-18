@@ -174,10 +174,6 @@
   background: color-mix(in srgb, var(--accent) 14%, var(--surface-strong) 86%);
 }
 
-:root[data-theme='dark'] .home-notification-badge {
-  border-color: var(--surface-strong);
-}
-
 :root[data-theme='dark'] .home-next-card {
   border-color: var(--border);
   background: linear-gradient(
@@ -308,15 +304,6 @@
   --bookshelf-line: var(--border);
   --bookshelf-soft: var(--surface-soft);
   color: var(--text-primary);
-}
-
-:root[data-theme='dark'] .bookshelf-primary-header {
-  --home-ink: var(--text-primary);
-  --home-muted: var(--text-muted);
-  --home-line: var(--border);
-  --home-line-soft: color-mix(in srgb, var(--border) 76%, transparent);
-  --home-card: var(--surface-strong);
-  --home-shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
 :root[data-theme='dark'] .bookshelf-dashboard,
@@ -469,11 +456,6 @@
 :root[data-theme='dark'] .bookshelf-aggregate-progress {
   border-color: color-mix(in srgb, var(--accent) 22%, var(--border) 78%);
   background: color-mix(in srgb, var(--accent) 8%, var(--surface-strong) 92%);
-}
-
-:root[data-theme='dark'] .bookshelf-structure-status.is-disabled {
-  border-color: var(--border);
-  background: var(--surface-soft);
 }
 
 :root[data-theme='dark'] .bookshelf-sheet-handle {

@@ -85,11 +85,6 @@
   margin-bottom: clamp(3px, 0.6dvh, 6px);
 }
 
-.home-dashboard-default .home-empty-copy {
-  font-size: clamp(0.64rem, 1.25dvh, 0.75rem);
-  line-height: 1.36;
-}
-
 .home-dashboard-default .home-panel {
   padding: clamp(7px, 1dvh, 10px) clamp(9px, 1.2dvh, 12px) clamp(6px, 0.9dvh, 8px);
 }
@@ -335,13 +330,6 @@
 
   .home-dashboard-default .home-study-scene {
     transform: scale(0.8);
-  }
-
-  .home-dashboard-default .home-empty-copy {
-    display: -webkit-box;
-    overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
   }
 }
 
