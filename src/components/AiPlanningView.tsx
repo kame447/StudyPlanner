@@ -175,11 +175,12 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
       generatedBlocks,
       editedPreviewBlocks,
     );
-    promotedPreviews.current.add(previewCandidates);
     if (pendingDraftBlocks.length > 0) {
       application.clearDraftBlocks();
     }
-    application.createDraftBlocks(blocks);
+    // Mark the preview consumed only once the application accepted it; a
+    // rejected promotion (pending turn, open repair question) stays retryable.
+    if (application.createDraftBlocks(blocks)) promotedPreviews.current.add(previewCandidates);
     persistActiveChatSnapshot();
   }
 

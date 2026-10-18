@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { WeeklyPlanningApplication } from '../features/weeklyPlanning/application/useWeeklyPlanningApplication';
 import type { WeeklyDraftCandidate } from '../features/weeklyPlanning/scheduling/weeklyDraftCandidateGenerator';
 import type { PlanningState, WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
+import { createInitialPlanningIntakeState } from '../features/weeklyPlanning/intake/weeklyPlanningIntakeReducer';
 import { createInitialPlanningState, weeklyPlanningReducer } from '../features/weeklyPlanning/weeklyPlanningReducer';
 import { AiPlanningPreviewDialog } from './AiPlanningPreviewDialog';
 import { AiPlanningView } from './AiPlanningView';
@@ -24,8 +25,10 @@ const checkpoint = vi.fn();
 const createDraftBlocks = vi.fn((blocks: WeeklyPlanDraftBlock[]) => {
   // Match the application's synchronous authoritative dispatch; the view
   // receives the resulting state only when React commits the queued render.
+  const before = state;
   state = weeklyPlanningReducer(state, { type: 'add_draft_blocks', blocks });
   publish(state);
+  return state !== before;
 });
 
 function Harness() {
@@ -98,4 +101,18 @@ it('does not consume a preview when no displayed blocks can be promoted', () => 
   const activate = promote();
   act(() => activate());
   expect(createDraftBlocks).toHaveBeenCalledOnce();
+});
+
+it('keeps a preview retryable when the planning state rejects the promotion', () => {
+  const activate = promote();
+  const accepted = state;
+  // The reducer refuses draft blocks while a repair question is still open.
+  state = { ...state, intakeState: { ...createInitialPlanningIntakeState(), status: 'revision_pending', questions: ['いつにしますか'] } } as PlanningState;
+  act(() => activate());
+  expect(createDraftBlocks).toHaveBeenCalledOnce();
+  expect(state.draftBlocks).toEqual([]);
+  state = { ...accepted };
+  act(() => activate());
+  expect(createDraftBlocks).toHaveBeenCalledTimes(2);
+  expect(state.draftBlocks.map(block => block.id)).toEqual(['first']);
 });
