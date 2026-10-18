@@ -21,6 +21,8 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Non-spatial data motion geometry](work/nonspatial-data-motion-layout-handoff.md) — skip unused rectangle measurements while preserving motion baselines and reduced feedback.
+
 - [Initial consent legal-page navigation](work/initial-consent-public-navigation-handoff.md) — preserve confirmation state when reading terms or privacy within the existing public-page owner.
 
 - [Material structure save failure](work/material-structure-save-failure-handoff.md) — retain table-of-contents edits and show a retryable error when local storage rejects a save.

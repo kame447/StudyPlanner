@@ -1,6 +1,7 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installFakeMotionEnvironment } from '../lib/motionPreference.testUtils';
+import { setMotionPreference } from '../lib/motionPreference';
 import { useDataChangeMotion } from './useDataChangeMotion';
 import { usePeriodNavigationMotion } from './usePeriodNavigationMotion';
 
@@ -10,15 +11,16 @@ let renderer: ReactTestRenderer | undefined;
 let rendered: Item[] = [];
 const played = new Map<string, string[]>();
 const glides = new Map<string, string>();
+let rectangleReads = 0;
 
 // A container whose children mirror what the component last rendered.
 const container = {
   // Items with a `y` are laid out as a 20px-tall column at that offset.
-  getBoundingClientRect: () => ({ left: 10, top: 100, width: 200, height: 400 }),
+  getBoundingClientRect: () => { rectangleReads += 1; return { left: 10, top: 100, width: 200, height: 400 }; },
   querySelectorAll: () => rendered.map(item => ({
     dataset: { motionKey: item.key, motionSignature: item.signature },
     ...(item.y === undefined ? {} : {
-      getBoundingClientRect: () => ({ left: 10, top: 100 + item.y!, width: 200, height: 20 }),
+      getBoundingClientRect: () => { rectangleReads += 1; return { left: 10, top: 100 + item.y!, width: 200, height: 20 }; },
     }),
     animate: vi.fn((frames: Keyframe[]) => {
       played.set(item.key, [...(played.get(item.key) ?? []), Object.keys(frames[0]).join(',')]);
@@ -29,7 +31,7 @@ const container = {
 } as unknown as Element;
 const containerRef = { current: container };
 
-beforeEach(() => { env = installFakeMotionEnvironment(); played.clear(); glides.clear(); });
+beforeEach(() => { env = installFakeMotionEnvironment(); played.clear(); glides.clear(); rectangleReads = 0; });
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; env.restore(); });
 
 // The hook runs while the previous items are still on screen; the new items
@@ -208,4 +210,74 @@ describe('a change that arrives while items are still gliding', () => {
       act(() => column?.unmount());
     }
   });
+  it('resumes new shifts from the committed layout after an in-flight glide is turned off', () => {
+    nodes.clear();
+    let column: ReactTestRenderer | undefined;
+    const show = (keys: string[], data: number) => act(() => {
+      if (column) column.update(<Column keys={keys} data={data} />);
+      else column = create(<Column keys={keys} data={data} />);
+    });
+    try {
+      show(['a', 'b', 'c', 'd'], 1);
+      show(['b', 'c', 'd'], 2);
+      expect(nodeFor('d').starts).toEqual([20]);
+      setMotionPreference('off');
+      expect(nodeFor('d').glide?.cancelled).toBe(true);
+      show(['c', 'd'], 3);
+      setMotionPreference('standard');
+      show(['c', 'd'], 4);
+      expect(nodeFor('d').starts).toEqual([20]);
+      show(['d'], 5);
+      expect(nodeFor('d').starts).toEqual([20, 20]);
+    } finally { act(() => column?.unmount()); }
+  });
+
+});
+
+
+describe('non-spatial update measurement budget', () => {
+  it.each(['off', 'reduced', 'system-reduced'] as const)('does not measure layout at %s while maintaining the signature baseline', level => {
+    if (level === 'system-reduced') env.setSystemReduced(true);
+    else setMotionPreference(level);
+    const items = Array.from({ length: 100 }, (_, index) => ({ key: `row-${index}`, signature: 'old', y: index * 20 }));
+    render('list', items, 1);
+    const changed = items.slice(1).map((item, index) => ({ ...item, signature: index === 0 ? 'new' : item.signature, y: index * 20 }));
+    render('list', changed, 2);
+    console.log('MOTION_RECT_READS', JSON.stringify({ level, items: 100, rectangleReads }));
+    expect(rectangleReads).toBe(0);
+    expect(glides.size).toBe(0);
+    expect(Object.fromEntries(played)).toEqual(level === 'off' ? {} : { 'row-1': ['opacity'] });
+    played.clear();
+    env.setSystemReduced(false);
+    setMotionPreference('standard');
+    render('list', changed, 3);
+    expect(played.size).toBe(0);
+    const added = [...changed.map((item, index) => index === 0 ? { ...item, signature: 'newer' } : item),
+      { key: 'tail', signature: 'added', y: changed.length * 20 }];
+    render('list', added, 4);
+    expect(kinds()).toEqual({ 'row-1': ['settle'], tail: ['enter'] });
+    played.clear();
+    const removed = [...added.slice(0, -2), { ...added[added.length - 1], y: (added.length - 2) * 20 }];
+    render('list', removed, 5);
+    expect(kinds()).toEqual({ tail: ['glide'] });
+    expect(glides.get('tail')).toBe('0px 20px');
+  });
+});
+
+it.each(['off', 'reduced', 'system-reduced'] as const)('keeps added-item baselines through %s and restores only new standard changes', level => {
+  const column = (rows: Array<[string, string]>) => rows.map(([key, signature], index) => ({ key, signature, y: index * 20 }));
+  render('small', column([['a', 'a'], ['b', 'b'], ['c', 'c']]), 1);
+  if (level === 'system-reduced') env.setSystemReduced(true);
+  else setMotionPreference(level);
+  const intermediate = column([['b', 'renamed'], ['c', 'c'], ['d', 'd']]);
+  render('small', intermediate, 2);
+  expect(Object.fromEntries(played)).toEqual(level === 'off' ? {} : { b: ['opacity'], d: ['opacity'] });
+  played.clear();
+  env.setSystemReduced(false);
+  setMotionPreference('standard');
+  render('small', intermediate, 3);
+  expect(played.size).toBe(0);
+  render('small', column([['b', 'renamed'], ['d', 'd'], ['e', 'e']]), 4);
+  expect(kinds()).toEqual({ d: ['glide'], e: ['enter'] });
+  expect(glides.get('d')).toBe('0px 20px');
 });

@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react';
+import { allowsSpatialMotion } from '../lib/motionPreference';
 import { measureAtRest, playEntrance, playSettle, playShift } from '../lib/motionEffects';
 
 /**
@@ -33,7 +34,7 @@ export function useDataChangeMotion(
   // from the visible position.
   const committed = previous.current;
   if (committed && committed.scope === scope && !sameData(committed.data, data)
-    && (!drawnBefore.current || !sameData(drawnBefore.current.data, data))) {
+    && (!drawnBefore.current || !sameData(drawnBefore.current.data, data)) && allowsSpatialMotion()) {
     drawnBefore.current = { data, positions: readPositions(containerRef.current) };
   }
 
@@ -52,13 +53,16 @@ export function useDataChangeMotion(
     if (!before || before.scope !== scope || sameData(before.data, data)) return;
 
     const shifts: Array<{ element: HTMLElement; x: number; y: number }> = [];
-    const origin = positionOf(container, null);
+    // Geometry is only used for spatial glides. Reduced fades and off
+    // still refresh signatures, but must not force layout for unused positions.
+    const spatial = allowsSpatialMotion();
+    const origin = spatial ? positionOf(container, null) : null;
     for (const element of elements) {
       const key = element.dataset.motionKey ?? '';
       const prior = before.signatures.get(key);
       if (prior === undefined) playEntrance(element);
       else if (prior !== (element.dataset.motionSignature ?? '')) playSettle(element);
-      else {
+      else if (spatial) {
         const from = drawn && sameData(drawn.data, data) ? drawn.positions.get(key) : undefined;
         // Where it now rests, not where an earlier glide still draws it.
         const to = origin && measureAtRest(element, () => positionOf(element, origin));
