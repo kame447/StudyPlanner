@@ -110,7 +110,8 @@ export interface WeeklyPlanningApplication {
   startConversation: () => void;
   exportConversationSnapshot: (options?: { includeEmpty?: boolean }) => WeeklyPlanningStableV5PersistedSession | null;
   loadConversationSnapshot: (snapshot: unknown) => boolean;
-  createDraftBlocks: (blocks: WeeklyPlanDraftBlock[]) => void;
+  /** Returns whether the planning state accepted the new draft blocks. */
+  createDraftBlocks: (blocks: WeeklyPlanDraftBlock[]) => boolean;
   removePreviewCandidate: (candidateId: string) => void;
   removeDraftBlock: (blockId: string) => void;
   clearDraftBlocks: () => void;
@@ -566,7 +567,11 @@ export function useWeeklyPlanningApplication({
     startConversation,
     exportConversationSnapshot,
     loadConversationSnapshot,
-    createDraftBlocks: (blocks) => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'add_draft_blocks', blocks }); },
+    createDraftBlocks: (blocks) => {
+      if (chat.requiresInitialization) return false;
+      const before = getPlanningState();
+      return dispatchAndPersist({ type: 'add_draft_blocks', blocks }) !== before;
+    },
     removePreviewCandidate: (candidateId) => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'remove_preview_candidate', candidateId }); },
     removeDraftBlock: (blockId) => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'remove_draft_block', blockId }); },
     clearDraftBlocks: () => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'clear_draft_blocks' }); },

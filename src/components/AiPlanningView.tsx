@@ -49,6 +49,9 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
   const { isExiting: isPreviewClosing, requestExit: requestClosePreview } =
     useExitMotion(() => setIsPreviewOpen(false));
   const previewCandidates = state.previewCandidates ?? [];
+  // Candidate arrays are immutable application snapshots. Consume that exact
+  // preview synchronously: React may not commit between repeated activations.
+  const promotedPreviews = useRef(new WeakSet<NonNullable<typeof state.previewCandidates>>());
   const localPreviewBlocks = useMemo(
     () =>
       createWeeklyPlanningPreviewBlocks(previewCandidates).map((block) =>
@@ -155,7 +158,8 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
   }
 
   function promotePreview(editedPreviewBlocks: WeeklyPlanDraftBlock[]) {
-    if (!presentationActive.current || previewCandidates.length === 0 || editedPreviewBlocks.length === 0) return;
+    if (!presentationActive.current || isBusy || previewCandidates.length === 0 ||
+      editedPreviewBlocks.length === 0 || promotedPreviews.current.has(previewCandidates)) return;
     const blockIds = new Set(editedPreviewBlocks.map((block) => block.id));
     const candidates = previewCandidates.filter((candidate) =>
       blockIds.has(candidate.stableKey),
@@ -174,7 +178,9 @@ function OwnerScopedAiPlanningView(props: AiPlanningViewProps) {
     if (pendingDraftBlocks.length > 0) {
       application.clearDraftBlocks();
     }
-    application.createDraftBlocks(blocks);
+    // Mark the preview consumed only once the application accepted it; a
+    // rejected promotion (pending turn, open repair question) stays retryable.
+    if (application.createDraftBlocks(blocks)) promotedPreviews.current.add(previewCandidates);
     persistActiveChatSnapshot();
   }
 
