@@ -8,6 +8,7 @@ import type { WeeklyPlanningSemanticNormalizerInputV5 } from '../semantic/weekly
 import type { prepareLocalCandidateReducerCommit } from './c5LocalSelection/selection';
 import type { WeeklyPlanningSemanticDocumentV5 } from '../semantic/weeklyPlanningSemanticTypesV5';
 import type { WeeklyPlanningSemanticCanonicalizationResultV5 } from '../semantic/weeklyPlanningSemanticCanonicalizerV5';
+import type { WeeklyPlanningStableV5DialogueGroundingFact } from '../dialogue/weeklyPlanningStableV5DialogueContracts';
 
 export type ControlledCandidateDomainId = 'd5_numeric' | 'availability_date';
 export interface ControlledCandidateQuestionSnapshot {
@@ -70,6 +71,9 @@ export interface ControlledCandidateDomain {
   readonly domainId: ControlledCandidateDomainId;
   readonly questionCode: 'missing_effort_estimate' | 'missing_availability_date_scope';
   readonly domainPolicyVersion: string;
+  /** Question time only, before capture. The registry supplies the facts the presenting request
+   * accepted (what its acknowledgement may echo); true leaves the question to the ordinary route. */
+  rejectsCoPresentedFacts(params: { readonly targetId: string; readonly facts: readonly WeeklyPlanningStableV5DialogueGroundingFact[] }): boolean;
   capture(context: ControlledCandidateCaptureContext): {
     readonly target: CandidateBinding['target'];
     readonly scope: CandidateTuple;
