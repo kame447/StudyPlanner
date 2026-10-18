@@ -137,8 +137,12 @@ describe('generic Choice provider validation and dispatch accounting', () => {
       expect(result).toMatchObject({ probabilities: [{ probability: 0.9 }, { probability: 0.1 }] });
     });
     it('rejects sums outside the rounding tolerance for the menu size with the provider reason', async () => {
-      for (const none of [0.13, 0.07, 0.12, 0.08]) {
+      for (const none of [0.13, 0.07]) {
         expect(await run({ 'leaf:0': 0.9, none })).toEqual({ status: 'unavailable', reason: 'invalid_response' });
+      }
+      // Provider keeps its fixed 0.02 (shared by live purposes); the tighter 2-option rounding bound applies here.
+      for (const none of [0.115, 0.085]) {
+        expect(await run({ 'leaf:0': 0.9, none })).toEqual({ status: 'unavailable', reason: 'invalid_dispatch_response' });
       }
     });
     it('a repair that overtakes the selected option is rejected with the dispatch reason; a tie stays a tie for the gate to abstain on', async () => {

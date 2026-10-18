@@ -5,7 +5,6 @@ import type {
   DecisionProvider,
   DecisionQuestionCatalog,
 } from './decisionProvider';
-import { decisionProbabilitySumTolerance } from './renormalizeProbabilities';
 import { AUTHORIZATION_QUESTIONS, JEV_MODEL, JEV_PROVIDER_PREFERENCES, JEV_TIMEOUT_MS } from './decisionPolicy';
 
 const DECISIONS_URL = 'https://openrouter.ai/api/alpha/decisions';
@@ -168,7 +167,7 @@ export function createOpenRouterDecisionProvider<TState, TDecision extends strin
           || Math.abs(catalog.decisions.reduce(
             (sum, decision) => sum + Number(probabilities[decision]),
             0,
-          ) - 1) > decisionProbabilitySumTolerance(catalog.decisions.length)
+          ) - 1) > 0.02
           || !probability(selectedProbability)
           || catalog.decisions.some((decision) =>
             Number(probabilities[decision]) > selectedProbability)

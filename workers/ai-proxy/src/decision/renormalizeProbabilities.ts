@@ -1,7 +1,7 @@
 /**
  * The decisions endpoint returns probabilities rounded to 2 decimals, so each entry carries up to 0.005 of rounding
- * error and an honest N-option distribution has |sum-1| <= 0.005*N. The provider's proven cap is 0.02 (N >= 4).
- * Larger drift is a malformed distribution and is rejected, never repaired.
+ * error and an honest N-option distribution has |sum-1| <= 0.005*N. Candidate-choice dispatch only; the shared
+ * provider check stays a fixed 0.02 because other live purposes rely on it. Larger drift is a malformed distribution and is rejected, never repaired.
  */
 export function decisionProbabilitySumTolerance(optionCount: number): number {
   // 1e-9 absorbs float error exactly at the boundary (e.g. 0.9 + 0.09 - 1).
