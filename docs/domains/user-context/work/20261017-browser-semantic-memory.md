@@ -42,7 +42,7 @@ Laplanceの長期記憶について、既存のbounded lexical/entity検索を�
 
 threshold sweepでは、v1で0.75にするとnegative 6/6に候補が出た。0.84ではrecall 0.929かつnegative 0/6、0.86ではrecall 0.857だった。holdoutは0.84でrecall 18/18、negative 0/4だったが、negativeの最高scoreは0.826で差が小さい。positive 18 queries中14 queriesで、無関係な別recordも0.84以上になった。hybridは追加候補を最大3件に制限する。
 
-2026-10-18に独立日本語レビュー（LoyalLangmuir、read-only）で60 queries中57件OK・誤ラベル0件・曖昧3件と判定された。`para-01`と`variant-02`は複数recordを正解に追加し、`holdout-trap-01`は取消案を求めない文面へ変更した（`c4190ffc`）。再実行でv1 vector recall@5は0.929→0.946、holdoutは1.000のまま、trap違反0、0.84でnegative 0件を維持した。同レビューが挙げた未カバー領域（「〜以外」等の明示的除外、敬語・です/ます調、全角英数・`情報Ⅰ`等の表記ゆれ、「次のテスト」「冬休み前」等の相対時期）はfixture未追加の既知gapである。
+2026-10-18に独立日本語レビュー（LoyalLangmuir、read-only）で60 queries中57件OK・誤ラベル0件・曖昧3件と判定された。`para-01`と`variant-02`は複数recordを正解に追加し、`holdout-trap-01`は取消案を求めない文面へ変更した（`c4190ffc`）。holdoutの`holdout-trap-01`も結果確認後に編集したため、以後のholdout値は再baselineであり、未見データとしての独立性は弱まった。新しいthreshold判断には別の未使用holdoutが必要である。再実行でv1 vector recall@5は0.929→0.946、holdoutは1.000のまま、trap違反0、0.84でnegative 0件を維持した。同レビューが挙げた未カバー領域（「〜以外」等の明示的除外、敬語・です/ます調、全角英数・`情報Ⅰ`等の表記ゆれ、「次のテスト」「冬休み前」等の相対時期）はfixture未追加の既知gapである。
 
 
 runtimeの `DEFAULT_SEMANTIC_MEMORY_MIN_SCORE=0.84` は暫定値として扱う。これは合成データによる候補品質の測定であり、実言語の人手gold、十分なprecision評価、実端末の性能評価を終えたthresholdではない。
