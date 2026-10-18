@@ -908,28 +908,31 @@ export function AiPlanningPreviewDialog({
 
           <footer className="ai-planning-preview-actions">
             {checkpointNotice}
-            <button className="ai-planning-secondary-action" type="button" onClick={onAdjust}>
+            {/* Save keeps its own row before and after promotion, so promoting
+                neither shifts the layout nor puts Save under the pointer (#751). */}
+            <button
+              key="save"
+              className="ai-planning-primary-action ai-planning-preview-save-action"
+              type="button"
+              disabled={hasLocalPreview || isBusy || !canSave}
+              onClick={() => { if (!hasLocalPreview) onSave(editableBlocks); }}
+            >
+              {isSaving ? '保存中...' : 'この内容で保存'}
+            </button>
+            <button key="adjust" className="ai-planning-secondary-action" type="button" onClick={onAdjust}>
               さらに調整
             </button>
-            {hasLocalPreview ? (
-              <button
-                className="ai-planning-primary-action"
-                type="button"
-                disabled={isBusy}
-                onClick={() => onPromote(editableBlocks)}
-              >
-                この内容で仮予定にする
-              </button>
-            ) : (
-              <button
-                className="ai-planning-primary-action"
-                type="button"
-                disabled={isBusy || !canSave}
-                onClick={() => onSave(editableBlocks)}
-              >
-                {isSaving ? '保存中...' : 'この内容で保存'}
-              </button>
-            )}
+            {/* Keep the promotion target/focus in its own bottom-row slot.
+                A second click/tap or held key must never become approval. */}
+            <button
+              key="promote"
+              className="ai-planning-primary-action"
+              type="button"
+              disabled={isBusy || !hasLocalPreview}
+              onClick={() => { if (hasLocalPreview) onPromote(editableBlocks); }}
+            >
+              {hasLocalPreview ? 'この内容で仮予定にする' : '仮予定にしました'}
+            </button>
           </footer>
         </section>
       </div>

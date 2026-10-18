@@ -36,9 +36,9 @@ const props = {
   onClose: vi.fn(), onAdjust: vi.fn(), onRemove: vi.fn(), onPromote: vi.fn(), onSave: vi.fn(),
 };
 
-function show(blocks: WeeklyPlanDraftBlock[]) {
+function show(blocks: WeeklyPlanDraftBlock[], hasLocalPreview = true) {
   act(() => {
-    const element = <AiPlanningPreviewDialog {...props} blocks={blocks} />;
+    const element = <AiPlanningPreviewDialog {...props} blocks={blocks} hasLocalPreview={hasLocalPreview} />;
     if (renderer) renderer.update(element);
     else renderer = create(element, {
       createNodeMock: node => (String(node.props.className ?? '').includes('ai-planning-preview-overview-grid') ? body : {}),
@@ -60,6 +60,31 @@ afterEach(() => {
 });
 
 describe('plan preview motion', () => {
+  it('keeps the promotion control inert and exposes Save as a separate explicit action', () => {
+    props.onPromote.mockClear();
+    props.onSave.mockClear();
+    const blocks = [block('a')];
+    show(blocks);
+    const promotion = renderer!.root.find(node => node.type === 'button' && node.children.includes('この内容で仮予定にする'));
+    // Save already holds its own slot, disabled, so promotion does not reflow the dialog.
+    const reservedSave = renderer!.root.find(node => node.type === 'button' && node.children.includes('この内容で保存'));
+    expect(reservedSave.props.disabled).toBe(true);
+    act(() => reservedSave.props.onClick());
+    expect(props.onSave).not.toHaveBeenCalled();
+    act(() => promotion.props.onClick());
+    expect(props.onPromote).toHaveBeenCalledOnce();
+    show(blocks, false);
+    // React must never reuse this focused host button as an approval action.
+    expect(promotion.props.disabled).toBe(true);
+    act(() => promotion.props.onClick());
+    expect(props.onSave).not.toHaveBeenCalled();
+    const save = renderer!.root.find(node => node.type === 'button' && node.children.includes('この内容で保存'));
+    expect(save).not.toBe(promotion);
+    expect(save.props.className).toContain('ai-planning-preview-save-action');
+    act(() => save.props.onClick());
+    expect(props.onSave).toHaveBeenCalledExactlyOnceWith(blocks);
+  });
+
   it('shows a revised proposal as a new view instead of replaying every block', () => {
     show([block('revision1:a'), block('revision1:b', '11:00', '12:00')]);
     show([block('revision2:a'), block('revision2:b', '11:00', '12:00')]);

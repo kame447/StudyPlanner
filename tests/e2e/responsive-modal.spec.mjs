@@ -54,6 +54,15 @@ for (const viewport of VIEWPORTS) {
       await expectDocumentFitsViewport(page);
       await expectHorizontallyReachable(promote, viewport.width);
       await expectHorizontallyReachable(closePreview, viewport.width);
+
+      await promote.click();
+      const savePreview = preview.getByRole('button', { name: 'この内容で保存', exact: true });
+      await expect(savePreview).toBeEnabled();
+      await expect(savePreview).toBeInViewport();
+      await expect(closePreview).toBeInViewport();
+      await expectDocumentFitsViewport(page);
+      await expectHorizontallyReachable(savePreview, viewport.width);
+      await expectHorizontallyReachable(closePreview, viewport.width);
     });
   });
 }

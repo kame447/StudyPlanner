@@ -90,6 +90,56 @@ test.describe('production weekly preview and draft boundaries', () => {
     expect((await planningState(page)).revision).toBe(revision + 1);
   });
 
+  test('two promotion activations in the same browser task create one draft batch', async ({ page }) => {
+    const revision = (await planningState(page)).revision;
+    await previewDialog(page).getByRole('button', { name: 'この内容で仮予定にする' }).evaluate((button) => {
+      button.click();
+      button.click();
+    });
+    await expectOneDraft(page);
+    expect((await planningState(page)).revision).toBe(revision + 1);
+  });
+
+  test('a real double-click promotes once and requires a later explicit Save', async ({ page }) => {
+    const revision = (await planningState(page)).revision;
+    const promote = previewDialog(page).getByRole('button', { name: 'この内容で仮予定にする' });
+    const promotionElement = await promote.elementHandle();
+    const promotionBox = await promote.boundingBox();
+    await promote.dblclick();
+    await expectOneDraft(page);
+    expect((await planningState(page)).revision).toBe(revision + 1);
+
+    // The original pointer/focus target stays inert; approval has its own
+    // element and occupies a different row even when the input is very fast.
+    expect(await promotionElement.evaluate(button => button.isConnected && button.disabled)).toBe(true);
+    const save = previewDialog(page).getByRole('button', { name: 'この内容で保存', exact: true });
+    const saveBox = await save.boundingBox();
+    if (!promotionBox || !saveBox) throw new Error('Preview actions are not measurable');
+    expect(saveBox.y + saveBox.height).toBeLessThanOrEqual(promotionBox.y);
+
+    await save.click();
+    await expect.poll(async () => (await events(page, 'real-complete-approved-plan')).length).toBe(1);
+    expect(await events(page, 'real-save-approved-plan')).toHaveLength(1);
+    expect((await planningState(page)).draftBlocks).toEqual([]);
+    await expect(previewDialog(page)).toHaveCount(0);
+  });
+
+  test('two taps at the promotion position keep approval pending', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'Touch contract runs in the WebKit mobile project');
+    const revision = (await planningState(page)).revision;
+    const promote = previewDialog(page).getByRole('button', { name: 'この内容で仮予定にする' });
+    // The dialog footer can sit below the mobile fold; raw coordinates only hit it once scrolled.
+    await promote.scrollIntoViewIfNeeded();
+    const box = await promote.boundingBox();
+    if (!box) throw new Error('Promotion control is not measurable');
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.touchscreen.tap(x, y);
+    await page.touchscreen.tap(x, y);
+    await expectOneDraft(page);
+    expect((await planningState(page)).revision).toBe(revision + 1);
+  });
+
   test('a draft can be removed locally without invoking approval', async ({ page }) => {
     const promotedFrom = (await planningState(page)).revision;
     await previewDialog(page).getByRole('button', { name: 'この内容で仮予定にする' }).click();
@@ -104,34 +154,5 @@ test.describe('production weekly preview and draft boundaries', () => {
     await expect(previewDialog(page)).toHaveCount(0);
     await expect(page.getByRole('button', { name: '計画プレビューを確認' })).toHaveCount(0);
     await expectNoApprovalOrSave(page);
-  });
-});
-
-// The production preview still creates two drafts when promotion fires twice in
-// one browser task, and a real double-click saves before review (#751). Until
-// that is fixed and its production case lands, keep this legacy-harness check.
-const LEGACY_HARNESS_PREVIEW_URL = 'http://127.0.0.1:4174/?scenario=preview';
-
-async function legacyHarnessEvents(page, type) {
-  return page.evaluate((eventType) => (
-    window.__quickEntryEvents.filter((event) => event.type === eventType)
-  ), type);
-}
-
-test.describe('legacy weekly preview harness (pending #751)', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto(LEGACY_HARNESS_PREVIEW_URL);
-    await expect(page.getByRole('button', { name: 'この内容で仮予定にする' })).toBeVisible();
-  });
-
-  test('two promotion activations in the same browser task create one draft batch', async ({ page }) => {
-    const promote = page.getByRole('button', { name: 'この内容で仮予定にする' });
-    await promote.evaluate((button) => {
-      button.click();
-      button.click();
-    });
-
-    expect(await legacyHarnessEvents(page, 'create-weekly-draft-blocks')).toHaveLength(1);
-    await expect(page.getByRole('button', { name: '一括承認して保存' })).toBeVisible();
   });
 });

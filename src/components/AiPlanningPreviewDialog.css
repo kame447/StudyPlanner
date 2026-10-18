@@ -389,6 +389,11 @@
   padding: 8px 10px 10px;
 }
 
+/* Save gets its own row so a repeated click on the promotion slot cannot land on it (#751). */
+.ai-planning-preview-dialog-v2 .ai-planning-preview-save-action {
+  grid-column: 1 / -1;
+}
+
 .ai-planning-preview-dialog-v2 .ai-planning-primary-action,
 .ai-planning-preview-dialog-v2 .ai-planning-secondary-action {
   min-height: 38px;
