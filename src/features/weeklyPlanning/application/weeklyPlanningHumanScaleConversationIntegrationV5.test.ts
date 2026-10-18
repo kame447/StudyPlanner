@@ -12,6 +12,7 @@ import { setWeeklyPlanningTraceRepositoryForTests } from '../trace/weeklyPlannin
 import type { WeeklyPlanningTraceRepository, WeeklyPlanningTraceSession, WeeklyPlanningTraceEntry } from '../trace/weeklyPlanningTraceTypes';
 import { validateWeeklyPlanningSemanticResponseV5 } from '../semantic/weeklyPlanningSemanticResponseValidationV5';
 import type { WeeklyPlanningSemanticNormalizerInputV5 } from '../semantic/weeklyPlanningSemanticNormalizerContractsV5';
+import { FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS } from '../semantic/weeklyPlanningFocusedAuthorizationV5';
 import { resolveWeeklyPlanningQuestionPresentationFreshness, withoutWeeklyPlanningQuestionPresentation } from '../intake/weeklyPlanningQuestionPresentation';
 import { createPresentedWeeklyPlanningConversation } from '../testUtils/__tests__/weeklyPlanningPresentedConversation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -978,7 +979,7 @@ describe('Stable V5 human-scale conversation integration', () => {
           pendingQuestion: null, previousCompatibilityStatus: 'needs_scope',
           tasks: expect.arrayContaining([expect.objectContaining({ category: 'non_study' })]),
         });
-        expect(request.maxCompletionTokens).toBe(80);
+        expect(request.maxCompletionTokens).toBe(FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS);
         expect(JSON.parse(request.messages[1].content)).toEqual({ currentUserText: params.userText,
           lastAssistantMessage: semanticInput.publicStateSummary?.lastAssistantMessage ?? null });
         return JSON.stringify({ decision: 'fallback' });
