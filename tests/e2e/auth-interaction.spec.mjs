@@ -80,3 +80,37 @@ test.describe('AuthScreen browser interactions', () => {
     await expect(page.getByLabel('メールアドレス')).toBeFocused();
   });
 });
+
+for (const width of [390, 1280]) {
+  test(`pending authentication blocks repeated submit and competing actions at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`${AUTH_HARNESS_URL}&authDeferred=1`);
+    await page.getByLabel('メールアドレス').fill('pending@example.test');
+    await page.getByLabel('パスワード', { exact: true }).fill('synthetic-password');
+    await page.getByLabel('パスワード', { exact: true }).press('Enter');
+    await expect(page.getByRole('form')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.getByRole('button', { name: '処理中…' })).toBeDisabled();
+    for (const label of ['Googleでログイン', 'パスワードを再設定']) {
+      await expect(page.getByRole('button', { name: label })).toBeDisabled();
+    }
+    await expect(page.getByRole('tab', { name: '新規会員登録', exact: true })).toBeDisabled();
+    // Native form submit can also arrive independently of a disabled button.
+    await page.locator('form').evaluate(form => { form.requestSubmit(); form.requestSubmit(); });
+    expect(await events(page, 'auth-sign-in')).toHaveLength(1);
+    expect(await events(page, 'auth-google-sign-in')).toHaveLength(0);
+    expect(await events(page, 'auth-password-reset')).toHaveLength(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await info.attach(`auth-pending-${width}`, { body: await page.screenshot({ fullPage: true, scale: 'css' }), contentType: 'image/png' });
+    await page.evaluate(() => window.__settleAuthAction(true));
+    await expect(page.getByRole('alert')).toContainText('もう一度');
+    await expect(page.getByRole('form')).toHaveAttribute('aria-busy', 'false');
+    await expect(page.getByLabel('メールアドレス')).toHaveValue('pending@example.test');
+    await page.getByRole('button', { name: 'ログインする' }).click();
+    expect(await events(page, 'auth-sign-in')).toHaveLength(2);
+    await page.evaluate(() => window.__settleAuthAction());
+    await expect(page.getByRole('form')).toHaveAttribute('aria-busy', 'false');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await page.getByRole('tab', { name: '新規会員登録', exact: true }).click();
+    await expect(page.getByLabel('パスワード確認')).toBeVisible();
+  });
+}
