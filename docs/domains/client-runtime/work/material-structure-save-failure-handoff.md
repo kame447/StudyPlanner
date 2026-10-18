@@ -42,3 +42,15 @@ Reproduce the loss with the real component and a throwing storage implementation
 - Evidence: `laplans-material-structure-save-failure-evidence-20261018` records exact input hashes, installed toolchain, commands, red/green logs, and patch. No claim that PR #741's wide-WebKit timeouts are fixed.
 
 Next: bind the final source review and local commit, then hand this separate data-safety candidate to the publisher. Do not merge it into the unresolved performance diagnosis without explicitly tracking the separate contract.
+
+## 2026-10-18 PR #767 native save-retry supplement
+
+- Published PR #767 is draft at `c9c40b0117c2a1f833fcccb1565816b91fdb6376`, whose complete tree matches local `aaa3e017d20e3edd1198a25de4178ebd0a55ea0a`. This supplement is based on that reviewed local tree. The newer `227daa12` base changes CI/tooling only.
+- The source audit found no existing browser test that rejects the material contents preference write. Existing native coverage exercises normal contents Save/Cancel and nested save/reload; other fault-injection tests target unrelated storage keys.
+- Append one logical case to `bookshelf-surface.spec.mjs`, preserving its complete original prefix. Its existing admission adds one Chromium and one mobile-WebKit execution under ordinary CI. No new workflow, timeout, browser setup, or runtime change is included.
+- At 390×844, reuse the ordinary two-chapter fixture and real app/editor. Change the first title, reject only the exact owner/material `localStorage.setItem`, and require one rejected attempt, visible failure feedback, retained edited and untouched titles, and byte-identical prior storage. Capture the rejected state before restoring the original Storage method.
+- Restore the real method before retry, then require editor close, complete saved preference equality, immediate detail text, and values after a real document navigation/reload and editor reopen. Early failure destroys the test's isolated browser context and its prototype override. No success response or storage value is mocked.
+- This case complements the real React/component and storage-facade tests. It is a single quota-failure browser contract; it does not newly exercise 24 chapters, nested edits, denied getters, SecurityError, or explicit Cancel after failure. Those retain their bounded component/unit evidence.
+- Source callback checks verify six injection/restoration boundaries using the exact new callback. Syntax and diff checks pass; definition inspection confirms one added title and unchanged existing source. These are not native execution. Ordinary CI execution and actual rejected-state image review remain pending.
+- Runtime, unit tests, dependencies, and build inputs are unchanged, so the prior 85 distinct related tests, type check, and production build are reused rather than repeated. The current instruction is necessary related verification; the earlier full-verify wording is not an additional blanket gate.
+- Evidence is in `laplans-material-save-native-evidence-20261018`. Publisher owns external update and ordinary CI follow-up. PR #741's independent wide-WebKit delay remains unresolved.
