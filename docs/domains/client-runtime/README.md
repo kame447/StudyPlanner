@@ -26,6 +26,7 @@ Execution tracking:
 - [Owner-return startup history confirmation](work/owner-history-read-confirmation-handoff.md) — Issue #542; reconfirm a returning schedule owner while preserving pending migration sharing and complete-history authority.
 
 - [Desktop ordinary-timer intrinsic face](work/desktop-timer-intrinsic-face-handoff.md) — enlarged clock and remaining-badge containment; latest-main motion integration awaits bounded native acceptance.
+- [Material long-text containment](work/material-long-text-containment-handoff.md) — local wrapping candidate and wide/short-window acceptance definitions; native rendering pending.
 
 - [AI planning desktop layout](work/ai-planning-desktop-layout-handoff.md) — responsive proposal/starter widths and readable desktop controls; six fixture captures await native acceptance.
 
