@@ -112,18 +112,21 @@ export function saveMaterialDetailPreferences(
   userId: string,
   materialId: string,
   preferences: MaterialDetailPreferences,
-): void {
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return;
+): boolean {
+  if (typeof window === 'undefined') {
+    return false;
   }
 
   try {
-    window.localStorage.setItem(
+    const storage = window.localStorage;
+    if (!storage) return false;
+    storage.setItem(
       getStorageKey(userId, materialId),
       JSON.stringify(preferences),
     );
+    return true;
   } catch {
-    // UI preferences are non-critical. Persistence failure must not block the bookshelf.
+    return false;
   }
 }
 
