@@ -97,7 +97,7 @@ test('agentic: a vague student request can be submitted through the visible UI',
 
 test('agentic: preview promotion requires a separate approval action', async ({ app, agent, screen }) => {
   await app.open('/real-weekly.html?preview=1');
-  await screen.getByRole('textbox').fill('来週の予定を立てたい');
+  await screen.getByRole('textbox', { name: '週間計画にしたいこと', exact: true }).fill('来週の予定を立てたい');
   await screen.getByRole('button', { name: '送信' }).click();
   await screen.getByRole('button', { name: '計画プレビューを確認' }).click();
   await expect(screen.getByRole('button', { name: 'この内容で仮予定にする' })).toBeVisible();
