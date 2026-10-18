@@ -82,21 +82,27 @@ it('ignores menu pointerdown and dismisses on an outside mouse pointerdown', () 
   const inside = new Target(); inside.inside = true;
   dispatch('pointerdown', inside, 'touch'); expect(press.activeAction?.key).toBe('a');
   const event = dispatch('pointerdown', new Target(), 'mouse');
-  expect(press.activeAction).toBeNull(); expect(event.defaultPrevented).toBe(false);
+  expect(press.activeAction).toBeNull(); expect(event.defaultPrevented).toBe(true);
 });
-it('swallows an outside touch and its click exactly once', () => {
+it.each(['touch', 'mouse', 'pen'])('swallows an outside %s gesture and its click exactly once', pointerType => {
   act(() => { press.open('a', 'item', '数学', element); });
   const outside = new Target();
-  expect(dispatch('pointerdown', outside, 'touch').defaultPrevented).toBe(true);
+  const pointerObserver = vi.fn(); document.addEventListener('pointerdown', pointerObserver);
+  const down = dispatch('pointerdown', outside, pointerType);
+  expect(down.defaultPrevented).toBe(true); expect(pointerObserver).not.toHaveBeenCalled();
   expect(press.activeAction).toBeNull();
+  const activation = vi.fn(); document.addEventListener('click', activation);
   expect(dispatch('click', outside).defaultPrevented).toBe(true);
+  expect(activation).not.toHaveBeenCalled();
   expect(dispatch('click', outside).defaultPrevented).toBe(false);
+  expect(activation).toHaveBeenCalledOnce();
 });
-it.each(['new gesture', 'timeout', 'unmount'])('cleans a touch click guard on %s', cause => {
+it.each(['touch', 'mouse', 'pen'].flatMap(pointerType => ['new gesture', 'timeout', 'unmount', 'reopen'].map(cause => ({ pointerType, cause }))))('cleans a $pointerType click guard on $cause', ({ pointerType, cause }) => {
   act(() => { press.open('a', 'item', '数学', element); });
-  const outside = new Target(); dispatch('pointerdown', outside, 'touch');
+  const outside = new Target(); dispatch('pointerdown', outside, pointerType);
   if (cause === 'new gesture') dispatch('pointerdown', outside, 'mouse');
   else if (cause === 'timeout') act(() => { vi.advanceTimersByTime(700); });
+  else if (cause === 'reopen') act(() => { press.open('b', 'item-b', '英語', element); });
   else { act(() => renderer?.unmount()); renderer = undefined; }
   expect(dispatch('click', outside).defaultPrevented).toBe(false);
 });

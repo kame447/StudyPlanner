@@ -171,29 +171,27 @@ export function useScheduleItemActionPress<TItem>() {
       ) {
         return;
       }
-      // A touch outside dismisses only: its compatibility click must not open
-      // the calendar item underneath. Keep the one-shot listener through close,
-      // but clear it on the next unrelated pointer gesture or after 700ms.
-      if (event.pointerType === 'touch') {
-        outsideClickCleanupRef.current?.();
-        const swallowClick = (click: MouseEvent) => {
-          click.preventDefault();
-          click.stopImmediatePropagation();
-          cleanup();
-        };
-        const cleanup = () => {
-          document.removeEventListener('click', swallowClick, { capture: true });
-          document.removeEventListener('pointerdown', cleanup, { capture: true });
-          window.clearTimeout(timeout);
-          outsideClickCleanupRef.current = null;
-        };
-        const timeout = window.setTimeout(cleanup, CLICK_SUPPRESSION_MS);
-        document.addEventListener('click', swallowClick, true);
-        document.addEventListener('pointerdown', cleanup, true);
-        outsideClickCleanupRef.current = cleanup;
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      }
+      // An outside gesture dismisses only, regardless of pointer type. Keep its
+      // one-shot click guard through close, but clear it on the next unrelated
+      // pointer gesture or after 700ms.
+      outsideClickCleanupRef.current?.();
+      const swallowClick = (click: MouseEvent) => {
+        click.preventDefault();
+        click.stopImmediatePropagation();
+        cleanup();
+      };
+      const cleanup = () => {
+        document.removeEventListener('click', swallowClick, { capture: true });
+        document.removeEventListener('pointerdown', cleanup, { capture: true });
+        window.clearTimeout(timeout);
+        outsideClickCleanupRef.current = null;
+      };
+      const timeout = window.setTimeout(cleanup, CLICK_SUPPRESSION_MS);
+      document.addEventListener('click', swallowClick, true);
+      document.addEventListener('pointerdown', cleanup, true);
+      outsideClickCleanupRef.current = cleanup;
+      event.preventDefault();
+      event.stopImmediatePropagation();
       clearPress();
       setActiveAction(null);
     };

@@ -118,13 +118,33 @@ it('retains the six visual buttons when the caller clears descriptors on dismiss
   expect(items()).toHaveLength(6); expect(activeElement).toBe(origin);
   expect(origin.focus).toHaveBeenCalledWith({ preventScroll: true });
 });
-it('never takes focus back from a dialog opened by the selected action', () => {
-  mount(); const dialog = new FocusTarget(); dialog.focus(); update(null);
+it.each(['standard', 'reduced', 'off'] as const)('%s never takes focus back from a dialog opened by the selected action', level => {
+  setMotionPreference(level); mount(); const dialog = new FocusTarget(); dialog.focus(); update(null);
   expect(activeElement).toBe(dialog); expect(origin.focus).not.toHaveBeenCalled();
 });
-it('blurs the closing menuitem when its event was removed', () => {
-  mount(); origin.isConnected = false; const item = nodes.get('complete')!; update(null);
+it.each(['standard', 'reduced', 'off'] as const)('%s blurs the closing menuitem when its event was removed', level => {
+  setMotionPreference(level); mount(); origin.isConnected = false; const item = nodes.get('complete')!; update(null);
   expect(item.blur).toHaveBeenCalledOnce(); expect(activeElement).toBeNull();
+});
+it.each(['standard', 'reduced', 'off'] as const)('%s restores focus to the anchor when an outside gesture dismisses the menu', level => {
+  setMotionPreference(level); mount(); update(null);
+  expect(activeElement).toBe(origin); expect(origin.focus).toHaveBeenCalledWith({ preventScroll: true });
+  expect(renderer!.toJSON() === null).toBe(level !== 'standard');
+});
+it.each(['standard', 'reduced', 'off'] as const)('%s restores focus after keyboard-selecting complete', level => {
+  setMotionPreference(level);
+  props.onDismiss = vi.fn(() => update(null));
+  mount(); key('Enter'); act(() => items()[0].props.onClick(click()));
+  expect(props.onSelect).toHaveBeenCalledWith('complete', 'a');
+  expect(activeElement).toBe(origin); expect(origin.focus).toHaveBeenCalledWith({ preventScroll: true });
+});
+it.each(['standard', 'reduced', 'off'] as const)('%s preserves focus acquired synchronously by an editor during selection', level => {
+  setMotionPreference(level); const editor = new FocusTarget();
+  props.onDismiss = vi.fn(() => update(null)); props.onSelect = vi.fn(() => editor.focus());
+  mount(); act(() => items()[1].props.onClick(click()));
+  expect(props.onSelect).toHaveBeenCalledWith('edit', 'a');
+  expect(activeElement).toBe(editor);
+  act(() => { vi.advanceTimersByTime(200); }); expect(activeElement).toBe(editor);
 });
 it('keeps disabled actions discoverable, focuses the first enabled item, and explains disabled activation', () => {
   props.actions = props.actions.map(action => action.id === 'complete' ? { ...action, disabledReason: '実績を記録済みです' } : action);
