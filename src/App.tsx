@@ -148,6 +148,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
     saveUserProfile,
     signOut,
     openEditPlan,
+    openDuplicatePlan,
     closePlanEditor,
     savePlanDraft,
     createPlanDraft,
@@ -547,6 +548,13 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
                     : undefined
                 }
                 onOpenPlan={openEditPlan}
+                onDuplicatePlan={openDuplicatePlan}
+                onPrepareTimetableRecord={prepareDayTimetableRecord}
+                getActualActionBlockReason={getActualActionBlockReason}
+                onSaveActual={saveActual}
+                onSaveStandaloneActual={saveStandaloneActual}
+                onLinkStandaloneActualToPlan={linkStandaloneActualToPlan}
+                onDeleteActual={deleteActual}
                 onMovePlan={movePlanOccurrence}
                 onDeletePlan={deletePlan}
                 onDeleteMonthEvent={deleteMonthEvent}
@@ -580,6 +588,7 @@ function AppContent({ state, onReady }: { state: PlannerAppSnapshot; onReady?: (
                 }
                 onChangeDay={openDay}
                 onEditPlan={openEditPlan}
+                onDuplicatePlan={openDuplicatePlan}
                 onMovePlan={movePlanOccurrence}
                 onDeletePlan={deletePlan}
                 onDeleteMonthEvent={deleteMonthEvent}

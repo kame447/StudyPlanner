@@ -216,7 +216,7 @@ async function nativeSwipeUp(page, session, point, scroll) {
   await expect.poll(() => scroll.evaluate(element => element.scrollTop))
     .toBeGreaterThan(before + 16);
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
-  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toHaveCount(0);
   // Stop waiting only when compositor scrolling has settled, before resetting
   // the fixture position for a new gesture.
   await expect.poll(async () => {
@@ -331,13 +331,14 @@ for (const surface of scrollSurfaces) {
         if (preHoldMove) {
           await dispatchTouch(session, 'touchMove', x, y - preHoldMove);
         }
-        await expect(page.getByRole('button', { name: '長押し移動確認を削除' })).toBeVisible();
+        await page.waitForTimeout(300);
+        await expect(page.getByRole('menu')).toHaveCount(0);
         await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
         await expectScrollStationary(page, initial);
 
         if (exit !== 'stationary release') {
           await dispatchTouch(session, 'touchMove', x, y - 40);
-          await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
+          await expect(page.getByRole('menu')).toHaveCount(0);
           await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
           await expectScrollStationary(page, initial);
           await dispatchTouch(session, 'touchMove', x, y - 76);
@@ -367,6 +368,11 @@ for (const surface of scrollSurfaces) {
           expect(await readPlanTime(page)).toBe(initialTime);
         }
 
+        if (exit === 'stationary release') {
+          await expect(page.getByRole('menu')).toBeVisible();
+          await page.keyboard.press('Escape');
+          await expect(page.getByRole('menu')).toHaveCount(0);
+        }
         evidence.afterDragSwipe = await nativeSwipeUp(page, session,
           await positionPlanForGesture(plan, surface.scrollSelector), scroll);
       } finally {

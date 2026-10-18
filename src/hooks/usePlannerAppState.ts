@@ -86,6 +86,7 @@ interface PlannerAppState {
   signOut: () => Promise<void>;
   openCreatePlan: () => void;
   openEditPlan: (plan: Plan) => void;
+  openDuplicatePlan: (plan: Plan) => void;
   closePlanEditor: () => void;
   createPlanDraft: (draft: PlanDraft) => Promise<void>;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
@@ -190,6 +191,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     setViewMode,
     openCreatePlan,
     openEditPlan,
+    openDuplicatePlan,
     closePlanEditor,
     savePlanDraft,
     createPlanDraft,
@@ -389,6 +391,7 @@ export function usePlannerAppState({ noticeAutoDismiss = true, expectedUserId, o
     signOut,
     openCreatePlan,
     openEditPlan,
+    openDuplicatePlan,
     closePlanEditor,
     savePlanDraft,
     createPlanDraft,
