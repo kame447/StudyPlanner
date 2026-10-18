@@ -46,7 +46,9 @@ export function ScheduleItemRadialMenu<TItem>(props: ScheduleItemRadialMenuProps
     return () => window.clearTimeout(timer);
   }, [props.action, retainedAction, level]);
 
-  const displayed = props.action ?? (level === 'standard' ? retainedAction : null);
+  // All levels commit the closing state so focus can leave the menu first.
+  // Reduced/off then remove it in the layout effect above, before any paint.
+  const displayed = props.action ?? retainedAction;
   if (!displayed || typeof document === 'undefined') return null;
   return createPortal(
     <RadialRing {...props} key={opening} action={displayed} actions={props.action ? props.actions : retainedActions} closing={!props.action} level={level} />,
