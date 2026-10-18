@@ -439,7 +439,7 @@ export function DayView({
     if (isScheduleActionMenuTarget(event.target)) return;
     if (event.pointerType === 'touch' || event.button !== 0 || !event.isPrimary) return;
     const target = resolveScheduleActionTarget(event.target);
-    if (!target) return;
+    if (!target || target.occurrence.id === radialActions.armedMove?.occurrenceId) return;
     scheduleAction.start(
       target.occurrence.id,
       target.occurrence,
@@ -448,18 +448,19 @@ export function DayView({
       target.element,
       event.clientX,
       event.clientY,
+      event.pointerId,
     );
   }
 
   function handlePointerMoveCapture(event: ReactPointerEvent<HTMLElement>) {
     if (isScheduleActionMenuTarget(event.target)) return;
-    if (event.pointerType === 'touch') return;
+    if (event.pointerType === 'touch' || !scheduleAction.ownsInput('pointer', event.pointerId)) return;
     scheduleAction.move(event.clientX, event.clientY);
   }
 
   function handlePointerUpCapture(event: ReactPointerEvent<HTMLElement>) {
     if (isScheduleActionMenuTarget(event.target)) return;
-    if (event.pointerType === 'touch') return;
+    if (event.pointerType === 'touch' || !scheduleAction.ownsInput('pointer', event.pointerId)) return;
     const target = resolveScheduleActionTarget(event.target);
     if (target) scheduleAction.finish(target.occurrence.id);
     else scheduleAction.cancel();
@@ -470,7 +471,7 @@ export function DayView({
     if (event.touches.length !== 1) return;
     const target = resolveScheduleActionTarget(event.target);
     const touch = event.touches[0];
-    if (!target || !touch) return;
+    if (!target || !touch || target.occurrence.id === radialActions.armedMove?.occurrenceId) return;
     scheduleAction.start(
       target.occurrence.id,
       target.occurrence,
@@ -479,17 +480,19 @@ export function DayView({
       target.element,
       touch.clientX,
       touch.clientY,
+      touch.identifier,
     );
   }
 
   function handleTouchMoveCapture(event: ReactTouchEvent<HTMLElement>) {
     if (isScheduleActionMenuTarget(event.target)) return;
     const touch = event.touches[0];
-    if (touch) scheduleAction.move(touch.clientX, touch.clientY);
+    if (touch && scheduleAction.ownsInput('touch', touch.identifier)) scheduleAction.move(touch.clientX, touch.clientY);
   }
 
   function handleTouchEndCapture(event: ReactTouchEvent<HTMLElement>) {
     if (isScheduleActionMenuTarget(event.target)) return;
+    if (!Array.from(event.changedTouches).some(touch => scheduleAction.ownsInput('touch', touch.identifier))) return;
     const target = resolveScheduleActionTarget(event.target);
     if (target) scheduleAction.finish(target.occurrence.id);
     else scheduleAction.cancel();
@@ -498,7 +501,7 @@ export function DayView({
   function handleClickCapture(event: ReactMouseEvent<HTMLElement>) {
     if (isScheduleActionMenuTarget(event.target)) return;
     swipeNavigation.onClickCapture(event);
-    if (!scheduleAction.shouldSuppressClick()) return;
+    if (!scheduleAction.shouldSuppressClick() || !resolveScheduleActionTarget(event.target)) return;
     event.preventDefault();
     event.stopPropagation();
   }
@@ -558,7 +561,7 @@ export function DayView({
       onPointerDownCapture={handlePointerDownCapture}
       onPointerMoveCapture={handlePointerMoveCapture}
       onPointerUpCapture={handlePointerUpCapture}
-      onPointerCancelCapture={event => { if (!isScheduleActionMenuTarget(event.target)) scheduleAction.cancel(); }}
+      onPointerCancelCapture={event => { if (event.pointerType !== 'touch' && !isScheduleActionMenuTarget(event.target)) scheduleAction.cancelPointer(event.pointerId); }}
       onTouchStartCapture={handleTouchStartCapture}
       onTouchMoveCapture={handleTouchMoveCapture}
       onTouchEndCapture={handleTouchEndCapture}

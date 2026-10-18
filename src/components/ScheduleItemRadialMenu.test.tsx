@@ -202,3 +202,48 @@ it('defines spatial, opacity-only and instant CSS policies and leaves the device
   expect(css).toContain('calc(var(--z-modal-overlay, 1000) - 1)');
   expect(css).toContain('env(safe-area-inset-top, 0px)');
 });
+
+it.each(['supported', 'missing', 'throwing'] as const)('continuous selection is visual and executes on release with %s vibration', capability => {
+  const vibrate = vi.fn(() => { if (capability === 'throwing') throw new Error('Unavailable'); return true; });
+  vi.stubGlobal('navigator', capability === 'missing' ? {} : { vibrate });
+  const gesture = { origin: { x: 195, y: 300 }, point: { x: 195, y: 300 } } as import('../lib/scheduleRadialGesture').ScheduleRadialGesture;
+  props.action = { ...props.action!, anchorRect: { left: 195, top: 300, right: 195, bottom: 300, width: 0, height: 0 }, gesture };
+  mount();
+  expect(activeElement).toBeNull();
+  act(() => { gesture.onMove!({ x: 195, y: 220 }); });
+  expect(items()[0].props['data-gesture-selected']).toBe(true);
+  act(() => { gesture.onMove!({ x: 196, y: 220 }); });
+  expect(vibrate).toHaveBeenCalledTimes(capability === 'missing' ? 0 : 1);
+  expect(props.onSelect).not.toHaveBeenCalled();
+  act(() => { gesture.onRelease!(); });
+  expect(props.onSelect).toHaveBeenCalledExactlyOnceWith('complete', 'a');
+});
+
+it('returning to the centre, leaving the ring and disabled sectors cannot execute', () => {
+  vi.stubGlobal('navigator', { vibrate: vi.fn() });
+  const gesture = { origin: { x: 195, y: 300 }, point: { x: 195, y: 300 } } as import('../lib/scheduleRadialGesture').ScheduleRadialGesture;
+  props.action = { ...props.action!, anchorRect: { left: 195, top: 300, right: 195, bottom: 300, width: 0, height: 0 }, gesture };
+  props.actions = props.actions.map(action => action.id === 'complete' ? { ...action, disabledReason: '現在は実行できません' } : action);
+  mount();
+  act(() => { gesture.onMove!({ x: 195, y: 220 }); });
+  expect(renderer!.root.findByProps({ role: 'status' }).children).toEqual(['現在は実行できません']);
+  act(() => { gesture.onRelease!(); });
+  expect(props.onSelect).not.toHaveBeenCalled();
+  act(() => { gesture.onMove!({ x: 265, y: 260 }); gesture.onMove!({ x: 195, y: 300 }); gesture.onRelease!(); });
+  expect(props.onSelect).not.toHaveBeenCalled();
+  act(() => { gesture.onMove!({ x: 265, y: 260 }); gesture.onMove!({ x: 900, y: 300 }); gesture.onRelease!(); });
+  expect(props.onSelect).not.toHaveBeenCalled();
+});
+
+it.each(SCHEDULE_RADIAL_ACTION_ORDER.map((id, index) => ({ id, index })))('continuous sector $index invokes $id', ({ id, index }) => {
+  vi.stubGlobal('navigator', {});
+  const gesture = { origin: { x: 195, y: 300 }, point: { x: 195, y: 300 } } as import('../lib/scheduleRadialGesture').ScheduleRadialGesture;
+  props.action = { ...props.action!, anchorRect: { left: 195, top: 300, right: 195, bottom: 300, width: 0, height: 0 }, gesture };
+  mount();
+  const angle = -Math.PI / 2 + index * Math.PI / 3;
+  act(() => { gesture.onMove!({ x: 195 + 80 * Math.cos(angle), y: 300 + 80 * Math.sin(angle) }); });
+  expect(items()[index].props['data-gesture-selected']).toBe(true);
+  expect(props.onSelect).not.toHaveBeenCalled();
+  act(() => { gesture.onRelease!(); });
+  expect(props.onSelect).toHaveBeenCalledExactlyOnceWith(id, 'a');
+});

@@ -1,7 +1,7 @@
 import { E2E_TODAY, expect, newFixedClockContext, test } from './support/fixed-clock.mjs';
 
 // Radial 移動 lifts the event into a direct drag mode, long-press timing is
-// quick (~170ms) and shared by menu reveal and drag, and Edit/Complete enter
+// quick (~170ms); the held finger selects before release. Edit/Complete enter
 // like the 記録を保存 sheet / save feedback.
 
 const TITLE = '移動確認';
@@ -80,7 +80,30 @@ async function touchHold(page, session, ms) {
   await dispatchTouch(session, 'touchEnd', x, y);
 }
 
-test('day touch: quick tap stays a tap, a ~220ms stationary hold opens the six actions', async ({ browser }) => {
+async function beginHeldMenu(page, session) {
+  const origin = await center(planBlock(page));
+  await dispatchTouch(session, 'touchStart', origin.x, origin.y);
+  await page.waitForTimeout(220);
+  await expect(page.getByRole('menu')).toBeVisible();
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+  return origin;
+}
+
+async function flickAction(page, session, label) {
+  const before = await storedPlan(page);
+  await beginHeldMenu(page, session);
+  const action = page.getByRole('menuitem', { name: label, exact: true });
+  const point = await center(action);
+  // The same CDP touch id stays down from the card through the chosen sector.
+  await dispatchTouch(session, 'touchMove', point.x, point.y);
+  await expect(action).toHaveAttribute('data-gesture-selected', 'true');
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+  expect(await storedPlan(page), 'hovering a sector must not save').toEqual(before);
+  await dispatchTouch(session, 'touchEnd', point.x, point.y);
+  await expect(page.getByRole('menu')).toHaveCount(0);
+}
+
+test('day touch: quick tap stays a tap, a ~220ms stationary hold shows six actions before release and centre release cancels', async ({ browser }) => {
   const { context, page, session } = await openSchedule(browser, { mobile: true, tab: '日' });
 
   await touchHold(page, session, 60);
@@ -90,8 +113,8 @@ test('day touch: quick tap stays a tap, a ~220ms stationary hold opens the six a
   await expect(page.getByRole('dialog', { name: `${TITLE}の操作` })).toHaveCount(0);
 
   // Above the 170ms threshold but below the old 240ms one.
-  await touchHold(page, session, 220);
-  await expect(page.getByRole('menu')).toBeVisible();
+  const before = await storedPlan(page);
+  const origin = await beginHeldMenu(page, session);
   await expect(page.getByRole('menuitem')).toHaveText(['完了', '編集', '複製', '削除', '実績', '移動']);
   // The full ring is shown quickly: last button's delay + pop stays ≤ ~220ms.
   const timing = await page.getByRole('menuitem').evaluateAll(items => items.map(item => {
@@ -99,28 +122,35 @@ test('day touch: quick tap stays a tap, a ~220ms stationary hold opens the six a
     return parseFloat(style.animationDelay) * 1000 + parseFloat(style.animationDuration) * 1000;
   }));
   expect(Math.max(...timing)).toBeLessThanOrEqual(220);
+  await dispatchTouch(session, 'touchEnd', origin.x, origin.y);
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await storedPlan(page)).toEqual(before);
   await context.close();
 });
 
-test('day touch: a ~220ms hold followed by movement drags directly without opening the ring', async ({ browser }) => {
+test('day touch: movement selects the held ring without dragging, then returning to centre cancels', async ({ browser }) => {
   const { context, page, session } = await openSchedule(browser, { mobile: true, tab: '日' });
-  const { x, y } = await center(planBlock(page));
-  const hourPx = await dayHourPx(page);
-  await dispatchTouch(session, 'touchStart', x, y);
-  await page.waitForTimeout(220);
-  await dispatchTouch(session, 'touchMove', x, y + 20);
-  await dispatchTouch(session, 'touchMove', x, y + hourPx);
-  await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
-  await dispatchTouch(session, 'touchEnd', x, y + hourPx);
+  const before = await storedPlan(page);
+  const origin = await beginHeldMenu(page, session);
+  const action = page.getByRole('menuitem', { name: '移動', exact: true });
+  const point = await center(action);
+  await dispatchTouch(session, 'touchMove', point.x, point.y);
+  await expect(action).toHaveAttribute('data-gesture-selected', 'true');
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+  await expect(page.getByRole('region', { name: '予定の移動' })).toHaveCount(0);
+  await dispatchTouch(session, 'touchMove', origin.x, origin.y);
+  await expect(page.locator('[data-gesture-selected="true"]')).toHaveCount(0);
+  await dispatchTouch(session, 'touchEnd', origin.x, origin.y);
   await expect(page.getByRole('menu')).toHaveCount(0);
-  await expect.poll(async () => (await storedPlan(page))?.startTime).toBe('10:00');
+  await expect(page.getByRole('region', { name: '予定の移動' })).toHaveCount(0);
+  expect(await storedPlan(page)).toEqual(before);
   await context.close();
 });
 
 test('day touch: radial 移動 lifts the event so the next touch drags it immediately, persisted and undoable', async ({ browser }) => {
   const { context, page, session } = await openSchedule(browser, { mobile: true, tab: '日' });
-  await touchHold(page, session, 220);
-  await page.getByRole('menuitem', { name: '移動', exact: true }).click();
+  await flickAction(page, session, '移動');
 
   // No date/time dialog: the event is lifted and a hint offers the dialog as a fallback.
   await expect(page.getByRole('dialog', { name: `${TITLE}を移動` })).toHaveCount(0);
@@ -153,14 +183,12 @@ test('day touch: radial 移動 lifts the event so the next touch drags it immedi
 
 test('day: 日時で指定 keeps the dialog as an explicit fallback and 終了 leaves move mode', async ({ browser }) => {
   const { context, page, session } = await openSchedule(browser, { mobile: true, tab: '日' });
-  await touchHold(page, session, 220);
-  await page.getByRole('menuitem', { name: '移動', exact: true }).click();
+  await flickAction(page, session, '移動');
   await page.getByRole('button', { name: '終了' }).click();
   await expect(page.getByRole('region', { name: '予定の移動' })).toHaveCount(0);
   await expect(planBlock(page)).not.toHaveClass(/is-move-armed/);
 
-  await touchHold(page, session, 220);
-  await page.getByRole('menuitem', { name: '移動', exact: true }).click();
+  await flickAction(page, session, '移動');
   await page.getByRole('button', { name: '日時で指定' }).click();
   await expect(page.getByRole('dialog', { name: `${TITLE}を移動` })).toBeVisible();
   await expect(page.getByRole('region', { name: '予定の移動' })).toHaveCount(0);
@@ -187,8 +215,7 @@ test('week pointer: radial 移動 then mouse drag moves the plan and persists', 
 
 test('week touch: radial 移動 lifts the event so the next touch drags it immediately', async ({ browser }) => {
   const { context, page, session } = await openSchedule(browser, { mobile: true, tab: '週' });
-  await touchHold(page, session, 220);
-  await page.getByRole('menuitem', { name: '移動', exact: true }).click();
+  await flickAction(page, session, '移動');
   await expect(planBlock(page)).toHaveClass(/is-move-armed/);
   const { x, y } = await center(planBlock(page));
   const column = await page.locator('.schedule-week-day-column').first().boundingBox();
@@ -205,8 +232,7 @@ test('week touch: radial 移動 lifts the event so the next touch drags it immed
 test('Edit and Complete enter like the 記録を保存 sheet and save feedback; completion still persists', async ({ browser }) => {
   const { context, page, session } = await openSchedule(browser, { mobile: true, tab: '日' });
 
-  await touchHold(page, session, 220);
-  await page.getByRole('menuitem', { name: '実績', exact: true }).click();
+  await flickAction(page, session, '実績');
   const saveSheet = page.locator('.schedule-record-sheet');
   await expect(saveSheet).toBeVisible();
   const saveAnimation = await saveSheet.evaluate(element => getComputedStyle(element).animationName);
@@ -214,8 +240,7 @@ test('Edit and Complete enter like the 記録を保存 sheet and save feedback; 
   await page.getByRole('button', { name: '閉じる' }).first().click();
   await expect(saveSheet).toHaveCount(0);
 
-  await touchHold(page, session, 220);
-  await page.getByRole('menuitem', { name: '編集', exact: true }).click();
+  await flickAction(page, session, '編集');
   const editor = page.locator('.plan-editor-modal');
   await expect(editor).toBeVisible();
   expect(await editor.evaluate(element => getComputedStyle(element).animationName)).toBe(saveAnimation);
@@ -223,8 +248,7 @@ test('Edit and Complete enter like the 記録を保存 sheet and save feedback; 
   await page.getByRole('button', { name: 'キャンセル' }).click();
   await expect(editor).toHaveCount(0);
 
-  await touchHold(page, session, 220);
-  await page.getByRole('menuitem', { name: '完了', exact: true }).click();
+  await flickAction(page, session, '完了');
   const toast = page.locator('.app-toast').filter({ hasText: '記録を保存しました。' });
   await expect(toast).toBeVisible();
   expect(await toast.evaluate(element => getComputedStyle(element).animationName)).toMatch(/^planner-toast/);

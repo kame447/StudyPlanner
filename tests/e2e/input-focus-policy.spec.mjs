@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import ts from 'typescript';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from './support/startup-ready.mjs';
@@ -170,7 +171,7 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     // (first enabled on open, Arrow/Tab cycling) and returns focus to the calendar
     // event that opened it. None of these targets is a text control.
     ['src/components/ScheduleItemRadialMenu.tsx', new Set([
-      'buttons.current[firstEnabled < 0 ? 0 : firstEnabled]?.focus({ preventScroll: true });',
+      'if (!action.gesture) buttons.current[firstEnabled < 0 ? 0 : firstEnabled]?.focus({ preventScroll: true });',
       'buttons.current[next]?.focus({ preventScroll: true });',
       'if (action.anchorElement?.isConnected) action.anchorElement.focus({ preventScroll: true });',
     ])],
@@ -215,10 +216,28 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     'inputRef.current?.focus({ preventScroll: true });',
     'action.anchorElement.focus({ preventScroll: true });',
     'buttons.current[next]?.focus();',
+    'buttons.current[firstEnabled < 0 ? 0 : firstEnabled]?.focus({ preventScroll: true });',
   ]) expect(hasUnexpectedFocus(radialMenuFile, statement)).toBe(true);
   const radialMenuSource = fs.readFileSync(path.join(repoRoot, radialMenuFile), 'utf8');
   expect(radialMenuSource.match(/buttons\.current\[index\] = element/g)).toHaveLength(1);
-  expect(radialMenuSource).toMatch(/<button\b[\s\S]{0,200}ref=\{element => \{ buttons\.current\[index\] = element; \}\}[\s\S]{0,200}role="menuitem"/);
+  // Bind the focus ref to its actual JSX element, independent of unrelated
+  // attributes between ref and role. A character limit rejects valid additions.
+  const radialTree = ts.createSourceFile(radialMenuFile, radialMenuSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  expect(radialTree.parseDiagnostics).toEqual([]);
+  const radialFocusTargets = [];
+  function inspectRadialFocus(node) {
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const attrs = node.attributes.properties.filter(ts.isJsxAttribute);
+      const ref = attrs.find(attr => attr.name.getText(radialTree) === 'ref');
+      if (ref?.initializer?.getText(radialTree) === '{element => { buttons.current[index] = element; }}') {
+        const role = attrs.find(attr => attr.name.getText(radialTree) === 'role');
+        radialFocusTargets.push({ tag: node.tagName.getText(radialTree), role: role?.initializer?.getText(radialTree) });
+      }
+    }
+    ts.forEachChild(node, inspectRadialFocus);
+  }
+  inspectRadialFocus(radialTree);
+  expect(radialFocusTargets).toEqual([{ tag: 'button', role: '"menuitem"' }]);
   expect(radialMenuSource).not.toMatch(/<(input|textarea)\b/);
 
   // Delivery failure focuses only its explicit, non-input Back button.

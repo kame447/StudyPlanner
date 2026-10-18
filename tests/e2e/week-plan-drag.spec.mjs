@@ -37,6 +37,28 @@ async function planCenter(page, name) {
   };
 }
 
+async function radialActionCenter(page, label) {
+  const action = page.getByRole('menuitem', { name: label, exact: true });
+  await expect(action).toBeVisible();
+  const box = await action.boundingBox();
+  if (!box) throw new Error(`Radial action not measurable: ${label}`);
+  return { action, x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+async function armMoveByTouchFlick(page, session, x, y) {
+  await dispatchTouch(session, 'touchStart', x, y);
+  await page.waitForTimeout(300);
+  const target = await radialActionCenter(page, '移動');
+  await dispatchTouch(session, 'touchMove', target.x, target.y);
+  await expect(target.action).toHaveAttribute('data-gesture-selected', 'true');
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+  await expect(page.getByRole('region', { name: '予定の移動' })).toHaveCount(0);
+  expect((await readEvents(page)).filter(entry => entry.type === 'move-plan')).toHaveLength(0);
+  await dispatchTouch(session, 'touchEnd', target.x, target.y);
+  await expect(page.getByRole('region', { name: '予定の移動' })).toBeVisible();
+  await expect(page.getByRole('menu')).toHaveCount(0);
+}
+
 test('saved plan click opens the editor without moving the plan', async ({ page }) => {
   await page.goto(HARNESS_URL);
 
@@ -78,7 +100,7 @@ test('mouse drag changes weekday and time while preserving duration', async ({ p
   expect(events.filter((entry) => entry.type === 'open-plan')).toHaveLength(0);
 });
 
-test('pointer hold opens actions on release and removes only the held plan', async ({ page }) => {
+test('pointer held-ring flick removes only the held plan on release', async ({ page }) => {
   await page.goto(HARNESS_URL);
 
   const { plan, x, y } = await planCenter(page, /数学の復習.*タップで編集/);
@@ -86,13 +108,12 @@ test('pointer hold opens actions on release and removes only the held plan', asy
   await page.mouse.down();
   await page.waitForTimeout(300);
 
-  const action = page.getByRole('menuitem', { name: '削除', exact: true });
-  await expect(page.getByRole('menu')).toHaveCount(0);
+  const target = await radialActionCenter(page, '削除');
+  await page.mouse.move(target.x, target.y);
+  await expect(target.action).toHaveAttribute('data-gesture-selected', 'true');
   await expect(plan).toBeVisible();
+  expect((await readEvents(page)).filter(entry => entry.type === 'delete-plan')).toHaveLength(0);
   await page.mouse.up();
-  await expect(action).toBeVisible();
-
-  await action.click();
   await expect(page.getByRole('button', { name: /数学の復習.*タップで編集/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /英単語.*タップで編集/ })).toBeVisible();
 
@@ -125,7 +146,7 @@ test('short touch remains a tap and opens the plan', async ({ browser }) => {
   await context.close();
 });
 
-test('touch hold opens actions on release until exact deletion', async ({ browser }) => {
+test('touch held-ring flick commits exact deletion only on release', async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 320, height: 780 },
     hasTouch: true,
@@ -139,13 +160,12 @@ test('touch hold opens actions on release until exact deletion', async ({ browse
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
 
-  const action = page.getByRole('menuitem', { name: '削除', exact: true });
-  await expect(page.getByRole('menu')).toHaveCount(0);
+  const target = await radialActionCenter(page, '削除');
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
-
-  await dispatchTouch(session, 'touchEnd', x, y);
-  await expect(action).toBeVisible();
-  await action.click();
+  await dispatchTouch(session, 'touchMove', target.x, target.y);
+  await expect(target.action).toHaveAttribute('data-gesture-selected', 'true');
+  expect((await readEvents(page)).filter(entry => entry.type === 'delete-plan')).toHaveLength(0);
+  await dispatchTouch(session, 'touchEnd', target.x, target.y);
 
   await expect(page.getByRole('button', { name: /数学の復習.*タップで編集/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /英単語.*タップで編集/ })).toBeVisible();
@@ -180,7 +200,7 @@ test('touch movement before long press cancels drag activation', async ({ browse
   await context.close();
 });
 
-test('long press reveals action, then movement hands off to touch drag without opening editor', async ({ browser }) => {
+test('held-ring Move flick arms the next touch drag without opening editor', async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 320, height: 780 },
     hasTouch: true,
@@ -194,8 +214,8 @@ test('long press reveals action, then movement hands off to touch drag without o
   const dayBox = await page.locator('.schedule-week-day-column').nth(1).boundingBox();
   if (!dayBox) throw new Error('Week day column not measurable');
 
+  await armMoveByTouchFlick(page, session, x, y);
   await dispatchTouch(session, 'touchStart', x, y);
-  await page.waitForTimeout(300);
   await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
 
@@ -214,7 +234,7 @@ test('long press reveals action, then movement hands off to touch drag without o
   await context.close();
 });
 
-test('active long press touch drag keeps the background completely stationary', async ({ browser }) => {
+test('active held-ring selection keeps the background completely stationary', async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 320, height: 780 },
     hasTouch: true,
@@ -238,12 +258,12 @@ test('active long press touch drag keeps the background completely stationary', 
 
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
-  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toBeVisible();
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
 
   await dispatchTouch(session, 'touchMove', scrollBox.x + 2, y + 45);
-  await expect(page.getByRole('menu')).toHaveCount(0);
-  await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).overflow)).toBe('hidden');
   await page.waitForTimeout(50);
 
@@ -251,6 +271,8 @@ test('active long press touch drag keeps the background completely stationary', 
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 
   await dispatchTouch(session, 'touchCancel', scrollBox.x + 2, y + 45);
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  expect((await readEvents(page)).filter(entry => ['move-plan', 'open-plan', 'delete-plan'].includes(entry.type))).toHaveLength(0);
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).overflow)).toBe(bodyOverflowBefore);
 

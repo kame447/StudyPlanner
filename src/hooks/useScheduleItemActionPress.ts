@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { acquireTimelineDragInteractionLock } from '../lib/timelineDragInteractionLock';
+import { SCHEDULE_RADIAL_GESTURE_START, type ScheduleRadialGesture } from '../lib/scheduleRadialGesture';
 import { SCHEDULE_LONG_PRESS_MS } from '../lib/scheduleGestureTiming';
 
 interface ScheduleActionPress<TItem> {
@@ -11,6 +13,10 @@ interface ScheduleActionPress<TItem> {
   startedAt: number;
   moved: boolean;
   element: HTMLElement;
+  inputId?: number;
+  timer?: number;
+  gesture?: ScheduleRadialGesture;
+  releaseLock?: () => void;
 }
 
 export interface ActiveScheduleItemAction<TItem> {
@@ -23,6 +29,7 @@ export interface ActiveScheduleItemAction<TItem> {
   anchorRect: { top: number; left: number; right: number; bottom: number; width: number; height: number };
   /** Focus origin for Escape; optional for callers that construct an action. */
   anchorElement?: HTMLElement;
+  gesture?: ScheduleRadialGesture;
 }
 
 export const SCHEDULE_ITEM_ACTION_INTENT_EVENT = 'studyplanner:schedule-item-action-intent';
@@ -43,21 +50,30 @@ export function useScheduleItemActionPress<TItem>() {
   const outsideClickCleanupRef = useRef<(() => void) | null>(null);
 
   function clearPress() {
+    const press = pressRef.current;
+    if (press?.timer !== undefined) window.clearTimeout(press.timer);
+    press?.releaseLock?.();
     pressRef.current = null;
   }
 
   function reveal(press: ScheduleActionPress<TItem>) {
     if (pressRef.current !== press || press.moved) return;
-    showFor(press.key, press.item, press.title, press.element);
+    if (press.element.isConnected === false) { clearPress(); return; }
+    press.gesture = { origin: { x: press.startX, y: press.startY }, point: { x: press.startX, y: press.startY } };
+    // The ring becomes the sole owner before any drag timer can arm.
+    window.dispatchEvent(new Event(SCHEDULE_RADIAL_GESTURE_START));
+    press.releaseLock = acquireTimelineDragInteractionLock();
+    showFor(press.key, press.item, press.title, press.element, press.gesture);
   }
 
-  function showFor(key: string, item: TItem, title: string, element: HTMLElement) {
+  function showFor(key: string, item: TItem, title: string, element: HTMLElement, gesture?: ScheduleRadialGesture) {
     const rect = element.getBoundingClientRect();
     setActiveAction({
       key,
       item,
       title,
       anchorElement: element,
+      gesture,
       top: Math.max(8, rect.top + 3),
       left: Math.max(8, rect.right - 47),
       anchorRect: {
@@ -86,6 +102,7 @@ export function useScheduleItemActionPress<TItem>() {
     element: HTMLElement,
     x: number,
     y: number,
+    inputId?: number,
   ) {
     clearPress();
     if (activeAction?.key !== key) {
@@ -101,15 +118,20 @@ export function useScheduleItemActionPress<TItem>() {
       startedAt: Date.now(),
       moved: false,
       element,
+      inputId,
     };
     pressRef.current = press;
-    // The drag controller arms at the same threshold. Reveal only on release,
-    // once we know this stationary hold did not turn into a drag.
+    press.timer = window.setTimeout(() => reveal(press), ACTION_LONG_PRESS_MS);
   }
 
   function move(x: number, y: number) {
     const press = pressRef.current;
     if (!press || press.moved) return;
+    if (press.gesture) {
+      press.gesture.point = { x, y };
+      press.gesture.onMove?.(press.gesture.point);
+      return;
+    }
     const tolerance =
       press.inputKind === 'touch' ? TOUCH_MOVE_TOLERANCE_PX : POINTER_MOVE_TOLERANCE_PX;
     if (distance(press.startX, press.startY, x, y) <= tolerance) return;
@@ -122,23 +144,22 @@ export function useScheduleItemActionPress<TItem>() {
 
   function finish(key: string): boolean {
     const press = pressRef.current;
-    const held = Boolean(
-      press &&
-        press.key === key &&
-        !press.moved &&
-        Date.now() - press.startedAt >= ACTION_LONG_PRESS_MS,
-    );
-    if (held && press) {
-      reveal(press);
-    }
+    const held = Boolean(press && press.key === key && press.gesture);
+    const gesture = held ? press?.gesture : undefined;
+    clearPress();
     if (held) {
       suppressClickUntilRef.current = Date.now() + CLICK_SUPPRESSION_MS;
-    }
-    clearPress();
+      gesture?.onRelease?.();
+      setActiveAction(null);
+    } else if (press?.gesture) setActiveAction(null);
     return held;
   }
 
   function cancel() {
+    if (pressRef.current?.gesture) {
+      suppressClickUntilRef.current = Date.now() + CLICK_SUPPRESSION_MS;
+      setActiveAction(null);
+    }
     clearPress();
   }
 
@@ -146,6 +167,84 @@ export function useScheduleItemActionPress<TItem>() {
     clearPress();
     setActiveAction(null);
   }
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const consume = (event: Event) => { if (event.cancelable) event.preventDefault(); event.stopImmediatePropagation(); };
+    const secondaryPointer = (event: PointerEvent) => {
+      const press = pressRef.current;
+      if (!press) return;
+      if ((press.inputKind === 'pointer' && press.inputId !== undefined && event.pointerId !== press.inputId) ||
+          (press.inputKind === 'touch' && event.pointerType !== 'touch')) {
+        if (press.gesture) consume(event);
+        cancel();
+      }
+    };
+    const pointerMove = (event: PointerEvent) => {
+      const press = pressRef.current;
+      if (!press || press.inputKind !== 'pointer' || (press.inputId !== undefined && event.pointerId !== press.inputId)) return;
+      if (press.gesture) consume(event);
+      move(event.clientX, event.clientY);
+    };
+    const pointerUp = (event: PointerEvent) => {
+      const press = pressRef.current;
+      if (!press || press.inputKind !== 'pointer' || (press.inputId !== undefined && event.pointerId !== press.inputId)) return;
+      if (!press.gesture) return;
+      consume(event); move(event.clientX, event.clientY); finish(press.key);
+    };
+    const pointerCancel = (event: PointerEvent) => {
+      const press = pressRef.current;
+      if (press?.inputKind === 'pointer' && (press.inputId === undefined || press.inputId === event.pointerId)) cancel();
+    };
+    const touchMove = (event: TouchEvent) => {
+      const press = pressRef.current;
+      if (!press || press.inputKind !== 'touch') return;
+      if (event.touches.length !== 1) { cancel(); return; }
+      const touch = Array.from(event.touches).find(t => press.inputId === undefined || t.identifier === press.inputId);
+      if (!touch) return;
+      if (press.gesture) consume(event);
+      move(touch.clientX, touch.clientY);
+    };
+    const touchEnd = (event: TouchEvent) => {
+      const press = pressRef.current;
+      if (!press || press.inputKind !== 'touch' || !press.gesture) return;
+      const touch = Array.from(event.changedTouches).find(t => press.inputId === undefined || t.identifier === press.inputId);
+      if (!touch) return;
+      consume(event); move(touch.clientX, touch.clientY); finish(press.key);
+    };
+    const secondaryTouch = (event: TouchEvent) => { if (event.touches.length !== 1) cancel(); };
+    const contextMenu = (event: Event) => { if (pressRef.current?.gesture) consume(event); };
+    const hidden = () => { if (document.visibilityState === 'hidden') cancel(); };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') cancel(); };
+    window.addEventListener('contextmenu', contextMenu, true);
+    window.addEventListener('pointerdown', secondaryPointer, true);
+    window.addEventListener('pointermove', pointerMove, { capture: true, passive: false });
+    window.addEventListener('pointerup', pointerUp, true);
+    window.addEventListener('touchmove', touchMove, { capture: true, passive: false });
+    window.addEventListener('touchend', touchEnd, { capture: true, passive: false });
+    window.addEventListener('touchstart', secondaryTouch, true);
+    window.addEventListener('pointercancel', pointerCancel, true);
+    window.addEventListener('touchcancel', cancel, true);
+    window.addEventListener('blur', cancel);
+    window.addEventListener('pagehide', cancel);
+    document.addEventListener('visibilitychange', hidden);
+    document.addEventListener('keydown', escape);
+    return () => {
+      window.removeEventListener('contextmenu', contextMenu, true);
+      window.removeEventListener('pointerdown', secondaryPointer, true);
+      window.removeEventListener('pointermove', pointerMove, true);
+      window.removeEventListener('pointerup', pointerUp, true);
+      window.removeEventListener('touchmove', touchMove, true);
+      window.removeEventListener('touchend', touchEnd, true);
+      window.removeEventListener('touchstart', secondaryTouch, true);
+      window.removeEventListener('pointercancel', pointerCancel, true);
+      window.removeEventListener('touchcancel', cancel, true);
+      window.removeEventListener('blur', cancel);
+      window.removeEventListener('pagehide', cancel);
+      document.removeEventListener('visibilitychange', hidden);
+      document.removeEventListener('keydown', escape);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -210,11 +309,19 @@ export function useScheduleItemActionPress<TItem>() {
 
   return {
     activeAction,
+    ownsInput: (kind: 'pointer' | 'touch', inputId: number | undefined) => {
+      const press = pressRef.current;
+      return Boolean(press && press.inputKind === kind && (press.inputId === undefined || press.inputId === inputId));
+    },
     open,
     start,
     move,
     finish,
     cancel,
+    cancelPointer: (pointerId: number) => {
+      const press = pressRef.current;
+      if (press?.inputKind === 'pointer' && (press.inputId === undefined || press.inputId === pointerId)) cancel();
+    },
     dismiss,
     shouldSuppressClick: () => Date.now() < suppressClickUntilRef.current,
   };
