@@ -7,6 +7,7 @@ import { createAuthSessionService } from '../services/authSession';
 import { getInquiryDraft } from '../services/inquiryDraft';
 import { submitInquiry } from '../services/inquiryService';
 import { AppSettingsSupportPanel } from './AppSettingsSupportPanel';
+import { InitialPrivacyConsentScreen } from './InitialPrivacyConsentScreen';
 import { PublicPageBoundary } from './PublicPageBoundary';
 import { PublicPageLink, usePublicPageNavigation } from './PublicPageLink';
 
@@ -57,7 +58,7 @@ function browser(pathname = '/', state: unknown = { unrelated: 'preserved' }) {
 }
 function click(href: string, event: Record<string, unknown> = {}) {
   const preventDefault = vi.fn();
-  act(() => renderer!.root.findAllByType('a').find(link => link.props.href === href)!.props.onClick({
+  act(() => renderer!.root.findAllByType('a').find(link => link.props.href === href)!.props.onClick?.({
     button: 0, preventDefault, ...event,
   }));
   return preventDefault;
@@ -71,6 +72,36 @@ beforeEach(() => {
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; getInquiryDraft().dispose(); vi.unstubAllGlobals(); });
 
 describe('same-document public pages', () => {
+  it.each(['/terms', '/privacy'])('retains explicit initial consent through %s and browser Back/Forward', path => {
+    const b = browser();
+    const accept = vi.fn(async () => true);
+    const retry = vi.fn(async () => undefined);
+    const signOut = vi.fn(async () => undefined);
+    act(() => { renderer = create(<PublicPageBoundary>
+      <InitialPrivacyConsentScreen unavailable={false} error="" onAccept={accept} onRetry={retry} onSignOut={signOut} />
+    </PublicPageBoundary>); });
+    const screen = renderer!.root.findByType(InitialPrivacyConsentScreen);
+    const checkbox = renderer!.root.findByType('input');
+    act(() => checkbox.props.onChange({ target: { checked: true } }));
+    expect(click(path)).toHaveBeenCalledOnce();
+    expect(b.location.pathname).toBe(path);
+    expect(renderer!.root.findByProps({ className: 'public-page-planner' }).props.hidden).toBe(true);
+    expect(renderer!.root.findByType(InitialPrivacyConsentScreen)).toBe(screen);
+    b.pop(0);
+    expect(renderer!.root.findByType('input').props.checked).toBe(true);
+    b.pop(1);
+    click('/');
+    expect(b.location.pathname).toBe('/');
+    expect(renderer!.root.findByType(InitialPrivacyConsentScreen)).toBe(screen);
+    expect(renderer!.root.findByType('input').props.checked).toBe(true);
+    expect(accept).not.toHaveBeenCalled();
+    expect(retry).not.toHaveBeenCalled();
+    expect(signOut).not.toHaveBeenCalled();
+    // Reading the documents never grants consent on the user's behalf.
+    act(() => checkbox.props.onChange({ target: { checked: false } }));
+    expect(renderer!.root.findAllByType('button').find(button => button.children.includes('同意して利用を開始する'))!.props.disabled).toBe(true);
+  });
+
   it('preserves the started planner and draft through settings, contact, Back, Forward and explicit return', () => {
     const b = browser(); mount();
     act(() => renderer!.root.findByType('input').props.onChange({ target: { value: 'unsaved plan' } }));

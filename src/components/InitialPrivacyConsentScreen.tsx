@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { LaplanceLogo } from './LaplanceLogo';
+import { PublicPageLink } from './PublicPageLink';
 
 interface InitialPrivacyConsentScreenProps {
   unavailable: boolean;
@@ -104,8 +105,8 @@ export function InitialPrivacyConsentScreen({
               </label>
 
               <p className="auth-legal-note">
-                詳細は<a href="/terms">利用規約</a>および
-                <a href="/privacy">プライバシーポリシー</a>をご確認ください。
+                詳細は<PublicPageLink href="/terms">利用規約</PublicPageLink>および
+                <PublicPageLink href="/privacy">プライバシーポリシー</PublicPageLink>をご確認ください。
               </p>
 
               {localError || error ? (

@@ -21,6 +21,8 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Initial consent legal-page navigation](work/initial-consent-public-navigation-handoff.md) — preserve confirmation state when reading terms or privacy within the existing public-page owner.
+
 - [Material structure save failure](work/material-structure-save-failure-handoff.md) — retain table-of-contents edits and show a retryable error when local storage rejects a save.
 
 - [Owner-return startup history confirmation](work/owner-history-read-confirmation-handoff.md) — Issue #542; reconfirm a returning schedule owner while preserving pending migration sharing and complete-history authority.
