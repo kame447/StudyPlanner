@@ -177,11 +177,11 @@
     {
       "id": "holdout-trap-01",
       "ownerId": "synthetic-aya",
-      "query": "いまのTOEIC目標と、やめた750点案を確認したい",
+      "query": "いまのTOEIC目標を確認したい。やめた750点案ではなく現在の数値で",
       "label": "trap_lifecycle_or_other_owner",
       "expectedRelevantRecordIds": ["aya-toeic-800"],
       "trapRecordIds": ["aya-toeic-750-revoked", "ren-toeic-900"],
-      "rationale": "現行目標は関連するが、取消済み案と別所有者のTOEIC記録は除外する。"
+      "rationale": "現行目標は関連するが、取消済み案と別所有者のTOEIC記録は除外する。取消案を明示的に求める旧文面は意味的関連とポリシーを混同するため、取消案を対象外とする文面に変更（2026-10-18 日本語レビュー）。"
     },
     {
       "id": "holdout-trap-02",
