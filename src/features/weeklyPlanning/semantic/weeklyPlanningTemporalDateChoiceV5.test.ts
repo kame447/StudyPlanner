@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { resolveWeeklyPlanningAvailability } from './weeklyPlanningAvailabilityResolver';
 import { resolveWeeklyPlanningDateExpressionsV5 } from './weeklyPlanningResolvedDateExpressionsV5';
 import { createTemporalDateBasisV5 } from './weeklyPlanningTemporalDateChoiceV5';
+import { validateWeeklyPlanningFactGraphValueV5 } from './weeklyPlanningFactGraphValidatorV5';
 
 import { temporalDateFixtureV5 as fixture } from './weeklyPlanningTemporalDateChoiceV5.testUtils';
 import { createWeeklyPlanningAvailabilityResolverGraphV5 } from './weeklyPlanningSchedulerAvailabilityProjectionV5';
@@ -70,16 +71,21 @@ describe('D5prime single-date closure', () => {
       expect(createTemporalDateBasisV5({ input: f.input, binding: f.binding, calendar: f.calendar, domainPolicyVersion: f.domainPolicyVersion })).toBeNull();
     },
   );
-  it.each(['undated interval', 'undated capacity'])('excludes a second active plan-wide %s from any turn', kind => {
+  // Undated capacity is not a valid graph fact (capacity requires a date scope), so it is not a case here.
+  it.each(['undated interval', 'undated opposite-polarity interval', 'undated no-additional-constraint'])('excludes a second active plan-wide %s from any turn', kind => {
     const f = fixture();
     const sibling = { ...structuredClone(f.target), id: 'second-plan-wide', startTime: '07:00', endTime: '08:00',
-      ...(kind === 'undated capacity' ? { kind: 'capacity' as const, startTime: null, endTime: null, capacityMinutes: 120 } : {}) };
+      ...(kind === 'undated opposite-polarity interval' ? { kind: 'available' as const } : {}),
+      ...(kind === 'undated no-additional-constraint' ? { kind: 'no_additional_constraint' as const, startTime: null, endTime: null } : {}) };
     f.graph.availabilityDeclarations.push(sibling);
     f.graph.factLifecycles.push({ factId: sibling.id, status: 'active', createdRevision: f.graph.revision, terminalRevision: null, supersededByFactId: null });
+    // The sibling must be a valid graph fact so only the sole-target rule can reject it.
+    expect(validateWeeklyPlanningFactGraphValueV5(f.graph).graph).not.toBeNull();
     const basis = () => createTemporalDateBasisV5({ input: f.input, binding: f.binding, calendar: f.calendar, domainPolicyVersion: f.domainPolicyVersion });
     expect(basis()).toBeNull();
     // Positive control: a sibling that already has its own date does not compete for the bare date.
     Object.assign(sibling, { dateExpression: '2026-10-10' });
+    expect(validateWeeklyPlanningFactGraphValueV5(f.graph).graph).not.toBeNull();
     expect(basis()?.candidates).toHaveLength(7);
   });
   it('distinguishes fixed clock/polarity/calendar/source targets using the same reply', () => {
