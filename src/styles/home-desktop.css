@@ -62,11 +62,6 @@
     height: 18px;
   }
 
-  .home-main > .home-dashboard-default .home-empty-copy {
-    font-size: 0.875rem;
-    line-height: 1.5;
-  }
-
   .home-main > .home-dashboard-default .home-study-scene { width: 38%; }
 
   .home-main > .home-dashboard-default .home-actions {

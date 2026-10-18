@@ -104,10 +104,6 @@
   color: #fff;
 }
 
-.app-action-toolbar {
-  justify-content: flex-end;
-}
-
 .daily-add-fab {
   position: fixed;
   right: max(18px, calc((100vw - 1440px) / 2 + 24px));
@@ -235,12 +231,6 @@
   width: 100%;
 }
 
-.app-header .brand-lockup {
-  justify-content: flex-start;
-  width: auto;
-  flex: 1 1 auto;
-}
-
 .brand-mark {
   width: 76px;
   height: 76px;
@@ -274,20 +264,6 @@
 .week-range-chip {
   font-size: 0.84rem;
   white-space: nowrap;
-}
-
-.date-picker-trigger {
-  border: 1px solid color-mix(in srgb, var(--accent) 12%, transparent);
-  font: inherit;
-  font-size: 0.84rem;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.date-picker-trigger:hover {
-  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent-strong);
 }
 
 .user-avatar {

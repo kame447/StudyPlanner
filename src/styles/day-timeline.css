@@ -228,10 +228,6 @@
   border-radius: 4px;
 }
 
-.timeline-legend-plan {
-  display: none;
-}
-
 .timeline-plan-block,
 .timeline-actual-block {
   position: absolute;
@@ -360,10 +356,6 @@
   font-size: 0.78rem;
 }
 
-.timeline-subject-line {
-  font-weight: 600;
-}
-
 .timeline-entry-line {
   display: flex;
   gap: 5px;
@@ -483,45 +475,11 @@
   }
 }
 
-.timeline-chip {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: var(--timeline-chip-size);
-  font-weight: 700;
-}
-
-.timeline-chip.neutral {
-  background: var(--timeline-neutral-chip-bg);
-  color: var(--timeline-neutral-chip-text);
-}
-
-.timeline-chip-short {
-  display: none;
-}
-
-.progress-card {
-  display: grid;
-  gap: 10px;
-  padding: 16px;
-  border-radius: 18px;
-  background: var(--progress-card-background);
-  border: 1px solid var(--border);
-}
-
 .progress-track {
   height: 10px;
   border-radius: 999px;
   overflow: hidden;
   background: var(--progress-track-background);
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #50af88, #206c68);
 }
 
 .daily-detail-modal img,

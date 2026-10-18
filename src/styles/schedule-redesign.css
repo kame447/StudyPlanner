@@ -12,45 +12,6 @@
   background: var(--surface);
 }
 
-.schedule-app-header {
-  position: relative;
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) 52px;
-  align-items: center;
-  min-height: 62px;
-  margin: 0 -14px;
-  padding: env(safe-area-inset-top, 0px) 14px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  backdrop-filter: blur(18px);
-  z-index: 4;
-}
-
-.schedule-app-header h1 {
-  margin: 0;
-  font-size: clamp(1.15rem, 3.8vw, 1.45rem);
-  line-height: 1;
-  text-align: center;
-  letter-spacing: 0.02em;
-}
-
-.schedule-back-button,
-.schedule-header-spacer {
-  width: 44px;
-  height: 44px;
-}
-
-.schedule-back-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 0;
-  border-radius: 14px;
-  background: transparent;
-  color: var(--text);
-}
-
 .schedule-toolbar {
   position: relative;
   z-index: 3;
@@ -282,11 +243,6 @@
 /* Month ------------------------------------------------------------------- */
 .schedule-month-view {
   padding: 0 !important;
-}
-
-.schedule-month-view .month-pager-viewport {
-  border: 0;
-  border-radius: 0;
 }
 
 .schedule-month-view .month-grid {
@@ -926,11 +882,6 @@
 
 @media (max-width: 640px) {
   .schedule-workspace-shell {
-    padding-inline: 12px;
-  }
-
-  .schedule-app-header {
-    margin-inline: -12px;
     padding-inline: 12px;
   }
 

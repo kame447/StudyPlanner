@@ -48,30 +48,6 @@
   white-space: nowrap;
 }
 
-.month-pager-viewport {
-  overflow: hidden;
-  width: 100%;
-  min-width: 0;
-  touch-action: pan-y;
-}
-
-.month-pager-track {
-  display: flex;
-  align-items: stretch;
-  width: 100%;
-  will-change: transform;
-}
-
-.month-pager-track.is-animated {
-  transition: transform 260ms cubic-bezier(0.2, 0, 0, 1);
-}
-
-.month-pager-track.is-dragging {
-  transition: none;
-  cursor: grabbing;
-  user-select: none;
-}
-
 .month-pager-panel {
   flex: 0 0 100%;
   min-width: 100%;
@@ -265,13 +241,6 @@
 .month-event-more {
   font-size: 0.8rem;
   color: var(--text-muted);
-}
-
-.today-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--accent);
 }
 
 

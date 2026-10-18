@@ -139,11 +139,6 @@
     border-radius: 10px;
   }
 
-  .timeline-chip {
-    padding: 1px 5px;
-    font-size: 0.58rem;
-  }
-
   .timeline-legend {
     display: none !important;
   }

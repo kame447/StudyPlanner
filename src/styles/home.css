@@ -182,25 +182,6 @@
   height: 34px;
 }
 
-.home-notification-badge {
-  position: absolute;
-  z-index: 3;
-  top: -7px;
-  right: -5px;
-  min-width: 19px;
-  height: 19px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 5px;
-  border: 2px solid #fff;
-  border-radius: 999px;
-  background: #ef3040;
-  color: #fff;
-  font-size: 0.61rem;
-  font-weight: 900;
-}
-
 /* Shared card surfaces ---------------------------------------------- */
 
 .home-next-card,
@@ -263,14 +244,6 @@
   width: 16px;
   height: 16px;
   color: #415779;
-}
-
-.home-empty-copy {
-  max-width: 280px;
-  margin: 0;
-  color: var(--home-muted);
-  font-size: 0.75rem;
-  line-height: 1.5;
 }
 
 .home-study-scene {
@@ -582,12 +555,6 @@
   color: #8090a7;
   text-align: center;
   font-size: 0.6rem;
-}
-
-.home-schedule-date-label {
-  color: #8996a8;
-  font-size: 0.58rem;
-  font-weight: 700;
 }
 
 /* Alerts ------------------------------------------------------------- */
