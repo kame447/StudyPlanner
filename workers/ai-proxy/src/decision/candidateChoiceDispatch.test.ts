@@ -118,23 +118,32 @@ describe('generic Choice provider validation and dispatch accounting', () => {
       const root = response(); root.answers.candidate = { ...root.answers.candidate, choice, probabilities };
       return evaluateCandidateChoice({ firebaseUid: 'fixture-owner', context: { purpose: 'candidate_choice', request: choiceRequest() }, env, transport: async () => Response.json(root) });
     };
-    it.each([[0.99, { 'leaf:0': 0.9, none: 0.09 }], [1.01, { 'leaf:0': 0.9, none: 0.11 }]])('accepts a %s-sum vector with the same argmax', async (_sum, probabilities) => {
-      const result = await run(probabilities);
+    it('1.01 sum: scaled down, argmax kept, top and margin only shrink', async () => {
+      const result = await run({ 'leaf:0': 0.9, none: 0.11 });
       expect(result).toMatchObject({ status: 'evaluated', optionId: 'leaf:0' });
       if (result.status !== 'evaluated') return;
+      expect(result.probabilities[0].probability).toBeLessThan(0.9);
       expect(result.probabilities.reduce((t, p) => t + p.probability, 0)).toBeCloseTo(1, 12);
-      expect(result.probabilities[0].probability).toBeGreaterThan(result.probabilities[1].probability);
+    });
+    it('0.99 sum: missing mass goes to the runner-up, selected probability is never raised', async () => {
+      const result = await run({ 'leaf:0': 0.89, none: 0.1 });
+      expect(result).toMatchObject({ status: 'evaluated', optionId: 'leaf:0' });
+      if (result.status !== 'evaluated') return;
+      expect(result.probabilities[0].probability).toBe(0.89);
+      expect(result.probabilities[1].probability).toBeCloseTo(0.11, 12);
     });
     it('leaves an exact vector byte-identical', async () => {
       const result = await run({ 'leaf:0': 0.9, none: 0.1 });
       expect(result).toMatchObject({ probabilities: [{ probability: 0.9 }, { probability: 0.1 }] });
     });
-    it('still rejects out-of-tolerance sums with the provider reason', async () => {
-      expect(await run({ 'leaf:0': 0.9, none: 0.13 })).toEqual({ status: 'unavailable', reason: 'invalid_response' });
-      expect(await run({ 'leaf:0': 0.9, none: 0.07 })).toEqual({ status: 'unavailable', reason: 'invalid_response' });
+    it('rejects sums outside the rounding tolerance for the menu size with the provider reason', async () => {
+      for (const none of [0.13, 0.07, 0.12, 0.08]) {
+        expect(await run({ 'leaf:0': 0.9, none })).toEqual({ status: 'unavailable', reason: 'invalid_response' });
+      }
     });
-    it('keeps a tie a tie (the gate still abstains on it)', async () => {
-      const tied = await run({ 'leaf:0': 0.495, none: 0.495 });
+    it('a repair that overtakes the selected option is rejected with the dispatch reason; a tie stays a tie for the gate to abstain on', async () => {
+      expect(await run({ 'leaf:0': 0.495, none: 0.495 })).toEqual({ status: 'unavailable', reason: 'invalid_dispatch_response' });
+      const tied = await run({ 'leaf:0': 0.5, none: 0.49 });
       expect(tied.status === 'evaluated' && tied.probabilities[0].probability === tied.probabilities[1].probability).toBe(true);
     });
   });

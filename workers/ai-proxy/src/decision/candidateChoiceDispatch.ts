@@ -53,7 +53,8 @@ export async function evaluateCandidateChoice(params: {
     return { status: 'unavailable', reason: result.reason };
   }
   // Provider-structural rejection keeps 'invalid_response'; contract rejection below is a distinct count-only reason.
-  const normalized = renormalizeRoundedProbabilities(r.menu.options.map(o => result.probabilities[o.id]));
+  const normalized = renormalizeRoundedProbabilities(r.menu.options.map(o => result.probabilities[o.id]),
+    r.menu.options.findIndex(o => o.id === result.decision));
   if (!normalized) return { status: 'unavailable', reason: 'invalid_dispatch_response' };
   const response = {
     status: 'evaluated' as const, catalogVersion: CANDIDATE_CHOICE_CATALOG_VERSION,
