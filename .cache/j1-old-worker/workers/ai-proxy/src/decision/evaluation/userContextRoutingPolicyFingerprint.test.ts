@@ -1,0 +1,36 @@
+import { describe, expect, it } from 'vitest';
+import holdoutSeal from './evidence/user-context-routing-holdout-20260927.json';
+import {
+  userContextRoutingPolicyFingerprints,
+} from './userContextRoutingPolicyFingerprint';
+import { userContextRoutingCorpus } from './userContextRoutingCorpus';
+
+describe('user-context routing policy fingerprints', () => {
+  it('fingerprints the sealed catalog, gate and complete corpus', async () => {
+    const fingerprints = await userContextRoutingPolicyFingerprints();
+    expect(fingerprints).toEqual({
+      catalogSha256: 'c3a284e53846d229f1932cae34acf00efc98f266986100ba4efed60aac0bdc4e',
+      gateSha256: '7b115cc323bd0a7916ce37c78a2406ffa42645d46d33bb1ec83cd92dfb69057b',
+      corpusSha256: '0a1a19be935a77dd9a4bda19f8a30e453dc00c4c1c77e637b56e8d9ae64510e6',
+    });
+  });
+
+  it('keeps the consumed holdout aligned with the frozen policy and corpus', async () => {
+    const fingerprints = await userContextRoutingPolicyFingerprints();
+    const holdout = userContextRoutingCorpus('holdout');
+    expect(holdoutSeal).toMatchObject({
+      status: 'consumed',
+      createdBeforeTuning: true,
+      consumed: true,
+      caseCount: holdout.length,
+      conversationGroupCount: new Set(holdout.map((item) => item.conversationGroupId)).size,
+      policy: fingerprints,
+      rawTextIncluded: false,
+      summary: { caseCount: holdout.length },
+      results: null,
+    });
+    expect(holdoutSeal.caseCount).toBe(64);
+    expect(holdoutSeal.cases).toHaveLength(64);
+    expect(JSON.stringify(holdoutSeal)).not.toContain('currentUserText');
+  });
+});

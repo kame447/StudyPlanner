@@ -1,0 +1,137 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  classifyAiProxyMetricStatus,
+  describeAiProxyOperation,
+  observeAiProxyRequest,
+  resolveAiProxyMetricCorrelation,
+} from './aiProxyRequestObserver';
+
+describe('AI proxy request observer', () => {
+  it('resolves the actual purpose-routed chat model', () => {
+    expect(describeAiProxyOperation('/chat/completions', {
+      purpose: 'weekly_planning_semantic_normalizer',
+      model: 'ignored-client-model',
+      messages: [{ role: 'user', content: 'initial' }],
+    }, {})).toEqual({
+      operationKind: 'chat_completion',
+      provider: 'openai',
+      purpose: 'weekly_planning_semantic_normalizer',
+      phase: 'initial',
+      model: 'gpt-6-luna',
+    });
+  });
+
+  it('describes attachment, transcription and timetable routes without user content', () => {
+    expect(describeAiProxyOperation('/planning-attachment', null, {})).toEqual({
+      operationKind: 'planning_attachment',
+      provider: 'openai',
+      purpose: 'weekly_planning_attachment',
+      phase: 'single',
+      model: 'gpt-6-luna',
+    });
+    expect(describeAiProxyOperation('/planning-transcription', null, {
+      OPENAI_TRANSCRIPTION_MODEL: 'gpt-test-transcribe',
+    })).toEqual({
+      operationKind: 'planning_transcription',
+      provider: 'openai',
+      purpose: 'planning_transcription',
+      phase: 'single',
+      model: 'gpt-test-transcribe',
+    });
+    expect(describeAiProxyOperation('/timetable-ocr', null, {
+      GEMINI_MODEL: 'gemini-3.5-flash',
+    })).toEqual({
+      operationKind: 'timetable_ocr',
+      provider: 'gemini',
+      purpose: 'timetable_ocr',
+      phase: 'single',
+      model: 'gemini-3.5-flash',
+    });
+  });
+
+  it('classifies only provider/quota outcomes and ignores request validation failures', () => {
+    expect(classifyAiProxyMetricStatus(200, {})).toBe('success');
+    expect(classifyAiProxyMetricStatus(429, {})).toBe('quota_rejected');
+    expect(classifyAiProxyMetricStatus(502, { error: 'response content was empty' }))
+      .toBe('empty_response');
+    expect(classifyAiProxyMetricStatus(502, { error: 'response could not be parsed' }))
+      .toBe('invalid_response');
+    expect(classifyAiProxyMetricStatus(502, { error: 'OpenAI request failed.' }))
+      .toBe('provider_error');
+    expect(classifyAiProxyMetricStatus(500, {})).toBe('unknown_failure');
+    expect(classifyAiProxyMetricStatus(500, {}, 'network')).toBe('network_failure');
+    expect(classifyAiProxyMetricStatus(500, {}, 'cancelled')).toBe('cancelled');
+    expect(classifyAiProxyMetricStatus(500, {}, 'timeout')).toBe('timeout');
+    expect(classifyAiProxyMetricStatus(400, {})).toBeNull();
+    expect(classifyAiProxyMetricStatus(401, {})).toBeNull();
+  });
+
+  it('adds parent turn correlation only after Jev actually runs', () => {
+    const decisionContext = {
+      purpose: 'focused_authorization', requestId: 'turn-request-12345678', inputRevision: 7,
+      previousStatus: 'needs_scope', hasTasks: true, hasPendingQuestion: false,
+      state: { currentUserText: 'この条件で案を作って', lastAssistantMessage: '案を作りますか？' },
+    };
+    expect(resolveAiProxyMetricCorrelation({ decisionContext })).toBeUndefined();
+    expect(resolveAiProxyMetricCorrelation({ decisionContext }, 'shadow')).toEqual({
+      requestId: 'turn-request-12345678', stateRevision: 7,
+    });
+    expect(resolveAiProxyMetricCorrelation({
+      decisionContext: { ...decisionContext, hasPendingQuestion: true },
+    }, 'shadow')).toBeUndefined();
+  });
+
+  it('correlates the bounded contextual purpose without accepting unknown fields', () => {
+    const decisionContext = {
+      purpose: 'focused_contextual_answer',
+      requestId: 'turn-contextual-12345678',
+      inputRevision: 11,
+      questionCode: 'quantity_role_unresolved',
+      state: {
+        currentUserText: '残りです。',
+        pendingQuestion: {
+          targetQuantityRole: 'declared',
+          questionBasis: null,
+          hasEstimateTarget: false,
+        },
+      },
+    };
+    expect(resolveAiProxyMetricCorrelation({ decisionContext }, 'canary')).toEqual({
+      requestId: 'turn-contextual-12345678',
+      stateRevision: 11,
+    });
+    expect(resolveAiProxyMetricCorrelation({
+      decisionContext: { ...decisionContext, model: 'client-controlled-model' },
+    }, 'canary')).toBeUndefined();
+  });
+
+  it('does not authenticate or persist anything when observability is unconfigured', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await observeAiProxyRequest({
+        request: new Request('https://proxy.example/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer test-token' },
+          body: JSON.stringify({
+            purpose: 'weekly_planning_renderer',
+            messages: [{ role: 'user', content: 'render' }],
+          }),
+        }),
+        response: new Response(JSON.stringify({ content: 'ok' }), { status: 200 }),
+        env: {
+          FIREBASE_PROJECT_ID: 'project',
+          FIREBASE_SERVICE_ACCOUNT_EMAIL: 'service@example.com',
+          FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'private',
+          FIREBASE_WEB_API_KEY: 'firebase-key',
+          OBSERVABILITY_IDENTITY_SECRET: 'short',
+        },
+        startedAtMs: 0,
+        occurredAt: '2026-08-28T00:00:00.000Z',
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

@@ -168,13 +168,14 @@ it('reopening the same or another event replaces the ring and cancels the previo
   expect(menu().props['data-schedule-action-key']).toBe('plan-b');
   act(() => items()[1].props.onClick(click())); expect(props.onSelect).toHaveBeenLastCalledWith('edit', 'b');
 });
-it('defines spatial, opacity-only and instant CSS policies plus a device guard', () => {
+it('defines spatial, opacity-only and instant CSS policies and leaves the device setting to the motion owner', () => {
   const css = readFileSync(new URL('./ScheduleItemRadialMenu.css', import.meta.url), 'utf8');
   expect(css).toContain('border-radius: 50%');
   expect(css).toMatch(/schedule-radial-pop 220ms/); expect(css).toMatch(/scale\(\.4\)/); expect(css).toMatch(/scale\(1\.08\)/);
   expect(css).toMatch(/data-motion="reduced"[^}]+schedule-radial-fade 100ms[^}]+animation-delay: 0ms/s);
   expect(css).toMatch(/data-motion="off"[^}]+animation: none/s);
-  expect(css).toContain('@media (prefers-reduced-motion: reduce)');
+  // The device reduced-motion preference is folded into data-motion by lib/motionPreference.ts only.
+  expect(css).not.toContain('prefers-reduced-motion');
   expect(css).toContain('calc(var(--z-modal-overlay, 1000) - 1)');
   expect(css).toContain('env(safe-area-inset-top, 0px)');
 });

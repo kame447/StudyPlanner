@@ -355,7 +355,7 @@ function LongPressHarness() {
 }
 it('allows a second long-press deletion while the dismissed first deletion is pending', async () => {
   vi.useFakeTimers();
-  vi.stubGlobal('window', { setTimeout, clearTimeout, addEventListener() {}, removeEventListener() {} });
+  vi.stubGlobal('window', { setTimeout, clearTimeout, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; }, innerWidth: 390, innerHeight: 844 });
   vi.stubGlobal('document', {
     querySelectorAll: () => ({ length: 1, item: () => ({}) }),
     addEventListener() {}, removeEventListener() {},
@@ -379,9 +379,11 @@ it('allows a second long-press deletion while the dismissed first deletion is pe
     expect(renderer!.root.findAllByType('button')).toHaveLength(6);
     uiDone = undefined;
     await act(async () => {
-      renderer!.root.findByProps({ role: 'menuitem', children: '削除' }).props.onClick({ preventDefault() {}, stopPropagation() {} });
+      renderer!.root.findByProps({ role: 'menuitem', 'aria-label': '削除' }).props.onClick({ preventDefault() {}, stopPropagation() {} });
     });
     expect(actionPress.activeAction).toBeNull();
+    // The dismissed ring keeps a short non-interactive close animation.
+    await act(async () => { vi.advanceTimersByTime(200); });
     expect(renderer!.root.findAllByType('button')).toHaveLength(0);
     expect(gate.entries).toBe(1);
     expect(gate.writes).toBe(0);
