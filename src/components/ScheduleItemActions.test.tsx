@@ -47,7 +47,12 @@ function setup(kind: 'day' | 'week', actuals: Actual[] = [], extra: Partial<Comp
     onLinkStandaloneActualToPlan: vi.fn(async () => undefined), onDeleteActual: vi.fn(async () => undefined), onChangeDay: vi.fn(), onChangeWeek: vi.fn() };
   const dayProps: ComponentProps<typeof DayView> = { ...callbacks, selectedDate: plan.date, userId: plan.userId, plans: [plan], actuals, monthEvents: [],
     studySubjects: [], studyMaterials: [], scheduleTemplates: [], timetableTermId: '', onSavePlan: vi.fn(async () => undefined), onOpenBookshelf: noop, onOpenAddMaterial: noop, ...extra };
-  act(() => { renderer = create(kind === 'day' ? <DayView {...dayProps} /> : <WeekView {...dayProps} onChangeWeek={callbacks.onChangeWeek} onOpenDay={callbacks.onChangeDay} onOpenPlan={callbacks.onEditPlan} />); });
+  const tree = () => kind === 'day' ? <DayView {...dayProps} /> : <WeekView {...dayProps} onChangeWeek={callbacks.onChangeWeek} onOpenDay={callbacks.onChangeDay} onOpenPlan={callbacks.onEditPlan} />;
+  act(() => { renderer = create(tree()); });
+  function update(patch: Partial<ComponentProps<typeof DayView>>) {
+    Object.assign(dayProps, patch);
+    act(() => { renderer!.update(tree()); });
+  }
   const occurrence = createScheduleOccurrenceProjection({ ownerId: plan.userId, plans: dayProps.plans, monthEvents: dayProps.monthEvents, scheduleTemplates: dayProps.scheduleTemplates, timetableTermId: dayProps.timetableTermId, startDate: plan.date, endDate: plan.date }).occurrences[0];
   const element = new FakeElement(occurrence.id);
   const section = () => renderer!.root.findAllByType('section').find(node => node.props.onTouchStartCapture)!;
@@ -60,7 +65,7 @@ function setup(kind: 'day' | 'week', actuals: Actual[] = [], extra: Partial<Comp
     });
   }
   const select = async (label: string) => { await act(async () => { renderer!.root.findAllByProps({ role: 'menuitem' }).find(node => node.children.includes(label))!.props.onClick(); }); };
-  return { callbacks, open, select, section, event, dayProps, occurrence };
+  return { callbacks, open, select, section, event, dayProps, occurrence, update };
 }
 describe.each(['day', 'week'] as const)('%s radial wiring', kind => {
   it.each(['hold', 'context', 'keyboard'] as const)('%s opens exactly six actions in order', mode => {
@@ -180,7 +185,60 @@ describe.each(['day', 'week'] as const)('%s radial wiring', kind => {
     act(() => { vi.advanceTimersByTime(1); });
     expect(renderer!.root.findAllByProps({ role: 'status' })).toHaveLength(0);
   });
-  it('preserves tap behavior' , () => {
+  it.each(['moved', 'excluded', 'time-changed'] as const)('dismisses a %s stale menu and rejects even a retained selection callback', async change => {
+    const ui = setup(kind); ui.open();
+    const retainedSelect = renderer!.root.findByType(ScheduleItemRadialMenu).props.onSelect;
+    const changed = { ...plan, ...(change === 'moved' ? { date: '2026-10-06' }
+      : change === 'excluded' ? { excludedDates: [plan.date] } : { startTime: '10:30' }) };
+    ui.update({ plans: [changed] });
+    expect(renderer!.root.findByType(ScheduleItemRadialMenu).props.action).toBeNull();
+    expect(renderer!.root.findByProps({ role: 'status' }).children.join('')).toContain('予定が変更されました');
+    for (const id of ['complete', 'actual', 'duplicate', 'edit', 'move', 'delete']) {
+      await act(async () => { await retainedSelect(id, ui.occurrence); });
+    }
+    for (const callback of [ui.callbacks.onSaveActual, ui.callbacks.onDeletePlan, ui.callbacks.onEditPlan, ui.callbacks.onDuplicatePlan, ui.callbacks.onMovePlan]) {
+      expect(callback).not.toHaveBeenCalled();
+    }
+    expect(renderer!.root.findAllByType(ScheduleMoveDialog)).toHaveLength(0);
+  });
+  it('disables month-event edit with the existing month-view route and rejects stale month times', async () => {
+    const event = { id: 'e', userId: 'owner', date: plan.date, title: '行事', startTime: '12:00', endTime: '13:00', repeat: 'none' as const,
+      repeatUntil: null, excludedDates: [], memo: '', url: '', checklist: [], locationTags: [], createdAt: '', updatedAt: '' };
+    const ui = setup(kind, [], { plans: [], monthEvents: [event] }); ui.open();
+    const menu = renderer!.root.findByType(ScheduleItemRadialMenu);
+    expect(menu.props.actions.find((action: { id: string }) => action.id === 'edit').disabledReason).toBe('主要予定は月表示から編集してください');
+    await act(async () => { await menu.props.onSelect('edit', ui.occurrence); });
+    expect(renderer!.root.findAllByProps({ role: 'dialog' })).toHaveLength(0);
+    const retainedSelect = menu.props.onSelect;
+    ui.update({ monthEvents: [{ ...event, startTime: '15:00', endTime: '16:00' }] });
+    expect(renderer!.root.findByType(ScheduleItemRadialMenu).props.action).toBeNull();
+    await act(async () => { await retainedSelect('complete', ui.occurrence); });
+    expect(ui.callbacks.onSaveActual).not.toHaveBeenCalled();
+    ui.open(); await ui.select('完了');
+    expect(ui.callbacks.onSaveActual).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ actualStartTime: '15:00', actualEndTime: '16:00' }));
+  });
+  it.each([true, false])('an old pending move cannot close or alter a newer dialog after context change (success=%s)', async success => {
+    const ui = setup(kind); ui.open(); await ui.select('移動');
+    let resolveOld!: () => void; let rejectOld!: (error: Error) => void;
+    ui.callbacks.onMovePlan.mockImplementationOnce(() => new Promise<undefined>((resolve, reject) => { resolveOld = () => resolve(undefined); rejectOld = reject; }));
+    const oldDialog = renderer!.root.findByType(ScheduleMoveDialog);
+    const oldClose = oldDialog.props.onClose;
+    let oldMove!: Promise<void>;
+    act(() => { oldMove = oldDialog.findByType('form').props.onSubmit({ preventDefault: noop }); });
+    const next = { ...plan, id: 'next', seriesId: 'next', date: '2026-10-06' };
+    ui.update({ selectedDate: next.date, plans: [next] });
+    const occurrence = createScheduleOccurrenceProjection({ ownerId: plan.userId, startDate: next.date, endDate: next.date, plans: [next] }).occurrences[0];
+    await act(async () => { await renderer!.root.findByType(ScheduleItemRadialMenu).props.onSelect('move', occurrence); });
+    const newer = renderer!.root.findByType(ScheduleMoveDialog);
+    expect(newer.props.plan.id).toBe('next');
+    act(() => { oldClose(); });
+    expect(renderer!.root.findByType(ScheduleMoveDialog).props.plan.id).toBe('next');
+    await act(async () => { if (success) resolveOld(); else rejectOld(Error('old failure')); await oldMove; });
+    expect(renderer!.root.findByType(ScheduleMoveDialog).props.plan.id).toBe('next');
+    expect(renderer!.root.findAllByProps({ role: 'alert' })).toHaveLength(0);
+    expect(renderer!.root.findByType(ScheduleMoveDialog).findAllByType('input').some(input => input.props.disabled)).toBe(false);
+  });
+  it('preserves tap behavior'  , () => {
     const ui = setup(kind);
     if (kind === 'day') act(() => renderer!.root.findByType(DayTimeline).props.onSelectEntry({ kind: 'plan', id: plan.id }));
     else act(() => renderer!.root.findAllByType('button').find(node => node.props.className?.includes('schedule-week-plan-button'))!.props.onClick(ui.event()));

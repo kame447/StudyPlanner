@@ -899,13 +899,14 @@ export function WeekView({
   }
 
   const radialActions = useScheduleOccurrenceActions({
+    occurrences: scheduleProjection.occurrences, activeOccurrence: scheduleAction.activeAction?.item, onDismissMenu: scheduleAction.dismiss,
     contextKey: recordContext, viewedDate: selectedDate, plans, monthEvents, actuals,
     onEditPlan: onOpenPlan, onDuplicatePlan, canMove: Boolean(onMovePlan),
     canDelete: occurrence => occurrence.source.backingKind !== 'timetable-template' && Boolean(onDeletePlan && onDeleteMonthEvent),
     onDelete: handleDeleteOccurrence, onSaveActual, getActualActionBlockReason, onPrepareTimetableRecord,
     onOpenPreparedRecord: plan => setRecordSelection({ plan, record: true, context: recordContext }),
     onOpenDetail: (occurrence, record) => {
-      const plan = resolveScheduleActionPlan(occurrence, plans, monthEvents, selectedDate);
+      const plan = resolveScheduleActionPlan(occurrence, plans, monthEvents, selectedDate, scheduleProjection.occurrences);
       if (plan) setRecordSelection({ plan, record, context: recordContext });
       else onOpenDay(occurrence.start.date);
     },
@@ -1250,7 +1251,7 @@ export function WeekView({
         </div>
       </section>
       {dragOverlay}
-      {radialActions.movingPlan ? <ScheduleMoveDialog plan={radialActions.movingPlan} onMove={moveFromDialog} onClose={radialActions.closeMove} /> : null}
+      {radialActions.movingPlan ? <ScheduleMoveDialog key={`${userId}:${selectedDate}:${radialActions.movingPlan.id}`} plan={radialActions.movingPlan} onMove={moveFromDialog} onClose={radialActions.closeMove} /> : null}
       {detailSelection && onSaveActual && onSaveStandaloneActual && onLinkStandaloneActualToPlan && onDeleteActual ? <DayDetailModal
         key={`${recordContext}:${detailSelection.plan.id}:${detailSelection.record}`}
         detailPlan={detailSelection.plan} openRecordInitially={detailSelection.record}
