@@ -2,7 +2,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DayView } from './DayView';
 import { DayTimeline } from './DayTimeline';
-import { ScheduleItemDeleteAction } from './ScheduleItemDeleteAction';
+import { ScheduleItemRadialMenu } from './ScheduleItemRadialMenu';
 import { createScheduleOccurrenceProjection } from '../domain/scheduleOccurrence';
 import type { ComponentProps, ReactNode } from 'react';
 import type { Plan, ScheduleTemplate, TimetableTerm } from '../types/domain';
@@ -241,12 +241,12 @@ it.each(['none', 'weekly'] as const)('uses source-aware confirmation for overnig
   const occurrence = createScheduleOccurrenceProjection({ ownerId: 'owner', plans: props.plans, monthEvents: [],
     scheduleTemplates: [], startDate: props.selectedDate, endDate: props.selectedDate }).occurrences[0];
   mount();
-  const deleteAction = renderer!.root.findByType(ScheduleItemDeleteAction).props.onDelete;
-  await act(async () => { await deleteAction(occurrence); });
+  const deleteAction = renderer!.root.findByType(ScheduleItemRadialMenu).props.onSelect;
+  await act(async () => { await deleteAction('delete', occurrence); });
   expect(confirm).toHaveBeenCalledWith(expect.stringContaining(repeat === 'none' ? '予定を削除しますか？' : 'この回だけ削除しますか？'));
   if (repeat === 'none') expect(confirm.mock.calls[0][0]).not.toMatch(/この回|別の回/);
   expect(remove).not.toHaveBeenCalled();
-  await act(async () => { await deleteAction(occurrence); });
+  await act(async () => { await deleteAction('delete', occurrence); });
   expect(remove).toHaveBeenCalledExactlyOnceWith(occurrence);
 });
 

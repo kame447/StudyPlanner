@@ -1,3 +1,4 @@
+import { isScheduleActionMenuTarget } from '../lib/scheduleItemActions';
 import { scheduleOccurrenceCoversDate, scheduleOccurrenceTimesForDate } from '../lib/weekViewLayout';
 import { entryTimeRangeForDate } from '../lib/entryTimeRange';
 import type { DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
@@ -38,7 +39,10 @@ import { DayTimetableDetailModal } from './DayTimetableDetailModal';
 import { DayTimeline } from './DayTimeline';
 import { DayTimetableImportDialog } from './DayTimetableImportDialog';
 import { MaterialQuickCreateModal } from './MaterialQuickCreateModal';
-import { ScheduleItemDeleteAction } from './ScheduleItemDeleteAction';
+import { ScheduleItemRadialMenu } from './ScheduleItemRadialMenu';
+import { ScheduleMoveDialog } from './ScheduleMoveDialog';
+import { useScheduleOccurrenceActions } from '../hooks/useScheduleOccurrenceActions';
+import { createMonthEventActualPlan } from '../lib/scheduleItemActions';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import type {
   Actual,
@@ -71,6 +75,7 @@ interface DayViewProps {
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onChangeDay: (date: string) => void;
   onEditPlan: (plan: Plan) => void;
+  onDuplicatePlan?: (plan: Plan) => void;
   onMovePlan: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   onDeletePlan: (plan: Plan) => Promise<void>;
   onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
@@ -89,46 +94,10 @@ interface DayViewProps {
 type DayViewModalState =
   | { type: 'closed' }
   | { type: 'timetable-record'; plan: Plan; ownerId: string; viewedDate: string }
-  | { type: 'plan-detail'; planId: string; actualId?: string; actualOccurrenceDate?: string; occurrenceId?: string }
-  | { type: 'month-event-detail'; monthEventId: string; actualId?: string; actualOccurrenceDate?: string; occurrenceId?: string }
+  | { type: 'plan-detail'; planId: string; actualId?: string; actualOccurrenceDate?: string; occurrenceId?: string; record?: boolean }
+  | { type: 'month-event-detail'; monthEventId: string; actualId?: string; actualOccurrenceDate?: string; occurrenceId?: string; record?: boolean }
   | { type: 'timetable-detail'; occurrenceId: string; ownerId: string; viewedDate: string }
   | { type: 'standalone-actual-detail'; actual: Actual };
-
-function createMonthEventActualPlan(
-  monthEvent: MonthEvent,
-  userId: string,
-  occurrenceDate: string,
-): Plan {
-  const memoParts = [
-    monthEvent.memo.trim(),
-    monthEvent.locationTags.length > 0
-      ? `場所タグ: ${monthEvent.locationTags.join(', ')}`
-      : '',
-    monthEvent.url.trim() ? `URL: ${monthEvent.url.trim()}` : '',
-  ].filter(Boolean);
-
-  return {
-    id: monthEvent.id,
-    seriesId: monthEvent.id,
-    userId,
-    title: monthEvent.title,
-    subject: '主要予定',
-    date: occurrenceDate,
-    startTime: monthEvent.startTime,
-    endTime: monthEvent.endTime,
-    repeat: 'none',
-    repeatUntil: null,
-    excludedDates: [],
-    recurrenceRules: [],
-    type: 'other',
-    memo: memoParts.join('\n'),
-    createdAt: monthEvent.createdAt,
-    updatedAt: monthEvent.updatedAt,
-    sourceType: 'manual',
-    sourceId: monthEvent.id,
-    occurrenceDate,
-  };
-}
 
 export function DayView({
   showTimetable = true,
@@ -149,6 +118,7 @@ export function DayView({
   onRemoveWeeklyDraftBlock,
   onChangeDay,
   onEditPlan,
+  onDuplicatePlan,
   onMovePlan,
   onDeletePlan,
   onDeleteMonthEvent,
@@ -173,6 +143,7 @@ export function DayView({
   const [quickMaterial, setQuickMaterial] = useState<StudyMaterial | null>(null);
   const [isTimetableImportOpen, setIsTimetableImportOpen] = useState(false);
   const scheduleAction = useScheduleItemActionPress<ScheduleOccurrence>();
+  const moveWithHistory = useRef<((plan: Plan, target: WeekPlanMoveTarget) => Promise<void>) | null>(null);
   const dayRangeLabel = formatDateLabel(selectedDate);
   const swipeNavigation = useSwipeNavigation({
     onPrevious: () => onChangeDay(addDays(selectedDate, -1)),
@@ -460,11 +431,11 @@ export function DayView({
     const element = target.closest<HTMLElement>('[data-schedule-occurrence-id]');
     const occurrenceId = element?.dataset.scheduleOccurrenceId;
     const occurrence = occurrenceId ? dayOccurrenceById.get(occurrenceId) : undefined;
-    if (occurrence?.source.backingKind === 'timetable-template' && !onDeleteOccurrence) return null;
     return element && occurrence ? { element, occurrence } : null;
   }
 
   function handlePointerDownCapture(event: ReactPointerEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
     if (event.pointerType === 'touch' || event.button !== 0 || !event.isPrimary) return;
     const target = resolveScheduleActionTarget(event.target);
     if (!target) return;
@@ -480,11 +451,13 @@ export function DayView({
   }
 
   function handlePointerMoveCapture(event: ReactPointerEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
     if (event.pointerType === 'touch') return;
     scheduleAction.move(event.clientX, event.clientY);
   }
 
   function handlePointerUpCapture(event: ReactPointerEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
     if (event.pointerType === 'touch') return;
     const target = resolveScheduleActionTarget(event.target);
     if (target) scheduleAction.finish(target.occurrence.id);
@@ -492,6 +465,7 @@ export function DayView({
   }
 
   function handleTouchStartCapture(event: ReactTouchEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
     if (event.touches.length !== 1) return;
     const target = resolveScheduleActionTarget(event.target);
     const touch = event.touches[0];
@@ -508,17 +482,20 @@ export function DayView({
   }
 
   function handleTouchMoveCapture(event: ReactTouchEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
     const touch = event.touches[0];
     if (touch) scheduleAction.move(touch.clientX, touch.clientY);
   }
 
   function handleTouchEndCapture(event: ReactTouchEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
     const target = resolveScheduleActionTarget(event.target);
     if (target) scheduleAction.finish(target.occurrence.id);
     else scheduleAction.cancel();
   }
 
   function handleClickCapture(event: ReactMouseEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
     swipeNavigation.onClickCapture(event);
     if (!scheduleAction.shouldSuppressClick()) return;
     event.preventDefault();
@@ -551,20 +528,57 @@ export function DayView({
     });
   }
 
+  const radialActions = useScheduleOccurrenceActions({
+    contextKey: `${userId}:${selectedDate}`, viewedDate: selectedDate, plans, monthEvents, actuals,
+    onEditPlan, onDuplicatePlan, canMove: true,
+    canDelete: occurrence => occurrence.source.backingKind !== 'timetable-template' || Boolean(onDeleteOccurrence),
+    onDelete: handleDeleteOccurrence, onSaveActual, getActualActionBlockReason, onPrepareTimetableRecord,
+    onOpenPreparedRecord: plan => setModalState({ type: 'timetable-record', plan, ownerId: userId, viewedDate: selectedDate }),
+    onOpenDetail: (occurrence, record) => {
+      if (occurrence.source.backingKind === 'timetable-template') {
+        setModalState({ type: 'timetable-detail', occurrenceId: occurrence.id, ownerId: userId, viewedDate: selectedDate });
+      } else if (occurrence.source.backingKind === 'plan') {
+        setModalState({ type: 'plan-detail', planId: occurrence.source.backingId, occurrenceId: occurrence.id, record });
+      } else {
+        setModalState({ type: 'month-event-detail', monthEventId: occurrence.source.backingId, occurrenceId: occurrence.id, record });
+      }
+    },
+  });
+
   return (
     <section
       className="section-stack swipe-view"
       {...swipeNavigation}
+      onTouchStart={event => { if (!isScheduleActionMenuTarget(event.target)) swipeNavigation.onTouchStart(event); }}
+      onTouchMove={event => { if (!isScheduleActionMenuTarget(event.target)) swipeNavigation.onTouchMove(event); }}
+      onTouchEnd={event => { if (!isScheduleActionMenuTarget(event.target)) swipeNavigation.onTouchEnd(); }}
+      onTouchCancel={event => { if (!isScheduleActionMenuTarget(event.target)) swipeNavigation.onTouchCancel(); }}
       onPointerDownCapture={handlePointerDownCapture}
       onPointerMoveCapture={handlePointerMoveCapture}
       onPointerUpCapture={handlePointerUpCapture}
-      onPointerCancelCapture={scheduleAction.cancel}
+      onPointerCancelCapture={event => { if (!isScheduleActionMenuTarget(event.target)) scheduleAction.cancel(); }}
       onTouchStartCapture={handleTouchStartCapture}
       onTouchMoveCapture={handleTouchMoveCapture}
       onTouchEndCapture={handleTouchEndCapture}
-      onTouchCancelCapture={scheduleAction.cancel}
+      onTouchCancelCapture={event => { if (!isScheduleActionMenuTarget(event.target)) scheduleAction.cancel(); }}
       onClickCapture={handleClickCapture}
+      onContextMenu={event => {
+        const target = resolveScheduleActionTarget(event.target);
+        if (!target) return;
+        event.preventDefault();
+        scheduleAction.open(target.occurrence.id, target.occurrence, target.occurrence.title, target.element);
+      }}
+      onKeyDown={event => {
+        if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+        const target = resolveScheduleActionTarget(event.target);
+        if (!target) return;
+        event.preventDefault();
+        scheduleAction.open(target.occurrence.id, target.occurrence, target.occurrence.title, target.element);
+      }}
     >
+      {radialActions.notice ? <p className={`app-notice print-hide ${radialActions.notice.tone}`} role="status">{radialActions.notice.text}</p> : null}
+      {radialActions.movingPlan ? <ScheduleMoveDialog plan={radialActions.movingPlan} onClose={radialActions.closeMove}
+        onMove={(plan, target) => moveWithHistory.current ? moveWithHistory.current(plan, target) : onMovePlan(plan, target)} /> : null}
       {actualOpenError ? <p className="inline-error" role="alert">{actualOpenError}</p> : null}
       {detailTimetable ? (
         <DayTimetableDetailModal key={detailTimetable.id} occurrence={detailTimetable}
@@ -583,7 +597,8 @@ export function DayView({
       ) : null}
       <DayDetailModal
         detailPlan={selectedDetailPlan}
-        openRecordInitially={modalState.type === 'timetable-record'}
+        key={modalState.type === 'plan-detail' || modalState.type === 'month-event-detail' ? `${modalState.type}:${modalState.record ?? false}:${selectedDetailPlan?.id}` : modalState.type}
+        openRecordInitially={modalState.type === 'timetable-record' || ((modalState.type === 'plan-detail' || modalState.type === 'month-event-detail') && modalState.record)}
         monthEvent={selectedMonthEvent}
         detailActual={selectedDetailActual}
         standaloneActual={selectedStandaloneActual}
@@ -641,6 +656,7 @@ export function DayView({
         )}
         onRemoveWeeklyDraftBlock={onRemoveWeeklyDraftBlock}
         onMovePlan={onMovePlan}
+        registerMoveWithHistory={handler => { moveWithHistory.current = handler; }}
         selectedEntryId={
           selectedTimelineActual ? `actual:${selectedTimelineActual.id}` : detailTimetable
             ? `timetable:${detailTimetable.id}`
@@ -687,9 +703,10 @@ export function DayView({
         onSelectMaterial={setQuickMaterial}
       />
 
-      <ScheduleItemDeleteAction
+      <ScheduleItemRadialMenu
         action={scheduleAction.activeAction}
-        onDelete={handleDeleteOccurrence}
+        actions={radialActions.actionsFor(scheduleAction.activeAction?.item)}
+        onSelect={radialActions.select}
         onDismiss={scheduleAction.dismiss}
       />
     </section>

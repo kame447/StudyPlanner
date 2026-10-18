@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
-import { ScheduleItemDeleteAction } from '../components/ScheduleItemDeleteAction';
+import { ScheduleItemRadialMenu } from '../components/ScheduleItemRadialMenu';
 import {
   createEmptyMonthEventDraft,
   createMonthEventDraftFromEvent,
@@ -336,7 +336,11 @@ let uiDone: Promise<Outcome> | undefined;
 function LongPressHarness() {
   state = usePlannerDataState({ userId: OWNER, showNotice });
   actionPress = useScheduleItemActionPress<ScheduleOccurrence>();
-  return <ScheduleItemDeleteAction action={actionPress.activeAction} onDismiss={actionPress.dismiss} onDelete={occurrence => {
+  return <ScheduleItemRadialMenu action={actionPress.activeAction} onDismiss={actionPress.dismiss} actions={[
+    { id: 'complete', label: '完了' }, { id: 'edit', label: '編集' }, { id: 'duplicate', label: '複製' },
+    { id: 'delete', label: '削除' }, { id: 'actual', label: '実績' }, { id: 'move', label: '移動' },
+  ]} onSelect={(id, occurrence) => {
+    if (id !== 'delete') return;
     const deletion = deleteScheduleOccurrence({
       occurrence,
       plans: state.plans,
@@ -367,14 +371,15 @@ it('allows a second long-press deletion while the dismissed first deletion is pe
     if (!occurrence) throw new Error(`Missing occurrence ${record.id}`);
     await act(async () => {
       actionPress.start(occurrence.id, occurrence, occurrence.title, 'touch', {
-        getBoundingClientRect: () => ({ top: 0, right: 100 }),
+        getBoundingClientRect: () => ({ top: 0, left: 0, right: 100, bottom: 60, width: 100, height: 60 }),
       } as HTMLElement, 0, 0);
       vi.advanceTimersByTime(240);
+      actionPress.finish(occurrence.id);
     });
-    expect(renderer!.root.findAllByType('button')).toHaveLength(1);
+    expect(renderer!.root.findAllByType('button')).toHaveLength(6);
     uiDone = undefined;
     await act(async () => {
-      renderer!.root.findByType('button').props.onClick({ preventDefault() {}, stopPropagation() {} });
+      renderer!.root.findByProps({ role: 'menuitem', children: '削除' }).props.onClick({ preventDefault() {}, stopPropagation() {} });
     });
     expect(actionPress.activeAction).toBeNull();
     expect(renderer!.root.findAllByType('button')).toHaveLength(0);
