@@ -111,6 +111,10 @@ describe('bounded planner read contract model', () => {
     const alphabet: readonly Event[] = ['A', 'B', 'reset', 'success0', 'failure0', 'success1', 'failure1'];
     const reached = new Set<string>();
     let histories = 0;
+    const failures: string[] = [];
+    const mismatch = (context: string, what: string, actual: unknown, expected: unknown) => {
+      if (failures.length < 5) failures.push(`${context}: ${what} ${JSON.stringify(actual)} !== ${JSON.stringify(expected)}`);
+    };
 
     function check(history: readonly Event[]) {
       const authority = new PlannerDataReadAuthority();
@@ -160,7 +164,7 @@ describe('bounded planner read contract model', () => {
             const admitted = entry.id === open;
             const successful = event.startsWith('success');
             const result = successful ? authority.succeed(tokens[slot], stamp) : authority.fail(tokens[slot], stamp);
-            expect(result !== null, context).toBe(admitted);
+            if ((result !== null) !== admitted) mismatch(context, 'admitted', result !== null, admitted);
             if (admitted) {
               open = null;
               health = successful ? 'ok' : 'failed';
@@ -171,19 +175,25 @@ describe('bounded planner read contract model', () => {
         }
         const status = !owner ? 'idle' : health === 'reading' ? 'loading'
           : health === 'ok' ? 'ready' : fullSuccess ? 'stale' : 'unavailable';
-        expect(authority.read(), context).toEqual({ status, ownerId: owner, observedAt: observed, lastSuccessfulAt: fullSuccess });
-        expect(authority.captureProjectionLease()?.acceptedRevision ?? 0, context).toBe(accepted);
+        const read = authority.read();
+        const expectedRead = { status, ownerId: owner, observedAt: observed, lastSuccessfulAt: fullSuccess };
+        const readMatches = Object.keys(read).length === 4
+          && (Object.keys(expectedRead) as (keyof typeof expectedRead)[]).every(key => read[key] === expectedRead[key]);
+        if (!readMatches) mismatch(context, 'read', read, expectedRead);
+        const revision = authority.captureProjectionLease()?.acceptedRevision ?? 0;
+        if (revision !== accepted) mismatch(context, 'acceptedRevision', revision, accepted);
         entries.forEach((entry, slot) => {
-          expect(authority.isCurrent(tokens[slot]), context).toBe(entry.id === open);
-          expect(authority.isOwnerCurrent(tokens[slot]), context).toBe(owner === entry.owner && incarnation === entry.incarnation);
+          if (authority.isCurrent(tokens[slot]) !== (entry.id === open)) mismatch(context, `isCurrent[${slot}]`, !(entry.id === open), entry.id === open);
+          const ownerCurrent = owner === entry.owner && incarnation === entry.incarnation;
+          if (authority.isOwnerCurrent(tokens[slot]) !== ownerCurrent) mismatch(context, `isOwnerCurrent[${slot}]`, !ownerCurrent, ownerCurrent);
         });
         reached.add(JSON.stringify([owner, health, fullSuccess !== null,
           entries.map(entry => [entry.owner, entry.incarnation === incarnation, entry.id === open])]));
       });
       // Every finite prefix can make progress when a fresh current read arrives.
       const recovery = authority.begin(owner ?? 'A', 'drain start');
-      expect(authority.succeed(recovery.token, 'drain success')).toMatchObject({ status: 'ready' });
-      expect(authority.readSnapshot().recovery).toBeNull();
+      if (authority.succeed(recovery.token, 'drain success')?.status !== 'ready') mismatch(history.join(' → '), 'drain', 'not ready', 'ready');
+      if (authority.readSnapshot().recovery !== null) mismatch(history.join(' → '), 'drain recovery', 'present', null);
       histories += 1;
     }
     function explore(prefix: readonly Event[]) {
@@ -191,6 +201,9 @@ describe('bounded planner read contract model', () => {
       for (const event of alphabet) explore([...prefix, event]);
     }
     explore([]);
+    // Plain comparisons in the 84k-step loop keep this within the default timeout
+    // under a loaded full suite; the first few mismatches are reported verbatim.
+    expect(failures).toEqual([]);
     expect(histories).toBe(16_807); // 7^5, every shorter prefix is also checked.
     // Guards against a degenerate exploration; the shape count comes from the ledger alone.
     expect(reached.size).toBe(35);
