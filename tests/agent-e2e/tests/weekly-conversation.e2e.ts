@@ -8,7 +8,7 @@ const vagueRequest = '来週は研究を進めたいけど、内容はまだ決�
 test('smoke: an existing weekly session has a usable accessible composer', async ({ app, screen }) => {
   await app.open('/real-weekly.html');
 
-  const composer = screen.getByRole('textbox');
+  const composer = screen.getByRole('textbox', { name: '週間計画にしたいこと', exact: true });
   const send = screen.getByRole('button', { name: '送信' });
 
   await expect(composer).toBeVisible();
@@ -20,7 +20,7 @@ test('smoke: an existing weekly session has a usable accessible composer', async
 test('smoke: weekly planning conversation accepts one user turn', async ({ app, screen }) => {
   await app.open('/real-weekly.html');
 
-  const composer = screen.getByRole('textbox');
+  const composer = screen.getByRole('textbox', { name: '週間計画にしたいこと', exact: true });
   await expect(composer).toBeVisible();
   await composer.fill(vagueRequest);
   await screen.getByRole('button', { name: '送信' }).click();
@@ -46,7 +46,7 @@ test('smoke: weekly planning conversation accepts one user turn', async ({ app, 
 test('smoke: preview promotion stops at the separate approval gate', async ({ app, screen }) => {
   await app.open('/real-weekly.html?preview=1');
 
-  await screen.getByRole('textbox').fill('来週の予定を立てたい');
+  await screen.getByRole('textbox', { name: '週間計画にしたいこと', exact: true }).fill('来週の予定を立てたい');
   await screen.getByRole('button', { name: '送信' }).click();
   await screen.getByRole('button', { name: '計画プレビューを確認' }).click();
 
