@@ -340,6 +340,20 @@ test.describe('AI composer on desktop', () => {
 
 
 for (const width of [390, 1280]) {
+  test(`exposes the production composer by its accessible name at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await seedConversationAndViewport(page);
+    await page.goto('/');
+    await clickPrimaryNav(page, 'AI計画');
+
+    // The placeholder changes during voice input, so the name must not rely on it.
+    const composer = page.getByRole('textbox', { name: '週間計画にしたいこと', exact: true });
+    await expect(composer).toBeVisible();
+    await expect(composer).toHaveAttribute('placeholder', '予定や目標を入力...');
+    await composer.fill('名前で入力欄を特定できる');
+    await expect(composer).toHaveValue('名前で入力欄を特定できる');
+  });
+
   test(`retains AI draft, attachment and DOM across navigation and settings history at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await seedConversationAndViewport(page); await page.goto('/');
