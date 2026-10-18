@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { captureNumericPendingQuestionDomainV5, isNumericPendingQuestionDomainCurrentV5 } from './weeklyPlanningNumericPendingDomainV5';
 import { numericFixture } from './weeklyPlanningNumericPendingChoiceV5.testUtils';
+import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
 
 function basis() {
   const fixture = numericFixture();
@@ -68,6 +69,92 @@ describe('D5 question-time finite domain', () => {
     fixture.graph.workloads.push({ ...fixture.graph.workloads[0], id: 'second-workload' });
     fixture.graph.factLifecycles.push({ ...fixture.graph.factLifecycles[0], factId: 'second-workload' });
     expect(value.state.pendingTargetCount).toBe(1);
+    expect(captureNumericPendingQuestionDomainV5(value)).toBeNull();
+  });
+  const graphOf = (fixture: ReturnType<typeof basis>['fixture']): WeeklyPlanningFactGraphV5 => fixture.graph;
+  function withSecondWorkload(fixture: ReturnType<typeof basis>['fixture'], patch: Record<string, unknown> = {}) {
+    graphOf(fixture).tasks.push({ ...graphOf(fixture).tasks[0], id: 'task-2', title: '英語' });
+    graphOf(fixture).workloads.push({ ...graphOf(fixture).workloads[0], id: 'second-workload', taskId: 'task-2', ...patch });
+    graphOf(fixture).factLifecycles.push(...['task-2', 'second-workload'].map(factId => ({ ...graphOf(fixture).factLifecycles[0], factId })));
+  }
+  function effort(fixture: ReturnType<typeof basis>['fixture'], id: string, taskId: string, targetFactId: string, status: 'active' | 'superseded' = 'active') {
+    graphOf(fixture).effortEstimates.push({ id, taskId, targetFactId, kind: 'total_duration', minutes: 20, unitCode: null,
+      precision: 'exact', source: graphOf(fixture).tasks[0].source, createdRevision: 2 });
+    graphOf(fixture).factLifecycles.push({ ...graphOf(fixture).factLifecycles[0], factId: id, status, createdRevision: 2,
+      terminalRevision: status === 'active' ? null : 2 });
+  }
+  it.each([
+    ['an active estimate on that workload', (f: ReturnType<typeof basis>['fixture']) => effort(f, 'other-effort', 'task-2', 'second-workload')],
+    ['an active task-level estimate', (f: ReturnType<typeof basis>['fixture']) => effort(f, 'other-effort', 'task-2', 'task-2')],
+  ])('captures one pending target when the other active workload is settled by %s', (_label, settle) => {
+    const { fixture, value } = basis();
+    withSecondWorkload(fixture);
+    settle(fixture);
+    expect(captureNumericPendingQuestionDomainV5(value)).not.toBeNull();
+  });
+  it.each(['minute', 'hour'] as const)('captures one pending target beside an intrinsic %s workload', unitCode => {
+    const { fixture, value } = basis();
+    withSecondWorkload(fixture, { unitCode, unitLabel: unitCode === 'minute' ? '分' : '時間', amount: 30 });
+    expect(captureNumericPendingQuestionDomainV5(value)).not.toBeNull();
+  });
+  it.each([
+    ['has no estimate', () => undefined],
+    ['has only a superseded estimate', (f: ReturnType<typeof basis>['fixture']) => effort(f, 'old-effort', 'task-2', 'second-workload', 'superseded')],
+    ['has an estimate for a different task only', (f: ReturnType<typeof basis>['fixture']) => effort(f, 'foreign-effort', 'task-1', 'second-workload')],
+  ])('rejects a second open target when the other active workload %s', (_label, settle) => {
+    const { fixture, value } = basis();
+    withSecondWorkload(fixture);
+    settle(fixture);
+    expect(captureNumericPendingQuestionDomainV5(value)).toBeNull();
+  });
+  it('rejects a second open workload under the same task', () => {
+    const { fixture, value } = basis();
+    graphOf(fixture).workloads.push({ ...graphOf(fixture).workloads[0], id: 'sibling-workload', unitCode: 'page', unitLabel: 'ページ' });
+    graphOf(fixture).factLifecycles.push({ ...graphOf(fixture).factLifecycles[0], factId: 'sibling-workload' });
+    expect(captureNumericPendingQuestionDomainV5(value)).toBeNull();
+  });
+  function perUnitEffort(fixture: ReturnType<typeof basis>['fixture'], unitCode: 'problem' | 'page') {
+    graphOf(fixture).effortEstimates.push({ id: 'per-unit-effort', taskId: 'task-2', targetFactId: 'second-workload', kind: 'duration_per_unit',
+      minutes: 3, unitCode, precision: 'exact', source: graphOf(fixture).tasks[0].source, createdRevision: 2 });
+    graphOf(fixture).factLifecycles.push({ ...graphOf(fixture).factLifecycles[0], factId: 'per-unit-effort', createdRevision: 2 });
+  }
+  it('treats a sibling as settled only when the planner resolver resolves its matching per-unit estimate', () => {
+    const { fixture, value } = basis();
+    withSecondWorkload(fixture);
+    perUnitEffort(fixture, 'problem');
+    expect(captureNumericPendingQuestionDomainV5(value)).not.toBeNull();
+  });
+  it('rejects a sibling whose only estimate is per-unit in a mismatched unit, which the planner leaves open', () => {
+    const { fixture, value } = basis();
+    withSecondWorkload(fixture);
+    perUnitEffort(fixture, 'page');
+    expect(captureNumericPendingQuestionDomainV5(value)).toBeNull();
+  });
+  it('rejects a sibling whose covering estimates are ambiguous to the planner', () => {
+    const { fixture, value } = basis();
+    withSecondWorkload(fixture);
+    effort(fixture, 'other-effort-a', 'task-2', 'second-workload');
+    effort(fixture, 'other-effort-b', 'task-2', 'second-workload');
+    expect(captureNumericPendingQuestionDomainV5(value)).toBeNull();
+  });
+  it('rejects a scope_total sibling, which the planner never resolves as a planning workload', () => {
+    const { fixture, value } = basis();
+    withSecondWorkload(fixture, { quantityRole: 'scope_total' });
+    effort(fixture, 'other-effort', 'task-2', 'second-workload');
+    expect(captureNumericPendingQuestionDomainV5(value)).toBeNull();
+  });
+  it('re-derives the pending count at answer time when a settled workload loses its estimate', () => {
+    const { fixture, value } = basis();
+    withSecondWorkload(fixture);
+    effort(fixture, 'other-effort', 'task-2', 'second-workload');
+    const snapshot = captureNumericPendingQuestionDomainV5(value)!;
+    expect(isNumericPendingQuestionDomainCurrentV5(snapshot, value)).toBe(true);
+    graphOf(fixture).factLifecycles.find(entry => entry.factId === 'other-effort')!.status = 'superseded';
+    expect(isNumericPendingQuestionDomainCurrentV5(snapshot, value)).toBe(false);
+  });
+  it('never answers a target already covered by a task-level estimate', () => {
+    const { fixture, value } = basis();
+    effort(fixture, 'task-effort', 'task-1', 'task-1');
     expect(captureNumericPendingQuestionDomainV5(value)).toBeNull();
   });
   it('never replaces an existing active effort estimate under a stale missing-effort question', () => {
