@@ -2,6 +2,9 @@ import { bindWeeklyPlanningQuestionPresentation } from '../intake/weeklyPlanning
 import { describe, expect, it } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import { createEmptyWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import { numericFixture } from '../semantic/weeklyPlanningNumericPendingChoiceV5.testUtils';
+import { numericPendingCompleteScopeV5 } from '../semantic/weeklyPlanningNumericPendingScopeV5';
+import { createWeeklyPlanningSemanticPublicStateSummaryV5 } from '../semantic/weeklyPlanningSemanticPublicStateV5';
 import {
   createStableV5SemanticPublicStateSummary,
   stableV5RequestContextForInput,
@@ -244,5 +247,47 @@ describe('Stable V5 semantic public-state question presentation exclusion', () =
       previousState: unbound,
     }).pendingQuestion).toBeNull();
     expect(JSON.stringify(boundSummary)).not.toContain('turn-presentation-sentinel');
+  });
+});
+
+describe('Stable V5 semantic public-state component ancestry', () => {
+  function nestedComponentFixture() {
+    const h = numericFixture();
+    h.graph.components.push(
+      { id: 'component-0', taskId: 'task-1', parentComponentId: null, role: 'material', label: '山地の教材',
+        source: h.graph.tasks[0].source, createdRevision: 2 },
+      { id: 'component-1', taskId: 'task-1', parentComponentId: 'component-0', role: 'chapter', label: '章1',
+        source: h.graph.tasks[0].source, createdRevision: 2 },
+    );
+    Object.assign(h.graph.workloads[0], { componentId: 'component-1' });
+    h.graph.factLifecycles.push(...h.graph.components.map((fact) => ({ factId: fact.id, status: 'active' as const,
+      createdRevision: 2, terminalRevision: null, supersededByFactId: null })));
+    return h;
+  }
+
+  it('projects component ancestry exactly as the semantic public state does', () => {
+    const h = nestedComponentFixture();
+    const application = createStableV5SemanticPublicStateSummary({ graph: h.graph, messages: [] });
+    const semantic = createWeeklyPlanningSemanticPublicStateSummaryV5({ pendingQuestion: null }, h.graph);
+
+    expect(application.components).toEqual(semantic.components);
+    expect(application.components).toEqual([
+      expect.objectContaining({ publicId: 'component-0', parentComponentPublicId: null }),
+      expect.objectContaining({ publicId: 'component-1', parentComponentPublicId: 'component-0' }),
+    ]);
+  });
+
+  it('lets the answer-stage D5 scope accept a component-linked workload from the application projection', () => {
+    const h = nestedComponentFixture();
+    const application = createStableV5SemanticPublicStateSummary({ graph: h.graph, messages: [] });
+    h.input.publicStateSummary = {
+      ...createWeeklyPlanningSemanticPublicStateSummaryV5({ pendingQuestion: h.input.publicStateSummary!.pendingQuestion }, h.graph),
+      components: application.components,
+    };
+
+    expect(numericPendingCompleteScopeV5(h.input)?.componentChain).toEqual([
+      expect.objectContaining({ id: 'component-0', role: 'material' }),
+      expect.objectContaining({ id: 'component-1', role: 'chapter' }),
+    ]);
   });
 });
