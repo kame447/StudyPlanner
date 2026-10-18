@@ -37,9 +37,9 @@ function resolvedEstimate(params: {
   };
 }
 
-export function effortEstimateTargetsWorkload(
-  estimate: EffortEstimateFact,
-  workload: WorkloadFact,
+export function effortEstimateTargetsWorkload<Workload extends Pick<WorkloadFact, 'id' | 'taskId' | 'componentId'>>(
+  estimate: Pick<EffortEstimateFact, 'taskId' | 'targetFactId'>,
+  workload: Workload,
 ): boolean {
   return estimate.taskId === workload.taskId
     && (estimate.targetFactId === workload.id

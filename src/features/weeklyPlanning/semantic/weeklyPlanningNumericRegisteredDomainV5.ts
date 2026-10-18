@@ -109,6 +109,11 @@ export function createNumericPendingRegisteredDomainV5(
     domainId: 'd5_numeric',
     questionCode: 'missing_effort_estimate',
     domainPolicyVersion,
+    rejectsCoPresentedFacts({ targetId, facts }) {
+      // An acknowledged sibling quantity or estimate would make a bare minute answer
+      // ambiguous (an estimate or target switch). The target's own task/components/amount are inherent.
+      return facts.some(fact => fact.kind === 'effort_estimate' || (fact.kind === 'workload' && fact.factId !== targetId));
+    },
     capture(context) {
       const evidence = presentingEvidence(context);
       if (!evidence) return null;

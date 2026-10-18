@@ -36,7 +36,8 @@ function groundingFact(
   };
 }
 
-function acceptedFactsForTurn(
+/** Facts accepted by one request; the exact set a recommended acknowledgement may echo. */
+export function weeklyPlanningStableV5AcceptedFactsForTurn(
   graph: WeeklyPlanningFactGraphV5,
   turnId: string,
 ): WeeklyPlanningStableV5DialogueGroundingFact[] {
@@ -144,7 +145,7 @@ export function createWeeklyPlanningStableV5CurrentTurnGrounding(params: {
   currentQuestionCode: string | null;
 }): WeeklyPlanningStableV5DialogueCurrentTurnGrounding {
   if (!params.graph) return { mode: 'none', acceptedFacts: [] };
-  const acceptedFacts = acceptedFactsForTurn(params.graph, params.turnId);
+  const acceptedFacts = weeklyPlanningStableV5AcceptedFactsForTurn(params.graph, params.turnId);
   if (acceptedFacts.length === 0) return { mode: 'none', acceptedFacts: [] };
 
   const sameQuestionStillPending = params.actionKind === 'question'

@@ -107,3 +107,15 @@ describe('D5 real controlled candidate producer', () => {
     expect(domain.capture(stale)).toBeNull();
   });
 });
+
+describe('D5 co-presented facts (question time)', () => {
+  const domain = createNumericPendingRegisteredDomainV5([1, 2, 3], 'fixture-domain-v1');
+  const fact = (kind: string, factId: string) => ({ factId, kind, sourceText: 'source', data: {} }) as never;
+  it.each([
+    ['only its own target, task, component and window', [fact('planning_window', 'window'), fact('task', 'task-1'), fact('component', 'component-1'), fact('workload', 'workload-1')], false],
+    ['a sibling workload in any unit', [fact('workload', 'workload-1'), fact('workload', 'sibling')], true],
+    ['any effort estimate', [fact('workload', 'workload-1'), fact('effort_estimate', 'estimate')], true],
+  ] as const)('rejects capture when the presenting turn accepted %s: %s', (_label, facts, rejected) => {
+    expect(domain.rejectsCoPresentedFacts({ targetId: 'workload-1', facts })).toBe(rejected);
+  });
+});
