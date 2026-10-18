@@ -99,6 +99,20 @@ it('invalidates semantic work synchronously on account switch and sign-out, not 
   });
 });
 
+it.each([true, false])('forgets leftover semantic indexes on first resolved sign-out (auth available: %s)', async available => {
+  fake = createFakeAuthSession({ currentUser: null, available });
+  fixture.profile.mockResolvedValue(null);
+  await mount();
+  if (available) {
+    expect(semanticLifecycle.ownerChanged).not.toHaveBeenCalled();
+    act(() => fake.emit(null));
+  }
+  expect(semanticLifecycle.ownerChanged).toHaveBeenCalledOnce();
+  expect(semanticLifecycle.connect).not.toHaveBeenCalled();
+  act(() => fake.emit(null));
+  expect(semanticLifecycle.ownerChanged).toHaveBeenCalledOnce();
+});
+
 // Keep the actual auth repository and normalization/write path. All SDK calls
 // are fail-closed local doubles; no Firebase service or production data is used.
 const sdk = vi.hoisted(() => ({ read: vi.fn(), write: vi.fn(), persist: vi.fn(), signOut: vi.fn() }));

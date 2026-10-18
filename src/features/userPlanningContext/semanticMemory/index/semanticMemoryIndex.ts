@@ -30,6 +30,20 @@ export interface SemanticMemoryIndexOptions {
   /** Browser adapters are injectable for deterministic, network-free tests. */
   factory?: IDBFactory;
   access?: () => Promise<SemanticMemoryUnavailableReason | null>;
+  /** Application shares this store with model-independent pruning. */
+  store?: SemanticMemoryIndexedDbStore;
+}
+
+/** Hashing and cache pruning never require a pipeline or a Worker. */
+export async function reconcileSemanticMemoryView(store: SemanticMemoryIndexedDbStore,
+  view: SemanticMemoryCanonicalView, guard: () => Promise<void>) {
+  const active = view.records.filter(record => record.ownerId === view.ownerId && record.status === 'active');
+  const fingerprints = new Map(await Promise.all(active.map(async record =>
+    [record.id, await semanticMemoryRecordFingerprint(record)] as const)));
+  const signature = await semanticMemoryHash(JSON.stringify([...fingerprints].sort(([a], [b]) => a.localeCompare(b))));
+  await guard();
+  const reconciled = await store.reconcile(view.revision, signature, fingerprints);
+  return { ...reconciled, active, fingerprints };
 }
 
 function cap(value: number | undefined, fallback: number, maximum: number): number {
@@ -68,7 +82,7 @@ export class SemanticMemoryIndex {
   private readonly store: SemanticMemoryIndexedDbStore;
   private disposed = false;
   constructor(private readonly options: SemanticMemoryIndexOptions) {
-    this.store = new SemanticMemoryIndexedDbStore(options.ownerId, options.embedder.model, options.factory);
+    this.store = options.store ?? new SemanticMemoryIndexedDbStore(options.ownerId, options.embedder.model, options.factory);
   }
 
   private async guard(signal?: AbortSignal): Promise<void> {
@@ -91,13 +105,8 @@ export class SemanticMemoryIndex {
     try {
       await this.guard(signal);
       const view = this.view();
-      const active = view.records.filter((record) => record.ownerId === view.ownerId && record.status === 'active');
-      const fingerprints = new Map(await Promise.all(active.map(async (record) =>
-        [record.id, await semanticMemoryRecordFingerprint(record)] as const)));
-      const signature = await semanticMemoryHash(JSON.stringify([...fingerprints].sort(([a], [b]) => a.localeCompare(b))));
-      await this.guard(signal);
       // Advance the fence/remove obsolete vectors before starting costly cancellable work.
-      const { token, entries } = await this.store.reconcile(view.revision, signature, fingerprints);
+      const { token, entries, active, fingerprints } = await reconcileSemanticMemoryView(this.store, view, () => this.guard(signal));
       const indexedIds = new Set(entries.map((entry) => entry.recordId));
       const missing = active.filter((record) => !indexedIds.has(record.id));
       const work = missing.slice(0, cap(this.options.maxRecordsPerSync, 100, 500));

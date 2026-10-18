@@ -1,12 +1,15 @@
-import type { SemanticMemoryCanonicalView, SemanticMemoryEmbedder, SemanticMemoryRecallResult,
-  SemanticMemoryUnavailableReason } from '../semanticMemoryContract';
-import { eraseAllSemanticMemoryIndexes, semanticMemoryAccess } from '../semanticMemoryOptIn';
-import { SemanticMemoryIndex } from './semanticMemoryIndex';
+import { SemanticMemoryUnavailableError, type SemanticMemoryCanonicalView, type SemanticMemoryEmbedder, type SemanticMemoryRecallResult,
+  type SemanticMemoryUnavailableReason } from '../semanticMemoryContract';
+import { eraseAllSemanticMemoryIndexes, prepareSemanticMemoryOwner, semanticMemoryAccess } from '../semanticMemoryOptIn';
+import { SEMANTIC_MEMORY_MODEL } from '../runtime/model';
+import { SemanticMemoryIndexedDbStore } from './semanticMemoryIndexedDb';
+import { reconcileSemanticMemoryView, SemanticMemoryIndex } from './semanticMemoryIndex';
 
 interface SemanticMemoryApplicationPorts {
   access?: (ownerId: string) => Promise<SemanticMemoryUnavailableReason | null>;
   createEmbedder?: () => Promise<SemanticMemoryEmbedder>;
   erase?: typeof eraseAllSemanticMemoryIndexes;
+  prepare?: typeof prepareSemanticMemoryOwner;
 }
 interface OwnerSession {
   ownerId: string;
@@ -19,6 +22,8 @@ interface OwnerSession {
   opening: Promise<SemanticMemoryIndex | null> | undefined;
   syncing: Promise<void> | undefined;
   syncedRevision: number;
+  resourcesGeneration: number;
+  store: SemanticMemoryIndexedDbStore | undefined;
 }
 
 /** Owns optional cache work; React and prompt callers never manage model/storage lifetimes. */
@@ -27,35 +32,63 @@ export function createSemanticMemoryApplication(ports: SemanticMemoryApplication
   let erasing = Promise.resolve();
   let cleanupFailed = false;
   const access = ports.access ?? semanticMemoryAccess;
-  const dispose = (session: OwnerSession) => {
-    session.active = false;
+  const resetResources = (session: OwnerSession) => {
+    session.resourcesGeneration += 1;
     session.controller?.abort();
     session.index?.dispose();
+    session.store?.dispose();
     void session.embedder?.dispose().catch(() => undefined);
+    session.index = undefined;
+    session.store = undefined;
+    session.embedder = undefined;
+    session.opening = undefined;
+    session.syncedRevision = -1;
+  };
+  const dispose = (session: OwnerSession) => {
+    session.active = false;
+    resetResources(session);
     session.canonical = null;
   };
   const isCurrent = (session: OwnerSession) => current === session && session.active;
+  const allowed = async (session: OwnerSession) => {
+    if (!isCurrent(session)) return false;
+    const reason = await access(session.ownerId);
+    if (reason) resetResources(session);
+    return !reason && isCurrent(session);
+  };
+  const getStore = (session: OwnerSession) => session.store ??=
+    new SemanticMemoryIndexedDbStore(session.ownerId, SEMANTIC_MEMORY_MODEL);
   const getIndex = async (session: OwnerSession): Promise<SemanticMemoryIndex | null> => {
     if (import.meta.env.VITE_SEMANTIC_MEMORY_ENABLED !== 'true') return null;
-    if (!isCurrent(session) || await access(session.ownerId)) return null;
     await erasing;
-    if (!isCurrent(session) || cleanupFailed || await access(session.ownerId)) return null;
-    session.opening ??= (async () => {
+    if (session.store?.revoked) resetResources(session);
+    if (cleanupFailed || !await allowed(session)) return null;
+    const generation = session.resourcesGeneration;
+    const opening = session.opening ??= (async () => {
       const embedder = ports.createEmbedder ? await ports.createEmbedder()
         : (await import('../runtime')).createSemanticMemoryEmbedder({ enabled: true, optedIn: true });
-      if (!isCurrent(session) || await access(session.ownerId)) {
+      if (!await allowed(session) || generation !== session.resourcesGeneration) {
         await embedder.dispose();
         return null;
       }
       session.embedder = embedder;
       session.index = new SemanticMemoryIndex({ ownerId: session.ownerId, embedder,
-        access: () => access(session.ownerId), getCanonicalView: () => {
+        store: getStore(session),
+        access: async () => {
+          const reason = await access(session.ownerId);
+          if (reason) resetResources(session);
+          return reason;
+        }, getCanonicalView: () => {
           if (!isCurrent(session) || !session.canonical) throw new Error('canonical owner scope expired');
           return session.canonical;
         } });
       return session.index;
     })();
-    return session.opening;
+    try { return await opening; }
+    finally {
+      // Creation failure/withdrawn consent is retryable in this session.
+      if (session.opening === opening && !session.index) session.opening = undefined;
+    }
   };
 
   return {
@@ -63,18 +96,28 @@ export function createSemanticMemoryApplication(ports: SemanticMemoryApplication
     ownerChanged() {
       if (current) dispose(current);
       current = undefined;
-      erasing = erasing.catch(() => undefined).then(async () => {
-        cleanupFailed = (await (ports.erase ?? eraseAllSemanticMemoryIndexes)()).status !== 'ok';
+      // Start immediately: erase records its durable marker before any async yield.
+      const started = (ports.erase ?? eraseAllSemanticMemoryIndexes)();
+      erasing = Promise.all([erasing, started]).then(([, result]) => {
+        cleanupFailed = result.status !== 'ok';
       }).catch(() => { cleanupFailed = true; });
     },
     connect(ownerId: string) {
       if (current) dispose(current);
       const session: OwnerSession = { ownerId, active: true, canonical: null, revisionFence: -1,
         controller: undefined, index: undefined, embedder: undefined, opening: undefined,
-        syncing: undefined, syncedRevision: -1 };
+        syncing: undefined, syncedRevision: -1, resourcesGeneration: 0, store: undefined };
       current = session;
+      erasing = erasing.then(async () => {
+        if (isCurrent(session)) {
+          const result = await (ports.prepare ?? prepareSemanticMemoryOwner)(ownerId);
+          cleanupFailed ||= result.status !== 'ok';
+        }
+      }).catch(() => { cleanupFailed = true; });
       return {
         publish(view: SemanticMemoryCanonicalView) {
+          // Flag-OFF still permits startup/owner cleanup, but never copies canonical records.
+          if (import.meta.env.VITE_SEMANTIC_MEMORY_ENABLED !== 'true') return;
           if (!isCurrent(session) || view.ownerId !== ownerId || !Number.isSafeInteger(view.revision)
             || view.revision < 0 || view.revision < session.revisionFence
             || (!session.canonical && view.revision === session.revisionFence)) return;
@@ -87,11 +130,17 @@ export function createSemanticMemoryApplication(ports: SemanticMemoryApplication
           }
           session.revisionFence = view.revision;
           session.canonical = { ...view, records: view.records.map((record) => ({ ...record })) };
-          if (import.meta.env.VITE_SEMANTIC_MEMORY_ENABLED !== 'true') return;
           session.controller?.abort();
           const controller = new AbortController();
           session.controller = controller;
           session.syncing = (async () => {
+            await erasing;
+            if (cleanupFailed || !await allowed(session) || controller.signal.aborted) return;
+            await reconcileSemanticMemoryView(getStore(session), session.canonical!, async () => {
+              if (controller.signal.aborted || !await allowed(session) || controller.signal.aborted) {
+                throw new SemanticMemoryUnavailableError('aborted');
+              }
+            });
             const index = await getIndex(session);
             if (index && isCurrent(session) && !controller.signal.aborted) {
               const result = await index.sync(controller.signal);
