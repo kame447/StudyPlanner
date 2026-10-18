@@ -59,15 +59,26 @@ export function createScheduleEventBackedPlannerRepository(
   legacyRepository: PlannerRepository,
   authorityRepository: ScheduleEventAuthorityRepository,
 ): PlannerRepository {
-  const migrations = new Map<string, Promise<SchedulePersistenceMode>>();
+  // Keep pending migrations shared per owner, even across owner switches: a
+  // second migration could race the first canonical snapshot replacement.
+  const pendingMigrations = new Map<string, Promise<SchedulePersistenceMode>>();
+  let selectedOwner: string | null = null;
+  let completed: { ownerId: string; promise: Promise<SchedulePersistenceMode> } | null = null;
 
   const resolveSchedulePersistenceMode = (
     userId: string,
   ): Promise<SchedulePersistenceMode> => {
-    const current = migrations.get(userId);
-    if (current) return current;
+    // A completed marker must be reconfirmed after another owner's schedule
+    // access, since the bundle's single-owner history evidence is retired.
+    if (selectedOwner !== userId) {
+      selectedOwner = userId;
+      completed = null;
+    }
+    const pending = pendingMigrations.get(userId);
+    if (pending) return pending;
+    if (completed?.ownerId === userId) return completed.promise;
 
-    const migration = authorityRepository
+    const promise = authorityRepository
       .ensureMigrated(userId, async () => {
         const [plans, monthEvents] = await Promise.all([
           legacyRepository.getPlans(userId),
@@ -75,16 +86,21 @@ export function createScheduleEventBackedPlannerRepository(
         ]);
         return { plans, monthEvents };
       })
-      .then(() => 'canonical' as const)
+      .then(() => {
+        if (selectedOwner === userId) completed = { ownerId: userId, promise };
+        return 'canonical' as const;
+      })
       .catch((error: unknown) => {
-        migrations.delete(userId);
         if (error instanceof ScheduleEventMigrationCapabilityUnavailableError) {
           return 'legacy-rollout-compatibility' as const;
         }
         throw error;
+      })
+      .finally(() => {
+        if (pendingMigrations.get(userId) === promise) pendingMigrations.delete(userId);
       });
-    migrations.set(userId, migration);
-    return migration;
+    pendingMigrations.set(userId, promise);
+    return promise;
   };
 
   async function prepareActual(actual: import('../types/domain').Actual) {
