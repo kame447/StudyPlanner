@@ -35,6 +35,7 @@ import {
   layoutWeekSpanningOccurrences,
 } from '../lib/scheduleOccurrencePresentation';
 import { acquireTimelineDragInteractionLock } from '../lib/timelineDragInteractionLock';
+import { SCHEDULE_LONG_PRESS_MS } from '../lib/scheduleGestureTiming';
 import { allowsSpatialMotion } from '../lib/motionPreference';
 import {
   calculateWeekPlanVelocityTilt,
@@ -67,6 +68,7 @@ import type {
 import { DragUndoRedoControls } from './DragUndoRedoControls';
 import { ScheduleItemRadialMenu } from './ScheduleItemRadialMenu';
 import { ScheduleMoveDialog } from './ScheduleMoveDialog';
+import { ScheduleMoveModeBanner } from './ScheduleMoveModeBanner';
 import { DayDetailModal } from './DayDetailModal';
 import { useScheduleOccurrenceActions } from '../hooks/useScheduleOccurrenceActions';
 import { resolveScheduleActionPlan } from '../lib/scheduleItemActions';
@@ -147,6 +149,8 @@ interface DragSession {
   active: boolean;
   canceled: boolean;
   longPressArmed: boolean;
+  /** Lifted by the radial 移動 action: a touch drags on first movement, no hold. */
+  moveArmed: boolean;
   longPressTimer: number | null;
   releaseInteractionLock: (() => void) | null;
   target: WeekPlanMoveTarget;
@@ -170,7 +174,7 @@ interface DragVisualState {
 const WEEK_HOURS = Array.from({ length: 25 }, (_, hour) => hour);
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 const MINUTES_PER_DAY = 24 * 60;
-const TOUCH_LONG_PRESS_MS = 240;
+const TOUCH_LONG_PRESS_MS = SCHEDULE_LONG_PRESS_MS;
 const TOUCH_MOVE_TOLERANCE_PX = 9;
 const POINTER_DRAG_THRESHOLD_PX = 4;
 const DRAG_EDGE_SCROLL_PX = 30;
@@ -468,6 +472,7 @@ export function WeekView({
       active: false,
       canceled: false,
       longPressArmed: false,
+      moveArmed: Boolean(entry.occurrence && entry.occurrence.id === radialActions.armedMove?.occurrenceId),
       longPressTimer: null,
       releaseInteractionLock: null,
       target,
@@ -585,6 +590,7 @@ export function WeekView({
     if (!shouldSave || !onMovePlan) {
       return;
     }
+    if (session.moveArmed) radialActions.closeMove();
 
     if (supportsScopedRecurringPlanEdits(storedPlan)) {
       void onMovePlan(plan, target).catch(() => undefined);
@@ -714,6 +720,10 @@ export function WeekView({
     }
 
     dragSessionRef.current = session;
+    if (session.moveArmed) {
+      // Already lifted for moving: guard native scroll before the first move.
+      session.releaseInteractionLock = acquireTimelineDragInteractionLock();
+    }
     session.longPressTimer = window.setTimeout(() => {
       if (dragSessionRef.current !== session || session.canceled) return;
       if (!session.sourceElement.isConnected) {
@@ -721,7 +731,7 @@ export function WeekView({
         return;
       }
       // The first move must reach a native non-passive guard before React.
-      session.releaseInteractionLock = acquireTimelineDragInteractionLock();
+      session.releaseInteractionLock ??= acquireTimelineDragInteractionLock();
       session.longPressArmed = true;
     }, TOUCH_LONG_PRESS_MS);
   }
@@ -744,7 +754,7 @@ export function WeekView({
         return;
       }
 
-      if (session.longPressArmed) {
+      if (session.longPressArmed || session.moveArmed) {
         activateDrag(session, touch.clientX, touch.clientY);
       } else {
         session.canceled = true;
@@ -1173,6 +1183,8 @@ export function WeekView({
                             <button
                               className={`${blockClassName} schedule-week-plan-button${
                                 dragVisual?.blockId === entry.id ? ' is-drag-source' : ''
+                              }${
+                                entry.occurrence && entry.occurrence.id === radialActions.armedMove?.occurrenceId ? ' is-move-armed' : ''
                               }`}
                               key={entry.id}
                               data-motion-key={`${date}:${entry.id}`}
@@ -1257,6 +1269,8 @@ export function WeekView({
       </section>
       {dragOverlay}
       {radialActions.movingPlan ? <ScheduleMoveDialog key={`${userId}:${selectedDate}:${radialActions.movingPlan.id}`} plan={radialActions.movingPlan} onMove={moveFromDialog} onClose={radialActions.closeMove} /> : null}
+      {radialActions.armedMove ? <ScheduleMoveModeBanner title={radialActions.armedMove.title}
+        onOpenDialog={radialActions.openMoveDialog} onCancel={radialActions.closeMove} /> : null}
       {detailSelection && onSaveActual && onSaveStandaloneActual && onLinkStandaloneActualToPlan && onDeleteActual ? <DayDetailModal
         key={`${recordContext}:${detailSelection.plan.id}:${detailSelection.record}`}
         detailPlan={detailSelection.plan} openRecordInitially={detailSelection.record}

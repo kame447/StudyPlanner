@@ -23,6 +23,11 @@ export interface ScheduleItemRadialMenuProps<TItem> {
 
 const ICONS = { complete: Check, edit: Pencil, duplicate: Copy, delete: Trash2, actual: SquarePen, move: Move };
 const EXIT_MS = 140;
+// Clockwise pop: each button starts a short beat after the previous one, so the
+// whole ring is fully shown by RADIAL_REVEAL_MS (~210ms) instead of trailing.
+export const RADIAL_STAGGER_MS = 14;
+export const RADIAL_POP_MS = 140;
+export const RADIAL_REVEAL_MS = RADIAL_STAGGER_MS * (SCHEDULE_RADIAL_ACTION_ORDER.length - 1) + RADIAL_POP_MS;
 
 export function ScheduleItemRadialMenu<TItem>(props: ScheduleItemRadialMenuProps<TItem>) {
   const level = useMotionLevel();
@@ -160,7 +165,8 @@ function RadialRing<TItem>({ action, actions, onSelect, onDismiss, closing, leve
                 top: node.y - layout.anchor.y - layout.buttonDiameter / 2,
                 width: layout.buttonDiameter, height: layout.buttonDiameter,
                 '--radial-index': index,
-                '--radial-delay': `${level === 'standard' ? index * 50 : 0}ms`,
+                '--radial-delay': `${level === 'standard' ? index * RADIAL_STAGGER_MS : 0}ms`,
+                '--radial-duration': `${RADIAL_POP_MS}ms`,
               } as CSSProperties}
               onPointerDown={signalIntent}
               onTouchStart={signalIntent}

@@ -1,6 +1,7 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { SCHEDULE_ITEM_ACTION_INTENT_EVENT, useScheduleItemActionPress } from './useScheduleItemActionPress';
+import { SCHEDULE_LONG_PRESS_MS } from '../lib/scheduleGestureTiming';
 
 let renderer: ReactTestRenderer | undefined;
 let press: ReturnType<typeof useScheduleItemActionPress<string>>;
@@ -30,7 +31,7 @@ beforeEach(() => {
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 it('short tap does not open or suppress its click', () => {
-  start(); act(() => { vi.advanceTimersByTime(239); });
+  start(); act(() => { vi.advanceTimersByTime(SCHEDULE_LONG_PRESS_MS - 1); });
   act(() => { expect(press.finish('a')).toBe(false); });
   expect(press.activeAction).toBeNull(); expect(press.shouldSuppressClick()).toBe(false);
 });
@@ -50,11 +51,31 @@ it.each(['touch', 'pointer'] as const)('a %s hold that moves never opens, even a
   expect(press.activeAction).toBeNull();
 });
 it('permits touch jitter within the tolerance and opens at the exact threshold', () => {
-  start(); act(() => { vi.advanceTimersByTime(240); press.move(59, 50); });
+  start(); act(() => { vi.advanceTimersByTime(SCHEDULE_LONG_PRESS_MS); press.move(59, 50); });
   act(() => { expect(press.finish('a')).toBe(true); });
   expect(press.activeAction?.key).toBe('a');
   act(() => { vi.advanceTimersByTime(700); });
   expect(press.shouldSuppressClick()).toBe(false);
+});
+it('uses a quick hold threshold just longer than a normal tap', () => {
+  expect(SCHEDULE_LONG_PRESS_MS).toBeGreaterThanOrEqual(160);
+  expect(SCHEDULE_LONG_PRESS_MS).toBeLessThanOrEqual(180);
+});
+it.each(['touch', 'pointer'] as const)('%s release just under the hold threshold stays a tap; just over opens', kind => {
+  start(kind); act(() => { vi.advanceTimersByTime(120); });
+  act(() => { expect(press.finish('a')).toBe(false); });
+  expect(press.activeAction).toBeNull(); expect(press.shouldSuppressClick()).toBe(false);
+  start(kind); act(() => { vi.advanceTimersByTime(SCHEDULE_LONG_PRESS_MS - 1); });
+  act(() => { expect(press.finish('a')).toBe(false); });
+  expect(press.activeAction).toBeNull();
+  start(kind); act(() => { vi.advanceTimersByTime(SCHEDULE_LONG_PRESS_MS + 1); });
+  act(() => { expect(press.finish('a')).toBe(true); });
+  expect(press.activeAction?.key).toBe('a'); expect(press.shouldSuppressClick()).toBe(true);
+});
+it('a quick hold that then moves past tolerance drags instead of opening', () => {
+  start(); act(() => { vi.advanceTimersByTime(SCHEDULE_LONG_PRESS_MS + 1); press.move(50, 60); });
+  act(() => { expect(press.finish('a')).toBe(false); });
+  expect(press.activeAction).toBeNull();
 });
 it('cancel and a release for another event never open', () => {
   start(); act(() => { vi.advanceTimersByTime(300); press.cancel(); });

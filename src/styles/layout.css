@@ -429,6 +429,11 @@
   bottom: calc(var(--app-bottom-nav-clearance) + 18px);
 }
 
+/* The move-mode hint has buttons; keep it clear of the floating add button. */
+.app-toast-layer.bottom.schedule-move-mode-layer {
+  bottom: calc(var(--app-bottom-nav-clearance) + 84px);
+}
+
 .app-toast {
   display: flex;
   align-items: center;

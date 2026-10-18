@@ -2,7 +2,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import type { ReactNode } from 'react';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { ScheduleItemRadialMenu, type ScheduleItemRadialMenuProps } from './ScheduleItemRadialMenu';
+import { RADIAL_POP_MS, RADIAL_REVEAL_MS, ScheduleItemRadialMenu, type ScheduleItemRadialMenuProps } from './ScheduleItemRadialMenu';
 import { SCHEDULE_ITEM_ACTION_INTENT_EVENT, type ActiveScheduleItemAction } from '../hooks/useScheduleItemActionPress';
 import { SCHEDULE_RADIAL_ACTION_LABELS, SCHEDULE_RADIAL_ACTION_ORDER } from '../lib/scheduleRadialActions';
 import { resetMotionPreferenceForTests, setMotionPreference } from '../lib/motionPreference';
@@ -69,7 +69,10 @@ it('portals six labelled circular icon buttons to body in clockwise order with o
   expect(items().map(item => item.props['data-action'])).toEqual(SCHEDULE_RADIAL_ACTION_ORDER);
   expect(items().map(item => item.props['aria-label'])).toEqual(['完了', '編集', '複製', '削除', '実績', '移動']);
   expect(items().map(item => item.props.style['--radial-index'])).toEqual([0, 1, 2, 3, 4, 5]);
-  expect(items().map(item => item.props.style['--radial-delay'])).toEqual(['0ms', '50ms', '100ms', '150ms', '200ms', '250ms']);
+  expect(items().map(item => item.props.style['--radial-delay'])).toEqual(['0ms', '14ms', '28ms', '42ms', '56ms', '70ms']);
+  expect(items().every(item => item.props.style['--radial-duration'] === `${RADIAL_POP_MS}ms`)).toBe(true);
+  // The last (6th) button finishes popping within ~210ms of the reveal.
+  expect(RADIAL_REVEAL_MS).toBeLessThanOrEqual(220);
   items().forEach(item => {
     expect(item.props.type).toBe('button'); // Native Enter/Space activation.
     expect(item.props.style.width).toBeGreaterThanOrEqual(44);
@@ -191,7 +194,7 @@ it('reopening the same or another event replaces the ring and cancels the previo
 it('defines spatial, opacity-only and instant CSS policies and leaves the device setting to the motion owner', () => {
   const css = readFileSync(new URL('./ScheduleItemRadialMenu.css', import.meta.url), 'utf8');
   expect(css).toContain('border-radius: 50%');
-  expect(css).toMatch(/schedule-radial-pop 220ms/); expect(css).toMatch(/scale\(\.4\)/); expect(css).toMatch(/scale\(1\.08\)/);
+  expect(css).toMatch(/schedule-radial-pop var\(--radial-duration, 140ms\)/); expect(css).toMatch(/scale\(\.4\)/); expect(css).toMatch(/scale\(1\.08\)/);
   expect(css).toMatch(/data-motion="reduced"[^}]+schedule-radial-fade 100ms[^}]+animation-delay: 0ms/s);
   expect(css).toMatch(/data-motion="off"[^}]+animation: none/s);
   // The device reduced-motion preference is folded into data-motion by lib/motionPreference.ts only.
