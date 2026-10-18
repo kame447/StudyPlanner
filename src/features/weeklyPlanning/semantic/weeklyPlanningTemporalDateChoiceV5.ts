@@ -51,6 +51,9 @@ export function createTemporalDateBasisV5(params: Pick<TemporalDateViewV5, 'inpu
       || source.dateExpression !== null || source.recurrenceKind !== null || source.days.length !== 0
       || source.namedTimePeriod !== null || source.capacityMinutes != null
       || !source.startTime || !source.endTime || source.startTime === '24:00' || source.endTime === '24:00') return null;
+    // One pending date target: a bare date cannot say which of several plan-wide undated declarations it scopes.
+    if (graph.availabilityDeclarations.some(fact => fact.id !== source.id && isWeeklyPlanningFactActiveV5(graph, fact.id)
+      && fact.dateExpression === null && fact.recurrenceKind === null && fact.days.length === 0)) return null;
     // Canonical graph value validator already checks clock syntax; compare interpreted clock values only.
     const minutes = (time: string) => { const [hour, minute] = time.split(':').map(Number); return hour * 60 + minute; };
     if (minutes(source.startTime) >= minutes(source.endTime)) return null;

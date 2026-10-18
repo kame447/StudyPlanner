@@ -70,6 +70,18 @@ describe('D5prime single-date closure', () => {
       expect(createTemporalDateBasisV5({ input: f.input, binding: f.binding, calendar: f.calendar, domainPolicyVersion: f.domainPolicyVersion })).toBeNull();
     },
   );
+  it.each(['undated interval', 'undated capacity'])('excludes a second active plan-wide %s from any turn', kind => {
+    const f = fixture();
+    const sibling = { ...structuredClone(f.target), id: 'second-plan-wide', startTime: '07:00', endTime: '08:00',
+      ...(kind === 'undated capacity' ? { kind: 'capacity' as const, startTime: null, endTime: null, capacityMinutes: 120 } : {}) };
+    f.graph.availabilityDeclarations.push(sibling);
+    f.graph.factLifecycles.push({ factId: sibling.id, status: 'active', createdRevision: f.graph.revision, terminalRevision: null, supersededByFactId: null });
+    const basis = () => createTemporalDateBasisV5({ input: f.input, binding: f.binding, calendar: f.calendar, domainPolicyVersion: f.domainPolicyVersion });
+    expect(basis()).toBeNull();
+    // Positive control: a sibling that already has its own date does not compete for the bare date.
+    Object.assign(sibling, { dateExpression: '2026-10-10' });
+    expect(basis()?.candidates).toHaveLength(7);
+  });
   it('distinguishes fixed clock/polarity/calendar/source targets using the same reply', () => {
     const first = fixture(); const basis = createTemporalDateBasisV5({ input: first.input, binding: first.binding, calendar: first.calendar, domainPolicyVersion: first.domainPolicyVersion })!;
     const variants = [fixture(), fixture(), fixture(), fixture()];
