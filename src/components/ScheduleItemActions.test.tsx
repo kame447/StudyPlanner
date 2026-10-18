@@ -6,6 +6,8 @@ import { WeekView } from './WeekView';
 import { DayTimeline } from './DayTimeline';
 import { DayDetailModal } from './DayDetailModal';
 import { ScheduleMoveDialog } from './ScheduleMoveDialog';
+import { ScheduleMoveModeBanner } from './ScheduleMoveModeBanner';
+const openMoveDialog = () => act(() => { renderer!.root.findByType(ScheduleMoveModeBanner).props.onOpenDialog(); });
 import { ScheduleItemRadialMenu, type ScheduleItemRadialMenuProps } from './ScheduleItemRadialMenu';
 import { DragUndoRedoControls } from './DragUndoRedoControls';
 import { createScheduleOccurrenceProjection, type ScheduleOccurrence } from '../domain/scheduleOccurrence';
@@ -105,8 +107,18 @@ describe.each(['day', 'week'] as const)('%s radial wiring', kind => {
     expect(modal.props.openRecordInitially).toBe(true); expect(modal.props.detailPlan.id).toBe(plan.id);
     expect(JSON.stringify(renderer!.toJSON())).toContain('記録を保存'); expect(ui.callbacks.onSaveActual).not.toHaveBeenCalled();
   });
-  it('moves with preserved duration and shares drag undo/redo history', async () => {
+  it('移動 lifts the event into drag mode instead of opening the dialog; 終了 leaves it', async () => {
     const ui = setup(kind); ui.open(); await ui.select('移動');
+    expect(renderer!.root.findAllByType(ScheduleMoveDialog)).toHaveLength(0);
+    expect(renderer!.root.findByType(ScheduleMoveModeBanner).props.title).toBe('数学');
+    expect(renderer!.root.findAll(node => typeof node.props.className === 'string' && node.props.className.includes('is-move-armed'), { deep: true }).length).toBeGreaterThan(0);
+    act(() => { renderer!.root.findByType(ScheduleMoveModeBanner).props.onCancel(); });
+    expect(renderer!.root.findAllByType(ScheduleMoveModeBanner)).toHaveLength(0);
+    expect(renderer!.root.findAll(node => typeof node.props.className === 'string' && node.props.className.includes('is-move-armed'))).toHaveLength(0);
+    expect(ui.callbacks.onMovePlan).not.toHaveBeenCalled();
+  });
+  it('moves with preserved duration and shares drag undo/redo history', async () => {
+    const ui = setup(kind); ui.open(); await ui.select('移動'); openMoveDialog();
     const dialog = renderer!.root.findByType(ScheduleMoveDialog);
     act(() => dialog.findAllByType('input')[1].props.onChange({ target: { value: '13:30' } }));
     await act(async () => { await dialog.findByType('form').props.onSubmit({ preventDefault: noop }); });
@@ -223,7 +235,7 @@ describe.each(['day', 'week'] as const)('%s radial wiring', kind => {
     expect(ui.callbacks.onSaveActual).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ actualStartTime: '15:00', actualEndTime: '16:00' }));
   });
   it.each([true, false])('an old pending move cannot close or alter a newer dialog after context change (success=%s)', async success => {
-    const ui = setup(kind); ui.open(); await ui.select('移動');
+    const ui = setup(kind); ui.open(); await ui.select('移動'); openMoveDialog();
     let resolveOld!: () => void; let rejectOld!: (error: Error) => void;
     ui.callbacks.onMovePlan.mockImplementationOnce(() => new Promise<undefined>((resolve, reject) => { resolveOld = () => resolve(undefined); rejectOld = reject; }));
     const oldDialog = renderer!.root.findByType(ScheduleMoveDialog);
@@ -234,6 +246,7 @@ describe.each(['day', 'week'] as const)('%s radial wiring', kind => {
     ui.update({ selectedDate: next.date, plans: [next] });
     const occurrence = createScheduleOccurrenceProjection({ ownerId: plan.userId, startDate: next.date, endDate: next.date, plans: [next] }).occurrences[0];
     await act(async () => { await renderer!.root.findByType(ScheduleItemRadialMenu).props.onSelect('move', occurrence); });
+    openMoveDialog();
     const newer = renderer!.root.findByType(ScheduleMoveDialog);
     expect(newer.props.plan.id).toBe('next');
     act(() => { oldClose(); });

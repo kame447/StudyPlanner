@@ -20,6 +20,7 @@ import type { WeekPlanMoveTarget } from "../lib/weekPlanDrag";
 import { useDataChangeMotion } from "../hooks/useDataChangeMotion";
 import { usePeriodNavigationMotion } from "../hooks/usePeriodNavigationMotion";
 import { useTimelineDragController } from "../hooks/useTimelineDragController";
+import { useTimelineTouchMoveGuard } from "../hooks/useTimelineTouchMoveGuard";
 import { useUndoRedoHistory } from "../hooks/useUndoRedoHistory";
 import type { WeeklyPlanDraftBlock } from "../features/weeklyPlanning/types";
 import type {
@@ -45,6 +46,9 @@ interface DayTimelineProps {
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onMovePlan?: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   registerMoveWithHistory?: (handler: ((plan: Plan, target: WeekPlanMoveTarget) => Promise<void>) | null) => void;
+  /** Occurrence lifted by the radial 移動 action; it drags without a hold. */
+  armedMoveOccurrenceId?: string | null;
+  onArmedMoveCommit?: () => void;
   selectedEntryId?: string;
   onSelectEntry: (entry: DayTimelineSelection) => void;
   onPreviousDay: () => void;
@@ -169,6 +173,8 @@ export function DayTimeline({
   onRemoveWeeklyDraftBlock,
   onMovePlan,
   registerMoveWithHistory,
+  armedMoveOccurrenceId = null,
+  onArmedMoveCommit,
   selectedEntryId,
   onSelectEntry,
   onPreviousDay,
@@ -179,7 +185,10 @@ export function DayTimeline({
 }: DayTimelineProps) {
   const moveHistory = useUndoRedoHistory<Plan, WeekPlanMoveTarget>();
   const dragController = useTimelineDragController<Plan>({
-    onCommit: (descriptor, before, after) => commitMove(descriptor.item, before, after),
+    onCommit: (descriptor, before, after) => {
+      if (descriptor.moveArmed) onArmedMoveCommit?.();
+      return commitMove(descriptor.item, before, after);
+    },
     deferTouchDragUntilMoveAfterLongPress: true,
   });
   async function commitMove(plan: Plan, before: WeekPlanMoveTarget, after: WeekPlanMoveTarget) {
@@ -384,6 +393,7 @@ export function DayTimeline({
   useDataChangeMotion(canvasRef, date ?? "", [plans, actuals, monthEvents, scheduleOccurrences, weeklyDraftBlocks]);
   const timelineShellRef = useRef<HTMLDivElement | null>(null);
   usePeriodNavigationMotion(timelineShellRef, date ?? "");
+  useTimelineTouchMoveGuard(timelineShellRef);
 
   function applyHistoryTarget(historyPlan: Plan, target: WeekPlanMoveTarget) {
     const currentPlan = plans.find((plan) => plan.id === historyPlan.id) ?? historyPlan;
@@ -597,6 +607,7 @@ export function DayTimeline({
                     );
                     const showSubjectLabel = subjectLabel.trim() !== entry.title.trim();
                     const draggablePlan = entry.plan && onMovePlan ? entry.plan : null;
+                    const moveArmed = Boolean(draggablePlan && armedMoveOccurrenceId && entry.occurrence?.id === armedMoveOccurrenceId);
                     const dragDescriptor = draggablePlan
                       ? {
                           key: entry.id,
@@ -610,6 +621,7 @@ export function DayTimeline({
                           dates: [draggablePlan.occurrenceDate ?? draggablePlan.date],
                           allowDateChange: false,
                           dayColumnSelector: ".timeline-canvas.split",
+                          moveArmed,
                         }
                       : null;
 
@@ -622,6 +634,7 @@ export function DayTimeline({
                           "timeline-plan-block split",
                           draggablePlan ? "schedule-week-plan-button" : "",
                           dragController.isDragging(entry.id) ? "is-drag-source" : "",
+                          moveArmed ? "is-move-armed" : "",
                           selectedEntryId === entry.selectionId ? "is-selected" : "",
                           getTimelineDensityClass(
                             entry.startTime,

@@ -17,14 +17,36 @@ function Harness({ source = plan }: { source?: Plan }) {
 }
 beforeEach(() => { vi.stubGlobal('window', { setTimeout, clearTimeout }); save.mockClear(); });
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.unstubAllGlobals(); });
+it('移動 arms a direct drag of that event; the dialog is only an explicit fallback', async () => {
+  act(() => { renderer = create(<Harness />); });
+  await act(async () => { await state.select('move', occurrences[0]); });
+  expect(state.movingPlan).toBeNull();
+  expect(state.armedMove).toMatchObject({ occurrenceId: occurrences[0].id, title: '数学', plan: { id: 'p' } });
+  act(() => { state.openMoveDialog(); });
+  expect(state.armedMove).toBeNull();
+  expect(state.movingPlan).toMatchObject({ id: 'p' });
+  act(() => { state.closeMove(); });
+  expect(state.movingPlan).toBeNull();
+  expect(state.armedMove).toBeNull();
+});
+
+it('disarms drag mode when the armed event leaves the view', async () => {
+  act(() => { renderer = create(<Harness />); });
+  await act(async () => { await state.select('move', occurrences[0]); });
+  expect(state.armedMove).not.toBeNull();
+  act(() => { renderer!.update(<Harness source={{ ...plan, excludedDates: [plan.date] }} />); });
+  expect(state.armedMove).toBeNull();
+});
+
 it('a retained close callback cannot clear a newer move session in the same context', async () => {
   act(() => { renderer = create(<Harness />); });
   await act(async () => { await state.select('move', occurrences[0]); });
   const oldClose = state.closeMove;
-  const first = state.movingPlan;
+  const first = state.armedMove;
   await act(async () => { await state.select('move', occurrences[0]); });
+  act(() => { state.openMoveDialog(); });
   const next = state.movingPlan;
-  expect(next).not.toBe(first);
+  expect(next).not.toBe(first?.plan);
   act(() => { oldClose(); });
   expect(state.movingPlan).toBe(next);
   act(() => { state.closeMove(); });

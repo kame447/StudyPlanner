@@ -44,7 +44,7 @@
   cursor: pointer;
   touch-action: manipulation;
   pointer-events: auto;
-  animation: schedule-radial-pop 220ms cubic-bezier(.2,.7,.3,1) both;
+  animation: schedule-radial-pop var(--radial-duration, 140ms) cubic-bezier(.2,.7,.3,1) both;
   animation-delay: var(--radial-delay);
 }
 .schedule-radial-item svg { flex: none; color: var(--accent-strong); }

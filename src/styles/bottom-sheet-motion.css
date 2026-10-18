@@ -12,6 +12,7 @@
 
 .bottom-sheet-motion.is-open .schedule-action-sheet,
 .bottom-sheet-motion.is-open .schedule-record-sheet,
+.bottom-sheet-motion.is-open .plan-editor-modal,
 [data-weekly-planning-motion='open'] .quick-entry-modal,
 .month-event-dialog-motion.is-open .month-event-modal,
 .timetable-term-sheet-overlay .timetable-term-sheet,
@@ -140,6 +141,40 @@
 
   100% {
     transform: translate3d(0, 0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Save/complete feedback toasts enter with the same tokens as the planner
+   sheets (rise toward their edge + fade); reduced fades, off is instant. */
+.app-toast {
+  animation: planner-toast-in var(--motion-duration-slow) var(--motion-ease-emphasized) both;
+}
+
+.app-toast-layer.bottom .app-toast {
+  animation-name: planner-toast-rise-in;
+}
+
+@keyframes planner-toast-in {
+  from {
+    transform: translate3d(0, calc(var(--motion-distance-md) * -1), 0) scale(var(--motion-scale-sheet));
+    opacity: var(--motion-sheet-from-opacity);
+  }
+
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes planner-toast-rise-in {
+  from {
+    transform: translate3d(0, var(--motion-distance-md), 0) scale(var(--motion-scale-sheet));
+    opacity: var(--motion-sheet-from-opacity);
+  }
+
+  to {
+    transform: none;
     opacity: 1;
   }
 }

@@ -50,7 +50,8 @@ export function PlanEditorPanel({
   }
 
   return (
-    <div className="overlay modal-overlay">
+    // Same entrance as the 記録を保存 sheet (shared bottom-sheet motion tokens).
+    <div className="overlay modal-overlay bottom-sheet-motion is-open">
       <aside
         ref={dialogRef}
         className="modal-card plan-editor-modal"

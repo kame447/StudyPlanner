@@ -3,6 +3,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserEventTarget } from '../lib/timelineDragInteractionLock.testUtils';
 import type { Plan } from '../types/domain';
+import { SCHEDULE_LONG_PRESS_MS } from '../lib/scheduleGestureTiming';
 import type { WeekView as WeekViewComponent } from './WeekView';
 
 vi.mock('react-dom', async importOriginal => ({
@@ -93,7 +94,7 @@ describe('WeekView touch drag lifecycle', () => {
     return {
       onMovePlan, scroll, card,
       start() { act(() => handlers.onTouchStart(touch())); },
-      arm() { act(() => { vi.advanceTimersByTime(240); }); },
+      arm(ms = SCHEDULE_LONG_PRESS_MS) { act(() => { vi.advanceTimersByTime(ms); }); },
       move() {
         const event = touch(160);
         act(() => handlers.onTouchMove(event));
@@ -129,6 +130,28 @@ describe('WeekView touch drag lifecycle', () => {
     expect(isLocked()).toBe(false);
     expect(nativeMove()).toBe(false);
     expect(overlays()).toHaveLength(0);
+  });
+
+  it('moving just under the hold threshold scrolls; just over it starts the drag', async () => {
+    const early = mount();
+    early.start();
+    early.arm(SCHEDULE_LONG_PRESS_MS - 1);
+    expect(isLocked()).toBe(false);
+    expect(early.move().preventDefault).not.toHaveBeenCalled();
+    expect(overlays()).toHaveLength(0);
+    await early.end();
+    expect(early.onMovePlan).not.toHaveBeenCalled();
+    early.unmount();
+
+    const held = mount();
+    held.start();
+    held.arm(SCHEDULE_LONG_PRESS_MS - 1);
+    held.arm(1);
+    expect(isLocked()).toBe(true);
+    expect(held.move().preventDefault).toHaveBeenCalled();
+    expect(overlays()).toHaveLength(1);
+    await held.end();
+    expect(held.onMovePlan).toHaveBeenCalledOnce();
   });
 
   it('keeps an ordinary pre-long-press swipe scrollable without moving the plan', async () => {
