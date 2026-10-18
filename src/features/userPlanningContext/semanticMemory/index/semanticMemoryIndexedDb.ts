@@ -194,6 +194,8 @@ export class SemanticMemoryIndexedDbStore {
   private opening: Promise<IDBDatabase> | undefined;
   private name = '';
   private canRestartRevision = false;
+  private lowerRevision: { revision: number; snapshot: string; fenceRevision: number;
+    generation: number; observation: number | undefined } | undefined;
   private readonly invalidate = (name: string) => {
     if (name === this.name) { this.invalidated = true; this.db?.close(); }
   };
@@ -299,7 +301,7 @@ export class SemanticMemoryIndexedDbStore {
     this.listenForInvalidation();
   }
 
-  async reconcile(revision: number, snapshot: string, fingerprints: ReadonlyMap<string, string>): Promise<{
+  async reconcile(revision: number, snapshot: string, fingerprints: ReadonlyMap<string, string>, observation?: number): Promise<{
     token: SemanticMemoryWriteToken; entries: SemanticMemoryIndexEntry[];
   }> {
     const db = await this.database();
@@ -308,12 +310,21 @@ export class SemanticMemoryIndexedDbStore {
     let result: { token: Fence; entries: SemanticMemoryIndexEntry[] } | undefined;
     let rejected = false;
     let restartGeneration: number | undefined;
+    let confirmationPending = false;
     const state = tx.objectStore('state');
     const pending = state.get('fence');
     pending.onsuccess = () => {
       const old = pending.result as Fence | undefined;
       if (old && revision < old.revision && this.generation === undefined && this.canRestartRevision) {
-        restartGeneration = old.generation + 1;
+        const previous = this.lowerRevision;
+        if (previous?.revision === revision && previous.snapshot === snapshot
+          && previous.fenceRevision === old.revision && previous.generation === old.generation
+          && (observation === undefined || previous.observation !== observation)) restartGeneration = old.generation + 1;
+        else {
+          this.lowerRevision = { revision, snapshot, fenceRevision: old.revision,
+            generation: old.generation, observation };
+          confirmationPending = true;
+        }
         return;
       }
       if ((old && (revision < old.revision || (revision === old.revision && snapshot !== old.snapshot)))
@@ -337,14 +348,17 @@ export class SemanticMemoryIndexedDbStore {
       };
     };
     await done;
+    // Do not mutate/erase a persisted cache on a single stale first delivery.
+    if (confirmationPending) throw new SemanticMemoryUnavailableError('internal_error', 'lower revision requires confirmation');
     this.canRestartRevision = false;
+    this.lowerRevision = undefined;
     if (restartGeneration !== undefined) {
       this.opening = this.restartDatabase(restartGeneration).then(() => {
         if (!this.db || this.invalidated) throw new SemanticMemoryUnavailableError('not_opted_in');
         return this.db;
       });
       await this.opening;
-      return this.reconcile(revision, snapshot, fingerprints);
+      return this.reconcile(revision, snapshot, fingerprints, observation);
     }
     if (rejected || !result) throw new SemanticMemoryUnavailableError('internal_error', 'stale canonical revision or generation');
     this.generation = result.token.generation;

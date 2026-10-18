@@ -2,6 +2,8 @@ import { eraseAllSemanticMemoryIndexes as eraseIndexes, deleteAllSemanticMemoryI
   semanticMemoryDatabaseNames } from './index/semanticMemoryIndexedDb';
 import { semanticMemoryHash } from './index/semanticMemoryFingerprint';
 import type { SemanticMemoryUnavailableReason } from './semanticMemoryContract';
+import { readSemanticMemoryCatalog, SEMANTIC_MEMORY_CATALOG_KEY } from './index/semanticMemoryCatalog';
+import { invalidateSemanticMemoryFlagOffCleanup, SEMANTIC_MEMORY_FLAG_OFF_CLEANUP_KEY } from './index/semanticMemoryCleanupState';
 
 const PREFIX = 'laplance-semantic-memory-opt-in:';
 export const SEMANTIC_MEMORY_ERASE_PENDING_KEY = 'laplance-semantic-memory-erase-pending';
@@ -13,6 +15,7 @@ function beginErase(): string | null {
     const token = crypto.randomUUID();
     globalThis.localStorage.setItem(SEMANTIC_MEMORY_ERASE_PENDING_KEY, token);
     globalThis.localStorage.setItem(SEMANTIC_MEMORY_ERASE_EPOCH_KEY, token);
+    invalidateSemanticMemoryFlagOffCleanup();
     return token;
   } catch { return null; }
 }
@@ -31,6 +34,7 @@ function finishErase(token: string | null): boolean {
 export async function readSemanticMemoryOptIn(ownerId: string): Promise<boolean> {
   try {
     if (!ownerId || import.meta.env.VITE_SEMANTIC_MEMORY_ENABLED !== 'true') return false;
+    invalidateSemanticMemoryFlagOffCleanup();
     const generation = globalThis.localStorage.getItem(SEMANTIC_MEMORY_ERASE_EPOCH_KEY);
     const key = `${PREFIX}${await semanticMemoryHash(ownerId)}`;
     return generation === globalThis.localStorage.getItem(SEMANTIC_MEMORY_ERASE_EPOCH_KEY)
@@ -48,6 +52,7 @@ export async function setSemanticMemoryOptIn(ownerId: string, enabled: boolean):
   if (!enabled) return clearSemanticMemoryOptIn(ownerId);
   if (!ownerId || import.meta.env.VITE_SEMANTIC_MEMORY_ENABLED !== 'true') return false;
   try {
+    invalidateSemanticMemoryFlagOffCleanup();
     const generation = globalThis.localStorage.getItem(SEMANTIC_MEMORY_ERASE_EPOCH_KEY);
     const key = `${PREFIX}${await semanticMemoryHash(ownerId)}`;
     if (generation !== globalThis.localStorage.getItem(SEMANTIC_MEMORY_ERASE_EPOCH_KEY)
@@ -76,6 +81,12 @@ export async function clearSemanticMemoryOptIn(ownerId: string): Promise<boolean
 
 /** Call on sign-out/account switch before constructing the next owner's index. */
 export async function eraseAllSemanticMemoryIndexes(): ReturnType<typeof eraseIndexes> {
+  return eraseSemanticMemoryIndexesForScope('signed-out');
+}
+
+async function eraseSemanticMemoryIndexesForScope(scope: string): ReturnType<typeof eraseIndexes> {
+  const flagOff = import.meta.env.VITE_SEMANTIC_MEMORY_ENABLED !== 'true';
+  if (flagOff && flagOffCleanupComplete(scope)) return { status: 'ok' };
   // Runs synchronously before the first await, including when sign-out immediately closes the page.
   const token = beginErase();
   let consentCleared = true;
@@ -88,22 +99,45 @@ export async function eraseAllSemanticMemoryIndexes(): ReturnType<typeof eraseIn
     }
   } catch { consentCleared = false; }
   const result = await deleteAllSemanticMemoryIndexDatabases();
-  return result.status === 'ok' && (!consentCleared || !finishErase(token))
-    ? { status: 'unavailable', reason: 'storage_unavailable' } : result;
+  if (result.status !== 'ok') return result;
+  if (!consentCleared || !finishErase(token)) return { status: 'unavailable', reason: 'storage_unavailable' };
+  if (flagOff) {
+    try { globalThis.localStorage.setItem(SEMANTIC_MEMORY_FLAG_OFF_CLEANUP_KEY, scope); }
+    catch { /* Missing optimization hint simply retries cleanup next time. */ }
+  }
+  return result;
+}
+
+function flagOffCleanupComplete(scope: string): boolean {
+  try {
+    const storage = globalThis.localStorage;
+    const keys = Array.from({ length: storage.length }, (_, index) => storage.key(index));
+    const mirror = readSemanticMemoryCatalog();
+    const leftovers = storage.getItem(SEMANTIC_MEMORY_ERASE_PENDING_KEY)
+      || keys.some(key => key?.startsWith(PREFIX))
+      || (storage.getItem(SEMANTIC_MEMORY_CATALOG_KEY) && (!mirror || mirror.length > 0));
+    if (storage.getItem(SEMANTIC_MEMORY_FLAG_OFF_CLEANUP_KEY) === scope && !leftovers) return true;
+    invalidateSemanticMemoryFlagOffCleanup();
+  } catch { /* No hint can prove cleanup when storage inspection fails. */ }
+  return false;
 }
 
 /** Startup cleanup is intentional even with flag OFF: delete leftovers, never load a model. */
 export async function prepareSemanticMemoryOwner(ownerId: string): ReturnType<typeof eraseIndexes> {
   try {
     const storage = globalThis.localStorage;
+    const flagOff = import.meta.env.VITE_SEMANTIC_MEMORY_ENABLED !== 'true';
+    if (!flagOff) invalidateSemanticMemoryFlagOffCleanup();
     const ownerHash = await semanticMemoryHash(ownerId);
+    if (flagOff) return eraseSemanticMemoryIndexesForScope(ownerHash);
     const keys = Array.from({ length: storage.length }, (_, index) => storage.key(index));
     const consentForAnotherOwner = keys.some(key => key?.startsWith(PREFIX) && key !== `${PREFIX}${ownerHash}`);
     const names = await semanticMemoryDatabaseNames();
     const foreignDatabase = names.some(name => name !== 'laplance-semantic-memory:catalog'
       && !name.startsWith(`laplance-semantic-memory:${ownerHash}:`));
-    if (storage.getItem(SEMANTIC_MEMORY_ERASE_PENDING_KEY) || consentForAnotherOwner || foreignDatabase
-      || import.meta.env.VITE_SEMANTIC_MEMORY_ENABLED !== 'true') return eraseAllSemanticMemoryIndexes();
+    if (storage.getItem(SEMANTIC_MEMORY_ERASE_PENDING_KEY) || consentForAnotherOwner || foreignDatabase) {
+      return eraseAllSemanticMemoryIndexes();
+    }
     return { status: 'ok' };
   } catch {
     // Inability to discover old payloads is not evidence that they have been forgotten.

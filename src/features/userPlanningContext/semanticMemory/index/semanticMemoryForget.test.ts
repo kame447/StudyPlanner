@@ -3,6 +3,8 @@ import { IDBFactory } from 'fake-indexeddb';
 import { MemoryStorage } from '../../../../repositories/localPersistenceConcurrency.testUtils';
 import { createSemanticMemoryApplication } from './semanticMemoryApplication';
 import { SemanticMemoryIndexedDbStore } from './semanticMemoryIndexedDb';
+import { readSemanticMemoryCatalog, SEMANTIC_MEMORY_CATALOG_KEY } from './semanticMemoryCatalog';
+import { SEMANTIC_MEMORY_FLAG_OFF_CLEANUP_KEY } from './semanticMemoryCleanupState';
 import { eraseAllSemanticMemoryIndexes, prepareSemanticMemoryOwner, readSemanticMemoryOptIn,
   clearSemanticMemoryOptIn, SEMANTIC_MEMORY_ERASE_PENDING_KEY, SEMANTIC_MEMORY_ERASE_EPOCH_KEY,
   setSemanticMemoryOptIn } from '../semanticMemoryOptIn';
@@ -165,4 +167,68 @@ it('refuses delayed consent when another tab completed an erase during hashing',
   localStorage.setItem(SEMANTIC_MEMORY_ERASE_EPOCH_KEY, 'synthetic-other-tab-erase');
   release(); expect(await enabling).toBe(false);
   expect(await readSemanticMemoryOptIn('owner-a')).toBe(false);
+});
+
+it.each(['signed-out', 'owner-a'])('runs flag-off cleanup once for stable %s visits with no repeated IDB scan or writes', async scope => {
+  vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'false');
+  const cleanup = () => scope === 'signed-out' ? eraseAllSemanticMemoryIndexes() : prepareSemanticMemoryOwner(scope);
+  expect(await cleanup()).toEqual({ status: 'ok' });
+  const enumerate = vi.spyOn(factory, 'databases'); const open = vi.spyOn(factory, 'open');
+  const write = vi.spyOn(localStorage, 'setItem'); const remove = vi.spyOn(localStorage, 'removeItem');
+  const uuid = vi.spyOn(crypto, 'randomUUID');
+  expect(await cleanup()).toEqual({ status: 'ok' });
+  expect(await cleanup()).toEqual({ status: 'ok' });
+  expect(enumerate).not.toHaveBeenCalled(); expect(open).not.toHaveBeenCalled();
+  expect(write).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled(); expect(uuid).not.toHaveBeenCalled();
+});
+
+it('resets the flag-off hint when the flag is ON, a different owner appears, or consent leftovers appear', async () => {
+  vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'false');
+  await prepareSemanticMemoryOwner('owner-a');
+  const enumerate = vi.spyOn(factory, 'databases');
+  await prepareSemanticMemoryOwner('owner-b'); expect(enumerate).toHaveBeenCalledOnce();
+  const previousEpoch = localStorage.getItem(SEMANTIC_MEMORY_ERASE_EPOCH_KEY);
+  localStorage.setItem('laplance-semantic-memory-opt-in:synthetic-foreign-owner-hash', 'true');
+  await prepareSemanticMemoryOwner('owner-b'); expect(enumerate).toHaveBeenCalledTimes(2);
+  expect(localStorage.getItem(SEMANTIC_MEMORY_ERASE_EPOCH_KEY)).not.toBe(previousEpoch);
+  vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'true');
+  await prepareSemanticMemoryOwner('owner-b');
+  expect(localStorage.getItem(SEMANTIC_MEMORY_FLAG_OFF_CLEANUP_KEY)).toBeNull();
+  enumerate.mockClear(); vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'false');
+  await prepareSemanticMemoryOwner('owner-b'); expect(enumerate).toHaveBeenCalledOnce();
+});
+
+it('invalidates the flag-off hint when a managed index or a pending erase appears', async () => {
+  vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'false');
+  await prepareSemanticMemoryOwner('owner-a');
+  await seed(); expect(localStorage.getItem(SEMANTIC_MEMORY_FLAG_OFF_CLEANUP_KEY)).toBeNull();
+  const enumerate = vi.spyOn(factory, 'databases');
+  await prepareSemanticMemoryOwner('owner-a'); expect(enumerate).toHaveBeenCalledOnce();
+  localStorage.setItem(SEMANTIC_MEMORY_ERASE_PENDING_KEY, 'synthetic-incomplete-erase');
+  await prepareSemanticMemoryOwner('owner-a'); expect(enumerate).toHaveBeenCalledTimes(2);
+  expect(localStorage.getItem(SEMANTIC_MEMORY_ERASE_PENDING_KEY)).toBeNull();
+});
+
+it.each(['{broken', '{}', '[{"name":"unrelated-db","ownerHash":"bad"}]', '[null]'])(
+  'treats invalid mirror %s as absent and recovers from the IDB catalog', async invalid => {
+    await seed(); localStorage.setItem(SEMANTIC_MEMORY_CATALOG_KEY, invalid);
+    expect(readSemanticMemoryCatalog()).toBeNull();
+    const enumerate = factory.databases.bind(factory);
+    Object.defineProperty(factory, 'databases', { value: undefined, configurable: true });
+    expect(await eraseAllSemanticMemoryIndexes()).toEqual({ status: 'ok' });
+    expect(await enumerate()).toEqual([]);
+    expect(localStorage.getItem(SEMANTIC_MEMORY_ERASE_PENDING_KEY)).toBeNull();
+  });
+
+it('keeps genuine mirror storage-access failures unavailable instead of treating them as corruption', async () => {
+  await seed();
+  Object.defineProperty(factory, 'databases', { value: undefined, configurable: true });
+  const get = localStorage.getItem.bind(localStorage);
+  vi.spyOn(localStorage, 'getItem').mockImplementation(key => {
+    if (key === SEMANTIC_MEMORY_CATALOG_KEY) throw new DOMException('synthetic denied storage', 'SecurityError');
+    return get(key);
+  });
+  expect(await eraseAllSemanticMemoryIndexes()).toEqual({ status: 'unavailable', reason: 'storage_unavailable' });
+  expect(localStorage.getItem(SEMANTIC_MEMORY_ERASE_PENDING_KEY)).not.toBeNull();
+  expect(localStorage.getItem(SEMANTIC_MEMORY_FLAG_OFF_CLEANUP_KEY)).toBeNull();
 });

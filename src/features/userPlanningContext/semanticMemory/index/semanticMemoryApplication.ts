@@ -24,6 +24,7 @@ interface OwnerSession {
   syncedRevision: number;
   resourcesGeneration: number;
   store: SemanticMemoryIndexedDbStore | undefined;
+  observation: number;
 }
 
 /** Owns optional cache work; React and prompt callers never manage model/storage lifetimes. */
@@ -74,6 +75,7 @@ export function createSemanticMemoryApplication(ports: SemanticMemoryApplication
       session.embedder = embedder;
       session.index = new SemanticMemoryIndex({ ownerId: session.ownerId, embedder,
         store: getStore(session),
+        getObservation: () => session.observation,
         access: async () => {
           const reason = await access(session.ownerId);
           if (reason) resetResources(session);
@@ -106,7 +108,7 @@ export function createSemanticMemoryApplication(ports: SemanticMemoryApplication
       if (current) dispose(current);
       const session: OwnerSession = { ownerId, active: true, canonical: null, revisionFence: -1,
         controller: undefined, index: undefined, embedder: undefined, opening: undefined,
-        syncing: undefined, syncedRevision: -1, resourcesGeneration: 0, store: undefined };
+        syncing: undefined, syncedRevision: -1, resourcesGeneration: 0, store: undefined, observation: 0 };
       current = session;
       erasing = erasing.then(async () => {
         if (isCurrent(session)) {
@@ -129,6 +131,7 @@ export function createSemanticMemoryApplication(ports: SemanticMemoryApplication
             return;
           }
           session.revisionFence = view.revision;
+          const observation = ++session.observation;
           session.canonical = { ...view, records: view.records.map((record) => ({ ...record })) };
           session.controller?.abort();
           const controller = new AbortController();
@@ -140,7 +143,7 @@ export function createSemanticMemoryApplication(ports: SemanticMemoryApplication
               if (controller.signal.aborted || !await allowed(session) || controller.signal.aborted) {
                 throw new SemanticMemoryUnavailableError('aborted');
               }
-            });
+            }, observation);
             const index = await getIndex(session);
             if (index && isCurrent(session) && !controller.signal.aborted) {
               const result = await index.sync(controller.signal);
