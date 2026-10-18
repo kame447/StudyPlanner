@@ -1,7 +1,7 @@
 # Retire automatic streak writes at the committed owner boundary
 
-Status: locally verified candidate, no publication approval
-Current integration base: `5b1e7c84072f5d245ca8c1298cfadfacd19368a8`
+Status: merged in #773 at `c683f7413abb1f29ead9170c075b416463fcc14d`; preserved in the approved #774 integration
+Original reconciliation base: `5b1e7c84072f5d245ca8c1298cfadfacd19368a8`
 Original verified base: `227daa12efacb0613089e091c06b1882f815cb8f`
 Branch: `fix/streak-retirement-current-main`
 Original candidate: `c8753e42b14bb788f459f3b4a4d5d889f097a11d` (preserved)
@@ -56,4 +56,4 @@ The 47-case and fresh application-typecheck evidence is from the original candid
 
 The verified boundary starts at React commit, not the instant a logout request is initiated or an auth notification is queued before rendering. The change does not offer cross-tab cancellation or rollback of an already submitted transaction. Native logout/StrictMode effect replay was not exercised; same-owner remount and source effect ordering are the available evidence.
 
-The local source review and verification are complete; obtain approval before any new publication. Preserve #768 and other owners' changes on integration. The publisher owns its existing CI; do not rerun it for this audit.
+Publication and integration were approved, and #773 is merged. The #774 update preserves this correction and its seven regressions while combining the separately reviewed retry correction. The new main/toolchain verification is tracked in the retry handoff; the historical results above remain bound to their original inputs. The publisher owns ordinary CI.
