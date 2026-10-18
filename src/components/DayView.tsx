@@ -41,6 +41,7 @@ import { DayTimetableImportDialog } from './DayTimetableImportDialog';
 import { MaterialQuickCreateModal } from './MaterialQuickCreateModal';
 import { ScheduleItemRadialMenu } from './ScheduleItemRadialMenu';
 import { ScheduleMoveDialog } from './ScheduleMoveDialog';
+import { ScheduleMoveModeBanner } from './ScheduleMoveModeBanner';
 import { useScheduleOccurrenceActions } from '../hooks/useScheduleOccurrenceActions';
 import { createMonthEventActualPlan } from '../lib/scheduleItemActions';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
@@ -585,6 +586,8 @@ export function DayView({
       ) : null}
       {radialActions.movingPlan ? <ScheduleMoveDialog key={`${userId}:${selectedDate}:${radialActions.movingPlan.id}`} plan={radialActions.movingPlan} onClose={radialActions.closeMove}
         onMove={(plan, target) => moveWithHistory.current ? moveWithHistory.current(plan, target) : onMovePlan(plan, target)} /> : null}
+      {radialActions.armedMove ? <ScheduleMoveModeBanner title={radialActions.armedMove.title}
+        onOpenDialog={radialActions.openMoveDialog} onCancel={radialActions.closeMove} /> : null}
       {actualOpenError ? <p className="inline-error" role="alert">{actualOpenError}</p> : null}
       {detailTimetable ? (
         <DayTimetableDetailModal key={detailTimetable.id} occurrence={detailTimetable}
@@ -663,6 +666,8 @@ export function DayView({
         onRemoveWeeklyDraftBlock={onRemoveWeeklyDraftBlock}
         onMovePlan={onMovePlan}
         registerMoveWithHistory={handler => { moveWithHistory.current = handler; }}
+        armedMoveOccurrenceId={radialActions.armedMove?.occurrenceId}
+        onArmedMoveCommit={radialActions.closeMove}
         selectedEntryId={
           selectedTimelineActual ? `actual:${selectedTimelineActual.id}` : detailTimetable
             ? `timetable:${detailTimetable.id}`

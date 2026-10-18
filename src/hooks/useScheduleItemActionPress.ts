@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { SCHEDULE_LONG_PRESS_MS } from '../lib/scheduleGestureTiming';
 
 interface ScheduleActionPress<TItem> {
   key: string;
@@ -26,7 +27,7 @@ export interface ActiveScheduleItemAction<TItem> {
 
 export const SCHEDULE_ITEM_ACTION_INTENT_EVENT = 'studyplanner:schedule-item-action-intent';
 
-const ACTION_LONG_PRESS_MS = 240;
+const ACTION_LONG_PRESS_MS = SCHEDULE_LONG_PRESS_MS;
 const TOUCH_MOVE_TOLERANCE_PX = 9;
 const POINTER_MOVE_TOLERANCE_PX = 4;
 const CLICK_SUPPRESSION_MS = 700;

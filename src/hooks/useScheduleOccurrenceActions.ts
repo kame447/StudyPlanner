@@ -21,7 +21,9 @@ export function useScheduleOccurrenceActions(options: {
   getActualActionBlockReason?: (target: ActualActionTarget) => string | null;
 }) {
   const { notice, showNotice, dismissNotice } = useNoticeState();
-  const [moveSession, setMoveSession] = useState<{ plan: Plan; context: object } | null>(null);
+  // 移動 first lifts the event into a direct drag mode; the date/time dialog is
+  // the explicit fallback (keyboard, precise entry) reachable from that mode.
+  const [moveSession, setMoveSession] = useState<{ plan: Plan; occurrenceId: string; title: string; mode: 'drag' | 'dialog'; context: object } | null>(null);
   const guard = useMemo(() => new ScheduleCompletionGuard(), [options.contextKey]);
   const context = useMemo(() => ({}), [options.contextKey]);
   const activeContext = useRef<object | null>(null);
@@ -75,7 +77,7 @@ export function useScheduleOccurrenceActions(options: {
         else options.onOpenDetail(occurrence, false);
       }
       if (id === 'duplicate' && plan) options.onDuplicatePlan?.(plan);
-      if (id === 'move' && plan) setMoveSession({ plan: structuredClone(plan), context });
+      if (id === 'move' && plan) setMoveSession({ plan: structuredClone(plan), occurrenceId: occurrence.id, title: occurrence.title, mode: 'drag', context });
       if (id === 'actual') {
         if (plan) options.onOpenDetail(occurrence, true);
         else if (options.onPrepareTimetableRecord && !preparing.current) {
@@ -97,10 +99,18 @@ export function useScheduleOccurrenceActions(options: {
       }
     } catch (error) { notify(error instanceof Error ? error.message : '操作を完了できませんでした。もう一度お試しください', 'error'); }
   }
-  const movingPlan = moveSession?.context === context ? moveSession.plan : null;
+  const currentMove = moveSession?.context === context ? moveSession : null;
+  // A drag-mode target that left the view (deleted, moved away, other day) disarms.
+  const armedMove = currentMove?.mode === 'drag' && options.occurrences.some(occurrence => occurrence.id === currentMove.occurrenceId)
+    ? { plan: currentMove.plan, occurrenceId: currentMove.occurrenceId, title: currentMove.title } : null;
+  const movingPlan = currentMove?.mode === 'dialog' ? currentMove.plan : null;
   function closeMove() {
     if (activeContext.current !== context) return;
     setMoveSession(current => current === moveSession ? null : current);
   }
-  return { notice, movingPlan, closeMove, actionsFor, select };
+  function openMoveDialog() {
+    if (activeContext.current !== context || !currentMove) return;
+    setMoveSession(current => current === currentMove ? { ...current, mode: 'dialog' } : current);
+  }
+  return { notice, movingPlan, armedMove, openMoveDialog, closeMove, actionsFor, select };
 }
