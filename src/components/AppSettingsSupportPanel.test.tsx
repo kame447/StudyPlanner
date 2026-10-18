@@ -32,6 +32,8 @@ it('groups ordinary guidance in native disclosures and preserves the current ann
   expect(answer('画像やPDFから何を読み取れますか')).toContain('PNG・JPEG画像');
   expect(answer('画像やPDFから何を読み取れますか')).toContain('PDFの読み取りは現在未対応');
   expect(answer('教材の章や単元は登録しないといけませんか')).toContain('登録した項目は保持されます');
+  expect(answer('教材の章や単元は登録しないといけませんか')).toContain('教材詳細の目次を非表示にしても');
+  expect(answer('教材の章や単元は登録しないといけませんか')).not.toContain('構成一覧');
   expect(answer('教材はどのように登録しますか')).toContain('見つからなければ手入力できます');
   // Actual recording no longer exposes the measurement-helper Apply action.
   expect(questions).not.toContain('計測補助の「反映」では何が変わりますか');
