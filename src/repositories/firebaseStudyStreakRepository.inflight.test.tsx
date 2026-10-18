@@ -254,6 +254,67 @@ describe('unsettled identical streak confirmation', () => {
   });
 });
 
+it.each(['unmount', 'owner', 'inactive'] as const)('does not stage a rest-day write after %s commits before passive cleanup', async boundary => {
+  hint.actuals = Array.from({ length: 7 }, (_, index) => actual({ id: `a${index}`, planId: null, occurrenceDate: addDays('2026-10-01', index) }));
+  const repo = repository(), transactionGate = deferred(), set = vi.fn();
+  sdk.transaction.mockImplementation(async callback => callback({
+    get: async () => { await transactionGate.promise; return snapshot(null); }, set,
+  }));
+  function Harness({ owner = 'owner', active = true }: { owner?: string; active?: boolean }) {
+    useStudyStreak(owner, today, repo, hint, active); return null;
+  }
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => { renderer = create(<Harness />); });
+  expect(sdk.transaction).toHaveBeenCalledOnce();
+  if (boundary === 'unmount') renderer.unmount();
+  else renderer.update(<Harness owner={boundary === 'owner' ? 'other' : 'owner'} active={boundary !== 'inactive'} />);
+  transactionGate.resolve();
+  await Promise.allSettled(sdk.transaction.mock.results.map(result => result.value));
+  try { expect(set).not.toHaveBeenCalled(); }
+  finally { await act(async () => { renderer.unmount(); }); }
+});
+
+it('rejects a transaction callback retry after the hook unmounts at commit', async () => {
+  hint.actuals = Array.from({ length: 7 }, (_, index) => actual({ id: `a${index}`, planId: null, occurrenceDate: addDays('2026-10-01', index) }));
+  const repo = repository(), retryGate = deferred(), get = vi.fn(async () => snapshot(null)), set = vi.fn();
+  sdk.transaction.mockImplementation(async callback => {
+    await callback({ get, set }); // Simulate a conflicted attempt; no server commit.
+    await retryGate.promise;
+    return callback({ get, set });
+  });
+  function Harness() { useStudyStreak('owner', today, repo, hint); return null; }
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => { renderer = create(<Harness />); });
+  expect(get).toHaveBeenCalledOnce();
+  expect(set).toHaveBeenCalledOnce();
+  renderer.unmount();
+  retryGate.resolve();
+  const result = await Promise.allSettled(sdk.transaction.mock.results.map(item => item.value));
+  try {
+    expect(result[0].status).toBe('rejected');
+    expect(get).toHaveBeenCalledOnce();
+    expect(set).toHaveBeenCalledOnce();
+    expect(stored).toBeNull();
+  } finally { await act(async () => {}); }
+});
+
+it('allows a new same-owner hook to use the shared read after the previous mount retires', async () => {
+  hint.actuals = Array.from({ length: 7 }, (_, index) => actual({ id: `a${index}`, planId: null, occurrenceDate: addDays('2026-10-01', index) }));
+  const repo = repository(); gate = deferred();
+  let state!: ReturnType<typeof useStudyStreak>;
+  function Harness() { state = useStudyStreak('owner', today, repo, hint); return null; }
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => { renderer = create(<Harness />); });
+  renderer.unmount();
+  await act(async () => { renderer = create(<Harness />); });
+  expect(sdk.getDocs).toHaveBeenCalledTimes(2);
+  await act(async () => gate!.resolve());
+  expect(sdk.transaction).toHaveBeenCalledOnce();
+  expect(stored).toMatchObject({ revision: 1, dates: ['2026-10-08'] });
+  expect(state).toMatchObject({ status: 'ready', refreshing: false, readError: null, saveError: null });
+  act(() => renderer.unmount());
+});
+
 
 describe('explicit retry lifetime', () => {
   it('reuses newly confirmed history after one successful explicit retry', async () => {

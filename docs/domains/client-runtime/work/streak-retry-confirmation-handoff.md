@@ -1,7 +1,7 @@
 # Scope a successful streak retry to its explicit request
 
-Status: local candidate; publication is not approved
-Base: `5b1e7c84072f5d245ca8c1298cfadfacd19368a8`
+Status: approved and published as #774; latest-main integration awaits its own CI
+Original verified base: `5b1e7c84072f5d245ca8c1298cfadfacd19368a8`
 Branch: `perf/streak-retry-force-scope`
 
 ## Reproduced read duplication
@@ -47,6 +47,15 @@ Evidence: `/workspace/shared/laplans-streak-retry-confirmation-evidence-20261018
 
 ## Ownership and remaining gates
 
-The latest ownership check found no competing retry-scope implementation. #768 is already merged and remains unchanged. The commit-retirement candidate `c8753e42`, reconciled to `df73f8c1`, remains a separate unpublished correction; this retry candidate alone does not fix its known unmount-to-passive-cleanup write gap.
+The latest ownership check found no competing retry-scope implementation. #768 is already merged and remains unchanged. The separate commit-retirement correction is merged through #773 at `c683f741`; the #774 update retains both hook changes and all twelve added regressions.
 
-Before publication, obtain approval, confirm the intended current base and combine the two hook deltas only under explicit integration ownership. Independent source review found no blocker and checked all five files, seven logs, focused/boundary inputs and installed toolchain hashes (receipt SHA-256 `d86f602fcaad8ab5a08409c82bbe86e2a72cfbcd4bc671e5d76ae2b95ce57bdf`). The exact local commit is bound separately in the evidence directory. No new cache architecture or same-Plan query narrowing is proposed.
+Publication and the explicit integration of the two hook corrections are approved. Independent source review of the original retry candidate found no blocker and checked all five files, seven logs, focused/boundary inputs and installed toolchain hashes (receipt SHA-256 `d86f602fcaad8ab5a08409c82bbe86e2a72cfbcd4bc671e5d76ae2b95ce57bdf`). The exact local commit is bound separately in the evidence directory. No new cache architecture or same-Plan query narrowing is proposed.
+
+
+## Approved latest-main integration (2026-10-18)
+
+The ordinary #774 update retains published `f64b14cf64b3b3bd79fce8929c91144f6e2ecb43` as its first parent and main `627504546e37216ef3b839e0267c69ae499b7996` as its second parent. Its hook and two changed test files exactly match the previously reviewed combined snapshot `a923fb82`. Each test retains the original body followed by the complete retirement and retry additions, each once. All other main files are retained, apart from the retry handoff/README and retirement status text.
+
+The earlier combined snapshot passed 72 directly related tests in five files, fresh application types and a production build. Those results are historical evidence on its `da9e90da` base. Current main includes #764/#770 package, lockfile, Vite and shared CSS changes; the new integration requires ordinary CI on that new toolchain. No previous pass is represented as a fresh run here. The publisher owns that CI, and QA owns the general streak native-result reconciliation. The separate native regressions do not directly prove Firebase race handling or production billed-read savings.
+
+The commit-retirement boundary remains the application callback checks described in its handoff. Once an SDK transaction callback has staged its write and returned, later hook retirement does not guarantee cancellation of the SDK-enqueued commit, even before network transmission. Initial consent changes remain a separate PR and are not introduced by this update.

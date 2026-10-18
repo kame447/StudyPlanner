@@ -198,6 +198,40 @@ it('automatically saves a newly eligible rest day after a non-study correction, 
   act(() => renderer.unmount());
 });
 
+it('does not start automatic use when a read settles between unmount commit and passive cleanup', async () => {
+  const repo = repository(), pending = deferred<StudyStreakHistory>();
+  vi.mocked(repo.read).mockReturnValueOnce(pending.promise);
+  function Harness() { useStudyStreak('owner', '2026-10-09', repo); return null; }
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => { renderer = create(<Harness />); });
+  // A Promise can settle after the unmount commit but before passive effects.
+  renderer.unmount();
+  pending.resolve(history());
+  await Promise.resolve(); await Promise.resolve();
+  try { expect(repo.useRestDay).not.toHaveBeenCalled(); }
+  finally { await act(async () => {}); }
+});
+
+it('does not chain another automatic save after unmount when the repository ignores abort', async () => {
+  const repo = repository(), pending = deferred<StudyStreakHistory>();
+  const source = { ...history(), actuals: Array.from({ length: 14 }, (_, index) =>
+    actual({ id: `a${index}`, planId: null, occurrenceDate: addDays('2026-10-01', index) })) };
+  vi.mocked(repo.read).mockResolvedValue(source);
+  vi.mocked(repo.useRestDay).mockReturnValueOnce(pending.promise);
+  function Harness() { useStudyStreak('owner', '2026-10-17', repo); return null; }
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => { renderer = create(<Harness />); });
+  expect(repo.useRestDay).toHaveBeenCalledOnce();
+  expect(vi.mocked(repo.useRestDay).mock.calls[0][1]).toBe('2026-10-15');
+  renderer.unmount();
+  pending.resolve({ ...source, restDays: [{ date: '2026-10-15' }] });
+  await Promise.resolve(); await Promise.resolve();
+  try {
+    expect(repo.useRestDay).toHaveBeenCalledOnce();
+    expect(vi.mocked(repo.useRestDay).mock.calls[0][3]?.signal?.aborted).toBe(true);
+  } finally { await act(async () => {}); }
+});
+
 describe('explicit streak retry scope', () => {
   const emptyHistory = (userId = 'owner'): StudyStreakHistory => ({ ...history(userId), actuals: [] });
 

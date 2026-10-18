@@ -1,21 +1,3 @@
-﻿.day-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr);
-  gap: 20px;
-  align-items: start;
-}
-
-.day-layout.is-single-panel {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.day-review-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
-  gap: 20px;
-  align-items: start;
-}
-
 .form-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -246,10 +228,6 @@
   border-radius: 4px;
 }
 
-.timeline-legend-plan {
-  display: none;
-}
-
 .timeline-plan-block,
 .timeline-actual-block {
   position: absolute;
@@ -378,10 +356,6 @@
   font-size: 0.78rem;
 }
 
-.timeline-subject-line {
-  font-weight: 600;
-}
-
 .timeline-entry-line {
   display: flex;
   gap: 5px;
@@ -501,104 +475,11 @@
   }
 }
 
-.timeline-chip {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: var(--timeline-chip-size);
-  font-weight: 700;
-}
-
-.timeline-chip.neutral {
-  background: var(--timeline-neutral-chip-bg);
-  color: var(--timeline-neutral-chip-text);
-}
-
-.timeline-chip-short {
-  display: none;
-}
-
-.detail-selection-card {
-  display: grid;
-  gap: 8px;
-  padding: 18px;
-  border-radius: 20px;
-  background: var(--detail-card-background);
-  border: 1px dashed var(--detail-card-border);
-}
-
-.notebook-panel {
-  background: var(--notebook-background);
-}
-
-.notebook-topline {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.notebook-summary-grid {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-bottom: 0;
-}
-
-.notebook-chip {
-  background: var(--notebook-chip-bg);
-}
-
-.progress-card {
-  display: grid;
-  gap: 10px;
-  padding: 16px;
-  border-radius: 18px;
-  background: var(--progress-card-background);
-  border: 1px solid var(--border);
-}
-
 .progress-track {
   height: 10px;
   border-radius: 999px;
   overflow: hidden;
   background: var(--progress-track-background);
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #50af88, #206c68);
-}
-
-.check-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.check-card {
-  display: flex;
-  gap: 10px;
-  align-items: start;
-  padding: 14px;
-  border-radius: 18px;
-  background: var(--check-card-background);
-  border: 1px solid var(--border);
-}
-
-.check-card input {
-  margin-top: 2px;
-}
-
-.check-card span {
-  font-size: 0.92rem;
-}
-
-.day-note-grid textarea {
-  background: var(--textarea-background);
 }
 
 .daily-detail-modal img,
