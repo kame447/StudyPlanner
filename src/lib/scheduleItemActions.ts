@@ -17,7 +17,27 @@ export function createMonthEventActualPlan(monthEvent: MonthEvent, userId: strin
     createdAt: monthEvent.createdAt, updatedAt: monthEvent.updatedAt, sourceType: 'manual', sourceId: monthEvent.id, occurrenceDate };
 }
 
-export function resolveScheduleActionPlan(occurrence: ScheduleOccurrence, plans: Plan[], monthEvents: MonthEvent[], viewedDate: string): Plan | null {
+/** A retained menu target is only valid while the same actionable occurrence is still projected. */
+export function resolveCurrentScheduleActionOccurrence(
+  target: ScheduleOccurrence,
+  currentOccurrences: readonly ScheduleOccurrence[],
+): ScheduleOccurrence | null {
+  const current = currentOccurrences.find(item => item.id === target.id && item.ownerId === target.ownerId);
+  if (!current) return null;
+  const same = current.start.date === target.start.date && current.start.time === target.start.time
+    && current.end.date === target.end.date && current.end.time === target.end.time
+    && current.source.kind === target.source.kind && current.source.id === target.source.id
+    && current.source.backingKind === target.source.backingKind && current.source.backingId === target.source.backingId
+    && current.title === target.title && current.subject === target.subject
+    && current.category === target.category && current.busy === target.busy
+    && current.planSourceType === target.planSourceType;
+  return same ? current : null;
+}
+
+export function resolveScheduleActionPlan(target: ScheduleOccurrence, plans: Plan[], monthEvents: MonthEvent[], viewedDate: string,
+  currentOccurrences: readonly ScheduleOccurrence[]): Plan | null {
+  const occurrence = resolveCurrentScheduleActionOccurrence(target, currentOccurrences);
+  if (!occurrence) return null;
   if (occurrence.source.backingKind === 'plan') {
     const source = plans.find(plan => plan.id === occurrence.source.backingId && plan.userId === occurrence.ownerId);
     return source ? resolvePlanOccurrence(source, occurrence.start.date) : null;
@@ -53,7 +73,8 @@ export function scheduleItemActions(occurrence: ScheduleOccurrence, capabilities
   const recordReason = capabilities.actualBlockReason || (!capabilities.actual ? 'この予定の実績を入力できません' : null);
   const reasons = {
     complete: isTimetable ? '時間割の予定は予定に反映してから実績を入力してください' : recordReason,
-    edit: !capabilities.edit ? 'この予定の詳細を開けません' : null,
+    edit: occurrence.source.backingKind === 'month-event' ? '主要予定は月表示から編集してください'
+      : !capabilities.edit ? 'この予定の詳細を開けません' : null,
     duplicate: !isPlan ? `${kind}は複製できません` : !capabilities.duplicate ? 'この予定を複製できません' : null,
     delete: !capabilities.delete ? `${kind}はこの画面から削除できません` : null,
     actual: recordReason,

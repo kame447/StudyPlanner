@@ -529,6 +529,7 @@ export function DayView({
   }
 
   const radialActions = useScheduleOccurrenceActions({
+    occurrences: visibleDayOccurrences, activeOccurrence: scheduleAction.activeAction?.item, onDismissMenu: scheduleAction.dismiss,
     contextKey: `${userId}:${selectedDate}`, viewedDate: selectedDate, plans, monthEvents, actuals,
     onEditPlan, onDuplicatePlan, canMove: true,
     canDelete: occurrence => occurrence.source.backingKind !== 'timetable-template' || Boolean(onDeleteOccurrence),
@@ -577,7 +578,7 @@ export function DayView({
       }}
     >
       {radialActions.notice ? <p className={`app-notice print-hide ${radialActions.notice.tone}`} role="status">{radialActions.notice.text}</p> : null}
-      {radialActions.movingPlan ? <ScheduleMoveDialog plan={radialActions.movingPlan} onClose={radialActions.closeMove}
+      {radialActions.movingPlan ? <ScheduleMoveDialog key={`${userId}:${selectedDate}:${radialActions.movingPlan.id}`} plan={radialActions.movingPlan} onClose={radialActions.closeMove}
         onMove={(plan, target) => moveWithHistory.current ? moveWithHistory.current(plan, target) : onMovePlan(plan, target)} /> : null}
       {actualOpenError ? <p className="inline-error" role="alert">{actualOpenError}</p> : null}
       {detailTimetable ? (

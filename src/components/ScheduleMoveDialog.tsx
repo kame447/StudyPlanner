@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import { scheduleMoveTarget } from '../lib/scheduleItemActions';
@@ -11,9 +11,16 @@ export function ScheduleMoveDialog({ plan, onMove, onClose }: {
   const [date, setDate] = useState(plan.occurrenceDate ?? plan.date);
   const [startTime, setStartTime] = useState(plan.startTime);
   const [pending, setPending] = useState(false);
-  const pendingRef = useRef(false);
+  const attemptRef = useRef<object | null>(null);
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    attemptRef.current = null;
+    setDate(plan.occurrenceDate ?? plan.date); setStartTime(plan.startTime); setPending(false); setError('');
+    return () => { mounted.current = false; attemptRef.current = null; };
+  }, [plan]);
   const [error, setError] = useState('');
-  const close = () => { if (!pendingRef.current) onClose(); };
+  const close = () => { if (mounted.current && !attemptRef.current) onClose(); };
   const { dialogRef } = useDialogFocus<HTMLElement>(true, close);
   const target = scheduleMoveTarget(plan, date, startTime);
   return <div className="overlay modal-overlay" onClick={close}>
@@ -21,11 +28,13 @@ export function ScheduleMoveDialog({ plan, onMove, onClose }: {
       <h2>予定を移動</h2>
       <form className="section-stack" onSubmit={async event => {
         event.preventDefault();
-        if (!target || pendingRef.current) return;
-        pendingRef.current = true; setPending(true); setError('');
-        try { await onMove(plan, target); onClose(); }
-        catch (caught) { setError(caught instanceof Error ? caught.message : '予定を移動できませんでした'); }
-        finally { pendingRef.current = false; setPending(false); }
+        if (!target || !mounted.current || attemptRef.current) return;
+        const attempt = {};
+        attemptRef.current = attempt; setPending(true); setError('');
+        const isCurrent = () => mounted.current && attemptRef.current === attempt;
+        try { await onMove(plan, target); if (isCurrent()) onClose(); }
+        catch (caught) { if (isCurrent()) setError(caught instanceof Error ? caught.message : '予定を移動できませんでした'); }
+        finally { if (isCurrent()) { attemptRef.current = null; setPending(false); } }
       }}>
         <label>日付<input type="date" value={date} required disabled={pending || supportsScopedRecurringPlanEdits(plan)} onChange={event => setDate(event.target.value)} /></label>
         {supportsScopedRecurringPlanEdits(plan) ? <p>繰り返し予定は同じ日の時刻を変更します。</p> : null}
