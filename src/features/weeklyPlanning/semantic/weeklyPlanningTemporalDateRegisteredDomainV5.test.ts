@@ -104,3 +104,16 @@ it('fails closed before provider exposure when the source owner becomes unavaila
   expect(await domain.stage(stage)).toBeNull();
   expect(choose).not.toHaveBeenCalled();
 });
+
+it.each([
+  ['the target and the planning window only', [['availability_declaration', 'target', {}], ['planning_window', 'window', {}], ['task', 'task', {}]], false],
+  ['an undated task constraint', [['temporal_constraint', 'constraint', { dateExpression: null }]], false],
+  ['another undated availability', [['availability_declaration', 'other', { dateExpression: null }]], true],
+  ['another dated availability', [['availability_declaration', 'other', { dateExpression: '2026-10-10' }]], true],
+  ['a dated task constraint', [['temporal_constraint', 'constraint', { dateExpression: '2026-10-09' }]], true],
+  ['a task date rule', [['task_date_rule', 'rule', {}]], true],
+  ['a recurrence', [['recurrence', 'recurrence', {}]], true],
+] as const)('question-time co-presentation guard with %s', (_label, entries, rejected) => {
+  const facts = entries.map(([kind, factId, data]) => ({ kind, factId, sourceText: factId, data: { ...data } }));
+  expect(createTemporalDateRegisteredDomainV5().rejectsCoPresentedFacts({ targetId: 'target', facts })).toBe(rejected);
+});

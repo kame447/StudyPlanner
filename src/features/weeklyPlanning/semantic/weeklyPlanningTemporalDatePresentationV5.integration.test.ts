@@ -34,14 +34,24 @@ const setup = { schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'd
   relations: [], availabilityDeclarations: [{ localId: 'time', kind: 'unavailable', dateExpression: null, namedTimePeriod: null,
     startTime: '18:00', endTime: '20:00', recurrenceKind: null, days: [], constraintLevel: 'hard', capacityMinutes: null, sourceText: '18時から20時は予定を入れられません' }],
   constraintSourceRequests: [], userContextFacts: [], uncertainties: [], corrections: [], decisions: [] };
-// Later semantic turns add no fact, so the pending question is re-presented without accompanying grounding.
+// Later semantic turns (Luna fallback) add no fact.
 const empty = { ...setup, planningWindow: null, tasks: [], availabilityDeclarations: [] };
 const firstTurn = '10月12日から18日の間に数学の問題を10問、1問3分で進めたいです。18時から20時は予定を入れられません。';
+/** Same-turn co-presented availabilities: A2 (dated sibling, ACK-echo) and A3 (second plan-wide undated). */
+const siblings = {
+  dated: { text: '10月10日は8時から9時に勉強できます。', fact: { localId: 'other-time', kind: 'available', dateExpression: '2026-10-10', namedTimePeriod: null,
+    startTime: '08:00', endTime: '09:00', recurrenceKind: null, days: [], constraintLevel: 'hard', capacityMinutes: null, sourceText: '10月10日は8時から9時に勉強できます' } },
+  undated: { text: '7時から8時も予定を入れられません。', fact: { localId: 'other-time', kind: 'unavailable', dateExpression: null, namedTimePeriod: null,
+    startTime: '07:00', endTime: '08:00', recurrenceKind: null, days: [], constraintLevel: 'hard', capacityMinutes: null, sourceText: '7時から8時も予定を入れられません' } },
+} as const;
+let sibling: keyof typeof siblings | null = null;
+const presentingTurn = () => firstTurn + (sibling ? siblings[sibling].text : '');
+const presentingDocument = () => sibling ? { ...setup, availabilityDeclarations: [...setup.availabilityDeclarations, siblings[sibling].fact] } : setup;
 const date = (n: number) => `2026-10-${String(n).padStart(2, '0')}`;
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime('2026-10-12T01:00:00Z');
   restore = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
-  resetWeeklyPlanningStableV5RuntimeSessionsForTest(); resetWeeklyPlanningStableV5TraceRuntimeForTest(); schemas.length = 0;
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest(); resetWeeklyPlanningStableV5TraceRuntimeForTest(); schemas.length = 0; sibling = null;
   for (const field of ['VITE_CLOUDFLARE_AI_PROXY_URL', 'VITE_FIREBASE_API_KEY', 'VITE_FIREBASE_AUTH_DOMAIN', 'VITE_FIREBASE_PROJECT_ID', 'VITE_FIREBASE_APP_ID']) vi.stubEnv(field, '');
   vi.stubEnv('VITE_AI_PROVIDER', 'openai'); vi.stubEnv('VITE_AI_BASE_URL', 'https://d5prime-luna.fixture/v1');
   vi.stubEnv('VITE_AI_MODEL', 'fixture'); vi.stubEnv('VITE_AI_API_KEY', 'fixture');
@@ -51,7 +61,7 @@ beforeEach(() => {
     schemas.push(schema);
     let content;
     const calls = schemas.filter(name => name === schema).length;
-    if (schema === 'weekly_planning_semantic_document_v5') content = calls === 1 ? setup : empty;
+    if (schema === 'weekly_planning_semantic_document_v5') content = calls === 1 ? presentingDocument() : empty;
     else if (schema === 'weekly_planning_stable_v5_dialogue_response') {
       const prompt = JSON.parse(body.messages[1].content);
       content = { actionId: prompt.actionId, actionKind: prompt.applicationDecision.actionKind,
@@ -76,14 +86,12 @@ function harness(services?: WeeklyPlanningTurnApplicationServices) {
     isPlannerDataSnapshotCurrent: () => true,
     getState: () => state, dispatch: (action: WeeklyPlanningAction): PlanningState => state = weeklyPlanningReducer(state, action),
   }, services);
-  /** Natural first presentation, then the same question re-presented after a turn without new facts. */
+  /** Natural first presentation: the same turn also grounds the window, task and interval. */
   async function present() {
-    expect((await submit(firstTurn)).accepted).toBe(true);
-    const first = state.intakeState!.lastQuestionContext!;
-    expect((await submit('えっと')).accepted).toBe(true);
-    const again = state.intakeState!.lastQuestionContext!;
-    expect(again.targetSlot).toBe('stable_v5:missing_availability_date_scope');
-    return { first, again };
+    expect((await submit(presentingTurn())).accepted).toBe(true);
+    const question = state.intakeState!.lastQuestionContext!;
+    expect(question.targetSlot).toBe('stable_v5:missing_availability_date_scope');
+    return { question };
   }
   return { submit, present, get state() { return state; } };
 }
@@ -118,26 +126,34 @@ it('keeps the source-managed date calibration null so production registration st
   expect(weeklyPlanningRegisteredCandidateDomains(host).map(domain => domain.domainId)).not.toContain('availability_date');
 });
 
-// Coverage blocker, recorded rather than worked around: an absolute-window first presentation carries
-// recommended grounding with no proposal, which the shared direct-presentation gate does not admit.
-it('does not capture the first presentation that also grounds same-turn facts', async () => {
+it('captures the natural first presentation that also grounds same-turn facts', async () => {
+  const { services } = configured(request => normalizedChoice(request, 'leaf:2'));
+  const h = harness(services);
+  const { question } = await h.present();
+  expect(question.presentation?.content).toMatchObject({ currentTurnGrounding: 'recommended', groundingContext: { proposed: 0 } });
+  expect(question.actionId).toMatch(/^candidate-question:availability_date:/);
+  expect(question.controlledCandidate).toBeDefined();
+});
+
+it.each([
+  ['A2: a co-presented dated availability the acknowledgement may echo', 'dated'],
+  ['A3: a second plan-wide undated interval', 'undated'],
+] as const)('does not capture with %s; the date answer stays with semantic Luna', async (_label, kind) => {
+  sibling = kind;
   const { choice, services } = configured(request => normalizedChoice(request, 'leaf:2'));
   const h = harness(services);
-  expect((await h.submit(firstTurn)).accepted).toBe(true);
-  const first = h.state.intakeState!.lastQuestionContext!;
-  expect(first.targetSlot).toBe('stable_v5:missing_availability_date_scope');
-  expect(first.presentation?.content).toMatchObject({ currentTurnGrounding: 'recommended', groundingContext: { proposed: 0 } });
-  expect(first.controlledCandidate).toBeUndefined();
+  const { question } = await h.present();
+  expect(question.controlledCandidate).toBeUndefined();
   const before = schemas.length;
   expect((await h.submit('10月14日です')).accepted).toBe(true);
   expect(choice).not.toHaveBeenCalled();
-  expect(semanticSchemas(before).length).toBeGreaterThan(0);
+  expect(semanticSchemas(before)[0]).toBe('weekly_planning_semantic_document_v5');
 });
 
 it('default unconfigured date domain stays inert and the date answer reaches semantic Luna', async () => {
   const h = harness();
-  const { again } = await h.present();
-  expect(again.controlledCandidate).toBeUndefined();
+  const { question } = await h.present();
+  expect(question.controlledCandidate).toBeUndefined();
   const before = schemas.length;
   expect((await h.submit('10月14日です')).accepted).toBe(true);
   expect(semanticSchemas(before)[0]).toBe('weekly_planning_semantic_document_v5');
@@ -146,10 +162,10 @@ it('default unconfigured date domain stays inert and the date answer reaches sem
 it('configured date domain replaces the semantic Luna request and commits the frozen date with the fixed interval', async () => {
   const { choice, services } = configured(request => normalizedChoice(request, 'leaf:2'));
   const h = harness(services);
-  const { again } = await h.present();
-  expect(again.actionId).toMatch(/^candidate-question:availability_date:/);
-  expect(again.controlledCandidate).toBeDefined();
-  const sourceId = again.topicId!;
+  const { question } = await h.present();
+  expect(question.actionId).toMatch(/^candidate-question:availability_date:/);
+  expect(question.controlledCandidate).toBeDefined();
+  const sourceId = question.topicId!;
   const before = schemas.length;
   expect((await h.submit('10月14日です')).accepted).toBe(true);
   expect(choice).toHaveBeenCalledTimes(1);
@@ -173,7 +189,7 @@ it.each([
 ])('%s falls back to the unchanged whole reply on semantic Luna without consuming the date', async (_label, respond) => {
   const { choice, services } = configured(respond);
   const h = harness(services);
-  const sourceId = (await h.present()).again.topicId!;
+  const sourceId = (await h.present()).question.topicId!;
   const before = schemas.length;
   const reply = '10月14日です。あと19時から21時に変えて、保存して';
   expect((await h.submit(reply)).accepted).toBe(true);

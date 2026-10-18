@@ -83,6 +83,13 @@ export function createTemporalDateRegisteredDomainV5(): ControlledCandidateDomai
   return {
     domainId: 'availability_date', questionCode: 'missing_availability_date_scope',
     domainPolicyVersion: TEMPORAL_DATE_DOMAIN_POLICY_VERSION,
+    rejectsCoPresentedFacts({ targetId, facts }) {
+      // A co-acknowledged availability, date or day rule would let a bare date correct that fact
+      // instead of scoping the target. The planning window stays allowed: leaves lie inside it.
+      return facts.some(fact => (fact.kind === 'availability_declaration' && fact.factId !== targetId)
+        || (fact.kind === 'temporal_constraint' && fact.data.dateExpression != null)
+        || fact.kind === 'task_date_rule' || fact.kind === 'recurrence');
+    },
     capture(context) {
       const source = presentedBasis(context);
       if (!source) return null;
