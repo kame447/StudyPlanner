@@ -15,6 +15,7 @@ export function useStudyStreak(userId: string, today: string, repository: StudyS
   const [state, setState] = useState<HistoryState>(() => ({ userId, repository, hint,
     history: repository.peek?.(userId, hint) ?? null, refreshing: true, readError: null }));
   const [request, setRequest] = useState({ revision: 0, force: false });
+  const confirmedRetry = useRef<typeof request | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const lifetime = useRef(0);
@@ -49,9 +50,12 @@ export function useStudyStreak(userId: string, today: string, repository: StudyS
     void (async () => {
       let accepted: StudyStreakHistory;
       try {
-        accepted = await repository.read(userId, { hint, today, refresh: request.force });
+        accepted = await repository.read(userId, { hint, today, refresh: request.force && confirmedRetry.current !== request });
         if (!current()) return;
         if (accepted.userId !== userId || !accepted.historyComplete || !Array.isArray(accepted.monthEvents)) throw new Error('学習履歴を確認できませんでした。');
+        // A successful explicit confirmation satisfies this retry only. Later
+        // input changes use normal owner/day/generation validation again.
+        if (request.force) confirmedRetry.current = request;
         setState({ userId, repository, hint, history: accepted, refreshing: true, readError: null });
       } catch (error) {
         if (current()) setState(previous => ({ ...previous, refreshing: false,

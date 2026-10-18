@@ -197,3 +197,70 @@ it('automatically saves a newly eligible rest day after a non-study correction, 
   expect(JSON.stringify(source.actuals)).toBe(original);
   act(() => renderer.unmount());
 });
+
+describe('explicit streak retry scope', () => {
+  const emptyHistory = (userId = 'owner'): StudyStreakHistory => ({ ...history(userId), actuals: [] });
+
+  it('forces every explicit retry but not later input confirmations after success', async () => {
+    const repo = repository();
+    vi.mocked(repo.read).mockImplementation(async owner => emptyHistory(owner));
+    let state!: ReturnType<typeof useStudyStreak>;
+    function Harness({ source }: { source: StudyStreakHistory }) { state = useStudyStreak('owner', '2026-10-09', repo, source); return null; }
+    let renderer!: ReturnType<typeof create>;
+    await act(async () => { renderer = create(<Harness source={emptyHistory()} />); });
+    await act(async () => state.retry());
+    await act(async () => state.retry());
+    await act(async () => renderer.update(<Harness source={emptyHistory()} />));
+    expect(vi.mocked(repo.read).mock.calls.map(([, options]) => options?.refresh)).toEqual([false, true, true, false]);
+    act(() => renderer.unmount());
+  });
+
+  it('keeps an unsuccessful forced confirmation pending across input changes', async () => {
+    const repo = repository();
+    vi.mocked(repo.read).mockImplementation(async owner => emptyHistory(owner));
+    let state!: ReturnType<typeof useStudyStreak>;
+    function Harness({ source }: { source: StudyStreakHistory }) { state = useStudyStreak('owner', '2026-10-09', repo, source); return null; }
+    let renderer!: ReturnType<typeof create>;
+    await act(async () => { renderer = create(<Harness source={emptyHistory()} />); });
+    vi.mocked(repo.read).mockRejectedValueOnce(new Error('offline'));
+    await act(async () => state.retry());
+    expect(state.readError).toBe('offline');
+    await act(async () => renderer.update(<Harness source={emptyHistory()} />));
+    await act(async () => renderer.update(<Harness source={emptyHistory()} />));
+    expect(vi.mocked(repo.read).mock.calls.map(([, options]) => options?.refresh)).toEqual([false, true, true, false]);
+    act(() => renderer.unmount());
+  });
+
+  it('does not let a retired retry satisfy a newer still-pending request', async () => {
+    const repo = repository(), older = deferred<StudyStreakHistory>(), latest = deferred<StudyStreakHistory>();
+    vi.mocked(repo.read).mockImplementation(async owner => emptyHistory(owner));
+    let state!: ReturnType<typeof useStudyStreak>;
+    function Harness({ source }: { source: StudyStreakHistory }) { state = useStudyStreak('owner', '2026-10-09', repo, source); return null; }
+    let renderer!: ReturnType<typeof create>;
+    await act(async () => { renderer = create(<Harness source={emptyHistory()} />); });
+    vi.mocked(repo.read).mockReturnValueOnce(older.promise).mockReturnValueOnce(latest.promise);
+    await act(async () => state.retry());
+    await act(async () => state.retry());
+    await act(async () => older.resolve(emptyHistory()));
+    await act(async () => renderer.update(<Harness source={emptyHistory()} />));
+    expect(vi.mocked(repo.read).mock.calls.map(([, options]) => options?.refresh)).toEqual([false, true, true, true]);
+    await act(async () => latest.resolve(emptyHistory()));
+    await act(async () => renderer.update(<Harness source={emptyHistory()} />));
+    expect(vi.mocked(repo.read).mock.calls[vi.mocked(repo.read).mock.calls.length - 1]?.[1]?.refresh).toBe(false);
+    act(() => renderer.unmount());
+  });
+
+  it('does not consume a retry while inactive', async () => {
+    const repo = repository();
+    vi.mocked(repo.read).mockImplementation(async owner => emptyHistory(owner));
+    let state!: ReturnType<typeof useStudyStreak>;
+    function Harness({ active }: { active: boolean }) { state = useStudyStreak('owner', '2026-10-09', repo, undefined, active); return null; }
+    let renderer!: ReturnType<typeof create>;
+    await act(async () => { renderer = create(<Harness active={false} />); });
+    await act(async () => state.retry());
+    expect(repo.read).not.toHaveBeenCalled();
+    await act(async () => renderer.update(<Harness active />));
+    expect(vi.mocked(repo.read).mock.calls.map(([, options]) => options?.refresh)).toEqual([true]);
+    act(() => renderer.unmount());
+  });
+});

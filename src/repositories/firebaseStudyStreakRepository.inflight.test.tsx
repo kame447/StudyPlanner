@@ -253,3 +253,50 @@ describe('unsettled identical streak confirmation', () => {
     expect(stored).toMatchObject({ revision: 1, dates: ['2026-10-08'] });
   });
 });
+
+
+describe('explicit retry lifetime', () => {
+  it('reuses newly confirmed history after one successful explicit retry', async () => {
+    hint = {
+      actuals: Array.from({ length: 1000 }, (_, index) => actual({ id: `a${index}`, planId: null, occurrenceDate: '2026-10-07' })),
+      plans: [plan({ id: 'old-plan', date: '2010-01-01' })],
+      monthEvents: [event({ id: 'old-repeat', date: '2000-01-01', endDate: '2000-01-01', repeat: 'weekly', repeatUntil: null })],
+    };
+    stored = { schemaVersion: 1, userId: 'owner', revision: 0, dates: [] };
+    const receipt = createConfirmedStudyHistory(() => today);
+    const publish = () => {
+      receipt.confirmMigration('owner');
+      for (const slice of ['plans', 'actuals', 'monthEvents'] as const) receipt.beginRead('owner', slice)(hint[slice], metadata);
+    };
+    publish();
+    const repo = repository(receipt), read = vi.spyOn(repo, 'read');
+    sdk.getDoc.mockRejectedValueOnce(new Error('offline'));
+    let state!: ReturnType<typeof useStudyStreak>;
+    function Harness({ source }: { source: StudyHistoryHint }) { state = useStudyStreak('owner', today, repo, source); return null; }
+    let renderer!: ReturnType<typeof create>;
+    await act(async () => { renderer = create(<Harness source={hint} />); });
+    expect(state).toMatchObject({ status: 'error', readError: 'offline' });
+    await act(async () => state.retry());
+    expect(sdk.getDocs).toHaveBeenCalledTimes(2);
+    expect(read.mock.calls[read.mock.calls.length - 1]?.[1]?.refresh).toBe(true);
+    expect(state).toMatchObject({ status: 'ready', refreshing: false, readError: null });
+    await receipt.duringMutation('owner', async () => {
+      hint = { ...hint, actuals: hint.actuals.map((row, index) => index === 0 ? { ...row, note: 'saved' } : row) };
+    });
+    publish();
+    sdk.getDoc.mockClear(); sdk.getDocs.mockClear(); documents = 0;
+    await act(async () => renderer.update(<Harness source={hint} />));
+    const observed = counts();
+    const accepted = await read.mock.results[read.mock.results.length - 1].value;
+    expect(read.mock.calls[read.mock.calls.length - 1]?.[1]?.refresh).toBe(false);
+    expect(accepted.actuals).toHaveLength(1000);
+    expect(accepted.plans[0].date).toBe('2010-01-01');
+    expect(accepted.monthEvents[0]).toMatchObject({ date: '2000-01-01', repeat: 'weekly' });
+    expect(accepted.actuals[0].note).toBe('saved');
+    expect(state).toMatchObject({ status: 'ready', refreshing: false, readError: null });
+    expect(sdk.transaction).not.toHaveBeenCalled();
+    act(() => renderer.unmount());
+    console.info('STREAK_AFTER_RETRY_COUNTS', JSON.stringify(observed));
+    expect(observed).toEqual({ queries: 0, directReads: 1, returnedDocuments: 1 });
+  });
+});

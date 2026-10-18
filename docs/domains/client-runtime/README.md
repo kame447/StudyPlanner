@@ -49,6 +49,8 @@ Execution tracking:
 
 - [Targeted Actual save preparation](work/actual-save-targeted-read-handoff.md) — Issue #542; exact runtime/unit recovery, reconstructed real-SDK regression evidence and combined integration gates.
 
+- [Explicit streak retry confirmation](work/streak-retry-confirmation-handoff.md) — consume a successful forced confirmation per request while preserving normal owner/history validation.
+
 - [Overlapping streak history confirmation](work/streak-inflight-history-handoff.md) — Issue #542; identical unsettled read sharing with preserved mutation/refresh boundaries and controlled SDK-call counts.
 - [Same-document administrator entry](work/admin-entry-navigation-handoff.md) — Issue #542; avoid the My Page entry reload while preserving the existing unsaved-chat leave warning and owner/access boundaries.
 
