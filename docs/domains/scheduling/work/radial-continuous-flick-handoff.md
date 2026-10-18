@@ -102,3 +102,18 @@ before and after these checks; this checkpoint was added afterwards. The prior
 native failures are retained. Corrected browser behavior and complete native
 journeys still require the ordinary CI results; no timeout, viewport, recording,
 assertion, or persistence expectation was relaxed.
+
+### Follow-up Core guard-order correction
+
+The combined-source Core run `39159571807` retained one failure in the existing
+calendar swipe unit test: the new target lookup referenced the browser `Element`
+global even when no schedule-action click suppression was active. The existing
+DOM-free swipe fixture reproduces that failure without editing its expectations.
+The two capture guards now check the suppression interval first, then resolve the
+card only when needed. This preserves the original card guard and immediate
+control actions while avoiding unnecessary DOM access on ordinary clicks.
+
+The corrected combined main source passes 300 tests in fourteen related files,
+fresh App type checking, and a production build (12.91 seconds). No test or native
+spec was changed by this follow-up. Both unsuccessful CI revisions remain
+recorded; final browser/Core acceptance belongs to the corrected public source.

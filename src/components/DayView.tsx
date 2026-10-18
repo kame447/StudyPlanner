@@ -501,7 +501,7 @@ export function DayView({
   function handleClickCapture(event: ReactMouseEvent<HTMLElement>) {
     if (isScheduleActionMenuTarget(event.target)) return;
     swipeNavigation.onClickCapture(event);
-    if (!resolveScheduleActionTarget(event.target) || !scheduleAction.shouldSuppressClick()) return;
+    if (!scheduleAction.shouldSuppressClick() || !resolveScheduleActionTarget(event.target)) return;
     event.preventDefault();
     event.stopPropagation();
   }
