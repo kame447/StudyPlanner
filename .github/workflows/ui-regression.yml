@@ -111,16 +111,16 @@ jobs:
           retention-days: 14
 
   cross-browser-projects:
-    name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'targeted-webkit' || 'cross-browser-projects' }} (${{ matrix.project }})
+    name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'targeted-webkit' || 'cross-browser-projects' }} (${{ matrix.project }})${{ matrix.shard && format(' (shard {0}/2)', matrix.shard) || '' }}
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.spec != '') || github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser' }}
     runs-on: ubuntu-latest
-    # WebKit mobile took 23.4m for 288 passing tests; setup and artifact uploads
-    # pushed the job past 25m. Keep all assertions and artifact gates intact.
+    # Split the full WebKit mobile suite without changing its time/worker budget.
+    # Targeted single-spec dispatches keep one unsharded leg.
     timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
-        project: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && fromJSON('["webkit-mobile"]') || fromJSON('["chromium-desktop","firefox-desktop","webkit-desktop","webkit-mobile"]') }}
+        include: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && fromJSON('[{"project":"webkit-mobile","shard":""}]') || fromJSON('[{"project":"chromium-desktop","shard":""},{"project":"firefox-desktop","shard":""},{"project":"webkit-desktop","shard":""},{"project":"webkit-mobile","shard":1},{"project":"webkit-mobile","shard":2}]') }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -158,6 +158,7 @@ jobs:
           UI_EVENT_NAME: ${{ github.event_name }}
           UI_SPEC: ${{ inputs.spec }}
           UI_PROJECT: ${{ matrix.project }}
+          UI_REGRESSION_SHARD: ${{ matrix.shard && format('{0}/2', matrix.shard) || '' }}
         run: |
           set -euo pipefail
           args=(test --config=tests/e2e/playwright.cross-browser.config.mjs "--project=$UI_PROJECT")
@@ -168,14 +169,16 @@ jobs:
             fi
             # Playwright treats file filters as regexes: anchor and escape the exact basename.
             args+=("(^|/)${UI_SPEC//./\\.}$")
+          elif [[ -n "$UI_REGRESSION_SHARD" ]]; then
+            args+=("--shard=$UI_REGRESSION_SHARD")
           fi
-          ./tests/e2e/node_modules/.bin/playwright "${args[@]}"
+          node scripts/ci/playwright-shard.mjs "${args[@]}"
 
       - name: Upload cross-browser artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'ui-targeted-webkit' || 'ui-cross-browser' }}-${{ matrix.project }}-${{ github.sha }}
+          name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'ui-targeted-webkit' || 'ui-cross-browser' }}-${{ matrix.project }}-${{ github.sha }}${{ matrix.shard && format('-shard-{0}', matrix.shard) || '' }}
           path: |
             artifacts/playwright-cross-browser-results/
             artifacts/playwright-cross-browser-report/
@@ -187,7 +190,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'ui-targeted-webkit' || 'ui-cross-browser' }}-diagnostics-${{ matrix.project }}-${{ github.sha }}
+          name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'ui-targeted-webkit' || 'ui-cross-browser' }}-diagnostics-${{ matrix.project }}-${{ github.sha }}${{ matrix.shard && format('-shard-{0}', matrix.shard) || '' }}
           path: |
             artifacts/playwright-cross-browser-results.json
             artifacts/playwright-cross-browser-results/**/error-context.md
@@ -198,12 +201,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'ui-targeted-webkit' || 'ui-cross-browser' }}-images-${{ matrix.project }}-${{ github.sha }}
+          name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'ui-targeted-webkit' || 'ui-cross-browser' }}-images-${{ matrix.project }}-${{ github.sha }}${{ matrix.shard && format('-shard-{0}', matrix.shard) || '' }}
           path: artifacts/playwright-cross-browser-results/**/*.png
           if-no-files-found: ignore
           retention-days: 14
 
-  # Preserve the existing required check while all project jobs run independently.
+  # Preserve the existing required check across all project legs and mobile shards.
   # A failed, cancelled or skipped project must never become a successful gate.
   cross-browser-smoke:
     name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'targeted-webkit-summary' || 'cross-browser-smoke' }}

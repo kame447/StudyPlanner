@@ -348,13 +348,13 @@ Publication and execution still require the applicable repository authorization.
 
 ## UI Regression Matrix webkit-mobile job cancelled at its 35-minute limit
 
-- Operation / symptom: `cross-browser-projects (webkit-mobile)` ends `cancelled` after about 35 minutes and the `cross-browser-smoke` aggregate turns red.
-- Known error signature: job duration ≈35.4 min (`timeout-minutes: 35` in `.github/workflows/ui-regression.yml`), `##[error]The operation was canceled.`, no failed test in the executed part (e.g. PR #717 run 39057646772 at `c2865da6`: 345 passed, 0 failed when cancelled).
-- Root cause or strongest current explanation: WebKit mobile emulation is slower than the job limit on current runners; main itself is cancelled the same way (`56a8e522` on 2026-10-16; `a39defd8`, `8261300b`, `332cdaa1`, `e6a18d0d` on 2026-10-17). It is pre-existing and not caused by the PR under review.
-- Safe workaround: confirm zero failed tests in the log and compare with main's latest run of the same job; record both run IDs in the PR. For a specific spec, use the targeted WebKit dispatch described above.
-- Required permissions / preconditions: none to read logs; rerun permission for an optional rerun.
-- What not to do: do not report the job as passed; do not raise the 35-minute limit or remove WebKit coverage to make the aggregate green.
-- Verification / cleanup: PR evidence lists the cancelled job, its executed/failed counts and main's matching cancelled run.
+- Operation / symptom: a `cross-browser-projects (webkit-mobile) (shard N/2)` job ends `cancelled` after about 35 minutes and the `cross-browser-smoke` aggregate turns red.
+- Known error signature: shard duration ≈35 min (`timeout-minutes: 35` in `.github/workflows/ui-regression.yml`), `##[error]The operation was canceled.`, and the shard log's total is never reached.
+- Root cause or strongest current explanation: runner slowness against the job limit. Before [Issue #759](https://github.com/kame447/StudyPlanner/issues/759), the whole WebKit mobile suite ran in one job: PR #743 run 39078814033 at `f87c17ab` and PR #755 run 39078828235 at `4e2f53d8` both stopped after 343 of 448 tests with 0 failures, leaving about 100 tests unexecuted. #759 splits only the full WebKit mobile leg into two Playwright shards with unchanged limits, workers, retries and coverage; the shared wrapper preflight rejects an empty shard listing because Playwright 1.64 otherwise passes it. The other three projects and manual single-spec WebKit dispatch remain unsharded.
+- Safe workaround: a cancelled shard is missing evidence, not a pass. “0 failed before cancellation” says nothing about tests it never reached. Rerun that shard job once on the same commit; merge only after both mobile shards and every other project complete successfully. For a specific spec, the targeted WebKit dispatch above provides diagnostic evidence without replacing the full gate.
+- Required permissions / preconditions: none to read logs; permission to rerun workflow jobs.
+- What not to do: do not merge on a cancelled shard, substitute main's cancellation or a targeted pass for full coverage, rerun repeatedly without new evidence (repeat-action guard), raise the 35-minute limit, drop tests or add `--pass-with-no-tests`. Distinguish a timeout from replacement by a newer run in the same concurrency group.
+- Verification / cleanup: require every project leg and both nonempty mobile shards to pass, with the two shard listing totals summing to the full `--list --project=webkit-mobile` total. If the same commit times out again, stop and investigate shard balance or runner setup instead of treating the partial run as success.
 - Last verified: 2026-10-18
 
 ## bundle-budget fails on main and on every PR (repository-wide overrun)
