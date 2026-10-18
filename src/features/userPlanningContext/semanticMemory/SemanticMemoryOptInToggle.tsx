@@ -63,7 +63,8 @@ export function SemanticMemoryOptInToggle({ ownerId }: SemanticMemoryOptInToggle
         <strong>端末内で記憶を検索</strong>
         <small>
           有効にすると、公開モデル（約{modelSizeMegabytes} MB）を端末へダウンロードします。
-          この検索のために記憶や埋め込みを外部へ送信しません（会話AIへの送信内容は従来どおりです）。
+          この検索のために記憶や埋め込みを外部へ送信しません。
+          会話AIへ送る記憶の選び方が変わることがあります。サインアウトすると同意はリセットされます。
         </small>
       </span>
       <input

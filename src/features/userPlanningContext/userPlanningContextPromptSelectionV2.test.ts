@@ -108,7 +108,7 @@ describe('optional async hybrid facade (existing sync facade unchanged)', () => 
   });
   it('enabled facade adds only current revalidated semantic records', async () => {
     const records = snapshot(); vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'true');
-    vi.stubGlobal('localStorage', { getItem: () => 'true' });
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key.startsWith('laplance-semantic-memory-opt-in:') ? 'true' : null });
     vi.spyOn(semanticMemoryApplication, 'canonical').mockReturnValue({ ownerId: 'owner-1', revision: 5, records });
     vi.spyOn(semanticMemoryApplication, 'recall').mockResolvedValue({ status: 'ok', candidates: [{
       ownerId: 'owner-1', recordId: '7', sourceRevision: 5, score: 0.9,
@@ -121,7 +121,7 @@ describe('optional async hybrid facade (existing sync facade unchanged)', () => 
   });
   it('storage/model unavailable falls back byte-identically; owner invalidation drops pending context', async () => {
     const records = snapshot(); vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'true');
-    vi.stubGlobal('localStorage', { getItem: () => 'true' });
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key.startsWith('laplance-semantic-memory-opt-in:') ? 'true' : null });
     const canonical = vi.spyOn(semanticMemoryApplication, 'canonical').mockReturnValue({ ownerId: 'owner-1', revision: 5, records });
     const recall = vi.spyOn(semanticMemoryApplication, 'recall').mockResolvedValue({ status: 'unavailable', reason: 'storage_unavailable' });
     expect(JSON.stringify(await userPlanningContextPromptSelectionHybridV2(params)))

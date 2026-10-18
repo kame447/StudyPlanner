@@ -2,6 +2,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
 import { createSemanticMemoryApplication } from './semanticMemoryApplication';
 import type { SemanticMemoryCanonicalView, SemanticMemoryEmbedder } from '../semanticMemoryContract';
+import { SEMANTIC_MEMORY_MODEL } from '../runtime/model';
+import { MemoryStorage } from '../../../../repositories/localPersistenceConcurrency.testUtils';
+import { clearSemanticMemoryOptIn, setSemanticMemoryOptIn } from '../semanticMemoryOptIn';
+import { SemanticMemoryIndexedDbStore } from './semanticMemoryIndexedDb';
 
 function view(ownerId = 'owner-a', revision = 1): SemanticMemoryCanonicalView {
   return { ownerId, revision, records: [{ id: 'synthetic-memory', ownerId, kind: 'concern',
@@ -10,14 +14,14 @@ function view(ownerId = 'owner-a', revision = 1): SemanticMemoryCanonicalView {
     recordedAt: '2026-10-17T00:00:00Z', sourceConversationId: 'synthetic', sourceTurnId: '1' }] };
 }
 function fakeEmbedder(): SemanticMemoryEmbedder {
-  return { model: { modelId: 'fake', revision: 'test', dimensions: 2, queryPrefix: '', passagePrefix: '', maxWeightBytes: 0 },
-    backend: 'wasm', embed: vi.fn(async (texts) => texts.map(() => new Float32Array([1, 0]))),
+  return { model: SEMANTIC_MEMORY_MODEL,
+    backend: 'wasm', embed: vi.fn(async (texts) => texts.map(() => new Float32Array(SEMANTIC_MEMORY_MODEL.dimensions).fill(1))),
     dispose: vi.fn(async () => undefined) };
 }
-beforeEach(() => { vi.stubGlobal('indexedDB', new IDBFactory()); });
+beforeEach(() => { vi.stubGlobal('indexedDB', new IDBFactory()); vi.stubGlobal('localStorage', new MemoryStorage()); });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
-it('flag off publishes only canonical data: no Worker, model or IndexedDB opens', async () => {
+it('flag off skips canonical record copying but still permits intentional leftover cleanup', async () => {
   vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'false');
   const worker = vi.fn(); const open = vi.spyOn(globalThis.indexedDB, 'open');
   vi.stubGlobal('Worker', worker);
@@ -25,7 +29,8 @@ it('flag off publishes only canonical data: no Worker, model or IndexedDB opens'
   const erase = vi.fn(async () => ({ status: 'ok' as const }));
   const app = createSemanticMemoryApplication({ access: async () => null, createEmbedder, erase });
   const connection = app.connect('owner-a'); connection.publish(view());
-  expect(app.canonical('owner-a')).toEqual(view());
+  connection.publish({ ...view(), get records(): never { throw Error('flag-off records must not be accessed'); } });
+  expect(app.canonical('owner-a')).toBeNull();
   expect(await app.recall('owner-a', '計算')).toMatchObject({ status: 'unavailable' });
   app.ownerChanged(); await vi.waitFor(() => expect(erase).toHaveBeenCalledOnce());
   expect(app.canonical('owner-a')).toBeNull();
@@ -112,4 +117,35 @@ it('disposes a model that finishes creating after its owner lifetime ended', asy
   scope.dispose(); finish(embedder);
   await vi.waitFor(() => expect(embedder.dispose).toHaveBeenCalledOnce());
   expect(embedder.embed).not.toHaveBeenCalled();
+});
+
+it('prunes a deleted canonical record even when the embedder factory rejects', async () => {
+  vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'true');
+  const seed = createSemanticMemoryApplication({ access: async () => null, createEmbedder: async () => fakeEmbedder() });
+  const first = seed.connect('owner-a'); first.publish(view());
+  expect(await seed.recall('owner-a', '合成')).toMatchObject({ status: 'ok' }); first.dispose();
+  const createEmbedder = vi.fn(async () => { throw Error('unsupported synthetic runtime'); });
+  const app = createSemanticMemoryApplication({ access: async () => null, createEmbedder });
+  const scope = app.connect('owner-a'); scope.publish({ ...view('owner-a', 2), records: [] });
+  expect(await app.recall('owner-a', '合成')).toMatchObject({ status: 'unavailable' });
+  expect(createEmbedder).toHaveBeenCalled();
+  const probe = new SemanticMemoryIndexedDbStore('owner-a', SEMANTIC_MEMORY_MODEL);
+  try { expect((await probe.read()).entries).toEqual([]); }
+  finally { probe.dispose(); scope.dispose(); }
+});
+
+it.each([true, false])('rebuilds after opt-out then opt-in in one session (observed access denial: %s)', async observeDenial => {
+  vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'true');
+  await setSemanticMemoryOptIn('owner-a', true);
+  const first = fakeEmbedder(); const second = fakeEmbedder();
+  const createEmbedder = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+  const app = createSemanticMemoryApplication({ createEmbedder });
+  const scope = app.connect('owner-a'); scope.publish(view());
+  expect(await app.recall('owner-a', '合成')).toMatchObject({ status: 'ok' });
+  expect(await clearSemanticMemoryOptIn('owner-a')).toBe(true);
+  if (observeDenial) expect(await app.recall('owner-a', '合成')).toMatchObject({ status: 'unavailable' });
+  expect(await setSemanticMemoryOptIn('owner-a', true)).toBe(true);
+  expect(await app.recall('owner-a', '合成')).toMatchObject({ status: 'ok' });
+  expect(createEmbedder).toHaveBeenCalledTimes(2); expect(first.dispose).toHaveBeenCalledOnce();
+  scope.dispose();
 });

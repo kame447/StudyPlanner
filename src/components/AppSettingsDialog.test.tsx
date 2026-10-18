@@ -125,6 +125,8 @@ describe('standalone readable settings', () => {
     const disclosureText = renderer.root.findByType('small').children.join('');
     expect(disclosureText).toContain('約118 MB');
     expect(disclosureText).toContain('この検索のために記憶や埋め込みを外部へ送信しません');
+    expect(disclosureText).toContain('会話AIへ送る記憶の選び方が変わることがあります');
+    expect(disclosureText).toContain('サインアウトすると同意はリセットされます');
 
     await act(async () => { await toggle().props.onChange({ currentTarget: { checked: true } }); });
     expect(state.semanticMemoryOptIn.set).toHaveBeenCalledWith('u', true);
