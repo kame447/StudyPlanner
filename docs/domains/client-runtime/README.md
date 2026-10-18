@@ -21,6 +21,8 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Existing linked-Actual write read](work/actual-existing-write-read-handoff.md) — Issue #542; reuse save-attempt existence evidence while retaining transaction rereads and fail-closed deletion handling.
+
 - [Non-spatial data motion geometry](work/nonspatial-data-motion-layout-handoff.md) — skip unused rectangle measurements while preserving motion baselines and reduced feedback.
 
 - [Initial consent legal-page navigation](work/initial-consent-public-navigation-handoff.md) — preserve confirmation state when reading terms or privacy within the existing public-page owner.
