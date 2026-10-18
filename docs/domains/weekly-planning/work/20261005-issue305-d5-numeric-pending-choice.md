@@ -118,3 +118,11 @@ Choice client は A の `semanticCensusObserver.observe('focused', dispatch)` �
 2026-10-05：最終の API / trace / harness / strict ledger projection を含む focused 12 files・132 tests は成功。app / Worker の `npm run typecheck` は成功（Worker types 再生成）。最終 `WRANGLER_LOG_PATH=/private/tmp/LushCurie-wrangler-logs npm run verify` は exit 0：fresh app / Worker typecheck、664 passed test files、4,455 passed tests（10 files / 45 tests skipped、1 todo は既存の選択的評価等）、production build 成功。追加の dormant guard もこの full run に含む。build の既存 chunk size 警告を記録した。exact diff は runtime 報告に記録する。GitHub / CI / merge は親の担当。
 
 次の action：E の exact diff と local verify を親 / 外部監査へ提出。D/A merge 後、親が実 controller・永続化・observer closure の統合と、未証明の gate を検査する。D5 の production caller はなく、採用は HOLD のままである。
+
+## 2026-10-19 checkpoint：pending target の一意性
+
+owner DECISION 4 の条件は「pending target がちょうど1つ」であり、graph 全体の active workload 数ではない。capture は graph 全体で active workload が1つの時だけ受理していたため、複数 task の通常 session では D5 に一度も到達しなかった。
+
+`captureNumericPendingQuestionDomainV5` は次の typed state だけで判定する。対象 workload に active な estimate（task / component 経由を含む `effortEstimateTargetsWorkload`）がある場合は拒否する。対象以外の active workload は、時間単位（minute / hour）か、それを覆う active な estimate を持つ場合だけ settled とする。settled でない workload が1つでもあれば、1つの回答が複数の open target を覆いうるので D5 は capture せず、既存 Luna に任せる。answer 時も同じ判定を再計算し、途中で estimate が失われれば stale として拒否する。gate、閾値、校正値（source では null）は変えていない。
+
+現行 main で `missing_effort_estimate` を作る producer（`weeklyPlanningGenericWorkItems.ts`、`weeklyPlanningStableV5PlanningEvaluation.ts` の memory session）はすべて workload を target にする。Task を target とする D5 の拡張は producer がない状態なので行わない。session_duration は共有 binder（focused contextual の schema / document）が total / per-unit しか持たず、live の focused_contextual route を変えずに足せないため、別 unit とする。

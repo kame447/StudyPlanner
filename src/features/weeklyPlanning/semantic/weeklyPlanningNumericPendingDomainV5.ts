@@ -5,6 +5,7 @@ import { freezeCandidateValue } from '../application/candidateSelection/canonica
 import type { CandidateBinding } from '../application/candidateSelection';
 import { numericPendingBoundToInputV5, numericPendingCandidatesV5, tryNumericPendingChoiceRouteV5, type NumericPendingChoicePortV5, type NumericPendingStateV5 } from './weeklyPlanningNumericPendingChoiceV5';
 import { validateWeeklyPlanningFactGraphValueV5 } from './weeklyPlanningFactGraphValidatorV5';
+import { effortEstimateTargetsWorkload } from './weeklyPlanningGenericWorkEstimation';
 import type { WeeklyPlanningSemanticNormalizerRunV5 } from './weeklyPlanningSemanticNormalizerRunV5';
 import type { WeeklyPlanningSemanticNormalizerInputV5 } from './weeklyPlanningSemanticNormalizerContractsV5';
 
@@ -54,8 +55,14 @@ export function captureNumericPendingQuestionDomainV5(params: {
     snapshotCandidateBasis({ binding: state.binding, candidates: numericPendingCandidatesV5(state, domain) });
     const target = graph.workloads.find(fact => fact.id === state.binding.target.id)!;
     const active = new Set(graph.factLifecycles.filter(entry => entry.status === 'active').map(entry => entry.factId));
-    if (graph.workloads.filter(fact => active.has(fact.id)).length !== 1) return null;
-    if (graph.effortEstimates.some(fact => fact.targetFactId === target.id && active.has(fact.id))) return null;
+    const activeEfforts = graph.effortEstimates.filter(fact => active.has(fact.id));
+    if (activeEfforts.some(fact => fact.targetFactId === target.id || effortEstimateTargetsWorkload(fact, target))) return null;
+    // Exactly one pending target: every other active workload must already be settled by
+    // typed graph state (an intrinsic time unit, or an active estimate covering it).
+    // Otherwise one answer could plausibly cover several open targets; leave that to Luna.
+    if (graph.workloads.some(fact => fact.id !== target.id && active.has(fact.id)
+      && fact.unitCode !== 'minute' && fact.unitCode !== 'hour'
+      && !activeEfforts.some(effort => effortEstimateTargetsWorkload(effort, fact)))) return null;
     const scope = numericPendingCompleteScopeV5(params.input);
     if (!scope) return null;
     const { requestId: _request, inputRevision: _inputRevision, ...binding } = state.binding;
