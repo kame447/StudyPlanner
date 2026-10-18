@@ -387,16 +387,31 @@ test('video transfer observer detects a deliberately downloaded MP4 under reduce
 test('blocked autoplay retains the clip until an explicit playback gesture completes it', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     const play = HTMLMediaElement.prototype.play;
+    let playbackGesture = null;
+    const permission = window.__startupPlaybackPermission = { blocked: 0, trustedReplay: 0, nativeCalls: 0 };
+    // Scope the permission fixture to this real replay click, not a browser's
+    // transient userActivation state during automation or initialization.
+    window.addEventListener('click', event => {
+      const button = event.target instanceof Element
+        ? event.target.closest('button.startup-video[aria-label="起動アニメーションを再生"]') : null;
+      if (!event.isTrusted || !button) return;
+      permission.trustedReplay += 1;
+      playbackGesture = { event, button };
+    }, true);
     HTMLMediaElement.prototype.play = function () {
-      if (!navigator.userActivation.isActive) {
+      if (!playbackGesture || playbackGesture.event.eventPhase === Event.NONE || !playbackGesture.button.contains(this)) {
+        permission.blocked += 1;
         this.autoplay = false;
         this.pause();
         return Promise.reject(new DOMException('Blocked autoplay fixture', 'NotAllowedError'));
       }
+      playbackGesture = null;
+      permission.nativeCalls += 1;
       return play.call(this);
     };
   });
   await boot(page);
+  await expect.poll(() => page.evaluate(() => window.__startupPlaybackPermission.blocked)).toBeGreaterThan(0);
   const replay = page.getByRole('button', { name: '起動アニメーションを再生', exact: true });
   await expect(replay).toBeEnabled();
   await expect(page.getByRole('button', { name: skipName })).toHaveCount(0);
@@ -407,6 +422,8 @@ test('blocked autoplay retains the clip until an explicit playback gesture compl
   await testInfo.attach('startup-autoplay-permission', { body: await page.screenshot(), contentType: 'image/png' });
   // The real tap calls native play synchronously even before app readiness.
   await replay.tap();
+  expect(await page.evaluate(() => ({ trustedReplay: window.__startupPlaybackPermission.trustedReplay,
+    nativeCalls: window.__startupPlaybackPermission.nativeCalls }))).toEqual({ trustedReplay: 1, nativeCalls: 1 });
   await expect.poll(() => video.evaluate(node => node.currentTime)).toBeGreaterThan(0);
   expect(await media.evaluate(node => node === document.querySelector('video'))).toBe(true);
   await readyPlanner(page);

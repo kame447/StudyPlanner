@@ -220,11 +220,15 @@ async function upsertActualDocument(
   // An equality document-ID query evaluates a missing resource under the
   // owner-only Rules and is denied. Equal inclusive range bounds keep this an
   // owner-scoped query of exactly one ID, including legacy rows without id data.
-  const existing = await getDocs(query(collection(firestoreDb, 'actuals'),
-    where('userId', '==', actual.userId),
-    where(documentId(), '>=', nextActual.id), where(documentId(), '<=', nextActual.id)));
+  // An occurrence query already proves the selected target existed. Retain
+  // its transactional reread even if a concurrent delete would make a later
+  // existence query empty; never turn that disappearance into a new record.
+  const currentExists = matchingActuals.some(item => item.id === nextActual.id && item.userId === actual.userId)
+    || (await getDocs(query(collection(firestoreDb, 'actuals'),
+      where('userId', '==', actual.userId),
+      where(documentId(), '>=', nextActual.id), where(documentId(), '<=', nextActual.id)))).docs.length > 0;
   return runTransaction(firestoreDb, async transaction => {
-    const currentSnapshot = existing.docs.length > 0
+    const currentSnapshot = currentExists
       ? await transaction.get(doc(firestoreDb, 'actuals', nextActual.id)) : null;
     const duplicateSnapshots = await Promise.all(matchingActuals.filter(item => item.id !== nextActual.id)
       .map(item => transaction.get(doc(firestoreDb, 'actuals', item.id))));

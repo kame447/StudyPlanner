@@ -1740,13 +1740,13 @@ export function usePlannerDataState({
       actualState.commit(actualOperation);
       showDeleteUndoNotice(async () => {
         const undoProjection = plannerDataReadAuthority.captureProjectionLease();
-        await plannerRepository.upsertMonthEvent(monthEvent);
+        await plannerRepository.upsertMonthEvent(currentEvent);
         // A newer accepted read may contain a newer stored version. The tracked
         // successful settlement repairs that projection without replaying this row.
         if (undoProjection && plannerDataReadAuthority.isOwnerCurrent(undoProjection)
           && !plannerDataReadAuthority.hasAcceptedProjectionChanged(undoProjection)) {
           setMonthEvents((current) =>
-            sortMonthEvents(upsertByKey(current, monthEvent, (item) => item.id)),
+            sortMonthEvents(upsertByKey(current, currentEvent, (item) => item.id)),
           );
         }
       }, ['month-events']);
