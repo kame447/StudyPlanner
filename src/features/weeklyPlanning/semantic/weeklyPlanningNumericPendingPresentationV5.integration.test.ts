@@ -53,7 +53,7 @@ beforeEach(() => {
       const prompt = JSON.parse(body.messages[1].content);
       content = { actionId: prompt.actionId, actionKind: prompt.applicationDecision.actionKind,
         questionCode: prompt.applicationDecision.questionCode, groundingAcknowledgement: null,
-        text: '数学の問題は1問に何分かかりますか？' };
+        text: prompt.applicationDecision.questionCode === 'missing_schedulable_work' ? '今週は何に取り組みますか？' : '数学の問題は1問に何分かかりますか？' };
     } else throw new Error('Unexpected fixture schema: ' + schema);
     return Response.json({ choices: [{ message: { content: JSON.stringify(content) } }],
       usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
@@ -143,6 +143,15 @@ const workload = (key: string, amount: number, unitCode: string, unitLabel: stri
   amount, unitCode, unitLabel, rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null, sourceText: `${amount}${unitLabel}` });
 const mathWorkload = workload('math', 10, 'problem', '問');
 const withTasks = (...tasks: unknown[]) => ({ ...mathOnly, tasks });
+const englishListening = studyTask('english', '英語のリスニング', [workload('english', 30, 'minute', '分')]);
+const absoluteWindow = { localId: 'window', kind: 'absolute', value: '2026-10-12/2026-10-18', start: '2026-10-12', end: '2026-10-18', sourceText: '10月12日から18日' };
+/** The settled sibling is accepted in an earlier turn, so the effort question's turn ACKs only its own target. */
+async function settledSiblingThenMath(run: ReturnType<typeof configuredRun>) {
+  setup = withTasks(englishListening);
+  expect((await run.submit('今週、英語のリスニングを30分やりたい')).accepted).toBe(true);
+  setup = { ...withTasks(studyTask('math', '数学の問題', [mathWorkload])), planningWindow: null };
+  expect((await run.submit('数学の問題も10問やりたい')).accepted).toBe(true);
+}
 
 function configuredRun(optionId: string) {
   let state = createInitialPlanningState(week);
@@ -178,10 +187,8 @@ function configuredRun(optionId: string) {
 }
 
 it('configured D5 commits the one pending target beside a settled intrinsic-time workload without semantic Luna', async () => {
-  setup = withTasks(studyTask('math', '数学の問題', [mathWorkload]),
-    studyTask('english', '英語のリスニング', [workload('english', 30, 'minute', '分')]));
   const run = configuredRun('leaf:1');
-  expect((await run.submit('今週、数学の問題を10問と英語のリスニングを30分やりたい')).accepted).toBe(true);
+  await settledSiblingThenMath(run);
   const question = run.state.intakeState!.lastQuestionContext!;
   expect(question.actionId).toMatch(/^candidate-question:d5_numeric:/);
   const math = run.saved().graph.workloads.find(fact => fact.unitCode === 'problem')!;
@@ -210,10 +217,8 @@ it('configured D5 leaves two open effort targets to the existing focused Luna ro
 });
 
 it('configured D5 falls back to the unchanged Luna route when the chooser selects none', async () => {
-  setup = withTasks(studyTask('math', '数学の問題', [mathWorkload]),
-    studyTask('english', '英語のリスニング', [workload('english', 30, 'minute', '分')]));
   const run = configuredRun('none');
-  expect((await run.submit('今週、数学の問題を10問と英語のリスニングを30分やりたい')).accepted).toBe(true);
+  await settledSiblingThenMath(run);
   expect(run.state.intakeState!.lastQuestionContext!.controlledCandidate).toBeDefined();
   const before = schemas.length;
   expect((await run.submit('1問3分です')).accepted).toBe(true);
@@ -235,4 +240,60 @@ it('configured D5 commits a component-linked workload through answer-stage ances
   expect(run.choice).toHaveBeenCalledTimes(1);
   expect(run.semanticSchemasSince(before)).toEqual([]);
   expect(run.saved().graph.effortEstimates).toMatchObject([{ targetFactId: graph.workloads[0].id, minutes: 3, kind: 'duration_per_unit' }]);
+});
+
+async function expectCapturedAndCommitted(run: ReturnType<typeof configuredRun>) {
+  const question = run.state.intakeState!.lastQuestionContext!;
+  expect(question.targetSlot).toBe('stable_v5:missing_effort_estimate');
+  expect(question.presentation?.content).toMatchObject({ currentTurnGrounding: 'recommended', groundingContext: { proposed: 0 } });
+  expect(question.actionId).toMatch(/^candidate-question:d5_numeric:/);
+  const before = schemas.length;
+  expect((await run.submit('1問3分です')).accepted).toBe(true);
+  expect(run.choice).toHaveBeenCalledTimes(1);
+  expect(run.semanticSchemasSince(before)).toEqual([]);
+  expect(run.saved().graph.effortEstimates).toMatchObject([{ minutes: 3, kind: 'duration_per_unit', unitCode: 'problem' }]);
+}
+
+it('configured D5 captures a first question grounded with an absolute window (recommended, no proposal)', async () => {
+  setup = { ...mathOnly, planningWindow: absoluteWindow };
+  const run = configuredRun('leaf:1');
+  expect((await run.submit('10月12日から18日に数学の問題を10問進めたい')).accepted).toBe(true);
+  await expectCapturedAndCommitted(run);
+});
+
+it('configured D5 captures the effort question after a relative week was continued with work', async () => {
+  setup = { ...mathOnly, tasks: [] };
+  const run = configuredRun('leaf:1');
+  expect((await run.submit('今週の計画を立てたい')).accepted).toBe(true);
+  setup = { ...mathOnly, planningWindow: null };
+  expect((await run.submit('数学の問題を10問')).accepted).toBe(true);
+  expect(run.state.intakeState!.groundingRecords?.map(record => record.status)).toEqual(['continuation_accepted']);
+  await expectCapturedAndCommitted(run);
+});
+
+it('configured D5 captures the effort question after an absolute window turn', async () => {
+  setup = { ...mathOnly, planningWindow: absoluteWindow, tasks: [] };
+  const run = configuredRun('leaf:1');
+  await run.submit('10月12日から18日の計画を立てたい');
+  setup = { ...mathOnly, planningWindow: null };
+  expect((await run.submit('数学の問題を10問')).accepted).toBe(true);
+  await expectCapturedAndCommitted(run);
+});
+
+it.each([
+  ['a settled time-unit sibling', '今週、数学の問題を10問と英語のリスニングを30分やりたい', () => withTasks(studyTask('math', '数学の問題', [mathWorkload]), englishListening)],
+  ['a sibling settled by a same-turn estimate', '今週、数学の問題を10問と英語の長文を20ページ、英語は1ページ5分', () => withTasks(studyTask('math', '数学の問題', [mathWorkload]),
+    { ...studyTask('english', '英語の長文', [workload('english', 20, 'page', 'ページ')]), effortEstimates: [{ localId: 'english-effort',
+      targetLocalId: 'workload-english', kind: 'duration_per_unit', minutes: 5, unitCode: 'page', precision: 'exact', sourceText: '1ページ5分' }] })],
+])('configured D5 leaves an effort question co-presented with %s to the existing Luna route', async (_label, userText, doc) => {
+  setup = doc();
+  const run = configuredRun('leaf:1');
+  expect((await run.submit(userText)).accepted).toBe(true);
+  const question = run.state.intakeState!.lastQuestionContext!;
+  expect(question.targetSlot).toBe('stable_v5:missing_effort_estimate');
+  expect(question.controlledCandidate).toBeUndefined();
+  const before = schemas.length;
+  expect((await run.submit('1問3分です')).accepted).toBe(true);
+  expect(run.choice).not.toHaveBeenCalled();
+  expect(run.semanticSchemasSince(before)).toEqual(['weekly_planning_focused_contextual_answer_v5']);
 });

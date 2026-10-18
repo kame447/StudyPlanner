@@ -126,3 +126,11 @@ owner DECISION 4 の条件は「pending target がちょうど1つ」であり�
 `captureNumericPendingQuestionDomainV5` は次の typed state だけで判定する。対象 workload に active な estimate（task / component 経由を含む `effortEstimateTargetsWorkload`）がある場合は拒否する。対象以外の active workload は、planner と同じ active view で `resolveGenericWorkItemEstimate` が曖昧でなく解決する場合（時間単位 minute / hour、単位の一致する per-unit、一意の total、observed pace）だけ settled とする。単位の合わない per-unit estimate、曖昧な estimate、scope_total の workload は settled としない。settled でない workload が1つでもあれば、1つの回答が複数の open target を覆いうるので D5 は capture せず、既存 Luna に任せる。answer 時も同じ判定を再計算し、途中で estimate が失われれば stale として拒否する。gate、閾値、校正値（source では null）は変えていない。
 
 現行 main で `missing_effort_estimate` を作る producer（`weeklyPlanningGenericWorkItems.ts`、`weeklyPlanningStableV5PlanningEvaluation.ts` の memory session）はすべて workload を target にする。Task を target とする D5 の拡張は producer がない状態なので行わない。session_duration は共有 binder（focused contextual の schema / document）が total / per-unit しか持たず、live の focused_contextual route を変えずに足せないため、別 unit とする。
+
+## 2026-10-19 checkpoint：提示 gate と同じ turn の受理事実
+
+自然な最初の effort 質問は、workload を追加した turn で出るので `currentTurnGrounding=recommended` になる。共有の `isWeeklyPlanningQuestionPresentationDirect` は recommended を proposed=1 の時だけ通すため、相対週を同じ文で言った場合以外は capture されなかった（絶対日付の期間、「今週の計画」→ 次の turn で作業、など）。recommended + proposed=0 の描画は、既存の recommended + proposed=1 が許す内容（その turn の受理事実への任意の ACK）の部分集合である。
+
+- controlled candidate の capture だけが `isWeeklyPlanningQuestionPresentationControlledDirect` を使う（registry）。共有の Direct / Unaccompanied と、それを使う C5 / reply-reference は変えない。`required_before_resume`、`deterministic_fallback`、contested、self-repair、preview 操作、proposed≥2 は引き続き除外する。
+- ACK が同じ turn の別の量を復唱すると、裸の「20分」が target の切替や訂正になりうる。domain は必須の `rejectsCoPresentedFacts` を持ち、registry は質問時だけ、提示した request ID（`source.turnId`）で受理された事実を渡す（`weeklyPlanningStableV5AcceptedFactsForTurn`）。presentation の turn ID は別の ID 空間なので使わない。hook が true・例外・boolean 以外なら capture せず、epoch も進めない。
+- D5 は、提示 turn が target 以外の workload（単位を問わない）または effort estimate を受理した場合に capture しない。target 自身の task / component / 量は質問に固有なので許す。
