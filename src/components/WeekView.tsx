@@ -1,3 +1,4 @@
+import { isScheduleActionMenuTarget } from '../lib/scheduleItemActions';
 import { entryTimeRangeForDate } from '../lib/entryTimeRange';
 import {
   useEffect,
@@ -56,6 +57,7 @@ import { useUndoRedoHistory } from '../hooks/useUndoRedoHistory';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import type {
   Actual,
+  ActualDraft,
   MonthEvent,
   Plan,
   PlanSourceType,
@@ -63,7 +65,12 @@ import type {
   TimetableTerm,
 } from '../types/domain';
 import { DragUndoRedoControls } from './DragUndoRedoControls';
-import { ScheduleItemDeleteAction } from './ScheduleItemDeleteAction';
+import { ScheduleItemRadialMenu } from './ScheduleItemRadialMenu';
+import { ScheduleMoveDialog } from './ScheduleMoveDialog';
+import { DayDetailModal } from './DayDetailModal';
+import { useScheduleOccurrenceActions } from '../hooks/useScheduleOccurrenceActions';
+import { resolveScheduleActionPlan } from '../lib/scheduleItemActions';
+import type { ActualActionTarget } from '../hooks/useActualMutationAdmission';
 import { WeekSpanningEventsLane } from './WeekSpanningEventsLane';
 import '../styles/week-plan-drag.css';
 
@@ -83,6 +90,13 @@ interface WeekViewProps {
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onOpenPlan?: (plan: Plan) => void;
+  onDuplicatePlan?: (plan: Plan) => void;
+  onPrepareTimetableRecord?: (occurrence: ScheduleOccurrence) => Promise<Plan>;
+  getActualActionBlockReason?: (target: ActualActionTarget) => string | null;
+  onSaveActual?: (plan: Plan, draft: ActualDraft, targetActualId?: string) => Promise<void>;
+  onSaveStandaloneActual?: (draft: ActualDraft, targetActualId?: string) => Promise<void>;
+  onLinkStandaloneActualToPlan?: (actual: Actual, plan: Plan) => Promise<void>;
+  onDeleteActual?: (actual: Actual) => Promise<void>;
   onMovePlan?: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   onDeletePlan?: (plan: Plan) => Promise<void>;
   onDeleteMonthEvent?: (monthEvent: MonthEvent) => Promise<void>;
@@ -180,12 +194,6 @@ function resolveActualSubject(actual: Actual, plan?: Plan): string {
   return actual.subject.trim() || plan?.subject || '記録';
 }
 
-function isReadOnlyTimetableOccurrence(
-  occurrence: ScheduleOccurrence | undefined,
-): boolean {
-  return occurrence?.source.backingKind === 'timetable-template';
-}
-
 function buildMarkerStyle(hour: number): CSSProperties {
   return {
     top: `${(hour / 24) * 100}%`,
@@ -268,6 +276,13 @@ export function WeekView({
   weeklyDraftBlocks = NO_DRAFT_BLOCKS,
   onRemoveWeeklyDraftBlock,
   onOpenPlan,
+  onDuplicatePlan,
+  onPrepareTimetableRecord,
+  getActualActionBlockReason,
+  onSaveActual,
+  onSaveStandaloneActual,
+  onLinkStandaloneActualToPlan,
+  onDeleteActual,
   onMovePlan,
   onDeletePlan,
   onDeleteMonthEvent,
@@ -279,12 +294,16 @@ export function WeekView({
   const dragSessionRef = useRef<DragSession | null>(null);
   const suppressClickUntilRef = useRef(0);
   const moveHistory = useUndoRedoHistory<string, WeekPlanMoveTarget>();
+  const [recordSelection, setRecordSelection] = useState<{ plan: Plan; record: boolean; context: string } | null>(null);
+  const recordContext = `${userId}:${selectedDate}`;
+  const detailSelection = recordSelection?.context === recordContext ? recordSelection : null;
   const scheduleAction = useScheduleItemActionPress<ScheduleOccurrence>();
   const swipeNavigation = useSwipeNavigation({
     onPrevious: () => onChangeWeek?.(addDays(selectedDate, -7)),
     onNext: () => onChangeWeek?.(addDays(selectedDate, 7)),
-    disabled: !onChangeWeek || Boolean(dragVisual || scheduleAction.activeAction),
+    disabled: !onChangeWeek || Boolean(dragVisual || scheduleAction.activeAction || detailSelection),
   });
+  useEffect(() => { setRecordSelection(null); scheduleAction.dismiss(); }, [recordContext]);
   const weekDates = getWeekDates(selectedDate);
   const weekSectionRef = useRef<HTMLElement | null>(null);
   useDataChangeMotion(weekSectionRef, `${weekDates[0]}:${timelineMode}`, [plans, actuals, monthEvents, weeklyDraftBlocks]);
@@ -787,13 +806,14 @@ export function WeekView({
     const element = target.closest<HTMLElement>('[data-schedule-occurrence-id]');
     const occurrenceId = element?.dataset.scheduleOccurrenceId;
     const occurrence = occurrenceId ? occurrenceById.get(occurrenceId) : undefined;
-    if (!element || !occurrence || isReadOnlyTimetableOccurrence(occurrence)) {
+    if (!element || !occurrence) {
       return null;
     }
     return { element, occurrence };
   }
 
   function handleActionPointerDownCapture(event: ReactPointerEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
     if (event.pointerType === 'touch' || event.button !== 0 || !event.isPrimary) return;
     const target = resolveScheduleActionTarget(event.target);
     if (!target) return;
@@ -809,11 +829,13 @@ export function WeekView({
   }
 
   function handleActionPointerMoveCapture(event: ReactPointerEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
     if (event.pointerType === 'touch') return;
     scheduleAction.move(event.clientX, event.clientY);
   }
 
   function handleActionPointerUpCapture(event: ReactPointerEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
     if (event.pointerType === 'touch') return;
     const target = resolveScheduleActionTarget(event.target);
     if (target) scheduleAction.finish(target.occurrence.id);
@@ -821,6 +843,7 @@ export function WeekView({
   }
 
   function handleActionTouchStartCapture(event: ReactTouchEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
     if (event.touches.length !== 1) return;
     const target = resolveScheduleActionTarget(event.target);
     const touch = event.touches[0];
@@ -837,17 +860,20 @@ export function WeekView({
   }
 
   function handleActionTouchMoveCapture(event: ReactTouchEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
     const touch = event.touches[0];
     if (touch) scheduleAction.move(touch.clientX, touch.clientY);
   }
 
   function handleActionTouchEndCapture(event: ReactTouchEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
     const target = resolveScheduleActionTarget(event.target);
     if (target) scheduleAction.finish(target.occurrence.id);
     else scheduleAction.cancel();
   }
 
   function handleActionClickCapture(event: ReactMouseEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
     swipeNavigation.onClickCapture(event);
     if (!scheduleAction.shouldSuppressClick()) return;
     event.preventDefault();
@@ -870,6 +896,26 @@ export function WeekView({
           `「${monthEvent.title}」は繰り返し予定です。予定全体を削除しますか？`,
         ),
     });
+  }
+
+  const radialActions = useScheduleOccurrenceActions({
+    occurrences: scheduleProjection.occurrences, activeOccurrence: scheduleAction.activeAction?.item, onDismissMenu: scheduleAction.dismiss,
+    contextKey: recordContext, viewedDate: selectedDate, plans, monthEvents, actuals,
+    onEditPlan: onOpenPlan, onDuplicatePlan, canMove: Boolean(onMovePlan),
+    canDelete: occurrence => occurrence.source.backingKind !== 'timetable-template' && Boolean(onDeletePlan && onDeleteMonthEvent),
+    onDelete: handleDeleteOccurrence, onSaveActual, getActualActionBlockReason, onPrepareTimetableRecord,
+    onOpenPreparedRecord: plan => setRecordSelection({ plan, record: true, context: recordContext }),
+    onOpenDetail: (occurrence, record) => {
+      const plan = resolveScheduleActionPlan(occurrence, plans, monthEvents, selectedDate, scheduleProjection.occurrences);
+      if (plan) setRecordSelection({ plan, record, context: recordContext });
+      else onOpenDay(occurrence.start.date);
+    },
+  });
+  async function moveFromDialog(plan: Plan, target: WeekPlanMoveTarget) {
+    if (!onMovePlan) return;
+    await onMovePlan(plan, target);
+    if (!supportsScopedRecurringPlanEdits(plan)) moveHistory.record({ key: plan.id,
+      before: { date: plan.occurrenceDate ?? plan.date, startTime: plan.startTime, endTime: plan.endTime }, after: target });
   }
 
   const dragOverlay =
@@ -905,16 +951,39 @@ export function WeekView({
         ref={weekSectionRef}
         className="panel schedule-week-view"
         {...swipeNavigation}
+        onTouchStart={event => { if (!isScheduleActionMenuTarget(event.target)) swipeNavigation.onTouchStart(event); }}
+        onTouchMove={event => { if (!isScheduleActionMenuTarget(event.target)) swipeNavigation.onTouchMove(event); }}
+        onTouchEnd={event => { if (!isScheduleActionMenuTarget(event.target)) swipeNavigation.onTouchEnd(); }}
+        onTouchCancel={event => { if (!isScheduleActionMenuTarget(event.target)) swipeNavigation.onTouchCancel(); }}
         onPointerDownCapture={handleActionPointerDownCapture}
         onPointerMoveCapture={handleActionPointerMoveCapture}
         onPointerUpCapture={handleActionPointerUpCapture}
-        onPointerCancelCapture={scheduleAction.cancel}
+        onPointerCancelCapture={event => { if (!isScheduleActionMenuTarget(event.target)) scheduleAction.cancel(); }}
         onTouchStartCapture={handleActionTouchStartCapture}
         onTouchMoveCapture={handleActionTouchMoveCapture}
         onTouchEndCapture={handleActionTouchEndCapture}
-        onTouchCancelCapture={scheduleAction.cancel}
+        onTouchCancelCapture={event => { if (!isScheduleActionMenuTarget(event.target)) scheduleAction.cancel(); }}
         onClickCapture={handleActionClickCapture}
+        onContextMenu={event => {
+          const target = resolveScheduleActionTarget(event.target);
+          if (!target) return;
+          event.preventDefault();
+          scheduleAction.open(target.occurrence.id, target.occurrence, target.occurrence.title, target.element);
+        }}
+        onKeyDown={event => {
+          if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+          const target = resolveScheduleActionTarget(event.target);
+          if (!target) return;
+          event.preventDefault();
+          scheduleAction.open(target.occurrence.id, target.occurrence, target.occurrence.title, target.element);
+        }}
       >
+        {radialActions.notice ? (
+        // Floating like the app toast so the calendar layout never shifts.
+        <div className="app-toast-layer print-hide bottom" aria-live="polite">
+          <p className={`app-notice app-toast ${radialActions.notice.tone}`} role="status">{radialActions.notice.text}</p>
+        </div>
+      ) : null}
         <div className="week-timeline-toolbar print-hide">
           <div className="segmented-control week-timeline-mode-control">
             <button
@@ -1098,9 +1167,6 @@ export function WeekView({
                           .filter(Boolean)
                           .join(' ');
                         const isSavedPlan = Boolean(entry.plan && !entry.draft);
-                        const isReadOnlyTimetable = isReadOnlyTimetableOccurrence(
-                          entry.occurrence,
-                        );
 
                         if (isSavedPlan && entry.plan) {
                           return (
@@ -1140,18 +1206,17 @@ export function WeekView({
                             key={entry.id}
                             data-motion-key={`${date}:${entry.draft ? 'draft' : 'entry'}:${entry.id}`}
                             data-motion-signature={`${entry.startTime}-${entry.endTime} ${entry.title}`}
-                            data-schedule-occurrence-id={
-                              isReadOnlyTimetable ? undefined : entry.occurrence?.id
-                            }
+                            data-schedule-occurrence-id={entry.occurrence?.id}
+                            tabIndex={entry.occurrence ? 0 : undefined}
                             style={buildBlockStyle(entry)}
                             title={`${entry.title} / ${entry.startTime}-${entry.endTime}${entry.draft ? ' / 仮予定' : ''}`}
                             aria-label={
-                              isReadOnlyTimetable
+                              entry.occurrence?.source.backingKind === 'timetable-template'
                                 ? `${entry.title} ${entry.startTime}から${entry.endTime}。時間割`
                                 : undefined
                             }
                             onContextMenu={
-                              entry.occurrence && !isReadOnlyTimetable
+                              entry.occurrence
                                 ? (event) => event.preventDefault()
                                 : undefined
                             }
@@ -1191,9 +1256,22 @@ export function WeekView({
         </div>
       </section>
       {dragOverlay}
-      <ScheduleItemDeleteAction
+      {radialActions.movingPlan ? <ScheduleMoveDialog key={`${userId}:${selectedDate}:${radialActions.movingPlan.id}`} plan={radialActions.movingPlan} onMove={moveFromDialog} onClose={radialActions.closeMove} /> : null}
+      {detailSelection && onSaveActual && onSaveStandaloneActual && onLinkStandaloneActualToPlan && onDeleteActual ? <DayDetailModal
+        key={`${recordContext}:${detailSelection.plan.id}:${detailSelection.record}`}
+        detailPlan={detailSelection.plan} openRecordInitially={detailSelection.record}
+        monthEvent={monthEvents.find(event => event.id === detailSelection.plan.id) ?? null}
+        detailActual={actuals.find(actual => actual.userId === detailSelection.plan.userId && actual.planId === detailSelection.plan.id && actual.occurrenceDate === (detailSelection.plan.occurrenceDate ?? detailSelection.plan.date))}
+        standaloneActual={null} plans={plans} actuals={actuals}
+        onEditPlan={plan => { setRecordSelection(null); onOpenPlan?.(plan); }}
+        onDeletePlan={async plan => { await onDeletePlan?.(plan); }}
+        onSaveActual={onSaveActual} getActualActionBlockReason={getActualActionBlockReason}
+        onSaveStandaloneActual={onSaveStandaloneActual} onLinkStandaloneActualToPlan={onLinkStandaloneActualToPlan}
+        onDeleteActual={onDeleteActual} onClose={() => setRecordSelection(null)} /> : null}
+      <ScheduleItemRadialMenu
         action={scheduleAction.activeAction}
-        onDelete={handleDeleteOccurrence}
+        actions={radialActions.actionsFor(scheduleAction.activeAction?.item)}
+        onSelect={radialActions.select}
         onDismiss={scheduleAction.dismiss}
       />
       <DragUndoRedoControls

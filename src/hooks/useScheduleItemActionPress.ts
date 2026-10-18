@@ -9,7 +9,6 @@ interface ScheduleActionPress<TItem> {
   startY: number;
   startedAt: number;
   moved: boolean;
-  timerId: number | null;
   element: HTMLElement;
 }
 
@@ -19,6 +18,10 @@ export interface ActiveScheduleItemAction<TItem> {
   title: string;
   top: number;
   left: number;
+  /** Viewport rect of the pressed event, used to place the radial menu. */
+  anchorRect: { top: number; left: number; right: number; bottom: number; width: number; height: number };
+  /** Focus origin for Escape; optional for callers that construct an action. */
+  anchorElement?: HTMLElement;
 }
 
 export const SCHEDULE_ITEM_ACTION_INTENT_EVENT = 'studyplanner:schedule-item-action-intent';
@@ -36,25 +39,42 @@ export function useScheduleItemActionPress<TItem>() {
   const [activeAction, setActiveAction] = useState<ActiveScheduleItemAction<TItem> | null>(null);
   const pressRef = useRef<ScheduleActionPress<TItem> | null>(null);
   const suppressClickUntilRef = useRef(0);
+  const outsideClickCleanupRef = useRef<(() => void) | null>(null);
 
   function clearPress() {
-    const press = pressRef.current;
-    if (press?.timerId !== null && press?.timerId !== undefined) {
-      window.clearTimeout(press.timerId);
-    }
     pressRef.current = null;
   }
 
   function reveal(press: ScheduleActionPress<TItem>) {
     if (pressRef.current !== press || press.moved) return;
-    const rect = press.element.getBoundingClientRect();
+    showFor(press.key, press.item, press.title, press.element);
+  }
+
+  function showFor(key: string, item: TItem, title: string, element: HTMLElement) {
+    const rect = element.getBoundingClientRect();
     setActiveAction({
-      key: press.key,
-      item: press.item,
-      title: press.title,
+      key,
+      item,
+      title,
+      anchorElement: element,
       top: Math.max(8, rect.top + 3),
       left: Math.max(8, rect.right - 47),
+      anchorRect: {
+        top: rect.top,
+        left: rect.left,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+      },
     });
+  }
+
+  /** Opens the actions without a press, e.g. from the keyboard or a context menu. */
+  function open(key: string, item: TItem, title: string, element: HTMLElement) {
+    clearPress();
+    outsideClickCleanupRef.current?.();
+    showFor(key, item, title, element);
   }
 
   function start(
@@ -79,11 +99,11 @@ export function useScheduleItemActionPress<TItem>() {
       startY: y,
       startedAt: Date.now(),
       moved: false,
-      timerId: null,
       element,
     };
     pressRef.current = press;
-    press.timerId = window.setTimeout(() => reveal(press), ACTION_LONG_PRESS_MS);
+    // The drag controller arms at the same threshold. Reveal only on release,
+    // once we know this stationary hold did not turn into a drag.
   }
 
   function move(x: number, y: number) {
@@ -94,10 +114,6 @@ export function useScheduleItemActionPress<TItem>() {
     if (distance(press.startX, press.startY, x, y) <= tolerance) return;
 
     press.moved = true;
-    if (press.timerId !== null) {
-      window.clearTimeout(press.timerId);
-      press.timerId = null;
-    }
     if (activeAction?.key === press.key) {
       setActiveAction(null);
     }
@@ -111,7 +127,7 @@ export function useScheduleItemActionPress<TItem>() {
         !press.moved &&
         Date.now() - press.startedAt >= ACTION_LONG_PRESS_MS,
     );
-    if (held && press && activeAction?.key !== key) {
+    if (held && press) {
       reveal(press);
     }
     if (held) {
@@ -146,7 +162,7 @@ export function useScheduleItemActionPress<TItem>() {
 
   useEffect(() => {
     if (!activeAction) return;
-    const dismissOnScroll = () => setActiveAction(null);
+    const dismissOnScroll = () => { clearPress(); setActiveAction(null); };
     const dismissOnPointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (
@@ -155,20 +171,45 @@ export function useScheduleItemActionPress<TItem>() {
       ) {
         return;
       }
+      // An outside gesture dismisses only, regardless of pointer type. Keep its
+      // one-shot click guard through close, but clear it on the next unrelated
+      // pointer gesture or after 700ms.
+      outsideClickCleanupRef.current?.();
+      const swallowClick = (click: MouseEvent) => {
+        click.preventDefault();
+        click.stopImmediatePropagation();
+        cleanup();
+      };
+      const cleanup = () => {
+        document.removeEventListener('click', swallowClick, { capture: true });
+        document.removeEventListener('pointerdown', cleanup, { capture: true });
+        window.clearTimeout(timeout);
+        outsideClickCleanupRef.current = null;
+      };
+      const timeout = window.setTimeout(cleanup, CLICK_SUPPRESSION_MS);
+      document.addEventListener('click', swallowClick, true);
+      document.addEventListener('pointerdown', cleanup, true);
+      outsideClickCleanupRef.current = cleanup;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      clearPress();
       setActiveAction(null);
     };
     window.addEventListener('scroll', dismissOnScroll, true);
-    document.addEventListener('pointerdown', dismissOnPointerDown);
+    window.addEventListener('resize', dismissOnScroll);
+    document.addEventListener('pointerdown', dismissOnPointerDown, true);
     return () => {
       window.removeEventListener('scroll', dismissOnScroll, true);
-      document.removeEventListener('pointerdown', dismissOnPointerDown);
+      window.removeEventListener('resize', dismissOnScroll);
+      document.removeEventListener('pointerdown', dismissOnPointerDown, { capture: true });
     };
   }, [activeAction]);
 
-  useEffect(() => () => clearPress(), []);
+  useEffect(() => () => { clearPress(); outsideClickCleanupRef.current?.(); }, []);
 
   return {
     activeAction,
+    open,
     start,
     move,
     finish,

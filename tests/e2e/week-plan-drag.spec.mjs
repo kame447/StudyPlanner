@@ -78,7 +78,7 @@ test('mouse drag changes weekday and time while preserving duration', async ({ p
   expect(events.filter((entry) => entry.type === 'open-plan')).toHaveLength(0);
 });
 
-test('pointer hold reveals delete action and removes only the held plan', async ({ page }) => {
+test('pointer hold opens actions on release and removes only the held plan', async ({ page }) => {
   await page.goto(HARNESS_URL);
 
   const { plan, x, y } = await planCenter(page, /数学の復習.*タップで編集/);
@@ -86,8 +86,8 @@ test('pointer hold reveals delete action and removes only the held plan', async 
   await page.mouse.down();
   await page.waitForTimeout(300);
 
-  const action = page.getByRole('button', { name: '数学の復習を削除' });
-  await expect(action).toBeVisible();
+  const action = page.getByRole('menuitem', { name: '削除', exact: true });
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(plan).toBeVisible();
   await page.mouse.up();
   await expect(action).toBeVisible();
@@ -125,7 +125,7 @@ test('short touch remains a tap and opens the plan', async ({ browser }) => {
   await context.close();
 });
 
-test('touch hold shows delete while held and keeps it after release until exact deletion', async ({ browser }) => {
+test('touch hold opens actions on release until exact deletion', async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 320, height: 780 },
     hasTouch: true,
@@ -139,8 +139,8 @@ test('touch hold shows delete while held and keeps it after release until exact 
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
 
-  const action = page.getByRole('button', { name: '数学の復習を削除' });
-  await expect(action).toBeVisible();
+  const action = page.getByRole('menuitem', { name: '削除', exact: true });
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
 
   await dispatchTouch(session, 'touchEnd', x, y);
@@ -173,7 +173,7 @@ test('touch movement before long press cancels drag activation', async ({ browse
   await page.waitForTimeout(300);
 
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
-  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toHaveCount(0);
   expect((await readEvents(page)).filter((entry) => entry.type === 'move-plan')).toHaveLength(0);
 
   await dispatchTouch(session, 'touchEnd', x - 40, y);
@@ -196,11 +196,11 @@ test('long press reveals action, then movement hands off to touch drag without o
 
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
-  await expect(page.getByRole('button', { name: '数学の復習を削除' })).toBeVisible();
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
 
   await dispatchTouch(session, 'touchMove', x + dayBox.width + 6, y + 55);
-  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
   await page.waitForTimeout(30);
   await dispatchTouch(session, 'touchEnd', x + dayBox.width + 6, y + 55);
@@ -238,11 +238,11 @@ test('active long press touch drag keeps the background completely stationary', 
 
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
-  await expect(page.getByRole('button', { name: '数学の復習を削除' })).toBeVisible();
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
 
   await dispatchTouch(session, 'touchMove', scrollBox.x + 2, y + 45);
-  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).overflow)).toBe('hidden');
   await page.waitForTimeout(50);

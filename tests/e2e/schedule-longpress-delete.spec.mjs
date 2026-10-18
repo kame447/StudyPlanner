@@ -105,12 +105,12 @@ test('day short touch remains a normal tap', async ({ browser }) => {
 
   await page.touchscreen.tap(x, y);
 
-  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: /長押し削除確認の操作/ })).toBeVisible();
   await context.close();
 });
 
-test('day touch hold reveals delete while held, persists after release, and removes only the held item', async ({ browser }) => {
+test('day stationary hold opens six actions on release and deletion removes only the held item', async ({ browser }) => {
   const { context, page, session } = await openDaySchedule(browser);
   const plan = page.locator('.timeline-plan-block').filter({ hasText: '長押し削除確認' });
   const sibling = page.locator('.timeline-plan-block').filter({ hasText: '残る予定' });
@@ -119,19 +119,20 @@ test('day touch hold reveals delete while held, persists after release, and remo
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
 
-  const action = page.getByRole('button', { name: '長押し削除確認を削除' });
-  await expect(action).toBeVisible();
+  const action = page.getByRole('menuitem', { name: '削除', exact: true });
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
   await expect(plan).toBeVisible();
   await expect(sibling).toBeVisible();
 
   await dispatchTouch(session, 'touchEnd', x, y);
   await expect(action).toBeVisible();
+  await expect(page.getByRole('menuitem')).toHaveText(['完了', '編集', '複製', '削除', '実績', '移動']);
 
   await action.click();
   await expect(plan).toHaveCount(0);
   await expect(sibling).toBeVisible();
-  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await context.close();
 });
 
@@ -145,13 +146,13 @@ test('day long press then movement hands off to drag and hides delete action', a
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
 
-  await expect(page.getByRole('button', { name: '長押し削除確認を削除' })).toBeVisible();
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
 
   await dispatchTouch(session, 'touchMove', x, y + 90);
   await page.waitForTimeout(50);
 
-  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => document.documentElement.classList.contains('is-timeline-drag-interaction-locked')))

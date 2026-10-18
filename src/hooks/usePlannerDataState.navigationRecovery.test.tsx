@@ -206,3 +206,19 @@ it.each(['plan', 'todo'] as const)('preserves explicit toolbar navigation while 
   expect(state.selectedDate).toBe('2026-11-01');
   expect(state.monthDate).toBe('2026-11-01');
 });
+
+it('opens a duplicate as a new single-plan draft and never updates the original plan', async () => {
+  await mount();
+  await act(async () => { await state.savePlanDraft({ ...draft(SAVE), repeat: 'daily', repeatUntil: LATEST, materialId: 'material', materialName: '問題集', memo: '内容' }); });
+  const original = structuredClone(state.plans[0]);
+  repo.upsertPlan.mockClear();
+  await act(async () => { state.openEditPlan(original); state.openDuplicatePlan(original); });
+  expect(state.editingPlanId).toBeNull(); expect(state.editingPlan).toBeNull();
+  expect(state.editorDraft).toMatchObject({ title: original.title, materialId: 'material', materialName: '問題集', memo: '内容',
+    repeat: 'none', repeatUntil: null, recurrenceRules: [], excludedDates: [] });
+  expect(repo.upsertPlan).not.toHaveBeenCalled(); expect(state.plans).toEqual([original]);
+  await act(async () => { await state.savePlanDraft(state.editorDraft!); });
+  expect(repo.upsertPlan).toHaveBeenCalledOnce();
+  expect(repo.upsertPlan.mock.calls[0][0].id).not.toBe(original.id);
+  expect(state.plans).toContainEqual(original);
+});

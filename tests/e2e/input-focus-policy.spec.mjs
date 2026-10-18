@@ -166,6 +166,14 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     ['src/components/AiPlanningPreviewDialog.tsx', new Set([
       'dialogRef.current?.focus({ preventScroll: true });',
     ])],
+    // The user-opened schedule action ring focuses only its own menuitem buttons
+    // (first enabled on open, Arrow/Tab cycling) and returns focus to the calendar
+    // event that opened it. None of these targets is a text control.
+    ['src/components/ScheduleItemRadialMenu.tsx', new Set([
+      'buttons.current[firstEnabled < 0 ? 0 : firstEnabled]?.focus({ preventScroll: true });',
+      'buttons.current[next]?.focus({ preventScroll: true });',
+      'if (action.anchorElement?.isConnected) action.anchorElement.focus({ preventScroll: true });',
+    ])],
   ]);
   const hasUnexpectedFocus = (fileName, line) => line.includes('.focus(')
     && !allowedFocusFiles.has(fileName) && !allowedFocusStatements.get(fileName)?.has(line.trim());
@@ -200,6 +208,18 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
   const previewDialogSource = fs.readFileSync(path.join(repoRoot, previewDialogFile), 'utf8');
   expect(previewDialogSource.match(/\bref=\{dialogRef\}/g)).toHaveLength(1);
   expect(previewDialogSource).toMatch(/ref=\{dialogRef\}\s+tabIndex=\{-1\}[\s\S]{0,200}role="dialog"/);
+
+  // The radial menu exception permits only its menuitem buttons and the event origin.
+  const radialMenuFile = 'src/components/ScheduleItemRadialMenu.tsx';
+  for (const statement of [
+    'inputRef.current?.focus({ preventScroll: true });',
+    'action.anchorElement.focus({ preventScroll: true });',
+    'buttons.current[next]?.focus();',
+  ]) expect(hasUnexpectedFocus(radialMenuFile, statement)).toBe(true);
+  const radialMenuSource = fs.readFileSync(path.join(repoRoot, radialMenuFile), 'utf8');
+  expect(radialMenuSource.match(/buttons\.current\[index\] = element/g)).toHaveLength(1);
+  expect(radialMenuSource).toMatch(/<button\b[\s\S]{0,200}ref=\{element => \{ buttons\.current\[index\] = element; \}\}[\s\S]{0,200}role="menuitem"/);
+  expect(radialMenuSource).not.toMatch(/<(input|textarea)\b/);
 
   // Delivery failure focuses only its explicit, non-input Back button.
   // Keep the exception tied to that unique button ref, not an entire file.

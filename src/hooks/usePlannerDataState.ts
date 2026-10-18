@@ -1,3 +1,4 @@
+import { createDuplicatePlanDraft } from '../lib/scheduleItemActions';
 import { getEntryDurationMinutes, isValidPlanEntryTimeRange } from '../lib/entryTimeRange';
 import { prepareActualProgressSource, preserveMonthEventActualSources } from '../domain/actualProgressSource';
 import { buildRecurringMonthEventEdit, type MonthEventEditRequest } from '../domain/recurringMonthEvent';
@@ -208,6 +209,7 @@ export interface UsePlannerDataStateResult {
   setViewMode: (viewMode: ViewMode) => void;
   openCreatePlan: () => void;
   openEditPlan: (plan: Plan) => void;
+  openDuplicatePlan: (plan: Plan) => void;
   closePlanEditor: () => void;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
   createPlanDraft: (draft: PlanDraft) => Promise<void>;
@@ -768,6 +770,14 @@ export function usePlannerDataState({
     setEditingPlanId(plan.id);
     setEditingPlan(plan);
     setEditorDraft(createPlanDraftFromPlan(plan));
+  }
+
+  function openDuplicatePlan(plan: Plan) {
+    if (!userId || plan.userId !== userId) return;
+    setEditingPlanId(null);
+    setEditingPlan(null);
+    setPendingRecurringPlanAction(null);
+    setEditorDraft(createDuplicatePlanDraft(plan));
   }
 
   function closePlanEditor() {
@@ -2524,6 +2534,7 @@ export function usePlannerDataState({
     setViewMode,
     openCreatePlan,
     openEditPlan,
+    openDuplicatePlan,
     closePlanEditor,
     savePlanDraft: trackMutation((draft: PlanDraft, id?: string) => {
       const target = id ?? editingPlanId;

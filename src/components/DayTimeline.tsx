@@ -1,5 +1,5 @@
 import { entryTimeRangeForDate } from '../lib/entryTimeRange';
-import { useRef, type CSSProperties } from "react";
+import { useLayoutEffect, useRef, type CSSProperties } from "react";
 import type { ScheduleOccurrence } from "../domain/scheduleOccurrence";
 import { supportsScopedRecurringPlanEdits } from "../domain/recurringPlan";
 import { minutesBetween, minutesFromTime } from "../lib/date";
@@ -44,6 +44,7 @@ interface DayTimelineProps {
   weeklyDraftBlocks?: WeeklyPlanDraftBlock[];
   onRemoveWeeklyDraftBlock?: (blockId: string) => void;
   onMovePlan?: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
+  registerMoveWithHistory?: (handler: ((plan: Plan, target: WeekPlanMoveTarget) => Promise<void>) | null) => void;
   selectedEntryId?: string;
   onSelectEntry: (entry: DayTimelineSelection) => void;
   onPreviousDay: () => void;
@@ -167,6 +168,7 @@ export function DayTimeline({
   weeklyDraftBlocks = NO_DRAFT_BLOCKS,
   onRemoveWeeklyDraftBlock,
   onMovePlan,
+  registerMoveWithHistory,
   selectedEntryId,
   onSelectEntry,
   onPreviousDay,
@@ -177,20 +179,20 @@ export function DayTimeline({
 }: DayTimelineProps) {
   const moveHistory = useUndoRedoHistory<Plan, WeekPlanMoveTarget>();
   const dragController = useTimelineDragController<Plan>({
-    onCommit: async (descriptor, before, after) => {
-      if (!onMovePlan) return;
-      const currentPlan = plans.find((plan) => plan.id === descriptor.item.id) ?? descriptor.item;
-      const isScopedRecurring = supportsScopedRecurringPlanEdits(currentPlan);
-      await onMovePlan(currentPlan, after);
-      if (!isScopedRecurring) {
-        moveHistory.record({
-          key: currentPlan,
-          before,
-          after,
-        });
-      }
-    },
+    onCommit: (descriptor, before, after) => commitMove(descriptor.item, before, after),
     deferTouchDragUntilMoveAfterLongPress: true,
+  });
+  async function commitMove(plan: Plan, before: WeekPlanMoveTarget, after: WeekPlanMoveTarget) {
+    if (!onMovePlan) return;
+    const currentPlan = plans.find(item => item.id === plan.id) ?? plan;
+    await onMovePlan(currentPlan, after);
+    if (!supportsScopedRecurringPlanEdits(currentPlan)) moveHistory.record({ key: currentPlan, before, after });
+  }
+  useLayoutEffect(() => {
+    registerMoveWithHistory?.((plan, target) => commitMove(plan, {
+      date: plan.occurrenceDate ?? plan.date, startTime: plan.startTime, endTime: plan.endTime,
+    }, target));
+    return () => registerMoveWithHistory?.(null);
   });
   const occurrenceByPlanId = new Map(
     scheduleOccurrences
