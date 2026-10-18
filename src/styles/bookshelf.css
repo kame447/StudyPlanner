@@ -2,60 +2,6 @@
   min-width: 0;
 }
 
-.bookshelf-hero {
-  gap: 16px;
-}
-
-.bookshelf-subject-section {
-  display: grid;
-  gap: 12px;
-}
-
-.bookshelf-subject-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-.bookshelf-subject-title {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-}
-
-.bookshelf-subject-title h3 {
-  margin: 0;
-  font-size: 1.02rem;
-  overflow-wrap: anywhere;
-}
-
-.bookshelf-subject-title p {
-  margin: 2px 0 0;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-}
-
-.bookshelf-bookmark {
-  width: 28px;
-  height: 31px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  border-radius: 9px 9px 7px 7px;
-  background: color-mix(in srgb, var(--subject-color) 18%, var(--surface-strong) 82%);
-  color: var(--subject-color);
-  border: 1px solid color-mix(in srgb, var(--subject-color) 28%, var(--border) 72%);
-}
-
-.bookshelf-bookmark svg {
-  width: 15px;
-  height: 15px;
-}
-
 .bookshelf-material-grid,
 .daily-material-row {
   display: flex;

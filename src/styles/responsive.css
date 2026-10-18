@@ -5,10 +5,6 @@
     grid-template-columns: 1fr;
   }
 
-  .check-grid {
-    grid-template-columns: 1fr;
-  }
-
   .week-view-grid {
     grid-template-columns: repeat(7, minmax(150px, 1fr));
     overflow-x: auto;
@@ -37,10 +33,6 @@
   .plan-detail-head,
   .timeline-shell {
     flex-direction: column;
-  }
-
-  .view-titlebar {
-    align-items: flex-start;
   }
 
   .score-grid,
@@ -362,31 +354,6 @@
     border-radius: 10px;
     font-size: 0.78rem;
   }
-
-  .report-bar-chart-shell {
-    grid-template-columns: 52px minmax(0, 1fr);
-    gap: 10px;
-  }
-
-  .report-bar-chart-axis-label {
-    font-size: 0.72rem;
-  }
-
-  .report-bar-chart-bars {
-    gap: 12px;
-  }
-
-  .report-bar-value {
-    font-size: 0.74rem;
-  }
-
-  .report-bar-sublabel {
-    font-size: 0.7rem;
-  }
-
-  .report-timeline-item {
-    grid-template-columns: 1fr;
-  }
 }
 
 .week-hidden-plan-count {
@@ -495,16 +462,6 @@
     gap: 8px;
   }
 
-  .header-actions {
-    width: auto;
-    margin-left: auto;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 7px;
-    flex-wrap: nowrap;
-    flex: 0 0 auto;
-  }
-
   .brand-lockup {
     flex: 1 1 auto;
     min-width: 0;
@@ -521,57 +478,10 @@
     font-size: 1.18rem;
   }
 
-  .my-page-trigger {
-    gap: 0;
-    padding: 2px;
-    min-width: auto;
-    font-size: 0.72rem;
-  }
-
-  .header-settings-button {
-    width: 38px;
-    height: 38px;
-    min-width: 38px;
-    min-height: 38px;
-    border-radius: 12px;
-  }
-
-  .header-settings-button svg {
-    width: 21px;
-    height: 21px;
-  }
-
-  .my-page-trigger-label {
-    display: none;
-  }
-
   .user-avatar-small {
     width: 40px;
     height: 40px;
     font-size: 1rem;
-  }
-
-  .user-badge {
-    min-width: 0;
-    max-width: 100%;
-    padding: 6px 10px;
-    font-size: 0.8rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .header-profile-name.user-badge {
-    width: auto;
-    max-width: 112px;
-    justify-content: flex-start;
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 0.76rem;
-    font-weight: 800;
-    line-height: 1.2;
   }
 
   .toolbar {
@@ -644,13 +554,6 @@
   .view-title-actions,
   .section-header {
     align-items: flex-start;
-  }
-
-  .view-titlebar,
-  .month-view-titlebar {
-    align-items: center;
-    gap: 8px;
-    flex-wrap: nowrap;
   }
 
   .view-title-actions,
@@ -814,25 +717,6 @@
     display: inline;
   }
 
-  .month-target {
-    display: inline-flex;
-    gap: 2px;
-    align-items: baseline;
-    white-space: nowrap;
-    font-size: 0.54rem;
-    line-height: 1.1;
-  }
-
-  .month-target-label-full,
-  .month-target-value-full {
-    display: inline;
-  }
-
-  .month-target-label-short,
-  .month-target-value-short {
-    display: none;
-  }
-
   .month-major-event-pill {
     min-height: 15px;
     padding: 1px 5px;
@@ -986,25 +870,6 @@
     gap: 2px;
   }
 
-  .notebook-summary-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .summary-chip {
-    min-width: 0;
-    padding: 7px 9px;
-  }
-
-  .summary-chip span {
-    font-size: 0.62rem;
-  }
-
-  .summary-chip strong {
-    font-size: 0.8rem;
-  }
-
   .timeline-shell {
     --timeline-head-height: 32px;
     --timeline-row-gap: 6px;
@@ -1077,21 +942,6 @@
     font-size: var(--timeline-meta-size);
   }
 
-  .day-review-layout {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-
-  .notebook-topline {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .notebook-chip {
-    min-width: 0;
-  }
-
   .score-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 10px;
@@ -1103,26 +953,6 @@
 
   .score-help {
     display: none;
-  }
-
-  .report-metrics-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-
-  .report-metrics-primary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .report-metric-chips {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .report-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
   }
 
   .report-card {
@@ -1141,72 +971,6 @@
     min-height: 30px;
     padding: 5px 9px;
     font-size: 0.82rem;
-  }
-
-  .report-metric-card {
-    padding: 6px 8px;
-  }
-
-  .report-metric-card.primary {
-    padding: 8px 9px;
-  }
-
-  .report-metric-label,
-  .report-metric-help {
-    font-size: 0.7rem;
-  }
-
-  .report-metric-value {
-    font-size: 0.82rem;
-  }
-
-  .report-metric-card.primary .report-metric-value {
-    font-size: 1.04rem;
-  }
-
-  .report-range-toolbar {
-    gap: 10px;
-  }
-
-  .report-range-toolbar .row-actions {
-    justify-content: space-between;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .report-range-form {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-
-  .report-range-form .ghost-button {
-    grid-column: 1 / -1;
-  }
-
-  .report-bar-chart-shell {
-    grid-template-columns: 46px minmax(0, 1fr);
-    gap: 8px;
-  }
-
-  .report-bar-chart-axis-label {
-    font-size: 0.66rem;
-  }
-
-  .report-bar-chart-bars {
-    gap: 10px;
-  }
-
-  .report-bar-item {
-    gap: 6px;
-  }
-
-  .report-bar-value {
-    font-size: 0.72rem;
-  }
-
-  .report-bar-label,
-  .report-bar-sublabel {
-    font-size: 0.68rem;
   }
 
   .report-timeline-scroll {
@@ -1284,11 +1048,6 @@
     font-size: 0.9rem;
   }
 
-  .view-titlebar h2 {
-    font-size: 0.78rem;
-    letter-spacing: 0;
-  }
-
   .section-header p,
   .view-header-stack p,
   .report-card p {
@@ -1299,11 +1058,6 @@
   .view-header-stack > div > p,
   .section-header > div > p {
     display: none;
-  }
-
-  .header-actions {
-    flex-wrap: nowrap;
-    gap: 5px;
   }
 
   .brand-lockup {
@@ -1321,51 +1075,10 @@
     font-size: 0.98rem;
   }
 
-  .my-page-trigger {
-    width: auto;
-    max-width: none;
-    justify-content: center;
-    padding: 2px;
-    font-size: 0.68rem;
-    gap: 0;
-  }
-
-  .header-settings-button {
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
-    min-height: 36px;
-    border-radius: 11px;
-  }
-
   .user-avatar-small {
     width: 36px;
     height: 36px;
     font-size: 0.9rem;
-  }
-
-  .user-badge {
-    width: 100%;
-    max-width: none;
-    justify-content: center;
-    padding: 5px 8px;
-    font-size: 0.74rem;
-  }
-
-  .header-actions .user-badge {
-    width: auto;
-    max-width: 78px;
-    justify-content: flex-start;
-    padding: 0;
-    font-size: 0.66rem;
-    font-weight: 800;
-  }
-
-  .view-titlebar {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    column-gap: 8px;
   }
 
   .modal-overlay {
@@ -1659,14 +1372,6 @@
     font-size: 0.72rem;
   }
 
-  .view-titlebar,
-  .month-view-titlebar {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: nowrap;
-  }
-
   .view-title-actions,
   .month-view-title-actions {
     display: grid;
@@ -1677,11 +1382,6 @@
     width: 100%;
     margin-left: auto;
     align-items: center;
-  }
-
-  .view-titlebar h2,
-  .month-view-titlebar h2 {
-    flex: 0 0 auto;
   }
 
   .view-title-nav,
@@ -1861,22 +1561,6 @@
     font-size: 0.3rem !important;
   }
 
-  .month-target {
-    gap: 1px;
-    font-size: 0.46rem;
-    line-height: 1.05;
-  }
-
-  .month-target-label-full,
-  .month-target-value-full {
-    display: inline;
-  }
-
-  .month-target-label-short,
-  .month-target-value-short {
-    display: none;
-  }
-
   .week-view-grid {
     gap: 6px;
   }
@@ -1991,23 +1675,6 @@
     gap: 2px;
   }
 
-  .notebook-summary-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .summary-chip {
-    padding: 5px 6px;
-    border-radius: 12px;
-  }
-
-  .summary-chip span {
-    font-size: 0.52rem;
-  }
-
-  .summary-chip strong {
-    font-size: 0.68rem;
-  }
-
   .timeline-shell {
     --timeline-head-height: 28px;
     --timeline-row-gap: 5px;
@@ -2055,44 +1722,6 @@
   .score-grid,
   .report-range-form {
     grid-template-columns: 1fr;
-  }
-
-  .report-metrics-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .report-metrics-panel,
-  .report-metrics-primary,
-  .report-metric-chips {
-    gap: 6px;
-  }
-
-  .report-metric-card {
-    padding: 6px 7px;
-    border-radius: 12px;
-    gap: 2px;
-  }
-
-  .report-metric-card.primary {
-    padding: 7px 8px;
-  }
-
-  .report-bar-chart-shell {
-    grid-template-columns: 40px minmax(0, 1fr);
-  }
-
-  .report-metric-label,
-  .report-metric-help {
-    font-size: 0.56rem;
-  }
-
-  .report-metric-value {
-    font-size: 0.78rem;
-  }
-
-  .report-metric-card.primary .report-metric-value {
-    font-size: 0.96rem;
   }
 
   .report-timeline-scroll {
@@ -2146,55 +1775,6 @@
     padding: 11px 18px;
     border-radius: 11px;
     font-size: 0.86rem;
-  }
-
-  .notebook-summary-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 4px;
-  }
-
-  .summary-chip {
-    padding: 4px 5px;
-  }
-
-  .summary-chip span {
-    font-size: 0.48rem;
-  }
-
-  .summary-chip strong {
-    font-size: 0.62rem;
-  }
-
-  .report-metrics-grid {
-    gap: 6px;
-  }
-
-  .report-metrics-panel,
-  .report-metrics-primary,
-  .report-metric-chips {
-    gap: 5px;
-  }
-
-  .report-metric-card {
-    padding: 5px 6px;
-    border-radius: 10px;
-  }
-
-  .report-metric-card.primary {
-    padding: 6px 7px;
-  }
-
-  .report-metric-label,
-  .report-metric-help {
-    font-size: 0.5rem;
-  }
-
-  .report-metric-value {
-    font-size: 0.72rem;
-  }
-
-  .report-metric-card.primary .report-metric-value {
-    font-size: 0.88rem;
   }
 
   .month-week-chip-row {
@@ -2260,26 +1840,10 @@
     font-size: 0.28rem !important;
   }
 
-  .month-target {
-    gap: 0;
-    font-size: 0.4rem;
-    line-height: 1;
-  }
-
   .month-study-summary {
     gap: 1px;
     font-size: 0.4rem;
     line-height: 1;
-  }
-
-  .month-target-label-full,
-  .month-target-value-full {
-    display: inline;
-  }
-
-  .month-target-label-short,
-  .month-target-value-short {
-    display: none;
   }
 
 .month-major-event-pill {
