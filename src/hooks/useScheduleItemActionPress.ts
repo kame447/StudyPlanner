@@ -19,6 +19,8 @@ export interface ActiveScheduleItemAction<TItem> {
   title: string;
   top: number;
   left: number;
+  /** Viewport rect of the pressed event, used to place the radial menu. */
+  anchorRect: { top: number; left: number; right: number; bottom: number; width: number; height: number };
 }
 
 export const SCHEDULE_ITEM_ACTION_INTENT_EVENT = 'studyplanner:schedule-item-action-intent';
@@ -47,14 +49,32 @@ export function useScheduleItemActionPress<TItem>() {
 
   function reveal(press: ScheduleActionPress<TItem>) {
     if (pressRef.current !== press || press.moved) return;
-    const rect = press.element.getBoundingClientRect();
+    showFor(press.key, press.item, press.title, press.element);
+  }
+
+  function showFor(key: string, item: TItem, title: string, element: HTMLElement) {
+    const rect = element.getBoundingClientRect();
     setActiveAction({
-      key: press.key,
-      item: press.item,
-      title: press.title,
+      key,
+      item,
+      title,
       top: Math.max(8, rect.top + 3),
       left: Math.max(8, rect.right - 47),
+      anchorRect: {
+        top: rect.top,
+        left: rect.left,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+      },
     });
+  }
+
+  /** Opens the actions without a press, e.g. from the keyboard or a context menu. */
+  function open(key: string, item: TItem, title: string, element: HTMLElement) {
+    clearPress();
+    showFor(key, item, title, element);
   }
 
   function start(
@@ -169,6 +189,7 @@ export function useScheduleItemActionPress<TItem>() {
 
   return {
     activeAction,
+    open,
     start,
     move,
     finish,
