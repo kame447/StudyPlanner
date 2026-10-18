@@ -71,12 +71,12 @@ describe('plan preview motion', () => {
     expect(reservedSave.props.disabled).toBe(true);
     act(() => reservedSave.props.onClick());
     expect(props.onSave).not.toHaveBeenCalled();
-    act(() => promotion.props.onClick());
+    act(() => promotion.props.onClick({ currentTarget: promotion }));
     expect(props.onPromote).toHaveBeenCalledOnce();
     show(blocks, false);
     // React must never reuse this focused host button as an approval action.
     expect(promotion.props.disabled).toBe(true);
-    act(() => promotion.props.onClick());
+    act(() => promotion.props.onClick({ currentTarget: promotion }));
     expect(props.onSave).not.toHaveBeenCalled();
     const save = renderer!.root.find(node => node.type === 'button' && node.children.includes('この内容で保存'));
     expect(save).not.toBe(promotion);

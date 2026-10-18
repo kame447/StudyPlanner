@@ -124,6 +124,22 @@ test.describe('production weekly preview and draft boundaries', () => {
     await expect(previewDialog(page)).toHaveCount(0);
   });
 
+  test('repeated and held keyboard activation promotes once and keeps focus off Save', async ({ page }) => {
+    const revision = (await planningState(page)).revision;
+    const promote = previewDialog(page).getByRole('button', { name: 'この内容で仮予定にする' });
+    await promote.focus();
+    for (let press = 0; press < 3; press += 1) await page.keyboard.press('Enter');
+    await page.keyboard.down('Enter');
+    await page.keyboard.up('Enter');
+    await expectOneDraft(page);
+    expect((await planningState(page)).revision).toBe(revision + 1);
+    // Focus stays in the dialog on an inert target, never on Save.
+    expect(await page.evaluate(() => document.activeElement?.getAttribute('role'))).toBe('dialog');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Space');
+    await expectOneDraft(page);
+  });
+
   test('two taps at the promotion position keep approval pending', async ({ page, isMobile }) => {
     test.skip(!isMobile, 'Touch contract runs in the WebKit mobile project');
     const revision = (await planningState(page)).revision;

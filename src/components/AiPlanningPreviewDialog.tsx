@@ -130,6 +130,15 @@ export function AiPlanningPreviewDialog({
   const actionPressRef = useRef<PreviewActionPress | null>(null);
   const moveHistory = useUndoRedoHistory<string, WeekPlanMoveTarget>();
   const previewBodyRef = useRef<HTMLDivElement | null>(null);
+  const dialogRef = useRef<HTMLElement | null>(null);
+  // Promotion disables the focused promote button; keep keyboard focus inside the
+  // dialog on an inert target instead of moving it to Save (#751).
+  const promoteHadFocus = useRef(false);
+  useEffect(() => {
+    if (hasLocalPreview || !promoteHadFocus.current) return;
+    promoteHadFocus.current = false;
+    dialogRef.current?.focus({ preventScroll: true });
+  }, [hasLocalPreview]);
   const previewIdentity = useRef(INITIAL_PREVIEW_PROPOSAL);
   const sourceSignature = useMemo(
     () =>
@@ -349,6 +358,8 @@ export function AiPlanningPreviewDialog({
     <>
       <div className="ai-planning-preview-overlay ai-planning-preview-overlay-v2" onClick={onClose}>
         <section
+          ref={dialogRef}
+          tabIndex={-1}
           className="ai-planning-preview-modal ai-planning-preview-dialog-v2"
           role="dialog"
           aria-modal="true"
@@ -929,7 +940,11 @@ export function AiPlanningPreviewDialog({
               className="ai-planning-primary-action"
               type="button"
               disabled={isBusy || !hasLocalPreview}
-              onClick={() => { if (hasLocalPreview) onPromote(editableBlocks); }}
+              onClick={(event) => {
+                if (!hasLocalPreview) return;
+                promoteHadFocus.current = document.activeElement === event.currentTarget;
+                onPromote(editableBlocks);
+              }}
             >
               {hasLocalPreview ? 'この内容で仮予定にする' : '仮予定にしました'}
             </button>
