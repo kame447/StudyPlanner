@@ -5,7 +5,8 @@ import { freezeCandidateValue } from '../application/candidateSelection/canonica
 import type { CandidateBinding } from '../application/candidateSelection';
 import { numericPendingBoundToInputV5, numericPendingCandidatesV5, tryNumericPendingChoiceRouteV5, type NumericPendingChoicePortV5, type NumericPendingStateV5 } from './weeklyPlanningNumericPendingChoiceV5';
 import { validateWeeklyPlanningFactGraphValueV5 } from './weeklyPlanningFactGraphValidatorV5';
-import { effortEstimateTargetsWorkload } from './weeklyPlanningGenericWorkEstimation';
+import { effortEstimateTargetsWorkload, resolveGenericWorkItemEstimate } from './weeklyPlanningGenericWorkEstimation';
+import { createWeeklyPlanningActiveSchedulerGraphViewV5 } from './weeklyPlanningActiveSchedulerGraphViewV5';
 import type { WeeklyPlanningSemanticNormalizerRunV5 } from './weeklyPlanningSemanticNormalizerRunV5';
 import type { WeeklyPlanningSemanticNormalizerInputV5 } from './weeklyPlanningSemanticNormalizerContractsV5';
 
@@ -57,12 +58,18 @@ export function captureNumericPendingQuestionDomainV5(params: {
     const active = new Set(graph.factLifecycles.filter(entry => entry.status === 'active').map(entry => entry.factId));
     const activeEfforts = graph.effortEstimates.filter(fact => active.has(fact.id));
     if (activeEfforts.some(fact => fact.targetFactId === target.id || effortEstimateTargetsWorkload(fact, target))) return null;
-    // Exactly one pending target: every other active workload must already be settled by
-    // typed graph state (an intrinsic time unit, or an active estimate covering it).
-    // Otherwise one answer could plausibly cover several open targets; leave that to Luna.
-    if (graph.workloads.some(fact => fact.id !== target.id && active.has(fact.id)
-      && fact.unitCode !== 'minute' && fact.unitCode !== 'hour'
-      && !activeEfforts.some(effort => effortEstimateTargetsWorkload(effort, fact)))) return null;
+    // Exactly one pending target: every other active workload must already be settled by the
+    // planner's own typed estimate resolution over the same active view. Otherwise one answer
+    // could plausibly cover several open targets; leave that to Luna.
+    const view = createWeeklyPlanningActiveSchedulerGraphViewV5(graph);
+    const planningWorkloads = view.workloads.flatMap(fact => fact.quantityRole === 'scope_total' ? [] : [{ ...fact, quantityRole: fact.quantityRole }]);
+    // The planner cannot resolve a scope_total workload, so it never counts as settled.
+    if (view.workloads.some(fact => fact.id !== target.id && fact.quantityRole === 'scope_total')
+      || planningWorkloads.some(fact => {
+        if (fact.id === target.id) return false;
+        const resolution = resolveGenericWorkItemEstimate({ workload: fact, workloads: planningWorkloads, estimates: view.effortEstimates });
+        return resolution.ambiguous || resolution.estimatedMinutes === null;
+      })) return null;
     const scope = numericPendingCompleteScopeV5(params.input);
     if (!scope) return null;
     const { requestId: _request, inputRevision: _inputRevision, ...binding } = state.binding;

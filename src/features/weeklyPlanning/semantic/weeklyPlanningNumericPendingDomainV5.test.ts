@@ -113,6 +113,36 @@ describe('D5 question-time finite domain', () => {
     graphOf(fixture).factLifecycles.push({ ...graphOf(fixture).factLifecycles[0], factId: 'sibling-workload' });
     expect(captureNumericPendingQuestionDomainV5(value)).toBeNull();
   });
+  function perUnitEffort(fixture: ReturnType<typeof basis>['fixture'], unitCode: 'problem' | 'page') {
+    graphOf(fixture).effortEstimates.push({ id: 'per-unit-effort', taskId: 'task-2', targetFactId: 'second-workload', kind: 'duration_per_unit',
+      minutes: 3, unitCode, precision: 'exact', source: graphOf(fixture).tasks[0].source, createdRevision: 2 });
+    graphOf(fixture).factLifecycles.push({ ...graphOf(fixture).factLifecycles[0], factId: 'per-unit-effort', createdRevision: 2 });
+  }
+  it('treats a sibling as settled only when the planner resolver resolves its matching per-unit estimate', () => {
+    const { fixture, value } = basis();
+    withSecondWorkload(fixture);
+    perUnitEffort(fixture, 'problem');
+    expect(captureNumericPendingQuestionDomainV5(value)).not.toBeNull();
+  });
+  it('rejects a sibling whose only estimate is per-unit in a mismatched unit, which the planner leaves open', () => {
+    const { fixture, value } = basis();
+    withSecondWorkload(fixture);
+    perUnitEffort(fixture, 'page');
+    expect(captureNumericPendingQuestionDomainV5(value)).toBeNull();
+  });
+  it('rejects a sibling whose covering estimates are ambiguous to the planner', () => {
+    const { fixture, value } = basis();
+    withSecondWorkload(fixture);
+    effort(fixture, 'other-effort-a', 'task-2', 'second-workload');
+    effort(fixture, 'other-effort-b', 'task-2', 'second-workload');
+    expect(captureNumericPendingQuestionDomainV5(value)).toBeNull();
+  });
+  it('rejects a scope_total sibling, which the planner never resolves as a planning workload', () => {
+    const { fixture, value } = basis();
+    withSecondWorkload(fixture, { quantityRole: 'scope_total' });
+    effort(fixture, 'other-effort', 'task-2', 'second-workload');
+    expect(captureNumericPendingQuestionDomainV5(value)).toBeNull();
+  });
   it('re-derives the pending count at answer time when a settled workload loses its estimate', () => {
     const { fixture, value } = basis();
     withSecondWorkload(fixture);
