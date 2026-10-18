@@ -98,7 +98,7 @@ describe('generic Choice provider validation and dispatch accounting', () => {
     expect(calls).toBe(0);
   });
   it('malformed distribution/model/unknown option cannot become a selection', async () => {
-    for (const root of [{ ...response(), model: 'wrong' }, { ...response(), answers: { ...response().answers, candidate: { ...response().answers.candidate, choice: 'unknown' } } }, { ...response(), answers: { ...response().answers, candidate: { ...response().answers.candidate, probabilities: { 'leaf:0': 0.999, none: 0.01 } } } }]) {
+    for (const root of [{ ...response(), model: 'wrong' }, { ...response(), answers: { ...response().answers, candidate: { ...response().answers.candidate, choice: 'unknown' } } }, { ...response(), answers: { ...response().answers, candidate: { ...response().answers.candidate, probabilities: { 'leaf:0': 0.999, none: 0.1 } } } }]) {
       expect((await evaluateCandidateChoice({ firebaseUid: 'fixture-owner', context: { purpose: 'candidate_choice', request: choiceRequest() }, env: { OPENROUTER_API_KEY: 'fixture', JEV_CANDIDATE_CHOICE_MODE: 'canary', JEV_MODE: 'canary', JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' }, transport: async () => Response.json(root) })).status).toBe('unavailable');
     }
   });
@@ -111,5 +111,31 @@ describe('generic Choice provider validation and dispatch accounting', () => {
     expect(catalog.candidate.instructions).toContain('ordinal/deictic');
     expect(catalog.candidate.instructions).toContain('entire text including outside spans');
     expect(JSON.parse(catalog.candidate.criteria['leaf:0'])).toEqual(r.menu.options[0].kind === 'leaf' ? r.menu.options[0].candidate : null);
+  });
+  describe('2-decimal rounded distributions', () => {
+    const env = { OPENROUTER_API_KEY: 'fixture', JEV_CANDIDATE_CHOICE_MODE: 'canary', JEV_MODE: 'canary', JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' };
+    const run = (probabilities: Record<string, number>, choice = 'leaf:0') => {
+      const root = response(); root.answers.candidate = { ...root.answers.candidate, choice, probabilities };
+      return evaluateCandidateChoice({ firebaseUid: 'fixture-owner', context: { purpose: 'candidate_choice', request: choiceRequest() }, env, transport: async () => Response.json(root) });
+    };
+    it.each([[0.99, { 'leaf:0': 0.9, none: 0.09 }], [1.01, { 'leaf:0': 0.9, none: 0.11 }]])('accepts a %s-sum vector with the same argmax', async (_sum, probabilities) => {
+      const result = await run(probabilities);
+      expect(result).toMatchObject({ status: 'evaluated', optionId: 'leaf:0' });
+      if (result.status !== 'evaluated') return;
+      expect(result.probabilities.reduce((t, p) => t + p.probability, 0)).toBeCloseTo(1, 12);
+      expect(result.probabilities[0].probability).toBeGreaterThan(result.probabilities[1].probability);
+    });
+    it('leaves an exact vector byte-identical', async () => {
+      const result = await run({ 'leaf:0': 0.9, none: 0.1 });
+      expect(result).toMatchObject({ probabilities: [{ probability: 0.9 }, { probability: 0.1 }] });
+    });
+    it('still rejects out-of-tolerance sums with the provider reason', async () => {
+      expect(await run({ 'leaf:0': 0.9, none: 0.13 })).toEqual({ status: 'unavailable', reason: 'invalid_response' });
+      expect(await run({ 'leaf:0': 0.9, none: 0.07 })).toEqual({ status: 'unavailable', reason: 'invalid_response' });
+    });
+    it('keeps a tie a tie (the gate still abstains on it)', async () => {
+      const tied = await run({ 'leaf:0': 0.495, none: 0.495 });
+      expect(tied.status === 'evaluated' && tied.probabilities[0].probability === tied.probabilities[1].probability).toBe(true);
+    });
   });
 });

@@ -4,6 +4,7 @@ import { createOpenRouterDecisionProvider } from './openRouterDecisionProvider';
 import type { DecisionEnv } from './decisionPolicy';
 import { resolveJevPurposeRollout, jevPurposeCanarySelected, jevPurposeCanarySample } from './jevPurposeRollout';
 import type { DecisionQuestionCatalog } from './decisionProvider';
+import { renormalizeRoundedProbabilities } from './renormalizeProbabilities';
 
 /** Interpretation only. Does not choose thresholds, mutate a graph or fall back with a partial answer. */
 export async function evaluateCandidateChoice(params: {
@@ -51,12 +52,15 @@ export async function evaluateCandidateChoice(params: {
     if (result.reason === 'timeout' || result.reason === 'cancelled') params.recorder?.refineOutcome(dispatchIds, result.reason);
     return { status: 'unavailable', reason: result.reason };
   }
+  // Provider-structural rejection keeps 'invalid_response'; contract rejection below is a distinct count-only reason.
+  const normalized = renormalizeRoundedProbabilities(r.menu.options.map(o => result.probabilities[o.id]));
+  if (!normalized) return { status: 'unavailable', reason: 'invalid_dispatch_response' };
   const response = {
     status: 'evaluated' as const, catalogVersion: CANDIDATE_CHOICE_CATALOG_VERSION,
     requestId: r.requestId, selectionEpoch: r.selectionEpoch, candidateSetHash: r.candidateSetHash, nodeId: r.menu.nodeId,
-    optionId: result.decision, probabilities: r.menu.options.map(o => ({ optionId: o.id, probability: result.probabilities[o.id] })),
+    optionId: result.decision, probabilities: r.menu.options.map((o, i) => ({ optionId: o.id, probability: normalized[i] })),
     conditionChange: result.conditionChange, independentMeaning: result.independentMeaning,
     ...(referenceOnly ? { acceptanceScope: candidateChoiceAcceptanceScope(r, result.decision) } : {}),
   };
-  return isCandidateChoiceEvaluation(response, r) ? response : { status: 'unavailable', reason: 'invalid_response' };
+  return isCandidateChoiceEvaluation(response, r) ? response : { status: 'unavailable', reason: 'invalid_dispatch_response' };
 }
