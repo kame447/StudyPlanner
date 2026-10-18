@@ -1,3 +1,4 @@
+import { buildTelemetryQuotaRules, type AiQuotaDurableObject } from './aiQuotaDurableObject';
 import {
   validateProductObservabilityTelemetryDraft,
 } from '../../../shared/productObservabilityContract';
@@ -13,6 +14,7 @@ import { semanticCensusEnabled } from './semanticTurnCensus';
 export const PRODUCT_OBSERVABILITY_EVENTS_PATH = '/observability/events';
 
 export interface ProductObservabilityApiEnv extends ProductObservabilityEnv {
+  AI_QUOTA: DurableObjectNamespace<AiQuotaDurableObject>;
   SEMANTIC_CENSUS_MODE?: string;
   FIREBASE_WEB_API_KEY: string;
   ALLOWED_ORIGIN?: string;
@@ -53,6 +55,7 @@ function responseHeaders(request: Request, env: ProductObservabilityApiEnv): Hea
     headers.set('Access-Control-Allow-Origin', origin);
     headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
     headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    headers.set('Access-Control-Expose-Headers', 'Retry-After');
   }
   return headers;
 }
@@ -62,10 +65,13 @@ function jsonResponse(
   env: ProductObservabilityApiEnv,
   status: number,
   body: Record<string, unknown>,
+  extraHeaders: Record<string, string> = {},
 ): Response {
+  const headers = responseHeaders(request, env);
+  Object.entries(extraHeaders).forEach(([key, value]) => headers.set(key, value));
   return new Response(JSON.stringify(body), {
     status,
-    headers: responseHeaders(request, env),
+    headers,
   });
 }
 
@@ -91,6 +97,7 @@ async function authenticatedUid(
     `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
     {
       method: 'POST',
+      redirect: 'manual',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken: token }),
     },
@@ -108,6 +115,28 @@ async function authenticatedUid(
     return jsonResponse(request, env, 403, { error: 'Email verification is required.' });
   }
   return user.localId;
+}
+
+async function enforceTelemetryAdmission(
+  request: Request, env: ProductObservabilityApiEnv, uid: string,
+): Promise<Response | null> {
+  try {
+    // Full encoded UID, never truncated: separate users cannot share a bucket.
+    const result = await env.AI_QUOTA.getByName(`telemetry:uid:${encodeURIComponent(uid)}`)
+      .checkAndConsume({ rules: buildTelemetryQuotaRules() });
+    if (result.allowed === true) return null;
+    if (result.allowed !== false || !Number.isFinite(result.retryAfterSeconds)) {
+      throw new Error('invalid_telemetry_quota_response');
+    }
+    const retryAfterSeconds = Math.max(1, Math.ceil(result.retryAfterSeconds));
+    return jsonResponse(request, env, 429, { error: 'Telemetry rate limit exceeded.', retryAfterSeconds },
+      { 'Retry-After': String(retryAfterSeconds) });
+  } catch {
+    // Best effort applies at the product boundary. If admission is unavailable,
+    // omit telemetry rather than opening an unlimited storage path.
+    console.warn('[Product Observability] telemetry quota admission unavailable');
+    return jsonResponse(request, env, 503, { error: 'Telemetry admission is temporarily unavailable.' });
+  }
 }
 
 function isConfigured(env: ProductObservabilityApiEnv): boolean {
@@ -147,6 +176,8 @@ export async function handleProductObservabilityApi(
 
   const uid = await authenticatedUid(request, env);
   if (uid instanceof Response) return uid;
+  const admission = await enforceTelemetryAdmission(request, env, uid);
+  if (admission) return admission;
 
   const requestText = await request.text();
   if (new TextEncoder().encode(requestText).byteLength > MAX_EVENT_REQUEST_BYTES) {

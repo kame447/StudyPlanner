@@ -38,6 +38,27 @@ Uncontended saves keep their optimistic fast path. A rejected ordinary write doe
 
 Repair failure leaves the saved Plan durable but its display stale and retryable. Explicit retry only reads the requested groups; it does not resubmit the save or reset the user's newer date/view selection. Owner/reset epochs revoke old callbacks and read publication. This boundary does not add backend ordering or cross-client guarantees.
 
+## Todo command admission
+
+Todo edit, scheduling and delete resolve an existing ID from committed same-owner
+Todo rows before repository dispatch. A missing explicit edit target is not a
+new create. Their local same-ID reservation survives promise settlement until
+React commits the associated success or rollback, and unrelated Todos remain
+independently operable. Synchronous preparation failure also releases the claim.
+
+The rows and their accepted projection lease are published together. The existing
+read authority rejects replaced/uncommitted leases, pending or failed Plans/Todos
+repair and unresolved full-read failure, including its retry. An ordinary clean
+full refresh can overlap a command using its previously accepted baseline;
+unrelated repair groups do not block this local admission. Failed full-read
+health is cleared only by successful full acceptance or owner/reset, not merely
+by starting a retry. Rejection uses the existing visible notice and dispatches no
+write. New creation without an edit ID retains its existing path.
+
+This is not general stale-edit conflict resolution, server atomicity or coverage
+of every linked-Plan/Undo writer. Existing successful-write reconciliation and
+repository safety contracts continue to apply.
+
 ## Todo Undo successful acknowledgement
 
 Todo Undo captures an accepted-projection lease when invoked and declares Plans/Todos successful completion. If a current-owner read replaces the projection before the restore returns, do not insert the captured deleted Todo; re-read the existing Plans/Todos group after tracked writers settle. Success observed during an older full read also retains the group. Uncontended Undo keeps its direct post-persistence update without extra reads.
@@ -93,6 +114,10 @@ Retry fetches the requested groups after tracked quiescence, prepares every resu
 Material-bearing admission requires an accepted same-owner snapshot before dispatch so uncertain failures have a valid repair boundary. A dispatched material edit/delete/Undo, progress create, or existing-member Subject fanout failure requests Actual/material repair and retains its affected admission claims. Pre-dispatch busy/stale rejection adds no such uncertain-effect repair. Writer/coordinator tickets settle normally so the repair does not wait on its own claim.
 
 Subject data is a conditional dependent slice of that existing group. Each immutable repair attempt captures whether a waiting Subject claim requires the Subjects getter. Pure Actual/material attempts add no Subjects read. If Subject activity starts or settles while an Actual-only attempt is in flight, activity/request validation invalidates it; a fresh attempt includes Subjects. A failed Subjects getter or preparation publishes none of the batch and cannot release the Subject claim. Superseding nonquiescent full reads retain outstanding claim requirements; a stable full read already includes Subjects and can satisfy them.
+
+Empty-Subject delete and each invoked Undo participate in that same Subject claim and accepted-projection lease. They suppress captured acknowledgements after an accepted read and retain the conditional Subject repair when a full read crosses completion, including uncertain dispatched failure. Successful writes remain successful if the subsequent read fails; explicit retry only reads, without repeating delete or restore. Uncontended completion adds no getters.
+
+Delete resolves its owner, current Subject row and material membership from committed admission data before dispatch. Undo captures that current deleted row and refuses dispatch when a same-ID Subject is already present, so an old notice cannot overwrite an observed replacement. Existing owner/reset/unmount fencing remains authoritative. This does not add Subject content-generation/ABA detection, admission for every new-material membership writer, or cross-client atomicity.
 
 This conditional footprint is not a fourth global readiness authority or a claim to have repaired every collection. Scope/owner/read checks still govern acceptance. Do not become ready with a stranded Subject claim, unconditionally add Subjects to every Actual read, or transparently replay writes after an uncertain outcome.
 

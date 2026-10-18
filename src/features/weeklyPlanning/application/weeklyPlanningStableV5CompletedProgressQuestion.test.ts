@@ -249,7 +249,7 @@ describe('Stable V5 completed progress question suppression', () => {
     const question = stableV5MissingSchedulableWorkQuestion(graph);
 
     expect(question.targetFactId).toBe('task-2');
-    expect(question.intent).toBe('existing_target_progress');
+    expect(question.intent).toBe('open_ended_session');
     expect(question.message).toContain('未完了タスク');
   });
 

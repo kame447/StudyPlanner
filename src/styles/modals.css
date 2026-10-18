@@ -65,27 +65,6 @@
   overflow-wrap: anywhere;
 }
 
-.plan-input-modal {
-  width: min(760px, calc(100vw - 40px));
-  max-width: 760px;
-  overflow: hidden;
-}
-
-.plan-input-modal .section-stack,
-.plan-input-modal .form-grid,
-.plan-input-modal .field,
-.plan-input-modal .row-actions,
-.plan-input-modal .segmented-control,
-.plan-input-modal .primary-button {
-  min-width: 0;
-}
-
-.plan-input-modal .field input,
-.plan-input-modal .field select,
-.plan-input-modal .field textarea {
-  width: 100%;
-}
-
 .plan-editor-modal {
   width: min(680px, calc(100vw - 40px));
 }
@@ -225,6 +204,10 @@
   font-size: 0.78rem;
 }
 
+.daily-detail-modal .day-timetable-delete-button {
+  min-height: 40px;
+}
+
 .actual-form-compact {
   display: grid;
   gap: 10px;
@@ -334,10 +317,6 @@
 
 .actual-tracking-details .detail-note {
   display: none;
-}
-
-.actual-tracking-launch-button {
-  justify-self: flex-start;
 }
 
 .floating-tracking-event-shield {
@@ -493,10 +472,6 @@
   line-height: 1.45;
 }
 
-.floating-tracking-panel .tracking-apply-note {
-  color: var(--text-muted);
-}
-
 .floating-tracking-panel .row-actions {
   gap: 6px;
 }
@@ -514,46 +489,6 @@
 
 .actual-editor-actions {
   justify-content: flex-start;
-}
-
-.actual-editor-save-footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 4;
-  display: grid;
-  gap: 7px;
-  margin: 2px -2px 0;
-  padding: 10px 2px max(10px, env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface) 0%, transparent) 0%,
-      color-mix(in srgb, var(--surface) 94%, transparent) 18%,
-      var(--surface) 100%
-    );
-  backdrop-filter: blur(10px);
-}
-
-.actual-editor-save-summary {
-  margin: 0;
-  overflow: hidden;
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  font-weight: 800;
-  line-height: 1.25;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.daily-detail-modal .actual-editor-save-button {
-  width: 100%;
-  min-height: 54px;
-  border-radius: 15px;
-  font-size: 0.96rem;
-  font-weight: 900;
-  box-shadow: 0 14px 26px color-mix(in srgb, var(--primary) 28%, transparent);
 }
 
 .month-event-modal-overlay {
@@ -621,15 +556,6 @@
   padding: 0 2px 4px;
 }
 
-.month-event-editor-card {
-  display: grid;
-  gap: 8px;
-  padding: 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--surface-strong) 82%, var(--surface-soft) 18%);
-}
-
 .month-event-core-section,
 .month-event-subtle-section,
 .month-event-addons,
@@ -651,12 +577,6 @@
 .month-event-title-card {
   border-color: color-mix(in srgb, var(--border) 68%, transparent);
   background: transparent;
-}
-
-.month-event-card-title {
-  display: flex;
-  align-items: center;
-  min-width: 0;
 }
 
 .month-event-card-title strong,
@@ -746,22 +666,6 @@
   transform: translateX(20px);
 }
 
-.month-event-repeat-card {
-  grid-template-columns: minmax(0, 0.44fr) minmax(0, 1fr);
-  align-items: end;
-}
-
-.month-event-optional-card .collapsible-toggle {
-  min-height: 38px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-.month-event-optional-card .collapsible-panel {
-  gap: 8px;
-}
-
 .month-event-modal .field {
   gap: 4px;
   min-width: 0;
@@ -807,6 +711,150 @@
   border-color: var(--input-border);
   font-size: 0.95rem;
   font-weight: 850;
+}
+
+/* Selection changes remount only the title region; typing never restarts this cue. */
+:root:not([data-motion='reduced'], [data-motion='off']) .month-event-title-selected .month-event-title-field input {
+  animation: month-event-title-selection 300ms ease-out;
+}
+
+@keyframes month-event-title-selection {
+  from {
+    transform: translateY(3px);
+    background-color: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.month-event-color-section {
+  padding: 0;
+}
+
+.month-event-color-trigger {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  width: 100%;
+  padding: 8px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.month-event-color-trigger > svg,
+.month-event-color-value {
+  color: var(--text-muted);
+}
+
+.month-event-color-value {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.month-event-color-value > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.month-event-color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.month-event-color-dialog {
+  width: min(480px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 22px 60px rgb(15 23 42 / 0.28);
+  overscroll-behavior: contain;
+}
+
+:root[data-theme='dark'] .month-event-color-dialog {
+  background: #181f23;
+}
+
+.month-event-color-dialog::backdrop {
+  background: rgb(15 23 42 / 0.42);
+}
+
+.month-event-color-picker-content {
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+}
+
+.month-event-color-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.month-event-color-picker-header > button {
+  min-height: 44px;
+}
+
+.month-event-color-options {
+  display: grid;
+}
+
+.month-event-color-option {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) 24px;
+  gap: 14px;
+  align-items: center;
+  min-height: 52px;
+  padding: 12px 18px;
+  cursor: pointer;
+}
+
+.month-event-color-option:has(input:checked) {
+  background: var(--surface-strong);
+  font-weight: 700;
+}
+
+.month-event-color-option > input {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--text);
+  cursor: pointer;
+}
+
+.month-event-color-trigger:focus-visible,
+.month-event-color-dialog button:focus-visible,
+.month-event-color-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (max-width: 600px) {
+  .month-event-color-dialog {
+    width: 100%;
+    max-height: calc(100dvh - 16px - env(safe-area-inset-top, 0px));
+    margin: auto 0 0;
+    border-radius: 20px 20px 0 0;
+  }
 }
 
 .month-event-addon-chip-row {
@@ -1055,12 +1103,6 @@
   font-size: 0.72rem;
   line-height: 1.35;
   color: var(--text-muted);
-}
-
-.month-picker-trigger {
-  min-width: 136px;
-  justify-content: center;
-  font-weight: 700;
 }
 
 .month-picker-overlay {
@@ -1511,7 +1553,7 @@
   width: 5px;
   height: 48px;
   border-radius: 999px;
-  background: var(--month-event-bar-color, var(--accent));
+  background: var(--schedule-event-color, var(--accent));
 }
 
 .month-event-timeline-copy {
@@ -1685,10 +1727,6 @@
     gap: 6px;
   }
 
-  .month-event-repeat-card {
-    grid-template-columns: 1fr;
-  }
-
   .modal-card.month-event-modal .field input,
   .modal-card.month-event-modal .field select,
   .modal-card.month-event-modal .field textarea,
@@ -1759,3 +1797,18 @@
   }
 }
 
+
+.day-timetable-time-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.day-timetable-time-fields .field,
+.day-timetable-time-fields input {
+  min-width: 0;
+}
+
+.modal-card.daily-detail-modal .day-timetable-time-fields input {
+  font-size: max(1rem, 16px);
+}

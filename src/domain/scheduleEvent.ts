@@ -1,5 +1,6 @@
 import type {
   MonthEvent,
+  MonthEventColor,
   MonthEventChecklistItem,
   MonthEventRepeat,
   Plan,
@@ -45,6 +46,7 @@ export interface ScheduleEventRecurrence {
 }
 
 export interface ScheduleEventPlanDetails {
+  classTemplateId?: string;
   legacyPlanId: string;
   seriesId: string;
   subject: string;
@@ -58,6 +60,7 @@ export interface ScheduleEventPlanDetails {
 }
 
 export interface ScheduleEventGeneralDetails {
+  color?: MonthEventColor;
   url: string;
   checklist: MonthEventChecklistItem[];
   locationTags: string[];
@@ -148,6 +151,7 @@ function normalizedMonthEventEndDate(event: MonthEvent): string {
 function planDetails(plan: Plan): ScheduleEventPlanDetails {
   return {
     legacyPlanId: plan.id,
+    ...(plan.classTemplateId ? { classTemplateId: plan.classTemplateId } : {}),
     seriesId: plan.seriesId,
     subject: plan.subject,
     planType: plan.type,
@@ -242,6 +246,7 @@ export function scheduleEventFromMonthEvent(event: MonthEvent): ScheduleEvent {
       url: event.url ?? '',
       checklist: checklist.map((item) => ({ ...item })),
       locationTags: uniqueStrings(event.locationTags),
+      ...(event.color ? { color: event.color } : {}),
     },
   };
 }
@@ -254,6 +259,7 @@ export function scheduleEventToPlan(event: ScheduleEvent): Plan | null {
   return {
     id: event.provenance.legacy.id,
     seriesId: event.plan.seriesId,
+    ...(event.plan.classTemplateId ? { classTemplateId: event.plan.classTemplateId } : {}),
     userId: event.userId,
     title: event.title,
     subject: event.plan.subject,
@@ -304,6 +310,7 @@ export function scheduleEventToMonthEvent(event: ScheduleEvent): MonthEvent | nu
     memo: event.memo,
     checklist: event.general.checklist.map((item) => ({ ...item })),
     locationTags: [...event.general.locationTags],
+    ...(event.general.color ? { color: event.general.color } : {}),
     createdAt: event.createdAt,
     updatedAt: event.updatedAt,
     ...(event.busy === false ? { busy: false } : {}),

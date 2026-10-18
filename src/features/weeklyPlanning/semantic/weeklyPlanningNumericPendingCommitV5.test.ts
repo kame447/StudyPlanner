@@ -1,9 +1,10 @@
+import { captureNumericPendingQuestionDomainV5 } from './weeklyPlanningNumericPendingDomainV5';
 import { describe, expect, it } from 'vitest';
 import { createSelectionLedger, prepareCandidateSelectionCommit } from '../application/candidateSelection';
 import { numericFixture } from './weeklyPlanningNumericPendingChoiceV5.testUtils';
 import { tryNumericPendingChoiceRouteV5 } from './weeklyPlanningNumericPendingChoiceV5';
 import { WeeklyPlanningSemanticNormalizerRunV5 } from './weeklyPlanningSemanticNormalizerRunV5';
-import { commitNumericPendingChoiceV5, createNumericPendingControlledAdapterV5, prepareNumericPendingCommitV5, type NumericPendingAtomicViewV5, type NumericPendingReducerBridgeV5 } from './weeklyPlanningNumericPendingCommitV5';
+import { commitNumericPendingChoiceV5, createNumericPendingControlledAdapterV5, createFrozenNumericPendingControlledAdapterV5, prepareNumericPendingCommitV5, type NumericPendingAtomicViewV5, type NumericPendingReducerBridgeV5 } from './weeklyPlanningNumericPendingCommitV5';
 async function fixture() {
   const h = numericFixture();
   const staged = await tryNumericPendingChoiceRouteV5(new WeeklyPlanningSemanticNormalizerRunV5({ createChatCompletion: async () => '' }, h.input), h.port);
@@ -56,6 +57,10 @@ describe('D5 controlled-commit adapter contract (test double, production integra
       },
     };
     const adapter = createNumericPendingControlledAdapterV5(staged, bridge)!;
+    expect(adapter.semanticContribution.document).toBe(staged.document);
+    expect(adapter.semanticContribution.canonicalization.status).toBe('applied');
+    expect(adapter.semanticContribution.canonicalization.graph).toBe(adapter.selected.graph);
+    expect(adapter.semanticContribution.canonicalization.diff?.added).toHaveLength(1);
     expect(adapter.branch).toBe('d5_pending_selection'); expect(adapter.selected.selection).toBe(staged.selection);
     await Promise.resolve(); // Continuation happens before synchronous controller prepare.
     expect(adapter.prepare()).toBe(issuedReceipt); expect(issues).toBe(1); expect(guard()).toBe(false);
@@ -64,6 +69,21 @@ describe('D5 controlled-commit adapter contract (test double, production integra
     current.current.intakeState.c5SelectionLedger = ledger;
     current.domainPolicyVersion = 'changed-between-finalize-and-reducer'; expect(guard()).toBe(false);
     expect(adapter.prepare()).toBeNull(); // Already-finalized runtime cannot repeat pre-commit planning.
+  });
+  it('never promotes an old staged scope without bound body into a registered frozen-domain commit', async () => {
+    const { staged, view } = await fixture();
+    const shown = { assistantMessageId: view.state.binding.question.presentingMessageId, text: '数学の全量には何分かかりますか？' };
+    const snapshot = captureNumericPendingQuestionDomainV5({ input: view.input, state: view.state,
+      domainMinutes: view.domainMinutes, domainPolicyVersion: view.domainPolicyVersion, presentedQuestion: shown });
+    expect(snapshot).not.toBeNull();
+    const ledger = { ...view.ledger, version: 1 as const, lastEpoch: staged.selection.manifest.binding.selectionEpoch };
+    let receipts = 0;
+    const adapter = createFrozenNumericPendingControlledAdapterV5(staged, {
+      readCurrent: () => ({ ...view, current: { intakeState: { c5SelectionLedger: ledger } }, ledger }),
+      readRuntimeGraph: () => view.input.committedGraph!, readPresentedQuestion: () => shown,
+      prepareLocalCandidateReducerCommit: () => { receipts++; return {}; },
+    }, snapshot);
+    expect(adapter).toBeNull(); expect(receipts).toBe(0); expect(ledger.consumed).toEqual([]);
   });
   it('rejects pending/domain drift across continuation before issuing any D receipt', async () => {
     const { staged, view } = await fixture(); let reads = 0; let issued = 0;

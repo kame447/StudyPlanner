@@ -17,6 +17,7 @@ const baseEnv: ProductObservabilityApiEnv = {
   OBSERVABILITY_IDENTITY_SECRET: '0123456789abcdef0123456789abcdef',
   ALLOWED_ORIGIN: 'https://studyplanner.example',
   ENVIRONMENT: 'test',
+  AI_QUOTA: { getByName: () => ({ checkAndConsume: async () => ({ allowed: true, retryAfterSeconds: 0 }) }) } as never,
 };
 
 afterEach(() => {
@@ -135,5 +136,64 @@ describe('product observability API boundary', () => {
 
     expect(response.status).toBe(401);
     expect(fetcher).not.toHaveBeenCalled();
+  });
+});
+
+function activityRequest(): Request {
+  return new Request(`https://worker.example${PRODUCT_OBSERVABILITY_EVENTS_PATH}`, { method: 'POST',
+    headers: { Origin: 'https://studyplanner.example', Authorization: 'Bearer token' },
+    body: JSON.stringify({ schemaVersion: 1, eventId: 'activity-12345678', eventType: 'product_activity',
+      occurredAt: '2026-08-28T00:00:00.000Z', appVersion: '1.0', source: 'web_app', payload: { action: 'plan_created' } }) });
+}
+
+describe('telemetry UID quota admission', () => {
+  it('returns 429 with retry evidence before persisting, through the actual observability route', async () => {
+    const { default: traceWorker } = await import('./traceWorker');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ users: [{ localId: 'quota-user', emailVerified: true }] }))));
+    const persist = vi.spyOn(ProductObservabilityStore.prototype, 'storeProductActivity').mockResolvedValue();
+    const checkAndConsume = vi.fn().mockResolvedValue({ allowed: false, retryAfterSeconds: 42 });
+    const getByName = vi.fn(() => ({ checkAndConsume }));
+    const response = await traceWorker.fetch(activityRequest(), { ...baseEnv, AI_QUOTA: { getByName } });
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('42');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://studyplanner.example');
+    expect(await response.json()).toEqual({ error: 'Telemetry rate limit exceeded.', retryAfterSeconds: 42 });
+    expect(persist).not.toHaveBeenCalled();
+    expect(getByName).toHaveBeenCalledExactlyOnceWith('telemetry:uid:quota-user');
+    expect(checkAndConsume).toHaveBeenCalledWith({ rules: [expect.objectContaining({ name: 'telemetry:uid:minute' }), expect.objectContaining({ name: 'telemetry:uid:day' })] });
+  });
+
+  it.each(['missing', 'unavailable', 'rejected'] as const)('fails closed for %s quota infrastructure without performing a telemetry write', async (mode) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ users: [{ localId: 'quota-user' }] }))));
+    const persist = vi.spyOn(ProductObservabilityStore.prototype, 'storeProductActivity').mockResolvedValue();
+    const env = mode === 'missing' ? { ...baseEnv, AI_QUOTA: undefined }
+      : { ...baseEnv, AI_QUOTA: { getByName() { if (mode === 'unavailable') throw new Error('quota unavailable');
+        return { checkAndConsume: async () => { throw new Error('quota RPC failed'); } }; } } };
+    const response = await handleProductObservabilityApi(activityRequest(), env as ProductObservabilityApiEnv);
+    expect(response.status).toBe(503);
+    expect(persist).not.toHaveBeenCalled();
+  });
+});
+
+describe('telemetry quota isolation', () => {
+  it('keeps exhausted users separate and consumes only telemetry policy rules', async () => {
+    let currentUid = 'user/a';
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ users: [{ localId: currentUid }] }))));
+    const persist = vi.spyOn(ProductObservabilityStore.prototype, 'storeProductActivity').mockResolvedValue();
+    const getByName = vi.fn((name: string) => ({ checkAndConsume: vi.fn(async () => ({ allowed: name !== 'telemetry:uid:user%2Fa', retryAfterSeconds: 10 })) }));
+    const env = { ...baseEnv, AI_QUOTA: { getByName } } as unknown as ProductObservabilityApiEnv;
+    expect((await handleProductObservabilityApi(activityRequest(), env)).status).toBe(429);
+    currentUid = 'user%2Fa';
+    expect((await handleProductObservabilityApi(activityRequest(), env)).status).toBe(202);
+    expect(getByName.mock.calls.map(([name]) => name)).toEqual(['telemetry:uid:user%2Fa', 'telemetry:uid:user%252Fa']);
+    expect(persist).toHaveBeenCalledExactlyOnceWith('user%2Fa', expect.any(Object));
+  });
+
+  it('does not consume quota for preflight or unauthenticated requests', async () => {
+    const getByName = vi.fn();
+    const env = { ...baseEnv, AI_QUOTA: { getByName } } as unknown as ProductObservabilityApiEnv;
+    expect((await handleProductObservabilityApi(new Request('https://worker/observability/events', { method: 'OPTIONS' }), env)).status).toBe(204);
+    expect((await handleProductObservabilityApi(new Request('https://worker/observability/events', { method: 'POST', body: '{}' }), env)).status).toBe(401);
+    expect(getByName).not.toHaveBeenCalled();
   });
 });

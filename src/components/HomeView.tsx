@@ -1,9 +1,12 @@
+import type { StudyProgressPreferences } from '../lib/studyProgressPolicy';
+import { usePublicPageNavigation } from './PublicPageLink';
+import type { HomeAddEntry } from './home/TodayScheduleAddMenu';
 import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
 import { useHomeTextReflow } from './home/useHomeTextReflow';
 import type { HomeScenePreferences } from '../lib/homeScenePreferences';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { buildHomeDashboardModel } from '../lib/homeDashboard';
-import type { Actual, Plan, StudyMaterial, TodoTask } from '../types/domain';
+import type { Actual, MonthEvent, Plan, StudyMaterial, TodoTask } from '../types/domain';
 import {
   AttentionSection,
   DEFAULT_HOME_SECTION_ORDER,
@@ -16,16 +19,18 @@ import {
 import { WeeklyProgressSection } from './home/WeeklyProgressSection';
 
 interface HomeViewProps {
+  progressPreferences?: StudyProgressPreferences;
   homeScenePreferences?: HomeScenePreferences;
   plans: Plan[];
   actuals: Actual[];
+  monthEvents?: MonthEvent[];
   todos: TodoTask[];
   studyMaterials: StudyMaterial[];
   primaryHeaderRef: RefObject<HTMLDivElement | null>;
   primaryBottomNavRef: RefObject<HTMLElement | null>;
   onOpenAiPlanning: () => void;
   onOpenSchedule: () => void;
-  onAddEntry: () => void;
+  onAddEntry: (entry: HomeAddEntry) => void;
   onOpenDay: (date: string) => void;
   onOpenTodo: () => void;
   onOpenBookshelf: () => void;
@@ -104,9 +109,11 @@ function preferredScheduleListHeight(scheduleList: HTMLElement): number {
 }
 
 export function HomeView({
+  progressPreferences,
   homeScenePreferences,
   plans,
   actuals,
+  monthEvents,
   todos,
   studyMaterials,
   primaryHeaderRef,
@@ -119,10 +126,11 @@ export function HomeView({
   onOpenBookshelf,
   onOpenReport,
 }: HomeViewProps) {
+  const publicPageOpen = usePublicPageNavigation()?.isPublicPage ?? false;
   const now = useHomeDisplayClock();
   const dashboard = useMemo(
-    () => buildHomeDashboardModel({ plans, actuals, todos, now }),
-    [actuals, plans, todos, now],
+    () => buildHomeDashboardModel({ plans, actuals, monthEvents, todos, now, progressPreferences }),
+    [actuals, monthEvents, plans, todos, now, progressPreferences],
   );
   const isGettingStarted =
     plans.length === 0 &&
@@ -154,16 +162,20 @@ export function HomeView({
   }, [activeStudyMaterials, supplementalMaterialRows]);
 
   useEffect(() => {
+    if (publicPageOpen) return undefined;
     if (isGettingStarted) {
       setSupplementalMaterialRows(null);
       return undefined;
     }
 
+    let active = true;
     let frameId = 0;
     let convergencePass = 0;
     const measure = () => {
+      if (!active) return;
       window.cancelAnimationFrame(frameId);
       frameId = window.requestAnimationFrame(() => {
+        if (!active) return;
         const core = coreSectionsRef.current;
         const header = primaryHeaderRef.current;
         const nav = primaryBottomNavRef.current;
@@ -175,6 +187,7 @@ export function HomeView({
         const topbar = header?.querySelector<HTMLElement>('.home-topbar');
         if (
           !core ||
+          !core.getClientRects().length ||
           !header ||
           !nav ||
           !(dashboardElement instanceof HTMLElement) ||
@@ -184,6 +197,23 @@ export function HomeView({
           !alertGrid ||
           !topbar
         ) {
+          return;
+        }
+
+        // Desktop uses a two-column content layout. The compact fit algorithm
+        // below assumes vertically stacked sections and would stretch/clamp the
+        // wrong rows here. Keep one supplemental material and let long content
+        // scroll without reducing text size.
+        if (window.innerWidth >= 1200) {
+          for (const property of Array.from(dashboardElement.style)) {
+            if (property.startsWith('--home-relax-') || property === '--home-dynamic-schedule-max') {
+              dashboardElement.style.removeProperty(property);
+            }
+          }
+          header.style.removeProperty('--home-relax-topbar');
+          delete header.dataset.homeChromeViewport;
+          layoutRelaxationRef.current = emptyLayoutRelaxation();
+          setSupplementalMaterialRows(supplementalMaterialCandidates[0] ?? null);
           return;
         }
 
@@ -520,11 +550,13 @@ export function HomeView({
     void document.fonts.ready.then(restartMeasurement, () => undefined);
 
     return () => {
+      active = false;
       window.cancelAnimationFrame(frameId);
       window.removeEventListener('resize', restartMeasurement);
       window.visualViewport?.removeEventListener('resize', restartMeasurement);
     };
   }, [
+    publicPageOpen,
     homeTextSize,
     dashboard.todayPlans.length,
     dashboard.upcomingPlans.length,

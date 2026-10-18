@@ -1,3 +1,5 @@
+import { preserveMonthEventActualSources } from '../domain/actualProgressSource';
+import { assertRecurringMonthEventWrite } from './plannerWritePreparation';
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
 import {
   createScheduleEventMigrationState,
@@ -385,6 +387,15 @@ export function createLocalScheduleEventAuthority(
       );
     },
 
+    async applyRecurringMonthEventMutation(userId, monthEvents) {
+      assertRecurringMonthEventWrite(userId, monthEvents);
+      const upserts = monthEvents.map(scheduleEventFromMonthEvent);
+      const current = readScheduleEvents(storage);
+      const ids = new Set(upserts.map((event) => event.id));
+      assertOwnedRecords(userId, current.filter((event) => ids.has(event.id)), '繰り返し予定更新');
+      writeScheduleEvents(storage, upserts.reduce((events, event) => replaceById(events, event), current));
+    },
+
     async upsertMonthEvent(monthEvent) {
       assertOwnedRecords(monthEvent.userId, [monthEvent], '主要予定保存');
       const nextEvents = replaceById(
@@ -396,15 +407,24 @@ export function createLocalScheduleEventAuthority(
     },
 
     async deleteMonthEvent(userId, monthEventId) {
-      const eventId = scheduleEventIdForLegacy({
-        kind: 'month-event',
-        id: monthEventId,
-      });
-      writeScheduleEvents(
-        storage,
-        readScheduleEvents(storage).filter(
-          (event) => !(event.userId === userId && event.id === eventId),
-        ),
+      const eventId = scheduleEventIdForLegacy({ kind: 'month-event', id: monthEventId });
+      const previousEvents = readScheduleEvents(storage);
+      const source = previousEvents.find(event => event.id === eventId && event.userId === userId);
+      const monthEvent = source ? scheduleEventToMonthEvent(source) : null;
+      if (!monthEvent) return;
+      const previousActuals = await plannerStorageGateway.readActuals();
+      const nextActuals = preserveMonthEventActualSources(previousActuals, monthEvent);
+      const nextEvents = previousEvents.filter(event => !(event.userId === userId && event.id === eventId));
+      await runRecoverableMutation(
+        async () => {
+          await plannerStorageGateway.writeActuals(nextActuals);
+          writeScheduleEvents(storage, nextEvents);
+        },
+        async () => {
+          writeScheduleEvents(storage, previousEvents);
+          await plannerStorageGateway.writeActuals(previousActuals);
+        },
+        '主要予定削除',
       );
     },
   };

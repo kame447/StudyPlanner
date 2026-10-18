@@ -188,7 +188,8 @@ test('day action-menu deletion failure keeps the target available for retry with
   const plan = page.locator('.timeline-plan-block').filter({ hasText: '長押し削除確認' });
   await plan.click();
   const menu = page.getByRole('dialog', { name: '長押し削除確認の操作', exact: true });
-  const remove = menu.getByRole('button', { name: '削除', exact: true });
+  const remove = menu.getByRole('button', { name: '予定を削除', exact: true });
+  await expect(menu.locator('.schedule-action-item.danger')).toHaveCount(1);
   await remove.click();
   await expect(menu.getByRole('alert')).toContainText('もう一度');
   await expect(remove).toBeEnabled();
@@ -198,7 +199,35 @@ test('day action-menu deletion failure keeps the target available for retry with
   await expect(menu).toHaveCount(0);
   await expect(plan).toHaveCount(0);
   await expect(page.locator('.timeline-plan-block').filter({ hasText: '残る予定' })).toBeVisible();
-  await expect.poll(async () => (await readEvents()).map(event => event.id)).toEqual(['plan:sibling-plan']);
+  const original = before.find(event => event.id === 'plan:held-plan');
+  expect(original).toBeDefined();
+  // One-off cancellation retains the source identity for history and Undo.
+  const cancelled = {
+    ...original,
+    updatedAt: expect.any(String),
+    recurrence: { ...original.recurrence, excludedDates: [E2E_TODAY] },
+  };
+  const expectCancelled = async () => {
+    await expect.poll(async () => (await readEvents()).find(event => event.id === original.id)).toEqual(cancelled);
+    expect((await readEvents()).filter(event => event.id !== original.id))
+      .toEqual(before.filter(event => event.id !== original.id));
+    expect(await readEvents()).toHaveLength(before.length);
+  };
+  await expectCancelled();
+  await page.getByRole('button', { name: '元に戻す', exact: true }).click();
+  await expect(plan).toBeVisible();
+  await expect.poll(async () => (await readEvents()).find(event => event.id === original.id))
+    .toEqual({ ...original, updatedAt: expect.any(String) });
+  await plan.click();
+  await remove.click();
+  await expect(plan).toHaveCount(0);
+  await expectCancelled();
+  await page.reload();
+  await page.locator('.primary-bottom-nav button').filter({ hasText: '予定' }).click();
+  await page.getByRole('tab', { name: '日', exact: true }).click();
+  await expect(plan).toHaveCount(0);
+  await expect(page.locator('.timeline-plan-block').filter({ hasText: '残る予定' })).toBeVisible();
+  await expectCancelled();
   expect(pageErrors).toEqual([]);
   await context.close();
 });

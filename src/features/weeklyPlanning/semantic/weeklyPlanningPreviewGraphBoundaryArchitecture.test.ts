@@ -7,7 +7,7 @@ function source(relativePath: string): string {
 
 describe('weekly planning preview graph boundary', () => {
   it('does not pass or re-project the raw semantic graph into preview execution', () => {
-    const runtime = source('../application/weeklyPlanningStableV5RuntimeExecutor.ts');
+    const runtime = source('../application/weeklyPlanningStableV5RuntimeExecutorCore.ts');
     const placementView = source('./weeklyPlanningPlacementGraphViewV5.ts');
 
     expect(runtime).not.toContain(

@@ -1,0 +1,329 @@
+/* The signed-out entry is a single dark canvas, independent of saved app theme.
+   Consent, profile recovery, and the signed-in application retain their themes. */
+html:has(#root .auth-entry-shell),
+html:has(#root .auth-entry-shell) :is(body, #root) {
+  background: #060914 !important;
+  color-scheme: dark;
+  transition: none !important;
+}
+
+.auth-shell.auth-entry-shell {
+  --notice-info-background: #162438;
+  --notice-info-border: #344968;
+  --notice-success-background: #142923;
+  --notice-success-border: #385c53;
+  --notice-error-background: #331a24;
+  --notice-error-border: #724051;
+  --danger: #ffb6ba;
+  --button-ghost-bg: #1c273d;
+  --button-ghost-border: #40516c;
+  --accent-strong: #d5dff3;
+  --surface-soft: #19243a;
+  --pixel-paper: #101522;
+  --pixel-line: #343e51;
+  --pixel-edge: #b7c9eb;
+  position: relative;
+  isolation: isolate;
+  grid-template-columns: minmax(0, 380px);
+  justify-content: center;
+  align-content: center;
+  min-height: 100vh;
+  min-height: 100svh;
+  gap: 0;
+  padding: max(36px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-right, 0px)) max(64px, env(safe-area-inset-bottom, 0px)) max(24px, env(safe-area-inset-left, 0px));
+  color: #eef1f8;
+  background: #060914;
+}
+
+.auth-entry {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+
+/* Retain heading navigation without repeating the selected mode visually. */
+.auth-entry-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.auth-entry-brand {
+  margin-bottom: 36px;
+}
+
+.auth-entry .brand-lockup {
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.auth-entry .brand-mark {
+  display: block;
+  width: 76px;
+  height: 76px;
+  filter: none;
+  /* The approved bitmap has a varied navy edge, not a solid black tile.
+     Feather only that surrounding artwork; preserve the glowing mark. */
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 42%, transparent 72%);
+  mask-image: radial-gradient(ellipse at center, #000 42%, transparent 72%);
+}
+
+.auth-entry .brand-name {
+  color: #eef1f8;
+  font-size: 1.8rem;
+  font-weight: 400;
+  line-height: 1.15;
+  letter-spacing: 0.015em;
+}
+
+.auth-entry-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  margin-bottom: 28px;
+  border-bottom: 1px solid #303646;
+}
+
+.auth-entry-mode {
+  min-height: 48px;
+  margin-bottom: -1px;
+  padding: 12px 6px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #a6adbf;
+  font-size: 0.94rem;
+  font-weight: 500;
+}
+
+.auth-entry-mode[aria-selected='true'] {
+  border-bottom-color: #d2dcf0;
+  color: #f4f6fb;
+}
+
+.auth-entry .auth-form {
+  gap: 18px;
+}
+
+.auth-entry .field {
+  gap: 8px;
+}
+
+.auth-entry .field span {
+  color: #cfd5e2;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.auth-entry .field small {
+  margin-left: 4px;
+  color: #9da7bb;
+  font-size: 0.75rem;
+}
+
+.auth-entry .field input {
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid #343e51;
+  border-radius: 8px;
+  background: #101522;
+  color: #f4f6fb;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.auth-entry .field input::placeholder {
+  color: #929caf;
+  opacity: 1;
+}
+
+.auth-entry-submit,
+.auth-entry-google {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 16px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 0.94rem;
+  font-weight: 600;
+}
+
+.auth-entry-submit {
+  margin-top: 2px;
+  background: #e0e7f5;
+  color: #111725;
+}
+
+.auth-entry-google {
+  border-color: #343e51;
+  background: #101522;
+  color: #e3e8f2;
+}
+
+.auth-entry-reset {
+  justify-self: center;
+  min-height: 40px;
+  margin: -8px 0;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: #bec8dc;
+  font-size: 0.8rem;
+}
+
+.auth-entry-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: #9da7bb;
+  font-size: 0.75rem;
+}
+
+.auth-entry-divider::before,
+.auth-entry-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #293143;
+}
+
+.auth-entry-legal {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 28px;
+}
+
+.auth-entry-legal a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  color: #a9b3c8;
+  font-size: 0.72rem;
+  text-decoration: none;
+}
+
+.auth-entry-hint,
+.auth-entry-error {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.auth-entry-hint {
+  color: #a9b3c8;
+  text-align: center;
+}
+
+.auth-entry-error {
+  color: #ffb6ba;
+}
+
+.auth-entry :is(button, input, a):focus-visible,
+.auth-motion-toggle:focus-visible {
+  outline: 2px solid #b7c9eb;
+  outline-offset: 4px;
+}
+
+@media (hover: hover) {
+  .auth-entry-submit:hover { background: #f4f7fd; }
+  .auth-entry-google:hover { background: #1b2334; }
+  .auth-entry-reset:hover,
+  .auth-entry-legal a:hover { color: #f4f6fb; text-decoration: underline; }
+  .auth-entry-mode:hover { color: #f4f6fb; }
+}
+
+.auth-stars {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: -1;
+  /* Keep text and the logo on an uninterrupted dark surface. */
+  -webkit-mask-image: linear-gradient(90deg, #000, #000 10%, #0004 35%, #0004 65%, #000 90%);
+  mask-image: linear-gradient(90deg, #000, #000 10%, #0004 35%, #0004 65%, #000 90%);
+}
+
+.auth-stars__layer {
+  position: absolute;
+  inset: -48px;
+  background-repeat: no-repeat;
+  animation: auth-star-drift 96s ease-in-out infinite alternate;
+}
+
+.auth-stars__layer--far {
+  opacity: 0.4;
+  background-image:
+    radial-gradient(1px 1px at 8% 12%, #d4e0ff 80%, transparent),
+    radial-gradient(1px 1px at 22% 28%, #d4e0ff 80%, transparent),
+    radial-gradient(1px 1px at 38% 8%, #d4e0ff 80%, transparent),
+    radial-gradient(1px 1px at 57% 20%, #d4e0ff 80%, transparent),
+    radial-gradient(1px 1px at 76% 9%, #d4e0ff 80%, transparent),
+    radial-gradient(1px 1px at 91% 31%, #d4e0ff 80%, transparent),
+    radial-gradient(1px 1px at 14% 46%, #d4e0ff 80%, transparent),
+    radial-gradient(1px 1px at 32% 59%, #d4e0ff 80%, transparent),
+    radial-gradient(1px 1px at 68% 43%, #d4e0ff 80%, transparent),
+    radial-gradient(1px 1px at 86% 62%, #d4e0ff 80%, transparent),
+    radial-gradient(1px 1px at 6% 79%, #d4e0ff 80%, transparent),
+    radial-gradient(1px 1px at 26% 91%, #d4e0ff 80%, transparent),
+    radial-gradient(1px 1px at 48% 77%, #d4e0ff 80%, transparent),
+    radial-gradient(1px 1px at 71% 88%, #d4e0ff 80%, transparent),
+    radial-gradient(1px 1px at 93% 82%, #d4e0ff 80%, transparent);
+}
+
+.auth-stars__layer--near {
+  opacity: 0.65;
+  animation-duration: 72s;
+  animation-delay: -28s;
+  background-image:
+    radial-gradient(1.5px 1.5px at 16% 19%, #e2e9fc 70%, transparent),
+    radial-gradient(1.5px 1.5px at 62% 7%, #e2e9fc 70%, transparent),
+    radial-gradient(1.5px 1.5px at 83% 23%, #e2e9fc 70%, transparent),
+    radial-gradient(1.5px 1.5px at 8% 59%, #e2e9fc 70%, transparent),
+    radial-gradient(1.5px 1.5px at 78% 51%, #e2e9fc 70%, transparent),
+    radial-gradient(1.5px 1.5px at 20% 73%, #e2e9fc 70%, transparent),
+    radial-gradient(1.5px 1.5px at 60% 90%, #e2e9fc 70%, transparent),
+    radial-gradient(1.5px 1.5px at 92% 70%, #e2e9fc 70%, transparent);
+}
+
+.auth-stars[data-paused='true'] .auth-stars__layer {
+  animation-play-state: paused;
+}
+
+.auth-motion-toggle {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right, 0px));
+  bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #8e9ab3;
+  background: transparent;
+}
+
+@keyframes auth-star-drift {
+  from { transform: translate3d(-8px, 14px, 0); }
+  to { transform: translate3d(10px, -26px, 0); }
+}
+
+:root:is([data-motion='reduced'], [data-motion='off']) .auth-stars__layer { animation: none; }
+
+:root:is([data-motion='reduced'], [data-motion='off']) .auth-motion-toggle { display: none; }
+
+@media (max-width: 380px), (max-height: 700px) {
+  .auth-entry-brand { margin-bottom: 20px; }
+  .auth-entry-modes { margin-bottom: 22px; }
+}

@@ -6,6 +6,7 @@ import type {
   ScheduleTemplate,
   TimetableTerm,
 } from '../types/domain';
+import { getMonthEventColor, scheduleEventWeekStyle } from '../lib/scheduleEventColor';
 import { WeekView } from './WeekView';
 
 const TIMESTAMP = '2026-08-01T00:00:00.000Z';
@@ -305,6 +306,7 @@ describe('WeekView schedule occurrence projection', () => {
     expect(spanningEvent.props.style.gridColumn).toBe(gridColumn);
     expect(findTimedBlocks(renderer, '月跨ぎ予定')).toHaveLength(0);
     expect(findTimedBlock(renderer, '時間指定予定').props.style).toEqual({
+      ...scheduleEventWeekStyle(getMonthEventColor('timed')),
       top: '95.83333333333334%',
       height: 'max(2.083333333333333%, 14px)',
       left: 'calc(0% + 2px)',
@@ -347,4 +349,22 @@ describe('WeekView schedule occurrence projection', () => {
     expect(spanningEvent.props.style.margin).toBe('2px 1px');
     expect(spanningEvent.props.style.padding).toBe('2px 2px');
   });
+});
+
+
+it('retains the actual occurrence title after cancellation rather than falling back to the series title', () => {
+  const source = importedTimetablePlan({ title: '系列のタイトル', excludedDates: ['2026-08-24'], recurrenceRules: [{
+    id: 'specific', kind: 'date', startDate: '2026-08-24', until: null, dates: ['2026-08-24'], weekdays: [], dayType: null,
+    isOverride: true, startTime: '15:00', endTime: '16:30', title: '当日の授業タイトル', subject: 'English', type: 'school-event',
+  }] });
+  let renderer!: ReactTestRenderer;
+  act(() => { renderer = create(<WeekView selectedDate="2026-08-24" userId="user-1" plans={[source]} actuals={[{
+    id: 'record', userId: 'user-1', planId: source.id, occurrenceDate: '2026-08-24', actualStartTime: '15:00', actualEndTime: '16:00',
+    subject: '', note: '', updatedAt: TIMESTAMP,
+  }]} onOpenDay={vi.fn()} />); });
+  const actualMode = renderer.root.findAllByType('button').find(button => button.children.join('') === '記録')!;
+  act(() => actualMode.props.onClick());
+  expect(JSON.stringify(renderer.toJSON())).toContain('当日の授業タイトル');
+  expect(JSON.stringify(renderer.toJSON())).not.toContain('系列のタイトル');
+  act(() => renderer.unmount());
 });

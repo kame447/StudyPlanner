@@ -9,8 +9,8 @@ const test = fixedClockTest.extend({
   }, { timeout: 30_000 }],
 });
 
-async function seed(page) {
-  await page.addInitScript(({ today }) => {
+async function seed(page, { complete = false, appearance, theme } = {}) {
+  await page.addInitScript(({ today, complete, appearance, theme }) => {
     if (localStorage.getItem('settings-page-seeded')) return;
     const now = new Date().toISOString();
     const user = { id: 'settings-page-user', email: 'settings@example.test', username: '設定テスト', avatar: '', createdAt: now };
@@ -23,8 +23,15 @@ async function seed(page) {
     for (const key of ['studyplanner.actuals', 'studyplanner.todos.v1', 'studyplanner.studySubjects.v1', 'studyplanner.studyMaterials.v1']) {
       localStorage.setItem(key, '[]');
     }
+    if (complete) localStorage.setItem('studyplanner.actuals', JSON.stringify([{
+      id: 'complete-study', userId: plan.userId, planId: plan.id, occurrenceDate: today,
+      actualStartTime: plan.startTime, actualEndTime: plan.endTime, title: plan.title,
+      subject: plan.subject, isAlignedToPlan: true, note: '', updatedAt: now,
+    }]));
+    if (appearance) localStorage.setItem('study-planner-appearance', appearance);
+    if (theme) localStorage.setItem('study-planner-theme-mode', theme);
     localStorage.setItem('settings-page-seeded', 'true');
-  }, { today: E2E_TODAY });
+  }, { today: E2E_TODAY, complete, appearance, theme });
 }
 
 async function assertReadable(page) {
@@ -120,6 +127,24 @@ for (const width of [1280, 390, 320]) {
     await expect(settings.getByRole('tab', { name: 'サポート', exact: true })).toBeFocused();
     await expect(page.locator('input:focus, textarea:focus, select:focus')).toHaveCount(0);
     await expect(settings.getByRole('link', { name: 'お問い合わせ' })).toHaveAttribute('href', '/contact');
+    const restHelp = settings.locator('.faq-item').filter({ has: page.locator('summary', { hasText: 'お休み券はいつ使われますか' }) });
+    await expect(restHelp).not.toHaveAttribute('open');
+    await restHelp.locator('summary').focus();
+    await page.keyboard.press('Enter');
+    await expect(restHelp.locator('p')).toBeVisible();
+    await expect(restHelp).toContainText('当日の先払いと手動使用はありません');
+    await page.keyboard.press('Enter');
+    await expect(restHelp.locator('p')).toBeHidden();
+    const noticeHelp = settings.locator('.faq-item').filter({ has: page.locator('summary', { hasText: '通知やリマインダーは使えますか' }) });
+    await noticeHelp.locator('summary').click();
+    await expect(noticeHelp).toContainText('ホームのベル');
+    await expect(noticeHelp).toContainText('端末へのプッシュ通知や予定時刻のリマインダーは未対応');
+    expect(await settings.locator('.faq-view').evaluate(element => element.scrollWidth > element.clientWidth)).toBe(false);
+    const summarySize = await restHelp.locator('summary').evaluate(element => ({ height: element.getBoundingClientRect().height, font: parseFloat(getComputedStyle(element).fontSize) }));
+    expect(summarySize.height).toBeGreaterThanOrEqual(44);
+    expect(summarySize.font).toBeGreaterThanOrEqual(16);
+    await settings.getByRole('heading', { name: 'よくある質問', exact: true }).scrollIntoViewIfNeeded();
+    await testInfo.attach(`support-guidance-${width}`, { body: await settings.screenshot(), contentType: 'image/png' });
     await page.goBack(); await expect(settings).toHaveCount(0); await expect(schedule).toBeVisible();
     await expect(menu).toBeFocused(); await expect(selectedDay).toHaveText(selectedDayText);
     expect(await page.evaluate(() => localStorage.getItem('studyplanner.plans'))).toBe(savedPlans);
@@ -143,16 +168,53 @@ for (const width of [1280, 390, 320]) {
     // Browser Forward can reopen settings while an existing body-portal dialog is open.
     await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: 'ホーム', exact: true }).click();
     await expect(page.locator('.home-today-panel')).toContainText('設定後も残る予定');
-    await page.getByRole('button', { name: '今日の予定に追加', exact: true }).click();
-    const addDialog = page.getByRole('dialog', { name: '今日の予定に追加', exact: true });
+    const homeAdd = page.getByRole('button', { name: '今日の予定に追加', exact: true });
+    await homeAdd.click();
+    await page.keyboard.press('Escape');
+    await expect(homeAdd).toHaveAttribute('aria-expanded', 'false');
+    await expect(homeAdd).toBeFocused();
+    await homeAdd.click();
+    const studyAction = page.getByRole('button', { name: '学習予定を追加', exact: true });
+    const homeCollapse = page.getByRole('button', { name: '予定の追加を閉じる', exact: true });
+    // Record the first visible commit before a deferred focus frame could run.
+    // Assert it only after Forward so the observation does not delay navigation.
+    await page.evaluate(() => {
+      window.__settingsReturnDialogMountFocus = null;
+      const observer = new MutationObserver(() => {
+        const dialog = document.querySelector('[role="dialog"][aria-label="予定・記録の追加"]');
+        if (!dialog || !dialog.getClientRects().length) return;
+        window.__settingsReturnDialogMountFocus = {
+          ownsFocus: document.activeElement === dialog,
+          activeTag: document.activeElement?.tagName,
+        };
+        observer.disconnect();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+    await studyAction.click();
+    const addDialog = page.getByRole('dialog', { name: '予定・記録の追加', exact: true });
     await expect(addDialog).toBeVisible();
     await page.goForward(); await expect(settings).toBeVisible(); await expect(addDialog).toBeHidden();
+    expect(await page.evaluate(() => window.__settingsReturnDialogMountFocus)).toEqual({
+      ownsFocus: true, activeTag: 'FORM',
+    });
     await settings.getByRole('tab', { name: '設定', exact: true }).focus(); await page.keyboard.press('Tab');
     await expect(panel).toBeFocused();
     await page.keyboard.press('Escape');
     await settings.getByRole('button', { name: '戻る', exact: true }).click();
     await expect(addDialog).toBeVisible();
-    await addDialog.getByRole('button', { name: 'キャンセル', exact: true }).click();
+    await page.keyboard.press('Escape');
+    // Escape dismisses the visible dialog while retaining the Home action row.
+    await expect(addDialog).toHaveCount(0);
+    await expect(studyAction).toBeFocused();
+    await expect(homeCollapse).toHaveAttribute('aria-expanded', 'true');
+    // Retain the separate explicit button-dismissal path after the settings round trip.
+    await studyAction.click();
+    await expect(addDialog).toBeVisible();
+    await addDialog.getByRole('button', { name: '閉じる', exact: true }).click();
+    await expect(addDialog).toHaveCount(0);
+    await expect(studyAction).toBeFocused();
+    await expect(homeCollapse).toHaveAttribute('aria-expanded', 'true');
     await menu.click(); await page.reload();
     await expect(page.getByRole('main', { name: 'アプリ設定' })).toBeVisible();
     await page.getByRole('button', { name: '戻る', exact: true }).click();
@@ -160,5 +222,97 @@ for (const width of [1280, 390, 320]) {
     await expect(page.getByRole('navigation', { name: '主要ナビゲーション' })).toBeVisible();
     await expect(page.locator('.home-today-panel')).toContainText('設定後も残る予定');
     expect(await page.evaluate(() => localStorage.getItem('studyplanner.plans'))).toBe(savedPlans);
+  });
+}
+
+test('study progress defaults exclude general events and timetable and persists independent opt-ins', async ({ page }, testInfo) => {
+  await seed(page); await page.goto('/');
+  await page.getByRole('button', { name: 'メニューを開く', exact: true }).click();
+  const settings = page.getByRole('main', { name: 'アプリ設定' });
+  const general = settings.getByRole('checkbox', { name: '月の主要予定を進捗に含める', exact: true });
+  const timetable = settings.getByRole('checkbox', { name: '時間割を進捗に含める', exact: true });
+  await expect(general).not.toBeChecked(); await expect(timetable).not.toBeChecked();
+  await general.check(); await expect(timetable).not.toBeChecked();
+  await page.screenshot({ path: testInfo.outputPath('home-progress-inclusion.png'), animations: 'disabled' });
+  await page.reload();
+  // Reload restores the settings route; its Home menu is deliberately absent.
+  await expect(settings).toBeVisible();
+  await expect(page.getByRole('button', { name: 'メニューを開く', exact: true })).toHaveCount(0);
+  await expect(general).toBeChecked(); await expect(timetable).not.toBeChecked();
+  await timetable.check(); await general.uncheck();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('study-planner-study-progress:settings-page-user')))).toEqual({ includeGeneralEvents: false, includeTimetable: true });
+});
+
+for (const width of [390, 1280]) {
+  test(`home 100 percent stays inside its ring at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 }); await seed(page, { complete: true });
+    await page.goto('/');
+    const ring = page.locator('.weekly-progress-ring');
+    await expect(ring).toHaveAttribute('aria-label', '週全体の予定に対する達成率 100%');
+    await page.evaluate(() => document.fonts.ready);
+    await expectPercentageWithinDiscBounds(ring);
+    await page.screenshot({ path: testInfo.outputPath(`home-progress-100-${width}.png`), animations: 'disabled' });
+  });
+}
+
+async function expectPercentageWithinDiscBounds(ring, testInfo, receiptName) {
+  await expect(ring.locator('strong')).toHaveText('100%');
+  const bounds = await ring.evaluate(element => {
+    const rect = node => {
+      const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
+      return { left, right, top, bottom, width, height };
+    };
+    const label = element.querySelector('strong');
+    const text = document.createRange();
+    text.selectNodeContents(label);
+    return { outer: rect(element), inner: rect(element.firstElementChild), label: rect(label), text: rect(text),
+      fontFamily: getComputedStyle(label).fontFamily, fontSize: getComputedStyle(label).fontSize,
+      rootFontSize: getComputedStyle(document.documentElement).fontSize };
+  });
+  if (testInfo) await testInfo.attach(receiptName, { body: JSON.stringify(bounds, null, 2), contentType: 'application/json' });
+  expect(bounds.inner.width).toBeLessThan(bounds.outer.width);
+  expect(bounds.inner.height).toBeLessThan(bounds.outer.height);
+  // Keep the original outer-ring check, then require both the label and its
+  // inline text bounds to fit the smaller disc. These are layout bounds, not ink pixels.
+  for (const box of [bounds.outer, bounds.inner]) for (const label of [bounds.label, bounds.text]) {
+    expect(label.width).toBeGreaterThan(0);
+    expect(label.height).toBeGreaterThan(0);
+    expect(label.left).toBeGreaterThanOrEqual(box.left);
+    expect(label.right).toBeLessThanOrEqual(box.right);
+    expect(label.top).toBeGreaterThanOrEqual(box.top);
+    expect(label.bottom).toBeLessThanOrEqual(box.bottom);
+  }
+  return bounds;
+}
+
+for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
+  test(`loaded pixel 100 percent stays within inner-disc bounds with enlarged text at ${width}px ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await seed(page, { complete: true, appearance: 'pixel', theme });
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('data-appearance', 'pixel');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    const ring = page.locator('.weekly-progress-ring');
+    await expect(ring).toHaveAttribute('aria-label', '週全体の予定に対する達成率 100%');
+    await expect.poll(() => ring.locator('strong').evaluate(element => getComputedStyle(element).fontFamily)).toContain('DotGothic16');
+    const loaded = await page.evaluate(async () => {
+      const faces = await document.fonts.load('700 16px "DotGothic16"', '100%');
+      await document.fonts.ready;
+      return faces.map(face => ({ family: face.family.replaceAll('"', ''), status: face.status }));
+    });
+    expect(loaded).toEqual([{ family: 'DotGothic16', status: 'loaded' }]);
+    const normalRootSize = await page.locator('html').evaluate(element => parseFloat(getComputedStyle(element).fontSize));
+    let normalLabelSize;
+    for (const scale of [100, 200]) {
+      if (scale === 200) await page.addStyleTag({ content: ':root { font-size: 200% !important; }' });
+      const receiptName = `progress-inner-disc-${width}-${theme}-${scale}`;
+      await testInfo.attach(`${receiptName}-image`, { body: await ring.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
+      const bounds = await expectPercentageWithinDiscBounds(ring, testInfo, receiptName);
+      if (scale === 100) normalLabelSize = parseFloat(bounds.fontSize);
+      else expect(parseFloat(bounds.fontSize)).toBeGreaterThan(normalLabelSize);
+      expect(parseFloat(bounds.rootFontSize)).toBe(normalRootSize * scale / 100);
+      expect(bounds.fontFamily).toContain('DotGothic16');
+      expect(await page.evaluate(() => document.fonts.check('700 16px "DotGothic16"', '100%'))).toBe(true);
+    }
   });
 }

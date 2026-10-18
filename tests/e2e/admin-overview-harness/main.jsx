@@ -9,6 +9,10 @@ import {
   Settings,
   Users,
 } from 'lucide-react';
+import { AnnouncementsButton } from '../../../src/components/AnnouncementsButton';
+import { ContactPage } from '../../../src/components/ContactPage';
+import { AdminApp } from '../../../src/components/AdminApp';
+import { ApplicationRouteRoot } from '../../../src/components/ApplicationRouteRoot';
 import { AdminAiApiPage } from '../../../src/components/AdminAiApiPage';
 import { AdminLogsPage } from '../../../src/components/AdminLogsPage';
 import { AdminOverviewPage } from '../../../src/components/AdminOverviewPage';
@@ -92,4 +96,31 @@ function AdminConsoleHarness() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<AdminConsoleHarness />);
+const inquiryAuth = {
+  available: true,
+  getCurrentUser: () => null,
+  subscribe(listener) {
+    listener(params.get('state') === 'signed-out' ? null : { id: 'fixture-owner', requiresEmailVerification: false });
+    window.__inquiryAuthSwitch = listener;
+    return () => { delete window.__inquiryAuthSwitch; };
+  },
+  signOut: async () => {},
+};
+function ContactHarness() {
+  const [visible, setVisible] = React.useState(true);
+  React.useEffect(() => { window.__inquiryVisible = setVisible; return () => { delete window.__inquiryVisible; }; }, []);
+  return visible ? <ContactPage authSession={inquiryAuth} /> : <p>別画面</p>;
+}
+function AnnouncementsHarness() {
+  const [owner, setOwner] = React.useState('fixture-owner');
+  React.useEffect(() => { window.__announcementSwitchOwner = setOwner; return () => { delete window.__announcementSwitchOwner; }; }, []);
+  return <main><h1>ホーム</h1><AnnouncementsButton key={owner} userId={owner} /><button type="button">背景の操作</button></main>;
+}
+if (view === 'announcements-admin' || view === 'admin-return') window.history.replaceState({}, '', `/admin/announcements${window.location.search}`);
+if (view === 'inquiries') {
+  window.history.replaceState({}, '', `/admin/inquiries${window.location.search}`);
+}
+ReactDOM.createRoot(document.getElementById('root')).render(
+  view === 'admin-return' ? <ApplicationRouteRoot authSession={inquiryAuth} /> : view === 'announcements' ? <AnnouncementsHarness /> : view === 'announcements-admin' ? <AdminApp authSession={inquiryAuth} /> : view === 'contact' ? <ContactHarness />
+    : view === 'inquiries' ? <AdminApp authSession={inquiryAuth} /> : <AdminConsoleHarness />,
+);

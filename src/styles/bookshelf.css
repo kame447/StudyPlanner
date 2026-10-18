@@ -2,60 +2,6 @@
   min-width: 0;
 }
 
-.bookshelf-hero {
-  gap: 16px;
-}
-
-.bookshelf-subject-section {
-  display: grid;
-  gap: 12px;
-}
-
-.bookshelf-subject-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-.bookshelf-subject-title {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-}
-
-.bookshelf-subject-title h3 {
-  margin: 0;
-  font-size: 1.02rem;
-  overflow-wrap: anywhere;
-}
-
-.bookshelf-subject-title p {
-  margin: 2px 0 0;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-}
-
-.bookshelf-bookmark {
-  width: 28px;
-  height: 31px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  border-radius: 9px 9px 7px 7px;
-  background: color-mix(in srgb, var(--subject-color) 18%, var(--surface-strong) 82%);
-  color: var(--subject-color);
-  border: 1px solid color-mix(in srgb, var(--subject-color) 28%, var(--border) 72%);
-}
-
-.bookshelf-bookmark svg {
-  width: 15px;
-  height: 15px;
-}
-
 .bookshelf-material-grid,
 .daily-material-row {
   display: flex;
@@ -95,76 +41,9 @@
 }
 
 .bookshelf-material-card:hover {
-  transform: translateY(-1px);
+  transform: translateY(calc(-1px * var(--motion-spatial)));
   border-color: color-mix(in srgb, var(--subject-color) 38%, var(--border) 62%);
   box-shadow: 0 10px 20px rgba(22, 29, 33, 0.08);
-}
-
-.bookshelf-material-title {
-  min-height: 2.5em;
-  display: -webkit-box;
-  overflow: hidden;
-  color: var(--text-primary);
-  font-size: 0.72rem;
-  font-weight: 800;
-  line-height: 1.25;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.material-pace-summary {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
-.material-pace-progress {
-  height: 5px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--subject-color) 13%, var(--surface-strong) 87%);
-}
-
-.material-pace-progress span {
-  display: block;
-  height: 100%;
-  min-width: 2px;
-  border-radius: inherit;
-  background: var(--subject-color);
-}
-
-.material-pace-chip-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
-  min-width: 0;
-}
-
-.bookshelf-material-card .material-pace-chip-row span,
-.bookshelf-material-card .material-pace-note {
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  max-width: 100%;
-  padding: 3px 4px;
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
-  color: var(--text-muted);
-  font-size: 0.54rem;
-  font-weight: 800;
-  line-height: 1.15;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  -webkit-line-clamp: unset;
-}
-
-.bookshelf-material-card .material-pace-note {
-  justify-content: flex-start;
-  overflow-wrap: anywhere;
-  white-space: normal;
 }
 
 .bookshelf-material-image,
@@ -196,18 +75,6 @@
 .bookshelf-material-placeholder svg {
   width: 22px;
   height: 22px;
-}
-
-.bookshelf-empty-subject,
-.bookshelf-empty-state {
-  display: grid;
-  justify-items: start;
-  gap: 10px;
-}
-
-.bookshelf-empty-state {
-  justify-items: center;
-  text-align: center;
 }
 
 .bookshelf-modal {
@@ -401,12 +268,6 @@
   gap: 8px;
 }
 
-.material-quick-progress-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
 @media screen and (max-width: 640px) {
   .bookshelf-hero .section-header,
   .daily-bookshelf-link-card {
@@ -430,20 +291,6 @@
     min-width: 154px;
   }
 
-  .bookshelf-material-title {
-    font-size: 0.66rem;
-  }
-
-  .bookshelf-material-card .material-pace-chip-row span,
-  .bookshelf-material-card .material-pace-note {
-    padding: 2px 3px;
-    font-size: 0.5rem;
-  }
-
-  .material-pace-chip-row {
-    gap: 4px;
-  }
-
   .daily-material-head {
     display: grid;
     align-items: start;
@@ -451,10 +298,6 @@
 
   .material-quick-duration-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .material-quick-progress-grid {
-    grid-template-columns: 1fr;
   }
 
   .bookshelf-material-edit-grid {
@@ -519,18 +362,6 @@
 .bookshelf-view button,
 .bookshelf-view input {
   font: inherit;
-}
-
-.bookshelf-primary-header {
-  --home-blue: var(--bookshelf-blue);
-  --home-blue-strong: var(--bookshelf-blue-strong);
-  --home-ink: var(--bookshelf-ink);
-  --home-muted: var(--bookshelf-muted);
-  --home-line: var(--bookshelf-line);
-  --home-line-soft: #edf1f5;
-  --home-card: #fff;
-  --home-shadow-soft: 0 4px 13px rgba(33, 54, 87, 0.055);
-  padding: 0;
 }
 
 .bookshelf-dashboard,
@@ -1162,6 +993,11 @@
   padding: 18px 20px 0;
 }
 
+.bookshelf-detail-content:empty {
+  min-height: 0;
+  padding-top: 0;
+}
+
 .bookshelf-detail-section-stack {
   display: grid;
   gap: 20px;
@@ -1177,21 +1013,6 @@
   border: 1px solid #dfeaf9;
   border-radius: 11px;
   background: #f5f9ff;
-}
-
-.bookshelf-structure-status.is-disabled {
-  border-color: var(--bookshelf-line);
-  background: #fafbfc;
-}
-
-.bookshelf-structure-status > div {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-
-.bookshelf-structure-status strong {
-  font-size: 0.78rem;
 }
 
 .bookshelf-structure-status span,
@@ -1223,6 +1044,10 @@
   align-items: center;
   gap: 10px;
   padding: 9px 12px 9px calc(12px + var(--structure-depth, 0) * 20px);
+}
+
+.bookshelf-structure-row.without-progress {
+  grid-template-columns: minmax(0, 1fr) 20px;
 }
 
 .bookshelf-structure-row + .bookshelf-structure-row,
@@ -1396,9 +1221,19 @@
 }
 
 .bookshelf-structure-editor {
+  display: grid;
+  gap: 20px;
   width: min(760px, calc(100vw - 24px));
   max-height: min(82vh, 760px);
   overflow-y: auto;
+}
+
+.modal-card.bookshelf-structure-editor {
+  background: #fff;
+}
+
+:root[data-theme='dark'] .modal-card.bookshelf-structure-editor {
+  background: #181f23;
 }
 
 .bookshelf-modal-title-row {
@@ -1455,10 +1290,6 @@
   line-height: 1.5;
 }
 
-.bookshelf-settings-note {
-  margin: 0;
-}
-
 .bookshelf-switch {
   position: relative;
   width: 44px;
@@ -1505,6 +1336,15 @@
   opacity: 0.45;
 }
 
+.bookshelf-structure-editor > .row-actions {
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.bookshelf-structure-editor > .row-actions > button {
+  min-height: 44px;
+}
+
 .bookshelf-structure-edit-list {
   display: grid;
   gap: 10px;
@@ -1512,13 +1352,17 @@
 
 .bookshelf-structure-edit-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1.7fr) repeat(3, minmax(90px, 0.7fr)) 38px;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) 44px;
   align-items: end;
-  gap: 8px;
-  padding: 10px;
+  gap: 12px;
+  padding: 14px;
   border: 1px solid var(--bookshelf-line);
   border-radius: 12px;
   background: #fff;
+}
+
+.bookshelf-structure-edit-row label:first-child {
+  grid-column: 1 / -1;
 }
 
 .bookshelf-structure-edit-row label {
@@ -1534,10 +1378,11 @@
 }
 
 .bookshelf-structure-edit-row input {
+  font-size: 16px;
   width: 100%;
   min-width: 0;
-  min-height: 38px;
-  padding: 7px 9px;
+  min-height: 44px;
+  padding: 10px 12px;
   border: 1px solid var(--bookshelf-line);
   border-radius: 9px;
   background: #fff;
@@ -1545,8 +1390,8 @@
 }
 
 .bookshelf-structure-edit-row > button {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -1559,7 +1404,7 @@
 
 .bookshelf-add-structure-row {
   width: fit-content;
-  min-height: 38px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -1719,12 +1564,11 @@
   }
 
   .bookshelf-structure-edit-row {
-    grid-template-columns: minmax(0, 1fr) minmax(86px, 0.5fr) 38px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .bookshelf-structure-edit-row label:nth-child(3),
-  .bookshelf-structure-edit-row label:nth-child(4) {
-    grid-column: auto;
+  .bookshelf-structure-edit-row > button {
+    justify-self: end;
   }
 }
 
@@ -1805,14 +1649,16 @@
   }
 
   .bookshelf-structure-edit-row {
-    grid-template-columns: 1fr 38px;
-  }
-
-  .bookshelf-structure-edit-row label {
-    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .bookshelf-structure-edit-row > button {
     grid-column: 2;
   }
+}
+
+/* Keep this touch target above responsive modal button compaction. */
+.modal-card.bookshelf-structure-editor .material-contents-photo-action {
+  min-height: 44px;
+  white-space: normal;
 }

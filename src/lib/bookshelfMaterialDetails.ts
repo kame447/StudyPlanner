@@ -1,4 +1,4 @@
-import { minutesBetween } from './date';
+import { getEntryDurationMinutes } from './entryTimeRange';
 import type { Actual, Plan, StudyMaterial } from '../types/domain';
 
 export interface MaterialStructureItem {
@@ -112,18 +112,21 @@ export function saveMaterialDetailPreferences(
   userId: string,
   materialId: string,
   preferences: MaterialDetailPreferences,
-): void {
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return;
+): boolean {
+  if (typeof window === 'undefined') {
+    return false;
   }
 
   try {
-    window.localStorage.setItem(
+    const storage = window.localStorage;
+    if (!storage) return false;
+    storage.setItem(
       getStorageKey(userId, materialId),
       JSON.stringify(preferences),
     );
+    return true;
   } catch {
-    // UI preferences are non-critical. Persistence failure must not block the bookshelf.
+    return false;
   }
 }
 
@@ -161,11 +164,11 @@ export function buildMaterialActivitySummary(
     );
   const actualMinutes = materialActuals.reduce(
     (sum, actual) =>
-      sum + Math.max(0, minutesBetween(actual.actualStartTime, actual.actualEndTime)),
+      sum + Math.max(0, getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime)),
     0,
   );
   const plannedMinutes = materialPlans.reduce(
-    (sum, plan) => sum + Math.max(0, minutesBetween(plan.startTime, plan.endTime)),
+    (sum, plan) => sum + Math.max(0, getEntryDurationMinutes(plan.startTime, plan.endTime)),
     0,
   );
 

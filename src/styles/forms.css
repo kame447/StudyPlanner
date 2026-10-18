@@ -326,30 +326,11 @@
   text-align: left;
 }
 
-.datetime-stack {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-}
-
 .datetime-row {
   display: grid;
   grid-template-columns: max-content minmax(150px, 1.15fr) minmax(92px, 0.72fr);
   gap: 10px;
   align-items: end;
-  min-width: 0;
-}
-
-.datetime-row__label {
-  align-self: center;
-  color: var(--text-muted);
-  font-size: 0.82rem;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.datetime-row__date,
-.datetime-row__time {
   min-width: 0;
 }
 
@@ -416,27 +397,9 @@
 .segment:hover,
 .week-chip:hover,
 .month-cell:hover {
-  transform: translateY(-1px);
+  transform: translateY(calc(-1px * var(--motion-spatial)));
 }
 
 .danger {
   color: var(--danger);
-}
-
-.mailbox-preview {
-  padding: 18px;
-  border-radius: 18px;
-  background: var(--mailbox-background);
-}
-
-.mailbox-label {
-  margin-bottom: 4px;
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-
-.mailbox-code {
-  font-size: 2rem;
-  font-weight: 800;
-  letter-spacing: 0.16em;
 }

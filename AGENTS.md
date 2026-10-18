@@ -98,6 +98,16 @@ Update the checkpoint after meaningful milestones and before intentionally handi
 - If a test fails, classify the cause before editing: production defect, stale/incorrect contract, harness/environment defect, or infrastructure/transient failure.
 - Never weaken a test, hide an error, or change an assertion solely to make CI green.
 
+### Admin Logs investigation path
+
+When diagnosing a production planning-conversation failure, first consult
+`docs/work/tooling-operations-runbook.md` ("Admin Logs: authenticated diagnostic drill-down").
+Use the authorized Admin Console Logs detail or its redacted Debug Bundle, not just
+the session list count. Correlate the exact session/request before attributing
+a generic user-facing error to the AI provider, conversation state, persistence,
+or app suspension. If detail access is unavailable, report the missing evidence;
+do not reconstruct an authenticated session by copying browser credential stores.
+
 ### Explanation and reporting clarity
 
 - When explaining implementation, architecture, bugs, refactors, or progress to the user, start with product concepts, responsibility boundaries, data flow, and observable behavior.
@@ -365,6 +375,10 @@ When a test fails during refactoring or feature work, classify the cause before 
 3. harness boundary issue → fix the harness
 
 Never delete or weaken a regression solely to obtain green CI. AI wording and one exact semantic phrasing should not be treated as universal truth unless a deterministic UI contract explicitly requires exact text.
+
+### Agent-guided browser E2E
+
+TesterArmy/e2e is an optional, isolated browser interaction runner for weekly-planning dialogue exploration. See `docs/domains/weekly-planning/quality/agentic-browser-e2e.md` for install, authentication, scope, CI, and cache policy. Do not replace Playwright's deterministic UI contracts, approval/persistence/reload/idempotency checks, cross-browser checks, or the real-provider/Worker/Firestore boundary with a model's subjective completion claim. Keep assertions independent of the agent and compare detection strength before deleting an old regression. The local fixture uses a stubbed AI gateway; call it a UI harness, not online E2E. Never run credentialed agent tests against real user data; use explicit opt-in and isolated fixtures. The no-model smoke must pass before evaluating model-guided operation; classify agent, contract, and environment failures separately.
 
 ## GitHub workflow policy
 

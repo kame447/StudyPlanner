@@ -1,56 +1,57 @@
+import { createStudySessionIdentity, supportsStudySessionRecovery, saveStudySessionOnce, clearStudySession, readStudySession, writeStudySession, type StudySessionSnapshot } from '../lib/studySessionStorage';
+import './StudySessionResume.css';
+import { playSettle, playStepChange } from '../lib/motionEffects';
 import { ActualMutationAdmissionError, materialUncertainMessage } from '../hooks/useActualMutationAdmission';
 import {
   ArrowLeft,
   BookOpen,
   CheckCircle2,
   Clock3,
-  FileText,
   NotebookPen,
   Pause,
   Play,
   Square,
+  Settings2,
   TimerReset,
 } from 'lucide-react';
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type PropsWithChildren,
-} from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PropsWithChildren } from 'react';
 import { createStudySessionDraft, sessionCrossesLocalDate, type StudySessionRequest, type StudySessionTarget } from '../lib/studySessionTarget';
 import {
   formatDurationDisplay,
   getElapsedMs,
+  createInitialTracker,
+  startTracker,
+  pauseTracker,
+  resumeTracker,
   type TrackerState,
 } from '../lib/actualTracking';
+import { getEntryDurationMinutes } from '../lib/entryTimeRange';
 import { minutesBetween } from '../lib/date';
 import {
   buildActualMaterialProgressUpdatesFromInput,
   getMaterialUnitLabel,
 } from '../lib/materialPace';
-import type { ActualDraft, Plan, StudyMaterial } from '../types/domain';
+import type { ActualDraft, Plan, StudyMaterial, StudySubject } from '../types/domain';
+import { createDefaultPomodoroSettings, getPomodoroCompletedAt, getPomodoroProgress, resolvePomodoroSettings, type PomodoroSettings, type ResolvedPomodoroSettings } from '../lib/pomodoroSession';
+import { StudySessionModePicker, type StudyMode } from './StudySessionModePicker';
+import { PomodoroSettingsView } from './PomodoroSettingsView';
 
 interface StudySessionProviderProps {
   userId: string;
+  subjects?: StudySubject[];
   materials: StudyMaterial[];
   onSaveActual: (plan: Plan, draft: ActualDraft) => Promise<void>;
   onSaveStandaloneActual: (draft: ActualDraft) => Promise<void>;
 }
 
 type StudySessionLauncher = (request: StudySessionRequest) => void;
-type SessionPhase = 'timer' | 'record';
-type StudyMode = 'normal' | 'pomodoro';
-
-const POMODORO_FOCUS_MS = 25 * 60_000;
-const POMODORO_BREAK_MS = 5 * 60_000;
-const POMODORO_CYCLE_MS = POMODORO_FOCUS_MS + POMODORO_BREAK_MS;
+type SessionPhase = 'timer' | 'record' | 'settings';
 
 const StudySessionLaunchContext = createContext<StudySessionLauncher | null>(null);
+
+function sessionPart(page: HTMLElement | null, selector: string): Element | null {
+  return page && typeof page.querySelector === 'function' ? page.querySelector(selector) : null;
+}
 
 export function useStudySessionLauncher(): StudySessionLauncher | null {
   return useContext(StudySessionLaunchContext);
@@ -63,53 +64,66 @@ export function StudySessionProvider(props: PropsWithChildren<StudySessionProvid
 function OwnedStudySessionProvider({
   children,
   userId,
+  subjects = [],
   materials,
   onSaveActual,
   onSaveStandaloneActual,
 }: PropsWithChildren<StudySessionProviderProps>) {
   const nextSessionId = useRef(0);
   const mounted = useRef(true);
-  type ActiveSession = { id: number; target: StudySessionTarget };
-  const currentSession = useRef<ActiveSession | null>(null);
-  const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+  type ActiveSession = { id: number; target: StudySessionTarget; restored?: StudySessionSnapshot };
+  const [activeSession, setActiveSession] = useState<ActiveSession | null>(() => {
+    const restored = readStudySession(userId);
+    return restored ? { id: 0, target: restored.initialTarget, restored } : null;
+  });
+  const currentSession = useRef(activeSession);
+  const [visible, setVisible] = useState(false);
   useLayoutEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; };
   }, []);
 
-  function closeSession(session: ActiveSession) {
+  function closeSession(session: ActiveSession, sessionId: string) {
     if (!mounted.current || currentSession.current !== session) return;
     currentSession.current = null;
+    clearStudySession(userId, sessionId);
     setActiveSession(null);
   }
 
   function launch(request: StudySessionRequest) {
-    if (!mounted.current || currentSession.current || !userId) return;
+    if (!mounted.current || !userId) return;
+    if (currentSession.current) { setVisible(true); return; }
     if (request.kind === 'planned' && request.plan.userId !== userId) return;
     const target: StudySessionTarget = request.kind === 'planned'
       ? request : { kind: 'unplanned', userId };
     const session = { id: ++nextSessionId.current, target };
     currentSession.current = session;
     setActiveSession(session);
+    setVisible(true);
   }
 
   return (
     <StudySessionLaunchContext.Provider value={launch}>
       {children}
+      {activeSession && !visible ? <button type="button" className="study-session-resume" onClick={() => setVisible(true)}><TimerReset size={18} aria-hidden="true" />計測中へ戻る</button> : null}
       {activeSession ? (
         <StudySessionView
           key={activeSession.id}
           initialTarget={activeSession.target}
+          restored={activeSession.restored}
+          visible={visible}
+          onMinimize={() => setVisible(false)}
           userId={userId}
           materials={materials.filter(material => material.userId === userId)}
-          onClose={() => closeSession(activeSession)}
-          onSaveActual={async (target, draft) => {
+          subjects={subjects.filter(subject => subject.userId === userId)}
+          onClose={sessionId => closeSession(activeSession, sessionId)}
+          onSaveActual={async (target, draft, sessionId) => {
             if (!mounted.current || currentSession.current !== activeSession || draft.userId !== userId) {
               throw new ActualMutationAdmissionError('学習画面を開き直してください。');
             }
             if (target.kind === 'planned') await onSaveActual(target.plan, draft);
             else await onSaveStandaloneActual(draft);
-            closeSession(activeSession);
+            closeSession(activeSession, sessionId);
           }}
         />
       ) : null}
@@ -149,81 +163,131 @@ function resolveMaterial(plan: Plan, materials: StudyMaterial[]): StudyMaterial 
   return materials.find((material) => material.name === materialName) ?? null;
 }
 
-function buildInitialTracker(): TrackerState {
-  return {
-    anchorMs: null,
-    runningFromMs: null,
-    elapsedBeforeMs: 0,
-  };
-}
-
 function StudySessionView({
   initialTarget,
+  restored,
+  visible,
+  onMinimize,
   userId,
+  subjects,
   materials,
   onClose,
   onSaveActual,
 }: {
   initialTarget: StudySessionTarget;
+  restored?: StudySessionSnapshot;
+  visible: boolean;
+  onMinimize: () => void;
   userId: string;
+  subjects: StudySubject[];
   materials: StudyMaterial[];
-  onClose: () => void;
-  onSaveActual: (target: StudySessionTarget, draft: ActualDraft) => Promise<void>;
+  onClose: (sessionId: string) => void;
+  onSaveActual: (target: StudySessionTarget, draft: ActualDraft, sessionId: string) => Promise<void>;
 }) {
+  const [sessionIdentity] = useState(() => restored ? { sessionId: restored.sessionId, persistent: true } : createStudySessionIdentity(userId));
+  const { sessionId } = sessionIdentity;
   const initialNow = useMemo(() => Date.now(), []);
-  const [target, setTarget] = useState(initialTarget);
+  const [target, setTarget] = useState(restored?.target ?? initialTarget);
   const plan = target.kind === 'planned' ? target.plan : null;
-  const [unplannedTitle, setUnplannedTitle] = useState('');
-  const [unplannedSubject, setUnplannedSubject] = useState('');
-  const [unplannedMaterialId, setUnplannedMaterialId] = useState('');
-  const [needsDateAdjustment, setNeedsDateAdjustment] = useState(false);
-  const started = useRef(false);
+  const [unplannedTitle, setUnplannedTitle] = useState(restored?.unplannedTitle ?? '');
+  const [unplannedSubject, setUnplannedSubject] = useState(restored?.unplannedSubject ?? '');
+  const [unplannedMaterialId, setUnplannedMaterialId] = useState(restored?.unplannedMaterialId ?? '');
+  const [needsDateAdjustment, setNeedsDateAdjustment] = useState(restored?.needsDateAdjustment ?? false);
+  const started = useRef(restored !== undefined);
   const savePending = useRef(false);
-  const saveBlocked = useRef(false);
-  const recordedElapsedMs = useRef<number | null>(null);
-  const [phase, setPhase] = useState<SessionPhase>('timer');
+  const saveBlocked = useRef(restored?.requiresInspection ?? false);
+  const recordedElapsedMs = useRef<number | null>(restored?.recordedElapsedMs ?? null);
+  const [phase, setPhase] = useState<SessionPhase>(restored?.phase ?? 'timer');
   const pageRef = useRef<HTMLDivElement>(null);
-  const [studyMode, setStudyMode] = useState<StudyMode>('normal');
+  const [studyMode, setStudyMode] = useState<StudyMode>(restored?.studyMode ?? 'normal');
+  const [pomodoroSettings, setPomodoroSettings] = useState(restored?.pomodoroSettings ?? createDefaultPomodoroSettings);
+  const activePomodoro = useRef<ResolvedPomodoroSettings | null>(restored?.activePomodoro ?? null);
+  const pomodoroCompletedAt = useRef<number | null>(restored?.pomodoroCompletedAt ?? null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const restoreSettingsFocus = useRef(false);
+  const phaseRef = useRef<SessionPhase>(restored?.phase ?? 'timer');
+  const settingsRevision = useRef(0);
+  const renderedSettingsRevision = settingsRevision.current;
   const [nowMs, setNowMs] = useState(initialNow);
-  const [tracker, setTracker] = useState<TrackerState>(buildInitialTracker);
-  const [recordDraft, setRecordDraft] = useState<ActualDraft | null>(null);
-  const [progressInput, setProgressInput] = useState('');
-  const [observationProgressInput, setObservationProgressInput] = useState('');
+  const [tracker, setTracker] = useState<TrackerState>(restored?.tracker ?? createInitialTracker);
+  const [recordDraft, setRecordDraft] = useState<ActualDraft | null>(restored?.recordDraft ?? null);
+  const [progressInput, setProgressInput] = useState(restored?.progressInput ?? '');
+  const [observationProgressInput, setObservationProgressInput] = useState(restored?.observationProgressInput ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [requiresInspection, setRequiresInspection] = useState(false);
+  const [requiresInspection, setRequiresInspection] = useState(restored?.requiresInspection ?? false);
 
-  const plannedMinutes = plan ? Math.max(1, minutesBetween(plan.startTime, plan.endTime)) : null;
+  const [storageUnavailable, setStorageUnavailable] = useState(false);
+  function persistSession(inspection = requiresInspection) {
+    if (tracker.anchorMs === null) return;
+    const persisted = sessionIdentity.persistent && supportsStudySessionRecovery() && writeStudySession({
+      version: 1, sessionId, userId, initialTarget, target, tracker,
+      phase: phase === 'record' ? 'record' : 'timer', studyMode, pomodoroSettings,
+      activePomodoro: activePomodoro.current, pomodoroCompletedAt: pomodoroCompletedAt.current,
+      recordedElapsedMs: recordedElapsedMs.current, recordDraft,
+      unplannedTitle, unplannedSubject, unplannedMaterialId, progressInput,
+      observationProgressInput, needsDateAdjustment, requiresInspection: inspection,
+    });
+    setStorageUnavailable(!persisted);
+  }
+  useLayoutEffect(() => {
+    persistSession(requiresInspection || saving);
+  }, [tracker, phase, studyMode, pomodoroSettings, target, recordDraft, unplannedTitle,
+    unplannedSubject, unplannedMaterialId, progressInput, observationProgressInput,
+    needsDateAdjustment, requiresInspection, saving]);
+
+  useEffect(() => {
+    const refresh = () => setNowMs(Date.now());
+    if (visible) refresh();
+    window.addEventListener?.('pageshow', refresh);
+    document.addEventListener?.('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener?.('pageshow', refresh);
+      document.removeEventListener?.('visibilitychange', refresh);
+    };
+  }, [visible]);
+
+  const plannedMinutes = plan ? Math.max(1, getEntryDurationMinutes(plan.startTime, plan.endTime)) : null;
   const plannedMs = plannedMinutes === null ? null : plannedMinutes * 60_000;
-  const elapsedMs = getElapsedMs(tracker, nowMs);
+  const resolvedPomodoro = activePomodoro.current ?? resolvePomodoroSettings(pomodoroSettings, plannedMs);
+  const readyConfiguration = useRef({ mode: studyMode, pomodoro: resolvedPomodoro });
+  useLayoutEffect(() => {
+    readyConfiguration.current = { mode: studyMode, pomodoro: resolvedPomodoro };
+  }, [studyMode, resolvedPomodoro]);
+  const measuredElapsedMs = getElapsedMs(tracker, nowMs);
+  const pomodoroProgress = getPomodoroProgress(measuredElapsedMs, resolvedPomodoro);
+  const isPomodoroComplete = studyMode === 'pomodoro' && pomodoroProgress.isComplete;
+  const elapsedMs = studyMode === 'pomodoro' ? pomodoroProgress.elapsedMs : measuredElapsedMs;
   const isStarted = tracker.anchorMs !== null;
+  const isRunning = tracker.runningFromMs !== null;
+  // Moving to the record step, the timer's settings or back brings the new
+  // step forward in place (the page itself already slid in). Starting,
+  // pausing and resuming settle the timer ring once. A restored session and
+  // the running clock itself never animate.
+  const shownPhase = useRef(phase);
+  const shownRunning = useRef<boolean | null>(null);
+  useLayoutEffect(() => {
+    const before = shownPhase.current;
+    shownPhase.current = phase;
+    if (before === phase) return;
+    playStepChange(sessionPart(pageRef.current, '.study-session-content'));
+  }, [phase]);
+  useLayoutEffect(() => {
+    const before = shownRunning.current;
+    shownRunning.current = isRunning;
+    if (before === null || before === isRunning) return;
+    playSettle(sessionPart(pageRef.current, '.study-session-timer-ring'));
+  }, [isRunning]);
   const remainingMs = plannedMs === null ? null : Math.max(plannedMs - elapsedMs, 0);
   const normalProgressDegrees = plannedMs === null ? 0 : clampPercent((elapsedMs / plannedMs) * 100) * 3.6;
-
-  const pomodoroElapsedInCycle = elapsedMs % POMODORO_CYCLE_MS;
-  const pomodoroIsFocus = pomodoroElapsedInCycle < POMODORO_FOCUS_MS;
-  const pomodoroPhaseElapsedMs = pomodoroIsFocus
-    ? pomodoroElapsedInCycle
-    : pomodoroElapsedInCycle - POMODORO_FOCUS_MS;
-  const pomodoroPhaseDurationMs = pomodoroIsFocus
-    ? POMODORO_FOCUS_MS
-    : POMODORO_BREAK_MS;
-  const pomodoroPhaseRemainingMs = Math.max(
-    pomodoroPhaseDurationMs - pomodoroPhaseElapsedMs,
-    0,
-  );
-  const pomodoroProgressDegrees =
-    clampPercent((pomodoroPhaseElapsedMs / pomodoroPhaseDurationMs) * 100) * 3.6;
-  const totalPomodoroSets = plannedMs === null ? null : Math.max(1, Math.ceil(plannedMs / POMODORO_CYCLE_MS));
-  const currentPomodoroSet = Math.min(
-    totalPomodoroSets ?? Number.POSITIVE_INFINITY,
-    Math.floor(elapsedMs / POMODORO_CYCLE_MS) + 1,
-  );
-  const pomodoroPhaseLabel = pomodoroIsFocus ? '集中' : '休憩';
-  const pomodoroNextLabel = pomodoroIsFocus ? '休憩 5分' : '集中 25分';
+  const pomodoroIsFocus = pomodoroProgress.phase === 'focus';
+  const pomodoroPhaseRemainingMs = pomodoroProgress.phaseRemainingMs;
+  const totalPomodoroSets = resolvedPomodoro.totalSets;
+  const pomodoroPhaseLabel = isPomodoroComplete ? '完了' : pomodoroIsFocus ? '集中' : '休憩';
 
   const progressDegrees = studyMode === 'pomodoro'
-    ? pomodoroProgressDegrees
+    ? pomodoroProgress.progressDegrees
     : normalProgressDegrees;
   const material = plan ? resolveMaterial(plan, materials) : materials.find(item => item.id === unplannedMaterialId) ?? null;
   const sessionTitle = plan?.title ?? (unplannedTitle.trim() || '学習');
@@ -251,7 +315,7 @@ function StudySessionView({
   const ringStyle = {
     '--study-session-progress': `${progressDegrees}deg`,
   } as CSSProperties;
-  const dialogLabel = phase === 'record'
+  const dialogLabel = phase === 'settings' ? 'ポモドーロ設定' : phase === 'record'
     ? '学習を記録'
     : isStarted
       ? '学習中'
@@ -261,6 +325,11 @@ function StudySessionView({
   // Each screen starts at its own heading; edits and timer ticks retain reader position.
   useLayoutEffect(() => {
     if (pageRef.current) pageRef.current.scrollTop = 0;
+    if (phase === 'settings') headingRef.current?.focus();
+    else if (restoreSettingsFocus.current) {
+      restoreSettingsFocus.current = false;
+      settingsButtonRef.current?.focus();
+    }
   }, [phase]);
 
   useEffect(() => {
@@ -271,51 +340,61 @@ function StudySessionView({
   }, [phase, tracker.runningFromMs]);
 
   useEffect(() => {
+    if (isPomodoroComplete && tracker.runningFromMs !== null) {
+      pomodoroCompletedAt.current ??= getPomodoroCompletedAt(tracker, resolvedPomodoro, nowMs);
+      setTracker(current => ({ ...current, runningFromMs: null, elapsedBeforeMs: pomodoroProgress.elapsedMs }));
+    }
+  }, [isPomodoroComplete, tracker.runningFromMs, pomodoroProgress.elapsedMs]);
+
+  useEffect(() => {
+    if (!visible) return;
     const previousBodyOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previousBodyOverflow;
     };
-  }, []);
+  }, [visible]);
 
   function startTimer() {
-    if (started.current) return;
+    if (started.current || phaseRef.current !== 'timer') return;
     started.current = true;
+    if (readyConfiguration.current.mode === 'pomodoro') activePomodoro.current = readyConfiguration.current.pomodoro;
     const startedAt = Date.now();
     setNowMs(startedAt);
-    setTracker({
-      anchorMs: startedAt,
-      runningFromMs: startedAt,
-      elapsedBeforeMs: 0,
-    });
+    setTracker(current => startTracker(current, startedAt));
     setError('');
   }
 
   function pauseTimer() {
+    if (phaseRef.current !== 'timer') return;
     const pausedAt = Date.now();
     setNowMs(pausedAt);
-    setTracker((current) => ({
-      ...current,
-      runningFromMs: null,
-      elapsedBeforeMs: getElapsedMs(current, pausedAt),
-    }));
+    setTracker(current => {
+      if (activePomodoro.current) pomodoroCompletedAt.current ??= getPomodoroCompletedAt(current, activePomodoro.current, pausedAt);
+      const paused = pauseTracker(current, pausedAt);
+      return activePomodoro.current
+        ? { ...paused, elapsedBeforeMs: getPomodoroProgress(paused.elapsedBeforeMs, activePomodoro.current).elapsedMs }
+        : paused;
+    });
   }
 
   function resumeTimer() {
+    if (phaseRef.current !== 'timer') return;
     const resumedAt = Date.now();
     setNowMs(resumedAt);
-    setTracker((current) => ({
-      ...current,
-      anchorMs: current.anchorMs ?? resumedAt,
-      runningFromMs: resumedAt,
-    }));
+    setTracker(current => {
+      if (activePomodoro.current && getPomodoroProgress(getElapsedMs(current, resumedAt), activePomodoro.current).isComplete) return current;
+      return resumeTracker(current, resumedAt);
+    });
   }
 
   function finishTimer() {
-    if (tracker.anchorMs === null) return;
+    if (phaseRef.current !== 'timer' || tracker.anchorMs === null) return;
 
     const finishedAt = Date.now();
-    const finalElapsedMs = Math.max(getElapsedMs(tracker, finishedAt), 1000);
+    if (activePomodoro.current) pomodoroCompletedAt.current ??= getPomodoroCompletedAt(tracker, activePomodoro.current, finishedAt);
+    const measuredMs = getElapsedMs(tracker, finishedAt);
+    const finalElapsedMs = Math.max(activePomodoro.current ? getPomodoroProgress(measuredMs, activePomodoro.current).elapsedMs : measuredMs, 1000);
     const anchorMs = tracker.anchorMs;
     const storedDurationMs = Math.max(finalElapsedMs, 60_000);
     const draft = createStudySessionDraft(target, anchorMs, storedDurationMs, {
@@ -324,7 +403,7 @@ function StudySessionView({
     const hasNewMeasurement = recordedElapsedMs.current !== finalElapsedMs;
     recordedElapsedMs.current = finalElapsedMs;
     if (target.kind === 'unplanned' && hasNewMeasurement) {
-      setNeedsDateAdjustment(sessionCrossesLocalDate(anchorMs, storedDurationMs) || sessionCrossesLocalDate(anchorMs, finishedAt - anchorMs));
+      setNeedsDateAdjustment(sessionCrossesLocalDate(anchorMs, storedDurationMs) || sessionCrossesLocalDate(anchorMs, (pomodoroCompletedAt.current ?? finishedAt) - anchorMs));
     }
 
     setNowMs(finishedAt);
@@ -340,25 +419,50 @@ function StudySessionView({
         ? { ...current, actualStartTime: draft.actualStartTime, actualEndTime: draft.actualEndTime }
         : current;
     });
+    phaseRef.current = 'record';
     setPhase('record');
     setError('');
   }
 
+  function openSettings() {
+    if (started.current || phaseRef.current !== 'timer') return;
+    settingsRevision.current += 1;
+    phaseRef.current = 'settings';
+    setPhase('settings');
+  }
+
+  function closeSettings() {
+    settingsRevision.current += 1;
+    restoreSettingsFocus.current = true;
+    phaseRef.current = 'timer';
+    setPhase('timer');
+  }
+
+  function saveSettings(settings: PomodoroSettings) {
+    if (started.current || phaseRef.current !== 'settings' || settingsRevision.current !== renderedSettingsRevision) return;
+    readyConfiguration.current.pomodoro = resolvePomodoroSettings(settings, plannedMs);
+    setPomodoroSettings(settings);
+    closeSettings();
+  }
+
   function handleBack() {
+    if (phaseRef.current === 'settings') {
+      closeSettings();
+      return;
+    }
     if (phase === 'record') {
+      phaseRef.current = 'timer';
       setPhase('timer');
       setError('');
       return;
     }
 
-    if (
-      elapsedMs > 0 &&
-      !window.confirm('学習セッションを終了してホームに戻りますか？ 計測内容は保存されません。')
-    ) {
+    if (started.current) {
+      onMinimize();
       return;
     }
 
-    onClose();
+    onClose(sessionId);
   }
 
   async function saveRecord() {
@@ -409,15 +513,18 @@ function StudySessionView({
         }
       : undefined;
 
+    persistSession(true);
     savePending.current = true;
     setSaving(true);
     setError('');
     try {
-      await onSaveActual(target, {
+      const save = () => onSaveActual(target, {
         ...recordDraft,
         materialProgressUpdates,
         weeklyPlanningObservationResult,
-      });
+      }, sessionId);
+      if (sessionIdentity.persistent) await saveStudySessionOnce(userId, sessionId, save, error => error instanceof ActualMutationAdmissionError);
+      else await save();
     } catch (error) {
       savePending.current = false;
       setSaving(false);
@@ -431,91 +538,86 @@ function StudySessionView({
   return (
     <div
       className="study-session-overlay"
-      role="dialog"
-      aria-modal="true"
+      hidden={!visible}
+      style={!visible ? { display: 'none' } : undefined}
+      role={visible ? "dialog" : undefined}
+      aria-modal={visible ? true : undefined}
       aria-label={dialogLabel}
     >
-      <div className="study-session-page" ref={pageRef}>
+      <div className="study-session-page" data-phase={phase} ref={pageRef}>
         <header className="study-session-header">
           <button type="button" className="study-session-icon-button" onClick={handleBack} aria-label="戻る">
             <ArrowLeft size={24} aria-hidden="true" />
           </button>
-          <h1>{dialogLabel}</h1>
+          <h1 ref={headingRef} tabIndex={-1}>{dialogLabel}</h1>
           <span className="study-session-header-spacer" aria-hidden="true" />
         </header>
 
+        {storageUnavailable && isStarted ? <p role="status" className="study-session-error">この計測の一時保存ができません。ページを閉じたり再読み込みすると、この画面の計測や未保存の入力が失われることがあります。</p> : null}
         {phase === 'timer' ? (
           <main className="study-session-content study-session-timer-view">
             <section className="study-session-card study-session-primary-card">
-              <div className="study-session-eyebrow"><BookOpen size={18} aria-hidden="true" />現在の学習対象</div>
-              <h2>{sessionTitle}</h2>
-              {initialTarget.kind === 'planned' && !isStarted ? (
-                <label className="study-session-target-choice">学習内容
-                  <select aria-label="学習内容" value={target.kind} onChange={event => { if (!started.current) setTarget(event.target.value === 'planned' ? initialTarget : { kind: 'unplanned', userId }); }}>
-                    <option value="planned">この予定で学習: {initialTarget.plan.title}</option>
-                    <option value="unplanned">予定にない学習</option>
-                  </select>
-                </label>
-              ) : null}
-              {!plan && !isStarted ? (
-                <div className="study-session-field-grid study-session-unplanned-setup">
-                  <label>勉強する内容<input aria-label="勉強する内容" value={unplannedTitle} placeholder="学習" onChange={event => setUnplannedTitle(event.target.value)} /></label>
-                  <label>教材<select aria-label="教材" value={unplannedMaterialId} onChange={event => {
-                    const selected = materials.find(item => item.id === event.target.value);
-                    setUnplannedMaterialId(selected?.id ?? '');
-                    setUnplannedSubject(selected?.subjectName ?? '');
-                    setUnplannedTitle(current => !current || current === material?.name ? selected?.name ?? '' : current);
-                  }}>
-                    <option value="">教材なし</option>
-                    {materials.filter(item => item.status !== 'archived').map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-                  </select></label>
-                </div>
-              ) : null}
-              {plan ? <dl className="study-session-plan-meta">
-                <div><dt><Clock3 size={18} aria-hidden="true" />予定</dt><dd>{plan.occurrenceDate ?? plan.date} {plan.startTime} - {plan.endTime}</dd></div>
-                <div><dt><TimerReset size={18} aria-hidden="true" />予定時間</dt><dd>{formatMinutesLabel(plannedMinutes ?? 0)}</dd></div>
-                <div><dt><FileText size={18} aria-hidden="true" />内容</dt><dd>{plan.memo.trim() || plan.subject || plan.title}</dd></div>
-              </dl> : null}
-
-              <div className="study-session-mode-section">
-                <span className="study-session-mode-label">学習方式</span>
-                <div className="study-session-mode-picker" role="group" aria-label="学習方式">
-                  <button
-                    type="button"
-                    className={studyMode === 'normal' ? 'active' : ''}
-                    aria-pressed={studyMode === 'normal'}
-                    disabled={isStarted}
-                    onClick={() => setStudyMode('normal')}
-                  >
-                    <strong>通常タイマー</strong>
-                    <small>{plan ? '予定時間を通して計測' : '時間を決めずに計測'}</small>
-                  </button>
-                  <button
-                    type="button"
-                    className={studyMode === 'pomodoro' ? 'active' : ''}
-                    aria-pressed={studyMode === 'pomodoro'}
-                    disabled={isStarted}
-                    onClick={() => setStudyMode('pomodoro')}
-                  >
-                    <strong>ポモドーロ</strong>
-                    <small>集中25分 + 休憩5分</small>
-                  </button>
-                </div>
+              <div className={plan ? "study-session-setup has-plan" : "study-session-setup"}>
+                {isStarted ? <h2>{sessionTitle}</h2> : null}
+                {initialTarget.kind === 'planned' && !isStarted ? (
+                  <label className="study-session-target-choice">
+                    <select aria-label="学習内容" value={target.kind} onChange={event => { if (!started.current) setTarget(event.target.value === 'planned' ? initialTarget : { kind: 'unplanned', userId }); }}>
+                      <option value="planned">この予定で学習: {initialTarget.plan.title}</option>
+                      <option value="unplanned">予定にない学習</option>
+                    </select>
+                  </label>
+                ) : null}
+                {!plan && !isStarted ? (
+                  <div className="study-session-field-grid study-session-unplanned-setup">
+                    <label>勉強する内容<input aria-label="勉強する内容" value={unplannedTitle} placeholder="学習" onChange={event => setUnplannedTitle(event.target.value)} /></label>
+                    <label>教材<select aria-label="教材" value={unplannedMaterialId} onChange={event => {
+                      const selected = materials.find(item => item.id === event.target.value);
+                      setUnplannedMaterialId(selected?.id ?? '');
+                      setUnplannedSubject(selected?.subjectName ?? '');
+                      setUnplannedTitle(current => !current || current === material?.name ? selected?.name ?? '' : current);
+                    }}>
+                      <option value="">教材なし</option>
+                      {materials.filter(item => item.status !== 'archived').map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    </select></label>
+                  </div>
+                ) : null}
+                {plan ? <dl className="study-session-plan-meta study-session-plan-overview">
+                  <div><dt><Clock3 size={16} aria-hidden="true" />予定</dt><dd>{plan.occurrenceDate ?? plan.date} {plan.startTime} - {plan.endTime} · {formatMinutesLabel(plannedMinutes ?? 0)}</dd></div>
+                </dl> : null}
+                {plan || (isStarted && material) ? (
+                  <details className="study-session-details">
+                    <summary>詳細</summary>
+                    <dl>
+                      {plan ? <div><dt>内容</dt><dd>{plan.title}</dd></div> : null}
+                      {plan?.subject ? <div><dt>科目</dt><dd>{plan.subject}</dd></div> : null}
+                      {material || plan?.materialName?.trim() ? <div><dt>教材</dt><dd>{material?.name ?? plan?.materialName}</dd></div> : null}
+                      {plan?.memo.trim() ? <div><dt>メモ</dt><dd>{plan.memo}</dd></div> : null}
+                    </dl>
+                  </details>
+                ) : null}
               </div>
+
+              <StudySessionModePicker value={studyMode} disabled={isStarted}
+                onChange={mode => {
+                  if (started.current || phaseRef.current !== 'timer') return;
+                  readyConfiguration.current.mode = mode;
+                  setStudyMode(mode);
+                }} />
 
               <div className="study-session-timer-ring" style={ringStyle} data-study-mode={studyMode}>
                 <div className="study-session-timer-inner">
                   {studyMode === 'pomodoro' ? (
                     <>
-                      <span data-pomodoro-phase>{pomodoroPhaseLabel}</span>
-                      <strong data-study-session-phase-remaining>{formatPomodoroTime(pomodoroPhaseRemainingMs)}</strong>
-                      <b>{currentPomodoroSet}{totalPomodoroSets === null ? '' : ` / ${totalPomodoroSets}`} セット ・ 次は {pomodoroNextLabel}</b>
+                      <div className="study-session-phase-clock">
+                        <span data-pomodoro-phase>{pomodoroPhaseLabel}</span>
+                        <strong data-study-session-phase-remaining>{formatPomodoroTime(pomodoroPhaseRemainingMs)}</strong>
+                      </div>
                     </>
                   ) : (
                     <>
-                      <span>{isStarted ? '経過時間' : '開始前'}</span>
-                      <strong data-study-session-elapsed>{formatDurationDisplay(elapsedMs)}</strong>
-                      <b>{plannedMs === null ? '予定にない学習' : isStarted ? `残り ${formatDurationDisplay(remainingMs ?? 0)}` : `予定 ${formatMinutesLabel(plannedMinutes ?? 0)}`}</b>
+                      {isStarted ? <span>経過時間</span> : null}
+                      <strong data-study-session-elapsed aria-label="経過時間">{formatDurationDisplay(elapsedMs)}</strong>
+                      {plannedMs !== null && isStarted ? <b>残り {formatDurationDisplay(remainingMs ?? 0)}</b> : null}
                     </>
                   )}
                 </div>
@@ -523,14 +625,18 @@ function StudySessionView({
 
               {studyMode === 'pomodoro' ? (
                 <div className="study-session-pomodoro-status">
-                  <div className="study-session-pomodoro-flow" aria-label="ポモドーロの進行">
+                  {!isStarted ? (
+                    <button ref={settingsButtonRef} type="button" className="study-session-settings-button" onClick={openSettings} aria-label="集中と休憩の設定">
+                      <Settings2 size={17} aria-hidden="true" />
+                      {resolvedPomodoro.focusMs / 60_000}分 / {resolvedPomodoro.breakMs / 60_000}分 ・ {totalPomodoroSets === null ? '制限なし' : `${totalPomodoroSets}セット${pomodoroSettings.setCount === null ? '（目安）' : ''}`}
+                    </button>
+                  ) : isPomodoroComplete ? <strong role="status">全セット完了</strong> : <div className="study-session-pomodoro-flow" aria-label="ポモドーロの進行">
                     <span className={pomodoroIsFocus ? 'active' : ''}>集中</span>
                     <i aria-hidden="true">→</i>
                     <span className={!pomodoroIsFocus ? 'active' : ''}>休憩</span>
                     <i aria-hidden="true">→</i>
                     <span>集中</span>
-                  </div>
-                  <small>現段階では休憩もセッションの総学習時間に含めて記録します。</small>
+                  </div>}
                   {isStarted ? <span className="study-session-total-elapsed">総経過 {formatDurationDisplay(elapsedMs)}</span> : null}
                 </div>
               ) : null}
@@ -544,32 +650,24 @@ function StudySessionView({
                   <button
                     type="button"
                     className="study-session-control primary"
+                    disabled={isPomodoroComplete}
                     onClick={tracker.runningFromMs === null ? resumeTimer : pauseTimer}
                   >
                     {tracker.runningFromMs === null ? <Play size={22} aria-hidden="true" /> : <Pause size={22} aria-hidden="true" />}
-                    {tracker.runningFromMs === null ? '再開' : '一時停止'}
+                    {isPomodoroComplete ? '完了' : tracker.runningFromMs === null ? '再開' : '一時停止'}
                   </button>
                   <button type="button" className="study-session-control danger" onClick={finishTimer}>
                     <Square size={19} aria-hidden="true" />終了する
                   </button>
                 </div>
               )}
+              {isStarted ? <button type="button" className="study-session-settings-button" disabled={saving} onClick={() => {
+                if (!savePending.current && window.confirm('計測内容と未保存の入力を破棄しますか？')) onClose(sessionId);
+              }}>計測を破棄</button> : null}
             </section>
-
-            <section className="study-session-card study-session-context-card">
-              <div className="study-session-context-row">
-                <span className="study-session-context-icon material"><BookOpen size={21} aria-hidden="true" /></span>
-                <span><small>教材</small><strong>{material?.name ?? (plan?.materialName?.trim() || '教材未設定')}</strong></span>
-              </div>
-              <div className="study-session-context-row">
-                <span className="study-session-context-icon"><NotebookPen size={21} aria-hidden="true" /></span>
-                <span><small>現在のメモ</small><strong>{plan?.memo.trim() || 'メモはありません'}</strong></span>
-              </div>
-            </section>
-            <p className="study-session-helper">
-              {isStarted ? '終了後にそのまま記録画面へ進みます' : 'スタートを押すまで計測されません'}
-            </p>
           </main>
+        ) : phase === 'settings' ? (
+          <PomodoroSettingsView initialSettings={pomodoroSettings} planned={plannedMs !== null} onSave={saveSettings} />
         ) : recordDraft ? (
           <main className="study-session-content study-session-record-view">
             <section className="study-session-card study-session-record-summary">
@@ -603,11 +701,23 @@ function StudySessionView({
               </div> : null}
 
               {plan && recordDraft.isAlignedToPlan ? (
-                <div className="study-session-aligned-card"><strong>予定ベースで記録します</strong><span>内容: {plan.title}{plan.subject ? ` / ${plan.subject}` : ''}</span></div>
+                <div className="study-session-aligned-card"><strong>{plan.title}</strong>{plan.subject ? <span>{plan.subject}</span> : null}</div>
               ) : (
                 <div className="study-session-field-grid">
                   <label>実際にやった内容<input value={recordDraft.title} onChange={(event) => setRecordDraft({ ...recordDraft, title: event.target.value })} /></label>
-                  <label>実際の科目<input value={recordDraft.subject} onChange={(event) => setRecordDraft({ ...recordDraft, subject: event.target.value })} /></label>
+                  <label>実際の科目
+                    <select aria-label="登録済みの科目" value={subjects.find(subject => subject.name === recordDraft.subject)?.id ?? ''}
+                      onChange={(event) => {
+                        const subject = subjects.find(subject => subject.id === event.target.value);
+                        setRecordDraft({ ...recordDraft, subject: subject?.name ?? '' });
+                      }}>
+                      <option value="">未設定・自由入力</option>
+                      {subjects.map(subject => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
+                    </select>
+                  </label>
+                  <label>科目を入力（任意）<input aria-label="科目を入力" placeholder="科目を入力（任意）" value={recordDraft.subject} onChange={(event) => setRecordDraft({ ...recordDraft, subject: event.target.value })} />
+                  </label>
+                  <p className="muted">保存後も、日表示でこの記録を開くと科目を変更できます。</p>
                 </div>
               )}
             </section>
@@ -637,9 +747,7 @@ function StudySessionView({
                   </div>
                   {previewCurrentPercent !== null && previewNextPercent !== null ? (
                     <small>進捗を {Math.round(previewCurrentPercent)}% → {Math.round(previewNextPercent)}% に更新</small>
-                  ) : (
-                    <small>今回進んだ量を教材の進捗へ反映できます。</small>
-                  )}
+                  ) : null}
                 </div>
               ) : null}
 

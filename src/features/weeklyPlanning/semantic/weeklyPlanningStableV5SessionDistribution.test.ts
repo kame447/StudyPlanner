@@ -69,6 +69,21 @@ function distribute(graph: WeeklyPlanningFactGraph, preferredSessionMinutes?: nu
 }
 
 describe('Stable V5 execution-policy work distribution', () => {
+  it.each(['3時間', '分'])('keeps minute quantities truthful after actual distribution: %s', (unitLabel) => {
+    const graph = graphWithHours({ hours: 3 });
+    Object.assign(graph.workloads[0], { amount: 180, unitCode: 'minute', unitLabel });
+    const before = structuredClone(graph);
+    const result = distribute(graph);
+    expect(result).toHaveLength(2);
+    expect(result.map((item) => item.quantity.amount)).toEqual([90, 90]);
+    expect(result.map((item) => item.quantity.unitCode)).toEqual(['minute', 'minute']);
+    expect(result.map((item) => item.quantity.unitLabel)).toEqual([unitLabel, unitLabel]);
+    expect(result.map((item) => item.baseEstimatedMinutes)).toEqual([90, 90]);
+    expect(result.map((item) => item.estimatedMinutes)).toEqual([90, 90]);
+    expect(graph).toEqual(before);
+    expect(result.map((item) => item.label)).toEqual(['作業 90分（1/2）', '作業 90分（2/2）']);
+  });
+
   it('splits three neutral hours into two 90-minute quantity-preserving sessions', () => {
     const result = distribute(graphWithHours({ hours: 3 }));
     expect(result.map((item) => item.estimatedMinutes)).toEqual([90, 90]);

@@ -125,6 +125,71 @@ export function questionTargetForStableV5Dialogue(params: {
   return null;
 }
 
+/** Follow canonical references, not labels. Never truncate away question identity. */
+export function recoveryQuestionEvidenceForStableV5Dialogue(
+  input: {
+    planningInformation: Record<string, unknown> | null;
+    questionTarget?: { fact: Record<string, unknown> } | null;
+    questionIntent?: { targetFactId: string | null } | null;
+  },
+) {
+  const collections = [...QUESTION_TARGET_COLLECTIONS, 'planningWindows', 'relations'];
+  const labels: string[] = [];
+  const visited = new Set<string>();
+  const visiting = new Set<string>();
+  const find = (id: string) => {
+    const matches = collections.flatMap((collection) => recordArray(input.planningInformation, collection)
+      .filter((fact) => fact.id === id).map((fact) => ({ collection, fact })));
+    return matches.length === 1 ? matches[0] : null;
+  };
+  const facts: Array<NonNullable<ReturnType<typeof find>>> = [];
+  const add = (id: string): boolean => {
+    if (visiting.has(id)) return false;
+    if (visited.has(id)) return true;
+    const entry = find(id);
+    if (!entry || facts.length >= 12) return false;
+    const { collection, fact } = entry;
+    if (collection === 'tasks' || collection === 'components') {
+      const label = normalizedLabel(collection === 'tasks' ? fact.title : fact.label);
+      if (!label) return false;
+      labels.push(label);
+    }
+    if (typeof fact.componentId === 'string' && typeof fact.taskId === 'string'
+      && find(fact.componentId)?.fact.taskId !== fact.taskId) return false;
+    if ((collection === 'components' || collection === 'workloads') && typeof fact.taskId !== 'string') return false;
+    if (fact.taskId != null && (typeof fact.taskId !== 'string' || find(fact.taskId)?.collection !== 'tasks')) return false;
+    if (fact.componentId != null && (typeof fact.componentId !== 'string' || find(fact.componentId)?.collection !== 'components')) return false;
+    if (fact.parentComponentId != null && (typeof fact.parentComponentId !== 'string'
+      || find(fact.parentComponentId)?.collection !== 'components'
+      || find(fact.parentComponentId)?.fact.taskId !== fact.taskId)) return false;
+    visiting.add(id); visited.add(id); facts.push(entry);
+    for (const key of ['taskId', 'componentId', 'parentComponentId', 'targetFactId', 'fromTaskId', 'toTaskId']) {
+      const reference = fact[key];
+      if (reference !== undefined && reference !== null
+        && (typeof reference !== 'string' || !add(reference))) return false;
+    }
+    visiting.delete(id);
+    return true;
+  };
+  const projectedTarget = input.questionTarget?.fact.id;
+  const intendedTarget = input.questionIntent?.targetFactId;
+  if (projectedTarget != null && intendedTarget != null && projectedTarget !== intendedTarget) return null;
+  const target = projectedTarget ?? intendedTarget;
+  if (target !== undefined && target !== null && (typeof target !== 'string' || !add(target))) return null;
+  // Global planning windows and scope constraints belonging to this target chain
+  // disambiguate equal amounts/labels over different periods. Never include unrelated tasks.
+  const ownerIds = new Set(visited);
+  for (const collection of ['planningWindows', 'temporalConstraints', 'taskDateRules', 'recurrences']) {
+    for (const fact of recordArray(input.planningInformation, collection)) {
+      const relevant = collection === 'planningWindows'
+        || [fact.taskId, fact.targetFactId].some((id) => typeof id === 'string' && ownerIds.has(id));
+      if (relevant && (typeof fact.id !== 'string' || !add(fact.id))) return null;
+    }
+  }
+  const evidence = { facts, labels: [...new Set(labels)] };
+  return new TextEncoder().encode(JSON.stringify(evidence)).byteLength <= 8 * 1024 ? evidence : null;
+}
+
 function quantityRole(value: unknown): 'declared' | 'target' | 'remaining' | 'completed' | 'unknown' {
   return value === 'declared'
     || value === 'target'
@@ -328,6 +393,9 @@ function resolutionIntent(params: {
       };
     case 'ambiguous_effort_estimate':
       return { ...base, resolutionKind: 'effort_estimate_choice' as const, requestedInformation: ['choose_effort_estimate'] as const };
+    case 'hard_date_bound_outside_planning_window':
+      return { ...base, resolutionKind: 'temporal_date_scope' as const, requestedInformation: ['applicable_start_or_deadline_date'] as const };
+    case 'availability_outside_planning_window':
     case 'missing_availability_date_scope':
       return { ...base, resolutionKind: 'availability_date_scope' as const, requestedInformation: ['availability_date_scope'] as const };
     case 'missing_time_bounds':
@@ -389,14 +457,16 @@ export function questionIntentForStableV5Dialogue(params: {
       });
       return {
         kind: 'schedulable_work_detail',
-        mode: 'existing_target_progress',
+        mode: boundedWorkload || (params.questionTarget.collection === 'components' && fact.role === 'material')
+          ? 'existing_target_progress' : 'open_ended_session',
         targetFactId: fact.id,
         progressBasis: boundedWorkload
           ? 'known_bounded_quantity'
           : 'completion_progress_without_known_unit',
         knownUnitCode: typeof boundedWorkload?.unitCode === 'string' ? boundedWorkload.unitCode : null,
         knownUnitLabel: typeof boundedWorkload?.unitLabel === 'string' ? boundedWorkload.unitLabel : null,
-        requestedInformation: ['current_progress'],
+        requestedInformation: boundedWorkload || (params.questionTarget.collection === 'components' && fact.role === 'material')
+          ? ['current_progress'] as const : ['session_allocation'] as const,
       } as const;
     }
     if (params.questionTarget === null) {

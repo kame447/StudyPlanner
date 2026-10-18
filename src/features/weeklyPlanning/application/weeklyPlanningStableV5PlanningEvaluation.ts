@@ -40,6 +40,9 @@ import {
   decideWeeklyPlanningStableRepairPolicyV5,
 } from '../semantic/weeklyPlanningStableRepairPolicyV5';
 import {
+  projectWeeklyPlanningStatedTimeBudgetGraphV5,
+} from '../semantic/weeklyPlanningStatedTimeBudgetProjectionV5';
+import {
   createStableV5ExternalConstraintSources,
 } from './weeklyPlanningStableV5ExternalSources';
 import {
@@ -57,9 +60,10 @@ import type {
 } from './weeklyPlanningStableV5RuntimeContracts';
 import type {
   WeeklyPlanningStableV5SemanticTurnResult,
-} from './weeklyPlanningStableV5SemanticTurn';
+} from './weeklyPlanningStableV5SemanticTurnCore';
 import {
   createWeeklyPlanningSchedulerContext,
+  resolveWeeklyPlanningAcceptedPlanningWindow,
   resolveWeeklyPlanningPlanningHorizon,
 } from './weeklyPlanningTemporalContext';
 
@@ -84,6 +88,17 @@ export function isWeeklyPlanningStableV5PreviewAuthorized(params: {
   return params.previousDraftGenerationIntent === 'user_authorized';
 }
 
+/** Proposal id of the pending question, only while its presentation is fresh. */
+function freshPresentedProposalId(
+  presentation: SuccessfulSemanticTurn['pendingQuestionPresentation'],
+): string | null {
+  if (presentation.status !== 'fresh') return null;
+  const context = presentation.questionContext;
+  return context.targetSlot === 'stable_v5:learning_strategy_proposal'
+    ? context.actionId ?? null
+    : null;
+}
+
 function hadMachinePendingQuestion(state: PlanningIntakeState | undefined): boolean {
   return isWeeklyPlanningStableV5QuestionSlot(state?.lastQuestionContext?.targetSlot);
 }
@@ -105,7 +120,7 @@ function workloadSupersessions(
   return result;
 }
 
-function withEffortMeasurement(params: {
+export function withEffortMeasurement(params: {
   graph: ReturnType<typeof createWeeklyPlanningActiveSchedulerGraphViewV5>;
   question: WeeklyPlanningStableQuestionV5;
 }): WeeklyPlanningStableQuestionV5 {
@@ -137,11 +152,19 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
   const { input, semanticTurn } = params;
   const { requestContext, runtimeSession, semantic } = semanticTurn;
   const semanticDiff = semantic.canonicalization?.diff ?? undefined;
-  const activeGraph = createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph);
+  const activeGraph = projectWeeklyPlanningStatedTimeBudgetGraphV5(
+    createWeeklyPlanningActiveSchedulerGraphViewV5(semantic.graph),
+  );
+  const acceptedPlanningWindow = resolveWeeklyPlanningAcceptedPlanningWindow({
+    graph: activeGraph,
+    requestContext,
+    groundingRecords: input.previousState?.groundingRecords,
+  });
   const resolvedDateExpressions = resolveWeeklyPlanningDateExpressionsV5({
     graph: activeGraph,
     currentDate: requestContext.currentDate,
     weekStartsOn: requestContext.weekStartsOn,
+    planningWindow: acceptedPlanningWindow,
   });
   const resolvedTemporalConstraints = resolveWeeklyPlanningTemporalConstraintsV5({
     graph: activeGraph,
@@ -217,6 +240,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
     directive: semantic.normalization.contextualDirective,
     previousState: input.previousState?.provisionalTimebox ?? null,
     currentCompilation: rawBaselineCompilation,
+    graph: activeGraph,
     graphRevision: semantic.graph.revision,
     turnId: input.traceRequestId,
   });
@@ -245,6 +269,7 @@ export function evaluateWeeklyPlanningStableV5Planning(params: {
         workloadSupersessions: workloadSupersessions(semantic.graph),
         graphRevision: semantic.graph.revision,
         turnId: input.traceRequestId,
+        presentedProposalId: freshPresentedProposalId(semanticTurn.pendingQuestionPresentation),
       })
     : {
         records: input.previousState?.learningStrategyProposalRecords ?? [],

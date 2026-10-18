@@ -15,9 +15,6 @@ html {
 
 /* The HomeTopbar is the shared primary header. A second schedule-only title
  * row made the whole surface move vertically when entering the calendar. */
-.schedule-app-header {
-  display: none !important;
-}
 
 /* Keep the schedule frame mathematically identical to the home frame at the
  * same viewport size. The persistent PrimaryAppHeader owns its own width, so

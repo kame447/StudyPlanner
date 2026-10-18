@@ -30,6 +30,7 @@ export async function executeWeeklyPlanningTurn(
   }).context;
   const { executeWeeklyPlanningStableV5RuntimeTurn } = await loadWeeklyPlanningRuntimeModule();
   const result = await executeWeeklyPlanningStableV5RuntimeTurn({
+    ...(input.semanticObservation ? { semanticObservation: input.semanticObservation } : {}),
     previousState: input.previousState,
     messages: input.messages,
     userText: input.userText,

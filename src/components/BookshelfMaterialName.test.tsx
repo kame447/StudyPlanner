@@ -41,7 +41,7 @@ async function selectCatalog(doubleClick = false) {
   act(() => renderer.root.findByProps({ placeholder: '例: 金フレ / 青チャート / 東京大学 赤本' }).props.onChange({ target: { value: 'Book' } }));
   await act(async () => { renderer.root.findByProps({ className: 'ghost-button material-metadata-search-button' }).props.onClick(); });
   const select = renderer.root.findByProps({ className: 'material-metadata-result' }).props.onClick;
-  act(() => { select(); if (doubleClick) select(); });
+  act(() => { select({ currentTarget: undefined }); if (doubleClick) select({ currentTarget: undefined }); });
 }
 async function submit() {
   await act(async () => { await renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); });

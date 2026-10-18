@@ -39,7 +39,7 @@ export function getMonthEventEndDate(
     : event.date;
 }
 
-function getMonthEventSpanDays(
+export function getMonthEventSpanDays(
   event: Pick<MonthEvent, 'date' | 'endDate'>,
 ): number {
   return Math.max(

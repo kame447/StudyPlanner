@@ -20,7 +20,8 @@ vi.mock('../features/weeklyPlanning/trace/configureWeeklyPlanningTraceRepository
 vi.mock('../features/weeklyPlanning/trace/useWeeklyPlanningTracePolicy', () => ({ useWeeklyPlanningTracePolicy: () => ({ status: fixture.policy }) }));
 vi.mock('../features/weeklyPlanning/personalization/useWeeklyPlanningPersonalizationProfile', () => ({
   useWeeklyPlanningPersonalizationProfile: () => ({ loading: fixture.preferenceLoading,
-    profile: fixture.weekStartsOn ? { weekStartsOn: { value: fixture.weekStartsOn } } : null, error: fixture.preferenceError }) }));
+    // Initial reads expose no confirmed profile; confirmed writes have a separate real-hook regression.
+    profile: !fixture.preferenceLoading && fixture.weekStartsOn ? { weekStartsOn: { value: fixture.weekStartsOn } } : null, error: fixture.preferenceError }) }));
 vi.mock('../features/userPlanningContext/userPlanningContextRepository', () => ({ getUserPlanningContextRepositoryV1: () => ({
   initialize: fixture.memory, subscribe: () => () => {},
 }) }));
@@ -54,6 +55,7 @@ beforeEach(() => {
   fixture.reducedMotion = true;
   vi.stubGlobal('window', { location: { pathname: '/' }, localStorage: new MemoryStorage(), setTimeout, clearTimeout,
     matchMedia: () => ({ matches: fixture.reducedMotion }) });
+  vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn(), hidden: false, documentElement: { dataset: {}, style: { setProperty: vi.fn() } } });
   vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1)); vi.stubGlobal('cancelAnimationFrame', vi.fn());
   vi.clearAllMocks(); fixture.observation = 'off'; fixture.markerObservation = 'off'; fixture.marker.mockReset(); fixture.observe.mockReset(); fixture.policy = 'accepted'; fixture.preferenceError = ''; fixture.preferenceLoading = false; fixture.weekStartsOn = 'monday';
   fixture.repository = { ...createLocalFixture().repository };
@@ -110,19 +112,19 @@ it.each(['ended', 'skip'])('retains a healthy ready-first intro until %s and onl
 it('retains an early error until the video completes and starts its full notice lifetime only when visible', async () => {
   fixture.reducedMotion = false;
   vi.useFakeTimers(); window.setTimeout = setTimeout as any; window.clearTimeout = clearTimeout as any;
-  fixture.profile.mockRejectedValue(new Error('profile unavailable'));
+  snapshotSpy.mockRejectedValueOnce(new Error('planner unavailable'));
   await mount();
   await release(memoryGate);
   expect(splash()).toBe(1);
   const surface = () => renderer!.root.findByProps({ 'data-testid': 'surface' });
   expect(surface().props['data-visible']).toBe(false);
   await act(async () => { vi.advanceTimersByTime(9_000); });
-  expect(surface().children).toContain('profile unavailable');
+  expect(surface().children).toContain('planner unavailable');
   act(() => renderer!.root.findByType('video').props.onEnded());
   expect(splash()).toBe(0);
   expect(surface().props['data-visible']).toBe(true);
   await act(async () => { vi.advanceTimersByTime(3_599); });
-  expect(surface().children).toContain('profile unavailable');
+  expect(surface().children).toContain('planner unavailable');
   await act(async () => { vi.advanceTimersByTime(1); });
   expect(surface().children).toEqual(['ready']);
 });
@@ -187,15 +189,15 @@ it.each(['memory-first', 'planner-first'])('overlaps bootstrap with memory and r
 });
 it('retains early startup errors throughout a long memory wait', async () => {
   vi.useFakeTimers(); window.setTimeout = setTimeout as any; window.clearTimeout = clearTimeout as any;
-  fixture.profile.mockRejectedValue(new Error('profile unavailable'));
+  snapshotSpy.mockRejectedValueOnce(new Error('planner unavailable'));
   await mount();
   await act(async () => { vi.advanceTimersByTime(10000); });
   expect(fixture.content).not.toHaveBeenCalled();
   await release(memoryGate);
   expect(splash()).toBe(0);
-  expect(renderer!.root.findByProps({ 'data-testid': 'surface' }).children).toContain('profile unavailable');
+  expect(renderer!.root.findByProps({ 'data-testid': 'surface' }).children).toContain('planner unavailable');
   await act(async () => { vi.advanceTimersByTime(3599); });
-  expect(renderer!.root.findByProps({ 'data-testid': 'surface' }).children).toContain('profile unavailable');
+  expect(renderer!.root.findByProps({ 'data-testid': 'surface' }).children).toContain('planner unavailable');
   await act(async () => { vi.advanceTimersByTime(1); });
   expect(renderer!.root.findByProps({ 'data-testid': 'surface' }).children).toEqual(['ready']);
 });

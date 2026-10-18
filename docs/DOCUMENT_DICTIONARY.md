@@ -15,6 +15,7 @@ Updated: 2026-10-05
 - `domains/weekly-planning/`: 週間計画のproduct/runtime/dialogue/scheduler/personalization/quality
 - `domains/user-context/`: app-wide durable user context、semantic/episodic memory、memory retrieval、lifecycle/forget、conversation surfacing
 - `domains/client-runtime/`: client-first execution、local execution、sync authority等のclient runtime責務
+- `domains/support/`: 認証済み問い合わせ送信、受付情報、管理者の閲覧、送信制限とprivacy責務
 - `domains/reporting/`: 学習実績・予定・教材情報の集計とuser-facing learning report
 - `domains/product-observability/`: service-wide product activity、AI/API usage、planning quality、operational drill-down向けtelemetry / analytics / read model責務
 - `domains/external-integrations/`: 外部provider/APIとの接続、利用条件、adapter境界、fallback、外部dataと内部domain modelの分離

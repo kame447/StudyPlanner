@@ -51,6 +51,8 @@ When a validated turn explicitly corrects a planning window, canonical staging m
 
 Provider failure, malformed output, validation failure or repair failure does not authorize legacy-parser fallback. Semantic repair is at most once where this contract permits it.
 
+Both the initial dialogue-renderer request and its single existing repair remain inside the adapter's provider-error boundary. A rejected repair request returns the existing provider-error fallback result instead of escaping as an unhandled promise rejection; no additional call or recovery permission is granted.
+
 ## Acceptance and recovery validation
 
 Provider deltas and persisted Fact Graphs use different envelopes. `weeklyPlanningSemanticBaseValidatorV5.ts` and its extension wrapper own provider keys, local IDs, evidence, references and cross-field semantic checks. `weeklyPlanningFactGraphValidatorV5.ts` owns saved graph IDs, provenance, revision, lifecycle and references. Do not validate a saved fact by pretending it is an entire provider object, or require provider-only fields on historical saved facts.
@@ -60,6 +62,18 @@ Both adapters call the same value validators for task/context/component payloads
 A schema-shaped but invalid value must not become accepted state merely because it came from another provider or from storage. The semantic validators return a rejected result with errors; normal repair/fallback policy still owns the next action and must revalidate repaired output. Unknown values must not silently become a different relation, source action or acceptance/rejection decision. Uncertainty field/reason remain nonempty free strings. Correction removal forbids a replacement, while modification/replacement requires an addressable replacement. Saved reference kinds retain the availability-correction compatibility adapter; the canonical writer continues to exclude proposal decisions from the persisted planning graph. Recovery does not grant approval authority. This does not introduce a partial-commit feature or make every unresolved fact invalid: supported `unknown`, nullable and symbolic representations remain accepted where their existing contract permits them.
 
 `prepareWeeklyPlanningStableV5Checkpoint` validates the graph before traversing or encoding it. Checkpoint reading routes through the graph parser before hydration, so saved input is revalidated rather than trusted as previously accepted. Validation covers stored historical facts too; filtering removed/superseded facts for scheduling is a separate step. Regression tests use canonical writers and real checkpoint preparation/save/load, preserving valid historical representations while rejecting malformed values. These entry gates complement downstream fail-closed scheduler checks; they do not replace them.
+
+## Registered bookshelf references
+
+The current owner-filtered Bookshelf snapshot remains external context, with ownership and plan-local quantity governed by [material metadata](../../external-integrations/spec/material-metadata.md#92-週間計画での登録済み教材利用). A registered material ID is not a canonical task/component ID and does not import stored total/completed progress as a new planning fact.
+
+When a provider places one exact, uniquely registered material ID in a new task/component reference, the application may clear that external reference into the ordinary creation path only under its narrow typed identity/label contract. A first task requires no accepted task; an additional material of an accepted task requires no existing material and evidence in that component's own current-turn source. Existing canonical bindings take precedence. Ambiguous registry/reference use, wrong labels and unsupported existing mutations retain ordinary validation errors. All schema, evidence, current-turn provenance and reference validation still run before a canonical graph commit; quantity, role and unit are unchanged.
+
+Pending-answer copy repair must preserve a non-exact token known in the current owner-visible bookshelf namespace rather than overwrite it with the pending canonical task/component. This does not grant that external token canonical authority or classify every unknown token as a material. Canonical exact anchors and the existing one-corrupted-side repair remain effective; raw local-ID shadow is a separate boundary.
+
+For a representation-only semantic repair, compare both provider documents after the same pre-parse normalization and before post-parse projection, so deterministic projection is not mistaken for a provider mutation. If either provider comparison envelope is unavailable, retain the existing parsed/validated comparison pair. The comparison envelope never authorizes acceptance: the repaired document must still pass every normal validator. This does not add a model call or broaden which semantic changes are repairable.
+
+Canonical-date representation errors may permit only the validator-addressed `dateExpression` fields of availability declarations or task temporal constraints to change during that existing repair. Preserve the other semantic content and current-turn evidence; an unrelated date field is not repair authority. The repaired document still passes normal validation, including whether its new date representation is valid. This comparison exception neither interprets dates nor adds a repair call.
 
 ## Time semantics
 
@@ -96,6 +110,20 @@ Important consequences:
 
 For consultation questions containing calculable quantities, deterministic calculation remains the numeric authority. An answer model may explain a computed result but must not silently replace application-owned arithmetic with its own value.
 
+### Computed workload quantity titles
+
+Generated workload titles display the computed amount using the accepted typed unit; for standard units, the supported numeric-label forms below must not duplicate the displayed amount. Minute/hour workloads use the canonical `分`/`時間` display unit. For other standard units, an ASCII or full-width decimal digit in the label selects that unit code’s canonical display label. Clean standard aliases and custom-unit labels remain unchanged, including digits that carry custom-unit information. This display-only projection does not parse a replacement amount or infer language meaning; non-clock labels containing only kanji numerals are not normalized by this boundary.
+
+The compiler, ordinary range/session distribution and accepted memory-session projection share the same unit-display helper. Amounts, actual range offsets, quantity roles, graph facts, effort/calibration and occupied minutes remain with their existing owners. The computed candidate title passes through existing draft/checkpoint and Plan persistence; this adds no allocation ledger or stored schema. Normal-sized generated scheduler diagnostics retain the same title through the trace outbox and Worker boundary. Oversized diagnostic values retain bounded evidence with explicit truncation metadata; this does not promise complete oversized candidate retention.
+
+### Accepted task-total duration
+
+An active, accepted task-level `total_duration` may provide scheduler-facing minute work when that task has no workload at any component/quantity role and no hard task `fixed_interval`. All applicable positive finite task totals must agree; conflicting totals stay unresolved. Existing workload/progress ownership remains authoritative when any workload exists. A component total or `session_duration` alone is not task-total work. Deciding whether natural language describes future total work, past progress, per-day availability or session length remains semantic interpretation; formal acceptance alone does not prove that interpretation correct.
+
+This is a transient compilation view, not another Fact Graph or persisted quantity. Its derived workload key is internal identity only. The view carries explicit graph-revision/task/accepted-effort origin IDs, and the work-item compiler validates those roots before emitting work. Canonical source references and estimate-source IDs retain every agreeing active effort fact; a synthetic workload key must not masquerade as a canonical fact. For tagged derived work, missing, duplicate, foreign, stale or value-mismatched derivation evidence blocks compilation. The accepted minute total keeps intrinsic-duration allocation, without estimate buffer or calibration inflation.
+
+Preview/draft checkpoint metadata retains the real source references. Final approval keeps the existing current-revision checks and operation/block identity. Ordinary Plan/ScheduleEvent persistence does not acquire direct Fact Graph source references or a new allocation ledger through this projection. Session-length placement and natural-language explanation remain separate responsibilities.
+
 ## Work decomposition / atomicity
 
 Task decomposition is typed semantic state, not a scheduler guess.
@@ -131,6 +159,14 @@ Derived facts remain derivations with source/basis. A correction to their basis 
 
 Planned consultation advice does not enter the canonical planning Fact Graph merely because an answer was generated. Advice remains advisory state until the user adopts a defined scope and deterministic promotion creates normal planning contributions.
 
+### Explicit material identity correction
+
+A material identity change is an explicitly represented component `modify`, not a different label on an ordinary reference. Eligibility requires one exact active material component under its exact active accepted task, a unique replacement bound to that component, and valid current-turn provenance. An open material-identity question alone, shared label characters, a registered-material UUID, or a new-component addition does not authorize an identity change. Other component replacement forms retain the existing unsupported-kind boundary.
+
+The eligible correction is one atomic canonical transaction. It preserves the new identity version through binding, supersedes the previous component, moves only schema-valid active references to the new version, and retains dependent IDs, values and provenance. Only the matching material-identity need and the exact correction are consumed. Other uncertainty content/status and unrelated task/material facts are retained. Active dependency references move in place; the original component and already-inactive reference records remain historical. This does not create separate versions of the dependent facts. Validation failure, stale revision or conflict leaves the accepted graph unchanged; retry does not create another version. Task-targeted date rules do not become component-targeted through this operation.
+
+The transaction changes planning-graph identity only. It does not rename a Bookshelf record, import saved progress, alter historical saved plans, infer a per-unit rate, or authorize preview approval or save. Existing preview, question, trace and persistence boundaries consume the validated new graph under their ordinary lifecycle rules. The old automatic bare-relabel policy, a focused material producer and an audit-authored budget writer are outside this boundary.
+
 ## Repair agenda / dialogue progression
 
 Not every uncertainty blocks the same boundary.
@@ -142,6 +178,14 @@ Defer/pass-over is not silent deletion of uncertainty and does not convert it in
 See [Human Grounding Policy](../policies/human-grounding.md).
 
 Consultation must not be implemented by sending the user through the normal planning slot-question sequence. When Issue #246 is implemented, the consultation contract owns which missing information is material to a useful recommendation; only recommendation-changing/blocking gaps should trigger targeted questions.
+
+## Fixed-event-only closure and manual entry
+
+Validated fixed commitments constrain planning; they are not savable event candidates. When existing compilation proves that only resolved fixed commitments remain, the application ends the optional missing-work invitation instead of repeatedly asking for study work. The additive typed acts `request_event_registration` and `decline_additional_work` express the user's intent; they grant no create, preview, approval or save authority. An explicit renewed registration request may repeat the manual-entry handoff. Declining additional work closes only an optional invitation. Unresolved required dates/windows, blocking uncertainty, movable study work and pending proposal questions retain their existing owners and priority.
+
+The existing route supplies turn-local communication facts: either the fixed-event manual-entry reason with the existing `予定` → `予定を追加` labels and `eventCreatedByTurn:false`, or a no-additional-work reason. The renderer writes a natural reply from these facts; successful text is not replaced by a fixed suffix or interpreted with keywords. It must not claim an event was saved or that a new button/automatic navigation exists in the AI view. The current technical fallback remains available on renderer failure. The user's later explicit entry and Save in the existing manual UI remain the event-creation boundary.
+
+Ordinary ask, topic-shift and resume acts retain their existing question-identity and freshness rules, including unresolved named resumes. Independent planning facts still pass normal validation and canonical application. This unit adds no comparison mode, consultation/advice lifecycle, what-if flow, architecture selector, persisted presentation authority or new provider dispatch route or budget.
 
 ## Proposal / readiness / scheduler
 
@@ -157,26 +201,38 @@ application candidate
 
 Unaccepted proposals do not affect scheduling. Readiness, question necessity, authoritative occupied sources, placement and feasibility are application decisions.
 
+A learning-strategy proposal decision changes status only when its exact proposal ID matches the fresh presented question, using the existing turn-start presentation result. A collective decision cannot settle another pending proposal that was not the fresh presented question; that proposal stays pending until its own question is presented. Other known proposal IDs remain valid semantic references, and an explicit decision on B is never redirected to A. This boundary grants no preview approval or save authority and does not prescribe which question comes next. Active/unsuperseded target validation remains a separate responsibility.
+
 When the resulting Stable V5 planning horizon is exactly seven days, scheduling uses six normal placement days plus a seventh reserve day and prioritizes normal days before reserve. The default/fallback horizon is not an unconditional seven-day cap: applicable hard temporal bounds can require a longer usable horizon, and the scheduler still enforces the compiled hard bounds across that horizon. Detailed horizon, balancing and scoring behavior is owned by current scheduler policy, not semantic truth.
 
 Issue #246 extends the same proposal principle to AI-generated study advice. Advice acceptance means only that a user has adopted a scope into planning intent; it is not preview approval or save authorization. Promotion must return to the normal Stable V5 readiness/scheduler/preview path instead of letting the advice branch call the scheduler or persistence layer directly.
 
 ## Pending question presentation binding
 
-The pending question (`lastQuestionContext`) is application state; the assistant text that shows it is presentation only. When a Stable V5 turn commits a message that presents a pending question, the turn controller binds that question to the committed assistant message: turn ID, message ID, the planning-state revision after the commit, the committed graph revision, and the machine-known accompaniments the renderer was given with it (response source, current-turn grounding mode, self-repair notice, counts of proposed/contested grounding interpretations, preview promotion control). The binding is written only through the accepted commit and is replaced or removed by every later commit.
+The pending question (`lastQuestionContext`) is application state; the assistant text that shows it is presentation only. When a Stable V5 turn commits a message that presents a pending question, the turn controller binds that question to the committed assistant message: turn ID, message ID, the planning-state revision after the commit, the committed graph revision, and the machine-known accompaniments the renderer was given with it (response source, current-turn grounding mode, self-repair notice, counts of proposed/contested grounding interpretations, preview promotion control). The binding is written only through the accepted ordinary commit or the limited failed-turn presentation transition described below. A later transition cannot carry an old binding forward as evidence that a new message presented the question.
 
-A later turn may treat the pending question as the one the user is replying to only when the binding is `fresh`: the turn-start planning-state revision equals the bound revision (no failed turn, approval message, appended message, edit or clear happened in between), the latest message is the bound assistant message, and the graph revision is unchanged. A missing binding (sessions saved before binding existed), a malformed binding, or any mismatch fails closed. Freshness says only that the question context is still the one committed with the latest message; the consumer must still re-validate that its target (for example a proposal) is active and unsuperseded. Two limits are part of the contract:
+A later turn may treat the pending question as the one the user is replying to only when the binding is `fresh`: the turn-start planning-state revision equals the bound revision (no intervening failed turn, approval message, appended message, edit or clear since that presentation; a verified recovery must create a new presentation binding), the latest message is the bound assistant message, and the graph revision is unchanged. A missing binding (sessions saved before binding existed), a malformed binding, or any mismatch fails closed. Freshness says only that the question context is still the one committed with the latest message; the consumer must still re-validate that its target (for example a proposal) is active and unsuperseded. Two limits are part of the contract:
 
-- Presentation evidence. With `responseSource: deterministic_fallback` the application's typed question text was shown. With `ai` the renderer echoed this question's typed action contract and passed validation, but whether its free text actually asks the question is not verified, and must not be inferred from the text with regex or keywords. A consumer that depends on the text having asked the question must treat the rendered text as untrusted context and cover non-presenting renders in its evaluation.
+- Presentation evidence. With `responseSource: deterministic_fallback` the application's typed question text was shown. On the ordinary accepted path, with `ai` the renderer echoed this question's typed action contract and passed validation, but whether its free text actually asks the question is not verified, and must not be inferred from the text with regex or keywords. A consumer that depends on the text having asked the question must treat the rendered text as untrusted context and cover non-presenting renders in its evaluation.
 - Scope. Freshness is local to the planning state held by the submitting client. It does not detect a newer checkpoint written by another tab or device; that is the existing last-writer boundary of the conversation store, not something the binding resolves.
 
 
 
 The binding is not semantic input. It is excluded from the semantic model's public state summary and from renderer input, and it grants no approval, save, scheduler or lifecycle authority.
 
+### Bounded structured-failure recovery
+
+A rejected structured semantic result does not change accepted facts, graph revision, preview candidates, accepted intake facts or save authority. When every dispatch in that normalizer invocation is observed, completed and successful at the provider boundary (count 1–6, with no earlier provider failure), recovery may use the existing renderer for one freely generated reply and one finite verification, without regeneration. This is a bound on that normalizer invocation plus recovery, not a new global turn budget. Unknown/incomplete dispatch evidence, provider failure or an invalidated turn allows no new recovery dispatch; the live owner/conversation/revision guard is checked again before verification and adoption. Ordinary successful rendering and its existing repair contract remain unchanged.
+
+The finite check compares typed non-application/unchanged-state obligations and, when a retained question exists, its active target and task/component ownership where applicable, plus unit and period scope with the generated reply. Legitimate targetless questions retain their existing code-specific rules. Missing/removed/cross-owner targets, inconsistent proposal references, malformed or non-affirmative verdicts, and stale receipts fail closed. This same-provider second opinion is not an absolute guarantee of semantic correctness. No regex or fixed normal-response suffix establishes correspondence.
+
+Only a verified reply that actually re-presents the same fresh retained question may carry a typed recovery receipt into the existing failed lifecycle. The controller revalidates the previous presentation identity and binds that retained question to the newly committed assistant message and state revision; it never adopts the failed graph or intake. A technical stop, a generic recovery without a retained question, or an unverified/stale result cannot rebind the old question. The same binding/codec freshness rules apply after reload and on the next turn.
+
+Recovery requests, responses and finite diagnostics use the existing renderer trace, privacy, size/truncation, outbox/retry and Worker preparation gates. Private presentation identifiers remain excluded from semantic/renderer inputs and trace data.
+
 ## Availability
 
-Existing StudyPlanner plans and timetable are authoritative busy sources in current production. Accepted hard availability/life constraints and the request-time `notBefore` boundary reduce candidate space; preferences/personalization do not create free time.
+Existing StudyPlanner plans, owned timed MonthEvents and timetable are authoritative busy sources in current production. Accepted hard availability/life constraints and the request-time `notBefore` boundary reduce candidate space; preferences/personalization do not create free time.
 
 Required-source failure is not equivalent to a successfully loaded empty source. Sleep end does not necessarily imply study-available start.
 

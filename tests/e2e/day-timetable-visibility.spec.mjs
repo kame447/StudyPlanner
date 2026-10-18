@@ -75,6 +75,83 @@ for (const width of [390, 1280]) {
   test.describe(`initial viewport ${width}px`, () => {
     // Mobile WebKit must receive its viewport at context creation, not after launch.
     test.use({ viewport: { width, height: 900 }, screen: { width, height: 900 } });
+    test(`day grid avoids native selection while preserving editable controls and activation at ${width}px`, async ({ page }, testInfo) => {
+      const external = await rejectExternalRequests(page, testInfo);
+      await seed(page); await page.goto('/'); await openDay(page);
+      const before = await snapshot(page);
+      const grid = page.locator('.timeline-shell');
+      const policy = await grid.evaluate(element => {
+        const nodes = [element, element.querySelector('.timeline-canvas'),
+          element.querySelector('.timeline-hour-label'),
+          ...element.querySelectorAll('.timeline-entry-title, .timeline-entry-time, .timeline-entry-subject')];
+        return { calloutSupported: CSS.supports('-webkit-touch-callout', 'none'), nodes: nodes.map(node => {
+          const style = getComputedStyle(node);
+          return { className: node.className, selection: style.userSelect || style.webkitUserSelect,
+            callout: style.getPropertyValue('-webkit-touch-callout'), touchAction: style.touchAction };
+        }) };
+      });
+      console.log('Day selection policy', JSON.stringify(policy));
+      expect(policy.nodes[0].selection).toBe('none');
+      // user-select is not inherited: computed `auto` can have used value `none`.
+      // Verify actual selection below rather than requiring legacy computed values.
+      for (const value of policy.nodes) expect(['none', 'auto']).toContain(value.selection);
+      if (policy.calloutSupported) {
+        for (const value of policy.nodes) expect(value.callout).toBe('none');
+      } else testInfo.annotations.push({ type: 'platform-boundary', description: 'This browser port does not expose iOS touch callouts; physical iOS remains unverified.' });
+      expect(policy.nodes.every(value => value.touchAction !== 'none')).toBe(true);
+      // Real browser mouse selection is separate from iOS's system callout UI.
+      const hour = grid.locator('.timeline-hour-label').filter({ hasText: /^10:00$/ });
+      await hour.scrollIntoViewIfNeeded();
+      const bounds = await hour.boundingBox();
+      await page.evaluate(() => getSelection()?.removeAllRanges());
+      await page.mouse.move(bounds.x + 3, bounds.y + 5); await page.mouse.down();
+      await page.mouse.move(bounds.x + bounds.width - 3, bounds.y + bounds.height + 5, { steps: 5 });
+      await page.mouse.up();
+      expect(await page.evaluate(() => getSelection()?.toString())).toBe('');
+
+      const timetable = card(page, '自動表示の授業');
+      await timetable.scrollIntoViewIfNeeded();
+      const title = await timetable.locator('.timeline-entry-title').boundingBox();
+      await page.evaluate(() => getSelection()?.removeAllRanges());
+      await page.mouse.move(title.x + 2, title.y + title.height / 2); await page.mouse.down();
+      // Check while held, before a click opens the detail sheet or moves focus.
+      for (const selector of ['.timeline-entry-title', '.timeline-entry-time', '.timeline-entry-subject']) {
+        const text = await timetable.locator(selector).boundingBox();
+        await page.mouse.move(text.x + text.width - 2, text.y + text.height / 2, { steps: 5 });
+        expect(await page.evaluate(() => getSelection()?.toString())).toBe('');
+      }
+      await page.mouse.up();
+      const detail = page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true });
+      if (await detail.isVisible()) await detail.getByRole('button', { name: '閉じる', exact: true }).click();
+
+      const editable = await grid.evaluate(element => {
+        // These temporary inline controls verify the exception, not an app form.
+        const controls = [document.createElement('input'), document.createElement('textarea'), document.createElement('div')];
+        controls[0].value = controls[1].value = '選択を保つ';
+        controls[2].contentEditable = 'true'; controls[2].textContent = '選択を保つ';
+        const values = controls.map(control => {
+          element.append(control);
+          const style = getComputedStyle(control);
+          const value = { selection: style.userSelect || style.webkitUserSelect,
+            callout: style.getPropertyValue('-webkit-touch-callout') };
+          control.remove(); return value;
+        });
+        return values;
+      });
+      expect(editable.every(value => value.selection === 'text')).toBe(true);
+      if (policy.calloutSupported) expect(editable.every(value => value.callout === 'default')).toBe(true);
+
+      await timetable.scrollIntoViewIfNeeded();
+      if (await page.evaluate(() => navigator.maxTouchPoints > 0)) await timetable.tap();
+      else await timetable.click();
+      await expect(detail).toBeVisible();
+      await detail.getByRole('button', { name: '閉じる', exact: true }).click();
+      await expect(detail).toHaveCount(0);
+      await timetable.focus(); await page.keyboard.press('Enter');
+      await expect(detail).toBeVisible();
+      await page.keyboard.press('Escape'); await expect(detail).toHaveCount(0);
+      expect(await snapshot(page)).toEqual(before); expect(external).toEqual([]);
+    });
     test(`day and month settings persist independently without changing schedules at ${width}px`, async ({ page }, testInfo) => {
       const external = await rejectExternalRequests(page, testInfo);
       await seed(page); await page.goto('/'); await openDay(page);
@@ -103,7 +180,8 @@ for (const width of [390, 1280]) {
       await card(page, '自動表示の授業').click();
       const detail = page.getByRole('dialog', { name: '自動表示の授業の詳細', exact: true });
       await expect(detail).toBeVisible();
-      await expect(detail.getByRole('button', { name: 'この日だけ削除', exact: true })).toHaveCount(0);
+      // Day actions are now available; opening them alone must still leave data unchanged.
+      await expect(detail.getByRole('button', { name: 'この日だけ削除', exact: true })).toBeVisible();
       await detail.getByRole('button', { name: '閉じる', exact: true }).click();
       await page.reload(); await openDay(page);
       await expect(card(page, '自動表示の授業')).toHaveCount(1);
@@ -154,7 +232,7 @@ for (const width of [390, 1280]) {
       await expect(page.locator('html')).toHaveAttribute('data-appearance', 'pixel');
       await expect(card(page, '自動表示の授業')).toHaveCount(0);
       await settings(page); await choose(page, '日', true);
-      await page.getByRole('button', { name: '標準', exact: true }).click();
+      await page.getByRole('group', { name: 'テーマ' }).getByRole('button', { name: '標準', exact: true }).click();
       await expect(page.locator('html')).toHaveAttribute('data-appearance', 'standard');
       await expect(group(page, '日').getByRole('button', { name: '表示する', exact: true })).toHaveAttribute('aria-pressed', 'true');
       await expect(group(page, '月').getByRole('button', { name: '表示する', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -177,11 +255,14 @@ test.describe('saved timetable desktop viewport', () => {
     const saved = card(page, '保存済み授業'); await saved.scrollIntoViewIfNeeded();
     await expect(saved.locator('.timeline-entry-time')).toHaveText('16:00-17:00');
     const canvas = await page.locator('.timeline-canvas.split').boundingBox();
-    const box = await saved.boundingBox();
+    const box = await saved.locator('.timeline-entry-title').boundingBox();
     expect(canvas).not.toBeNull(); expect(box).not.toBeNull();
     const x = box.x + box.width / 2, y = box.y + box.height / 2;
+    await page.evaluate(() => getSelection()?.removeAllRanges());
     await page.mouse.move(x, y); await page.mouse.down();
-    await page.mouse.move(x, y + canvas.height / 24, { steps: 5 }); await page.mouse.up();
+    await page.mouse.move(x, y + canvas.height / 24, { steps: 5 });
+    expect(await page.evaluate(() => getSelection()?.toString())).toBe('');
+    await page.mouse.up();
     await expect(saved.locator('.timeline-entry-time')).toHaveText('17:00-18:00');
     await page.getByRole('button', { name: '変更を元に戻す' }).click();
     await expect(saved.locator('.timeline-entry-time')).toHaveText('16:00-17:00');

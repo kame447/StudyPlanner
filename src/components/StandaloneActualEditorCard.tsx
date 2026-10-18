@@ -1,3 +1,4 @@
+import { isValidQuickEntryDate } from '../lib/quickEntryDrafts';
 import { ActualMutationAdmissionError } from '../hooks/useActualMutationAdmission';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { expandPlansForDate } from '../lib/planRecurrence';
@@ -160,6 +161,10 @@ function StandaloneActualEditor({
 
   async function handleSave() {
     if (pendingMutation.current) return;
+    if (!isValidQuickEntryDate(occurrenceDate)) {
+      setError('有効な日付を入力してください。');
+      return;
+    }
     if (!title.trim()) {
       setError('タイトルを入力してください。');
       return;
@@ -194,6 +199,10 @@ function StandaloneActualEditor({
 
   async function handleLink(plan: Plan) {
     if (pendingMutation.current) return;
+    if (!isValidQuickEntryDate(occurrenceDate)) {
+      setError('有効な日付を入力してください。');
+      return;
+    }
     if (!title.trim()) {
       setError('タイトルを入力してください。');
       return;

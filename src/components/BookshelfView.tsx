@@ -1,5 +1,14 @@
+import { MaterialContentsPhotoImport } from './MaterialContentsPhotoImport';
+import { MaterialStructureEditorRows } from './MaterialStructureEditorRows';
+import {
+  createMaterialStructureDraft,
+  hasUnnamedMaterialStructureItem,
+  removeMaterialStructureItem,
+  updateMaterialStructureItem,
+  type MaterialStructurePatch,
+} from '../lib/materialStructureEditor';
 import type { MaterialEditBaseline } from '../hooks/useActualMutationAdmission';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   CalendarDays,
@@ -26,7 +35,6 @@ import {
   loadMaterialDetailPreferences,
   saveMaterialDetailPreferences,
   type MaterialDetailPreferences,
-  type MaterialStructureItem,
 } from '../lib/bookshelfMaterialDetails';
 import {
   filterBookshelfMaterials,
@@ -34,7 +42,9 @@ import {
   selectFrequentBookshelfMaterials,
   selectRecentBookshelfMaterials,
 } from '../lib/bookshelfViewModel';
-import { calculateMaterialPace } from '../lib/materialPace';
+import { calculateMaterialPace, getMaterialUnitLabel } from '../lib/materialPace';
+import { playEntrance, playFromRect, type MotionRect } from '../lib/motionEffects';
+import { useDataChangeMotion } from '../hooks/useDataChangeMotion';
 import { createId } from '../lib/id';
 import { todayIsoDate } from '../lib/date';
 import { BookshelfMaterialDetail } from './BookshelfMaterialDetail';
@@ -94,6 +104,7 @@ function MaterialCover({
     return (
       <img
         className={compact ? 'bookshelf-list-cover' : 'bookshelf-featured-cover'}
+        data-cover-of={material.id}
         src={material.coverImageDataUrl || material.coverImageUrl}
         alt={material.name}
       />
@@ -108,6 +119,7 @@ function MaterialCover({
           : 'bookshelf-featured-cover bookshelf-cover-placeholder'
       }
       style={getSubjectStyle(color)}
+      data-cover-of={material.id}
       aria-hidden="true"
     >
       <BookOpen size={compact ? 18 : 26} strokeWidth={1.8} />
@@ -115,17 +127,11 @@ function MaterialCover({
   );
 }
 
-function formatProgress(material: StudyMaterial): number {
-  return calculateMaterialPace(material, todayIsoDate()).progressRate;
-}
-
-function parseOptionalNumber(value: string): number | undefined {
-  if (!value.trim()) {
-    return undefined;
-  }
-
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
+function getDisplayProgress(material: StudyMaterial): number | null {
+  const pace = calculateMaterialPace(material, todayIsoDate());
+  return pace.enabled && pace.totalUnits !== null && pace.totalUnits > 0
+    ? pace.progressRate
+    : null;
 }
 
 function clonePreferences(
@@ -133,11 +139,50 @@ function clonePreferences(
 ): MaterialDetailPreferences {
   return {
     ...preferences,
-    structureItems: preferences.structureItems.map((item) => ({
-      ...item,
-      children: item.children?.map((child) => ({ ...child })),
-    })),
+    structureItems: createMaterialStructureDraft(preferences.structureItems),
   };
+}
+
+interface VisibleBox {
+  box: MotionRect;
+  /** The nearest ancestor that clips its content, if any. */
+  clip: MotionRect | null;
+}
+
+const toRect = (box: DOMRect): MotionRect => ({ left: box.left, top: box.top, width: box.width, height: box.height });
+
+/** Where `element` can actually be seen: at least half of it inside the screen and every clipping ancestor. */
+function visibleBox(element: Element): VisibleBox | null {
+  const box = toRect(element.getBoundingClientRect());
+  if (!(box.width > 0 && box.height > 0)) return null;
+  let area: MotionRect = { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+  let clip: MotionRect | null = null;
+  for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+    const style = getComputedStyle(parent);
+    if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+    const parentBox = toRect(parent.getBoundingClientRect());
+    clip ??= parentBox;
+    area = intersect(area, parentBox);
+  }
+  const seen = intersect(box, area);
+  return seen.width * seen.height >= (box.width * box.height) / 2 ? { box, clip } : null;
+}
+
+function intersect(a: MotionRect, b: MotionRect): MotionRect {
+  const left = Math.max(a.left, b.left);
+  const top = Math.max(a.top, b.top);
+  const right = Math.min(a.left + a.width, b.left + b.width);
+  const bottom = Math.min(a.top + a.height, b.top + b.height);
+  return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+}
+
+function contains(outer: MotionRect, inner: MotionRect): boolean {
+  return inner.left >= outer.left && inner.top >= outer.top
+    && inner.left + inner.width <= outer.left + outer.width && inner.top + inner.height <= outer.top + outer.height;
+}
+
+function distance(a: MotionRect, b: MotionRect): number {
+  return Math.hypot(a.left + a.width / 2 - (b.left + b.width / 2), a.top + a.height / 2 - (b.top + b.height / 2));
 }
 
 export function BookshelfView({
@@ -163,7 +208,13 @@ export function BookshelfView({
   );
   const [editingMaterialBaseline, setEditingMaterialBaseline] = useState<MaterialEditBaseline>();
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
+  const viewRef = useRef<HTMLElement | null>(null);
+  // The cover the user opened (or left) and where it was drawn, carried
+  // across the list ⇄ detail swap so the new cover can grow from it.
+  const coverHandoff = useRef<{ materialId: string; rect: MotionRect } | null>(null);
   const [menuMaterialId, setMenuMaterialId] = useState<string | null>(null);
+  const [structureError, setStructureError] = useState('');
+  const [studyStatusFilter, setStudyStatusFilter] = useState<'all' | 'studying' | 'completed'>('all');
   const [activeSubjectId, setActiveSubjectId] = useState<string>('all');
   const [expandedSubjectIds, setExpandedSubjectIds] = useState<string[]>(() =>
     subjects[0]?.id ? [subjects[0].id] : [],
@@ -228,8 +279,9 @@ export function BookshelfView({
         materials: activeMaterials,
         activeSubjectId,
         searchQuery,
+        studyStatus: studyStatusFilter,
       }),
-    [activeMaterials, activeSubjectId, searchQuery],
+    [activeMaterials, activeSubjectId, searchQuery, studyStatusFilter],
   );
   const filteredMaterialIds = useMemo(
     () => new Set(filteredMaterials.map((material) => material.id)),
@@ -247,6 +299,60 @@ export function BookshelfView({
   const recentMaterials = useMemo(
     () => selectRecentBookshelfMaterials(filteredMaterials),
     [filteredMaterials],
+  );
+
+  function rememberCover(materialId: string, cover: Element | null | undefined) {
+    const box = cover?.getBoundingClientRect();
+    coverHandoff.current = box && box.width > 0
+      ? { materialId, rect: { left: box.left, top: box.top, width: box.width, height: box.height } }
+      : null;
+  }
+
+  function openMaterial(materialId: string, source?: Element | null) {
+    const entry = typeof source?.closest === 'function' ? source.closest('[data-material-entry]') : null;
+    rememberCover(materialId, entry?.querySelector('[data-cover-of]'));
+    setSelectedMaterialId(materialId);
+  }
+
+  function closeMaterialDetail() {
+    if (selectedMaterialId) {
+      rememberCover(selectedMaterialId, viewRef.current?.querySelector('.bookshelf-detail-page [data-cover-of]'));
+    }
+    setSelectedMaterialId(null);
+  }
+
+  useLayoutEffect(() => {
+    const handoff = coverHandoff.current;
+    coverHandoff.current = null;
+    const view = viewRef.current;
+    if (!handoff || !view) return;
+    const covers = Array.from(view.querySelectorAll(`[data-cover-of="${CSS.escape(handoff.materialId)}"]`));
+    if (selectedMaterialId) {
+      if (covers[0]) playFromRect(covers[0], handoff.rect);
+      return;
+    }
+    // Back on the list the material may appear in several sections; use the
+    // copy that is actually visible (not scrolled away inside the featured
+    // row or outside the screen), nearest to where the detail cover was.
+    const target = covers
+      .map((cover) => ({ cover, visible: visibleBox(cover) }))
+      .filter((candidate): candidate is { cover: Element; visible: VisibleBox } => candidate.visible !== null)
+      .sort((a, b) => distance(a.visible.box, handoff.rect) - distance(b.visible.box, handoff.rect))[0];
+    if (!target) return;
+    // A clipping container would cut the travel off midway; then the cover
+    // simply arrives in its place.
+    if (target.visible.clip && !contains(target.visible.clip, handoff.rect)) playEntrance(target.cover);
+    else playFromRect(target.cover, handoff.rect);
+  }, [selectedMaterialId]);
+
+  // Saved changes (a material moved to another category, marked as a
+  // favourite, added, removed, its progress or status updated) are explained
+  // in place. Filtering, searching and opening a category only show results.
+  useDataChangeMotion(
+    viewRef,
+    `${selectedMaterialId ?? 'list'}:${activeSubjectId}:${studyStatusFilter}:${searchQuery}`,
+    // Records count too: they decide which materials are used most.
+    [materials, subjects, preferencesByMaterialId, actuals],
   );
 
   const selectedMaterial = selectedMaterialId
@@ -272,8 +378,11 @@ export function BookshelfView({
     materialId: string,
     nextPreferences: MaterialDetailPreferences,
   ) {
-    saveMaterialDetailPreferences(userId, materialId, nextPreferences);
+    if (!saveMaterialDetailPreferences(userId, materialId, nextPreferences)) {
+      return false;
+    }
     setPreferenceRevision((current) => current + 1);
+    return true;
   }
 
   function setSubjectExpanded(subjectId: string, expanded: boolean) {
@@ -293,6 +402,7 @@ export function BookshelfView({
     setMenuMaterialId(null);
     setStructureEditorMaterialId(material.id);
     setStructureDraft(clonePreferences(getPreferences(material.id)));
+    setStructureError('');
   }
 
   function toggleFavorite(material: StudyMaterial) {
@@ -305,15 +415,14 @@ export function BookshelfView({
 
   function updateStructureItem(
     itemId: string,
-    patch: Partial<MaterialStructureItem>,
+    patch: MaterialStructurePatch,
   ) {
+    setStructureError('');
     setStructureDraft((current) =>
       current
         ? {
             ...current,
-            structureItems: current.structureItems.map((item) =>
-              item.id === itemId ? { ...item, ...patch } : item,
-            ),
+            structureItems: updateMaterialStructureItem(current.structureItems, itemId, patch),
           }
         : current,
     );
@@ -324,24 +433,25 @@ export function BookshelfView({
       current
         ? {
             ...current,
-            structureItems: [
+            structureItems: createMaterialStructureDraft([
               ...current.structureItems,
               {
                 id: createId('material-structure'),
                 title: '',
               },
-            ],
+            ]),
           }
         : current,
     );
   }
 
   function removeStructureItem(itemId: string) {
+    setStructureError('');
     setStructureDraft((current) =>
       current
         ? {
             ...current,
-            structureItems: current.structureItems.filter((item) => item.id !== itemId),
+            structureItems: removeMaterialStructureItem(current.structureItems, itemId),
           }
         : current,
     );
@@ -352,10 +462,18 @@ export function BookshelfView({
       return;
     }
 
-    persistPreferences(
+    if (hasUnnamedMaterialStructureItem(structureDraft.structureItems)) {
+      setStructureError('章・節の名前を入力するか、不要な項目を削除してください。');
+      return;
+    }
+    const saved = persistPreferences(
       structureEditorMaterial.id,
       prepareBookshelfStructurePreferences(structureDraft),
     );
+    if (!saved) {
+      setStructureError('目次を保存できませんでした。入力内容は残っています。もう一度保存してください。');
+      return;
+    }
     setStructureEditorMaterialId(null);
     setStructureDraft(null);
   }
@@ -381,8 +499,8 @@ export function BookshelfView({
       }
       plans={plans}
       actuals={actuals}
-      preferences={getPreferences(selectedMaterial.id)}
-      onBack={() => setSelectedMaterialId(null)}
+      preferences={clonePreferences(getPreferences(selectedMaterial.id))}
+      onBack={closeMaterialDetail}
       onOpenMenu={() => openMaterialMenu(selectedMaterial)}
       onEditStructure={() => openStructureEditor(selectedMaterial)}
       onOpenDisplaySettings={() => setDisplaySettingsMaterialId(selectedMaterial.id)}
@@ -413,6 +531,23 @@ export function BookshelfView({
             />
           </label>
         ) : null}
+        <div className="bookshelf-category-chips" role="group" aria-label="学習状態で絞り込み">
+          {([
+            ['all', 'すべての状態'],
+            ['studying', '学習中'],
+            ['completed', '学習済み'],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              className={studyStatusFilter === value ? 'active' : ''}
+              aria-pressed={studyStatusFilter === value}
+              onClick={() => setStudyStatusFilter(value)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="bookshelf-category-filter-row">
           <div className="bookshelf-category-chips">
             <button
@@ -459,24 +594,27 @@ export function BookshelfView({
             {frequentMaterials.map((material) => {
               const subject =
                 subjectsWithFallback.find((item) => item.id === material.subjectId) ?? null;
-              const progress = formatProgress(material);
+              const progress = getDisplayProgress(material);
               return (
                 <button
                   className="bookshelf-featured-card"
                   key={material.id}
-                  onClick={() => setSelectedMaterialId(material.id)}
+                  data-material-entry
+                  data-motion-key={`featured:${material.id}`}
+                  data-motion-signature={`${material.name} ${progress === null ? '' : Math.round(progress)}`}
+                  onClick={(event) => openMaterial(material.id, event?.currentTarget)}
                   type="button"
                 >
                   <MaterialCover material={material} subject={subject} />
                   <span className="bookshelf-featured-copy">
                     <strong>{material.name}</strong>
                     <small>{subject?.name ?? material.subjectName}</small>
-                    <span className="bookshelf-progress-caption">
+                    {progress !== null ? <span className="bookshelf-progress-caption">
                       <span className="bookshelf-inline-progress" aria-hidden="true">
                         <span style={{ width: `${progress}%` }} />
                       </span>
                       進捗 {Math.round(progress)}%
-                    </span>
+                    </span> : null}
                   </span>
                 </button>
               );
@@ -519,7 +657,9 @@ export function BookshelfView({
                     </span>
                     <span>
                       <strong>{subject.name}</strong>
-                      <small>{subjectMaterials.length}冊の教材</small>
+                      <small data-motion-key={`count:${subject.id}`} data-motion-signature={String(subjectMaterials.length)}>
+                        {subjectMaterials.length}冊の教材
+                      </small>
                     </span>
                     {expanded ? (
                       <ChevronDown aria-hidden="true" />
@@ -529,15 +669,18 @@ export function BookshelfView({
                   </button>
 
                   {expanded ? (
-                    <div className="bookshelf-expanded-materials">
+                    <div className="bookshelf-expanded-materials motion-reveal">
                       {subjectMaterials.length > 0 ? (
                         subjectMaterials.map((material) => {
-                          const progress = formatProgress(material);
+                          const progress = getDisplayProgress(material);
                           return (
                             <div
                               className="bookshelf-material-list-row"
                               key={material.id}
-                              onClick={() => setSelectedMaterialId(material.id)}
+                              data-material-entry
+                              data-motion-key={`row:${subject.id}:${material.id}`}
+                              data-motion-signature={`${material.name} ${material.studyStatus} ${progress === null ? '' : Math.round(progress)}`}
+                              onClick={(event) => openMaterial(material.id, event?.currentTarget)}
                             >
                               <button
                                 className="bookshelf-row-open-button"
@@ -545,20 +688,20 @@ export function BookshelfView({
                                 aria-label={`${material.name}を開く`}
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  setSelectedMaterialId(material.id);
+                                  openMaterial(material.id, event?.currentTarget);
                                 }}
                               />
                               <MaterialCover material={material} subject={subject} compact />
                               <span className="bookshelf-material-row-copy">
                                 <strong>{material.name}</strong>
-                                <small>{material.subjectName}</small>
+                                <small>{material.subjectName} ・ {material.studyStatus === 'completed' ? '学習済み' : '学習中'}</small>
                               </span>
-                              <span className="bookshelf-material-row-progress">
+                              {progress !== null ? <span className="bookshelf-material-row-progress">
                                 <small>進捗 {Math.round(progress)}%</small>
                                 <span className="bookshelf-inline-progress" aria-hidden="true">
                                   <span style={{ width: `${progress}%` }} />
                                 </span>
-                              </span>
+                              </span> : null}
                               <button
                                 className="bookshelf-row-menu-button"
                                 type="button"
@@ -602,7 +745,10 @@ export function BookshelfView({
                 <div
                   className="bookshelf-recent-row"
                   key={material.id}
-                  onClick={() => setSelectedMaterialId(material.id)}
+                  data-material-entry
+                  data-motion-key={`recent:${material.id}`}
+                  data-motion-signature={`${material.name} ${material.studyStatus}`}
+                  onClick={(event) => openMaterial(material.id, event?.currentTarget)}
                 >
                   <button
                     className="bookshelf-row-open-button"
@@ -610,13 +756,13 @@ export function BookshelfView({
                     aria-label={`${material.name}を開く`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      setSelectedMaterialId(material.id);
+                      openMaterial(material.id, event?.currentTarget);
                     }}
                   />
                   <MaterialCover material={material} subject={subject} compact />
                   <span>
                     <strong>{material.name}</strong>
-                    <small>{material.subjectName}</small>
+                    <small>{material.subjectName} ・ {material.studyStatus === 'completed' ? '学習済み' : '学習中'}</small>
                   </span>
                   <time>
                     {new Date(material.createdAt).toLocaleDateString('ja-JP', {
@@ -646,7 +792,6 @@ export function BookshelfView({
         <section className="bookshelf-empty-dashboard">
           <BookOpen aria-hidden="true" />
           <h2>教材を追加してください</h2>
-          <p>階層構造を使わず、教材名だけ登録することもできます。</p>
           <button type="button" onClick={() => setEditingMaterial(null)}>
             教材を追加
           </button>
@@ -665,7 +810,7 @@ export function BookshelfView({
   );
 
   return (
-    <section className="bookshelf-view">
+    <section ref={viewRef} className="bookshelf-view">
       {bookshelfContent}
 
       {menuMaterial ? (
@@ -703,7 +848,7 @@ export function BookshelfView({
             </button>
             <button type="button" onClick={() => openStructureEditor(menuMaterial)}>
               <ListTree aria-hidden="true" />
-              教材内構造を編集
+              目次を編集
               <ChevronRight aria-hidden="true" />
             </button>
             <button
@@ -779,12 +924,12 @@ export function BookshelfView({
             </div>
             <section className="bookshelf-settings-group">
               <div>
-                <strong>教材内構造を表示</strong>
-                <small>章・節・単元などの一覧を教材詳細に表示します。</small>
+                <strong>目次を表示</strong>
               </div>
               <label className="bookshelf-switch">
                 <input
                   type="checkbox"
+                  aria-label="目次を表示"
                   disabled={!getPreferences(displaySettingsMaterial.id).structureEnabled}
                   checked={
                     getPreferences(displaySettingsMaterial.id).structureEnabled &&
@@ -801,9 +946,6 @@ export function BookshelfView({
                 <span aria-hidden="true" />
               </label>
             </section>
-            <p className="bookshelf-settings-note">
-              教材内構造を登録していても非表示にできます。非表示中も登録した項目は保持されます。
-            </p>
             <button
               className="primary-button"
               type="button"
@@ -829,7 +971,7 @@ export function BookshelfView({
           >
             <div className="bookshelf-modal-title-row">
               <div>
-                <h2>教材内構造</h2>
+                <h2>目次</h2>
                 <p>{structureEditorMaterial.name}</p>
               </div>
               <button
@@ -846,12 +988,12 @@ export function BookshelfView({
 
             <section className="bookshelf-settings-group">
               <div>
-                <strong>教材内構造を使う</strong>
-                <small>使わない場合は教材全体の進捗だけで管理します。</small>
+                <strong>目次を使う</strong>
               </div>
               <label className="bookshelf-switch">
                 <input
                   type="checkbox"
+                  aria-label="目次を使う"
                   checked={structureDraft.structureEnabled}
                   onChange={(event) =>
                     setStructureDraft((current) =>
@@ -871,90 +1013,38 @@ export function BookshelfView({
               </label>
             </section>
 
+            <MaterialContentsPhotoImport
+              key={`${userId}:${structureEditorMaterial.id}`}
+              hasExistingItems={structureDraft.structureItems.length > 0}
+              includePageRanges={(structureEditorMaterial.progressUnit ?? 'page') === 'page'}
+              onApply={(items) => {
+                setStructureError('');
+                setStructureDraft(current => current ? {
+                  ...current, structureEnabled: true, structureVisible: true, structureItems: createMaterialStructureDraft(items),
+                } : current);
+              }}
+            />
+
             {structureDraft.structureEnabled ? (
               <div className="bookshelf-structure-edit-list">
-                {structureDraft.structureItems.map((item, index) => (
-                  <div className="bookshelf-structure-edit-row" key={item.id}>
-                    <label>
-                      <span>項目 {index + 1}</span>
-                      <input
-                        value={item.title}
-                        onChange={(event) =>
-                          updateStructureItem(item.id, { title: event.target.value })
-                        }
-                        placeholder="例: 第1章 アルゴリズムの基礎"
-                      />
-                    </label>
-                    <label>
-                      <span>開始位置</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={item.startUnit ?? ''}
-                        onChange={(event) =>
-                          updateStructureItem(item.id, {
-                            startUnit: parseOptionalNumber(event.target.value),
-                          })
-                        }
-                        placeholder="任意"
-                      />
-                    </label>
-                    <label>
-                      <span>終了位置</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={item.endUnit ?? ''}
-                        onChange={(event) =>
-                          updateStructureItem(item.id, {
-                            endUnit: parseOptionalNumber(event.target.value),
-                          })
-                        }
-                        placeholder="任意"
-                      />
-                    </label>
-                    <label>
-                      <span>進捗%</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={item.progressRate ?? ''}
-                        onChange={(event) =>
-                          updateStructureItem(item.id, {
-                            progressRate: parseOptionalNumber(event.target.value),
-                          })
-                        }
-                        placeholder="自動/任意"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => removeStructureItem(item.id)}
-                      aria-label={`${item.title || `項目${index + 1}`}を削除`}
-                    >
-                      <Trash2 aria-hidden="true" />
-                    </button>
-                  </div>
-                ))}
+                <MaterialStructureEditorRows
+                  items={structureDraft.structureItems}
+                  unitLabel={getMaterialUnitLabel(structureEditorMaterial)}
+                  onUpdate={updateStructureItem}
+                  onRemove={removeStructureItem}
+                />
                 <button
                   className="bookshelf-add-structure-row"
                   type="button"
                   onClick={addStructureItem}
                 >
                   <Plus aria-hidden="true" />
-                  項目を追加
+                  章・節を追加
                 </button>
-                <p className="bookshelf-settings-note">
-                  章・節に限らず、問題集の単元や動画レッスンなど任意の区切りで登録できます。
-                </p>
               </div>
-            ) : (
-              <p className="bookshelf-settings-note">
-                この教材は階層なしで登録できます。後から有効にしても構いません。
-              </p>
-            )}
+            ) : null}
 
+            {structureError ? <p role="alert" className="inline-error">{structureError}</p> : null}
             <div className="row-actions">
               <button className="primary-button" type="button" onClick={saveStructureEditor}>
                 保存
@@ -1031,7 +1121,6 @@ export function BookshelfView({
             <div className="bookshelf-modal-title-row">
               <div>
                 <h2>よく使う教材</h2>
-                <p>星を付けた教材を優先して表示します。</p>
               </div>
               <button
                 type="button"
@@ -1056,7 +1145,7 @@ export function BookshelfView({
                     />
                     <span>
                       <strong>{material.name}</strong>
-                      <small>{material.subjectName}</small>
+                      <small>{material.subjectName} ・ {material.studyStatus === 'completed' ? '学習済み' : '学習中'}</small>
                     </span>
                   </button>
                 );

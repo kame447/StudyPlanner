@@ -26,3 +26,71 @@
 .ai-planning-preview-dialog-v2 > .ai-planning-preview-overview-scroll {
   height: auto;
 }
+
+/* Use explicit viewport dimensions rather than a percentage in the overlay's
+ * implicit grid track. The existing flex children retain scroll ownership, and
+ * header/actions stay in the viewport. Tablet/mobile keep the bottom sheet. */
+@media (min-width: 1100px) {
+  .ai-planning-preview-overlay-v2 {
+    padding: 24px;
+  }
+
+  .ai-planning-preview-dialog-v2 {
+    width: calc(100vw - 48px);
+    max-width: calc(100vw - 48px);
+    height: calc(100dvh - 48px);
+    max-height: calc(100dvh - 48px);
+  }
+
+  .ai-planning-preview-dialog-v2 .ai-planning-preview-header h2 {
+    font-size: 1.125rem;
+  }
+
+  .ai-planning-preview-dialog-v2 :is(
+    .ai-planning-preview-header button,
+    .ai-planning-preview-mode-tabs button,
+    .ai-planning-primary-action,
+    .ai-planning-secondary-action,
+    .ai-planning-preview-day-nav button
+  ) {
+    min-height: 40px;
+    font-size: 0.875rem;
+  }
+
+  .ai-planning-preview-dialog-v2 :is(
+    .ai-planning-week-header strong,
+    .ai-planning-preview-period-nav strong,
+    .ai-planning-preview-day-nav strong,
+    .ai-planning-preview-detail-block strong
+  ) {
+    font-size: 0.875rem;
+    line-height: 1.1;
+  }
+
+  .ai-planning-preview-dialog-v2 :is(
+    .ai-planning-preview-header p,
+    .ai-planning-week-header small,
+    .ai-planning-time-axis span,
+    .ai-planning-preview-period-nav small,
+    .ai-planning-preview-day-nav small,
+    .ai-planning-preview-day-axis > span,
+    .ai-planning-preview-detail-block small,
+    .ai-planning-preview-total,
+    .ai-planning-preview-hint
+  ) {
+    font-size: 0.75rem;
+  }
+
+  .ai-planning-preview-dialog-v2 .ai-planning-preview-hint {
+    max-width: 80ch;
+    margin-inline: auto;
+  }
+
+  .ai-planning-preview-dialog-v2 .ai-planning-preview-detail-block {
+    padding-block: 2px;
+  }
+
+  .ai-planning-preview-dialog-v2 .ai-planning-preview-detail-block strong {
+    max-width: 70ch;
+  }
+}

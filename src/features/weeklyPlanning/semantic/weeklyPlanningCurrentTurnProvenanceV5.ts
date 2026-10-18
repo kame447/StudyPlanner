@@ -29,6 +29,18 @@ function normalizedEvidenceText(value: string): string {
     .replace(/^[\p{P}\s]+|[\p{P}\s]+$/gu, '');
 }
 
+/** Literal own-source overlap gates this projection; it does not infer or bind a material identity. */
+export function weeklyPlanningLabelEvidencedBySourceV5(label: string, sourceText: string): boolean {
+  const characters = Array.from(normalizedEvidenceText(label).toLowerCase());
+  const source = normalizedEvidenceText(sourceText).toLowerCase();
+  const width = Math.min(3, characters.length);
+  if (width === 0) return false;
+  for (let index = 0; index + width <= characters.length; index += 1) {
+    if (source.includes(characters.slice(index, index + width).join(''))) return true;
+  }
+  return false;
+}
+
 const MAX_SOURCE_FRAGMENTS_V5 = 3;
 const MIN_FRAGMENT_LENGTH_V5 = 2;
 // The turn controller limits the combined user and supplemental text to 4,000

@@ -13,7 +13,8 @@ vi.mock('../repositories', () => ({ plannerRepository: new Proxy({}, {
 }) }));
 const showNotice = vi.fn<ShowNotice>();
 const P = (owner: string) => plan({ id: `plan-${owner}`, seriesId: `plan-${owner}`, userId: owner });
-const SOURCE = (owner: string) => actual({ id: `actual-${owner}`, userId: owner, planId: P(owner).id });
+const SOURCE = (owner: string) => actual({ id: `actual-${owner}`, userId: owner, planId: P(owner).id,
+  progressSource: { kind: 'study', planType: 'study', sourceId: P(owner).id } });
 let state: UsePlannerDataStateResult;
 let renderer: ReactTestRenderer | undefined;
 function Harness({ owner }: { owner: string | null }) { state = usePlannerDataState({ userId: owner, showNotice }); return null; }

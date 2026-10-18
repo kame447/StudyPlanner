@@ -70,7 +70,7 @@ describe('Stable V5 self-repair rendering integration', () => {
     });
 
     expect(rendererMock).toHaveBeenCalledWith(expect.objectContaining({
-      fallbackText: '英単語は80ページではなく80語ですね。修正しました。 次の条件を確認します。',
+      fallbackText: '返信を作れませんでした。少し待ってからもう一度送信してください。',
       planningInformation: expect.objectContaining({
         selfRepairNotice: '英単語は80ページではなく80語ですね。修正しました。',
       }),
@@ -80,7 +80,7 @@ describe('Stable V5 self-repair rendering integration', () => {
     expect(result.message).not.toContain('数学');
   });
 
-  it('keeps the exact correction acknowledgement in the deterministic fallback', async () => {
+  it('keeps accepted correction state but never fabricates an acknowledgement when rendering fails', async () => {
     runtimeMock.mockResolvedValue({
       state: createInitialPlanningIntakeState(), message: '次の条件を確認します。', draftCandidates: [],
       stableV5Graph: correctedGraph(),
@@ -94,9 +94,13 @@ describe('Stable V5 self-repair rendering integration', () => {
       plans: [], scheduleTemplates: [], conversationId: 'conversation-1', traceRequestId: 'request-2',
     });
 
-    expect(result.message).toBe(
-      '英単語は80ページではなく80語ですね。修正しました。 次の条件を確認します。',
-    );
+    expect(result.message).toBe('返信を作れませんでした。少し待ってからもう一度送信してください。');
+    expect(result.message).not.toContain('修正しました');
     expect(result.responseSource).toBe('deterministic_fallback');
+    expect(result.questionPresentationContent).toBeUndefined();
+    expect(result.dialogueRendererTrace).toMatchObject({
+      response: { status: 'fallback', reason: 'provider_error' },
+    });
+    expect(result.stableV5Graph).toEqual(correctedGraph());
   });
 });

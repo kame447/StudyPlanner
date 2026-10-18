@@ -81,7 +81,7 @@ Issue #246 の planned consultation extension でもこの責任境界を維持�
 
 外部 API は provider 固有 response を product domain へ直接流さず、Cloudflare Worker 上の integration boundary で正規化します。書籍教材の初期実装では共有 catalog を先に参照し、miss 時だけ NDL Search へ問い合わせることで外部依存と不要な request を抑えます。
 
-テストには Vitest、fast-check、Playwright を使用し、CI は GitHub Actions で実行します。
+テストには Vitest、fast-check、Playwright を使用し、CI は GitHub Actions で実行します。会話のブラウザ操作を補助するTesterArmy/e2e pilotは独立runnerで、`npm ci --prefix tests/agent-e2e`後に`npm run test:agentic:smoke`でモデル不要の検証を実行できます。モデル利用やonline検証の区別は[専用ガイド](./docs/domains/weekly-planning/quality/agentic-browser-e2e.md)を参照してください。
 
 実装上の責務と主要ディレクトリは [`PROJECT_MAP.md`](./PROJECT_MAP.md) にまとめています。
 
@@ -93,6 +93,15 @@ Node.js と npm が必要です。
 npm install --cache .npm-cache
 npm run dev
 ```
+
+開発サーバーは既定でこの PC 内 (`127.0.0.1`) からだけ接続できます。スマートフォンなど同じ LAN の端末から確認するときは、開発用証明書に開発 PC の LAN IP を含めてから LAN 起動コマンドを使います。
+
+```bash
+npm run cert:dev -- 192.168.0.5
+npm run dev:lan
+```
+
+`192.168.0.5` は開発 PC の LAN IP に置き換えてください。`dev:lan` は `0.0.0.0` に bind し、Vite は証明書が `.cert/` に存在すれば HTTPS を使います。スマートフォンで HTTPS を開くには、その端末が mkcert のローカル認証局を信頼する必要があります。LAN 公開が必要な作業中だけこのコマンドを使います。build 済み画面の確認には `npm run preview:lan`（Node preview）または `npm run preview:vite:lan` を使えます。明示的な LAN script は OS に依存しない `--host` option を使います。手動で起動先を変える場合は `STUDYPLANNER_DEV_HOST=0.0.0.0` を `npm run dev`、`npm run preview`、または `npm run preview:vite` に指定できます。
 
 Firebase や AI gateway を設定しなくても、一部機能はローカル fallback で確認できます。本番相当の認証、保存、AI 接続を確認する場合は環境設定が必要です。
 
@@ -188,9 +197,10 @@ LAN 内の端末から HTTPS で開発環境へ接続する場合は、開発用
 
 ```bash
 npm run cert:dev -- 192.168.0.5
+npm run dev:lan
 ```
 
-IP アドレスは開発 PC の LAN IP に置き換えてください。
+IP アドレスは開発 PC の LAN IP に置き換えてください。Vite は既定では loopback のみに bind するため、実機から見るときだけ `dev:lan` を起動します。証明書は開発 PC と実機の両方で信頼されている必要があります。
 
 ## テスト
 

@@ -1,7 +1,11 @@
+import type { MonthEventEditRequest } from '../domain/recurringMonthEvent';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useDataChangeMotion } from '../hooks/useDataChangeMotion';
 import { useExitMotion } from '../hooks/useExitMotion';
-import { todayIsoDate } from '../lib/date';
+import { usePeriodNavigationMotion } from '../hooks/usePeriodNavigationMotion';
+import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
+import { addMonths, todayIsoDate } from '../lib/date';
 import { buildMonthGrid } from '../lib/monthViewProjection';
 import { MonthDaySheet } from './MonthDaySheet';
 import { MonthEventDialog } from './MonthEventDialog';
@@ -28,11 +32,12 @@ interface MonthViewProps {
   timetableTerm?: TimetableTerm | null;
   timetableTerms?: TimetableTerm[];
   createRequestId?: number;
+  initialCreateRequestId?: number;
   onSelectDate: (date: string) => void;
   onChangeMonth: (date: string) => void;
   onOpenWeek: (date: string) => void;
   onOpenDay?: (date: string) => void;
-  onSaveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
+  onSaveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string, edit?: MonthEventEditRequest) => Promise<void>;
   onDeleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
 }
 
@@ -49,7 +54,9 @@ export function MonthView({
   timetableTerm,
   timetableTerms = [],
   createRequestId = 0,
+  initialCreateRequestId = createRequestId,
   onSelectDate,
+  onChangeMonth,
   onOpenWeek,
   onOpenDay,
   onSaveMonthEvent,
@@ -70,11 +77,20 @@ export function MonthView({
   );
   const cellRefs = useRef(new Map<string, HTMLButtonElement>());
   const viewRef = useRef<HTMLElement | null>(null);
+  const monthGridRef = useRef<HTMLDivElement | null>(null);
+  usePeriodNavigationMotion(monthGridRef, monthDate);
+  // Added, changed and pushed-aside items in the month grid explain a save.
+  useDataChangeMotion(monthGridRef, monthDate, [plans, actuals, monthEvents]);
   const shouldFocusSelectedCell = useRef(false);
   const pendingCellClickTimeout = useRef<number | null>(null);
   const lastCellClick = useRef<{ date: string; at: number } | null>(null);
-  const lastCreateRequestId = useRef(createRequestId);
+  const lastCreateRequestId = useRef(initialCreateRequestId);
   const todayDate = todayIsoDate();
+  const swipeNavigation = useSwipeNavigation({
+    onPrevious: () => onChangeMonth(addMonths(monthDate, -1)),
+    onNext: () => onChangeMonth(addMonths(monthDate, 1)),
+    disabled: Boolean(eventModalDate || daySheetDate),
+  });
 
   const registerCellRef = useCallback((date: string, node: HTMLButtonElement | null) => {
     if (node) {
@@ -240,8 +256,8 @@ export function MonthView({
   }, []);
 
   return (
-    <section ref={viewRef} className="panel schedule-month-view">
-      <div className="schedule-month-static-grid">
+    <section ref={viewRef} className="panel schedule-month-view" {...swipeNavigation}>
+      <div ref={monthGridRef} className="schedule-month-static-grid">
         <MonthGridPanel
           monthDate={monthDate}
           isCurrent

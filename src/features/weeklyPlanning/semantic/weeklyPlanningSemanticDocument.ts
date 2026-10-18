@@ -1,4 +1,4 @@
-import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
+import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClientTypes';
 
 export const WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION = 'weekly-planning-semantic-v5-alpha1' as const;
 

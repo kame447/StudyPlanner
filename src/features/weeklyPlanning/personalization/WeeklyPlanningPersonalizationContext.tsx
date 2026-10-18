@@ -5,6 +5,8 @@ import type { WeeklyPlanningPersonalizationProfile } from './weeklyPlanningPerso
 interface WeeklyPlanningPersonalizationContextValue {
   profile: WeeklyPlanningPersonalizationProfile | null;
   weekStartsOn: WeeklyPlanningWeekStartsOn;
+  saving: boolean;
+  error: string;
   setWeekStartsOn(value: WeeklyPlanningWeekStartsOn): Promise<boolean>;
   resetProfile(): Promise<boolean>;
 }
@@ -12,6 +14,8 @@ interface WeeklyPlanningPersonalizationContextValue {
 const DEFAULT_VALUE: WeeklyPlanningPersonalizationContextValue = {
   profile: null,
   weekStartsOn: 'monday',
+  saving: false,
+  error: '',
   async setWeekStartsOn() {
     return false;
   },
@@ -24,11 +28,15 @@ const WeeklyPlanningPersonalizationContext = createContext(DEFAULT_VALUE);
 
 export function WeeklyPlanningPersonalizationProvider({
   profile,
+  saving = false,
+  error = '',
   setWeekStartsOn,
   resetProfile,
   children,
 }: {
   profile: WeeklyPlanningPersonalizationProfile;
+  saving?: boolean;
+  error?: string;
   setWeekStartsOn(value: WeeklyPlanningWeekStartsOn): Promise<boolean>;
   resetProfile(): Promise<boolean>;
   children: ReactNode;
@@ -38,6 +46,8 @@ export function WeeklyPlanningPersonalizationProvider({
       value={{
         profile,
         weekStartsOn: profile.weekStartsOn?.value ?? 'monday',
+        saving,
+        error,
         setWeekStartsOn,
         resetProfile,
       }}

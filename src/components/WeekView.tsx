@@ -1,3 +1,4 @@
+import { entryTimeRangeForDate } from '../lib/entryTimeRange';
 import {
   useEffect,
   useMemo,
@@ -8,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type TouchEvent as ReactTouchEvent,
 } from 'react';
+import { getPlanScheduleColor, getScheduleOccurrenceColor, scheduleEventWeekStyle } from '../lib/scheduleEventColor';
 import { createPortal } from 'react-dom';
 import {
   createScheduleOccurrenceProjection,
@@ -16,6 +18,7 @@ import {
 import { deleteScheduleOccurrence } from '../domain/scheduleOccurrenceMutation';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import {
+  addDays,
   getWeekDates,
   minutesBetween,
   minutesFromTime,
@@ -24,13 +27,14 @@ import {
 import {
   buildPlanOccurrenceKey,
   expandPlansForDate,
-  getActualOccurrenceKey,
+  resolvePlanOccurrence,
 } from '../lib/planRecurrence';
 import {
   isScheduleOccurrenceOutsideHourlyGrid,
   layoutWeekSpanningOccurrences,
 } from '../lib/scheduleOccurrencePresentation';
 import { acquireTimelineDragInteractionLock } from '../lib/timelineDragInteractionLock';
+import { allowsSpatialMotion } from '../lib/motionPreference';
 import {
   calculateWeekPlanVelocityTilt,
   hasWeekPlanMoveChanged,
@@ -43,8 +47,11 @@ import {
   scheduleOccurrenceTimesForDate,
   type WeekViewLane,
 } from '../lib/weekViewLayout';
+import { useDataChangeMotion } from '../hooks/useDataChangeMotion';
+import { usePeriodNavigationMotion } from '../hooks/usePeriodNavigationMotion';
 import { useScheduleItemActionPress } from '../hooks/useScheduleItemActionPress';
 import { useTimelineDragCancellation } from '../hooks/useTimelineDragCancellation';
+import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { useUndoRedoHistory } from '../hooks/useUndoRedoHistory';
 import type { WeeklyPlanDraftBlock } from '../features/weeklyPlanning/types';
 import type {
@@ -79,6 +86,7 @@ interface WeekViewProps {
   onMovePlan?: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
   onDeletePlan?: (plan: Plan) => Promise<void>;
   onDeleteMonthEvent?: (monthEvent: MonthEvent) => Promise<void>;
+  onChangeWeek?: (date: string) => void;
   onOpenDay: (date: string) => void;
 }
 
@@ -120,6 +128,7 @@ interface DragSession {
   startScrollLeft: number;
   scrollElement: HTMLDivElement | null;
   toneClass: string;
+  toneStyle: CSSProperties;
   title: string;
   active: boolean;
   canceled: boolean;
@@ -134,6 +143,7 @@ interface DragVisualState {
   blockId: string;
   title: string;
   toneClass: string;
+  toneStyle: CSSProperties;
   target: WeekPlanMoveTarget;
   overlayX: number;
   overlayY: number;
@@ -190,6 +200,7 @@ function buildBlockStyle(entry: WeekPreviewBlock): CSSProperties {
   const heightPercent = (durationMinutes / MINUTES_PER_DAY) * 100;
 
   return {
+    ...getBlockColorStyle(entry),
     top: `${topPercent}%`,
     height: `max(${heightPercent}%, 14px)`,
     left: `calc(${entry.lane * laneWidth}% + 2px)`,
@@ -213,7 +224,14 @@ function buildDropGhostStyle(target: WeekPlanMoveTarget): CSSProperties {
   };
 }
 
+function getBlockColorStyle(entry: WeekPreviewBaseBlock): CSSProperties {
+  return entry.draft ? {} : scheduleEventWeekStyle(entry.occurrence
+    ? getScheduleOccurrenceColor(entry.occurrence) : getPlanScheduleColor(entry),
+  entry.occurrence?.source.backingKind === 'month-event' ? 'theme' : 'pastel');
+}
+
 function getToneClass(entry: WeekPreviewBaseBlock): string {
+  if (!entry.draft) return '';
   const key = (entry.subject || entry.title || entry.id).trim();
   const toneIndex = Array.from(key || entry.id).reduce(
     (sum, character) => sum + character.charCodeAt(0),
@@ -233,23 +251,28 @@ function getDistance(startX: number, startY: number, x: number, y: number): numb
   return Math.hypot(x - startX, y - startY);
 }
 
+// Stable defaults so absent optional data is not mistaken for a data change.
+const NO_MONTH_EVENTS: MonthEvent[] = [];
+const NO_DRAFT_BLOCKS: WeeklyPlanDraftBlock[] = [];
+
 export function WeekView({
   selectedDate,
   userId,
   plans,
   actuals,
-  monthEvents = [],
+  monthEvents = NO_MONTH_EVENTS,
   scheduleTemplates = [],
   timetableTermId,
   timetableTerm,
   timetableTerms = [],
-  weeklyDraftBlocks = [],
+  weeklyDraftBlocks = NO_DRAFT_BLOCKS,
   onRemoveWeeklyDraftBlock,
   onOpenPlan,
   onMovePlan,
   onDeletePlan,
   onDeleteMonthEvent,
   onOpenDay,
+  onChangeWeek,
 }: WeekViewProps) {
   const [timelineMode, setTimelineMode] = useState<WeekTimelineMode>('plan');
   const [dragVisual, setDragVisual] = useState<DragVisualState | null>(null);
@@ -257,7 +280,16 @@ export function WeekView({
   const suppressClickUntilRef = useRef(0);
   const moveHistory = useUndoRedoHistory<string, WeekPlanMoveTarget>();
   const scheduleAction = useScheduleItemActionPress<ScheduleOccurrence>();
+  const swipeNavigation = useSwipeNavigation({
+    onPrevious: () => onChangeWeek?.(addDays(selectedDate, -7)),
+    onNext: () => onChangeWeek?.(addDays(selectedDate, 7)),
+    disabled: !onChangeWeek || Boolean(dragVisual || scheduleAction.activeAction),
+  });
   const weekDates = getWeekDates(selectedDate);
+  const weekSectionRef = useRef<HTMLElement | null>(null);
+  useDataChangeMotion(weekSectionRef, `${weekDates[0]}:${timelineMode}`, [plans, actuals, monthEvents, weeklyDraftBlocks]);
+  const weekGridRef = useRef<HTMLDivElement | null>(null);
+  usePeriodNavigationMotion(weekGridRef, weekDates[0]);
   const weekStartDate = weekDates[0];
   const weekEndDate = weekDates[weekDates.length - 1];
   const scheduleProjection = useMemo(
@@ -316,9 +348,6 @@ export function WeekView({
     [scheduleProjection.occurrences],
   );
   const planById = new Map(plans.map((plan) => [plan.id, plan]));
-  const actualByOccurrenceKey = new Map(
-    actuals.map((actual) => [getActualOccurrenceKey(actual), actual]),
-  );
   const gridStyle = {
     gridTemplateColumns: '46px repeat(7, minmax(0, 1fr))',
   } as CSSProperties;
@@ -415,6 +444,7 @@ export function WeekView({
       startScrollLeft: scrollElement?.scrollLeft ?? 0,
       scrollElement,
       toneClass: getToneClass(entry),
+      toneStyle: getBlockColorStyle(entry),
       title: entry.title,
       active: false,
       canceled: false,
@@ -422,9 +452,7 @@ export function WeekView({
       longPressTimer: null,
       releaseInteractionLock: null,
       target,
-      reducedMotion:
-        typeof window !== 'undefined' &&
-        window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      reducedMotion: !allowsSpatialMotion(),
     };
   }
 
@@ -499,6 +527,7 @@ export function WeekView({
       blockId: session.blockId,
       title: session.title,
       toneClass: session.toneClass,
+      toneStyle: session.toneStyle,
       target,
       overlayX: clientX - session.grabOffsetX,
       overlayY: clientY - session.grabOffsetY,
@@ -819,6 +848,7 @@ export function WeekView({
   }
 
   function handleActionClickCapture(event: ReactMouseEvent<HTMLElement>) {
+    swipeNavigation.onClickCapture(event);
     if (!scheduleAction.shouldSuppressClick()) return;
     event.preventDefault();
     event.stopPropagation();
@@ -848,6 +878,7 @@ export function WeekView({
           <div
             className={`schedule-week-drag-overlay ${dragVisual.toneClass}`}
             style={{
+              ...dragVisual.toneStyle,
               left: dragVisual.overlayX,
               top: dragVisual.overlayY,
               width: dragVisual.width,
@@ -871,7 +902,9 @@ export function WeekView({
   return (
     <>
       <section
+        ref={weekSectionRef}
         className="panel schedule-week-view"
+        {...swipeNavigation}
         onPointerDownCapture={handleActionPointerDownCapture}
         onPointerMoveCapture={handleActionPointerMoveCapture}
         onPointerUpCapture={handleActionPointerUpCapture}
@@ -904,6 +937,7 @@ export function WeekView({
         <div className="weekly-draft-preview schedule-week-preview">
           <div className="weekly-draft-preview-scroll schedule-week-preview-scroll">
             <div
+              ref={weekGridRef}
               className="weekly-draft-preview-grid schedule-week-preview-grid"
               style={previewGridStyle}
             >
@@ -961,30 +995,12 @@ export function WeekView({
                   const timedDayNonPlanOccurrences = dayNonPlanOccurrences.filter(
                     (occurrence) => !isScheduleOccurrenceOutsideHourlyGrid(occurrence),
                   );
-                  const dayPlanKeys = new Set(
-                    dayPlans.map((plan) => buildPlanOccurrenceKey(plan.id, plan.date)),
-                  );
-                  const linkedActuals = dayPlans.flatMap((plan) => {
-                    const actual = actualByOccurrenceKey.get(
-                      buildPlanOccurrenceKey(plan.id, plan.date),
-                    );
-                    return actual ? [{ actual, plan }] : [];
+                  const dayActuals = actuals.flatMap((actual) => {
+                    const range = entryTimeRangeForDate(actual.occurrenceDate, actual.actualStartTime, actual.actualEndTime, date);
+                    if (!range) return [];
+                    const source = actual.planId ? planById.get(actual.planId) : undefined;
+                    return [{ actual, plan: source ? resolvePlanOccurrence(source, actual.occurrenceDate) : undefined, range }];
                   });
-                  const standaloneActuals = actuals
-                    .filter(
-                      (actual) =>
-                        actual.occurrenceDate === date &&
-                        !dayPlanKeys.has(getActualOccurrenceKey(actual)),
-                    )
-                    .map((actual) => ({
-                      actual,
-                      plan: actual.planId ? planById.get(actual.planId) : undefined,
-                    }));
-                  const dayActuals = [...linkedActuals, ...standaloneActuals].sort(
-                    (left, right) =>
-                      minutesFromTime(left.actual.actualStartTime) -
-                      minutesFromTime(right.actual.actualStartTime),
-                  );
                   const dayDraftBlocks = weeklyDraftBlocks.filter(
                     (block) => block.date === date && block.status === 'draft',
                   );
@@ -1027,14 +1043,13 @@ export function WeekView({
                     })),
                   ]);
                   const actualBlocks = buildLanes<WeekPreviewBaseBlock>(
-                    dayActuals.map(({ actual, plan }) => ({
+                    dayActuals.map(({ actual, plan, range }) => ({
                       id: actual.id,
                       title: resolveActualTitle(actual, plan),
                       subject: resolveActualSubject(actual, plan),
                       type: plan?.type ?? 'other',
                       sourceType: plan?.sourceType,
-                      startTime: actual.actualStartTime,
-                      endTime: actual.actualEndTime,
+                      ...range,
                     })),
                   );
                   const visibleBlocks = timelineMode === 'plan' ? planBlocks : actualBlocks;
@@ -1061,7 +1076,7 @@ export function WeekView({
                       {targetGhost ? (
                         <span
                           className={`schedule-week-drop-ghost ${targetGhost.toneClass}`}
-                          style={buildDropGhostStyle(targetGhost.target)}
+                          style={{ ...buildDropGhostStyle(targetGhost.target), ...targetGhost.toneStyle }}
                           aria-hidden="true"
                         >
                           <strong>{targetGhost.title}</strong>
@@ -1094,6 +1109,8 @@ export function WeekView({
                                 dragVisual?.blockId === entry.id ? ' is-drag-source' : ''
                               }`}
                               key={entry.id}
+                              data-motion-key={`${date}:${entry.id}`}
+                              data-motion-signature={`${entry.startTime}-${entry.endTime} ${entry.title}`}
                               data-schedule-occurrence-id={entry.occurrence?.id}
                               style={buildBlockStyle(entry)}
                               title={`${entry.title} / ${entry.startTime}-${entry.endTime}`}
@@ -1121,6 +1138,8 @@ export function WeekView({
                           <span
                             className={blockClassName}
                             key={entry.id}
+                            data-motion-key={`${date}:${entry.draft ? 'draft' : 'entry'}:${entry.id}`}
+                            data-motion-signature={`${entry.startTime}-${entry.endTime} ${entry.title}`}
                             data-schedule-occurrence-id={
                               isReadOnlyTimetable ? undefined : entry.occurrence?.id
                             }

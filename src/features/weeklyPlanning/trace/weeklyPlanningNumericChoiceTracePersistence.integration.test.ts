@@ -1,3 +1,9 @@
+import { numericFixture } from '../semantic/weeklyPlanningNumericPendingChoiceV5.testUtils';
+import { numericPendingCompleteScopeV5 } from '../semantic/weeklyPlanningNumericPendingScopeV5';
+import { createWeeklyPlanningSemanticPublicStateSummaryV5 } from '../semantic/weeklyPlanningSemanticPublicStateV5';
+import { tryNumericPendingChoiceRouteV5 } from '../semantic/weeklyPlanningNumericPendingChoiceV5';
+import { WeeklyPlanningSemanticNormalizerRunV5 } from '../semantic/weeklyPlanningSemanticNormalizerRunV5';
+import { CANDIDATE_CHOICE_CATALOG_VERSION } from '../../../../shared/candidateChoiceDecision';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { choiceRequest, choiceEvaluation } from '../../../../shared/candidateChoiceFixtures.testUtils';
 import { WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS, measureWeeklyPlanningTraceJsonBytes } from '../../../../shared/weeklyPlanningTraceContract';
@@ -55,6 +61,52 @@ describe('actual Choice request through durable trace gate', () => {
     const prepared = prepare(h.writes[0]); expect(prepared.entries).toHaveLength(1);
     expect(JSON.stringify(prepared.entries[0])).toContain('keep-unknown-numeric-sentinel');
     expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+  });
+  it('preserves actual D5 complete ancestor scope through the real client, outbox retry and Worker preparation', async () => {
+    const numeric = numericFixture(); const pending = numeric.input.publicStateSummary!.pendingQuestion;
+    numeric.graph.tasks[0].source.sourceText = 'private-numeric-provenance-never-trace';
+    numeric.graph.components.push({ id: 'numeric-material', taskId: 'task-1', parentComponentId: null,
+      role: 'material', label: '山地の教材', source: numeric.graph.tasks[0].source, createdRevision: 2 },
+      { id: 'numeric-chapter', taskId: 'task-1', parentComponentId: 'numeric-material',
+        role: 'chapter', label: '第1章', source: numeric.graph.tasks[0].source, createdRevision: 2 });
+    Object.assign(numeric.graph.workloads[0], { componentId: 'numeric-chapter' });
+    numeric.graph.factLifecycles.push(...numeric.graph.components.map(fact => ({ factId: fact.id, status: 'active' as const,
+      createdRevision: 2, terminalRevision: null, supersededByFactId: null })));
+    numeric.input.publicStateSummary = createWeeklyPlanningSemanticPublicStateSummaryV5({ pendingQuestion: pending }, numeric.graph);
+    const scope = numericPendingCompleteScopeV5(numeric.input)!;
+    numeric.setState({ ...numeric.state, binding: { ...numeric.state.binding, scope } });
+    let wire: any;
+    const client = createCandidateChoiceClient({ proxyUrl: 'https://fixture.invalid', getToken: async () => 'auth-secret-never-trace',
+      semanticPolicy: { calibrationEvidenceId: 'synthetic-test-only', maximumConditionChange: .01, maximumIndependentMeaning: .01 },
+      transport: async (_url, init) => {
+        wire = JSON.parse(String(init?.body)).decisionContext.request;
+        return Response.json({ status: 'evaluated', catalogVersion: CANDIDATE_CHOICE_CATALOG_VERSION,
+          requestId: wire.requestId, selectionEpoch: wire.selectionEpoch, candidateSetHash: wire.candidateSetHash,
+          nodeId: wire.menu.nodeId, optionId: 'leaf:2', conditionChange: .001, independentMeaning: .001,
+          probabilities: wire.menu.options.map((option: { id: string }) => ({ optionId: option.id,
+            probability: option.id === 'leaf:2' ? .999 : .001 / (wire.menu.options.length - 1) })) });
+      } });
+    numeric.port.choose = (request, before) => client.choose({ ...request, context: { ...request.context,
+      question: { ...request.context.question, code: 'missing_effort_estimate' } } }, before);
+    const staged = await tryNumericPendingChoiceRouteV5(new WeeklyPlanningSemanticNormalizerRunV5({ createChatCompletion: async () => { throw new Error('No Luna in trace fixture'); } }, numeric.input), numeric.port);
+    expect(staged?.status).toBe('staged'); expect(wire.context.scope).toEqual(scope);
+    expect(wire.menu.options[2].candidate.tuple.scope).toEqual(scope);
+    expect(JSON.stringify(wire)).not.toContain('private-numeric-provenance-never-trace');
+    const trace = { userId, conversationId, requestId: numeric.input.traceRequestId!, userText: numeric.input.userText,
+      assistantMessage: '確認しました', responseSource: 'ai' as const, outcome: 'discuss', previewCount: 0,
+      debugTraceEvents: takeWeeklyPlanningStableV5DebugTrace(numeric.input.traceRequestId!) };
+    const h = repository(); h.failNext(); setWeeklyPlanningTraceRepositoryForTests(h.port);
+    await recordWeeklyPlanningStableV5TurnTrace(trace);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId, conversationId })).toHaveLength(1);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace({ ...trace, requestId: 'numeric-ancestor-retry', debugTraceEvents: [] });
+    expect(h.writes).toHaveLength(2); expect(listWeeklyPlanningTraceOutboxItems({ userId, conversationId })).toEqual([]);
+    for (const entry of [h.writes[0].entries[0], prepare(h.writes[0]).entries[0]]) {
+      for (const marker of ['山地の教材', '第1章', 'componentChain', 'unitLabel']) expect(JSON.stringify(entry)).toContain(marker);
+      for (const privateValue of ['auth-secret-never-trace', 'private-numeric-provenance-never-trace']) expect(JSON.stringify(entry)).not.toContain(privateValue);
+      expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    }
+    expect(measureWeeklyPlanningTraceJsonBytes(h.writes[0].entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
   });
   it('keeps the whole diagnostic with explicit oversized-menu truncation and server budget', async () => {
     const h = repository(); setWeeklyPlanningTraceRepositoryForTests(h.port);

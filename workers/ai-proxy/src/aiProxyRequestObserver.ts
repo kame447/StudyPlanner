@@ -1,11 +1,11 @@
-import { getUtf8ByteLength } from '../../../shared/aiProxyContract';
+import { getUtf8ByteLength, type ProviderCompletionMetadata } from '../../../shared/aiProxyContract';
 import { isFocusedDecisionContext } from '../../../shared/focusedContextualDecision';
 import type {
   AiRequestMetricPayload,
   AiRequestMetricStatus,
   ObservabilityCorrelation,
 } from '../../../shared/productObservabilityContract';
-import { resolveChatModel } from './modelPolicy';
+import { DEFAULT_GEMINI_OCR_MODEL, resolveChatModel } from './modelPolicy';
 import {
   createAiRequestId,
   isAiRequestObservabilityConfigured,
@@ -35,6 +35,8 @@ export interface AiProxyObservationContext {
   requestBody?:
     | { kind: 'text'; text: string }
     | { kind: 'parsed'; payload: unknown; bytes: number };
+  /** Completion facts projected from the provider response, never from the client body. */
+  providerCompletion?: ProviderCompletionMetadata;
 }
 
 interface FirebaseLookupResponse {
@@ -54,7 +56,6 @@ interface ObservedOperation {
 
 const AI_REQUEST_ID_HEADER = 'X-StudyPlanner-AI-Request-Id';
 const APP_VERSION_HEADER = 'X-StudyPlanner-App-Version';
-const DEFAULT_GEMINI_MODEL = 'gemini-1.5-flash';
 const DEFAULT_TRANSCRIPTION_MODEL = 'gpt-4o-mini-transcribe';
 const OBSERVABLE_PATHS = new Set([
   '/',
@@ -97,6 +98,7 @@ async function resolveFirebaseUid(
       `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
       {
         method: 'POST',
+        redirect: 'manual',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken: token }),
       },
@@ -151,7 +153,8 @@ export function describeAiProxyOperation(
     return 'error' in resolution ? null : {
       operationKind: 'planning_attachment',
       provider: 'openai',
-      purpose: 'weekly_planning_attachment',
+      purpose: isRecord(payload) && payload.purpose === 'material_contents_photo'
+        ? 'material_contents_photo' : 'weekly_planning_attachment',
       phase: 'single',
       model: resolution.model,
     };
@@ -171,7 +174,7 @@ export function describeAiProxyOperation(
       provider: 'gemini',
       purpose: 'timetable_ocr',
       phase: 'single',
-      model: env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL,
+      model: env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_OCR_MODEL,
     };
   }
   return null;
@@ -275,8 +278,11 @@ export async function observeAiProxyRequest(params: {
     : await resolveFirebaseUid(params.request, params.env);
   if (!firebaseUid) return;
 
-  const requestId = validRequestId(params.request.headers.get(AI_REQUEST_ID_HEADER))
-    ?? createAiRequestId();
+  // Each provider invocation owns its event identity; client retries can incur new usage.
+  const requestId = createAiRequestId();
+  const clientRequestId = validRequestId(params.request.headers.get(AI_REQUEST_ID_HEADER));
+  const correlation = resolveAiProxyMetricCorrelation(requestPayload, params.decisionExecutionMode)
+    ?? (clientRequestId ? { requestId: clientRequestId } : undefined);
   const appVersion = params.request.headers.get(APP_VERSION_HEADER)?.trim() || 'unknown';
   const usage = params.usage
     ?? (operation.provider === 'openai' ? parseOpenAiUsage(responsePayload) : null);
@@ -286,10 +292,7 @@ export async function observeAiProxyRequest(params: {
     firestoreTokenProvider: params.firestoreTokenProvider,
     firebaseUid,
     requestId,
-    correlation: resolveAiProxyMetricCorrelation(
-      requestPayload,
-      params.decisionExecutionMode,
-    ),
+    correlation,
     occurredAt: params.occurredAt,
     appVersion,
     operationKind: operation.operationKind,
@@ -301,6 +304,8 @@ export async function observeAiProxyRequest(params: {
     requestBytes,
     responseBytes: getUtf8ByteLength(responseText),
     usage,
+    ...(operation.operationKind === 'chat_completion' && context.providerCompletion
+      ? { providerCompletion: context.providerCompletion } : {}),
     startedAtMs: params.startedAtMs,
     onError: params.onError,
   });

@@ -80,6 +80,8 @@ describe('Todo completed-section disclosure', () => {
 
     expect(disclosure(root).type).toBe('button');
     expect(disclosure(root).props.type).toBe('button');
+    expect(disclosure(root).children[0]).toBe(disclosure(root).findByProps({ className: 'todo-completed-label' }));
+    expect(disclosure(root).findByType('svg').props.className).toContain('chevron-right');
     expect(disclosure(root).props['aria-expanded']).toBe(false);
     expect(completedPanel(root).props.hidden).toBe(true);
     expect(disclosure(root).findByProps({ className: 'todo-section-count' }).children).toEqual([String(count)]);
@@ -95,6 +97,8 @@ describe('Todo completed-section disclosure', () => {
 
     toggleCompleted(root);
     expect(disclosure(root).props['aria-expanded']).toBe(true);
+    expect(disclosure(root).children[0]).toBe(disclosure(root).findByProps({ className: 'todo-completed-label' }));
+    expect(disclosure(root).findByType('svg').props.className).toContain('chevron-down');
     expect(disclosure(root).props['aria-controls']).toBe(controls);
     expect(completedPanel(root).props.hidden).toBe(false);
     expect(titles(completedPanel(root))).toEqual(completed.map((item) => item.title));

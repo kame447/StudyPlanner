@@ -1,3 +1,5 @@
+import { loadWeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionStorage';
+import { durableWeeklyPlanningEnabled, readDurableWeeklyTurnReceipt, clearDurableWeeklyTurnReceipt, cancelDurableWeeklyTurn } from './weeklyPlanningDurableTurnClient';
 import { loadWeeklyPlanningRuntimeModule } from './weeklyPlanningRuntimeModule';
 import { isPlannerDataReadyForOwner } from '../../../domain/plannerDataReadAuthority';
 import { loadAiPlanningChatSnapshot, readAiPlanningChatIndex } from '../chat/aiPlanningChatStore';
@@ -108,7 +110,8 @@ export interface WeeklyPlanningApplication {
   startConversation: () => void;
   exportConversationSnapshot: (options?: { includeEmpty?: boolean }) => WeeklyPlanningStableV5PersistedSession | null;
   loadConversationSnapshot: (snapshot: unknown) => boolean;
-  createDraftBlocks: (blocks: WeeklyPlanDraftBlock[]) => void;
+  /** Returns whether the planning state accepted the new draft blocks. */
+  createDraftBlocks: (blocks: WeeklyPlanDraftBlock[]) => boolean;
   removePreviewCandidate: (candidateId: string) => void;
   removeDraftBlock: (blockId: string) => void;
   clearDraftBlocks: () => void;
@@ -319,6 +322,10 @@ export function useWeeklyPlanningApplication({
       || !sameAiPlanningModuleRecoveryBinding(bindingAtStart, getModuleRecoveryBinding())) {
       return { accepted: false, draftCandidates: [] };
     }
+    // Save the same selected conversation before accepting remote work, including its first turn.
+    if (durableWeeklyPlanningEnabled() && chat.checkpoint().status !== 'saved') {
+      return { accepted: false, draftCandidates: [] };
+    }
     return submitWeeklyPlanningApplicationTurn({
       session,
       userId,
@@ -336,9 +343,11 @@ export function useWeeklyPlanningApplication({
       timetableTerm,
       timetableTerms,
       plannerDataAvailability,
+      isPlannerDataSnapshotCurrent: isBoundPlannerDataCurrent,
       weekStartsOn,
       getState: getPlanningState,
       dispatch: dispatchAndPersist,
+      isApplicationCurrent: () => applicationActiveRef.current && chatPortsRef.current.ownerId === ownerId,
     });
   }
 
@@ -477,6 +486,52 @@ export function useWeeklyPlanningApplication({
     }) };
   }
   const chat = chatRef.current.session;
+  const recoveringDurableRequest = useRef<string | null>(null);
+  useEffect(() => {
+    if (!durableWeeklyPlanningEnabled() || !userId || chat.requiresInitialization || !isPlanningStateReady()) return;
+    const session = controllerSessionRef.current;
+    const receipt = readDurableWeeklyTurnReceipt(userId);
+    if (!session || !receipt || receipt.pending.conversationId !== session.conversationId) return;
+    const current = getPlanningState();
+    if (current.pendingTurn || current.pendingApproval || recoveringDurableRequest.current === receipt.pending.requestId) return;
+    if (receipt.cancelRequested) {
+      recoveringDurableRequest.current = receipt.pending.requestId;
+      void cancelDurableWeeklyTurn(userId, receipt.pending.requestId).finally(() => {
+        if (recoveringDurableRequest.current === receipt.pending.requestId) recoveringDurableRequest.current = null;
+      });
+      return;
+    }
+    if (current.revision > receipt.pending.baseRevision) {
+      // A persisted newer state owns the conversation. Never apply the old reply twice.
+      const saved = loadWeeklyPlanningStableV5PersistedSession({ ownerId: userId, weekStartDate: current.weekStartDate });
+      if (saved?.conversationId === receipt.pending.conversationId
+        && saved.planningState.revision >= receipt.pending.baseRevision + 2
+        && chat.checkpoint().status === 'saved') {
+        clearDurableWeeklyTurnReceipt(userId, receipt.pending.requestId);
+      }
+      return;
+    }
+    if (current.revision !== receipt.pending.baseRevision || current.weekStartDate !== receipt.pending.weekStartDate
+      || JSON.stringify(current.intakeState) !== JSON.stringify(receipt.snapshot.intakeState)
+      || !isPlannerDataReadyForOwner(plannerDataAvailability, userId)) return;
+    recoveringDurableRequest.current = receipt.pending.requestId;
+    const original = receipt.payload.input;
+    void submitWeeklyPlanningApplicationTurn({
+      session, userId, ownerId, userText: original.userText, supplementalContext: original.supplementalContext,
+      selectedStarterTarget: original.selectedStarterTarget, selectedDate: original.selectedDate,
+      plans: original.plans, monthEvents: original.monthEvents, actuals: original.actuals,
+      studyMaterials: original.studyMaterials, scheduleTemplates: original.scheduleTemplates,
+      timetableTermId: original.timetableTermId, timetableTerm: original.timetableTerm, timetableTerms: original.timetableTerms,
+      plannerDataAvailability, weekStartsOn: original.requestContext.weekStartsOn,
+      timeZone: original.requestContext.timeZone, resumePending: receipt.pending,
+      getState: getPlanningState, dispatch: dispatchAndPersist,
+      isApplicationCurrent: () => applicationActiveRef.current && chatPortsRef.current.ownerId === ownerId,
+    }).catch(() => undefined).finally(() => {
+      if (recoveringDurableRequest.current === receipt.pending.requestId) recoveringDurableRequest.current = null;
+    });
+  }, [chat, chatRevision, userId, ownerId, planningState, isPlanningStateReady, plannerDataAvailability,
+    getPlanningState, dispatchAndPersist]);
+
   useEffect(() => {
     if (!chat.dirty || typeof window === 'undefined' || !window.addEventListener) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
@@ -495,17 +550,28 @@ export function useWeeklyPlanningApplication({
     getModuleRecoveryBinding,
     checkpointForModuleReload,
     submitTurn,
-    cancelTurn: () => cancelWeeklyPlanningControlledTurn({
-      getState: getPlanningState,
-      dispatch: dispatchAndPersist,
-    }),
+    cancelTurn: () => {
+      const pending = getPlanningState().pendingTurn;
+      const cancelled = cancelWeeklyPlanningControlledTurn({ getState: getPlanningState, dispatch: dispatchAndPersist });
+      if (cancelled && pending && userId && durableWeeklyPlanningEnabled()) {
+        recoveringDurableRequest.current = pending.requestId;
+        void cancelDurableWeeklyTurn(userId, pending.requestId).finally(() => {
+          if (recoveringDurableRequest.current === pending.requestId) recoveringDurableRequest.current = null;
+        });
+      }
+      return cancelled;
+    },
     clearConversation,
     appendMessage: (message) => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'append_message', message }); },
     resetSession,
     startConversation,
     exportConversationSnapshot,
     loadConversationSnapshot,
-    createDraftBlocks: (blocks) => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'add_draft_blocks', blocks }); },
+    createDraftBlocks: (blocks) => {
+      if (chat.requiresInitialization) return false;
+      const before = getPlanningState();
+      return dispatchAndPersist({ type: 'add_draft_blocks', blocks }) !== before;
+    },
     removePreviewCandidate: (candidateId) => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'remove_preview_candidate', candidateId }); },
     removeDraftBlock: (blockId) => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'remove_draft_block', blockId }); },
     clearDraftBlocks: () => { if (!chat.requiresInitialization) dispatchAndPersist({ type: 'clear_draft_blocks' }); },

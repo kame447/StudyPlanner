@@ -1,7 +1,7 @@
 # Repository tooling operations runbook
 
 Status: current repository-wide operational guide
-Updated: 2026-10-10
+Updated: 2026-10-18
 
 This document stores durable operational knowledge about repository tooling, GitHub/CI integration failures, recurring tool limitations, and verified workarounds.
 
@@ -31,6 +31,38 @@ Each durable entry should record:
 - Last verified date
 
 Do not record credentials, secret values, access tokens, private user data, or raw sensitive logs here.
+
+## Admin Logs: authenticated diagnostic drill-down
+
+Last reviewed: 2026-10-16. The authenticated Admin Logs session listing was observed on the live Pages site. A listed entry count alone was not a successful detail retrieval; an actual mobile failure's cause cannot be inferred from this index.
+
+### Operation and supported procedure
+
+When a user reports a failed weekly-planning conversation, open the production Admin Console at `https://laplance.com/admin/logs` in an administrator-authorized browser (historical Pages origin: `https://studyplannner.pages.dev/admin/logs`). Match date/time and conversation to its session ID. Expand the session row and wait until detailed entries finish loading. Check indexed-range, missing/unreadable entry, pagination and byte-limit indicators. Open `Redacted detail` for individual entries; when needed, download `Session Debug Bundle` or a targeted `Request Bundle` (bounded, redacted JSON). Correlate session, request ID, event type, timestamp, state revision, outcome, failure classification and preceding successful stage. Distinguish AI interpretation/renderer failures, validation, state commit/persistence and background resume. Do not infer causes from the generic message shown to a user.
+
+### Established data-access boundary
+
+`src/components/AdminLogsPage.tsx` owns session expansion/detail/export controls. `src/services/adminObservabilityService.ts` queries the Worker via authenticated `GET /observability/admin/logs` (session index), `GET /observability/admin/log-entries?session=...` (detailed entries) and `GET /observability/admin/debug-bundle?session=...` (bounded export; optional `request` filter). Administrator/trace-reader authorization is checked by `workers/ai-proxy/src/productObservabilityAdminApi.ts` and the diagnostic adapter. Use this read path rather than unscoped data scans. `entryCount` and `turnCount` are indexed metadata, not proof that the corresponding details were retrieved or complete; missing entries/truncation must be reported. Debug Bundle exports have no built-in audit history.
+
+### Browser automation and prior failure mode
+
+Past investigations attempted headless Brave/Playwright with Chrome DevTools Protocol (CDP) for Admin Logs. CDP is a browser-control interface, not authorization. An AppleScript `execute javascript` permission failure does not imply that all browser controls or Admin Logs are unavailable. Prefer the existing legitimately signed-in graphical browser through supported controls. If using Playwright/CDP, obtain a fresh administrator-authorized browser session through the normal interactive login flow. Never duplicate or extract a user's browser profile, IndexedDB/session stores, cookies, tokens or Authorization headers to manufacture a second logged-in session. Never weaken origin checks or admin authentication. If the browser-control tool cannot operate an authorized session, ask the administrator to export the redacted session/request Debug Bundle and provide it for analysis. Do not repeat an unchanged failed control path or claim success from an index-only read.
+
+### Verification and cleanup
+
+Verify that the expected per-request entries actually arrived and that any read gaps/pagination/truncation were accounted for; otherwise classify the result as incomplete. Record the exact code/deployment version under investigation and distinguish observed cause from hypothesis. Keep only minimally necessary redacted diagnostics in authorized incident records and avoid publishing raw user content or secrets. Remove temporary export copies after authorized use.
+
+---
+
+## Bounded live-model evaluation when workflow dispatch is unavailable
+
+Verified execution on 2026-10-14 for [PR #637](https://github.com/kame447/StudyPlanner/pull/637), [run 38505480239](https://github.com/kame447/StudyPlanner/actions/runs/38505480239). The connector exposed workflow reads and reruns but no dispatch; the server CLI and cloud browser had no authenticated session. This is a capability gap, not a permission denial. Use this fallback only with explicit authorization for the API call and the temporary repository workflow; never use it after a reviewer/access denial.
+
+The one-shot workflow reused `observe:weekly-ai:conversation:turn` and the existing `OPENAI_API_KEY` secret, scoped to its execution step. It used one fixed synthetic utterance, an empty checkpoint, the existing four-request process ceiling, no new credentials and only `contents: read`; checkout did not persist credentials. Branch/path, repository-owner, first-attempt and dedicated-commit guards limited execution. An exact parent/source check preceded secret use. There were no automatic retries or changes to another owner's branch/workflow. Artifact upload was conditional on checking that the secret value was absent from output files; only synthetic data was used.
+
+The first attempt passed with two API calls, one nonempty AI reply and no plan save. Check the exact head/inputs, job steps, downloaded artifact digest and purpose-level call metrics rather than treating a green workflow alone as a model result. This smoke does not prove Durable Object transport or a full approved-and-saved conversation.
+
+Cleanup must use a normal same-branch commit to remove the temporary file, followed by current-tree read-back and exact diff comparison; do not leave a recurring test trigger or grant a workflow write permission just to delete itself. A denied/cancelled cleanup must be reported and resolved through the owner, not bypassed through another tool. In this first occurrence, deletion-commit creation returned `user cancelled MCP tool call`; execution paused until the owner re-supplied the original authorization. One identical retry succeeded. Cleanup commit `dcb8a2b28ed5fe76c644016b24b7211491eab909` deletes only the temporary workflow and restores exactly the original `c3e218638c61f3e7fd3e2036aceb017f228b9384` tree. Both remote ref and fetched current-tree absence were verified. The original Completion-Based Evaluation workflow is unchanged.
 
 ---
 
@@ -172,6 +204,27 @@ The earlier [mobile job 113959448876](https://github.com/kame447/StudyPlanner/ac
 
 All four new containers reached their real browser tests; the Chromium job completed 68 tests with one pre-existing conditional skip and successfully uploaded artifacts and saved the npm cache. Setup success alone is not full acceptance: require the final four project results, aggregate gate, visual and applicable CI results recorded in PR #575. Preserve test selection, assertions, retries, timeouts and failure propagation. New hosted jobs still download/start fresh containers; this is not a persistent shared test machine. No new secret, elevated workflow permission, custom cache service or temporary cleanup workflow is required. Update image and runner pins together and revalidate when upgrading.
 
+
+### PR #575 integration after mobile sharding (2026-10-18; local candidate)
+
+- The active work remains [PR #575](https://github.com/kame447/StudyPlanner/pull/575), branch `ci/prebaked-playwright-matrix`. Its original head `3461cc10` is being normally merged with main `a0648817`; this is the same container-setup task, not a replacement PR. The historical four-leg result above is not acceptance of this newer composition.
+- Restore only the original official `mcr.microsoft.com/playwright:v1.64.0-noble` container, numeric user 1001 and removal of the cross-browser browser/OS install step. Keep the isolated `@playwright/test@1.64.0` installation and manifest checks; the image supplies browsers/system libraries, not the project's test package. Keep the image and runner versions aligned when updating either.
+- Preserve main's 35-minute project budget, three unsharded desktop projects plus two WebKit mobile shards from #760, exact single-spec unsharded dispatch, shard listing preflight, artifact names, permissions, concurrency and fail-closed aggregate. The independent visual job still installs Chromium on its original host.
+- Local verification is limited to related workflow/shard contracts, duplicate-key-rejecting YAML structure, unchanged-main boundary and shell syntax. Current five-leg container startup, non-root checkout/cache/build/artifact permissions and browser execution require fresh authorized CI. No new container capability, host IPC, secret or permission is added. This local candidate is not a measured speed improvement or a fix for timeouts inside test actions.
+- Next: independently review the exact diff; only after publication approval, update the existing PR with a normal merge commit and inspect its actual synthetic checkout, all five cross-browser legs, visual job and aggregate. Keep failed/cancelled prerequisites distinct from application failures and do not replace missing current execution with the historical results.
+
+## CI follows content changes rather than Ready-for-review metadata
+
+- Observed: PR #672 ran [CI 38687785373](https://github.com/kame447/StudyPlanner/actions/runs/38687785373) and, after becoming Ready, [CI 38691256016](https://github.com/kame447/StudyPlanner/actions/runs/38691256016). Both checked out merge `62fec2de835a14fc3e49f280ed6d313a9d12e7a4` and passed 9,030 tests. Draft PRs already run the same full `verify` job on content events; Ready does not enable extra tests or permissions.
+- Trigger contract: `ci.yml` subscribes to PR `opened`, `synchronize`, and `reopened`, plus `push` to `main` and explicit `workflow_dispatch`. Changing a PR from draft to Ready is not a new code-verification request. All verification steps, the `verify` check name, timeouts, permissions and content-run concurrency remain unchanged.
+- This is event ownership, not cached approval. The two observed runs used different runner-image versions despite their identical merge commit. Do not infer that identical head/tree alone permits reusing a full result in a different environment. External dependency advisories can also change independently of source.
+- No `edited` trigger, conditional `verify` skip, alternate success gate or metadata-only job is added. Title/body edits and Ready transitions therefore do not create a replacement green `verify` or cancel an in-progress content run through this workflow.
+- **Retargeting limitation:** automatic verification after changing only a PR's base branch remains unsupported. A PR first opened against another base may have no applicable `main` CI. Before merging a retargeted PR, establish a normal `reopened` or `synchronize` run against `main` and inspect its actual merge checkout and terminal result. A Ready transition is not a fallback. Do not use a missing check, an old-head result or a manual branch-head run as proof of the new synthetic merge. If no suitable run exists, stop the merge and arrange explicitly authorized verification.
+- A base branch advancing without a PR head update also does not become a new PR trigger here. Preserve the existing pre-merge exact-integration check: reconcile the current base, verify the resulting integration content and inspect applicable gates. Keep the independent post-merge `main` push verification. This change does not authorize merging stale integration evidence.
+- Local acceptance: the verification-command contract test rejects the former Ready trigger, preserves the content triggers/main push/manual entry, and checks that no job skip or concurrency substitution was introduced. YAML structure and the exact diff must show only removal of `ready_for_review` from the workflow.
+- **GitHub event acceptance is still pending:** on an authorized reviewable PR, confirm that draft opening runs full CI; unchanged-head Ready and title/body edits do not start another CI or cancel the existing run; a head update and reopening still run full CI. Verify the check name and exact checkout. Do not create a test-only PR, dispatch CI or toggle an existing PR solely for this exercise without authorization.
+- Cross-browser setup is a separate existing task in [PR #575](https://github.com/kame447/StudyPlanner/pull/575), `ci/prebaked-playwright-matrix`. That candidate removes repeated OS/browser installation using an official Playwright image. Do not create a parallel browser-install change or copy its old timeout/test selection over current `main`. This trigger change leaves all browser workflows, projects and assertions untouched.
+
 ## Miniflare requests sample `cf` metadata during Worker type generation
 
 - Last verified: 2026-10-07 with Wrangler 4.143.1, Miniflare 5.20260926.1-alpha and workerd 1.20260926.1.
@@ -214,6 +267,13 @@ Prefer updating an existing entry when the new evidence is the same failure clas
 - Local tooling checks and an import check for unstable_dev do not establish remote-provider evaluation quality. No paid/live Jev evaluation or holdout consumption is implied by this update. Earlier 4.140.0 execution records remain historical evidence, not current launch instructions
 - Do not lower the dependency audit threshold, omit dev dependencies, or disable certificate verification to hide a tooling vulnerability
 
+
+## Firestore Rules deployment privileges and pins
+
+- Issue #715: `.github/workflows/deploy-firestore-rules.yml` runs emulator regression in a `test` job with only `contents: read`. Only the dependent `deploy` job grants `id-token: write` for the existing WIF identity; it installs no npm dependencies and runs only the Node built-in-only Rules API deployment and read-back scripts. Its actions use full commit SHAs and setup-node's package-manager cache is disabled.
+- Firebase CLI `15.34.0` was the registry's stable `latest` on 2026-10-17; its Node engine includes `.node-version`'s 22.23.0 and its emulator requires Java 21. It is an exact devDependency in private `tools/firebase-tools`, with its own lockfile and Dependabot entry. Install with `npm ci --prefix tools/firebase-tools --ignore-scripts`; the npm test/manual deploy commands use that local CLI and fail with an installation hint if missing. Production deployment uses WIF above.
+- The isolated CLI still includes unpatched `braces` ([GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)). Previously the same chain was fetched unpinned in a job with OIDC permission; now it runs only in the unprivileged test job against the demo emulator project. Keep the app's dependency graph and high-severity audit unchanged; do not suppress the advisory or force an incompatible watcher override. Review upstream CLI updates through Dependabot.
+- A merge changing this workflow triggers production deployment even with unchanged rules. Preserve the WIF settings, serialized concurrency, repository guard, production ruleset read-back and repository SHA-256 comparison; unchanged `firestore.rules` must deploy identical content. Do not dispatch production deployment merely to verify job isolation.
 
 ## Temporary Firestore Node transport security pin
 
@@ -269,3 +329,58 @@ Verified 2026-10-06 for Issue #497. A newly published audit entry can fail an un
 Run `node scripts/ci/worker-image-toolchain.mjs` after a clean install. It resolves Sharp from the actual Miniflare location, checks native versions, decodes benign SVG, resizes/transcodes PNG/JPEG/WebP, exercises local Miniflare Images info/transform/output and rejects malformed data. No remote binding or production configuration is used. Miniflare 5 requires its exported `convertV4MiniflareOptions` adapter for the older options shape; its bundled README alone is not sufficient evidence of the installed constructor contract.
 
 This override protects the repository-installed toolchain, not an independently downloaded `npm exec --package=wrangler` installation. Existing remote JEV launchers' external toolchain path is not exercised or certified by this fix. Prefer the verified lockfile installation; any separately installed toolchain needs its own dependency validation before use. The production app/Worker has no Images binding or direct Sharp import; this does not establish exploitation or guarantee every external toolchain is patched. Existing moderate Vitest advisories remain separately tracked.
+
+
+### Bounded manual WebKit spec verification
+
+When the existing 35-minute mobile matrix expires before a changed spec runs, a successful unrelated case is not evidence for that spec. Do not relabel the cancelled full matrix as passed or repeat the whole matrix without changed conditions.
+
+The existing UI Regression Matrix workflow accepts an optional `spec` filename on a manual dispatch. A nonempty value selects only `webkit-mobile` and one exact existing regular `tests/e2e/*.spec.mjs` file. For example, `yearly-quick-entry.spec.mjs` collects the three yearly regressions on the yearly feature revision. The filename is passed through an environment variable and a quoted Bash array after validation; paths, shell fragments, regex patterns, symlinks and missing files are rejected. An unmatched project selection remains a Playwright error, never a successful empty run.
+
+This manual selection produces `targeted-webkit` and `targeted-webkit-summary` check names and `ui-targeted-webkit*` artifacts. Targeted dispatches use a separate same-ref concurrency group, so they cannot cancel a standard main-push or full manual Matrix run. Their PR summary has a separate diagnostic-only identity; missing or mixed Matrix job identities preserve existing summaries rather than overwriting a full result. It does not replace the normal `cross-browser-smoke` gate. Preserve the full-matrix cancellation separately and attach the exact checkout SHA, source/tree identity, targeted test results and images to the owning release receipt. The ordinary pull-request/push matrix, blank-spec manual dispatch, permissions, concurrency, 35-minute limit, assertions and retry policy remain unchanged. A nonempty spec takes precedence over the visual/all suite selector so the bounded request never silently runs another suite instead.
+
+Publication and execution still require the applicable repository authorization. Updating a feature branch can trigger its ordinary automatic CI; a subsequent manual dispatch requests only the selected spec and must not be described as a full-suite success. Before dispatch, read back the exact published head and wait for the automatic UI workflow started by that publication to be terminal. Also check for any active run in the selected scope’s concurrency group: `ui-targeted-webkit-${{ github.ref }}` for a targeted dispatch, or `ui-regression-${{ github.ref }}` for a standard run. The retained `cancel-in-progress: true` can replace an older same-ref run within that scope. Record the observed run IDs, terminal states and ref before the manual dispatch. Do not cancel an unrelated running job as part of this operation.
+
+## Local Vite build test fails under a symlinked macOS TMPDIR
+
+- Operation / symptom: `scripts/admin-entry-preload.test.mjs` ("keeps native lazy imports and CSS gating in real Vite output without preloading the Admin entry") fails during local `npm run verify` on macOS; Linux CI passes.
+- Known error signature: `RollupError: [vite:build-html] The "fileName" or "name" properties of emitted chunks and assets must be strings that are neither absolute nor relative paths, received "../../../../../../private/var/folders/…/index.html"`.
+- Root cause: the test builds inside `os.tmpdir()`. On macOS that is `/var/folders/…`, a symlink to `/private/var/folders/…`. Vite's root keeps the symlinked path while the HTML module id is the real path, so the emitted HTML name is a `../` path escaping the root.
+- Safe workaround: until [PR #745](https://github.com/kame447/StudyPlanner/pull/745) ([Issue #744](https://github.com/kame447/StudyPlanner/issues/744)) is on main, run local verification with `TMPDIR` set to the real path, e.g. ``TMPDIR=$(node -p "require('fs').realpathSync(require('os').tmpdir())") npm run verify``.
+- Required permissions / preconditions: none.
+- What not to do: do not edit the test's assertions or Vite config to make it pass; do not treat the local failure as a CI failure.
+- Verification / cleanup: `npm run test:run -- scripts/admin-entry-preload.test.mjs` passes with the real-path `TMPDIR` (4/4); after PR #745 it must pass with the default `TMPDIR`. Reproduced on untouched main `8261300b`.
+- Last verified: 2026-10-18
+
+## Browser Regression Chromium shard cancelled at its 30-minute limit
+
+- Operation / symptom: a Browser Regression `chromium (shard N/2)` job ends `cancelled` with `##[error]The operation was canceled.`; the aggregate `chromium` check then fails.
+- Known error signature: shard duration ≈30 min (`timeout-minutes: 30` in `.github/workflows/browser-regression.yml`); the shard log's `Running N tests using 1 worker` total is never reached.
+- Root cause or strongest current explanation: runner slowness against the job limit. Before [Issue #757](https://github.com/kame447/StudyPlanner/issues/757) the whole suite ran in one job; at ≈890 tests it was cancelled on main itself (`b91ef7b5`, 30.4 min), and Playwright's file order meant the same alphabetical tail never ran: every `weekly-*` spec, `workspace-load-recovery` and `yearly-quick-entry` (2026-10-18, four cancelled attempts at two #382 heads executed 784–817 of 889–893 tests, 0 failed). #757 splits the run into two Playwright shards with the same limit, worker count and tests; a wrapper preflight fails a shard whose listing is empty, because Playwright 1.64 otherwise passes an empty shard.
+- Safe workaround: a cancelled shard is missing evidence, not a pass. "0 failed before cancellation" says nothing about the tests it never reached. Rerun that shard job once on the same commit; merge only on a completed run of both shards.
+- Required permissions / preconditions: permission to rerun workflow jobs.
+- What not to do: do not merge on a cancelled shard; do not rerun repeatedly without new evidence (repeat-action guard); do not drop tests, raise the limit or add `--pass-with-no-tests` to avoid the timeout. Do not confuse this with `cancel-in-progress` replacement by a newer run of the same ref, which is not a timeout.
+- Verification / cleanup: the rerun must complete within the limit with all of its tests passing; if the same commit times out again, stop and investigate (for example, whether one shard has become too large and the shard count needs review).
+- Last verified: 2026-10-18
+
+## UI Regression Matrix webkit-mobile job cancelled at its 35-minute limit
+
+- Operation / symptom: a `cross-browser-projects (webkit-mobile) (shard N/2)` job ends `cancelled` after about 35 minutes and the `cross-browser-smoke` aggregate turns red.
+- Known error signature: shard duration ≈35 min (`timeout-minutes: 35` in `.github/workflows/ui-regression.yml`), `##[error]The operation was canceled.`, and the shard log's total is never reached.
+- Root cause or strongest current explanation: runner slowness against the job limit. Before [Issue #759](https://github.com/kame447/StudyPlanner/issues/759), the whole WebKit mobile suite ran in one job: PR #743 run 39078814033 at `f87c17ab` and PR #755 run 39078828235 at `4e2f53d8` both stopped after 343 of 448 tests with 0 failures, leaving about 100 tests unexecuted. #759 splits only the full WebKit mobile leg into two Playwright shards with unchanged limits, workers, retries and coverage; the shared wrapper preflight rejects an empty shard listing because Playwright 1.64 otherwise passes it. The other three projects and manual single-spec WebKit dispatch remain unsharded.
+- Safe workaround: a cancelled shard is missing evidence, not a pass. “0 failed before cancellation” says nothing about tests it never reached. Rerun that shard job once on the same commit; merge only after both mobile shards and every other project complete successfully. For a specific spec, the targeted WebKit dispatch above provides diagnostic evidence without replacing the full gate.
+- Required permissions / preconditions: none to read logs; permission to rerun workflow jobs.
+- What not to do: do not merge on a cancelled shard, substitute main's cancellation or a targeted pass for full coverage, rerun repeatedly without new evidence (repeat-action guard), raise the 35-minute limit, drop tests or add `--pass-with-no-tests`. Distinguish a timeout from replacement by a newer run in the same concurrency group.
+- Verification / cleanup: require every project leg and both nonempty mobile shards to pass, with the two shard listing totals summing to the full `--list --project=webkit-mobile` total. If the same commit times out again, stop and investigate shard balance or runner setup instead of treating the partial run as success.
+- Last verified: 2026-10-18
+
+## bundle-budget fails on main and on every PR (repository-wide overrun)
+
+- Operation / symptom: the UI Quality Automation `bundle-budget` job fails on main and on all PRs.
+- Known error signature: `scripts/ci/check-bundle-budget.mjs` reports violations such as JavaScript totalRaw ≈2.58 MB against the 2,265,000-byte limit; 8 metrics are over on main `a39defd8` (2026-10-17).
+- Root cause or strongest current explanation: accumulated application code, not a dependency update. With the same installed dependencies, controlled historical builds first exceed the JavaScript total limits at `ee815b47` (#566); its predecessor `9f0e0911` is within all limits; other metrics cross later (#610, #634, #653, #674). Analysis: [Issue #321](https://github.com/kame447/StudyPlanner/issues/321).
+- Safe workaround: judge a PR by its own delta against the main baseline artifact of the same run date (e.g. PR #717 `c8c32d12` → `da83eeda`: JS +1,798 B raw / +585 B gzip, CSS ±0) and record it in the PR.
+- Required permissions / preconditions: none.
+- What not to do: do not raise thresholds, weaken the guard or remove features to make it pass; any budget-policy change needs a human decision (#321).
+- Verification / cleanup: return to normal threshold judgement once a reviewed improvement lands on main.
+- Last verified: 2026-10-18

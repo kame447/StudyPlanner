@@ -1,3 +1,4 @@
+import { PROVISIONAL_ALLOCATION_NEED_FIELDS_V5 } from '../intake/weeklyPlanningProvisionalTimeboxStateV5';
 import {
   readWeeklyPlanningProvisionalTimeboxStateV5,
   WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_MINUTES_V5,
@@ -60,10 +61,17 @@ export function resolveWeeklyPlanningProvisionalTimeboxV5(params: {
   directive: WeeklyPlanningContextualDirectiveV5 | null | undefined;
   previousState: unknown;
   currentCompilation: GenericSchedulerInputCompilationResult;
+  graph?: WeeklyPlanningGenericSchedulerGraphView;
   graphRevision: number;
   turnId: string;
 }): WeeklyPlanningProvisionalTimeboxResolutionV5 {
   const currentMissing = currentMissingEffortWorkloadFactIds(params.currentCompilation);
+  // Clock allocations can also represent known open-ended tasks with no counted work.
+  for (const task of params.graph?.tasks ?? []) {
+    if (!taskHasAnyWorkload(params.graph!, task.id) && !taskHasHardFixedInterval(params.graph!, task.id)) {
+      currentMissing.push(`wptb_${task.id}`);
+    }
+  }
   if (params.directive?.kind === 'provisional_timebox') {
     const state = stateForAuthorization({
       workloadFactIds: currentMissing,
@@ -154,7 +162,7 @@ export function projectWeeklyPlanningProvisionalTimeboxGraphV5(params: {
   graph: WeeklyPlanningGenericSchedulerGraphView;
   resolution: WeeklyPlanningProvisionalTimeboxResolutionV5;
 }): WeeklyPlanningGenericSchedulerGraphView {
-  if (!params.resolution.source || params.resolution.workloadFactIds.length === 0) {
+  if (!params.resolution.source || !params.resolution.state || params.resolution.workloadFactIds.length === 0) {
     return params.graph;
   }
   const projectedIds = new Set(params.resolution.workloadFactIds);
@@ -173,6 +181,20 @@ export function projectWeeklyPlanningProvisionalTimeboxGraphV5(params: {
       : workload);
   return {
     ...params.graph,
+    // Completion-estimate needs are irrelevant to an explicitly authorized timebox,
+    // but remain in the canonical graph. Unrelated ambiguity still blocks planning.
+    uncertainties: params.graph.uncertainties.filter((need) => {
+      if (!(PROVISIONAL_ALLOCATION_NEED_FIELDS_V5 as readonly string[]).includes(need.field)
+        || !need.targetFactId || need.createdRevision > params.resolution.state!.authorizedAtGraphRevision) return true;
+      if (projectedIds.has(need.targetFactId)) return false;
+      const targetWorkload = params.graph.workloads.find(w => w.id === need.targetFactId);
+      const scoped = params.graph.workloads.filter(w => targetWorkload
+        ? w.taskId === targetWorkload.taskId && w.componentId === targetWorkload.componentId
+        : w.taskId === need.targetFactId || w.componentId === need.targetFactId);
+      const schedulable = scoped.filter(w => w.quantityRole !== 'completed' && w.quantityRole !== 'scope_total');
+      if (schedulable.length > 0 && schedulable.every(w => projectedIds.has(w.id))) return false;
+      return !projectedIds.has(`wptb_${need.targetFactId}`);
+    }),
     workloads: [
       ...workloads,
       ...provisionalTaskWorkloads(params),

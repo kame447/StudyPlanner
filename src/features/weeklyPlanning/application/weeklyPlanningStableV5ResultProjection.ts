@@ -47,7 +47,7 @@ function previousTurnMayHoldPreview(
     );
 }
 
-function withRepairSafePreview(
+export function withRepairSafePreview(
   input: ExecuteWeeklyPlanningStableV5RuntimeTurnInput,
   result: WeeklyPlanningTurnExecutionResult,
 ): WeeklyPlanningTurnExecutionResult {

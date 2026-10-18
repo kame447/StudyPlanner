@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import type { WeeklyPlanningPersonalizationProfileState } from '../features/weeklyPlanning/personalization/useWeeklyPlanningPersonalizationProfile';
 import type { WeeklyPlanningTracePolicyState } from '../features/weeklyPlanning/trace/useWeeklyPlanningTracePolicy';
+import { getInquiryDraft } from '../services/inquiryDraft';
 import { createAuthSessionService } from '../services/authSession';
 import { createFakeAuthSession } from '../test/fakeAuthSession';
 import { InitialPrivacyConsentScreen } from './InitialPrivacyConsentScreen';
@@ -12,18 +13,23 @@ import { RootManagedAuthenticationProvider } from './RootManagedAuthenticationCo
 import { RootStartupReadyProvider } from './RootStartupReadyContext';
 import { SplashScreen } from './SplashScreen';
 import { StartupSurface } from './StartupSurface';
+import { LegalPage } from './LegalPage';
 import { LaplanceAppRoot } from './LaplanceAppRoot';
 
 const state = vi.hoisted(() => ({
+  bootstrapMount: vi.fn(),
+  bootstrapUnmount: vi.fn(),
   traceEnabled: true,
   reducedMotion: true,
   policy: {} as WeeklyPlanningTracePolicyState,
   personalization: {} as WeeklyPlanningPersonalizationProfileState,
 }));
 
+vi.mock('../hooks/useThemePreference', () => ({ useThemePreference: vi.fn() }));
 vi.mock('../services/authSession', () => ({ createAuthSessionService: vi.fn() }));
 vi.mock('../App', async () => {
   const { useEffect } = await import('react');
+  const { PublicPageLink } = await import('./PublicPageLink');
   const { useRootManagedAuthentication } = await import('./RootManagedAuthenticationContext');
   const { useRootStartupReady } = await import('./RootStartupReadyContext');
   return { default: () => {
@@ -32,10 +38,16 @@ vi.mock('../App', async () => {
     // Only the login surface settles itself. Authenticated tests still own their
     // explicit readiness signal, so this probe cannot bypass data gates.
     useEffect(() => { if (managedAuthentication) ready?.(); }, [managedAuthentication, ready]);
-    return null;
+    return <PublicPageLink href="/contact">Contact</PublicPageLink>;
   } };
 });
-vi.mock('./PlannerAppBootstrap', () => ({ PlannerAppBootstrap: ({ children }: any) => children({}, () => {}) }));
+vi.mock('./PlannerAppBootstrap', async () => {
+  const { useEffect } = await import('react');
+  return { PlannerAppBootstrap: ({ children }: any) => {
+    useEffect(() => { state.bootstrapMount(); return state.bootstrapUnmount; }, []);
+    return children({}, () => {});
+  } };
+});
 vi.mock('../features/userPlanningContext/UserPlanningContextContext', () => ({
   UserPlanningContextProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -82,6 +94,7 @@ describe('LaplanceAppRoot', () => {
 
   afterEach(() => {
     act(() => renderer?.unmount());
+    getInquiryDraft().dispose();
     vi.unstubAllGlobals();
   });
 
@@ -314,8 +327,85 @@ describe('LaplanceAppRoot', () => {
   it.each(['/terms', '/privacy', '/contact'])('bypasses root gating on %s', (pathname) => {
     vi.stubGlobal('window', { location: { pathname } });
     mount();
-    expect(renderer.root.findAllByType(App)).toHaveLength(1);
+    expect(renderer.root.findAllByType(LegalPage)).toHaveLength(1);
+    expect(renderer.root.findAllByType(App)).toHaveLength(0);
     expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(0);
+    if (pathname !== '/contact') expect(fake.session.subscribe).not.toHaveBeenCalled();
+  });
+
+  function navigableBrowser(pathname = '/') {
+    const listeners = new Map<string, Set<() => void>>();
+    const location = { pathname };
+    const history = { state: null, pushState: vi.fn((_state, _title, path) => { location.pathname = path; }) };
+    vi.stubGlobal('window', { location, history, matchMedia: () => ({ matches: state.reducedMotion }),
+      addEventListener: (name: string, callback: () => void) => {
+        if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name)!.add(callback);
+      },
+      removeEventListener: (name: string, callback: () => void) => listeners.get(name)?.delete(callback),
+      dispatchEvent: (event: Event) => { [...listeners.get(event.type) ?? []].forEach(callback => callback()); },
+    });
+  }
+  function clickLink(href: string) {
+    act(() => renderer.root.findAllByType('a').find(link => link.props.href === href)!.props.onClick({
+      button: 0, preventDefault: vi.fn(),
+    }));
+  }
+
+  it('retains the authenticated app, auth listener and completed intro on contact round-trip', async () => {
+    navigableBrowser(); state.policy.status = 'accepted';
+    state.personalization.profile = {
+      schemaVersion: 2,
+      weekStartsOn: { value: 'monday', origin: 'user_confirmed', confidence: 'confirmed', scope: { kind: 'global' }, updatedAt: '2026-10-13T00:00:00Z' },
+      subjectEstimateMultipliers: {},
+      placementModel: { featureVersion: 'placement-features-v1', weightVersion: 'placement-weights-v1', parameters: {} },
+      updatedAt: '2026-10-13T00:00:00Z',
+    };
+    fake = createFakeAuthSession({ currentUser: verifiedUser });
+    vi.mocked(createAuthSessionService).mockReturnValue(fake.session);
+    mount();
+    act(() => renderer.root.findAllByType(RootStartupReadyProvider).slice(-1)[0].props.onReady());
+    const app = renderer.root.findByType(App);
+    const startup = renderer.root.findByType(StartupSurface);
+    expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(0);
+    expect(fake.session.subscribe).toHaveBeenCalledTimes(1);
+    await act(async () => { clickLink('/contact'); await vi.dynamicImportSettled(); });
+    expect(renderer.root.findByType(App)).toBe(app);
+    expect(renderer.root.findByType(StartupSurface)).toBe(startup);
+    expect(fake.session.subscribe).toHaveBeenCalledTimes(2); // Contact owns its lightweight auth listener.
+    clickLink('/');
+    expect(renderer.root.findByType(App)).toBe(app);
+    expect(renderer.root.findAllByType(SplashScreen)).toHaveLength(0);
+    expect(fake.session.subscribe).toHaveBeenCalledTimes(2);
+    expect(fake.unsubscribe).not.toHaveBeenCalled(); // The retained draft keeps its auth fence while hidden.
+    expect(state.bootstrapMount).toHaveBeenCalledTimes(1);
+    expect(state.bootstrapUnmount).not.toHaveBeenCalled();
+  });
+
+  it('does not bypass consent when returning from a direct contact URL', () => {
+    navigableBrowser('/contact');
+    fake = createFakeAuthSession({ currentUser: verifiedUser });
+    vi.mocked(createAuthSessionService).mockReturnValue(fake.session);
+    mount();
+    expect(renderer.root.findAllByType(StartupSurface)).toHaveLength(0);
+    expect(renderer.root.findAllByType(App)).toHaveLength(0);
+    clickLink('/');
+    expect(renderer.root.findAllByType(StartupSurface)).toHaveLength(1);
+    expect(renderer.root.findAllByType(InitialPrivacyConsentScreen)).toHaveLength(1);
+    expect(renderer.root.findAllByType(App)).toHaveLength(0);
+  });
+
+  it('continues to revoke the old app on an A-to-null-to-A auth change while contact is visible', () => {
+    navigableBrowser(); state.policy.status = 'disabled';
+    fake = createFakeAuthSession({ currentUser: verifiedUser });
+    vi.mocked(createAuthSessionService).mockReturnValue(fake.session);
+    mount();
+    const app = renderer.root.findByType(App);
+    clickLink('/contact');
+    act(() => { fake.emit(null); fake.emit(verifiedUser); });
+    expect(renderer.root.findByType(App)).not.toBe(app);
+    expect(renderer.root.findAllByType(LegalPage)).toHaveLength(1);
+    clickLink('/');
+    expect(renderer.root.findByType(App)).not.toBe(app);
   });
 
   it('bypasses root gating when trace is disabled', () => {

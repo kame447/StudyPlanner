@@ -140,6 +140,7 @@ beforeEach(() => {
       if (baselineNetworkFailure) throw new TypeError('private-network-message');
       expect(JSON.parse(String(init?.body))).not.toHaveProperty('decisionContext');
       return Response.json({
+        model: JSON.parse(String(init?.body)).model,
         choices: [{ message: { content: JSON.stringify({ decision: baselineDecisionValue }) } }],
         usage: { prompt_tokens: 10 },
       }, { status: baselineStatus });
@@ -373,11 +374,12 @@ describe('focused authorization deployed proxy dispatch', () => {
         });
       });
       expect(JSON.stringify(firestoreWrites)).not.toContain('private-network-message');
-      // Worker logs keep the original Luna error; only telemetry is reduced to a class.
+      // Ordinary logs and telemetry retain classifications, never provider text.
       expect(console.error).toHaveBeenCalledWith(
         '[AI Proxy] unexpected chat handler failure',
-        expect.objectContaining({ message: 'private-network-message' }),
+        { name: 'TypeError', code: null },
       );
+      expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain('private-network-message');
       expect(JSON.stringify(firestoreWrites)).not.toContain(context.state.currentUserText);
       expect(JSON.stringify(firestoreWrites)).not.toContain(env.OPENROUTER_API_KEY ?? 'missing-key');
     },
@@ -530,12 +532,20 @@ describe('focused authorization deployed proxy dispatch', () => {
     expect(calls.filter((url) => url.endsWith('/chat/completions'))).toHaveLength(0);
   });
 
-  it.each(['uncertain', 'malformed', '429', '500'])('falls back to the existing focused LLM on %s', async (kind) => {
+  it.each(['uncertain', 'boundary probability', 'conflicting heads', 'malformed', 'model mismatch', '429', '500', 'redirect'])('falls back to the existing focused LLM on %s', async (kind) => {
     jevResponse = async () => {
       if (kind === 'malformed') return new Response('not-json');
+      if (kind === 'redirect') return new Response(null, { status: 307, headers: { Location: 'https://untrusted.example' } });
+      if (kind === 'model mismatch') return Response.json({ ...validResponse(), model: 'typesafe/jev-latest' });
       if (kind === '429' || kind === '500') return Response.json({}, { status: Number(kind) });
       const value = validResponse();
-      value.answers.authorization.confidence = 0.5;
+      if (kind === 'boundary probability') {
+        value.answers.authorization.probabilities = { create_plan: 0.949, fallback: 0.051 };
+      } else if (kind === 'conflicting heads') {
+        value.answers.condition_change.noul = 0.5;
+      } else {
+        value.answers.authorization.confidence = 0.5;
+      }
       return Response.json(value);
     };
     const { response, pending } = execute('canary');
@@ -565,4 +575,27 @@ describe('focused authorization deployed proxy dispatch', () => {
     expect((await execute('canary', { payload: { decisionContext: { ...context, hasPendingQuestion: true } } }).response).status).toBe(400);
     expect(calls.some((url) => url.includes('openrouter') || url.includes('api.openai.com'))).toBe(false);
   });
+
+  it('withholds an accepted result when the evaluation context drifted', async () => {
+    const fallback = vi.fn(async () => Response.json({ content: '{"decision":"fallback"}' }));
+    const respond = vi.fn((decision: string) => Response.json({ content: JSON.stringify({ decision }) }));
+    const response = await dispatchFocusedAuthorization({
+      context, env: canaryEnv, firebaseUid: 'user-fixture',
+      signal: new AbortController().signal,
+      provider: { evaluate: async () => ({
+        ...await abstainingDecisionProvider().evaluate(context.state),
+        status: 'evaluated', decision: 'create_plan', confidence: 1,
+        probabilities: { create_plan: 1, fallback: 0 },
+        conditionChange: 0, independentMeaning: 0,
+      }) },
+      isContextCurrent: () => false, fallback, respond,
+    });
+    expect(await response.json()).toMatchObject({ content: '{"decision":"fallback"}' });
+    expect(fallback).toHaveBeenCalledTimes(1);
+    expect(respond).not.toHaveBeenCalled();
+    expect(console.info).toHaveBeenCalledWith('[AI Decision]', expect.objectContaining({
+      gate: 'unavailable', reason: 'stale_context',
+    }));
+  });
+
 });

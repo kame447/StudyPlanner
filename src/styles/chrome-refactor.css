@@ -94,7 +94,7 @@
   padding-top: clamp(6px, 0.8dvh, 9px);
 }
 
-.app-shell.home-app-shell:has(.ai-planning-view) > .home-main {
+.app-shell.home-app-shell.ai-planning-active > .home-main {
   grid-template-rows: minmax(0, 1fr);
   gap: 0;
 }

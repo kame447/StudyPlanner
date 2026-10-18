@@ -17,6 +17,8 @@ export interface CandidateBinding {
     readonly presentingTurnId: string;
     readonly presentingMessageId: string;
     readonly presentationRevision: number;
+    /** One exact bound assistant message; local ID never reaches the provider. */
+    readonly presentedQuestion?: { readonly assistantMessageId: string; readonly text: string };
   };
   /** Application-owned generation; must advance even when the same question is re-presented. */
   readonly selectionEpoch: number;
@@ -96,6 +98,8 @@ export interface CandidateProviderContext {
   readonly target: CandidateBinding['target'];
   /** Consumer-owned semantic scope; consumers must review its provider/privacy eligibility. */
   readonly scope: CandidateTuple;
+  /** Untrusted interpretation evidence, never mutation authority. */
+  readonly presentedQuestion?: string;
 }
 
 /** This is a staging result, never a scheduler/save/approval/lifecycle command. */

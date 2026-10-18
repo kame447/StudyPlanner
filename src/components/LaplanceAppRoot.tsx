@@ -1,7 +1,9 @@
+import { PublicPageBoundary } from './PublicPageBoundary';
 import { AppearanceProvider } from './AppearanceProvider';
 import { useStartupProfileObservation } from '../hooks/useStartupProfileObservation';
 import { createStartupSessionScope, type StartupSessionCapability, type StartupSessionScope } from '../lib/startupSessionScope';
 import { retireStartupPreviewCache } from '../lib/retiredStartupPreviewCache';
+import { ProfileRestoreRecoveryScreen } from './ProfileRestoreRecoveryScreen';
 import { PlannerAppBootstrap } from './PlannerAppBootstrap';
 import { startupTiming } from '../lib/startupTiming';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -49,25 +51,28 @@ function ConsentedLaplanceApp({
   onStartupPending: () => void;
 }) {
   const personalization = useWeeklyPlanningPersonalizationProfile(userId);
+  // A write retains this owner's confirmed preference. Keep its planner and
+  // drafts mounted; only an unread/missing preference belongs to startup.
+  const initialPreferenceLoading = personalization.loading && !personalization.profile?.weekStartsOn;
   const finishProfileObservation = useStartupProfileObservation({
     ownerId: userId, scope: startupScope,
-    preferenceStatus: personalization.error ? 'blocked' : personalization.loading ? 'loading' : personalization.profile?.weekStartsOn ? 'ready' : 'blocked',
+    preferenceStatus: personalization.error ? 'blocked' : initialPreferenceLoading ? 'loading' : personalization.profile?.weekStartsOn ? 'ready' : 'blocked',
   });
   const finishStartup = useCallback(() => {
     finishProfileObservation();
     onStartupReady();
   }, [finishProfileObservation, onStartupReady]);
-  useStartupWait('preferences', personalization.loading, Boolean(personalization.error));
+  useStartupWait('preferences', initialPreferenceLoading, Boolean(personalization.error));
 
   useLayoutEffect(() => {
-    if (personalization.loading) {
+    if (initialPreferenceLoading) {
       onStartupPending();
     } else if (!personalization.profile?.weekStartsOn) {
       finishStartup();
     }
-  }, [finishStartup, onStartupPending, personalization.loading, personalization.profile?.weekStartsOn]);
+  }, [finishStartup, onStartupPending, initialPreferenceLoading, personalization.profile?.weekStartsOn]);
 
-  if (personalization.loading) {
+  if (initialPreferenceLoading) {
     return null;
   }
 
@@ -93,11 +98,19 @@ function ConsentedLaplanceApp({
           <UserPlanningContextProvider ownerId={userId}>
             <WeeklyPlanningPersonalizationProvider
               profile={profile}
+              saving={personalization.loading}
+              error={personalization.error}
               setWeekStartsOn={personalization.setWeekStartsOn}
               resetProfile={personalization.resetProfile}
             >
               <RootStartupReadyProvider onReady={finishStartup}>
-                <App state={state} onReady={onReady} />
+                {state.profileRestoreRecovery ? (
+                  <ProfileRestoreRecoveryScreen
+                    retrying={state.profileRestoreRecovery === 'retrying'}
+                    onRetry={state.retryProfileRestore}
+                    onReady={onReady}
+                  />
+                ) : <App state={state} onReady={onReady} />}
               </RootStartupReadyProvider>
             </WeeklyPlanningPersonalizationProvider>
           </UserPlanningContextProvider>
@@ -176,7 +189,7 @@ function RootManagedUnauthenticatedApp() {
 }
 
 export function LaplanceAppRoot(props: { authSession?: AuthSessionService } = {}) {
-  return <AppearanceProvider><LaplanceAppRootContent {...props} /></AppearanceProvider>;
+  return <AppearanceProvider><PublicPageBoundary><LaplanceAppRootContent {...props} /></PublicPageBoundary></AppearanceProvider>;
 }
 
 function LaplanceAppRootContent({
@@ -188,10 +201,6 @@ function LaplanceAppRootContent({
   );
   const traceEnabled = isWeeklyPlanningTraceFeatureEnabled();
   useEffect(() => { retireStartupPreviewCache(); }, []);
-  const currentPath = window.location.pathname;
-  const isLegalPage = currentPath === '/terms'
-    || currentPath === '/privacy'
-    || currentPath === '/contact';
   const [session, setSession] = useState<{ userId: string | null | undefined; epoch: number; scope: StartupSessionScope }>(() => {
     const user = authSession.getCurrentUser();
     return { userId: user && !user.requiresEmailVerification ? user.id : authSession.available ? undefined : null, epoch: 0, scope: createStartupSessionScope() };
@@ -235,7 +244,7 @@ function LaplanceAppRootContent({
     return () => { subscribed = false; unsubscribe(); currentSession.current.scope.invalidate(); };
   }, [authSession]);
 
-  if (isLegalPage || !traceEnabled || !authSession.available) {
+  if (!traceEnabled || !authSession.available) {
     return <App />;
   }
 

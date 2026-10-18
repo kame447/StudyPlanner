@@ -258,6 +258,7 @@ function schedulerResultProjection(value: unknown): Record<string, unknown> {
     availabilityWindowCount: availabilityWindows.length,
     fixedTaskReservationCount: fixedTaskReservations.length,
     sourceSelectionCount: sourceSelections.length,
+    hardClockBounds: compactUnknown(input.hardClockBounds),
   };
 }
 
@@ -293,6 +294,7 @@ function semanticResultProjection(data: Record<string, unknown>): Record<string,
       diagnostics: compactUnknown(normalization.diagnostics),
       document: {
         planningIntent: stringValue(document.planningIntent),
+        conversationActs: compactUnknown(document.conversationActs),
         planningWindow: compactUnknown(document.planningWindow),
         taskCount: Array.isArray(document.tasks) ? document.tasks.length : 0,
         relationCount: Array.isArray(document.relations) ? document.relations.length : 0,
@@ -331,6 +333,7 @@ function schedulerProjection(data: Record<string, unknown>): Record<string, unkn
       status: stringValue(compilation.status),
       issueCount: Array.isArray(compilation.issues) ? compilation.issues.length : 0,
       issues: issueProjection(compilation.issues),
+      hardClockBounds: compactUnknown(record(compilation.input).hardClockBounds),
     },
     dialogue: {
       status: stringValue(dialogue.status),
@@ -422,6 +425,17 @@ function projectStageData(stage: string, value: unknown): unknown {
         model: stringValue(data.model),
         configError: stringValue(data.configError),
       };
+    case 'reply_reference_candidates': {
+      // This stage is a count-only census. Never retain arbitrary reason text,
+      // candidate labels, utterances, graph IDs or any unexpected payload field.
+      const reasons = ['eligible', 'pruned', 'invalid_source', 'missing_compilation', 'stale_compilation',
+        'no_open_slots', 'no_anchored_candidates', 'pending_over_limit', 'group_menu', 'invalid_request'];
+      const count = (key: string) => Number.isSafeInteger(data[key]) && Number(data[key]) >= 0 ? data[key] : null;
+      return { reason: typeof data.reason === 'string' && reasons.includes(data.reason) ? data.reason : 'invalid_source',
+        openSlotCount: count('openSlotCount'), excludedAncestorCount: count('excludedAncestorCount'),
+        ambiguousPendingTargetCount: count('ambiguousPendingTargetCount'),
+        candidateCountBeforePrune: count('candidateCountBeforePrune'), candidateCount: count('candidateCount'), prunedCount: count('prunedCount') };
+    }
     case 'runtime_session_context_prepared':
       return {
         graphRevision: numberValue(data.graphRevision),

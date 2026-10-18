@@ -1,8 +1,16 @@
+import { getEntryDurationMinutes, isValidPlanEntryTimeRange } from '../lib/entryTimeRange';
+import { prepareActualProgressSource, preserveMonthEventActualSources } from '../domain/actualProgressSource';
+import { buildRecurringMonthEventEdit, type MonthEventEditRequest } from '../domain/recurringMonthEvent';
+import { buildDayTimetableTimeEdit, type DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
+import { buildDayOccurrenceCancellation } from '../domain/dayOccurrenceCancellation';
+import { requireCurrentTimetableImportTemplates } from '../domain/timetableImportAdmission';
+import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
 import { startupTiming } from '../lib/startupTiming';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PlannerMutationReconciliation } from '../domain/plannerMutationReconciliation';
 import { PlannerMutationScopeExpiredError, usePlannerMutationScope, useScopedPlannerState } from './usePlannerMutationScope';
 import { useOptimisticPlannerState } from './useOptimisticPlannerState';
+import { useTodoMutationAdmission } from './useTodoMutationAdmission';
 import { ActualMutationAdmissionError, actualUnavailableMessage, useActualMutationAdmission, MaterialMutationAdmissionError, materialStaleMessage, materialRefreshMessage, type MaterialEditBaseline, type ActualActionTarget } from './useActualMutationAdmission';
 import { removeByKey, upsertByKey } from '../lib/collections';
 import {
@@ -32,6 +40,7 @@ import {
 import { createId } from '../lib/id';
 import { buildPlanOccurrenceKey, getActualOccurrenceKey } from '../lib/planRecurrence';
 import { sortMonthEvents } from '../lib/monthEvents';
+import { validateMonthEventDraft } from '../lib/monthEventEditor';
 import { plannerRepository } from '../repositories';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import {
@@ -99,14 +108,14 @@ function getErrorDiagnostics(error: unknown): {
   }
 
   const firebaseError = error as {
-    code?: string | null;
-    message?: string | null;
+    code?: unknown;
+    message?: unknown;
     customData?: unknown;
   };
 
   return {
-    code: firebaseError.code?.trim() || null,
-    message: firebaseError.message?.trim() || null,
+    code: typeof firebaseError.code === 'string' ? firebaseError.code.trim() || null : null,
+    message: typeof firebaseError.message === 'string' ? firebaseError.message.trim() || null : null,
     customData: firebaseError.customData,
   };
 }
@@ -201,8 +210,12 @@ export interface UsePlannerDataStateResult {
   openEditPlan: (plan: Plan) => void;
   closePlanEditor: () => void;
   savePlanDraft: (draft: PlanDraft, targetPlanId?: string) => Promise<void>;
+  createPlanDraft: (draft: PlanDraft) => Promise<void>;
   projectPlanSave: (savePlan: () => Promise<Plan>) => Promise<Plan>;
   movePlanOccurrence: (plan: Plan, target: WeekPlanMoveTarget) => Promise<void>;
+  deleteDayOccurrence: (occurrence: ScheduleOccurrence) => Promise<void>;
+  prepareDayTimetableRecord: (occurrence: ScheduleOccurrence) => Promise<Plan>;
+  changeDayTimetableTime: (occurrence: ScheduleOccurrence, time: DayTimetableTimeChange) => Promise<void>;
   deletePlan: (plan: Plan) => Promise<void>;
   confirmRecurringPlanScope: (scope: RecurringPlanScope) => Promise<void>;
   cancelRecurringPlanScope: () => void;
@@ -212,7 +225,7 @@ export interface UsePlannerDataStateResult {
   linkStandaloneActualToPlan: (actual: Actual, plan: Plan) => Promise<void>;
   deleteActual: (actual: Actual) => Promise<void>;
   saveDayNote: (draft: DayNoteDraft) => Promise<void>;
-  saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string) => Promise<void>;
+  saveMonthEvent: (draft: MonthEventDraft, targetMonthEventId?: string, edit?: MonthEventEditRequest) => Promise<void>;
   deleteMonthEvent: (monthEvent: MonthEvent) => Promise<void>;
   saveTodo: (draft: TodoTaskDraft, targetTodoId?: string) => Promise<void>;
   scheduleTodoAsPlan: (todo: TodoTask, draft: PlanDraft) => Promise<Plan>;
@@ -289,6 +302,12 @@ export function usePlannerDataState({
   const [scheduleTemplates, setScheduleTemplates, rawSetScheduleTemplates] = useScopedPlannerState<ScheduleTemplate[]>([], mutationScope);
   const [timetableTerms, setTimetableTerms, rawSetTimetableTerms] = useScopedPlannerState<TimetableTerm[]>([], mutationScope);
   const [timetablePeriods, setTimetablePeriods, rawSetTimetablePeriods] = useScopedPlannerState<TimetablePeriod[]>([], mutationScope);
+  const dayMutationData = useRef({ plans, monthEvents, scheduleTemplates, timetableTerms });
+  useLayoutEffect(() => { dayMutationData.current = { plans, monthEvents, scheduleTemplates, timetableTerms }; },
+    [plans, monthEvents, scheduleTemplates, timetableTerms]);
+  const pendingDayOccurrenceChanges = useMemo(() => new Set<string>(), [mutationScope]);
+  const pendingDaySourceWrites = useMemo(() => new Map<string, number>(), [mutationScope]);
+  const uncertainDaySources = useMemo(() => new Map<string, NonNullable<ReturnType<PlannerDataReadAuthority['captureProjectionLease']>>>(), [mutationScope]);
   const plannerDataReadAuthorityRef = useRef<PlannerDataReadAuthority | null>(null);
   if (!plannerDataReadAuthorityRef.current) {
     plannerDataReadAuthorityRef.current = new PlannerDataReadAuthority();
@@ -459,6 +478,7 @@ export function usePlannerDataState({
     });
   }
   const projectionLease = plannerDataReadSnapshot.projectionLease;
+  const todoAdmission = useTodoMutationAdmission(mutationScope, userId, todos, plannerDataReadAuthority, projectionLease);
   const isPlannerDataSnapshotCurrent = useCallback(() => mutationScope.isCurrent() && projectionLease !== null
     && projectionLease.ownerId === userId && plannerDataReadAuthority.isProjectionUsable(projectionLease),
   [mutationScope, projectionLease, userId, plannerDataReadAuthority]);
@@ -878,9 +898,9 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    if (minutesBetween(target.startTime, target.endTime) <= 0) {
-      showNotice('終了時刻は開始時刻より後にしてください。', 'error');
-      throw new Error('終了時刻は開始時刻より後にしてください。');
+    if (!isValidPlanEntryTimeRange({ ...plan, ...target })) {
+      showNotice('有効な開始時刻と終了時刻を入力してください。', 'error');
+      throw new Error('有効な開始時刻と終了時刻を入力してください。');
     }
 
     const sourcePlan = resolveStoredPlan(plan);
@@ -926,14 +946,26 @@ export function usePlannerDataState({
     }
   }
 
+  async function createPlanDraft(draft: PlanDraft): Promise<void> {
+    if (!userId || draft.userId !== userId) {
+      throw new Error('ログイン状態と予定の所有者を確認してください。');
+    }
+    if (!isValidPlanEntryTimeRange(draft)) {
+      throw new Error('有効な開始時刻と終了時刻を入力してください。');
+    }
+    // Independent create surfaces must not inherit the global editor's target
+    // or resolve before a recurring-edit confirmation has actually persisted.
+    await projectPlanSave(() => plannerRepository.upsertPlan(createPlanFromDraft(draft)));
+  }
+
   async function savePlanDraft(draft: PlanDraft, targetPlanId?: string) {
     if (!userId) {
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
-      showNotice('終了時刻は開始時刻より後にしてください。', 'error');
-      throw new Error('終了時刻は開始時刻より後にしてください。');
+    if (!isValidPlanEntryTimeRange(draft)) {
+      showNotice('有効な開始時刻と終了時刻を入力してください。', 'error');
+      throw new Error('有効な開始時刻と終了時刻を入力してください。');
     }
 
     if (editingPlan && isScopedRecurringEditCandidate(editingPlan)) {
@@ -948,27 +980,31 @@ export function usePlannerDataState({
 
     const currentPlan = plans.find((plan) => plan.id === (targetPlanId ?? editingPlanId));
     const nextPlan = createPlanFromDraft(draft, currentPlan);
-    const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
-    const selectionOperation = selectionState.begin(() => selectionAt(nextPlan.date));
+    // Include the generated ID before publishing its optimistic occurrence.
+    // Day cancellation must not race the initial upsert of a newly imported Plan.
+    return withDayOccurrenceSourceWrite(`plan:${nextPlan.id}`, async () => {
+      const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
+      const selectionOperation = selectionState.begin(() => selectionAt(nextPlan.date));
 
-    try {
-      closePlanEditor();
-      await plannerRepository.upsertPlan(nextPlan);
-      selectionState.commit(selectionOperation);
-      planState.commit(planOperation);
-      showNotice(
-        currentPlan ? '学習予定を更新しました。' : '学習予定を追加しました。',
-        'success',
-      );
-    } catch (error) {
-      planState.reject(planOperation);
-      selectionState.reject(selectionOperation);
-      showNotice(
-        resolveErrorMessage(error, '学習予定を保存できませんでした。'),
-        'error',
-      );
-      throw error;
-    }
+      try {
+        closePlanEditor();
+        await plannerRepository.upsertPlan(nextPlan);
+        selectionState.commit(selectionOperation);
+        planState.commit(planOperation);
+        showNotice(
+          currentPlan ? '学習予定を更新しました。' : '学習予定を追加しました。',
+          'success',
+        );
+      } catch (error) {
+        planState.reject(planOperation);
+        selectionState.reject(selectionOperation);
+        showNotice(
+          resolveErrorMessage(error, '学習予定を保存できませんでした。'),
+          'error',
+        );
+        throw error;
+      }
+    });
   }
 
   function showDeleteUndoNotice(onUndo: () => Promise<void>, targets: readonly PlannerRepairTarget[] = []) {
@@ -987,6 +1023,157 @@ export function usePlannerDataState({
     });
   }
 
+  function requireKnownDaySources(keys: string[]) {
+    const current = plannerDataReadAuthority.captureProjectionLease();
+    for (const key of keys) {
+      const uncertain = uncertainDaySources.get(key);
+      if (!uncertain) continue;
+      if (current && plannerDataReadAuthority.isProjectionUsable(current) && plannerDataReadAuthority.hasAcceptedProjectionChanged(uncertain)) {
+        uncertainDaySources.delete(key);
+      } else {
+        throw new Error('予定の保存状態を確認できません。再読み込み後にもう一度お試しください。');
+      }
+    }
+  }
+
+  async function withDayOccurrenceSourceWrite<T>(target: string | string[] | undefined, write: () => Promise<T>): Promise<T> {
+    const keys = target ? typeof target === 'string' ? [target] : target : [];
+    requireKnownDaySources(keys);
+    if (keys.some(key => pendingDayOccurrenceChanges.has(key))) throw new Error('この予定は保存中です。');
+    keys.forEach(key => pendingDaySourceWrites.set(key, (pendingDaySourceWrites.get(key) ?? 0) + 1));
+    try { return await write(); } finally {
+      keys.forEach(key => {
+        const remaining = (pendingDaySourceWrites.get(key) ?? 1) - 1;
+        if (remaining) pendingDaySourceWrites.set(key, remaining); else pendingDaySourceWrites.delete(key);
+      });
+    }
+  }
+
+  function timetableTermSourceKeys(term: TimetableTerm) {
+    return dayMutationData.current.scheduleTemplates.filter(row => (row.termId || 'default') === term.id)
+      .map(row => `timetable-template:${row.id}`);
+  }
+
+  function requireDayOccurrenceProjection() {
+    const lease = plannerDataReadAuthority.captureProjectionLease();
+    if (!lease || !plannerDataReadAuthority.isProjectionUsable(lease)) {
+      throw new Error('予定の保存状態を確認できません。再読み込み後にもう一度お試しください。');
+    }
+  }
+
+  async function materializeDayTimetable(occurrence: ScheduleOccurrence, time: DayTimetableTimeChange): Promise<Plan> {
+    requireDayOccurrenceProjection();
+    if (!userId || occurrence.ownerId !== userId) throw new PlannerMutationScopeExpiredError();
+    const edit = buildDayTimetableTimeEdit({ ownerId: userId, occurrence, ...dayMutationData.current }, time);
+    const plan = createPlanFromDraft(edit.draft);
+    const keys = [...edit.templates.map(row => `timetable-template:${row.id}`), `plan:${plan.id}`];
+    requireKnownDaySources(keys);
+    if (keys.some(key => pendingDayOccurrenceChanges.has(key) || pendingDaySourceWrites.has(key))) {
+      throw new Error('この予定は保存中です。');
+    }
+    // Reserve every grouped template before saving, symmetrically with import,
+    // cancellation and master edits. No optimistic template is converted to a Plan.
+    keys.forEach(key => pendingDayOccurrenceChanges.add(key));
+    const lease = plannerDataReadAuthority.captureProjectionLease();
+    try {
+      const savedPlan = await plannerRepository.upsertPlan(plan);
+      if (lease && plannerDataReadAuthority.isOwnerCurrent(lease)
+        && !plannerDataReadAuthority.hasAcceptedProjectionChanged(lease)) {
+        setPlans(current => sortAndUpsertPlans(current, [savedPlan]));
+      }
+      return savedPlan;
+    } catch (error) {
+      if (lease) {
+        keys.forEach(key => uncertainDaySources.set(key, lease));
+        reconciliation.request(lease, ['plans-todos']);
+      }
+      throw error;
+    } finally { keys.forEach(key => pendingDayOccurrenceChanges.delete(key)); }
+  }
+
+  async function changeDayTimetableTime(occurrence: ScheduleOccurrence, time: DayTimetableTimeChange) {
+    await materializeDayTimetable(occurrence, time);
+    showNotice('この日の時間を変更しました。', 'success');
+  }
+
+  async function prepareDayTimetableRecord(occurrence: ScheduleOccurrence) {
+    return materializeDayTimetable(occurrence, { startTime: occurrence.start.time, endTime: occurrence.end.time });
+  }
+
+  async function deleteDayOccurrence(occurrence: ScheduleOccurrence) {
+    requireDayOccurrenceProjection();
+    if (!userId || occurrence.ownerId !== userId) throw new PlannerMutationScopeExpiredError();
+    const cancellation = buildDayOccurrenceCancellation({ ownerId: userId, occurrence, ...dayMutationData.current });
+    const keys = cancellation.kind === 'timetable'
+      ? cancellation.before.map(row => `timetable-template:${row.id}`)
+      : [`${occurrence.source.backingKind}:${occurrence.source.backingId}`];
+    requireKnownDaySources(keys);
+    const isPending = () => keys.some(key => pendingDayOccurrenceChanges.has(key) || pendingDaySourceWrites.has(key));
+    const markPending = () => keys.forEach(key => pendingDayOccurrenceChanges.add(key));
+    const clearPending = () => keys.forEach(key => pendingDayOccurrenceChanges.delete(key));
+    if (isPending()) throw new Error('この予定は保存中です。');
+    const targets: PlannerRepairTarget[] = cancellation.kind === 'timetable' ? ['timetable']
+      : cancellation.kind === 'plan' ? ['plans-todos'] : ['month-events'];
+    const write = async (restore: boolean) => {
+      requireDayOccurrenceProjection();
+      const lease = plannerDataReadAuthority.captureProjectionLease();
+      const release = cancellation.kind === 'timetable' ? undefined
+        : admitActualMutation([], [cancellation.before.id]);
+      let failed = false;
+      try {
+        if (cancellation.kind === 'timetable') {
+          const templates = restore
+            ? cancellation.before.map(row => ({ ...row, excludedDates: row.excludedDates ?? [] }))
+            : cancellation.after;
+          await plannerRepository.applyTimetableMutation({ userId, templateUpserts: templates, templateDeletes: [],
+            termUpserts: [], termDeletes: [], periodUpserts: [], periodDeletes: [] });
+          if (lease && plannerDataReadAuthority.isOwnerCurrent(lease) && !plannerDataReadAuthority.hasAcceptedProjectionChanged(lease)) {
+            setScheduleTemplates(current => templates.reduce((rows, item) => upsertByKey(rows, item, row => row.id), current));
+          }
+        } else if (cancellation.kind === 'plan') {
+          const plan = restore ? cancellation.before : cancellation.after;
+          await plannerRepository.applyRecurringPlanMutation(userId, { planUpserts: [plan], planDeletes: [], actualUpserts: [], actualDeletes: [] });
+          if (lease && plannerDataReadAuthority.isOwnerCurrent(lease) && !plannerDataReadAuthority.hasAcceptedProjectionChanged(lease)) {
+            setPlans(current => sortAndUpsertPlans(current, [plan]));
+          }
+        } else {
+          const event = restore ? cancellation.before : cancellation.after;
+          await plannerRepository.upsertMonthEvent(event);
+          if (lease && plannerDataReadAuthority.isOwnerCurrent(lease) && !plannerDataReadAuthority.hasAcceptedProjectionChanged(lease)) {
+            setMonthEvents(current => sortMonthEvents(upsertByKey(current, event, row => row.id)));
+          }
+        }
+      } catch (error) {
+        failed = true;
+        if (lease) {
+          keys.forEach(key => uncertainDaySources.set(key, lease));
+          reconciliation.request(lease, targets);
+        }
+        throw error;
+      }
+      finally { if (release) settleActualAdmission(release, lease, cancellation.kind === 'plan' ? ['plans-todos'] : ['actual-material'], failed); }
+    };
+    markPending();
+    try {
+      await write(false);
+      showDeleteUndoNotice(async () => {
+        if (isPending()) throw new Error('この予定は保存中です。');
+        const data = dayMutationData.current;
+        const rows = cancellation.kind === 'timetable' ? data.scheduleTemplates
+          : cancellation.kind === 'plan' ? data.plans : data.monthEvents;
+        const expected = cancellation.kind === 'timetable' ? cancellation.after : [cancellation.after];
+        if (!expected.every(row => JSON.stringify(rows.find(current => current.id === row.id && current.userId === userId)) === JSON.stringify(row))) {
+          throw new Error('予定が更新されたため復元できません。現在の予定を確認してください。');
+        }
+        markPending();
+        try { await write(true); } finally { clearPending(); }
+      }, targets);
+    } catch (error) {
+      showNotice(resolveErrorMessage(error, 'この日の予定を削除できませんでした。'), 'error');
+      throw error;
+    } finally { clearPending(); }
+  }
+
   async function deletePlan(plan: Plan) {
     if (!userId) {
       throw new Error('ログイン状態を確認できませんでした。');
@@ -999,82 +1186,88 @@ export function usePlannerDataState({
 
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     const releaseAdmission = admitActualMutation([], [plan.id]);
-    try { plan = requireCurrentPlan(plan); } catch (error) { releaseAdmission(); throw error; }
-    const linkedTodo =
-      plan.sourceType === 'todo' && plan.sourceId
-        ? todos.find(
-            (todo) => todo.id === plan.sourceId && todo.scheduledPlanId === plan.id,
-          ) ?? null
-        : null;
-    const linkedActuals = actualAdmission.current().filter((actual) => actual.planId === plan.id);
-    const nextLinkedTodo = linkedTodo
-      ? {
-          ...linkedTodo,
-          status: 'open' as const,
-          scheduledPlanId: null,
-          updatedAt: new Date().toISOString(),
-        }
-      : null;
-
-    const planOperation = planState.begin(current => removeByKey(current, plan.id, item => item.id));
-    const actualOperation = actualState.begin(current => current.filter(actual => actual.planId !== plan.id));
-    const todoOperation = todoState.begin(current => nextLinkedTodo
-      ? upsertByKey(current, nextLinkedTodo, todo => todo.id) : current);
+    let todoReservation: ReturnType<typeof todoAdmission.beginLinkedPlanDelete> = null;
     try {
-      closePlanEditor();
-      await plannerRepository.deletePlanWithDependents({
-        userId,
-        plan,
-        todo: nextLinkedTodo,
-      });
-      planState.commit(planOperation);
-      actualState.commit(actualOperation);
-      todoState.commit(todoOperation);
-      showDeleteUndoNotice(async () => {
-        const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
-        // Only local owner admission is known to reject safely before dispatch.
-        // Repository validation/outcome policy remains behind its own boundary.
-        if (!mutationScope.isCurrent() || !acknowledgedProjection
-          || acknowledgedProjection.ownerId !== userId || plan.userId !== userId) {
-          throw new PlannerMutationScopeExpiredError();
+      plan = requireCurrentPlan(plan);
+      if (plan.sourceType === 'todo' && plan.sourceId) {
+        try { todoReservation = todoAdmission.beginLinkedPlanDelete(plan.sourceId, plan.userId, plan.id); }
+        catch (error) {
+          showNotice(resolveErrorMessage(error, 'Todoを更新できませんでした。'), 'error');
+          throw error;
         }
-        const releaseRestoreAdmission = admitActualMutation(linkedActuals, [plan.id]);
-        const restore = reconciliation.beginPlanRestore();
-        let restoreNeedsRefresh = false;
-        let outcome: 'success' | 'failure' = 'failure';
-        try {
-          await plannerRepository.restorePlanWithDependents({
-            plan,
-            actuals: linkedActuals,
-            todo: linkedTodo,
-          });
-          outcome = 'success';
-          // Publish all captured dependents under one accepted-projection lease.
-          // A failed/superseded read alone does not revoke this acknowledgement.
-          if (!mutationScope.isCurrent() || !plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)) return;
-          if (plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
-            restoreNeedsRefresh = true;
-            return;
+      }
+      const linkedTodo = todoReservation?.todo ?? null;
+      const linkedActuals = actualAdmission.current().filter((actual) => actual.planId === plan.id);
+      const nextLinkedTodo = linkedTodo
+        ? {
+            ...linkedTodo,
+            status: 'open' as const,
+            scheduledPlanId: null,
+            updatedAt: new Date().toISOString(),
           }
-          setPlans((current) => sortAndUpsertPlans(current, [plan]));
-          if (linkedActuals.length > 0) {
-            setActuals((current) => upsertActualsById(current, linkedActuals));
+        : null;
+
+      const planOperation = planState.begin(current => removeByKey(current, plan.id, item => item.id));
+      const actualOperation = actualState.begin(current => current.filter(actual => actual.planId !== plan.id));
+      const todoOperation = todoState.begin(current => nextLinkedTodo
+        ? upsertByKey(current, nextLinkedTodo, todo => todo.id) : current);
+      try {
+        closePlanEditor();
+        await plannerRepository.deletePlanWithDependents({
+          userId,
+          plan,
+          todo: nextLinkedTodo,
+        });
+        planState.commit(planOperation);
+        actualState.commit(actualOperation);
+        todoState.commit(todoOperation);
+        showDeleteUndoNotice(async () => {
+          const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
+          // Only local owner admission is known to reject safely before dispatch.
+          // Repository validation/outcome policy remains behind its own boundary.
+          if (!mutationScope.isCurrent() || !acknowledgedProjection
+            || acknowledgedProjection.ownerId !== userId || plan.userId !== userId) {
+            throw new PlannerMutationScopeExpiredError();
           }
-          if (linkedTodo) {
-            setTodos((current) => upsertByKey(current, linkedTodo, (item) => item.id));
+          const releaseRestoreAdmission = admitActualMutation(linkedActuals, [plan.id]);
+          const restore = reconciliation.beginPlanRestore();
+          let restoreNeedsRefresh = false;
+          let outcome: 'success' | 'failure' = 'failure';
+          try {
+            await plannerRepository.restorePlanWithDependents({
+              plan,
+              actuals: linkedActuals,
+              todo: linkedTodo,
+            });
+            outcome = 'success';
+            // Publish all captured dependents under one accepted-projection lease.
+            // A failed/superseded read alone does not revoke this acknowledgement.
+            if (!mutationScope.isCurrent() || !plannerDataReadAuthority.isOwnerCurrent(acknowledgedProjection)) return;
+            if (plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
+              restoreNeedsRefresh = true;
+              return;
+            }
+            setPlans((current) => sortAndUpsertPlans(current, [plan]));
+            if (linkedActuals.length > 0) {
+              setActuals((current) => upsertActualsById(current, linkedActuals));
+            }
+            if (linkedTodo) {
+              setTodos((current) => upsertByKey(current, linkedTodo, (item) => item.id));
+            }
+          } finally {
+            settleActualAdmission(releaseRestoreAdmission, acknowledgedProjection, ['actual-material', 'plans-todos'], restoreNeedsRefresh || outcome === 'failure');
+            reconciliation.settleMutation(restore, outcome);
           }
-        } finally {
-          settleActualAdmission(releaseRestoreAdmission, acknowledgedProjection, ['actual-material', 'plans-todos'], restoreNeedsRefresh || outcome === 'failure');
-          reconciliation.settleMutation(restore, outcome);
-        }
-      });
-    } catch (error) {
-      planState.reject(planOperation);
-      actualState.reject(actualOperation);
-      todoState.reject(todoOperation);
-      showNotice(resolveErrorMessage(error, '予定を削除できませんでした。'), 'error');
-      throw error;
+        });
+      } catch (error) {
+        planState.reject(planOperation);
+        actualState.reject(actualOperation);
+        todoState.reject(todoOperation);
+        showNotice(resolveErrorMessage(error, '予定を削除できませんでした。'), 'error');
+        throw error;
+      }
     } finally {
+      todoReservation?.settle();
       settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material', 'plans-todos']);
     }
   }
@@ -1147,12 +1340,16 @@ export function usePlannerDataState({
   async function saveActual(_plan: Plan, draft: ActualDraft, targetActualId?: string) {
     const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
     if (!userId) throw new Error('ログイン状態を確認できませんでした。');
+    if (getEntryDurationMinutes(draft.actualStartTime, draft.actualEndTime) <= 0) {
+      throw new Error('有効な開始時刻と終了時刻を入力してください。');
+    }
     if (draft.planId) requireLinkedTarget(draft.planId, draft.occurrenceDate);
     const occurrenceKey = draft.planId ? buildPlanOccurrenceKey(draft.planId, draft.occurrenceDate) : null;
     const existingActual = targetActualId
       ? requireCurrentActual(targetActualId)
       : actualAdmission.current().find((actual) => getActualOccurrenceKey(actual) === occurrenceKey);
-    const nextActual = createActualFromDraft(userId, draft, existingActual);
+    const nextActual = prepareActualProgressSource(createActualFromDraft(userId, draft, existingActual),
+      { plans: actualAdmission.plans(), monthEvents: actualAdmission.monthEvents() }, existingActual);
     // Dependencies include missing, disabled and clamped rows. Admission must
     // precede resolving the absolute payload, including for retained callbacks.
     const materialIds = existingActual ? [] : nextActual.materialProgressUpdates?.map(update => update.materialId) ?? [];
@@ -1210,9 +1407,9 @@ export function usePlannerDataState({
       showNotice('記録のタイトルを入力してください。', 'error');
       throw new Error('記録のタイトルを入力してください。');
     }
-    if (minutesBetween(draft.actualStartTime, draft.actualEndTime) <= 0) {
-      showNotice('終了時刻は開始時刻より後にしてください。', 'error');
-      throw new Error('終了時刻は開始時刻より後にしてください。');
+    if (getEntryDurationMinutes(draft.actualStartTime, draft.actualEndTime) <= 0) {
+      showNotice('有効な開始時刻と終了時刻を入力してください。', 'error');
+      throw new Error('有効な開始時刻と終了時刻を入力してください。');
     }
     const existingActual = targetActualId
       ? requireCurrentActual(targetActualId)
@@ -1317,7 +1514,7 @@ export function usePlannerDataState({
       throw new Error('この予定にはすでに記録があります。');
     }
 
-    const nextActual: Actual = {
+    const nextActual = prepareActualProgressSource({
       ...actual,
       planId: plan.id,
       title: actual.title?.trim() || plan.title,
@@ -1325,7 +1522,7 @@ export function usePlannerDataState({
       isAlignedToPlan: false,
       note: actual.note.trim(),
       updatedAt: new Date().toISOString(),
-    };
+    }, { plans: actualAdmission.plans(), monthEvents: actualAdmission.monthEvents() }, sourceActual);
 
     const releaseAdmission = admitActualMutation([sourceActual, nextActual]);
     const actualOperation = actualState.begin((current) =>
@@ -1429,22 +1626,57 @@ export function usePlannerDataState({
     await trackMutation(saveDayNote, ['day-notes'])(draft);
   });
 
+  async function saveRecurringMonthEvent(draft: MonthEventDraft, id: string | undefined, edit: MonthEventEditRequest) {
+    requireDayOccurrenceProjection();
+    const source = dayMutationData.current.monthEvents.find(event => event.id === id);
+    if (!userId || draft.userId !== userId || edit.source.userId !== userId || !source
+      || source.userId !== userId || JSON.stringify(source) !== JSON.stringify(edit.source)) {
+      throw new Error('予定が更新されました。現在の予定を開き直してください。');
+    }
+    if ((pendingDaySourceWrites.get(`month-event:${id}`) ?? 0) > 1) throw new Error('この予定は保存中です。');
+    const change = buildRecurringMonthEventEdit(source, draft, edit.occurrenceDate, edit.scope);
+    const lease = plannerDataReadAuthority.captureProjectionLease();
+    const keys = change.monthEvents.map(event => `month-event:${event.id}`);
+    keys.forEach(key => pendingDayOccurrenceChanges.add(key));
+    const operation = monthEventState.begin(current => sortMonthEvents(change.monthEvents.reduce(
+      (rows, event) => upsertByKey(rows, event, row => row.id), current,
+    )));
+    const selection = selectionState.begin(() => selectionAt(
+      isSameMonth(selectedDate, change.editedEvent.date) ? selectedDate : change.editedEvent.date,
+    ));
+    try {
+      await plannerRepository.applyRecurringMonthEventMutation(userId, change.monthEvents);
+      monthEventState.commit(operation);
+      selectionState.commit(selection);
+      showNotice('予定を更新しました。', 'success');
+    } catch (error) {
+      monthEventState.reject(operation);
+      selectionState.reject(selection);
+      // A failed acknowledgement does not prove that the atomic write failed.
+      // Reconcile before allowing a retry to create another replacement.
+      if (lease) {
+        keys.forEach(key => uncertainDaySources.set(key, lease));
+        reconciliation.request(lease, ['month-events']);
+      }
+      showNotice(resolveErrorMessage(error, '予定を保存できませんでした。'), 'error');
+      throw error;
+    } finally { keys.forEach(key => pendingDayOccurrenceChanges.delete(key)); }
+  }
+
   async function saveMonthEvent(
     draft: MonthEventDraft,
     targetMonthEventId?: string,
+    edit?: MonthEventEditRequest,
   ) {
+    if (edit) return saveRecurringMonthEvent(draft, targetMonthEventId, edit);
     if (!userId) {
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
-      showNotice('主要予定の終了時刻は開始時刻より後にしてください。', 'error');
-      throw new Error('主要予定の終了時刻は開始時刻より後にしてください。');
-    }
-
-    if (!draft.title.trim()) {
-      showNotice('主要予定のタイトルを入れてください。', 'error');
-      throw new Error('主要予定のタイトルを入れてください。');
+    const validationError = validateMonthEventDraft({ ...draft, title: draft.title.trim() });
+    if (validationError) {
+      showNotice(validationError, 'error');
+      throw new Error(validationError);
     }
 
     const currentMonthEvent = monthEvents.find(
@@ -1486,12 +1718,16 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
+    const currentEvent = actualAdmission.monthEvents().find(event => event.userId === userId && event.id === monthEvent.id);
+    if (!currentEvent) throw new Error('主要予定を再読み込みしてから、もう一度削除してください。');
+    const actualOperation = actualState.begin(current => preserveMonthEventActualSources(current, currentEvent));
     const monthEventOperation = monthEventState.begin((current) =>
       sortMonthEvents(removeByKey(current, monthEvent.id, (item) => item.id)),
     );
     try {
       await plannerRepository.deleteMonthEvent(userId, monthEvent.id);
       monthEventState.commit(monthEventOperation);
+      actualState.commit(actualOperation);
       showDeleteUndoNotice(async () => {
         const undoProjection = plannerDataReadAuthority.captureProjectionLease();
         await plannerRepository.upsertMonthEvent(monthEvent);
@@ -1506,10 +1742,18 @@ export function usePlannerDataState({
       }, ['month-events']);
     } catch (error) {
       monthEventState.reject(monthEventOperation);
+      actualState.reject(actualOperation);
       showNotice(
         resolveErrorMessage(error, '月の主要予定を削除できませんでした。'),
         'error',
       );
+      throw error;
+    }
+  }
+
+  function admitTodoMutation(id: string, owner: string) {
+    try { return todoAdmission.begin(id, owner); } catch (error) {
+      showNotice(resolveErrorMessage(error, 'Todoを更新できませんでした。'), 'error');
       throw error;
     }
   }
@@ -1524,80 +1768,89 @@ export function usePlannerDataState({
       throw new Error('Todoのタイトルを入れてください。');
     }
 
-    const currentTodo = todos.find((todo) => todo.id === targetTodoId);
-    const now = new Date().toISOString();
-    const dueDate = draft.dueDate || null;
-    const status = draft.status ?? currentTodo?.status ?? 'open';
-    const pinned =
-      status === 'done' ? false : draft.pinned ?? currentTodo?.pinned ?? false;
-    const nextTodo: TodoTask = {
-      id: currentTodo?.id ?? createId('todo'),
-      ...draft,
-      title: draft.title.trim(),
-      subject: draft.subject.trim(),
-      estimatedMinutes:
-        typeof draft.estimatedMinutes === 'number'
-          ? Math.max(0, Math.round(draft.estimatedMinutes))
-          : null,
-      dueDate,
-      dueTime: dueDate ? draft.dueTime || null : null,
-      memo: draft.memo.trim(),
-      status,
-      scheduledPlanId:
-        draft.scheduledPlanId !== undefined
-          ? draft.scheduledPlanId
-          : currentTodo?.scheduledPlanId ?? null,
-      pinned,
-      createdAt: currentTodo?.createdAt ?? now,
-      updatedAt: now,
-    };
-
-    const todoOperation = todoState.begin(current => upsertByKey(current, nextTodo, todo => todo.id));
+    if (draft.userId !== userId) throw new PlannerMutationScopeExpiredError();
+    const admission = targetTodoId !== undefined ? admitTodoMutation(targetTodoId, draft.userId) : null;
     try {
-      await plannerRepository.upsertTodo(nextTodo);
-      todoState.commit(todoOperation);
-      showNotice(currentTodo ? 'Todoを更新しました。' : 'Todoを追加しました。', 'success');
-    } catch (error) {
-      todoState.reject(todoOperation);
-      showNotice(resolveErrorMessage(error, 'Todoを保存できませんでした。'), 'error');
-      throw error;
-    }
+      const currentTodo = admission?.todo;
+      const now = new Date().toISOString();
+      const dueDate = draft.dueDate || null;
+      const status = draft.status ?? currentTodo?.status ?? 'open';
+      const pinned =
+        status === 'done' ? false : draft.pinned ?? currentTodo?.pinned ?? false;
+      const nextTodo: TodoTask = {
+        id: currentTodo?.id ?? createId('todo'),
+        ...draft,
+        title: draft.title.trim(),
+        subject: draft.subject.trim(),
+        estimatedMinutes:
+          typeof draft.estimatedMinutes === 'number'
+            ? Math.max(0, Math.round(draft.estimatedMinutes))
+            : null,
+        dueDate,
+        dueTime: dueDate ? draft.dueTime || null : null,
+        memo: draft.memo.trim(),
+        status,
+        scheduledPlanId:
+          draft.scheduledPlanId !== undefined
+            ? draft.scheduledPlanId
+            : currentTodo?.scheduledPlanId ?? null,
+        pinned,
+        createdAt: currentTodo?.createdAt ?? now,
+        updatedAt: now,
+      };
+
+      const todoOperation = todoState.begin(current => upsertByKey(current, nextTodo, todo => todo.id));
+      try {
+        await plannerRepository.upsertTodo(nextTodo);
+        todoState.commit(todoOperation);
+        showNotice(currentTodo ? 'Todoを更新しました。' : 'Todoを追加しました。', 'success');
+      } catch (error) {
+        todoState.reject(todoOperation);
+        showNotice(resolveErrorMessage(error, 'Todoを保存できませんでした。'), 'error');
+        throw error;
+      }
+    } finally { admission?.settle(); }
   }
 
   async function scheduleTodoAsPlan(todo: TodoTask, draft: PlanDraft): Promise<Plan> {
     if (!userId) throw new Error('ログイン状態を確認できませんでした。');
-    if (minutesBetween(draft.startTime, draft.endTime) <= 0) {
-      showNotice('終了時刻は開始時刻より後にしてください。', 'error');
-      throw new Error('終了時刻は開始時刻より後にしてください。');
+    if (!isValidPlanEntryTimeRange(draft)) {
+      showNotice('有効な開始時刻と終了時刻を入力してください。', 'error');
+      throw new Error('有効な開始時刻と終了時刻を入力してください。');
     }
-    const nextPlan = createPlanFromDraft({ ...draft, sourceType: 'todo', sourceId: todo.id });
-    const dueDate = todo.dueDate || null;
-    const nextTodo: TodoTask = {
-      ...todo,
-      status: 'scheduled',
-      scheduledPlanId: nextPlan.id,
-      dueDate,
-      dueTime: dueDate ? todo.dueTime ?? null : null,
-      updatedAt: new Date().toISOString(),
-    };
-    const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
-    const selectionOperation = selectionState.begin(() => selectionAt(nextPlan.date));
-
-    const todoOperation = todoState.begin(current => upsertByKey(current, nextTodo, item => item.id));
+    if (draft.userId !== userId) throw new PlannerMutationScopeExpiredError();
+    const admission = admitTodoMutation(todo.id, todo.userId);
     try {
-      await plannerRepository.scheduleTodoPlan({ plan: nextPlan, todo: nextTodo });
-      selectionState.commit(selectionOperation);
-      planState.commit(planOperation);
-      todoState.commit(todoOperation);
-      showNotice('Todoを予定化しました。', 'success');
-      return nextPlan;
-    } catch (error) {
-      planState.reject(planOperation);
-      todoState.reject(todoOperation);
-      selectionState.reject(selectionOperation);
-      showNotice(resolveErrorMessage(error, 'Todoを予定化できませんでした。'), 'error');
-      throw error;
-    }
+      todo = admission.todo;
+      const nextPlan = createPlanFromDraft({ ...draft, sourceType: 'todo', sourceId: todo.id });
+      const dueDate = todo.dueDate || null;
+      const nextTodo: TodoTask = {
+        ...todo,
+        status: 'scheduled',
+        scheduledPlanId: nextPlan.id,
+        dueDate,
+        dueTime: dueDate ? todo.dueTime ?? null : null,
+        updatedAt: new Date().toISOString(),
+      };
+      const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
+      const selectionOperation = selectionState.begin(() => selectionAt(nextPlan.date));
+
+      const todoOperation = todoState.begin(current => upsertByKey(current, nextTodo, item => item.id));
+      try {
+        await plannerRepository.scheduleTodoPlan({ plan: nextPlan, todo: nextTodo });
+        selectionState.commit(selectionOperation);
+        planState.commit(planOperation);
+        todoState.commit(todoOperation);
+        showNotice('Todoを予定化しました。', 'success');
+        return nextPlan;
+      } catch (error) {
+        planState.reject(planOperation);
+        todoState.reject(todoOperation);
+        selectionState.reject(selectionOperation);
+        showNotice(resolveErrorMessage(error, 'Todoを予定化できませんでした。'), 'error');
+        throw error;
+      }
+    } finally { admission.settle(); }
   }
 
   async function deleteTodo(todo: TodoTask) {
@@ -1605,25 +1858,29 @@ export function usePlannerDataState({
       throw new Error('ログイン状態を確認できませんでした。');
     }
 
-    const todoOperation = todoState.begin(current => removeByKey(current, todo.id, item => item.id));
+    const admission = admitTodoMutation(todo.id, todo.userId);
     try {
-      await plannerRepository.deleteTodo(userId, todo.id);
-      todoState.commit(todoOperation);
-      showDeleteUndoNotice(async () => {
-        const undoProjection = plannerDataReadAuthority.captureProjectionLease();
-        await plannerRepository.upsertTodo(todo);
-        // A crossing read owns the newer projection. Repair from persistence
-        // instead of replaying the captured deleted row over that snapshot.
-        if (undoProjection && plannerDataReadAuthority.isOwnerCurrent(undoProjection)
-          && !plannerDataReadAuthority.hasAcceptedProjectionChanged(undoProjection)) {
-          setTodos((current) => upsertByKey(current, todo, (item) => item.id));
-        }
-      }, ['plans-todos']);
-    } catch (error) {
-      todoState.reject(todoOperation);
-      showNotice(resolveErrorMessage(error, 'Todoを削除できませんでした。'), 'error');
-      throw error;
-    }
+      todo = admission.todo;
+      const todoOperation = todoState.begin(current => removeByKey(current, todo.id, item => item.id));
+      try {
+        await plannerRepository.deleteTodo(userId, todo.id);
+        todoState.commit(todoOperation);
+        showDeleteUndoNotice(async () => {
+          const undoProjection = plannerDataReadAuthority.captureProjectionLease();
+          await plannerRepository.upsertTodo(todo);
+          // A crossing read owns the newer projection. Repair from persistence
+          // instead of replaying the captured deleted row over that snapshot.
+          if (undoProjection && plannerDataReadAuthority.isOwnerCurrent(undoProjection)
+            && !plannerDataReadAuthority.hasAcceptedProjectionChanged(undoProjection)) {
+            setTodos((current) => upsertByKey(current, todo, (item) => item.id));
+          }
+        }, ['plans-todos']);
+      } catch (error) {
+        todoState.reject(todoOperation);
+        showNotice(resolveErrorMessage(error, 'Todoを削除できませんでした。'), 'error');
+        throw error;
+      }
+    } finally { admission.settle(); }
   }
 
   async function saveStudySubject(
@@ -1682,8 +1939,12 @@ export function usePlannerDataState({
     if (!userId) {
       throw new Error('ログイン状態を確認できませんでした。');
     }
-
-    const hasMaterials = studyMaterials.some(
+    const currentSubject = actualAdmission.subjects().find(item => item.id === subject.id);
+    if (subject.userId !== userId || !currentSubject) {
+      throw new MaterialMutationAdmissionError(materialStaleMessage);
+    }
+    subject = currentSubject;
+    const hasMaterials = actualAdmission.materials().some(
       (material) =>
         material.userId === userId &&
         material.subjectId === subject.id,
@@ -1694,21 +1955,35 @@ export function usePlannerDataState({
       throw new Error('教材がある教科は削除できません。');
     }
 
+    const acknowledgedProjection = plannerDataReadAuthority.captureProjectionLease();
+    const releaseAdmission = admitActualMutation([], [], [], [subject.id]);
+    let dispatchedFailure = false;
     try {
       await plannerRepository.deleteStudySubject(userId, subject.id);
-      setStudySubjects((current) =>
-        current.filter((item) => item.id !== subject.id),
-      );
+      if (!acknowledgedProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection)) {
+        setStudySubjects(current => current.filter(item => item.id !== subject.id));
+      }
       showDeleteUndoNotice(async () => {
-        await plannerRepository.upsertStudySubject(subject);
-        setStudySubjects((current) =>
-          sortStudySubjects(upsertByKey(current, subject, (item) => item.id)),
-        );
+        // A retained Undo cannot replace an already observed newer subject.
+        if (actualAdmission.subjects().some(item => item.id === subject.id)) {
+          throw new MaterialMutationAdmissionError(materialStaleMessage);
+        }
+        const restoreProjection = plannerDataReadAuthority.captureProjectionLease();
+        const releaseRestore = admitActualMutation([], [], [], [subject.id]);
+        let restoreFailure = false;
+        try {
+          await plannerRepository.upsertStudySubject(subject);
+          if (!restoreProjection || !plannerDataReadAuthority.hasAcceptedProjectionChanged(restoreProjection)) {
+            setStudySubjects(current => sortStudySubjects(upsertByKey(current, subject, item => item.id)));
+          }
+        } catch (error) { restoreFailure = true; throw error; }
+        finally { settleActualAdmission(releaseRestore, restoreProjection, ['actual-material'], restoreFailure); }
       });
     } catch (error) {
+      dispatchedFailure = true;
       showNotice(resolveErrorMessage(error, '教科を削除できませんでした。'), 'error');
       throw error;
-    }
+    } finally { settleActualAdmission(releaseAdmission, acknowledgedProjection, ['actual-material'], dispatchedFailure); }
   }
 
   async function saveStudyMaterial(
@@ -1778,6 +2053,7 @@ export function usePlannerDataState({
       catalogIsbn13: draft.catalogIsbn13?.trim() || currentMaterial?.catalogIsbn13,
       aliases: draft.aliases ?? currentMaterial?.aliases ?? [],
       status: draft.status ?? currentMaterial?.status ?? 'active',
+      studyStatus: draft.studyStatus ?? currentMaterial?.studyStatus ?? 'studying',
       paceEnabled,
       progressUnit: draft.progressUnit ?? currentMaterial?.progressUnit ?? 'page',
       progressUnitLabel:
@@ -1868,7 +2144,7 @@ export function usePlannerDataState({
       throw new Error('隔週の授業は基準日を設定してください。');
     }
 
-    const currentTemplate = scheduleTemplates.find(
+    const currentTemplate = dayMutationData.current.scheduleTemplates.find(
       (template) => template.id === targetTemplateId,
     );
     const now = new Date().toISOString();
@@ -1893,6 +2169,7 @@ export function usePlannerDataState({
           ? normalizeTimetableDate(draft.weekIntervalAnchorDate)
           : null,
       memo: draft.memo.trim(),
+      ...(currentTemplate?.excludedDates ? { excludedDates: currentTemplate.excludedDates } : {}),
       createdAt: currentTemplate?.createdAt ?? now,
       updatedAt: now,
     };
@@ -2248,9 +2525,25 @@ export function usePlannerDataState({
     openCreatePlan,
     openEditPlan,
     closePlanEditor,
-    savePlanDraft: trackMutation(savePlanDraft, ['plans-todos']),
+    savePlanDraft: trackMutation((draft: PlanDraft, id?: string) => {
+      const target = id ?? editingPlanId;
+      let keys = target ? [`plan:${target}`] : [];
+      if (!target && draft.sourceType === 'timetable') {
+        requireDayOccurrenceProjection();
+        requireKnownDaySources([...uncertainDaySources.keys()]);
+        const current = dayMutationData.current;
+        keys = requireCurrentTimetableImportTemplates(userId!, draft, current.scheduleTemplates, current.timetableTerms)
+          .map(row => `timetable-template:${row.id}`);
+      }
+      return withDayOccurrenceSourceWrite(keys, () => savePlanDraft(draft, id));
+    }, ['plans-todos']),
+    createPlanDraft: trackMutation(createPlanDraft, ['plans-todos']),
     projectPlanSave: trackMutation(projectPlanSave, ['plans-todos']),
-    movePlanOccurrence: trackMutation(movePlanOccurrence, ['plans-todos']),
+    movePlanOccurrence: trackMutation((plan: Plan, target: WeekPlanMoveTarget) =>
+      withDayOccurrenceSourceWrite(`plan:${plan.id}`, () => movePlanOccurrence(plan, target)), ['plans-todos']),
+    deleteDayOccurrence: trackMutation(deleteDayOccurrence, ['timetable', 'plans-todos', 'month-events']),
+    changeDayTimetableTime: trackMutation(changeDayTimetableTime, ['plans-todos']),
+    prepareDayTimetableRecord: trackMutation(prepareDayTimetableRecord, ['plans-todos']),
     deletePlan: trackMutation(deletePlan, ['actual-material', 'plans-todos']),
     confirmRecurringPlanScope: trackMutation(confirmRecurringPlanScope),
     cancelRecurringPlanScope,
@@ -2260,8 +2553,10 @@ export function usePlannerDataState({
     linkStandaloneActualToPlan: trackMutation(linkStandaloneActualToPlan),
     deleteActual: trackMutation(deleteActual),
     saveDayNote: saveDayNoteAfterLoad,
-    saveMonthEvent: trackMutation(saveMonthEvent, ['month-events']),
-    deleteMonthEvent: trackMutation(deleteMonthEvent, ['month-events']),
+    saveMonthEvent: trackMutation((draft: MonthEventDraft, id?: string, edit?: MonthEventEditRequest) =>
+      withDayOccurrenceSourceWrite(id ? `month-event:${id}` : undefined, () => saveMonthEvent(draft, id, edit)), ['month-events']),
+    deleteMonthEvent: trackMutation((event: MonthEvent) =>
+      withDayOccurrenceSourceWrite(`month-event:${event.id}`, () => deleteMonthEvent(event)), ['month-events', 'actual-material']),
     saveTodo: trackMutation(saveTodo, ['plans-todos']),
     scheduleTodoAsPlan: trackMutation(scheduleTodoAsPlan, ['plans-todos']),
     deleteTodo: trackMutation(deleteTodo, ['plans-todos']),
@@ -2270,11 +2565,15 @@ export function usePlannerDataState({
     captureStudyMaterialBaseline: actualAdmission.captureMaterial,
     saveStudyMaterial: trackMutation(saveStudyMaterial),
     deleteStudyMaterial: trackMutation(deleteStudyMaterial),
-    saveScheduleTemplate: trackMutation(saveScheduleTemplate, ['timetable']),
-    deleteScheduleTemplate: trackMutation(deleteScheduleTemplate, ['timetable']),
+    saveScheduleTemplate: trackMutation((draft: ScheduleTemplateDraft, id?: string) =>
+      withDayOccurrenceSourceWrite(id ? `timetable-template:${id}` : undefined, () => saveScheduleTemplate(draft, id)), ['timetable']),
+    deleteScheduleTemplate: trackMutation((template: ScheduleTemplate) =>
+      withDayOccurrenceSourceWrite(`timetable-template:${template.id}`, () => deleteScheduleTemplate(template)), ['timetable']),
     activateTimetableTerm: trackMutation(activateTimetableTerm, ['timetable']),
-    deleteTimetableTerm: trackMutation(deleteTimetableTerm, ['timetable']),
-    clearTimetableTermData: trackMutation(clearTimetableTermData, ['timetable']),
+    deleteTimetableTerm: trackMutation((term: TimetableTerm) =>
+      withDayOccurrenceSourceWrite(timetableTermSourceKeys(term), () => deleteTimetableTerm(term)), ['timetable']),
+    clearTimetableTermData: trackMutation((term: TimetableTerm) =>
+      withDayOccurrenceSourceWrite(timetableTermSourceKeys(term), () => clearTimetableTermData(term)), ['timetable']),
     saveTimetablePeriod: trackMutation(saveTimetablePeriod, ['timetable']),
     deleteTimetablePeriod: trackMutation(deleteTimetablePeriod, ['timetable']),
     selectDate,

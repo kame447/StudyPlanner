@@ -402,7 +402,7 @@ it('keeps stale, unknown, historical and invalid replacement corrections atomic'
   }
 });
 
-it('finalizes an explicit window correction through the semantic-uncertainty path', async () => {
+it.each(['replace', 'modify'] as const)('finalizes an explicit window %s through the semantic-uncertainty path', async operation => {
   const initialDoc = document({ windowLocalId: 'old-window', sourceText: '明日の予定', tasks: [] });
   initialDoc.planningWindow!.value = 'tomorrow';
   const initial = canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5({
@@ -417,7 +417,7 @@ it('finalizes an explicit window correction through the semantic-uncertainty pat
   const next = document({ windowLocalId: 'replacement', sourceText: '明日じゃなくて今日だ', tasks: [] });
   next.planningIntent = 'update_plan';
   next.corrections = [{ localId: 'correction', target: { kind: 'planning_window', publicId: oldId, localId: null, mention: '明日' },
-    operation: 'replace', replacementLocalId: 'replacement', sourceText: '明日じゃなくて今日だ' }];
+    operation, replacementLocalId: 'replacement', sourceText: '明日じゃなくて今日だ' }];
   const pipeline = createWeeklyPlanningSemanticPipelineV5({ normalize: async () => acceptedResult(next) });
   const result = await pipeline.run({ graph, conversationId: 'uncertainty', turnId: 'correction', expectedRevision: graph.revision,
     userText: '明日じゃなくて今日だ', recentConversation: [], publicStateSummary: {

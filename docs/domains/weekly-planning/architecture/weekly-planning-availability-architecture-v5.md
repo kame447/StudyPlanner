@@ -29,6 +29,7 @@ accepted Fact Graph
    ├─ accepted life / buffer constraints
    └─ authoritative occupied sources
       ├─ existing StudyPlanner plans
+      ├─ owned timed MonthEvents
       └─ timetable
    → resolved availability
 
@@ -52,6 +53,16 @@ Do not route task/component deadline, earliest-start, latest-end or preferred-wi
 - a required authoritative source that failed to load is not equivalent to an empty source.
 - a known-but-unresolved required constraint is not interpreted as free capacity merely because its final interval is unavailable.
 - preference, annotation, personalization score or renderer wording cannot widen hard availability or daily capacity.
+
+## Timed MonthEvent placement
+
+Ordinary preview placement consumes the already-loaded MonthEvent array and the existing required owner identity. It does not fetch the schedule again. Foreign records and explicit `busy: false` records do not occupy this path. Canonical schedule occurrence projection owns recurrence, excluded dates, represented multi-day spans and `24:00` normalization; placement reuses its calendar membership helper for pre-projection validation rather than deriving a second recurrence rule.
+
+Relevant owned busy records must have valid clock fields before occurrence overlap filtering. An invalid hour/minute or empty clock fails the turn with a technical error, rather than disappearing into free time or being reported as insufficient study capacity. The existing failure lifecycle discards the staged graph and preserves the previously committed graph and either its preview or promoted drafts through checkpoint reload. This clock-field check is not a general chronology validator.
+
+Timed intervals use the existing Plan buffer, date clipping and slot-break policy. This change does not add buffer spillover beyond the represented endpoint. The existing all-day encodings (`00:00` to `24:00`, `23:59` or `00:00`) remain outside this timed slice; their busy/free policy is not selected here.
+
+Diagnostics persist actual placement results through the existing bounded trace/outbox/Worker contract. Raw MonthEvent IDs, titles, memo and URLs are excluded from this preview diagnostic. Canonical persistence and compatibility readers retain their existing busy-default and explicit-free behavior.
 
 ## Daily study capacity
 

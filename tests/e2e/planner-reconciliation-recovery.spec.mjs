@@ -34,7 +34,7 @@ async function boot(page, options) {
     const url = new URL(route.request().url());
     return ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ? route.continue() : route.abort();
   });
-  await page.goto(`${HARNESS_URL}?theme=${options.theme}${options.strict ? '&strict=true' : ''}`);
+  await page.goto(`${HARNESS_URL}?theme=${options.theme}${options.strict ? '&strict=true' : ''}${options.parallelStudySessions ? '&parallelStudySessions=true' : ''}`);
   await page.waitForFunction(() => typeof window.__plannerRecoveryHook?.snapshot === 'function');
   await expect.poll(async () => (await hookSnapshot(page)).ready).toBe(true);
   await expect(page.getByRole('navigation', { name: '主要ナビゲーション' })).toBeVisible();
@@ -708,12 +708,15 @@ test(`Quick Entry pending linked save blocks Day record open and Plan delete, th
     await expect(actions.getByRole('alert')).toContainText('保存・更新中');
     await expect(page.locator('.actual-editor-card')).toHaveCount(0);
     const heldCalls = (await repoSnapshot(page)).calls;
-    await actions.getByRole('button', { name: '削除', exact: true }).click();
+    // One-off plans expose one cancellation action, named explicitly for the event.
+    const deletePlan = actions.getByRole('button', { name: '予定を削除', exact: true });
+    await expect(actions.locator('.schedule-action-item.danger')).toHaveCount(1);
+    await deletePlan.click();
     // Identical busy feedback is shown once; unchanged repository calls and
     // durable bytes below independently prove the Plan deletion was rejected.
     await expect(actions.getByRole('alert').filter({ hasText: '保存・更新中' })).toHaveCount(1);
     await expect(actions).toBeVisible();
-    await expect(actions.getByRole('button', { name: '削除', exact: true })).toBeEnabled();
+    await expect(deletePlan).toBeEnabled();
     await expect(page.getByRole('button', { name: '元に戻す', exact: true })).toHaveCount(0);
     expect((await repoSnapshot(page)).calls).toEqual(heldCalls);
     expect(await durableWrites(page)).toEqual(storageBefore);
@@ -882,7 +885,7 @@ async function inspectMaterialAdmissionDraft(page, testInfo, label, record) {
 
 for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
   test(`same-material Study Sessions preserve busy draft, retry from committed progress and reload ${viewport}-${theme}`, async ({ page }, testInfo) => {
-    await boot(page, cases.find(item => item.label === viewport && item.theme === theme));
+    await boot(page, { ...cases.find(item => item.label === viewport && item.theme === theme), parallelStudySessions: true });
     const plans = await page.evaluate(async date => {
       const userId = window.__plannerRecoveryHook.snapshot().ownerId;
       const plans = await window.__plannerRecoveryRepository.seedMaterialAdmissionPlans({ userId, date });
@@ -895,8 +898,10 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     const nextPlan = page.locator('[data-home-section="next-plan"]');
     await expect(nextPlan.getByRole('heading', { name: plans[0].title, exact: true })).toBeVisible();
     await nextPlan.getByRole('button', { name: '▶ 勉強を開始', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: '学習を開始', exact: true })
-      .getByRole('heading', { name: plans[0].title, exact: true })).toBeVisible();
+    const target0 = page.getByRole('dialog', { name: '学習を開始', exact: true })
+      .getByRole('combobox', { name: '学習内容', exact: true });
+    await expect(target0).toHaveValue('planned');
+    await expect(target0.locator('option:checked')).toHaveText(`この予定で学習: ${plans[0].title}`);
     await page.getByRole('dialog', { name: '学習を開始', exact: true })
       .getByRole('button', { name: 'スタート', exact: true }).click();
     // Move beyond A's planned end with the shared deterministic clock. The
@@ -916,14 +921,24 @@ for (const [viewport, theme] of [['desktop', 'light'], ['mobile', 'dark']]) {
     const beforeBusyWrites = await durableWrites(page);
     expect(await materialAdmissionCallCount(page)).toBe(1);
     await record.getByRole('button', { name: '戻る', exact: true }).click();
-    page.once('dialog', dialog => dialog.accept());
     await page.getByRole('dialog', { name: '学習中', exact: true })
       .getByRole('button', { name: '戻る', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
+    // Back minimizes A; relaunching its surface must retain the pending session.
+    await nextPlan.getByRole('button', { name: '▶ 勉強を開始', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '学習中', exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '学習を開始', exact: true })).toHaveCount(0);
+    await page.getByRole('dialog', { name: '学習中', exact: true })
+      .getByRole('button', { name: '戻る', exact: true }).click();
+    // Switch only the test launch surface. A's provider stays mounted and B
+    // shares the real hook's admission boundary, never a replacement save stub.
+    await page.evaluate(() => window.__plannerRecoveryStudySessions.openSecondary());
     await expect(nextPlan.getByRole('heading', { name: plans[1].title, exact: true })).toBeVisible();
     await nextPlan.getByRole('button', { name: '▶ 勉強を開始', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: '学習を開始', exact: true })
-      .getByRole('heading', { name: plans[1].title, exact: true })).toBeVisible();
+    const target1 = page.getByRole('dialog', { name: '学習を開始', exact: true })
+      .getByRole('combobox', { name: '学習内容', exact: true });
+    await expect(target1).toHaveValue('planned');
+    await expect(target1.locator('option:checked')).toHaveText(`この予定で学習: ${plans[1].title}`);
     await page.getByRole('dialog', { name: '学習を開始', exact: true })
       .getByRole('button', { name: 'スタート', exact: true }).click();
     await page.clock.fastForward(60_000);
@@ -1298,7 +1313,8 @@ for (const options of [cases.find(item => item.label === 'desktop' && item.theme
       expect(await page.evaluate(() => window.__plannerRecoveryHook.saveError)).toBeNull();
     }
     await navigate(page, '時間割');
-    await page.getByRole('button', { name: '月曜 1限 授業Aを編集', exact: true }).click();
+    await page.getByRole('button', { name: '月曜 1限 授業Aの詳細', exact: true }).click();
+    await page.locator('.timetable-class-detail').getByRole('button', { name: '編集', exact: true }).click();
     const editor = page.locator('.timetable-editor-modal');
     await editor.getByLabel('授業名', { exact: true }).fill('保存した授業A');
     await page.evaluate(() => window.__plannerRecoveryRepository.holdNextTemplateWrite());
@@ -1309,7 +1325,8 @@ for (const options of [cases.find(item => item.label === 'desktop' && item.theme
     }
     await expect(editor.getByRole('button', { name: '閉じる', exact: true })).toBeEnabled();
     await editor.getByRole('button', { name: '閉じる', exact: true }).click();
-    await page.getByRole('button', { name: '火曜 1限 授業Bを編集', exact: true }).click();
+    await page.getByRole('button', { name: '火曜 1限 授業Bの詳細', exact: true }).click();
+    await page.locator('.timetable-class-detail').getByRole('button', { name: '編集', exact: true }).click();
     for (const control of await editor.locator('input, select, textarea, .segment').all()) {
       await expect(control).toBeEnabled();
     }
@@ -1322,7 +1339,7 @@ for (const options of [cases.find(item => item.label === 'desktop' && item.theme
     await page.screenshot({ path: testInfo.outputPath(`timetable-editor-${options.label}-${options.theme}.png`), fullPage: true });
     await editor.getByRole('button', { name: '保存', exact: true }).click();
     await expect(editor).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '火曜 1限 未保存の授業Bを編集', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '火曜 1限 未保存の授業Bの詳細', exact: true })).toBeVisible();
   });
 
   test(`new timetable class stays locked until one create completes ${options.label}-${options.theme}`, async ({ page }, testInfo) => {
@@ -1346,7 +1363,7 @@ for (const options of [cases.find(item => item.label === 'desktop' && item.theme
     await page.screenshot({ path: testInfo.outputPath(`timetable-pending-create-${options.label}-${options.theme}.png`), fullPage: true });
     await page.evaluate(() => window.__plannerRecoveryRepository.releasePlanWrite());
     await expect(editor).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '水曜 1限 新しく保存する授業を編集', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '水曜 1限 新しく保存する授業の詳細', exact: true })).toBeVisible();
     expect(writeMethods(await repoSnapshot(page)).slice(before.length)).toEqual(['upsertScheduleTemplate']);
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleTemplates.v1') ?? '[]'));
     expect(saved).toEqual([expect.objectContaining({ title: '新しく保存する授業' })]);
@@ -1360,13 +1377,14 @@ for (const viewport of [
   { width: 800, height: 1100, reducedMotion: 'no-preference' },
   { width: 1000, height: 1250, reducedMotion: 'no-preference' },
 ]) {
-  test(`timetable overlay keeps lower fields above navigation ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
+  test(`timetable dialog covers navigation and keeps lower fields usable ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
     await page.emulateMedia({ reducedMotion: viewport.reducedMotion });
     await boot(page, { ...viewport, theme: 'light' });
     await page.evaluate(() => window.__plannerRecoveryHook.startTimetableClass({ title: '編集する授業', periodNumber: 1 }));
     await expect.poll(() => page.evaluate(() => window.__plannerRecoveryHook.saveComplete)).toBe(true);
     await navigate(page, '時間割');
-    await page.getByRole('button', { name: '月曜 1限 編集する授業を編集', exact: true }).click();
+    await page.getByRole('button', { name: '月曜 1限 編集する授業の詳細', exact: true }).click();
+    await page.locator('.timetable-class-detail').getByRole('button', { name: '編集', exact: true }).click();
     const editor = page.locator('.timetable-editor-modal');
     await expect(editor).toBeVisible();
     // Use an independent fixed element outside the route as the browser's
@@ -1403,9 +1421,17 @@ for (const viewport of [
     expect(bounds.y).toBeCloseTo(geometry.fixedViewport.y, 0);
     expect(bounds.width).toBeCloseTo(geometry.fixedViewport.width, 0);
     expect(bounds.height).toBeCloseTo(geometry.fixedViewport.height, 0);
-    const nav = await page.getByRole('navigation', { name: '主要ナビゲーション' }).boundingBox();
     const form = await editor.boundingBox();
-    expect(form.y + form.height).toBeLessThanOrEqual(nav.y + 1);
+    expect(form.y).toBe(0);
+    expect(form.y + form.height).toBe(viewport.height);
+    expect(await page.getByRole('navigation', { name: '主要ナビゲーション' }).evaluate(nav => {
+      const overlay = document.querySelector('.timetable-class-overlay');
+      return [...nav.querySelectorAll('button')].every(button => {
+        const rect = button.getBoundingClientRect();
+        return overlay.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+      });
+    })).toBe(true);
+    await editor.locator('.timetable-editor-options > summary').click();
     for (const control of [editor.getByLabel('教室', { exact: true }), editor.getByLabel('メモ', { exact: true }), editor.getByRole('button', { name: '授業を削除', exact: true })]) {
       await control.scrollIntoViewIfNeeded();
       await control.click({ trial: true });

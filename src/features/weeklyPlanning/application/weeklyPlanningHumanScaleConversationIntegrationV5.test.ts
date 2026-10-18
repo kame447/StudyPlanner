@@ -1,3 +1,19 @@
+import { boundWeeklyPlanningDialogueRendererTraceForTransport } from '../trace/weeklyPlanningDialogueRendererTrace';
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import { WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS, measureWeeklyPlanningTraceJsonBytes } from '../../../../shared/weeklyPlanningTraceContract';
+import { prepareWeeklyPlanningTraceServerWrite } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
+import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
+import { hydrateWeeklyPlanningStableV5RuntimeSession } from './weeklyPlanningStableV5RuntimeSession';
+import { loadWeeklyPlanningStableV5PersistedSession, saveWeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionStorage';
+import { takeWeeklyPlanningStableV5DebugTrace, resetWeeklyPlanningStableV5DebugTraceForTest } from '../trace/weeklyPlanningStableV5DebugTrace';
+import { recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5TraceRuntimeForTest, resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest } from '../trace/weeklyPlanningStableV5TraceRuntime';
+import { listWeeklyPlanningTraceOutboxItems } from '../trace/weeklyPlanningTraceOutbox';
+import { setWeeklyPlanningTraceRepositoryForTests } from '../trace/weeklyPlanningTraceRepository';
+import type { WeeklyPlanningTraceRepository, WeeklyPlanningTraceSession, WeeklyPlanningTraceEntry } from '../trace/weeklyPlanningTraceTypes';
+import { validateWeeklyPlanningSemanticResponseV5 } from '../semantic/weeklyPlanningSemanticResponseValidationV5';
+import type { WeeklyPlanningSemanticNormalizerInputV5 } from '../semantic/weeklyPlanningSemanticNormalizerContractsV5';
+import { resolveWeeklyPlanningQuestionPresentationFreshness, withoutWeeklyPlanningQuestionPresentation } from '../intake/weeklyPlanningQuestionPresentation';
+import { createPresentedWeeklyPlanningConversation } from '../testUtils/__tests__/weeklyPlanningPresentedConversation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
@@ -8,7 +24,7 @@ import {
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeExecutor';
 import {
-  finalizeWeeklyPlanningStableV5RuntimeGraph,
+  getWeeklyPlanningStableV5RuntimeSession,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from './weeklyPlanningStableV5RuntimeSession';
 
@@ -284,14 +300,19 @@ vi.mock('../../../lib/aiConfig', () => ({
   }),
   getAiConfigValidationMessage: () => undefined,
 }));
-vi.mock('../../../services/ai/openAiCompatibleClient', () => ({
-  createOpenAiCompatibleClient: () => ({ createChatCompletion: vi.fn() }),
-}));
+vi.mock('../../../services/ai/openAiCompatibleClient', async () => {
+  const { successfulWeeklyPlanningRendererCompletion } = await import(
+    '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture'
+  );
+  return { createOpenAiCompatibleClient: () => ({
+    createChatCompletion: successfulWeeklyPlanningRendererCompletion,
+  }) };
+});
 vi.mock('../semantic/weeklyPlanningSemanticNormalizerV5', () => ({
   createWeeklyPlanningSemanticNormalizerV5: () => ({ normalize: normalizeMock }),
 }));
 
-import { executeWeeklyPlanningStableV5RuntimeTurn } from './weeklyPlanningStableV5InstrumentedRuntimeExecutor';
+let conversation: ReturnType<typeof createPresentedWeeklyPlanningConversation>;
 
 const requestContext = {
   startedAtIso: '2026-08-12T00:00:00.000Z',
@@ -338,17 +359,12 @@ async function runTwoTurnPlanningConversation(params: {
 }) {
   normalizeMock.mockResolvedValueOnce(acceptedResult(params.planningDocument));
   const firstRequestId = `${params.conversationId}:request:1`;
-  const first = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+  const first = await conversation.run(turnInput({
     conversationId: params.conversationId,
     userText: params.firstUserText,
     traceRequestId: firstRequestId,
   }));
   expect(first.state.draftGenerationIntent).toBe('user_authorized');
-  finalizeWeeklyPlanningStableV5RuntimeGraph({
-    ownerId: 'owner-human-scale',
-    conversationId: params.conversationId,
-    requestId: firstRequestId,
-  });
 
   const answerDocument = params.answerDirection
     ? directionalDurationAnswerDocument({
@@ -357,7 +373,7 @@ async function runTwoTurnPlanningConversation(params: {
       })
     : durationAnswerDocument(params.answerMinutes);
   normalizeMock.mockResolvedValueOnce(acceptedResult(answerDocument));
-  const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+  const second = await conversation.run(turnInput({
     conversationId: params.conversationId,
     previousState: first.state,
     userText: `${params.answerMinutes}分くらい`,
@@ -379,10 +395,126 @@ function candidateSourceFactRefs(candidate: unknown): string[] {
     : [];
 }
 
+
+// Validate the provider-shaped document against the runtime's actual public
+// state and graph before supplying it to the existing typed normalizer fixture.
+function queueValidatedProposalDocument(document: WeeklyPlanningSemanticDocumentV5) {
+  normalizeMock.mockImplementationOnce(async (input: WeeklyPlanningSemanticNormalizerInputV5) => {
+    const validation = validateWeeklyPlanningSemanticResponseV5(JSON.stringify(document), {
+      currentUserText: input.userText,
+      supplementalContext: input.supplementalContext,
+      selectedStarterTarget: input.selectedStarterTarget,
+      recentConversation: input.recentConversation,
+      publicStateSummary: input.publicStateSummary,
+      committedGraph: input.committedGraph,
+    });
+    expect(validation.errors).toEqual([]);
+    expect(validation.document).not.toBeNull();
+    return acceptedResult(validation.document!);
+  });
+}
+
+async function createFreshProposalAWithPendingB(conversationId: string) {
+  queueValidatedProposalDocument(planningDocument({
+    title: '英単語', amount: 220, unitCode: 'word', unitLabel: '語',
+    sourceText: '英単語220語', activityKind: 'memorization_retrieval',
+  }));
+  const first = await conversation.run(turnInput({
+    conversationId, userText: '8月17日から23日で英単語220語を覚える予定を作りたい',
+    traceRequestId: `${conversationId}:create-b`,
+  }));
+  const proposalB = first.state.learningStrategyProposalRecords?.[0];
+  expect(proposalB).toMatchObject({ status: 'pending', decidedAtTurnId: null });
+  const secondDocument = planningDocument({
+    title: '歴史用語', amount: 80, unitCode: 'word', unitLabel: '語',
+    sourceText: '歴史用語80語', activityKind: 'memorization_retrieval',
+  });
+  secondDocument.planningIntent = 'update_plan';
+  secondDocument.planningWindow = null;
+  queueValidatedProposalDocument(secondDocument);
+  const second = await conversation.run(turnInput({
+    conversationId, userText: '歴史用語80語を覚える予定も追加してください',
+    traceRequestId: `${conversationId}:create-a`,
+  }));
+  const records = second.state.learningStrategyProposalRecords ?? [];
+  expect(records).toHaveLength(2);
+  expect(records.every((record) => record.status === 'pending' && record.decidedAtTurnId === null)).toBe(true);
+  const proposalA = records.find((record) => record.id !== proposalB!.id)!;
+  expect(proposalA).toBeDefined();
+  expect(proposalA.workloadFactId).not.toBe(proposalB!.workloadFactId);
+  for (const id of [proposalA.workloadFactId, proposalB!.workloadFactId]) {
+    expect(second.stableV5Graph!.factLifecycles.find((entry) => entry.factId === id)?.status).toBe('active');
+  }
+  const state = conversation.getState();
+  expect(resolveWeeklyPlanningQuestionPresentationFreshness({
+    previousState: state.intakeState, inputStateRevision: state.revision,
+    messages: state.messages, graphRevision: second.stableV5Graph!.revision,
+  }).status).toBe('fresh');
+  expect(state.intakeState?.lastQuestionContext).toMatchObject({
+    targetSlot: 'stable_v5:learning_strategy_proposal', actionId: proposalA.id,
+    topicId: proposalA.workloadFactId,
+  });
+  return { proposalA, proposalB: proposalB!, graph: second.stableV5Graph! };
+}
+
+function explicitProposalDecisions(ids: string[], sourceText: string): WeeklyPlanningSemanticDocumentV5 {
+  const document = proposalDecisionDocument({ proposalId: ids[0], decision: 'accept' });
+  document.decisions = ids.map((id, index) => ({
+    ...document.decisions[0], localId: `explicit-proposal-${index}`,
+    target: { kind: 'proposal', publicId: id, localId: null, mention: null }, sourceText,
+  }));
+  return document;
+}
+
+function proposalTraceRepository() {
+  type Write = { session: WeeklyPlanningTraceSession; entries: WeeklyPlanningTraceEntry[] };
+  const attempts: Write[] = [];
+  const writes: Write[] = [];
+  let failNext = true;
+  const repository: WeeklyPlanningTraceRepository = {
+    async upsertSession() {},
+    async appendEntries(write) {
+      attempts.push(structuredClone(write));
+      if (failNext) { failNext = false; throw new Error('injected proposal trace append failure'); }
+      writes.push(structuredClone(write));
+    },
+    async listSessions() { return []; }, async listSessionsForAdmin() { return []; },
+    async archiveSessionForAdmin() {}, async getSession() { return null; }, async listEntries() { return []; },
+  };
+  return { repository, attempts, writes };
+}
+
+function proposalTraceInput(params: {
+  conversationId: string; requestId: string; userText: string;
+  result: Awaited<ReturnType<typeof conversation.run>>;
+  events: ReturnType<typeof takeWeeklyPlanningStableV5DebugTrace>;
+}) {
+  return {
+    userId: 'owner-human-scale', conversationId: params.conversationId,
+    requestId: params.requestId, userText: params.userText,
+    assistantMessage: params.result.message, responseSource: params.result.responseSource,
+    outcome: params.result.state.status, previewCount: params.result.draftCandidates.length,
+    debugTraceEvents: params.events,
+  };
+}
+
+// Bounded summaries may retain explicit head/tail fragments instead of an object.
+// Match each complete serialized record in a retained fragment, never infer identity
+// from separate occurrences of an ID and status or reconstruct omitted bytes.
+function expectProposalRecordsInStoredSummary(value: unknown, records: unknown[]) {
+  const bounded = value as { traceTruncated?: boolean; jsonHead?: string; jsonTail?: string };
+  const fragments = bounded?.traceTruncated
+    ? [bounded.jsonHead ?? '', bounded.jsonTail ?? ''] : [JSON.stringify(value)];
+  for (const record of records) {
+    expect(fragments.some((fragment) => fragment.includes(JSON.stringify(record)))).toBe(true);
+  }
+}
+
 describe('Stable V5 human-scale conversation integration', () => {
   beforeEach(() => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     normalizeMock.mockReset();
+    conversation = createPresentedWeeklyPlanningConversation();
   });
 
   it('proposes spaced memory practice before asking for a duration', async () => {
@@ -396,7 +528,7 @@ describe('Stable V5 human-scale conversation integration', () => {
       activityKind: 'memorization_retrieval',
     })));
 
-    const first = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+    const first = await conversation.run(turnInput({
       conversationId,
       userText: '8月17日から23日で英単語220語を覚える予定を作りたい',
       traceRequestId: `${conversationId}:request:1`,
@@ -427,24 +559,19 @@ describe('Stable V5 human-scale conversation integration', () => {
       sourceText: '英単語220語',
       activityKind: 'memorization_retrieval',
     })));
-    const first = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+    const first = await conversation.run(turnInput({
       conversationId,
       userText: '8月17日から23日で英単語220語を覚える予定を作りたい',
       traceRequestId: firstRequestId,
     }));
     const proposalId = first.state.learningStrategyProposalRecords?.[0]?.id;
     expect(proposalId).toBeTruthy();
-    finalizeWeeklyPlanningStableV5RuntimeGraph({
-      ownerId: 'owner-human-scale',
-      conversationId,
-      requestId: firstRequestId,
-    });
 
     normalizeMock.mockResolvedValueOnce(acceptedResult(proposalDecisionDocument({
       proposalId: proposalId!,
       decision: 'accept',
     })));
-    const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+    const second = await conversation.run(turnInput({
       conversationId,
       previousState: first.state,
       userText: 'それでお願いします',
@@ -548,4 +675,767 @@ describe('Stable V5 human-scale conversation integration', () => {
       0,
     )).toBe(360);
   });
+  it.each(['unbound', 'stale'] as const)('does not attach a short duration to an %s question', async (presentation) => {
+    const conversationId = `human-scale-${presentation}`;
+    normalizeMock.mockResolvedValueOnce(acceptedResult(planningDocument({
+      title: '数学', amount: 40, unitCode: 'problem', unitLabel: '問', sourceText: '数学40問',
+    })));
+    const first = await conversation.run(turnInput({
+      conversationId, userText: '8月17日から23日で数学40問を進める予定を作りたい', traceRequestId: 'first',
+    }));
+    const state = conversation.getState();
+    const workloadId = first.stableV5Graph!.workloads[0].id;
+    expect(resolveWeeklyPlanningQuestionPresentationFreshness({
+      previousState: state.intakeState, inputStateRevision: state.revision,
+      messages: state.messages, graphRevision: first.stableV5Graph!.revision,
+    }).status).toBe('fresh');
+    if (presentation === 'unbound') {
+      conversation.dispatch({ type: 'load_state', state: { ...state, intakeState: {
+        ...state.intakeState!, lastQuestionContext: withoutWeeklyPlanningQuestionPresentation(state.intakeState!.lastQuestionContext),
+      } } });
+    } else {
+      conversation.dispatch({ type: 'set_last_assistant_message', message: '別の案内を表示しました。' });
+    }
+    normalizeMock.mockResolvedValueOnce(acceptedResult(durationAnswerDocument(8)));
+    const second = await conversation.run(turnInput({ conversationId, userText: '8分くらい', traceRequestId: 'second' }));
+    expect(normalizeMock.mock.calls[1][0].publicStateSummary.pendingQuestion).toBeNull();
+    expect(second.state.status).not.toBe('draft_ready');
+    expect(second.draftCandidates).toEqual([]);
+    const acceptedGraph = getWeeklyPlanningStableV5RuntimeSession(conversationId)?.graph;
+    expect(acceptedGraph).toBeDefined();
+    expect(acceptedGraph!.workloads.find((workload) => workload.id === workloadId)).toEqual(first.stableV5Graph!.workloads[0]);
+    expect(acceptedGraph!.effortEstimates.filter((effort) => effort.targetFactId === workloadId)).toEqual([]);
+  });
+
+  it('accepts the exact fresh displayed proposal A without granting save authority', async () => {
+    const conversationId = 'proposal-presentation-positive-a';
+    const { proposalA, proposalB } = await createFreshProposalAWithPendingB(conversationId);
+    const userText = '今表示された歴史用語の提案を採用します';
+    queueValidatedProposalDocument(explicitProposalDecisions([proposalA.id], userText));
+    const result = await conversation.run(turnInput({ conversationId, userText, traceRequestId: 'accept-a' }));
+    expect(result.state.learningStrategyProposalRecords?.find((record) => record.id === proposalA.id))
+      .toMatchObject({ status: 'accepted' });
+    expect(result.state.learningStrategyProposalRecords?.find((record) => record.id === proposalB.id))
+      .toMatchObject({ status: 'pending', decidedAtTurnId: null });
+    expect(result.state.shouldSavePlan).toBe(false);
+    expect(result.draftCandidates).toEqual([]);
+  });
+
+  it('leaves valid pending B undecided when collective A and B decisions follow fresh displayed A', async () => {
+    const conversationId = 'proposal-presentation-collective';
+    const { proposalA, proposalB } = await createFreshProposalAWithPendingB(conversationId);
+    const userText = '歴史用語と英単語の両方の提案を採用します';
+    queueValidatedProposalDocument(explicitProposalDecisions([proposalA.id, proposalB.id], userText));
+    const result = await conversation.run(turnInput({ conversationId, userText, traceRequestId: 'accept-collective' }));
+    const publicState = normalizeMock.mock.calls[2][0].publicStateSummary;
+    expect(publicState.pendingQuestion.actionId).toBe(proposalA.id);
+    expect(publicState.learningStrategyProposals.map((record: { publicId: string }) => record.publicId))
+      .toEqual(expect.arrayContaining([proposalA.id, proposalB.id]));
+    expect(result.state.learningStrategyProposalRecords?.filter((record) => record.status === 'accepted')
+      .map((record) => record.id)).toEqual([proposalA.id]);
+    expect(result.state.learningStrategyProposalRecords?.find((record) => record.id === proposalB.id))
+      .toMatchObject({ status: 'pending', decidedAtTurnId: null });
+    expect(result.state.shouldSavePlan).toBe(false);
+  });
+
+  it('does not redirect an explicit B-only proposal decision to fresh displayed A or settle B', async () => {
+    const conversationId = 'proposal-presentation-explicit-b';
+    const { proposalA, proposalB } = await createFreshProposalAWithPendingB(conversationId);
+    const userText = '英単語の提案だけ採用します';
+    queueValidatedProposalDocument(explicitProposalDecisions([proposalB.id], userText));
+    const result = await conversation.run(turnInput({ conversationId, userText, traceRequestId: 'accept-b-only' }));
+    const acceptedReading = await normalizeMock.mock.results[2].value;
+    expect(acceptedReading.document.decisions.map((decision: { target: { publicId: string } }) => decision.target.publicId))
+      .toEqual([proposalB.id]);
+    expect(result.state.learningStrategyProposalRecords?.find((record) => record.id === proposalA.id))
+      .toMatchObject({ status: 'pending', decidedAtTurnId: null });
+    expect(result.state.learningStrategyProposalRecords?.find((record) => record.id === proposalB.id))
+      .toMatchObject({ status: 'pending', decidedAtTurnId: null });
+    expect(result.state.shouldSavePlan).toBe(false);
+  });
+
+  it.each(['unbound', 'stale', 'no_question'] as const)('does not settle a known proposal A through an %s presentation', async (presentation) => {
+    const conversationId = `proposal-presentation-${presentation}`;
+    const { proposalA, proposalB, graph } = await createFreshProposalAWithPendingB(conversationId);
+    const state = conversation.getState();
+    if (presentation === 'unbound' || presentation === 'no_question') {
+      conversation.dispatch({ type: 'load_state', state: { ...state, intakeState: {
+        ...state.intakeState!, lastQuestionContext: presentation === 'no_question' ? undefined
+          : withoutWeeklyPlanningQuestionPresentation(state.intakeState!.lastQuestionContext),
+      } } });
+    } else {
+      conversation.dispatch({ type: 'set_last_assistant_message', message: '別の案内を表示しました。' });
+    }
+    const changedState = conversation.getState();
+    expect(resolveWeeklyPlanningQuestionPresentationFreshness({
+      previousState: changedState.intakeState, inputStateRevision: changedState.revision,
+      messages: changedState.messages, graphRevision: graph.revision,
+    }).status).toBe(presentation);
+    const userText = '歴史用語の提案を採用します';
+    queueValidatedProposalDocument(explicitProposalDecisions([proposalA.id], userText));
+    const result = await conversation.run(turnInput({ conversationId, userText, traceRequestId: 'accept-without-freshness' }));
+    expect(normalizeMock.mock.calls[2][0].publicStateSummary.pendingQuestion).toBeNull();
+    for (const id of [proposalA.id, proposalB.id]) {
+      expect(result.state.learningStrategyProposalRecords?.find((record) => record.id === id))
+        .toMatchObject({ status: 'pending', decidedAtTurnId: null });
+    }
+    expect(result.state.shouldSavePlan).toBe(false);
+  });
+
+  it.each([false, true])('persists the actual proposal decision and reloaded continuation through outbox and Worker (oversized=%s)', async (oversized) => {
+    const conversationId = `weekly-conversation-823e4567-e89b-52d3-a456-42661417400${oversized ? '1' : '0'}`;
+    const previousTraceEnabled = import.meta.env.VITE_WEEKLY_PLANNING_TRACE_ENABLED;
+    vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
+    const storage = createMemoryStorageHarness();
+    const restoreStorage = installWeeklyPlanningTestStorage(storage.storage);
+    const harness = proposalTraceRepository();
+    resetWeeklyPlanningStableV5TraceRuntimeForTest();
+    resetWeeklyPlanningStableV5DebugTraceForTest();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    try {
+      const { proposalA, proposalB } = await createFreshProposalAWithPendingB(conversationId);
+      const userText = '歴史用語と英単語の両方の提案を採用します';
+      const document = explicitProposalDecisions([proposalA.id, proposalB.id], userText);
+      const actual = await vi.importActual<typeof import('../semantic/weeklyPlanningSemanticNormalizerV5')>('../semantic/weeklyPlanningSemanticNormalizerV5');
+      const createChatCompletion = vi.fn<OpenAiCompatibleClient['createChatCompletion']>(async () => JSON.stringify(document));
+      const normalizer = actual.createWeeklyPlanningSemanticNormalizerV5({ createChatCompletion });
+      normalizeMock.mockImplementationOnce((input: WeeklyPlanningSemanticNormalizerInputV5) => normalizer.normalize(input));
+      const decided = await conversation.run(turnInput({ conversationId, userText, traceRequestId: 'trace-proposal-decision' }));
+      const accepted = await normalizeMock.mock.results[2].value;
+      expect(accepted.status).toBe('accepted');
+      expect(accepted.document.decisions.map((decision: { target: { publicId: string } }) => decision.target.publicId))
+        .toEqual([proposalA.id, proposalB.id]);
+      expect(createChatCompletion).toHaveBeenCalledTimes(1);
+      expect(decided.state.learningStrategyProposalRecords?.find((record) => record.id === proposalA.id))
+        .toMatchObject({ status: 'accepted' });
+      expect(decided.state.learningStrategyProposalRecords?.find((record) => record.id === proposalB.id))
+        .toMatchObject({ status: 'pending', decidedAtTurnId: null });
+      expect(decided.state.shouldSavePlan).toBe(false);
+      const decisionRequestId = normalizeMock.mock.calls[2][0].traceRequestId!;
+      const decisionEvents = takeWeeklyPlanningStableV5DebugTrace(decisionRequestId);
+      const requestEvents = decisionEvents.filter((event) => event.stage === 'semantic_provider_request');
+      expect(requestEvents).toHaveLength(1);
+      const sentRequest = createChatCompletion.mock.calls[0][0];
+      const requestEvent = requestEvents[0].data as {
+        requestBytes: number; request: { messages: unknown[]; purpose: string; maxCompletionTokens: number };
+      };
+      expect(requestEvent).toMatchObject({
+        requestBytes: new TextEncoder().encode(JSON.stringify(sentRequest)).byteLength,
+        request: { purpose: sentRequest.purpose, maxCompletionTokens: sentRequest.maxCompletionTokens },
+      });
+      // The last message is this bounded fixture's actual user/context payload.
+      expect(requestEvent.request.messages[requestEvent.request.messages.length - 1]).toEqual(sentRequest.messages[sentRequest.messages.length - 1]);
+      expect(decisionEvents.some((event) => event.stage === 'semantic_validation_result'
+        && (event.data as { accepted?: boolean }).accepted)).toBe(true);
+      await recordWeeklyPlanningStableV5TurnTrace(proposalTraceInput({
+        conversationId, requestId: decisionRequestId, userText, result: decided, events: decisionEvents,
+      }));
+      expect(harness.writes).toHaveLength(0);
+      expect(listWeeklyPlanningTraceOutboxItems({ userId: 'owner-human-scale', conversationId })).toHaveLength(1);
+
+      // The third-turn result is committed locally, saved by the real checkpoint
+      // codec, re-read from storage and rehydrated before the fourth turn begins.
+      const committed = conversation.getState();
+      const committedRecords = structuredClone(committed.intakeState!.learningStrategyProposalRecords);
+      expect(saveWeeklyPlanningStableV5PersistedSession({
+        ownerId: 'owner-human-scale', weekStartDate: committed.weekStartDate,
+        conversationId, graph: decided.stableV5Graph!, planningState: committed,
+      })).toBe(true);
+      expect(storage.values.size).toBeGreaterThan(0);
+      resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+      resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+      const restored = loadWeeklyPlanningStableV5PersistedSession({
+        ownerId: 'owner-human-scale', weekStartDate: committed.weekStartDate,
+      });
+      expect(restored).not.toBeNull();
+      expect(restored!.planningState.intakeState?.learningStrategyProposalRecords).toEqual(committedRecords);
+      expect(restored!.graph).toEqual(decided.stableV5Graph);
+      hydrateWeeklyPlanningStableV5RuntimeSession(restored!);
+      conversation.dispatch({ type: 'load_state', state: restored!.planningState });
+
+      const continuationText = '状況を確認しました';
+      const continuation = proposalDecisionDocument({ proposalId: proposalA.id, decision: 'accept' });
+      continuation.decisions = [];
+      queueValidatedProposalDocument(continuation);
+      const continued = await conversation.run(turnInput({
+        conversationId, userText: continuationText, traceRequestId: 'trace-proposal-continuation',
+      }));
+      expect((await normalizeMock.mock.results[3].value).document.decisions).toEqual([]);
+      expect(continued.state.learningStrategyProposalRecords).toEqual(committedRecords);
+      expect(continued.state.shouldSavePlan).toBe(false);
+      const summary = normalizeMock.mock.calls[3][0].publicStateSummary!;
+      const summaryRecords = summary.learningStrategyProposals as Array<{ publicId: string; status: string }>;
+      expect(summaryRecords).toEqual(expect.arrayContaining([
+        expect.objectContaining({ publicId: proposalA.id, status: 'accepted' }),
+        expect.objectContaining({ publicId: proposalB.id, status: 'pending' }),
+      ]));
+      const continuationRequestId = normalizeMock.mock.calls[3][0].traceRequestId!;
+      const continuationEvents = takeWeeklyPlanningStableV5DebugTrace(continuationRequestId);
+      const pipelineInput = continuationEvents.find((event) => event.stage === 'semantic_pipeline_input')!;
+      expect(pipelineInput).toBeDefined();
+      const data = pipelineInput.data as { publicStateSummary: Record<string, unknown> };
+      expect(data.publicStateSummary.learningStrategyProposals).toEqual(summaryRecords);
+      data.publicStateSummary.futureProposalTraceSentinel = 'proposal-continuation-sentinel';
+      if (oversized) data.publicStateSummary.futureLargeValue = 'あ'.repeat(20_000);
+      await recordWeeklyPlanningStableV5TurnTrace(proposalTraceInput({
+        conversationId, requestId: continuationRequestId, userText: continuationText,
+        result: continued, events: continuationEvents,
+      }));
+      expect(harness.writes).toHaveLength(2);
+      expect(listWeeklyPlanningTraceOutboxItems({ userId: 'owner-human-scale', conversationId })).toEqual([]);
+      const firstAttempt = harness.attempts[0].entries[0];
+      const replayed = harness.writes[0].entries[0];
+      const { observedAt: firstObserved, ...originalContent } = firstAttempt;
+      const { observedAt: replayedObserved, ...replayedContent } = replayed;
+      expect(replayedContent).toEqual(originalContent);
+      expect(Date.parse(replayedObserved!)).toBeGreaterThanOrEqual(Date.parse(firstObserved!));
+      const stored = harness.writes.map((write) => {
+        expect(write.entries).toHaveLength(1);
+        expect(measureWeeklyPlanningTraceJsonBytes(write.entries[0]))
+          .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+        const prepared = prepareWeeklyPlanningTraceServerWrite({
+          session: write.session as unknown as Record<string, unknown>,
+          entries: write.entries as unknown as Record<string, unknown>[],
+        }, { token: `wpt_${'f'.repeat(43)}`, epoch: '105' }, {
+          sessionId: conversationId.replace('weekly-conversation-', 'weekly-trace-'),
+          logicalConversationId: conversationId,
+        }, '2026-10-10T00:00:00.000Z');
+        expect(prepared.entries).toHaveLength(1);
+        expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0]))
+          .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+        const serialized = JSON.stringify(prepared.entries[0]);
+        expect(serialized).not.toContain('planningStateRevision');
+        expect(serialized).not.toContain('assistantMessageId');
+        return prepared.entries[0];
+      });
+      expect(stored[0]).toMatchObject({ requestId: decisionRequestId, aiInterpreter: {
+        input: { requests: expect.any(Array) },
+        structuredResults: expect.arrayContaining([expect.objectContaining({ accepted: true,
+          structuredResult: expect.objectContaining({ decisions: expect.arrayContaining([
+            expect.objectContaining({ target: expect.objectContaining({ publicId: proposalA.id }) }),
+            expect.objectContaining({ target: expect.objectContaining({ publicId: proposalB.id }) }),
+          ]) }),
+        })]),
+      } });
+      const decisionDiagnostic = stored[0] as { aiInterpreter: { input: { requests: unknown[] } } };
+      expect(decisionDiagnostic.aiInterpreter.input.requests).toHaveLength(1);
+      expect(decisionDiagnostic.aiInterpreter.input.requests[0]).toMatchObject({
+        purpose: requestEvent.request.purpose, requestBytes: requestEvent.requestBytes,
+        maxCompletionTokens: requestEvent.request.maxCompletionTokens,
+      });
+      const continuationDiagnostic = stored[1] as { aiInterpreter: { input: { planningStateSummary: unknown } }; diagnostics: { truncation?: { applied: boolean; fields: string[] } } };
+      if (oversized) {
+        expect(continuationDiagnostic.diagnostics.truncation?.applied).toBe(true);
+        expect(continuationDiagnostic.diagnostics.truncation?.fields)
+          .toContain('aiInterpreter.input.planningStateSummary');
+        expect(JSON.stringify(stored[1])).not.toContain('あ'.repeat(20_000));
+      } else {
+        expectProposalRecordsInStoredSummary(continuationDiagnostic.aiInterpreter.input.planningStateSummary, summaryRecords);
+        expect(JSON.stringify(stored[1])).toContain('proposal-continuation-sentinel');
+      }
+    } finally {
+      setWeeklyPlanningTraceRepositoryForTests(undefined);
+      resetWeeklyPlanningStableV5TraceRuntimeForTest();
+      resetWeeklyPlanningStableV5DebugTraceForTest();
+      restoreStorage();
+      vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', previousTraceEnabled);
+    }
+  });
+
+  function fixedHandoffDocument(userText: string, representation: 'fixed_task' | 'unavailable') {
+    const document = planningDocument({ title: '部活', amount: 1, unitCode: 'session', unitLabel: '回', sourceText: userText });
+    if (representation === 'fixed_task') {
+      const task = document.tasks[0];
+      task.category = 'non_study'; task.study = null; task.workloads = [];
+      task.temporalConstraints = [{ localId: 'club-fixed-time', targetLocalId: task.localId,
+        kind: 'fixed_interval', constraintLevel: 'hard', dateExpression: '2026-08-17',
+        namedTimePeriod: null, startTime: '10:30', endTime: '12:00', precision: 'exact', sourceText: userText }];
+    } else {
+      document.tasks = [];
+      document.availabilityDeclarations = [{ localId: 'club-busy-time', kind: 'unavailable',
+        dateExpression: '2026-08-17', namedTimePeriod: null, startTime: '10:30', endTime: '12:00',
+        recurrenceKind: null, days: [], constraintLevel: 'hard', capacityMinutes: null, sourceText: userText }];
+    }
+    return document;
+  }
+
+  // New discourse kinds are provider JSON here, so the baseline can run against
+  // the current four-kind validator without inventing a type-level acceptance.
+  async function runFixedHandoffReading(params: {
+    conversationId: string; userText: string; document: WeeklyPlanningSemanticDocumentV5;
+    act: 'request_event_registration' | 'decline_additional_work' | null;
+    acts?: Array<{ kind: string; targetPublicId: string | null }>;
+  }) {
+    const raw = { ...params.document, conversationActs: params.acts
+      ?? (params.act ? [{ kind: params.act, targetPublicId: null }] : []) };
+    const actual = await vi.importActual<typeof import('../semantic/weeklyPlanningSemanticNormalizerV5')>('../semantic/weeklyPlanningSemanticNormalizerV5');
+    const index = normalizeMock.mock.calls.length;
+    let semanticInput!: WeeklyPlanningSemanticNormalizerInputV5;
+    const createChatCompletion = vi.fn<OpenAiCompatibleClient['createChatCompletion']>(async (request) => {
+      const schema = request.responseFormat?.json_schema.name;
+      if (schema === 'weekly_planning_focused_authorization_v5') {
+        expect(semanticInput.publicStateSummary).toMatchObject({
+          pendingQuestion: null, previousCompatibilityStatus: 'needs_scope',
+          tasks: expect.arrayContaining([expect.objectContaining({ category: 'non_study' })]),
+        });
+        expect(request.maxCompletionTokens).toBe(80);
+        expect(JSON.parse(request.messages[1].content)).toEqual({ currentUserText: params.userText,
+          lastAssistantMessage: semanticInput.publicStateSummary?.lastAssistantMessage ?? null });
+        return JSON.stringify({ decision: 'fallback' });
+      }
+      if (schema === 'weekly_planning_focused_task_temporal_side_contribution_v5') {
+        return JSON.stringify({ decision: 'fallback', kind: null, constraintLevel: null,
+          dateExpression: null, namedTimePeriod: null, startTime: null, endTime: null, precision: null });
+      }
+      expect(schema).toBe('weekly_planning_semantic_document_v5');
+      return JSON.stringify(raw);
+    });
+    const normalizer = actual.createWeeklyPlanningSemanticNormalizerV5({ createChatCompletion });
+    normalizeMock.mockImplementationOnce((input: WeeklyPlanningSemanticNormalizerInputV5) => {
+      semanticInput = input;
+      return normalizer.normalize(input);
+    });
+    const result = await conversation.run(turnInput({ conversationId: params.conversationId,
+      userText: params.userText, traceRequestId: `fixed-handoff-${index}` }));
+    const reading = await normalizeMock.mock.results[index].value;
+    expect(reading.status).toBe('accepted');
+    expect(reading.document).not.toBeNull();
+    // Preserve the current no-op path: two generic completeness retries, with
+    // its existing task-target temporal fallback when that route is eligible.
+    const generic = 'weekly_planning_semantic_document_v5';
+    const temporal = 'weekly_planning_focused_task_temporal_side_contribution_v5';
+    const schemas = createChatCompletion.mock.calls.map(([request]) => request.responseFormat?.json_schema.name);
+    const authorization = 'weekly_planning_focused_authorization_v5';
+    if (schemas.includes(authorization)) {
+      expect(schemas).toEqual([authorization, generic]);
+      expect(await createChatCompletion.mock.results[0].value).toBe(JSON.stringify({ decision: 'fallback' }));
+      expect(reading.diagnostics.providerError).toBeNull();
+      expect(reading.document.planningIntent).toBe(params.document.planningIntent);
+    } else {
+      expect([[generic], [generic, generic, generic], [generic, temporal, generic, generic]])
+        .toContainEqual(schemas);
+    }
+    expect(result.state.shouldSavePlan).toBe(false);
+    expect(getWeeklyPlanningStableV5RuntimeSession(params.conversationId)!.graph).toEqual(result.stableV5Graph);
+    return { result, reading, raw, createChatCompletion };
+  }
+
+  function noNewEventFacts() {
+    const document = proposalDecisionDocument({ proposalId: 'unused', decision: 'accept' });
+    document.decisions = [];
+    return document;
+  }
+
+  it.each(['fixed_task', 'unavailable'] as const)('ends a complete %s registration turn and repeats handoff only for a renewed explicit request', async (representation) => {
+    const conversationId = `fixed-handoff-${representation}`;
+    const userText = '8月17日から23日の予定です。8月17日の10:30から12:00は部活なので、その予定を入れてください。';
+    const first = await runFixedHandoffReading({ conversationId, userText,
+      document: fixedHandoffDocument(userText, representation), act: 'request_event_registration' });
+    expect(first.result.draftCandidates).toEqual([]);
+    expect(first.result.state.shouldCreateDraft).toBe(false);
+    expect(first.result.stableV5Graph![representation === 'fixed_task' ? 'temporalConstraints' : 'availabilityDeclarations'])
+      .toHaveLength(1);
+    // Baseline's expected missing boundary: facts were accepted, but the old
+    // missing-work invitation must not remain after a complete fixed-only turn.
+    expect(first.result.state.lastQuestionContext).toBeUndefined();
+    expect(first.result.state.questions).toEqual([]);
+    expect(first.result).toHaveProperty('communicationFacts.statusReason', 'fixed_event_manual_entry');
+    expect(first.reading.document.conversationActs).toEqual(first.raw.conversationActs);
+    const firstGraph = structuredClone(first.result.stableV5Graph!);
+    for (const [text, act, status] of [
+      ['わかりました', null, 'no_additional_work'],
+      ['その予定を登録したいです', 'request_event_registration', 'fixed_event_manual_entry'],
+      ['ほかの作業は追加しません', 'decline_additional_work', 'no_additional_work'],
+    ] as const) {
+      const next = await runFixedHandoffReading({ conversationId, userText: text, document: noNewEventFacts(), act });
+      expect(next.result.draftCandidates).toEqual([]);
+      expect(next.result.state.lastQuestionContext).toBeUndefined();
+      expect(next.result.state.questions).toEqual([]);
+      expect(next.result).toHaveProperty('communicationFacts.statusReason', status);
+      expect(next.reading.document.conversationActs).toEqual(next.raw.conversationActs);
+      expect(next.result.stableV5Graph!.tasks).toEqual(firstGraph.tasks);
+      expect(next.result.stableV5Graph!.workloads).toEqual(firstGraph.workloads);
+      expect(next.result.stableV5Graph!.temporalConstraints).toEqual(firstGraph.temporalConstraints);
+      expect(next.result.stableV5Graph!.availabilityDeclarations).toEqual(firstGraph.availabilityDeclarations);
+    }
+  });
+
+  it('treats busy-only evidence without registration as an optional invitation that an explicit decline can close', async () => {
+    const conversationId = 'fixed-handoff-busy-without-registration';
+    const userText = '8月17日から23日の予定です。8月17日は10:30から12:00まで部活があります。';
+    const first = await runFixedHandoffReading({ conversationId, userText,
+      document: fixedHandoffDocument(userText, 'unavailable'), act: null });
+    expect(first.result.draftCandidates).toEqual([]);
+    expect(first.result.state.lastQuestionContext?.targetSlot).toBe('stable_v5:missing_schedulable_work');
+    expect(first.result).not.toHaveProperty('communicationFacts.statusReason', 'fixed_event_manual_entry');
+    const declined = await runFixedHandoffReading({ conversationId, userText: 'ほかの作業は追加しません',
+      document: noNewEventFacts(), act: 'decline_additional_work' });
+    expect(declined.result.draftCandidates).toEqual([]);
+    expect(declined.result.state.lastQuestionContext).toBeUndefined();
+    expect(declined.result).toHaveProperty('communicationFacts.statusReason', 'no_additional_work');
+    expect(declined.result.stableV5Graph!.availabilityDeclarations).toEqual(first.result.stableV5Graph!.availabilityDeclarations);
+  });
+
+  it('does not let a decline close a required date question for an incomplete fixed event', async () => {
+    const conversationId = 'fixed-handoff-required-date';
+    const userText = '8月17日から23日の予定です。部活は10:30から12:00です。';
+    const document = fixedHandoffDocument(userText, 'fixed_task');
+    document.tasks[0].temporalConstraints[0].dateExpression = null;
+    const first = await runFixedHandoffReading({ conversationId, userText, document, act: 'request_event_registration' });
+    expect(first.result.state.lastQuestionContext?.targetSlot).toBe('stable_v5:missing_commitment_date_scope');
+    const question = first.result.state.lastQuestionContext!;
+    const declined = await runFixedHandoffReading({ conversationId, userText: 'ほかの作業は追加しません',
+      document: noNewEventFacts(), act: 'decline_additional_work' });
+    expect(declined.result.state.lastQuestionContext).toMatchObject({ targetSlot: question.targetSlot, topicId: question.topicId });
+    expect(declined.result).not.toHaveProperty('communicationFacts.statusReason', 'no_additional_work');
+    expect(declined.result).not.toHaveProperty('communicationFacts.statusReason', 'fixed_event_manual_entry');
+    expect(declined.result.draftCandidates).toEqual([]);
+    expect(declined.result.stableV5Graph!.temporalConstraints).toEqual(first.result.stableV5Graph!.temporalConstraints);
+  });
+
+  it('keeps independent schedulable study work when a fixed-event registration is requested in the same turn', async () => {
+    const conversationId = 'fixed-handoff-with-study';
+    const userText = '8月17日から23日の予定です。8月17日の10:30から12:00は部活なので予定を入れて、数学も20分勉強したいです。';
+    const document = fixedHandoffDocument(userText, 'fixed_task');
+    const study = planningDocument({ title: '数学', amount: 20, unitCode: 'minute', unitLabel: '分', sourceText: '数学も20分勉強したいです' }).tasks[0];
+    study.localId = 'study-task'; study.workloads[0].localId = 'study-time';
+    document.tasks.push(study);
+    const mixed = await runFixedHandoffReading({ conversationId, userText, document, act: 'request_event_registration' });
+    expect(mixed.result.stableV5Graph!.tasks).toHaveLength(2);
+    expect(mixed.result.draftCandidates.length).toBeGreaterThan(0);
+    expect(mixed.result).not.toHaveProperty('communicationFacts.statusReason', 'fixed_event_manual_entry');
+    expect(mixed.result).not.toHaveProperty('communicationFacts.statusReason', 'no_additional_work');
+  });
+
+  function fixedHandoffQuestionIdentity(state: PlanningIntakeState) {
+    const question = state.lastQuestionContext;
+    return ['kind', 'targetSlot', 'intent', 'topicId', 'actionId',
+      'estimateForWorkloadFactId', 'questionBasis']
+      .map(key => question?.[key as keyof NonNullable<PlanningIntakeState['lastQuestionContext']>]);
+  }
+
+  function expectCurrentFixedHandoffQuestionFresh(conversationId: string) {
+    const state = conversation.getState();
+    expect(state.intakeState?.lastQuestionContext).toBeDefined();
+    expect(resolveWeeklyPlanningQuestionPresentationFreshness({ previousState: state.intakeState,
+      messages: state.messages, inputStateRevision: state.revision,
+      graphRevision: getWeeklyPlanningStableV5RuntimeSession(conversationId)!.graph.revision,
+    }).status).toBe('fresh');
+  }
+
+  it.each(['ask_about_pending_question', 'resume_topic'] as const)(
+    'preserves the actual optional question for %s until explicit registration closes that invitation', async kind => {
+      const conversationId = `fixed-handoff-optional-${kind}`;
+      const userText = '8月17日から23日の予定です。8月17日は10:30から12:00まで部活があります。';
+      const first = await runFixedHandoffReading({ conversationId, userText,
+        document: fixedHandoffDocument(userText, 'unavailable'), act: null });
+      expect(first.result.state.lastQuestionContext?.targetSlot).toBe('stable_v5:missing_schedulable_work');
+      expectCurrentFixedHandoffQuestionFresh(conversationId);
+      const identity = fixedHandoffQuestionIdentity(first.result.state);
+      const ordinaryActs = [{ kind, targetPublicId: null }];
+      const next = await runFixedHandoffReading({ conversationId,
+        userText: kind === 'ask_about_pending_question' ? '何を追加するか聞くのはなぜですか？' : 'さっきの追加する作業の質問に戻ってください。',
+        document: noNewEventFacts(), act: null, acts: ordinaryActs });
+      expect(next.reading.document.conversationActs).toEqual(ordinaryActs);
+      expect(fixedHandoffQuestionIdentity(next.result.state)).toEqual(identity);
+      expect(next.result.interactionOutcome?.kind).toBe(kind === 'ask_about_pending_question'
+        ? 'explain_pending_question' : 'resume_pending_question');
+      expect(next.result).not.toHaveProperty('communicationFacts');
+      expect(next.result.stableV5Graph!.availabilityDeclarations).toEqual(first.result.stableV5Graph!.availabilityDeclarations);
+      expectCurrentFixedHandoffQuestionFresh(conversationId);
+      const mixedActs = [...ordinaryActs, { kind: 'request_event_registration', targetPublicId: null },
+        { kind: 'decline_additional_work', targetPublicId: null }];
+      const closed = await runFixedHandoffReading({ conversationId,
+        userText: kind === 'ask_about_pending_question'
+          ? '何を追加するか聞く理由を教えてください。ほかの作業は追加しませんが、部活の予定は登録したいです。'
+          : '先ほどの話に戻ります。ほかの作業は追加しませんが、部活の予定は登録したいです。',
+        document: noNewEventFacts(), act: null, acts: mixedActs });
+      expect(closed.reading.document.conversationActs).toEqual(mixedActs);
+      expect(closed.result.state.lastQuestionContext).toBeUndefined();
+      expect(closed.result.state.questions).toEqual([]);
+      // Existing G/source classification requires an actual question to claim
+      // explanation/resumption; a closed invitation must not fabricate one.
+      expect(closed.result.interactionOutcome?.kind).toBe('apply');
+      expect(closed.result).toHaveProperty('communicationFacts.statusReason', 'fixed_event_manual_entry');
+      expect(closed.result).toHaveProperty('communicationFacts.manualEntry', {
+        navigationLabel: '予定', actionLabel: '予定を追加', eventCreatedByTurn: false,
+      });
+      expect(closed.result.draftCandidates).toEqual([]);
+      expect(closed.result.state.shouldCreateDraft).toBe(false);
+      expect(closed.result.stableV5Graph!.availabilityDeclarations).toEqual(first.result.stableV5Graph!.availabilityDeclarations);
+    });
+
+  it('keeps typed manual-entry facts beside an actual topic-shift renderer input', async () => {
+    const rendererClient = vi.fn<OpenAiCompatibleClient['createChatCompletion']>(async request => {
+      expect(request.purpose).toBe('weekly_planning_renderer');
+      expect(request.responseFormat?.json_schema.name).toBe('weekly_planning_stable_v5_dialogue_response');
+      const body = JSON.parse(request.messages[request.messages.length - 1].content);
+      return JSON.stringify({ actionId: body.actionId, actionKind: body.applicationDecision.actionKind,
+        questionCode: body.applicationDecision.questionCode, groundingAcknowledgement: null,
+        text: '部活の予定は、予定画面の「予定を追加」から入力できます。' });
+    });
+    const clientModule = await import('../../../services/ai/openAiCompatibleClient');
+    const clientSpy = vi.spyOn(clientModule, 'createOpenAiCompatibleClient')
+      .mockReturnValue({ createChatCompletion: rendererClient });
+    try {
+      const conversationId = 'fixed-handoff-registration-aside';
+      const userText = '話題を変えます。8月17日から23日の予定で、8月17日の10:30から12:00の部活を登録したいです。';
+      const acts = [{ kind: 'request_event_registration', targetPublicId: null },
+        { kind: 'topic_shift', targetPublicId: null }];
+      const turn = await runFixedHandoffReading({ conversationId, userText,
+        document: fixedHandoffDocument(userText, 'fixed_task'), act: null, acts });
+      expect(turn.reading.document.conversationActs).toEqual(acts);
+      expect(turn.result.interactionOutcome?.kind).toBe('aside');
+      expect(turn.result.state.lastQuestionContext).toBeUndefined();
+      expect(turn.result.draftCandidates).toEqual([]);
+      expect(turn.result.state.shouldCreateDraft).toBe(false);
+      expect(turn.result).toHaveProperty('communicationFacts.statusReason', 'fixed_event_manual_entry');
+      expect(rendererClient).toHaveBeenCalledTimes(1);
+      expect(turn.result.responseSource).toBe('ai');
+      const request = rendererClient.mock.calls[0][0];
+      const body = JSON.parse(request.messages[request.messages.length - 1].content);
+      expect(body.applicationDecision).toMatchObject({
+        actionKind: 'status', questionCode: null, communication: {
+          goal: 'acknowledge_aside', askQuestion: false, statusReason: 'fixed_event_manual_entry',
+          manualEntry: { navigationLabel: '予定', actionLabel: '予定を追加', eventCreatedByTurn: false },
+        },
+      });
+    } finally {
+      clientSpy.mockRestore();
+    }
+  });
+
+  it('does not let unknown named resume plus fixed-event acts consume a required commitment date', async () => {
+    const conversationId = 'fixed-handoff-unknown-resume';
+    const userText = '8月17日から23日の予定です。部活は10:30から12:00です。';
+    const document = fixedHandoffDocument(userText, 'fixed_task');
+    document.tasks[0].temporalConstraints[0].dateExpression = null;
+    const first = await runFixedHandoffReading({ conversationId, userText, document, act: null });
+    expect(first.result.state.lastQuestionContext?.targetSlot).toBe('stable_v5:missing_commitment_date_scope');
+    expectCurrentFixedHandoffQuestionFresh(conversationId);
+    const identity = fixedHandoffQuestionIdentity(first.result.state);
+    const acts = [{ kind: 'resume_topic', targetPublicId: 'unknown-fixed-topic' },
+      { kind: 'request_event_registration', targetPublicId: null },
+      { kind: 'decline_additional_work', targetPublicId: null }];
+    const next = await runFixedHandoffReading({ conversationId,
+      userText: '別の部活の話に戻って、その予定を登録したいです。ほかの作業は追加しません。',
+      document: noNewEventFacts(), act: null, acts });
+    expect(next.reading.document.conversationActs).toEqual([
+      { kind: 'resume_topic', targetPublicId: null, targetResolution: 'unresolved' }, ...acts.slice(1),
+    ]);
+    expect(fixedHandoffQuestionIdentity(next.result.state)).toEqual(identity);
+    expect(next.result.interactionOutcome?.kind).toBe('aside');
+    expect(next.result).not.toHaveProperty('communicationFacts');
+    expect(next.result.draftCandidates).toEqual([]);
+    expect(next.result.stableV5Graph!.temporalConstraints).toEqual(first.result.stableV5Graph!.temporalConstraints);
+    expect(next.result.questionPresentationContent).toBeUndefined();
+    const state = conversation.getState();
+    expect(resolveWeeklyPlanningQuestionPresentationFreshness({ previousState: state.intakeState,
+      messages: state.messages, inputStateRevision: state.revision,
+      graphRevision: next.result.stableV5Graph!.revision,
+    }).status).not.toBe('fresh');
+  });
+
+  it('retains a required window uncertainty for fixed-only work until a separately reviewed projection exists', async () => {
+    const conversationId = 'fixed-handoff-required-window';
+    const userText = '8月17日から23日の予定です。対象期間は確認が必要です。8月17日の10:30から12:00は部活です。';
+    const document = fixedHandoffDocument(userText, 'fixed_task');
+    document.uncertainties = [{ localId: 'window-need', targetLocalId: document.planningWindow!.localId,
+      field: 'planning_window', reason: '対象期間の確認が必要', sourceText: '対象期間は確認が必要です' }];
+    const first = await runFixedHandoffReading({ conversationId, userText, document, act: null });
+    const graph = first.result.stableV5Graph!;
+    expect(graph.uncertainties).toHaveLength(1);
+    expect(graph.uncertainties[0].targetFactId).toBe(graph.planningWindows[0].id);
+    expect(first.result.state.lastQuestionContext).toMatchObject({
+      targetSlot: 'stable_v5:semantic_uncertainty', topicId: graph.uncertainties[0].id,
+    });
+    const identity = fixedHandoffQuestionIdentity(first.result.state);
+    const acts = [{ kind: 'request_event_registration', targetPublicId: null },
+      { kind: 'decline_additional_work', targetPublicId: null }];
+    const next = await runFixedHandoffReading({ conversationId,
+      userText: '部活を登録したいです。ほかの作業は追加しません。', document: noNewEventFacts(), act: null, acts });
+    expect(next.reading.document.conversationActs).toEqual(acts);
+    expect(fixedHandoffQuestionIdentity(next.result.state)).toEqual(identity);
+    expect(next.result).not.toHaveProperty('communicationFacts');
+    expect(next.result.draftCandidates).toEqual([]);
+    expect(next.result.stableV5Graph!.planningWindows).toEqual(graph.planningWindows);
+    expect(next.result.stableV5Graph!.uncertainties).toEqual(graph.uncertainties);
+    expect(next.result.stableV5Graph!.temporalConstraints).toEqual(graph.temporalConstraints);
+  });
+
+  it.each([false, true])('persists actual fixed-event requests through outbox and Worker with renderer failure=%s', async rendererFailure => {
+    const conversationId = `weekly-conversation-923e4567-e89b-52d3-a456-42661417400${rendererFailure ? '1' : '0'}`;
+    const oldTraceEnabled = import.meta.env.VITE_WEEKLY_PLANNING_TRACE_ENABLED;
+    vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
+    const storage = createMemoryStorageHarness();
+    const restoreStorage = installWeeklyPlanningTestStorage(storage.storage);
+    const harness = proposalTraceRepository();
+    resetWeeklyPlanningStableV5TraceRuntimeForTest();
+    resetWeeklyPlanningStableV5DebugTraceForTest();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    const rendererClient = vi.fn<OpenAiCompatibleClient['createChatCompletion']>(async request => {
+      expect(request.purpose).toBe('weekly_planning_renderer');
+      expect(request.responseFormat?.json_schema.name).toBe('weekly_planning_stable_v5_dialogue_response');
+      if (rendererFailure) throw new Error('Fixed handoff renderer provider failure fixture');
+      const body = JSON.parse(request.messages[request.messages.length - 1].content);
+      return JSON.stringify({ actionId: body.actionId, actionKind: body.applicationDecision.actionKind,
+        questionCode: body.applicationDecision.questionCode, groundingAcknowledgement: null,
+        text: body.applicationDecision.communication.statusReason === 'fixed_event_manual_entry'
+          ? '部活の予定は、この画面では保存していません。「予定」から「予定を追加」を開いて入力できます。'
+          : '分かりました。' });
+    });
+    const clientModule = await import('../../../services/ai/openAiCompatibleClient');
+    const clientSpy = vi.spyOn(clientModule, 'createOpenAiCompatibleClient')
+      .mockReturnValue({ createChatCompletion: rendererClient });
+    try {
+      const userText = '8月17日から23日の予定です。8月17日の10:30から12:00の部活を登録したいです。';
+      const first = await runFixedHandoffReading({ conversationId, userText,
+        document: fixedHandoffDocument(userText, 'fixed_task'), act: 'request_event_registration' });
+      expect(first.reading.document.conversationActs).toEqual(first.raw.conversationActs);
+      expect(first.result.state.lastQuestionContext).toBeUndefined();
+      expect(first.result).toHaveProperty('communicationFacts.statusReason', 'fixed_event_manual_entry');
+      expect(first.result.draftCandidates).toEqual([]);
+      expect(first.result.state.shouldCreateDraft).toBe(false);
+      expect(first.result.state.shouldSavePlan).toBe(false);
+      expect(first.createChatCompletion).toHaveBeenCalledTimes(1);
+      expect(rendererClient).toHaveBeenCalledTimes(1);
+      expect(first.result.responseSource).toBe(rendererFailure ? 'deterministic_fallback' : 'ai');
+      const requestId = normalizeMock.mock.calls[0][0].traceRequestId!;
+      const events = takeWeeklyPlanningStableV5DebugTrace(requestId);
+      const semanticRequest = first.createChatCompletion.mock.calls[0][0];
+      const semanticEvent = events.find(event => event.stage === 'semantic_provider_request')!.data as {
+        requestBytes: number; request: { messages: unknown[]; purpose: string };
+      };
+      expect(semanticEvent.request.messages[semanticEvent.request.messages.length - 1])
+        .toEqual(semanticRequest.messages[semanticRequest.messages.length - 1]);
+      expect(semanticEvent.requestBytes).toBe(new TextEncoder().encode(JSON.stringify(semanticRequest)).byteLength);
+      const sent = rendererClient.mock.calls[0][0];
+      const body = JSON.parse(sent.messages[sent.messages.length - 1].content);
+      expect(body.applicationDecision.communication).toMatchObject({
+        goal: 'acknowledge', askQuestion: false, statusReason: 'fixed_event_manual_entry',
+        manualEntry: { navigationLabel: '予定', actionLabel: '予定を追加', eventCreatedByTurn: false },
+      });
+      const rendererTrace = boundWeeklyPlanningDialogueRendererTraceForTransport(first.result.dialogueRendererTrace!);
+      if (rendererFailure) {
+        expect(rendererTrace.response).toMatchObject({ status: 'fallback', reason: 'provider_error',
+          rawResponse: null, renderedText: null });
+      } else {
+        expect(rendererTrace.response).toMatchObject({ status: 'rendered', reason: null,
+          rawResponse: await rendererClient.mock.results[0].value, renderedText: first.result.message });
+      }
+      expect(rendererTrace.decision.finalMessage).toBe(first.result.message);
+      expect(rendererTrace.request?.promptContext).toEqual({ messages: sent.messages,
+        requestBytes: new TextEncoder().encode(JSON.stringify(sent.messages)).byteLength });
+      const context = rendererTrace.request!.promptContext as Record<string, unknown>;
+      context.futureHandoffSentinel = 'fixed-handoff-future-field';
+      await recordWeeklyPlanningStableV5TurnTrace({
+        ...proposalTraceInput({ conversationId, requestId, userText, result: first.result, events }),
+        dialogueRendererTrace: rendererTrace,
+      });
+      expect(harness.attempts).toHaveLength(1);
+      expect(harness.writes).toHaveLength(0);
+      expect(listWeeklyPlanningTraceOutboxItems({ userId: 'owner-human-scale', conversationId })).toHaveLength(1);
+      expect(storage.values.size).toBeGreaterThan(0);
+      resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+      expect(listWeeklyPlanningTraceOutboxItems({ userId: 'owner-human-scale', conversationId })).toHaveLength(1);
+
+      const nextText = '分かりました';
+      const next = await runFixedHandoffReading({ conversationId, userText: nextText,
+        document: noNewEventFacts(), act: null });
+      expect(next.result).toHaveProperty('communicationFacts.statusReason', 'no_additional_work');
+      expect(next.result.state.lastQuestionContext).toBeUndefined();
+      expect(next.result.draftCandidates).toEqual([]);
+      expect(next.result.stableV5Graph!.temporalConstraints).toEqual(first.result.stableV5Graph!.temporalConstraints);
+      expect(next.createChatCompletion).toHaveBeenCalledTimes(2);
+      expect(next.createChatCompletion.mock.calls.map(([request]) => request.responseFormat?.json_schema.name))
+        .toEqual(['weekly_planning_focused_authorization_v5', 'weekly_planning_semantic_document_v5']);
+      expect(await next.createChatCompletion.mock.results[0].value).toBe(JSON.stringify({ decision: 'fallback' }));
+      expect(rendererClient).toHaveBeenCalledTimes(2);
+      const nextId = normalizeMock.mock.calls[1][0].traceRequestId!;
+      const nextEvents = takeWeeklyPlanningStableV5DebugTrace(nextId);
+      const nextSent = rendererClient.mock.calls[1][0];
+      const nextBody = JSON.parse(nextSent.messages[nextSent.messages.length - 1].content);
+      expect(nextBody.applicationDecision.communication).toMatchObject({
+        goal: 'acknowledge', askQuestion: false, statusReason: 'no_additional_work',
+      });
+      const nextTrace = boundWeeklyPlanningDialogueRendererTraceForTransport(next.result.dialogueRendererTrace!);
+      if (rendererFailure) {
+        expect(nextTrace.response).toMatchObject({ status: 'fallback', reason: 'provider_error',
+          rawResponse: null, renderedText: null });
+      } else {
+        expect(nextTrace.response).toMatchObject({ status: 'rendered', reason: null,
+          rawResponse: await rendererClient.mock.results[1].value, renderedText: next.result.message });
+      }
+      expect(nextTrace.decision.finalMessage).toBe(next.result.message);
+      expect(nextTrace.request?.promptContext).toEqual({ messages: nextSent.messages,
+        requestBytes: new TextEncoder().encode(JSON.stringify(nextSent.messages)).byteLength });
+      const largeContext = nextTrace.request!.promptContext as Record<string, unknown>;
+      largeContext.futureLargeHandoffField = '大'.repeat(30_000);
+      const originalLargeContextBytes = new TextEncoder().encode(JSON.stringify(largeContext)).byteLength;
+      await recordWeeklyPlanningStableV5TurnTrace({
+        ...proposalTraceInput({ conversationId, requestId: nextId, userText: nextText,
+          result: next.result, events: nextEvents }), dialogueRendererTrace: nextTrace,
+      });
+      expect(harness.writes).toHaveLength(2);
+      expect(listWeeklyPlanningTraceOutboxItems({ userId: 'owner-human-scale', conversationId })).toEqual([]);
+      const { observedAt: failedObserved, ...failed } = harness.attempts[0].entries[0];
+      const { observedAt: replayObserved, ...replayed } = harness.writes[0].entries[0];
+      expect(replayed).toEqual(failed);
+      expect(Date.parse(replayObserved!)).toBeGreaterThanOrEqual(Date.parse(failedObserved!));
+      const stored = harness.writes.map(write => {
+        expect(write.entries).toHaveLength(1);
+        expect(measureWeeklyPlanningTraceJsonBytes(write.entries[0]))
+          .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+        const prepared = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+          entries: write.entries as unknown as Record<string, unknown>[] }, { token: `wpt_${'e'.repeat(43)}`, epoch: '106' }, {
+          sessionId: conversationId.replace('weekly-conversation-', 'weekly-trace-'), logicalConversationId: conversationId,
+        }, '2026-10-10T00:00:00.000Z');
+        expect(prepared.entries).toHaveLength(1);
+        expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0]))
+          .toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+        const serialized = JSON.stringify(prepared.entries[0]);
+        expect(serialized).not.toContain('assistantMessageId');
+        expect(serialized).not.toContain('planningStateRevision');
+        return prepared.entries[0] as unknown as {
+          requestId: string; kind: string;
+          aiInterpreter: { input: { requests: unknown[] }; structuredResults: unknown[] };
+          diagnostics: { dialogueRenderer: { request: { promptContext: Record<string, unknown> }; response: { status: string }; decision: { responseSource: string } } };
+        };
+      });
+      expect(stored.map(entry => entry.requestId)).toEqual([requestId, nextId]);
+      for (const [index, actualTrace] of [rendererTrace, nextTrace].entries()) {
+        expect(stored[index].diagnostics.dialogueRenderer.response).toEqual(actualTrace.response);
+        expect(stored[index].diagnostics.dialogueRenderer.decision).toEqual(actualTrace.decision);
+      }
+      expect(stored.every(entry => entry.kind === 'turn_diagnostic')).toBe(true);
+      expect(stored[0].aiInterpreter.input.requests).toHaveLength(1);
+      expect(stored[0].aiInterpreter.input.requests[0]).toMatchObject({
+        purpose: semanticEvent.request.purpose, requestBytes: semanticEvent.requestBytes,
+      });
+      expect(stored[0].aiInterpreter.structuredResults).toEqual(expect.arrayContaining([
+        expect.objectContaining({ accepted: true, structuredResult: expect.objectContaining({
+          conversationActs: [{ kind: 'request_event_registration', targetPublicId: null }],
+        }) }),
+      ]));
+      expect(stored[0].diagnostics.dialogueRenderer.request.promptContext).toEqual(context);
+      expect(stored[0].diagnostics.dialogueRenderer.response.status).toBe(rendererFailure ? 'fallback' : 'rendered');
+      expect(stored[0].diagnostics.dialogueRenderer.decision.responseSource).toBe(rendererFailure ? 'deterministic_fallback' : 'ai');
+      const persistedBody = JSON.parse((stored[0].diagnostics.dialogueRenderer.request.promptContext.messages as Array<{ content: string }>)[1].content);
+      expect(persistedBody.applicationDecision.communication).toEqual(body.applicationDecision.communication);
+      const bounded = stored[1].diagnostics.dialogueRenderer.request.promptContext;
+      expect(bounded).toMatchObject({ traceTruncated: true, originalBytes: originalLargeContextBytes,
+        jsonHead: expect.any(String), jsonTail: expect.any(String) });
+      expect(JSON.stringify(largeContext).startsWith(bounded.jsonHead as string)).toBe(true);
+      expect(JSON.stringify(largeContext).endsWith(bounded.jsonTail as string)).toBe(true);
+      expect(JSON.stringify(stored[1])).not.toContain('大'.repeat(30_000));
+    } finally {
+      clientSpy.mockRestore();
+      setWeeklyPlanningTraceRepositoryForTests(undefined);
+      resetWeeklyPlanningStableV5TraceRuntimeForTest();
+      resetWeeklyPlanningStableV5DebugTraceForTest();
+      vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', oldTraceEnabled);
+      restoreStorage();
+    }
+  });
+
 });

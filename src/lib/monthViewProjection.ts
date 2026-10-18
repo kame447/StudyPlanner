@@ -1,8 +1,10 @@
+import { getEntryDurationMinutes } from './entryTimeRange';
 import {
   createScheduleOccurrenceProjection,
   type ScheduleOccurrence,
 } from '../domain/scheduleOccurrence';
-import { addDays, getMonthGrid, minutesBetween } from './date';
+import { getScheduleOccurrenceColor } from './scheduleEventColor';
+import { addDays, getMonthGrid } from './date';
 import { sortMonthEvents } from './monthEvents';
 import {
   isStudyRecordForDisplay,
@@ -39,6 +41,7 @@ export interface MonthCellProjection extends MonthGridCell {
 export interface MonthPanelProjection {
   weeks: MonthCalendarWeek[];
   cells: MonthCellProjection[];
+  eventColors: ReadonlyMap<string, string>;
 }
 
 export function buildMonthGrid(monthDate: string): {
@@ -232,7 +235,7 @@ export function buildMonthPanelProjection({
     studyPlanMinutesByDate.set(
       occurrence.start.date,
       (studyPlanMinutesByDate.get(occurrence.start.date) ?? 0) +
-        minutesBetween(occurrence.start.time, occurrence.end.time),
+        getEntryDurationMinutes(occurrence.start.time, occurrence.end.time),
     );
   });
 
@@ -253,6 +256,7 @@ export function buildMonthPanelProjection({
       ? normalizeStudyRecordsForDisplay({
           actuals,
           plans,
+          monthEvents,
           startDate: firstDate,
           endDate: lastDate,
         }).filter(isStudyRecordForDisplay)
@@ -260,6 +264,7 @@ export function buildMonthPanelProjection({
 
   return {
     weeks,
+    eventColors: new Map(scheduleProjection.occurrences.map(occurrence => [occurrence.id, getScheduleOccurrenceColor(occurrence)])),
     cells: cells.map((cell) => ({
       ...cell,
       targetMinutes: studyPlanMinutesByDate.get(cell.date) ?? 0,

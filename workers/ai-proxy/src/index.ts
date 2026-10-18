@@ -1,5 +1,6 @@
+import { readBoundedOpenAiResponse } from './providerResponseBody';
 import { DurableObject } from 'cloudflare:workers';
-import { DEFAULT_ALLOWED_CHAT_MODELS, resolveChatModel } from './modelPolicy';
+import { DEFAULT_ALLOWED_CHAT_MODELS, DEFAULT_GEMINI_OCR_MODEL, resolveChatModel } from './modelPolicy';
 import { resolveOpenAiChatTemperature } from '../../../shared/aiProxyContract';
 
 interface Env {
@@ -113,8 +114,7 @@ const SUPPORTED_IMAGE_ANALYSIS_MIME_TYPES = new Set([
   'image/png',
   'image/jpeg',
 ]);
-const DEFAULT_GEMINI_MODEL = 'gemini-1.5-flash';
-const DEFAULT_ALLOWED_GEMINI_MODELS = [DEFAULT_GEMINI_MODEL];
+const DEFAULT_ALLOWED_GEMINI_MODELS = [DEFAULT_GEMINI_OCR_MODEL];
 const TIMETABLE_OCR_PROMPT = [
   'あなたは日本語の学校時間割表を読み取るOCRアシスタントです。',
   '画像内の表構造を理解し、曜日列、時限行、左端の時刻、各セルの授業名、教室番号、記号を対応付けてください。',
@@ -695,7 +695,7 @@ function parseGeminiPlanningAttachmentJson(text: string): { text: string } {
 }
 
 function normalizeGeminiModel(model: string | undefined): string {
-  const trimmed = model?.trim() || DEFAULT_GEMINI_MODEL;
+  const trimmed = model?.trim() || DEFAULT_GEMINI_OCR_MODEL;
 
   return trimmed.startsWith('models/') ? trimmed.slice('models/'.length) : trimmed;
 }
@@ -756,6 +756,7 @@ async function verifyFirebaseToken(
     `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(webApiKey)}`,
     {
       method: 'POST',
+      redirect: 'manual',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -865,6 +866,7 @@ async function handleChatCompletion(
   );
   const upstreamResponse = await fetch(`${openAiBaseUrl}/chat/completions`, {
     method: 'POST',
+    redirect: 'manual',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${env.OPENAI_API_KEY.trim()}`,
@@ -878,9 +880,9 @@ async function handleChatCompletion(
     }),
   });
 
-  const upstreamText = await upstreamResponse.text();
+  const upstreamText = await readBoundedOpenAiResponse(upstreamResponse);
 
-  if (!upstreamResponse.ok) {
+  if (!upstreamResponse.ok || upstreamText === null) {
     console.warn('[AI Proxy] OpenAI upstream failed', {
       status: upstreamResponse.status,
     });
@@ -890,11 +892,12 @@ async function handleChatCompletion(
   }
 
   const upstreamJson = JSON.parse(upstreamText) as {
+    model?: unknown;
     choices?: Array<{ message?: { content?: string | null } }>;
   };
   const content = upstreamJson.choices?.[0]?.message?.content?.trim();
 
-  if (!content) {
+  if (upstreamJson.model !== model || !content) {
     return jsonResponse(request, env, 502, {
       error: 'OpenAI response content was empty.',
     });
@@ -913,6 +916,7 @@ async function requestGeminiImageAnalysis(params: {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(params.env.GEMINI_API_KEY?.trim() ?? '')}`;
   const upstreamResponse = await fetch(endpoint, {
     method: 'POST',
+    redirect: 'manual',
     headers: {
       'Content-Type': 'application/json',
     },
@@ -932,7 +936,6 @@ async function requestGeminiImageAnalysis(params: {
         },
       ],
       generationConfig: {
-        temperature: 0,
         responseMimeType: 'application/json',
         maxOutputTokens: params.maxOutputTokens,
       },

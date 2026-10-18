@@ -7,7 +7,8 @@ import { PlanEditorPanel } from '../components/PlanEditorPanel';
 import { TodoView } from '../components/TodoView';
 import { ScheduleToolbar } from '../components/ScheduleToolbar';
 
-const repo = vi.hoisted(() => ({ upsertPlan: vi.fn(), scheduleTodoPlan: vi.fn(), upsertMonthEvent: vi.fn(), applyRecurringPlanMutation: vi.fn() }));
+const repo = vi.hoisted(() => ({ getScheduleSnapshot: vi.fn(), getActuals: vi.fn(), getDayNotes: vi.fn(), getTodos: vi.fn(),
+  getStudySubjects: vi.fn(), getStudyMaterials: vi.fn(), getScheduleTemplates: vi.fn(), getTimetableTerms: vi.fn(), getTimetablePeriods: vi.fn(), applyTimetableMutation: vi.fn(), upsertPlan: vi.fn(), scheduleTodoPlan: vi.fn(), upsertMonthEvent: vi.fn(), applyRecurringPlanMutation: vi.fn() }));
 vi.mock('../repositories', () => ({ plannerRepository: repo }));
 const PREVIOUS = '2026-09-15'; const SAVE = '2026-10-15'; const LATEST = '2026-11-15'; const AFTER = '2026-12-15';
 const todo: TodoTask = { id: 'todo-a', userId: 'owner', title: 'Todo A', subject: '', type: 'study', estimatedMinutes: 30,
@@ -22,7 +23,7 @@ function Harness({ ui, owner = 'owner' }: { owner?: string; ui?: 'plan' | 'todo'
       onChangeView={state.setViewMode} onChangeMonth={state.changeMonth} onChangeWeek={state.openWeek} onChangeDay={state.openDay} />
     {ui === 'plan' ? <PlanEditorPanel draft={state.editorDraft} submitLabel="Save" heading="Edit" onChange={state.setEditorDraft}
       onSubmit={() => state.savePlanDraft(state.editorDraft!)} onCancel={state.closePlanEditor} />
-      : state.viewMode === 'todo' ? <TodoView userId="owner" selectedDate={state.selectedDate} todos={[todo]}
+      : state.viewMode === 'todo' ? <TodoView userId="owner" selectedDate={state.selectedDate} todos={state.todos}
         onSaveTodo={state.saveTodo} onScheduleTodo={state.scheduleTodoAsPlan} onDeleteTodo={state.deleteTodo} /> : null}
   </>;
 }
@@ -33,8 +34,9 @@ function deferred() {
 }
 const draft = (date: string, owner = 'owner') => ({ ...createEmptyPlanDraft(owner, date), title: 'Study', startTime: '09:00', endTime: '10:00' });
 async function mount(ui?: 'plan' | 'todo') {
+  if (ui === 'todo') repo.getTodos.mockResolvedValue([todo]);
   await act(async () => { renderer = create(<Harness ui={ui} />); });
-  await act(async () => { state.selectDate(PREVIOUS); });
+  await act(async () => { await state.loadPlannerData('owner'); state.selectDate(PREVIOUS); });
 }
 function unmount() { act(() => renderer?.unmount()); renderer = undefined; }
 const method = (family: Family) => family === 'plan' ? repo.upsertPlan : family === 'todo' ? repo.scheduleTodoPlan : repo.upsertMonthEvent;
@@ -62,7 +64,15 @@ async function finish(operation: Awaited<ReturnType<typeof begin>>, success: boo
   });
 }
 function selection() { return { date: state.selectedDate, month: state.monthDate, view: state.viewMode }; }
-beforeEach(() => { for (const persist of Object.values(repo)) persist.mockReset().mockResolvedValue(undefined); });
+beforeEach(() => {
+  for (const persist of Object.values(repo)) persist.mockReset().mockResolvedValue(undefined);
+  repo.getScheduleSnapshot.mockResolvedValue({ plans: [], monthEvents: [] });
+  for (const getter of [repo.getActuals, repo.getDayNotes, repo.getStudySubjects, repo.getStudyMaterials,
+    repo.getScheduleTemplates, repo.getTimetableTerms, repo.getTimetablePeriods]) getter.mockResolvedValue([]);
+  // Admit the same independent Todos through the real loader before testing
+  // navigation. Passing fabricated rows only to TodoView bypassed the hook.
+  repo.getTodos.mockResolvedValue([todo, ...[SAVE, LATEST, AFTER].map(date => ({ ...todo, id: `todo-${date}` }))]);
+});
 afterEach(unmount);
 
 it.each([true, false])('keeps a newer plan editor draft after an older save settles, success=%s', async success => {
@@ -171,7 +181,7 @@ it('drops old selection operations on owner/reset/unmount while preserving the v
   }
 });
 
-it.each(['plan', 'todo'] as const)('preserves toolbar navigation after the actual %s editor closes while saving', async ui => {
+it.each(['plan', 'todo'] as const)('preserves explicit toolbar navigation while the actual %s editor is saving', async ui => {
   await mount(ui);
   const gate = deferred(); let submit: Promise<void> | undefined;
   if (ui === 'plan') {
@@ -184,9 +194,10 @@ it.each(['plan', 'todo'] as const)('preserves toolbar navigation after the actua
     await act(async () => { renderer!.root.findByProps({ 'aria-label': '予定にする' }).props.onClick(); });
     repo.scheduleTodoPlan.mockReturnValueOnce(gate.promise);
     await act(async () => { renderer!.root.findByType('form').props.onSubmit({ preventDefault() {} }); });
-    expect(renderer!.root.findAllByType('form')).toHaveLength(0);
+    expect(renderer!.root.findAllByType('form')).toHaveLength(1);
     expect(repo.scheduleTodoPlan).toHaveBeenCalledTimes(1);
     await act(async () => { renderer!.root.findAllByProps({ role: 'tab' }).find(tab => tab.children.join('') === '月')!.props.onClick(); });
+    expect(renderer!.root.findAllByType('form')).toHaveLength(0);
   }
   expect(state.selectedDate).toBe(SAVE);
   await act(async () => { renderer!.root.findByProps({ 'aria-label': '次の期間へ' }).props.onClick(); });

@@ -8,7 +8,6 @@ on:
       - opened
       - synchronize
       - reopened
-      - ready_for_review
   push:
     branches:
       - main
@@ -48,6 +47,13 @@ jobs:
         run: npm run typecheck:full
       - name: Run tests
         run: npm run test:run
+      - name: Verify durable AI alarm and SQLite recovery
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+          CLOUDFLARE_CF_FETCH_ENABLED: 'false'
+        run: node scripts/ci/durable-turn-runtime.mjs
+      - name: Install locked Firebase CLI
+        run: npm ci --prefix tools/firebase-tools --ignore-scripts
       - name: Run Firestore rules regression
         run: npm run test:firestore-rules
       - name: Build production bundle

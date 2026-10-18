@@ -19,7 +19,7 @@ function run(options: { mode?: string; masterMode?: string; purpose?: string; si
       authorization: { type: 'choice', choice: 'create_plan', confidence: options.abstain ? .5 : .999, probabilities: { create_plan: options.abstain ? .5 : 1, fallback: options.abstain ? .5 : 0 } },
       condition_change: { type: 'noul', noul: .001 }, independent_meaning: { type: 'noul', noul: .001 },
     } });
-    return Response.json({ choices: [{ message: { content: 'private-generated-output' } }] });
+    return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ message: { content: 'private-generated-output' } }] });
   }));
   const turnId = crypto.randomUUID(); const requestId = crypto.randomUUID();
   const purpose = options.purpose ?? 'weekly_planning_semantic_normalizer';

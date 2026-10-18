@@ -4,6 +4,31 @@ import * as aiProxyContract from '../../../shared/aiProxyContract';
 import { ProductObservabilityStore } from './productObservabilityStore';
 import * as aiProxyObserver from './aiProxyRequestObserver';
 import traceWorker from './traceWorker';
+import { JEV_MODEL } from './decision/decisionPolicy';
+
+const persistAiRequestMetric = ProductObservabilityStore.prototype.storeAiRequestMetric;
+
+function useImmutableMetricStore(env: ReturnType<typeof setup>['env']) {
+  const documents = new Map<string, Record<string, unknown>>();
+  const getDocument = async (collection: string, id: string) =>
+    documents.get(`${collection}/${id}`) ?? null;
+  const store = new ProductObservabilityStore(env, {
+    getDocument,
+    batchGetDocuments: (collection, ids) => Promise.all(ids.map((id) => getDocument(collection, id))),
+    async setImmutableDocument(collection, id, value) {
+      const key = `${collection}/${id}`;
+      if (documents.has(key)) throw new Error('already exists');
+      documents.set(key, value);
+    },
+  });
+  return {
+    persist: (params: Parameters<typeof persistAiRequestMetric>[0]) =>
+      persistAiRequestMetric.call(store, params),
+    events: () => [...documents.entries()]
+      .filter(([path]) => path.startsWith('observability_events/'))
+      .map(([, event]) => event),
+  };
+}
 
 const routes = [
   { path: '/', operationKind: 'chat_completion' },
@@ -25,6 +50,7 @@ function setup(outcome: Outcome = 'success', usage?: unknown) {
     if (url.endsWith('/chat/completions')) {
       if (outcome === 'provider_error') return new Response('upstream failure', { status: 503 });
       return Response.json({
+        model: JSON.parse(String(init?.body)).model,
         choices: [{ message: { content: '{"text":"教材 1章"}' } }],
         ...(usage === undefined ? {} : { usage }),
       });
@@ -48,7 +74,7 @@ function setup(outcome: Outcome = 'success', usage?: unknown) {
     FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY: 'unused-by-store-boundary',
     OBSERVABILITY_IDENTITY_SECRET: '0123456789abcdef0123456789abcdef',
     ALLOWED_ORIGIN: 'https://app.example',
-    ALLOWED_CHAT_MODELS: 'gpt-5.6-luna',
+    ALLOWED_CHAT_MODELS: 'gpt-6-luna',
     AI_QUOTA: {
       getByName: () => ({
         checkAndConsume: async () => ({
@@ -99,6 +125,75 @@ afterEach(() => {
 });
 
 describe('traceWorker AI observation authentication', () => {
+  it.each([...routes, { path: '/timetable-ocr' }])(
+    'records distinct $path provider invocations despite a reused client request id',
+    async ({ path }) => {
+      const { env, store, fetchMock } = setup();
+      const metrics = useImmutableMetricStore(env);
+      store.mockImplementation(metrics.persist);
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const { response, tasks } = await invoke(makeRequest(path).request, env);
+        expect(response.status).toBe(200);
+        await Promise.all(tasks);
+      }
+
+      const providerCalls = fetchMock.mock.calls.filter(([input]) =>
+        !String(input).includes('accounts:lookup'));
+      expect(providerCalls).toHaveLength(2);
+      const events = metrics.events();
+      expect(events).toHaveLength(2);
+      expect(new Set(events.map((event) => event.eventId)).size).toBe(2);
+      for (const event of events) {
+        expect(event.eventId).toMatch(/^ai-request-/);
+        expect(event.eventId).not.toBe('request-user-a');
+        expect(event.correlation).toEqual({ requestId: 'request-user-a' });
+      }
+    },
+  );
+
+  it('deduplicates duplicate writes of one server invocation while isolating users', async () => {
+    const { env, store } = setup();
+    const metrics = useImmutableMetricStore(env);
+    store.mockImplementation(async (params) => {
+      await metrics.persist(params);
+      await metrics.persist(params);
+    });
+    for (const token of ['user-a', 'user-b']) {
+      const { request } = makeRequest('/chat/completions', token);
+      request.headers.set('X-StudyPlanner-AI-Request-Id', 'same-client-request-id');
+      const { response, tasks } = await invoke(request, env);
+      expect(response.status).toBe(200);
+      await Promise.all(tasks);
+    }
+    expect(store).toHaveBeenCalledTimes(2);
+    for (const result of store.mock.results) {
+      await expect(result.value).resolves.toBeUndefined();
+    }
+    expect(metrics.events()).toHaveLength(2);
+    expect(new Set(metrics.events().map((event) => event.actorSubjectId)).size).toBe(2);
+    expect(new Set(metrics.events().map((event) => event.eventId)).size).toBe(2);
+  });
+
+  it.each(['invalid/client/request', 'x'.repeat(161)])(
+    'ignores malformed or oversized client correlation: %s',
+    async (header) => {
+      const { env, store } = setup();
+      const metrics = useImmutableMetricStore(env);
+      store.mockImplementation(metrics.persist);
+      const { request } = makeRequest('/chat/completions');
+      request.headers.set('X-StudyPlanner-AI-Request-Id', header);
+      const { response, tasks } = await invoke(request, env);
+      expect(response.status).toBe(200);
+      await Promise.all(tasks);
+      expect(metrics.events()).toHaveLength(1);
+      const [event] = metrics.events();
+      expect(event.eventId).toMatch(/^ai-request-/);
+      expect(event.correlation).toEqual({ requestId: event.eventId });
+      expect(JSON.stringify(event)).not.toContain(header);
+    },
+  );
+
   describe.each(routes)('$path', ({ path, operationKind }) => {
     it('records a failure after authentication and body consumption with one lookup', async () => {
       const { env, store, fetchMock } = setup();
@@ -165,7 +260,8 @@ describe('traceWorker AI observation authentication', () => {
         expect(tasks).toHaveLength(1);
         expect(store).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
           firebaseUid: 'uid-user-a',
-          requestId: 'request-user-a',
+          requestId: expect.stringMatching(/^ai-request-/),
+          correlation: { requestId: 'request-user-a' },
           appVersion: 'test-version',
           payload: expect.objectContaining({
             operationKind,
@@ -202,9 +298,11 @@ describe('traceWorker AI observation authentication', () => {
       invoke(makeRequest('/chat/completions', token).request, env)));
     await Promise.all(results.flatMap(({ tasks }) => tasks));
     expect(lookupCalls(fetchMock)).toHaveLength(2);
-    expect(store.mock.calls.map(([metric]) => [metric.requestId, metric.firebaseUid]).sort()).toEqual([
+    expect(store.mock.calls.map(([metric]) => [metric.correlation?.requestId, metric.firebaseUid]).sort()).toEqual([
       ['request-user-a', 'uid-user-a'], ['request-user-b', 'uid-user-b'],
     ]);
+    expect(new Set(store.mock.calls.map(([metric]) => metric.requestId)).size).toBe(2);
+    store.mock.calls.forEach(([metric]) => expect(metric.requestId).toMatch(/^ai-request-/));
   });
 
   it('preserves the explicit legacy OCR lookup fallback', async () => {
@@ -213,6 +311,15 @@ describe('traceWorker AI observation authentication', () => {
     expect(response.status).toBe(200);
     await Promise.all(tasks);
     expect(lookupCalls(fetchMock)).toHaveLength(2);
+    const geminiCalls = fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes('generativelanguage.googleapis.com'));
+    expect(geminiCalls).toHaveLength(1);
+    expect(String(geminiCalls[0][0])).toContain('/models/gemini-3.6-flash:generateContent');
+    const sent = JSON.parse(String(geminiCalls[0][1]?.body)) as {
+      generationConfig: Record<string, unknown>;
+    };
+    expect(sent.generationConfig).not.toHaveProperty('temperature');
+    expect(sent.generationConfig.responseMimeType).toBe('application/json');
     expect(store).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       firebaseUid: 'uid-user-a',
       payload: expect.objectContaining({ operationKind: 'timetable_ocr', status: 'success' }),
@@ -253,7 +360,7 @@ describe('traceWorker AI observation authentication', () => {
     await expect(Promise.all(tasks)).resolves.toEqual([undefined]);
     expect(lookupCalls(fetchMock)).toHaveLength(1);
     expect(warning).toHaveBeenCalledWith('[AI Proxy] observability metric write failed', {
-      message: 'storage unavailable',
+      name: 'Error', code: null,
     });
   });
 
@@ -273,7 +380,7 @@ describe('traceWorker AI observation authentication', () => {
     await expect(Promise.all(tasks)).resolves.toEqual([undefined]);
     expect(lookupCalls(fetchMock)).toHaveLength(1);
     expect(warning).toHaveBeenCalledWith('[AI Proxy] observability metric write failed', {
-      message: 'observation failed',
+      name: 'Error', code: null,
     });
   });
 
@@ -286,5 +393,232 @@ describe('traceWorker AI observation authentication', () => {
     expect(tasks).toHaveLength(0);
     expect(lookupCalls(fetchMock)).toHaveLength(1);
     expect(store).not.toHaveBeenCalled();
+  });
+});
+
+describe('traceWorker completion metadata stays inside existing observation', () => {
+  it.each([
+    {
+      label: 'dense nonempty length', purpose: 'weekly_planning_semantic_normalizer',
+      requested: 6400, effective: 4096, finishReason: 'length', refusal: null,
+      content: '{"private-response-sentinel":', status: 200, metricStatus: 'success',
+      completionTokens: 4096, reasoningTokens: 4000, textTokens: 96,
+    },
+    {
+      label: 'renderer default with unknown refusal presence', purpose: 'weekly_planning_renderer',
+      requested: undefined, effective: 800, finishReason: 'stop', refusal: undefined,
+      content: '{"reply":"private-response-sentinel"}', status: 200, metricStatus: 'success',
+      completionTokens: 30, reasoningTokens: 12, textTokens: 18,
+    },
+    {
+      label: 'empty refusal', purpose: 'weekly_planning_renderer',
+      requested: 3200, effective: 3200, finishReason: 'stop', refusal: 'private-refusal-sentinel',
+      content: null, status: 502, metricStatus: 'empty_response',
+      completionTokens: 12, reasoningTokens: 12, textTokens: 0,
+    },
+  ])('observes $label without changing the public response or dispatch', async (row) => {
+    const { env, store, fetchMock } = setup();
+    const upstream: Array<Record<string, unknown>> = [];
+    const unexpected: string[] = [];
+    const usage = { prompt_tokens: 120, completion_tokens: row.completionTokens, total_tokens: 120 + row.completionTokens,
+      completion_tokens_details: { reasoning_tokens: row.reasoningTokens, text_tokens: row.textTokens } };
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('accounts:lookup')) {
+        return Response.json({ users: [{ localId: 'uid-user-a', emailVerified: true }] });
+      }
+      if (url.endsWith('/chat/completions')) {
+        upstream.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ finish_reason: row.finishReason,
+          message: { content: row.content, ...(row.refusal === undefined ? {} : { refusal: row.refusal }) } }], usage });
+      }
+      unexpected.push(url);
+      return new Response(null, { status: 503 });
+    });
+    const request = new Request('https://proxy.example/chat/completions', {
+      method: 'POST', headers: {
+        Authorization: 'Bearer user-a', Origin: 'https://app.example', 'Content-Type': 'application/json',
+        'X-StudyPlanner-AI-Request-Id': 'request-completion-baseline',
+      },
+      body: JSON.stringify({ purpose: row.purpose,
+        messages: [{ role: 'user', content: 'private-input-sentinel' }],
+        ...(row.requested === undefined ? {} : { max_completion_tokens: row.requested }),
+        // Client metadata is not a source of provider facts.
+        providerCompletion: { finishReason: 'client-private-sentinel', effectiveMaxCompletionTokens: 1 },
+      }),
+    });
+    const { response, tasks } = await invoke(request, env);
+    expect(response.status).toBe(row.status);
+    expect(await response.json()).toEqual(row.content === null
+      ? { error: 'OpenAI response content was empty.', providerFailure: { kind: 'empty_response', httpStatus: 502, upstreamStatus: 200, completion: { finishReason: row.finishReason, refusalPresent: row.refusal === undefined ? null : row.refusal !== null, requestedMaxCompletionTokens: row.requested ?? null, effectiveMaxCompletionTokens: row.effective, reasoningTokens: row.reasoningTokens, textTokens: row.textTokens } } }
+      : { content: row.content, usage });
+    await Promise.all(tasks);
+    expect(unexpected).toEqual([]);
+    expect(upstream).toHaveLength(1);
+    expect(upstream[0].max_completion_tokens).toBe(row.effective);
+    expect(upstream[0]).not.toHaveProperty('providerCompletion');
+    expect(lookupCalls(fetchMock)).toHaveLength(1);
+    expect(tasks).toHaveLength(1);
+    expect(store).toHaveBeenCalledTimes(1);
+    const metric = store.mock.calls[0][0];
+    expect(metric).toMatchObject({ firebaseUid: 'uid-user-a', requestId: expect.stringMatching(/^ai-request-/),
+      correlation: { requestId: 'request-completion-baseline' },
+      payload: { purpose: row.purpose, status: row.metricStatus } });
+    expect(JSON.stringify(metric.payload)).not.toMatch(/private-input-sentinel|private-response-sentinel|private-refusal-sentinel|client-private-sentinel/);
+    expect(metric.payload).toHaveProperty('providerCompletion', {
+      finishReason: row.finishReason,
+      refusalPresent: row.refusal === undefined ? null : row.refusal !== null,
+      requestedMaxCompletionTokens: row.requested ?? null,
+      effectiveMaxCompletionTokens: row.effective,
+      reasoningTokens: row.reasoningTokens, textTokens: row.textTokens,
+    });
+  });
+});
+
+describe('traceWorker completion evidence belongs to the actual Luna attempt', () => {
+  it.each([
+    { label: 'accepted canary', mode: 'canary', acceptJev: true, delayed: false, lunaCalls: 0 },
+    { label: 'rejected canary fallback', mode: 'canary', acceptJev: false, delayed: false, lunaCalls: 1 },
+    { label: 'delayed shadow', mode: 'shadow', acceptJev: true, delayed: true, lunaCalls: 1 },
+  ] as const)('separates $label decision and completion metadata', async (row) => {
+    const { env, store, fetchMock } = setup();
+    const log = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const decisionContext = {
+      purpose: 'focused_authorization', requestId: 'completion-decision-context', inputRevision: 7,
+      previousStatus: 'needs_scope', hasTasks: true, hasPendingQuestion: false,
+      state: { currentUserText: 'private-input-sentinel', lastAssistantMessage: 'private-context-sentinel' },
+    } as const;
+    const jevResponse = {
+      model: JEV_MODEL.responses[1],
+      answers: {
+        authorization: { type: 'choice', choice: 'create_plan', confidence: row.acceptJev ? 0.999 : 0.5,
+          probabilities: { create_plan: 1, fallback: 0 } },
+        condition_change: { type: 'noul', noul: 0.001 },
+        independent_meaning: { type: 'noul', noul: 0.001 },
+      },
+      usage: { input_tokens: 200, output_tokens: 30, cost: 0.0000084 },
+    };
+    const lunaUsage = { prompt_tokens: 40, completion_tokens: 11, total_tokens: 51,
+      completion_tokens_details: { reasoning_tokens: 7, text_tokens: 4 } };
+    const expectedCompletion = {
+      finishReason: 'length', refusalPresent: true,
+      requestedMaxCompletionTokens: 6400, effectiveMaxCompletionTokens: 4096,
+      reasoningTokens: 7, textTokens: 4,
+    };
+    let releaseJev!: () => void;
+    let jevReleased = false;
+    const delayedJev = new Promise<Response>((resolve) => {
+      releaseJev = () => { jevReleased = true; resolve(Response.json(jevResponse)); };
+    });
+    const lunaRequests: Array<Record<string, unknown>> = [];
+    let jevCalls = 0;
+    const unexpected: string[] = [];
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('accounts:lookup')) {
+        return Response.json({ users: [{ localId: 'uid-user-a', emailVerified: true }] });
+      }
+      if (url === 'https://openrouter.ai/api/alpha/decisions') {
+        jevCalls += 1;
+        return row.delayed ? delayedJev : Response.json(jevResponse);
+      }
+      if (url === 'https://api.openai.com/v1/chat/completions') {
+        lunaRequests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ finish_reason: 'length', message: {
+          content: '{"decision":"fallback"}', refusal: 'private-luna-refusal-sentinel',
+        } }], usage: lunaUsage });
+      }
+      unexpected.push(url);
+      throw new Error('Unexpected test transport target.');
+    });
+    const request = new Request('https://proxy.example/chat/completions', {
+      method: 'POST', headers: {
+        Authorization: 'Bearer user-a', Origin: 'https://app.example', 'Content-Type': 'application/json',
+        'X-StudyPlanner-AI-Request-Id': 'completion-jev-comparison',
+      },
+      body: JSON.stringify({
+        purpose: 'weekly_planning_semantic_normalizer', decisionContext,
+        messages: [{ role: 'user', content: 'private-input-sentinel' }], max_completion_tokens: 6400,
+      }),
+    });
+    const observedEnv = {
+      ...env,
+      OPENROUTER_API_KEY: 'private-jev-test-key',
+      JEV_MODE: row.mode, JEV_CANARY_PERCENT: '100',
+      JEV_FOCUSED_AUTHORIZATION_MODE: row.mode, JEV_FOCUSED_AUTHORIZATION_CANARY_PERCENT: '100',
+    };
+    const invocation = invoke(request, observedEnv);
+    // Observe both fulfillment and rejection immediately, including when a lifecycle assertion fails.
+    const settledInvocation = invocation.then(
+      (value) => ({ ok: true as const, value }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    let responseArrived = false;
+    void settledInvocation.then(() => { responseArrived = true; });
+    try {
+      if (row.delayed) {
+        // This bound is below the existing Jev timeout: provider timeout must not fake early return.
+        await vi.waitFor(() => expect(responseArrived).toBe(true), { timeout: 500, interval: 5 });
+        expect(jevReleased).toBe(false);
+      }
+      const result = await settledInvocation;
+      if (!result.ok) throw result.error;
+      const { response, tasks } = result.value;
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(row.lunaCalls === 0
+        ? { content: '{"decision":"create_plan"}', decisionContext: {
+            requestId: decisionContext.requestId, inputRevision: decisionContext.inputRevision,
+          } }
+        : { content: '{"decision":"fallback"}', usage: lunaUsage });
+      expect(response.headers.get('X-StudyPlanner-Internal-Jev-Mode')).toBeNull();
+      expect(response.headers.get('X-StudyPlanner-Internal-Luna-Baseline-Failure')).toBeNull();
+
+      let beforeLateDecision: string | undefined;
+      if (row.delayed) {
+        await vi.waitFor(() => expect(store.mock.calls.filter(([metric]) =>
+          metric.payload.operationKind === 'chat_completion')).toHaveLength(1));
+        expect(store.mock.calls.filter(([metric]) => metric.payload.operationKind === 'decision')).toHaveLength(0);
+        const baseline = store.mock.calls.find(([metric]) => metric.payload.operationKind === 'chat_completion')![0];
+        expect(baseline.payload.providerCompletion).toEqual(expectedCompletion);
+        beforeLateDecision = JSON.stringify(baseline.payload.providerCompletion);
+        releaseJev();
+      }
+      await Promise.all(tasks);
+      expect(unexpected).toEqual([]);
+      expect(lookupCalls(fetchMock)).toHaveLength(1);
+      expect(jevCalls).toBe(1);
+      expect(lunaRequests).toHaveLength(row.lunaCalls);
+      lunaRequests.forEach((body) => {
+        expect(body.max_completion_tokens).toBe(4096);
+        expect(body).not.toHaveProperty('providerCompletion');
+      });
+      const metrics = store.mock.calls.map(([metric]) => metric);
+      const decisions = metrics.filter((metric) => metric.payload.operationKind === 'decision');
+      const completions = metrics.filter((metric) => metric.payload.operationKind === 'chat_completion');
+      expect(metrics).toHaveLength(1 + row.lunaCalls);
+      expect(decisions).toHaveLength(1);
+      expect(decisions[0].payload).toMatchObject({
+        provider: 'openrouter', promptTokens: 200, completionTokens: 30,
+        decision: { outcome: row.delayed ? 'shadow' : row.acceptJev ? 'success' : 'fallback' },
+      });
+      expect(decisions[0].payload).not.toHaveProperty('providerCompletion');
+      expect(completions).toHaveLength(row.lunaCalls);
+      if (completions.length > 0) {
+        expect(completions[0]).toMatchObject({
+          requestId: expect.stringMatching(/^ai-request-/), firebaseUid: 'uid-user-a',
+          correlation: { requestId: decisionContext.requestId, stateRevision: decisionContext.inputRevision },
+          payload: { provider: 'openai', status: 'success', promptTokens: 40, completionTokens: 11,
+            providerCompletion: expectedCompletion },
+        });
+        if (row.delayed) expect(JSON.stringify(completions[0].payload.providerCompletion)).toBe(beforeLateDecision);
+      }
+      expect(JSON.stringify({ payloads: metrics.map((metric) => metric.payload), logs: log.mock.calls }))
+        .not.toMatch(/private-/);
+    } finally {
+      releaseJev();
+      const result = await settledInvocation;
+      if (result.ok) await Promise.allSettled(result.value.tasks);
+      log.mockRestore();
+    }
   });
 });

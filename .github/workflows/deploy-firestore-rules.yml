@@ -15,21 +15,19 @@ on:
       - .github/workflows/deploy-firestore-rules.yml
   workflow_dispatch:
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
 
 concurrency:
   group: deploy-firestore-rules-production
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  test:
     if: github.repository == 'kame447/StudyPlanner'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      GCP_PROJECT_ID: study-planner-d1bc8
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -48,12 +46,35 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install locked Firebase CLI
+        run: npm ci --prefix tools/firebase-tools --ignore-scripts
+
       - name: Run Firestore rules regression
         run: npm run test:firestore-rules
 
+  deploy:
+    needs: test
+    if: github.repository == 'kame447/StudyPlanner'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: study-planner-d1bc8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
       - name: Authenticate to Google Cloud
         id: auth
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           project_id: study-planner-d1bc8
           workload_identity_provider: projects/980145543174/locations/global/workloadIdentityPools/github-actions/providers/studyplanner-main

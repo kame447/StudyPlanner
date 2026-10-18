@@ -158,6 +158,7 @@ export interface WeeklyPlanningTraceSchedulerSummary {
   selectedDate: string | null;
   timeZone: string | null;
   planningHorizon: unknown;
+  hardClockBounds?: unknown;
   externalSources: WeeklyPlanningTraceSchedulerSourceSummary[];
   compilationStatus: string | null;
   issues: WeeklyPlanningTraceSchedulerIssueSummary[];
@@ -234,6 +235,8 @@ export interface WeeklyPlanningTraceTurnDiagnosticEntry extends WeeklyPlanningTr
     outcome: string;
     previewCount: number;
     stale: boolean;
+    /** One failed semantic normalizer invocation, not a whole-turn provider budget. */
+    providerDispatch?: { count: number; anyFailure: boolean; complete: boolean };
     truncation?: WeeklyPlanningTraceTruncationMetadata;
   };
 }
