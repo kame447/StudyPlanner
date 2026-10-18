@@ -7,6 +7,13 @@ export const AI_PROXY_CHAT_REQUEST_LIMITS = {
   maxOutputTokens: 4_096,
 } as const;
 
+/**
+ * Lowest completion budget any Luna request may declare. Chat Completions budgets include
+ * reasoning tokens: GPT-6 Luna spent 142-338 reasoning tokens per call in the #305b DEV run,
+ * and requests capped at 80 failed upstream (HTTP 400) before producing any answer.
+ */
+export const LUNA_REASONING_COMPLETION_FLOOR_TOKENS = 512;
+
 const DEFAULT_TEMPERATURE_ONLY_OPENAI_MODELS = new Set([
   'gpt-5.6-luna',
   'gpt-6-luna',

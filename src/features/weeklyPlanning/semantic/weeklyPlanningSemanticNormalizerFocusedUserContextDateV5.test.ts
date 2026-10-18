@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../../shared/aiProxyContract';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import { createWeeklyPlanningSemanticNormalizerV5 } from './weeklyPlanningSemanticNormalizerV5';
 
@@ -64,7 +65,7 @@ describe('Stable V5 focused user-context date normalizer route', () => {
     expect((calls[1].responseFormat as { json_schema?: { name?: string } })?.json_schema?.name)
       .toBe('weekly_planning_focused_user_context_date_repair_v5');
     expect(calls[1]).toMatchObject({
-      maxCompletionTokens: 120,
+      maxCompletionTokens: AI_PROXY_CHAT_REQUEST_LIMITS.defaultOutputTokens,
       purpose: 'weekly_planning_semantic_normalizer',
     });
   });
