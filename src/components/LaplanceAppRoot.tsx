@@ -9,6 +9,7 @@ import { startupTiming } from '../lib/startupTiming';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import App from '../App';
 import { UserPlanningContextProvider } from '../features/userPlanningContext/UserPlanningContextContext';
+import { semanticMemoryApplication } from '../features/userPlanningContext/semanticMemory/index/semanticMemoryApplication';
 import {
   WeeklyPlanningPersonalizationProvider,
 } from '../features/weeklyPlanning/personalization/WeeklyPlanningPersonalizationContext';
@@ -207,6 +208,7 @@ function LaplanceAppRootContent({
   });
   const [presentation, setPresentation] = useState<{ session: typeof session; value: StartupPresentation } | null>(null);
   const currentSession = useRef(session);
+  const semanticOwnerResolved = useRef(false);
   const presentStartup = useCallback((value: StartupPresentation) => {
     if (currentSession.current !== session) return;
     setPresentation((previous) => previous?.session === session && previous.value === value
@@ -223,8 +225,17 @@ function LaplanceAppRootContent({
       if (!subscribed) return;
       const userId = user && !user.requiresEmailVerification ? user.id : null;
       const previous = currentSession.current;
-      if (previous.userId === userId && previous.scope.isCurrent()) return;
+      const firstSignedOut = !semanticOwnerResolved.current && userId === null;
+      semanticOwnerResolved.current = true;
+      if (previous.userId === userId && previous.scope.isCurrent()) {
+        if (firstSignedOut) semanticMemoryApplication.ownerChanged();
+        return;
+      }
       previous.scope.invalidate();
+      if ((typeof previous.userId === 'string' && previous.userId !== userId)
+        || firstSignedOut) {
+        semanticMemoryApplication.ownerChanged();
+      }
       const next = { userId, epoch: previous.epoch + 1, scope: createStartupSessionScope() };
       // Revoke the prior session synchronously, including batched A→null→A events.
       currentSession.current = next;

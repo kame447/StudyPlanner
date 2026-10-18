@@ -90,6 +90,11 @@ function resolveVendorChunk(id) {
 
 export default defineConfig({
   plugins: [react(), preferredNetworkUrlPlugin()],
+  // Transformers imports WebGPU internally; use the CPU entry to omit asyncify WASM.
+  resolve: { alias: [{ find: /^onnxruntime-web\/webgpu$/, replacement: 'onnxruntime-web/wasm' }] },
+  // Worker dynamic imports must remain split; no inference dependency in app entry.
+  worker: { format: 'es' },
+  optimizeDeps: { exclude: ['@huggingface/transformers', 'onnxruntime-web'] },
   build: {
     modulePreload: {
       resolveDependencies(filename, dependencies, { hostType }) {

@@ -13,6 +13,8 @@ import { createFakeAuthSession } from '../test/fakeAuthSession';
 import { createLocalFixture, deferred, MemoryStorage, microtasks, STAMP } from '../repositories/localPersistenceConcurrency.testUtils';
 import type { PlannerRepository } from '../repositories/repositoryContracts';
 import type { User } from '../types/domain';
+const semanticLifecycle = vi.hoisted(() => ({ ownerChanged: vi.fn(), connect: vi.fn(() => ({ publish: vi.fn(), dispose: vi.fn() })) }));
+vi.mock('../features/userPlanningContext/semanticMemory/index/semanticMemoryApplication', () => ({ semanticMemoryApplication: semanticLifecycle }));
 const fixture = vi.hoisted(() => ({ repository: null as unknown as PlannerRepository,
   profile: vi.fn(), memory: vi.fn(), content: vi.fn(), observe: vi.fn(), observation: 'off', markerObservation: 'off', marker: vi.fn(),
   realApp: false, reducedMotion: true, policy: 'accepted', preferenceError: '', preferenceLoading: false, weekStartsOn: 'monday' as string | null }));
@@ -84,6 +86,32 @@ afterEach(async () => { await act(async () => { await vi.dynamicImportSettled();
 async function mount() { await act(async () => { renderer = create(<LaplanceAppRoot authSession={fake.session} />); await microtasks(); }); }
 async function release(gate: ReturnType<typeof deferred>) { await act(async () => { gate.resolve(undefined); await microtasks(); }); }
 const splash = () => renderer!.root.findAllByType(SplashScreen).length;
+
+it('invalidates semantic work synchronously on account switch and sign-out, not same-owner events', async () => {
+  await mount();
+  act(() => fake.emit({ id: 'a', requiresEmailVerification: false }));
+  expect(semanticLifecycle.ownerChanged).not.toHaveBeenCalled();
+  act(() => {
+    fake.emit({ id: 'b', requiresEmailVerification: false });
+    expect(semanticLifecycle.ownerChanged).toHaveBeenCalledOnce();
+    fake.emit(null);
+    expect(semanticLifecycle.ownerChanged).toHaveBeenCalledTimes(2);
+  });
+});
+
+it.each([true, false])('forgets leftover semantic indexes on first resolved sign-out (auth available: %s)', async available => {
+  fake = createFakeAuthSession({ currentUser: null, available });
+  fixture.profile.mockResolvedValue(null);
+  await mount();
+  if (available) {
+    expect(semanticLifecycle.ownerChanged).not.toHaveBeenCalled();
+    act(() => fake.emit(null));
+  }
+  expect(semanticLifecycle.ownerChanged).toHaveBeenCalledOnce();
+  expect(semanticLifecycle.connect).not.toHaveBeenCalled();
+  act(() => fake.emit(null));
+  expect(semanticLifecycle.ownerChanged).toHaveBeenCalledOnce();
+});
 
 // Keep the actual auth repository and normalization/write path. All SDK calls
 // are fail-closed local doubles; no Firebase service or production data is used.

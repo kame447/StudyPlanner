@@ -1,0 +1,223 @@
+{
+  "version": 1,
+  "dataset": "holdout",
+  "description": "Japanese held-out query wording over the unchanged synthetic v1 records. No production user data.",
+  "queries": [
+    {
+      "id": "holdout-exact-01",
+      "ownerId": "synthetic-aya",
+      "query": "TOEICで800点を取る目標",
+      "label": "exact_keyword_hit",
+      "expectedRelevantRecordIds": ["aya-toeic-800"],
+      "trapRecordIds": [],
+      "rationale": "試験名と数値が記録の目標に明示される。"
+    },
+    {
+      "id": "holdout-exact-02",
+      "ownerId": "synthetic-aya",
+      "query": "英検準1級に合格する目標を見たい",
+      "label": "exact_keyword_hit",
+      "expectedRelevantRecordIds": ["aya-eiken-pre1"],
+      "trapRecordIds": [],
+      "rationale": "資格名と級がそのまま一致する。"
+    },
+    {
+      "id": "holdout-exact-03",
+      "ownerId": "synthetic-aya",
+      "query": "大学入試の受験予定",
+      "label": "exact_keyword_hit",
+      "expectedRelevantRecordIds": ["aya-university-event"],
+      "trapRecordIds": [],
+      "rationale": "行事名と予定の意味が明示される。"
+    },
+    {
+      "id": "holdout-exact-04",
+      "ownerId": "synthetic-aya",
+      "query": "英作文の構成に迷う悩み",
+      "label": "exact_keyword_hit",
+      "expectedRelevantRecordIds": ["aya-writing-concern"],
+      "trapRecordIds": [],
+      "rationale": "困りごとの対象語と悩みが記録に一致する。"
+    },
+    {
+      "id": "holdout-exact-05",
+      "ownerId": "synthetic-aya",
+      "query": "勉強は朝いちばんにする",
+      "label": "exact_keyword_hit",
+      "expectedRelevantRecordIds": ["aya-morning-pref"],
+      "trapRecordIds": [],
+      "rationale": "学習時間帯の希望を記録と同じ語で表す。"
+    },
+    {
+      "id": "holdout-para-01",
+      "ownerId": "synthetic-aya",
+      "query": "速い英語の会話を聞き取れるようになりたい",
+      "label": "paraphrase",
+      "expectedRelevantRecordIds": ["aya-listening-concern"],
+      "trapRecordIds": [],
+      "rationale": "聞き取りづらさを改善したいという言い換え。"
+    },
+    {
+      "id": "holdout-para-02",
+      "ownerId": "synthetic-aya",
+      "query": "覚えた英単語がすぐ抜けてしまう",
+      "label": "paraphrase",
+      "expectedRelevantRecordIds": ["aya-vocab-concern"],
+      "trapRecordIds": [],
+      "rationale": "英単語の記憶が続かない悩みを別表現にする。"
+    },
+    {
+      "id": "holdout-para-03",
+      "ownerId": "synthetic-aya",
+      "query": "図にまとめてもらうと勉強内容をつかみやすい",
+      "label": "paraphrase",
+      "expectedRelevantRecordIds": ["aya-visual-pref"],
+      "trapRecordIds": [],
+      "rationale": "図による説明が理解を助ける好みの言い換え。"
+    },
+    {
+      "id": "holdout-para-04",
+      "ownerId": "synthetic-ren",
+      "query": "長い英文を読むのに時間を取られてしまう",
+      "label": "paraphrase",
+      "expectedRelevantRecordIds": ["ren-reading-concern"],
+      "trapRecordIds": [],
+      "rationale": "英文読解の速度に関する困りごとの言い換え。"
+    },
+    {
+      "id": "holdout-para-05",
+      "ownerId": "synthetic-ren",
+      "query": "昼ごはんを食べたあとに勉強を始めたい",
+      "label": "paraphrase",
+      "expectedRelevantRecordIds": ["ren-lunch-pref"],
+      "trapRecordIds": [],
+      "rationale": "昼食後という学習時間帯の好みを言い換える。"
+    },
+    {
+      "id": "holdout-variant-01",
+      "ownerId": "synthetic-aya",
+      "query": "トイック八百点を目指す",
+      "label": "abbreviation_kana_kanji_variant",
+      "expectedRelevantRecordIds": ["aya-toeic-800"],
+      "trapRecordIds": [],
+      "rationale": "TOEICの読みをカナ、数値を漢数字に変える。"
+    },
+    {
+      "id": "holdout-variant-02",
+      "ownerId": "synthetic-aya",
+      "query": "英検じゅん一級の合格",
+      "label": "abbreviation_kana_kanji_variant",
+      "expectedRelevantRecordIds": ["aya-eiken-pre1"],
+      "trapRecordIds": [],
+      "rationale": "級の表記をひらがなと漢数字に変える。"
+    },
+    {
+      "id": "holdout-variant-03",
+      "ownerId": "synthetic-ren",
+      "query": "共テ情報ワンで八十五点以上",
+      "label": "abbreviation_kana_kanji_variant",
+      "expectedRelevantRecordIds": ["ren-info-85"],
+      "trapRecordIds": [],
+      "rationale": "共通テスト・情報I・数値を短縮／表記変換する。"
+    },
+    {
+      "id": "holdout-variant-04",
+      "ownerId": "synthetic-ren",
+      "query": "トーフル アイビーティー九十点",
+      "label": "abbreviation_kana_kanji_variant",
+      "expectedRelevantRecordIds": ["ren-toefl-90"],
+      "trapRecordIds": [],
+      "rationale": "TOEFL iBTの読みとスコアをカナ／漢数字で表す。"
+    },
+    {
+      "id": "holdout-variant-05",
+      "ownerId": "synthetic-ren",
+      "query": "古文たんごを短い例文つきで",
+      "label": "abbreviation_kana_kanji_variant",
+      "expectedRelevantRecordIds": ["ren-classical-pref"],
+      "trapRecordIds": [],
+      "rationale": "単語の漢字をひらがなに変え、好みを短く表す。"
+    },
+    {
+      "id": "holdout-negative-01",
+      "ownerId": "synthetic-aya",
+      "query": "駅前の新しいパン屋は何時に開く？",
+      "label": "negative_unrelated",
+      "expectedRelevantRecordIds": [],
+      "trapRecordIds": [],
+      "rationale": "店舗の営業時間に関する質問で、学習記録とは無関係。"
+    },
+    {
+      "id": "holdout-negative-02",
+      "ownerId": "synthetic-aya",
+      "query": "スマートフォンの写真を整理する方法を教えて",
+      "label": "negative_unrelated",
+      "expectedRelevantRecordIds": [],
+      "trapRecordIds": [],
+      "rationale": "端末の写真管理に関する質問で、期待記録はない。"
+    },
+    {
+      "id": "holdout-negative-03",
+      "ownerId": "synthetic-ren",
+      "query": "週末に作るカレーの材料を買いたい",
+      "label": "negative_unrelated",
+      "expectedRelevantRecordIds": [],
+      "trapRecordIds": [],
+      "rationale": "買い物と料理に関する話題で、学習文脈に結び付かない。"
+    },
+    {
+      "id": "holdout-negative-04",
+      "ownerId": "synthetic-ren",
+      "query": "雨の日に部屋干しを早く乾かすには？",
+      "label": "negative_unrelated",
+      "expectedRelevantRecordIds": [],
+      "trapRecordIds": [],
+      "rationale": "洗濯の相談で、学習記録に関連しない。"
+    },
+    {
+      "id": "holdout-trap-01",
+      "ownerId": "synthetic-aya",
+      "query": "いまのTOEIC目標を確認したい。やめた750点案ではなく現在の数値で",
+      "label": "trap_lifecycle_or_other_owner",
+      "expectedRelevantRecordIds": ["aya-toeic-800"],
+      "trapRecordIds": ["aya-toeic-750-revoked", "ren-toeic-900"],
+      "rationale": "現行目標は関連するが、取消済み案と別所有者のTOEIC記録は除外する。取消案を明示的に求める旧文面は意味的関連とポリシーを混同するため、取消案を対象外とする文面に変更（2026-10-18 日本語レビュー）。"
+    },
+    {
+      "id": "holdout-trap-02",
+      "ownerId": "synthetic-ren",
+      "query": "現在のTOEFLは90点を目指す設定。85点の古い案は使わない",
+      "label": "trap_lifecycle_or_other_owner",
+      "expectedRelevantRecordIds": ["ren-toefl-90"],
+      "trapRecordIds": ["ren-toefl-85-revoked"],
+      "rationale": "現行の90点目標のみを対象とし、取消済みの85点目標を除外する。"
+    },
+    {
+      "id": "holdout-trap-03",
+      "ownerId": "synthetic-aya",
+      "query": "前に試していたリスニングの練習方法を出して",
+      "label": "trap_lifecycle_or_other_owner",
+      "expectedRelevantRecordIds": [],
+      "trapRecordIds": ["aya-listening-old-superseded"],
+      "rationale": "後継に置き換えられた練習方法だけを指しており、現行記録として返さない。"
+    },
+    {
+      "id": "holdout-trap-04",
+      "ownerId": "synthetic-ren",
+      "query": "彩さんが決めたTOEICの目標点を知りたい",
+      "label": "trap_lifecycle_or_other_owner",
+      "expectedRelevantRecordIds": [],
+      "trapRecordIds": ["aya-toeic-800"],
+      "rationale": "別の合成所有者の記録を明示的に尋ねるため、Renの検索結果には含めない。"
+    },
+    {
+      "id": "holdout-trap-05",
+      "ownerId": "synthetic-aya",
+      "query": "英検準1級の今の目標と、過去の2級記録を比べたい",
+      "label": "trap_lifecycle_or_other_owner",
+      "expectedRelevantRecordIds": ["aya-eiken-pre1"],
+      "trapRecordIds": ["aya-eiken-pre2-historical", "ren-eiken-event"],
+      "rationale": "現在の準1級目標は対象だが、過去の2級記録とRenの受験予定は返さない。"
+    }
+  ]
+}
