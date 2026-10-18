@@ -29,13 +29,13 @@ describe('lazy bounded worker transport', () => {
     expect(() => createSemanticMemoryEmbedder({ enabled: true, optedIn: false, workerFactory: factory })).toThrowError(expect.objectContaining({ reason: 'not_opted_in' }));
     expect(factory).not.toHaveBeenCalled(); expect(fetcher).not.toHaveBeenCalled();
   });
-  it('defaults backend policy to auto and carries explicit WASM policy independently of text', async () => {
-    for (const preference of [undefined, 'wasm'] as const) {
+  it('maps both backend spellings to WASM independently of input text', async () => {
+    for (const preference of [undefined, 'auto', 'wasm'] as const) {
       const worker = new FakeWorker();
       const embedder = createSemanticMemoryEmbedder({ enabled: true, optedIn: true,
         backendPreference: preference, workerFactory: () => worker });
       const result = embedder.embed(['webgpu wasm are arbitrary user words'], 'query');
-      expect(worker.postMessage).toHaveBeenCalledWith(expect.objectContaining({ backendPreference: preference ?? 'auto' }));
+      expect(worker.postMessage).toHaveBeenCalledWith(expect.objectContaining({ backendPreference: 'wasm' }));
       worker.reply({ type: 'result', id: 1, backend: 'wasm', vectors: [vector()] });
       await result; await embedder.dispose();
     }
@@ -49,10 +49,10 @@ describe('lazy bounded worker transport', () => {
     expect(factory).not.toHaveBeenCalled();
     const first = embedder.embed(['one'], 'query'); const second = embedder.embed(['two'], 'passage');
     worker.reply({ type: 'result', id: 99, backend: 'wasm', vectors: [] });
-    worker.reply({ type: 'result', id: 2, backend: 'webgpu', vectors: [vector()] });
+    worker.reply({ type: 'result', id: 2, backend: 'wasm', vectors: [vector()] });
     worker.reply({ type: 'error', id: 1, reason: 'out_of_memory' });
     await expect(first).rejects.toMatchObject({ reason: 'out_of_memory' });
-    expect((await second)[0]).toHaveLength(384); expect(embedder.backend).toBe('webgpu');
+    expect((await second)[0]).toHaveLength(384); expect(embedder.backend).toBe('wasm');
     expect(factory).toHaveBeenCalledTimes(1); await embedder.dispose(); expect(worker.terminate).toHaveBeenCalledOnce();
   });
   it('aborts all queued work, terminates computation, ignores late results and can retry fresh', async () => {
@@ -65,7 +65,7 @@ describe('lazy bounded worker transport', () => {
     expect(workers[0].terminate).toHaveBeenCalledOnce();
     const c = embedder.embed(['new'], 'query');
     expect(workers[0].onerror).toBeNull();
-    workers[0].reply({ type: 'result', id: 1, backend: 'webgpu', vectors: [vector()] });
+    workers[0].reply({ type: 'result', id: 1, backend: 'wasm', vectors: [vector()] });
     workers[1].reply({ type: 'result', id: 3, backend: 'wasm', vectors: [vector()] });
     expect(await c).toHaveLength(1); await embedder.dispose();
     await expect(embedder.embed(['x'], 'query')).rejects.toMatchObject({ reason: 'aborted' });
@@ -99,8 +99,8 @@ describe('lazy bounded worker transport', () => {
 describe('worker engine', () => {
   it('loads once for concurrent calls, prefixes correctly, and warms before user inputs', async () => {
     const fetcher = vi.fn(() => { throw Error('text must not reach network'); }); vi.stubGlobal('fetch', fetcher);
-    const pipeline = fakePipeline(); const load = vi.fn(async () => pipeline); const adapter = vi.fn(async () => null);
-    const engine = createEmbeddingEngine({ requestAdapter: adapter, load }); expect(load).not.toHaveBeenCalled();
+    const pipeline = fakePipeline(); const load = vi.fn(async () => pipeline);
+    const engine = createEmbeddingEngine({ load }); expect(load).not.toHaveBeenCalled();
     expect(await engine.handle({ ...request(0), texts: [] })).toMatchObject({ type: 'result', vectors: [] }); expect(load).not.toHaveBeenCalled();
     const results = await Promise.all([engine.handle(request(1)), engine.handle({ ...request(2), role: 'passage' })]);
     expect(results.map(result => result.type)).toEqual(['result', 'result']); expect(load).toHaveBeenCalledOnce();
@@ -110,27 +110,29 @@ describe('worker engine', () => {
     expect(pipeline).toHaveBeenNthCalledWith(3, ['passage: 合成テキスト']);
     expect(fetcher).not.toHaveBeenCalled();
   });
-  it('never requests a GPU adapter when explicitly forced to WASM', async () => {
-    const pipeline = fakePipeline(); const adapter = vi.fn(async () => ({})); const load = vi.fn(async () => pipeline);
-    const engine = createEmbeddingEngine({ requestAdapter: adapter, load });
-    expect(await engine.handle({ ...request(1), backendPreference: 'wasm' })).toMatchObject({ type: 'result', backend: 'wasm' });
+  it.each([undefined, 'auto', 'wasm'] as const)('uses WASM for preference %s without requesting an available GPU adapter', async preference => {
+    const adapter = vi.fn(async () => ({}));
+    vi.stubGlobal('navigator', { gpu: { requestAdapter: adapter } });
+    const pipeline = fakePipeline(); const load = vi.fn(async () => pipeline);
+    const engine = createEmbeddingEngine({ load });
+    expect(await engine.handle({ ...request(1), backendPreference: preference })).toMatchObject({ type: 'result', backend: 'wasm' });
     expect(adapter).not.toHaveBeenCalled(); expect(load).toHaveBeenCalledExactlyOnceWith('wasm');
   });
-  it('falls back on adapter rejection and on GPU warm-up failure', async () => {
-    const gpu = fakePipeline(); vi.mocked(gpu).mockRejectedValueOnce(Error('unsupported kernel'));
-    const wasm = fakePipeline(); const load = vi.fn(async (backend: string) => backend === 'webgpu' ? gpu : wasm);
-    const engine = createEmbeddingEngine({ requestAdapter: async () => ({}), load });
-    expect(await engine.handle(request(1))).toMatchObject({ type: 'result', backend: 'wasm' });
-    expect(gpu.dispose).toHaveBeenCalledOnce(); expect(load.mock.calls.map(args => args[0])).toEqual(['webgpu', 'wasm']);
-    const rejectedAdapter = createEmbeddingEngine({ requestAdapter: async () => { throw Error('denied'); }, load });
-    expect(await rejectedAdapter.handle(request(2))).toMatchObject({ type: 'result', backend: 'wasm' });
+  it('rejects failed WASM warm-up, disposes the failed pipeline, and retries a fresh load on a later call', async () => {
+    const failed = fakePipeline(); vi.mocked(failed).mockRejectedValueOnce(Error('unsupported kernel'));
+    const working = fakePipeline(); const load = vi.fn().mockResolvedValueOnce(failed).mockResolvedValueOnce(working);
+    const engine = createEmbeddingEngine({ load });
+    expect(await engine.handle(request(1))).toMatchObject({ type: 'error', reason: 'model_load_failed' });
+    expect(failed.dispose).toHaveBeenCalledOnce();
+    expect(await engine.handle(request(2))).toMatchObject({ type: 'result', backend: 'wasm' });
+    expect(load.mock.calls).toEqual([['wasm'], ['wasm']]);
   });
   it('rejects bad vectors, download errors and memory failure with typed reasons', async () => {
     const invalid = Object.assign(async () => [new Float32Array(1)], { dispose: async () => {} });
-    const engine = createEmbeddingEngine({ requestAdapter: async () => null, load: async () => invalid });
+    const engine = createEmbeddingEngine({ load: async () => invalid });
     expect(await engine.handle(request(1))).toMatchObject({ type: 'error', reason: 'model_load_failed' });
     for (const [error, reason] of [[new SemanticMemoryUnavailableError('model_download_failed'), 'model_download_failed'], [Error('out of memory'), 'out_of_memory']] as const) {
-      const failing = createEmbeddingEngine({ requestAdapter: async () => null, load: async () => { throw error; } });
+      const failing = createEmbeddingEngine({ load: async () => { throw error; } });
       expect(await failing.handle(request(1))).toMatchObject({ type: 'error', reason });
     }
     expect(mapRuntimeError(new DOMException('', 'AbortError'), 'load')).toBe('aborted');

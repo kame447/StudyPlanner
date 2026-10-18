@@ -1,4 +1,4 @@
-import { SemanticMemoryUnavailableError, type SemanticMemoryBackend } from '../semanticMemoryContract';
+import { SemanticMemoryUnavailableError } from '../semanticMemoryContract';
 import { SEMANTIC_MEMORY_MODEL } from './model';
 import { validateEmbeddingInput, type EmbeddingRequest, type EmbeddingResponse, mapRuntimeError } from './protocol';
 
@@ -7,38 +7,26 @@ export interface EmbeddingPipeline {
   dispose(): Promise<void>;
 }
 export interface EmbeddingEngineDependencies {
-  requestAdapter(): Promise<unknown>;
-  load(backend: SemanticMemoryBackend): Promise<EmbeddingPipeline>;
+  load(backend: 'wasm'): Promise<EmbeddingPipeline>;
 }
 
 /** Worker-only engine. Construction and empty batches do not load model/runtime. */
 export function createEmbeddingEngine(dependencies: EmbeddingEngineDependencies) {
-  let loaded: Promise<{ pipeline: EmbeddingPipeline; backend: SemanticMemoryBackend; modelLoadMs: number }> | undefined;
+  let loaded: Promise<{ pipeline: EmbeddingPipeline; modelLoadMs: number }> | undefined;
   let queue = Promise.resolve();
-  async function loadAndWarm(backendPreference: 'auto' | 'wasm') {
+  async function loadAndWarm() {
     const started = performance.now();
-    let hasAdapter = false;
-    if (backendPreference === 'auto') {
-      try { hasAdapter = Boolean(await dependencies.requestAdapter()); } catch { /* WASM remains available. */ }
+    let pipeline: EmbeddingPipeline | undefined;
+    try {
+      pipeline = await dependencies.load('wasm');
+      // Execute real inference: WASM feature presence alone is not sufficient.
+      const vectors = await pipeline(['query: test']);
+      assertVectors(vectors, 1);
+      return { pipeline, modelLoadMs: performance.now() - started };
+    } catch (error) {
+      await pipeline?.dispose().catch(() => undefined);
+      throw new SemanticMemoryUnavailableError(mapRuntimeError(error, 'load'));
     }
-    const backends: SemanticMemoryBackend[] = hasAdapter ? ['webgpu', 'wasm'] : ['wasm'];
-    for (const backend of backends) {
-      let pipeline: EmbeddingPipeline | undefined;
-      try {
-        pipeline = await dependencies.load(backend);
-        // Adapter availability is insufficient: execute a tiny synthetic input.
-        const vectors = await pipeline(['query: test']);
-        assertVectors(vectors, 1);
-        return { pipeline, backend, modelLoadMs: performance.now() - started };
-      } catch (error) {
-        await pipeline?.dispose().catch(() => undefined);
-        const reason = mapRuntimeError(error, 'load');
-        if (backend === 'wasm' || reason === 'model_download_failed' || reason === 'aborted') {
-          throw new SemanticMemoryUnavailableError(reason);
-        }
-      }
-    }
-    throw new SemanticMemoryUnavailableError('unsupported_environment');
   }
   return {
     handle(request: EmbeddingRequest): Promise<EmbeddingResponse> {
@@ -46,13 +34,13 @@ export function createEmbeddingEngine(dependencies: EmbeddingEngineDependencies)
         try {
           validateEmbeddingInput(request.texts, request.role);
           if (request.texts.length === 0) return { type: 'result', id: request.id, backend: 'wasm', vectors: [] };
-          loaded ??= loadAndWarm(request.backendPreference ?? 'auto').catch(error => { loaded = undefined; throw error; });
-          const { pipeline, backend, modelLoadMs } = await loaded;
+          loaded ??= loadAndWarm().catch(error => { loaded = undefined; throw error; });
+          const { pipeline, modelLoadMs } = await loaded;
           const prefix = request.role === 'query' ? SEMANTIC_MEMORY_MODEL.queryPrefix : SEMANTIC_MEMORY_MODEL.passagePrefix;
           const started = performance.now();
           const vectors = await pipeline(request.texts.map(text => prefix + text));
           assertVectors(vectors, request.texts.length);
-          return { type: 'result', id: request.id, backend, vectors, timings: { modelLoadMs, embedMs: performance.now() - started } };
+          return { type: 'result', id: request.id, backend: 'wasm', vectors, timings: { modelLoadMs, embedMs: performance.now() - started } };
         } catch (error) {
           return { type: 'error', id: request.id, reason: mapRuntimeError(error, 'embed') };
         }

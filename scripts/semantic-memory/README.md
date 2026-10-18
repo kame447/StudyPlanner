@@ -24,12 +24,17 @@ empty batches start a Worker, import Transformers, inspect cache or fetch models
   before this task. 4.3.1 (2026-10-06) was excluded by the age requirement.
 - The package is dynamically imported only inside the module Worker. ONNX runtime
   binaries are same-origin build assets, fetched lazily, never a third-party CDN.
-  GPU adapter success is followed by real warm-up; GPU failure falls back to WASM
-  with a separate warm-up. The typed factory option `backendPreference: 'auto' |
-  'wasm'` defaults to `auto`; `wasm` skips the GPU adapter request inside the
-  Worker. This is an explicit device/testing policy, never derived from input
-  text. WASM always uses one thread, including non-isolated
-  Safari/iOS pages. Adapter detection alone proves nothing about model support.
+  Inference always uses single-thread WASM, including non-isolated Safari/iOS
+  pages. No GPU adapter is requested and no asyncify module or binary is imported.
+  The typed factory option `backendPreference: 'auto' | 'wasm'` remains compatible:
+  both values select WASM. A tiny real embedding warm-up establishes availability;
+  feature detection alone cannot prove that the model runs.
+  Vite maps Transformers' internal `onnxruntime-web/webgpu` import to the official
+  `onnxruntime-web/wasm` entry, so unused bundled GPU code cannot emit asyncify assets.
+- This replaces the initial WebGPU experiment: the asyncify WASM artifact was
+  26,861,777 bytes, exceeding Cloudflare Pages' 25 MiB per-file limit. Parent desktop
+  measurements also found WebKit WASM inference at 12–13 ms versus WebGPU at
+  55–74 ms. The benchmark now rejects asyncify artifacts and any asset over 25 MiB.
 
 ## Bounds, cancellation, privacy, cache
 
@@ -38,8 +43,8 @@ production timeout 120 seconds including queue/model load. The model load and
 inference queue are serialized per Worker. Cancellation or timeout terminates
 that Worker, rejects **all** its pending calls, removes handlers, and releases
 its queued input/model memory. A future call can start a fresh Worker. Disposed
-embedders cannot restart. Backend is provisionally `wasm` before a successful
-first call; only a successful warm-up/result establishes the actual backend.
+embedders cannot restart. Backend is always `wasm`; a successful warm-up/result
+establishes model availability.
 
 Fetches permit only the pinned public model artifact list using GET without
 credentials, referrer or request body. Input strings and vectors stay within
@@ -71,8 +76,9 @@ SEMANTIC_MEMORY_PLAYWRIGHT=/private/tmp/sm-playwright/node_modules/playwright/in
 preserving the prior browser result, avoiding repeated blocked browser launches.
 
 The script builds a separate synthetic entry using the production Vite config,
-serves it with Vite preview on 127.0.0.1:4184 and runs desktop Chromium auto,
-WebKit auto, and WebKit forced to WASM.
+serves it with Vite preview on 127.0.0.1:4184 and runs desktop Chromium `auto`,
+WebKit `auto`, and WebKit `wasm`. All three use WASM; the separate WebKit labels
+exercise both accepted factory option values.
 Only fixed Japanese synthetic text is embedded; it never logs into the app.
 `desktop-results.json` records actual response bytes (not estimated CORS transfer
 sizes), cold load plus warm-up time, first/steady inference/round-trip times,
@@ -90,8 +96,8 @@ Each target verifies four additional lifecycle cases after cold inference:
    offline inference fails the gate rather than silently allowing an HTTP cache.
 2. Clear the public model cache, verify its namespace is absent, reload offline,
    and require typed `model_download_failed`, with no vector result.
-3. For the `webkit-wasm` target, require the actual reported backend to be `wasm`.
-   The engine's skip-adapter behavior is also tested independently with a fake
+3. For every target, require the actual reported backend to be `wasm`.
+   The engine's absence of adapter requests is also tested independently with a fake
    pipeline; modifying page navigator alone would not affect a Worker.
 4. Restore online mode, clear cache, start inference, and hold the real full
    weight GET before it downloads. Abort only after the weight request is reached;
@@ -110,9 +116,16 @@ anything about model execution. The checked-in initial run was blocked before
 page execution by Chromium's Mach bootstrap permission and WebKit's SIGABRT.
 The bundle graph is nevertheless inspected independently: the synthetic page
 statically imports the factory, but its initial graph contains no Transformers
-or ONNX import. All inference chunks and WASM remain outside that graph. Main app
-`npm run build` also succeeds; the runtime has no production consumer at this
-child snapshot, so the synthetic entry is the stronger bundle-boundary test.
+or ONNX import. All inference chunks and WASM remain outside that graph. The audit
+also rejects emitted asyncify files and files exceeding the 25 MiB deployment cap.
+The main app build separately checks the integrated production consumer.
+
+The WASM-only local follow-up passed app typecheck, all 29 focused runtime tests,
+the production build and the synthetic bundle audit. Both outputs omit asyncify;
+the largest emitted file is the 14,264,838-byte WASM binary (below 25 MiB).
+The deferred Transformers chunk is 547,419 bytes and the Worker is 9,969 bytes.
+Fresh desktop model/lifecycle execution belongs to the parent's follow-up run;
+these local build checks do not substitute for it.
 
 Focused verification (no model downloads):
 
@@ -201,10 +214,11 @@ response-body bytes (including tiny metadata probes), not wire compression,
 request headers, or inference memory. Same-origin runtime downloads are excluded.
 No request text or response body is logged or sent anywhere by this counter.
 
-Parent desktop run 9 passed all **8/8 lifecycle gates** on Chromium WASM, WebKit
+Before the WASM-only change, parent desktop run 9 passed all **8/8 lifecycle gates** on Chromium WASM, WebKit
 WebGPU and WebKit forced WASM; a separate WebKit WASM run also passed 8/8 with
 `SEMANTIC_MEMORY_DEBUG_CACHE=0 SEMANTIC_MEMORY_SKIP_CACHE_PROBE=1`. This validates
 the model/cache path independently of diagnostics and cache priming. That run
-preceded the final scalar byte-counter addition; the parent will re-run the
-frozen snapshot and retain its exact output as the final measurement artifact.
+preceded the final scalar byte-counter addition. The parent subsequently verified
+the merged snapshot on all three targets. The WASM-only follow-up requires a fresh
+parent desktop run; the historical WebGPU result does not verify the new snapshot.
 Physical iPhone Safari remains **NOT RUN**.

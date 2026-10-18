@@ -16,7 +16,7 @@ export interface SemanticMemoryEmbedderOptions {
   /** Tests inject a transport; production always uses the module Worker. */
   workerFactory?: () => EmbeddingWorkerPort;
   timeoutMs?: number;
-  /** Explicit device policy; never inferred from input text. */
+  /** Compatibility option: both auto and wasm use single-thread WASM. */
   backendPreference?: 'auto' | 'wasm';
   /** Local public-artifact diagnostics for the synthetic harness. OFF by default. */
   debugCache?: boolean;
@@ -31,7 +31,7 @@ export function createSemanticMemoryEmbedder(options: SemanticMemoryEmbedderOpti
   let worker: EmbeddingWorkerPort | undefined;
   let disposed = false;
   let sequence = 0;
-  let backend: SemanticMemoryBackend = 'wasm'; // Provisional until a warm-up/result succeeds.
+  let backend: SemanticMemoryBackend = 'wasm';
   const pending = new Map<number, { resolve(vectors: Float32Array[]): void; reject(error: unknown): void; cleanup(): void }>();
   const stop = (reason: SemanticMemoryUnavailableReason) => {
     if (worker) {
@@ -88,7 +88,7 @@ export function createSemanticMemoryEmbedder(options: SemanticMemoryEmbedderOpti
         pending.set(id, { resolve, reject, cleanup: () => { clearTimeout(timeout); signal?.removeEventListener('abort', abort); } });
         signal?.addEventListener('abort', abort, { once: true });
         if (signal?.aborted) { abort(); return; }
-        try { transport.postMessage({ type: 'embed', id, texts: [...texts], role, backendPreference: options.backendPreference ?? 'auto', debugCache: options.debugCache === true }); }
+        try { transport.postMessage({ type: 'embed', id, texts: [...texts], role, backendPreference: 'wasm', debugCache: options.debugCache === true }); }
         catch { stop('model_load_failed'); }
       });
     },

@@ -6,6 +6,7 @@ export interface EmbeddingRequest {
   id: number;
   texts: string[];
   role: 'query' | 'passage';
+  /** Legacy auto spelling remains accepted; this runtime always executes WASM. */
   backendPreference?: 'auto' | 'wasm';
   debugCache?: boolean;
 }

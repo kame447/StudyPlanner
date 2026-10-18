@@ -248,7 +248,7 @@ try {
       lifecycle.abortMidLoad.closedWorkerCount = closedAbortWorkers;
       lifecycle.checks = {
         coldEmbedding: cold.status === 'ok' && cold.dimensions === 384 && cold.allFinite === true,
-        forcedWasm: backendPreference !== 'wasm' || cold.backend === 'wasm',
+        forcedWasm: cold.backend === 'wasm',
         cachePopulated: lifecycle.cacheAfterCold.entries.some(entry => entry.path.endsWith('/onnx/model_int8.onnx')),
         onlineReloadBlocked: lifecycle.onlineReloadBlocked.status === 'ok' && lifecycle.onlineReloadBlocked.allFinite === true &&
           lifecycle.onlineReloadBlocked.browserOnline === true && lifecycle.onlineReloadBlocked.blockedFetches.length === 0,
@@ -274,6 +274,9 @@ try {
   }
   for (const name of await readdir(path.join(outDir, 'assets'))) {
     const buffer = await readFile(path.join(outDir, 'assets', name));
+    // Guard the deployment failure independently of browser/model execution.
+    if (name.includes('asyncify')) throw Error(`Unexpected removed GPU runtime asset: ${name}`);
+    if (buffer.byteLength > 25 * 1024 * 1024) throw Error(`Cloudflare Pages asset exceeds 25MiB: ${name}`);
     results.bundle.push({ file: name, bytes: buffer.byteLength, gzipBytes: gzipSync(buffer).byteLength });
   }
   const manifest = JSON.parse(await readFile(path.join(outDir, '.vite/manifest.json'), 'utf8'));

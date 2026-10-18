@@ -1,7 +1,5 @@
 import wasmUrl from 'onnxruntime-web/ort-wasm-simd-threaded.wasm?url';
 import wasmModuleUrl from 'onnxruntime-web/ort-wasm-simd-threaded.mjs?url';
-import gpuWasmUrl from 'onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm?url';
-import gpuModuleUrl from 'onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs?url';
 import { SemanticMemoryUnavailableError } from '../semanticMemoryContract';
 import { createChunkedModelCache } from './chunkedModelCache';
 import { traceModelCache } from './cacheDiagnostics';
@@ -11,15 +9,13 @@ import { SEMANTIC_MEMORY_MODEL, SEMANTIC_MEMORY_MODEL_CACHE } from './model';
 import type { EmbeddingRequest } from './protocol';
 
 const scope = globalThis as typeof globalThis & {
-  navigator: Navigator & { gpu?: { requestAdapter(): Promise<unknown> } };
   postMessage(message: unknown, transfer: Transferable[]): void;
 };
 let debugCache = false;
 let publicModelDownloadBytes = 0;
 let library: Promise<typeof import('@huggingface/transformers')> | undefined;
 const engine = createEmbeddingEngine({
-  requestAdapter: async () => scope.navigator?.gpu?.requestAdapter(),
-  async load(backend) {
+  async load() {
     if (typeof WebAssembly === 'undefined') throw new SemanticMemoryUnavailableError('unsupported_environment');
     // The only Transformers import in the app: unreachable until the first embed.
     library ??= import('@huggingface/transformers');
@@ -41,17 +37,15 @@ const engine = createEmbeddingEngine({
     }
     env.useFSCache = false;
     env.useWasmCache = true;
-    const urls = [wasmUrl, wasmModuleUrl, gpuWasmUrl, gpuModuleUrl].map(url => new URL(url, scope.location.href).href);
+    const urls = [wasmUrl, wasmModuleUrl].map(url => new URL(url, scope.location.href).href);
     env.fetch = createPublicModelFetch(globalThis.fetch.bind(globalThis), urls, bytes => { publicModelDownloadBytes += bytes; });
     const wasm = env.backends.onnx.wasm!;
     // Single thread also on isolated pages: bounded baseline, compatible with iOS.
     wasm.numThreads = 1;
     wasm.proxy = false;
-    wasm.wasmPaths = backend === 'webgpu'
-      ? { wasm: urls[2], mjs: urls[3] }
-      : { wasm: urls[0], mjs: urls[1] };
+    wasm.wasmPaths = { wasm: urls[0], mjs: urls[1] };
     const extractor = await pipeline('feature-extraction', SEMANTIC_MEMORY_MODEL.modelId, {
-      revision: SEMANTIC_MEMORY_MODEL.revision, device: backend, dtype: 'int8',
+      revision: SEMANTIC_MEMORY_MODEL.revision, device: 'wasm', dtype: 'int8',
     });
     const embed = async (texts: string[]) => {
       const tensor = await extractor(texts, { pooling: 'mean', normalize: true });
