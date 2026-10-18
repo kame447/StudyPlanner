@@ -374,13 +374,18 @@ it('allows a second long-press deletion while the dismissed first deletion is pe
         getBoundingClientRect: () => ({ top: 0, left: 0, right: 100, bottom: 60, width: 100, height: 60 }),
       } as HTMLElement, 0, 0);
       vi.advanceTimersByTime(240);
-      actionPress.finish(occurrence.id);
     });
     expect(renderer!.root.findAllByType('button')).toHaveLength(6);
     uiDone = undefined;
+    const ring = renderer!.root.findByProps({ className: 'schedule-radial-ring' }).props.style;
+    const deletionButton = renderer!.root.findByProps({ role: 'menuitem', 'aria-label': '削除' });
+    const target = deletionButton.props.style;
     await act(async () => {
-      renderer!.root.findByProps({ role: 'menuitem', 'aria-label': '削除' }).props.onClick({ preventDefault() {}, stopPropagation() {} });
+      actionPress.move(ring.left + target.left + target.width / 2, ring.top + target.top + target.height / 2);
     });
+    expect(renderer!.root.findByProps({ role: 'menuitem', 'aria-label': '削除' }).props['data-gesture-selected']).toBe(true);
+    expect(gate.entries).toBe(0);
+    await act(async () => { actionPress.finish(occurrence.id); });
     expect(actionPress.activeAction).toBeNull();
     // The dismissed ring keeps a short non-interactive close animation.
     await act(async () => { vi.advanceTimersByTime(200); });
