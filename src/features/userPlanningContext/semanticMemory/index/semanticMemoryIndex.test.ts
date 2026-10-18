@@ -8,6 +8,7 @@ import { clearSemanticMemoryOptIn, eraseAllSemanticMemoryIndexes, readSemanticMe
 import { SemanticMemoryIndex } from './semanticMemoryIndex';
 import { SemanticMemoryIndexedDbStore } from './semanticMemoryIndexedDb';
 import { semanticMemoryRecordFingerprint } from './semanticMemoryFingerprint';
+import { SEMANTIC_MEMORY_FLAG_OFF_CLEANUP_KEY } from './semanticMemoryCleanupState';
 import { selectHybridUserPlanningContextPromptRecords } from './semanticMemoryHybrid';
 
 const record = (id = 'math', patch: Partial<UserPlanningContextRecordV1> = {}): UserPlanningContextRecordV1 => ({
@@ -131,6 +132,8 @@ describe('disposable semantic index safety (synthetic records; no network)', () 
     view = { ...view, revision: 1, records: [record('fresh', { value: 'restarted canonical document' })] };
     const remove = vi.spyOn(factory, 'deleteDatabase');
     const fresh = create();
+    expect(await fresh.sync()).toEqual({ status: 'unavailable', reason: 'internal_error' });
+    expect(remove).not.toHaveBeenCalled();
     expect(await fresh.sync()).toEqual({ status: 'ok', indexed: 1, remaining: 0 });
     expect(remove).toHaveBeenCalledOnce();
     expect(await fresh.recall('合成')).toMatchObject({ status: 'ok', candidates: [{ recordId: 'fresh', sourceRevision: 1 }] });
@@ -141,6 +144,7 @@ describe('disposable semantic index safety (synthetic records; no network)', () 
     const fresh = new SemanticMemoryIndexedDbStore('owner-a', model, factory); stores.push(old, fresh);
     const { token } = await old.reconcile(20, 'previous-document', new Map());
     await expect(old.reconcile(1, 'stale-live-view', new Map())).rejects.toThrow('stale');
+    await expect(fresh.reconcile(1, 'new-document', new Map())).rejects.toThrow('confirmation');
     const reset = await fresh.reconcile(1, 'new-document', new Map());
     expect(reset.token.generation).toBeGreaterThan(token.generation);
     expect((await fresh.read()).revision).toBe(1);
@@ -156,10 +160,38 @@ describe('disposable semantic index safety (synthetic records; no network)', () 
     const migrated = create({ embedder: fake }); await migrated.sync(); migrated.dispose();
     view = { ...view, revision: 1, records: [record('fresh')] };
     const restarted = create({ embedder: fake });
+    expect(await restarted.sync()).toMatchObject({ status: 'unavailable', reason: 'internal_error' });
     expect(await restarted.sync()).toMatchObject({ status: 'ok', indexed: 1 }); restarted.dispose();
     const reloaded = create({ embedder: fake });
     expect(await reloaded.sync()).toMatchObject({ status: 'ok', indexed: 0 });
     expect((await factory.databases()).filter(db => db.name?.includes(':v1:'))).toHaveLength(1);
+  });
+
+  it('does not erase for one stale lower view followed by the current revision', async () => {
+    const old = new SemanticMemoryIndexedDbStore('owner-a', model, factory);
+    const fresh = new SemanticMemoryIndexedDbStore('owner-a', model, factory); stores.push(old, fresh);
+    await old.reconcile(20, 'current', new Map());
+    const remove = vi.spyOn(factory, 'deleteDatabase');
+    await expect(fresh.reconcile(1, 'cached', new Map(), 1)).rejects.toThrow('confirmation');
+    await expect(fresh.reconcile(1, 'cached', new Map(), 1)).rejects.toThrow('confirmation');
+    await fresh.reconcile(20, 'current', new Map(), 2);
+    expect(remove).not.toHaveBeenCalled(); expect((await fresh.read()).revision).toBe(20);
+    await expect(fresh.reconcile(1, 'cached', new Map(), 3)).rejects.toThrow('stale');
+  });
+
+  it('requires consecutive matching lower content against the same fence before reset', async () => {
+    const old = new SemanticMemoryIndexedDbStore('owner-a', model, factory);
+    const fresh = new SemanticMemoryIndexedDbStore('owner-a', model, factory); stores.push(old, fresh);
+    await old.reconcile(20, 'current', new Map());
+    const remove = vi.spyOn(factory, 'deleteDatabase');
+    await expect(fresh.reconcile(1, 'cached-a', new Map(), 1)).rejects.toThrow('confirmation');
+    await expect(fresh.reconcile(1, 'cached-b', new Map(), 2)).rejects.toThrow('confirmation');
+    await expect(fresh.reconcile(2, 'cached-b', new Map(), 3)).rejects.toThrow('confirmation');
+    await old.reconcile(21, 'new-current', new Map());
+    await expect(fresh.reconcile(1, 'cached-b', new Map(), 4)).rejects.toThrow('confirmation');
+    expect(remove).not.toHaveBeenCalled();
+    const result = await fresh.reconcile(1, 'cached-b', new Map(), 5);
+    expect(result.token.revision).toBe(1); expect(remove).toHaveBeenCalledOnce();
   });
 
   it('rejects stale generation writes even when BroadcastChannel invalidation was missed', async () => {
@@ -270,10 +302,11 @@ describe('disposable semantic index safety (synthetic records; no network)', () 
     const open = vi.spyOn(factory, 'open');
     expect(await eraseAllSemanticMemoryIndexes()).toEqual({ status: 'ok' });
     expect(open).not.toHaveBeenCalled();
-    // Only a content-free erasure nonce remains; no consent, catalog, owner or record data.
+    // Only content-free erase/cleanup hints remain; no consent, catalog or record data.
     expect(Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)))
-      .toEqual([SEMANTIC_MEMORY_ERASE_EPOCH_KEY]);
+      .toEqual([SEMANTIC_MEMORY_ERASE_EPOCH_KEY, SEMANTIC_MEMORY_FLAG_OFF_CLEANUP_KEY]);
     expect(localStorage.getItem(SEMANTIC_MEMORY_ERASE_EPOCH_KEY)).toMatch(/^[0-9a-f-]{36}$/);
+    expect(localStorage.getItem(SEMANTIC_MEMORY_FLAG_OFF_CLEANUP_KEY)).toBe('signed-out');
     expect(await factory.databases()).toEqual([]);
   });
 

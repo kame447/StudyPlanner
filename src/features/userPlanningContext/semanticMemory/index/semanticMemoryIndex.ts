@@ -32,17 +32,19 @@ export interface SemanticMemoryIndexOptions {
   access?: () => Promise<SemanticMemoryUnavailableReason | null>;
   /** Application shares this store with model-independent pruning. */
   store?: SemanticMemoryIndexedDbStore;
+  /** Stable for one canonical publication, including all recalls using that publication. */
+  getObservation?: () => number;
 }
 
 /** Hashing and cache pruning never require a pipeline or a Worker. */
 export async function reconcileSemanticMemoryView(store: SemanticMemoryIndexedDbStore,
-  view: SemanticMemoryCanonicalView, guard: () => Promise<void>) {
+  view: SemanticMemoryCanonicalView, guard: () => Promise<void>, observation?: number) {
   const active = view.records.filter(record => record.ownerId === view.ownerId && record.status === 'active');
   const fingerprints = new Map(await Promise.all(active.map(async record =>
     [record.id, await semanticMemoryRecordFingerprint(record)] as const)));
   const signature = await semanticMemoryHash(JSON.stringify([...fingerprints].sort(([a], [b]) => a.localeCompare(b))));
   await guard();
-  const reconciled = await store.reconcile(view.revision, signature, fingerprints);
+  const reconciled = await store.reconcile(view.revision, signature, fingerprints, observation);
   return { ...reconciled, active, fingerprints };
 }
 
@@ -104,9 +106,10 @@ export class SemanticMemoryIndex {
   async sync(signal?: AbortSignal): Promise<SemanticMemorySyncResult> {
     try {
       await this.guard(signal);
+      const observation = this.options.getObservation?.();
       const view = this.view();
       // Advance the fence/remove obsolete vectors before starting costly cancellable work.
-      const { token, entries, active, fingerprints } = await reconcileSemanticMemoryView(this.store, view, () => this.guard(signal));
+      const { token, entries, active, fingerprints } = await reconcileSemanticMemoryView(this.store, view, () => this.guard(signal), observation);
       const indexedIds = new Set(entries.map((entry) => entry.recordId));
       const missing = active.filter((record) => !indexedIds.has(record.id));
       const work = missing.slice(0, cap(this.options.maxRecordsPerSync, 100, 500));

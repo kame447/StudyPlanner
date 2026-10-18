@@ -149,3 +149,20 @@ it.each([true, false])('rebuilds after opt-out then opt-in in one session (obser
   expect(createEmbedder).toHaveBeenCalledTimes(2); expect(first.dispose).toHaveBeenCalledOnce();
   scope.dispose();
 });
+
+it.each([true, false])('requires a second lower publication, not repeated recalls (confirmed restart: %s)', async confirmRestart => {
+  vi.stubEnv('VITE_SEMANTIC_MEMORY_ENABLED', 'true');
+  const seed = createSemanticMemoryApplication({ access: async () => null, createEmbedder: async () => fakeEmbedder() });
+  const original = seed.connect('owner-a'); original.publish(view('owner-a', 20));
+  expect(await seed.recall('owner-a', '合成')).toMatchObject({ status: 'ok' }); original.dispose();
+  const remove = vi.spyOn(indexedDB, 'deleteDatabase'); const embedder = fakeEmbedder();
+  const app = createSemanticMemoryApplication({ access: async () => null, createEmbedder: async () => embedder });
+  const scope = app.connect('owner-a'); scope.publish(view('owner-a', 1));
+  expect(await app.recall('owner-a', '合成')).toMatchObject({ status: 'unavailable' });
+  expect(await app.recall('owner-a', '合成')).toMatchObject({ status: 'unavailable' });
+  expect(remove).not.toHaveBeenCalled(); expect(embedder.embed).not.toHaveBeenCalled();
+  scope.publish(view('owner-a', confirmRestart ? 1 : 20));
+  expect(await app.recall('owner-a', '合成')).toMatchObject({ status: 'ok' });
+  if (confirmRestart) expect(remove).toHaveBeenCalledOnce(); else expect(remove).not.toHaveBeenCalled();
+  scope.dispose();
+});
