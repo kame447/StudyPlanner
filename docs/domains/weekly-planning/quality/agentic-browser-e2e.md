@@ -57,9 +57,9 @@ ChatGPTの対応サブスクリプションを使いたい場合は、`cd tests/
 
 ## 既存Playwrightとの契約比較（Issue #730）
 
-旧 `tests/e2e/weekly-planning-modal.spec.mjs` の「existing weekly session opens directly ...」は `/?weekly=1` で入力欄・送信ボタンが見えることのみを検査していた。同ファイルの送信とpendingのテストもこの状態を前提に検査しているため、検出範囲が重複する。2026-10-17に `tests/agent-e2e/tests/weekly-conversation.e2e.ts` の `smoke: an existing weekly session has a usable accessible composer` へ移管。新テストは同じ実ブラウザの合成harnessで、入力欄と送信ボタンの可視性に加えて、入力時に送信ボタンが有効になることを検査する。CIはmain向け全PRとmain pushでこのmodel-free smokeを実行するため、変更時の回帰監視を省略しない。
+旧 `tests/e2e/weekly-planning-modal.spec.mjs` の「existing weekly session opens directly ...」は `/?weekly=1` の入力欄・送信ボタンの可視性を検査していた。2026-10-17に `tests/agent-e2e/tests/weekly-conversation.e2e.ts` の `smoke: an existing weekly session has a usable accessible composer` へ移管し、同じ合成harnessで可視性と入力時の送信ボタンの有効化を検査している。CIのmodel-free smokeは継続する。ただし後続の#382到達性監査により、この旧harnessが本番閉包外の画面を描画していることを確認した。このsmokeの成功を本番チャットの入力・表示・保存の保証とは呼ばない。
 
-同じ「週間計画」でも、`weekly-planning-modal.spec.mjs` のEnter/Ctrl+Enter・pending中のキャンセルと再送抑止、`weekly-preview-approval.spec.mjs` のイベントpayload・二重promote防止、`weekly-real-application.spec.mjs` のcontroller/reducer・保存・reload等は別の故障を検査するため保持する。モデル操作の成功のみを根拠に状態不変条件を置き換えない。
+本番の会話UIは、`weekly-keyboard.spec.mjs` の複数行編集・明示的な送信（Ctrl/Cmd+Enterでは送らない）、`weekly-real-application.spec.mjs` のキャンセル・遅延結果の破棄・保存・reload、`weekly-real-concurrency.spec.mjs` の二重送信抑止で検査する。旧画面だけにあったCtrl+Enter送信・破壊的preview閉じ・一括破棄のテストは保持しない。プレビューの除外・仮予定化・承認の境界は本番経路へ移管する一方、同一taskでの二重仮予定化と実ダブルクリックによる確認前保存は#751で追跡する。モデル操作の成功のみを根拠に、本番の状態不変条件を置き換えない。
 
 ## 1ターン完了の重複保証移管（Issue #739）
 
