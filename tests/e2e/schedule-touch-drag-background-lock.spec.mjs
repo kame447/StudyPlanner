@@ -227,6 +227,17 @@ async function nativeSwipeUp(page, session, point, scroll) {
   return { before, after: await scroll.evaluate(element => element.scrollTop) };
 }
 
+async function installScrollObservation(page) {
+  await page.addInitScript(() => {
+    // Observation only. The app's ring listener may stop propagation at window,
+    // so register before app bootstrap and record only during an active probe.
+    window.addEventListener('touchmove', event => {
+      const probe = window.__scheduleTouchScrollProbe;
+      if (probe?.active) probe.recordMove(event);
+    }, true);
+  });
+}
+
 async function startScrollProbe(page) {
   return page.evaluate(() => {
     const targets = [
@@ -253,15 +264,16 @@ async function startScrollProbe(page) {
       setTimeout(() => { observation.defaultPrevented = event.defaultPrevented; }, 0);
     };
     window.addEventListener('scroll', recordScroll, true);
-    window.addEventListener('touchmove', recordMove, true);
     window.__scheduleTouchScrollProbe = {
       initial,
       samples,
       moves,
       snapshot,
+      active: true,
+      recordMove,
       stop() {
         window.removeEventListener('scroll', recordScroll, true);
-        window.removeEventListener('touchmove', recordMove, true);
+        this.active = false;
         return { initial, samples, moves };
       },
     };
@@ -296,9 +308,9 @@ async function readPlanTime(page) {
 const LONG_DRAG = [-40, -76, -104, -128, -150];
 
 const gestures = [
-  { exit: 'drop', preHoldMove: 0 },
-  // The finger keeps travelling far during the drag (each frame must stay fixed).
-  { exit: 'drop', preHoldMove: 0, longDrag: true },
+  { exit: 'outside release', preHoldMove: 0 },
+  // Long travel still belongs to the ring, never to the underlying drag.
+  { exit: 'outside release', preHoldMove: 0, longDrag: true },
   { exit: 'cancel', preHoldMove: 0 },
   { exit: 'stationary release', preHoldMove: 0 },
   // Below the 9px hold tolerance: finger jitter must not hand this sequence to
@@ -319,6 +331,7 @@ for (const surface of scrollSurfaces) {
       const page = await context.newPage();
       const evidence = { surface: surface.name, viewport: surface.viewport, exit, preHoldMove };
       try {
+        await installScrollObservation(page);
         await seedUser(page);
         await openSchedule(page, surface.tabName);
         const session = await enableTouch(page);
@@ -339,7 +352,7 @@ for (const surface of scrollSurfaces) {
           await dispatchTouch(session, 'touchMove', x, y - preHoldMove);
         }
         await page.waitForTimeout(300);
-        await expect(page.getByRole('menu')).toHaveCount(0);
+        await expect(page.getByRole('menu')).toBeVisible();
         await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
         await expectScrollStationary(page, initial);
 
@@ -348,41 +361,44 @@ for (const surface of scrollSurfaces) {
           for (const [index, dy] of path.entries()) {
             await dispatchTouch(session, 'touchMove', x, y + dy);
             if (index === 0) {
-              await expect(page.getByRole('menu')).toHaveCount(0);
-              await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
+              await expect(page.getByRole('menu')).toBeVisible();
+              await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
             }
             await expectScrollStationary(page, initial, `held move ${index + 1} (${dy}px)`);
           }
         }
 
-        await dispatchTouch(session, exit === 'cancel' ? 'touchCancel' : 'touchEnd',
-          x, exit === 'stationary release' ? y : y + path.at(-1));
+        let release = { x, y: exit === 'stationary release' ? y : y + path.at(-1) };
+        if (exit === 'outside release') {
+          release = await page.locator('.schedule-radial-ring').evaluate(element => {
+            const rect = element.getBoundingClientRect();
+            const corners = [{ x: 1, y: 1 }, { x: innerWidth - 1, y: 1 },
+              { x: 1, y: innerHeight - 1 }, { x: innerWidth - 1, y: innerHeight - 1 }];
+            return corners.sort((a, b) => Math.hypot(b.x - rect.x, b.y - rect.y)
+              - Math.hypot(a.x - rect.x, a.y - rect.y))[0];
+          });
+          await dispatchTouch(session, 'touchMove', release.x, release.y);
+          await expect(page.locator('[data-gesture-selected="true"]')).toHaveCount(0);
+          await expectScrollStationary(page, initial, 'outside ring');
+        }
+        await dispatchTouch(session, exit === 'cancel' ? 'touchCancel' : 'touchEnd', release.x, release.y);
         await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
         await expectScrollStationary(page, initial);
         evidence.drag = await page.evaluate(() => window.__scheduleTouchScrollProbe.stop());
         if (exit !== 'stationary release') {
           expect(evidence.drag.moves.length).toBeGreaterThan(0);
           expect(evidence.drag.moves.every(move => move.trusted)).toBe(true);
+          // Pre-hold 8px jitter is intentionally scrollable until the threshold.
+          // The final move is after ownership passes to the ring in every path.
+          expect(evidence.drag.moves.at(-1)).toMatchObject({ cancelable: true, defaultPrevented: true });
         }
-        if (exit === 'drop') {
-          await expect.poll(async () => {
-            const saved = await readPlanTime(page);
-            return saved !== null && saved !== initialTime;
-          }).toBe(true);
-          const [start, end] = (await readPlanTime(page)).split('-').map(time => {
-            const [hours, minutes] = time.split(':').map(Number);
-            return hours * 60 + minutes;
-          });
-          expect(end - start, 'drop preserves the plan duration').toBe(60);
-        } else {
-          expect(await readPlanTime(page)).toBe(initialTime);
-        }
+        expect(await readPlanTime(page)).toBe(initialTime);
+        await expect(plan).toBeVisible();
+        await expect(page.getByRole('menu')).toHaveCount(0);
+        await expect(page.getByRole('region', { name: '予定の移動' })).toHaveCount(0);
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        expect(await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]'))).toEqual([]);
 
-        if (exit === 'stationary release') {
-          await expect(page.getByRole('menu')).toBeVisible();
-          await page.keyboard.press('Escape');
-          await expect(page.getByRole('menu')).toHaveCount(0);
-        }
         evidence.afterDragSwipe = await nativeSwipeUp(page, session,
           await positionPlanForGesture(plan, surface.scrollSelector), scroll);
       } finally {
@@ -412,9 +428,14 @@ async function armMoveFromRadialMenu(page, session, plan, scrollSelector) {
   const { x, y } = await positionPlanForGesture(plan, scrollSelector);
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(260);
-  await dispatchTouch(session, 'touchEnd', x, y);
   await expect(page.getByRole('menu')).toBeVisible();
-  await page.getByRole('menuitem', { name: '移動', exact: true }).click();
+  const move = page.getByRole('menuitem', { name: '移動', exact: true });
+  const point = await locatorCenter(move);
+  await dispatchTouch(session, 'touchMove', point.x, point.y);
+  await expect(move).toHaveAttribute('data-gesture-selected', 'true');
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+  await expect(page.getByRole('region', { name: '予定の移動' })).toHaveCount(0);
+  await dispatchTouch(session, 'touchEnd', point.x, point.y);
   await expect(page.getByRole('region', { name: '予定の移動' })).toBeVisible();
   await expect(plan).toHaveClass(/is-move-armed/);
   await expect(page.locator('.schedule-radial-menu')).toHaveCount(0);
@@ -431,6 +452,7 @@ for (const surface of scrollSurfaces) {
       const page = await context.newPage();
       const evidence = { surface: surface.name, viewport: surface.viewport, path: 'radial-move-armed', exit, moves: path };
       try {
+        await installScrollObservation(page);
         await seedUser(page);
         await openSchedule(page, surface.tabName);
         const session = await enableTouch(page);
@@ -468,6 +490,11 @@ for (const surface of scrollSurfaces) {
             return saved !== null && saved !== initialTime;
           }).toBe(true);
           await expect(page.getByRole('region', { name: '予定の移動' })).toHaveCount(0);
+          const [start, end] = (await readPlanTime(page)).split('-').map(time => {
+            const [hours, minutes] = time.split(':').map(Number);
+            return hours * 60 + minutes;
+          });
+          expect(end - start, 'drop preserves the plan duration').toBe(60);
         } else {
           expect(await readPlanTime(page)).toBe(initialTime);
           // Still lifted after a cancelled touch; leave move mode explicitly.

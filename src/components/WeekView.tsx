@@ -828,7 +828,7 @@ export function WeekView({
     if (isScheduleActionMenuTarget(event.target)) return;
     if (event.pointerType === 'touch' || event.button !== 0 || !event.isPrimary) return;
     const target = resolveScheduleActionTarget(event.target);
-    if (!target) return;
+    if (!target || target.occurrence.id === radialActions.armedMove?.occurrenceId) return;
     scheduleAction.start(
       target.occurrence.id,
       target.occurrence,
@@ -837,18 +837,19 @@ export function WeekView({
       target.element,
       event.clientX,
       event.clientY,
+      event.pointerId,
     );
   }
 
   function handleActionPointerMoveCapture(event: ReactPointerEvent<HTMLElement>) {
     if (isScheduleActionMenuTarget(event.target)) return;
-    if (event.pointerType === 'touch') return;
+    if (event.pointerType === 'touch' || !scheduleAction.ownsInput('pointer', event.pointerId)) return;
     scheduleAction.move(event.clientX, event.clientY);
   }
 
   function handleActionPointerUpCapture(event: ReactPointerEvent<HTMLElement>) {
     if (isScheduleActionMenuTarget(event.target)) return;
-    if (event.pointerType === 'touch') return;
+    if (event.pointerType === 'touch' || !scheduleAction.ownsInput('pointer', event.pointerId)) return;
     const target = resolveScheduleActionTarget(event.target);
     if (target) scheduleAction.finish(target.occurrence.id);
     else scheduleAction.cancel();
@@ -859,7 +860,7 @@ export function WeekView({
     if (event.touches.length !== 1) return;
     const target = resolveScheduleActionTarget(event.target);
     const touch = event.touches[0];
-    if (!target || !touch) return;
+    if (!target || !touch || target.occurrence.id === radialActions.armedMove?.occurrenceId) return;
     scheduleAction.start(
       target.occurrence.id,
       target.occurrence,
@@ -868,17 +869,19 @@ export function WeekView({
       target.element,
       touch.clientX,
       touch.clientY,
+      touch.identifier,
     );
   }
 
   function handleActionTouchMoveCapture(event: ReactTouchEvent<HTMLElement>) {
     if (isScheduleActionMenuTarget(event.target)) return;
     const touch = event.touches[0];
-    if (touch) scheduleAction.move(touch.clientX, touch.clientY);
+    if (touch && scheduleAction.ownsInput('touch', touch.identifier)) scheduleAction.move(touch.clientX, touch.clientY);
   }
 
   function handleActionTouchEndCapture(event: ReactTouchEvent<HTMLElement>) {
     if (isScheduleActionMenuTarget(event.target)) return;
+    if (!Array.from(event.changedTouches).some(touch => scheduleAction.ownsInput('touch', touch.identifier))) return;
     const target = resolveScheduleActionTarget(event.target);
     if (target) scheduleAction.finish(target.occurrence.id);
     else scheduleAction.cancel();
@@ -970,7 +973,7 @@ export function WeekView({
         onPointerDownCapture={handleActionPointerDownCapture}
         onPointerMoveCapture={handleActionPointerMoveCapture}
         onPointerUpCapture={handleActionPointerUpCapture}
-        onPointerCancelCapture={event => { if (!isScheduleActionMenuTarget(event.target)) scheduleAction.cancel(); }}
+        onPointerCancelCapture={event => { if (event.pointerType !== 'touch' && !isScheduleActionMenuTarget(event.target)) scheduleAction.cancelPointer(event.pointerId); }}
         onTouchStartCapture={handleActionTouchStartCapture}
         onTouchMoveCapture={handleActionTouchMoveCapture}
         onTouchEndCapture={handleActionTouchEndCapture}

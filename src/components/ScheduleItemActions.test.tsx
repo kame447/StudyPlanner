@@ -37,9 +37,9 @@ let renderer: ReactTestRenderer | undefined;
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal('Element', FakeElement);
-  vi.stubGlobal('window', { setTimeout, clearTimeout, addEventListener: noop, removeEventListener: noop, requestAnimationFrame: noop,
+  vi.stubGlobal('window', { dispatchEvent: noop, setTimeout, clearTimeout, addEventListener: noop, removeEventListener: noop, requestAnimationFrame: noop,
     matchMedia: () => ({ matches: true }) });
-  vi.stubGlobal('document', { body: {}, addEventListener: noop, removeEventListener: noop });
+  vi.stubGlobal('document', { body: {}, documentElement: { classList: { add: noop, remove: noop } }, addEventListener: noop, removeEventListener: noop });
 });
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 function setup(kind: 'day' | 'week', actuals: Actual[] = [], extra: Partial<ComponentProps<typeof DayView>> = {}) {
@@ -58,10 +58,10 @@ function setup(kind: 'day' | 'week', actuals: Actual[] = [], extra: Partial<Comp
   const occurrence = createScheduleOccurrenceProjection({ ownerId: plan.userId, plans: dayProps.plans, monthEvents: dayProps.monthEvents, scheduleTemplates: dayProps.scheduleTemplates, timetableTermId: dayProps.timetableTermId, startDate: plan.date, endDate: plan.date }).occurrences[0];
   const element = new FakeElement(occurrence.id);
   const section = () => renderer!.root.findAllByType('section').find(node => node.props.onTouchStartCapture)!;
-  const event = (target = element) => ({ target, currentTarget: element, touches: [{ clientX: 50, clientY: 50 }], preventDefault: vi.fn(), stopPropagation: vi.fn() });
+  const event = (target = element) => ({ target, currentTarget: element, touches: [{ clientX: 50, clientY: 50 }], changedTouches: [{ clientX: 50, clientY: 50 }], preventDefault: vi.fn(), stopPropagation: vi.fn() });
   function open(mode: 'hold' | 'context' | 'keyboard' = 'context') {
     act(() => {
-      if (mode === 'hold') { section().props.onTouchStartCapture(event()); vi.advanceTimersByTime(250); section().props.onTouchEndCapture(event()); }
+      if (mode === 'hold') { section().props.onTouchStartCapture(event()); vi.advanceTimersByTime(250); }
       if (mode === 'context') section().props.onContextMenu(event());
       if (mode === 'keyboard') section().props.onKeyDown({ ...event(), key: 'F10', shiftKey: true });
     });

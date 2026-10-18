@@ -6,6 +6,7 @@ import {
   type ActiveScheduleItemAction,
 } from '../hooks/useScheduleItemActionPress';
 import { useMotionLevel } from '../hooks/useMotionPreference';
+import { selectScheduleRadialGesture } from '../lib/scheduleRadialGesture';
 import { computeScheduleRadialMenuLayout } from '../lib/scheduleRadialMenuLayout';
 import {
   SCHEDULE_RADIAL_ACTION_ORDER,
@@ -69,6 +70,8 @@ function RadialRing<TItem>({ action, actions, onSelect, onDismiss, closing, leve
   const rootRef = useRef<HTMLDivElement>(null);
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
   const descriptionId = useId();
+  const [selected, setSelected] = useState<number | null>(null);
+  const selectedRef = useRef<number | null>(null);
   const [hint, setHint] = useState<string | null>(null);
   const [safeInsets, setSafeInsets] = useState({ top: 0, right: 0, bottom: 0, left: 0 });
   const descriptors = SCHEDULE_RADIAL_ACTION_ORDER.flatMap(id => actions.filter(action => action.id === id));
@@ -88,7 +91,7 @@ function RadialRing<TItem>({ action, actions, onSelect, onDismiss, closing, leve
       });
     }
     const firstEnabled = descriptors.findIndex(descriptor => !descriptor.disabledReason);
-    buttons.current[firstEnabled < 0 ? 0 : firstEnabled]?.focus({ preventScroll: true });
+    if (!action.gesture) buttons.current[firstEnabled < 0 ? 0 : firstEnabled]?.focus({ preventScroll: true });
   }, []);
 
   useLayoutEffect(() => {
@@ -100,6 +103,31 @@ function RadialRing<TItem>({ action, actions, onSelect, onDismiss, closing, leve
     if (action.anchorElement?.isConnected) action.anchorElement.focus({ preventScroll: true });
     else focusedButton.blur();
   }, [closing, action.anchorElement]);
+
+  useLayoutEffect(() => {
+    const gesture = action.gesture;
+    if (!gesture || closing) return;
+    gesture.onMove = point => {
+      const next = selectScheduleRadialGesture(layout, point, gesture.origin);
+      if (next === selectedRef.current) return;
+      selectedRef.current = next;
+      setSelected(next);
+      setHint(next === null ? null : descriptors[next]?.disabledReason ?? null);
+      if (next !== null && !descriptors[next]?.disabledReason) {
+        // A supported API is best effort, never evidence of physical feedback.
+        try { if (typeof navigator.vibrate === 'function') navigator.vibrate(10); } catch { /* Visual selection remains available. */ }
+      }
+    };
+    gesture.onRelease = () => {
+      const index = selectedRef.current;
+      const descriptor = index === null ? undefined : descriptors[index];
+      if (!descriptor || descriptor.disabledReason) return;
+      onDismiss();
+      onSelect(descriptor.id, action.item);
+    };
+    gesture.onMove(gesture.point);
+    return () => { gesture.onMove = undefined; gesture.onRelease = undefined; };
+  }, [action, closing, layout.anchor.x, layout.anchor.y, layout.radius, layout.buttonDiameter, actions, onDismiss, onSelect]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (closing) return;
@@ -153,6 +181,7 @@ function RadialRing<TItem>({ action, actions, onSelect, onDismiss, closing, leve
               ref={element => { buttons.current[index] = element; }}
               className="schedule-radial-item"
               data-action={descriptor.id}
+              data-gesture-selected={selected === index || undefined}
               type="button"
               role="menuitem"
               aria-label={descriptor.label}
