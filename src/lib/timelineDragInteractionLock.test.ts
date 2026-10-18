@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { acquireTimelineDragInteractionLock, isTimelineDragInteractionLocked } from './timelineDragInteractionLock';
+import { acquireTimelineDragInteractionLock, installTimelineTouchMoveGuard, isTimelineDragInteractionLocked } from './timelineDragInteractionLock';
 import { BrowserEventTarget } from './timelineDragInteractionLock.testUtils';
 
 function elementState(overflow: string, overscrollBehavior: string) {
@@ -144,5 +144,22 @@ describe('timeline drag interaction lock ownership', () => {
     expect(isTimelineDragInteractionLocked()).toBe(true);
     release();
     expect(isTimelineDragInteractionLocked()).toBe(false);
+  });
+
+  it('a pre-registered timeline guard is non-passive and cancels moves only while locked', () => {
+    const element = new BrowserEventTarget();
+    const add = vi.spyOn(element, 'addEventListener');
+    const remove = installTimelineTouchMoveGuard(element as unknown as HTMLElement);
+    expect(add).toHaveBeenCalledWith('touchmove', expect.any(Function), { passive: false });
+    const move = () => { const event = new Event('touchmove', { cancelable: true }); element.dispatchEvent(event); return event.defaultPrevented; };
+    expect(move()).toBe(false);
+    const release = acquire();
+    expect(move()).toBe(true);
+    release();
+    expect(move()).toBe(false);
+    const locked = acquire();
+    remove();
+    expect(move()).toBe(false);
+    locked();
   });
 });

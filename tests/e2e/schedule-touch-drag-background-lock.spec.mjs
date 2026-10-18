@@ -269,7 +269,7 @@ async function startScrollProbe(page) {
   });
 }
 
-async function expectScrollStationary(page, initial) {
+async function expectScrollStationary(page, initial, phase = 'gesture') {
   // Check multiple painted frames plus every scroll event, including the first
   // native move where a passive React handler used to let scrolling begin.
   const samples = await page.evaluate(async () => {
@@ -280,7 +280,9 @@ async function expectScrollStationary(page, initial) {
     }
     return probe.samples;
   });
-  for (const sample of samples) expect(sample).toEqual(initial);
+  for (const [index, sample] of samples.entries()) {
+    expect(sample, `${phase}: scroll sample ${index} moved`).toEqual(initial);
+  }
 }
 
 async function readPlanTime(page) {
@@ -291,8 +293,12 @@ async function readPlanTime(page) {
   });
 }
 
+const LONG_DRAG = [-40, -76, -104, -128, -150];
+
 const gestures = [
   { exit: 'drop', preHoldMove: 0 },
+  // The finger keeps travelling far during the drag (each frame must stay fixed).
+  { exit: 'drop', preHoldMove: 0, longDrag: true },
   { exit: 'cancel', preHoldMove: 0 },
   { exit: 'stationary release', preHoldMove: 0 },
   // Below the 9px hold tolerance: finger jitter must not hand this sequence to
@@ -301,8 +307,9 @@ const gestures = [
 ];
 
 for (const surface of scrollSurfaces) {
-  for (const { exit, preHoldMove } of gestures) {
-    const hold = preHoldMove ? `long press after ${preHoldMove}px finger jitter` : 'long press';
+  for (const { exit, preHoldMove, longDrag } of gestures) {
+    const hold = (preHoldMove ? `long press after ${preHoldMove}px finger jitter` : 'long press')
+      + (longDrag ? ' with a long finger travel' : '');
     test(`${surface.name} native scroll stays fixed from ${hold} through ${exit}, then swipes recover`, async ({ browser }, testInfo) => {
       const context = await newFixedClockContext(browser, {
         viewport: surface.viewport,
@@ -336,17 +343,20 @@ for (const surface of scrollSurfaces) {
         await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
         await expectScrollStationary(page, initial);
 
+        const path = longDrag ? LONG_DRAG : [-40, -76];
         if (exit !== 'stationary release') {
-          await dispatchTouch(session, 'touchMove', x, y - 40);
-          await expect(page.getByRole('menu')).toHaveCount(0);
-          await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
-          await expectScrollStationary(page, initial);
-          await dispatchTouch(session, 'touchMove', x, y - 76);
-          await expectScrollStationary(page, initial);
+          for (const [index, dy] of path.entries()) {
+            await dispatchTouch(session, 'touchMove', x, y + dy);
+            if (index === 0) {
+              await expect(page.getByRole('menu')).toHaveCount(0);
+              await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
+            }
+            await expectScrollStationary(page, initial, `held move ${index + 1} (${dy}px)`);
+          }
         }
 
         await dispatchTouch(session, exit === 'cancel' ? 'touchCancel' : 'touchEnd',
-          x, exit === 'stationary release' ? y : y - 76);
+          x, exit === 'stationary release' ? y : y + path.at(-1));
         await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
         await expectScrollStationary(page, initial);
         evidence.drag = await page.evaluate(() => window.__scheduleTouchScrollProbe.stop());
@@ -373,6 +383,98 @@ for (const surface of scrollSurfaces) {
           await page.keyboard.press('Escape');
           await expect(page.getByRole('menu')).toHaveCount(0);
         }
+        evidence.afterDragSwipe = await nativeSwipeUp(page, session,
+          await positionPlanForGesture(plan, surface.scrollSelector), scroll);
+      } finally {
+        if (!page.isClosed()) {
+          evidence.drag ??= await page.evaluate(() => window.__scheduleTouchScrollProbe?.stop());
+        }
+        await testInfo.attach('native-touch-scroll-evidence', {
+          body: JSON.stringify(evidence, null, 2),
+          contentType: 'application/json',
+        });
+        await context.close();
+      }
+    });
+  }
+}
+
+// Radial 移動 → lifted ("armed") event → a fresh touch drags on its very first
+// move. Nothing may scroll from that first native touchmove onward, and normal
+// scrolling must recover after leaving move mode.
+const armedGestures = [
+  { exit: 'drop', path: [-16, -40, -76] },
+  { exit: 'cancel', path: [-16, -40, -76] },
+  { exit: 'drop', path: [-16, ...LONG_DRAG], label: 'long finger travel' },
+];
+
+async function armMoveFromRadialMenu(page, session, plan, scrollSelector) {
+  const { x, y } = await positionPlanForGesture(plan, scrollSelector);
+  await dispatchTouch(session, 'touchStart', x, y);
+  await page.waitForTimeout(260);
+  await dispatchTouch(session, 'touchEnd', x, y);
+  await expect(page.getByRole('menu')).toBeVisible();
+  await page.getByRole('menuitem', { name: '移動', exact: true }).click();
+  await expect(page.getByRole('region', { name: '予定の移動' })).toBeVisible();
+  await expect(plan).toHaveClass(/is-move-armed/);
+  await expect(page.locator('.schedule-radial-menu')).toHaveCount(0);
+}
+
+for (const surface of scrollSurfaces) {
+  for (const { exit, path, label } of armedGestures) {
+    test(`${surface.name} radial 移動 armed drag keeps native scroll fixed from the first move through ${exit}${label ? ` (${label})` : ''}, then swipes recover`, async ({ browser }, testInfo) => {
+      const context = await newFixedClockContext(browser, {
+        viewport: surface.viewport,
+        hasTouch: true,
+        isMobile: true,
+      });
+      const page = await context.newPage();
+      const evidence = { surface: surface.name, viewport: surface.viewport, path: 'radial-move-armed', exit, moves: path };
+      try {
+        await seedUser(page);
+        await openSchedule(page, surface.tabName);
+        const session = await enableTouch(page);
+        const plan = page.locator(surface.planSelector).filter({ hasText: '長押し移動確認' });
+        const scroll = page.locator(surface.scrollSelector);
+        const initialTime = '09:00-10:00';
+        await expect(plan).toBeVisible();
+        await expect.poll(() => readPlanTime(page)).toBe(initialTime);
+
+        await armMoveFromRadialMenu(page, session, plan, surface.scrollSelector);
+        const { x, y } = await positionPlanForGesture(plan, surface.scrollSelector);
+        const initial = await startScrollProbe(page);
+        await dispatchTouch(session, 'touchStart', x, y);
+        for (const [index, dy] of path.entries()) {
+          // No hold: the very first native move must already be claimed.
+          await dispatchTouch(session, 'touchMove', x, y + dy);
+          await expectScrollStationary(page, initial, `armed move ${index + 1} (${dy}px)`);
+          if (index === 0) {
+            await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
+            await expect(page.getByRole('menu')).toHaveCount(0);
+          }
+        }
+        await dispatchTouch(session, exit === 'cancel' ? 'touchCancel' : 'touchEnd', x, y + path.at(-1));
+        await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
+        await expectScrollStationary(page, initial, `after armed ${exit}`);
+        evidence.drag = await page.evaluate(() => window.__scheduleTouchScrollProbe.stop());
+        expect(evidence.drag.moves.length).toBeGreaterThanOrEqual(path.length);
+        expect(evidence.drag.moves.every(move => move.trusted && move.cancelable)).toBe(true);
+        expect(evidence.drag.moves.every(move => move.defaultPrevented === true),
+          'every native touchmove, including the first, is cancelled').toBe(true);
+
+        if (exit === 'drop') {
+          await expect.poll(async () => {
+            const saved = await readPlanTime(page);
+            return saved !== null && saved !== initialTime;
+          }).toBe(true);
+          await expect(page.getByRole('region', { name: '予定の移動' })).toHaveCount(0);
+        } else {
+          expect(await readPlanTime(page)).toBe(initialTime);
+          // Still lifted after a cancelled touch; leave move mode explicitly.
+          await page.getByRole('button', { name: '終了' }).click();
+          await expect(page.getByRole('region', { name: '予定の移動' })).toHaveCount(0);
+        }
+        await expect(plan).not.toHaveClass(/is-move-armed/);
         evidence.afterDragSwipe = await nativeSwipeUp(page, session,
           await positionPlanForGesture(plan, surface.scrollSelector), scroll);
       } finally {

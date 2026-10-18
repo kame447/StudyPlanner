@@ -52,6 +52,7 @@ import {
 import { useDataChangeMotion } from '../hooks/useDataChangeMotion';
 import { usePeriodNavigationMotion } from '../hooks/usePeriodNavigationMotion';
 import { useScheduleItemActionPress } from '../hooks/useScheduleItemActionPress';
+import { useTimelineTouchMoveGuard } from '../hooks/useTimelineTouchMoveGuard';
 import { useTimelineDragCancellation } from '../hooks/useTimelineDragCancellation';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { useUndoRedoHistory } from '../hooks/useUndoRedoHistory';
@@ -311,6 +312,7 @@ export function WeekView({
   const weekDates = getWeekDates(selectedDate);
   const weekSectionRef = useRef<HTMLElement | null>(null);
   useDataChangeMotion(weekSectionRef, `${weekDates[0]}:${timelineMode}`, [plans, actuals, monthEvents, weeklyDraftBlocks]);
+  useTimelineTouchMoveGuard(weekSectionRef);
   const weekGridRef = useRef<HTMLDivElement | null>(null);
   usePeriodNavigationMotion(weekGridRef, weekDates[0]);
   const weekStartDate = weekDates[0];

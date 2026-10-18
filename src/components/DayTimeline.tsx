@@ -20,6 +20,7 @@ import type { WeekPlanMoveTarget } from "../lib/weekPlanDrag";
 import { useDataChangeMotion } from "../hooks/useDataChangeMotion";
 import { usePeriodNavigationMotion } from "../hooks/usePeriodNavigationMotion";
 import { useTimelineDragController } from "../hooks/useTimelineDragController";
+import { useTimelineTouchMoveGuard } from "../hooks/useTimelineTouchMoveGuard";
 import { useUndoRedoHistory } from "../hooks/useUndoRedoHistory";
 import type { WeeklyPlanDraftBlock } from "../features/weeklyPlanning/types";
 import type {
@@ -392,6 +393,7 @@ export function DayTimeline({
   useDataChangeMotion(canvasRef, date ?? "", [plans, actuals, monthEvents, scheduleOccurrences, weeklyDraftBlocks]);
   const timelineShellRef = useRef<HTMLDivElement | null>(null);
   usePeriodNavigationMotion(timelineShellRef, date ?? "");
+  useTimelineTouchMoveGuard(timelineShellRef);
 
   function applyHistoryTarget(historyPlan: Plan, target: WeekPlanMoveTarget) {
     const currentPlan = plans.find((plan) => plan.id === historyPlan.id) ?? historyPlan;
