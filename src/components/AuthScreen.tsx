@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { NoticeState } from '../hooks/useNoticeState';
 import { LaplanceLogo } from './LaplanceLogo';
 import { AuthStarfield } from './AuthStarfield';
@@ -34,6 +34,34 @@ export function AuthScreen({
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const formId = useId();
+  const pendingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const [pending, setPending] = useState(false);
+
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  async function runAction(action: () => Promise<void>) {
+    // Synchronous admission also covers two submits before React commits.
+    if (pendingRef.current || !mountedRef.current) return;
+    pendingRef.current = true;
+    setPending(true);
+    setLocalError(null);
+    try {
+      await action();
+    } catch {
+      if (mountedRef.current) setLocalError('処理に失敗しました。もう一度お試しください。');
+    } finally {
+      pendingRef.current = false;
+      if (mountedRef.current) setPending(false);
+    }
+  }
+
+  function selectIntent(nextIntent: AuthIntent) {
+    if (!pendingRef.current) setIntent(nextIntent);
+  }
 
   useEffect(() => {
     setPassword('');
@@ -46,6 +74,7 @@ export function AuthScreen({
     intent === 'sign-up' ? '登録して確認メールを送る' : 'ログインする';
 
   function handleModeKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (pendingRef.current) return;
     const nextIntent = event.key === 'Home' ? 'sign-in'
       : event.key === 'End' ? 'sign-up'
       : event.key === 'ArrowLeft' || event.key === 'ArrowRight'
@@ -68,7 +97,7 @@ export function AuthScreen({
 
       const didRegister = await onSignUpWithPassword(email, password, username);
 
-      if (didRegister) {
+      if (didRegister && mountedRef.current) {
         setIntent('sign-in');
         setPassword('');
         setPasswordConfirm('');
@@ -122,7 +151,8 @@ export function AuthScreen({
               id={`${formId}-${mode}`}
               className="auth-entry-mode"
               data-intent={mode}
-              onClick={() => setIntent(mode)}
+              onClick={() => selectIntent(mode)}
+              disabled={pending}
               onKeyDown={handleModeKeyDown}
               type="button"
               role="tab"
@@ -138,15 +168,17 @@ export function AuthScreen({
             <form
               className="auth-form"
               aria-label={requestTitle}
+              aria-busy={pending}
               onSubmit={(event) => {
                 event.preventDefault();
-                void handlePrimaryAction();
+                void runAction(handlePrimaryAction);
               }}
             >
               {intent === 'sign-up' ? (
                 <label className="field">
                   <span>ユーザーネーム <small>任意</small></span>
                   <input
+                    disabled={pending}
                     value={username}
                     onChange={(event) => setUsername(event.target.value)}
                     name="username"
@@ -159,6 +191,7 @@ export function AuthScreen({
               <label className="field">
                 <span>メールアドレス</span>
                 <input
+                  disabled={pending}
                   type="email"
                   name="email"
                   autoComplete="email"
@@ -173,6 +206,7 @@ export function AuthScreen({
               <label className="field">
                 <span>パスワード</span>
                 <input
+                  disabled={pending}
                   type="password"
                   name="password"
                   autoComplete={intent === 'sign-in' ? 'current-password' : 'new-password'}
@@ -186,6 +220,7 @@ export function AuthScreen({
                 <label className="field">
                   <span>パスワード確認</span>
                   <input
+                    disabled={pending}
                     type="password"
                     name="passwordConfirmation"
                     autoComplete="new-password"
@@ -198,15 +233,16 @@ export function AuthScreen({
 
               {localError ? <p className="auth-entry-error" role="alert">{localError}</p> : null}
 
-              <button className="auth-entry-submit" type="submit">
-                {requestButtonLabel}
+              <button className="auth-entry-submit" type="submit" disabled={pending}>
+                {pending ? '処理中…' : requestButtonLabel}
               </button>
 
               {intent === 'sign-in' ? (
                 <>
                   <button
                     className="auth-entry-reset"
-                    onClick={() => void onSendPasswordReset(email)}
+                    onClick={() => void runAction(() => onSendPasswordReset(email))}
+                    disabled={pending}
                     type="button"
                   >
                     パスワードを再設定
@@ -214,7 +250,8 @@ export function AuthScreen({
                   <div className="auth-entry-divider" aria-hidden="true">または</div>
                   <button
                     className="auth-entry-google"
-                    onClick={() => void onSignInWithGoogle()}
+                    onClick={() => void runAction(onSignInWithGoogle)}
+                    disabled={pending}
                     type="button"
                   >
                     Googleでログイン
