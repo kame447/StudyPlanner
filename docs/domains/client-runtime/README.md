@@ -21,6 +21,10 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Existing linked-Actual write read](work/actual-existing-write-read-handoff.md) — Issue #542; reuse save-attempt existence evidence while retaining transaction rereads and fail-closed deletion handling.
+
+- [Non-spatial data motion geometry](work/nonspatial-data-motion-layout-handoff.md) — skip unused rectangle measurements while preserving motion baselines and reduced feedback.
+
 - [Initial consent legal-page navigation](work/initial-consent-public-navigation-handoff.md) — preserve confirmation state when reading terms or privacy within the existing public-page owner.
 
 - [Material structure save failure](work/material-structure-save-failure-handoff.md) — retain table-of-contents edits and show a retryable error when local storage rejects a save.
@@ -39,7 +43,7 @@ Execution tracking:
 
 - [Announcement module failure recovery](work/announcement-load-recovery-handoff.md) — Issue #542; preserve Home, owner-qualified history and bell focus when optional announcement delivery fails.
 
-- [UI request acceptance gaps](work/ui-request-acceptance-handoff.md): No14 same-record subject editing through Day and No10 inner-disc percentage containment; test-only local work, native browser acceptance pending.
+- [UI request acceptance status](work/ui-request-acceptance-handoff.md): No10 percentage containment and No14 same-record subject editing shipped in PR #729; PR #754 rechecked No14. Scoped native evidence, historical checkpoints and remaining device/geometry limits are recorded separately.
 
 - [Bookshelf module failure recovery](work/bookshelf-load-recovery-handoff.md) — Issue #542; retain Home navigation and app/session owners when optional Materials delivery fails.
 

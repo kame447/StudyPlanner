@@ -142,7 +142,7 @@ describe('cross-browser mobile shard workflow contract', () => {
   it('keeps a single unsharded targeted leg', () => {
     expect(matrixLegs('workflow_dispatch', 'yearly-quick-entry.spec.mjs')).toEqual([{ project: 'webkit-mobile', shard: '' }]);
   });
-  it('keeps unique shard artifacts, original setup, retention and timeout', () => {
+  it('keeps unique shard artifacts, isolated runner setup, retention and timeout', () => {
     const projects = workflow.split('  cross-browser-projects:\n')[1].split('  cross-browser-smoke:')[0];
     expect(projects).toContain('timeout-minutes: 35');
     expect(projects).toContain('fail-fast: false');
@@ -153,7 +153,7 @@ describe('cross-browser mobile shard workflow contract', () => {
     expect(projects.match(/retention-days: 14/g)).toHaveLength(3);
     expect(projects).toContain('run: npm ci');
     expect(projects).toContain('run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0');
-    expect(projects).toContain('run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium firefox webkit');
+    expect(projects).not.toMatch(/playwright install(?:\s|$)/);
     expect(projects).toContain('run: sha256sum -c /tmp/studyplanner-manifests.sha256');
     expect(projects).toContain('run: npm run build');
   });
@@ -203,5 +203,35 @@ describe('cross-browser mobile shard workflow contract', () => {
       expect(spawnSync('bash', ['-c', command], { env: { ...process.env, PROJECT_RESULT: result } }).status, result)
         .toBe(result === 'success' ? 0 : 1);
     }
+  });
+});
+
+
+describe('preinstalled cross-browser image contract', () => {
+  const projects = workflow.split('  cross-browser-projects:\n')[1].split('  cross-browser-smoke:')[0];
+
+  it('uses the official Noble image with the exact separately installed runner version', () => {
+    const imageVersion = projects.match(/^      image: mcr\.microsoft\.com\/playwright:v(\d+\.\d+\.\d+)-noble$/m)?.[1];
+    const runnerVersion = projects.match(/npm install --prefix tests\/e2e --no-save --package-lock=false @playwright\/test@(\d+\.\d+\.\d+)(?:\n|$)/)?.[1];
+    expect(imageVersion).toBeTruthy();
+    expect(runnerVersion).toBeTruthy();
+    expect(imageVersion).toBe(runnerVersion);
+  });
+
+  it('retains the original non-root container boundary without additional capabilities', () => {
+    const container = projects.match(/^    container:\n((?:      .+\n)+)/m)?.[1];
+    expect(container).toBeTruthy();
+    expect(container.trimEnd().split('\n')).toEqual([
+      '      image: mcr.microsoft.com/playwright:v1.64.0-noble',
+      '      options: --user 1001',
+    ]);
+  });
+
+  it('leaves visual comparison on its original host and Chromium installation', () => {
+    const visual = workflow.split('  visual-regression:\n')[1].split('  cross-browser-projects:')[0];
+    expect(visual).not.toMatch(/^    container:/m);
+    expect(visual).toContain('run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium');
+    expect(visual).toContain('timeout-minutes: 25');
+    expect(visual).toContain('run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.visual.config.mjs');
   });
 });

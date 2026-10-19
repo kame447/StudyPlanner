@@ -22,6 +22,26 @@
   opacity: 0.2;
 }
 
+/* Lifted by the radial 移動 action: the next touch drags it immediately. */
+.schedule-week-plan-button.is-move-armed,
+.schedule-week-view .schedule-week-plan-button.is-move-armed {
+  z-index: 3;
+  touch-action: none;
+  cursor: move;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+:root:not([data-motion='reduced'], [data-motion='off']) .schedule-week-plan-button.is-move-armed:not(.is-drag-source) {
+  animation: schedule-move-armed-pulse 900ms ease-in-out infinite alternate;
+}
+
+@keyframes schedule-move-armed-pulse {
+  from { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+  to { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 24%, transparent); }
+}
+
 .schedule-week-drop-ghost {
   --weekly-draft-tone: var(--accent);
   --weekly-draft-tone-bg: color-mix(in srgb, var(--accent) 11%, var(--surface-strong) 89%);

@@ -7,8 +7,11 @@ import {
   type WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
 import { isUserUtteranceSourcedV5 } from './weeklyPlanningFactGraphV5';
+import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../../shared/aiProxyContract';
 
-export const FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS = 80;
+// The completion budget includes the reasoning tokens of the Luna model, which exceed the tiny
+// visible answer; 80 left the Luna fallback failing upstream. Use the Worker's ordinary default.
+export const FOCUSED_AUTHORIZATION_MAX_COMPLETION_TOKENS = AI_PROXY_CHAT_REQUEST_LIMITS.defaultOutputTokens;
 
 export const FOCUSED_AUTHORIZATION_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
   type: 'json_schema',

@@ -296,18 +296,6 @@
   box-shadow: none;
 }
 
-.assistant-runtime {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.assistant-runtime-help {
-  font-size: 0.82rem;
-  color: var(--text-muted);
-}
-
 .assistant-settings-card {
   display: grid;
   gap: 14px;
@@ -378,12 +366,6 @@
 .assistant-feedback-card.warning {
   background: var(--assistant-warning-background);
   border-color: var(--assistant-warning-border);
-}
-
-.assistant-feedback-list {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--text-muted);
 }
 
 .tracking-tools-card {

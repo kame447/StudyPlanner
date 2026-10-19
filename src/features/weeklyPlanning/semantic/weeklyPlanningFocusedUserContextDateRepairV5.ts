@@ -5,8 +5,9 @@ import type {
 import type {
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
+import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../../shared/aiProxyContract';
 
-export const FOCUSED_USER_CONTEXT_DATE_REPAIR_MAX_COMPLETION_TOKENS = 120;
+export const FOCUSED_USER_CONTEXT_DATE_REPAIR_MAX_COMPLETION_TOKENS = AI_PROXY_CHAT_REQUEST_LIMITS.defaultOutputTokens;
 
 export const FOCUSED_USER_CONTEXT_DATE_REPAIR_RESPONSE_FORMAT_V5: JsonSchemaResponseFormat = {
   type: 'json_schema',

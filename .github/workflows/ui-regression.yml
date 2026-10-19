@@ -114,6 +114,10 @@ jobs:
     name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'targeted-webkit' || 'cross-browser-projects' }} (${{ matrix.project }})${{ matrix.shard && format(' (shard {0}/2)', matrix.shard) || '' }}
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.spec != '') || github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser' }}
     runs-on: ubuntu-latest
+    # Keep the preinstalled browser versions aligned with @playwright/test below.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+      options: --user 1001
     # Split the full WebKit mobile suite without changing its time/worker budget.
     # Targeted single-spec dispatches keep one unsharded leg.
     timeout-minutes: 35
@@ -145,9 +149,6 @@ jobs:
       - name: Verify isolated test-runner install did not mutate application manifests
         shell: bash
         run: sha256sum -c /tmp/studyplanner-manifests.sha256
-
-      - name: Install Chromium, Firefox and WebKit
-        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium firefox webkit
 
       - name: Build production bundle
         run: npm run build

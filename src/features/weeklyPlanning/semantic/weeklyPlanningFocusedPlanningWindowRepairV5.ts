@@ -6,8 +6,9 @@ import type {
   SemanticPlanningWindowV5,
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
+import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../../shared/aiProxyContract';
 
-export const FOCUSED_PLANNING_WINDOW_REPAIR_MAX_COMPLETION_TOKENS = 120;
+export const FOCUSED_PLANNING_WINDOW_REPAIR_MAX_COMPLETION_TOKENS = AI_PROXY_CHAT_REQUEST_LIMITS.defaultOutputTokens;
 
 const ISO_DATE_PATTERN = '^\\d{4}-\\d{2}-\\d{2}$';
 

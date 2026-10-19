@@ -41,7 +41,7 @@ export interface CandidateChoiceDecisionContext {
   readonly request: CandidateChoiceWireRequest;
 }
 export const CANDIDATE_CHOICE_CATALOG_VERSION = 'complete-candidate-choice-2026-10-13-v2';
-export const CANDIDATE_CHOICE_QUESTION_CODES = ['missing_effort_estimate', 'ambiguous_effort_estimate', 'quantity_role_unresolved', 'missing_time_bounds', 'invalid_time_interval', 'named_time_period_unresolved', 'reply_reference_target'] as const;
+export const CANDIDATE_CHOICE_QUESTION_CODES = ['missing_effort_estimate', 'ambiguous_effort_estimate', 'quantity_role_unresolved', 'missing_time_bounds', 'invalid_time_interval', 'named_time_period_unresolved', 'reply_reference_target', 'missing_availability_date_scope'] as const;
 export interface CandidateChoiceEvaluation {
   readonly status: 'evaluated';
   readonly catalogVersion: typeof CANDIDATE_CHOICE_CATALOG_VERSION;

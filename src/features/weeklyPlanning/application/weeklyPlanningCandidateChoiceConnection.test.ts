@@ -111,7 +111,7 @@ async function run(mode: 'accepted' | 'none' | 'low' | 'failure' | 'off' | 'unco
   const result = await submitWeeklyPlanningApplicationTurn({ session: h.session, userId: OWNER, ownerId: OWNER,
     plannerDataAvailability: availabilityOverride ?? createReadyPlannerDataAvailability(OWNER),
     ...(liveProjection?{isPlannerDataSnapshotCurrent:liveProjection}:{}),userText: text, selectedDate: WEEK,
-    plans: [], scheduleTemplates: [], getState: h.getState, dispatch: h.dispatch }, services);
+    plans: [], scheduleTemplates: [], timeZone: 'UTC', getState: h.getState, dispatch: h.dispatch }, services);
   console.info("J2 entry observation", {mode, schemas});
   return { h, choice, result, text, services, requests: (fetch as ReturnType<typeof vi.fn>).mock.calls.slice(fetchStart).map(call => JSON.parse(String(call[1]?.body))) };
 }

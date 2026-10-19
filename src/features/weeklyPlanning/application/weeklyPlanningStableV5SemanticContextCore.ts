@@ -151,6 +151,7 @@ export function createStableV5SemanticPublicStateSummary(params: {
     components: active.components.map((component) => ({
       publicId: component.id,
       taskPublicId: component.taskId,
+      parentComponentPublicId: component.parentComponentId,
       label: component.label,
       role: component.role,
     })),

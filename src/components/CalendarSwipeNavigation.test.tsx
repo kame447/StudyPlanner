@@ -22,7 +22,7 @@ function swipe(x: number, y = 0) {
   act(() => {
     surface().props.onTouchStart({ target, touches: [{ clientX: 150, clientY: 150 }] });
     surface().props.onTouchMove({ target, touches: [{ clientX: 150 + x, clientY: 150 + y }] });
-    surface().props.onTouchEnd();
+    surface().props.onTouchEnd({ target });
   });
 }
 beforeEach(() => {
@@ -39,7 +39,7 @@ describe('month/week reuse day swipe behavior', () => {
   ] as const)('navigates %s across the year boundary exactly once and keeps taps separate', (mode, next, previous) => {
     act(() => { renderer = create(<Harness mode={mode} />); });
     swipe(-100);
-    act(() => surface().props.onTouchEnd());
+    act(() => surface().props.onTouchEnd({ target: null }));
     expect(change.mock.calls).toEqual([[next]]);
     const click = { preventDefault: vi.fn(), stopPropagation: vi.fn() };
     surface().props.onClickCapture(click);
