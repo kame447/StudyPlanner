@@ -132,3 +132,81 @@ test('an unbounded yearly series keeps next year after a single edit and reload'
   expect(await savedEvents(page)).toEqual(edited);
   expect(errors).toEqual([]);
 });
+
+test('week single deletion of the last explicit date stays deleted after reload and preserves other history', async ({ page, isMobile }, testInfo) => {
+  await page.setViewportSize({ width: isMobile ? 390 : 1280, height: 844 });
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(({ today }) => {
+    if (localStorage.getItem('last-date-delete-seeded')) return;
+    const now = new Date().toISOString();
+    const user = { id: 'last-date-user', email: 'last-date@example.test', username: '日付削除検証', avatar: '', createdAt: now };
+    const plan = {
+      id: 'last-date-plan', seriesId: 'last-date-plan', userId: user.id, title: '最後の日付を削除',
+      subject: '数学', type: 'study', date: today, startTime: '09:00', endTime: '10:00', memo: '元の系列',
+      repeat: 'none', repeatUntil: null, excludedDates: [], sourceType: 'manual', createdAt: now, updatedAt: now,
+      recurrenceRules: [{ id: 'only-date', kind: 'date', dates: [today], startDate: today, until: today,
+        weekdays: [], dayType: null, startTime: '09:00', endTime: '10:00' }],
+    };
+    const sibling = { ...plan, id: 'remaining-plan', seriesId: 'remaining-plan', title: '残る別の予定',
+      startTime: '11:00', endTime: '12:00', recurrenceRules: [] };
+    const actual = { id: 'target-actual', userId: user.id, planId: plan.id, occurrenceDate: today,
+      actualStartTime: '09:05', actualEndTime: '09:55', subject: '記録した数学', note: '当日の記録', updatedAt: now,
+      progressSource: { kind: 'study', sourceId: plan.id, planType: 'study' } };
+    const previousDate = new Date(`${today}T12:00:00+09:00`);
+    previousDate.setDate(previousDate.getDate() - 1);
+    const past = { ...actual, id: 'past-actual', occurrenceDate: previousDate.toLocaleDateString('sv-SE'), note: '残す過去の記録' };
+    localStorage.setItem('studyplanner.users', JSON.stringify([user]));
+    localStorage.setItem('studyplanner.session', user.id);
+    localStorage.setItem('studyplanner.plans', JSON.stringify([plan, sibling]));
+    localStorage.setItem('studyplanner.actuals', JSON.stringify([actual, past]));
+    for (const key of ['studyplanner.monthEvents.v1', 'studyplanner.studyMaterials.v1', 'studyplanner.studySubjects.v1', 'studyplanner.todos.v1']) localStorage.setItem(key, '[]');
+    localStorage.setItem('last-date-delete-seeded', 'true');
+  }, { today: E2E_TODAY });
+  const readActuals = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]'));
+  const openWeek = async () => {
+    await page.locator('.primary-bottom-nav button').filter({ hasText: '予定' }).click();
+    await page.getByRole('tab', { name: '週', exact: true }).click();
+  };
+  await page.goto('/');
+  await openWeek();
+  const target = page.locator('.schedule-week-block').filter({ hasText: '最後の日付を削除' });
+  const sibling = page.locator('.schedule-week-block').filter({ hasText: '残る別の予定' });
+  await expect(target).toHaveCount(1);
+  await expect(sibling).toHaveCount(1);
+  await expect.poll(async () => (await savedEvents(page)).length).toBe(2);
+  const beforeEvents = await savedEvents(page);
+  const source = beforeEvents.find(event => event.provenance.legacy.id === 'last-date-plan');
+  const other = beforeEvents.find(event => event.provenance.legacy.id === 'remaining-plan');
+  expect(source).toMatchObject({ plan: { seriesId: 'last-date-plan' }, recurrence: { rules: [expect.objectContaining({ kind: 'date', dates: [E2E_TODAY] })] } });
+  const beforeActuals = await readActuals();
+  expect(beforeActuals.map(actual => actual.id).sort()).toEqual(['past-actual', 'target-actual']);
+  const preservedHistory = beforeActuals.filter(actual => actual.id === 'past-actual');
+
+  // Use the supported Week keyboard menu, which reaches recurring deletion.
+  // Day's cancellation action is a different contract and preserves Actuals.
+  await target.press('Shift+F10');
+  await page.getByRole('menuitem', { name: '削除', exact: true }).click();
+  const scope = page.locator('.modal-card').filter({ has: page.getByRole('heading', { name: '繰り返し予定の削除範囲', exact: true }) });
+  await expect(scope).toBeVisible();
+  await scope.getByRole('button', { name: /^この予定だけ/ }).click();
+  await expect(scope).toHaveCount(0);
+  await expect(target).toHaveCount(0);
+  await expect(sibling).toHaveCount(1);
+  await expect.poll(readActuals).toEqual(preservedHistory);
+  const afterEvents = await savedEvents(page);
+  expect(afterEvents).toHaveLength(2);
+  expect(afterEvents.find(event => event.id === other.id)).toEqual(other);
+  expect(afterEvents.find(event => event.id === source.id)).toMatchObject({
+    id: source.id, provenance: source.provenance, plan: { seriesId: source.plan.seriesId },
+    recurrence: { rules: source.recurrence.rules, excludedDates: [E2E_TODAY] },
+  });
+
+  await page.reload();
+  await openWeek();
+  await expect(target).toHaveCount(0);
+  await expect(sibling).toHaveCount(1);
+  expect(await savedEvents(page)).toEqual(afterEvents);
+  expect(await readActuals()).toEqual(preservedHistory);
+  await testInfo.attach('last-date-delete-reloaded', { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
+  expect(errors).toEqual([]);
+});
