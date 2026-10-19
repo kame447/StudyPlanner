@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS } from './weeklyPlanningSemanticNormalizerRunV5';
 import type {
   WeeklyPlanningSemanticDocumentV5,
 } from './weeklyPlanningSemanticDocumentV5';
@@ -33,7 +34,7 @@ import {
   createFocusedTemporalScopeRepairMessagesV5,
 } from './weeklyPlanningFocusedTemporalScopeRepairV5';
 
-const GENERIC_MAX_COMPLETION_TOKENS = 3200;
+const GENERIC_MAX_COMPLETION_TOKENS = SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS;
 // Measured sizes with the Issue #152 trust-boundary policy and decision-target
 // sentence: 4,667 B policy, 7,776 B generic system prompt, and 3,109 B
 // supplemental policy overhead.

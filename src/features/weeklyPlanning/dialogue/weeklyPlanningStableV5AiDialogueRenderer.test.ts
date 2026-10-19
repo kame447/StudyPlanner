@@ -1,5 +1,9 @@
 import { AiProviderError } from '../../../../shared/aiProviderFailure';
-import { createWeeklyPlanningStableV5DialogueRendererCore } from './weeklyPlanningStableV5AiDialogueRendererCore';
+import {
+  WEEKLY_PLANNING_RENDERER_BUDGET_RETRY_MAX_COMPLETION_TOKENS,
+  WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS,
+  createWeeklyPlanningStableV5DialogueRendererCore,
+} from './weeklyPlanningStableV5AiDialogueRendererCore';
 import { describe, expect, it, vi } from 'vitest';
 import { parseWeeklyPlanningStableV5DialogueRendererResponse } from './weeklyPlanningStableV5DialogueValidation';
 import type { AiConfig } from '../../../lib/aiConfig';
@@ -82,7 +86,7 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
       .mockRejectedValueOnce(new AiProviderError('provider private failure', {
         kind: 'empty_response', httpStatus: 502, upstreamStatus: 200,
         completion: { finishReason: 'length', refusalPresent: false,
-          requestedMaxCompletionTokens: null, effectiveMaxCompletionTokens: 800,
+          requestedMaxCompletionTokens: null, effectiveMaxCompletionTokens: WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS,
           reasoningTokens: 800, textTokens: 0 },
       }))
       .mockResolvedValueOnce(response(renderInput, '英単語は1回にどれくらい時間を取れそうですか？'));
@@ -92,10 +96,10 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
     });
     expect(await renderer.render(renderInput)).toMatchObject({ status: 'rendered' });
     expect(call).toHaveBeenCalledTimes(2);
-    expect(call.mock.calls[0][0].maxCompletionTokens).toBeUndefined();
-    expect(call.mock.calls[1][0].maxCompletionTokens).toBe(1600);
+    expect(call.mock.calls[0][0].maxCompletionTokens).toBe(WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS);
+    expect(call.mock.calls[1][0].maxCompletionTokens).toBe(WEEKLY_PLANNING_RENDERER_BUDGET_RETRY_MAX_COMPLETION_TOKENS);
     expect(prompt).toMatchObject({ outputBudgetRetry: {
-      maxCompletionTokens: 1600, result: 'rendered', initialFailure: { kind: 'empty_response' },
+      maxCompletionTokens: WEEKLY_PLANNING_RENDERER_BUDGET_RETRY_MAX_COMPLETION_TOKENS, result: 'rendered', initialFailure: { kind: 'empty_response' },
     } });
     expect(JSON.stringify(prompt)).not.toContain('provider private failure');
   });
@@ -106,7 +110,7 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
     const call = vi.fn().mockRejectedValue(new AiProviderError('failure', {
       kind: reason as 'http_error' | 'timeout' | 'empty_response', httpStatus: 502,
       completion: { finishReason: kind === 'non_length_empty' ? 'stop' : 'length',
-        refusalPresent: null, requestedMaxCompletionTokens: null, effectiveMaxCompletionTokens: 800,
+        refusalPresent: null, requestedMaxCompletionTokens: null, effectiveMaxCompletionTokens: WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS,
         reasoningTokens: 800, textTokens: null },
     }));
     expect(await createAiWeeklyPlanningStableV5DialogueRenderer(config, { createChatCompletion: call }).render(renderInput))
@@ -120,7 +124,7 @@ describe('Stable V5 AI dialogue renderer adapter', () => {
     const call = vi.fn().mockRejectedValue(new AiProviderError('output budget', {
       kind: 'empty_response', completion: {
         finishReason: 'length', refusalPresent: null, requestedMaxCompletionTokens: null,
-        effectiveMaxCompletionTokens: 800, reasoningTokens: 800, textTokens: null,
+        effectiveMaxCompletionTokens: WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS, reasoningTokens: 800, textTokens: null,
       },
     }));
     expect(await createAiWeeklyPlanningStableV5DialogueRenderer(config,
