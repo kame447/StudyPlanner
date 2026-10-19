@@ -8,7 +8,8 @@ import {
   type WeeklyPlanningMachineBoundEffortAnswerV5,
 } from '../semantic/weeklyPlanningMachineBoundAnswerV5';
 import type { WeeklyPlanningSemanticNormalizerInputV5 } from '../semantic/weeklyPlanningSemanticNormalizerV5';
-import type { WeeklyPlanningMessage } from '../types';
+import type { PlanningState, WeeklyPlanningMessage } from '../types';
+import { buildMachineBoundEffortAnswerOptions } from '../ui/machineBoundEffortAnswerOptions';
 import {
   resolveWeeklyPlanningMachineBoundEffortQuestionV5,
   verifyWeeklyPlanningMachineBoundEffortAnswerV5,
@@ -39,6 +40,11 @@ function questionState(params: {
 function resolve(state: PlanningIntakeState, overrides: { inputStateRevision?: number; graphRevision?: number } = {}) {
   return resolveWeeklyPlanningMachineBoundEffortQuestionV5({ previousState: state, messages,
     inputStateRevision: overrides.inputStateRevision ?? 2, graphRevision: overrides.graphRevision ?? 1 });
+}
+
+function planningState(intakeState: PlanningIntakeState): PlanningState {
+  return { weekStartDate: '2026-10-19', revision: 2, mode: 'conversation', draftBlocks: [], messages,
+    intakeState, updatedAt: '2026-10-17T00:00:01Z' } as unknown as PlanningState;
 }
 
 const answer: WeeklyPlanningMachineBoundEffortAnswerV5 = {
@@ -73,6 +79,26 @@ describe('#735 typed machine-bound effort answer contract', () => {
     expect(resolve(questionState({ context: { questionBasis: 'completed_workload_total' } }))).toBeNull();
     expect(resolve(questionState({ content: { ...UNACCOMPANIED, groundingContext: { proposed: 0, contested: 1 } } }))).toBeNull();
     expect(resolve(questionState({ content: { ...UNACCOMPANIED, previewPromotionControl: true } }))).toBeNull();
+  });
+
+  it('never offers or accepts chips for a D5/C5-captured question', () => {
+    // A captured controlled-candidate (D5) or C5 question stays on its own choice route.
+    // Captures are attached to the already bound presentation, as the controller does.
+    const captured = (capture: Partial<NonNullable<PlanningIntakeState['lastQuestionContext']>>): PlanningIntakeState => {
+      const base = questionState();
+      return { ...base, lastQuestionContext: { ...base.lastQuestionContext!, ...capture } };
+    };
+    const controlled = captured({ controlledCandidate: { version: 1 } as never });
+    expect(controlled.lastQuestionContext?.controlledCandidate).toBeDefined();
+    expect(controlled.lastQuestionContext?.presentation).toBeDefined();
+    expect(resolve(controlled)).toBeNull();
+    expect(buildMachineBoundEffortAnswerOptions(planningState(controlled), true)).toEqual([]);
+    const c5 = captured({ c5: { version: 1 } as never });
+    expect(resolve(c5)).toBeNull();
+    expect(buildMachineBoundEffortAnswerOptions(planningState(c5), true)).toEqual([]);
+    // Control: the same question without a capture does offer chips.
+    expect(buildMachineBoundEffortAnswerOptions(planningState(questionState()), true)).toHaveLength(7);
+    expect(verifyWeeklyPlanningMachineBoundEffortAnswerV5({ answer, userText: '1つあたり約5分', question: resolve(controlled) })).toBeNull();
   });
 
   it('verifies every bound identity and exact label equality', () => {
