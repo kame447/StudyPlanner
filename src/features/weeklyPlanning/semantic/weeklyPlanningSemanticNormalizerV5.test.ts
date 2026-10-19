@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS } from './weeklyPlanningSemanticNormalizerRunV5';
 import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
 import {
   WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
@@ -127,7 +128,7 @@ describe('Stable V5 semantic normalizer', () => {
     });
     expect(fake.calls[0]).toMatchObject({
       purpose: 'weekly_planning_semantic_normalizer',
-      maxCompletionTokens: 3200,
+      maxCompletionTokens: SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS,
     });
   });
 

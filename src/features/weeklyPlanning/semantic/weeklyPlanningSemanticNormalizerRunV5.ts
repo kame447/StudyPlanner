@@ -2,6 +2,7 @@ import type {
   ChatMessage,
   OpenAiCompatibleClient,
 } from '../../../services/ai/openAiCompatibleClientTypes';
+import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../../shared/aiProxyContract';
 import type { SemanticDispatchStage } from '../../../../shared/semanticDispatchLedger';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
 import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 } from './weeklyPlanningSemanticTypesV5';
@@ -13,7 +14,9 @@ import {
   type WeeklyPlanningSemanticNormalizerResultV5,
 } from './weeklyPlanningSemanticNormalizerContractsV5';
 
-export const SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS = 3200;
+// GPT-6 Luna budgets include reasoning. In #305b/#735, 2/86 initial calls exhausted 3200 with
+// zero text while every other semantic call finished at or below 2254, so use the Worker ceiling.
+export const SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS = AI_PROXY_CHAT_REQUEST_LIMITS.maxOutputTokens;
 export const SEMANTIC_NORMALIZER_V5_DENSE_TURN_MAX_COMPLETION_TOKENS = 6400;
 export const SEMANTIC_NORMALIZER_V5_DENSE_TURN_USER_TEXT_BYTES = 1200;
 
