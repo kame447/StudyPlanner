@@ -314,6 +314,16 @@
   line-height: 1.4;
 }
 
+/* Keep the iOS focus-zoom floor while allowing enlarged root text in this
+ * sheet. Matching the global input exclusions makes this local important rule
+ * more specific; checkbox/file controls and other dialogs remain untouched. */
+@media (max-width: 768px), (pointer: coarse) {
+  .bookshelf-modal.material-create-dialog .field input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']):not([type='hidden']),
+  .bookshelf-modal.material-create-dialog .field select {
+    font-size: max(1rem, 16px) !important;
+  }
+}
+
 .bookshelf-modal.material-create-dialog .bookshelf-material-edit-grid {
   display: block;
 }

@@ -821,6 +821,15 @@
 
 /* Material detail --------------------------------------------------- */
 
+/* User-entered names and activity text must remain readable inside clipped panels. */
+.bookshelf-detail-hero-copy h2,
+.bookshelf-detail-hero-copy p,
+.bookshelf-detail-section-head p,
+.bookshelf-activity-list small,
+.bookshelf-structure-editor .bookshelf-modal-title-row p {
+  overflow-wrap: anywhere;
+}
+
 .bookshelf-detail-page {
   overflow: hidden;
   padding-bottom: 20px;
