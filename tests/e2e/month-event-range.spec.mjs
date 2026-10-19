@@ -576,7 +576,14 @@ for (const width of [390, 1280]) {
         await editor.locator('.month-event-time-input').nth(index).click();
         const picker = page.getByRole('dialog', { name: index === 0 ? '開始時刻を選択' : '終了時刻を選択', exact: true });
         await picker.locator('.time-wheel-column').nth(0).getByRole('button', { name: hour, exact: true }).click();
-        await picker.locator('.time-wheel-column').nth(1).getByRole('button', { name: '00', exact: true }).click();
+        const minute = picker.locator('.time-wheel-column').nth(1).getByRole('button', { name: '00', exact: true });
+        await expect(minute).toBeVisible();
+        // Keep the selected minute without repeating its scroll/stability cycle.
+        // A different starting minute still needs an ordinary user selection.
+        if (!(await minute.getAttribute('class'))?.split(/\s+/).includes('active')) {
+          await minute.click();
+        }
+        await expect(minute).toHaveClass(/\bactive\b/);
         await picker.getByRole('button', { name: '決定', exact: true }).click();
         await expect(editor.locator('.month-event-time-input').nth(index)).toHaveText(`${hour}:00`);
       }
