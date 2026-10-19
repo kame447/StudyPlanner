@@ -1,6 +1,9 @@
 import { questionIntentForStableV5Dialogue } from '../dialogue/weeklyPlanningStableV5DialogueContext';
 import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
-import { createWeeklyPlanningStableV5DialogueRendererCore } from '../dialogue/weeklyPlanningStableV5AiDialogueRendererCore';
+import {
+  WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS,
+  createWeeklyPlanningStableV5DialogueRendererCore,
+} from '../dialogue/weeklyPlanningStableV5AiDialogueRendererCore';
 import { createWeeklyPlanningFallbackDialogueTrace } from '../dialogue/weeklyPlanningStableV5TurnDialogueTrace';
 import { recordFailedWeeklyPlanningApplicationTurn } from '../application/weeklyPlanningTurnTraceSideEffects';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
@@ -387,7 +390,8 @@ describe('Stable V5 renderer trace persistence', () => {
   it.each([false, true])('preserves real proxy failure through browser client, renderer, outbox retry and Worker preparation (empty=%s)', async empty => {
     const expected = { kind: empty ? 'empty_response' : 'http_error', httpStatus: 502, upstreamStatus: empty ? 200 : 429,
       completion: empty ? { finishReason: 'length', refusalPresent: false, requestedMaxCompletionTokens: null,
-        effectiveMaxCompletionTokens: 800, reasoningTokens: 800, textTokens: 0 } : null };
+        effectiveMaxCompletionTokens: WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS,
+        reasoningTokens: WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS, textTokens: 0 } : null };
     const upstream = vi.fn(async () => Response.json({ error: 'Provider request failed',
       providerFailure: { ...expected, privateBody: 'secret-sentinel' } }, { status: 502 }));
     vi.stubGlobal('fetch', upstream);

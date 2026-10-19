@@ -61,6 +61,21 @@ describe('authenticated durable turn API', () => {
     ]) { const body = structuredClone(h.body); mutate(body); expect((await handleDurableTurnApi(h.request(body), h.env)).status).toBe(400); }
     expect(h.accept).not.toHaveBeenCalled();
   });
+  it('carries only a structurally exact typed effort answer (#735)', async () => {
+    const h = harness();
+    const answer = { version: 1, kind: 'effort_duration', assistantMessageId: 'chat:turn:0:assistant', questionActionId: null,
+      targetFactId: 'work', graphRevision: 0, effortMeasurement: 'duration_per_unit', minutes: 5 };
+    for (const malformed of [{ ...answer, minutes: 4 }, { ...answer, extra: true }, 'raw text']) {
+      const body = structuredClone(h.body) as typeof h.body & { payload: { input: Record<string, unknown> } };
+      body.payload.input.machineBoundAnswer = malformed;
+      expect((await handleDurableTurnApi(h.request(body), h.env)).status).toBe(400);
+    }
+    expect(h.accept).not.toHaveBeenCalled();
+    const body = structuredClone(h.body) as typeof h.body & { payload: { input: Record<string, unknown> } };
+    body.payload.input.machineBoundAnswer = answer;
+    expect((await handleDurableTurnApi(h.request(body), h.env)).status).toBe(202);
+    expect(JSON.parse(h.accept.mock.calls[0][0].payload).input.machineBoundAnswer).toEqual(answer);
+  });
   it('applies admission quota before creating an object', async () => {
     const h = harness(); h.checkAndConsume.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 20 });
     expect((await handleDurableTurnApi(h.request(), h.env)).status).toBe(429); expect(h.namespace.getByName).not.toHaveBeenCalled();

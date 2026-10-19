@@ -235,6 +235,35 @@
   color: #0876f9;
 }
 
+.ai-planning-answer-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ai-planning-answer-chips button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #dce6f1;
+  border-radius: 999px;
+  background: #fff;
+  color: #26364f;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ai-planning-answer-chips button:hover:not(:disabled) {
+  border-color: #b8d8ff;
+  background: #f8fbff;
+}
+
+.ai-planning-answer-chips button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .ai-planning-view .home-bottom-nav.ai-planning-home-nav {
   z-index: 920;
 }

@@ -13,6 +13,13 @@ import {
   parseWeeklyPlanningStableV5DialogueRendererResponse,
 } from './weeklyPlanningStableV5DialogueValidation';
 
+// GPT-6 Luna budgets include reasoning. #305b/#735 ledgers: 7/84 generations exhausted the old
+// 800 default with zero text, and their 1600 retries finished at 591-935 tokens; recovery
+// generation peaked at 714 and recovery verification exhausted 800 in 2/22 calls (other peak 708).
+export const WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS = 1600;
+export const WEEKLY_PLANNING_RENDERER_BUDGET_RETRY_MAX_COMPLETION_TOKENS = 3200;
+export const WEEKLY_PLANNING_RENDERER_RECOVERY_VERIFICATION_MAX_COMPLETION_TOKENS = 1600;
+
 const REPEATED_QUESTION_REPAIR_INSTRUCTION = [
   '前回候補がrecentConversation内の直前assistant発話と同一でした。',
   'applicationDecisionの意味は変えず、直前と異なる自然な表現にしてください。',
@@ -47,11 +54,11 @@ async function requestDialogueRender(params: {
   client: OpenAiCompatibleClient;
   input: WeeklyPlanningStableV5DialogueRenderInput;
   messages: ChatMessage[];
-  maxCompletionTokens?: number;
+  maxCompletionTokens: number;
 }): Promise<WeeklyPlanningStableV5DialogueRenderResult> {
   const rawResponse = await params.client.createChatCompletion({
     messages: params.messages,
-    ...(params.maxCompletionTokens ? { maxCompletionTokens: params.maxCompletionTokens } : {}),
+    maxCompletionTokens: params.maxCompletionTokens,
     temperature: 0.4,
     responseFormat: WEEKLY_PLANNING_STABLE_V5_DIALOGUE_RENDERER_RESPONSE_FORMAT,
     purpose: 'weekly_planning_renderer',
@@ -115,6 +122,7 @@ async function verifyRecoveryReply(params: {
   try {
     raw = await params.client.createChatCompletion({
       messages, temperature: 0, purpose: 'weekly_planning_renderer',
+      maxCompletionTokens: WEEKLY_PLANNING_RENDERER_RECOVERY_VERIFICATION_MAX_COMPLETION_TOKENS,
       responseFormat: RECOVERY_VERIFICATION_RESPONSE_FORMAT,
     });
     trace.rawResponse = raw;
@@ -163,7 +171,9 @@ export function createWeeklyPlanningStableV5DialogueRendererCore(
         let initial: WeeklyPlanningStableV5DialogueRenderResult;
         let budgetRetried = false;
         try {
-          initial = await requestDialogueRender({ client, input, messages: baseMessages });
+          initial = await requestDialogueRender({
+            client, input, messages: baseMessages, maxCompletionTokens: WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS,
+          });
         } catch (error) {
           const failure = providerFailureFromError(error);
           const completion = failure.completion;
@@ -172,12 +182,15 @@ export function createWeeklyPlanningStableV5DialogueRendererCore(
           // must not trigger an extra model call.
           if (input.recovery || failure.kind !== 'empty_response'
             || completion?.finishReason !== 'length'
-            || completion.effectiveMaxCompletionTokens !== 800) throw error;
+            || completion.effectiveMaxCompletionTokens !== WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS) throw error;
           budgetRetried = true;
-          promptContext.outputBudgetRetry = { initialFailure: failure, maxCompletionTokens: 1600 };
+          promptContext.outputBudgetRetry = {
+            initialFailure: failure, maxCompletionTokens: WEEKLY_PLANNING_RENDERER_BUDGET_RETRY_MAX_COMPLETION_TOKENS,
+          };
           try {
             initial = await requestDialogueRender({
-              client, input, messages: baseMessages, maxCompletionTokens: 1600,
+              client, input, messages: baseMessages,
+              maxCompletionTokens: WEEKLY_PLANNING_RENDERER_BUDGET_RETRY_MAX_COMPLETION_TOKENS,
             });
             (promptContext.outputBudgetRetry as Record<string, unknown>).result = initial.status;
           } catch (retryError) {
@@ -210,6 +223,7 @@ export function createWeeklyPlanningStableV5DialogueRendererCore(
             ...baseMessages,
             { role: 'user', content: repairInstruction },
           ],
+          maxCompletionTokens: WEEKLY_PLANNING_RENDERER_MAX_COMPLETION_TOKENS,
         });
       } catch (error) {
         return { status: 'fallback', reason: 'provider_error', providerFailure: providerFailureFromError(error), rawResponse: null };

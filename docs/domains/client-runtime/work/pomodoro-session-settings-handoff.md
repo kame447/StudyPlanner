@@ -1,5 +1,17 @@
 # Pomodoro session settings handoff
 
+## Current release status — 2026-10-19
+
+The session-settings implementation has been published and merged. The original local-only status below describes the 2026-10-13 snapshot, not the current release state.
+
+- [PR #610](https://github.com/kame447/StudyPlanner/pull/610) merged on 2026-10-13 as [`cf725d08`](https://github.com/kame447/StudyPlanner/commit/cf725d088ab1249fe1da6fe7d40e6b9274fa61e4). Its preset, finite-set and session-mode implementation is an ancestor of the current source.
+- The later custom-duration and timer-continuity work reached main in [PR #729](https://github.com/kame447/StudyPlanner/pull/729), merge [`e6a18d0d`](https://github.com/kame447/StudyPlanner/commit/e6a18d0dc12422c50ad65d15ece4f298bdcaf581). The 2026-10-14 worker notes below remain historical implementation evidence.
+- Source checked for this documentation correction: [`8a8e1ce0`](https://github.com/kame447/StudyPlanner/commit/8a8e1ce02b3da8f2c3920eb43d91292d8534e55c). `PomodoroSettingsView` offers 25/5, 50/10, custom focus/break minutes and set count; `StudySessionView` restores active-session settings and freezes the accepted configuration on Start. These are session/active-session behaviors, not account-level defaults.
+- [Issue #190](https://github.com/kame447/StudyPlanner/issues/190) remains open for its broader follow-on contract, including account-default settings, AI/scheduler integration and any explicit change to break-inclusive Actual accounting. This release-status correction does not mark those items complete or authorize their implementation.
+- Verification here is limited to official merged-PR records, Git ancestry, current source and documentation links/history. No new application test, build, native browser, physical-device or production-delivery check was run. Earlier results and failures below retain their original source and time boundaries; they are not new evidence for main `8a8e1ce0`.
+
+## Historical implementation and verification record — 2026-10-13 onward
+
 Status: local implementation and exact-content verification complete on main 05c78b6; browser/remote and bundle-budget acceptance remain open. Not published.
 
 ## Ownership and scope

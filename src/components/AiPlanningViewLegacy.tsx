@@ -40,6 +40,10 @@ import {
   buildAiPlanningStarterPromptOptions,
   type AiPlanningStarterPromptOption,
 } from '../features/weeklyPlanning/ui/aiPlanningStarterPrompts';
+import {
+  buildMachineBoundEffortAnswerOptions,
+  type MachineBoundEffortAnswerOption,
+} from '../features/weeklyPlanning/ui/machineBoundEffortAnswerOptions';
 import { buildAiPlanningImageTurn } from '../features/weeklyPlanning/ui/aiPlanningImageTurn';
 import { validateAiImageFile } from '../lib/aiImageAttachment';
 import {
@@ -327,6 +331,8 @@ export function AiPlanningView({
     [plans, selectedDate, starterMaterials, starterTodos, starterCatalog],
   );
   const starterPromptOptions = validatedStarterOptions.slice(0, 3);
+  // #735 draft: typed answers for the presented effort question (flag-gated, default off).
+  const effortAnswerOptions = useMemo(() => buildMachineBoundEffortAnswerOptions(state), [state]);
   const waitingForStarterTarget = Boolean(selectedStarterOption?.target)
     && (starterCatalog ? !starterCatalog.ready : starterCatalogStatus !== 'ready');
 
@@ -649,9 +655,9 @@ export function AiPlanningView({
       : '送信前の状態が変わりました。入力内容を確認して、もう一度送信してください。';
   }
 
-  async function submitMessage() {
-    const value = text.trim();
-    const attachment = imageAttachment;
+  async function submitMessage(typedAnswer?: MachineBoundEffortAnswerOption) {
+    const value = typedAnswer ? typedAnswer.label : text.trim();
+    const attachment = typedAnswer ? null : imageAttachment;
     if ((!value && !attachment) || isComposerBusy || isListening || !application.plannerDataReady
       || !ownsSubmissionScope() || submission.current.token || recoveryOperation.current || moduleLoadFailed || waitingForStarterTarget) return;
     const token = Symbol('planning-submission');
@@ -663,14 +669,14 @@ export function AiPlanningView({
       && (cancellationEpoch?.current ?? 0) === cancellationGeneration;
     try {
       setError('');
-      const starter = selectedStarterOption?.requestText === value
+      const starter = !typedAnswer && selectedStarterOption?.requestText === value
         ? validatedStarterOptions.find((option) => option.requestText === value
           && option.target?.kind === selectedStarterOption.target?.kind
           && option.target?.id === selectedStarterOption.target?.id
           && option.target?.label === selectedStarterOption.target?.label
           && option.target?.targetDate === selectedStarterOption.target?.targetDate) ?? null
         : null;
-      if (selectedStarterOption?.target && !starter) {
+      if (!typedAnswer && selectedStarterOption?.target && !starter) {
         setError('保存した入力例の参照先を確認できません。入力例を選び直すか、対象がわかる文章に修正してください。');
         return;
       }
@@ -708,7 +714,7 @@ export function AiPlanningView({
         : requestText;
 
       const shouldReleaseComposerFocus = shouldReleaseComposerFocusAfterSubmit();
-      setText('');
+      if (!typedAnswer) setText('');
       if (shouldReleaseComposerFocus) {
         inputRef.current?.blur();
       }
@@ -719,6 +725,7 @@ export function AiPlanningView({
           submittedText,
           supplementalContext,
           starter?.target ?? undefined,
+          typedAnswer?.answer,
         );
         if (!ownsCompletion()) return;
         if (!result.accepted) {
@@ -726,8 +733,10 @@ export function AiPlanningView({
           setError(preparationRejectionMessage(result.rejectionReason ?? 'request-changed'));
           return;
         }
-        clearImageAttachment();
-        setSelectedStarterOption(null);
+        if (!typedAnswer) {
+          clearImageAttachment();
+          setSelectedStarterOption(null);
+        }
         persistActiveChat();
       } catch (submitError) {
         if (!ownsCompletion()) return;
@@ -935,6 +944,21 @@ export function AiPlanningView({
               ) : null}
               <div className="ai-planning-message-body">
                 <div className="ai-planning-bubble">{message.content}</div>
+                {message.role === 'assistant'
+                && effortAnswerOptions[0]?.answer.assistantMessageId === message.id ? (
+                  <div className="ai-planning-answer-chips" role="group" aria-label="かかる時間を選んで回答">
+                    {effortAnswerOptions.map((option) => (
+                      <button
+                        key={option.answer.minutes}
+                        type="button"
+                        disabled={isComposerBusy || isListening || !application.plannerDataReady || moduleLoadFailed}
+                        onClick={() => void submitMessage(option)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
               {message.role === 'user' ? (
                 <span className="ai-planning-message-avatar user">

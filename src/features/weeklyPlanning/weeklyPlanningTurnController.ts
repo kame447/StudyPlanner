@@ -15,6 +15,7 @@ import type {
   WeeklyPlanningTurnSubmissionResult,
 } from './weeklyPlanningTurnExecutor';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from './semantic/weeklyPlanningTurnEvidenceV5';
+import type { WeeklyPlanningMachineBoundEffortAnswerV5 } from './semantic/weeklyPlanningMachineBoundAnswerV5';
 import type { C5LocalSelectionOptions } from './application/c5LocalSelection/contracts';
 import { captureRegisteredCandidateQuestion, stageRegisteredCandidateTurn, registerC5CandidateDomain, type ControlledCandidateRegistry, type RegisteredControlledCandidateAdapter } from './application/weeklyPlanningControlledCandidateRegistry';
 import { decodeC5Ledger } from './application/c5LocalSelection/basis';
@@ -51,6 +52,8 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
   userText: string;
   supplementalContext?: string;
   selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
+  /** Typed question-card control; skips candidate staging and is verified downstream. */
+  machineBoundAnswer?: WeeklyPlanningMachineBoundEffortAnswerV5;
   getState(): PlanningState;
   dispatch(action: WeeklyPlanningAction): PlanningState;
   execute(params: {
@@ -59,6 +62,7 @@ export interface SubmitWeeklyPlanningControlledTurnParams {
     userText: string;
     supplementalContext?: string;
     selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
+    machineBoundAnswer?: WeeklyPlanningMachineBoundEffortAnswerV5;
   }): Promise<WeeklyPlanningTurnExecutionResult>;
   onStartedTurn?(params: {
     snapshot: PlanningState;
@@ -299,7 +303,7 @@ export async function submitWeeklyPlanningControlledTurn(
       planningState: { ...snapshot, intakeState: state }, ownerId: params.ownerId, conversationId: pending.conversationId });
   let candidateSelected: RegisteredControlledCandidateAdapter | null = null;
   try {
-    candidateSelected = !supplementalContext && !params.selectedStarterTarget
+    candidateSelected = !supplementalContext && !params.selectedStarterTarget && !params.machineBoundAnswer
       ? await stageRegisteredCandidateTurn(candidateRegistry, { ownerId: params.ownerId, snapshot, pending, userText,
           getState: params.getState, readCommittedGraph: () => readC5RuntimeGraph(params.ownerId, pending.conversationId) })
       : null;
@@ -311,6 +315,7 @@ export async function submitWeeklyPlanningControlledTurn(
       userText,
       supplementalContext: supplementalContext || undefined,
       selectedStarterTarget: params.selectedStarterTarget,
+      ...(params.machineBoundAnswer ? { machineBoundAnswer: params.machineBoundAnswer } : {}),
     });
     result = executionResult;
     if (executionResult.failure) {
