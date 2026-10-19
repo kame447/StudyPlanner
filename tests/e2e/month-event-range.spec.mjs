@@ -1,4 +1,5 @@
 import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
+import { prepareMonthObservation, observeMonthControl, attachMonthObservation } from './support/month-overnight-observation.mjs';
 
 function formatIsoDate(year, monthIndex, day) {
   return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -560,7 +561,11 @@ for (const width of [390, 1280]) {
 for (const width of [390, 1280]) {
   test.describe(`overnight month-event persistence at ${width}px`, () => {
     test.use({ viewport: { width, height: 900 }, screen: { width, height: 900 }, reducedMotion: 'reduce' });
+    test.afterEach(async ({}, testInfo) => { await attachMonthObservation(testInfo); });
     test('creates, edits and reloads a range with an earlier end clock', async ({ page }, testInfo) => {
+      await prepareMonthObservation(page, testInfo, {
+        viewport: { width, height: 900 }, contract: 'overnight-create-edit-reload',
+      });
       const dates = currentMonthDays();
       const title = `翌朝までの予定 ${width}`;
       await seedRangeTestState(page);
@@ -572,8 +577,11 @@ for (const width of [390, 1280]) {
       const editor = overlay.locator('.month-event-modal');
       await editor.getByLabel('タイトル').fill(title);
 
-      async function chooseTime(index, hour) {
-        await editor.locator('.month-event-time-input').nth(index).click();
+      async function chooseTime(index, hour, observeEditPicker = false) {
+        const input = editor.locator('.month-event-time-input').nth(index);
+        if (observeEditPicker) {
+          await observeMonthControl(input, testInfo, 'month-edit-end-picker', () => input.click());
+        } else await input.click();
         const picker = page.getByRole('dialog', { name: index === 0 ? '開始時刻を選択' : '終了時刻を選択', exact: true });
         await picker.locator('.time-wheel-column').nth(0).getByRole('button', { name: hour, exact: true }).click();
         const minute = picker.locator('.time-wheel-column').nth(1).getByRole('button', { name: '00', exact: true });
@@ -610,9 +618,10 @@ for (const width of [390, 1280]) {
       await page.locator('.primary-bottom-nav button').filter({ hasText: '予定' }).click();
       await expect(read()).resolves.toEqual([created]);
       await cellForDay(grid, page, dates.startDay).click();
-      await page.locator('.month-day-sheet-event').filter({ hasText: title }).click();
+      const daySheetEvent = page.locator('.month-day-sheet-event').filter({ hasText: title });
+      await observeMonthControl(daySheetEvent, testInfo, 'month-day-sheet-edit', () => daySheetEvent.click());
       await expect(editor.getByLabel('タイトル')).toHaveValue(title);
-      await chooseTime(1, '18');
+      await chooseTime(1, '18', true);
       await editor.getByRole('button', { name: '保存', exact: true }).click();
       await expect(overlay).toHaveCount(0);
       await expect.poll(read).toEqual([{ ...created, endTime: '18:00' }]);
