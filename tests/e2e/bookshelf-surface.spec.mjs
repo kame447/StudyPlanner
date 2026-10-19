@@ -1,4 +1,7 @@
 import { expect, test } from './support/fixed-clock.mjs';
+import { prepareMaterialObservation, hasMaterialObservation, observeMaterialControl, attachMaterialObservation } from './support/material-pr-observation.mjs';
+
+test.afterEach(async ({}, testInfo) => { await attachMaterialObservation(testInfo); });
 
 async function seedBookshelf(page, longTextFixture = null) {
   await page.addInitScript(longTextFixture => {
@@ -605,7 +608,11 @@ async function captureMaterialText(locator, boundary, testInfo, name) {
   }
 }
 
-async function reachMaterialControl(control, testInfo, name) {
+async function reachMaterialControl(control, testInfo, name, observing = false) {
+  if (!observing && hasMaterialObservation(testInfo, name)) {
+    return observeMaterialControl(control, testInfo, name,
+      () => reachMaterialControl(control, testInfo, name, true));
+  }
   // Focus uses native scrolling; the trial click performs the normal stable,
   // visible, enabled and hit-target checks before we inspect its final position.
   let actionError;
@@ -655,6 +662,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 108
           ? 'keeps full detail text and cancels unsaved chapter edits'
           : 'saves the last chapter and preserves it after full reload';
         test(`${purpose} at ${percent}%`, async ({ page }, testInfo) => {
+          await prepareMaterialObservation(page, testInfo, { viewport, percent, contract });
           await seedBookshelf(page, {
             name: longMaterialName, subject: longMaterialSubject, activity: longMaterialActivity,
           });

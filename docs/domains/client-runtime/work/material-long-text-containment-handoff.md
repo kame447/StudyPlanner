@@ -1,5 +1,58 @@
 # Material long-text containment and desktop reachability
 
+## Current ordinary-PR observation — 2026-10-19
+
+The ordinary run on public `d6815f4b` / actual `af1ddf01` completed all 116
+selected definitions: 113 first-attempt passes and three failed 1920px mobile
+WebKit cases (Save 100%, Cancel 200%, Save 200%, both attempts timed out). The
+previously failing Cancel 100% passed on this source. This does not establish a
+causal speed improvement or complete the wide acceptance. The selected set has
+no skip/flaky cases; a separate Day cancellation 1280px case was flaky in the
+same downloaded mobile shard and is tracked independently.
+
+The six traces show successful real Save and same-App reopening with new values,
+or successful Cancel and unchanged complete preferences, before full-document
+reload. The final reopened editor verification did not complete before the
+30-second test deadline. A reporter step closed during teardown is not evidence
+that its browser assertion passed. Current data, state and actionability reviews
+agree that neither data loss nor a specific product performance cause is shown.
+Cancel focus/trial waits about 5.5s with unchanged before/after editor scroll and
+no repeated `not stable` log; the Save field has one unstable-position retry.
+
+The next change adds bounded observation to that existing mobile 1920×1080,
+DPR3, dynamic 200%, detail/Cancel test only. It surrounds its unchanged normal
+Cancel focus/trial/geometry operation with two preserved native rAF samples,
+three native 100ms timers and non-overlapping 250ms read-only resource samples.
+It reuses the reviewed WPE observer implementation. Missing counters, detached
+nodes or partial native callbacks remain missing/partial; observation errors
+cannot skip or replay the original UI action or replace its failure. Partial
+JSON is attached before optional executable identity hashing. No environment
+or command-line dump, credential/network capture or new dependency is added.
+
+The current single-seed setup, all navigation and Save/Cancel/live/full-reload
+assertions, two PNG captures, normal trial checks, 30s timeout, retries, video,
+trace and device settings remain unchanged. The original 116 identities are
+retained. New observer callbacks add layout reads, counter I/O and event-loop
+monitoring, so timings will be instrumented observations, not proof of an
+unmodified speed gain. Native registration finishes before focus/trial starts; the
+two frame samples need not overlap the utility stable wait. Compare recorded
+registration and action-start timestamps before attributing those samples. The permitted counter traversal can miss a child forked
+by another native thread; absent process data cannot establish an idle browser.
+
+Competing explanations remain high-resolution WPE render/capture work, runner
+resource contention and application layout/main-thread work. The native timer,
+rAF, Node-loop and CPU/pressure timelines are intended to distinguish these;
+none is established by the existing traces. The original App52eb WPE diagnostic
+branch remains unexecuted and unchanged. This is instrumentation of the current
+ordinary PR, not a replacement workflow or an assertion-relaxing diagnostic.
+
+Local checks: 20 focused offline callback/error-priority/selection probes pass;
+syntax and exact original-body reverse transformation are checked. No local
+browser was started. New ordinary CI and observation validity are pending.
+The current main8a8e composition preserves its Worker dependency update and
+month editor helper. Application/build/config inputs are unchanged relative to
+that reviewed composition; the ordinary CI will validate the published source.
+
 ## Resumed validation — 2026-10-19
 
 PR #741 remains draft. The current local preparation normally merges public
