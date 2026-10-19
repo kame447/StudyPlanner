@@ -460,7 +460,8 @@ function installScenario(
     if (scenario === 'retention') {
       if (url.includes(':runQuery')) {
         const collection = collectionFromQuery(init);
-        const count = state.retentionMax ? 100 : 0;
+        const limit = (JSON.parse(String(init?.body)) as { structuredQuery: { limit: number } }).structuredQuery.limit;
+        const count = state.retentionMax ? limit : 0;
         return new Response(JSON.stringify(Array.from({ length: count }, (_, index) => ({
           document: firestoreDocument(
             collection,
@@ -493,6 +494,15 @@ async function runScheduled(minute: number): Promise<void> {
     } as ExecutionContext,
   );
   await Promise.all(pending);
+}
+
+function requestedDocumentKeys(state: ScenarioState): number {
+  return state.calls.reduce((count, { url, init }) => {
+    if (url.endsWith('/documents:batchGet')) {
+      return count + (JSON.parse(String(init?.body)) as { documents: string[] }).documents.length;
+    }
+    return count + Number(url.includes('/documents/') && !init?.method);
+  }, 0);
 }
 
 function externalCalls(state: ScenarioState): number {
@@ -609,7 +619,8 @@ describe('traceWorker scheduled subrequest budget', () => {
   it('keeps snapshot initial, steady, maximum, and conflict paths below 50', async () => {
     const initial = installScenario('snapshot', { snapshotDirty: false });
     await runScheduled(1);
-    expect(externalCalls(initial)).toBe(36);
+    expect(externalCalls(initial)).toBe(37);
+    expect(requestedDocumentKeys(initial)).toBe(135);
 
     vi.unstubAllGlobals();
     const steady = installScenario('snapshot', {
@@ -618,6 +629,7 @@ describe('traceWorker scheduled subrequest budget', () => {
     });
     await runScheduled(1);
     expect(externalCalls(steady)).toBe(3);
+    expect(requestedDocumentKeys(steady)).toBe(3);
 
     vi.unstubAllGlobals();
     const maximum = installScenario('snapshot', {
@@ -626,6 +638,7 @@ describe('traceWorker scheduled subrequest budget', () => {
     });
     await runScheduled(1);
     expect(externalCalls(maximum)).toBe(44);
+    expect(requestedDocumentKeys(maximum)).toBe(134);
     expect(maximum.snapshotFullDates.size).toBe(5);
 
     vi.unstubAllGlobals();
@@ -636,6 +649,56 @@ describe('traceWorker scheduled subrequest budget', () => {
     });
     await runScheduled(1);
     expect(externalCalls(conflict)).toBe(42);
+  });
+
+  it('keeps a no-dirty bootstrap with the full 35-page allowance at 42 requests', async () => {
+    const state = installScenario('snapshot', {
+      snapshotDirty: false,
+      snapshotMaxPages: true,
+    });
+
+    await runScheduled(1);
+
+    expect(externalCalls(state)).toBe(42);
+    expect(requestedDocumentKeys(state)).toBe(135);
+    expect(state.snapshotFullDates.size).toBe(5);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it('leaves a dirty revision arriving after a clean checkpoint for the next invocation', async () => {
+    const state = installScenario('snapshot', {
+      snapshotDirty: false,
+      snapshotCurrentExists: true,
+    });
+    const originalFetch = globalThis.fetch;
+    let revisionArrived = false;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await originalFetch(input, init);
+      if (!revisionArrived && String(input).endsWith('/documents/observability_rollup_state/main')) {
+        state.snapshotDirty = true;
+        revisionArrived = true;
+      }
+      return response;
+    });
+
+    await runScheduled(1);
+
+    expect(requestedDocumentKeys(state)).toBe(3);
+    expect(state.calls.some(({ url }) => url.endsWith('/documents:commit'))).toBe(false);
+    expect(state.snapshotDirty).toBe(true);
+    const firstCallCount = state.calls.length;
+    await runScheduled(1);
+    const subsequent = state.calls.slice(firstCallCount);
+    expect(subsequent.filter(({ url }) => url.includes(':runQuery'))).toHaveLength(30);
+    const mutations = subsequent.filter(({ url }) => url.endsWith('/documents:commit'))
+      .flatMap(({ init }) => (JSON.parse(String(init?.body)) as {
+        writes: Array<{ update?: { name?: string } }>;
+      }).writes);
+    expect(mutations.some(({ update }) => update?.name?.includes('/observability_active_user_windows/')))
+      .toBe(true);
+    expect(mutations.some(({ update }) => update?.name?.endsWith('/observability_rollup_state/main')))
+      .toBe(true);
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   it('keeps the combined profile and user-enrichment backfill at exact bounded counts', async () => {
@@ -669,7 +732,7 @@ describe('traceWorker scheduled subrequest budget', () => {
     expect(backlog.backfillCompleted).toBe(true);
   });
 
-  it('keeps retention steady and two 400-delete commits at exact 5 and 11', async () => {
+  it('keeps retention steady and two 400-delete commits at exact 5 and 19', async () => {
     const steady = installScenario('retention');
     await runScheduled(3);
     expect(externalCalls(steady)).toBe(5);
@@ -678,10 +741,10 @@ describe('traceWorker scheduled subrequest budget', () => {
     const backlog = installScenario('retention', { retentionMax: true });
     await runScheduled(3);
     const firstCalls = externalCalls(backlog);
-    expect(firstCalls).toBe(11);
+    expect(firstCalls).toBe(19);
     expect(backlog.retentionDeleted).toBe(800);
     await runScheduled(3);
-    expect(externalCalls(backlog) - firstCalls).toBe(11);
+    expect(externalCalls(backlog) - firstCalls).toBe(19);
     expect(backlog.retentionDeleted).toBe(1_600);
   });
 });

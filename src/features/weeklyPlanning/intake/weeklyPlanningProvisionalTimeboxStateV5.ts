@@ -1,3 +1,5 @@
+export const PROVISIONAL_ALLOCATION_NEED_FIELDS_V5 = ['total_duration', 'duration_per_unit', 'session_duration', 'progress_percentage'] as const;
+
 import type { PlanningIntakeState } from './weeklyPlanningIntakeTypes';
 
 export const WEEKLY_PLANNING_PROVISIONAL_TIMEBOX_STATE_VERSION_V5 =

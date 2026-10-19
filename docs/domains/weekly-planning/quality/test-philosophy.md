@@ -1,7 +1,7 @@
 # 週間計画 AI テスト方針
 
 Status: canonical
-Updated: 2026-10-08
+Updated: 2026-10-19
 
 References:
 - [Human Grounding Policy](../policies/human-grounding.md)
@@ -114,6 +114,10 @@ Issue #246のanswer pathでは、さらに次を見る。
 - unaccepted adviceを「決定した方針」として話さない
 - stale adviceを「そのまま予定にします」と表現しない
 
+## Agent-guided browser exploration
+
+[TesterArmy/e2eの限定導入と運用手順](agentic-browser-e2e.md)は、自然言語でのUI操作を補助する独立runnerであり、判定はdeterministic assertionsと既存の実API/保存・復元・WebKit gateが所有する。stubbed harnessの成功はonline E2Eの成功ではない。
+
 ## Real API / human review
 
 model behaviorが関係する経路はturn-by-turnでsemantic output、accepted delta、Fact Graph、repair agenda、application decision、renderer、scheduler/previewを必要に応じて読む。
@@ -216,4 +220,4 @@ raw Japaneseの言い換えを意味等価だと自動認定しない。typed do
 
 実行頻度と最終full verificationは[AGENTS.md](../../../../AGENTS.md#verification-cadence)を正とし、時間だけの省略規則や全リポジトリmutationの常時実行を追加しない。導入済みのfast-checkとlocked Vitest/Stryker構成を先に活用し、実測した費用と故障検出能力で予算を決める。
 
-この方針の観測根拠は[2026-10-08監査](../../../archive/audits/20261008-property-based-test-audit.md)、現在の移行作業は[Issue #382](https://github.com/kame447/StudyPlanner/issues/382)を参照する。文書の追加は生成的検査の移行完了やproduction保証の拡大を意味しない。
+この方針の観測根拠は[2026-10-08監査と後続実装の照合注記](../../../archive/audits/20261008-property-based-test-audit.md)、現在の移行作業は[Issue #382](https://github.com/kame447/StudyPlanner/issues/382)を参照する。過去の監査提案を現在の未対応一覧とみなさず、導入済みの検査を再作成しない。文書の追加は生成的検査の移行完了やproduction保証の拡大を意味しない。

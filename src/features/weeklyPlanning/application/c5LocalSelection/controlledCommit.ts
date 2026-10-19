@@ -32,7 +32,7 @@ export interface ControlledCandidateTurnInput {
   /** Synchronous, fresh domain/Unit 2 decision; an unbranded receipt is rejected by the reducer. */
   prepare(): C5ReducerCommit | null;
   bindNextQuestion?(state: WeeklyPlanningTurnExecutionResult['state']): WeeklyPlanningTurnExecutionResult['state'];
-  branch: 'c5_local_selection' | 'd5_pending_selection';
+  branch: 'c5_local_selection' | 'd5_pending_selection' | 'temporal_date_selection';
   getState(): PlanningState; dispatch(action: WeeklyPlanningAction): PlanningState;
 }
 
@@ -46,7 +46,8 @@ export function commitControlledCandidateTurn(input: ControlledCandidateTurnInpu
   const commit = input.prepare();
   if (!commit) return fail();
   const bound = bindWeeklyPlanningQuestionPresentation({
-      state: { ...input.result.state, c5SelectionLedger: commit.nextLedger },
+      state: { ...input.result.state, c5SelectionLedger: commit.nextLedger,
+        ...(input.snapshot.intakeState?.controlledCandidateProtocolVersion === 1 ? { controlledCandidateProtocolVersion: 1 as const } : {}) },
       content: input.result.questionPresentationContent,
       turnId: input.pending.turnId, assistantMessageId: input.assistantMessage.id,
       planningStateRevision: input.pending.baseRevision + 2, graphRevision: selected.graph.revision,
@@ -136,6 +137,7 @@ export function commitC5ControlledTurn(input: {
     prepare: () => prepareC5TurnCommit({ ...input,
       getGraph: () => readC5RuntimeGraph(input.ownerId, input.pending.conversationId) }, input.selected),
     bindNextQuestion: (state) => captureC5Question({ state, graph: input.selected.graph,
+      messages: [...input.getState().messages, input.assistantMessage],
       ownerId: input.ownerId, conversationId: input.pending.conversationId }),
   });
 }

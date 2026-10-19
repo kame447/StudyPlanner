@@ -7,6 +7,16 @@ Tracking: [Issue #382](https://github.com/kame447/StudyPlanner/issues/382)
 
 本書は上記コミットの調査結果を固定する証跡である。現在の移行順序、担当、着手範囲と完了状態はIssue #382を正とする。継続的な構造判断は[repository refactoring patterns](../../work/refactoring-patterns.md)、週間計画の検証方針は[test philosophy](../../domains/weekly-planning/quality/test-philosophy.md)、保存・表示の責務は[client-runtimeの復旧契約](../../domains/client-runtime/architecture/planner-read-projection-recovery.md)を参照する。本アーカイブの提案を現行仕様や実装済みの保証として扱わない。
 
+## 公開前の後続実装照合（2026-10-19）
+
+本節だけはmain `227410c6d4dea8688a414b88782d4420ef417530` に対する追補であり、以下の第1〜15節は2026-10-08の原監査記録を保持する。過去の提案を現在の未対応一覧として再実装しない。
+
+- [PR #743](https://github.com/kame447/StudyPlanner/pull/743)でrevisionの独立受理表とstale identityの全列挙が導入済み。現行testはturnの5項目identityに対する31 mask × 3終端と、approvalの7 mask × 2終端、計107組を検査する。第5・13節の35組は原監査の記述であり、現行の列挙範囲ではない。
+- [PR #746](https://github.com/kame447/StudyPlanner/pull/746)で、本番閉包外だった旧配置経路とその専用testが撤去済み。第4節の空配置probeは旧経路の限定所見であり、現行Stable V5配置が空出力を受理するという根拠にはしない。
+- [PR #762](https://github.com/kame447/StudyPlanner/pull/762)でread authorityのrepair union・失効token等を扱う有界状態モデルが導入済み。現行 `src/domain/plannerDataReadAuthority.model.test.ts` がその境界を検査し、保存やcoordinatorの非同期接続は既存hook検査へ分担する。第6・13節の提案を、状態モデルが未導入であるとの説明に転用しない。
+
+これらの導入状況は現mainの実ファイルと[Issue #382の後続checkpoint](https://github.com/kame447/StudyPlanner/issues/382#issuecomment-6247189854)で照合した。この追補で過去のprobeや現在のtestを再実行したわけではなく、全ての提案・外部境界が完了したとも主張しない。残件・担当・次の実行順序は引き続きIssue #382が所有する。
+
 ## 1. 結論と調査範囲
 
 必要なのは「固定テストを全部ランダムテストにすること」ではなく、「守る性質と、その性質を破る故障を対応付け、適切な境界で検査すること」である。少数の有限条件は全列挙し、値や構造はプロパティベーステストで広げ、非同期の競合は状態モデルと完了順の生成で探索する。UI、永続化、実Worker、Firestore、実モデルの意味解釈は、それぞれを実際に通る代表検査を維持する。

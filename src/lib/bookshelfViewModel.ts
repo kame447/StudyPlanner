@@ -2,21 +2,27 @@ import {
   getDefaultMaterialDetailPreferences,
   isRecordForMaterial,
   type MaterialDetailPreferences,
+  type MaterialStructureItem,
 } from './bookshelfMaterialDetails';
-import type { Actual, StudyMaterial } from '../types/domain';
+import type { Actual, MaterialStudyStatus, StudyMaterial } from '../types/domain';
 
 export function filterBookshelfMaterials({
   materials,
   activeSubjectId,
   searchQuery,
+  studyStatus = 'all',
 }: {
   materials: readonly StudyMaterial[];
   activeSubjectId: string;
   searchQuery: string;
+  studyStatus?: MaterialStudyStatus | 'all';
 }): StudyMaterial[] {
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase('ja');
 
   return materials.filter((material) => {
+    if (studyStatus !== 'all' && (material.studyStatus ?? 'studying') !== studyStatus) {
+      return false;
+    }
     if (activeSubjectId !== 'all' && material.subjectId !== activeSubjectId) {
       return false;
     }
@@ -66,6 +72,14 @@ export function selectRecentBookshelfMaterials(
     .slice(0, 3);
 }
 
+function prepareStructureItems(items: MaterialStructureItem[]): MaterialStructureItem[] {
+  return items.map(item => ({
+    ...item,
+    title: item.title.trim(),
+    ...(item.children ? { children: prepareStructureItems(item.children) } : {}),
+  })).filter(item => item.title.length > 0);
+}
+
 export function prepareBookshelfStructurePreferences(
   preferences: MaterialDetailPreferences,
 ): MaterialDetailPreferences {
@@ -74,8 +88,6 @@ export function prepareBookshelfStructurePreferences(
     structureVisible: preferences.structureEnabled
       ? preferences.structureVisible
       : false,
-    structureItems: preferences.structureItems
-      .map((item) => ({ ...item, title: item.title.trim() }))
-      .filter((item) => item.title.length > 0),
+    structureItems: prepareStructureItems(preferences.structureItems),
   };
 }

@@ -1,4 +1,4 @@
-import { plannerReadMethods as allGetters, spyPlannerReads } from './plannerReadSpies.testUtils';
+import { plannerReadMethods as allGetters, plannerFullReadMethods, spyPlannerReads } from './plannerReadSpies.testUtils';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as dates from '../lib/date';
@@ -185,7 +185,7 @@ describe('Plan Undo repair through the public local factory', () => {
       await Promise.all([loading, restoring]);
     });
     expect(trace).toEqual(['Undo returned', 'full returned']);
-    for (const name of allGetters) expect(reads[name], name).toHaveBeenCalledTimes(repairGetters.includes(name as typeof repairGetters[number]) ? 2 : 1);
+    for (const name of allGetters) expect(reads[name], name).toHaveBeenCalledTimes((repairGetters.includes(name as typeof repairGetters[number]) ? 1 : 0) + (plannerFullReadMethods.includes(name as typeof plannerFullReadMethods[number]) ? 1 : 0));
     expect(normalize).toHaveBeenCalledTimes(1); // Only the requested full load normalizes.
     await expectStoredProjection(fixture.repository);
     expect(state.plans).toHaveLength(1);
@@ -218,7 +218,7 @@ describe('Plan Undo repair through the public local factory', () => {
     expect(state.plans).toHaveLength(1);
     expect(state.actuals).toEqual([]);
     expect(state.todos[0].status).toBe('open');
-    for (const name of allGetters) expect(reads[name], name).toHaveBeenCalledTimes(repairGetters.includes(name as typeof repairGetters[number]) ? 2 : 1);
+    for (const name of allGetters) expect(reads[name], name).toHaveBeenCalledTimes((repairGetters.includes(name as typeof repairGetters[number]) ? 1 : 0) + (plannerFullReadMethods.includes(name as typeof plannerFullReadMethods[number]) ? 1 : 0));
     expect(normalize).toHaveBeenCalledTimes(1);
     await expectStoredProjection(fixture.repository);
     expect(unrelated()).toEqual(untouched);
@@ -365,7 +365,7 @@ describe('Plan Undo repair through the public local factory', () => {
     expect(state.isPlannerDataSnapshotCurrent()).toBe(false);
     await act(async () => { await state.retryPlannerData(); });
     expect(gate.restore).toHaveBeenCalledTimes(1);
-    for (const name of allGetters) expect(reads[name], name).toHaveBeenCalledTimes(repairGetters.includes(name as typeof repairGetters[number]) ? 2 : 1);
+    for (const name of allGetters) expect(reads[name], name).toHaveBeenCalledTimes((repairGetters.includes(name as typeof repairGetters[number]) ? 1 : 0) + (plannerFullReadMethods.includes(name as typeof plannerFullReadMethods[number]) ? 1 : 0));
     expect(normalize).toHaveBeenCalledTimes(1);
     expect(state.plannerDataAvailability.status).toBe('ready');
     expect(state.isPlannerDataSnapshotCurrent()).toBe(true);
@@ -424,7 +424,7 @@ describe('Plan Undo repair through the public local factory', () => {
     expect(state.plannerDataRecovery).toBeNull();
     // A later full read also sees no activity/effect left by the rejected notice.
     await act(async () => { await state.loadPlannerData(nextOwner); });
-    for (const read of Object.values(reads)) expect(read).toHaveBeenCalledTimes(1);
+    for (const name of allGetters) expect(reads[name], name).toHaveBeenCalledTimes(plannerFullReadMethods.includes(name as typeof plannerFullReadMethods[number]) ? 1 : 0);
     expect(state.plannerDataAvailability.status).toBe('ready');
     expect(await fixture.repository.getPlans('owner')).toEqual([]);
   });
@@ -464,7 +464,7 @@ describe('Plan Undo repair through the public local factory', () => {
   });
 
 
-  it.each(['restore-first', 'month-event-first'] as const)('outer response-delivery schedule: combines Plan Undo and MonthEvent repair atomically using five reads, settlement=%s', async order => {
+  it.each(['restore-first', 'month-event-first'] as const)('outer response-delivery schedule: combines Plan Undo and MonthEvent repair atomically using four reads, settlement=%s', async order => {
     const fixture = await mount();
     const undo = await retainUndo();
     const restoreGate = gateRestore();
@@ -493,8 +493,8 @@ describe('Plan Undo repair through the public local factory', () => {
     const reads = spyReads();
     const normalize = vi.spyOn(boundary.repository, 'applyTimetableMutation');
     const entered = deferred(), delivery = deferred();
-    reads.getMonthEvents.mockImplementationOnce(async (owner: string) => {
-      const rows = await fixture.repository.getMonthEvents(owner);
+    reads.getScheduleSnapshot.mockImplementationOnce(async (owner: string) => {
+      const rows = await fixture.repository.getScheduleSnapshot(owner);
       entered.resolve(); await delivery.promise; return rows;
     });
     await act(async () => {
@@ -513,8 +513,7 @@ describe('Plan Undo repair through the public local factory', () => {
     expect(state.plannerDataAvailability.status).toBe('stale');
     await act(async () => { delivery.resolve(); });
     for (const name of allGetters) {
-      expect(reads[name], name).toHaveBeenCalledTimes(name === 'getMonthEvents'
-        || repairGetters.includes(name as typeof repairGetters[number]) ? 1 : 0);
+      expect(reads[name], name).toHaveBeenCalledTimes(['getScheduleSnapshot', 'getActuals', 'getStudyMaterials', 'getTodos'].includes(name) ? 1 : 0);
     }
     expect(normalize).not.toHaveBeenCalled();
     expect(restoreGate.restore).toHaveBeenCalledTimes(1);

@@ -8,7 +8,7 @@ import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '..
 
 /** Real graph/session boundaries shared by value-contract tests; no provider or factory policy. */
 export function createGraphCheckpointAssertions(scope: { ownerId: string; weekStartDate: string; conversationId: string }) {
-  const { storage } = createMemoryStorageHarness();
+  const { storage, values } = createMemoryStorageHarness();
   const restore = installWeeklyPlanningTestStorage(storage);
   const key = getWeeklyPlanningStableV5SessionStorageKeyForTest(scope.ownerId, scope.weekStartDate);
   const parameters = (graph: WeeklyPlanningFactGraphV5) => ({ ...scope, graph, planningState: createInitialPlanningState(scope.weekStartDate) });
@@ -31,9 +31,19 @@ export function createGraphCheckpointAssertions(scope: { ownerId: string; weekSt
       expect(prepareWeeklyPlanningStableV5Checkpoint(parameters(graph)).status).not.toBe('ready');
       expect(save(graph)).toBe(false);
       expect(storage.getItem(key)).toBe(original); // Direct save only; owner fallback is a separate contract.
+      const beforeFault = new Map(values);
       const corrupted = JSON.parse(original); corrupted.graph = graph;
-      storage.setItem(key, JSON.stringify(corrupted));
+      const corruptedRaw = JSON.stringify(corrupted);
+      storage.setItem(key, corruptedRaw);
       expect(load()).toBeNull();
+      const retainedKey = `studyplanner.weeklyPlanningUnreadable.v1.${encodeURIComponent(scope.ownerId)}.${scope.weekStartDate}`;
+      expect(JSON.parse(storage.getItem(retainedKey)!).raw).toBe(corruptedRaw);
+      // Each graph-validation permutation owns an independent corruption fault.
+      // Verify real rejection/preservation first, then restore only the fixture;
+      // production must not overwrite earlier opaque data to seed the next case.
+      values.clear();
+      for (const [storedKey, raw] of beforeFault) values.set(storedKey, raw);
+      expect(new Map(values)).toEqual(beforeFault);
     },
   };
 }

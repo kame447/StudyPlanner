@@ -1,0 +1,83 @@
+{
+  "started_at_utc": "2026-10-08T12:44:22.719201+00:00",
+  "finished_at_utc": "2026-10-08T13:01:50.152779+00:00",
+  "scope": "Final candidate after Vite module/MP4 observation correction and WebKit mobile selection; production sources/media unchanged from first PR head.",
+  "local_head_before_commit": "5d2c171bde799ed09c159ed0feb3114753144a6c",
+  "branch": "feat/laplans-video-splash",
+  "commands": [
+    {
+      "command": "npm run verify",
+      "exit": 0
+    },
+    {
+      "command": "node scripts/ci/check-bundle-budget.mjs",
+      "exit": 0
+    }
+  ],
+  "source_input_count": 1843,
+  "source_input_digest": "91ff664de56b6247a31feadaf6bd6020954a1a0a91b70ad6faf5dd642944f00b",
+  "source_manifest_base": "after.json",
+  "source_manifest_overrides": {
+    "tests/e2e/laplans-startup-video.spec.mjs": {
+      "size": 8916,
+      "sha256": "d3de0385dcdcd6a72e10220e1bdf250bdb74c9fa47381a6cc2752c897d6e42da"
+    },
+    "tests/e2e/playwright.cross-browser.config.mjs": {
+      "size": 2184,
+      "sha256": "8856a09ad8f134a160fbb798708f28fd244a1675b4f2086003e88a14a07aa9e9"
+    }
+  },
+  "stable_before_after": {
+    "head": true,
+    "branch": true,
+    "input_digest": true,
+    "package_lock": true,
+    "package_json": true,
+    "installed_lock": true,
+    "node_modules_link": true,
+    "installed_packages_digest": true,
+    "source_env_files": true,
+    "tools": true,
+    "generated_worker_types": true
+  },
+  "installed_packages_digest": "c2e89d328f764cab8d792110f5318037b59b31166f914af5fc03fb4c716449b7",
+  "installed_packages_present": 237,
+  "generated_worker_types": {
+    "size": 615867,
+    "sha256": "bf808b3fb4789a76410fc9c1ba8cd85e80453b8f92fa0981bdb86a9d523d612e"
+  },
+  "tools": {
+    "node_version": "v24.19.0",
+    "node_binary": {
+      "size": 125989464,
+      "sha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12"
+    },
+    "npm_version": "11.9.0"
+  },
+  "summary": [
+    "Test Files  762 passed | 10 skipped (772)",
+    "Tests  6200 passed | 45 skipped | 1 todo (6246)",
+    "Duration  970.12s (transform 49.32s, setup 0ms, collect 234.99s, tests 236.99s, environment 483ms, prepare 157.77s)",
+    "\u2713 built in 15.43s"
+  ],
+  "browser_collection": {
+    "chromium": 10,
+    "webkit_mobile": 10,
+    "execution": "pending exact-head CI"
+  },
+  "files": {
+    "before.json": "20d370b40d8314472adcdce61cda0e9da5383213d60925ae28320ddc3f6e9d44",
+    "after.json": "b3e6cb9d9c311b7673e83ab8263ec1ca85fdb3811f1227f9555c7eb1d0df5e45",
+    "verify.log": "cd1883211561b930b22070d7d860832eebbdb7484153ae60a2b5b1cccdb7dc76",
+    "budget.log": "c3c428ebcf39016e5d9efdaf0a7e42e224f51fa560296ab9e5e2187c00e19367",
+    "bundle-budget.json": "21c604f4bed3d160092109acd50bdcb0520c1ca9c5015dcda30c25f1e153e5df",
+    "execution-environment.json": "7d3c96434f29f28a6390391de3951fa34576c10fe2eee083b8ff02fa1d2e712d",
+    "playwright-runner.json": "1cb56517c15fb652ee32a49556eecc17030aa144e7ac036074436be9b294187b"
+  },
+  "environment_reference": "execution-environment.json",
+  "notes": [
+    "No browser pass is inferred from unit tests or collection.",
+    "The successful intermediate config-only run preceded the observer correction and is not the final proof.",
+    "Original source manifest plus two recorded overrides reproduces the final source digest."
+  ]
+}

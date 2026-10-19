@@ -35,6 +35,8 @@ class MemorySnapshotFirestore {
   conflictNextCommit = false;
   changeStateBeforeTransactionalRead = false;
   batchGetCallCount = 0;
+  readonly readRequests: Array<{ keys: string[]; transaction?: string }> = [];
+  afterNonTransactionalRead: (() => void) | null = null;
   rollbackCount = 0;
 
   private key(collection: string, id: string): string {
@@ -59,6 +61,10 @@ class MemorySnapshotFirestore {
     transaction?: string,
   ): Promise<Array<StoredDocument | null>> {
     this.batchGetCallCount += 1;
+    this.readRequests.push({
+      keys: keys.map(({ collection, id }) => this.key(collection, id)),
+      ...(transaction ? { transaction } : {}),
+    });
     const values = keys.map(({ collection, id }) => {
       const value = this.documents.get(this.key(collection, id));
       return value ? { ...copy(value), id } : null;
@@ -66,6 +72,7 @@ class MemorySnapshotFirestore {
     if (this.changeStateBeforeTransactionalRead && transaction) {
       values[0] = { id: ACTIVE_USER_SNAPSHOT_JOB_ID, concurrentRevision: 1 };
     }
+    if (!transaction) this.afterNonTransactionalRead?.();
     return values;
   }
 
@@ -130,7 +137,10 @@ function actorDay(params: {
   };
 }
 
-function service(firestore: MemorySnapshotFirestore): ProductObservabilityActiveUserSnapshotService {
+function service(
+  firestore: MemorySnapshotFirestore,
+  now: () => Date = () => new Date('2026-08-28T12:00:00.000Z'),
+): ProductObservabilityActiveUserSnapshotService {
   return new ProductObservabilityActiveUserSnapshotService(
     {
       FIREBASE_PROJECT_ID: 'test',
@@ -139,7 +149,7 @@ function service(firestore: MemorySnapshotFirestore): ProductObservabilityActive
       ENVIRONMENT: 'production',
     },
     firestore as never,
-    () => new Date('2026-08-28T12:00:00.000Z'),
+    now,
   );
 }
 
@@ -275,7 +285,8 @@ describe('ProductObservabilityActiveUserSnapshotService', () => {
     )).toMatchObject({ status: 'idle', source: null });
   });
 
-  it('checkpoints a large page backlog without publishing partial counts and resumes exactly', async () => {
+  it.each([['dirty', [TODAY_SOURCE]], ['bootstrap', []]] as const)(
+    'checkpoints a large %s backlog without publishing partial counts and resumes exactly', async (_kind, sources) => {
     const firestore = new MemorySnapshotFirestore();
     for (let index = 0; index < 18_001; index += 1) {
       firestore.addActorDay(`actor-day-${String(index).padStart(8, '0')}`, actorDay({
@@ -285,7 +296,7 @@ describe('ProductObservabilityActiveUserSnapshotService', () => {
     }
     const snapshots = service(firestore);
 
-    const first = await snapshots.runBatch([TODAY_SOURCE]);
+    const first = await snapshots.runBatch(sources);
 
     expect(first).toMatchObject({
       pageReads: ACTIVE_USER_SNAPSHOT_MAX_PAGE_READS,
@@ -310,7 +321,7 @@ describe('ProductObservabilityActiveUserSnapshotService', () => {
     expect(accumulatorDocuments.every((value) =>
       typeof value.actorFlags === 'string' && !('actors' in value))).toBe(true);
 
-    const second = await snapshots.runBatch([TODAY_SOURCE]);
+    const second = await snapshots.runBatch(sources);
 
     expect(second.published).toBe(true);
     expect(firestore.documents.get(
@@ -497,5 +508,108 @@ describe('ProductObservabilityActiveUserSnapshotService', () => {
     });
     expect(firestore.queriedDates).toEqual([]);
     expect(firestore.rollbackCount).toBe(0);
+    expect(firestore.readRequests).toEqual([{ keys: [
+      `${ACTIVE_USER_SNAPSHOT_JOB_COLLECTION}/${ACTIVE_USER_SNAPSHOT_JOB_ID}`,
+      'observability_active_user_windows/production:2026-08-28',
+    ] }]);
   });
+
+  it('reads fresh complete state after an inconclusive idle probe instead of joining separate snapshots', async () => {
+    const firestore = new MemorySnapshotFirestore();
+    firestore.afterNonTransactionalRead = () => {
+      if (firestore.readRequests.length !== 1) return;
+      firestore.documents.set('observability_active_user_windows/production:2026-08-28', {
+        schemaVersion: 1, environment: 'production', asOfDate: '2026-08-28', today: 8,
+      });
+    };
+
+    const result = await service(firestore).runBatch([]);
+
+    expect(result).toMatchObject({ published: false, pageReads: 0, completedSource: null });
+    expect(firestore.readRequests.map((request) => request.keys.length)).toEqual([2, 66]);
+    expect(firestore.transactionSequence).toBe(0);
+    expect(firestore.documents.get('observability_active_user_windows/production:2026-08-28'))
+      .toMatchObject({ today: 8 });
+  });
+
+  it('rechecks a dirty source on the next invocation after a clean read, without clearing or mutating it', async () => {
+    const firestore = new MemorySnapshotFirestore();
+    const snapshots = service(firestore);
+    await snapshots.runBatch([]);
+    const before = copy([...firestore.documents]);
+    let pendingSources: ObservabilityActiveUserDirtySource[] = [];
+    firestore.afterNonTransactionalRead = () => {
+      pendingSources = [TODAY_SOURCE];
+      firestore.addActorDay('arrived-after-clean-read', actorDay({
+        localDate: '2026-08-28', actorSubjectId: 'actor-newarrival',
+      }));
+      firestore.afterNonTransactionalRead = null;
+    };
+
+    const clean = await snapshots.runBatch(pendingSources);
+
+    expect(clean).toMatchObject({ published: false, completedSource: null });
+    expect([...firestore.documents]).toEqual(before);
+    expect(pendingSources).toEqual([TODAY_SOURCE]);
+    const dirty = await snapshots.runBatch(pendingSources);
+    expect(dirty).toMatchObject({ published: true, completedSource: TODAY_SOURCE });
+    expect(firestore.documents.get('observability_active_user_windows/production:2026-08-28'))
+      .toMatchObject({ today: 1, last7Days: 1, last30Days: 1 });
+  });
+
+  it('does not skip a supplied dirty revision just because the current snapshot exists', async () => {
+    const firestore = new MemorySnapshotFirestore();
+    await service(firestore).runBatch([]);
+    firestore.readRequests.length = 0;
+    firestore.addActorDay('dirty-actor', actorDay({
+      localDate: '2026-08-28', actorSubjectId: 'actor-dirtyactor',
+    }));
+
+    const result = await service(firestore).runBatch([TODAY_SOURCE]);
+
+    expect(result).toMatchObject({ published: true, completedSource: TODAY_SOURCE });
+    expect(firestore.readRequests.map((request) => request.keys.length)).toEqual([66, 66]);
+    expect(firestore.documents.get('observability_active_user_windows/production:2026-08-28'))
+      .toMatchObject({ today: 1, last7Days: 1, last30Days: 1 });
+  });
+
+  it('uses one reporting date per invocation and bootstraps the new Tokyo day on the next invocation', async () => {
+    const firestore = new MemorySnapshotFirestore();
+    let instant = '2026-08-28T14:59:59.000Z';
+    const snapshots = service(firestore, () => new Date(instant));
+    await snapshots.runBatch([]);
+    firestore.readRequests.length = 0;
+    firestore.afterNonTransactionalRead = () => {
+      instant = '2026-08-28T15:00:00.000Z';
+      firestore.afterNonTransactionalRead = null;
+    };
+
+    const beforeMidnight = await snapshots.runBatch([]);
+    expect(beforeMidnight).toMatchObject({ published: false, pageReads: 0 });
+    expect(firestore.documents.has('observability_active_user_windows/production:2026-08-29')).toBe(false);
+    expect(firestore.readRequests.map((request) => request.keys.length)).toEqual([2]);
+    firestore.readRequests.length = 0;
+    const afterMidnight = await snapshots.runBatch([]);
+
+    expect(afterMidnight).toMatchObject({ published: true, pageReads: 30 });
+    expect(firestore.readRequests.map((request) => request.keys.length)).toEqual([2, 66, 66]);
+    expect(firestore.documents.get('observability_active_user_windows/production:2026-08-29'))
+      .toMatchObject({ today: 0, last7Days: 0, last30Days: 0 });
+  });
+
+  it('fails closed on a malformed idle control document without reading accumulators', async () => {
+    const firestore = new MemorySnapshotFirestore();
+    firestore.documents.set(`${ACTIVE_USER_SNAPSHOT_JOB_COLLECTION}/${ACTIVE_USER_SNAPSHOT_JOB_ID}`, {
+      schemaVersion: 1, status: 'unknown', scanDateIndex: 0,
+    });
+    firestore.documents.set('observability_active_user_windows/production:2026-08-28', {
+      schemaVersion: 1, environment: 'production', asOfDate: '2026-08-28',
+    });
+
+    await expect(service(firestore).runBatch([])).rejects.toThrow('active_user_snapshot_job_invalid');
+
+    expect(firestore.readRequests.map((request) => request.keys.length)).toEqual([2]);
+    expect(firestore.transactionSequence).toBe(0);
+  });
+
 });

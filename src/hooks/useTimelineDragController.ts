@@ -6,7 +6,9 @@ import {
   type TouchEvent as ReactTouchEvent,
 } from 'react';
 import { acquireTimelineDragInteractionLock } from '../lib/timelineDragInteractionLock';
+import { allowsSpatialMotion } from '../lib/motionPreference';
 import { useTimelineDragCancellation } from './useTimelineDragCancellation';
+import { SCHEDULE_LONG_PRESS_MS } from '../lib/scheduleGestureTiming';
 import {
   calculateWeekPlanVelocityTilt,
   hasWeekPlanMoveChanged,
@@ -27,6 +29,8 @@ export interface TimelineDragDescriptor<TItem> {
   dayColumnSelector: string;
   scrollSelector?: string;
   lockLabel?: string;
+  /** Lifted by the radial 移動 action: a touch drags on first movement, no hold. */
+  moveArmed?: boolean;
 }
 
 interface DragSession<TItem> {
@@ -77,7 +81,7 @@ interface UseTimelineDragControllerOptions<TItem> {
   deferTouchDragUntilMoveAfterLongPress?: boolean;
 }
 
-const TOUCH_LONG_PRESS_MS = 240;
+const TOUCH_LONG_PRESS_MS = SCHEDULE_LONG_PRESS_MS;
 const TOUCH_MOVE_TOLERANCE_PX = 9;
 const POINTER_DRAG_THRESHOLD_PX = 4;
 const DRAG_EDGE_SCROLL_PX = 30;
@@ -175,9 +179,7 @@ export function useTimelineDragController<TItem>({
       longPressTimer: null,
       releaseInteractionLock: null,
       target: descriptor.original,
-      reducedMotion:
-        typeof window !== 'undefined' &&
-        window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      reducedMotion: !allowsSpatialMotion(),
     };
   }
 
@@ -357,6 +359,10 @@ export function useTimelineDragController<TItem>({
     if (!session) return;
 
     dragSessionRef.current = session;
+    if (descriptor.moveArmed) {
+      // Already lifted for moving: guard native scroll before the first move.
+      session.releaseInteractionLock = acquireTimelineDragInteractionLock();
+    }
     session.longPressTimer = window.setTimeout(() => {
       if (dragSessionRef.current !== session || session.canceled) return;
       if (!session.sourceElement.isConnected) {
@@ -365,7 +371,7 @@ export function useTimelineDragController<TItem>({
       }
       // React's touchmove listener is passive. Install the native scroll guard
       // before the first move, while the held gesture is still stationary.
-      session.releaseInteractionLock = acquireTimelineDragInteractionLock();
+      session.releaseInteractionLock ??= acquireTimelineDragInteractionLock();
       if (deferTouchDragRef.current) {
         session.longPressArmed = true;
         return;
@@ -388,7 +394,7 @@ export function useTimelineDragController<TItem>({
       const distance = getDistance(session.startX, session.startY, touch.clientX, touch.clientY);
       if (distance <= TOUCH_MOVE_TOLERANCE_PX) return;
 
-      if (deferTouchDragRef.current && session.longPressArmed) {
+      if (session.descriptor.moveArmed || (deferTouchDragRef.current && session.longPressArmed)) {
         activateDrag(session, touch.clientX, touch.clientY);
       } else {
         session.canceled = true;

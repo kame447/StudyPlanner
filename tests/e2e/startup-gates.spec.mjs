@@ -1,4 +1,5 @@
 import { expect, test } from './support/fixed-clock.mjs';
+import { assertStartupTimingRow } from './support/startup-timing-contract.mjs';
 const URL = 'http://127.0.0.1:4174/startup-gates.html?startupTiming=1';
 async function boot(page, width, query = '') {
   await page.setViewportSize({ width, height: 900 });
@@ -37,6 +38,16 @@ for (const width of [1280, 390]) {
     await expect(page.locator('.home-main')).toContainText('最新の予定');
     expect(await originalSplash.evaluate(node => node.isConnected)).toBe(false);
     await expect.poll(async () => (await rows(page)).some(row => row.phase === 'home-visible')).toBe(true);
+    const diagnosticRows = await rows(page);
+    expect(diagnosticRows.length).toBeLessThanOrEqual(80);
+    for (const phase of ['profile', 'schedule-snapshot', 'actuals', 'bootstrap', 'home-visible']) {
+      expect(diagnosticRows.some(row => row.phase === phase && row.outcome === 'success')).toBe(true);
+    }
+    expect(diagnosticRows.filter(row => row.phase === 'schedule-snapshot')).toHaveLength(1);
+    expect(diagnosticRows.filter(row => ['plans', 'month-events'].includes(row.phase))).toEqual([]);
+    for (const row of diagnosticRows) assertStartupTimingRow(row);
+    expect(diagnosticRows.filter(row => row.phase === 'intro-complete')).toHaveLength(1);
+    expect(JSON.stringify(diagnosticRows)).not.toMatch(/startup-gates@example|startup-gates-owner|起動検証/);
     expect(await page.evaluate(() => localStorage.getItem(`studyplanner.startup-schedule.v1:${window.__startupGateHarness.ownerId}`))).toBeNull();
     await page.reload(); await page.waitForFunction(() => Boolean(window.__startupGateHarness));
     await page.evaluate(() => { window.__startupGateHarness.emitAuth(); window.__startupGateHarness.emitPolicy('accepted'); });
@@ -47,15 +58,35 @@ for (const width of [1280, 390]) {
     await expect(page.getByRole('main', { name: '前回取得した予定', exact: true })).toHaveCount(0);
   });
 }
-test('current read failure uses ordinary recovery, never the retired copy', async ({ page }) => {
+test('current snapshot failure uses ordinary read retry, never the retired copy', async ({ page }) => {
   await boot(page, 390);
-  await page.evaluate(() => { window.__startupGateHarness.emitAuth(); window.__startupGateHarness.emitPolicy('accepted'); window.__plannerRecoveryRepository.failNextMonthRead(); });
+  await page.evaluate(() => { window.__startupGateHarness.emitAuth(); window.__startupGateHarness.emitPolicy('accepted'); });
+  // Fail the actual combined startup read, not an unused narrow getter.
+  await expect.poll(() => page.evaluate(() => window.__plannerRecoveryRepository.snapshot().pendingReads))
+    .toContain('getScheduleSnapshot');
+  await page.evaluate(() => window.__plannerRecoveryRepository.failNextScheduleSnapshotRead());
   await page.evaluate(() => window.__plannerRecoveryRepository.releaseTargetReads());
   await expect(page.locator('.home-main')).toBeVisible();
   await expect(page.getByLabel('学習データの表示状況')).toBeVisible();
   await expect(page.getByRole('button', { name: '表示の更新を再試行', exact: true })).toBeVisible();
   await expect(page.getByRole('main', { name: '前回取得した予定', exact: true })).toHaveCount(0);
-  expect((await rows(page)).some(row => row.phase === 'month-events' && row.outcome === 'error')).toBe(true);
+  expect((await rows(page)).some(row => row.phase === 'schedule-snapshot' && row.outcome === 'error')).toBe(true);
+  const beforeRetry = await page.evaluate(() => window.__plannerRecoveryRepository.snapshot().calls);
+  expect(beforeRetry.filter(call => call.method === 'getScheduleSnapshot' && call.phase === 'called')).toHaveLength(1);
+  expect(beforeRetry.filter(call => call.method === 'getScheduleSnapshot' && call.phase === 'failed')).toHaveLength(1);
+  expect(beforeRetry.filter(call => ['getPlans', 'getMonthEvents'].includes(call.method))).toEqual([]);
+
+  await page.getByRole('button', { name: '表示の更新を再試行', exact: true }).click();
+  await expect(page.getByLabel('学習データの表示状況')).toHaveCount(0);
+  await expect(page.locator('.home-main')).toContainText('最新の予定');
+  const afterRetry = await page.evaluate(() => window.__plannerRecoveryRepository.snapshot().calls);
+  expect(afterRetry.filter(call => call.method === 'getScheduleSnapshot' && call.phase === 'called')).toHaveLength(2);
+  expect(afterRetry.filter(call => call.method === 'getScheduleSnapshot' && call.phase === 'returned')).toHaveLength(1);
+  expect(afterRetry.filter(call => ['getPlans', 'getMonthEvents'].includes(call.method))).toEqual([]);
+  // Full reload keeps its existing migration/timetable normalization boundary;
+  // retry must not enter a user save or replay a mutation.
+  expect(afterRetry.filter(call => /^(upsert|delete|restore|scheduleTodo|applyRecurring)/.test(call.method))).toEqual([]);
+  await expect(page.getByRole('main', { name: '前回取得した予定', exact: true })).toHaveCount(0);
 });
 
 for (const cachedAuth of [false, true]) {

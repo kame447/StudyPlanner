@@ -1,0 +1,120 @@
+{
+  "status": "local combined checks passed; exact-head final CI pending",
+  "baseMain": "c3113a49e94e08ea4a3be5a75e1c962f34ac1aab",
+  "baseMainTree": "ccbca527dbb534e6ccbda06be1e7e20c808be27c",
+  "mergedClientPr": 546,
+  "clientHead": "9643af00577114cd7d306d14870d1b86e758fdad",
+  "backendHeadBeforeUpdate": "259ec29c0d05c2fbd30a004832897b1c91fd04ee",
+  "sourceCandidate": "8f13573ad91c817e73e7e93029ad98b94f330186",
+  "verifiedSourceTree": "d97c01d9b8c80ed5e31505236b3b33ccecb8e0fc",
+  "anticipatoryCandidate": "9b7ffdc803505f3219b162919815932d94bf77cf",
+  "anticipatoryAndActualMainCombinationTreeIdentical": true,
+  "overlappingClientBackendPaths": [],
+  "protectedAIPlanningOrDedicatedE2EAdditionalEdits": [],
+  "focused": {
+    "files": 30,
+    "passed": 549,
+    "exit": 0,
+    "testFiles": [
+      "src/components/DayPlanDeleteRecovery.integration.test.tsx",
+      "src/components/LinkedActualRecovery.integration.test.tsx",
+      "src/components/StandaloneActualRecovery.integration.test.tsx",
+      "src/components/StudyPlannerAppRoot.parallelStartup.test.tsx",
+      "src/components/StudyPlannerAppRoot.startupLatency.test.tsx",
+      "src/features/weeklyPlanning/trace/weeklyPlanningTracePolicyRequest.test.tsx",
+      "src/hooks/usePlannerAppState.bootstrapIdentity.test.tsx",
+      "src/hooks/usePlannerAppState.weeklyApproval.test.tsx",
+      "src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx",
+      "src/hooks/usePlannerDataState.actualAdmissionReadLifetime.test.tsx",
+      "src/hooks/usePlannerDataState.dayNoteReadRecovery.test.tsx",
+      "src/hooks/usePlannerDataState.monthEventRecovery.test.tsx",
+      "src/hooks/usePlannerDataState.planUndoRecovery.test.tsx",
+      "src/hooks/usePlannerDataState.reconciliation.test.tsx",
+      "src/hooks/usePlannerDataState.selectivePublication.test.tsx",
+      "src/hooks/usePlannerDataState.test.tsx",
+      "src/hooks/usePlannerDataState.todoReadRecovery.test.tsx",
+      "src/hooks/weeklyApprovalNative.issue542Audit.test.tsx",
+      "src/repositories/firebaseScheduleEventAuthority.test.ts",
+      "src/repositories/localScheduleEventAuthority.test.ts",
+      "src/repositories/scheduleEventAuthorityRepository.test.ts",
+      "src/repositories/scheduleSnapshot.issue542Audit.test.ts",
+      "tests/performance/firestoreReadLoad.measurement.test.tsx",
+      "workers/ai-proxy/src/productObservabilityActiveUserSnapshot.test.ts",
+      "workers/ai-proxy/src/traceWorker.scheduledSubrequestBudget.test.ts",
+      "workers/ai-proxy/src/productObservabilityRetention.test.ts",
+      "workers/ai-proxy/src/productObservabilityRollup.actorDates.test.ts",
+      "workers/ai-proxy/src/productObservabilityStore.test.ts",
+      "workers/ai-proxy/src/workerSubrequestBudget.test.ts",
+      "src/components/MonthEventDialog.persistence.test.tsx"
+    ],
+    "cache": false
+  },
+  "freshAppWorkerTypesExit": 0,
+  "workerTypesRegenerated": true,
+  "buildExit": 0,
+  "buildSeconds": 9.43,
+  "bundleGuardsPassed": 8,
+  "standaloneAudits": {
+    "snapshotRaceResumeCases": 4,
+    "retentionEquivalenceComparisons": 33,
+    "retentionProbeRaces": 4,
+    "retentionInjectedFailures": 3,
+    "retentionBaselineUsed": "9643af00577114cd7d306d14870d1b86e758fdad",
+    "baselineContentEqualsMergedMain": true,
+    "externalRequests": 0,
+    "sourceEdits": 0
+  },
+  "environment": {
+    "restoredOldWorkspaceSnapshot": true,
+    "previousLocalReceiptsAvailable": false,
+    "sourceOfTruth": "Public PR commits, workflow states and repository evidence were retrieved again. Historical local checks were not represented as freshly rerun.",
+    "freshNpmCiExit": 0,
+    "installedPresent": 237,
+    "platformOptionalAbsent": 99,
+    "installedPackageHashesMatchPublicEvidence": true,
+    "trackedNonDocInputs": 1871,
+    "inputManifestSha256": "6847c036f0a82b71ca047de7269f740af9a9c196401c9d678266b513d1da2094",
+    "beforeAfterInputMismatches": 0,
+    "node": "v24.19.0"
+  },
+  "publicationWorkflow": "Use existing PR547, verify updated exact-head CI; main merge and automatic Pages publication are authorized after successful tests. Do not merge before PR546.",
+  "manualWorkerDeployment": "Separate explicit deployment/authentication step, still pending. Pages alone does not publish the scheduled Worker. No new credentials, secrets, billing or manual production-data operation.",
+  "logs": [
+    {
+      "file": "focused.log",
+      "rawSha256": "739b1a5a294e477b3d36b11b7561e9fbafb53b4473c4e9f2622fa6de329252fd",
+      "storedSha256": "f7cef4c4572c0f1082e4d4a59a8208943eb522c82f0ca602c7983f4358593413",
+      "normalization": "Replace ephemeral checkout root with an explicit placeholder; remove ANSI and trailing whitespace only."
+    },
+    {
+      "file": "typecheck.log",
+      "rawSha256": "3b9c428e4ecb2d767f8ce3b05d1d6c55872d190260503a7bce1309990b4a76d9",
+      "storedSha256": "ccf17db952780458a8e6177719b088e2825e9e68985e6642138027fe02472883",
+      "normalization": "Replace ephemeral checkout root with an explicit placeholder; remove ANSI and trailing whitespace only."
+    },
+    {
+      "file": "build.log",
+      "rawSha256": "13d815f5ede2c5cdbb395c2359237ade90e739855ed842bffd95c197e9d0f004",
+      "storedSha256": "c309fba89ecfce68bcce1ad7e59f6fcecbdb4a7350430a54d54aae1a5a1184f3",
+      "normalization": "Replace ephemeral checkout root with an explicit placeholder; remove ANSI and trailing whitespace only."
+    },
+    {
+      "file": "bundle.log",
+      "rawSha256": "7e27318291bc8f8b5d90fbde90d187c81a259ccbc6f0ecfe085a109fdd1afbae",
+      "storedSha256": "7e27318291bc8f8b5d90fbde90d187c81a259ccbc6f0ecfe085a109fdd1afbae",
+      "normalization": "Replace ephemeral checkout root with an explicit placeholder; remove ANSI and trailing whitespace only."
+    },
+    {
+      "file": "retention-audit.log",
+      "rawSha256": "d83a6a8a882d124e4b3cbea89ff5338c36b2ad524f4bd9f077dab73bbcce20c4",
+      "storedSha256": "d83a6a8a882d124e4b3cbea89ff5338c36b2ad524f4bd9f077dab73bbcce20c4",
+      "normalization": "Replace ephemeral checkout root with an explicit placeholder; remove ANSI and trailing whitespace only."
+    },
+    {
+      "file": "snapshot-audit.log",
+      "rawSha256": "7257937ed2d4f8645648c710ee1a58071f2cde44744654a1d14f6019ae621800",
+      "storedSha256": "1aadc9d3895eb61d37a4d22b97a2910f5c0ef464ff958a50c3afb62b1c27af78",
+      "normalization": "Replace ephemeral checkout root with an explicit placeholder; remove ANSI and trailing whitespace only."
+    }
+  ]
+}

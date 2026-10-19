@@ -1,7 +1,7 @@
 # Repository refactoring patterns
 
 Status: current repository-wide refactoring knowledge
-Updated: 2026-10-08
+Updated: 2026-10-19
 
 この文書は、StudyPlanner で過去のバグ・修正・リファクタリングから繰り返し確認された「壊れやすい構造」を形式知化するための正本です。
 
@@ -293,7 +293,7 @@ feature-specific な設計判断は owning domain に置き、この文書には
 
 ## F11. Test growth without independent guarantee ownership
 
-優先度: High。関連する構造はF5の非同期lifecycle分散とF10のharness境界混同である。[2026-10-08監査](../archive/audits/20261008-property-based-test-audit.md)では、配置結果を空にしても5個のpropertyが成功し、revision検査でも観測結果をno-opに置き換えた一つのpropertyが成功した。これは限定したoracle probeであり、production故障や全suiteの無効性を意味しない。
+優先度: High。関連する構造はF5の非同期lifecycle分散とF10のharness境界混同である。[2026-10-08監査](../archive/audits/20261008-property-based-test-audit.md)では、配置結果を空にしても5個のpropertyが成功し、revision検査でも観測結果をno-opに置き換えた一つのpropertyが成功した。これは限定したoracle probeであり、production故障や全suiteの無効性を意味しない。 後続のoracle改善・旧経路撤去は同監査の追補に記録しており、このpatternの存在を現在も同じ盲点が未修正である証拠として使わない。
 
 ### Trigger
 

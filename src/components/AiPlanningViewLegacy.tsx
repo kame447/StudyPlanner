@@ -12,7 +12,6 @@ import {
   useState,
   type ChangeEvent,
   type CSSProperties,
-  type KeyboardEvent,
   type ReactNode,
 } from 'react';
 import {
@@ -55,6 +54,7 @@ import { plannerRepository } from '../repositories';
 import { useAiPlanningViewport } from '../hooks/useAiPlanningViewport';
 import type { Plan, StudyMaterial, TodoTask } from '../types/domain';
 import { AiPlanningChatSidebar } from './AiPlanningChatSidebar';
+import { WeeklyPlanningAllocationSummary } from './WeeklyPlanningAllocationSummary';
 import {
   buildAiPlanningPreviewDatePages,
   clampAiPlanningPreviewPageIndex,
@@ -64,7 +64,15 @@ import {
 import './AiPlanningView.css';
 import './AiPlanningViewFixes.css';
 
+export interface AiPlanningStarterCatalog {
+  todos: TodoTask[];
+  materials: StudyMaterial[];
+  ready: boolean;
+}
+
 interface AiPlanningViewProps {
+  active?: boolean;
+  starterCatalog?: AiPlanningStarterCatalog;
   application: WeeklyPlanningApplication;
   userId: string;
   selectedDate: string;
@@ -183,6 +191,8 @@ function shouldReleaseComposerFocusAfterSubmit(): boolean {
 
 export function AiPlanningView({
   application,
+  active = true,
+  starterCatalog,
   userId,
   selectedDate,
   plans,
@@ -214,7 +224,7 @@ export function AiPlanningView({
   const [isReadingAttachment, setIsReadingAttachment] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const cancellationGeneration = cancellationEpoch?.current ?? 0;
-  const submission = useRef({ active: false, ownerId: userId, index: chatIndex, token: null as symbol | null });
+  const submission = useRef({ active: false, ownerId: userId, index: chatIndex, token: null as symbol | null, turnStarted: false });
   const [isListening, setIsListening] = useState(false);
   const [starterTodos, setStarterTodos] = useState<TodoTask[]>([]);
   const [starterMaterials, setStarterMaterials] = useState<StudyMaterial[]>([]);
@@ -223,7 +233,7 @@ export function AiPlanningView({
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const conversationRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<HTMLElement | null>(null);
-  useAiPlanningViewport(viewRef, conversationRef);
+  useAiPlanningViewport(viewRef, conversationRef, active);
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechBaseTextRef = useRef('');
   const speechFinalTextRef = useRef('');
@@ -310,23 +320,36 @@ export function AiPlanningView({
       buildAiPlanningStarterPromptOptions({
         referenceDate: selectedDate,
         plans,
-        todos: starterTodos,
-        materials: starterMaterials,
+        todos: starterCatalog?.ready ? starterCatalog.todos : starterCatalog ? [] : starterTodos,
+        materials: starterCatalog?.ready ? starterCatalog.materials : starterCatalog ? [] : starterMaterials,
         limit: Number.MAX_SAFE_INTEGER,
       }),
-    [plans, selectedDate, starterMaterials, starterTodos],
+    [plans, selectedDate, starterMaterials, starterTodos, starterCatalog],
   );
   const starterPromptOptions = validatedStarterOptions.slice(0, 3);
-  const waitingForStarterTarget = Boolean(selectedStarterOption?.target) && starterCatalogStatus !== 'ready';
+  const waitingForStarterTarget = Boolean(selectedStarterOption?.target)
+    && (starterCatalog ? !starterCatalog.ready : starterCatalogStatus !== 'ready');
 
   // One operation owns OCR, planner submission, and final chat persistence.
-  // Revoke it synchronously on navigation/owner changes or unmount.
+  // Revoke it synchronously on owner/chat changes or unmount. Navigation
+  // revokes pre-admission work in the visibility effect below.
   useLayoutEffect(() => {
-    submission.current = { active: true, ownerId: userId, index: chatIndex, token: null };
+    submission.current = { active, ownerId: userId, index: chatIndex, token: null, turnStarted: false };
     setIsSubmitting(false);
     setIsReadingAttachment(false);
     return () => { submission.current.active = false; submission.current.token = null; };
   }, [userId, chatIndex, cancellationGeneration]);
+
+  useLayoutEffect(() => {
+    submission.current.active = active;
+    // Leaving before admission revokes code/OCR awaits. A turn already handed
+    // to the application may finish and settle its own composer while hidden.
+    if (!active && !submission.current.turnStarted) {
+      submission.current.token = null;
+      setIsSubmitting(false);
+      setIsReadingAttachment(false);
+    }
+  }, [active]);
 
   function ownsSubmissionScope(): boolean {
     return submission.current.active && submission.current.ownerId === userId
@@ -338,10 +361,10 @@ export function AiPlanningView({
     return application.chat.checkpoint();
   }
 
-  useEffect(() => { application.chat.initialize(); }, [application.chat, state.pendingTurn, state.pendingApproval]);
+  useEffect(() => { if (active) application.chat.initialize(); }, [active, application.chat, state.pendingTurn, state.pendingApproval]);
 
   useLayoutEffect(() => {
-    recoveryMounted.current = true;
+    recoveryMounted.current = active;
     recoveryOperation.current = null;
     restoredRecovery.current = null;
     setIsRecoveringModule(false);
@@ -350,6 +373,17 @@ export function AiPlanningView({
     moduleRetryUsed.current = false;
     return () => { recoveryMounted.current = false; recoveryOperation.current = null; };
   }, [userId, chatIndex.activeChatId, cancellationGeneration]);
+
+  useLayoutEffect(() => {
+    recoveryMounted.current = active;
+    if (!active) {
+      recoveryOperation.current = null;
+      setIsRecoveringModule(false);
+      setIsChatDrawerOpen(false);
+      setIsPreviewOpen(false);
+    }
+    return () => { recoveryMounted.current = false; recoveryOperation.current = null; };
+  }, [active]);
 
   const recoveryBinding = application.getModuleRecoveryBinding();
   useEffect(() => {
@@ -439,6 +473,9 @@ export function AiPlanningView({
 
 
   useEffect(() => {
+    // App supplies its current owned read snapshot. Standalone consumers retain
+    // the existing repository path without giving stale data authority.
+    if (starterCatalog || !active) return;
     let cancelled = false;
     setStarterCatalogStatus('loading');
 
@@ -463,7 +500,7 @@ export function AiPlanningView({
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [userId, Boolean(starterCatalog), active]);
 
   useEffect(() => {
     setPreviewPageIndex(0);
@@ -471,7 +508,7 @@ export function AiPlanningView({
 
   useEffect(() => {
     const node = conversationRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
+    if (active && node) node.scrollTop = node.scrollHeight;
   }, [chatIndex.activeChatId, displayedDraftCount, isBusy, state.messages.length]);
 
   useEffect(() => {
@@ -482,7 +519,8 @@ export function AiPlanningView({
     };
   }, [imageAttachment]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!active) setIsListening(false);
     return () => {
       const recognition = speechRecognitionRef.current;
       if (!recognition) return;
@@ -492,7 +530,7 @@ export function AiPlanningView({
       recognition.abort();
       speechRecognitionRef.current = null;
     };
-  }, []);
+  }, [active]);
 
   function clearImageAttachment() {
     setImageAttachment(null);
@@ -502,7 +540,7 @@ export function AiPlanningView({
   }
 
   function openImagePicker() {
-    if (isComposerBusy || isListening) return;
+    if (!ownsSubmissionScope() || isComposerBusy || isListening) return;
     attachmentInputRef.current?.click();
   }
 
@@ -530,7 +568,7 @@ export function AiPlanningView({
   }
 
   function toggleSpeechRecognition() {
-    if (isComposerBusy) return;
+    if (!ownsSubmissionScope() || isComposerBusy) return;
 
     if (isListening) {
       speechRecognitionRef.current?.stop();
@@ -620,6 +658,9 @@ export function AiPlanningView({
     submission.current.token = token;
     setIsSubmitting(true);
     const ownsRequest = () => ownsSubmissionScope() && submission.current.token === token;
+    const ownsCompletion = () => submission.current.token === token
+      && submission.current.ownerId === userId && submission.current.index === chatIndex
+      && (cancellationEpoch?.current ?? 0) === cancellationGeneration;
     try {
       setError('');
       const starter = selectedStarterOption?.requestText === value
@@ -673,12 +714,13 @@ export function AiPlanningView({
       }
 
       try {
+        submission.current.turnStarted = true;
         const result = await application.submitTurn(
           submittedText,
           supplementalContext,
           starter?.target ?? undefined,
         );
-        if (!ownsRequest()) return;
+        if (!ownsCompletion()) return;
         if (!result.accepted) {
           setText(text);
           setError(preparationRejectionMessage(result.rejectionReason ?? 'request-changed'));
@@ -688,7 +730,7 @@ export function AiPlanningView({
         setSelectedStarterOption(null);
         persistActiveChat();
       } catch (submitError) {
-        if (!ownsRequest()) return;
+        if (!ownsCompletion()) return;
         setText(text);
         if (submitError instanceof WeeklyPlanningRuntimeModuleError) {
           setModuleLoadFailed(true); setModuleRetryAttempted(false); moduleRetryUsed.current = false;
@@ -709,28 +751,16 @@ export function AiPlanningView({
       }
       setError(preparationError instanceof Error ? preparationError.message : '必要な機能を読み込めませんでした。');
     } finally {
-      if (ownsRequest()) {
+      if (ownsCompletion()) {
+        submission.current.turnStarted = false;
         submission.current.token = null;
         setIsSubmitting(false);
       }
     }
   }
 
-  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (
-      event.key !== 'Enter' ||
-      event.shiftKey ||
-      event.nativeEvent.isComposing ||
-      event.nativeEvent.keyCode === 229
-    ) {
-      return;
-    }
-    event.preventDefault();
-    void submitMessage();
-  }
-
   function useStarterPrompt(option: AiPlanningStarterPromptOption) {
-    if (recoveryOperation.current || isComposerBusy) return;
+    if (!ownsSubmissionScope() || recoveryOperation.current || isComposerBusy) return;
     setText(option.requestText);
     setSelectedStarterOption(option);
   }
@@ -832,7 +862,7 @@ export function AiPlanningView({
   }
 
   return (
-    <section ref={viewRef} className="ai-planning-view home-dashboard" aria-label="AI計画">
+    <section ref={viewRef} hidden={!active} className="ai-planning-view home-dashboard" aria-label="AI計画">
       <AiPlanningChatSidebar
         open={isChatDrawerOpen}
         checkpointNotice={checkpointNotice}
@@ -955,6 +985,7 @@ export function AiPlanningView({
                   <BookOpen size={16} aria-hidden="true" />合計{' '}
                   {formatMinutes(totalMinutes)}
                 </span>
+                <WeeklyPlanningAllocationSummary blocks={allPreviewBlocks} />
               </div>
               <button
                 className="ai-planning-preview-button"
@@ -1050,6 +1081,7 @@ export function AiPlanningView({
           </button>
           <textarea
             ref={inputRef}
+            aria-label="週間計画にしたいこと"
             value={text}
             onChange={(event) => {
               if (recoveryOperation.current) return;
@@ -1058,7 +1090,6 @@ export function AiPlanningView({
                 setSelectedStarterOption(null);
               }
             }}
-            onKeyDown={handleKeyDown}
             rows={1}
             maxLength={4000}
             placeholder={isListening ? '音声を認識中...' : '予定や目標を入力...'}

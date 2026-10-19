@@ -73,10 +73,6 @@
     font-size: clamp(1rem, 1.65vw, 1.18rem);
   }
 
-  .home-date-unit {
-    font-size: clamp(0.67rem, 1vw, 0.75rem);
-  }
-
   .home-top-actions {
     gap: 7px;
   }
@@ -137,18 +133,12 @@
     height: 18px;
   }
 
-  .home-empty-copy {
-    max-width: 390px;
-    font-size: 0.86rem;
-    line-height: 1.55;
-  }
-
   .home-study-scene {
     width: 50%;
   }
 
-  .home-start-button,
-  .home-dashboard-default .home-start-button {
+  .home-actions,
+  .home-dashboard-default .home-actions {
     left: clamp(20px, 2.3vw, 28px);
     right: clamp(20px, 2.3vw, 28px);
     min-height: 50px;
@@ -181,8 +171,7 @@
   }
 
   /* Vertical density is owned by home-fit.css, not by viewport width. */
-  .home-dashboard-default .home-schedule-row,
-  .home-dashboard-default .home-schedule-empty {
+  .home-dashboard-default :is(.home-schedule-row, .home-schedule-empty) {
     min-height: var(--home-fit-row-height);
   }
 
@@ -199,8 +188,7 @@
     line-height: 1.1;
   }
 
-  .home-dashboard-default .home-schedule-content strong,
-  .home-dashboard-default .home-schedule-add-row strong {
+  .home-dashboard-default .home-schedule-content strong {
     font-size: 0.82rem;
     line-height: 1.15;
   }
@@ -330,21 +318,20 @@
     padding-bottom: 76px;
   }
 
-  .home-dashboard-default .home-start-button {
+  .home-dashboard-default .home-actions {
     min-height: 58px;
     bottom: 13px;
     font-size: 1.05rem;
   }
 
-  .home-dashboard-default .home-schedule-row,
-  .home-dashboard-default .home-schedule-empty {
-    padding-top: calc(9px + var(--home-relax-schedule-side, 0px));
-    padding-bottom: calc(9px + var(--home-relax-schedule-side, 0px));
+  .home-dashboard-default :is(.home-schedule-row, .home-schedule-empty) {
+    --home-add-pad: calc(9px + var(--home-relax-schedule-side, 0px));
+    padding-block: var(--home-add-pad);
   }
 
   .home-dashboard-default .home-schedule-add-row {
-    padding-top: calc(8px + var(--home-relax-schedule-side, 0px));
-    padding-bottom: calc(8px + var(--home-relax-schedule-side, 0px));
+    --home-add-pad: calc(8px + var(--home-relax-schedule-side, 0px));
+    padding-block: var(--home-add-pad);
   }
 
   .home-dashboard-default .home-today-panel {
@@ -401,15 +388,14 @@
     padding-block: calc(5px + var(--home-relax-topbar, 0px) / 2);
   }
 
-  .home-dashboard-default .home-schedule-row,
-  .home-dashboard-default .home-schedule-empty {
-    padding-top: calc(11px + var(--home-relax-schedule-side, 0px));
-    padding-bottom: calc(11px + var(--home-relax-schedule-side, 0px));
+  .home-dashboard-default :is(.home-schedule-row, .home-schedule-empty) {
+    --home-add-pad: calc(11px + var(--home-relax-schedule-side, 0px));
+    padding-block: var(--home-add-pad);
   }
 
   .home-dashboard-default .home-schedule-add-row {
-    padding-top: calc(10px + var(--home-relax-schedule-side, 0px));
-    padding-bottom: calc(10px + var(--home-relax-schedule-side, 0px));
+    --home-add-pad: calc(10px + var(--home-relax-schedule-side, 0px));
+    padding-block: var(--home-add-pad);
   }
 
   .home-dashboard-default .home-today-panel {

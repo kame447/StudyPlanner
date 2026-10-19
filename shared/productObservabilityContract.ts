@@ -86,6 +86,7 @@ export interface AiRequestMetricPayload {
   cachedTokens: number | null;
   cacheWriteTokens?: number | null;
   reasoningTokens?: number | null;
+  providerCompletion?: import('./aiProxyContract').ProviderCompletionMetadata;
   durationMs: number;
   requestBytes: number;
   responseBytes: number | null;
@@ -177,6 +178,18 @@ export interface StoredObservabilityEvent<TPayload> {
   expireAt: string;
 }
 
+// Observation domains and derivations are owned by the telemetry architecture contract.
+export const OBSERVABILITY_COUNTER_LIMITS = {
+  turnIndex: 100_000,
+  stateRevision: 1_000_000,
+  previewCount: 100_000,
+  unscheduledCount: 100_000,
+  tokens: 10_000_000,
+  bytes: 64 * 1024 * 1024,
+  durationMs: 24 * 60 * 60 * 1000,
+  estimatedCostMicros: 1_000_000_000,
+} as const;
+
 const EVENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,159}$/;
 const MAX_VERSION_LENGTH = 96;
 const MAX_CORRELATION_ID_LENGTH = 180;
@@ -202,8 +215,56 @@ function isNullableBoundedString(value: unknown, maxLength: number): boolean {
   return value === null || isBoundedString(value, maxLength);
 }
 
-function isNullableNonNegativeInteger(value: unknown): boolean {
-  return value === null || (Number.isSafeInteger(value) && Number(value) >= 0);
+function isBoundedCounter(value: unknown, maximum: number): boolean {
+  return Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= maximum;
+}
+
+function isNullableBoundedCounter(value: unknown, maximum: number): boolean {
+  return value === null || isBoundedCounter(value, maximum);
+}
+
+/** Shared admission and retained-journal check; missing measurements remain null. */
+export function observabilityCountersInDomain(event: {
+  eventType: string;
+  correlation?: ObservabilityCorrelation;
+  payload: unknown;
+}): boolean {
+  const revision = event.correlation?.stateRevision;
+  if (revision !== undefined && !isBoundedCounter(revision, OBSERVABILITY_COUNTER_LIMITS.stateRevision)) return false;
+  if (!isRecord(event.payload)) return false;
+  const payload = event.payload;
+  if (event.eventType === 'planning_outcome') {
+    return (['turnIndex', 'stateRevision', 'previewCount', 'unscheduledCount'] as const)
+      .every((key) => isNullableBoundedCounter(payload[key], OBSERVABILITY_COUNTER_LIMITS[key]));
+  }
+  if (event.eventType !== 'ai_request_metric') return true;
+  const nullableCounters = {
+    promptTokens: OBSERVABILITY_COUNTER_LIMITS.tokens,
+    completionTokens: OBSERVABILITY_COUNTER_LIMITS.tokens,
+    totalTokens: OBSERVABILITY_COUNTER_LIMITS.tokens,
+    cachedTokens: OBSERVABILITY_COUNTER_LIMITS.tokens,
+    responseBytes: OBSERVABILITY_COUNTER_LIMITS.bytes,
+    estimatedCostMicros: OBSERVABILITY_COUNTER_LIMITS.estimatedCostMicros,
+  };
+  if (!Object.entries(nullableCounters).every(([key, max]) => isNullableBoundedCounter(payload[key], max))
+    || !isBoundedCounter(payload.requestBytes, OBSERVABILITY_COUNTER_LIMITS.bytes)
+    || typeof payload.durationMs !== 'number' || !Number.isFinite(payload.durationMs)
+    || payload.durationMs < 0 || payload.durationMs > OBSERVABILITY_COUNTER_LIMITS.durationMs) return false;
+  for (const key of ['cacheWriteTokens', 'reasoningTokens'] as const) {
+    if (payload[key] !== undefined && !isNullableBoundedCounter(payload[key], OBSERVABILITY_COUNTER_LIMITS.tokens)) return false;
+  }
+  if (isRecord(payload.providerCompletion)) {
+    for (const key of ['requestedMaxCompletionTokens', 'effectiveMaxCompletionTokens', 'reasoningTokens', 'textTokens']) {
+      if (!isNullableBoundedCounter(payload.providerCompletion[key], OBSERVABILITY_COUNTER_LIMITS.tokens)) return false;
+    }
+  }
+  if (isRecord(payload.decision)) {
+    if (!isBoundedCounter(payload.decision.inputRevision, OBSERVABILITY_COUNTER_LIMITS.stateRevision)) return false;
+    const cost = payload.decision.reportedCostUsd;
+    if (cost !== null && (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0
+      || cost > OBSERVABILITY_COUNTER_LIMITS.estimatedCostMicros / 1_000_000)) return false;
+  }
+  return true;
 }
 
 function isNullableBoolean(value: unknown): boolean {
@@ -267,7 +328,7 @@ function isValidCorrelation(value: unknown): value is ObservabilityCorrelation {
   }
 
   return value.stateRevision === undefined
-    || (Number.isSafeInteger(value.stateRevision) && Number(value.stateRevision) >= 0);
+    || isBoundedCounter(value.stateRevision, OBSERVABILITY_COUNTER_LIMITS.stateRevision);
 }
 
 export function validateProductActivityTelemetryDraft(
@@ -316,10 +377,10 @@ export function validatePlanningOutcomeTelemetryDraft(
     ])
     || typeof value.payload.outcomeType !== 'string'
     || !planningOutcomeTypeSet.has(value.payload.outcomeType)
-    || !isNullableNonNegativeInteger(value.payload.turnIndex)
-    || !isNullableNonNegativeInteger(value.payload.stateRevision)
-    || !isNullableNonNegativeInteger(value.payload.previewCount)
-    || !isNullableNonNegativeInteger(value.payload.unscheduledCount)
+    || !isNullableBoundedCounter(value.payload.turnIndex, OBSERVABILITY_COUNTER_LIMITS.turnIndex)
+    || !isNullableBoundedCounter(value.payload.stateRevision, OBSERVABILITY_COUNTER_LIMITS.stateRevision)
+    || !isNullableBoundedCounter(value.payload.previewCount, OBSERVABILITY_COUNTER_LIMITS.previewCount)
+    || !isNullableBoundedCounter(value.payload.unscheduledCount, OBSERVABILITY_COUNTER_LIMITS.unscheduledCount)
     || !isNullableBoolean(value.payload.fallbackUsed)
     || !isNullableBoolean(value.payload.repairUsed)
     || !isNullableBoolean(value.payload.staleObserved)

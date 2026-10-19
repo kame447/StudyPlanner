@@ -1,8 +1,4 @@
-import {
-  formatMinutesToTime,
-  minutesBetween,
-  parseTimeToMinutes,
-} from './date';
+import { getEntryDurationMinutes, resolveEntryEndTime } from './entryTimeRange';
 import type { Actual, ActualDraft } from '../types/domain';
 
 export interface StandaloneActualEditValues {
@@ -15,7 +11,7 @@ export interface StandaloneActualEditValues {
 }
 
 export function getStandaloneActualDurationMinutes(actual: Actual): number | null {
-  const minutes = minutesBetween(actual.actualStartTime, actual.actualEndTime);
+  const minutes = getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime);
   return minutes > 0 ? minutes : null;
 }
 
@@ -23,16 +19,7 @@ export function resolveStandaloneActualEndTime(
   startTime: string,
   durationMinutes: number | null,
 ): string | null {
-  if (durationMinutes === null || durationMinutes <= 0 || durationMinutes >= 24 * 60) {
-    return null;
-  }
-
-  const endMinutes = Math.min(
-    parseTimeToMinutes(startTime, 'start') + durationMinutes,
-    24 * 60,
-  );
-
-  return formatMinutesToTime(endMinutes, 'end');
+  return durationMinutes === null ? null : resolveEntryEndTime(startTime, durationMinutes);
 }
 
 export function createStandaloneActualDraft(

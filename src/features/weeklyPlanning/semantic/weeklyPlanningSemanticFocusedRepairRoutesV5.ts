@@ -31,7 +31,7 @@ import {
   semanticNormalizerErrorMessage,
   type WeeklyPlanningSemanticNormalizerRunV5,
 } from './weeklyPlanningSemanticNormalizerRunV5';
-import { validateWeeklyPlanningSemanticResponseV5 } from './weeklyPlanningSemanticResponseValidationV5';
+import { validateWeeklyPlanningSemanticResponseV5, revalidateWeeklyPlanningInternalSemanticDocumentV5 } from './weeklyPlanningSemanticResponseValidationV5';
 
 type SemanticValidationResultV5 = ReturnType<typeof validateWeeklyPlanningSemanticResponseV5>;
 
@@ -242,10 +242,11 @@ async function tryFocusedPlanningWindowRepairRouteV5(params: {
     document: parsedDocument,
     decision,
   });
-  const validation = validateWeeklyPlanningSemanticResponseV5(
-    JSON.stringify(mergedDocument),
-    validationState(params.run),
-  );
+  const validation = revalidateWeeklyPlanningInternalSemanticDocumentV5({
+    document: mergedDocument,
+    resolvedConversationActs: params.initialValidation.conversationActs ?? [],
+    input: validationState(params.run),
+  });
   params.run.addAlgorithmicRepairs(validation.algorithmicRepairs);
   recordWeeklyPlanningStableV5DebugTrace({
     requestId: params.run.input.traceRequestId,

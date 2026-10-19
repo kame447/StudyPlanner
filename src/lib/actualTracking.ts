@@ -4,6 +4,25 @@ export interface TrackerState {
   elapsedBeforeMs: number;
 }
 
+export function createInitialTracker(): TrackerState {
+  return { anchorMs: null, runningFromMs: null, elapsedBeforeMs: 0 };
+}
+
+export function startTracker(tracker: TrackerState, nowMs: number): TrackerState {
+  if (tracker.anchorMs !== null) return tracker;
+  return { anchorMs: nowMs, runningFromMs: nowMs, elapsedBeforeMs: 0 };
+}
+
+export function pauseTracker(tracker: TrackerState, nowMs: number): TrackerState {
+  if (tracker.runningFromMs === null) return tracker;
+  return { ...tracker, runningFromMs: null, elapsedBeforeMs: getElapsedMs(tracker, nowMs) };
+}
+
+export function resumeTracker(tracker: TrackerState, nowMs: number): TrackerState {
+  if (tracker.anchorMs === null || tracker.runningFromMs !== null) return tracker;
+  return { ...tracker, runningFromMs: nowMs };
+}
+
 function formatClockTime(date: Date): string {
   const hours = date.getHours().toString().padStart(2, '0');
   const minutes = date.getMinutes().toString().padStart(2, '0');
@@ -25,7 +44,7 @@ export function formatDurationDisplay(totalMs: number): string {
 export function getElapsedMs(tracker: TrackerState, nowMs: number): number {
   return (
     tracker.elapsedBeforeMs +
-    (tracker.runningFromMs !== null ? nowMs - tracker.runningFromMs : 0)
+    (tracker.runningFromMs !== null ? Math.max(0, nowMs - tracker.runningFromMs) : 0)
   );
 }
 

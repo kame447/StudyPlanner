@@ -1,6 +1,8 @@
+import { getEntryDurationMinutes } from '../lib/entryTimeRange';
+import { isValidQuickEntryDate } from '../lib/quickEntryDrafts';
 import { ActualMutationAdmissionError } from '../hooks/useActualMutationAdmission';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { formatMinutes, minutesBetween } from '../lib/date';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { formatMinutes } from '../lib/date';
 import { supportsScopedRecurringPlanEdits } from '../domain/recurringPlan';
 import { getPlanTypeLabel } from '../lib/plans';
 import { expandPlansForDate, getPlanOccurrenceDate } from '../lib/planRecurrence';
@@ -16,7 +18,6 @@ import {
   validateWeeklyPlanningMemoryPaceObservationResultV5,
 } from '../features/weeklyPlanning/personalization/weeklyPlanningMemoryPaceObservationsV5';
 import type { Actual, ActualDraft, Plan } from '../types/domain';
-import { ActualTrackingTools } from './ActualTrackingTools';
 
 interface ActualEditorCardProps {
   plan: Plan;
@@ -54,6 +55,7 @@ export function ActualEditorCard({
   const [draft, setDraft] = useState<ActualDraft>(() => createActualDraftForPlan(plan, actual));
   const [isOpen, setIsOpen] = useState(forceOpen || !actual);
   const [error, setError] = useState('');
+  const alignmentLabelId = useId();
   const [selectedCandidatePlanId, setSelectedCandidatePlanId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -100,9 +102,9 @@ export function ActualEditorCard({
     }
   }
 
-  const planMinutes = minutesBetween(plan.startTime, plan.endTime);
+  const planMinutes = getEntryDurationMinutes(plan.startTime, plan.endTime);
   const actualMinutes = actual
-    ? minutesBetween(actual.actualStartTime, actual.actualEndTime)
+    ? getEntryDurationMinutes(actual.actualStartTime, actual.actualEndTime)
     : 0;
   const deltaMinutes = actual ? actualMinutes - planMinutes : null;
   const isScopedRecurringPlan = supportsScopedRecurringPlanEdits(plan);
@@ -138,20 +140,14 @@ export function ActualEditorCard({
     }));
   }
 
-  function applyMeasuredRange(startTime: string, endTime: string) {
-    if (pendingMutation.current || isClosing) return;
-    setDraft((current) => ({
-      ...current,
-      actualStartTime: startTime,
-      actualEndTime: endTime,
-    }));
-    setError('');
-  }
-
   async function handleSave() {
     if (pendingMutation.current || isClosing) return;
-    if (minutesBetween(draft.actualStartTime, draft.actualEndTime) <= 0) {
-      setError('記録の終了時刻は開始時刻より後にしてください。');
+    if (!isValidQuickEntryDate(draft.occurrenceDate)) {
+      setError('有効な日付を入力してください。');
+      return;
+    }
+    if (getEntryDurationMinutes(draft.actualStartTime, draft.actualEndTime) <= 0) {
+      setError('有効な開始時刻と終了時刻を入力してください。');
       return;
     }
 
@@ -197,7 +193,7 @@ export function ActualEditorCard({
   }
 
   return (
-    <fieldset className="plan-detail-card actual-editor-card" disabled={isPending || isClosing}>
+    <fieldset className="plan-detail-card actual-editor-card linked-actual-editor-card" disabled={isPending || isClosing}>
       <div className="plan-detail-head actual-editor-head">
         <div>
           <div className="label-row">
@@ -208,7 +204,7 @@ export function ActualEditorCard({
             計画 {getPlanOccurrenceDate(plan)} / {plan.startTime} - {plan.endTime}
             {plan.subject ? ` / ${plan.subject}` : ''}
           </p>
-          <p className="comparison-metrics">
+          <p className="comparison-metrics" hidden={!actual}>
             {actual
               ? `記録 ${actual.actualStartTime} - ${actual.actualEndTime} / ${
                   alignedToPlan
@@ -282,7 +278,7 @@ export function ActualEditorCard({
               <strong>記録時刻</strong>
             </div>
             <div className="actual-time-grid">
-              <label className="field">
+              <label className="field actual-date-field">
                 <span>日付</span>
                 <input
                   type="date"
@@ -296,32 +292,34 @@ export function ActualEditorCard({
                   }}
                 />
               </label>
-              <label className="field">
-                <span>開始</span>
-                <input
-                  type="time"
-                  value={draft.actualStartTime}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      actualStartTime: event.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label className="field">
-                <span>終了</span>
-                <input
-                  type="time"
-                  value={draft.actualEndTime}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      actualEndTime: event.target.value,
-                    })
-                  }
-                />
-              </label>
+              <div className="actual-time-field-pair">
+                <label className="field">
+                  <span>開始</span>
+                  <input
+                    type="time"
+                    value={draft.actualStartTime}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        actualStartTime: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <label className="field">
+                  <span>終了</span>
+                  <input
+                    type="time"
+                    value={draft.actualEndTime}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        actualEndTime: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+              </div>
             </div>
           </section>
 
@@ -329,11 +327,12 @@ export function ActualEditorCard({
             <div className="actual-editor-section-title">
               <strong>内容</strong>
             </div>
-            <label className="field">
-              <span>予定との対応</span>
-              <div className="segmented-control">
+            <div className="actual-alignment-field">
+              <span id={alignmentLabelId}>予定との対応</span>
+              <div className="segmented-control" role="group" aria-labelledby={alignmentLabelId}>
                 <button
                   className={draft.isAlignedToPlan ? 'segment active' : 'segment'}
+                  aria-pressed={draft.isAlignedToPlan}
                   onClick={() => setAlignedToPlan(true)}
                   type="button"
                 >
@@ -341,23 +340,16 @@ export function ActualEditorCard({
                 </button>
                 <button
                   className={!draft.isAlignedToPlan ? 'segment active' : 'segment'}
+                  aria-pressed={!draft.isAlignedToPlan}
                   onClick={() => setAlignedToPlan(false)}
                   type="button"
                 >
                   違う内容
                 </button>
               </div>
-            </label>
+            </div>
 
-            {draft.isAlignedToPlan ? (
-              <div className="assistant-feedback-card actual-editor-summary-card">
-                <strong>予定ベースで記録します</strong>
-                <p className="detail-note">
-                  内容: {plan.title}
-                  {plan.subject ? ` / ${plan.subject}` : ''}
-                </p>
-              </div>
-            ) : (
+            {draft.isAlignedToPlan ? null : (
               <div className="actual-content-grid">
                 <label className="field">
                   <span>実際にやった内容</span>
@@ -503,11 +495,6 @@ export function ActualEditorCard({
               )}
             </section>
           ) : null}
-
-          <details className="actual-tracking-details">
-            <summary>計測補助</summary>
-            <ActualTrackingTools onApplyMeasuredRange={applyMeasuredRange} />
-          </details>
 
           {error ? <p className="inline-error" role="alert">{error}</p> : null}
 

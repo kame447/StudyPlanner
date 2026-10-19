@@ -82,9 +82,10 @@ describe('bounded focused decision context', () => {
 
     const context = focusedContextualDecisionContextV5(contextualInput);
     expect(context).toEqual({
-      purpose: 'focused_contextual_answer',
+      purpose: 'focused_contextual_answer_v2',
       requestId: contextualInput.traceRequestId,
       inputRevision: 8,
+      targetToken: 'question-target',
       questionCode: 'quantity_role_unresolved',
       state: {
         currentUserText: contextualInput.userText,
@@ -92,10 +93,14 @@ describe('bounded focused decision context', () => {
           targetQuantityRole: 'declared',
           questionBasis: null,
           hasEstimateTarget: false,
+          target: { sourceRevision: 8, targetToken: 'question-target', questionCode: 'quantity_role_unresolved',
+            task: { category: 'study', title: 'private-title' }, componentChain: [],
+            workload: { quantityRole: 'declared', amount: 20, unitCode: 'page', unitLabel: 'ページ',
+              rangeStart: null, rangeEnd: null, perOccurrence: false, periodExpression: null } },
         },
       },
     });
-    expect(JSON.stringify(context)).not.toContain('private-title');
+    expect(JSON.stringify(context)).toContain('private-title');
     expect(JSON.stringify(context)).not.toContain('private-relation');
     expect(JSON.stringify(context)).not.toContain('workload-1');
   });
@@ -145,7 +150,7 @@ describe('bounded focused decision context', () => {
     );
     expect(result?.status).toBe('accepted');
     expect(client.createChatCompletion.mock.calls[0][0].decisionContext)
-      .toMatchObject({ purpose: 'focused_contextual_answer' });
+      .toMatchObject({ purpose: 'focused_contextual_answer_v2' });
     const trace = JSON.stringify(takeWeeklyPlanningStableV5DebugTrace(
       contextualInput.traceRequestId,
     ));

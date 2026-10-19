@@ -1,3 +1,5 @@
+import type { StudyProgressPreferences } from '../lib/studyProgressPolicy';
+import type { HomeAddEntry } from './home/TodayScheduleAddMenu';
 import { useHomeDisplayClock } from './home/HomeDisplayClockContext';
 import type { HomeScenePreferences } from '../lib/homeScenePreferences';
 import { useMemo, type RefObject } from 'react';
@@ -15,6 +17,7 @@ import type {
 import { HomeView } from './HomeView';
 
 interface HomeScheduleViewProps {
+  progressPreferences?: StudyProgressPreferences;
   homeScenePreferences?: HomeScenePreferences;
   userId: string;
   plans: Plan[];
@@ -30,7 +33,7 @@ interface HomeScheduleViewProps {
   primaryBottomNavRef: RefObject<HTMLElement | null>;
   onOpenAiPlanning: () => void;
   onOpenSchedule: () => void;
-  onAddEntry: () => void;
+  onAddEntry: (entry: HomeAddEntry) => void;
   onOpenDay: (date: string) => void;
   onOpenTodo: () => void;
   onOpenBookshelf: () => void;
@@ -38,6 +41,7 @@ interface HomeScheduleViewProps {
 }
 
 export function HomeScheduleView({
+  progressPreferences,
   homeScenePreferences,
   userId,
   plans,
@@ -85,10 +89,12 @@ export function HomeScheduleView({
   );
 
   return (
-    <HomeView
+    <HomeView key={userId}
+      progressPreferences={progressPreferences}
       homeScenePreferences={homeScenePreferences}
       plans={displayPlans}
       actuals={actuals}
+      monthEvents={monthEvents}
       todos={todos}
       studyMaterials={studyMaterials}
       primaryHeaderRef={primaryHeaderRef}

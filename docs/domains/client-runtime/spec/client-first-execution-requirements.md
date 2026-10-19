@@ -1,4 +1,4 @@
-# StudyPlanner Client-First Execution 要件定義書
+# Laplance Client-First Execution 要件定義書
 
 Status: canonical requirements baseline / implementation not started
 Priority: Architecture P1

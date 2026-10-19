@@ -6,12 +6,13 @@ import type {
   RecurrenceWeekday,
 } from '../types/domain';
 
-export type QuickEntryRepeatKind = 'daily' | 'weekly' | 'monthly';
+export type QuickEntryRepeatKind = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 export const SUPPORTED_QUICK_ENTRY_REPEAT_KINDS = new Set<QuickEntryRepeatKind>([
   'daily',
   'weekly',
   'monthly',
+  'yearly',
 ]);
 
 export interface QuickEntryPlanDraftInput {

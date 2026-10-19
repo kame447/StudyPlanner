@@ -59,7 +59,7 @@ it.each(['actual read', 'material read', 'month read', 'material preparation', '
     const actualRead = vi.spyOn(boundary.repository, 'getActuals');
     const materialRead = vi.spyOn(boundary.repository, 'getStudyMaterials');
     const monthRead = vi.spyOn(boundary.repository, 'getMonthEvents');
-    const fullRead = vi.spyOn(boundary.repository, 'getPlans');
+    const fullRead = vi.spyOn(boundary.repository, 'getScheduleSnapshot');
     const normalize = vi.spyOn(boundary.repository, 'applyTimetableMutation');
     const upsert = vi.spyOn(boundary.repository, 'upsertMonthEvent');
     if (failure === 'actual read') actualRead.mockRejectedValueOnce(Error('Actual read unavailable'));

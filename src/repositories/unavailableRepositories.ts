@@ -35,6 +35,9 @@ export function createUnavailableAuthRepository(): AuthRepository {
 
 export function createUnavailablePlannerRepository(): PlannerRepository {
   return {
+    async getScheduleSnapshot() {
+      return { plans: [], monthEvents: [] };
+    },
     async getPlans() {
       return [];
     },
@@ -99,6 +102,9 @@ export function createUnavailablePlannerRepository(): PlannerRepository {
       throw createConfigurationError();
     },
     async upsertDayNote() {
+      throw createConfigurationError();
+    },
+    async applyRecurringMonthEventMutation() {
       throw createConfigurationError();
     },
     async upsertMonthEvent() {

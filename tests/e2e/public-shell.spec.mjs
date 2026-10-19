@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/startup-ready.mjs';
 
 const PUBLIC_PAGES = [
   { path: '/terms', expectedText: '利用規約' },

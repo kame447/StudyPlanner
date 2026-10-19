@@ -1,0 +1,488 @@
+{
+  "passed": 32,
+  "baselineRuntimeFingerprint": "6d7d05af84fd300a5eef7b1e92fdd3f323784ae2cf191b04fccfcc7514272487",
+  "candidateRuntimeFingerprint": "2141536af74900fea31b5fb86f5dad8d62fdbd932b25795e996ad070206f3037",
+  "definition": "Real Worker emitted successful write/delete payloads and mock progress state agree for each fixture; this is not production transaction/billing proof.",
+  "rows": [
+    {
+      "name": "rollup-empty",
+      "committedMutationsSha256": "b8c0e6ed6cf3080b1b9181b24d3e74e372022bc239b95b78b751deb85771a797",
+      "workProgressEqual": true,
+      "before": {
+        "http": 6,
+        "pointKeys": 2,
+        "queryDocs": 0
+      },
+      "after": {
+        "http": 6,
+        "pointKeys": 2,
+        "queryDocs": 0
+      }
+    },
+    {
+      "name": "rollup-1-planning-unique-actors",
+      "committedMutationsSha256": "0c4a7a12b245eb1a2d91223e08917e81a6e756906856dde2b6d162d3e2e7fa5c",
+      "workProgressEqual": true,
+      "before": {
+        "http": 7,
+        "pointKeys": 7,
+        "queryDocs": 1
+      },
+      "after": {
+        "http": 7,
+        "pointKeys": 7,
+        "queryDocs": 1
+      }
+    },
+    {
+      "name": "rollup-19-planning-unique-actors",
+      "committedMutationsSha256": "204f701ea29d349c70282010dbc88b194c6e376eae154fd1c20244a5b0fcb370",
+      "workProgressEqual": true,
+      "before": {
+        "http": 7,
+        "pointKeys": 61,
+        "queryDocs": 19
+      },
+      "after": {
+        "http": 7,
+        "pointKeys": 61,
+        "queryDocs": 19
+      }
+    },
+    {
+      "name": "rollup-20-planning-unique-actors",
+      "committedMutationsSha256": "d80c0b4671f619bf11214e75bb3b5fcb61a4106fdfc0169275a1594132ef9892",
+      "workProgressEqual": true,
+      "before": {
+        "http": 12,
+        "pointKeys": 66,
+        "queryDocs": 20
+      },
+      "after": {
+        "http": 12,
+        "pointKeys": 66,
+        "queryDocs": 20
+      }
+    },
+    {
+      "name": "rollup-21-planning-unique-actors",
+      "committedMutationsSha256": "5746a512d4859c33c5dbc9413ef104f40646a3a1d0c633faa66bfbcb84b3b65e",
+      "workProgressEqual": true,
+      "before": {
+        "http": 13,
+        "pointKeys": 71,
+        "queryDocs": 21
+      },
+      "after": {
+        "http": 13,
+        "pointKeys": 71,
+        "queryDocs": 21
+      }
+    },
+    {
+      "name": "rollup-100-planning-unique-actors",
+      "committedMutationsSha256": "8aad61e56d87f2636ce2cba113740d79453f303178009faadfa2234650209699",
+      "workProgressEqual": true,
+      "before": {
+        "http": 31,
+        "pointKeys": 320,
+        "queryDocs": 100
+      },
+      "after": {
+        "http": 31,
+        "pointKeys": 320,
+        "queryDocs": 100
+      }
+    },
+    {
+      "name": "rollup-100-planning-same-actor-session",
+      "committedMutationsSha256": "f71b27de1de2fa6442fb6e1eb7314d46062765a2d6a471a48bf02e4267016031",
+      "workProgressEqual": true,
+      "before": {
+        "http": 31,
+        "pointKeys": 35,
+        "queryDocs": 100
+      },
+      "after": {
+        "http": 31,
+        "pointKeys": 35,
+        "queryDocs": 100
+      }
+    },
+    {
+      "name": "rollup-100-two-late-conflicts",
+      "committedMutationsSha256": "8aad61e56d87f2636ce2cba113740d79453f303178009faadfa2234650209699",
+      "workProgressEqual": true,
+      "before": {
+        "http": 45,
+        "pointKeys": 448,
+        "queryDocs": 140
+      },
+      "after": {
+        "http": 45,
+        "pointKeys": 448,
+        "queryDocs": 140
+      }
+    },
+    {
+      "name": "snapshot-steady-clean-existing-job",
+      "committedMutationsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "workProgressEqual": true,
+      "before": {
+        "http": 3,
+        "pointKeys": 67,
+        "queryDocs": 0
+      },
+      "after": {
+        "http": 3,
+        "pointKeys": 3,
+        "queryDocs": 0
+      }
+    },
+    {
+      "name": "snapshot-day-bootstrap-empty",
+      "committedMutationsSha256": "a34ea0603d09186ff0c6803869a4dc19cdc07d0308e826d7666e2e5a63e025de",
+      "workProgressEqual": true,
+      "before": {
+        "http": 36,
+        "pointKeys": 133,
+        "queryDocs": 0
+      },
+      "after": {
+        "http": 37,
+        "pointKeys": 135,
+        "queryDocs": 0
+      }
+    },
+    {
+      "name": "snapshot-dirty-empty",
+      "committedMutationsSha256": "ad52bcef4dc96f14f139118463976968d1c0e5096762cc7286b8fba138211e72",
+      "workProgressEqual": true,
+      "before": {
+        "http": 39,
+        "pointKeys": 134,
+        "queryDocs": 0
+      },
+      "after": {
+        "http": 39,
+        "pointKeys": 134,
+        "queryDocs": 0
+      }
+    },
+    {
+      "name": "snapshot-1-actors-each-30-dates",
+      "committedMutationsSha256": "5935192118256922d29ef863e7a2ed7942e54db31a2af9a31c48e87ee168b8e2",
+      "workProgressEqual": true,
+      "before": {
+        "http": 39,
+        "pointKeys": 134,
+        "queryDocs": 30
+      },
+      "after": {
+        "http": 39,
+        "pointKeys": 134,
+        "queryDocs": 30
+      }
+    },
+    {
+      "name": "snapshot-100-actors-each-30-dates",
+      "committedMutationsSha256": "6394c9b4b5cae0d2d600d07f92206dd55b6238b7bd29be8539892c0d4a14e7e7",
+      "workProgressEqual": true,
+      "before": {
+        "http": 39,
+        "pointKeys": 134,
+        "queryDocs": 3000
+      },
+      "after": {
+        "http": 39,
+        "pointKeys": 134,
+        "queryDocs": 3000
+      }
+    },
+    {
+      "name": "snapshot-499-actors-each-30-dates",
+      "committedMutationsSha256": "03691b3939262d652bcbc06c1c3c2c442b5b4da0951dcf1877f86b6a6fe70eb2",
+      "workProgressEqual": true,
+      "before": {
+        "http": 39,
+        "pointKeys": 134,
+        "queryDocs": 14970
+      },
+      "after": {
+        "http": 39,
+        "pointKeys": 134,
+        "queryDocs": 14970
+      }
+    },
+    {
+      "name": "snapshot-500-actors-each-30-dates",
+      "committedMutationsSha256": "02297d04fe918186f4f6bcadfc7c5c5e3cfad4a79cd041cfcb58bea5e0096b0e",
+      "workProgressEqual": true,
+      "before": {
+        "http": 41,
+        "pointKeys": 133,
+        "queryDocs": 9000
+      },
+      "after": {
+        "http": 41,
+        "pointKeys": 133,
+        "queryDocs": 9000
+      }
+    },
+    {
+      "name": "snapshot-1000-actors-each-30-dates",
+      "committedMutationsSha256": "f3b31dfe10bbfa74babee7b98f10f933554f8521ebdedb35763dcbc1172d97f9",
+      "workProgressEqual": true,
+      "before": {
+        "http": 41,
+        "pointKeys": 133,
+        "queryDocs": 12000
+      },
+      "after": {
+        "http": 41,
+        "pointKeys": 133,
+        "queryDocs": 12000
+      }
+    },
+    {
+      "name": "backfill-both-complete",
+      "committedMutationsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "workProgressEqual": true,
+      "before": {
+        "http": 3,
+        "pointKeys": 2,
+        "queryDocs": 0
+      },
+      "after": {
+        "http": 3,
+        "pointKeys": 2,
+        "queryDocs": 0
+      }
+    },
+    {
+      "name": "backfill-0-profiles-enrichment-empty",
+      "committedMutationsSha256": "f1e46a3cd63b4bcbbcd8aa529c96f2c421bcc119b47fedd3e5a935e09b832ac9",
+      "workProgressEqual": true,
+      "before": {
+        "http": 7,
+        "pointKeys": 2,
+        "queryDocs": 0
+      },
+      "after": {
+        "http": 7,
+        "pointKeys": 2,
+        "queryDocs": 0
+      }
+    },
+    {
+      "name": "backfill-1-profiles-enrichment-empty",
+      "committedMutationsSha256": "df630fc86e776947f31a5ddf1da846ddf24b3fb542501476a8dc3f25904b3d86",
+      "workProgressEqual": true,
+      "before": {
+        "http": 7,
+        "pointKeys": 2,
+        "queryDocs": 1
+      },
+      "after": {
+        "http": 7,
+        "pointKeys": 2,
+        "queryDocs": 1
+      }
+    },
+    {
+      "name": "backfill-100-profiles-enrichment-empty",
+      "committedMutationsSha256": "730bea6eb6c79dcabe6024b58a797a50e7ae70f86c90fb2d9fde54741ba1f855",
+      "workProgressEqual": true,
+      "before": {
+        "http": 10,
+        "pointKeys": 3,
+        "queryDocs": 100
+      },
+      "after": {
+        "http": 10,
+        "pointKeys": 3,
+        "queryDocs": 100
+      }
+    },
+    {
+      "name": "backfill-250-profiles-enrichment-empty",
+      "committedMutationsSha256": "b3449877c1caac23ffffd14a7d8564fb73102cecdb48fe92d5e164a9d9050122",
+      "workProgressEqual": true,
+      "before": {
+        "http": 10,
+        "pointKeys": 3,
+        "queryDocs": 200
+      },
+      "after": {
+        "http": 10,
+        "pointKeys": 3,
+        "queryDocs": 200
+      }
+    },
+    {
+      "name": "backfill-complete-1-unenriched-users",
+      "committedMutationsSha256": "838256850988f4ac93fce4c983b36acd48bc3133f9176878689970548805aeb0",
+      "workProgressEqual": true,
+      "before": {
+        "http": 7,
+        "pointKeys": 2,
+        "queryDocs": 1
+      },
+      "after": {
+        "http": 7,
+        "pointKeys": 2,
+        "queryDocs": 1
+      }
+    },
+    {
+      "name": "backfill-complete-17-unenriched-users",
+      "committedMutationsSha256": "1f5cb49220e406b348adcb8fb7f4e78e7fa0c60606c12df08a63ae2d77cc819d",
+      "workProgressEqual": true,
+      "before": {
+        "http": 39,
+        "pointKeys": 2,
+        "queryDocs": 17
+      },
+      "after": {
+        "http": 39,
+        "pointKeys": 2,
+        "queryDocs": 17
+      }
+    },
+    {
+      "name": "backfill-250-profiles-17-users",
+      "committedMutationsSha256": "b9ca303fc378d993041c2fc15295b727184b5f14a05f52ed9f787f38a92f996f",
+      "workProgressEqual": true,
+      "before": {
+        "http": 44,
+        "pointKeys": 3,
+        "queryDocs": 217
+      },
+      "after": {
+        "http": 44,
+        "pointKeys": 3,
+        "queryDocs": 217
+      }
+    },
+    {
+      "name": "retention-empty",
+      "committedMutationsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "workProgressEqual": true,
+      "before": {
+        "http": 5,
+        "pointKeys": 0,
+        "queryDocs": 0
+      },
+      "after": {
+        "http": 5,
+        "pointKeys": 0,
+        "queryDocs": 0
+      }
+    },
+    {
+      "name": "retention-1-unexpired-each-4-collections",
+      "committedMutationsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "workProgressEqual": true,
+      "before": {
+        "http": 5,
+        "pointKeys": 0,
+        "queryDocs": 4
+      },
+      "after": {
+        "http": 5,
+        "pointKeys": 0,
+        "queryDocs": 4
+      }
+    },
+    {
+      "name": "retention-30-unexpired-each-4-collections",
+      "committedMutationsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "workProgressEqual": true,
+      "before": {
+        "http": 5,
+        "pointKeys": 0,
+        "queryDocs": 120
+      },
+      "after": {
+        "http": 5,
+        "pointKeys": 0,
+        "queryDocs": 4
+      }
+    },
+    {
+      "name": "retention-100-unexpired-each-4-collections",
+      "committedMutationsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "workProgressEqual": true,
+      "before": {
+        "http": 5,
+        "pointKeys": 0,
+        "queryDocs": 400
+      },
+      "after": {
+        "http": 5,
+        "pointKeys": 0,
+        "queryDocs": 4
+      }
+    },
+    {
+      "name": "retention-1000-unexpired-each-4-collections",
+      "committedMutationsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "workProgressEqual": true,
+      "before": {
+        "http": 5,
+        "pointKeys": 0,
+        "queryDocs": 400
+      },
+      "after": {
+        "http": 5,
+        "pointKeys": 0,
+        "queryDocs": 4
+      }
+    },
+    {
+      "name": "retention-100-unexpired-repeat",
+      "committedMutationsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "workProgressEqual": true,
+      "before": {
+        "http": 5,
+        "pointKeys": 0,
+        "queryDocs": 400
+      },
+      "after": {
+        "http": 5,
+        "pointKeys": 0,
+        "queryDocs": 4
+      }
+    },
+    {
+      "name": "retention-max-expired-backlog",
+      "committedMutationsSha256": "2c712e40812c3ee249f44f0f1566abe40b59017b02e99aecf37a2114964018d2",
+      "workProgressEqual": true,
+      "before": {
+        "http": 11,
+        "pointKeys": 0,
+        "queryDocs": 800
+      },
+      "after": {
+        "http": 19,
+        "pointKeys": 0,
+        "queryDocs": 808
+      }
+    },
+    {
+      "name": "no-op",
+      "committedMutationsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "workProgressEqual": true,
+      "before": {
+        "http": 0,
+        "pointKeys": 0,
+        "queryDocs": 0
+      },
+      "after": {
+        "http": 0,
+        "pointKeys": 0,
+        "queryDocs": 0
+      }
+    }
+  ]
+}

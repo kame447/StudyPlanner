@@ -34,6 +34,8 @@ export interface ObservabilitySystemReadModel {
   components: ObservabilitySystemComponentStatus[];
   aggregation: {
     processedEventCount: number | null;
+    rejectedEventCount?: number | null;
+    lastRejectedEvent?: import('./productObservabilityReadModel').ObservabilityRejectedEvent | null;
     dirtySourceCount: number | null;
     lastRunStartedAt: string | null;
     lastSuccessfulRunAt: string | null;

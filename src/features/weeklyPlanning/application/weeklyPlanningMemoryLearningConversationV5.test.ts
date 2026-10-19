@@ -1,3 +1,4 @@
+import { createPresentedWeeklyPlanningConversation } from '../testUtils/__tests__/weeklyPlanningPresentedConversation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import {
@@ -6,7 +7,6 @@ import {
 } from '../semantic/weeklyPlanningSemanticDocumentV5';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeExecutor';
 import {
-  finalizeWeeklyPlanningStableV5RuntimeGraph,
   resetWeeklyPlanningStableV5RuntimeSessionsForTest,
 } from './weeklyPlanningStableV5RuntimeSession';
 
@@ -21,14 +21,19 @@ vi.mock('../../../lib/aiConfig', () => ({
   }),
   getAiConfigValidationMessage: () => undefined,
 }));
-vi.mock('../../../services/ai/openAiCompatibleClient', () => ({
-  createOpenAiCompatibleClient: () => ({ createChatCompletion: vi.fn() }),
-}));
+vi.mock('../../../services/ai/openAiCompatibleClient', async () => {
+  const { successfulWeeklyPlanningRendererCompletion } = await import(
+    '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture'
+  );
+  return { createOpenAiCompatibleClient: () => ({
+    createChatCompletion: successfulWeeklyPlanningRendererCompletion,
+  }) };
+});
 vi.mock('../semantic/weeklyPlanningSemanticNormalizerV5', () => ({
   createWeeklyPlanningSemanticNormalizerV5: () => ({ normalize: normalizeMock }),
 }));
 
-import { executeWeeklyPlanningStableV5RuntimeTurn } from './weeklyPlanningStableV5InstrumentedRuntimeExecutor';
+let conversation: ReturnType<typeof createPresentedWeeklyPlanningConversation>;
 
 function acceptedResult(document: WeeklyPlanningSemanticDocumentV5) {
   return {
@@ -188,18 +193,11 @@ function turnInput(params: {
   };
 }
 
-function finalize(conversationId: string, requestId: string): void {
-  finalizeWeeklyPlanningStableV5RuntimeGraph({
-    ownerId: 'owner-memory-integration',
-    conversationId,
-    requestId,
-  });
-}
-
 describe('Stable V5 adaptive memory conversation', () => {
   beforeEach(() => {
     resetWeeklyPlanningStableV5RuntimeSessionsForTest();
     normalizeMock.mockReset();
+    conversation = createPresentedWeeklyPlanningConversation();
   });
 
   it('previews only one accepted pace-calibration session before full-scope estimation exists', async () => {
@@ -207,7 +205,7 @@ describe('Stable V5 adaptive memory conversation', () => {
 
     normalizeMock.mockResolvedValueOnce(acceptedResult(memoryPlanningDocument()));
     const firstRequestId = `${conversationId}:1`;
-    const first = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+    const first = await conversation.run(turnInput({
       conversationId,
       requestId: firstRequestId,
       userText: '8月17日から23日で英単語220語を覚える予定を作りたい',
@@ -217,14 +215,13 @@ describe('Stable V5 adaptive memory conversation', () => {
       (record) => record.kind === 'spaced_memory_practice',
     );
     expect(spacing?.status).toBe('pending');
-    finalize(conversationId, firstRequestId);
 
     normalizeMock.mockResolvedValueOnce(acceptedResult(decisionDocument(
       spacing!.id,
       'それでお願いします',
     )));
     const secondRequestId = `${conversationId}:2`;
-    const second = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+    const second = await conversation.run(turnInput({
       conversationId,
       requestId: secondRequestId,
       previousState: first.state,
@@ -232,11 +229,10 @@ describe('Stable V5 adaptive memory conversation', () => {
     }));
     expect(second.draftCandidates).toEqual([]);
     expect(second.state.lastQuestionContext?.intent).toBe('session_duration');
-    finalize(conversationId, secondRequestId);
 
     normalizeMock.mockResolvedValueOnce(acceptedResult(durationDocument(20)));
     const thirdRequestId = `${conversationId}:3`;
-    const third = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+    const third = await conversation.run(turnInput({
       conversationId,
       requestId: thirdRequestId,
       previousState: second.state,
@@ -260,13 +256,12 @@ describe('Stable V5 adaptive memory conversation', () => {
     ]);
     expect(third.stableV5Graph?.effortEstimates.some((estimate) =>
       estimate.targetFactId === originalWorkloadId && estimate.kind === 'total_duration')).toBe(false);
-    finalize(conversationId, thirdRequestId);
 
     normalizeMock.mockResolvedValueOnce(acceptedResult(decisionDocument(
       calibration!.id,
       'まずそれで試したいです',
     )));
-    const fourth = await executeWeeklyPlanningStableV5RuntimeTurn(turnInput({
+    const fourth = await conversation.run(turnInput({
       conversationId,
       requestId: `${conversationId}:4`,
       previousState: third.state,

@@ -189,9 +189,6 @@ export function ActualTrackingTools({
       {mode === 'stopwatch' ? (
         <div className="section-stack">
           <div className="tracking-display">{formatDurationDisplay(stopwatchElapsedMs)}</div>
-          <p className="detail-note">
-            開始からの経過時間を測ります。反映すると、開始時刻と終了時刻を記録入力へセットします。
-          </p>
           <div className="row-actions">
             <button
               className="ghost-button"
@@ -238,9 +235,6 @@ export function ActualTrackingTools({
           </div>
 
           <div className="tracking-display">{formatDurationDisplay(timerRemainingMs)}</div>
-          <p className="detail-note">
-            カウントダウンします。反映すると、開始から実際に進んだ分だけを記録時刻へ入れます。
-          </p>
 
           <div className="row-actions">
             <button

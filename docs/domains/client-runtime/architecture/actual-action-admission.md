@@ -1,7 +1,7 @@
 # Actual action admission
 
 Status: supporting architecture contract
-Updated: 2026-10-05
+Updated: 2026-10-07
 Parent: [Client-first execution requirements](../spec/client-first-execution-requirements.md)
 
 This boundary prevents conflicting same-owner UI operations from being admitted through different screens while an Actual, participating Plan, or shared-material mutation is unresolved. It is a busy/reopen contract, not a queue of future user intents, persistent identity registry, server revision protocol, or replacement for [read projection recovery](planner-read-projection-recovery.md). Issue #437 owns record-ordering execution evidence; Issue #456 owns shared-material admission evidence. Neither Issue is replaced by this contract.
@@ -62,7 +62,7 @@ Delete's offered Undo waits for its expected absence. Equal present rereads do n
 
 Busy/stale errors reject before repository dispatch. A material-bearing failure after dispatch has uncertain effects: preserve the original error and inputs, hold affected claims through authoritative Actual/material repair, and ask the user to inspect the saved state before reopening. Do not automatically replay a create/progress write or label a failed compensation successful. A standalone Actual can survive failed compensation without its progress update; a read exposes that partial state but cannot infer or replay the missing intent. Deliberately creating another standalone record may duplicate an uncertain earlier create.
 
-Study Session uses a per-launch identity, including reopening the same Plan. An older save completion or retained exit callback may close only its own launch, never a newer session or its +7 draft. Busy rejection permits explicit retry after the earlier operation commits; fresh progress resolution then computes22. Uncertain post-dispatch failure requires inspection rather than blind retry.
+Study Session uses explicit planned/unplanned targets and a per-launch identity, including reopening the same Plan. Unplanned sessions dispatch the existing standalone Actual command with no surrogate Plan, and use the local start date. Owner replacement revokes the old launcher and save callback. A currently open session rejects duplicate launch attempts; synchronous save admission prevents same-render duplicate standalone creates. An uncertain-write latch also rejects retained pre-failure save callbacks. An older save completion or retained exit callback may close only its own launch, never a newer session or its +7 draft. Busy rejection permits explicit retry after the earlier operation commits; fresh progress resolution then computes22. Uncertain post-dispatch failure requires inspection rather than blind retry.
 
 Conditional Subject reads during repair are owned by [read projection recovery](planner-read-projection-recovery.md#material-and-subject-dependent-repair), not a second readiness authority.
 

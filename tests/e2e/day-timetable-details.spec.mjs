@@ -29,7 +29,7 @@ const durable = page => page.evaluate(() => Object.fromEntries(Object.keys(local
 for (const mobile of [false, true]) {
   test.describe(mobile ? 'mobile timetable tap' : 'desktop timetable click', () => {
     test.use({ viewport: { width: mobile ? 390 : 1280, height: mobile ? 844 : 900 }, isMobile: mobile, hasTouch: mobile });
-    test('unimported class opens read-only details and the timetable route without changing saved data', async ({ page }, testInfo) => {
+    test('unimported class opens day controls and the timetable route without changing saved data', async ({ page }, testInfo) => {
       const errors = [];
       page.on('pageerror', error => errors.push(String(error)));
       await seed(page);
@@ -65,7 +65,9 @@ for (const mobile of [false, true]) {
         await expect(dialog.getByRole('button', { name: '閉じる', exact: true })).toBeFocused();
       }
       await expect(dialog).toContainText('13:00 - 14:00');
-      await expect(dialog).toContainText('時間割から表示しています');
+      await expect(dialog).not.toContainText('時間割から表示しています');
+      await expect(dialog.getByRole('button', { name: 'この日の時間を変更', exact: true })).toBeVisible();
+      await expect(dialog.getByRole('button', { name: 'この日だけ削除', exact: true })).toBeVisible();
       await expect(dialog.getByRole('button', { name: '記録を保存', exact: true })).toHaveCount(0);
       await expect(dialog.getByRole('button', { name: '予定を編集', exact: true })).toHaveCount(0);
       // Visibility can become true during the bottom-sheet entrance animation.
@@ -101,6 +103,127 @@ for (const mobile of [false, true]) {
       await expect(dialog).toHaveCount(0);
       expect(await durable(page)).toEqual(before);
       expect(errors).toEqual([]);
+    });
+  });
+}
+
+for (const width of [390, 1280]) {
+  test.describe(`timetable recording ${width}px`, () => {
+    test.use({ viewport: { width, height: 900 }, contextOptions: { reducedMotion: 'reduce' } });
+    test('records the projected class with its saved identity and keeps one-off deletion wording', async ({ page }, testInfo) => {
+      await seed(page); await page.goto('/');
+      await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: '予定', exact: true }).click();
+      await page.getByRole('tab', { name: '日', exact: true }).click();
+      const card = title => page.locator('.timeline-plan-block').filter({ hasText: title });
+      await card('保存済み予定').click();
+      const savedDialog = page.getByRole('dialog', { name: '保存済み予定の操作', exact: true });
+      await expect(savedDialog.getByRole('button', { name: '予定を削除', exact: true })).toBeVisible();
+      await expect(savedDialog).not.toContainText('この日だけ削除');
+      await expect(savedDialog.locator('.schedule-action-item.danger')).toHaveCount(1);
+      await page.screenshot({ path: testInfo.outputPath(`single-event-delete-${width}.png`), animations: 'disabled' });
+      await savedDialog.getByRole('button', { name: '閉じる', exact: true }).click();
+      await card('未取込の授業').click();
+      const projected = page.getByRole('dialog', { name: '未取込の授業の詳細', exact: true });
+      await expect(projected.getByRole('button', { name: 'この日だけ削除', exact: true })).toBeVisible();
+      await projected.getByRole('button', { name: '予定に反映して記録', exact: true }).click();
+      const record = page.locator('.schedule-record-sheet');
+      await expect(record).toContainText('未取込の授業');
+      await expect(record).toContainText(E2E_TODAY);
+      await page.screenshot({ path: testInfo.outputPath(`timetable-record-${width}.png`), animations: 'disabled' });
+      // Plan writes use canonical scheduleEvents; the migration input array is not a live mirror.
+      const savedEvent = await page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]')
+        .find(value => value.provenance?.sourceType === 'timetable' && value.provenance?.sourceId === 'template'));
+      expect(savedEvent).toMatchObject({ userId: 'day-detail-owner', title: '未取込の授業', date: E2E_TODAY,
+        startTime: '13:00', endTime: '14:00', provenance: { sourceType: 'timetable', sourceId: 'template', legacy: { kind: 'plan' } } });
+      const savedPlanId = savedEvent.provenance.legacy.id;
+      expect(savedPlanId).toEqual(expect.any(String));
+      await record.getByRole('button', { name: '記録保存', exact: true }).click();
+      const readActuals = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]'));
+      const expectedActual = { userId: 'day-detail-owner', planId: savedPlanId, title: '未取込の授業',
+        occurrenceDate: E2E_TODAY, actualStartTime: '13:00', actualEndTime: '14:00' };
+      await expect.poll(readActuals).toEqual([expect.objectContaining(expectedActual)]);
+      await expect(record).toHaveCount(0);
+      await page.reload();
+      await expect.poll(readActuals).toEqual([expect.objectContaining(expectedActual)]);
+    });
+  });
+}
+
+for (const width of [390, 1280]) {
+  test.describe(`actual source retention ${width}px`, () => {
+    test.use({ viewport: { width, height: 900 }, contextOptions: { reducedMotion: 'reduce' } });
+    test('keeps excluded major-event actuals out of progress after whole-event deletion and reload', async ({ page }, testInfo) => {
+      await seed(page); await page.goto('/');
+      const nav = name => page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name, exact: true });
+      const readActuals = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.actuals') ?? '[]'));
+      const readSource = () => page.evaluate(() => JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1') ?? '[]')
+        .find(event => event.provenance?.legacy?.kind === 'month-event' && event.provenance.legacy.id === 'event'));
+      const setGeneralIncluded = async included => {
+        await page.getByRole('button', { name: 'メニューを開く', exact: true }).click();
+        const settings = page.getByRole('main', { name: 'アプリ設定' });
+        await settings.getByRole('checkbox', { name: '月の主要予定を進捗に含める', exact: true }).setChecked(included);
+        await settings.getByRole('button', { name: '戻る', exact: true }).click();
+      };
+      const expectExcluded = async () => {
+        await expect(page.locator('.weekly-progress-ring')).toHaveAttribute('aria-label', '週全体の予定に対する達成率 0%');
+        // Check the full-week bars, not the elapsed-time summary: this event is later today.
+        await expect(page.locator('.weekly-progress-day[title$=" / 実績 0m"]')).toHaveCount(7);
+      };
+
+      await nav('予定').click();
+      await page.getByRole('tab', { name: '日', exact: true }).click();
+      await page.locator('.timeline-plan-block').filter({ hasText: '月予定の対照' }).click();
+      await page.getByRole('dialog', { name: '月予定の対照の操作', exact: true })
+        .getByRole('button', { name: '記録を保存', exact: true }).click();
+      const record = page.locator('.schedule-record-sheet');
+      await expect(record).toContainText('月予定の対照');
+      await record.getByRole('button', { name: '記録保存', exact: true }).click();
+      await expect.poll(readActuals).toEqual([expect.objectContaining({
+        userId: 'day-detail-owner', planId: 'event', title: '月予定の対照', occurrenceDate: E2E_TODAY,
+        actualStartTime: '16:00', actualEndTime: '17:00',
+        progressSource: { kind: 'general-event', sourceId: 'event' },
+      })]);
+      await expect(record).toHaveCount(0);
+      const savedActuals = await readActuals();
+      await expect.poll(readSource).toMatchObject({ title: '月予定の対照' });
+
+      await nav('ホーム').click();
+      await setGeneralIncluded(true);
+      // Positive control: the stored hour is visible before we exclude major events.
+      await expect(page.locator('.weekly-progress-day[title$=" / 実績 1h"]')).toHaveCount(1);
+      await setGeneralIncluded(false);
+      await expectExcluded();
+      expect(await page.evaluate(() => JSON.parse(localStorage.getItem('study-planner-study-progress:day-detail-owner'))))
+        .toMatchObject({ includeGeneralEvents: false });
+
+      await nav('予定').click();
+      await page.getByRole('tab', { name: '月', exact: true }).click();
+      await page.getByRole('grid', { name: '月間カレンダー' }).locator('[aria-selected="true"]').click();
+      await page.locator('.month-day-sheet-event').filter({ hasText: '月予定の対照' }).click();
+      const editor = page.locator('.month-event-modal');
+      await expect(editor.getByLabel('タイトル', { exact: true })).toHaveValue('月予定の対照');
+      // The day action only excludes an occurrence. Delete the saved source in the month editor.
+      page.once('dialog', async dialog => {
+        expect(dialog.message()).toBe('この主要予定を削除しますか？');
+        await dialog.accept();
+      });
+      await editor.getByRole('button', { name: '削除', exact: true }).click();
+      await expect(editor).toHaveCount(0);
+      await expect.poll(readSource).toBeUndefined();
+      await expect.poll(readActuals).toEqual(savedActuals);
+      await nav('ホーム').click();
+      await expectExcluded();
+
+      await page.reload();
+      await expectExcluded();
+      await expect.poll(readSource).toBeUndefined();
+      await expect.poll(readActuals).toEqual(savedActuals);
+      // Re-establish loaded data after reload so an empty initial projection cannot pass.
+      await setGeneralIncluded(true);
+      await expect(page.locator('.weekly-progress-day[title$=" / 実績 1h"]')).toHaveCount(1);
+      await setGeneralIncluded(false);
+      await expectExcluded();
+      await page.screenshot({ path: testInfo.outputPath(`deleted-event-progress-${width}.png`), animations: 'disabled' });
     });
   });
 }

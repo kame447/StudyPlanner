@@ -134,6 +134,11 @@ export const THEME_PALETTE_OPTIONS: ThemePaletteOption[] = (
   swatches: definition.swatches,
 }));
 
+export function isThemePalette(value: unknown): value is ThemePalette {
+  return typeof value === 'string'
+    && Object.prototype.hasOwnProperty.call(THEME_PALETTE_DEFINITIONS, value);
+}
+
 export function getThemePaletteCssVariables(
   themePalette: ThemePalette,
   themeMode: ThemeMode,

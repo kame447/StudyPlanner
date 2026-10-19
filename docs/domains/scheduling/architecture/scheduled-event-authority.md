@@ -51,6 +51,12 @@ localStorage fallbackも同じcanonical/legacy分離を使うが、これはdeve
 
 local/browser回帰では、legacy `studyplanner.plans` をmigration入力としてseedしても、cutover後の保存結果はcanonical `studyplanner.scheduleEvents.v1` の `ScheduleEvent`、または実repository facadeから再取得した `Plan` で検証する。凍結されたlegacy配列に新規書込が反映されないことを保存失敗と誤認せず、保存先の実schemaとowner/IDを確認し、reload後も対象の予定や教材への参照が保持されることを確かめる。
 
+## General-event display color
+
+一般予定の任意 `MonthEvent.color` / draft color は `green | orange | purple | blue | pink` の名前付きキーであり、canonical `ScheduleEvent.general.color` へ往復する。palette の実際の色値は `scheduleEventColor` の既存5色が所有し、保存値を任意CSSとして利用しない。色未指定または未知値は従来のsource identityに基づく自動色を維持する。既存データの書換えやschema version更新は不要。
+
+`ScheduleOccurrence.color` に選択キーを投影し、月・週・日の表示は共通色解決を使用する。色はbusy/recurrence/owner/identityを変更しない。編集draft・複製・繰返しのsingle/future分割は選択色を保持し、分割前の予定の色は変更しない。「自動」への変更はdraftに明示的な `color: undefined` を置く。canonical保存ではfieldを省略し、legacy Firestoreのmerge保存だけは既存overrideを `deleteField()` で取り除く。
+
 ## Identity
 
 canonical persistence IDはlegacy source kindを含める。
@@ -76,6 +82,8 @@ recurrence、excluded date、multi-day span、24:00 / 日跨ぎの意味はconsu
 - compatibility Plan recurrenceは既存canonical recurrence helperからoccurrenceへ展開する。
 - compatibility MonthEvent recurrence / exclusion / multi-day spanはMonthEvent helperからoccurrenceへ展開する。
 - downstream consumerは展開済みoccurrenceのstart/endを基準にする。
+
+同一日付の時刻付きMonthEventで開始時刻が`00:00`ではない場合、終了`00:00`は同日の`24:00`と同じ翌日`00:00`の排他的終端へ投影する。明示した後日の`endDate`と終了`00:00`はその日時を保持し、さらに1日を足さない。canonical occurrenceは半開区間であり、終端に接するだけの日には重ならない。consumer固有の配置bufferは既存の別契約に従う。投影は保存済みの日付・時刻・source identityを書き換えない。既存の終日表現とbusy/freeの扱いはこの時刻付き境界修正とは別に維持する。
 
 Phase 3はpersistence authorityを変えたが、既存recurrenceの意味を変更するmigrationではない。
 
@@ -123,6 +131,13 @@ kind/details = study-specific / general-specific additional data
 - 上部laneでも通常timed cardと同程度の可読性を維持し、利用可能幅を使う前に不要な省略を行わない。
 
 ### Day
+
+- 未取り込みの時間割詳細から「この日の時間を変更」できる。確定時に既存の時間割取込provenanceを持つ単発canonical Planを一度だけ保存し、元template・別日・Actualは変更しない。grouped授業のsourceIdと元日のsourceDateを保つため、元時刻と変更時刻を二重表示・二重busyにしない。終了00:00は24:00へ正規化する。入力取消しは未保存、保存中は重複/閉じる/競合操作を遮断し、失敗時は入力を保持する。古い対象、owner、保存結果不明への入場保護は当日取消しと共有する。
+- 日カレンダーには、月とは独立した「日カレンダーに時間割を表示」設定を設ける。初期値はON、ユーザー別ブラウザ保存。共通projection後に未取り込みの時間割だけを表示から除き、保存済み予定・実績・月/週/Home・AIのbusy判定は変更しない。
+- 日詳細の「この日だけ削除」は、表示設定とは別の永続的なoccurrence取消し。元Plan/MonthEventと系列・別日・ActualのID/linkは保持し、選択occurrenceの開始日に対する例外だけを保存する。複数日に跨る場合は開始〜終了日を明示し「この回だけ削除」と表示して、開始日単位の一つのoccurrence全体を対象にする（当日の切片だけは削除しない）。系列全体の削除へ拡大しない。既存の全削除/範囲選択経路のdependent削除契約は変更しない。
+- 未取り込み時間割の取消しは、template専用の当日例外commandで扱い、通常Planのdrag/edit/deleteへ投影IDを送らない。`ScheduleTemplate.excludedDates` はoptionalで未設定は空。連続コマをまとめたoccurrenceは構成templateすべてを既存のowner検証付きatomic timetable mutationで更新する。時間割マスタの行自体は残り、編集/import/学期ID整合化でも例外を保持する。
+- 当日例外は共通の時間割有効日判定に置き、Month/Week/Day/Home、取り込み候補、AIのbusy/配置判定に同じ結果を返す。取り込み済み・移動済みPlanのsourceDate/sourceId優先と重複抑止は維持する。
+- 取消し後も日表示は実績のoccurrenceDateから元の予定情報を引き、実績を一度だけ表示して記録編集を維持する。未保存の失敗時は元の表示を残して再試行できる。保存結果が不明な失敗時は該当sourceを再読込し、修復が確定するまで取消し・Undo・同sourceの編集/削除/移動を再送しない。Undoは同じowner・この画面が現在観測している変更後source内容が維持されている場合だけ戻し、観測済みの新しい編集や削除を上書きしない。未観測の他端末更新に対する新しい競合制御は追加せず、既存repositoryの責任境界を維持する。
 
 - 当日表示可否と当日時間sliceは`ScheduleOccurrence`から決める。
 - 終日または日を跨ぐoccurrenceはhourly grid上部の専用領域へ表示し、通常timed occurrenceとActualの時間軸を圧迫しない。

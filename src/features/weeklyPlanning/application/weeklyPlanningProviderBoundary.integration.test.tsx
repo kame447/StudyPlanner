@@ -1,3 +1,21 @@
+import { isWeeklyPlanningFactActiveV5 } from '../semantic/weeklyPlanningFactLifecycleV5';
+import { materialIdentityDocument, materialIdentityEffortFixture, MATERIAL_IDENTITY_TEXT } from '../testUtils/__tests__/weeklyPlanningMaterialIdentityFixture';
+import { classifyWeeklyPlanningApprovalAvailability } from './weeklyPlanningApprovalAvailability';
+import { createUserConfirmedPlanningContextRecordV1, hydrateUserPlanningContextSnapshotV1, exportUserPlanningContextSnapshotV1 } from '../../userPlanningContext/userPlanningContextSpace';
+import { createEmptyUserPlanningContextSnapshotV1 } from '../../userPlanningContext/userPlanningContextTypes';
+import { recordWeeklyPlanningStableV5DebugTrace, takeWeeklyPlanningStableV5DebugTrace } from '../trace/weeklyPlanningStableV5DebugTrace';
+import type { StudyMaterial, PlanDraft } from '../../../types/domain';
+import { createPlanFromDraft } from '../../../domain/planner';
+import { createLocalPlannerRepository } from '../../../repositories/createLocalPlannerRepository';
+import { loadWeeklyPlanningStableV5PersistedSession } from './weeklyPlanningStableV5SessionStorage';
+import { loadWeeklyPlanningApprovalOperations } from './weeklyPlanningApprovalLedgerStorage';
+import { createNoopWeeklyPlanningTraceRepository } from '../trace/weeklyPlanningTraceRepository';
+import { recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5TraceRuntimeForTest, resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest } from '../trace/weeklyPlanningStableV5TraceRuntime';
+import { listWeeklyPlanningTraceOutboxItems } from '../trace/weeklyPlanningTraceOutbox';
+import { WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS, measureWeeklyPlanningTraceJsonBytes } from '../../../../shared/weeklyPlanningTraceContract';
+import { prepareWeeklyPlanningTraceServerWrite } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
+import { loadWeeklyPlanningRuntimeModule } from './weeklyPlanningRuntimeModule';
+import * as failureDiagnostics from '../semantic/weeklyPlanningStableV5FailureDiagnostics';
 import { createRef, forwardRef, useImperativeHandle } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -42,20 +60,23 @@ function semantic(): WeeklyPlanningSemanticDocumentV5 {
 interface RequestBody { messages: Array<{ role: string; content: string }>; response_format?: { json_schema?: { name?: string } } }
 interface RequestRecord { schema: string; body: RequestBody; signal: AbortSignal | null | undefined }
 let renderer: ReactTestRenderer | undefined; let restoreStorage: (() => void) | undefined;
-let calls: RequestRecord[]; let mode: 'valid' | 'repair' | 'exhausted' | 'timeout' | 'network'; let semanticCount: number;
+let calls: RequestRecord[]; let mode: 'valid' | 'repair' | 'exhausted' | 'timeout' | 'network' | 'repair_network'; let semanticCount: number;
 let started: ReturnType<typeof createDeferred<void>>;
 let responseDocument: WeeklyPlanningSemanticDocumentV5;
+let recoveryVerdict: 'yes' | 'no';
+const RECOVERY_TEXT = '今回の内容は計画へ反映していません。これまでの内容と前の候補はそのままです。今回伝えたいことをもう少し詳しく教えてもらえますか？';
 const gateway = () => vi.spyOn(weeklyPlanningTurnRuntimeGateway, 'execute'); // Call through to the real executor.
 function resetRuntime() {
+  resetWeeklyPlanningStableV5TraceRuntimeForTest();
   resetWeeklyPlanningStableV5RuntimeSessionsForTest(); clearWeeklyPlanningSessionRuntime();
   resetUserPlanningContextRuntimeForTestV1(); resetWeeklyPlanningStableV5DebugTraceForTest();
   resetOpenAiCompatibleClientRequestBudgetForTest(); setWeeklyPlanningTraceRepositoryForTests(undefined);
 }
-beforeEach(() => {
+beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] }); vi.setSystemTime('2026-08-16T00:00:00Z');
   vi.stubEnv('VITE_AI_PROVIDER', 'openai'); vi.stubEnv('VITE_AI_BASE_URL', 'https://provider.fixture.test/v1');
   vi.stubEnv('VITE_AI_MODEL', 'fixture'); vi.stubEnv('VITE_AI_API_KEY', 'fixture-key'); vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'false');
-  resetRuntime(); responseDocument = semantic(); calls = []; mode = 'valid'; semanticCount = 0; started = createDeferred<void>();
+  resetRuntime(); recoveryVerdict = 'yes'; responseDocument = semantic(); calls = []; mode = 'valid'; semanticCount = 0; started = createDeferred<void>();
   vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     expect(String(url)).toBe('https://provider.fixture.test/v1/chat/completions');
     const body = JSON.parse(String(init?.body)) as RequestBody; const schema = body.response_format?.json_schema?.name ?? '';
@@ -63,12 +84,12 @@ beforeEach(() => {
     let content: string;
     if (schema.includes('weekly_planning_semantic')) {
       semanticCount += 1;
-      if (mode === 'network') throw new TypeError('Failed to fetch');
+      if (mode === 'network' || (mode === 'repair_network' && semanticCount === 2)) throw new TypeError('Failed to fetch');
       if (mode === 'timeout') {
         const signal = init?.signal; expect(signal).toBeDefined(); started.resolve();
         return new Promise<Response>((_resolve, reject) => signal!.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true }));
       }
-      content = mode === 'exhausted' ? (semanticCount === 1 ? 'not-json' : '{}')
+      content = mode === 'exhausted' || mode === 'repair_network' ? (semanticCount === 1 ? 'not-json' : '{}')
         : mode === 'repair' && semanticCount === 1 ? 'not-json' : JSON.stringify(responseDocument);
     } else if (schema === 'weekly_planning_focused_authorization_v5') {
       content = JSON.stringify({ decision: 'create_plan' });
@@ -76,11 +97,23 @@ beforeEach(() => {
       const prompt = JSON.parse(body.messages[body.messages.length - 1].content);
       const decision = prompt.applicationDecision;
       content = JSON.stringify({ actionId: prompt.actionId, actionKind: decision.actionKind, questionCode: decision.questionCode,
-        groundingAcknowledgement: null, text: `内容を確認してください。${decision.previewPromotionControlLabel ?? ''}` });
+        groundingAcknowledgement: null, text: decision.recovery ? RECOVERY_TEXT : `内容を確認してください。${decision.previewPromotionControlLabel ?? ''}` });
+    } else if (schema === 'weekly_planning_recovery_verdict') {
+      const prompt = JSON.parse(body.messages[body.messages.length - 1].content);
+      content = JSON.stringify({ actionId: prompt.actionId, questionMatches: 'yes',
+        planningDetailsNotApplied: 'yes', acceptedStateUnchanged: 'yes', retainedPreviewUnchanged: 'yes',
+        noUnsupportedClaims: recoveryVerdict });
     } else { throw new Error(`Unexpected provider schema: ${schema}`); }
-    return new Response(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }),
+    return new Response(JSON.stringify({ model: JSON.parse(String(init?.body)).model, choices: [{ message: { content } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }),
       { status: 200, headers: { 'content-type': 'application/json' } });
   }));
+  // This suite measures provider/preview/save behavior; code-load retry has its own tests.
+  // Configure the real runtime's environment and transport before loading it, without a turn.
+  const codeLoadStartedAt = performance.now();
+  await loadWeeklyPlanningRuntimeModule();
+  expect(fetch).not.toHaveBeenCalled();
+  expect(calls).toEqual([]);
+  console.info('[ProviderBoundary fixture] runtime code ready', { elapsedMs: performance.now() - codeLoadStartedAt, providerCalls: calls.length });
 });
 afterEach(() => {
   act(() => renderer?.unmount()); renderer = undefined; restoreStorage?.(); restoreStorage = undefined;
@@ -127,7 +160,15 @@ it('repairs an invalid HTTP completion through the real normalizer before produc
   const execution = await spy.mock.results[0].value; expect(execution.failure).toBeUndefined(); expect(execution.observability?.repairUsed).toBe(true);
   expect(ref.current!.state.previewCandidates!.length).toBeGreaterThan(0); unsaved();
 });
-it.each(['exhausted', 'timeout', 'network'] as const)('preserves accepted preview after %s and admits a later healthy turn', async failureMode => {
+it.each([
+  { failureMode: 'exhausted', verdict: 'yes' },
+  { failureMode: 'exhausted', verdict: 'no' },
+  { failureMode: 'timeout', verdict: 'yes' },
+  { failureMode: 'network', verdict: 'yes' },
+  { failureMode: 'repair_network', verdict: 'yes' },
+] as const)('preserves accepted preview after $failureMode / recovery verdict $verdict and admits a later healthy turn', async ({ failureMode, verdict }) => {
+  recoveryVerdict = verdict;
+  const recordedFailures = vi.spyOn(failureDiagnostics, 'recordWeeklyPlanningStableV5FailureDiagnostics');
   const spy = gateway(); const { ref, submit, unsaved } = await mount(); await submit(); unsaved();
   const graph = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
   const intake = structuredClone(ref.current!.state.intakeState); const preview = structuredClone(ref.current!.state.previewCandidates);
@@ -141,11 +182,46 @@ it.each(['exhausted', 'timeout', 'network'] as const)('preserves accepted previe
   } else result = await submit();
   if (failureMode === 'network') expect(calls[0].signal?.aborted).toBe(false);
   const providerFailure = failureMode !== 'exhausted';
+  const expectedAttempts = failureMode === 'exhausted' || failureMode === 'repair_network' ? 2 : 1;
   expect(result.accepted).toBe(true); expect(result.draftCandidates).toEqual([]);
   const execution = await spy.mock.results[1].value;
   expect(execution.failure).toMatchObject({ code: providerFailure ? 'stable_v5_provider_failure' : 'stable_v5_normalization_rejected',
-    diagnostics: { attemptCount: providerFailure ? 1 : 2, repairAttempted: !providerFailure } });
-  expect(semanticCount).toBe(providerFailure ? 1 : 2); expect(calls.some(call => call.schema.includes('dialogue'))).toBe(false);
+    diagnostics: { attemptCount: expectedAttempts, repairAttempted: expectedAttempts === 2 } });
+  expect(semanticCount).toBe(expectedAttempts);
+  expect(recordedFailures).toHaveBeenCalledTimes(1);
+  const recorded = recordedFailures.mock.calls[0][0];
+  expect(recorded.status).toBe(providerFailure ? 'provider_failure' : 'normalization_rejected');
+  expect(recorded.diagnostics.providerDispatch).toEqual({
+    count: expectedAttempts, anyFailure: providerFailure, complete: true,
+  });
+  if (providerFailure) {
+    expect(recorded.diagnostics.providerError).not.toBeNull();
+    expect(calls.map(call => call.schema)).toEqual(Array(expectedAttempts).fill('weekly_planning_semantic_document_v5'));
+    expect(execution.responseSource).toBe('system');
+    expect(execution.recoveryPresentation).toBeUndefined();
+  } else {
+    expect(recorded.diagnostics.providerError).toBeNull();
+    expect(calls.map(call => call.schema)).toEqual([
+      'weekly_planning_semantic_document_v5', 'weekly_planning_semantic_document_v5',
+      'weekly_planning_stable_v5_dialogue_response', 'weekly_planning_recovery_verdict',
+    ]);
+    const generatedFor = JSON.parse(calls[2].body.messages[calls[2].body.messages.length - 1].content);
+    const obligations = { planningDetailsNotApplied: true, acceptedStateUnchanged: true, retainedPreviewUnchanged: true };
+    expect(generatedFor.applicationDecision).toMatchObject({
+      actionKind: 'status', questionCode: null, recovery: obligations,
+    });
+    expect(JSON.parse(calls[3].body.messages[calls[3].body.messages.length - 1].content)).toEqual({
+      actionId: generatedFor.actionId, recovery: obligations, question: null, text: RECOVERY_TEXT,
+    });
+    expect(execution.responseSource).toBe(verdict === 'yes' ? 'ai' : 'system');
+    if (verdict === 'yes') {
+      expect(execution.message).toBe(RECOVERY_TEXT);
+      expect(execution.recoveryPresentation).toEqual({ question: null });
+    } else {
+      expect(execution.message).not.toBe(RECOVERY_TEXT);
+      expect(execution.recoveryPresentation).toBeUndefined();
+    }
+  }
   expect(ref.current!.state.pendingTurn).toBeUndefined(); expect(ref.current!.state.intakeState).toEqual(intake); expect(ref.current!.state.previewCandidates).toEqual(preview);
   expect(ref.current!.exportConversationSnapshot()!.graph).toEqual(graph); unsaved();
   mode = 'valid'; semanticCount = 0; responseDocument = { ...semantic(), planningIntent: 'discuss', planningWindow: null, tasks: [] };
@@ -233,4 +309,359 @@ it('consumes real Worker Jev-to-Luna fallback through focused authorization befo
   }
   await act(async () => { await ref.current!.approveDraftBlocks(); });
   expect(database.metrics.planWrites).toBe(candidates.length);
+});
+
+it.each(['preview', 'draft'] as const)('binds the current owner bookshelf through one real acceptance and preserves %s on provider failure', async retained => {
+  const userText = '8月17日から23日で金フレ20語を1語2分で計画してください';
+  const shelf: StudyMaterial = {
+    id: 'gold-phrase', userId: OWNER, name: '金フレ', aliases: ['金フレ'],
+    subjectId: 'english', subjectName: '英語', status: 'active', paceEnabled: true,
+    progressUnit: 'word', totalUnits: 1000, currentUnit: 200, targetDate: '2026-08-23',
+    createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-15T00:00:00Z',
+  };
+  const studyMaterials = [shelf, { ...shelf, id: 'foreign-shelf', userId: 'another-owner', name: '非所有教材' }];
+  const materialBefore = structuredClone(studyMaterials);
+  const document = semantic();
+  document.tasks[0] = {
+    ...document.tasks[0], title: '金フレ', existingPublicId: null,
+    sourceText: '金フレ20語を1語2分', workloads: [],
+    study: { purpose: 'self_study', contextLabel: '金フレ', components: [{
+      localId: 'material', existingPublicId: shelf.id, parentLocalId: null,
+      role: 'material', label: '金フレ', sourceText: '金フレ20語',
+      workloads: [{ ...document.tasks[0].workloads[0], unitCode: 'word', unitLabel: '語', sourceText: '金フレ20語' }],
+    }] },
+    effortEstimates: [{ ...document.tasks[0].effortEstimates[0], unitCode: 'word', sourceText: '1語2分' }],
+  };
+  responseDocument = document;
+  const rawProviderResponse = JSON.stringify(document);
+  const spy = gateway();
+  const storage = createMemoryStorageHarness(); restoreStorage = installWeeklyPlanningTestStorage(storage.storage);
+  const planRepository = createLocalPlannerRepository(storage.storage);
+  const save = vi.fn(async (draft: PlanDraft) => planRepository.upsertPlan(createPlanFromDraft(draft)));
+  const ref = createRef<WeeklyPlanningApplication>();
+  const renderMaterial = async () => {
+    const plans = await planRepository.getPlans(OWNER);
+    await act(async () => { renderer = create(<Harness ref={ref} userId={OWNER} selectedDate={WEEK}
+      plans={plans} studyMaterials={studyMaterials} scheduleTemplates={[]}
+      isPlannerDataSnapshotCurrent={() => true} plannerDataAvailability={createReadyPlannerDataAvailability(OWNER)}
+      saveWeeklyApprovedPlan={save} />); });
+  };
+  const reloadMaterial = async () => {
+    await act(async () => { renderer!.unmount(); }); renderer = undefined;
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest(); clearWeeklyPlanningSessionRuntime();
+    await renderMaterial();
+  };
+  const checkpoint = () => loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK })!;
+  const traceRepository = createNoopWeeklyPlanningTraceRepository();
+  const append = vi.spyOn(traceRepository, 'appendEntries').mockRejectedValueOnce(new Error('material trace append failed'));
+  setWeeklyPlanningTraceRepositoryForTests(traceRepository);
+  vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
+  await renderMaterial();
+  await act(async () => { expect((await ref.current!.submitTurn(userText)).accepted).toBe(true); });
+  expect(calls.map(call => call.schema)).toEqual([
+    'weekly_planning_semantic_document_v5', 'weekly_planning_stable_v5_dialogue_response',
+  ]);
+  expect(semanticCount).toBe(1); expect(JSON.stringify(responseDocument)).toBe(rawProviderResponse);
+  const execution = await spy.mock.results[0].value;
+  expect(execution.failure).toBeUndefined(); expect(execution.responseSource).toBe('ai');
+  const pending = spy.mock.calls[0][0].pending;
+  const request = calls[0].body;
+  for (const message of request.messages) expect(new TextEncoder().encode(message.content).byteLength).toBeLessThanOrEqual(20_000);
+  const providerInput = JSON.parse(request.messages[request.messages.length - 1].content);
+  expect(providerInput.publicStateSummary.registeredMaterials).toEqual([
+    expect.objectContaining({ materialId: shelf.id, name: shelf.name, remainingUnits: 800 }),
+  ]);
+  expect(JSON.stringify(providerInput)).not.toContain('foreign-shelf');
+  const graph = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
+  expect(graph.tasks).toHaveLength(1); expect(graph.components).toHaveLength(1);
+  expect(graph.workloads).toHaveLength(1); expect(graph.effortEstimates).toHaveLength(1);
+  expect(graph.appliedTurnKeys).toHaveLength(1);
+  expect(graph.components[0]).toMatchObject({ taskId: graph.tasks[0].id, role: 'material', label: '金フレ' });
+  expect(graph.workloads[0]).toMatchObject({ taskId: graph.tasks[0].id, componentId: graph.components[0].id,
+    quantityRole: 'target', amount: 20, unitCode: 'word' });
+  expect(graph.effortEstimates[0]).toMatchObject({ targetFactId: graph.workloads[0].id, minutes: 2 });
+  const factIds = graph.factLifecycles.map(fact => fact.factId);
+  expect(factIds).not.toContain(shelf.id); expect(factIds).not.toContain('foreign-shelf');
+  const roots = [graph.tasks[0].id, graph.components[0].id, graph.workloads[0].id, graph.effortEstimates[0].id];
+  const candidates = structuredClone(ref.current!.state.previewCandidates!);
+  expect(candidates).toEqual([expect.objectContaining({ title: '金フレ 20語', durationMinutes: 45,
+    stableV5Metadata: expect.objectContaining({ sourceFactRefs: roots }) })]);
+  expect(measureWeeklyPlanningTraceJsonBytes(candidates[0])).toBeLessThanOrEqual(1_000);
+  expect(measureWeeklyPlanningTraceJsonBytes(providerInput.publicStateSummary)).toBeLessThanOrEqual(3_000);
+  expect(new TextEncoder().encode(rawProviderResponse).byteLength).toBeLessThanOrEqual(4_000);
+  expect(checkpoint().graph).toEqual(graph); expect(checkpoint().planningState.previewCandidates).toEqual(candidates);
+  expect(save).not.toHaveBeenCalled(); expect(await planRepository.getPlans(OWNER)).toEqual([]);
+
+  // The real controller generated this trace. The failed append's actual input
+  // is read from persistent outbox storage, not a reconstructed semantic event.
+  expect(append).toHaveBeenCalledTimes(1);
+  const queued = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: pending.conversationId });
+  expect(queued).toHaveLength(1); expect(queued[0].input.requestId).toBe(pending.requestId);
+  const persistedOutbox = JSON.parse(storage.storage.getItem('studyplanner.weeklyPlanning.trace.outbox.v1')!);
+  expect(persistedOutbox.items).toEqual(queued);
+  expect(queued[0].input.debugTraceEvents).toContainEqual(expect.objectContaining({
+    stage: 'semantic_provider_request', data: expect.objectContaining({
+      attempt: 'initial', request: expect.objectContaining({ messages: request.messages }),
+    }),
+  }));
+  expect(queued[0].input.debugTraceEvents).toContainEqual(expect.objectContaining({
+    stage: 'semantic_canonicalization_evaluated', data: expect.objectContaining({
+      result: { status: 'applied' }, localReferenceResolution: expect.objectContaining({
+        task: graph.tasks[0].id, material: graph.components[0].id, work: graph.workloads[0].id,
+      }),
+    }),
+  }));
+  resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+  const reread = listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: pending.conversationId });
+  expect(reread).toEqual(persistedOutbox.items);
+  await recordWeeklyPlanningStableV5TurnTrace(reread[0].input);
+  expect(append).toHaveBeenCalledTimes(2);
+  expect(listWeeklyPlanningTraceOutboxItems({ userId: OWNER, conversationId: pending.conversationId })).toEqual([]);
+  const expectedDiagnostic = {
+    kind: 'turn_diagnostic', requestId: pending.requestId, logicalConversationId: pending.conversationId,
+    aiInterpreter: {
+      input: { planningStateSummary: expect.objectContaining({ registeredMaterials: providerInput.publicStateSummary.registeredMaterials }) },
+      rawResponses: [expect.objectContaining({ attempt: 'initial', text: rawProviderResponse, truncated: false })],
+      structuredResults: [expect.objectContaining({ attempt: 'initial', accepted: true, errors: [] })],
+    },
+    decision: { finalOperations: [expect.objectContaining({ added: expect.arrayContaining([
+      { kind: 'component', id: graph.components[0].id }, { kind: 'workload', id: graph.workloads[0].id },
+    ]) })] },
+    constraintContext: { scheduler: { preview: { candidateCount: 1, representativeCandidates: [
+      expect.objectContaining({ title: candidates[0].title, stableV5Metadata: expect.objectContaining({ sourceFactRefs: roots }) }),
+    ] } } },
+  };
+  for (const [write] of append.mock.calls) {
+    expect(write.entries).toHaveLength(1); expect(write.entries[0]).toMatchObject(expectedDiagnostic);
+    expect(measureWeeklyPlanningTraceJsonBytes(write.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const prepared = prepareWeeklyPlanningTraceServerWrite({ session: { ...write.session }, entries: write.entries.map(entry => ({ ...entry })) },
+      { token: `wpt_${'b'.repeat(43)}`, epoch: '101' }, {
+        sessionId: 'weekly-trace-223e4567-e89b-52d3-a456-426614174000', logicalConversationId: pending.conversationId,
+      }, new Date().toISOString());
+    expect(prepared.entries).toHaveLength(1); expect(prepared.entries[0]).toMatchObject(expectedDiagnostic);
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+  }
+  // Derive transport-extension probes from the real generated input event.
+  // Only future fields are added; these are not additional planning/provider turns.
+  const actualInputEvent = reread[0].input.debugTraceEvents!.find(event => event.stage === 'semantic_pipeline_input');
+  expect(actualInputEvent).toBeDefined();
+  for (const oversized of [false, true]) {
+    const requestId = `${pending.requestId}:material-extension:${oversized}`;
+    const data = structuredClone(actualInputEvent!.data) as {
+      publicStateSummary: { registeredMaterials: Array<Record<string, unknown>> };
+    };
+    data.publicStateSummary.registeredMaterials[0].futureRegisteredMaterialField = 'material-projection-future-sentinel';
+    if (oversized) data.publicStateSummary.registeredMaterials[0].futureOversizedMaterialFields = [
+      'HEAD-' + 'あ'.repeat(8000) + '-TAIL', 'HEAD-' + 'あ'.repeat(8000) + '-TAIL',
+    ];
+    recordWeeklyPlanningStableV5DebugTrace({ requestId, stage: actualInputEvent!.stage, data });
+    const [projectedEvent] = takeWeeklyPlanningStableV5DebugTrace(requestId);
+    expect(projectedEvent.stage).toBe(actualInputEvent!.stage);
+    await recordWeeklyPlanningStableV5TurnTrace({ ...reread[0].input, requestId,
+      debugTraceEvents: reread[0].input.debugTraceEvents!.map(event => event === actualInputEvent
+        ? { ...event, data: projectedEvent.data } : event),
+    });
+    const write = append.mock.calls[append.mock.calls.length - 1][0];
+    const expectedSummary = oversized
+      ? expect.objectContaining({ traceTruncated: true, originalBytes: expect.any(Number),
+        jsonHead: expect.any(String), jsonTail: expect.any(String) })
+      : expect.objectContaining({ registeredMaterials: [expect.objectContaining({ materialId: shelf.id,
+        futureRegisteredMaterialField: 'material-projection-future-sentinel' })] });
+    const expected = { ...expectedDiagnostic, requestId,
+      aiInterpreter: { ...expectedDiagnostic.aiInterpreter, input: { planningStateSummary: expectedSummary } },
+    };
+    expect(write.entries[0]).toMatchObject(expected);
+    if (oversized) {
+      expect(write.entries[0]).toMatchObject({ diagnostics: { truncation: { applied: true,
+        fields: expect.arrayContaining(['aiInterpreter.input.planningStateSummary']) } } });
+      expect(JSON.stringify(write.entries[0])).not.toContain('あ'.repeat(8000));
+    }
+    expect(measureWeeklyPlanningTraceJsonBytes(write.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const prepared = prepareWeeklyPlanningTraceServerWrite({ session: { ...write.session }, entries: write.entries.map(entry => ({ ...entry })) },
+      { token: `wpt_${'b'.repeat(43)}`, epoch: '101' }, {
+        sessionId: 'weekly-trace-223e4567-e89b-52d3-a456-426614174000', logicalConversationId: pending.conversationId,
+      }, new Date().toISOString());
+    expect(prepared.entries).toHaveLength(1); expect(prepared.entries[0]).toMatchObject(expected);
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+  }
+  expect(append).toHaveBeenCalledTimes(4);
+  // Deep validated component payloads have the existing collector depth bound;
+  // raw provider output + actual canonical diff/roots prove projection instead.
+  await reloadMaterial();
+  expect(ref.current!.state.previewCandidates).toEqual(candidates); expect(checkpoint().graph).toEqual(graph);
+  const blocks = createWeeklyDraftBlocksFromPreviewCandidates({ candidates, userId: OWNER, createdAt: new Date().toISOString() });
+  if (retained === 'draft') await act(async () => { ref.current!.createDraftBlocks(blocks); });
+  const previewBefore = structuredClone(ref.current!.state.previewCandidates);
+  const draftsBefore = structuredClone(ref.current!.pendingDraftBlocks);
+  const intakeBefore = structuredClone(ref.current!.state.intakeState);
+  expect(previewBefore).toEqual(retained === 'draft' ? [] : candidates);
+  expect(draftsBefore).toEqual(retained === 'draft' ? blocks : []);
+  mode = 'network'; calls = []; semanticCount = 0;
+  await act(async () => { expect(await ref.current!.submitTurn(userText)).toEqual({ accepted: true, draftCandidates: [] }); });
+  const failure = await spy.mock.results[1].value;
+  expect(failure.failure).toMatchObject({ code: 'stable_v5_provider_failure', diagnostics: { attemptCount: 1, repairAttempted: false } });
+  expect(calls.map(call => call.schema)).toEqual(['weekly_planning_semantic_document_v5']);
+  expect(ref.current!.state.intakeState).toEqual(intakeBefore);
+  expect(ref.current!.exportConversationSnapshot()!.graph).toEqual(graph);
+  expect(ref.current!.state.previewCandidates).toEqual(previewBefore); expect(ref.current!.pendingDraftBlocks).toEqual(draftsBefore);
+  expect(checkpoint().graph).toEqual(graph); expect(save).not.toHaveBeenCalled();
+  expect(await planRepository.getPlans(OWNER)).toEqual([]);
+  await reloadMaterial();
+  expect(checkpoint().graph).toEqual(graph);
+  expect(ref.current!.state.previewCandidates).toEqual(previewBefore); expect(ref.current!.pendingDraftBlocks).toEqual(draftsBefore);
+  if (retained === 'preview') await act(async () => { ref.current!.createDraftBlocks(blocks); });
+  expect(ref.current!.pendingDraftBlocks[0].behaviorMetadata?.sourceFactRefs).toEqual(roots);
+  expect(ref.current!.approvalAvailability.kind).toBe('eligible');
+  await act(async () => { await ref.current!.approveDraftBlocks(); });
+  expect(save).toHaveBeenCalledTimes(1);
+  const plans = await createLocalPlannerRepository(storage.storage).getPlans(OWNER);
+  expect(plans).toEqual([expect.objectContaining({ userId: OWNER, title: candidates[0].title,
+    date: candidates[0].date, startTime: candidates[0].startTime, endTime: candidates[0].endTime,
+    sourceType: WEEKLY_PLANNING_PLAN_SOURCE_TYPE })]);
+  const operations = loadWeeklyPlanningApprovalOperations(OWNER);
+  expect(operations).toEqual([expect.objectContaining({ status: 'completed', conversationId: pending.conversationId,
+    items: [expect.objectContaining({ sourceDraftBlockId: blocks[0].id, status: 'saved' })] })]);
+  expect(parseWeeklyPlanningPlanSourceId(plans[0].sourceId)).toEqual({ approvalOperationId: operations[0].approvalOperationId, sourceDraftBlockId: blocks[0].id });
+  expect(JSON.parse(storage.storage.getItem('studyplanner.scheduleEvents.v1')!)).toEqual([
+    expect.objectContaining({ id: `plan:${plans[0].id}`, provenance: expect.objectContaining({ sourceId: plans[0].sourceId }) }),
+  ]);
+  await reloadMaterial();
+  expect(ref.current!.pendingDraftBlocks).toEqual([]); expect(checkpoint().graph).toEqual(graph);
+  expect(await createLocalPlannerRepository(storage.storage).getPlans(OWNER)).toEqual(plans);
+  await act(async () => { await ref.current!.approveDraftBlocks(); });
+  expect(save).toHaveBeenCalledTimes(1); expect(studyMaterials).toEqual(materialBefore);
+});
+
+it('versions an explicit material correction through the real app, invalidates stale preview and preserves context through save/reload', async () => {
+  const storage = createMemoryStorageHarness(); restoreStorage = installWeeklyPlanningTestStorage(storage.storage);
+  const planRepository = createLocalPlannerRepository(storage.storage);
+  const save = vi.fn(async (draft: PlanDraft) => planRepository.upsertPlan(createPlanFromDraft(draft)));
+  const preference = createUserConfirmedPlanningContextRecordV1({ ownerId: OWNER, kind: 'learning_preference',
+    label: '数学は夜に学習したい', value: '夜', dateExpression: null, currentDate: '2026-08-16', now: '2026-08-16T00:00:00Z' });
+  const contextSnapshot = { ...createEmptyUserPlanningContextSnapshotV1(OWNER), records: [preference], updatedAt: '2026-08-16T00:00:00Z' };
+  hydrateUserPlanningContextSnapshotV1(contextSnapshot);
+  const contextBefore = exportUserPlanningContextSnapshotV1({ ownerId: OWNER, currentDate: '2026-08-16' });
+  const ref = createRef<WeeklyPlanningApplication>();
+  const mountIdentity = async () => {
+    const plans = await planRepository.getPlans(OWNER);
+    await act(async () => { renderer = create(<Harness ref={ref} userId={OWNER} selectedDate={WEEK} plans={plans} scheduleTemplates={[]}
+      isPlannerDataSnapshotCurrent={() => true} plannerDataAvailability={createReadyPlannerDataAvailability(OWNER)} saveWeeklyApprovedPlan={save} />); });
+  };
+  const reloadIdentity = async () => {
+    await act(async () => { renderer!.unmount(); }); renderer = undefined;
+    resetWeeklyPlanningStableV5RuntimeSessionsForTest(); clearWeeklyPlanningSessionRuntime();
+    await mountIdentity();
+  };
+  await mountIdentity();
+  const setupText = '8月17日から23日で数学の問題集を20問、1問2分で計画してください。夜がいい';
+  responseDocument = semantic();
+  const task = responseDocument.tasks[0];
+  task.title = '数学の問題集を進める'; task.sourceText = '数学の問題集を20問';
+  task.workloads[0].sourceText = '20問';
+  task.study!.components = [{ localId: 'material', existingPublicId: null, parentLocalId: null, role: 'material', label: '数学の問題集', workloads: task.workloads, sourceText: '数学の問題集' }];
+  task.workloads = [];
+  task.temporalConstraints = [{ localId: 'preferred-night', targetLocalId: 'material', kind: 'preferred_window', constraintLevel: 'soft', dateExpression: null,
+    namedTimePeriod: 'night', startTime: null, endTime: null, precision: 'unspecified', sourceText: '夜がいい' }];
+  await act(async () => { expect((await ref.current!.submitTurn(setupText)).accepted).toBe(true); });
+  const oldGraph = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
+  const oldMaterial = oldGraph.components.find(fact => fact.role === 'material')!;
+  const oldCandidates = structuredClone(ref.current!.state.previewCandidates!);
+  expect(oldCandidates.length).toBeGreaterThan(0); expect(save).not.toHaveBeenCalled();
+  const oldBlocks = createWeeklyDraftBlocksFromPreviewCandidates({ candidates: oldCandidates, userId: OWNER, createdAt: new Date().toISOString() });
+  responseDocument = materialIdentityDocument();
+  responseDocument.tasks[0].existingPublicId = oldGraph.tasks[0].id;
+  responseDocument.tasks[0].title = oldGraph.tasks[0].title;
+  responseDocument.tasks[0].study!.components[0].existingPublicId = oldMaterial.id;
+  responseDocument.corrections[0].target.publicId = oldMaterial.id;
+  calls = []; semanticCount = 0;
+  await act(async () => { expect((await ref.current!.submitTurn(MATERIAL_IDENTITY_TEXT)).accepted).toBe(true); });
+  const corrected = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
+  const replacement = corrected.components.find(fact => fact.id !== oldMaterial.id && fact.role === 'material')!;
+  expect(replacement?.label).toBe('青チャート 数学III');
+  expect(corrected.factLifecycles.find(entry => entry.factId === oldMaterial.id)).toMatchObject({ status: 'superseded', supersededByFactId: replacement.id });
+  expect(corrected.workloads).toEqual(oldGraph.workloads.map(fact => ({ ...fact, componentId: replacement.id })));
+  expect(corrected.effortEstimates).toEqual(oldGraph.effortEstimates);
+  expect(corrected.temporalConstraints).toEqual(oldGraph.temporalConstraints.map(fact => ({ ...fact, targetFactId: replacement.id })));
+  expect(semanticCount).toBe(1);
+  expect(ref.current!.state.previewCandidates).not.toEqual(oldCandidates);
+  expect(classifyWeeklyPlanningApprovalAvailability({ blocks: oldBlocks, userId: OWNER })).toMatchObject({ kind: 'recompute_required', reason: 'state_revision_mismatch' });
+  expect(save).not.toHaveBeenCalled(); expect(await planRepository.getPlans(OWNER)).toEqual([]);
+  if (!ref.current!.state.previewCandidates?.length) {
+    responseDocument = { ...materialIdentityDocument(), planningIntent: 'create_plan', tasks: [], corrections: [] };
+    await act(async () => { expect((await ref.current!.submitTurn('訂正後の内容で計画を作ってください')).accepted).toBe(true); });
+  }
+  const fresh = structuredClone(ref.current!.state.previewCandidates!);
+  expect(fresh.length).toBeGreaterThan(0);
+  expect(fresh.every(candidate => candidate.title.includes(replacement.label))).toBe(true);
+  const freshBlocks = createWeeklyDraftBlocksFromPreviewCandidates({ candidates: fresh, userId: OWNER, createdAt: new Date().toISOString() });
+  expect(freshBlocks.every(block => block.behaviorMetadata?.sourceFactRefs.includes(replacement.id))).toBe(true);
+  const finalGraph = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
+  expect(finalGraph.components).toEqual(corrected.components);
+  expect(finalGraph.workloads).toEqual(corrected.workloads);
+  const checkpoint = loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK })!;
+  expect(checkpoint.graph).toEqual(finalGraph);
+  await reloadIdentity();
+  expect(ref.current!.exportConversationSnapshot()!.graph).toEqual(finalGraph);
+  expect(ref.current!.state.previewCandidates).toEqual(fresh);
+  expect(exportUserPlanningContextSnapshotV1({ ownerId: OWNER, currentDate: '2026-08-16' })).toEqual(contextBefore);
+  await act(async () => { ref.current!.createDraftBlocks(freshBlocks); });
+  expect(save).not.toHaveBeenCalled();
+  await act(async () => { await ref.current!.approveDraftBlocks(); });
+  expect(save).toHaveBeenCalledTimes(freshBlocks.length);
+  const saved = await createLocalPlannerRepository(storage.storage).getPlans(OWNER);
+  expect(saved).toHaveLength(freshBlocks.length);
+  expect(saved.every(plan => plan.title.includes(replacement.label))).toBe(true);
+  await reloadIdentity();
+  expect(await createLocalPlannerRepository(storage.storage).getPlans(OWNER)).toEqual(saved);
+  expect(ref.current!.pendingDraftBlocks).toEqual([]);
+  await act(async () => { await ref.current!.approveDraftBlocks(); });
+  expect(save).toHaveBeenCalledTimes(freshBlocks.length);
+  expect(exportUserPlanningContextSnapshotV1({ ownerId: OWNER, currentDate: '2026-08-16' })).toEqual(contextBefore);
+});
+
+
+it('keeps an unrelated required need through simultaneous identity/detail, App checkpoint reload and zero save', async () => {
+  const { ref, database, submit, unsaved } = await mount();
+  const setupText = `${USER_TEXT}。教材は数学の問題集です。教材名と合計時間と進める範囲は要確認です`;
+  const task = responseDocument.tasks[0];
+  task.study!.components = [{ localId: 'material', existingPublicId: null, parentLocalId: null,
+    role: 'material', label: '数学の問題集', workloads: task.workloads, sourceText: '教材は数学の問題集です' }];
+  task.workloads = [];
+  responseDocument.uncertainties = [
+    { localId: 'material-need', targetLocalId: 'material', field: 'material_identity', reason: '教材名を確認', sourceText: '教材名と合計時間と進める範囲は要確認です' },
+    { localId: 'effort-need', targetLocalId: 'material', field: 'total_duration', reason: '合計時間を確認', sourceText: '教材名と合計時間と進める範囲は要確認です' },
+    { localId: 'unrelated-need', targetLocalId: 'material', field: 'unrelated', reason: '進める範囲を確認', sourceText: '教材名と合計時間と進める範囲は要確認です' },
+  ];
+  expect((await submit(setupText)).accepted).toBe(true);
+  const before = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
+  const oldMaterial = before.components.find(fact => fact.role === 'material')!;
+  const need = (field: string) => before.uncertainties.find(fact => fact.field === field)!;
+  unsaved(); expect(ref.current!.state.previewCandidates ?? []).toEqual([]);
+  const fixture = materialIdentityEffortFixture(); responseDocument = fixture.document;
+  responseDocument.tasks[0].existingPublicId = before.tasks[0].id;
+  responseDocument.tasks[0].title = before.tasks[0].title;
+  responseDocument.tasks[0].study!.components[0].existingPublicId = oldMaterial.id;
+  responseDocument.corrections[0].target.publicId = oldMaterial.id;
+  expect((await submit(fixture.userText)).accepted).toBe(true);
+  const after = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
+  const replacement = after.components.find(fact => fact.role === 'material' && isWeeklyPlanningFactActiveV5(after, fact.id))!;
+  expect(replacement.id).not.toBe(oldMaterial.id);
+  expect(isWeeklyPlanningFactActiveV5(after, need('material_identity').id)).toBe(false);
+  expect(isWeeklyPlanningFactActiveV5(after, need('total_duration').id)).toBe(false);
+  expect(isWeeklyPlanningFactActiveV5(after, need('unrelated').id)).toBe(true);
+  expect(after.uncertainties.find(fact => fact.id === need('unrelated').id)).toEqual({ ...need('unrelated'), targetFactId: replacement.id });
+  expect(after.effortEstimates).toContainEqual(expect.objectContaining({ targetFactId: replacement.id, kind: 'total_duration', minutes: 60 }));
+  expect(after.workloads).toEqual(before.workloads.map(fact => ({ ...fact, componentId: replacement.id })));
+  expect(ref.current!.state.previewCandidates ?? []).toEqual([]); unsaved();
+  expect(loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK })?.graph).toEqual(after);
+  await act(async () => { renderer!.unmount(); }); renderer = undefined;
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest(); clearWeeklyPlanningSessionRuntime();
+  const repository = createMemoryWeeklyPlanningApprovalPlanRepository(database);
+  await act(async () => { renderer = create(<Harness ref={ref} userId={OWNER} selectedDate={WEEK} plans={[]} scheduleTemplates={[]}
+    isPlannerDataSnapshotCurrent={() => true} plannerDataAvailability={createReadyPlannerDataAvailability(OWNER)}
+    saveWeeklyApprovedPlan={repository.saveApprovedPlan} completeWeeklyApprovalOperation={repository.completeOperation} />); });
+  expect(ref.current!.exportConversationSnapshot()!.graph).toEqual(after);
+  expect(ref.current!.state.previewCandidates ?? []).toEqual([]);
+  expect(ref.current!.pendingDraftBlocks).toEqual([]);
+  await act(async () => { await ref.current!.approveDraftBlocks(); }); unsaved();
 });

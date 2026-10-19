@@ -24,15 +24,22 @@ export function createObservedPlannerRepository(
 ): PlannerRepository {
   const todoStatusById = new Map<string, TodoStatus>();
   const appActiveUsers = new Set<string>();
+  const recordAppActive = (userId: string) => {
+    if (appActiveUsers.has(userId)) return;
+    appActiveUsers.add(userId);
+    recordBestEffort(telemetry, 'app_active');
+  };
 
   return {
     ...repository,
+    async getScheduleSnapshot(userId) {
+      const snapshot = await repository.getScheduleSnapshot(userId);
+      recordAppActive(userId);
+      return snapshot;
+    },
     async getPlans(userId) {
       const plans = await repository.getPlans(userId);
-      if (!appActiveUsers.has(userId)) {
-        appActiveUsers.add(userId);
-        recordBestEffort(telemetry, 'app_active');
-      }
+      recordAppActive(userId);
       return plans;
     },
     async getTodos(userId) {

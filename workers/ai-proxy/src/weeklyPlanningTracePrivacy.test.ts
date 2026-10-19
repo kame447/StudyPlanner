@@ -5,6 +5,7 @@ import {
   isWeeklyPlanningTracePlanningRangeBoundary,
   isWeeklyPlanningTracePolicyAccepted,
   parseWeeklyPlanningTraceHmacSecrets,
+  resolveWeeklyPlanningTraceHmacSecretRing,
   prepareWeeklyPlanningTraceServerWrite,
   prepareWeeklyPlanningTraceWrite,
   redactWeeklyPlanningTraceValue,
@@ -168,6 +169,70 @@ describe('weekly planning trace privacy boundary', () => {
     expect(() => parseWeeklyPlanningTraceHmacSecrets('{bad')).toThrow(/invalid JSON/);
     expect(() => parseWeeklyPlanningTraceHmacSecrets(JSON.stringify({ '100': 'short' })))
       .toThrow(/no valid epoch secret/);
+  });
+
+  it('extends the retained epoch ring without replacing existing identity keys', async () => {
+    const primary = JSON.stringify({ '690': 'a'.repeat(64) });
+    const extension = JSON.stringify({ '691': 'b'.repeat(64), '692': 'c'.repeat(64) });
+    const old = parseWeeklyPlanningTraceHmacSecrets(primary);
+    const combined = parseWeeklyPlanningTraceHmacSecrets(primary, extension);
+    expect(traceSubjectEpochsForDeletion(combined)).toEqual(['690', '691', '692']);
+    expect(await createWeeklyPlanningTraceSubject('owner', '690', combined))
+      .toEqual(await createWeeklyPlanningTraceSubject('owner', '690', old));
+    expect((await createWeeklyPlanningTraceSubject('owner', '691', combined)).epoch).toBe('691');
+    await expect(createWeeklyPlanningTraceSubject('owner', '691', old))
+      .rejects.toThrow(/missing for epoch 691/);
+    expect(() => parseWeeklyPlanningTraceHmacSecrets(primary, JSON.stringify({
+      '690': 'z'.repeat(64),
+    }))).toThrow(/duplicate epoch/);
+    expect(() => parseWeeklyPlanningTraceHmacSecrets(primary, '{bad'))
+      .toThrow(/invalid JSON/);
+  });
+
+  it('derives missing future epochs while preserving every explicitly stored historical key', async () => {
+    const raw = JSON.stringify({ '689': 'a'.repeat(64), '690': 'b'.repeat(64) });
+    const date = '2026-10-14T00:00:00.000Z';
+    const first = await resolveWeeklyPlanningTraceHmacSecretRing({ raw, now: date });
+    const again = await resolveWeeklyPlanningTraceHmacSecretRing({ raw, now: date });
+    expect(first).toEqual(again);
+    expect(first['689']).toBe('a'.repeat(64));
+    expect(first['690']).toBe('b'.repeat(64));
+    expect(first['691']).toMatch(/^[a-f0-9]{64}$/);
+    expect(first['691']).not.toBe(first['690']);
+    const nextMonth = await resolveWeeklyPlanningTraceHmacSecretRing({
+      raw, now: '2026-11-05T00:00:00.000Z',
+    });
+    expect(nextMonth['691']).toBe(first['691']);
+    expect(nextMonth['692']).toMatch(/^[a-f0-9]{64}$/);
+    expect(nextMonth['692']).not.toBe(nextMonth['691']);
+    const withNewPrimaryKey = await resolveWeeklyPlanningTraceHmacSecretRing({
+      raw: JSON.stringify({
+        '689': 'a'.repeat(64),
+        '690': 'b'.repeat(64),
+        '692': 'd'.repeat(64),
+      }),
+      now: '2026-11-05T00:00:00.000Z',
+    });
+    expect(withNewPrimaryKey['691']).toBe(first['691']);
+    expect(withNewPrimaryKey['692']).toBe('d'.repeat(64));
+    const historical = await createWeeklyPlanningTraceSubject('owner', '690', first);
+    const legacy = await createWeeklyPlanningTraceSubject('owner', '690', parseWeeklyPlanningTraceHmacSecrets(raw));
+    expect(historical).toEqual(legacy);
+    expect(await createWeeklyPlanningTraceSubject('owner', '691', first))
+      .toEqual(await createWeeklyPlanningTraceSubject('owner', '691', again));
+    const withExplicit = await resolveWeeklyPlanningTraceHmacSecretRing({
+      raw,
+      extension: JSON.stringify({ '691': 'c'.repeat(64) }),
+      now: date,
+    });
+    expect(withExplicit['691']).toBe('c'.repeat(64));
+    const withOldExpired = await resolveWeeklyPlanningTraceHmacSecretRing({
+      raw,
+      now: new Date(698 * 30 * 24 * 60 * 60 * 1000),
+    });
+    expect(withOldExpired['691']).toBeUndefined();
+    expect(withOldExpired['692']).toBe(nextMonth['692']);
+    expect(withOldExpired['698']).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it('uses epochs no longer than thirty days and assigns a 180 day expiry', () => {

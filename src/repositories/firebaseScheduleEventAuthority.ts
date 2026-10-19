@@ -1,9 +1,11 @@
+import { deleteMonthEventPreservingActualSources } from './firebaseActualSourcePreservation';
+import { assertRecurringMonthEventWrite } from './plannerWritePreparation';
+import type { ConfirmedStudyHistory } from './confirmedStudyHistory';
 import { observeStartupDocument } from './observeStartupDocument';
 import { startupTiming } from '../lib/startupTiming';
 import type { Firestore, Transaction, WriteBatch } from 'firebase/firestore';
 import {
   collection,
-  deleteDoc,
   doc,
   getDocs,
   getDocFromServer,
@@ -28,7 +30,7 @@ import {
   type ScheduleEventMigrationCandidate,
   type ScheduleEventMigrationState,
 } from '../domain/scheduleEvent';
-import type { Actual, Plan } from '../types/domain';
+import type { Actual, MonthEvent, Plan } from '../types/domain';
 import {
   ScheduleEventMigrationCapabilityUnavailableError,
   type LegacyScheduleSnapshot,
@@ -379,6 +381,7 @@ function assertBatchLimit(operationCount: number, label: string): void {
 
 export function createFirebaseScheduleEventAuthority(
   firestoreDb: Firestore,
+  studyHistory?: ConfirmedStudyHistory,
 ): ScheduleEventAuthorityRepository {
   return {
     observeStartupScheduleMarker(ownerId, scope) {
@@ -391,6 +394,7 @@ export function createFirebaseScheduleEventAuthority(
       userId: string,
       loadLegacy: () => Promise<LegacyScheduleSnapshot>,
     ) {
+      studyHistory?.beginMigration(userId);
       // Keep rollout capability classification restricted to this marker read.
       // A server read may still include local pending writes: those cannot certify cutover.
       let snapshot;
@@ -411,12 +415,13 @@ export function createFirebaseScheduleEventAuthority(
         && snapshot.metadata?.hasPendingWrites === false
         && isCurrentScheduleEventMigration(snapshot.data() as ScheduleEventMigrationCandidate)) {
         startupTiming.markOnce('schedule-marker-complete');
+        studyHistory?.confirmMigration(userId);
         return;
       }
 
       try {
         const state = await startupTiming.measure('schedule-migration-acquire', () => acquireMigrationDocument(firestoreDb, userId));
-        if (isCurrentScheduleEventMigration(state)) return;
+        if (isCurrentScheduleEventMigration(state)) { studyHistory?.confirmMigration(userId); return; }
 
         const legacy = await startupTiming.measure('schedule-legacy-read', loadLegacy);
         assertOwnedRecords(userId, [...legacy.plans, ...legacy.monthEvents], '予定移行');
@@ -446,6 +451,7 @@ export function createFirebaseScheduleEventAuthority(
           doc(firestoreDb, SCHEDULE_EVENT_MIGRATIONS_COLLECTION, userId),
           completedDocument,
         ));
+        studyHistory?.confirmMigration(userId);
       } catch (error) {
         throw new Error(
           normalizeErrorMessage(
@@ -456,15 +462,59 @@ export function createFirebaseScheduleEventAuthority(
       }
     },
 
-    async getPlans(userId) {
+    async getScheduleSnapshot(userId) {
+      const publish = studyHistory?.beginRead(userId, 'plans');
+      const publishMonthEvents = studyHistory?.beginRead(userId, 'monthEvents');
       try {
-        return (await startupTiming.measure('schedule-canonical-plans', () => listByUserId<ScheduleEvent>(
-          firestoreDb,
-          SCHEDULE_EVENTS_COLLECTION,
-          userId,
-        )))
-          .map(scheduleEventToPlan)
+        const snapshot = await startupTiming.measure('schedule-canonical-snapshot', () => getDocs(
+          query(collection(firestoreDb, SCHEDULE_EVENTS_COLLECTION), where('userId', '==', userId)),
+        ));
+        const events = snapshot.docs.map(row => mapSnapshot<ScheduleEvent>(row));
+        assertOwnedRecords(userId, events, '予定取得');
+        const plans = events.map(scheduleEventToPlan).filter((plan): plan is Plan => plan !== null);
+        const monthEvents = events.map(scheduleEventToMonthEvent).filter((event): event is MonthEvent => event !== null);
+        publish?.(plans, snapshot.metadata);
+        publishMonthEvents?.(monthEvents, snapshot.metadata);
+        return { plans, monthEvents };
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('予定を取得できませんでした。', error as FirebaseLikeError),
+        );
+      }
+    },
+
+    async getActualProgressSources(userId, sourceId) {
+      // Source identity is persisted provenance, not a canonical document name.
+      // Keep both kinds and complete recurrence, without publishing partial history.
+      try {
+        const snapshot = await getDocs(query(
+          collection(firestoreDb, SCHEDULE_EVENTS_COLLECTION),
+          where('userId', '==', userId),
+          where('provenance.legacy.id', '==', sourceId),
+        ));
+        const events = snapshot.docs.map(row => mapSnapshot<ScheduleEvent>(row));
+        assertOwnedRecords(userId, events, '予定取得');
+        const plans = events.map(scheduleEventToPlan).filter((plan): plan is Plan => plan !== null);
+        const monthEvents = events.map(scheduleEventToMonthEvent).filter((event): event is MonthEvent => event !== null);
+        return { plans, monthEvents };
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('予定を取得できませんでした。', error as FirebaseLikeError),
+        );
+      }
+    },
+
+    async getPlans(userId) {
+      const publish = studyHistory?.beginRead(userId, 'plans');
+      try {
+        const snapshot = await startupTiming.measure('schedule-canonical-plans', () => getDocs(query(
+          collection(firestoreDb, SCHEDULE_EVENTS_COLLECTION), where('userId', '==', userId),
+          where('provenance.legacy.kind', '==', 'plan'),
+        )));
+        const plans = snapshot.docs.map(row => mapSnapshot<ScheduleEvent>(row)).map(scheduleEventToPlan)
           .filter((plan): plan is Plan => plan !== null);
+        publish?.(plans, snapshot.metadata);
+        return plans;
       } catch (error) {
         throw new Error(
           normalizeErrorMessage('予定を取得できませんでした。', error as FirebaseLikeError),
@@ -473,14 +523,17 @@ export function createFirebaseScheduleEventAuthority(
     },
 
     async getMonthEvents(userId) {
+      const publish = studyHistory?.beginRead(userId, 'monthEvents');
       try {
-        return (await startupTiming.measure('schedule-canonical-month-events', () => listByUserId<ScheduleEvent>(
-          firestoreDb,
-          SCHEDULE_EVENTS_COLLECTION,
-          userId,
-        )))
-          .map(scheduleEventToMonthEvent)
-          .filter((event): event is NonNullable<typeof event> => event !== null);
+        const snapshot = await startupTiming.measure('schedule-canonical-month-events', () => getDocs(query(
+          collection(firestoreDb, SCHEDULE_EVENTS_COLLECTION), where('userId', '==', userId),
+          where('provenance.legacy.kind', '==', 'month-event'),
+        )));
+        const events = snapshot.docs.map(row => mapSnapshot<ScheduleEvent>(row));
+        assertOwnedRecords(userId, events, '予定取得');
+        const monthEvents = events.map(scheduleEventToMonthEvent).filter((event): event is MonthEvent => event !== null);
+        publish?.(monthEvents, snapshot.metadata);
+        return monthEvents;
       } catch (error) {
         throw new Error(
           normalizeErrorMessage('主要予定を取得できませんでした。', error as FirebaseLikeError),
@@ -686,6 +739,22 @@ export function createFirebaseScheduleEventAuthority(
       }
     },
 
+    async applyRecurringMonthEventMutation(userId, monthEvents) {
+      try {
+        assertRecurringMonthEventWrite(userId, monthEvents);
+        const batch = writeBatch(firestoreDb);
+        monthEvents.forEach((monthEvent) => {
+          const event = scheduleEventFromMonthEvent(monthEvent);
+          batch.set(doc(firestoreDb, SCHEDULE_EVENTS_COLLECTION, event.id), stripUndefinedDeep(event));
+        });
+        await batch.commit();
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('繰り返し予定を保存できませんでした。', error as FirebaseLikeError),
+        );
+      }
+    },
+
     async upsertMonthEvent(monthEvent) {
       try {
         assertOwnedRecords(monthEvent.userId, [monthEvent], '主要予定保存');
@@ -702,19 +771,11 @@ export function createFirebaseScheduleEventAuthority(
       }
     },
 
-    async deleteMonthEvent(_userId, monthEventId) {
+    async deleteMonthEvent(userId, monthEventId) {
       try {
-        await deleteDoc(
-          doc(
-            firestoreDb,
-            SCHEDULE_EVENTS_COLLECTION,
-            scheduleEventIdForLegacy({ kind: 'month-event', id: monthEventId }),
-          ),
-        );
+        await deleteMonthEventPreservingActualSources(firestoreDb, userId, monthEventId, 'canonical');
       } catch (error) {
-        throw new Error(
-          normalizeErrorMessage('主要予定を削除できませんでした。', error as FirebaseLikeError),
-        );
+        throw new Error(normalizeErrorMessage('主要予定を削除できませんでした。', error as FirebaseLikeError));
       }
     },
   };

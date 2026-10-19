@@ -1,4 +1,5 @@
-import type { CSSProperties } from 'react';
+import { getEntryDurationMinutes } from '../../lib/entryTimeRange';
+import { useRef, type CSSProperties } from 'react';
 import {
   BookOpen,
   CalendarDays,
@@ -9,7 +10,7 @@ import {
   Plus,
   Target,
 } from 'lucide-react';
-import { minutesBetween } from '../../lib/date';
+import { getPlanScheduleColor, scheduleEventColorStyle } from '../../lib/scheduleEventColor';
 import type { HomeDashboardModel } from '../../lib/homeDashboard';
 import {
   resolveHomeNextPlanPresentation,
@@ -17,9 +18,12 @@ import {
 } from '../../lib/homeNextPlanVisual';
 import { DEFAULT_HOME_SCENE_PREFERENCES, type HomeScenePreferences } from '../../lib/homeScenePreferences';
 import { HomeScene } from './HomeScene';
+import { HomePlanTitle } from './HomePlanTitle';
 import { buildPlanOccurrenceKey } from '../../lib/planRecurrence';
+import { useDataChangeMotion } from '../../hooks/useDataChangeMotion';
 import type { Actual, Plan, StudyMaterial, TodoTask } from '../../types/domain';
 import { useStudySessionLauncher } from '../StudySessionView';
+import { TodayScheduleAddMenu, type HomeAddEntry } from './TodayScheduleAddMenu';
 
 export type HomeSectionId =
   | 'getting-started'
@@ -87,13 +91,22 @@ function HomeScheduleRow({
   return (
     <button
       className="home-schedule-row"
+      style={scheduleEventColorStyle(getPlanScheduleColor(plan))}
       type="button"
       onClick={() => onOpenDay(plan.date)}
     >
-      <span className={actual ? 'home-time-dot completed' : 'home-time-dot'}>
+      <span
+        className={actual ? 'home-time-dot completed' : 'home-time-dot'}
+        data-motion-key={`done:${buildPlanOccurrenceKey(plan.id, plan.date)}`}
+        data-motion-signature={actual ? 'done' : 'open'}
+      >
         <Clock size={13} aria-hidden="true" />
       </span>
-      <span className="home-schedule-content">
+      <span
+        className="home-schedule-content"
+        data-motion-key={`plan:${buildPlanOccurrenceKey(plan.id, plan.date)}`}
+        data-motion-signature={`${plan.startTime}-${plan.endTime} ${plan.title}`}
+      >
         <time>
           {plan.startTime} - {plan.endTime}
         </time>
@@ -119,14 +132,23 @@ export function GettingStartedSection({
   onOpenTodo: () => void;
   onOpenBookshelf: () => void;
 }) {
+  const startStudySession = useStudySessionLauncher();
   const actions = [
+    {
+      id: 'start',
+      title: '勉強を開始',
+      detail: '予定なしで今から学習する',
+      icon: BookOpen,
+      onClick: () => startStudySession?.({ kind: 'unplanned' }),
+      primary: true,
+    },
     {
       id: 'ai',
       title: 'AIで学習計画を作る',
       detail: '目標や教材から予定を組み立てる',
       icon: MessageCircle,
       onClick: onOpenAiPlanning,
-      primary: true,
+      primary: false,
     },
     {
       id: 'material',
@@ -160,12 +182,9 @@ export function GettingStartedSection({
         <span className="home-setup-mark"><BookOpen size={22} aria-hidden="true" /></span>
         <div>
           <p>はじめに</p>
-          <h1 id="home-getting-started-title">StudyPlannerを準備する</h1>
+          <h1 id="home-getting-started-title">Laplanceを準備する</h1>
         </div>
       </div>
-      <p className="home-setup-copy">
-        まず1つ登録すると、予定・進捗・要対応などがホームに自動で表示されます。
-      </p>
       <div className="home-setup-actions">
         {actions.map(({ id, title, detail, icon: Icon, onClick, primary }) => (
           <button
@@ -191,7 +210,6 @@ export function NextPlanSection({
   homeScenePreferences = DEFAULT_HOME_SCENE_PREFERENCES,
   dashboard,
   studyMaterials,
-  onOpenAiPlanning,
   onOpenDay,
 }: {
   homeScenePreferences?: HomeScenePreferences;
@@ -202,6 +220,10 @@ export function NextPlanSection({
 }) {
   const startStudySession = useStudySessionLauncher();
   const nextPlan = dashboard.nextPlan;
+  // Home measures this card's box to fit the screen, so only its copy moves:
+  // a different next plan arrives, an edited one settles.
+  const nextCardRef = useRef<HTMLElement | null>(null);
+  useDataChangeMotion(nextCardRef, 'next-plan', [nextPlan]);
   const nextPlanPresentation = nextPlan
     ? resolveHomeNextPlanPresentation(nextPlan, studyMaterials)
     : null;
@@ -211,31 +233,28 @@ export function NextPlanSection({
   const usesStartAction = nextPlanPresentation?.semanticKind === 'study';
 
   function handlePrimaryAction() {
-    if (!nextPlan) {
-      onOpenAiPlanning();
-      return;
-    }
-
-    if (usesStartAction && startStudySession) {
-      startStudySession(nextPlan);
-      return;
-    }
-
-    onOpenDay(nextPlan.date);
+    startStudySession?.(usesStartAction && nextPlan
+      ? { kind: 'planned', plan: nextPlan }
+      : { kind: 'unplanned' });
   }
 
   return (
     <section
+      ref={nextCardRef}
       className="home-next-card"
       data-home-section="next-plan"
       data-next-plan-visual={nextPlanVisual.kind}
       data-next-plan-semantic={nextPlanPresentation?.semanticKind ?? 'empty'}
     >
-      <div className="home-next-copy">
+      <div
+        className="home-next-copy"
+        data-motion-key={`next:${nextPlan ? buildPlanOccurrenceKey(nextPlan.id, nextPlan.date) : 'none'}`}
+        data-motion-signature={nextPlan ? `${nextPlan.startTime}-${nextPlan.endTime} ${nextPlan.title}` : ''}
+      >
         <p className="home-eyebrow">次の予定</p>
         {nextPlan ? (
           <>
-            <h1>{nextPlan.title}</h1>
+            <HomePlanTitle key={nextPlan.id} title={nextPlan.title} />
             <div className="home-next-meta">
               <span><Clock aria-hidden="true" size={18} />{nextPlan.startTime} - {nextPlan.endTime}</span>
               <span>
@@ -244,30 +263,38 @@ export function NextPlanSection({
               </span>
               <span>
                 <Target aria-hidden="true" size={18} />
-                {nextPlanPresentation?.durationLabel} {formatMinutes(minutesBetween(nextPlan.startTime, nextPlan.endTime))}
+                {nextPlanPresentation?.durationLabel} {formatMinutes(getEntryDurationMinutes(nextPlan.startTime, nextPlan.endTime))}
               </span>
+
             </div>
           </>
         ) : (
           <>
             <h1>次の予定はありません</h1>
-            <p className="home-empty-copy">予定を追加するか、AI計画から今日の学習内容を組み立てられます。</p>
           </>
         )}
       </div>
 
-      <HomeScene kind={nextPlanVisual.kind} preferences={homeScenePreferences} plan={nextPlan} />
+      <HomeScene kind={nextPlanVisual.kind} preferences={homeScenePreferences} plan={nextPlan}
+        recorded={{ week: dashboard.weekDays[0]?.date ?? dashboard.today, minutes: dashboard.weekActualMinutes }} />
 
+      <div className="home-actions">
       <button
         className="home-start-button"
         type="button"
         onClick={handlePrimaryAction}
       >
         <span className="home-start-icon">
-          {nextPlan && !usesStartAction ? <ChevronRight aria-hidden="true" size={18} /> : '▶'}
+          {'▶'}
         </span>
-        {nextPlan ? nextPlanPresentation?.actionLabel ?? '予定を確認する' : 'AIで予定を作る'}
+        勉強を開始
       </button>
+      {nextPlan && !usesStartAction && (
+        <button type="button" className="home-plan-inspect" aria-label={`${nextPlanPresentation?.actionLabel ?? '予定を確認する'}: ${nextPlan.title}`} onClick={() => onOpenDay(nextPlan.date)}>
+          {nextPlanPresentation?.semanticKind === 'class' ? '授業を確認' : '予定を確認'}
+        </button>
+      )}
+      </div>
     </section>
   );
 }
@@ -281,15 +308,20 @@ export function TodayScheduleSection({
   dashboard: HomeDashboardModel;
   studyMaterials: StudyMaterial[];
   onOpenDay: (date: string) => void;
-  onAddEntry: () => void;
+  onAddEntry: (entry: HomeAddEntry) => void;
 }) {
+  // Rows are measured to fit Home, so only their content and completion dot
+  // react: an added plan arrives, an edited one settles, a recorded one
+  // marks its dot as done.
+  const scheduleListRef = useRef<HTMLDivElement | null>(null);
+  useDataChangeMotion(scheduleListRef, dashboard.today, [dashboard.todayPlans, dashboard.actualByOccurrenceKey]);
   return (
     <section className="home-panel home-today-panel" data-home-section="today-schedule">
       <div className="home-section-heading">
         <h2>今日の予定</h2>
         <button type="button" onClick={() => onOpenDay(dashboard.today)}>すべて見る <ChevronRight size={16} aria-hidden="true" /></button>
       </div>
-      <div className="home-schedule-list">
+      <div ref={scheduleListRef} className="home-schedule-list">
         {dashboard.todayPlans.length > 0 ? (
           <>
             {dashboard.todayPlans.map((plan) => {
@@ -308,11 +340,9 @@ export function TodayScheduleSection({
             })}
           </>
         ) : null}
-        <button className={dashboard.todayPlans.length > 0 ? 'home-schedule-add-row' : 'home-schedule-empty'} type="button" onClick={onAddEntry} aria-label="今日の予定に追加">
-          <Plus size={20} aria-hidden="true" />
-        </button>
+        <TodayScheduleAddMenu key={dashboard.today} date={dashboard.today}
+          empty={dashboard.todayPlans.length === 0} onAddEntry={onAddEntry} />
       </div>
-      {dashboard.todayPlans.length > 4 ? <p className="home-scroll-hint">下にスクロールして続きを読む ↓</p> : null}
     </section>
   );
 }

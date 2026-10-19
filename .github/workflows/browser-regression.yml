@@ -17,13 +17,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  chromium:
+  chromium-shard:
+    name: chromium (shard ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
 
       - uses: actions/setup-node@v7
@@ -31,34 +36,56 @@ jobs:
           node-version-file: .node-version
           cache: npm
 
+      - name: Select relevant browser regression scope
+        id: selection
+        run: node scripts/ci/browser-regression-selection.mjs select
+
       - name: Install application dependencies
+        if: steps.selection.outputs.mode != 'none'
         run: npm ci
 
       - name: Snapshot application manifests before isolated test-runner install
+        if: steps.selection.outputs.mode != 'none'
         shell: bash
         run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
 
       - name: Install isolated Playwright test runner
-        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.62.1
+        if: steps.selection.outputs.mode != 'none'
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
 
       - name: Verify isolated test-runner install did not mutate application manifests
+        if: steps.selection.outputs.mode != 'none'
         shell: bash
         run: sha256sum -c /tmp/studyplanner-manifests.sha256
 
       - name: Install Chromium
+        if: steps.selection.outputs.mode != 'none'
         run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
 
       - name: Build production bundle
+        if: steps.selection.outputs.mode != 'none'
         run: npm run build
 
       - name: Run browser regression tests
-        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.config.mjs
+        if: steps.selection.outputs.mode != 'none'
+        env:
+          BROWSER_REGRESSION_SHARD: ${{ matrix.shard }}/2
+        run: node scripts/ci/browser-regression-selection.mjs run
+
+      - name: Upload browser selection evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-selection-${{ github.sha }}-shard-${{ matrix.shard }}
+          path: artifacts/browser-selection.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload browser artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: browser-regression-artifacts-${{ github.sha }}
+          name: browser-regression-artifacts-${{ github.sha }}-shard-${{ matrix.shard }}
           path: artifacts/
           if-no-files-found: ignore
           retention-days: 14
@@ -67,7 +94,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: browser-ui-images-${{ github.sha }}
+          name: browser-ui-images-${{ github.sha }}-shard-${{ matrix.shard }}
           path: |
             artifacts/playwright-results/**/home-add-chooser.png
             artifacts/playwright-results/**/week-date-labels.png
@@ -76,3 +103,16 @@ jobs:
             artifacts/playwright-results/**/attachments/*.png
           if-no-files-found: ignore
           retention-days: 14
+
+  chromium:
+    name: chromium
+    needs: chromium-shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every Chromium shard to succeed
+        env:
+          SHARD_RESULT: ${{ needs.chromium-shard.result }}
+        run: |
+          echo "Chromium shards result: $SHARD_RESULT"
+          test "$SHARD_RESULT" = success

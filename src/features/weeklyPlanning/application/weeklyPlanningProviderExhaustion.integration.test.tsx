@@ -1,3 +1,5 @@
+import { AI_CHAT_PURPOSE_MODELS } from '../../../../workers/ai-proxy/src/modelPolicy';
+import { loadWeeklyPlanningRuntimeModule } from './weeklyPlanningRuntimeModule';
 import { createRef, forwardRef, useImperativeHandle } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -82,8 +84,8 @@ function resetRuntime() {
   resetUserPlanningContextRuntimeForTestV1(); resetWeeklyPlanningStableV5DebugTraceForTest();
   resetOpenAiCompatibleClientRequestBudgetForTest(); setWeeklyPlanningTraceRepositoryForTests(undefined);
 }
-function completion(content: string) {
-  return Response.json({ choices: [{ message: { content } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
+function completion(content: string, model = AI_CHAT_PURPOSE_MODELS.weekly_planning_semantic_normalizer) {
+  return Response.json({ model, choices: [{ message: { content } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
 }
 function clearRequests() { proxyRequests = []; jevRequests = []; providerOrder = []; genericRequests = []; unexpectedRequests = []; }
 beforeEach(async () => {
@@ -145,6 +147,20 @@ beforeEach(async () => {
     // swallow a failed fixture assertion and turn it into a passing fallback.
     throw new Error('Unexpected fixture request');
   }));
+  // Provider/save recovery is measured below; load the real code without executing a turn.
+  // Keep transport installed first, and retain all evidence if loading has a side effect.
+  const codeLoadStartedAt = performance.now();
+  await loadWeeklyPlanningRuntimeModule();
+  expect(fetch).not.toHaveBeenCalled();
+  expect(proxyRequests).toEqual([]);
+  expect(jevRequests).toEqual([]);
+  expect(providerOrder).toEqual([]);
+  expect(genericRequests).toEqual([]);
+  expect(unexpectedRequests).toEqual([]);
+  console.info('[ProviderExhaustion fixture] runtime code ready', {
+    elapsedMs: performance.now() - codeLoadStartedAt,
+    providerCalls: providerOrder.length,
+  });
 });
 afterEach(() => {
   act(() => renderer?.unmount()); renderer = undefined; restoreStorage?.(); restoreStorage = undefined;

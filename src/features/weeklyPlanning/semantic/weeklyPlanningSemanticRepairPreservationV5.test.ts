@@ -184,4 +184,152 @@ describe('Stable V5 targeted semantic repair preservation', () => {
       'repair:semantic-repair-preservation:representation-only repair changed unrelated semantic facts',
     );
   });
+  it.each([false, true])('keeps the existing preservation guard when legacy userContextFacts is omitted: drop facts=%s', async (dropFacts) => {
+    const initial = document({ canonicalWindow: true, clockAsCustomPeriod: true });
+    delete initial.userContextFacts;
+    const initialRaw = JSON.stringify(initial);
+    const initialValidation = validateWeeklyPlanningSemanticResponseV5(initialRaw, { currentUserText: USER_TEXT });
+    expect(initialValidation.parsedDocument).not.toBeNull();
+    expect(initialValidation.errors).toEqual([
+      'availabilityDeclarations[a1]: explicit clock text must use startTime/endTime with namedTimePeriod=null; do not encode clock times as a custom namedTimePeriod.',
+    ]);
+    const repaired = document({ canonicalWindow: true,
+      ...(dropFacts ? { includeTask: false, includeAvailability: false, planningIntent: 'unknown' as const } : {}) });
+    delete repaired.userContextFacts;
+    expect(validateWeeklyPlanningSemanticResponseV5(JSON.stringify(repaired), { currentUserText: USER_TEXT }).errors).toEqual([]);
+    const responses = [initialRaw, JSON.stringify(repaired)];
+    const requests: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]> = [];
+    const client: OpenAiCompatibleClient = { async createChatCompletion(request) {
+      requests.push(structuredClone(request));
+      const response = responses.shift(); if (!response) throw new Error('unexpected additional compatibility repair call');
+      return response;
+    } };
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({ userText: USER_TEXT });
+    expect(requests.map(request => request.responseFormat?.json_schema.name)).toEqual([
+      'weekly_planning_semantic_document_v5', 'weekly_planning_semantic_document_v5',
+    ]);
+    expect(result.diagnostics).toMatchObject({ attemptCount: 2, repairAttempted: true });
+    expect(initialRaw).toBe(JSON.stringify(initial));
+    if (dropFacts) {
+      expect(result.status).toBe('rejected'); expect(result.document).toBeNull();
+      expect(result.diagnostics.validationErrors).toContain(
+        'repair:semantic-repair-preservation:representation-only repair changed unrelated semantic facts');
+    } else {
+      expect(result.status).toBe('accepted');
+      expect(result.document?.tasks[0].study?.components[0].workloads[0].amount).toBe(220);
+      expect(result.document?.availabilityDeclarations[0]).toMatchObject({ namedTimePeriod: null, startTime: '18:00', endTime: '20:00' });
+    }
+  });
+
+
+  it.each(['availability', 'deadline', 'excluded_date'] as const)(
+    'guards a %s canonical-date repair while allowing only its date expression to change',
+    (kind) => {
+      const initial = document({ canonicalWindow: true });
+      let errors: string[];
+      if (kind === 'availability') {
+        initial.availabilityDeclarations[0].dateExpression = '火曜日';
+        errors = ['document.availabilityDeclarations[0].dateExpression:canonical-expression'];
+      } else {
+        initial.tasks[0].temporalConstraints = [{
+          localId: 'date', targetLocalId: 't1', kind, constraintLevel: 'hard',
+          dateExpression: '火曜日', namedTimePeriod: null, startTime: null, endTime: null,
+          precision: 'exact', sourceText: '火曜日',
+        }];
+        errors = ['document.tasks[0].temporalConstraints[0].dateExpression:canonical-expression'];
+        if (kind === 'excluded_date') errors.push('document.tasks[0].temporalConstraints[0].dateExpression:canonical-expression-required');
+      }
+      const repaired = structuredClone(initial);
+      if (kind === 'availability') repaired.availabilityDeclarations[0].dateExpression = 'weekday:tuesday';
+      else repaired.tasks[0].temporalConstraints[0].dateExpression = 'weekday:tuesday';
+
+      expect(isRepresentationOnlySemanticRepairV5(errors)).toBe(true);
+      expect(validateWeeklyPlanningSemanticRepairPreservationV5({
+        initialDocument: initial, repairedDocument: repaired, initialErrors: errors,
+      })).toEqual([]);
+
+      for (const unrelatedChange of ['drop_task', 'change_amount', 'drop_unavailability', 'change_clock'] as const) {
+        const destructive = structuredClone(repaired);
+        if (unrelatedChange === 'drop_task') destructive.tasks = [];
+        if (unrelatedChange === 'change_amount') destructive.tasks[0].study!.components[0].workloads[0].amount = 20;
+        if (unrelatedChange === 'drop_unavailability') destructive.availabilityDeclarations = [];
+        if (unrelatedChange === 'change_clock') destructive.availabilityDeclarations[0].startTime = '20:00';
+        expect(validateWeeklyPlanningSemanticRepairPreservationV5({
+          initialDocument: initial, repairedDocument: destructive, initialErrors: errors,
+        }), unrelatedChange).toEqual([
+          'semantic-repair-preservation:representation-only repair changed unrelated semantic facts',
+        ]);
+      }
+      expect(initial.availabilityDeclarations[0].startTime).toBe('18:00');
+    },
+  );
+
+  it('does not classify a missing deadline or a mixed invalid quantity as date representation repair', () => {
+    expect(isRepresentationOnlySemanticRepairV5([
+      'document.tasks[0].temporalConstraints[0]:missing-deadline',
+    ])).toBe(false);
+    expect(isRepresentationOnlySemanticRepairV5([
+      'document.availabilityDeclarations[0].dateExpression:canonical-expression',
+      'document.tasks[0].workloads[0].amount',
+    ])).toBe(false);
+  });
+  it.each(['availability', 'deadline', 'excluded_date'] as const)(
+    'applies canonical-date preservation in the real single-repair normalizer: %s', async kind => {
+      for (const dropTask of [false, true]) {
+        const initial = document({ canonicalWindow: true });
+        if (kind === 'availability') initial.availabilityDeclarations[0].dateExpression = '火曜日';
+        else initial.tasks[0].temporalConstraints = [{
+          localId: 'date', targetLocalId: 't1', kind, constraintLevel: 'hard', dateExpression: '火曜日',
+          namedTimePeriod: null, startTime: null, endTime: null, precision: 'exact', sourceText: '火曜日',
+        }];
+        const repaired = structuredClone(initial);
+        if (kind === 'availability') repaired.availabilityDeclarations[0].dateExpression = 'weekday:tuesday';
+        else repaired.tasks[0].temporalConstraints[0].dateExpression = 'weekday:tuesday';
+        if (dropTask) repaired.tasks = [];
+        const initialRaw = JSON.stringify(initial);
+        const initialValidation = validateWeeklyPlanningSemanticResponseV5(initialRaw, { currentUserText: USER_TEXT });
+        expect(initialValidation.errors.length).toBeGreaterThan(0);
+        expect(initialValidation.errors.every(error => error.includes('canonical-expression'))).toBe(true);
+        expect(validateWeeklyPlanningSemanticResponseV5(JSON.stringify(repaired), { currentUserText: USER_TEXT }).errors).toEqual([]);
+        const responses = [initialRaw, JSON.stringify(repaired)];
+        const requests: Array<Parameters<OpenAiCompatibleClient['createChatCompletion']>[0]> = [];
+        const client: OpenAiCompatibleClient = { async createChatCompletion(request) {
+          requests.push(structuredClone(request));
+          const response = responses.shift();
+          if (!response) throw new Error('unexpected third date repair call');
+          return response;
+        } };
+        const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({ userText: USER_TEXT });
+        expect(requests).toHaveLength(2);
+        expect(responses).toEqual([]);
+        expect(result.diagnostics).toMatchObject({ attemptCount: 2, repairAttempted: true });
+        expect(JSON.stringify(initial)).toBe(initialRaw);
+        if (dropTask) {
+          expect(result.status).toBe('rejected');
+          expect(result.document).toBeNull();
+          expect(result.diagnostics.validationErrors).toContain(
+            'repair:semantic-repair-preservation:representation-only repair changed unrelated semantic facts');
+        } else {
+          expect(result.status).toBe('accepted');
+          expect(result.document?.tasks[0].study?.components[0].workloads[0].amount).toBe(220);
+          expect(result.document?.availabilityDeclarations[0]).toMatchObject({ kind: 'unavailable', startTime: '18:00', endTime: '20:00' });
+        }
+      }
+    },
+  );
+
+  it('does not grant date repair authority to an unrelated declaration index', () => {
+    const initial = document({ canonicalWindow: true });
+    initial.availabilityDeclarations.push({ ...initial.availabilityDeclarations[0],
+      localId: 'second', dateExpression: '2026-08-19' });
+    initial.availabilityDeclarations[0].dateExpression = '火曜日';
+    const repaired = structuredClone(initial);
+    repaired.availabilityDeclarations[0].dateExpression = 'weekday:tuesday';
+    repaired.availabilityDeclarations[1].dateExpression = '2026-08-20';
+    expect(validateWeeklyPlanningSemanticRepairPreservationV5({
+      initialDocument: initial, repairedDocument: repaired,
+      initialErrors: ['document.availabilityDeclarations[0].dateExpression:canonical-expression'],
+    })).toEqual(['semantic-repair-preservation:representation-only repair changed unrelated semantic facts']);
+  });
+
 });

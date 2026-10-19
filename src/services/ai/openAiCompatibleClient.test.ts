@@ -190,27 +190,44 @@ describe('openAiCompatibleClient model routing', () => {
     expect(body).not.toHaveProperty('purpose');
   });
 
-  it('omits temperature on the direct Luna path while preserving it for other models', async () => {
-    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
-    const fetchMock = mockFetchOnce({ choices: [{ message: { content: 'ok' } }] });
+  it.each(['gpt-5.6-luna', 'gpt-6-luna'])(
+    'preserves the structured direct %s request and omits custom temperature', async (model) => {
+      vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
+      const fetchMock = mockFetchOnce({ choices: [{ message: { content: 'ok' } }] });
 
-    const lunaClient = createOpenAiCompatibleClient({
-      ...config,
-      model: 'gpt-5.6-luna',
-    });
-    await lunaClient.createChatCompletion({
-      messages: [{ role: 'user', content: 'luna' }],
-      temperature: 0,
-    });
-    expect(lastRequestBody(fetchMock)).not.toHaveProperty('temperature');
+      const lunaClient = createOpenAiCompatibleClient({
+        ...config,
+        model,
+      });
+      const responseFormat = {
+        type: 'json_schema' as const,
+        json_schema: {
+          name: 'model_migration_contract',
+          strict: true,
+          schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'], additionalProperties: false },
+        },
+      };
+      await lunaClient.createChatCompletion({
+        messages: [{ role: 'user', content: 'luna' }],
+        temperature: 0,
+        responseFormat,
+        maxCompletionTokens: 3_200,
+      });
+      expect(lastRequestBody(fetchMock)).toEqual({
+        model,
+        messages: [{ role: 'user', content: 'luna' }],
+        response_format: responseFormat,
+        max_completion_tokens: 3_200,
+      });
 
-    const miniClient = createOpenAiCompatibleClient(config);
-    await miniClient.createChatCompletion({
-      messages: [{ role: 'user', content: 'mini' }],
-      temperature: 0,
-    });
-    expect(lastRequestBody(fetchMock).temperature).toBe(0);
-  });
+      const miniClient = createOpenAiCompatibleClient(config);
+      await miniClient.createChatCompletion({
+        messages: [{ role: 'user', content: 'mini' }],
+        temperature: 0,
+      });
+      expect(lastRequestBody(fetchMock).temperature).toBe(0);
+    },
+  );
 
   it('preserves bounded structured provider diagnostics for a rejected direct request', async () => {
     vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
@@ -393,4 +410,32 @@ describe('openAiCompatibleClient model routing', () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
     expect(init.signal).toMatchObject({ aborted: false });
   });
+  it('rejects non-success proxy responses even when they contain a misleading content field', async () => {
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(true);
+    vi.mocked(getCloudflareAiProxyUrl).mockReturnValue('https://proxy.example/chat/completions');
+    vi.mocked(getFirebaseAuth).mockReturnValue({ currentUser: { getIdToken: async () => 'id-token' } } as unknown as ReturnType<typeof getFirebaseAuth>);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ content: 'not a successful answer', error: 'upstream unavailable',
+      providerFailure: { kind: 'http_error', httpStatus: 502, upstreamStatus: 429, completion: null, privateDebug: 'omit-this' } }, { status: 502 })));
+    await expect(createOpenAiCompatibleClient(config).createChatCompletion({ messages: [{ role: 'user', content: 'test' }], purpose: 'weekly_planning_renderer' }))
+      .rejects.toMatchObject({ providerFailure: { kind: 'http_error', httpStatus: 502, upstreamStatus: 429, completion: null } });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains the HTTP status of a non-JSON proxy error without persisting its body', async () => {
+    vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(true);
+    vi.mocked(getCloudflareAiProxyUrl).mockReturnValue('https://proxy.example/chat/completions');
+    vi.mocked(getFirebaseAuth).mockReturnValue({ currentUser: { getIdToken: async () => 'id-token' } } as unknown as ReturnType<typeof getFirebaseAuth>);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('private error body', { status: 503 })));
+    await expect(createOpenAiCompatibleClient(config).createChatCompletion({ messages: [{ role: 'user', content: 'test' }], purpose: 'weekly_planning_renderer' }))
+      .rejects.toMatchObject({ providerFailure: { kind: 'http_error', httpStatus: 503, upstreamStatus: null, completion: null } });
+  });
+
+  it('keeps timeout distinct from an arbitrary local exception', async () => {
+    vi.useFakeTimers(); vi.mocked(usesCloudflareOpenAiProxy).mockReturnValue(false);
+    vi.stubGlobal('fetch', vi.fn(async (_url, init) => stalledJsonResponse(init.signal)));
+    const request = createOpenAiCompatibleClient({ ...config, requestTimeoutMs: 25 }).createChatCompletion({ messages: [{ role: 'user', content: 'test' }] });
+    const assertion = expect(request).rejects.toMatchObject({ providerFailure: { kind: 'timeout', httpStatus: null } });
+    await vi.advanceTimersByTimeAsync(26); await assertion;
+  });
+
 });

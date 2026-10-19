@@ -27,6 +27,23 @@ const runtimeGatewayStubPlugin = {
     const normalizedImporter = importer
       ? path.normalize(stripViteQuery(importer))
       : '';
+    if (source === './LaplanceAppRoot' && normalizedImporter.endsWith(path.normalize('src/components/ApplicationRouteRoot.tsx'))) {
+      return path.resolve(harnessDir, 'admin-entry-root.jsx');
+    }
+    if (source === '../services/adminService' && normalizedImporter.endsWith(path.normalize('src/hooks/useAdminStatus.ts'))) {
+      return path.resolve(harnessDir, 'admin-entry-access.fixture.js');
+    }
+    if (source === '../services/adminObservabilityService' && normalizedImporter.includes(`${path.sep}src${path.sep}components${path.sep}Admin`)) {
+      return path.resolve(harnessDir, '../admin-overview-harness/adminObservabilityService.phase8.stub.js');
+    }
+    if (['./firebaseClient', './aiConfig'].includes(source)
+      && normalizedImporter.endsWith(path.normalize('src/lib/materialContentsPhoto.ts'))) {
+      return path.resolve(harnessDir, 'material-contents-photo-auth.fixture.js');
+    }
+    if (source === './components/StudySessionView'
+      && normalizedImporter.endsWith(path.normalize('src/App.tsx'))) {
+      return path.resolve(harnessDir, 'StudySessionProvider.control.jsx');
+    }
     if (source === './usePlannerDataState'
       && normalizedImporter.endsWith(path.normalize('src/hooks/usePlannerAppState.ts'))) {
       return path.resolve(harnessDir, 'usePlannerDataState.control.jsx');
@@ -60,7 +77,6 @@ export default defineConfig({
     'import.meta.env.VITE_FIREBASE_AUTH_DOMAIN': JSON.stringify(''),
     'import.meta.env.VITE_FIREBASE_PROJECT_ID': JSON.stringify(''),
     'import.meta.env.VITE_FIREBASE_APP_ID': JSON.stringify(''),
-    'import.meta.env.VITE_APP_ACCESS_KEY': JSON.stringify(''),
   },
   server: {
     host: '127.0.0.1',

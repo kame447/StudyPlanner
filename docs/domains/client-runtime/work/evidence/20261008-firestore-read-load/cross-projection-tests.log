@@ -1,0 +1,65 @@
+
+ RUN  v3.2.7 /tmp/studyplanner-cross-projection-0kute1xd
+
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > preserves same-Plan cancellation: approval-first / approval-ack-first 142ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > preserves same-Plan cancellation: approval-first / day-ack-first 32ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > preserves same-Plan cancellation: day-first / approval-ack-first 15ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > preserves same-Plan cancellation: day-first / day-ack-first 13ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > preserves same-Plan Undo: approval-first / approval-ack-first 23ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > preserves same-Plan Undo: approval-first / day-ack-first 15ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > preserves same-Plan Undo: day-first / approval-ack-first 17ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > preserves same-Plan Undo: day-first / day-ack-first 18ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > recovers plan lost Day ack + failed repair using reads only 18ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > recovers month-event lost Day ack + failed repair using reads only 16ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > recovers timetable-template lost Day ack + failed repair using reads only 13ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > recovers plan lost Undo ack + failed repair without restoring twice 23ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > recovers month-event lost Undo ack + failed repair without restoring twice 20ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > recovers timetable-template lost Undo ack + failed repair without restoring twice 17ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > rejects captured Day Undo after owner A-B-A while an old approval acknowledgement drains 26ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > unions Plan and MonthEvent recovery with confirmed approval while preserving Actuals 35ms
+ ✓ src/hooks/crossFeatureProjection.isolatedProbe.test.tsx > Isolated Day250bf511 + Issue542 source candidate > rejects old approval and Day callbacks after owner A-B-A without overwriting reloaded rows or notices 18ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx > weekly approval confirmed projection > publishes K confirmed items and finalizes their ledger without any per-item full reads 53ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx > weekly approval confirmed projection > keeps a confirmed item when a later item rejects, and resumes with its original idempotent identity 18ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx > weekly approval confirmed projection > does not report an unknown write outcome as success and retries through the server ledger 15ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx > weekly approval confirmed projection > does not replace a newer accepted projection with a delayed approval response 13ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx > weekly approval confirmed projection > does not let a delayed duplicate approval overwrite a concurrent ordinary edit 9ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx > weekly approval confirmed projection > keeps a failed crossed-projection repair retryable without re-saving the approved item 12ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx > weekly approval confirmed projection > repairs an older full snapshot accepted after an approval has already succeeded 10ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx > weekly approval confirmed projection > preserves failed full-read health while projecting an uncontended confirmed save 10ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx > weekly approval confirmed projection > waits for an ordinary edit already pending before duplicate approval before reconciling 8ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx > weekly approval confirmed projection > propagates finalization failure and retries only finalization without another Plan write 7ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx > weekly approval confirmed projection > rejects a foreign-owner acknowledgement without adopting its row 5ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx > weekly approval confirmed projection > fences late success after owner-change without another read or write dispatch 5ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx > weekly approval confirmed projection > fences late success after owner-aba without another read or write dispatch 5ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx > weekly approval confirmed projection > fences late success after sign-out without another read or write dispatch 9ms
+ ✓ src/hooks/usePlannerAppState.weeklyApprovalProjection.test.tsx > weekly approval confirmed projection > fences late success after unmount without another read or write dispatch 3ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > persists only this plan occurrence, retains actuals, reloads and restores once 71ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > persists only this month-event occurrence, retains actuals, reloads and restores once 12ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > persists only this timetable-template occurrence, retains actuals, reloads and restores once 18ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > keeps plan on failed save, rejects duplicate dispatch, and retries 17ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > keeps month-event on failed save, rejects duplicate dispatch, and retries 10ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > keeps timetable-template on failed save, rejects duplicate dispatch, and retries 9ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > keeps date exceptions through template editing and a reload 13ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > does not overwrite a newer edit or revive a removed template through stale undo 12ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > blocks callbacks and undo from an old owner 7ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > repairs a late cancellation after an accepted read rather than losing the stored exception 17ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > admits only one overlapping template edit/cancellation (cancel-first) 7ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > admits only one overlapping template edit/cancellation (edit-first) 5ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > prevents class resurrection when term clear crosses cancellation (cancel-first) 10ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > prevents class resurrection when term clear crosses cancellation (clear-first) 9ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > protects an imported non-recurring Plan move against cancellation (cancel-first) 12ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > protects an imported non-recurring Plan move against cancellation (move-first) 8ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > repairs an unknown plan cancellation result after the write committed 8ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > repairs an unknown month-event cancellation result after the write committed 5ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > repairs an unknown timetable-template cancellation result after the write committed 6ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > blocks resending and undo until a failed reconciliation is successfully retried 9ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > repairs an unknown template Undo result without replaying its write 7ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > does not let template editing overwrite an uncertain cancellation after its repair failed 8ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > rejects an old queued grouped import after cancellation while allowing the next week and Undo 13ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > protects grouped new import and same-source cancellation (cancel-first) 11ms
+ ✓ src/hooks/usePlannerDataState.dayOccurrenceCancellation.test.tsx > protects grouped new import and same-source cancellation (import-first) 4ms
+
+ Test Files  3 passed (3)
+      Tests  57 passed (57)
+   Start at  20:28:00
+   Duration  4.77s (transform 1.21s, setup 0ms, collect 2.07s, tests 958ms, environment 1ms, prepare 472ms)

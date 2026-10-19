@@ -1,3 +1,4 @@
+import { normalizeTimetableDate } from '../domain/timetableDataNormalization';
 import type {
   Actual,
   MonthEventRepeat,
@@ -285,6 +286,10 @@ export function normalizeScheduleTemplateRecord(
     subject: template.subject?.trim() ?? '',
     type: normalizePlanType(template.type),
     weekday: normalizeWeekday(template.weekday),
+    ...(template.excludedDates === undefined ? {} : { excludedDates: [...new Set(
+      (Array.isArray(template.excludedDates) ? template.excludedDates : [])
+        .filter((date): date is string => typeof date === 'string' && normalizeTimetableDate(date) === date),
+    )].sort() }),
     startTime: template.startTime || '09:00',
     endTime: template.endTime || '10:00',
     termId:

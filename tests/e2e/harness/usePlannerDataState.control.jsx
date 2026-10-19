@@ -15,6 +15,7 @@ export function usePlannerDataState(options) {
   useEffect(() => {
     const control = window.__plannerRecoveryHook;
     control.refresh = () => result.loadPlannerData(options.userId);
+    control.loadDayNotes = () => result.loadDayNotes();
     control.snapshot = () => ({ ownerId: options.userId,
       ready: result.isPlannerDataSnapshotCurrent(), availability: result.plannerDataAvailability,
       recovery: result.plannerDataRecovery, plans: result.plans, actuals: result.actuals, materials: result.studyMaterials,

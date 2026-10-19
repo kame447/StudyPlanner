@@ -1,3 +1,5 @@
+import { createLocalClassAttendanceRepository, createUnavailableClassAttendanceRepository } from './classAttendanceRepository';
+import { createLocalStudyStreakRepository, createUnavailableStudyStreakRepository } from './studyStreakRepository';
 import { isFirebaseEnabled } from '../lib/firebaseConfig';
 import { createAuthRepository } from './authRepository';
 import { createLocalPlannerRepository } from './createLocalPlannerRepository';
@@ -27,9 +29,12 @@ function canUseLocalFallback(): boolean {
 }
 
 function createLocalRepositoryBundle() {
+  const plannerRepository = createLocalPlannerRepository();
   return {
     authRepository: createAuthRepository(createLocalAuthStorageGateway()),
-    plannerRepository: createLocalPlannerRepository(),
+    plannerRepository,
+    classAttendanceRepository: createLocalClassAttendanceRepository(window.localStorage, plannerRepository),
+    studyStreakRepository: createLocalStudyStreakRepository(window.localStorage, plannerRepository),
   };
 }
 
@@ -40,6 +45,8 @@ const repositoryBundle = isFirebaseEnabled()
     : {
         authRepository: createUnavailableAuthRepository(),
         plannerRepository: createUnavailablePlannerRepository(),
+        classAttendanceRepository: createUnavailableClassAttendanceRepository(),
+        studyStreakRepository: createUnavailableStudyStreakRepository(),
       };
 
-export const { authRepository, plannerRepository } = repositoryBundle;
+export const { authRepository, plannerRepository, classAttendanceRepository, studyStreakRepository } = repositoryBundle;

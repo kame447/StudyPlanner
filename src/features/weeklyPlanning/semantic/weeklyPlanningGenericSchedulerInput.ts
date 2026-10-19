@@ -32,6 +32,7 @@ import {
 import {
   createWeeklyPlanningAvailabilityResolverGraphV5,
 } from './weeklyPlanningSchedulerAvailabilityProjectionV5';
+import { materializeWeeklyPlanningAvailabilityPreferencesV5 } from './weeklyPlanningSchedulerAvailabilityPreferencesV5';
 import {
   resolveWeeklyPlanningDailyCapacitiesV5,
   type WeeklyPlanningDailyCapacityIssueV5,
@@ -50,6 +51,7 @@ import type {
   TaskDateRuleResolutionIssue,
 } from './weeklyPlanningTaskDateRuleResolver';
 import {
+  CANONICAL_WEEKDAY_DATE_EXPRESSIONS,
   isValidCalendarDate,
   listCalendarDatesInclusive,
   type CalendarWeekStartsOn,
@@ -61,15 +63,20 @@ import {
 } from './weeklyPlanningResolvedDateExpressionsV5';
 import {
   materializeWeeklyPlanningSchedulerPreferredPlacementsV5,
+  materializeWeeklyPlanningHardTemporalBoundsV5,
+  resolveWeeklyPlanningPreferredTimeWindowV5,
   resolveWeeklyPlanningTemporalConstraintsV5,
   weeklyPlanningTemporalConstraintAppliesToTargetV5,
   type WeeklyPlanningResolvedTemporalConstraintsV5,
+  type WeeklyPlanningResolvedHardClockBoundV5,
   type WeeklyPlanningSchedulerHardDateBoundV5,
   type WeeklyPlanningSchedulerPreferredPlacementV5,
 } from './weeklyPlanningResolvedTemporalConstraintsV5';
 import {
   distributeGenericSchedulerWorkItemsV5,
+  resolveWeeklyPlanningWorkItemSessionDurationV5,
 } from './weeklyPlanningSchedulerWorkDistributionV5';
+import { WEEKLY_PLANNING_MAX_GENERATED_SESSION_CHUNKS_V5 } from './weeklyPlanningNumericSafetyV5';
 import {
   detectWeeklyPlanningRelationCycleV5,
 } from './weeklyPlanningRelationCycleV5';
@@ -125,6 +132,7 @@ export interface GenericSchedulerInput {
   sourceSelections: ConstraintSourceSelectionFact[];
   relations: GenericSchedulerTaskRelation[];
   hardDateBounds: WeeklyPlanningSchedulerHardDateBoundV5[];
+  hardClockBounds?: WeeklyPlanningResolvedHardClockBoundV5[];
   preferredPlacements: WeeklyPlanningSchedulerPreferredPlacementV5[];
   sourceFactRefs: string[];
 }
@@ -151,7 +159,10 @@ export type GenericSchedulerInputIssue =
     }
   | {
       domain: 'temporal_constraint';
-      code: 'unresolved_hard_date_expression' | 'contradictory_hard_date_bound';
+      code: 'unresolved_hard_date_expression' | 'contradictory_hard_date_bound'
+        | 'hard_date_bound_outside_planning_window'
+        | 'unsupported_date_expression' | 'named_time_period_unresolved'
+        | 'invalid_time_interval' | 'unknown_constraint_level';
       blocking: true;
       factId: string;
       details: Record<string, string | number | boolean | null>;
@@ -326,6 +337,7 @@ function collectSourceFactRefs(params: {
   selections: ConstraintSourceSelectionFact[];
   relations: GenericSchedulerTaskRelation[];
   hardDateBounds: WeeklyPlanningSchedulerHardDateBoundV5[];
+  hardClockBounds: WeeklyPlanningResolvedHardClockBoundV5[];
   preferredPlacements: WeeklyPlanningSchedulerPreferredPlacementV5[];
 }): string[] {
   const refs = new Set<string>();
@@ -350,6 +362,7 @@ function collectSourceFactRefs(params: {
   for (const bound of params.hardDateBounds) {
     for (const ref of bound.sourceFactIds) refs.add(ref);
   }
+  for (const bound of params.hardClockBounds) refs.add(bound.sourceFactId);
   for (const preferred of params.preferredPlacements) refs.add(preferred.sourceFactId);
   return [...refs].sort();
 }
@@ -446,9 +459,37 @@ function temporalConstraintIssues(params: {
   graph: WeeklyPlanningGenericSchedulerGraphView;
   resolvedDateExpressions: WeeklyPlanningResolvedDateExpressionsV5;
   resolvedTemporalConstraints: WeeklyPlanningResolvedTemporalConstraintsV5;
+  namedTimePeriods: GenericSchedulerInputContext['namedTimePeriods'];
+  planningStartDate: string;
+  planningEndDate: string;
 }): GenericSchedulerInputIssue[] {
   const issues: GenericSchedulerInputIssue[] = [];
   for (const constraint of params.graph.temporalConstraints) {
+    if (constraint.kind === 'preferred_window') {
+      let code: Extract<GenericSchedulerInputIssue, { domain: 'temporal_constraint' }>['code'] | null = null;
+      if (constraint.constraintLevel === 'unknown') {
+        code = 'unknown_constraint_level';
+      } else if (constraint.dateExpression) {
+        const resolved = resolvedWeeklyPlanningDateExpressionForFactV5({
+          resolved: params.resolvedDateExpressions, factId: constraint.id,
+        });
+        if (resolved?.status !== 'resolved' || !resolved.range) code = 'unsupported_date_expression';
+      }
+      if (!code && resolveWeeklyPlanningPreferredTimeWindowV5({
+        constraint, namedTimePeriods: params.namedTimePeriods,
+      }) === undefined) {
+        code = constraint.namedTimePeriod ? 'named_time_period_unresolved' : 'invalid_time_interval';
+      }
+      if (code) issues.push({
+        domain: 'temporal_constraint', code, blocking: true, factId: constraint.id,
+        details: {
+          taskId: constraint.taskId, targetFactId: constraint.targetFactId,
+          expression: constraint.dateExpression, namedTimePeriod: constraint.namedTimePeriod,
+          startTime: constraint.startTime, endTime: constraint.endTime,
+        },
+      });
+      continue;
+    }
     if (
       constraint.constraintLevel !== 'hard'
       || !constraint.dateExpression
@@ -460,7 +501,24 @@ function temporalConstraintIssues(params: {
       resolved: params.resolvedDateExpressions,
       factId: constraint.id,
     });
-    if (resolved?.status === 'resolved' && resolved.range) continue;
+    if (resolved?.status === 'resolved' && resolved.range) {
+      // Only an accepted, resolved horizon can make a bound fall outside it.
+      const outside = Boolean(params.planningStartDate && params.planningEndDate)
+        && (constraint.kind === 'earliest_start'
+          ? resolved.range.start > params.planningEndDate
+          : resolved.range.end < params.planningStartDate);
+      if (outside) issues.push({
+        domain: 'temporal_constraint', code: 'hard_date_bound_outside_planning_window',
+        blocking: true, factId: constraint.id,
+        details: {
+          taskId: constraint.taskId, targetFactId: constraint.targetFactId,
+          expression: constraint.dateExpression, boundKind: constraint.kind,
+          resolvedStartDate: resolved.range.start, resolvedEndDate: resolved.range.end,
+          planningStartDate: params.planningStartDate, planningEndDate: params.planningEndDate,
+        },
+      });
+      continue;
+    }
     issues.push({
       domain: 'temporal_constraint',
       code: 'unresolved_hard_date_expression',
@@ -515,6 +573,10 @@ export function compileGenericSchedulerInput(params: {
       graph: params.graph,
       currentDate: params.context.currentDate,
       weekStartsOn: params.context.weekStartsOn,
+      planningWindow: params.graph.planningWindows.length === 1 ? {
+        startDate: params.context.planningStartDate,
+        endDate: params.context.planningEndDate,
+      } : null,
     });
 
   const commitmentResolution = resolveWeeklyPlanningTaskCommitmentsWithDateRules({
@@ -575,6 +637,28 @@ export function compileGenericSchedulerInput(params: {
     overrides: params.observedEstimateOverrides ?? [],
   });
 
+  for (const item of observedEstimateApplication.items) {
+    const session = resolveWeeklyPlanningWorkItemSessionDurationV5({ item, estimates: params.graph.effortEstimates });
+    if (session.ambiguous) {
+      issues.push({
+        domain: 'work_item', code: 'ambiguous_effort_estimate', blocking: true, factId: item.workloadFactId,
+        details: { matchingEstimateCount: session.sourceFactIds.length },
+      });
+    }
+    if (session.minutes !== null && item.estimatedMinutes !== null
+      && Math.ceil(item.estimatedMinutes / session.minutes) > WEEKLY_PLANNING_MAX_GENERATED_SESSION_CHUNKS_V5) {
+      issues.push({
+        domain: 'semantic_uncertainty', code: 'semantic_uncertainty', blocking: true,
+        factId: session.sourceFactIds[0], details: {
+          targetFactId: item.workloadFactId,
+          field: 'session_duration',
+          reason: 'session_count_limit',
+          sourceText: params.graph.effortEstimates.find((estimate) => estimate.id === session.sourceFactIds[0])!.source.sourceText,
+        },
+      });
+    }
+  }
+
   for (const issue of work.issues) {
     const issueItem = work.items.find((item) => item.workloadFactId === issue.workloadFactId);
     if (issueItem && isWorkItemFixedByTemporalScope({ graph: params.graph, item: issueItem })) {
@@ -603,13 +687,17 @@ export function compileGenericSchedulerInput(params: {
     externalSources: params.externalSources,
     resolvedDateExpressions,
   });
-  issues.push(...availability.issues.map((issue): GenericSchedulerInputIssue => ({
-    domain: 'availability',
-    code: issue.code,
-    blocking: issue.blocking,
-    factId: issue.sourceFactId,
-    details: issue.details,
-  })));
+  issues.push(...availability.issues.map((issue): GenericSchedulerInputIssue => {
+    const declaration = params.graph.availabilityDeclarations.find((fact) => fact.id === issue.sourceFactId);
+    const needsWeekdayScope = issue.code === 'availability_outside_planning_window'
+      && params.graph.planningWindows.length === 1 && declaration?.recurrenceKind === null
+      && (declaration.kind === 'preferred' || (declaration.kind === 'available' && declaration.constraintLevel === 'soft'))
+      && (CANONICAL_WEEKDAY_DATE_EXPRESSIONS as readonly string[]).includes(declaration.dateExpression ?? '');
+    return {
+      domain: 'availability', code: issue.code, blocking: issue.blocking || needsWeekdayScope,
+      factId: issue.sourceFactId, details: issue.details,
+    };
+  }));
 
   const dailyCapacity = resolveWeeklyPlanningDailyCapacitiesV5({
     availabilityDeclarations: params.graph.availabilityDeclarations,
@@ -624,7 +712,7 @@ export function compileGenericSchedulerInput(params: {
     details: issue.details,
   })));
 
-  const resolvedTemporalConstraints = params.resolvedTemporalConstraints
+  const temporalSnapshot = params.resolvedTemporalConstraints
     ?? resolveWeeklyPlanningTemporalConstraintsV5({
       graph: params.graph,
       currentDate: params.context.currentDate,
@@ -632,10 +720,21 @@ export function compileGenericSchedulerInput(params: {
       namedTimePeriods: params.context.namedTimePeriods,
       resolvedDateExpressions,
     });
+  // Provisional work can be introduced after the shared snapshots were made.
+  // With the paired date snapshot, re-apply hard bounds to current active targets before issue checks.
+  // A standalone temporal snapshot must not have its dates reinterpreted using the current clock.
+  const resolvedTemporalConstraints = params.resolvedTemporalConstraints && params.resolvedDateExpressions
+    ? { ...temporalSnapshot, ...materializeWeeklyPlanningHardTemporalBoundsV5({
+        graph: params.graph, resolvedDateExpressions: params.resolvedDateExpressions,
+      }) }
+    : temporalSnapshot;
   issues.push(...temporalConstraintIssues({
     graph: params.graph,
     resolvedDateExpressions,
     resolvedTemporalConstraints,
+    namedTimePeriods: params.context.namedTimePeriods,
+    planningStartDate: params.context.planningStartDate,
+    planningEndDate: params.context.planningEndDate,
   }));
 
   const relations = compileRelations({ graph: params.graph, issues });
@@ -659,16 +758,25 @@ export function compileGenericSchedulerInput(params: {
     ...bound,
     sourceFactIds: [...bound.sourceFactIds],
   }));
-  const preferredPlacements = materializeWeeklyPlanningSchedulerPreferredPlacementsV5({
-    resolved: resolvedTemporalConstraints,
-    dates: planningDates,
-  });
+  const hardClockBounds = resolvedTemporalConstraints.hardClockBounds.map((bound) => ({ ...bound }));
+  const preferredPlacements = [
+    ...materializeWeeklyPlanningSchedulerPreferredPlacementsV5({
+      resolved: resolvedTemporalConstraints,
+      dates: planningDates,
+    }),
+    ...materializeWeeklyPlanningAvailabilityPreferencesV5({
+      windows: availability.windows,
+      items: observedEstimateApplication.items,
+      dates: planningDates,
+    }),
+  ];
   const movableWorkItems = distributeGenericSchedulerWorkItemsV5({
     graph: params.graph,
     items: observedEstimateApplication.items,
     startDate: params.context.planningStartDate,
     endDate: params.context.planningEndDate,
     hardDateBounds,
+    sessionDurationEstimates: params.graph.effortEstimates,
   });
 
   if (movableWorkItems.length === 0 && commitments.reservations.length === 0) {
@@ -695,6 +803,7 @@ export function compileGenericSchedulerInput(params: {
     sourceSelections: availability.sourceSelections,
     relations,
     hardDateBounds,
+    hardClockBounds,
     preferredPlacements,
     sourceFactRefs: collectSourceFactRefs({
       graph: params.graph,
@@ -706,6 +815,7 @@ export function compileGenericSchedulerInput(params: {
       selections: availability.sourceSelections,
       relations,
       hardDateBounds,
+      hardClockBounds,
       preferredPlacements,
     }),
   };

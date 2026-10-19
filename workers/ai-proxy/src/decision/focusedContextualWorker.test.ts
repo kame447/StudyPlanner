@@ -1,7 +1,9 @@
+import { createFocusedContextualBindingSnapshotV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningFocusedContextualBindingV5';
+import { createFocusedContextualBindingInputFixtureV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningFocusedContextualBindingV5.testUtils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FocusedContextualDecisionContext } from '../../../../shared/focusedContextualDecision';
 import worker from '../worker';
-import { JEV_MODEL } from './decisionPolicy';
+import { JEV_MODEL, JEV_PROVIDER_PREFERENCES } from './decisionPolicy';
 import type { ContextualDecision } from './contextualDecisionPolicy';
 
 const calls: string[] = [];
@@ -21,25 +23,15 @@ let lunaContent = JSON.stringify({
 
 function decisionContext(
   questionCode: FocusedContextualDecisionContext['questionCode'] = 'quantity_role_unresolved',
-): FocusedContextualDecisionContext {
-  return {
-    purpose: 'focused_contextual_answer',
-    requestId: 'request-contextual-worker',
-    inputRevision: 21,
-    questionCode,
-    state: {
-      currentUserText: questionCode === 'quantity_role_unresolved'
-        ? '残りです。'
-        : '総時間は分からないので、空き時間で暫定的に進めてください。',
-      pendingQuestion: {
-        targetQuantityRole: questionCode === 'quantity_role_unresolved'
-          ? 'declared'
-          : 'remaining',
-        questionBasis: null,
-        hasEstimateTarget: false,
-      },
-    },
-  };
+) {
+  const result = structuredClone(createFocusedContextualBindingSnapshotV5(createFocusedContextualBindingInputFixtureV5())!.context);
+  result.requestId = 'request-contextual-worker'; result.inputRevision = 21; result.questionCode = questionCode;
+  result.state.currentUserText = questionCode === 'missing_effort_estimate' ? '総時間は分からないので、空き時間で暫定的に進めてください。' : '残りです。';
+  result.state.pendingQuestion.targetQuantityRole = questionCode === 'missing_effort_estimate' ? 'remaining' : 'declared';
+  const target = result.state.pendingQuestion.target;
+  target.sourceRevision = 21; target.questionCode = questionCode;
+  target.workload.quantityRole = result.state.pendingQuestion.targetQuantityRole;
+  return result;
 }
 
 function jevResponse() {
@@ -81,7 +73,11 @@ function execute(params: {
     },
     body: JSON.stringify({
       purpose: 'weekly_planning_semantic_normalizer',
-      messages: [{ role: 'user', content: 'existing-luna-focused-request' }],
+      messages: [{ role: 'user', content: JSON.stringify({
+        currentUserText: (params.context as ReturnType<typeof decisionContext> | undefined)?.state?.currentUserText ?? decisionContext().state.currentUserText,
+        pendingQuestion: { questionCode: (params.context as ReturnType<typeof decisionContext> | undefined)?.questionCode ?? decisionContext().questionCode,
+        questionTargetWorkload: (params.context as ReturnType<typeof decisionContext> | undefined)?.state?.pendingQuestion?.target?.workload ?? decisionContext().state.pendingQuestion.target.workload },
+      }) }],
       ...(params.omitContext
         ? {}
         : { decisionContext: params.context ?? decisionContext() }),
@@ -144,7 +140,7 @@ beforeEach(() => {
       const body = JSON.parse(String(init?.body));
       expect(body).not.toHaveProperty('decisionContext');
       lunaBodies.push(body);
-      return Response.json({ choices: [{ message: { content: lunaContent } }] });
+      return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ message: { content: lunaContent } }] });
     }
     throw new Error(`Unexpected call: ${url}`);
   }));
@@ -162,8 +158,11 @@ describe('focused contextual Worker dispatch', () => {
       const original = decisionContext();
       original.state.currentUserText = 'その量のことです。';
       original.state.pendingQuestion.targetQuantityRole = 'unknown';
-      const pair = { ...original, questionCode: 'missing_effort_estimate' as const };
-      expect(pair.state).toEqual(original.state);
+      original.state.pendingQuestion.target.workload.quantityRole = 'unknown';
+      const pair = structuredClone(original);
+      pair.questionCode = 'missing_effort_estimate';
+      pair.state.pendingQuestion.target.questionCode = 'missing_effort_estimate';
+      expect(pair.state.currentUserText).toEqual(original.state.currentUserText);
       for (const context of [original, pair]) {
         const run = execute({ mode, context });
         expect((await run.response).status).toBe(200);
@@ -172,12 +171,13 @@ describe('focused contextual Worker dispatch', () => {
       expect(jevBodies).toHaveLength(2);
       expect(jevBodies[0]).toEqual({
         model: JEV_MODEL.request,
+        provider: JEV_PROVIDER_PREFERENCES,
         state: { questionCode: original.questionCode, ...original.state },
         questions: expect.any(Object),
       });
       expect(jevBodies[1]).toEqual({
         ...jevBodies[0],
-        state: { questionCode: pair.questionCode, ...original.state },
+        state: { questionCode: pair.questionCode, ...pair.state },
       });
       expect(JSON.stringify(jevBodies[0])).not.toContain(original.requestId);
       expect(jevBodies[0].state).not.toHaveProperty('inputRevision');
@@ -190,7 +190,7 @@ describe('focused contextual Worker dispatch', () => {
   );
 
   it.each(['off', 'shadow', 'canary'] as const)(
-    'rejects malformed, unknown, or duplicated identity before providers in %s',
+    'uses Luna once for malformed v2 without exposing it to Jev in %s',
     async (mode) => {
       const original = decisionContext();
       const invalidContexts = [
@@ -205,11 +205,11 @@ describe('focused contextual Worker dispatch', () => {
       ];
       for (const context of invalidContexts) {
         const run = execute({ mode, context });
-        expect((await run.response).status).toBe(400);
+        expect((await run.response).status).toBe(200);
         await Promise.all(run.pending);
       }
       expect(jevBodies).toHaveLength(0);
-      expect(lunaBodies).toHaveLength(0);
+      expect(lunaBodies).toHaveLength(invalidContexts.length);
     },
   );
 
@@ -314,13 +314,12 @@ describe('focused contextual Worker dispatch', () => {
     expect(calls.filter((url) => url.endsWith('/chat/completions'))).toHaveLength(1);
   });
 
-  it('rejects unknown fields before either paid provider is called', async () => {
+  it('falls back once for unknown v2 fields without calling Jev', async () => {
     const invalid = { ...decisionContext(), schedulerPermission: true };
     const { response } = execute({ context: invalid });
-    expect((await response).status).toBe(400);
-    expect(calls.filter((url) =>
-      url.endsWith('/api/alpha/decisions') || url.endsWith('/chat/completions')))
-      .toHaveLength(0);
+    expect((await response).status).toBe(200);
+    expect(jevBodies).toHaveLength(0);
+    expect(lunaBodies).toHaveLength(1);
   });
 
   it('ignores an unknown context purpose and sends the same upstream Luna body as no context', async () => {

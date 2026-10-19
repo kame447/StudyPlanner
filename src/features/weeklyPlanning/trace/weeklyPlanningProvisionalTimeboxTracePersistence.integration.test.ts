@@ -1,4 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createWeeklyPlanningSemanticNormalizerV5 } from '../semantic/weeklyPlanningSemanticNormalizerV5';
+import type { OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import { takeWeeklyPlanningStableV5DebugTrace, resetWeeklyPlanningStableV5DebugTraceForTest } from './weeklyPlanningStableV5DebugTrace';
 import {
   WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS,
   measureWeeklyPlanningTraceJsonBytes,
@@ -180,6 +183,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
+  resetWeeklyPlanningStableV5DebugTraceForTest();
   resetWeeklyPlanningStableV5TraceRuntimeForTest();
   setWeeklyPlanningTraceRepositoryForTests(undefined);
   restoreStorage?.();
@@ -277,4 +282,108 @@ describe('provisional timebox trace persistence gate', () => {
       WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes,
     );
   });
+});
+
+
+describe('generic temporal meaning request persistence', () => {
+  it('carries the actual clarified prompt through bounded outbox retry and Worker preparation', async () => {
+    vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
+    const requestId = `${CONVERSATION_ID}:request:temporal-policy`;
+    const userText = '予定を作って';
+    const sentinel = 'future-temporal-context-sentinel';
+    const client: OpenAiCompatibleClient = { createChatCompletion: vi.fn(async () => JSON.stringify({
+      schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'create_plan', planningWindow: null,
+      tasks: [], relations: [], availabilityDeclarations: [], constraintSourceRequests: [],
+      userContextFacts: [], uncertainties: [], corrections: [], decisions: [],
+    })) };
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText, traceRequestId: requestId, publicStateSummary: { futureTemporalContext: sentinel },
+    });
+    expect(result.status).toBe('accepted');
+    expect(client.createChatCompletion).toHaveBeenCalledTimes(1);
+    const request = vi.mocked(client.createChatCompletion).mock.calls[0][0];
+    expect(request.messages[0].content).toContain(
+      'fixed_interval means an exact occupied interval, not a window for placing shorter work',
+    );
+    expect(request.messages[0].content).toContain(
+      'Keep task timing task-scoped; available is only a plan-wide placement window',
+    );
+    const events = takeWeeklyPlanningStableV5DebugTrace(requestId);
+    const provider = events.find((event) => event.stage === 'semantic_provider_request');
+    expect(provider).toBeDefined();
+    const data = provider!.data as { requestBytes: number; request: { messages: typeof request.messages; purpose: string } };
+    expect(data.request.messages).toEqual(request.messages);
+    expect(data.requestBytes).toBe(new TextEncoder().encode(JSON.stringify(request)).byteLength);
+    const first = { userId: USER_ID, conversationId: CONVERSATION_ID, requestId, userText,
+      assistantMessage: '作る予定について教えてください。', responseSource: 'ai' as const,
+      outcome: 'discuss', previewCount: 0, debugTraceEvents: events };
+    const harness = repositoryHarness(); harness.failNext();
+    setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    await recordWeeklyPlanningStableV5TurnTrace(first);
+    expect(harness.writes).toHaveLength(0);
+    const pending = listWeeklyPlanningTraceOutboxItems({ userId: USER_ID, conversationId: CONVERSATION_ID });
+    expect(pending).toHaveLength(1); expect(pending[0].input).toEqual(first);
+    expect(JSON.parse(window.localStorage.getItem('studyplanner.weeklyPlanning.trace.outbox.v1')!).items[0].input).toEqual(first);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace(first); // replay the durable item, then deduplicate this request
+    expect(harness.writes).toHaveLength(1);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: USER_ID, conversationId: CONVERSATION_ID })).toEqual([]);
+    const write = harness.writes[0], entry = write.entries[0];
+    if (entry.kind !== 'turn_diagnostic') throw new Error('expected turn diagnostic');
+    expect(entry.requestId).toBe(requestId);
+    expect(entry.aiInterpreter.input.requests).toHaveLength(1);
+    const stored = entry.aiInterpreter.input.requests[0];
+    expect(stored.requestBytes).toBe(data.requestBytes); expect(stored.purpose).toBe(data.request.purpose);
+    expect(stored.messages[0].content).toContain('…[trace truncated]');
+    expect(request.messages[0].content.startsWith(stored.messages[0].content.replace('…[trace truncated]', ''))).toBe(true);
+    expect(new TextEncoder().encode(stored.messages[0].content).byteLength).toBeLessThanOrEqual(1500);
+    expect(entry.diagnostics.truncation?.applied).toBe(true);
+    expect(entry.diagnostics.truncation?.fields).toContain('aiInterpreter.input.requests[0].messages[0].content');
+    expect(JSON.stringify(entry)).toContain(sentinel);
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const prepared = prepareWeeklyPlanningTraceServerWrite({
+      session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[],
+    }, subject, canonicalIds, '2026-09-04T00:00:00.000Z');
+    expect(prepared.entries).toHaveLength(1);
+    expect(prepared.entries[0]).toMatchObject({ aiInterpreter: { input: { requests: [stored] } }, diagnostics: { truncation: entry.diagnostics.truncation } });
+    expect(JSON.stringify(prepared.entries[0])).toContain(sentinel);
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+  });
+  it('persists the actual allocation classifier request for a previously blocked estimate', async () => {
+    vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
+    const requestId = `${CONVERSATION_ID}:request:unknown-effort`;
+    const client: OpenAiCompatibleClient = { createChatCompletion: vi.fn(async () => '{"decision":"provisional_timebox"}') };
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '全体の時間はわからないので空き時間で仮に配分して', traceRequestId: requestId,
+      publicStateSummary: { graphRevision: 3,
+        pendingQuestion: { questionCode: 'semantic_uncertainty', targetFactId: 'need', graphRevision: 3 },
+        tasks: [{ publicId: 'research', category: 'study', title: '研究' }], components: [], workloads: [],
+        uncertainties: [{ publicId: 'need', targetPublicId: 'research', field: 'total_duration',
+          reason: '見積もり不明', futureAllocationSentinel: { retained: true } }] },
+    });
+    expect(result.contextualDirective?.kind).toBe('provisional_timebox');
+    const request = vi.mocked(client.createChatCompletion).mock.calls[0][0];
+    const events = takeWeeklyPlanningStableV5DebugTrace(requestId);
+    const first = { userId: USER_ID, conversationId: CONVERSATION_ID, requestId, userText: '空き時間で仮に配分して',
+      assistantMessage: '仮予定を相談します。', responseSource: 'ai' as const, outcome: 'revision_pending', previewCount: 0, debugTraceEvents: events };
+    const harness = repositoryHarness(); harness.failNext(); setWeeklyPlanningTraceRepositoryForTests(harness.repository);
+    await recordWeeklyPlanningStableV5TurnTrace(first);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId: USER_ID, conversationId: CONVERSATION_ID })).toHaveLength(1);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace(first);
+    expect(harness.writes).toHaveLength(1);
+    const write = harness.writes[0], entry = write.entries[0];
+    if (entry.kind !== 'turn_diagnostic') throw new Error('expected diagnostic');
+    expect(entry.aiInterpreter.input.requests).toHaveLength(1);
+    expect(entry.aiInterpreter.input.requests[0].messages).toEqual(request.messages);
+    expect(JSON.stringify(entry)).toContain('futureAllocationSentinel');
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const prepared = prepareWeeklyPlanningTraceServerWrite({ session: write.session as unknown as Record<string, unknown>,
+      entries: write.entries as unknown as Record<string, unknown>[] }, subject, canonicalIds, '2026-10-15T00:00:00.000Z');
+    expect(prepared.entries).toHaveLength(1);
+    expect(JSON.stringify(prepared.entries[0])).toContain('futureAllocationSentinel');
+    expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+  });
+
 });

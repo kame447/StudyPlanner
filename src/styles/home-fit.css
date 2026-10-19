@@ -71,7 +71,7 @@
   height: calc(100% - clamp(40px, 6dvh, 49px));
 }
 
-.home-dashboard-default .home-start-button {
+.home-dashboard-default .home-actions {
   bottom: clamp(7px, 1.1dvh, 10px);
   min-height: clamp(37px, 5.3dvh, 46px);
 }
@@ -83,11 +83,6 @@
 
 .home-dashboard-default .home-eyebrow {
   margin-bottom: clamp(3px, 0.6dvh, 6px);
-}
-
-.home-dashboard-default .home-empty-copy {
-  font-size: clamp(0.64rem, 1.25dvh, 0.75rem);
-  line-height: 1.36;
 }
 
 .home-dashboard-default .home-panel {
@@ -110,17 +105,16 @@
   overflow-y: auto;
 }
 
-.home-dashboard-default .home-schedule-row,
-.home-dashboard-default .home-schedule-empty {
+.home-dashboard-default :is(.home-schedule-row, .home-schedule-empty) {
   min-height: var(--home-fit-row-height);
-  padding-top: calc(clamp(4px, 0.65dvh, 7px) + var(--home-relax-schedule-side, 0px));
-  padding-bottom: calc(clamp(4px, 0.65dvh, 7px) + var(--home-relax-schedule-side, 0px));
+  --home-add-pad: calc(clamp(4px, 0.65dvh, 7px) + var(--home-relax-schedule-side, 0px));
+  padding-block: var(--home-add-pad);
 }
 
 .home-dashboard-default .home-schedule-add-row {
   min-height: clamp(32px, 4.5dvh, 40px);
-  padding-top: calc(clamp(3px, 0.45dvh, 5px) + var(--home-relax-schedule-side, 0px));
-  padding-bottom: calc(clamp(3px, 0.45dvh, 5px) + var(--home-relax-schedule-side, 0px));
+  --home-add-pad: calc(clamp(3px, 0.45dvh, 5px) + var(--home-relax-schedule-side, 0px));
+  padding-block: var(--home-add-pad);
 }
 
 .home-dashboard-default .home-alert-grid {
@@ -174,10 +168,6 @@
     font-size: clamp(0.86rem, 2dvh, 0.96rem);
   }
 
-  .home-dashboard-default .home-date-unit {
-    font-size: clamp(0.57rem, 1.35dvh, 0.63rem);
-  }
-
   .home-dashboard-default .home-icon-button,
   .home-dashboard-default .home-avatar-button {
     width: 33px;
@@ -201,7 +191,7 @@
     font-size: 0.66rem;
   }
 
-  .home-dashboard-default .home-start-button {
+  .home-dashboard-default .home-actions {
     left: 14px;
     right: 14px;
     gap: 7px;
@@ -221,10 +211,9 @@
     font-size: 0.59rem;
   }
 
-  .home-dashboard-default .home-schedule-row,
-  .home-dashboard-default .home-schedule-empty {
-    padding-top: calc(3px + var(--home-relax-schedule-side, 0px));
-    padding-bottom: calc(3px + var(--home-relax-schedule-side, 0px));
+  .home-dashboard-default :is(.home-schedule-row, .home-schedule-empty) {
+    --home-add-pad: calc(3px + var(--home-relax-schedule-side, 0px));
+    padding-block: var(--home-add-pad);
   }
 
   .home-dashboard-default .home-schedule-content {
@@ -244,15 +233,6 @@
   .home-dashboard-default .home-schedule-content small {
     font-size: 0.56rem;
     line-height: 1.05;
-  }
-
-  .home-dashboard-default .home-schedule-add-row strong {
-    font-size: 0.72rem;
-    line-height: 1.1;
-  }
-
-  .home-dashboard-default .home-schedule-empty {
-    line-height: 1.1;
   }
 
   .home-dashboard-default .home-alert-card {
@@ -350,13 +330,6 @@
 
   .home-dashboard-default .home-study-scene {
     transform: scale(0.8);
-  }
-
-  .home-dashboard-default .home-empty-copy {
-    display: -webkit-box;
-    overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
   }
 }
 

@@ -62,6 +62,14 @@ describe('AdminApp auth session', () => {
     expect(fake.session.subscribe).not.toHaveBeenCalled();
   });
 
+  it('uses the Laplance initial and product name in the admin brand', () => {
+    mount();
+    act(() => fake.emit(user));
+    act(() => emitAdmin(true));
+    expect(hasText('Laplance')).toBe(true);
+    expect(renderer.root.findByProps({ className: 'admin-console-brand-mark' }).children).toEqual(['L']);
+  });
+
   it('preserves the independent admin access check and live access revocation', () => {
     mount();
     // Admin auth has never applied the planner email-verification gate.
@@ -105,5 +113,19 @@ describe('AdminApp auth session', () => {
     act(() => renderer.update(<AdminApp />));
     expect(createAuthSessionService).toHaveBeenCalledTimes(1);
     expect(fake.session.subscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the return action available while auth or access is pending, denied or signed out', () => {
+    const onReturn = vi.fn(); const preventDefault = vi.fn();
+    act(() => { renderer = create(<AdminApp authSession={fake.session} onReturnToApp={onReturn} />); });
+    const clickReturn = () => renderer.root.findByProps({ className: 'admin-console-return-link' }).props.onClick({ button: 0, preventDefault });
+    act(clickReturn); expect(onReturn).toHaveBeenCalledTimes(1);
+    act(() => fake.emit(user)); act(() => emitAdmin(false));
+    expect(hasText('アクセス権限がありません')).toBe(true); act(clickReturn);
+    act(() => fake.emit(null)); act(clickReturn);
+    expect(onReturn).toHaveBeenCalledTimes(3); expect(preventDefault).toHaveBeenCalledTimes(3);
+    expect(fake.session.signOut).not.toHaveBeenCalled();
+    act(() => renderer.root.findByProps({ className: 'admin-console-return-link' }).props.onClick({ button: 0, ctrlKey: true, preventDefault }));
+    expect(onReturn).toHaveBeenCalledTimes(3);
   });
 });

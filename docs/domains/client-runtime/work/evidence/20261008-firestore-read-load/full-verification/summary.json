@@ -1,0 +1,132 @@
+{
+  "status": "PASS",
+  "completedAt": "2026-10-08T11:27:59Z",
+  "branch": "perf/firestore-read-load",
+  "head": "22847120386987329e2f034d6062d59694ef1180",
+  "dirtyWorktree": true,
+  "verify": {
+    "command": "npm run verify",
+    "exitCode": 0,
+    "start": "2026-10-08T11:17:31Z",
+    "end": "2026-10-08T11:27:59Z",
+    "freshAppTypecheck": "PASS",
+    "freshWorkerTypecheck": "PASS",
+    "workerTypesRegenerated": true,
+    "testFiles": {
+      "passed": 765,
+      "skipped": 10,
+      "total": 775
+    },
+    "tests": {
+      "passed": 6204,
+      "skipped": 45,
+      "todo": 1,
+      "total": 6250
+    },
+    "unitDurationSeconds": 573.03,
+    "productionBuild": "PASS",
+    "buildDurationSeconds": 11.47
+  },
+  "bundle": {
+    "command": "node scripts/ci/check-bundle-budget.mjs",
+    "exitCode": 0,
+    "violationCount": 0,
+    "javascript": {
+      "totalRaw": 2244218,
+      "totalGzip": 603513,
+      "largestRaw": 763296,
+      "largestGzip": 215434
+    },
+    "css": {
+      "totalRaw": 484128,
+      "totalGzip": 81302,
+      "largestRaw": 423600,
+      "largestGzip": 68637
+    },
+    "budgets": {
+      "javascript": {
+        "totalRaw": 2260000,
+        "totalGzip": 608000,
+        "largestRaw": 950000,
+        "largestGzip": 260000
+      },
+      "css": {
+        "totalRaw": 485000,
+        "totalGzip": 85000,
+        "largestRaw": 425000,
+        "largestGzip": 70000
+      }
+    }
+  },
+  "identity": {
+    "inputFileCount": 1855,
+    "beforeInputManifestSha256": "88cf2c71cd43fcc760977a404f72dbbe70e97ab4cf78d1a7ccb5bfc2f552803e",
+    "afterInputManifestSha256": "88cf2c71cd43fcc760977a404f72dbbe70e97ab4cf78d1a7ccb5bfc2f552803e",
+    "installedPackagesCount": 336,
+    "beforeInstalledPackageManifestSha256": "33f6896aab782ec816c5d3afa66c7f15c5d040354650ba8534b8f00053570ecd",
+    "afterInstalledPackageManifestSha256": "33f6896aab782ec816c5d3afa66c7f15c5d040354650ba8534b8f00053570ecd",
+    "installedPackageVersionMismatches": 0,
+    "missingNonoptionalPackages": 0,
+    "node": "v24.19.0",
+    "npm": "11.9.0",
+    "selectedActualInstalledVersions": {
+      "typescript": "5.9.3",
+      "vitest": "3.2.7",
+      "firebase": "12.12.0",
+      "vite": "6.4.3",
+      "wrangler": "4.143.1",
+      "react": "18.3.1",
+      "react-dom": "18.3.1",
+      "tinypool": "2.1.2"
+    },
+    "workerRuntimeTypes": {
+      "sha256": "bf808b3fb4789a76410fc9c1ba8cd85e80453b8f92fa0981bdb86a9d523d612e",
+      "size": 615867
+    },
+    "nodeModulesRealPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules",
+    "packageLockSha256": "0cc1f34fa1ead88aab107a9cd1f91e00575d514d45406a5ec452d98b71bfdbb5"
+  },
+  "scope": "All tracked and nonignored untracked inputs except docs/** and explicitly isolated standalone Emulator runner/module filenames recorded in scope.txt. Full Vitest default discovery includes tests/performance/firestoreReadLoad.measurement.test.tsx. Emulator/auth/rules/browser/live API gates are separate and not certified by this run.",
+  "changes": {
+    "inputs": [],
+    "installed-packages": [],
+    "excluded-paths": [
+      "docs/domains/client-runtime/work/20261008-firestore-read-load-and-startup.md",
+      "docs/domains/client-runtime/work/evidence/20261008-firestore-read-load/README.md",
+      "docs/domains/client-runtime/work/evidence/20261008-firestore-read-load/comparison.json",
+      "docs/domains/client-runtime/work/evidence/20261008-firestore-read-load/provenance.json"
+    ]
+  },
+  "diffCheckExitCode": 0,
+  "safety": {
+    "isolatedHome": true,
+    "envInherited": false,
+    "worktreeEnvOrWorkerDevVarsFiles": [],
+    "productionOrLiveApiCredentialsSupplied": false,
+    "poolLimits": {
+      "VITEST_MIN_FORKS": 1,
+      "VITEST_MAX_FORKS": 1,
+      "VITEST_MIN_THREADS": 1,
+      "VITEST_MAX_THREADS": 1
+    },
+    "offline": true
+  },
+  "limitations": [
+    "Existing opt-in observation tests and persona skips/todo remain skipped/todo; they are not successful executions.",
+    "Vite reported nonfatal mixed static/dynamic import and over-500-kB chunk warnings; all explicit bundle budgets passed.",
+    "Previous failed and interrupted attempts are retained separately; only this final exact-content attempt is PASS."
+  ],
+  "artifacts": {
+    "log": "verify.log",
+    "bundle": "bundle-budget.json",
+    "scope": "scope.txt",
+    "identicalBeforeAfterInputs": "inputs.json",
+    "identicalBeforeAfterInstalledPackages": "installed-packages.json",
+    "comparison": "comparison.json"
+  },
+  "sourceSummarySha256": "8a73a68b2a06bbcb9e96577f9e56f6ff6c172b381fbc77269d775a68ca8f9203",
+  "storageNote": "Equal before/after content and installed-package manifests are stored once; full test/build terminal output and verification scope are retained alongside this summary.",
+  "sourceLogSha256": "97f6535bf1bee80209b83e8827035708b8700f8aa06089f56bb3dd2b67dbbf3b",
+  "storedLogSha256": "52ffdd2c696105d8e4eda0192631b92b0282f2b74e94010b25fe493781b09071",
+  "logNormalization": "Trimmed trailing whitespace on one line for repository hygiene; all test/build output text and line ordering retained."
+}

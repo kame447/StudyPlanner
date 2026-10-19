@@ -17,7 +17,7 @@ describe('AI proxy request observer', () => {
       provider: 'openai',
       purpose: 'weekly_planning_semantic_normalizer',
       phase: 'initial',
-      model: 'gpt-5.6-luna',
+      model: 'gpt-6-luna',
     });
   });
 
@@ -27,7 +27,7 @@ describe('AI proxy request observer', () => {
       provider: 'openai',
       purpose: 'weekly_planning_attachment',
       phase: 'single',
-      model: 'gpt-5.6-luna',
+      model: 'gpt-6-luna',
     });
     expect(describeAiProxyOperation('/planning-transcription', null, {
       OPENAI_TRANSCRIPTION_MODEL: 'gpt-test-transcribe',
@@ -39,13 +39,17 @@ describe('AI proxy request observer', () => {
       model: 'gpt-test-transcribe',
     });
     expect(describeAiProxyOperation('/timetable-ocr', null, {
-      GEMINI_MODEL: 'gemini-3.5-flash',
+      GEMINI_MODEL: 'gemini-3.6-flash',
     })).toEqual({
       operationKind: 'timetable_ocr',
       provider: 'gemini',
       purpose: 'timetable_ocr',
       phase: 'single',
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.6-flash',
+    });
+    expect(describeAiProxyOperation('/timetable-ocr', null, {})).toMatchObject({
+      provider: 'gemini',
+      model: 'gemini-3.6-flash',
     });
   });
 

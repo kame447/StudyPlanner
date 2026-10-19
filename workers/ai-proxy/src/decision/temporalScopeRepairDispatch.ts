@@ -16,6 +16,7 @@ import {
   type LunaBaselineFailure,
 } from './decisionExecutionMarker';
 import type { DecisionEvaluation, DecisionProvider } from './decisionProvider';
+import { evaluateDecisionProviderSafely } from './decisionProvider';
 import { createOpenRouterDecisionProvider } from './openRouterDecisionProvider';
 import {
   TEMPORAL_SCOPE_REPAIR_CATALOG_VERSION,
@@ -203,7 +204,7 @@ export async function dispatchTemporalScopeRepair(params: {
   };
 
   if (mode === 'shadow') {
-    const evaluation = provider.evaluate(params.context.state);
+    const evaluation = evaluateDecisionProviderSafely(provider, params.context.state);
     const baseline = fallbackWithFailureMarker(
       params.fallback,
       mode,
@@ -211,7 +212,7 @@ export async function dispatchTemporalScopeRepair(params: {
     ).then((response) => markJevExecution(response, mode));
     params.executionContext!.waitUntil(
       Promise.all([evaluation, baseline.then(baselineDecision, () => null)])
-        .then(([result, lunaDecision]) => record(result, lunaDecision))
+        .then(([result, lunaDecision]) => result.metadata ? record(result, lunaDecision) : undefined)
         .catch(() => undefined),
     );
     return baseline;
@@ -232,9 +233,10 @@ export async function dispatchTemporalScopeRepair(params: {
     controller.abort();
   }, TEMPORAL_SCOPE_REPAIR_REQUEST_TIMEOUT_MS);
   try {
-    const evaluation = await provider.evaluate(params.context.state, controller.signal);
-    const gate = gateTemporalScopeRepairDecision(evaluation);
-    const metric = record(evaluation, null).catch(() => undefined);
+    const evaluation = await evaluateDecisionProviderSafely(provider, params.context.state, controller.signal);
+    const gate: ReturnType<typeof gateTemporalScopeRepairDecision> = evaluation.metadata ? gateTemporalScopeRepairDecision(evaluation)
+      : { status: 'unavailable', reason: evaluation.reason };
+    const metric = evaluation.metadata ? record(evaluation, null).catch(() => undefined) : Promise.resolve();
     if (params.executionContext) params.executionContext.waitUntil(metric);
     else await metric;
     if (controller.signal.aborted) {

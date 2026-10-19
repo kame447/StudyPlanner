@@ -12,6 +12,7 @@ export interface CandidateChoiceWireRequest {
     readonly question: { readonly id: string; readonly code: string };
     readonly target: { readonly kind: string; readonly id: string };
     readonly scope: ChoiceTuple;
+    readonly presentedQuestion?: string;
   };
   readonly menu: {
     readonly nodeId: string;
@@ -25,12 +26,22 @@ export interface CandidateChoiceWireRequest {
   };
 }
 export interface ChoiceCandidate { readonly id: string; readonly label: string; readonly tuple: ChoiceTuple }
+export type CandidateChoiceAcceptanceScope = 'pending_question_answer' | 'explicit_reference';
+/** Mechanical destination membership only; semantic sufficiency still requires both calibrated heads. */
+export function candidateChoiceAcceptanceScope(request: CandidateChoiceWireRequest, optionId: string): CandidateChoiceAcceptanceScope {
+  const pending = request.context.scope.pendingQuestion;
+  const option = request.menu.options.find(item => item.id === optionId);
+  const keys = typeof pending === 'object' && pending !== null && !Array.isArray(pending)
+    ? (pending as ChoiceTuple).candidateKeys : null;
+  return request.context.question.code === 'reply_reference_target' && option?.kind === 'leaf'
+    && Array.isArray(keys) && keys.includes(option.candidate.id) ? 'pending_question_answer' : 'explicit_reference';
+}
 export interface CandidateChoiceDecisionContext {
   readonly purpose: 'candidate_choice';
   readonly request: CandidateChoiceWireRequest;
 }
-export const CANDIDATE_CHOICE_CATALOG_VERSION = 'complete-candidate-choice-2026-10-05-v1';
-export const CANDIDATE_CHOICE_QUESTION_CODES = ['missing_effort_estimate', 'ambiguous_effort_estimate', 'quantity_role_unresolved', 'missing_time_bounds', 'invalid_time_interval', 'named_time_period_unresolved'] as const;
+export const CANDIDATE_CHOICE_CATALOG_VERSION = 'complete-candidate-choice-2026-10-13-v2';
+export const CANDIDATE_CHOICE_QUESTION_CODES = ['missing_effort_estimate', 'ambiguous_effort_estimate', 'quantity_role_unresolved', 'missing_time_bounds', 'invalid_time_interval', 'named_time_period_unresolved', 'reply_reference_target', 'missing_availability_date_scope'] as const;
 export interface CandidateChoiceEvaluation {
   readonly status: 'evaluated';
   readonly catalogVersion: typeof CANDIDATE_CHOICE_CATALOG_VERSION;
@@ -41,8 +52,14 @@ export interface CandidateChoiceEvaluation {
   readonly optionId: string;
   readonly probabilities: readonly { readonly optionId: string; readonly probability: number }[];
   /** Raw auxiliary scores; only an explicitly calibrated application policy can interpret them. */
+  // For reply_reference_target the baseline is one destination plus its open
+  // value answering the machine-bound pending question. Without that referent,
+  // explicit historical references require a separate bound evaluation. Scores mean
+  // residual conditions/meaning outside that answer, not the value being supplied.
   readonly conditionChange: number;
   readonly independentMeaning: number;
+  /** Reply-reference only; derived by code from selected key membership, never a provider head. */
+  readonly acceptanceScope?: CandidateChoiceAcceptanceScope;
 }
 export type CandidateChoiceResult = CandidateChoiceEvaluation | { readonly status: 'unavailable'; readonly reason: string };
 
@@ -73,10 +90,13 @@ export function isCandidateChoiceDecisionContext(v: unknown): v is CandidateChoi
   if (r.uninterpretedSpans !== undefined && (!Array.isArray(r.uninterpretedSpans) || r.uninterpretedSpans.length > 32
     || r.uninterpretedSpans.some(s => !record(s) || !exact(s, ['start', 'end']) || !integer(s.start) || !integer(s.end) || s.end <= s.start || s.end > (r.wholeUtterance as string).length))) return false;
   const c = r.context;
-  if (!record(c) || !exact(c, ['question', 'target', 'scope'])
+  if (!record(c) || !exact(c, ['question', 'target', 'scope', ...(c.presentedQuestion === undefined ? [] : ['presentedQuestion'])])
     || !record(c.question) || !exact(c.question, ['id', 'code']) || !text(c.question.id) || !text(c.question.code) || !(CANDIDATE_CHOICE_QUESTION_CODES as readonly string[]).includes(c.question.code)
     || !record(c.target) || !exact(c.target, ['kind', 'id']) || !text(c.target.kind) || !text(c.target.id)
-    || !record(c.scope) || !jsonValue(c.scope)) return false;
+    || !record(c.scope) || !jsonValue(c.scope)
+    || (c.presentedQuestion !== undefined && (typeof c.presentedQuestion !== 'string' || !c.presentedQuestion.trim()
+      || new TextEncoder().encode(c.presentedQuestion).length > 4000))
+    || (c.question.code === 'ambiguous_effort_estimate' && c.presentedQuestion === undefined)) return false;
   const m = r.menu;
   if (!record(m) || !exact(m, ['nodeId', 'depth', 'kind', 'options']) || !text(m.nodeId) || !integer(m.depth) || m.depth > 16
     || !['leaves', 'groups'].includes(String(m.kind)) || !Array.isArray(m.options) || m.options.length < 2 || m.options.length > 255) return false;
@@ -98,10 +118,12 @@ export function isCandidateChoiceDecisionContext(v: unknown): v is CandidateChoi
 }
 
 export function isCandidateChoiceEvaluation(v: unknown, r: CandidateChoiceWireRequest): v is CandidateChoiceEvaluation {
-  if (!record(v) || !exact(v, ['status', 'catalogVersion', 'requestId', 'selectionEpoch', 'candidateSetHash', 'nodeId', 'optionId', 'probabilities', 'conditionChange', 'independentMeaning'])
+  if (!record(v) || !exact(v, ['status', 'catalogVersion', 'requestId', 'selectionEpoch', 'candidateSetHash', 'nodeId', 'optionId', 'probabilities', 'conditionChange', 'independentMeaning', ...(v.acceptanceScope === undefined ? [] : ['acceptanceScope'])])
     || v.status !== 'evaluated' || v.catalogVersion !== CANDIDATE_CHOICE_CATALOG_VERSION
     || v.requestId !== r.requestId || v.selectionEpoch !== r.selectionEpoch || v.candidateSetHash !== r.candidateSetHash || v.nodeId !== r.menu.nodeId
     || !probability(v.conditionChange) || !probability(v.independentMeaning)
+    || (v.acceptanceScope !== undefined && (r.context.question.code !== 'reply_reference_target'
+      || typeof v.optionId !== 'string' || v.acceptanceScope !== candidateChoiceAcceptanceScope(r, v.optionId)))
     || !Array.isArray(v.probabilities) || v.probabilities.length !== r.menu.options.length) return false;
   const ids = new Set<string>(); let sum = 0; let selected = -1; let maximum = -1;
   for (const p of v.probabilities) {

@@ -164,6 +164,7 @@ test.describe('quick entry validation browser contracts', () => {
   for (const recurrence of [
     { button: '毎日', expectedRepeat: 'daily' },
     { button: '毎月', expectedRepeat: 'monthly' },
+    { button: '毎年', expectedRepeat: 'yearly' },
   ]) {
     test(`${recurrence.button} recurrence reaches the save boundary as the selected recurrence`, async ({ page }) => {
       await openHarness(page);

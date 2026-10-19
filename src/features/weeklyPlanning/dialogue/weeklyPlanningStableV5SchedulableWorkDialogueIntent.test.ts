@@ -35,12 +35,12 @@ describe('Stable V5 schedulable-work dialogue intent', () => {
       planningInformation,
     })).toEqual({
       kind: 'schedulable_work_detail',
-      mode: 'existing_target_progress',
+      mode: 'open_ended_session',
       targetFactId: 'task-slides',
       progressBasis: 'completion_progress_without_known_unit',
       knownUnitCode: null,
       knownUnitLabel: null,
-      requestedInformation: ['current_progress'],
+      requestedInformation: ['session_allocation'],
     });
   });
 
@@ -192,16 +192,17 @@ describe('Stable V5 schedulable-work dialogue intent', () => {
 
     expect(payload.applicationDecision.questionIntent).toEqual({
       kind: 'schedulable_work_detail',
-      mode: 'existing_target_progress',
+      mode: 'open_ended_session',
       targetFactId: 'task-slides',
       progressBasis: 'completion_progress_without_known_unit',
       knownUnitCode: null,
       knownUnitLabel: null,
-      requestedInformation: ['current_progress'],
+      requestedInformation: ['session_allocation'],
     });
     expect(payload.request).toContain('existing_target_progress=現在進捗のみ');
     expect(payload.request).toContain('別作業は聞かない');
-    expect(payload.request).toContain('completion_progress_without_known_unitは具体的な単位/総量を発明せず');
-    expect(payload.request).toContain('100%概算や工程を聞く');
+    expect(payload.request).toContain('open_ended_session=この計画期間の取組枠を相談');
+    expect(payload.request).toContain('完成率の質問へ戻らない');
+    expect(payload.request).not.toContain('100%概算や工程を聞く');
   });
 });

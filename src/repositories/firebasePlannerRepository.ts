@@ -1,11 +1,16 @@
+import { deleteMonthEventPreservingActualSources } from './firebaseActualSourcePreservation';
+import type { ConfirmedStudyHistory } from './confirmedStudyHistory';
 import type { Firestore } from 'firebase/firestore';
 import {
   collection,
   deleteField,
   deleteDoc,
   doc,
+  documentId,
   getDocs,
+  getDocsFromServer,
   query,
+  runTransaction,
   setDoc,
   where,
   writeBatch,
@@ -24,6 +29,7 @@ import type {
 } from '../types/domain';
 import type { PlannerRepository } from './repositoryContracts';
 import {
+  assertRecurringMonthEventWrite,
   prepareRecurringPlanWrite,
   stripUndefinedDeep,
 } from './plannerWritePreparation';
@@ -121,6 +127,16 @@ async function upsertDocument<T extends PlannerDoc>(
   return sanitizedItem;
 }
 
+function prepareMonthEventWrite(event: MonthEvent) {
+  return {
+    ...stripUndefinedDeep(event),
+    // Legacy writes merge. Explicitly returning to automatic color must remove
+    // the saved override instead of letting undefined sanitization retain it.
+    ...(Object.prototype.hasOwnProperty.call(event, 'color') && event.color === undefined
+      ? { color: deleteField() } : {}),
+  };
+}
+
 async function listActualsByPlanId(
   firestoreDb: Firestore,
   userId: string,
@@ -197,34 +213,60 @@ async function upsertStudyMaterialDocument(
 async function upsertActualDocument(
   firestoreDb: Firestore,
   actual: Actual,
+  materials: readonly StudyMaterial[] = [],
 ): Promise<Actual> {
-  if (!actual.planId) {
-    return await upsertDocument(firestoreDb, 'actuals', actual);
-  }
-
-  const matchingActuals = await listActualsByPlanOccurrence(firestoreDb, actual);
-  const nextActual = stripUndefinedDeep(
-    resolveActualForUpsert(matchingActuals, actual),
-  );
-  const batch = writeBatch(firestoreDb);
-
-  batch.set(doc(firestoreDb, 'actuals', nextActual.id), nextActual, {
-    merge: true,
-  });
-  matchingActuals
-    .filter((matchingActual) => matchingActual.id !== nextActual.id)
-    .forEach((duplicateActual) => {
-      batch.delete(doc(firestoreDb, 'actuals', duplicateActual.id));
+  const matchingActuals = actual.planId ? await listActualsByPlanOccurrence(firestoreDb, actual) : [];
+  const nextActual = stripUndefinedDeep(resolveActualForUpsert(matchingActuals, actual));
+  // An equality document-ID query evaluates a missing resource under the
+  // owner-only Rules and is denied. Equal inclusive range bounds keep this an
+  // owner-scoped query of exactly one ID, including legacy rows without id data.
+  // An occurrence query already proves the selected target existed. Retain
+  // its transactional reread even if a concurrent delete would make a later
+  // existence query empty; never turn that disappearance into a new record.
+  const currentExists = matchingActuals.some(item => item.id === nextActual.id && item.userId === actual.userId)
+    || (await getDocs(query(collection(firestoreDb, 'actuals'),
+      where('userId', '==', actual.userId),
+      where(documentId(), '>=', nextActual.id), where(documentId(), '<=', nextActual.id)))).docs.length > 0;
+  return runTransaction(firestoreDb, async transaction => {
+    const currentSnapshot = currentExists
+      ? await transaction.get(doc(firestoreDb, 'actuals', nextActual.id)) : null;
+    const duplicateSnapshots = await Promise.all(matchingActuals.filter(item => item.id !== nextActual.id)
+      .map(item => transaction.get(doc(firestoreDb, 'actuals', item.id))));
+    const current = currentSnapshot?.exists() ? currentSnapshot.data() as Actual : undefined;
+    if (current && current.userId !== actual.userId) throw new Error('記録の所有者が一致しません。');
+    if (nextActual.id !== actual.id && (!current || current.planId !== actual.planId
+      || current.occurrenceDate !== actual.occurrenceDate)) {
+      throw new Error('同じ予定の記録が変更されました。再読み込みしてから保存してください。');
+    }
+    const savedActual = !nextActual.progressSource && current?.progressSource
+      ? { ...nextActual, progressSource: current.progressSource } : nextActual;
+    transaction.set(doc(firestoreDb, 'actuals', savedActual.id), savedActual, { merge: true });
+    duplicateSnapshots.forEach(snapshot => {
+      if (!snapshot.exists()) return;
+      const currentDuplicate = snapshot.data() as Actual;
+      if (currentDuplicate.userId === savedActual.userId && currentDuplicate.planId === savedActual.planId
+        && currentDuplicate.occurrenceDate === savedActual.occurrenceDate) {
+        transaction.delete(doc(firestoreDb, 'actuals', snapshot.id));
+      }
     });
-
-  await batch.commit();
-  return nextActual;
+    materials.forEach(material => transaction.set(
+      doc(firestoreDb, 'study_materials', material.id), studyMaterialFirestorePayload(material), { merge: true },
+    ));
+    return savedActual;
+  });
 }
 
 export function createFirebasePlannerRepository(
   firestoreDb: Firestore,
+  studyHistory?: ConfirmedStudyHistory,
 ): PlannerRepository {
-  return {
+  const repository: PlannerRepository = {
+    async getScheduleSnapshot(userId) {
+      const [plans, monthEvents] = await Promise.all([
+        repository.getPlans(userId), repository.getMonthEvents(userId),
+      ]);
+      return { plans, monthEvents };
+    },
     async getPlans(userId) {
       try {
         return (await listByUserId<Plan>(firestoreDb, 'plans', userId)).map(
@@ -237,20 +279,50 @@ export function createFirebasePlannerRepository(
       }
     },
     async getActuals(userId) {
+      const publish = studyHistory?.beginRead(userId, 'actuals');
       try {
-        return dedupeLinkedActualRecords(
-          (await listByUserId<Actual>(firestoreDb, 'actuals', userId)).map(
-            normalizeActualRecord,
-          ),
-        );
+        const snapshot = await getDocs(query(collection(firestoreDb, 'actuals'), where('userId', '==', userId)));
+        const actuals = dedupeLinkedActualRecords(snapshot.docs.map(row =>
+          normalizeActualRecord({ ...row.data(), id: row.id } as Actual)));
+        publish?.(actuals, snapshot.metadata);
+        return actuals;
       } catch (error) {
         throw new Error(
           normalizeErrorMessage('記録を取得できませんでした。', error as { message?: string | null }),
         );
       }
     },
-    async getDayNotes(userId) {
+    async getActualForWritePreparation(userId, actualId) {
+      // Keep missing resources owner-queryable under the unchanged Rules. A
+      // partial lookup must not publish a complete-history receipt.
+      const snapshot = await getDocs(query(collection(firestoreDb, 'actuals'),
+        where('userId', '==', userId),
+        where(documentId(), '>=', actualId), where(documentId(), '<=', actualId)));
+      const candidate = snapshot.docs.map(row => normalizeActualRecord({ ...row.data(), id: row.id } as Actual))
+        .find(row => row.id === actualId && row.userId === userId);
+      if (!candidate?.planId) return candidate;
+      // getActuals hides non-winning duplicates. Read this source's complete
+      // group so legacy date-only rows participate in the same normalization.
+      const linked = await listActualsByPlanId(firestoreDb, userId, candidate.planId);
+      // A disappearing/relinked candidate is not evidence of a new record.
+      // In particular, an unlink must not recreate it without its old source.
+      if (!linked.some(row => row.id === actualId && row.userId === userId)) {
+        throw new Error('記録が変更または削除されました。再読み込みしてから保存してください。');
+      }
+      return dedupeLinkedActualRecords(linked.map(normalizeActualRecord))
+        .find(row => row.id === actualId && row.userId === userId);
+    },
+    async getDayNotes(userId, options) {
       try {
+        if (options?.requireServer) {
+          const snapshot = await getDocsFromServer(
+            query(collection(firestoreDb, 'day_notes'), where('userId', '==', userId)),
+          );
+          if (snapshot.metadata?.fromCache !== false || snapshot.metadata.hasPendingWrites !== false) {
+            throw new Error('日次メモの保存済みデータを確認できませんでした。オンラインで再読み込みしてください。');
+          }
+          return snapshot.docs.map(document => ({ ...document.data(), id: document.id }) as DayNote);
+        }
         return await listByUserId<DayNote>(firestoreDb, 'day_notes', userId);
       } catch (error) {
         throw new Error(
@@ -516,36 +588,10 @@ export function createFirebasePlannerRepository(
     },
     async upsertActualWithMaterialProgress(mutation) {
       try {
-        const userId = mutation.actual.userId;
-        assertOwnedRecords(userId, [mutation.actual, ...mutation.materials], '記録保存');
-        const matchingActuals = mutation.actual.planId
-          ? await listActualsByPlanOccurrence(firestoreDb, mutation.actual)
-          : [];
-        const nextActual = stripUndefinedDeep(
-          mutation.actual.planId
-            ? resolveActualForUpsert(matchingActuals, mutation.actual)
-            : mutation.actual,
-        );
-        const batch = writeBatch(firestoreDb);
-        batch.set(doc(firestoreDb, 'actuals', nextActual.id), nextActual, { merge: true });
-        matchingActuals
-          .filter((actual) => actual.id !== nextActual.id)
-          .forEach((actual) => {
-            batch.delete(doc(firestoreDb, 'actuals', actual.id));
-          });
-        mutation.materials.forEach((material) => {
-          batch.set(
-            doc(firestoreDb, 'study_materials', material.id),
-            studyMaterialFirestorePayload(material),
-            { merge: true },
-          );
-        });
-        await batch.commit();
-        return nextActual;
+        assertOwnedRecords(mutation.actual.userId, [mutation.actual, ...mutation.materials], '記録保存');
+        return await upsertActualDocument(firestoreDb, mutation.actual, mutation.materials);
       } catch (error) {
-        throw new Error(
-          normalizeErrorMessage('記録を保存できませんでした。', error as FirebaseLikeError),
-        );
+        throw new Error(normalizeErrorMessage('記録を保存できませんでした。', error as FirebaseLikeError));
       }
     },
     async upsertStudySubjectWithMaterials(mutation) {
@@ -709,9 +755,24 @@ export function createFirebasePlannerRepository(
         );
       }
     },
+    async applyRecurringMonthEventMutation(userId, monthEvents) {
+      try {
+        assertRecurringMonthEventWrite(userId, monthEvents);
+        const batch = writeBatch(firestoreDb);
+        monthEvents.forEach((event) => {
+          batch.set(doc(firestoreDb, 'month_events', event.id), prepareMonthEventWrite(event), { merge: true });
+        });
+        await batch.commit();
+      } catch (error) {
+        throw new Error(
+          normalizeErrorMessage('繰り返し予定を保存できませんでした。', error as FirebaseLikeError),
+        );
+      }
+    },
     async upsertMonthEvent(monthEvent) {
       try {
-        return await upsertDocument(firestoreDb, 'month_events', monthEvent);
+        await setDoc(doc(firestoreDb, 'month_events', monthEvent.id), prepareMonthEventWrite(monthEvent), { merge: true });
+        return stripUndefinedDeep(monthEvent);
       } catch (error) {
         throw new Error(
           normalizeErrorMessage(
@@ -721,16 +782,11 @@ export function createFirebasePlannerRepository(
         );
       }
     },
-    async deleteMonthEvent(_userId, monthEventId) {
+    async deleteMonthEvent(userId, monthEventId) {
       try {
-        await deleteDoc(doc(firestoreDb, 'month_events', monthEventId));
+        await deleteMonthEventPreservingActualSources(firestoreDb, userId, monthEventId, 'legacy');
       } catch (error) {
-        throw new Error(
-          normalizeErrorMessage(
-            '主要予定を削除できませんでした。',
-            error as { message?: string | null },
-          ),
-        );
+        throw new Error(normalizeErrorMessage('主要予定を削除できませんでした。', error as FirebaseLikeError));
       }
     },
     async upsertTodo(todo) {
@@ -899,4 +955,5 @@ export function createFirebasePlannerRepository(
       }
     },
   };
+  return repository;
 }

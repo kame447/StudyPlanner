@@ -10,24 +10,29 @@ const reportPath = path.join(reportDir, 'bundle-budget.json');
 
 const budgets = {
   javascript: {
-    // Eight-UI-feature integration candidate a6f25ab3: 2,255,608 raw / 606,339 gzip.
-    // Versus the 2,235,709 / 601,042 baseline: +19,899 raw (0.890%) / +5,297 gzip (0.881%).
-    // Independent audit: 28 chunks, four vendor SHA values and package/lock/Vite unchanged;
-    // no test-only imports. Growth matches the added runtime behavior, not dependencies.
-    // Calibrate only aggregate JS totals; preserve both per-chunk and all four CSS guards.
-    totalRaw: 2_260_000,
-    totalGzip: 608_000,
+    // Approved #549 → #559 → #558 → #560 → #540 integration on main 4e162408:
+    // 2,263,870 raw / 609,511 gzip, with 28 unchanged chunk families.
+    // Stage attribution: diagnostics +639/+300, deferred DayNotes +3,303/+992,
+    // unplanned start +3,907/+1,165 bytes; paint changes no raw JS.
+    // Same installed dependencies/config; Firebase server-query wrapper adds 148/6.
+    // Bound only aggregate JS growth; preserve both per-chunk and all CSS guards.
+    // Evidence: docs/domains/client-runtime/work/unplanned-study-start-handoff.md.
+    totalRaw: 2_265_000,
+    totalGzip: 610_000,
     largestRaw: 950_000,
     largestGzip: 260_000,
   },
   css: {
-    // Standalone settings and Home scenes: measured raw total ~480.2 KB after dead-CSS cleanup.
-    // Calibrate only the three exceeded raw guards; retain every gzip guard.
-    totalRaw: 485_000,
+    // Optional dot appearance: +6,724 raw / +1,709 gzip in a selection-only CSS
+    // chunk. Standard initial CSS is byte-identical and requests no dot font.
+    // Explicit feature baseline: add at most 8 KB to aggregate raw only; preserve
+    // every CSS gzip and largest-chunk guard (JS calibration is documented above). See pixel-appearance handoff.
+    totalRaw: 493_000,
     totalGzip: 85_000,
     largestRaw: 425_000,
     largestGzip: 70_000,
   },
+  appearance: { stylesheetRaw: 8_000, fontRaw: 512_000 },
 };
 
 function walk(directory) {
@@ -60,10 +65,19 @@ if (!fs.existsSync(distDir)) {
 }
 
 const files = walk(distDir);
+const appearanceStylesheets = files.filter(file => /^appearance-pixel-.*\.css$/.test(path.basename(file)));
+const appearanceFont = path.join(distDir, 'fonts', 'DotGothic16-Regular.woff2');
+if (appearanceStylesheets.length !== 1 || !fs.existsSync(appearanceFont)) {
+  throw new Error('Expected one optional dot stylesheet and its self-hosted WOFF2 font.');
+}
 const report = {
   generatedAt: new Date().toISOString(),
   javascript: summarize(files.filter((file) => /\.(?:m?js)$/i.test(file))),
   css: summarize(files.filter((file) => /\.css$/i.test(file))),
+  appearance: {
+    stylesheetRaw: fs.statSync(appearanceStylesheets[0]).size,
+    fontRaw: fs.statSync(appearanceFont).size,
+  },
   budgets,
   violations: [],
 };
@@ -78,6 +92,11 @@ for (const kind of ['javascript', 'css']) {
   }
 }
 
+for (const metric of ['stylesheetRaw', 'fontRaw']) {
+  const actual = report.appearance[metric], limit = budgets.appearance[metric];
+  if (actual > limit) report.violations.push({ kind: 'appearance', metric, actual, limit });
+}
+
 fs.mkdirSync(reportDir, { recursive: true });
 fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
 
@@ -88,6 +107,8 @@ for (const kind of ['javascript', 'css']) {
       `largest raw ${formatKiB(report[kind].largestRaw)}, largest gzip ${formatKiB(report[kind].largestGzip)}`,
   );
 }
+
+console.log(`optional dot appearance: CSS ${report.appearance.stylesheetRaw} B, WOFF2 ${report.appearance.fontRaw} B`);
 
 if (process.env.GITHUB_STEP_SUMMARY) {
   const rows = ['| Asset | Total raw | Total gzip | Largest raw | Largest gzip |', '| --- | ---: | ---: | ---: | ---: |'];

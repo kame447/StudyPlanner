@@ -11,13 +11,17 @@ import type { PlannerRepository } from './repositories/repositoryContracts';
 
 const boundary = vi.hoisted(() => ({ repository: null as unknown as PlannerRepository,
   weeklyPlanning: vi.fn(() => ({ pendingDraftBlocks: [], canEditDraftBlocks: false })) }));
+// This suite isolates planner/navigation behavior; streak persistence has its own provider integration tests.
+vi.mock('./components/StudyStreakContext', () => ({
+  StudyStreakProvider: ({ children }: { children: import('react').ReactNode }) => children,
+  useSharedStudyStreak: () => null,
+}));
 vi.mock('./repositories', () => ({ plannerRepository: new Proxy({}, {
   get: (_target, key) => boundary.repository[key as keyof PlannerRepository],
 }) }));
 vi.mock('./features/weeklyPlanning/application/useWeeklyPlanningApplication', () => ({ useWeeklyPlanningApplication: boundary.weeklyPlanning }));
 vi.mock('./lib/preloadAppViews', () => ({ scheduleAppViewPreload: () => () => undefined }));
 vi.mock('./hooks/useThemePreference', () => ({ useThemePreference: () => ({ themeMode: 'light', themePalette: 'forest' }) }));
-vi.mock('./lib/appAccessGate', () => ({ isAppAccessGateEnabled: () => false, hasStoredAppAccessGrant: () => true }));
 vi.mock('./components/MyPageDialog', () => ({ MyPageDialog: () => null }));
 vi.mock('./components/AppSettingsDialog', () => ({ AppSettingsDialog: () => null }));
 
@@ -29,7 +33,7 @@ function Harness() {
   state = usePlannerDataState({ userId: 'owner', showNotice: () => {} });
   const unused = async (): Promise<never> => { throw new Error('outside display-clock test'); };
   const snapshot: PlannerAppSnapshot = {
-    ...state, user: { id: 'owner', username: 'Clock', email: 'clock@example.test', avatar: '', createdAt: '' }, booting: false, notice: null, dismissNotice() {},
+    ...state, user: { id: 'owner', username: 'Clock', email: 'clock@example.test', avatar: '', createdAt: '' }, booting: false, profileRestoreRecovery: null, retryProfileRestore: async () => undefined, notice: null, dismissNotice() {},
     signUpWithPassword: unused, signInWithPassword: unused, signInWithGoogle: unused,
     sendPasswordReset: unused, saveUserProfile: unused, signOut: unused,
     saveWeeklyApprovedPlan: unused, completeWeeklyApprovalOperation: unused,
@@ -44,7 +48,7 @@ beforeEach(async () => {
     requestAnimationFrame: () => 0, cancelAnimationFrame: () => {},
     matchMedia: () => ({ matches: false }), setTimeout, clearTimeout,
   });
-  browserDocument = Object.assign(new EventTarget(), { visibilityState: 'visible', fonts: { ready: Promise.resolve() },
+  browserDocument = Object.assign(new EventTarget(), { documentElement: { dataset: {} }, visibilityState: 'visible', fonts: { ready: Promise.resolve() },
     body: { style: { overflow: '', overscrollBehavior: '' } } });
   vi.stubGlobal('window', browserWindow); vi.stubGlobal('document', browserDocument);
   vi.stubGlobal('HTMLElement', class {}); vi.stubGlobal('localStorage', storage);
@@ -87,7 +91,7 @@ it('keeps selected planner month/date and an open unsaved draft while Home and i
   act(() => renderer!.root.findByType(PlanEditorPanel).props.onCancel());
   await act(async () => renderer!.root.findByType(PrimaryBottomNav).props.onOpenHome());
   expect(renderer!.root.findByProps({ className: 'home-date-display' }).props.dateTime).toBe('2026-10-08');
-  expect(renderer!.root.findByProps({ 'data-home-section': 'next-plan' }).findByType('h1').children.join('')).toBe('Today');
+  expect(renderer!.root.findByProps({ 'data-home-section': 'next-plan' }).findByProps({ className: 'home-plan-title' }).findByType('span').children.join('')).toBe('Today');
   expect(state.selectedDate).toBe('2027-02-16');
   expect(state.monthDate).toBe('2027-02-01');
   expect(await boundary.repository.getPlans('owner')).toEqual(storedPlans);

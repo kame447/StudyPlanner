@@ -26,6 +26,7 @@ import {
   type FirestoreAggregationFilter,
   type FirestoreOrderedCursor,
 } from './firestoreServiceAccountClient';
+import { FirebaseAuthIdentityClient, type FirebaseAuthIdentityLookup } from './firebaseAuthIdentityClient';
 import {
   createEmptyLatencyHistogram,
   latencyPercentileMs,
@@ -334,6 +335,7 @@ export class ProductObservabilityAdminAnalysisService {
     readModel?: ProductObservabilityReadModelService,
     identityStore?: IdentityStore,
     private readonly now: () => Date = () => new Date(),
+    private readonly authIdentity: FirebaseAuthIdentityLookup = new FirebaseAuthIdentityClient(env),
   ) {
     this.readModel = readModel ?? new ProductObservabilityReadModelService(env);
     this.identityStore = identityStore ?? new ProductObservabilityStore(env);
@@ -464,11 +466,12 @@ export class ProductObservabilityAdminAnalysisService {
     environment: ObservabilityEnvironment;
     cursor?: FirestoreOrderedCursor | null;
     limit?: number;
+    includeTrend?: boolean;
   }): Promise<{
     users: ObservabilityAdminUserListItem[];
     nextCursor: FirestoreOrderedCursor | null;
     enrichmentReady: boolean;
-    trend: ObservabilityAdminUserTrend;
+    trend?: ObservabilityAdminUserTrend;
   }> {
     validateProfileCursor(params.cursor);
     const readinessValue = await this.firestore.getDocument(
@@ -493,7 +496,7 @@ export class ProductObservabilityAdminAnalysisService {
         cursorDocumentName: params.cursor?.documentName ?? null,
         limit,
       }),
-      this.readModel.getUserTrend({
+      params.includeTrend === false ? undefined : this.readModel.getUserTrend({
         environment: params.environment,
         fromDate: addDays(toDate, -29),
         toDate,
@@ -606,7 +609,7 @@ export class ProductObservabilityAdminAnalysisService {
         ? { orderedValue: 'profile', documentName: last.documentName }
         : null,
       enrichmentReady,
-      trend,
+      ...(trend ? { trend } : {}),
     };
   }
 
@@ -617,14 +620,15 @@ export class ProductObservabilityAdminAnalysisService {
     }
 
     const profiles = new Map<string, Record<string, unknown>>();
+    let verifiedEmails: Map<string, string>;
     if (search.includes('@')) {
-      const rows = await this.firestore.queryDocumentsAfter({
-        collection: PROFILE_COLLECTION,
-        orderByField: 'email',
-        filters: [{ field: 'email', value: search.toLowerCase() }],
-        limit: MAX_IDENTITY_MATCHES,
-      });
-      rows.forEach((row) => profiles.set(row.id, row));
+      const users = await this.authIdentity.lookupByEmail(search.toLowerCase());
+      verifiedEmails = new Map(users.map(user => [user.firebaseUid, user.email]));
+      const rows = await Promise.all(users.map(async user => {
+        const profile = await this.firestore.getDocument(PROFILE_COLLECTION, user.firebaseUid);
+        return { firebaseUid: user.firebaseUid, profile: profile ?? {} };
+      }));
+      rows.forEach(row => profiles.set(row.firebaseUid, row.profile));
     } else {
       const [byId, byUsername] = await Promise.all([
         this.firestore.getDocument(PROFILE_COLLECTION, search),
@@ -637,6 +641,8 @@ export class ProductObservabilityAdminAnalysisService {
       ]);
       if (byId) profiles.set(search, byId);
       byUsername.forEach((row) => profiles.set(row.id, row));
+      const users = await this.authIdentity.lookupByUids([...profiles.keys()].slice(0, MAX_IDENTITY_MATCHES));
+      verifiedEmails = new Map(users.map(user => [user.firebaseUid, user.email]));
     }
 
     const selected = [...profiles.entries()].slice(0, MAX_IDENTITY_MATCHES);
@@ -646,8 +652,8 @@ export class ProductObservabilityAdminAnalysisService {
     return selected.map(
       ([firebaseUid, profile], index): ObservabilityAdminIdentityMatch => ({
         firebaseUid,
-        email: profileString(profile, 'email'),
-        username: profileString(profile, 'username') || profileString(profile, 'email') || firebaseUid,
+        email: verifiedEmails.get(firebaseUid) ?? '',
+        username: profileString(profile, 'username') || verifiedEmails.get(firebaseUid) || firebaseUid,
         registeredAt: registeredAt(profile),
         actorSubjectId: actorSubjectIds[index] ?? null,
       }),

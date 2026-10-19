@@ -1,5 +1,7 @@
 import { createScheduleOccurrenceProjection, type ScheduleOccurrence } from '../domain/scheduleOccurrence';
-import { addDays } from './date';
+import { getScheduleOccurrenceColor, type ScheduleColorPresentation } from './scheduleEventColor';
+import { addDays, startOfWeek } from './date';
+import type { StudyProgressPlan } from './studyProgressPolicy';
 import type {
   MonthEvent,
   Plan,
@@ -37,12 +39,14 @@ function planTypeForOccurrence(occurrence: ScheduleOccurrence): PlanType {
 function projectOccurrenceAsReadOnlyPlan(
   occurrence: ScheduleOccurrence,
   date: string,
-): Plan {
+): StudyProgressPlan & ScheduleColorPresentation {
   const startTime = occurrence.start.date === date ? occurrence.start.time : '00:00';
   const endTime = occurrence.end.date === date ? occurrence.end.time : '24:00';
 
   return {
     id: `${occurrence.id}:home:${date}`,
+    scheduleSource: occurrence.source,
+    scheduleColor: getScheduleOccurrenceColor(occurrence),
     seriesId: occurrence.id,
     userId: occurrence.ownerId,
     title: occurrence.title,
@@ -85,9 +89,10 @@ export function augmentHomePlansWithScheduleOccurrences({
   startDate: string;
 }): Plan[] {
   const endDate = addDays(startDate, 7);
+  const projectionStartDate = startOfWeek(startDate);
   const projection = createScheduleOccurrenceProjection({
     ownerId,
-    startDate,
+    startDate: projectionStartDate,
     endDate,
     plans,
     monthEvents,
@@ -103,7 +108,7 @@ export function augmentHomePlansWithScheduleOccurrences({
     // must keep their original ids for Actual linkage and study metrics.
     if (occurrence.source.backingKind === 'plan') continue;
 
-    let date = startDate;
+    let date = projectionStartDate;
     while (date <= endDate) {
       if (occurrenceCoversDate(occurrence, date)) {
         syntheticPlans.push(projectOccurrenceAsReadOnlyPlan(occurrence, date));

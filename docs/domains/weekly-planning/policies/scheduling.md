@@ -1,7 +1,7 @@
 # Weekly Planning Scheduling Policy
 
 Status: canonical / current Stable V5 scheduling behavior
-Updated: 2026-09-01
+Updated: 2026-10-11
 
 References:
 - [Current contract](../architecture/current-contract-v5.md)
@@ -76,6 +76,20 @@ current Stable V5はnormal daysの平均負荷をtargetとして用い、通常�
 
 「必ず完全な6等分」することはproduct invariantではない。現在の原則は、normal daysへ現実的に分散し、reserve capacityを可能な限り保持することである。
 
+## Bounded recovery from placement-order failure
+
+The ordinary placement attempt retains the compiled work-item order. If it places all work, its result is kept without deadline-based reoptimization. Only after a failed attempt may placement try one different order: stable priority by the already compiled hard end for the item's component or task, followed by the existing relation-ordering owner. Accepted before/after/sequence/dependency and priority relations remain authoritative. Missing or start-only bounds are not deadlines.
+
+Each attempt starts with fresh busy intervals, daily loads and candidates, using the same accepted input, horizon, availability, quantity and request-time boundary. A retry replaces the first result only when all work is placed. If it also fails, the first attempt's partial candidates and unscheduled identities are retained under the existing partial-output contract. This bounded search is not a complete feasibility solver, and failure does not prove that every possible ordering is impossible.
+
+Separately, work-item compilation follows the supplied active task order while preserving the relative order of workloads within each task. Replacing a workload may append a new fact to graph history; that historical append must not move its task behind another task. The compiler sorts only its newly created item array and retains workload IDs, amounts and provenance. It does not reorder or rewrite the accepted graph.
+
+## Provisional partial-preview disclosure
+
+Ordinary insufficient-capacity results remain all-or-nothing. A partial preview requires the existing provisional-timebox permission, retained safe candidates, fully resolved unscheduled item references, and an accepted priority relation from a scheduled task to every omitted task. The application owns this decision and its system message; rendering cannot change the omitted work or grant saving authority.
+
+The omission extent follows formal task identity. When an unscheduled task also has a candidate, the message says that part of its work was omitted; when it has no candidate, the message says the task was left out. Display-label matches do not determine this distinction. If no display label is available, the message only states that work was omitted. This disclosure changes neither the candidates nor the explicit approval/save boundary.
+
 ## Explicit daily study capacity
 
 「土日は1日8時間勉強できる」のように、時刻帯ではなく1日あたりの総学習時間が明示された場合は、clock availabilityへ変換せず、typed daily capacityとして扱う。
@@ -118,14 +132,30 @@ open-ended workに架空のscope totalを作って分配しない。
 
 acceptedな生活制約・buffer・availabilityはtyped constraintとしてschedulerへ渡し、raw Japaneseや科目名から後段で推測しない。
 
+日付を跨ぐaccepted hard `available` intervalは、配置対象日ごとの区間へ展開し、通常配置とpreferred配置の両方で同じ境界を消費する。各日のrequest-time `notBefore` と既存occupied/unavailableの制約は保持する。これは宣言されたavailabilityの配置責務であり、終日MonthEventのbusy/free方針を変更しない。
+
 ## Preference and personalization
 
 preferred time、observed profile、learning-specific scoreは、hard availabilityを通過したsafe candidate集合の中でのみ順位付けに使う。
+
+Task/component の accepted `preferred_window` は、片側だけの明示 clock なら不足側を同日の `00:00` / `24:00` として解決する。clock を伴わない有効な date-only preference は保持する。日付表現・named time period・時刻区間・constraint level が未解決なら、work量がまだない場合も黙って捨てず、既存のblocking issue/question経路へ渡す。
+
+Plan-wide の `preferred` と soft `available` は同じ既存順位付けへ投影し、hard availabilityを広げない。単一のaccepted planning windowに対して、非反復のcanonical曜日が期間外となったこれらの宣言は、毎週へ読み替えず適用日を質問する。質問の意味は既存のtyped availability-date-scopeとしてrendererへ渡す。
 
 - explicit preference > inferred/observed tendency
 - current-week acceptanceをdurable preferenceへ自動昇格しない
 - personalization unavailable/failed時はsafe deterministic baselineへ戻る
 - preferenceはfree timeを新設しない
+
+## Estimated effort and allocated time
+
+作業量とペースから求めた基準見積もりと、実際に確保した候補時間を区別する。既存の見積もり配分policyは、適用されるペース補正・見積もり余裕・切り上げを所有し、既存予定の前後に置く衝突回避bufferとは別である。この表示は再配分や再度の余裕加算を行わない。
+
+候補とdraftのoptional `allocationBreakdown`は、基準見積もり・ペース補正後・policyの余裕込み中間値・実確保時間、および実確保と基準見積もりの非負差分（0未満は0）を保持する。`bufferedMinutes`は要求/見積もり段階の値であり、`allocatedMinutes`以下であるとは限らない。例えば上限適用後の基準60分/実確保60分を投影した内訳は、buffered66分・実余裕0分を保持する。これは内訳の段階区分であり、session分割/上限処理をこの表示ownerへ移すものではない。
+
+preview card/sheetの時刻・合計は実確保時間を用い、有効で実durationと一致する内訳が全候補に揃う場合だけ集計する。正の実余裕があるとき「見積もり1時間＋余裕10分」のように基準と差分を表示する。内訳欠落・編集後の不一致・実余裕0では理由を推測して表示しない。時間そのものを作業量にする既存intrinsic-duration配分も変更しない。
+
+この内訳は未承認previewとdraftの保存/checkpointを通過する表示情報であり、Plan/StoredScheduleEventの保存schemaへ追加しない。現共通state codecはoptional数値・理由・差分整合を検査し、内訳のない旧データも受理する。新fieldを知らない旧実行中アプリの読取互換性まで保証するものではない。実生成内訳のtrace保存は、既存の容量制限・persistent outbox/retry・Worker・未知field・明示truncationの契約に従う。
 
 ## Change rule
 
@@ -139,3 +169,13 @@ scheduler policyを変更するときは、少なくとも次を確認する。
 6. deterministic regressionがcurrent behaviorを固定しているか
 
 古いtask文書をcurrent ruleとして復活させず、現在も必要な原則だけをこのpolicyへ統合する。
+
+## Explicit content session length precedes margin
+
+Accepted session duration is resolved by workload, then component, then task scope. Conflicting selected facts remain unresolved. An explicit cap precedes ordinary whole-content distribution and estimation margin: allocate each integer unit's real effort first, preserve all quantities and ranges, then share only the margin that fits the cap. This applies to integer page/problem/word/lesson/chapter/section/exam_year/custom quantities. Minute/hour/session use their existing time/count paths; mock exams remain atomic and fractional custom quantities are not rounded into whole units.
+
+For20 problems×3 minutes with session30, the actual result is30+30 minutes with10+10 problems. An indivisible unit above the cap, atomic work, or bounded fallback retains its real effort and selected cap source. The actual new candidates determine satisfied/not_satisfied/not_evaluated. Missing identity/provenance cannot establish satisfaction; incomplete coverage, duration mismatch or a computable cap violation is not_satisfied. The current renderer receives this typed result and explains it naturally without deriving scheduling truth from prose.
+
+Original minute precision is retained: explicit time slices round to at least one minute; content caps floor to at least one minute. The diagnostic compares actual duration to the unrounded accepted cap. No new fractional-minute policy is implied. Renderer failure with an unmet/unevaluated condition uses the existing technical-stop message while preserving candidate state and explicit approval authority.
+
+The generated-session guard512 and Stable checkpoint array limit500 remain distinct existing contracts. Before ordinary publication, the application checks the reducer-projected state and returned graph against the existing Stable shape authority. Failure retains the prior graph/preview/draft/context through the existing rollback path. Compatibility-only persistence, byte compaction and physical storage/quota behavior retain their existing owners.

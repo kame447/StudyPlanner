@@ -1,0 +1,2744 @@
+{
+  "node_modules/@babel/code-frame": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/code-frame",
+    "packageJsonSha256": "f9cccb2e601db93851f10935b4e723c95a730c467f187462eb54b16bb353b036",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/code-frame/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@babel/compat-data": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/compat-data",
+    "packageJsonSha256": "a871a1f7397a91d00f877751ab2da88904ff1dd30c5bb4ab2e5badd9f3adf6d4",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/compat-data/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@babel/core": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/core",
+    "packageJsonSha256": "6c2893db41b54a1c03ba68e676aa3ea987db9a5c9b9a3a3aa2e8d0d9a63066c4",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/core/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@babel/generator": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/generator",
+    "packageJsonSha256": "3812cb663aeb46e2988c9e5d6334742d6f226f1a24a6e8a9ed140134d2edae8a",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/generator/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@babel/helper-compilation-targets": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/helper-compilation-targets",
+    "packageJsonSha256": "6ac5b42b124c964fb3c0feed98cd2c13aaf5c5827021374db6884bab91f206d2",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/helper-compilation-targets/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@babel/helper-globals": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/helper-globals",
+    "packageJsonSha256": "c06a17222ad81933dbae3768fe59cd6737ebdcfa88b84097f3a8e659e28d2c9f",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/helper-globals/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@babel/helper-module-imports": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/helper-module-imports",
+    "packageJsonSha256": "fa2e7c54b6b86e250770f9b2703571bcff0c8166995e01c756539745859fedb7",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/helper-module-imports/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@babel/helper-module-transforms": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/helper-module-transforms",
+    "packageJsonSha256": "4f5010bdec7a80d93d84a1ecff8fbdd0a9a865f1bd22ceb5b0215a07255de3b3",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/helper-module-transforms/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@babel/helper-plugin-utils": {
+    "lockedVersion": "7.28.6",
+    "name": "@babel/helper-plugin-utils",
+    "packageJsonSha256": "743f3eebd628ada817a0892fa4a3b8927842075c8dc9e1ad7be1bdff1ad31e0a",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/helper-plugin-utils/package.json",
+    "version": "7.28.6"
+  },
+  "node_modules/@babel/helper-string-parser": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/helper-string-parser",
+    "packageJsonSha256": "ecbd1aaffa9ad000d3bc5a526067b89244cb3ec64c738fbae8b64a9e805f401b",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/helper-string-parser/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@babel/helper-validator-identifier": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/helper-validator-identifier",
+    "packageJsonSha256": "1ad6aeced8b186ac259da45fea50ab9d65d3d958f6458c80e3c8013649d1b12d",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/helper-validator-identifier/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@babel/helper-validator-option": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/helper-validator-option",
+    "packageJsonSha256": "b2d7eca451e536f18f4757a54be48df604385ad978508e32ce8f2edb4973f257",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/helper-validator-option/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@babel/helpers": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/helpers",
+    "packageJsonSha256": "df7df113698c9c45f0bb08c2e4fe097131dabf58dbeb23c676eb355f782c4aa3",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/helpers/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@babel/parser": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/parser",
+    "packageJsonSha256": "808c30900ff9e55aafff6361e55c21a39556bdcd2d349e0474fde1e985d855af",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/parser/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@babel/plugin-transform-react-jsx-self": {
+    "lockedVersion": "7.27.1",
+    "name": "@babel/plugin-transform-react-jsx-self",
+    "packageJsonSha256": "a3d00015e7c69a096e19094f87237220679624b1caca0431a3859a1eeb35130b",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/plugin-transform-react-jsx-self/package.json",
+    "version": "7.27.1"
+  },
+  "node_modules/@babel/plugin-transform-react-jsx-source": {
+    "lockedVersion": "7.27.1",
+    "name": "@babel/plugin-transform-react-jsx-source",
+    "packageJsonSha256": "dac8ff82c2d23853238fa4c96e8046b04f2b437ffaad4ac599927f43b010351b",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/plugin-transform-react-jsx-source/package.json",
+    "version": "7.27.1"
+  },
+  "node_modules/@babel/template": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/template",
+    "packageJsonSha256": "82b96cbb7f576768c6298b816600c0cfb2d8487c963050406d2bd895e3724145",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/template/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@babel/traverse": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/traverse",
+    "packageJsonSha256": "1d5b17dd0935fa06cc5dfa344ce2c68e9b4a099c91080dc4116d05184723fe0c",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/traverse/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@babel/types": {
+    "lockedVersion": "7.29.7",
+    "name": "@babel/types",
+    "packageJsonSha256": "cf060ee0e8063ec7e48a504170e90b6dd9658bdcb7c037776db67b817474a036",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@babel/types/package.json",
+    "version": "7.29.7"
+  },
+  "node_modules/@cloudflare/kv-asset-handler": {
+    "lockedVersion": "0.5.0",
+    "name": "@cloudflare/kv-asset-handler",
+    "packageJsonSha256": "635bf6580f8cd6fab399627da52f18c5a4abb8038e2a7a21ba382a7c24702f73",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@cloudflare/kv-asset-handler/package.json",
+    "version": "0.5.0"
+  },
+  "node_modules/@cloudflare/unenv-preset": {
+    "lockedVersion": "2.16.2",
+    "name": "@cloudflare/unenv-preset",
+    "packageJsonSha256": "9307fbe9f19db598b23d53bcc6f66db49239f89090f9059b98c56c4781c26f2c",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@cloudflare/unenv-preset/package.json",
+    "version": "2.16.2"
+  },
+  "node_modules/@cloudflare/workerd-darwin-64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "1.20260926.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "darwin"
+    ]
+  },
+  "node_modules/@cloudflare/workerd-darwin-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "1.20260926.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "darwin"
+    ]
+  },
+  "node_modules/@cloudflare/workerd-linux-64": {
+    "lockedVersion": "1.20260926.1",
+    "name": "@cloudflare/workerd-linux-64",
+    "packageJsonSha256": "7331504178a1a9d8533080d75da3e1c76df443f650896f36136be9325925f446",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@cloudflare/workerd-linux-64/package.json",
+    "version": "1.20260926.1"
+  },
+  "node_modules/@cloudflare/workerd-linux-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "1.20260926.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@cloudflare/workerd-windows-64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "1.20260926.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "win32"
+    ]
+  },
+  "node_modules/@cspotcode/source-map-support": {
+    "lockedVersion": "0.8.1",
+    "name": "@cspotcode/source-map-support",
+    "packageJsonSha256": "c240639d502ae6fc5bb1be1ed58db958c3bae957d8fb9fe103e6c8bb94a75e9e",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@cspotcode/source-map-support/package.json",
+    "version": "0.8.1"
+  },
+  "node_modules/@cspotcode/source-map-support/node_modules/@jridgewell/trace-mapping": {
+    "lockedVersion": "0.3.9",
+    "name": "@jridgewell/trace-mapping",
+    "packageJsonSha256": "9db86cd1623d3501bcf68102c5ec1c5b0c58abaa134fbf0f80430674ed9fe054",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@cspotcode/source-map-support/node_modules/@jridgewell/trace-mapping/package.json",
+    "version": "0.3.9"
+  },
+  "node_modules/@emnapi/runtime": {
+    "lockedVersion": "1.11.3",
+    "name": "@emnapi/runtime",
+    "packageJsonSha256": "751db16171cb4d111905122be8a4c0dc2b5c82e6ba2a590ca24fbc6cca048f93",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@emnapi/runtime/package.json",
+    "version": "1.11.3"
+  },
+  "node_modules/@esbuild/aix-ppc64": {
+    "cpu": [
+      "ppc64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "aix"
+    ]
+  },
+  "node_modules/@esbuild/android-arm": {
+    "cpu": [
+      "arm"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "android"
+    ]
+  },
+  "node_modules/@esbuild/android-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "android"
+    ]
+  },
+  "node_modules/@esbuild/android-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "android"
+    ]
+  },
+  "node_modules/@esbuild/darwin-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "darwin"
+    ]
+  },
+  "node_modules/@esbuild/darwin-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "darwin"
+    ]
+  },
+  "node_modules/@esbuild/freebsd-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "freebsd"
+    ]
+  },
+  "node_modules/@esbuild/freebsd-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "freebsd"
+    ]
+  },
+  "node_modules/@esbuild/linux-arm": {
+    "cpu": [
+      "arm"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@esbuild/linux-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@esbuild/linux-ia32": {
+    "cpu": [
+      "ia32"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@esbuild/linux-loong64": {
+    "cpu": [
+      "loong64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@esbuild/linux-mips64el": {
+    "cpu": [
+      "mips64el"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@esbuild/linux-ppc64": {
+    "cpu": [
+      "ppc64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@esbuild/linux-riscv64": {
+    "cpu": [
+      "riscv64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@esbuild/linux-s390x": {
+    "cpu": [
+      "s390x"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@esbuild/linux-x64": {
+    "lockedVersion": "0.25.12",
+    "name": "@esbuild/linux-x64",
+    "packageJsonSha256": "fdf02f1b53a4651a3eea731e2ad0a9c7d4fd8646430a5935d551e610e8d469fc",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@esbuild/linux-x64/package.json",
+    "version": "0.25.12"
+  },
+  "node_modules/@esbuild/netbsd-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "netbsd"
+    ]
+  },
+  "node_modules/@esbuild/netbsd-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "netbsd"
+    ]
+  },
+  "node_modules/@esbuild/openbsd-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "openbsd"
+    ]
+  },
+  "node_modules/@esbuild/openbsd-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "openbsd"
+    ]
+  },
+  "node_modules/@esbuild/openharmony-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "openharmony"
+    ]
+  },
+  "node_modules/@esbuild/sunos-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "sunos"
+    ]
+  },
+  "node_modules/@esbuild/win32-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "win32"
+    ]
+  },
+  "node_modules/@esbuild/win32-ia32": {
+    "cpu": [
+      "ia32"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "win32"
+    ]
+  },
+  "node_modules/@esbuild/win32-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.25.12",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "win32"
+    ]
+  },
+  "node_modules/@firebase/ai": {
+    "lockedVersion": "2.11.0",
+    "name": "@firebase/ai",
+    "packageJsonSha256": "166c7d0f9dcfd8052331bc14c85e8ab978ce3c99737952839567b879443fe2de",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/ai/package.json",
+    "version": "2.11.0"
+  },
+  "node_modules/@firebase/analytics": {
+    "lockedVersion": "0.10.21",
+    "name": "@firebase/analytics",
+    "packageJsonSha256": "c0460fa3f93548a0a2ceb4a5af03608308a038bc12987d7d0a4ffa5f39f083b8",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/analytics/package.json",
+    "version": "0.10.21"
+  },
+  "node_modules/@firebase/analytics-compat": {
+    "lockedVersion": "0.2.27",
+    "name": "@firebase/analytics-compat",
+    "packageJsonSha256": "e4526db097d93b18c2bcd3831062e536673d360f7f3caca4e69c9db8d315ccdd",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/analytics-compat/package.json",
+    "version": "0.2.27"
+  },
+  "node_modules/@firebase/analytics-types": {
+    "lockedVersion": "0.8.3",
+    "name": "@firebase/analytics-types",
+    "packageJsonSha256": "1e9e61895399af8a7a9913b92b469ef9adf70521cddd1222729b915041fe96dc",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/analytics-types/package.json",
+    "version": "0.8.3"
+  },
+  "node_modules/@firebase/app": {
+    "lockedVersion": "0.14.11",
+    "name": "@firebase/app",
+    "packageJsonSha256": "78d5f45949782f5d8683a9fc77a41ce39036e059d09ae958d1d18fac86e0e4ef",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/app/package.json",
+    "version": "0.14.11"
+  },
+  "node_modules/@firebase/app-check": {
+    "lockedVersion": "0.11.2",
+    "name": "@firebase/app-check",
+    "packageJsonSha256": "8b5387af7dfa7e362c5ec2412271ae7184e75c955b91a3ce65547e6fd656bff7",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/app-check/package.json",
+    "version": "0.11.2"
+  },
+  "node_modules/@firebase/app-check-compat": {
+    "lockedVersion": "0.4.2",
+    "name": "@firebase/app-check-compat",
+    "packageJsonSha256": "0bbf731c732af7cce9f2883f363ada42cbf27d0db56c2936e3e695e56bbb2d71",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/app-check-compat/package.json",
+    "version": "0.4.2"
+  },
+  "node_modules/@firebase/app-check-interop-types": {
+    "lockedVersion": "0.3.3",
+    "name": "@firebase/app-check-interop-types",
+    "packageJsonSha256": "658506a8d2f7cd2e2f4083272f5f8c39b1542686e85c51c6fcd459ba6ac68a38",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/app-check-interop-types/package.json",
+    "version": "0.3.3"
+  },
+  "node_modules/@firebase/app-check-types": {
+    "lockedVersion": "0.5.3",
+    "name": "@firebase/app-check-types",
+    "packageJsonSha256": "cff59298523919ce4dd9d1d480980b2490ce4df98105d18664a7bce31887684c",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/app-check-types/package.json",
+    "version": "0.5.3"
+  },
+  "node_modules/@firebase/app-compat": {
+    "lockedVersion": "0.5.11",
+    "name": "@firebase/app-compat",
+    "packageJsonSha256": "af36848e94d72124f8731f95ac183a222af43e602de5926f81b625c0a524ac4f",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/app-compat/package.json",
+    "version": "0.5.11"
+  },
+  "node_modules/@firebase/app-types": {
+    "lockedVersion": "0.9.4",
+    "name": "@firebase/app-types",
+    "packageJsonSha256": "39bef1df78c64a06122556af1769d58c6c2043025805c8fcf8e9d5c671b1ba3a",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/app-types/package.json",
+    "version": "0.9.4"
+  },
+  "node_modules/@firebase/auth-compat": {
+    "lockedVersion": "0.6.5",
+    "name": "@firebase/auth-compat",
+    "packageJsonSha256": "dcedab186509008342b7ed79c8d9ce5b113312a9c0905d77339244625a7db31c",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/auth-compat/package.json",
+    "version": "0.6.5"
+  },
+  "node_modules/@firebase/auth-compat/node_modules/@firebase/auth": {
+    "lockedVersion": "1.13.0",
+    "name": "@firebase/auth",
+    "packageJsonSha256": "5b82eebd065f6774fe5d48adf62f262ce60c546437d8897e4540616a77c44798",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/auth-compat/node_modules/@firebase/auth/package.json",
+    "version": "1.13.0"
+  },
+  "node_modules/@firebase/auth-interop-types": {
+    "lockedVersion": "0.2.4",
+    "name": "@firebase/auth-interop-types",
+    "packageJsonSha256": "1e97235c2d59b9f469c33f8cd41f78fe864ea3fc00b81c24e181932984cdc08f",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/auth-interop-types/package.json",
+    "version": "0.2.4"
+  },
+  "node_modules/@firebase/auth-types": {
+    "lockedVersion": "0.13.0",
+    "name": "@firebase/auth-types",
+    "packageJsonSha256": "7db8b0bea51d851460719dac2b855de3d96c7d90921536551768be96b04c6593",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/auth-types/package.json",
+    "version": "0.13.0"
+  },
+  "node_modules/@firebase/component": {
+    "lockedVersion": "0.7.2",
+    "name": "@firebase/component",
+    "packageJsonSha256": "f484d34ba0b9c5a24e529407fbf6059057be6d7edc7a4fea62db427dd5e4ee8f",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/component/package.json",
+    "version": "0.7.2"
+  },
+  "node_modules/@firebase/data-connect": {
+    "lockedVersion": "0.6.0",
+    "name": "@firebase/data-connect",
+    "packageJsonSha256": "507b7a7092abd26c4d9eddeb49e75db7e19895428939ea684c1dc16fbe1ca438",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/data-connect/package.json",
+    "version": "0.6.0"
+  },
+  "node_modules/@firebase/database": {
+    "lockedVersion": "1.1.2",
+    "name": "@firebase/database",
+    "packageJsonSha256": "465dc38259b99cf3988df3b9d774a24f3f778856e8a072ae006f4534feb2bcfc",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/database/package.json",
+    "version": "1.1.2"
+  },
+  "node_modules/@firebase/database-compat": {
+    "lockedVersion": "2.1.3",
+    "name": "@firebase/database-compat",
+    "packageJsonSha256": "624de578556eaf99fed506676b56f84f06d7b3bc27c6d58bb0aee84cfe27017b",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/database-compat/package.json",
+    "version": "2.1.3"
+  },
+  "node_modules/@firebase/database-types": {
+    "lockedVersion": "1.0.19",
+    "name": "@firebase/database-types",
+    "packageJsonSha256": "4b0c81b740db7b10a3ed851ad205b2d94c12bb4e137a39f96b3df058eb30715e",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/database-types/package.json",
+    "version": "1.0.19"
+  },
+  "node_modules/@firebase/firestore": {
+    "lockedVersion": "4.14.0",
+    "name": "@firebase/firestore",
+    "packageJsonSha256": "232cd5f982d273ab48df87e4ac928b24e50327790e57a36782f472a12d351891",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/firestore/package.json",
+    "version": "4.14.0"
+  },
+  "node_modules/@firebase/firestore-compat": {
+    "lockedVersion": "0.4.8",
+    "name": "@firebase/firestore-compat",
+    "packageJsonSha256": "ef4cfb4b4735b435cde421d5605d55223613e09c996663c95a1a9a895188e7e4",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/firestore-compat/package.json",
+    "version": "0.4.8"
+  },
+  "node_modules/@firebase/firestore-types": {
+    "lockedVersion": "3.0.3",
+    "name": "@firebase/firestore-types",
+    "packageJsonSha256": "dc20448263854ad6daa99ec1a7f6e3b8524a1382dfbbe286a4a15d1ffe63c1a8",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/firestore-types/package.json",
+    "version": "3.0.3"
+  },
+  "node_modules/@firebase/functions": {
+    "lockedVersion": "0.13.3",
+    "name": "@firebase/functions",
+    "packageJsonSha256": "8f78304146976a54194873bd02ab828ef398f907230859840dc996a29f90979a",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/functions/package.json",
+    "version": "0.13.3"
+  },
+  "node_modules/@firebase/functions-compat": {
+    "lockedVersion": "0.4.3",
+    "name": "@firebase/functions-compat",
+    "packageJsonSha256": "451c75b73e13a44b1d570978050794cd61417081c6a01492dcece7c666786483",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/functions-compat/package.json",
+    "version": "0.4.3"
+  },
+  "node_modules/@firebase/functions-types": {
+    "lockedVersion": "0.6.3",
+    "name": "@firebase/functions-types",
+    "packageJsonSha256": "fc7b906bee25334823872b38e1f8f9d206c7e3568b5e8ecf87b534a374467cb1",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/functions-types/package.json",
+    "version": "0.6.3"
+  },
+  "node_modules/@firebase/installations": {
+    "lockedVersion": "0.6.21",
+    "name": "@firebase/installations",
+    "packageJsonSha256": "ef7f821b427e12b05fbcbe9186bbf75e8c73389215e30c8488731be1b0fd7a46",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/installations/package.json",
+    "version": "0.6.21"
+  },
+  "node_modules/@firebase/installations-compat": {
+    "lockedVersion": "0.2.21",
+    "name": "@firebase/installations-compat",
+    "packageJsonSha256": "d5c56215e38bc02b8e01ed94933072a59e37c6979e1a66b3cfa3dc1d84af7500",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/installations-compat/package.json",
+    "version": "0.2.21"
+  },
+  "node_modules/@firebase/installations-types": {
+    "lockedVersion": "0.5.3",
+    "name": "@firebase/installations-types",
+    "packageJsonSha256": "ec9d60cba84dae73bc024d4fa29c7d02e3f087440fb08054cb1ac35683f36965",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/installations-types/package.json",
+    "version": "0.5.3"
+  },
+  "node_modules/@firebase/logger": {
+    "lockedVersion": "0.5.0",
+    "name": "@firebase/logger",
+    "packageJsonSha256": "d2a37f37a2f36f38cca6ba21bf8a806fb849d194de68228cd864f1eaf713da2f",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/logger/package.json",
+    "version": "0.5.0"
+  },
+  "node_modules/@firebase/messaging": {
+    "lockedVersion": "0.12.25",
+    "name": "@firebase/messaging",
+    "packageJsonSha256": "6db70373d6197333c6cd8c3d05550decfdb91503aea47553e113755694cdd45a",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/messaging/package.json",
+    "version": "0.12.25"
+  },
+  "node_modules/@firebase/messaging-compat": {
+    "lockedVersion": "0.2.25",
+    "name": "@firebase/messaging-compat",
+    "packageJsonSha256": "5c5b9b13f4d9e6e004f395c225044af272f7f14f13b25a6f48827a5f0295765f",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/messaging-compat/package.json",
+    "version": "0.2.25"
+  },
+  "node_modules/@firebase/messaging-interop-types": {
+    "lockedVersion": "0.2.3",
+    "name": "@firebase/messaging-interop-types",
+    "packageJsonSha256": "31a59680963d289c3b403d010d9274c9671d70dd995fed878ac9bee90d1d010e",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/messaging-interop-types/package.json",
+    "version": "0.2.3"
+  },
+  "node_modules/@firebase/performance": {
+    "lockedVersion": "0.7.11",
+    "name": "@firebase/performance",
+    "packageJsonSha256": "9ae1044c31d15191e06346d0a79bcdf1bc3606b54554f32d34903aa911d45927",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/performance/package.json",
+    "version": "0.7.11"
+  },
+  "node_modules/@firebase/performance-compat": {
+    "lockedVersion": "0.2.24",
+    "name": "@firebase/performance-compat",
+    "packageJsonSha256": "784285a6edbe7b2491e134ce545926990f80943c788cceedf726cfad5e423576",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/performance-compat/package.json",
+    "version": "0.2.24"
+  },
+  "node_modules/@firebase/performance-types": {
+    "lockedVersion": "0.2.3",
+    "name": "@firebase/performance-types",
+    "packageJsonSha256": "30fcb1f265dd0eddf420c78c62af8b5f0bcb162a89b18d54b8883f34a5f78088",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/performance-types/package.json",
+    "version": "0.2.3"
+  },
+  "node_modules/@firebase/remote-config": {
+    "lockedVersion": "0.8.2",
+    "name": "@firebase/remote-config",
+    "packageJsonSha256": "a1a18206077b6ed590a5ab07af7d386b51735a5ce99c5ef98a6641d4d5987676",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/remote-config/package.json",
+    "version": "0.8.2"
+  },
+  "node_modules/@firebase/remote-config-compat": {
+    "lockedVersion": "0.2.23",
+    "name": "@firebase/remote-config-compat",
+    "packageJsonSha256": "77e33979a8c000e47cd891763b1808454ef09afdf0a6c30b3872107ebd4f97ea",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/remote-config-compat/package.json",
+    "version": "0.2.23"
+  },
+  "node_modules/@firebase/remote-config-types": {
+    "lockedVersion": "0.5.0",
+    "name": "@firebase/remote-config-types",
+    "packageJsonSha256": "9b69965e4240c7506167f8e7323424bb8456f0fdc9ec823d36fad628237132df",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/remote-config-types/package.json",
+    "version": "0.5.0"
+  },
+  "node_modules/@firebase/storage": {
+    "lockedVersion": "0.14.2",
+    "name": "@firebase/storage",
+    "packageJsonSha256": "b2c933029d12d900fa476562afdb249a40375695bc4bfc8ea89e1abe29b5556b",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/storage/package.json",
+    "version": "0.14.2"
+  },
+  "node_modules/@firebase/storage-compat": {
+    "lockedVersion": "0.4.2",
+    "name": "@firebase/storage-compat",
+    "packageJsonSha256": "e66646f8b416e1016a044c00e7fe8a0869aa4593d0944f2e2b30f2064b00b005",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/storage-compat/package.json",
+    "version": "0.4.2"
+  },
+  "node_modules/@firebase/storage-types": {
+    "lockedVersion": "0.8.3",
+    "name": "@firebase/storage-types",
+    "packageJsonSha256": "5adda330b0984c2dc771627874be54af8e27488fd249509b60fab4b120fdeec8",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/storage-types/package.json",
+    "version": "0.8.3"
+  },
+  "node_modules/@firebase/util": {
+    "lockedVersion": "1.15.0",
+    "name": "@firebase/util",
+    "packageJsonSha256": "6a8d31edbad411dc1958bc41083469bfd6662a3a877f1daad1712a121e8e0b79",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/util/package.json",
+    "version": "1.15.0"
+  },
+  "node_modules/@firebase/webchannel-wrapper": {
+    "lockedVersion": "1.0.5",
+    "name": "@firebase/webchannel-wrapper",
+    "packageJsonSha256": "78802f7405b865328b7885becb388c7bd9f80fabc16706d09d4e37a2ff81e68c",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@firebase/webchannel-wrapper/package.json",
+    "version": "1.0.5"
+  },
+  "node_modules/@grpc/grpc-js": {
+    "lockedVersion": "1.13.6",
+    "name": "@grpc/grpc-js",
+    "packageJsonSha256": "96ae368ccfa9a9f7cde4b9d52f347248e473c29e74ae2adb2acc3c2cdb1ea751",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@grpc/grpc-js/package.json",
+    "version": "1.13.6"
+  },
+  "node_modules/@grpc/proto-loader": {
+    "lockedVersion": "0.7.15",
+    "name": "@grpc/proto-loader",
+    "packageJsonSha256": "0d3065ca31fc500747046e187ff4a86ff204b6d9e3c265b254ba45b382269526",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@grpc/proto-loader/package.json",
+    "version": "0.7.15"
+  },
+  "node_modules/@img/colour": {
+    "lockedVersion": "1.1.0",
+    "name": "@img/colour",
+    "packageJsonSha256": "bc38c5097693ed53b91c32f35fb0a52569736c7854ba2eb6d080f3252071f75c",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@img/colour/package.json",
+    "version": "1.1.0"
+  },
+  "node_modules/@img/sharp-darwin-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.35.5",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "darwin"
+    ]
+  },
+  "node_modules/@img/sharp-darwin-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.35.5",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "darwin"
+    ]
+  },
+  "node_modules/@img/sharp-freebsd-wasm32": {
+    "cpu": null,
+    "lockedVersion": "0.35.5",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "freebsd"
+    ]
+  },
+  "node_modules/@img/sharp-libvips-darwin-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "1.3.4",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "darwin"
+    ]
+  },
+  "node_modules/@img/sharp-libvips-darwin-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "1.3.4",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "darwin"
+    ]
+  },
+  "node_modules/@img/sharp-libvips-linux-arm": {
+    "cpu": [
+      "arm"
+    ],
+    "lockedVersion": "1.3.4",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@img/sharp-libvips-linux-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "1.3.4",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@img/sharp-libvips-linux-ppc64": {
+    "cpu": [
+      "ppc64"
+    ],
+    "lockedVersion": "1.3.4",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@img/sharp-libvips-linux-riscv64": {
+    "cpu": [
+      "riscv64"
+    ],
+    "lockedVersion": "1.3.4",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@img/sharp-libvips-linux-s390x": {
+    "cpu": [
+      "s390x"
+    ],
+    "lockedVersion": "1.3.4",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@img/sharp-libvips-linux-x64": {
+    "lockedVersion": "1.3.4",
+    "name": "@img/sharp-libvips-linux-x64",
+    "packageJsonSha256": "2c5f6f9abf74c1492622d5dc4e4da056ab0712fd71de61e03a687c88b8cdab4e",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@img/sharp-libvips-linux-x64/package.json",
+    "version": "1.3.4"
+  },
+  "node_modules/@img/sharp-libvips-linuxmusl-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "1.3.4",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@img/sharp-libvips-linuxmusl-x64": {
+    "lockedVersion": "1.3.4",
+    "name": "@img/sharp-libvips-linuxmusl-x64",
+    "packageJsonSha256": "9d93c5ff1a47f5c79286f6c832e0ab9001feff6db50b9085f578b20a663b580e",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@img/sharp-libvips-linuxmusl-x64/package.json",
+    "version": "1.3.4"
+  },
+  "node_modules/@img/sharp-linux-arm": {
+    "cpu": [
+      "arm"
+    ],
+    "lockedVersion": "0.35.5",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@img/sharp-linux-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.35.5",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@img/sharp-linux-ppc64": {
+    "cpu": [
+      "ppc64"
+    ],
+    "lockedVersion": "0.35.5",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@img/sharp-linux-riscv64": {
+    "cpu": [
+      "riscv64"
+    ],
+    "lockedVersion": "0.35.5",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@img/sharp-linux-s390x": {
+    "cpu": [
+      "s390x"
+    ],
+    "lockedVersion": "0.35.5",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@img/sharp-linux-x64": {
+    "lockedVersion": "0.35.5",
+    "name": "@img/sharp-linux-x64",
+    "packageJsonSha256": "181c58413d16ac3ce035f39c94c614031e03c023d88315712a81ed210c9fa04c",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@img/sharp-linux-x64/package.json",
+    "version": "0.35.5"
+  },
+  "node_modules/@img/sharp-linuxmusl-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.35.5",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/@img/sharp-linuxmusl-x64": {
+    "lockedVersion": "0.35.5",
+    "name": "@img/sharp-linuxmusl-x64",
+    "packageJsonSha256": "1d41eb946e8c574f27606680c8a674adce6936ef3fc05b754be38a3e3fd3857e",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@img/sharp-linuxmusl-x64/package.json",
+    "version": "0.35.5"
+  },
+  "node_modules/@img/sharp-wasm32": {
+    "lockedVersion": "0.35.5",
+    "name": "@img/sharp-wasm32",
+    "packageJsonSha256": "59d5eeaaac1c43434701f08e9ea78648aa54011159ff2eb192550432608e05c1",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@img/sharp-wasm32/package.json",
+    "version": "0.35.5"
+  },
+  "node_modules/@img/sharp-webcontainers-wasm32": {
+    "cpu": [
+      "wasm32"
+    ],
+    "lockedVersion": "0.35.5",
+    "missing": true,
+    "optional": true,
+    "os": null
+  },
+  "node_modules/@img/sharp-win32-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.35.5",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "win32"
+    ]
+  },
+  "node_modules/@img/sharp-win32-ia32": {
+    "cpu": [
+      "ia32"
+    ],
+    "lockedVersion": "0.35.5",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "win32"
+    ]
+  },
+  "node_modules/@img/sharp-win32-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.35.5",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "win32"
+    ]
+  },
+  "node_modules/@jridgewell/gen-mapping": {
+    "lockedVersion": "0.3.13",
+    "name": "@jridgewell/gen-mapping",
+    "packageJsonSha256": "6264fca78382a9782f8e8d5e653e7bf43dc8aa6d469f3322a82e531093896a01",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@jridgewell/gen-mapping/package.json",
+    "version": "0.3.13"
+  },
+  "node_modules/@jridgewell/remapping": {
+    "lockedVersion": "2.3.5",
+    "name": "@jridgewell/remapping",
+    "packageJsonSha256": "cc535fb0665977104146fb8fe6c81ff63d2c9ae7f7b783d86e7f7db064cde57a",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@jridgewell/remapping/package.json",
+    "version": "2.3.5"
+  },
+  "node_modules/@jridgewell/resolve-uri": {
+    "lockedVersion": "3.1.2",
+    "name": "@jridgewell/resolve-uri",
+    "packageJsonSha256": "0793e722ffe08f3b4f1862c4dc96d920a62d6811a3648b4feb02f06c63227e8b",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@jridgewell/resolve-uri/package.json",
+    "version": "3.1.2"
+  },
+  "node_modules/@jridgewell/sourcemap-codec": {
+    "lockedVersion": "1.5.5",
+    "name": "@jridgewell/sourcemap-codec",
+    "packageJsonSha256": "398fc774628ec1592c794e8c14ecdc0096206a2521545e527e5a06429dac6006",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@jridgewell/sourcemap-codec/package.json",
+    "version": "1.5.5"
+  },
+  "node_modules/@jridgewell/trace-mapping": {
+    "lockedVersion": "0.3.31",
+    "name": "@jridgewell/trace-mapping",
+    "packageJsonSha256": "7f5eacc669d36013f9b792ab15721a97d48b26b093100122aa6c8691ebe656be",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@jridgewell/trace-mapping/package.json",
+    "version": "0.3.31"
+  },
+  "node_modules/@js-sdsl/ordered-map": {
+    "lockedVersion": "4.4.2",
+    "name": "@js-sdsl/ordered-map",
+    "packageJsonSha256": "2858688bad5a7a1ed196247429a5371f3dba8e0d770762b1e7d69aaef1858ba5",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@js-sdsl/ordered-map/package.json",
+    "version": "4.4.2"
+  },
+  "node_modules/@poppinss/colors": {
+    "lockedVersion": "4.1.6",
+    "name": "@poppinss/colors",
+    "packageJsonSha256": "41bbc9edc4d165aebaf1977bd24a46f11075e64200b92b2bd6ef804ac2b1f0ba",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@poppinss/colors/package.json",
+    "version": "4.1.6"
+  },
+  "node_modules/@poppinss/dumper": {
+    "lockedVersion": "0.6.5",
+    "name": "@poppinss/dumper",
+    "packageJsonSha256": "ee665c86ab77935736e398d808a0df9ac1ff63147afcacd70d9f145107c955a9",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@poppinss/dumper/package.json",
+    "version": "0.6.5"
+  },
+  "node_modules/@poppinss/exception": {
+    "lockedVersion": "1.2.3",
+    "name": "@poppinss/exception",
+    "packageJsonSha256": "ed3d422020f5b132e2c0ce0507212a17497dd26654fc6956242cf65e887628f5",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@poppinss/exception/package.json",
+    "version": "1.2.3"
+  },
+  "node_modules/@protobufjs/aspromise": {
+    "lockedVersion": "1.1.2",
+    "name": "@protobufjs/aspromise",
+    "packageJsonSha256": "4a39ee1c94f6ee038d2944196aa6167785d3429a91727f828a1274262919e2d8",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@protobufjs/aspromise/package.json",
+    "version": "1.1.2"
+  },
+  "node_modules/@protobufjs/base64": {
+    "lockedVersion": "1.1.2",
+    "name": "@protobufjs/base64",
+    "packageJsonSha256": "7ff6a89f566b95c0f21a5a9cb12df5718f0b06ef96d4186a92d650c0849fa2c5",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@protobufjs/base64/package.json",
+    "version": "1.1.2"
+  },
+  "node_modules/@protobufjs/codegen": {
+    "lockedVersion": "2.0.5",
+    "name": "@protobufjs/codegen",
+    "packageJsonSha256": "818bf10387c19ab09b3814004ec672ab8d975302cdaf2dd65466bdb604764d65",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@protobufjs/codegen/package.json",
+    "version": "2.0.5"
+  },
+  "node_modules/@protobufjs/eventemitter": {
+    "lockedVersion": "1.1.1",
+    "name": "@protobufjs/eventemitter",
+    "packageJsonSha256": "d157d364fe4aee21cfd517abff35bca312ff51e6e6e90abdbec16225057e5914",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@protobufjs/eventemitter/package.json",
+    "version": "1.1.1"
+  },
+  "node_modules/@protobufjs/fetch": {
+    "lockedVersion": "1.1.1",
+    "name": "@protobufjs/fetch",
+    "packageJsonSha256": "52f997898a745acce5d68751883aad6296bcc2f152468ced0ed30e3c3c5a1c72",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@protobufjs/fetch/package.json",
+    "version": "1.1.1"
+  },
+  "node_modules/@protobufjs/float": {
+    "lockedVersion": "1.0.2",
+    "name": "@protobufjs/float",
+    "packageJsonSha256": "1cae4ded1bc97375a67fe4608f87ee59990734ea738fabb98e9061ab23669cdf",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@protobufjs/float/package.json",
+    "version": "1.0.2"
+  },
+  "node_modules/@protobufjs/path": {
+    "lockedVersion": "1.1.2",
+    "name": "@protobufjs/path",
+    "packageJsonSha256": "b19802dd696ceb8a4aa4839f35ab1c8312e97693d93485ff3c3e4f19cca183c4",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@protobufjs/path/package.json",
+    "version": "1.1.2"
+  },
+  "node_modules/@protobufjs/pool": {
+    "lockedVersion": "1.1.0",
+    "name": "@protobufjs/pool",
+    "packageJsonSha256": "7a33b609e770020fe1e09690cfebc23bbdd6e1306e3f0dd98ba5048966cb7fec",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@protobufjs/pool/package.json",
+    "version": "1.1.0"
+  },
+  "node_modules/@protobufjs/utf8": {
+    "lockedVersion": "1.1.2",
+    "name": "@protobufjs/utf8",
+    "packageJsonSha256": "80fdb6b9f633023846b6cdf352ea795523abcf27affd4d54afd4b50a90a87411",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@protobufjs/utf8/package.json",
+    "version": "1.1.2"
+  },
+  "node_modules/@rolldown/pluginutils": {
+    "lockedVersion": "1.0.0-beta.27",
+    "name": "@rolldown/pluginutils",
+    "packageJsonSha256": "23c10679297855f4f4269d28bee817c61878d09d983e91919b04c309b9db5b6a",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@rolldown/pluginutils/package.json",
+    "version": "1.0.0-beta.27"
+  },
+  "node_modules/@rollup/rollup-win32-x64-gnu": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "win32"
+    ]
+  },
+  "node_modules/@rollup/rollup-win32-x64-msvc": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "win32"
+    ]
+  },
+  "node_modules/@sindresorhus/is": {
+    "lockedVersion": "7.2.0",
+    "name": "@sindresorhus/is",
+    "packageJsonSha256": "3a1535a0f64df969c9315c5249f748d861903a40d23977987f74b83d33569f49",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@sindresorhus/is/package.json",
+    "version": "7.2.0"
+  },
+  "node_modules/@speed-highlight/core": {
+    "lockedVersion": "1.2.24",
+    "name": "@speed-highlight/core",
+    "packageJsonSha256": "6abc2112341f8d6fd590319d2fbee61e437369614919afed84d2fc2096a5baba",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@speed-highlight/core/package.json",
+    "version": "1.2.24"
+  },
+  "node_modules/@types/babel__core": {
+    "lockedVersion": "7.20.5",
+    "name": "@types/babel__core",
+    "packageJsonSha256": "0787d557e5f4f1dcd57b43e2ec1a6cb955e768801bab5cad3c5c36e2d13eca0b",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@types/babel__core/package.json",
+    "version": "7.20.5"
+  },
+  "node_modules/@types/babel__generator": {
+    "lockedVersion": "7.27.0",
+    "name": "@types/babel__generator",
+    "packageJsonSha256": "40436b147f93a5e56e69c5c0473e805ff17474c763875bdda598a977a6b824f4",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@types/babel__generator/package.json",
+    "version": "7.27.0"
+  },
+  "node_modules/@types/babel__template": {
+    "lockedVersion": "7.4.4",
+    "name": "@types/babel__template",
+    "packageJsonSha256": "51293405049986b206d68e5b08181710934be70a05ecbd5384adb4eabde2ab82",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@types/babel__template/package.json",
+    "version": "7.4.4"
+  },
+  "node_modules/@types/babel__traverse": {
+    "lockedVersion": "7.28.0",
+    "name": "@types/babel__traverse",
+    "packageJsonSha256": "44eeb69b60d092b2b6294defb488b61f754b36cf5dc4057af127a32a311c774d",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@types/babel__traverse/package.json",
+    "version": "7.28.0"
+  },
+  "node_modules/@types/chai": {
+    "lockedVersion": "5.2.3",
+    "name": "@types/chai",
+    "packageJsonSha256": "273a3159a592826cc068b22356e9a3e968dffe88a0f99892032a889f28c567a7",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@types/chai/package.json",
+    "version": "5.2.3"
+  },
+  "node_modules/@types/deep-eql": {
+    "lockedVersion": "4.0.2",
+    "name": "@types/deep-eql",
+    "packageJsonSha256": "a2e45f386b2fbaed8a8fe333502f97e59061ed738ddd0437437fde05acfa5484",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@types/deep-eql/package.json",
+    "version": "4.0.2"
+  },
+  "node_modules/@types/estree": {
+    "lockedVersion": "1.0.8",
+    "name": "@types/estree",
+    "packageJsonSha256": "c8bdebabdfbe5b0819119f45da4066c48d4a6334002b7343bbcefb17322dec6c",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@types/estree/package.json",
+    "version": "1.0.8"
+  },
+  "node_modules/@types/node": {
+    "lockedVersion": "25.5.2",
+    "name": "@types/node",
+    "packageJsonSha256": "193c0b63173af47f7706d4aefa3e441123095e26e2a4886f138a99ba4a8c4b04",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@types/node/package.json",
+    "version": "25.5.2"
+  },
+  "node_modules/@types/prop-types": {
+    "lockedVersion": "15.7.15",
+    "name": "@types/prop-types",
+    "packageJsonSha256": "ec2aa770e306720d83d14e146d2fa59df6bd2a379a206f9a492e4d5f87e12179",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@types/prop-types/package.json",
+    "version": "15.7.15"
+  },
+  "node_modules/@types/react": {
+    "lockedVersion": "18.3.28",
+    "name": "@types/react",
+    "packageJsonSha256": "be92045d849a5cadcdae48f1cd53c094a6645359380b3aea911a23a9e83c77e7",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@types/react/package.json",
+    "version": "18.3.28"
+  },
+  "node_modules/@types/react-dom": {
+    "lockedVersion": "18.3.7",
+    "name": "@types/react-dom",
+    "packageJsonSha256": "7e3ee716354deebd531059c294716eed6ab402bdf37721b5b011ea093f978f70",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@types/react-dom/package.json",
+    "version": "18.3.7"
+  },
+  "node_modules/@types/react-test-renderer": {
+    "lockedVersion": "18.3.1",
+    "name": "@types/react-test-renderer",
+    "packageJsonSha256": "0b1a5924a43aaf81152a3230aa06f9f7369a763da8acf05dd48810f14ee6cef9",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@types/react-test-renderer/package.json",
+    "version": "18.3.1"
+  },
+  "node_modules/@vitejs/plugin-basic-ssl": {
+    "lockedVersion": "1.2.0",
+    "name": "@vitejs/plugin-basic-ssl",
+    "packageJsonSha256": "5dbdd4b4988f36d09ce1f09a0ce39d7ac036364bb17547bf03483bb2776ef176",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@vitejs/plugin-basic-ssl/package.json",
+    "version": "1.2.0"
+  },
+  "node_modules/@vitejs/plugin-react": {
+    "lockedVersion": "4.7.0",
+    "name": "@vitejs/plugin-react",
+    "packageJsonSha256": "d608755568d9d654c34e9e2da06659df9122fa89d2604ee09cdeda457a20c035",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@vitejs/plugin-react/package.json",
+    "version": "4.7.0"
+  },
+  "node_modules/@vitest/expect": {
+    "lockedVersion": "3.2.7",
+    "name": "@vitest/expect",
+    "packageJsonSha256": "329cbb991e3265ae53272bbb710d02d8da7794fdf8cc385522fd4210ae1ffb0f",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@vitest/expect/package.json",
+    "version": "3.2.7"
+  },
+  "node_modules/@vitest/mocker": {
+    "lockedVersion": "3.2.7",
+    "name": "@vitest/mocker",
+    "packageJsonSha256": "6f9a21f0164a5dc5c57f1c135c82423938c70b573fafb805545c645a931a68ed",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@vitest/mocker/package.json",
+    "version": "3.2.7"
+  },
+  "node_modules/@vitest/pretty-format": {
+    "lockedVersion": "3.2.7",
+    "name": "@vitest/pretty-format",
+    "packageJsonSha256": "45d80489327eca387a3bfb8bd70ad2851f7044e89376776678d0b0f54e19e97b",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@vitest/pretty-format/package.json",
+    "version": "3.2.7"
+  },
+  "node_modules/@vitest/runner": {
+    "lockedVersion": "3.2.7",
+    "name": "@vitest/runner",
+    "packageJsonSha256": "43fa1b19947fe8434a6bc04c428488a7edb44c5d87d76d4b37a167e6b2b251e5",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@vitest/runner/package.json",
+    "version": "3.2.7"
+  },
+  "node_modules/@vitest/snapshot": {
+    "lockedVersion": "3.2.7",
+    "name": "@vitest/snapshot",
+    "packageJsonSha256": "42d0d7e9522464cfd7d6aa8211cb8ed36820246c29f4ebc906fe719989091837",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@vitest/snapshot/package.json",
+    "version": "3.2.7"
+  },
+  "node_modules/@vitest/spy": {
+    "lockedVersion": "3.2.7",
+    "name": "@vitest/spy",
+    "packageJsonSha256": "71c7a2a0b747125cf83aad2009eb40b9ba4b28d0866406178ee4cd131bb0238b",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@vitest/spy/package.json",
+    "version": "3.2.7"
+  },
+  "node_modules/@vitest/utils": {
+    "lockedVersion": "3.2.7",
+    "name": "@vitest/utils",
+    "packageJsonSha256": "6c8addb8935417adf48bcc08b7c190a12364ab8ceb406b819455d1a4687e8d48",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/@vitest/utils/package.json",
+    "version": "3.2.7"
+  },
+  "node_modules/ansi-regex": {
+    "lockedVersion": "5.0.1",
+    "name": "ansi-regex",
+    "packageJsonSha256": "8b2dc166f2b74d5098bad38bdd3dd2f4d4775c626199872f5e36dbb48c40931d",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/ansi-regex/package.json",
+    "version": "5.0.1"
+  },
+  "node_modules/ansi-styles": {
+    "lockedVersion": "4.3.0",
+    "name": "ansi-styles",
+    "packageJsonSha256": "d405f010681d53f77691015e98461f8484b2afe6a9edfdd2ddb27b1e8a8e883d",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/ansi-styles/package.json",
+    "version": "4.3.0"
+  },
+  "node_modules/assertion-error": {
+    "lockedVersion": "2.0.1",
+    "name": "assertion-error",
+    "packageJsonSha256": "7a77fe7be32038e40aab9a3fc6180a6fbe3fdbb68b006b78a47401f7026e96e7",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/assertion-error/package.json",
+    "version": "2.0.1"
+  },
+  "node_modules/baseline-browser-mapping": {
+    "lockedVersion": "2.11.1",
+    "name": "baseline-browser-mapping",
+    "packageJsonSha256": "7acb26cda7794416396b6ea3f7cb9b5fbe6f90e34c4c0639a15c42913c3e01d6",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/baseline-browser-mapping/package.json",
+    "version": "2.11.1"
+  },
+  "node_modules/blake3-wasm": {
+    "lockedVersion": "2.1.5",
+    "name": "blake3-wasm",
+    "packageJsonSha256": "f36864b59bcb76e6a97b7f236ad3ca78749af8374453ae1bcca048815b8c6e9e",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/blake3-wasm/package.json",
+    "version": "2.1.5"
+  },
+  "node_modules/browserslist": {
+    "lockedVersion": "4.28.7",
+    "name": "browserslist",
+    "packageJsonSha256": "99119de74785186cb96aabe03a614760935ad832da776f1865848cdcfb34fcb2",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/browserslist/package.json",
+    "version": "4.28.7"
+  },
+  "node_modules/cac": {
+    "lockedVersion": "6.7.14",
+    "name": "cac",
+    "packageJsonSha256": "8677bbbe7404ce455200b5f088a45f841bd8a40e7d63475ac711b631516ddcdf",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/cac/package.json",
+    "version": "6.7.14"
+  },
+  "node_modules/caniuse-lite": {
+    "lockedVersion": "1.0.30001806",
+    "name": "caniuse-lite",
+    "packageJsonSha256": "0c48cd455f15387a401011d12d1979fdeeaa581fa4d37f382dcc397d262e604b",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/caniuse-lite/package.json",
+    "version": "1.0.30001806"
+  },
+  "node_modules/chai": {
+    "lockedVersion": "5.3.3",
+    "name": "chai",
+    "packageJsonSha256": "25ef536c7435582fe1bfa2c299c691517763bb7a6aac25c4e33a508a5905f02e",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/chai/package.json",
+    "version": "5.3.3"
+  },
+  "node_modules/check-error": {
+    "lockedVersion": "2.1.3",
+    "name": "check-error",
+    "packageJsonSha256": "0a58f4d67c1455b141c79b8cdabc009baeba2729b37d4b3b528c0af493d09185",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/check-error/package.json",
+    "version": "2.1.3"
+  },
+  "node_modules/cliui": {
+    "lockedVersion": "8.0.1",
+    "name": "cliui",
+    "packageJsonSha256": "95964483c512a6bf35aa1211dc2c185d72be1b58b1271ddd4a7c2e48836472a9",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/cliui/package.json",
+    "version": "8.0.1"
+  },
+  "node_modules/color-convert": {
+    "lockedVersion": "2.0.1",
+    "name": "color-convert",
+    "packageJsonSha256": "9471d21744ca3137410448da6b3bd7b30ee91d42edce3b82ebcbf84faef74fb4",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/color-convert/package.json",
+    "version": "2.0.1"
+  },
+  "node_modules/color-name": {
+    "lockedVersion": "1.1.4",
+    "name": "color-name",
+    "packageJsonSha256": "4a557ea373907e4643badb89ff21b3f4b969d20631086d78eab2e03d05c2efa4",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/color-name/package.json",
+    "version": "1.1.4"
+  },
+  "node_modules/convert-source-map": {
+    "lockedVersion": "2.0.0",
+    "name": "convert-source-map",
+    "packageJsonSha256": "e6bf802e6ee220d66321808ce3d619fbb85ff4d5729ea4f649bd65dfe9ee8956",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/convert-source-map/package.json",
+    "version": "2.0.0"
+  },
+  "node_modules/cookie": {
+    "lockedVersion": "1.1.1",
+    "name": "cookie",
+    "packageJsonSha256": "e13337a4eb106b201e0502361f3214af9cc22ae88b2bfac2368996bb949a102f",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/cookie/package.json",
+    "version": "1.1.1"
+  },
+  "node_modules/csstype": {
+    "lockedVersion": "3.2.3",
+    "name": "csstype",
+    "packageJsonSha256": "c818b74a9bc1556488b7ec2a65399224738f6619228f9a6491c5c02ca91f849e",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/csstype/package.json",
+    "version": "3.2.3"
+  },
+  "node_modules/debug": {
+    "lockedVersion": "4.4.3",
+    "name": "debug",
+    "packageJsonSha256": "ea8e33d63fe5f3a4c36609b6c3df8e2ef1f8b8ba2fc3a2e1e53cb27291f384af",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/debug/package.json",
+    "version": "4.4.3"
+  },
+  "node_modules/deep-eql": {
+    "lockedVersion": "5.0.2",
+    "name": "deep-eql",
+    "packageJsonSha256": "0ee7e49522979ad93908876af0e32a812da311ba86d720ebd1f226a4c8c74635",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/deep-eql/package.json",
+    "version": "5.0.2"
+  },
+  "node_modules/detect-libc": {
+    "lockedVersion": "2.1.2",
+    "name": "detect-libc",
+    "packageJsonSha256": "ee88e5b954fdf3a8480b1d01ef767d68d8ca2c6da269f58c5cf1c5550e9aa2a7",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/detect-libc/package.json",
+    "version": "2.1.2"
+  },
+  "node_modules/electron-to-chromium": {
+    "lockedVersion": "1.5.395",
+    "name": "electron-to-chromium",
+    "packageJsonSha256": "598b3a8a6c413a156003d62d221a95f56e9287a4e2c4c1290d0739c8ca1e1cf8",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/electron-to-chromium/package.json",
+    "version": "1.5.395"
+  },
+  "node_modules/emoji-regex": {
+    "lockedVersion": "8.0.0",
+    "name": "emoji-regex",
+    "packageJsonSha256": "7bec29b9ca68f2c4becc60e866c2f9342ecdc89fab39841a818ccd9eda15c148",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/emoji-regex/package.json",
+    "version": "8.0.0"
+  },
+  "node_modules/error-stack-parser-es": {
+    "lockedVersion": "1.0.5",
+    "name": "error-stack-parser-es",
+    "packageJsonSha256": "c1aa9b437730af67a4ee929abcb47f335cdb8c1307e19e007c25fdde660ca187",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/error-stack-parser-es/package.json",
+    "version": "1.0.5"
+  },
+  "node_modules/es-module-lexer": {
+    "lockedVersion": "1.7.0",
+    "name": "es-module-lexer",
+    "packageJsonSha256": "de68b22f72517f94d53290ecdbaf975f5e79ca26d8757768b07c5b466749c494",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/es-module-lexer/package.json",
+    "version": "1.7.0"
+  },
+  "node_modules/esbuild": {
+    "lockedVersion": "0.25.12",
+    "name": "esbuild",
+    "packageJsonSha256": "cb7d5b1fe478f8cbaae566a86031b6fdf5f7d444354f35d1cb3cba9adf6d2935",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/esbuild/package.json",
+    "version": "0.25.12"
+  },
+  "node_modules/escalade": {
+    "lockedVersion": "3.2.0",
+    "name": "escalade",
+    "packageJsonSha256": "acd22b264ecbea162e320a360dab0ad0f3e5438fa4382288df844fa08b484e73",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/escalade/package.json",
+    "version": "3.2.0"
+  },
+  "node_modules/estree-walker": {
+    "lockedVersion": "3.0.3",
+    "name": "estree-walker",
+    "packageJsonSha256": "c459668153035def85be26dbeb40caf315191da06ac8a092cd8024b677c2fc21",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/estree-walker/package.json",
+    "version": "3.0.3"
+  },
+  "node_modules/expect-type": {
+    "lockedVersion": "1.3.0",
+    "name": "expect-type",
+    "packageJsonSha256": "a7453b74e6d7d4d1f0a9e78f13d9d8c01a28a9b53e2dcdd4e0976fcdf81515a3",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/expect-type/package.json",
+    "version": "1.3.0"
+  },
+  "node_modules/fast-check": {
+    "lockedVersion": "4.10.0",
+    "name": "fast-check",
+    "packageJsonSha256": "cffc5a4b53e41e42f94c4b1eba66c3650ab69245181ac307860d4b5436bae753",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/fast-check/package.json",
+    "version": "4.10.0"
+  },
+  "node_modules/faye-websocket": {
+    "lockedVersion": "0.11.4",
+    "name": "faye-websocket",
+    "packageJsonSha256": "08f9b3cdf514a69f6fa5db482067e74c3fd2543c7990b08188d4dabdf3a1ea4d",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/faye-websocket/package.json",
+    "version": "0.11.4"
+  },
+  "node_modules/fdir": {
+    "lockedVersion": "6.5.0",
+    "name": "fdir",
+    "packageJsonSha256": "aca49395d61ef383a09f74555c66ed45817ca2b5724e710a4dc9e0471b83d8f5",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/fdir/package.json",
+    "version": "6.5.0"
+  },
+  "node_modules/firebase": {
+    "lockedVersion": "12.12.0",
+    "name": "firebase",
+    "packageJsonSha256": "68eb22fab9d32c189d67b063f68ae42ae8b89872d457d7a07780067f3545a4ab",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/firebase/package.json",
+    "version": "12.12.0"
+  },
+  "node_modules/firebase/node_modules/@firebase/auth": {
+    "lockedVersion": "1.13.0",
+    "name": "@firebase/auth",
+    "packageJsonSha256": "5b82eebd065f6774fe5d48adf62f262ce60c546437d8897e4540616a77c44798",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/firebase/node_modules/@firebase/auth/package.json",
+    "version": "1.13.0"
+  },
+  "node_modules/fsevents": {
+    "cpu": null,
+    "lockedVersion": "2.3.3",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "darwin"
+    ]
+  },
+  "node_modules/gensync": {
+    "lockedVersion": "1.0.0-beta.2",
+    "name": "gensync",
+    "packageJsonSha256": "80cddca71baa1ba0cf44f65585e1c1ed7576abdb759ed391007925c961ca6334",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/gensync/package.json",
+    "version": "1.0.0-beta.2"
+  },
+  "node_modules/get-caller-file": {
+    "lockedVersion": "2.0.5",
+    "name": "get-caller-file",
+    "packageJsonSha256": "680a080d2885c05bc51dde429c80784bfb248ca3ef3685438079c5015721e2ae",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/get-caller-file/package.json",
+    "version": "2.0.5"
+  },
+  "node_modules/http-parser-js": {
+    "lockedVersion": "0.5.10",
+    "name": "http-parser-js",
+    "packageJsonSha256": "821a9feba21832f4c359015831d93d85fe6fc90ec625ebb3ab5a49604efc0e48",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/http-parser-js/package.json",
+    "version": "0.5.10"
+  },
+  "node_modules/idb": {
+    "lockedVersion": "7.1.1",
+    "name": "idb",
+    "packageJsonSha256": "eff9c341259af63003f9268615b3067ef5c29f618305731cda64db9f6c59737b",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/idb/package.json",
+    "version": "7.1.1"
+  },
+  "node_modules/is-fullwidth-code-point": {
+    "lockedVersion": "3.0.0",
+    "name": "is-fullwidth-code-point",
+    "packageJsonSha256": "5b48496ca129073ed44a677b777ea3b91366c8bc228bc75fe858749a78ac1a32",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/is-fullwidth-code-point/package.json",
+    "version": "3.0.0"
+  },
+  "node_modules/js-tokens": {
+    "lockedVersion": "4.0.0",
+    "name": "js-tokens",
+    "packageJsonSha256": "47345931827b3e26db9fe690abb81f856a0d040cbca8af1e69711a64cd58ce0d",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/js-tokens/package.json",
+    "version": "4.0.0"
+  },
+  "node_modules/jsesc": {
+    "lockedVersion": "3.1.0",
+    "name": "jsesc",
+    "packageJsonSha256": "6127ab2ccfbf576671dcfedcf2a8d97c9bbb3e5e4cff1274b3210b86a97a287c",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/jsesc/package.json",
+    "version": "3.1.0"
+  },
+  "node_modules/json5": {
+    "lockedVersion": "2.2.3",
+    "name": "json5",
+    "packageJsonSha256": "1927c4592e3811cf9b8c86e568df1c41a373b628b4b322f88872395ef87e2ba5",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/json5/package.json",
+    "version": "2.2.3"
+  },
+  "node_modules/kleur": {
+    "lockedVersion": "4.1.5",
+    "name": "kleur",
+    "packageJsonSha256": "cc1c864fe6dc0eabc980a74b4af4fee8b8491319de2d48a34cb6f4959dad9ef0",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/kleur/package.json",
+    "version": "4.1.5"
+  },
+  "node_modules/lodash.camelcase": {
+    "lockedVersion": "4.3.0",
+    "name": "lodash.camelcase",
+    "packageJsonSha256": "9efa0aaf45881a9b6f8150e72e399a7d17732c8bdb772bb501204204821a22dd",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/lodash.camelcase/package.json",
+    "version": "4.3.0"
+  },
+  "node_modules/long": {
+    "lockedVersion": "5.3.2",
+    "name": "long",
+    "packageJsonSha256": "982e554a35d140981c7962fbba77855563e5890de200f8dc0a249135e4d9acb8",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/long/package.json",
+    "version": "5.3.2"
+  },
+  "node_modules/loose-envify": {
+    "lockedVersion": "1.4.0",
+    "name": "loose-envify",
+    "packageJsonSha256": "8c2e27dae366396ced36fe0f7c6d35d71a1440fd8e82df5f2005a5297888a0d4",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/loose-envify/package.json",
+    "version": "1.4.0"
+  },
+  "node_modules/loupe": {
+    "lockedVersion": "3.2.1",
+    "name": "loupe",
+    "packageJsonSha256": "576be81053b77e14f3ccb78111e9c0dbf19164f59d3eeff9763d620d21ef2591",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/loupe/package.json",
+    "version": "3.2.1"
+  },
+  "node_modules/lru-cache": {
+    "lockedVersion": "5.1.1",
+    "name": "lru-cache",
+    "packageJsonSha256": "f5a3379f52a453412f5d8551bf11fa0bef4316cc88645c9d190a017e1c58a4c2",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/lru-cache/package.json",
+    "version": "5.1.1"
+  },
+  "node_modules/lucide-react": {
+    "lockedVersion": "1.14.0",
+    "name": "lucide-react",
+    "packageJsonSha256": "6bf7c0e7ab212014382892934ddae51e3a3376184ff0f59f0516397af99011d0",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/lucide-react/package.json",
+    "version": "1.14.0"
+  },
+  "node_modules/magic-string": {
+    "lockedVersion": "0.30.21",
+    "name": "magic-string",
+    "packageJsonSha256": "86814aaf7dacba9d31fbf361c3285981f1cbbda0a87108caa4131d297bd9eba2",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/magic-string/package.json",
+    "version": "0.30.21"
+  },
+  "node_modules/miniflare": {
+    "lockedVersion": "5.20260926.1-alpha",
+    "name": "miniflare",
+    "packageJsonSha256": "436c3255fe4542c6567580f048af6ba6d19fb4c06ae74fbaf281776c6a1cb469",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/miniflare/package.json",
+    "version": "5.20260926.1-alpha"
+  },
+  "node_modules/ms": {
+    "lockedVersion": "2.1.3",
+    "name": "ms",
+    "packageJsonSha256": "1a6b4d9739790c0b94ab96c8cc0507e281c164c311ff4fbf5e57fb8d26290b40",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/ms/package.json",
+    "version": "2.1.3"
+  },
+  "node_modules/nanoid": {
+    "lockedVersion": "3.3.18",
+    "name": "nanoid",
+    "packageJsonSha256": "18673eb0d7ed43dd871d59dc22a5670303f5d4eb9b17783b1f698f5840ce1fff",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/nanoid/package.json",
+    "version": "3.3.18"
+  },
+  "node_modules/node-releases": {
+    "lockedVersion": "2.0.51",
+    "name": "node-releases",
+    "packageJsonSha256": "8415b6150a5c0a1aaab110cf339919ea44a97774a60d4defef78483d0c46ebab",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/node-releases/package.json",
+    "version": "2.0.51"
+  },
+  "node_modules/object-assign": {
+    "lockedVersion": "4.1.1",
+    "name": "object-assign",
+    "packageJsonSha256": "5990bbffa235fc675debd925d50f6c3f48a2b4526d8c9f7555cadec9029d0d7f",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/object-assign/package.json",
+    "version": "4.1.1"
+  },
+  "node_modules/path-to-regexp": {
+    "lockedVersion": "6.3.0",
+    "name": "path-to-regexp",
+    "packageJsonSha256": "8d858476cc93dd0af859fcd3d84cf780ae0bd9930a7459623f483d897d7dacd4",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/path-to-regexp/package.json",
+    "version": "6.3.0"
+  },
+  "node_modules/pathe": {
+    "lockedVersion": "2.0.3",
+    "name": "pathe",
+    "packageJsonSha256": "6cccffe6bb2a39e2e4f257aefc3f5d553d98199a0c79558bdb5ea2880fa030a3",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/pathe/package.json",
+    "version": "2.0.3"
+  },
+  "node_modules/pathval": {
+    "lockedVersion": "2.0.1",
+    "name": "pathval",
+    "packageJsonSha256": "66c51bced00e284db042748deb34d3ab3d4428982818a10f78064cea4bc9a991",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/pathval/package.json",
+    "version": "2.0.1"
+  },
+  "node_modules/picocolors": {
+    "lockedVersion": "1.1.1",
+    "name": "picocolors",
+    "packageJsonSha256": "ef2ac226c4811d312e12c64214c453878653e834482125ae475f27cea60de737",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/picocolors/package.json",
+    "version": "1.1.1"
+  },
+  "node_modules/picomatch": {
+    "lockedVersion": "4.0.4",
+    "name": "picomatch",
+    "packageJsonSha256": "b8deb10b4e1f7cc2fe8236a70995f4c6b5ec3ecf93f02f2b6427a8600d2c1d20",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/picomatch/package.json",
+    "version": "4.0.4"
+  },
+  "node_modules/postcss": {
+    "lockedVersion": "8.5.26",
+    "name": "postcss",
+    "packageJsonSha256": "e0f23518d0e8fc0570ac68438eff7ecc7554774de3194af6f54f502e33f0c25b",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/postcss/package.json",
+    "version": "8.5.26"
+  },
+  "node_modules/protobufjs": {
+    "lockedVersion": "7.6.5",
+    "name": "protobufjs",
+    "packageJsonSha256": "893c7c89175f609c08fa04329c89cefb411faf5ad7da76213f64498485e81404",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/protobufjs/package.json",
+    "version": "7.6.5"
+  },
+  "node_modules/pure-rand": {
+    "lockedVersion": "8.4.0",
+    "name": "pure-rand",
+    "packageJsonSha256": "136f0f3680bc24af41c51f448096f54006578ee9b7c19223b23895037eb709f4",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/pure-rand/package.json",
+    "version": "8.4.0"
+  },
+  "node_modules/react": {
+    "lockedVersion": "18.3.1",
+    "name": "react",
+    "packageJsonSha256": "d4e68a5c96babb20cad1daafea8b78822eae45b341552cf5418d06a5304fa64c",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/react/package.json",
+    "version": "18.3.1"
+  },
+  "node_modules/react-dom": {
+    "lockedVersion": "18.3.1",
+    "name": "react-dom",
+    "packageJsonSha256": "d2f29e31bd48b833e48cd7bbf41f192e8ee4ff8da249fdbe10d4ac4114b8b12e",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/react-dom/package.json",
+    "version": "18.3.1"
+  },
+  "node_modules/react-is": {
+    "lockedVersion": "18.3.1",
+    "name": "react-is",
+    "packageJsonSha256": "8d8b7b3d6df8fa36fcd2fbee3561faea9bfa488c2318dabef4cfeaf275aee7f3",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/react-is/package.json",
+    "version": "18.3.1"
+  },
+  "node_modules/react-refresh": {
+    "lockedVersion": "0.17.0",
+    "name": "react-refresh",
+    "packageJsonSha256": "c042bac77d19e7de2c7afca47f6d833eba942da2501138b00e0ec74865f44001",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/react-refresh/package.json",
+    "version": "0.17.0"
+  },
+  "node_modules/react-shallow-renderer": {
+    "lockedVersion": "16.15.0",
+    "name": "react-shallow-renderer",
+    "packageJsonSha256": "a42ad808567775d9537fe5dceebeb854d5c336a8012299442cef62fb8ffa8e5a",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/react-shallow-renderer/package.json",
+    "version": "16.15.0"
+  },
+  "node_modules/react-test-renderer": {
+    "lockedVersion": "18.3.1",
+    "name": "react-test-renderer",
+    "packageJsonSha256": "e3b09e5a62e134d5241b520715de45b63ff3568ccbbeeeb70601607c3136c811",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/react-test-renderer/package.json",
+    "version": "18.3.1"
+  },
+  "node_modules/require-directory": {
+    "lockedVersion": "2.1.1",
+    "name": "require-directory",
+    "packageJsonSha256": "5690bdddd6eb4abd795fa5319df7552279508df9d562d571e3132ddff3045a71",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/require-directory/package.json",
+    "version": "2.1.1"
+  },
+  "node_modules/rollup": {
+    "lockedVersion": "4.60.1",
+    "name": "rollup",
+    "packageJsonSha256": "86434839261b6ecf154b094a5c31a99308a8a88909376fa9335744d7245822bc",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/rollup/package.json",
+    "version": "4.60.1"
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-android-arm-eabi": {
+    "cpu": [
+      "arm"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "android"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-android-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "android"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-darwin-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "darwin"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-darwin-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "darwin"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-freebsd-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "freebsd"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-freebsd-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "freebsd"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-linux-arm-gnueabihf": {
+    "cpu": [
+      "arm"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-linux-arm-musleabihf": {
+    "cpu": [
+      "arm"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-linux-arm64-gnu": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-linux-arm64-musl": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-linux-loong64-gnu": {
+    "cpu": [
+      "loong64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-linux-loong64-musl": {
+    "cpu": [
+      "loong64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-linux-ppc64-gnu": {
+    "cpu": [
+      "ppc64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-linux-ppc64-musl": {
+    "cpu": [
+      "ppc64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-linux-riscv64-gnu": {
+    "cpu": [
+      "riscv64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-linux-riscv64-musl": {
+    "cpu": [
+      "riscv64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-linux-s390x-gnu": {
+    "cpu": [
+      "s390x"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-linux-x64-gnu": {
+    "lockedVersion": "4.60.1",
+    "name": "@rollup/rollup-linux-x64-gnu",
+    "packageJsonSha256": "e3b1deae652532247eb41e0d8862b879d442b0d254abdc40dd9012467bddf3bb",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/rollup/node_modules/@rollup/rollup-linux-x64-gnu/package.json",
+    "version": "4.60.1"
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-linux-x64-musl": {
+    "lockedVersion": "4.60.1",
+    "name": "@rollup/rollup-linux-x64-musl",
+    "packageJsonSha256": "398995dc9427825992c28ea0ca8a0e90eed1ebd3c201524a14591c2f6b21ff78",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/rollup/node_modules/@rollup/rollup-linux-x64-musl/package.json",
+    "version": "4.60.1"
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-openbsd-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "openbsd"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-openharmony-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "openharmony"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-win32-arm64-msvc": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "win32"
+    ]
+  },
+  "node_modules/rollup/node_modules/@rollup/rollup-win32-ia32-msvc": {
+    "cpu": [
+      "ia32"
+    ],
+    "lockedVersion": "4.60.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "win32"
+    ]
+  },
+  "node_modules/safe-buffer": {
+    "lockedVersion": "5.2.1",
+    "name": "safe-buffer",
+    "packageJsonSha256": "e4018fdbfe625433371f48274fee26f520bbe865e0d8c85bf3aa07424134b90c",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/safe-buffer/package.json",
+    "version": "5.2.1"
+  },
+  "node_modules/scheduler": {
+    "lockedVersion": "0.23.2",
+    "name": "scheduler",
+    "packageJsonSha256": "0893643a24576d727174e639586b8833a53f2a7b4a2199a719b9cfcebe9bae88",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/scheduler/package.json",
+    "version": "0.23.2"
+  },
+  "node_modules/semver": {
+    "lockedVersion": "6.3.1",
+    "name": "semver",
+    "packageJsonSha256": "aa906c5bf8a2fa68683cae07d18553ae2538ed0d5a567911980b2ef25ee8b9ba",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/semver/package.json",
+    "version": "6.3.1"
+  },
+  "node_modules/sharp": {
+    "lockedVersion": "0.35.5",
+    "name": "sharp",
+    "packageJsonSha256": "ad4a2535d72eb638053a38867b1abf43c328cd1c1dbae5cf4172d498365a8b97",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/sharp/package.json",
+    "version": "0.35.5"
+  },
+  "node_modules/sharp/node_modules/semver": {
+    "lockedVersion": "7.8.5",
+    "name": "semver",
+    "packageJsonSha256": "7c94cb7f2a53c27b20d76386ec144c062894dbcc909cfabd0f728c37874b1776",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/sharp/node_modules/semver/package.json",
+    "version": "7.8.5"
+  },
+  "node_modules/siginfo": {
+    "lockedVersion": "2.0.0",
+    "name": "siginfo",
+    "packageJsonSha256": "ff13b85283144b84f297d757a7b5dcffc7abcc469b3b22bb6fc94b6b1ae5f662",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/siginfo/package.json",
+    "version": "2.0.0"
+  },
+  "node_modules/source-map-js": {
+    "lockedVersion": "1.2.2",
+    "name": "source-map-js",
+    "packageJsonSha256": "9f1ea63b1661d0f6e5fcd50b625d86cddd77de870a0019b23262360987b487f5",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/source-map-js/package.json",
+    "version": "1.2.2"
+  },
+  "node_modules/stackback": {
+    "lockedVersion": "0.0.2",
+    "name": "stackback",
+    "packageJsonSha256": "4d984909b27d37d2f1a379b9cda7292a6e3a133c076df166d740a17514ac6e60",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/stackback/package.json",
+    "version": "0.0.2"
+  },
+  "node_modules/std-env": {
+    "lockedVersion": "3.10.0",
+    "name": "std-env",
+    "packageJsonSha256": "47978ed306b2a6054d237c3d48f37681aac1de0648ab1544fc6ce44295024a83",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/std-env/package.json",
+    "version": "3.10.0"
+  },
+  "node_modules/string-width": {
+    "lockedVersion": "4.2.3",
+    "name": "string-width",
+    "packageJsonSha256": "6457a02418f004fe5d3fbbb19c7cbcc1450a8b887ff9a471dc6985ac83a48d36",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/string-width/package.json",
+    "version": "4.2.3"
+  },
+  "node_modules/strip-ansi": {
+    "lockedVersion": "6.0.1",
+    "name": "strip-ansi",
+    "packageJsonSha256": "0130850b9da0584f54cc20d3dab6365c807e9436ac78e016d5009efa99bd0530",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/strip-ansi/package.json",
+    "version": "6.0.1"
+  },
+  "node_modules/strip-literal": {
+    "lockedVersion": "3.1.0",
+    "name": "strip-literal",
+    "packageJsonSha256": "449a78d5321c299b0ea753390cc04a31750d1d66b608870ca9829ca524cb7188",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/strip-literal/package.json",
+    "version": "3.1.0"
+  },
+  "node_modules/strip-literal/node_modules/js-tokens": {
+    "lockedVersion": "9.0.1",
+    "name": "js-tokens",
+    "packageJsonSha256": "3409fe9f61aebdb37b9ebadea6d47f44a2da768e7bbca200bd66dd81f28777b6",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/strip-literal/node_modules/js-tokens/package.json",
+    "version": "9.0.1"
+  },
+  "node_modules/suncalc": {
+    "lockedVersion": "2.1.1",
+    "name": "suncalc",
+    "packageJsonSha256": "752e2e173474c75866d361218c8bd708f22330380362ffa57b1e3470c011a119",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/suncalc/package.json",
+    "version": "2.1.1"
+  },
+  "node_modules/supports-color": {
+    "lockedVersion": "10.2.2",
+    "name": "supports-color",
+    "packageJsonSha256": "f208d0897ad657613dbd6199357f1b2c082d975fffa316933cad58851eff00ed",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/supports-color/package.json",
+    "version": "10.2.2"
+  },
+  "node_modules/tinybench": {
+    "lockedVersion": "2.9.0",
+    "name": "tinybench",
+    "packageJsonSha256": "74cf001e0ad7780cb3f596a75a2595d737337741ba76f734811387a5139ff327",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/tinybench/package.json",
+    "version": "2.9.0"
+  },
+  "node_modules/tinyexec": {
+    "lockedVersion": "0.3.2",
+    "name": "tinyexec",
+    "packageJsonSha256": "37b9e1a7b215d99d4696da75b08818204c8b382387db8591fb7ae8d5d7b1be78",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/tinyexec/package.json",
+    "version": "0.3.2"
+  },
+  "node_modules/tinyglobby": {
+    "lockedVersion": "0.2.16",
+    "name": "tinyglobby",
+    "packageJsonSha256": "83419fbcd0e8b6b1fadd70f647cba140e9fc7f59748525541b9874fa1fae152e",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/tinyglobby/package.json",
+    "version": "0.2.16"
+  },
+  "node_modules/tinypool": {
+    "lockedVersion": "2.1.2",
+    "name": "tinypool",
+    "packageJsonSha256": "400736d1bebea4871f4c8804d8b7346afdf7dc459724aa1f94e575d752f27846",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/tinypool/package.json",
+    "version": "2.1.2"
+  },
+  "node_modules/tinyrainbow": {
+    "lockedVersion": "2.0.0",
+    "name": "tinyrainbow",
+    "packageJsonSha256": "0cb71f642cec4eaf8db6e4142e12482e32ed4914bbefe5cb2a699c3b2fd39ae7",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/tinyrainbow/package.json",
+    "version": "2.0.0"
+  },
+  "node_modules/tinyspy": {
+    "lockedVersion": "4.0.4",
+    "name": "tinyspy",
+    "packageJsonSha256": "7e78b77f1d3ca418c431900bb94b650482f2d010d0943e51f39674d34092c4ce",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/tinyspy/package.json",
+    "version": "4.0.4"
+  },
+  "node_modules/tslib": {
+    "lockedVersion": "2.8.1",
+    "name": "tslib",
+    "packageJsonSha256": "f02b4851df316f29bdfcd404aa1eb41e4e216b5859015f81fcd3e91caf8be931",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/tslib/package.json",
+    "version": "2.8.1"
+  },
+  "node_modules/typescript": {
+    "lockedVersion": "5.9.3",
+    "name": "typescript",
+    "packageJsonSha256": "822ef7ca6452205657b6288b066481ecf508bfbf43455d715cf7d3ec457561e6",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/typescript/package.json",
+    "version": "5.9.3"
+  },
+  "node_modules/undici": {
+    "lockedVersion": "7.29.1",
+    "name": "undici",
+    "packageJsonSha256": "10e55f4adb6a43e72823ea235ff6a0c777db1ef68e3a1c810f0246e1b9332d8b",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/undici/package.json",
+    "version": "7.29.1"
+  },
+  "node_modules/undici-types": {
+    "lockedVersion": "7.18.2",
+    "name": "undici-types",
+    "packageJsonSha256": "01701286a0441eddf1cd47d488047d363ce7d75466e7b6c89f1c605fba1c3957",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/undici-types/package.json",
+    "version": "7.18.2"
+  },
+  "node_modules/unenv": {
+    "lockedVersion": "2.0.0-rc.24",
+    "name": "unenv",
+    "packageJsonSha256": "beb23fc92aa4c83a6d22a29f8427532ff9012e53c965c4fdd88839586dde344c",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/unenv/package.json",
+    "version": "2.0.0-rc.24"
+  },
+  "node_modules/update-browserslist-db": {
+    "lockedVersion": "1.2.3",
+    "name": "update-browserslist-db",
+    "packageJsonSha256": "c8bce7050b48895e9d926a4fd61b252a2bf9a99cf624dc607397e5f168a6bb87",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/update-browserslist-db/package.json",
+    "version": "1.2.3"
+  },
+  "node_modules/vite": {
+    "lockedVersion": "6.4.3",
+    "name": "vite",
+    "packageJsonSha256": "a1d0149fd986fd34b6d35503d2c0d8d9f743c4dbaaf94fbc11812bc84b05884d",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/vite/package.json",
+    "version": "6.4.3"
+  },
+  "node_modules/vite-node": {
+    "lockedVersion": "3.2.4",
+    "name": "vite-node",
+    "packageJsonSha256": "6c53b6d8ff3e8c3a46950d4062b0d7c04c26545aadefb654ffe7fc488c2650fb",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/vite-node/package.json",
+    "version": "3.2.4"
+  },
+  "node_modules/vitest": {
+    "lockedVersion": "3.2.7",
+    "name": "vitest",
+    "packageJsonSha256": "3f3dc1ef7acc6ffac8d0a7f10c4460f98e36026837b57f774426d962d546d740",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/vitest/package.json",
+    "version": "3.2.7"
+  },
+  "node_modules/web-vitals": {
+    "lockedVersion": "4.2.4",
+    "name": "web-vitals",
+    "packageJsonSha256": "3b9f56a6655232bd2fba58d772a3d09f1aeaafb6a2a9ad706b5c0e659227f6b4",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/web-vitals/package.json",
+    "version": "4.2.4"
+  },
+  "node_modules/websocket-driver": {
+    "lockedVersion": "0.7.5",
+    "name": "websocket-driver",
+    "packageJsonSha256": "fbd75e2977a7f00c169e85b5b22aaf6b1adf03c4c9f3975e5412d89204bac4b3",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/websocket-driver/package.json",
+    "version": "0.7.5"
+  },
+  "node_modules/websocket-extensions": {
+    "lockedVersion": "0.1.4",
+    "name": "websocket-extensions",
+    "packageJsonSha256": "829a608cd5a55a412085b0fd5281ae982ed51a3fec102c849336c4d911bce88e",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/websocket-extensions/package.json",
+    "version": "0.1.4"
+  },
+  "node_modules/why-is-node-running": {
+    "lockedVersion": "2.3.0",
+    "name": "why-is-node-running",
+    "packageJsonSha256": "c762d49d3da5e8d8fdaa840ba1f18d68bb433e61c671b66b3127f8430d490fe2",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/why-is-node-running/package.json",
+    "version": "2.3.0"
+  },
+  "node_modules/workerd": {
+    "lockedVersion": "1.20260926.1",
+    "name": "workerd",
+    "packageJsonSha256": "726bbe70e3b62e136dbfac7c36e61b912f111f5a271eb44ea72b88d17199eb18",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/workerd/package.json",
+    "version": "1.20260926.1"
+  },
+  "node_modules/wrangler": {
+    "lockedVersion": "4.143.1",
+    "name": "wrangler",
+    "packageJsonSha256": "01e5f9f88cf1cb2f6c847f585dc16c3bdafa374276765678c56fd5a0637e44dc",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/wrangler/package.json",
+    "version": "4.143.1"
+  },
+  "node_modules/wrangler/node_modules/@esbuild/aix-ppc64": {
+    "cpu": [
+      "ppc64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "aix"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/android-arm": {
+    "cpu": [
+      "arm"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "android"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/android-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "android"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/android-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "android"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/darwin-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "darwin"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/darwin-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "darwin"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/freebsd-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "freebsd"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/freebsd-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "freebsd"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/linux-arm": {
+    "cpu": [
+      "arm"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/linux-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/linux-ia32": {
+    "cpu": [
+      "ia32"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/linux-loong64": {
+    "cpu": [
+      "loong64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/linux-mips64el": {
+    "cpu": [
+      "mips64el"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/linux-ppc64": {
+    "cpu": [
+      "ppc64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/linux-riscv64": {
+    "cpu": [
+      "riscv64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/linux-s390x": {
+    "cpu": [
+      "s390x"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "linux"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/linux-x64": {
+    "lockedVersion": "0.28.1",
+    "name": "@esbuild/linux-x64",
+    "packageJsonSha256": "2332dc7d04175b16730f136b5bf32b31203eecea5be03b66e9453a4658b3d971",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/wrangler/node_modules/@esbuild/linux-x64/package.json",
+    "version": "0.28.1"
+  },
+  "node_modules/wrangler/node_modules/@esbuild/netbsd-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "netbsd"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/netbsd-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "netbsd"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/openbsd-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "openbsd"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/openbsd-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "openbsd"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/openharmony-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "openharmony"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/sunos-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "sunos"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/win32-arm64": {
+    "cpu": [
+      "arm64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "win32"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/win32-ia32": {
+    "cpu": [
+      "ia32"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "win32"
+    ]
+  },
+  "node_modules/wrangler/node_modules/@esbuild/win32-x64": {
+    "cpu": [
+      "x64"
+    ],
+    "lockedVersion": "0.28.1",
+    "missing": true,
+    "optional": true,
+    "os": [
+      "win32"
+    ]
+  },
+  "node_modules/wrangler/node_modules/esbuild": {
+    "lockedVersion": "0.28.1",
+    "name": "esbuild",
+    "packageJsonSha256": "d55d1d19fcc5b6079e4a71dd4111340c79c682bc36835ac7058a0c364c7db58a",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/wrangler/node_modules/esbuild/package.json",
+    "version": "0.28.1"
+  },
+  "node_modules/wrap-ansi": {
+    "lockedVersion": "7.0.0",
+    "name": "wrap-ansi",
+    "packageJsonSha256": "0b0cf0bf62bd0cc71da2128e3269e63edd566feffdd501aa3692acd6db93c3c9",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/wrap-ansi/package.json",
+    "version": "7.0.0"
+  },
+  "node_modules/ws": {
+    "lockedVersion": "8.21.0",
+    "name": "ws",
+    "packageJsonSha256": "584ce6e7516587ba249dc910b0c04e2753f6b3f451fc3a5bc324f7735bdacc71",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/ws/package.json",
+    "version": "8.21.0"
+  },
+  "node_modules/y18n": {
+    "lockedVersion": "5.0.8",
+    "name": "y18n",
+    "packageJsonSha256": "f65855d14daaf57947e398e132caa246f93bbf045ff3f8f9627114714729ad29",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/y18n/package.json",
+    "version": "5.0.8"
+  },
+  "node_modules/yallist": {
+    "lockedVersion": "3.1.1",
+    "name": "yallist",
+    "packageJsonSha256": "27699a6415a43f128c0e8ddcd5bf6e265f6cf3a581a9d959c11b977244fadc34",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/yallist/package.json",
+    "version": "3.1.1"
+  },
+  "node_modules/yargs": {
+    "lockedVersion": "17.7.2",
+    "name": "yargs",
+    "packageJsonSha256": "c8d5a14cda0fccba3959457ebcc9c69107882e21469364338f6c81df3a34c221",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/yargs/package.json",
+    "version": "17.7.2"
+  },
+  "node_modules/yargs-parser": {
+    "lockedVersion": "21.1.1",
+    "name": "yargs-parser",
+    "packageJsonSha256": "b6ee1fa4e1881d6f5388a3a52e34c2499a4c01d81615b69f08f12ca35289880b",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/yargs-parser/package.json",
+    "version": "21.1.1"
+  },
+  "node_modules/youch": {
+    "lockedVersion": "4.1.0-beta.10",
+    "name": "youch",
+    "packageJsonSha256": "281777e78e8d8981cd79848e7e6c40c6858b151bb45a20510dee9798da4ddcf0",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/youch/package.json",
+    "version": "4.1.0-beta.10"
+  },
+  "node_modules/youch-core": {
+    "lockedVersion": "0.3.3",
+    "name": "youch-core",
+    "packageJsonSha256": "d0f1babad63816d61e6947edb3369c8d9b24ee2550c5a3c0054640358ec4d613",
+    "realPath": "/workspace/scratch/3b7e1f5c90f6/studyplanner-home-live-clock-work/node_modules/youch-core/package.json",
+    "version": "0.3.3"
+  }
+}

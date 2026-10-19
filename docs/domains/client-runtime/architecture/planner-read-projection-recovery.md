@@ -38,6 +38,27 @@ Uncontended saves keep their optimistic fast path. A rejected ordinary write doe
 
 Repair failure leaves the saved Plan durable but its display stale and retryable. Explicit retry only reads the requested groups; it does not resubmit the save or reset the user's newer date/view selection. Owner/reset epochs revoke old callbacks and read publication. This boundary does not add backend ordering or cross-client guarantees.
 
+## Todo command admission
+
+Todo edit, scheduling and delete resolve an existing ID from committed same-owner
+Todo rows before repository dispatch. A missing explicit edit target is not a
+new create. Their local same-ID reservation survives promise settlement until
+React commits the associated success or rollback, and unrelated Todos remain
+independently operable. Synchronous preparation failure also releases the claim.
+
+The rows and their accepted projection lease are published together. The existing
+read authority rejects replaced/uncommitted leases, pending or failed Plans/Todos
+repair and unresolved full-read failure, including its retry. An ordinary clean
+full refresh can overlap a command using its previously accepted baseline;
+unrelated repair groups do not block this local admission. Failed full-read
+health is cleared only by successful full acceptance or owner/reset, not merely
+by starting a retry. Rejection uses the existing visible notice and dispatches no
+write. New creation without an edit ID retains its existing path.
+
+This is not general stale-edit conflict resolution, server atomicity or coverage
+of every linked-Plan/Undo writer. Existing successful-write reconciliation and
+repository safety contracts continue to apply.
+
 ## Todo Undo successful acknowledgement
 
 Todo Undo captures an accepted-projection lease when invoked and declares Plans/Todos successful completion. If a current-owner read replaces the projection before the restore returns, do not insert the captured deleted Todo; re-read the existing Plans/Todos group after tracked writers settle. Success observed during an older full read also retains the group. Uncontended Undo keeps its direct post-persistence update without extra reads.
@@ -53,6 +74,18 @@ A known unresolved DayNote projection uses the same aggregate non-ready/retry bo
 Retry reads DayNotes only when requested, together with any other outstanding groups, and never repeats the note save or timetable normalization. Pure existing-group repairs add no DayNotes getter. This is successful-write/read-crossing coverage, not uncertain-write-outcome recovery or a same-date/cross-client conflict policy.
 
 The immutable repair target list is the single definition for the target type, union order and success-counter construction/reset/enumeration. Adding a group requires an explicit repository read/publication mapping and tests; being writer-tracked alone does not create repair coverage.
+
+### Deferred DayNote bootstrap
+
+The current App has no DayNote display/editor consumer. Its bootstrap may omit the owner-wide DayNote query until that owner epoch requests notes. Unread notes are exposed as `null`, never an authoritative empty list or a new blank draft. This bootstrap scope does not change the repository's fresh full-history `getDayNotes` contract or the explicit full planner loader.
+
+An explicit note request, including first save preflight, latches DayNote demand before starting I/O and uses the existing DayNotes repair group. It does not invoke full hydration or timetable normalization. Same-epoch requests share only their in-flight wait. The existing coordinator waits for local writers, discards reads crossed by mutation activity, atomically publishes requested unions, and latches failure. The wait succeeds only for the current owner/epoch with accepted notes and aggregate ready; a note repair cannot repair failed full-load health. Failures reject first-save admission without writing. Retry remains explicit, and an explicitly requested retry can rearm other groups already in its unresolved union.
+
+First save preflight runs before its mutation ticket and then revalidates scope/readiness before synchronously admitting the write and selecting the existing note ID. Once that epoch has reached accepted ready with notes, ordinary saves retain the established read/write-crossing behavior above. A retired pre-hydration eager save acknowledgement cannot mutate the new owner's note baseline, even when it captured no projection lease.
+
+Before that deferred epoch's first accepted ready note projection, every note read path (lazy repair, explicit full read and a subsequent requested bootstrap) asks the repository for confirmed server data. The Firebase adapter uses a server-only query and rejects unknown/cache or pending-write metadata; a confirmed server-empty query is a valid empty list. The optional read argument leaves ordinary/eager getter behavior unchanged, and a local adapter continues to read its canonical local storage. This deliberately requires network availability for the first note use in a deferred Firebase epoch, even if an earlier epoch left warm cached data. It prevents unqueried offline cache emptiness from authorizing creation over an existing server note. Once initial authority is accepted, the established default read behavior resumes. This is a bounded first-hydration guarantee, not general offline synchronization or cross-client uniqueness.
+
+Demand survives failed reads in the same epoch. Any later bootstrap in that epoch includes notes, so a partial bootstrap cannot discharge an earlier note concern. Explicit full reads always request/include notes. Owner change, reset and unmount retire the waiting operation; A→B→A cannot reuse old A evidence. This is in-memory read-demand bookkeeping under the existing authority, not persistent caching, a new sync authority, or a cross-client conflict guarantee.
 
 ## Timetable successful-write freshness
 
@@ -81,6 +114,10 @@ Retry fetches the requested groups after tracked quiescence, prepares every resu
 Material-bearing admission requires an accepted same-owner snapshot before dispatch so uncertain failures have a valid repair boundary. A dispatched material edit/delete/Undo, progress create, or existing-member Subject fanout failure requests Actual/material repair and retains its affected admission claims. Pre-dispatch busy/stale rejection adds no such uncertain-effect repair. Writer/coordinator tickets settle normally so the repair does not wait on its own claim.
 
 Subject data is a conditional dependent slice of that existing group. Each immutable repair attempt captures whether a waiting Subject claim requires the Subjects getter. Pure Actual/material attempts add no Subjects read. If Subject activity starts or settles while an Actual-only attempt is in flight, activity/request validation invalidates it; a fresh attempt includes Subjects. A failed Subjects getter or preparation publishes none of the batch and cannot release the Subject claim. Superseding nonquiescent full reads retain outstanding claim requirements; a stable full read already includes Subjects and can satisfy them.
+
+Empty-Subject delete and each invoked Undo participate in that same Subject claim and accepted-projection lease. They suppress captured acknowledgements after an accepted read and retain the conditional Subject repair when a full read crosses completion, including uncertain dispatched failure. Successful writes remain successful if the subsequent read fails; explicit retry only reads, without repeating delete or restore. Uncontended completion adds no getters.
+
+Delete resolves its owner, current Subject row and material membership from committed admission data before dispatch. Undo captures that current deleted row and refuses dispatch when a same-ID Subject is already present, so an old notice cannot overwrite an observed replacement. Existing owner/reset/unmount fencing remains authoritative. This does not add Subject content-generation/ABA detection, admission for every new-material membership writer, or cross-client atomicity.
 
 This conditional footprint is not a fourth global readiness authority or a claim to have repaired every collection. Scope/owner/read checks still govern acceptance. Do not become ready with a stranded Subject claim, unconditionally add Subjects to every Actual read, or transparently replay writes after an uncertain outcome.
 

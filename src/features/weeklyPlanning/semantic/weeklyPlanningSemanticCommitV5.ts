@@ -1,3 +1,5 @@
+import { hasWeeklyPlanningSemanticUncertaintyResolutionV5 } from './weeklyPlanningSemanticUncertaintyResolutionV5';
+import { applyWeeklyPlanningMaterialIdentityAnswersV5, weeklyPlanningMaterialIdentityAnswersV5 } from './weeklyPlanningMaterialIdentityAnswerV5';
 import { enforceSingleActivePlanningWindowV5 } from './weeklyPlanningSemanticCanonicalizerLifecycleV5';
 import {
   applyWeeklyPlanningCanonicalCorrectionsExtendedV5 as applyWeeklyPlanningCanonicalCorrectionsV5,
@@ -54,7 +56,7 @@ function uniqueDiffEntries(
   });
 }
 
-function removeResolvedWorkBreakdownUncertaintiesV5(params: {
+function removeResolvedSemanticUncertaintiesV5(params: {
   originalGraph: WeeklyPlanningFactGraphV5;
   document: WeeklyPlanningSemanticDocumentV5;
   canonicalization: WeeklyPlanningSemanticCanonicalizationResultV5;
@@ -65,17 +67,6 @@ function removeResolvedWorkBreakdownUncertaintiesV5(params: {
     return canonicalization;
   }
 
-  const resolvedTargetIds = new Set(
-    params.document.tasks
-      .filter((task) =>
-        typeof task.existingPublicId === 'string'
-        && task.existingPublicId.length > 0
-        && task.decompositionStatus === 'decomposed'
-        && (task.study?.components.length ?? 0) > 0)
-      .map((task) => task.existingPublicId as string),
-  );
-  if (resolvedTargetIds.size === 0) return canonicalization;
-
   let graph = canonicalization.graph;
   const removed: WeeklyPlanningFactDiffEntryV5[] = [];
   const activeIds = () => new Set(
@@ -83,11 +74,25 @@ function removeResolvedWorkBreakdownUncertaintiesV5(params: {
       .filter((entry) => entry.status === 'active')
       .map((entry) => entry.factId),
   );
+  const identityAnswers = weeklyPlanningMaterialIdentityAnswersV5(params.originalGraph, params.document);
   const uncertaintyIds = graph.uncertainties
-    .filter((uncertainty) =>
-      uncertainty.field === 'work_breakdown'
-      && typeof uncertainty.targetFactId === 'string'
-      && resolvedTargetIds.has(uncertainty.targetFactId))
+    .filter((uncertainty) => {
+      const original = params.originalGraph.uncertainties.find((need) => need.id === uncertainty.id);
+      if (!original || original.field !== uncertainty.field) return false;
+      // Incoming details bind against the original graph. A surviving need may
+      // already reference an accepted identity version; compare in one formal
+      // coordinate system only after checking that exact completed transaction.
+      if (original.targetFactId !== uncertainty.targetFactId && !identityAnswers.some((answer) =>
+        answer.targetId === original.targetFactId
+        && canonicalization.localToFactId[answer.localId] === uncertainty.targetFactId
+        && graph.factLifecycles.some((entry) => entry.factId === answer.targetId
+          && entry.status === 'superseded' && entry.supersededByFactId === uncertainty.targetFactId)
+        && graph.factLifecycles.some((entry) => entry.factId === uncertainty.targetFactId
+          && entry.status === 'active'))) return false;
+      return hasWeeklyPlanningSemanticUncertaintyResolutionV5({
+        graph: params.originalGraph, document: params.document, uncertainty: original,
+      });
+    })
     .map((uncertainty) => uncertainty.id)
     .sort();
 
@@ -231,9 +236,15 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
         errors: [],
       };
   const boundCanonicalization = entityBindingApplication.canonicalization;
+  const identityCanonicalization = applyWeeklyPlanningMaterialIdentityAnswersV5({
+    originalGraph: params.originalGraph,
+    document: params.document,
+    canonicalization: boundCanonicalization,
+    operationKeyPrefix: params.operationKeyPrefix,
+  });
   const correctionResult = applyCanonicalCorrectionResult({
     originalGraph: params.originalGraph,
-    canonicalization: boundCanonicalization,
+    canonicalization: identityCanonicalization,
     operationKeyPrefix: params.operationKeyPrefix,
   });
   const progressReconciledCanonicalization = reconcileWeeklyPlanningProgressCorrectionsV5({
@@ -251,7 +262,7 @@ export function finalizeWeeklyPlanningSemanticCanonicalizationV5(params: {
     canonicalization: percentageProjectedCanonicalization,
     operationKeyPrefix: params.operationKeyPrefix,
   });
-  const workBreakdownCleanedCanonicalization = removeResolvedWorkBreakdownUncertaintiesV5({
+  const workBreakdownCleanedCanonicalization = removeResolvedSemanticUncertaintiesV5({
     originalGraph: params.originalGraph,
     document: params.document,
     canonicalization: boundedProjectedCanonicalization,

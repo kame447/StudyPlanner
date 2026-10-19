@@ -1,0 +1,9 @@
+
+ RUN  v3.2.7 <INTEGRATION_WORKTREE>
+
+ ✓ scripts/preview-media-response.test.mjs (22 tests) 32ms
+
+ Test Files  1 passed (1)
+      Tests  22 passed (22)
+   Start at  21:23:17
+   Duration  1.29s (transform 39ms, setup 0ms, collect 39ms, tests 32ms, environment 0ms, prepare 365ms)

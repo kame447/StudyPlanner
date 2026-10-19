@@ -29,6 +29,7 @@ export interface WeeklyDraftCandidateGeneratorInput {
 }
 
 export interface WeeklyDraftCandidate {
+  allocationBreakdown?: import('../semantic/weeklyPlanningAllocationBreakdown').WeeklyPlanningAllocationBreakdown;
   stableKey: string;
   date: string;
   startTime: string;

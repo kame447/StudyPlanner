@@ -1,3 +1,6 @@
+import { PublicPageLink } from './PublicPageLink';
+import { ContactPage } from './ContactPage';
+
 type LegalPageKind = 'terms' | 'privacy' | 'contact';
 
 interface LegalSection {
@@ -11,23 +14,23 @@ interface LegalPageContent {
   sections: LegalSection[];
 }
 
-const LEGAL_PAGE_CONTENT: Record<LegalPageKind, LegalPageContent> = {
+const LEGAL_PAGE_CONTENT: Record<Exclude<LegalPageKind, 'contact'>, LegalPageContent> = {
   terms: {
     title: '利用規約',
     lead:
-      'この利用規約は、StudyPlannerを安心して利用していただくための基本的なルールをまとめたものです。',
+      'この利用規約は、Laplanceを安心して利用していただくための基本的なルールをまとめたものです。',
     sections: [
       {
         title: '本規約の適用範囲',
         body: [
-          '本規約は、StudyPlannerのWebアプリ、関連する機能、保存データ、AI機能、OCR機能の利用に適用されます。',
+          '本規約は、LaplanceのWebアプリ、関連する機能、保存データ、AI機能、OCR機能の利用に適用されます。',
           'ユーザーは、新規登録またはログイン前に本規約を確認でき、初回ログイン後の確認画面で明示的に同意した場合に本サービスの利用を開始できます。',
         ],
       },
       {
         title: 'サービス概要',
         body: [
-          'StudyPlannerは、学習予定、学習実績、Todo、時間割、日々のメモなどを管理するための個人開発の学習支援サービスです。',
+          'Laplanceは、学習予定、学習実績、Todo、時間割、日々のメモなどを管理するための個人開発の学習支援サービスです。',
           '自然言語入力から予定を作成する機能、時間割画像を読み取るOCR機能、AIによる入力補助や提案機能を提供することがあります。',
         ],
       },
@@ -116,7 +119,7 @@ const LEGAL_PAGE_CONTENT: Record<LegalPageKind, LegalPageContent> = {
   privacy: {
     title: 'プライバシーポリシー',
     lead:
-      'StudyPlannerは、学習管理に必要な情報を、サービス提供と改善のために適切に取り扱います。',
+      'Laplanceは、学習管理に必要な情報を、サービス提供と改善のために適切に取り扱います。',
     sections: [
       {
         title: '取得する情報',
@@ -231,26 +234,6 @@ const LEGAL_PAGE_CONTENT: Record<LegalPageKind, LegalPageContent> = {
       },
     ],
   },
-  contact: {
-    title: 'お問い合わせ',
-    lead:
-      'StudyPlannerに関するお問い合わせ、アカウント削除、データ削除のご依頼はこちらからご連絡ください。',
-    sections: [
-      {
-        title: 'お問い合わせ方法',
-        body: [
-          '現在は運営者が案内した連絡手段からお問い合わせください。',
-          'ご本人確認が必要な内容では、登録メールアドレスやアカウント情報の確認をお願いする場合があります。',
-        ],
-      },
-      {
-        title: '対象となる内容',
-        body: [
-          'サービスの不具合、使い方、利用規約やプライバシーポリシー、アカウント削除、データ削除に関するご相談を受け付けます。',
-        ],
-      },
-    ],
-  },
 };
 
 interface LegalPageProps {
@@ -258,16 +241,17 @@ interface LegalPageProps {
 }
 
 export function LegalPage({ kind }: LegalPageProps) {
+  if (kind === 'contact') return <ContactPage />;
   const content = LEGAL_PAGE_CONTENT[kind];
 
   return (
     <main className="legal-page-shell">
       <article className="legal-page-card">
-        <a className="legal-back-link" href="/">
-          StudyPlannerへ戻る
-        </a>
+        <PublicPageLink className="legal-back-link" href="/">
+          Laplanceへ戻る
+        </PublicPageLink>
         <header className="legal-page-header">
-          <p className="eyebrow">StudyPlanner</p>
+          <p className="eyebrow">Laplance</p>
           <h1>{content.title}</h1>
           <p>{content.lead}</p>
         </header>

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../../../../shared/aiProxyContract';
 import type {
   OpenAiCompatibleClient,
 } from '../../../services/ai/openAiCompatibleClient';
@@ -154,7 +155,7 @@ const errors = [
 
 describe('Stable V5 focused temporal-scope repair', () => {
   it('reserves reasoning headroom before Luna emits the strict decision', () => {
-    expect(FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS).toBe(320);
+    expect(FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS).toBe(AI_PROXY_CHAT_REQUEST_LIMITS.defaultOutputTokens);
   });
 
   it('extracts only the exact invalid temporal fact selected by validation', () => {
@@ -353,7 +354,7 @@ describe('Stable V5 focused temporal-scope repair', () => {
     expect(calls[1].responseFormat?.json_schema.name).toBe(
       'weekly_planning_focused_temporal_scope_repair_v5',
     );
-    expect(calls[1].maxCompletionTokens).toBe(320);
+    expect(calls[1].maxCompletionTokens).toBe(FOCUSED_TEMPORAL_SCOPE_REPAIR_MAX_COMPLETION_TOKENS);
     expect(calls[1].decisionContext).toMatchObject({
       purpose: 'temporal_scope_repair',
       requestId: 'temporal-route-request',
@@ -363,4 +364,68 @@ describe('Stable V5 focused temporal-scope repair', () => {
       JSON.stringify(calls[0]).length / 8,
     );
   });
+
+  it('keeps uncertain scope task-bound and preserves every unrelated field', async () => {
+    const initial = realApiShapeWithOneTemporalScopeError();
+    const before = JSON.parse(initial);
+    const calls: Parameters<OpenAiCompatibleClient['createChatCompletion']>[0][] = [];
+    const client: OpenAiCompatibleClient = {
+      async createChatCompletion(request) {
+        calls.push(request);
+        return calls.length === 1 ? initial : '{"decision":"uncertain"}';
+      },
+    };
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '8月17日から23日で英単語220語と数学の問題40問。火曜日の18時から20時は予定があるので避けてください',
+      traceRequestId: 'uncertain-scope', publicStateSummary: { graphRevision: 4 },
+    });
+    expect(result.diagnostics.validationErrors).toEqual(['document.tasks[1].temporalConstraints[0]:date-rule-cannot-have-clock']);
+    expect(result.status).toBe('accepted');
+    expect(calls).toHaveLength(2);
+    expect(result.document?.availabilityDeclarations).toEqual([]);
+    expect(result.document?.uncertainties).toEqual([expect.objectContaining({
+      targetLocalId: 't2', field: 'temporal_scope',
+      sourceText: before.tasks[1].temporalConstraints[0].sourceText,
+    })]);
+    expect(result.document?.tasks[1].temporalConstraints).toEqual([]);
+    expect(result.document?.tasks[0]).toEqual(before.tasks[0]);
+    expect(result.document?.tasks[1].study).toEqual(before.tasks[1].study);
+    expect(result.document?.planningWindow).toEqual(before.planningWindow);
+  });
+
+  it.each(['not-json', '{"decision":"plan_unavailable","approved":true}', '{"decision":"fallback"}'])(
+    'rejects malformed focused repair %s without another repair or guessed availability', async (response) => {
+      let count = 0;
+      const client: OpenAiCompatibleClient = { async createChatCompletion() {
+        count += 1;
+        return count === 1 ? realApiShapeWithOneTemporalScopeError() : response;
+      } };
+      const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+        userText: '8月17日から23日で英単語220語と数学の問題40問。火曜日の18時から20時は予定があるので避けてください',
+        traceRequestId: 'invalid-scope', publicStateSummary: { graphRevision: 4 },
+      });
+      expect(result.status).toBe('rejected');
+      expect(result.document).toBeNull();
+      expect(count).toBe(2);
+      expect(result.diagnostics.validationErrors).toContain('repair:focused-temporal-scope:invalid-response');
+    },
+  );
+
+  it('stops on a focused repair provider failure without a generic retry', async () => {
+    let count = 0;
+    const client: OpenAiCompatibleClient = { async createChatCompletion() {
+      count += 1;
+      if (count === 1) return realApiShapeWithOneTemporalScopeError();
+      throw new Error('mock Jev and Luna unavailable');
+    } };
+    const result = await createWeeklyPlanningSemanticNormalizerV5(client).normalize({
+      userText: '8月17日から23日で英単語220語と数学の問題40問。火曜日の18時から20時は予定があるので避けてください',
+      traceRequestId: 'unavailable-scope', publicStateSummary: { graphRevision: 4 },
+    });
+    expect(result.status).toBe('provider_failure');
+    expect(result.document).toBeNull();
+    expect(count).toBe(2);
+    expect(result.diagnostics).toMatchObject({ attemptCount: 2, repairAttempted: true, providerError: 'mock Jev and Luna unavailable' });
+  });
+
 });

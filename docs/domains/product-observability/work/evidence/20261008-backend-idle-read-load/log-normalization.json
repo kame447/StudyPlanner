@@ -1,0 +1,51 @@
+{
+  "transformation": "First strip trailing whitespace and trailing blank lines; then replace ephemeral absolute checkout/runtime/output prefixes with the placeholders documented in path-normalization.json. Test content, assertions, outcomes, relative stack locations and ANSI sequences are unchanged. Original terminal logs and pre-path-normalization evidence are retained locally.",
+  "files": [
+    {
+      "file": "snapshot-red.log",
+      "rawSha256": "c42a6a55a3794b2bcc64aa13078c06aaf455f0fd0073a49e52b81e7f6d627f2b",
+      "storedSha256": "f67e8658bdb293f301748122d17b8192c3e95f3f75411508f86c8fcf88c81469",
+      "changed": true,
+      "prePathNormalizationSha256": "d0b0435eeed6c2e2d4a4a3de0aa28de41834b8a74981286c7282b7a5570a54eb",
+      "pathNormalized": true
+    },
+    {
+      "file": "focused-tests.log",
+      "rawSha256": "1a954eb72f92080338ab490bd00830d942173115c56989b2b24451d554a748fd",
+      "storedSha256": "d8c64df31a9c932e4fb2453738fe2508535c29044c2456eb16c0fc7ba62261fc",
+      "changed": true,
+      "prePathNormalizationSha256": "92313a34e70d0a78386d4c2bc3b97c5e94b397777efc0c86bb26f1fe2066e37d",
+      "pathNormalized": true
+    },
+    {
+      "file": "retention-candidate.log",
+      "rawSha256": "d83a6a8a882d124e4b3cbea89ff5338c36b2ad524f4bd9f077dab73bbcce20c4",
+      "storedSha256": "d83a6a8a882d124e4b3cbea89ff5338c36b2ad524f4bd9f077dab73bbcce20c4",
+      "changed": false
+    },
+    {
+      "file": "snapshot-races.log",
+      "rawSha256": "f33e41725d5a6d43ec9e3d498dcb2f363c28f26ac0cfb1098483a4314d6183c3",
+      "storedSha256": "fb19e569714c84dfce53576f8a8bb911c79f6e1096ebb3ea74cfef474b2015eb",
+      "changed": false,
+      "prePathNormalizationSha256": "f33e41725d5a6d43ec9e3d498dcb2f363c28f26ac0cfb1098483a4314d6183c3",
+      "pathNormalized": true
+    },
+    {
+      "file": "retention-red.log",
+      "rawSha256": "882d9a1eea530fd6551bcb507214dcdff9e988d3eb4835b67fb8ddcf3184bb09",
+      "storedSha256": "534343e5cea8bcaa8ffd4357797bb7d296f647915c6bb05441f1738aff9bc8fb",
+      "changed": true,
+      "prePathNormalizationSha256": "41cb2db85d816361e1929d2143e76916c893cf74b3c01b4edb67b5158ed84955",
+      "pathNormalized": true
+    },
+    {
+      "file": "full-verification/verify.log",
+      "rawSha256": "865257d990223fcfaeba6700e36b0837208f70412f514292297333da83a102a2",
+      "storedSha256": "9045b03d84c743fe1dee6cf54e3868196d93ddbffda0e89b03c19d6ebc62a5db",
+      "changed": true,
+      "prePathNormalizationSha256": "c88d6c1a09694e00ac0b1100e1fb7c894a97038fb8131eedcf355a0249bca3ba",
+      "pathNormalized": true
+    }
+  ]
+}

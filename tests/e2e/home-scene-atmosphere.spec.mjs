@@ -1,4 +1,4 @@
-import { expect, test as base } from '@playwright/test';
+import { expect, test as base } from './support/startup-ready.mjs';
 import { waitForVisualReady } from './support/ui-regression.mjs';
 
 // Cold page creation has its own setup budget. Behavior retains Playwright's

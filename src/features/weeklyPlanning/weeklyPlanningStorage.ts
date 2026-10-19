@@ -3,6 +3,12 @@ import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
 import type { PlanningState } from './types';
 import { createInitialPlanningState } from './weeklyPlanningReducer';
 import { isPersistedWeeklyPlanningState } from './weeklyPlanningStateCodec';
+import {
+  conversationIdFromState,
+  hasActiveConversationState,
+  prepareWeeklyPlanningStorageMutation,
+  type WeeklyPlanningStorageSnapshot,
+} from './weeklyPlanningStorageRetention';
 
 const STORAGE_VERSION = 2;
 
@@ -79,16 +85,16 @@ function serializablePlanningState(state: PlanningState): PlanningState {
   };
 }
 
-export function decodeWeeklyPlanningStatePayload(
+export function tryDecodeWeeklyPlanningStatePayload(
   parsedValue: unknown,
   weekStartDate: string,
-): PlanningState {
+): PlanningState | null {
   const storedState = isRecord(parsedValue) && 'version' in parsedValue
     ? parsedValue.version === STORAGE_VERSION
       ? parseStoredPlanningState(parsedValue.state)
       : null
     : migrateLegacyPlanningState(parsedValue);
-  if (!storedState) return createInitialPlanningState(weekStartDate);
+  if (!storedState) return null;
   return {
     ...storedState,
     weekStartDate,
@@ -103,40 +109,64 @@ export function decodeWeeklyPlanningStatePayload(
   };
 }
 
-export function loadWeeklyPlanningState(
-  userId: string,
-  weekStartDate: string,
-): PlanningState {
-  if (typeof window === 'undefined') return createInitialPlanningState(weekStartDate);
-
-  try {
-    const rawValue = window.localStorage.getItem(getStorageKey(userId, weekStartDate));
-    if (!rawValue) return createInitialPlanningState(weekStartDate);
-    const parsedValue: unknown = JSON.parse(rawValue);
-    return decodeWeeklyPlanningStatePayload(parsedValue, weekStartDate);
-  } catch {
-    return createInitialPlanningState(weekStartDate);
-  }
+export function decodeWeeklyPlanningStatePayload(parsedValue: unknown, weekStartDate: string): PlanningState {
+  return tryDecodeWeeklyPlanningStatePayload(parsedValue, weekStartDate) ?? createInitialPlanningState(weekStartDate);
 }
 
-export function saveWeeklyPlanningState(userId: string, state: PlanningState): void {
-  if (typeof window === 'undefined') return;
-  const serializableState = serializablePlanningState(state);
-
+export function parseWeeklyPlanningCompatibilitySnapshot(raw: string, userId: string, weekStartDate: string): PlanningState | null {
   try {
-    const key = getStorageKey(userId, state.weekStartDate);
-    if (
-      serializableState.draftBlocks.length === 0
-      && (serializableState.previewCandidates?.length ?? 0) === 0
-      && serializableState.messages.length === 0
-      && !serializableState.intakeState
-    ) {
-      window.localStorage.removeItem(key);
-      return;
+    let payload: unknown = JSON.parse(raw);
+    if (isRecord(payload) && payload.version === 3) {
+      if (Object.keys(payload).length !== 3 || payload.ownerId !== userId || !('payload' in payload)) return null;
+      payload = payload.payload;
+    }
+    const state = tryDecodeWeeklyPlanningStatePayload(payload, weekStartDate);
+    if (!state || (state.approvalRecovery && state.approvalRecovery.operation.userId !== userId)
+      || state.draftBlocks.some(block => block.userId !== userId
+        || (block.behaviorMetadata?.previewMetadata && block.behaviorMetadata.previewMetadata.authorizedUserId !== userId))) return null;
+    return state;
+  } catch { return null; }
+}
+
+export function getWeeklyPlanningCompatibilityStorageSnapshot(userId: string, weekStartDate: string): WeeklyPlanningStorageSnapshot {
+  return {
+    ownerId: userId, weekStartDate, kind: 'compatibility', key: getStorageKey(userId, weekStartDate),
+    read: raw => {
+      const state = parseWeeklyPlanningCompatibilitySnapshot(raw, userId, weekStartDate);
+      if (!state) return null;
+      return { conversationId: conversationIdFromState(state), savedAt: state.updatedAt, active: hasActiveConversationState(state) };
+    },
+  };
+}
+
+export function loadWeeklyPlanningState(userId: string, weekStartDate: string): PlanningState {
+  if (typeof window === 'undefined') return createInitialPlanningState(weekStartDate);
+  const snapshot = getWeeklyPlanningCompatibilityStorageSnapshot(userId, weekStartDate);
+  try {
+    const raw = window.localStorage.getItem(snapshot.key);
+    if (raw === null) return createInitialPlanningState(weekStartDate);
+    const state = parseWeeklyPlanningCompatibilitySnapshot(raw, userId, weekStartDate);
+    if (state) return state;
+    prepareWeeklyPlanningStorageMutation(snapshot);
+  } catch {
+    // A read failure is not evidence that a checkpoint can be removed.
+  }
+  return createInitialPlanningState(weekStartDate);
+}
+
+export function saveWeeklyPlanningState(userId: string, state: PlanningState): boolean {
+  if (typeof window === 'undefined') return false;
+  const serializableState = serializablePlanningState(state);
+  const snapshot = getWeeklyPlanningCompatibilityStorageSnapshot(userId, state.weekStartDate);
+  if (!prepareWeeklyPlanningStorageMutation(snapshot)) return false;
+  try {
+    if (serializableState.draftBlocks.length === 0 && (serializableState.previewCandidates?.length ?? 0) === 0
+      && serializableState.messages.length === 0 && !serializableState.intakeState) {
+      window.localStorage.removeItem(snapshot.key);
+      return true;
     }
     const envelope: StoredPlanningStateV2 = { version: STORAGE_VERSION, state: serializableState };
-    window.localStorage.setItem(key, JSON.stringify({ ...envelope, state: compactWeeklyPlanningApprovalRecovery(serializableState) }));
-  } catch {
-    // localStorage is best effort; the in-memory session remains authoritative.
-  }
+    window.localStorage.setItem(snapshot.key, JSON.stringify({ ...envelope, state: compactWeeklyPlanningApprovalRecovery(serializableState) }));
+    return true;
+  } catch { return false; }
 }

@@ -77,6 +77,8 @@ export function PlanFieldsEditor({
 
       <div className="field-pair field-full">
         <TimeRangeFields
+          allowOvernight={!draft.classTemplateId}
+          endLabel={draft.endTime !== '00:00' && draft.endTime < draft.startTime ? '終了（翌日）' : '終了'}
           startTime={draft.startTime}
           endTime={draft.endTime}
           mode={timeRangeMode}

@@ -1,4 +1,4 @@
-import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClient';
+import type { JsonSchemaResponseFormat } from '../../../services/ai/openAiCompatibleClientTypes';
 import {
   SEMANTIC_TEMPORAL_CONSTRAINT_KINDS,
   WEEKLY_PLANNING_SEMANTIC_RESPONSE_FORMAT,

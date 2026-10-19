@@ -105,12 +105,12 @@ test('day short touch remains a normal tap', async ({ browser }) => {
 
   await page.touchscreen.tap(x, y);
 
-  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: /長押し削除確認の操作/ })).toBeVisible();
   await context.close();
 });
 
-test('day touch hold reveals delete while held, persists after release, and removes only the held item', async ({ browser }) => {
+test('day held ring flick deletes only the selected item on the same touch release', async ({ browser }) => {
   const { context, page, session } = await openDaySchedule(browser);
   const plan = page.locator('.timeline-plan-block').filter({ hasText: '長押し削除確認' });
   const sibling = page.locator('.timeline-plan-block').filter({ hasText: '残る予定' });
@@ -119,23 +119,26 @@ test('day touch hold reveals delete while held, persists after release, and remo
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
 
-  const action = page.getByRole('button', { name: '長押し削除確認を削除' });
-  await expect(action).toBeVisible();
+  const action = page.getByRole('menuitem', { name: '削除', exact: true });
+  await expect(page.getByRole('menu')).toBeVisible();
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
   await expect(plan).toBeVisible();
   await expect(sibling).toBeVisible();
 
-  await dispatchTouch(session, 'touchEnd', x, y);
   await expect(action).toBeVisible();
-
-  await action.click();
+  await expect(page.getByRole('menuitem')).toHaveText(['完了', '編集', '複製', '削除', '実績', '移動']);
+  const destination = await locatorCenter(action);
+  await dispatchTouch(session, 'touchMove', destination.x, destination.y);
+  await expect(action).toHaveAttribute('data-gesture-selected', 'true');
+  await expect(plan).toBeVisible(); // Selecting a direction is not a deletion yet.
+  await dispatchTouch(session, 'touchEnd', destination.x, destination.y);
   await expect(plan).toHaveCount(0);
   await expect(sibling).toBeVisible();
-  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await context.close();
 });
 
-test('day long press then movement hands off to drag and hides delete action', async ({ browser }) => {
+test('day held ring owns movement and cancellation releases scroll without deleting', async ({ browser }) => {
   const { context, page, session } = await openDaySchedule(browser);
   const plan = page.locator('.timeline-plan-block').filter({ hasText: '長押し削除確認' });
   const { x, y } = await locatorCenter(plan);
@@ -145,14 +148,14 @@ test('day long press then movement hands off to drag and hides delete action', a
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
 
-  await expect(page.getByRole('button', { name: '長押し削除確認を削除' })).toBeVisible();
+  await expect(page.getByRole('menu')).toBeVisible();
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
 
   await dispatchTouch(session, 'touchMove', x, y + 90);
   await page.waitForTimeout(50);
 
-  await expect(page.locator('.schedule-item-delete-action')).toHaveCount(0);
-  await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
   await expect
     .poll(() => page.evaluate(() => document.documentElement.classList.contains('is-timeline-drag-interaction-locked')))
     .toBe(true);
@@ -160,6 +163,9 @@ test('day long press then movement hands off to drag and hides delete action', a
   expect(await page.evaluate(() => window.scrollY)).toBe(scrollYBefore);
 
   await dispatchTouch(session, 'touchCancel', x, y + 90);
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(plan).toBeVisible();
+  await expect(page.locator('.timeline-plan-block').filter({ hasText: '残る予定' })).toBeVisible();
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
   await expect
     .poll(() => page.evaluate(() => document.documentElement.classList.contains('is-timeline-drag-interaction-locked')))
@@ -188,7 +194,8 @@ test('day action-menu deletion failure keeps the target available for retry with
   const plan = page.locator('.timeline-plan-block').filter({ hasText: '長押し削除確認' });
   await plan.click();
   const menu = page.getByRole('dialog', { name: '長押し削除確認の操作', exact: true });
-  const remove = menu.getByRole('button', { name: '削除', exact: true });
+  const remove = menu.getByRole('button', { name: '予定を削除', exact: true });
+  await expect(menu.locator('.schedule-action-item.danger')).toHaveCount(1);
   await remove.click();
   await expect(menu.getByRole('alert')).toContainText('もう一度');
   await expect(remove).toBeEnabled();
@@ -198,7 +205,35 @@ test('day action-menu deletion failure keeps the target available for retry with
   await expect(menu).toHaveCount(0);
   await expect(plan).toHaveCount(0);
   await expect(page.locator('.timeline-plan-block').filter({ hasText: '残る予定' })).toBeVisible();
-  await expect.poll(async () => (await readEvents()).map(event => event.id)).toEqual(['plan:sibling-plan']);
+  const original = before.find(event => event.id === 'plan:held-plan');
+  expect(original).toBeDefined();
+  // One-off cancellation retains the source identity for history and Undo.
+  const cancelled = {
+    ...original,
+    updatedAt: expect.any(String),
+    recurrence: { ...original.recurrence, excludedDates: [E2E_TODAY] },
+  };
+  const expectCancelled = async () => {
+    await expect.poll(async () => (await readEvents()).find(event => event.id === original.id)).toEqual(cancelled);
+    expect((await readEvents()).filter(event => event.id !== original.id))
+      .toEqual(before.filter(event => event.id !== original.id));
+    expect(await readEvents()).toHaveLength(before.length);
+  };
+  await expectCancelled();
+  await page.getByRole('button', { name: '元に戻す', exact: true }).click();
+  await expect(plan).toBeVisible();
+  await expect.poll(async () => (await readEvents()).find(event => event.id === original.id))
+    .toEqual({ ...original, updatedAt: expect.any(String) });
+  await plan.click();
+  await remove.click();
+  await expect(plan).toHaveCount(0);
+  await expectCancelled();
+  await page.reload();
+  await page.locator('.primary-bottom-nav button').filter({ hasText: '予定' }).click();
+  await page.getByRole('tab', { name: '日', exact: true }).click();
+  await expect(plan).toHaveCount(0);
+  await expect(page.locator('.timeline-plan-block').filter({ hasText: '残る予定' })).toBeVisible();
+  await expectCancelled();
   expect(pageErrors).toEqual([]);
   await context.close();
 });

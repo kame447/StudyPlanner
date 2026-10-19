@@ -290,16 +290,6 @@ button {
   width: min(960px, 100%);
 }
 
-.splash-screen__logo {
-  width: min(920px, 92vw);
-  max-width: 100%;
-  height: auto;
-  display: block;
-  object-fit: contain;
-  filter: drop-shadow(0 20px 44px rgba(31, 43, 43, 0.08));
-  animation: splash-fade-in 0.55s ease;
-}
-
 .splash-screen__message {
   margin: 0;
   color: var(--text-muted);

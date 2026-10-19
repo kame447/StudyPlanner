@@ -5,7 +5,7 @@ import type {
   DecisionProvider,
   DecisionQuestionCatalog,
 } from './decisionProvider';
-import { AUTHORIZATION_QUESTIONS, JEV_MODEL, JEV_TIMEOUT_MS } from './decisionPolicy';
+import { AUTHORIZATION_QUESTIONS, JEV_MODEL, JEV_PROVIDER_PREFERENCES, JEV_TIMEOUT_MS } from './decisionPolicy';
 
 const DECISIONS_URL = 'https://openrouter.ai/api/alpha/decisions';
 const MAX_DECISIONS_RESPONSE_BYTES = 32_768;
@@ -53,6 +53,10 @@ function probability(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
+function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(value).every(key => keys.includes(key));
+}
+
 function tokens(value: unknown): number | null {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
@@ -86,7 +90,10 @@ export function createOpenRouterDecisionProvider<TState, TDecision extends strin
   return {
     async evaluate(state, signal) {
       const started = Date.now();
-      const body = JSON.stringify({ model: JEV_MODEL.request, state, questions: catalog.questions });
+      const body = JSON.stringify({
+        model: JEV_MODEL.request, state, questions: catalog.questions,
+        provider: JEV_PROVIDER_PREFERENCES,
+      });
       const metadata: DecisionMetadata = {
         provider: 'openrouter', requestedModel: JEV_MODEL.request, servedModel: null,
         latencyMs: 0, inputTokens: null, outputTokens: null, costUsd: null,
@@ -143,7 +150,13 @@ export function createOpenRouterDecisionProvider<TState, TDecision extends strin
         const selectedProbability = typeof choice === 'string'
           ? probabilities[choice as TDecision]
           : undefined;
-        if (choiceAnswer?.type !== 'choice'
+        if (!answers || !hasOnlyKeys(answers, [
+          catalog.choiceAnswerKey, catalog.conditionChangeAnswerKey, catalog.independentMeaningAnswerKey,
+        ])
+          || !choiceAnswer || !hasOnlyKeys(choiceAnswer, ['type', 'choice', 'confidence', 'probabilities'])
+          || !changes || !hasOnlyKeys(changes, ['type', 'noul'])
+          || !independent || !hasOnlyKeys(independent, ['type', 'noul'])
+          || choiceAnswer.type !== 'choice'
           || typeof choice !== 'string'
           || !catalog.decisions.includes(choice as TDecision)
           || !probability(choiceAnswer.confidence)

@@ -104,9 +104,6 @@ export function AppSettingsDialog({ open, onClose, ...generalProps }: AppSetting
                     <Brain aria-hidden="true" size={20} strokeWidth={1.9} />
                     AIが覚えていること
                   </span>
-                  <p className="detail-note">
-                    別の計画でも役立つ目標、苦手、学習方法の好みなどを確認できます。教材の進捗、時間割、予定、実績はそれぞれの機能を正本として扱います。
-                  </p>
                 </div>
                 <div className="memory-sync-row">
                   <span className={memory?.shared ? 'confidence-badge' : 'confidence-badge muted'}>
@@ -139,9 +136,6 @@ export function AppSettingsDialog({ open, onClose, ...generalProps }: AppSetting
                           disabled={memory.syncing}
                         />
                       </label>
-                      <p className="detail-note">
-                        種類を選ぶ必要はありません。AIが意味を整理し、保存先はStudyPlanner側で判断します。
-                      </p>
                       {editorError ? <p className="settings-inline-error" role="alert">{editorError}</p> : null}
                       <div className="memory-editor-actions">
                         <button className="ghost-button" onClick={resetEditor} type="button" disabled={memory.syncing}>
@@ -171,7 +165,6 @@ export function AppSettingsDialog({ open, onClose, ...generalProps }: AppSetting
                     <section className="assistant-settings-card memory-empty-state">
                       <Brain aria-hidden="true" size={24} strokeWidth={1.7} />
                       <strong>まだ覚えていることはありません</strong>
-                      <p className="detail-note">AI計画の会話から必要な情報を覚えるか、ここから自然な文章で追加できます。</p>
                     </section>
                   ) : (
                     <div className="memory-record-list">

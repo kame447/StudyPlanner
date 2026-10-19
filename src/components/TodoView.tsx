@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type FormEvent } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   CalendarDays,
   CheckCircle2,
@@ -13,6 +13,7 @@ import {
   PinOff,
   Trash2,
 } from 'lucide-react';
+import { useDataChangeMotion } from '../hooks/useDataChangeMotion';
 import { resolveQuickEntryEndTime } from '../lib/quickEntryDrafts';
 import { PLAN_TYPE_OPTIONS, getPlanTypeLabel } from '../lib/plans';
 import type {
@@ -153,7 +154,11 @@ function formatTodoDue(todo: TodoTask): string {
     : `締切 ${dateLabel}`;
 }
 
-export function TodoView({
+export function TodoView(props: TodoViewProps) {
+  return <TodoViewSession key={props.userId} {...props} />;
+}
+
+function TodoViewSession({
   userId,
   selectedDate,
   todos,
@@ -162,6 +167,8 @@ export function TodoView({
   onDeleteTodo,
 }: TodoViewProps) {
   const completedListId = useId();
+  const viewRef = useRef<HTMLElement | null>(null);
+  useDataChangeMotion(viewRef, 'todo', [todos]);
   const [sortDirection, setSortDirection] = useState<TodoSortDirection>('asc');
   const [expandedSections, setExpandedSections] = useState<
     Record<TodoSectionKey, boolean>
@@ -171,6 +178,12 @@ export function TodoView({
     done: false,
   });
   const [editingTodo, setEditingTodo] = useState<TodoTask | null>(null);
+  const editSession = useRef<object | null>(null);
+  const scheduleSession = useRef<object | null>(null);
+  const [editError, setEditError] = useState('');
+  const [scheduleError, setScheduleError] = useState('');
+  const editSessionToken = editSession.current;
+  const scheduleSessionToken = scheduleSession.current;
   const [editDraft, setEditDraft] = useState<TodoTaskDraft | null>(null);
   const [schedulingTodo, setSchedulingTodo] = useState<TodoTask | null>(null);
   const [scheduleDate, setScheduleDate] = useState(selectedDate || todayIsoDate());
@@ -180,10 +193,53 @@ export function TodoView({
     useState(false);
   const [customScheduleDurationInput, setCustomScheduleDurationInput] =
     useState('');
-  const [savingTodoId, setSavingTodoId] = useState<string | null>(null);
+  const pendingTodoIds = useRef(new Set<string>());
+  const [savingTodoIds, setSavingTodoIds] = useState<ReadonlySet<string>>(new Set());
+  const lifetime = useRef<object | null>(null);
+
+  useLayoutEffect(() => {
+    lifetime.current = {};
+    return () => {
+      lifetime.current = null;
+      pendingTodoIds.current.clear();
+    };
+  }, []);
+
+  function canOperateTodo(todo: TodoTask) {
+    return lifetime.current !== null && todo.userId === userId &&
+      !pendingTodoIds.current.has(todo.id);
+  }
+
+  function runTodoOperation(
+    todo: TodoTask,
+    operation: () => Promise<unknown>,
+    settlement?: { onSuccess: () => void; onError: (error: unknown) => void },
+  ) {
+    if (!canOperateTodo(todo)) return false;
+    const owner = lifetime.current;
+    pendingTodoIds.current.add(todo.id);
+    setSavingTodoIds(new Set(pendingTodoIds.current));
+    void (async () => {
+      try {
+        await operation();
+        if (lifetime.current === owner) settlement?.onSuccess();
+      } catch (error) {
+        // The parent owns data rollback; the current editor retains its draft.
+        if (lifetime.current === owner) settlement?.onError(error);
+      } finally {
+        if (lifetime.current === owner) {
+          pendingTodoIds.current.delete(todo.id);
+          setSavingTodoIds(new Set(pendingTodoIds.current));
+        }
+      }
+    })();
+    return true;
+  }
 
   const groupedTodos = useMemo(() => {
-    const visibleTodos = todos.filter((todo) => todo.status !== 'archived');
+    const visibleTodos = todos.filter((todo) =>
+      todo.userId === userId && todo.status !== 'archived',
+    );
     const activeTodos = visibleTodos.filter((todo) => todo.status !== 'done');
 
     return {
@@ -203,12 +259,14 @@ export function TodoView({
         .filter((todo) => todo.status === 'done')
         .sort((left, right) => compareDueTodos(left, right, sortDirection)),
     };
-  }, [sortDirection, todos]);
+  }, [sortDirection, todos, userId]);
 
   function updateEditDraft<K extends keyof TodoTaskDraft>(
     key: K,
     value: TodoTaskDraft[K],
   ) {
+    if (!editSessionToken || editSession.current !== editSessionToken ||
+      (editingTodo && pendingTodoIds.current.has(editingTodo.id))) return;
     setEditDraft((current) => {
       if (!current) {
         return current;
@@ -230,16 +288,26 @@ export function TodoView({
   }
 
   function openEditModal(todo: TodoTask) {
+    if (!canOperateTodo(todo)) return;
+    editSession.current = {};
+    setEditError('');
     setEditingTodo(todo);
     setEditDraft(createTodoDraftFromTask(todo));
   }
 
   function closeEditModal() {
+    if (!editSessionToken || editSession.current !== editSessionToken ||
+      (editingTodo && pendingTodoIds.current.has(editingTodo.id))) return;
+    editSession.current = null;
+    setEditError('');
     setEditingTodo(null);
     setEditDraft(null);
   }
 
   function openScheduleModal(todo: TodoTask) {
+    if (!canOperateTodo(todo)) return;
+    scheduleSession.current = {};
+    setScheduleError('');
     setSchedulingTodo(todo);
     setScheduleDate(todo.dueDate ?? selectedDate ?? todayIsoDate());
     setScheduleStartTime('19:00');
@@ -261,6 +329,10 @@ export function TodoView({
   }
 
   function closeScheduleModal() {
+    if (!scheduleSessionToken || scheduleSession.current !== scheduleSessionToken ||
+      (schedulingTodo && pendingTodoIds.current.has(schedulingTodo.id))) return;
+    scheduleSession.current = null;
+    setScheduleError('');
     setSchedulingTodo(null);
     setScheduleDate(selectedDate || todayIsoDate());
     setScheduleStartTime('19:00');
@@ -269,15 +341,17 @@ export function TodoView({
     setCustomScheduleDurationInput('');
   }
 
-  async function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!editingTodo || !editDraft || !editDraft.title.trim()) {
       return;
     }
 
-    setSavingTodoId(editingTodo.id);
-    void onSaveTodo(
+    const session = editSessionToken;
+    if (!session || editSession.current !== session || !canOperateTodo(editingTodo)) return;
+    setEditError('');
+    runTodoOperation(editingTodo, () => onSaveTodo(
       {
         ...editDraft,
         userId,
@@ -289,50 +363,55 @@ export function TodoView({
         status: editingTodo.status,
       },
       editingTodo.id,
-    )
-      .catch(() => undefined)
-      .finally(() => setSavingTodoId(null));
-    closeEditModal();
+    ), {
+      onSuccess: () => {
+        if (editSession.current !== session) return;
+        editSession.current = null;
+        setEditingTodo(null);
+        setEditDraft(null);
+      },
+      onError: (error) => {
+        if (editSession.current === session) {
+          setEditError(error instanceof Error ? error.message : 'Todoを保存できませんでした。もう一度お試しください。');
+        }
+      },
+    });
   }
 
-  async function updateTodoStatus(todo: TodoTask, status: TodoStatus) {
-    setSavingTodoId(todo.id);
-    try {
-      await onSaveTodo(
-        {
-          ...createTodoDraftFromTask(todo),
-          userId,
-          status,
-          scheduledPlanId: status === 'open' ? null : todo.scheduledPlanId,
-          pinned:
-            status === 'done' || status === 'open'
-              ? false
-              : Boolean(todo.pinned),
-        },
-        todo.id,
-      );
-    } finally {
-      setSavingTodoId(null);
-    }
+  function updateTodoStatus(todo: TodoTask, status: TodoStatus) {
+    runTodoOperation(todo, () => onSaveTodo(
+      {
+        ...createTodoDraftFromTask(todo),
+        userId,
+        status,
+        scheduledPlanId: status === 'open' ? null : todo.scheduledPlanId,
+        pinned:
+          status === 'done' || status === 'open'
+            ? false
+            : Boolean(todo.pinned),
+      },
+      todo.id,
+    ));
   }
 
-  async function toggleTodoPinned(todo: TodoTask) {
-    setSavingTodoId(todo.id);
-    try {
-      await onSaveTodo(
-        {
-          ...createTodoDraftFromTask(todo),
-          userId,
-          pinned: !Boolean(todo.pinned),
-        },
-        todo.id,
-      );
-    } finally {
-      setSavingTodoId(null);
-    }
+  function toggleTodoPinned(todo: TodoTask) {
+    runTodoOperation(todo, () => onSaveTodo(
+      {
+        ...createTodoDraftFromTask(todo),
+        userId,
+        pinned: !Boolean(todo.pinned),
+      },
+      todo.id,
+    ));
+  }
+
+  function canChangeSchedule() {
+    return scheduleSessionToken !== null && scheduleSession.current === scheduleSessionToken &&
+      schedulingTodo !== null && !pendingTodoIds.current.has(schedulingTodo.id);
   }
 
   function applyScheduleDuration(value: DurationOptionValue) {
+    if (!canChangeSchedule()) return;
     if (value === 'custom') {
       setIsCustomScheduleDuration(true);
 
@@ -349,6 +428,7 @@ export function TodoView({
   }
 
   function updateCustomScheduleDuration(value: string) {
+    if (!canChangeSchedule()) return;
     setCustomScheduleDurationInput(value);
 
     const nextMinutes = Number(value);
@@ -357,7 +437,7 @@ export function TodoView({
     );
   }
 
-  async function handleScheduleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleScheduleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (
@@ -370,8 +450,10 @@ export function TodoView({
       return;
     }
 
-    setSavingTodoId(schedulingTodo.id);
-    void onScheduleTodo(schedulingTodo, {
+    const session = scheduleSessionToken;
+    if (!session || scheduleSession.current !== session || !canOperateTodo(schedulingTodo)) return;
+    setScheduleError('');
+    runTodoOperation(schedulingTodo, () => onScheduleTodo(schedulingTodo, {
       userId,
       title: schedulingTodo.title.trim(),
       subject: schedulingTodo.subject.trim(),
@@ -386,14 +468,22 @@ export function TodoView({
       memo: schedulingTodo.memo.trim(),
       sourceType: 'todo',
       sourceId: schedulingTodo.id,
-    })
-      .catch(() => undefined)
-      .finally(() => setSavingTodoId(null));
-    closeScheduleModal();
+    }), {
+      onSuccess: () => {
+        if (scheduleSession.current !== session) return;
+        scheduleSession.current = null;
+        setSchedulingTodo(null);
+      },
+      onError: (error) => {
+        if (scheduleSession.current === session) {
+          setScheduleError(error instanceof Error ? error.message : '予定を保存できませんでした。もう一度お試しください。');
+        }
+      },
+    });
   }
 
   function renderTodo(todo: TodoTask) {
-    const isBusy = savingTodoId === todo.id;
+    const isBusy = savingTodoIds.has(todo.id);
     const isPinned = todo.pinned === true && todo.status !== 'done';
 
     return (
@@ -404,6 +494,8 @@ export function TodoView({
             : 'todo-item todo-view-item'
         }
         key={todo.id}
+        data-motion-key={`todo:${todo.id}`}
+        data-motion-signature={`${todo.status} ${todo.title}`}
       >
         <div className="todo-item-main">
           <div className="todo-item-title-row">
@@ -449,6 +541,7 @@ export function TodoView({
         <div className="todo-item-actions">
           <button
             className="ghost-button todo-icon-button"
+            disabled={isBusy}
             onClick={() => openEditModal(todo)}
             aria-label="編集"
             title="編集"
@@ -522,7 +615,7 @@ export function TodoView({
             className="ghost-button todo-icon-button todo-delete-button"
             disabled={isBusy}
             onClick={() => {
-              void onDeleteTodo(todo);
+              runTodoOperation(todo, () => onDeleteTodo(todo));
             }}
             aria-label="削除"
             title="削除"
@@ -556,20 +649,21 @@ export function TodoView({
                   }))
                 }
               >
+                <span className="todo-completed-label">完了</span>
                 {isExpanded ? (
                   <ChevronDown aria-hidden="true" size={18} strokeWidth={1.9} />
                 ) : (
                   <ChevronRight aria-hidden="true" size={18} strokeWidth={1.9} />
                 )}
-                <span className="todo-completed-label">完了</span>
-                <span className="todo-section-count">{sectionTodos.length}</span>
+                <span className="todo-section-count" data-motion-key="count:done"
+                  data-motion-signature={String(sectionTodos.length)}>{sectionTodos.length}</span>
               </button>
             </h3>
           </div>
           <div id={completedListId} hidden={!isExpanded}>
             {isExpanded ? (
               sectionTodos.length > 0 ? (
-                <div className="todo-list todo-view-list">
+                <div className="todo-list todo-view-list motion-reveal">
                   {sectionTodos.map(renderTodo)}
                 </div>
               ) : (
@@ -595,7 +689,8 @@ export function TodoView({
       <section className="todo-status-section" key={sectionKey}>
         <div className="todo-status-section-head">
           <h3>{TODO_SECTION_LABELS[sectionKey]}</h3>
-          <span className="todo-section-count">{sectionTodos.length}</span>
+          <span className="todo-section-count" data-motion-key={`count:${sectionKey}`}
+            data-motion-signature={String(sectionTodos.length)}>{sectionTodos.length}</span>
         </div>
         {renderedTodos.length > 0 ? (
           <div className="todo-list todo-view-list">
@@ -633,7 +728,7 @@ export function TodoView({
   }
 
   return (
-    <section className="panel todo-view">
+    <section ref={viewRef} className="panel todo-view">
       <div className="section-header todo-view-header">
         <div>
           <h2>Todo</h2>
@@ -668,6 +763,7 @@ export function TodoView({
             className="modal-card todo-edit-modal"
             onClick={(event) => event.stopPropagation()}
             onSubmit={handleEditSubmit}
+            aria-busy={savingTodoIds.has(editingTodo.id)}
           >
             <div className="section-header todo-edit-header">
               <div>
@@ -681,6 +777,7 @@ export function TodoView({
             <label className="field">
               <span>タイトル</span>
               <input
+                disabled={savingTodoIds.has(editingTodo.id)}
                 value={editDraft.title}
                 onChange={(event) => updateEditDraft('title', event.target.value)}
               />
@@ -690,6 +787,7 @@ export function TodoView({
               <label className="field">
                 <span>教科</span>
                 <input
+                  disabled={savingTodoIds.has(editingTodo.id)}
                   value={editDraft.subject}
                   onChange={(event) =>
                     updateEditDraft('subject', event.target.value)
@@ -697,74 +795,84 @@ export function TodoView({
                 />
               </label>
 
-              <label className="field">
-                <span>種別</span>
-                <select
-                  value={editDraft.type}
-                  onChange={(event) =>
-                    updateEditDraft('type', event.target.value as PlanType)
-                  }
-                >
-                  {PLAN_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="todo-edit-field-pair">
+                <label className="field">
+                  <span>種別</span>
+                  <select
+                    disabled={savingTodoIds.has(editingTodo.id)}
+                    value={editDraft.type}
+                    onChange={(event) =>
+                      updateEditDraft('type', event.target.value as PlanType)
+                    }
+                  >
+                    {PLAN_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-              <label className="field">
-                <span>所要時間</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={editDraft.estimatedMinutes ?? ''}
-                  onChange={(event) =>
-                    updateEditDraft(
-                      'estimatedMinutes',
-                      event.target.value ? Number(event.target.value) : null,
-                    )
-                  }
-                />
-              </label>
+                <label className="field">
+                  <span>所要時間（分）</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    disabled={savingTodoIds.has(editingTodo.id)}
+                    value={editDraft.estimatedMinutes ?? ''}
+                    onChange={(event) =>
+                      updateEditDraft(
+                        'estimatedMinutes',
+                        event.target.value ? Number(event.target.value) : null,
+                      )
+                    }
+                  />
+                </label>
+              </div>
 
-              <label className="field">
-                <span>締切日</span>
-                <input
-                  type="date"
-                  value={editDraft.dueDate ?? ''}
-                  onChange={(event) =>
-                    updateEditDraft('dueDate', event.target.value || null)
-                  }
-                />
-              </label>
+              <div className="todo-edit-deadline-pair">
+                <label className="field">
+                  <span>締切日</span>
+                  <input
+                    type="date"
+                    disabled={savingTodoIds.has(editingTodo.id)}
+                    value={editDraft.dueDate ?? ''}
+                    onChange={(event) =>
+                      updateEditDraft('dueDate', event.target.value || null)
+                    }
+                  />
+                </label>
 
-              <label className="field">
-                <span>締切時刻</span>
-                <input
-                  type="time"
-                  value={editDraft.dueTime ?? ''}
-                  disabled={!editDraft.dueDate}
-                  onChange={(event) =>
-                    updateEditDraft('dueTime', event.target.value || null)
-                  }
-                />
-              </label>
+                <label className="field">
+                  <span>締切時刻</span>
+                  <input
+                    type="time"
+                    value={editDraft.dueTime ?? ''}
+                    disabled={savingTodoIds.has(editingTodo.id) || !editDraft.dueDate}
+                    onChange={(event) =>
+                      updateEditDraft('dueTime', event.target.value || null)
+                    }
+                  />
+                </label>
+              </div>
             </div>
 
             <label className="field">
               <span>メモ</span>
               <textarea
+                disabled={savingTodoIds.has(editingTodo.id)}
                 value={editDraft.memo}
                 onChange={(event) => updateEditDraft('memo', event.target.value)}
                 rows={3}
               />
             </label>
 
+            {editError && <p className="inline-error" role="alert">{editError}</p>}
             <div className="row-actions todo-edit-actions">
               <button
                 className="ghost-button"
+                disabled={savingTodoIds.has(editingTodo.id)}
                 onClick={closeEditModal}
                 type="button"
               >
@@ -772,10 +880,10 @@ export function TodoView({
               </button>
               <button
                 className="primary-button"
-                disabled={savingTodoId === editingTodo.id || !editDraft.title.trim()}
+                disabled={savingTodoIds.has(editingTodo.id) || !editDraft.title.trim()}
                 type="submit"
               >
-                保存
+                {savingTodoIds.has(editingTodo.id) ? '保存中…' : '保存'}
               </button>
             </div>
           </form>
@@ -788,6 +896,7 @@ export function TodoView({
             className="modal-card todo-edit-modal todo-schedule-modal"
             onClick={(event) => event.stopPropagation()}
             onSubmit={handleScheduleSubmit}
+            aria-busy={savingTodoIds.has(schedulingTodo.id)}
           >
             <div className="section-header todo-edit-header">
               <div>
@@ -801,8 +910,9 @@ export function TodoView({
                 <span>日付</span>
                 <input
                   type="date"
+                  disabled={savingTodoIds.has(schedulingTodo.id)}
                   value={scheduleDate}
-                  onChange={(event) => setScheduleDate(event.target.value)}
+                  onChange={(event) => { if (canChangeSchedule()) setScheduleDate(event.target.value); }}
                 />
               </label>
 
@@ -810,8 +920,9 @@ export function TodoView({
                 <span>開始時刻</span>
                 <input
                   type="time"
+                  disabled={savingTodoIds.has(schedulingTodo.id)}
                   value={scheduleStartTime}
-                  onChange={(event) => setScheduleStartTime(event.target.value)}
+                  onChange={(event) => { if (canChangeSchedule()) setScheduleStartTime(event.target.value); }}
                 />
               </label>
             </div>
@@ -832,6 +943,7 @@ export function TodoView({
                       className={
                         isActive ? 'quick-entry-chip active' : 'quick-entry-chip'
                       }
+                      disabled={savingTodoIds.has(schedulingTodo.id)}
                       key={option.label}
                       onClick={() => applyScheduleDuration(option.value)}
                       type="button"
@@ -848,6 +960,7 @@ export function TodoView({
                     type="number"
                     min="1"
                     step="1"
+                    disabled={savingTodoIds.has(schedulingTodo.id)}
                     value={customScheduleDurationInput}
                     onChange={(event) =>
                       updateCustomScheduleDuration(event.target.value)
@@ -858,9 +971,11 @@ export function TodoView({
               ) : null}
             </section>
 
+            {scheduleError && <p className="inline-error" role="alert">{scheduleError}</p>}
             <div className="row-actions todo-edit-actions">
               <button
                 className="ghost-button"
+                disabled={savingTodoIds.has(schedulingTodo.id)}
                 onClick={closeScheduleModal}
                 type="button"
               >
@@ -869,7 +984,7 @@ export function TodoView({
               <button
                 className="primary-button"
                 disabled={
-                  savingTodoId === schedulingTodo.id ||
+                  savingTodoIds.has(schedulingTodo.id) ||
                   !schedulingTodo.title.trim() ||
                   !scheduleDate ||
                   !scheduleStartTime ||
@@ -877,7 +992,7 @@ export function TodoView({
                 }
                 type="submit"
               >
-                保存
+                {savingTodoIds.has(schedulingTodo.id) ? '保存中…' : '保存'}
               </button>
             </div>
           </form>

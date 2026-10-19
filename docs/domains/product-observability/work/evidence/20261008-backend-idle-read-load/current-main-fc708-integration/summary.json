@@ -1,0 +1,83 @@
+{
+  "status": "focused/type/build passed; updated exact-head CI pending",
+  "currentMain": "fc708da391037589a0cd15c872563d2e086e3e5e",
+  "publishedHeadBeforeUpdate": "05906f69687ef3bacc5265e30869e0a7584dba72",
+  "preservedPriorCandidate": "0782c33f26103ca516cd4895ce635a752bc6ec09",
+  "localIntegrationSourceCommit": "0993d3d94641fa97dd8e55c8b999a57fd0b77f71",
+  "verifiedSourceTree": "5de3462297c878a3d76cedfa17e48d946cf8081f",
+  "mainPathsPreserved": 63,
+  "publishedPrRuntimeAndTestsPreserved": true,
+  "conflicts": [],
+  "additionalProtectedAIPlanningOrDedicatedE2EEdits": [],
+  "focused": {
+    "files": 14,
+    "passed": 197,
+    "exit": 0,
+    "cache": false
+  },
+  "freshAppWorkerTypesExit": 0,
+  "workerRuntimeTypesRegenerated": true,
+  "buildExit": 0,
+  "buildSeconds": 13.18,
+  "bundleExit": 0,
+  "bundleGuardsPassed": 8,
+  "playwrightCollection": {
+    "files": 2,
+    "cases": 23,
+    "exit": 0,
+    "executedLocally": false
+  },
+  "identity": {
+    "trackedNonDocumentationInputs": 1857,
+    "manifestSha256": "4f1374c250bdff38afa69e2e67e15bc2ee45faa897ffcf77a008ed69b9452be1",
+    "beforeAfterMismatches": 0,
+    "installedPresent": 237,
+    "platformOptionalAbsent": 99,
+    "installedIdentityMismatches": 0,
+    "node": "v24.19.0",
+    "workerRuntimeTypesSha256": "bf808b3fb4789a76410fc9c1ba8cd85e80453b8f92fa0981bdb86a9d523d612e"
+  },
+  "workflow": "Authorized focused local checks followed by same-draft-PR publication and exact-head final CI. No repeat local full suite claimed.",
+  "independentReview": "independent-review.md",
+  "logs": [
+    {
+      "file": "focused.log",
+      "rawSha256": "30f07c8ec662cc7754c36e6bd1176b749b4aa7644ed386a42916aa110d63acb9",
+      "storedSha256": "a04ae729c3b4e83dec760997cf66093f0e93e1954d95aa9d84e96af31245e78f",
+      "normalization": "Named placeholders replace ephemeral worktree/dependency roots; ANSI and trailing whitespace removed only."
+    },
+    {
+      "file": "typecheck.log",
+      "rawSha256": "1b4b5e6e6ee9ad7328eb834dc63e4e3e5bc67cb7ccec41ffbf677744d7dae08e",
+      "storedSha256": "9f05ae5e64cc9e364b4b88ad70402a71c335b0cb264d946e4d557d25c31dfd43",
+      "normalization": "Named placeholders replace ephemeral worktree/dependency roots; ANSI and trailing whitespace removed only."
+    },
+    {
+      "file": "build.log",
+      "rawSha256": "e961409eb0773f2fb5aaf4a675a7758ed3b37ea239c178afb323b840d74cb88a",
+      "storedSha256": "2e17461ee5fa9085ed807cf116fe1784514e8d0c914b6023a6253330b32f6e37",
+      "normalization": "Named placeholders replace ephemeral worktree/dependency roots; ANSI and trailing whitespace removed only."
+    },
+    {
+      "file": "bundle.log",
+      "rawSha256": "f31c7ec1858a16bba010bce72369b3ddadb3a9d13e5a994ee46074a36273d6ad",
+      "storedSha256": "f31c7ec1858a16bba010bce72369b3ddadb3a9d13e5a994ee46074a36273d6ad",
+      "normalization": "Named placeholders replace ephemeral worktree/dependency roots; ANSI and trailing whitespace removed only."
+    },
+    {
+      "file": "browser-collection.log",
+      "rawSha256": "613dc9c6493eb72ede73cc179f7aec883b9b4564b1ed4b1f851bf78dd7e8db34",
+      "storedSha256": "613dc9c6493eb72ede73cc179f7aec883b9b4564b1ed4b1f851bf78dd7e8db34",
+      "normalization": "Named placeholders replace ephemeral worktree/dependency roots; ANSI and trailing whitespace removed only."
+    }
+  ],
+  "remaining": [
+    "Final unit/Rules/browser/visual/quality CI on the updated published head",
+    "Any later main movement must be reconciled separately",
+    "Production Firestore behavior and billing are unverified"
+  ],
+  "notAuthorized": [
+    "main merge/direct write",
+    "production deployment/data/billing changes"
+  ]
+}

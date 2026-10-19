@@ -1,4 +1,4 @@
-import { expect, test as base } from '@playwright/test';
+import { expect, test as base, installStartupSkipContext } from './startup-ready.mjs';
 
 // Browser Regression seeds build "today" and plan times from the clock. The app
 // resolves "today" from the browser clock in the browser timezone, so a live
@@ -27,6 +27,8 @@ export const test = base.extend({
 export async function newFixedClockContext(browser, options = {}) {
   const context = await browser.newContext({ timezoneId: E2E_TIMEZONE, ...options });
   await installFixedClock(context);
+  const cleanupStartupSkip = await installStartupSkipContext(context);
+  context.once('close', cleanupStartupSkip);
   return context;
 }
 

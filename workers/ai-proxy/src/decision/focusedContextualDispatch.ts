@@ -18,6 +18,7 @@ import {
   type LunaBaselineFailure,
 } from './decisionExecutionMarker';
 import type { DecisionEvaluation, DecisionProvider } from './decisionProvider';
+import { evaluateDecisionProviderSafely } from './decisionProvider';
 import {
   CONTEXTUAL_CATALOG_VERSION,
   CONTEXTUAL_DECISION_CATALOG,
@@ -150,10 +151,12 @@ export async function dispatchFocusedContextual(params: {
   /** Evaluation-harness hook only; production freshness is enforced by the client revision echo. */
   isHarnessContextCurrent?: () => boolean;
 }): Promise<Response> {
+  // Legacy context lacks the semantic target and is never an eligible Jev input.
+  if (params.context.purpose !== 'focused_contextual_answer_v2') return params.fallback();
+  const state = focusedContextualDecisionState(params.context);
+  if (!state) return params.fallback();
   const mode = contextualDecisionMode(params.env);
   if (mode === 'off') return params.fallback();
-  const state = focusedContextualDecisionState(params.context);
-  if (!state) return Response.json({ error: 'Invalid focused decision context.' }, { status: 400 });
   if (!params.provider && !params.env.OPENROUTER_API_KEY?.trim()) return params.fallback();
   const selected = mode === 'canary' && contextualCanarySelected(params.env, jevPurposeCanarySample('focused_contextual_answer', params.firebaseUid));
   if (mode === 'canary' && !selected) return params.fallback();
@@ -172,8 +175,8 @@ export async function dispatchFocusedContextual(params: {
   const record = async (
     evaluation: DecisionEvaluation<ContextualDecision>,
     baseline: BaselineDecision | null,
+    gate = gateContextualDecision(evaluation, state.questionCode),
   ) => {
-    const gate = gateContextualDecision(evaluation, state.questionCode);
     const metadata = evaluation.metadata;
     const rawChoiceMatchesBaseline = evaluation.status === 'evaluated'
       ? choiceMatchesBaseline(evaluation.decision, baseline)
@@ -255,7 +258,7 @@ export async function dispatchFocusedContextual(params: {
   };
 
   if (mode === 'shadow') {
-    const evaluation = provider.evaluate(state);
+    const evaluation = evaluateDecisionProviderSafely(provider, state);
     const baseline = fallbackWithFailureMarker(
       params.fallback,
       mode,
@@ -263,7 +266,7 @@ export async function dispatchFocusedContextual(params: {
     ).then((response) => markJevExecution(response, mode));
     params.executionContext!.waitUntil(
       Promise.all([evaluation, baseline.then(baselineDecision, () => null)])
-        .then(([result, lunaDecision]) => record(result, lunaDecision))
+        .then(([result, lunaDecision]) => result.metadata ? record(result, lunaDecision) : undefined)
         .catch(() => undefined),
     );
     return baseline;
@@ -284,21 +287,16 @@ export async function dispatchFocusedContextual(params: {
     controller.abort();
   }, CONTEXTUAL_REQUEST_TIMEOUT_MS);
   try {
-    const evaluation = await provider.evaluate(state, controller.signal);
-    const gate = gateContextualDecision(evaluation, state.questionCode);
-    const metric = record(evaluation, null).catch(() => undefined);
+    const evaluation = await evaluateDecisionProviderSafely(provider, state, controller.signal);
+    const gate: ReturnType<typeof gateContextualDecision> = params.isHarnessContextCurrent?.() === false
+      ? { status: 'unavailable', reason: 'stale_context' }
+      : evaluation.metadata ? gateContextualDecision(evaluation, state.questionCode)
+        : { status: 'unavailable', reason: evaluation.reason };
+    const metric = evaluation.metadata ? record(evaluation, null, gate).catch(() => undefined) : Promise.resolve();
     if (params.executionContext) params.executionContext.waitUntil(metric);
     else await metric;
     if (controller.signal.aborted) {
       throw new Error('Focused contextual request cancelled or timed out.');
-    }
-    if (params.isHarnessContextCurrent?.() === false) {
-      return markJevExecution(await fallbackWithFailureMarker(
-        params.fallback,
-        mode,
-        () => 'network',
-        controller.signal,
-      ), mode);
     }
     if (gate.status === 'accepted') {
       return markJevExecution(params.respond(responseForDecision(gate.decision)), mode);

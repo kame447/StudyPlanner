@@ -1,0 +1,140 @@
+
+ RUN  v3.2.7 <BACKEND_WORKTREE>
+
+ ❯ workers/ai-proxy/src/productObservabilityRetention.test.ts (14 tests | 9 failed) 135ms
+   ✓ ProductObservabilityRetentionService > deletes only the expired ordered prefix from retained observability collections 44ms
+   ✓ ProductObservabilityRetentionService > reports more work when an entire bounded page is expired 2ms
+   ✓ ProductObservabilityRetentionService > leaves every expired document retryable when the bulk delete fails 9ms
+   × ProductObservabilityRetentionService > reads only one retained document from each collection on every idle invocation 46ms
+     → expected [ { …(2) }, { …(2) }, { …(2) }, …(5) ] to deeply equal [ { …(2) }, { …(2) }, { …(2) }, …(5) ]
+   × ProductObservabilityRetentionService > re-reads the full page when an expired gate becomes removed before deletion 3ms
+     → expected [ 100 ] to deeply equal [ 1, 100 ]
+   × ProductObservabilityRetentionService > re-reads the full page when an expired gate becomes retained before deletion 5ms
+     → expected [ 100 ] to deeply equal [ 1, 100 ]
+   × ProductObservabilityRetentionService > re-reads the full page when an expired gate becomes earlier-expired before deletion 2ms
+     → expected [ 100 ] to deeply equal [ 1, 100 ]
+   × ProductObservabilityRetentionService > re-reads the full page when an expired gate becomes malformed before deletion 1ms
+     → expected [ 100 ] to deeply equal [ 1, 100 ]
+   ✓ ProductObservabilityRetentionService > defers an expired insertion after a negative gate to the next invocation 5ms
+   × ProductObservabilityRetentionService > preserves the existing stop at a nonexpired or malformed first value null 3ms
+     → expected false to be true // Object.is equality
+   × ProductObservabilityRetentionService > preserves the existing stop at a nonexpired or malformed first value 12 2ms
+     → expected false to be true // Object.is equality
+   × ProductObservabilityRetentionService > preserves the existing stop at a nonexpired or malformed first value false 2ms
+     → expected false to be true // Object.is equality
+   × ProductObservabilityRetentionService > preserves the existing stop at a nonexpired or malformed first value not-a-date 2ms
+     → expected false to be true // Object.is equality
+   ✓ ProductObservabilityRetentionService > keeps exact-cutoff expiry and the existing string comparison contract 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 9 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  workers/ai-proxy/src/productObservabilityRetention.test.ts > ProductObservabilityRetentionService > reads only one retained document from each collection on every idle invocation
+AssertionError: expected [ { …(2) }, { …(2) }, { …(2) }, …(5) ] to deeply equal [ { …(2) }, { …(2) }, { …(2) }, …(5) ]
+
+- Expected
++ Received
+
+  [
+    {
+      "collection": "observability_events",
+-     "limit": 1,
++     "limit": 100,
+    },
+    {
+      "collection": "observability_actor_day",
+-     "limit": 1,
++     "limit": 100,
+    },
+    {
+      "collection": "observability_daily_rollups",
+-     "limit": 1,
++     "limit": 100,
+    },
+    {
+      "collection": "observability_active_user_windows",
+-     "limit": 1,
++     "limit": 100,
+    },
+    {
+      "collection": "observability_events",
+-     "limit": 1,
++     "limit": 100,
+    },
+    {
+      "collection": "observability_actor_day",
+-     "limit": 1,
++     "limit": 100,
+    },
+    {
+      "collection": "observability_daily_rollups",
+-     "limit": 1,
++     "limit": 100,
+    },
+    {
+      "collection": "observability_active_user_windows",
+-     "limit": 1,
++     "limit": 100,
+    },
+  ]
+
+ ❯ workers/ai-proxy/src/productObservabilityRetention.test.ts:132:31
+    130|     expect(await retention.runBatch()).toEqual({ deleted: 0, hasMore: …
+    131|
+    132|     expect(firestore.queries).toEqual([...collections, ...collections]
+       |                               ^
+    133|       .map((collection) => ({ collection, limit: 1 })));
+    134|     expect(firestore.deleted).toEqual([]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/9]⎯
+
+ FAIL  workers/ai-proxy/src/productObservabilityRetention.test.ts > ProductObservabilityRetentionService > re-reads the full page when an expired gate becomes removed before deletion
+ FAIL  workers/ai-proxy/src/productObservabilityRetention.test.ts > ProductObservabilityRetentionService > re-reads the full page when an expired gate becomes retained before deletion
+ FAIL  workers/ai-proxy/src/productObservabilityRetention.test.ts > ProductObservabilityRetentionService > re-reads the full page when an expired gate becomes earlier-expired before deletion
+ FAIL  workers/ai-proxy/src/productObservabilityRetention.test.ts > ProductObservabilityRetentionService > re-reads the full page when an expired gate becomes malformed before deletion
+AssertionError: expected [ 100 ] to deeply equal [ 1, 100 ]
+
+- Expected
++ Received
+
+  [
+-   1,
+    100,
+  ]
+
+ ❯ workers/ai-proxy/src/productObservabilityRetention.test.ts:157:39
+    155|
+    156|       expect(firestore.queries.filter((query) => query.collection === …
+    157|         .map((query) => query.limit)).toEqual([1, 100]);
+       |                                       ^
+    158|       expect(result).toEqual({ deleted: change === 'earlier-expired' ?…
+    159|       expect(firestore.deleted).toEqual(change === 'earlier-expired'
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/9]⎯
+
+ FAIL  workers/ai-proxy/src/productObservabilityRetention.test.ts > ProductObservabilityRetentionService > preserves the existing stop at a nonexpired or malformed first value null
+ FAIL  workers/ai-proxy/src/productObservabilityRetention.test.ts > ProductObservabilityRetentionService > preserves the existing stop at a nonexpired or malformed first value 12
+ FAIL  workers/ai-proxy/src/productObservabilityRetention.test.ts > ProductObservabilityRetentionService > preserves the existing stop at a nonexpired or malformed first value false
+ FAIL  workers/ai-proxy/src/productObservabilityRetention.test.ts > ProductObservabilityRetentionService > preserves the existing stop at a nonexpired or malformed first value not-a-date
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ workers/ai-proxy/src/productObservabilityRetention.test.ts:195:69
+    193|
+    194|       expect(firestore.deleted).toEqual([]);
+    195|       expect(firestore.queries.every((query) => query.limit === 1)).to…
+       |                                                                     ^
+    196|     },
+    197|   );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/9]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  9 failed | 5 passed (14)
+   Start at  21:41:19
+   Duration  1.52s (transform 326ms, setup 0ms, collect 314ms, tests 135ms, environment 0ms, prepare 429ms)

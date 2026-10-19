@@ -1,6 +1,9 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DayView } from './DayView';
+import { DayTimeline } from './DayTimeline';
+import { ScheduleItemRadialMenu } from './ScheduleItemRadialMenu';
+import { createScheduleOccurrenceProjection } from '../domain/scheduleOccurrence';
 import type { ComponentProps, ReactNode } from 'react';
 import type { Plan, ScheduleTemplate, TimetableTerm } from '../types/domain';
 
@@ -64,4 +67,247 @@ it('drops template details when the visible date, owner or source changes', () =
     expect(dialogs()).toHaveLength(0);
     act(() => renderer!.unmount()); renderer = undefined;
   }
+});
+
+it('filters only projected timetable entries and closes an open hidden detail', () => {
+  const imported: Plan = { ...plan, id: 'imported', title: '取り込み済み授業', sourceType: 'timetable', sourceId: 'saved-class' };
+  props = { ...props, plans: [plan, imported], scheduleTemplates: [template, { ...template, id: 'saved-class' }],
+    actuals: [{ id: 'actual', userId: 'owner', planId: imported.id, occurrenceDate: props.selectedDate,
+      actualStartTime: '11:00', actualEndTime: '12:00', subject: '英語', note: '', updatedAt: stamp }] };
+  mount(); clickCard(template.title);
+  for (const showTimetable of [false, true, false]) {
+    act(() => renderer!.update(<DayView {...props} showTimetable={showTimetable} />));
+    const text = JSON.stringify(renderer!.toJSON());
+    expect(text.includes(template.title)).toBe(showTimetable);
+    expect(text).toContain(imported.title);
+    expect(renderer!.root.findAllByType('button').filter(node => node.props.className?.includes('timeline-actual-block'))).toHaveLength(1);
+    expect(dialogs()).toHaveLength(0);
+  }
+});
+
+it('retains a timetable deletion menu on failure, blocks duplicate/close, and retries', async () => {
+  let fail!: (reason: Error) => void;
+  const pending = new Promise<void>((_, reject) => { fail = reject; });
+  const remove = vi.fn().mockReturnValueOnce(pending).mockResolvedValue(undefined);
+  props = { ...props, onDeleteOccurrence: remove };
+  mount(); clickCard(template.title);
+  const button = () => dialogs()[0].findAllByType('button').find(node => node.children.includes('この日だけ削除') || node.children.includes('削除中…'))!;
+  expect(button().props.className.split(/\s+/)).toEqual(expect.arrayContaining(['ghost-button', 'danger-button', 'day-timetable-delete-button']));
+  const click = button().props.onClick;
+  await act(async () => { click(); click(); });
+  expect(remove).toHaveBeenCalledTimes(1);
+  expect(remove.mock.calls[0][0]).toMatchObject({ ownerId: 'owner', start: { date: props.selectedDate }, source: { backingKind: 'timetable-template', backingId: template.id } });
+  act(() => dialogs()[0].findByProps({ 'aria-label': '閉じる' }).props.onClick());
+  expect(dialogs()).toHaveLength(1); expect(button().props.disabled).toBe(true);
+  await act(async () => { fail(Error('offline')); });
+  expect(dialogs()[0].findByProps({ role: 'alert' }).children.join('')).toContain('offline');
+  expect(button().props.disabled).toBe(false);
+  await act(async () => { button().props.onClick(); });
+  expect(remove).toHaveBeenCalledTimes(2); expect(dialogs()).toHaveLength(0);
+});
+
+it('routes recurring Plan and MonthEvent details through the exact selected date only', async () => {
+  const onDeleteOccurrence = vi.fn(async () => undefined);
+  props = { ...props, onDeleteOccurrence, selectedDate: '2026-10-12', plans: [{ ...plan, repeat: 'weekly' }], monthEvents: [{
+    id: 'event', userId: 'owner', date: '2026-10-05', title: '繰り返し主要予定', startTime: '12:00', endTime: '13:00',
+    repeat: 'weekly', repeatUntil: null, excludedDates: [], memo: '', url: '', checklist: [], locationTags: [], createdAt: stamp, updatedAt: stamp,
+  }] };
+  mount();
+  for (const title of [plan.title, '繰り返し主要予定']) {
+    clickCard(title);
+    const remove = dialogs()[0].findAllByType('button').find(node => node.findAllByType('strong').some(label => label.children.join('') === 'この日だけ削除'))!;
+    await act(async () => { remove.props.onClick(); });
+  }
+  expect(onDeleteOccurrence.mock.calls).toHaveLength(2);
+  for (const [occurrence] of onDeleteOccurrence.mock.calls as unknown as [{ start: { date: string } }][]) expect(occurrence.start.date).toBe('2026-10-12');
+  expect(props.onDeletePlan).not.toHaveBeenCalled(); expect(props.onDeleteMonthEvent).not.toHaveBeenCalled();
+});
+
+it('shows canceled Plan and MonthEvent actuals once and keeps them available for record editing', () => {
+  const event = { id: 'event', userId: 'owner', date: props.selectedDate, title: '主要予定の記録', startTime: '12:00', endTime: '13:00',
+    repeat: 'weekly' as const, repeatUntil: null, excludedDates: [props.selectedDate], memo: '', url: '', checklist: [], locationTags: [], createdAt: stamp, updatedAt: stamp };
+  const actual = { id: 'plan-actual', userId: 'owner', planId: plan.id, occurrenceDate: props.selectedDate,
+    actualStartTime: '11:00', actualEndTime: '12:00', subject: '英語', note: '', updatedAt: stamp };
+  props = { ...props, plans: [{ ...plan, repeat: 'weekly', excludedDates: [props.selectedDate] }], monthEvents: [event],
+    actuals: [actual, { ...actual, id: 'event-actual', planId: event.id, actualStartTime: '12:00', actualEndTime: '13:00' }] };
+  mount();
+  const records = renderer!.root.findAllByType('button').filter(node => node.props.className?.includes('timeline-actual-block'));
+  expect(records).toHaveLength(2);
+  for (const record of records) {
+    act(() => record.props.onClick());
+    expect(JSON.stringify(renderer!.toJSON())).toContain('記録は残っています');
+    const buttons = dialogs()[0].findAllByType('button');
+    expect(buttons.some(node => node.findAllByType('strong').some(label => label.children.join('') === '記録を編集'))).toBe(true);
+    expect(buttons.some(node => node.findAllByType('strong').some(label => label.children.join('') === '削除'))).toBe(false);
+    act(() => dialogs()[0].findByProps({ 'aria-label': '閉じる' }).props.onClick());
+  }
+});
+
+it.each(['none', 'weekly'] as const)('describes an overnight %s event before removing the whole selected instance', async repeat => {
+  const remove = vi.fn(async () => undefined);
+  props = { ...props, selectedDate: '2026-10-06', onDeleteOccurrence: remove,
+    plans: [{ ...plan, repeat, date: '2026-10-05', startTime: '23:00', endTime: '01:00' }] };
+  mount();
+  act(() => renderer!.root.findByType(DayTimeline).props.onSelectEntry({ kind: 'plan', id: plan.id }));
+  const dialog = dialogs()[0];
+  const button = dialog.findAllByType('button').find(node => node.findAllByType('strong').some(label => label.children.join('') === (repeat === 'none' ? '予定を削除' : 'この回だけ削除')))!;
+  expect(button.findAllByType('span').some(node => node.children.some(child => typeof child === 'string' && child.includes(repeat === 'none' ? 'この予定全体' : 'この回全体')))).toBe(true);
+  await act(async () => { button.props.onClick(); });
+  expect(remove).toHaveBeenCalledWith(expect.objectContaining({ start: { date: '2026-10-05', time: '23:00' } }));
+});
+
+it('edits the selected timetable time, keeps input after failure, and blocks duplicate/close while pending', async () => {
+  let fail!: (reason: Error) => void;
+  const save = vi.fn().mockReturnValueOnce(new Promise<void>((_, reject) => { fail = reject; })).mockResolvedValue(undefined);
+  props = { ...props, onChangeTimetableTime: save, onDeleteOccurrence: vi.fn() };
+  mount(); clickCard(template.title);
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('時間割から表示しています');
+  act(() => dialogs()[0].findAllByType('button').find(node => node.children.includes('この日の時間を変更'))!.props.onClick());
+  const fields = () => dialogs()[0].findAllByType('input');
+  act(() => fields()[0].props.onChange({ target: { value: '14:00' } }));
+  act(() => fields()[1].props.onChange({ target: { value: '15:30' } }));
+  const submit = dialogs()[0].findByType('form').props.onSubmit;
+  await act(async () => { submit({ preventDefault: noop }); submit({ preventDefault: noop }); });
+  expect(save).toHaveBeenCalledTimes(1);
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ start: { date: props.selectedDate, time: '09:00' } }), { startTime: '14:00', endTime: '15:30' });
+  act(() => dialogs()[0].findByProps({ 'aria-label': '閉じる' }).props.onClick());
+  expect(dialogs()).toHaveLength(1); expect(fields().every(node => node.props.disabled)).toBe(true);
+  await act(async () => { fail(Error('offline')); });
+  expect(fields().map(node => node.props.value)).toEqual(['14:00', '15:30']);
+  expect(dialogs()[0].findByProps({ role: 'alert' }).children.join('')).toContain('offline');
+  await act(async () => { dialogs()[0].findByType('form').props.onSubmit({ preventDefault: noop }); });
+  expect(save).toHaveBeenCalledTimes(2); expect(dialogs()).toHaveLength(0);
+});
+
+it('cancels an unsaved time change and preserves its original target if the source changes during editing', async () => {
+  const save = vi.fn(async () => undefined);
+  props = { ...props, onChangeTimetableTime: save };
+  mount(); clickCard(template.title);
+  const edit = () => dialogs()[0].findAllByType('button').find(node => node.children.includes('この日の時間を変更'))!;
+  act(() => edit().props.onClick());
+  act(() => dialogs()[0].findAllByType('input')[0].props.onChange({ target: { value: '14:00' } }));
+  act(() => dialogs()[0].findAllByType('button').find(node => node.children.includes('キャンセル'))!.props.onClick());
+  expect(save).not.toHaveBeenCalled();
+  act(() => edit().props.onClick());
+  expect(dialogs()[0].findAllByType('input')[0].props.value).toBe('09:00');
+  act(() => renderer!.update(<DayView {...props} scheduleTemplates={[{ ...template, startTime: '08:00' }]} />));
+  await act(async () => { dialogs()[0].findByType('form').props.onSubmit({ preventDefault: noop }); });
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ start: { date: props.selectedDate, time: '09:00' } }), expect.anything());
+});
+
+it.each([
+  { kind: 'plan', repeat: 'none', endDate: undefined, label: '予定を削除' },
+  { kind: 'plan', repeat: 'weekly', endDate: undefined, label: 'この日だけ削除' },
+  { kind: 'imported', repeat: 'none', endDate: undefined, label: 'この日だけ削除' },
+  { kind: 'month-event', repeat: 'none', endDate: undefined, label: '予定を削除' },
+  { kind: 'month-event', repeat: 'none', endDate: '2026-10-07', label: '予定を削除' },
+  { kind: 'month-event', repeat: 'weekly', endDate: undefined, label: 'この日だけ削除' },
+  { kind: 'month-event', repeat: 'weekly', endDate: '2026-10-07', label: 'この回だけ削除' },
+] as const)('uses $label for $kind $repeat ending $endDate without changing the cancellation target', async ({ kind, repeat, endDate, label }) => {
+  const remove = vi.fn(async () => undefined);
+  const title = '削除文言の対象';
+  props = { ...props, onDeleteOccurrence: remove,
+    plans: kind === 'month-event' ? [] : [{ ...plan, title, repeat,
+      ...(kind === 'imported' ? { sourceType: 'timetable', sourceId: 'imported-class' } as const : {}) }],
+    monthEvents: kind !== 'month-event' ? [] : [{ id: 'event', userId: 'owner', date: props.selectedDate,
+      endDate, title, startTime: '12:00', endTime: '13:00', repeat, repeatUntil: null, excludedDates: [],
+      memo: '', url: '', checklist: [], locationTags: [], createdAt: stamp, updatedAt: stamp }],
+  };
+  mount();
+  if (endDate) {
+    const card = renderer!.root.findByProps({ 'aria-label': `${title}。終日または日を跨ぐ予定。長押しで操作` });
+    act(() => card.props.onClick({ preventDefault: noop, stopPropagation: noop }));
+  } else clickCard(title);
+  const button = dialogs()[0].findAllByType('button').find(node => node.findAllByType('strong').some(strong => strong.children.join('') === label));
+  expect(button).toBeDefined();
+  const deleteActions = dialogs()[0].findAllByType('button').filter(node => node.props.className === 'schedule-action-item danger');
+  expect(deleteActions).toHaveLength(kind === 'month-event' || (kind === 'plan' && repeat === 'none') ? 1 : 2);
+  const text = JSON.stringify(renderer!.toJSON());
+  if (label === '予定を削除') expect(text).not.toMatch(/この日だけ削除|この回だけ削除|別の回/);
+  await act(async () => { button!.props.onClick(); });
+  expect(remove).toHaveBeenCalledOnce();
+  expect(remove).toHaveBeenCalledWith(expect.objectContaining({
+    start: expect.objectContaining({ date: props.selectedDate }),
+    source: expect.objectContaining({ backingKind: kind === 'month-event' ? 'month-event' : 'plan', backingId: kind === 'month-event' ? 'event' : plan.id }),
+  }));
+  expect(props.onDeletePlan).not.toHaveBeenCalled(); expect(props.onDeleteMonthEvent).not.toHaveBeenCalled();
+});
+
+it.each(['none', 'weekly'] as const)('uses source-aware confirmation for overnight %s long-press deletion', async repeat => {
+  const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
+  Object.assign(window, { confirm });
+  const remove = vi.fn(async () => undefined);
+  props = { ...props, onDeleteOccurrence: remove, plans: [{ ...plan, repeat, startTime: '23:00', endTime: '01:00' }] };
+  const occurrence = createScheduleOccurrenceProjection({ ownerId: 'owner', plans: props.plans, monthEvents: [],
+    scheduleTemplates: [], startDate: props.selectedDate, endDate: props.selectedDate }).occurrences[0];
+  mount();
+  const deleteAction = renderer!.root.findByType(ScheduleItemRadialMenu).props.onSelect;
+  await act(async () => { await deleteAction('delete', occurrence); });
+  expect(confirm).toHaveBeenCalledWith(expect.stringContaining(repeat === 'none' ? '予定を削除しますか？' : 'この回だけ削除しますか？'));
+  if (repeat === 'none') expect(confirm.mock.calls[0][0]).not.toMatch(/この回|別の回/);
+  expect(remove).not.toHaveBeenCalled();
+  await act(async () => { await deleteAction('delete', occurrence); });
+  expect(remove).toHaveBeenCalledExactlyOnceWith(occurrence);
+});
+
+it('imports explicitly before opening the normal record editor with the saved identity', async () => {
+  const saved = { ...plan, id: 'durable-class', sourceType: 'timetable' as const, sourceId: template.id,
+    title: template.title, startTime: template.startTime, endTime: template.endTime };
+  const prepare = vi.fn(async (_occurrence: import('../domain/scheduleOccurrence').ScheduleOccurrence) => saved);
+  props = { ...props, onPrepareTimetableRecord: prepare };
+  mount(); clickCard(template.title);
+  expect(prepare).not.toHaveBeenCalled();
+  const button = dialogs()[0].findAllByType('button').find(node => node.children.includes('予定に反映して記録'))!;
+  await act(async () => { button.props.onClick(); });
+  expect(prepare).toHaveBeenCalledOnce();
+  expect(prepare.mock.calls[0][0]).toMatchObject({ source: { backingKind: 'timetable-template' }, start: { date: props.selectedDate } });
+  expect(JSON.stringify(renderer!.toJSON())).toContain('記録を保存');
+  const { ActualEditorCard } = await import('./ActualEditorCard');
+  const editor = renderer!.root.findByType(ActualEditorCard);
+  expect(editor.props.plan.id).toBe(saved.id);
+  expect(props.onSaveActual).not.toHaveBeenCalled();
+});
+
+it('retains the timetable detail after failed preparation and rejects double taps', async () => {
+  const { deferred } = await import('../repositories/localPersistenceConcurrency.testUtils');
+  const gate = deferred<Plan>(); const prepare = vi.fn(() => gate.promise);
+  props = { ...props, onPrepareTimetableRecord: prepare }; mount(); clickCard(template.title);
+  const click = dialogs()[0].findAllByType('button').find(node => node.children.includes('予定に反映して記録'))!.props.onClick;
+  act(() => { click(); click(); });
+  expect(prepare).toHaveBeenCalledOnce();
+  await act(async () => { gate.reject(Error('保存失敗')); });
+  expect(JSON.stringify(renderer!.toJSON())).toContain('保存失敗');
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('記録を保存');
+  expect(dialogs()[0].findAllByType('button').find(node => node.children.includes('予定に反映して記録'))!.props.disabled).toBe(false);
+});
+
+it.each(['date', 'owner', 'unmount'] as const)('does not open an old prepared record after %s changes', async change => {
+  const { deferred } = await import('../repositories/localPersistenceConcurrency.testUtils');
+  const gate = deferred<Plan>();
+  props = { ...props, onPrepareTimetableRecord: vi.fn(() => gate.promise) }; mount(); clickCard(template.title);
+  act(() => dialogs()[0].findAllByType('button').find(node => node.children.includes('予定に反映して記録'))!.props.onClick());
+  act(() => {
+    if (change === 'unmount') { renderer!.unmount(); renderer = undefined; }
+    else renderer!.update(<DayView {...props} {...(change === 'date' ? { selectedDate: '2026-10-06' } : { userId: 'different-owner' })} />);
+  });
+  await act(async () => { gate.resolve({ ...plan, id: 'saved', title: template.title }); });
+  if (renderer) expect(dialogs()).toHaveLength(0);
+});
+
+it('opens the saved record even when the imported Plan projection arrives before its acknowledgement', async () => {
+  const { deferred } = await import('../repositories/localPersistenceConcurrency.testUtils');
+  const gate = deferred<Plan>();
+  props = { ...props, onPrepareTimetableRecord: vi.fn(() => gate.promise) };
+  mount(); clickCard(template.title);
+  act(() => dialogs()[0].findAllByType('button').find(node => node.children.includes('予定に反映して記録'))!.props.onClick());
+  const saved = { ...plan, id: 'durable-class', sourceType: 'timetable' as const, sourceId: template.id,
+    sourceDate: props.selectedDate, title: template.title, startTime: template.startTime, endTime: template.endTime };
+  props = { ...props, plans: [...props.plans, saved] };
+  act(() => renderer!.update(<DayView {...props} />));
+  expect(dialogs()).toHaveLength(1);
+  expect(dialogs()[0].findAllByType('button').every(node => node.props.disabled)).toBe(true);
+  await act(async () => { gate.resolve(saved); });
+  const { ActualEditorCard } = await import('./ActualEditorCard');
+  expect(renderer!.root.findByType(ActualEditorCard).props.plan.id).toBe(saved.id);
+  expect(JSON.stringify(renderer!.toJSON())).toContain('記録を保存');
 });

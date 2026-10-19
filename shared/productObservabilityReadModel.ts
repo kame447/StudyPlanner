@@ -166,10 +166,20 @@ export interface ObservabilityRollupCursor {
   documentName: string;
 }
 
+export interface ObservabilityRejectedEvent {
+  documentName: string;
+  observedAt: string;
+  environment: ObservabilityEnvironment;
+  reason: 'counter_out_of_domain' | 'aggregate_counter_overflow';
+}
+
 export interface ObservabilityRollupCheckpoint {
   schemaVersion: typeof PRODUCT_OBSERVABILITY_READ_MODEL_VERSION;
   cursor: ObservabilityRollupCursor | null;
   processedEventCount: number;
+  // Optional for mixed-version consumers; absence in legacy checkpoints means zero.
+  rejectedEventCount?: number;
+  lastRejectedEvent?: ObservabilityRejectedEvent | null;
   activeUserDirtySources: ObservabilityActiveUserDirtySource[];
   lastRunStartedAt: string | null;
   lastSuccessfulRunAt: string | null;
@@ -195,4 +205,23 @@ export interface ObservabilityOverviewReadModel {
   aiLatencyP50Ms: number | null;
   aiLatencyP95Ms: number | null;
   rollupCheckpoint: ObservabilityRollupCheckpoint;
+}
+
+/** Absence is the only legacy default; corrupt evidence must not look complete. */
+export function readObservabilityRejectionEvidence(value: Record<string, unknown> | null): {
+  rejectedEventCount: number;
+  lastRejectedEvent: ObservabilityRejectedEvent | null;
+} {
+  const count = value?.rejectedEventCount === undefined ? 0 : value.rejectedEventCount;
+  const latest = value?.lastRejectedEvent ?? null;
+  if (!Number.isSafeInteger(count) || Number(count) < 0) throw new Error('invalid_observability_checkpoint');
+  if (latest !== null) {
+    const entry = latest as ObservabilityRejectedEvent;
+    if (typeof entry.documentName !== 'string' || typeof entry.observedAt !== 'string'
+      || !['production', 'preview', 'development', 'test'].includes(entry.environment)
+      || !['counter_out_of_domain', 'aggregate_counter_overflow'].includes(entry.reason)) {
+      throw new Error('invalid_observability_checkpoint');
+    }
+  }
+  return { rejectedEventCount: Number(count), lastRejectedEvent: latest as ObservabilityRejectedEvent | null };
 }

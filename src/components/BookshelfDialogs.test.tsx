@@ -34,6 +34,21 @@ const material: StudyMaterial = {
 };
 
 describe('bookshelf dialogs', () => {
+  it.each([undefined, 'studying', 'completed'] as const)('edits study state from %s independently of lifecycle and progress', async (initial) => {
+    const original = { ...material, currentUnit: 80, studyStatus: initial };
+    const onSave = vi.fn().mockResolvedValue(original);
+    let renderer!: ReactTestRenderer;
+    act(() => { renderer = create(<BookshelfMaterialDialog userId="user-1" material={original}
+      subjects={[subject]} onClose={vi.fn()} onSave={onSave} onDelete={vi.fn()} />); });
+    const select = renderer.root.findByProps({ 'aria-label': '学習状態' });
+    expect(select.props.value).toBe(initial ?? 'studying');
+    const next = initial === 'completed' ? 'studying' : 'completed';
+    act(() => select.props.onChange({ target: { value: next } }));
+    await act(async () => { await renderer.root.findByType('form').props.onSubmit({ preventDefault: vi.fn() }); });
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ studyStatus: next, status: 'active', currentUnit: 80, totalUnits: 100 }), original.id, undefined);
+    act(() => renderer.unmount());
+  });
+
   it('keeps subject creation and color selection inside the subject dialog', async () => {
     const onSave = vi.fn().mockResolvedValue(subject);
     const onClose = vi.fn();
@@ -117,6 +132,12 @@ describe('bookshelf dialogs', () => {
       );
     });
 
+    expect(JSON.stringify(renderer.toJSON())).toContain('表紙は任意 · JPEG / PNG / WebP');
+    expect(JSON.stringify(renderer.toJSON())).not.toContain('まず教材を探し、見つからなければ手入力できます。');
+    expect(renderer.root.findByProps({ 'aria-label': '教材検索' })).toBeDefined();
+    expect(JSON.stringify(renderer.toJSON())).toContain('国立国会図書館全国書誌情報');
+    expect(renderer.root.findByProps({ type: 'file' }).props.accept).toBe('image/jpeg,image/png,image/webp');
+
     act(() => {
       renderer.root.findByProps({ placeholder: '黄色チャート' }).props.onChange({
         target: { value: '黄色チャート' },
@@ -135,6 +156,7 @@ describe('bookshelf dialogs', () => {
         subjectName: '数学',
         color: '#2f6fc2',
         status: 'active',
+        studyStatus: 'studying',
         paceEnabled: false,
         progressUnit: 'page',
       }),
@@ -299,4 +321,35 @@ it('isolates old subject save/delete results from a replacement editor', async (
       act(() => renderer.unmount());
     }
   } finally { vi.unstubAllGlobals(); }
+});
+
+it('keeps creation essentials and actions separate from expandable catalog information', () => {
+  let renderer!: ReactTestRenderer;
+  const onClose = vi.fn(), onSave = vi.fn();
+  act(() => { renderer = create(<BookshelfMaterialDialog userId="user-1" material={null}
+    subjects={[subject]} onClose={onClose} onSave={onSave} onDelete={vi.fn()} />); });
+  expect(renderer.root.findByType('form').props.role).toBe('dialog');
+  const body = renderer.root.findByProps({ className: 'material-create-body' });
+  const footer = renderer.root.findByProps({ className: 'material-create-footer' });
+  expect(body.findAllByProps({ type: 'submit' })).toHaveLength(0);
+  expect(footer.findByProps({ type: 'submit' }).props.disabled).toBe(true);
+  expect(body.findByProps({ 'aria-label': '教材名' }).props['aria-required']).toBe(true);
+  expect(body.findByProps({ 'aria-label': '教科' }).props['aria-required']).toBe(true);
+  act(() => renderer.root.findByType(BookshelfMaterialSearch).props.onSelect({
+    catalogEntryId: 'compact-test', title: '検索からの教材', authors: [], isbn13: '9780000000000',
+    pageCount: 120, tableOfContents: ['第1章', '第2章'],
+  }));
+  const details = renderer.root.findByProps({ className: 'material-create-catalog' });
+  expect(details.type).toBe('details');
+  expect(details.props.open).toBeUndefined();
+  expect(JSON.stringify(renderer.toJSON())).toContain('目次2項目');
+  expect(JSON.stringify(renderer.toJSON())).toContain('9780000000000');
+  const paceButton = details.findAllByType('button').find(node => node.props.children === 'ページ数をペース管理に使う')!;
+  act(() => paceButton.props.onClick());
+  expect(renderer.root.findByProps({ type: 'checkbox' }).props.checked).toBe(true);
+  expect(renderer.root.findAllByType('input').find(node => node.props.placeholder === '例: 300ページ')?.props.value).toBe('120');
+  act(() => footer.findAllByType('button').find(node => node.props.children === 'キャンセル')!.props.onClick());
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(onSave).not.toHaveBeenCalled();
+  act(() => renderer.unmount());
 });

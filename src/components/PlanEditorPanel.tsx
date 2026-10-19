@@ -1,6 +1,6 @@
+import { isValidPlanEntryTimeRange } from '../lib/entryTimeRange';
 import { useId } from 'react';
 import { useDialogFocus } from '../hooks/useDialogFocus';
-import { minutesBetween } from '../lib/date';
 import type { PlanDraft } from '../types/domain';
 import { PlanFieldsEditor } from './PlanFieldsEditor';
 
@@ -33,7 +33,7 @@ export function PlanEditorPanel({
 
   const currentDraft = draft;
   const hasInvalidTime =
-    minutesBetween(currentDraft.startTime, currentDraft.endTime) <= 0;
+    !isValidPlanEntryTimeRange(currentDraft);
 
   async function handleSubmit() {
     if (hasInvalidTime || !currentDraft.title.trim()) {
@@ -50,7 +50,8 @@ export function PlanEditorPanel({
   }
 
   return (
-    <div className="overlay modal-overlay">
+    // Same entrance as the 記録を保存 sheet (shared bottom-sheet motion tokens).
+    <div className="overlay modal-overlay bottom-sheet-motion is-open">
       <aside
         ref={dialogRef}
         className="modal-card plan-editor-modal"
@@ -63,7 +64,6 @@ export function PlanEditorPanel({
           <div className="section-header">
             <div>
               <h2 id={headingId}>{heading}</h2>
-              <p>入力項目は最小限に絞っています。</p>
             </div>
             <button
               ref={(node) => {
@@ -95,7 +95,7 @@ export function PlanEditorPanel({
           />
 
           {hasInvalidTime ? (
-            <p className="inline-error">終了時刻は開始時刻より後にしてください。</p>
+            <p className="inline-error">有効な開始時刻と終了時刻を入力してください。</p>
           ) : null}
 
           <div className="drawer-actions">

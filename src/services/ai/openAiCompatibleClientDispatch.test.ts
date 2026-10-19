@@ -7,7 +7,7 @@ import { getFirebaseAuth } from '../../lib/firebaseClient';
 vi.mock('../../lib/aiConfig', () => ({ getCloudflareAiProxyUrl: vi.fn(), usesCloudflareOpenAiProxy: vi.fn() }));
 vi.mock('../../lib/firebaseClient', () => ({ getFirebaseAuth: vi.fn() }));
 const recorder = (stage: 'initial' | 'repair' | 'audit' | 'retry' = 'initial') => createSemanticRequestRecorder({ population: { source: 'fixture', domain: 'weekly-planning', arm: 'baseline', corpusId: crypto.randomUUID() }, turnId: crypto.randomUUID(), requestId: crypto.randomUUID(), stage, boundary: 'direct' });
-const config = { baseUrl: 'https://provider.test/v1', model: 'gpt-5.6-luna', apiKey: 'private-api-key' };
+const config = { baseUrl: 'https://provider.test/v1', model: 'gpt-6-luna', apiKey: 'private-api-key' };
 const input = { purpose: 'weekly_planning_semantic_normalizer' as const, messages: [{ role: 'user' as const, content: 'private-japanese-request' }] };
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.clearAllMocks(); resetOpenAiCompatibleClientRequestBudgetForTest(); });
 

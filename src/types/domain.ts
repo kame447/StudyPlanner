@@ -30,7 +30,7 @@ export interface UserProfileDraft {
   avatar: string;
 }
 
-export type RecurrenceRuleKind = 'daily' | 'monthly' | 'day-type' | 'weekday' | 'date';
+export type RecurrenceRuleKind = 'daily' | 'monthly' | 'yearly' | 'day-type' | 'weekday' | 'date';
 
 export type RecurrenceDayType = 'weekday' | 'weekend';
 
@@ -86,6 +86,7 @@ export interface WeeklyPlanningMemoryPaceObservationResultV1 {
 }
 
 export interface Plan {
+  classTemplateId?: string;
   id: string;
   seriesId: string;
   userId: string;
@@ -112,10 +113,17 @@ export interface Plan {
   weeklyPlanningObservationSource?: WeeklyPlanningMemoryPaceObservationSourceV1;
 }
 
+export interface ActualProgressSource {
+  kind: 'study' | 'general-event' | 'timetable';
+  sourceId: string;
+  planType?: PlanType;
+}
+
 export interface Actual {
   id: string;
   userId: string;
   planId: string | null;
+  progressSource?: ActualProgressSource;
   occurrenceDate: string;
   actualStartTime: string;
   actualEndTime: string;
@@ -140,6 +148,7 @@ export interface ActualMaterialProgressUpdate {
 }
 
 export interface PlanDraft {
+  classTemplateId?: string;
   userId: string;
   title: string;
   subject: string;
@@ -191,6 +200,7 @@ export interface StudySubjectDraft {
 }
 
 export type StudyMaterialStatus = 'active' | 'archived';
+export type MaterialStudyStatus = 'studying' | 'completed';
 export type StudyMaterialProgressUnit =
   | 'page'
   | 'problem'
@@ -214,6 +224,7 @@ export interface StudyMaterial {
   catalogIsbn13?: string;
   aliases?: string[];
   status?: StudyMaterialStatus;
+  studyStatus?: MaterialStudyStatus;
   paceEnabled?: boolean;
   progressUnit?: StudyMaterialProgressUnit;
   progressUnitLabel?: string;
@@ -240,6 +251,7 @@ export interface StudyMaterialDraft {
   catalogIsbn13?: string;
   aliases?: string[];
   status?: StudyMaterialStatus;
+  studyStatus?: MaterialStudyStatus;
   paceEnabled?: boolean;
   progressUnit?: StudyMaterialProgressUnit;
   progressUnitLabel?: string;
@@ -258,7 +270,10 @@ export interface MonthEventChecklistItem {
   checked: boolean;
 }
 
+export type MonthEventColor = 'green' | 'orange' | 'purple' | 'blue' | 'pink';
+
 export interface MonthEvent {
+  color?: MonthEventColor;
   id: string;
   userId: string;
   date: string;
@@ -277,6 +292,7 @@ export interface MonthEvent {
 }
 
 export interface MonthEventDraft {
+  color?: MonthEventColor;
   userId: string;
   date: string;
   title: string;
@@ -367,6 +383,7 @@ export interface ScheduleTemplate {
   alternatingWeek?: ScheduleTemplateAlternatingWeek;
   weekInterval?: ScheduleTemplateWeekInterval;
   weekIntervalAnchorDate?: string | null;
+  excludedDates?: string[];
   memo: string;
   active: boolean;
   createdAt: string;
@@ -387,6 +404,7 @@ export interface ScheduleTemplateDraft {
   alternatingWeek?: ScheduleTemplateAlternatingWeek;
   weekInterval?: ScheduleTemplateWeekInterval;
   weekIntervalAnchorDate?: string | null;
+  excludedDates?: string[];
   memo: string;
   active: boolean;
 }

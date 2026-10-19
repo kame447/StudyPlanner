@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/startup-ready.mjs';
 
 async function seed(page, { now, sourceType = 'timetable', motion = true }) {
   await page.addInitScript(({ now, sourceType, motion }) => {
@@ -37,6 +37,7 @@ for (const { zone, offset } of [{ zone: 'Asia/Tokyo', offset: '+09:00' }, { zone
       await page.clock.pauseAt(instant('10:19:59'));
       await seed(page, { now: instant('10:19:00').toISOString(), sourceType });
       await page.goto('/');
+      await expect(scene(page)).toBeVisible();
       await expect(scene(page)).toHaveAttribute('data-scene-kind', sourceType === 'timetable' ? 'class' : 'study');
       expect(await page.evaluate(() => Date.now())).toBe(instant('10:19:59').getTime());
       await expect(student(page)).toHaveCount(0);
@@ -75,7 +76,7 @@ for (const { zone, offset } of [{ zone: 'Asia/Tokyo', offset: '+09:00' }, { zone
       // Use the same deterministic registration boundary for the reload's
       // minute timer while still verifying an already-active mount.
       await page.clock.pauseAt(instant('10:20:59'));
-      await page.reload(); await expect(student(page)).toHaveAttribute('data-pixel-student', 'studying');
+      await page.reload(); await expect(scene(page)).toBeVisible(); await expect(student(page)).toHaveAttribute('data-pixel-student', 'studying');
       expect(await page.evaluate(() => Date.now())).toBe(instant('10:20:59').getTime());
       await page.clock.runFor(1000);
       await expect(student(page)).toHaveCount(0);
@@ -90,7 +91,8 @@ for (const { zone, offset } of [{ zone: 'Asia/Tokyo', offset: '+09:00' }, { zone
       await page.clock.pauseAt(instant('10:19:59'));
       await seed(page, { now: instant('10:19:00').toISOString(), motion: mode !== 'off' });
       if (mode === 'reduced') await page.emulateMedia({ reducedMotion: 'reduce' });
-      await page.goto('/'); await expect(student(page)).toHaveCount(0);
+      await page.goto('/');
+      await expect(scene(page)).toBeVisible(); await expect(student(page)).toHaveCount(0);
       expect(await page.evaluate(() => Date.now())).toBe(instant('10:19:59').getTime());
       await page.clock.runFor(1000);
       await expect(student(page)).toHaveAttribute('data-pixel-student', 'studying');
@@ -105,7 +107,8 @@ for (const { zone, offset } of [{ zone: 'Asia/Tokyo', offset: '+09:00' }, { zone
     test('a hidden start is already seated on resume', async ({ page }) => {
       await page.clock.install({ time: instant('10:19:00') });
       await seed(page, { now: instant('10:19:00').toISOString() });
-      await page.goto('/'); await expect(student(page)).toHaveCount(0);
+      await page.goto('/');
+      await expect(scene(page)).toBeVisible(); await expect(student(page)).toHaveCount(0);
       await page.evaluate(() => {
         Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
         document.dispatchEvent(new Event('visibilitychange'));

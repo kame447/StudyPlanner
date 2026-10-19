@@ -1,0 +1,8 @@
+{"scenario":"positive-gate-retained","eventDeletes":[]}
+{"scenario":"positive-gate-removed","eventDeletes":[]}
+{"scenario":"positive-gate-new-null","eventDeletes":[]}
+{"scenario":"positive-gate-new-expired","eventDeletes":["projects/offline-test/databases/(default)/documents/observability_events/0000","projects/offline-test/databases/(default)/documents/observability_events/new"]}
+{"scenario":"preflight-failure","error":"Firestore ordered query failed: 503","syntheticDeletes":0}
+{"scenario":"full-query-failure","error":"Firestore ordered query failed: 503","syntheticDeletes":0}
+{"scenario":"commit-failure","error":"Firestore commit failed: 503","syntheticDeletes":0}
+{"runtimeSha256":"ca129e6030948bfe213760f9eaa8d4410e6687b61fef293b0d95b657897fb8e5","baselineCandidateComparisons":33,"positiveGateRaces":4,"failureCases":3,"assertions":"all passed","externalRequests":0,"repositoryWrites":0,"scope":"Actual retention service and REST client with fully intercepted HTTP; independent of owner test assertions"}

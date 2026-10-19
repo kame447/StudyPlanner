@@ -105,12 +105,25 @@ export interface TimetableMutation {
   periodDeletes: readonly TimetablePeriod[];
 }
 
+export interface PlannerScheduleSnapshot {
+  plans: Plan[];
+  monthEvents: MonthEvent[];
+}
+
 export interface PlannerRepository {
   // Optional read-only startup observation; never initiates schedule migration.
   observeStartupScheduleMarker?(expectedOwner: string, scope: StartupSessionCapability): () => void;
+  // One logical schedule read; canonical adapters project both slices from one query.
+  // Every call is fresh. The result is never retained across loads or writes.
+  getScheduleSnapshot(userId: string): Promise<PlannerScheduleSnapshot>;
   getPlans(userId: string): Promise<Plan[]>;
   getActuals(userId: string): Promise<Actual[]>;
-  getDayNotes(userId: string): Promise<DayNote[]>;
+  // Optional targeted equivalent of getActuals(...).find(id), including its
+  // normalized duplicate winner. Partial reads never certify complete history.
+  getActualForWritePreparation?(userId: string, actualId: string): Promise<Actual | undefined>;
+  // Deferred first hydration can require confirmed server absence/history.
+  // Local adapters read their canonical local storage; default behavior is unchanged.
+  getDayNotes(userId: string, options?: { requireServer: true }): Promise<DayNote[]>;
   getMonthEvents(userId: string): Promise<MonthEvent[]>;
   getTodos(userId: string): Promise<TodoTask[]>;
   getStudySubjects(userId: string): Promise<StudySubject[]>;
@@ -137,6 +150,7 @@ export interface PlannerRepository {
   upsertActual(actual: Actual): Promise<Actual>;
   deleteActual(userId: string, actualId: string): Promise<void>;
   upsertDayNote(dayNote: DayNote): Promise<DayNote>;
+  applyRecurringMonthEventMutation(userId: string, monthEvents: MonthEvent[]): Promise<void>;
   upsertMonthEvent(monthEvent: MonthEvent): Promise<MonthEvent>;
   deleteMonthEvent(userId: string, monthEventId: string): Promise<void>;
   upsertTodo(todo: TodoTask): Promise<TodoTask>;

@@ -160,6 +160,11 @@
   to { transform: rotate(360deg); }
 }
 
+/* Below standard the loading icon pulses in place instead of spinning. */
+:root:is([data-motion='reduced'], [data-motion='off']) .ai-planning-attachment-loading svg {
+  animation: motion-fade-in 0.9s ease-in-out infinite alternate;
+}
+
 .ai-planning-attachment-preview > span {
   min-width: 0;
   overflow: hidden;
@@ -340,6 +345,12 @@
 @keyframes ai-chat-drawer-in {
   from { transform: translateX(-18px); opacity: 0.72; }
   to { transform: translateX(0); opacity: 1; }
+}
+
+/* Below standard the drawer only fades in; it never slides. */
+:root:is([data-motion='reduced'], [data-motion='off']) .ai-chat-drawer {
+  animation-name: motion-fade-in;
+  animation-duration: var(--motion-duration-fade);
 }
 
 .ai-chat-drawer-header {

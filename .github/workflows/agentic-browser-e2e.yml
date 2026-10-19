@@ -1,0 +1,72 @@
+name: Agentic Browser E2E
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      run_agent:
+        description: 'Run model-guided UI test (requires OPENAI_API_KEY secret)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agentic-browser-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-harness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Install isolated agentic runner
+        run: npm ci --prefix tests/agent-e2e
+
+      - name: Install agentic Chromium
+        run: ./tests/agent-e2e/node_modules/.bin/e2e-web install chromium --with-deps
+
+      - name: Test deterministic browser contracts
+        run: npm run test:agentic:smoke
+
+      - name: Run opt-in model-guided browser test
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_agent }}
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          E2E_TELEMETRY_DISABLED: '1'
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "Set the OPENAI_API_KEY Actions secret before requesting model-guided tests." >&2
+            exit 1
+          fi
+          npm --prefix tests/agent-e2e run test:agent -- --no-cache
+
+      - name: Upload isolated runner evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agentic-browser-e2e-${{ github.sha }}
+          path: |
+            tests/agent-e2e/.e2e/report.json
+            tests/agent-e2e/.e2e/results/
+            tests/agent-e2e/.e2e/logs/
+          if-no-files-found: ignore
+          retention-days: 7

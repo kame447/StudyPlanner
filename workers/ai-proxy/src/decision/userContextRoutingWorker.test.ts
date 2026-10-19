@@ -146,7 +146,7 @@ beforeEach(() => {
       const body = JSON.parse(String(init?.body));
       expect(body).not.toHaveProperty('decisionContext');
       lunaBodies.push(body);
-      return Response.json({ choices: [{ message: { content: lunaContent } }] });
+      return Response.json({ model: JSON.parse(String(init?.body)).model, choices: [{ message: { content: lunaContent } }] });
     }
     throw new Error(`Unexpected call: ${url}`);
   }));
@@ -218,6 +218,7 @@ describe('user-context routing Worker dispatch', () => {
     const { response } = execute({});
     expect(await (await response).json()).toEqual({ content: lunaContent });
     expect(calls.filter((url) => url.endsWith('/chat/completions'))).toHaveLength(1);
+    expect(lunaBodies[0]).toMatchObject({ model: 'gpt-6-luna' });
     expect(lunaBodies[0]).not.toHaveProperty('decisionContext');
   });
 

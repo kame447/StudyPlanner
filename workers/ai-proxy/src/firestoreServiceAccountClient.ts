@@ -11,6 +11,21 @@ export interface FirestoreTokenProvider {
   readonly subrequestObserver?: WorkerSubrequestObserver;
 }
 
+// Preserve the ordinary Error/message contract without exposing document data
+// through enumerable error properties or generic error logging.
+export class FirestoreImmutableDocumentConflictError extends Error {
+  #existingDocument: Record<string, unknown> | null;
+
+  constructor(message: string, existingDocument: Record<string, unknown> | null) {
+    super(message);
+    this.#existingDocument = existingDocument;
+  }
+
+  getExistingDocument(): Record<string, unknown> | null {
+    return this.#existingDocument;
+  }
+}
+
 interface OAuthTokenResponse {
   access_token?: string;
   expires_in?: number;
@@ -293,6 +308,7 @@ export class FirestoreServiceAccountTokenProvider implements FirestoreTokenProvi
     private readonly fetcher: typeof fetch = workerSafeFetch,
     private readonly cryptoApi: Crypto = crypto,
     readonly subrequestObserver?: WorkerSubrequestObserver,
+    private readonly scope: string = FIRESTORE_SCOPE,
   ) {}
 
   async getToken(): Promise<string> {
@@ -326,7 +342,7 @@ export class FirestoreServiceAccountTokenProvider implements FirestoreTokenProvi
       iss: email,
       sub: email,
       aud: OAUTH_TOKEN_URL,
-      scope: FIRESTORE_SCOPE,
+      scope: this.scope,
       iat: issuedAt,
       exp: issuedAt + 3600,
     }));
@@ -677,7 +693,10 @@ export class FirestoreServiceAccountClient {
     const existing = await this.getDocument(collection, id);
     if (!existing
       || stableJson(comparableDocument(existing)) !== stableJson(comparableDocument(value))) {
-      throw new Error(`${conflictMessagePrefix}: ${collection}/${id}`);
+      throw new FirestoreImmutableDocumentConflictError(
+        `${conflictMessagePrefix}: ${collection}/${id}`,
+        existing,
+      );
     }
   }
 

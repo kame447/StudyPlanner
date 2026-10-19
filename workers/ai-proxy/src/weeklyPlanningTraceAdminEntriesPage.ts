@@ -14,7 +14,7 @@ import {
   createWeeklyPlanningTraceSubject,
   isWeeklyPlanningLegacyTraceSessionHandle,
   isWeeklyPlanningTraceSessionId,
-  parseWeeklyPlanningTraceHmacSecrets,
+  resolveWeeklyPlanningTraceHmacSecretRing,
   resolveWeeklyPlanningTraceEpoch,
   weeklyPlanningTraceExpireAt,
 } from './weeklyPlanningTracePrivacy';
@@ -30,6 +30,7 @@ export interface WeeklyPlanningTraceAdminEntriesPageEnv
   FIREBASE_WEB_API_KEY: string;
   ALLOWED_ORIGIN?: string;
   WEEKLY_PLANNING_TRACE_HMAC_SECRETS: string;
+  WEEKLY_PLANNING_TRACE_HMAC_SECRETS_EXTENSION?: string;
   WEEKLY_PLANNING_TRACE_WORKER_REVISION?: string;
 }
 
@@ -188,6 +189,7 @@ async function requireFirebaseSession(
     `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
     {
       method: 'POST',
+      redirect: 'manual',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken: token }),
     },
@@ -342,7 +344,11 @@ async function appendAccessAudit(
   const actor = await createWeeklyPlanningTraceSubject(
     uid,
     epoch,
-    parseWeeklyPlanningTraceHmacSecrets(env.WEEKLY_PLANNING_TRACE_HMAC_SECRETS),
+    await resolveWeeklyPlanningTraceHmacSecretRing({
+      raw: env.WEEKLY_PLANNING_TRACE_HMAC_SECRETS,
+      extension: env.WEEKLY_PLANNING_TRACE_HMAC_SECRETS_EXTENSION,
+      now,
+    }),
   );
   const id = `trace-audit:${now.getTime()}:${crypto.randomUUID()}`;
   await firestore.setImmutableDocument(TRACE_ACCESS_AUDIT, id, {

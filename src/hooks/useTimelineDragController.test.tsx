@@ -3,6 +3,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TimelineDragDescriptor, useTimelineDragController } from './useTimelineDragController';
 import { BrowserEventTarget } from '../lib/timelineDragInteractionLock.testUtils';
+import { SCHEDULE_LONG_PRESS_MS } from '../lib/scheduleGestureTiming';
 
 type Controller = ReturnType<typeof useTimelineDragController<string>>;
 const LOCK_CLASS = 'is-timeline-drag-interaction-locked';
@@ -112,8 +113,8 @@ describe('timeline drag interaction lifecycle', () => {
     return {
       get controller() { return controller!; },
       onCommit, scroll, card, touch,
-      start(count = 1) { act(() => controller!.handleTouchStart(touch(100, 100, count), descriptor)); },
-      arm() { act(() => { vi.advanceTimersByTime(240); }); },
+      start(count = 1, target = descriptor) { act(() => controller!.handleTouchStart(touch(100, 100, count), target)); },
+      arm() { act(() => { vi.advanceTimersByTime(SCHEDULE_LONG_PRESS_MS); }); },
       move(x = 100, y = 160, count = 1) {
         const event = touch(x, y, count);
         act(() => controller!.handleTouchMove(event));
@@ -142,7 +143,7 @@ describe('timeline drag interaction lifecycle', () => {
   it('locks before the first native move after a long press, without moving the card yet', () => {
     const f = mount();
     f.start();
-    act(() => { vi.advanceTimersByTime(239); });
+    act(() => { vi.advanceTimersByTime(SCHEDULE_LONG_PRESS_MS - 1); });
     expect(isLocked()).toBe(false);
     expect(nativeMove().defaultPrevented).toBe(false);
     act(() => { vi.advanceTimersByTime(1); });
@@ -173,6 +174,29 @@ describe('timeline drag interaction lifecycle', () => {
     expect(isLocked()).toBe(false);
     expect(f.controller.dragVisual).toBeNull();
     f.end();
+    expect(f.onCommit).not.toHaveBeenCalled();
+  });
+
+  it('drags an event lifted by the radial move action on first movement, without a hold', () => {
+    const f = mount();
+    const armed = { ...descriptor, moveArmed: true };
+    f.start(1, armed);
+    expect(isLocked()).toBe(true);
+    expect(nativeMove().defaultPrevented).toBe(true);
+    const move = f.move();
+    expect(move.preventDefault).toHaveBeenCalled();
+    expect(f.controller.dragVisual?.target).toEqual({ ...original, startTime: '10:00', endTime: '11:00' });
+    f.end();
+    expect(f.onCommit).toHaveBeenCalledExactlyOnceWith(armed, original, { ...original, startTime: '10:00', endTime: '11:00' });
+    expect(isLocked()).toBe(false);
+  });
+
+  it('keeps a quick tap on a lifted event a normal tap', () => {
+    const f = mount();
+    f.start(1, { ...descriptor, moveArmed: true });
+    act(() => { f.controller.handleTouchEnd(f.touch(100, 100, 0)); });
+    expect(isLocked()).toBe(false);
+    expect(f.controller.shouldSuppressClick()).toBe(false);
     expect(f.onCommit).not.toHaveBeenCalled();
   });
 

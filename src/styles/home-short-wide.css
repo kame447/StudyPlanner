@@ -44,10 +44,6 @@
     font-size: 0.98rem;
   }
 
-  .home-dashboard-default .home-date-unit {
-    font-size: 0.65rem;
-  }
-
   .home-dashboard-default .home-top-actions {
     gap: 4px;
   }
@@ -103,7 +99,7 @@
     height: 14px;
   }
 
-  .home-dashboard-default .home-start-button {
+  .home-dashboard-default .home-actions {
     left: 14px;
     right: 14px;
     bottom: 7px;
@@ -136,17 +132,16 @@
     font-size: 0.59rem;
   }
 
-  .home-dashboard-default .home-schedule-row,
-  .home-dashboard-default .home-schedule-empty {
+  .home-dashboard-default :is(.home-schedule-row, .home-schedule-empty) {
     min-height: var(--home-fit-row-height);
-    padding-top: 3px;
-    padding-bottom: 3px;
+    --home-add-pad: 3px;
+    padding-block: var(--home-add-pad);
   }
 
   .home-dashboard-default .home-schedule-add-row {
     min-height: clamp(32px, 4.5dvh, 40px);
-    padding-top: 3px;
-    padding-bottom: 3px;
+    --home-add-pad: 3px;
+    padding-block: var(--home-add-pad);
   }
 
   .home-dashboard-default .home-schedule-content {
@@ -158,8 +153,7 @@
     line-height: 1.05;
   }
 
-  .home-dashboard-default .home-schedule-content strong,
-  .home-dashboard-default .home-schedule-add-row strong {
+  .home-dashboard-default .home-schedule-content strong {
     font-size: 0.72rem;
     line-height: 1.1;
   }
