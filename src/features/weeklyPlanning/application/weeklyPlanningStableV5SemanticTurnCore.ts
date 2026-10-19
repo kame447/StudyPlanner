@@ -21,6 +21,10 @@ import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExe
 import { projectStableV5CompatibilityOutput } from './weeklyPlanningStableV5CompatibilityState';
 import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlanningStableV5RuntimeContracts';
 import {
+  resolveWeeklyPlanningMachineBoundEffortQuestionV5,
+  verifyWeeklyPlanningMachineBoundEffortAnswerV5,
+} from './weeklyPlanningStableV5MachineBoundAnswer';
+import {
   activeStableV5PlanningWindows,
   createStableV5SemanticPublicStateSummary,
   stableV5RequestContextForInput,
@@ -96,6 +100,25 @@ export async function executeWeeklyPlanningStableV5SemanticTurnCore(
     previousState: input.previousState, inputStateRevision: input.inputStateRevision,
     messages: input.messages, graphRevision: runtimeSession.graph.revision,
   });
+  // #735: only a typed control answer bound to the presented question skips AI routing.
+  const machineBoundAnswer = input.machineBoundAnswer === undefined
+    || input.supplementalContext?.trim() || input.selectedStarterTarget
+    ? null
+    : verifyWeeklyPlanningMachineBoundEffortAnswerV5({
+        answer: input.machineBoundAnswer,
+        userText: input.userText,
+        question: resolveWeeklyPlanningMachineBoundEffortQuestionV5({
+          previousState: input.previousState, inputStateRevision: input.inputStateRevision,
+          messages: input.messages, graphRevision: runtimeSession.graph.revision,
+        }),
+      });
+  if (input.machineBoundAnswer !== undefined) {
+    recordWeeklyPlanningStableV5DebugTrace({
+      requestId: input.traceRequestId,
+      stage: 'machine_bound_answer_binding_evaluated',
+      data: { bound: Boolean(machineBoundAnswer) },
+    });
+  }
   const activeWindowsBefore = activeStableV5PlanningWindows(runtimeSession.graph);
   const activeSchedulerGraphBefore = createWeeklyPlanningActiveSchedulerGraphViewV5(
     runtimeSession.graph,
@@ -135,7 +158,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurnCore(
     ownerId: input.userId, horizon: fallbackHorizon, requestContext,
   });
   if (ports.resolveReplyReferenceHint && !input.supplementalContext?.trim()
-    && !input.selectedStarterTarget && input.inputStateRevision !== undefined) {
+    && !input.selectedStarterTarget && !machineBoundAnswer && input.inputStateRevision !== undefined) {
     const readReferenceSource = () => ({
       graph: runtimeSession.graph, messages: input.messages, conversationId: input.conversationId,
       previousState: input.previousState, inputStateRevision: input.inputStateRevision,
@@ -207,6 +230,7 @@ export async function executeWeeklyPlanningStableV5SemanticTurnCore(
     userText: input.userText,
     supplementalContext: input.supplementalContext,
     selectedStarterTarget: input.selectedStarterTarget,
+    ...(machineBoundAnswer ? { machineBoundAnswer } : {}),
     recentConversation,
     publicStateSummary: stateSummary,
     schedulerContext: initialSchedulerContext,

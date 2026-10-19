@@ -12,6 +12,7 @@ import {
   tryFocusedContextualAnswerRouteV5,
 } from './weeklyPlanningSemanticFocusedPreRoutesV5';
 import { tryFocusedSemanticRepairRouteV5 } from './weeklyPlanningSemanticFocusedRepairRoutesV5';
+import { tryMachineBoundEffortAnswerRouteV5 } from './weeklyPlanningMachineBoundAnswerRouteV5';
 import {
   tryWeeklyPlanningSemanticNoOpCompletenessRetryV5,
 } from './weeklyPlanningSemanticNoOpCompletenessRetryV5';
@@ -118,6 +119,9 @@ export function createWeeklyPlanningSemanticNormalizerV5(
       const run = new WeeklyPlanningSemanticNormalizerRunV5(client, input);
       const finish = (result: WeeklyPlanningSemanticNormalizerResultV5) =>
         enforceFinalCurrentTurnProvenance({ input, run, result });
+
+      const typedAnswer = tryMachineBoundEffortAnswerRouteV5(run);
+      if (typedAnswer) return finish(typedAnswer);
 
       const contextualResult = input.supplementalContext?.trim()
         ? null

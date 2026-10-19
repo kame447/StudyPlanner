@@ -1,6 +1,7 @@
 import type { WeeklyPlanningSemanticDocumentV5 } from './weeklyPlanningSemanticTypesV5';
 import type { WeeklyPlanningTurnEvidenceV5 } from './weeklyPlanningTurnEvidenceV5';
 import type { WeeklyPlanningFactGraphV5 } from './weeklyPlanningFactGraphV5';
+import type { WeeklyPlanningMachineBoundEffortAnswerV5 } from './weeklyPlanningMachineBoundAnswerV5';
 import { WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5 } from './weeklyPlanningSemanticTypesV5';
 
 export const WEEKLY_PLANNING_SEMANTIC_NORMALIZER_VERSION_V5 =
@@ -12,6 +13,8 @@ export interface WeeklyPlanningSemanticNormalizerInputV5 extends WeeklyPlanningT
   /** Internal committed evidence only; never serialized into the provider prompt. */
   committedGraph?: WeeklyPlanningFactGraphV5;
   traceRequestId?: string;
+  /** Typed control answer verified against the presented question; never provider input. */
+  machineBoundAnswer?: WeeklyPlanningMachineBoundEffortAnswerV5;
 }
 
 export interface WeeklyPlanningSemanticNormalizerDiagnosticsV5 {

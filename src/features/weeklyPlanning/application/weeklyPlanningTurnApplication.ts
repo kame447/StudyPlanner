@@ -19,6 +19,7 @@ import type {
 } from '../../../types/domain';
 import type { PlanningState, WeeklyPlanningAction, WeeklyPlanningPendingTurn } from '../types';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
+import type { WeeklyPlanningMachineBoundEffortAnswerV5 } from '../semantic/weeklyPlanningMachineBoundAnswerV5';
 import type { WeeklyPlanningWeekStartsOn } from '../personalization/weeklyPlanningWeek';
 import type {
   WeeklyPlanningTurnSubmissionResult,
@@ -68,6 +69,7 @@ export interface SubmitWeeklyPlanningApplicationTurnParams {
   userText: string;
   supplementalContext?: string;
   selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5;
+  machineBoundAnswer?: WeeklyPlanningMachineBoundEffortAnswerV5;
   selectedDate: string;
   plans: Plan[];
   monthEvents?: MonthEvent[];
@@ -99,7 +101,7 @@ export function submitWeeklyPlanningApplicationTurn(
 
   let semanticObservation: WeeklyPlanningSemanticTurnObservation | undefined;
   const runtimeInput = (turn: Parameters<SubmitWeeklyPlanningControlledTurnParams['execute']>[0], ): ExecuteWeeklyPlanningTurnRuntimeParams => {
-    const { snapshot, pending, userText, supplementalContext, selectedStarterTarget } = turn;
+    const { snapshot, pending, userText, supplementalContext, selectedStarterTarget, machineBoundAnswer } = turn;
     const input: ExecuteWeeklyPlanningTurnRuntimeParams = {
       ...(semanticObservation ? { semanticObservation } : {}),
       snapshot,
@@ -108,6 +110,7 @@ export function submitWeeklyPlanningApplicationTurn(
       userText,
       supplementalContext,
       selectedStarterTarget,
+      ...(machineBoundAnswer ? { machineBoundAnswer } : {}),
       selectedDate: params.selectedDate,
       userId: params.userId,
       plans: params.plans,
@@ -172,6 +175,7 @@ export function submitWeeklyPlanningApplicationTurn(
     userText: params.userText,
     supplementalContext: params.supplementalContext,
     selectedStarterTarget: params.selectedStarterTarget,
+    ...(params.machineBoundAnswer ? { machineBoundAnswer: params.machineBoundAnswer } : {}),
     getState: params.getState,
     dispatch: params.dispatch,
     now: params.now,
