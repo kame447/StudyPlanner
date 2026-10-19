@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   assessWeeklyPlanningRequest,
-  createAvailabilityAwareWeeklyDraftBlocksFromText,
   createSimpleWeeklyDraftBlocksFromText,
   looksLikeWeeklyPlanningRequest,
 } from '../weeklyPlanningTransforms';
@@ -107,14 +106,6 @@ describe('parsing weeklyTaskExtraction', () => {
     expect(assessment.questions.join('\n')).toContain('何分相当');
     expect(assessment.confirmationSummary).toContain('50語=30分');
     expect(assessment.confirmationSummary).toContain('1問=10分');
-    expect(
-      createAvailabilityAwareWeeklyDraftBlocksFromText({
-        userId: 'user-1',
-        selectedDate: '2026-06-19',
-        text: assessment.tasks.map((task) => task.sourceText).join('、'),
-        existingPlans: [],
-      }).blocks,
-    ).toEqual([]);
   });
 
   it('keeps daily units separate instead of collapsing them into one day', () => {
@@ -154,5 +145,40 @@ describe('parsing weeklyTaskExtraction', () => {
       bufferMinutes: 60,
       deepNightAllowed: true,
     });
+  });
+
+  it('asks for confirmation before creating availability-aware weekly drafts', () => {
+    const assessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-19',
+      text: '来週、英語を10時間、計算理論を10時間やりたい',
+    });
+
+    expect(assessment.kind).toBe('needs_confirmation');
+    expect(assessment.tasks.map((task) => task.title)).toEqual([
+      '英語',
+      '計算理論',
+    ]);
+    expect(assessment.confirmationSummary).toContain('既存予定前後30分');
+    expect(assessment.confirmationSummary).toContain('予備日');
+  });
+
+  it('requires explicit create confirmation after defaults are proposed', () => {
+    const omakaseAssessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-19',
+      text: '来週、英語を2時間、数学を2時間。おまかせ',
+      hasPendingConfirmation: true,
+      confirmationText: 'おまかせ',
+    });
+    const confirmedAssessment = assessWeeklyPlanningRequest({
+      selectedDate: '2026-06-19',
+      text: '来週、英語を2時間、数学を2時間。おまかせ。この条件で作成',
+      hasPendingConfirmation: true,
+      confirmationText: 'この条件で作成',
+    });
+
+    expect(omakaseAssessment.kind).toBe('needs_confirmation');
+    expect(omakaseAssessment.confirmationSummary).toContain('勉強可能時間');
+    expect(omakaseAssessment.questions.join('\n')).toContain('この条件で作成');
+    expect(confirmedAssessment.kind).toBe('ready');
   });
 });

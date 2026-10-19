@@ -1,254 +1,131 @@
-import {
-  createRef,
-  forwardRef,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from 'react';
+import { useState } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NaturalLanguageAssistant } from '../../components/NaturalLanguageAssistant';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AiPlanningView } from '../../components/AiPlanningView';
+import {
+  useWeeklyPlanningApplication,
+  type WeeklyPlanningApplication,
+} from './application/useWeeklyPlanningApplication';
+import {
+  getWeeklyPlanningStableV5RuntimeSession,
+  commitWeeklyPlanningStableV5RuntimeGraph,
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest,
+} from './application/weeklyPlanningStableV5RuntimeSession';
 import { createInitialPlanningIntakeState } from './intake/weeklyPlanningIntakeReducer';
-import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
-import type { BehaviorAwarePreviewMetadata } from './planning/weeklyPlanningBehaviorAwarePreviewBridge';
-import type { WeeklyDraftCandidate } from './scheduling/weeklyDraftCandidateGenerator';
-import type {
-  PlanningState,
-  WeeklyPlanningPendingTurn,
-} from './types';
-import { useWeeklyPlanningState } from './useWeeklyPlanningState';
+import { createReadyPlannerDataAvailability } from './testUtils/plannerDataAvailabilityTest';
+import { createDeferred, createMemoryStorageHarness } from './testUtils/weeklyPlanningApplicationTestHarness';
+import type { WeeklyPlanningTurnExecutionInput } from './weeklyPlanningTurnExecutor';
 
-const storedValues = new Map<string, string>();
-const localStorageMock = {
-  getItem: (key: string) => storedValues.get(key) ?? null,
-  setItem: (key: string, value: string) => { storedValues.set(key, value); },
-  removeItem: (key: string) => { storedValues.delete(key); },
-  clear: () => { storedValues.clear(); },
-  key: (index: number) => Array.from(storedValues.keys())[index] ?? null,
-  get length() { return storedValues.size; },
-} as Storage;
+const execute = vi.hoisted(() => vi.fn());
+vi.mock('./weeklyPlanningTurnExecutor', async () => ({
+  ...await vi.importActual<typeof import('./weeklyPlanningTurnExecutor')>('./weeklyPlanningTurnExecutor'),
+  executeWeeklyPlanningTurn: execute,
+}));
+// Repository IO is outside this owner/view-lifetime contract.
+vi.mock('../../repositories', () => ({
+  plannerRepository: { getTodos: async () => [], getStudyMaterials: async () => [] },
+}));
 
-Object.defineProperty(globalThis, 'window', {
-  configurable: true,
-  value: { localStorage: localStorageMock, sessionStorage: localStorageMock },
+const USER_ID = 'user-1';
+const SELECTED_DATE = '2026-07-16';
+const USER_TEXT = 'レポートを1時間進めたい';
+let application: WeeklyPlanningApplication;
+let setViewMounted: (mounted: boolean) => void;
+let renderer: ReactTestRenderer | undefined;
+const save = vi.fn();
+class PreviewTrigger { closest() { return this; } }
+
+function SessionOwnerHarness() {
+  const [viewMounted, setMounted] = useState(true);
+  setViewMounted = setMounted;
+  application = useWeeklyPlanningApplication({
+    userId: USER_ID, selectedDate: SELECTED_DATE, plans: [], scheduleTemplates: [],
+    plannerDataAvailability: createReadyPlannerDataAvailability(USER_ID),
+    isPlannerDataSnapshotCurrent: () => true,
+    saveWeeklyApprovedPlan: save,
+  });
+  return viewMounted ? <AiPlanningView application={application} userId={USER_ID} selectedDate={SELECTED_DATE} plans={[]} /> : null;
+}
+
+beforeEach(() => {
+  const { storage } = createMemoryStorageHarness();
+  vi.stubGlobal('window', {
+    localStorage: storage, sessionStorage: storage,
+    matchMedia: () => ({ matches: false }), confirm: vi.fn(() => true),
+  });
+  vi.stubGlobal('fetch', vi.fn(() => { throw new Error('network forbidden by fixture'); }));
+  vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'false');
+  vi.stubGlobal('Element', PreviewTrigger);
+  execute.mockReset();
+  save.mockReset();
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest();
 });
 
-const NOW = '2026-07-16T00:00:00.000Z';
-const SELECTED_DATE = '2026-07-16';
-const USER_ID = 'user-1';
-
-type BehaviorAwareCandidate = WeeklyDraftCandidate & {
-  behaviorMetadata: BehaviorAwarePreviewMetadata;
-};
-
-function previewCandidate(): BehaviorAwareCandidate {
-  return {
-    stableKey: 'preview-report-1',
-    date: '2026-07-16',
-    startTime: '19:00',
-    endTime: '20:00',
-    durationMinutes: 60,
-    title: 'レポート作成',
-    field: '情報学',
-    year: 0,
-    estimatedMinutes: 60,
-    source: 'weekly_exam_prep',
-    approvalStatus: 'unapproved',
-    workItemKey: 'task:report',
-    behaviorMetadata: {
-      conversationId: 'conversation-1',
-      stateRevision: 2,
-      sourceFactRefs: ['task:report'],
-      usedAssumptionProposalRefs: [],
-      taskRef: 'task:report',
-      opportunityTags: ['long_contiguous_window'],
-      reasoningKey: 'explicit-duration',
-    },
-  };
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-  return { promise, resolve };
-}
-
-interface TurnResult {
-  state: PlanningIntakeState;
-  message: string;
-  draftCandidates: WeeklyDraftCandidate[];
-}
-
-interface SessionOwnerHandle {
-  setModalOpen(open: boolean): void;
-  getState(): PlanningState;
-  getSubmission(): Promise<void> | undefined;
-}
-
-const SessionOwnerHarness = forwardRef<SessionOwnerHandle, {
-  turnResult: Promise<TurnResult>;
-}>(function SessionOwnerHarness({ turnResult }, ref) {
-  const [modalOpen, setModalOpen] = useState(true);
-  const submissionRef = useRef<Promise<void>>();
-  const {
-    planningState,
-    dispatchPlanningAction,
-    getPlanningState,
-  } = useWeeklyPlanningState(USER_ID, SELECTED_DATE);
-
-  async function submit(text: string): Promise<void> {
-    const snapshot = getPlanningState();
-    const pending: WeeklyPlanningPendingTurn = {
-      conversationId: 'conversation-1',
-      turnId: 'conversation-1:turn:1',
-      requestId: 'turn-1',
-      weekStartDate: snapshot.weekStartDate,
-      baseRevision: snapshot.revision,
-      startedAt: NOW,
-    };
-    const begun = dispatchPlanningAction({
-      type: 'begin_turn',
-      pending,
-      userMessage: {
-        id: 'user-1',
-        role: 'user',
-        content: text,
-        createdAt: NOW,
-      },
-    });
-    if (begun.pendingTurn?.requestId !== pending.requestId) return;
-
-    const result = await turnResult;
-    dispatchPlanningAction({
-      type: 'commit_turn',
-      pending,
-      intakeState: result.state,
-      assistantMessage: {
-        id: 'assistant-1',
-        role: 'assistant',
-        content: result.message,
-        createdAt: NOW,
-      },
-      draftCandidates: result.draftCandidates,
-    });
-  }
-
-  useImperativeHandle(ref, () => ({
-    setModalOpen,
-    getState: getPlanningState,
-    getSubmission: () => submissionRef.current,
-  }));
-
-  if (!modalOpen) return null;
-
-  return (
-    <NaturalLanguageAssistant
-      selectedDate={SELECTED_DATE}
-      userId={USER_ID}
-      plans={[]}
-      onApplyDraft={vi.fn(async () => undefined)}
-      weeklyDraftBlocks={planningState.draftBlocks}
-      weeklyPlanningPreviewCandidates={planningState.previewCandidates}
-      weeklyPlanningMessages={planningState.messages}
-      weeklyPlanningIntakeState={planningState.intakeState ?? null}
-      weeklyPlanningWeekStartDate={planningState.weekStartDate}
-      weeklyPlanningRevision={planningState.revision}
-      weeklyPlanningPendingTurn={planningState.pendingTurn}
-      weeklyPlanningPendingApproval={planningState.pendingApproval}
-      onSubmitWeeklyPlanningTurn={async (text) => {
-        const submission = submit(text);
-        submissionRef.current = submission;
-        await submission!;
-        const latest = getPlanningState();
-        return {
-          accepted: latest.pendingTurn === undefined,
-          draftCandidates: latest.previewCandidates ?? [],
-        };
-      }}
-      onCancelWeeklyPlanningTurn={() => false}
-      onClearWeeklyPlanningConversation={() => false}
-      onAppendWeeklyPlanningMessage={(message) => {
-        dispatchPlanningAction({ type: 'append_message', message });
-      }}
-      onResetWeeklyPlanningSession={() => {
-        dispatchPlanningAction({ type: 'reset_session' });
-      }}
-      onCreateWeeklyDraftBlocks={(blocks) => {
-        dispatchPlanningAction({ type: 'add_draft_blocks', blocks });
-      }}
-      onRemoveWeeklyPlanningPreviewCandidate={(candidateId) => {
-        dispatchPlanningAction({ type: 'remove_preview_candidate', candidateId });
-      }}
-      onClearWeeklyDraftBlocks={() => {
-        dispatchPlanningAction({ type: 'clear_draft_blocks' });
-      }}
-      embedded
-    />
-  );
+afterEach(() => {
+  act(() => renderer?.unmount()); renderer = undefined;
+  resetWeeklyPlanningStableV5RuntimeSessionsForTest();
+  vi.unstubAllGlobals(); vi.unstubAllEnvs();
 });
 
 describe('weekly planning preview session lifecycle', () => {
-  beforeEach(() => storedValues.clear());
-
   it('commits an App-owned Promise result while the modal child is unmounted and restores it on remount', async () => {
-    const turn = deferred<TurnResult>();
-    const ownerRef = createRef<SessionOwnerHandle>();
-    let renderer!: ReactTestRenderer;
-
-    await act(async () => {
-      renderer = create(
-        <SessionOwnerHarness ref={ownerRef} turnResult={turn.promise} />,
-      );
-    });
-
-    await act(async () => {
-      const weeklyPlanningButton = renderer.root.findAllByType('button').find(
-        (button) => button.children.join('') === '週間計画',
-      );
-      expect(weeklyPlanningButton).toBeDefined();
-      weeklyPlanningButton!.props.onClick();
-    });
-    const textarea = renderer.root.findByType('textarea');
-    act(() => textarea.props.onChange({ target: { value: 'レポートを1時間進めたい' } }));
-    await act(async () => {
-      const sendButton = renderer.root.findAllByType('button').find(
-        (button) => button.children.join('') === '送信',
-      );
-      expect(sendButton).toBeDefined();
-      sendButton!.props.onClick();
-      await Promise.resolve();
-    });
-    const submission = ownerRef.current!.getSubmission();
-    expect(submission).toBeDefined();
-    expect(ownerRef.current!.getState().pendingTurn).toBeDefined();
-
-    act(() => ownerRef.current!.setModalOpen(false));
-    expect(renderer.toJSON()).toBeNull();
-
-    await act(async () => {
-      turn.resolve({
-        state: {
-          ...createInitialPlanningIntakeState(),
-          sourceTurns: ['レポートを1時間進めたい'],
-        },
+    const turn = createDeferred<void>();
+    execute.mockImplementation(async (input: WeeklyPlanningTurnExecutionInput) => {
+      await turn.promise;
+      const session = getWeeklyPlanningStableV5RuntimeSession(input.conversationId)!;
+      const graph = { ...session.graph, revision: session.graph.revision + 1,
+        appliedTurnKeys: [...session.graph.appliedTurnKeys, `${input.conversationId}:${input.traceRequestId}`] };
+      commitWeeklyPlanningStableV5RuntimeGraph({ ownerId: USER_ID,
+        conversationId: input.conversationId, graph });
+      return {
+        state: { ...createInitialPlanningIntakeState(), sourceTurns: [input.userText] },
         message: '仮予定を作成しました。',
-        draftCandidates: [previewCandidate()],
-      });
-      await submission;
+        draftCandidates: [{
+          stableKey: 'preview-report-1', date: '2026-07-16', startTime: '19:00', endTime: '20:00',
+          durationMinutes: 60, title: 'レポート作成', field: '情報学', year: 0, estimatedMinutes: 60,
+          source: 'weekly_exam_prep', approvalStatus: 'unapproved', workItemKey: 'task:report',
+          stableV5Metadata: { runtime: 'stable_v5', conversationId: input.conversationId,
+            graphRevision: graph.revision, taskId: 'task:report', sourceFactRefs: ['fact:report-duration'], planType: 'study' },
+        }],
+      };
     });
+    await act(async () => { renderer = create(<SessionOwnerHarness />); });
+    act(() => renderer!.root.findByType('textarea').props.onChange({ target: { value: USER_TEXT } }));
+    await act(async () => { renderer!.root.findByProps({ 'aria-label': '送信' }).props.onClick(); });
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+    expect(application.state.pendingTurn).toBeDefined();
+    const revision = application.state.revision;
 
-    expect(ownerRef.current!.getState().pendingTurn).toBeUndefined();
-    expect(ownerRef.current!.getState().previewCandidates).toEqual([previewCandidate()]);
+    act(() => setViewMounted(false));
+    expect(renderer!.toJSON()).toBeNull();
+    await act(async () => { turn.resolve(); });
+    await vi.waitFor(() => expect(application.state.pendingTurn).toBeUndefined());
+    expect(application.state.revision).toBe(revision + 1);
+    expect(application.state.messages.map(({ role, content }) => ({ role, content }))).toEqual([
+      { role: 'user', content: USER_TEXT }, { role: 'assistant', content: '仮予定を作成しました。' },
+    ]);
+    expect(application.state.previewCandidates).toHaveLength(1);
+    expect(application.state.previewCandidates![0]).toMatchObject({
+      stableKey: 'preview-report-1', title: 'レポート作成', date: '2026-07-16',
+      startTime: '19:00', endTime: '20:00', approvalStatus: 'unapproved',
+    });
+    const committedPreview = application.state.previewCandidates;
 
-    act(() => ownerRef.current!.setModalOpen(true));
-    const rendered = JSON.stringify(renderer.toJSON());
-    expect(rendered).toContain('レポートを1時間進めたい');
+    await act(async () => { setViewMounted(true); });
+    const rendered = JSON.stringify(renderer!.toJSON());
+    expect(rendered).toContain(USER_TEXT);
     expect(rendered).toContain('仮予定を作成しました。');
-    expect(rendered).toContain('レポート作成');
-    expect(rendered).toContain('この内容で仮予定にする');
-
-    act(() => renderer.unmount());
+    expect(rendered).toContain('計画プレビューを確認');
+    act(() => renderer!.root.findByProps({ className: 'ai-planning-view-shell-v2 ' }).props.onClickCapture({
+      target: new PreviewTrigger(), preventDefault() {}, stopPropagation() {},
+    }));
+    const restoredPreview = JSON.stringify(renderer!.toJSON());
+    expect(restoredPreview).toContain('レポート作成');
+    expect(restoredPreview).toContain('この内容で仮予定にする');
+    expect(application.state.previewCandidates).toBe(committedPreview);
+    expect(application.state.draftBlocks).toEqual([]);
+    expect(application.state.pendingApproval).toBeUndefined();
+    expect(execute).toHaveBeenCalledOnce();
+    expect(save).not.toHaveBeenCalled();
   });
 });

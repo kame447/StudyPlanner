@@ -6,6 +6,8 @@ import type {
 import {
   bindWeeklyPlanningQuestionPresentation,
   decodeWeeklyPlanningQuestionPresentation,
+  isWeeklyPlanningQuestionPresentationControlledDirect,
+  isWeeklyPlanningQuestionPresentationDirect,
   isWeeklyPlanningQuestionPresentationUnaccompanied,
   resolveWeeklyPlanningQuestionPresentationFreshness,
 } from './weeklyPlanningQuestionPresentation';
@@ -164,6 +166,30 @@ describe('question presentation accompaniment', () => {
   ] as const)('is accompanied by %s', (_label, overrides) => {
     expect(isWeeklyPlanningQuestionPresentationUnaccompanied({ ...CONTENT, ...overrides }))
       .toBe(false);
+  });
+});
+
+describe('controlled candidate presentation', () => {
+  const recommended = { ...CONTENT, responseSource: 'ai' as const, currentTurnGrounding: 'recommended' as const };
+  it('admits recommended grounding without a proposal only for controlled capture', () => {
+    expect(isWeeklyPlanningQuestionPresentationControlledDirect(recommended)).toBe(true);
+    // Shared predicates used by C5 (unaccompanied) and reply-reference (direct) are unchanged.
+    expect(isWeeklyPlanningQuestionPresentationDirect(recommended)).toBe(false);
+    expect(isWeeklyPlanningQuestionPresentationUnaccompanied(recommended)).toBe(false);
+  });
+  it('keeps every existing direct presentation', () => {
+    expect(isWeeklyPlanningQuestionPresentationControlledDirect(CONTENT)).toBe(true);
+    expect(isWeeklyPlanningQuestionPresentationControlledDirect({ ...recommended, groundingContext: { proposed: 1, contested: 0 } })).toBe(true);
+  });
+  it.each([
+    ['required current-turn grounding', { currentTurnGrounding: 'required_before_resume' }],
+    ['a deterministic fallback', { responseSource: 'deterministic_fallback' }],
+    ['two proposed interpretations', { groundingContext: { proposed: 2, contested: 0 } }],
+    ['a contested grounding interpretation', { groundingContext: { proposed: 0, contested: 1 } }],
+    ['a self-repair notice', { selfRepairNotice: true }],
+    ['the preview promotion control', { previewPromotionControl: true }],
+  ] as const)('rejects recommended grounding with %s', (_label, overrides) => {
+    expect(isWeeklyPlanningQuestionPresentationControlledDirect({ ...recommended, ...overrides })).toBe(false);
   });
 });
 

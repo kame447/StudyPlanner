@@ -1,3 +1,4 @@
+import { useLayoutEffect } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthScreen } from './AuthScreen';
@@ -123,4 +124,91 @@ describe('login-first authentication presentation', () => {
     act(() => renderer!.root.findByProps({ 'aria-label': '通知を閉じる' }).props.onClick());
     expect(onAction).toHaveBeenCalledOnce(); expect(props.onDismissNotice).toHaveBeenCalledOnce();
   });
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+describe('authentication entry pending admission', () => {
+  it.each(['password', 'google', 'reset'] as const)('admits only one %s operation and blocks competing actions until completion', async kind => {
+    const pending = deferred<void>();
+    const props = mount({
+      onSignInWithPassword: vi.fn(() => pending.promise),
+      onSignInWithGoogle: vi.fn(() => pending.promise),
+      onSendPasswordReset: vi.fn(() => pending.promise),
+    });
+    const form = renderer!.root.findByType('form').props.onSubmit;
+    const google = renderer!.root.findByProps({ className: 'auth-entry-google' }).props.onClick;
+    const reset = renderer!.root.findByProps({ className: 'auth-entry-reset' }).props.onClick;
+    const start = kind === 'password' ? () => form({ preventDefault: vi.fn() }) : kind === 'google' ? google : reset;
+    act(() => { start(); start(); form({ preventDefault: vi.fn() }); google(); reset(); });
+    expect(props.onSignInWithPassword).toHaveBeenCalledTimes(kind === 'password' ? 1 : 0);
+    expect(props.onSignInWithGoogle).toHaveBeenCalledTimes(kind === 'google' ? 1 : 0);
+    expect(props.onSendPasswordReset).toHaveBeenCalledTimes(kind === 'reset' ? 1 : 0);
+    expect(renderer!.root.findByType('form').props['aria-busy']).toBe(true);
+    expect(tab('sign-up').props.disabled).toBe(true);
+    for (const field of renderer!.root.findAllByType('input')) expect(field.props.disabled).toBe(true);
+    await act(async () => pending.resolve());
+    expect(renderer!.root.findByType('form').props['aria-busy']).toBe(false);
+    await submit();
+    expect(props.onSignInWithPassword).toHaveBeenCalledTimes(kind === 'password' ? 2 : 1);
+  });
+
+  it('keeps a pending registration in its submitted mode and admits it only once', async () => {
+    const pending = deferred<boolean>();
+    const props = mount({ onSignUpWithPassword: vi.fn(() => pending.promise) });
+    select('sign-up'); fill('password', 'abcdef12'); fill('passwordConfirmation', 'abcdef12');
+    const form = renderer!.root.findByType('form').props.onSubmit;
+    act(() => { form({ preventDefault: vi.fn() }); form({ preventDefault: vi.fn() }); });
+    select('sign-in');
+    act(() => tab('sign-up').props.onKeyDown({ key: 'ArrowLeft', preventDefault: vi.fn() }));
+    expect(tab('sign-up').props['aria-selected']).toBe(true);
+    expect(props.onSignUpWithPassword).toHaveBeenCalledOnce();
+    await act(async () => pending.resolve(false));
+    expect(input('password').props.value).toBe('abcdef12');
+    select('sign-in');
+    expect(tab('sign-in').props['aria-selected']).toBe(true);
+  });
+
+  it('releases admission on rejection and shows an error without an unhandled rejection', async () => {
+    const pending = deferred<void>();
+    const props = mount({ onSignInWithPassword: vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue(undefined) });
+    await submit();
+    await act(async () => pending.reject(new Error('synthetic failure')));
+    expect(renderer!.root.findByProps({ role: 'alert' }).children.join('')).toContain('もう一度');
+    expect(renderer!.root.findByType('form').props['aria-busy']).toBe(false);
+    await submit();
+    expect(props.onSignInWithPassword).toHaveBeenCalledTimes(2);
+    expect(renderer!.root.findAllByProps({ role: 'alert' })).toHaveLength(0);
+  });
+});
+
+describe('authentication entry lifetime', () => {
+  it('ignores retained handlers after unmount, including after an old request settles', async () => {
+    const pending = deferred<boolean>();
+    const props = mount({ onSignUpWithPassword: vi.fn(() => pending.promise) });
+    select('sign-up');
+    const submitOld = renderer!.root.findByType('form').props.onSubmit;
+    act(() => submitOld({ preventDefault: vi.fn() }));
+    act(() => { renderer!.unmount(); renderer = undefined; });
+    await act(async () => pending.resolve(true));
+    act(() => submitOld({ preventDefault: vi.fn() }));
+    expect(props.onSignUpWithPassword).toHaveBeenCalledOnce();
+  });
+});
+
+
+it('retires retained auth handlers before replacement layout effects run', () => {
+  const props = mount();
+  const submitOld = renderer!.root.findByType('form').props.onSubmit;
+  function Replacement() {
+    useLayoutEffect(() => { submitOld({ preventDefault: vi.fn() }); }, []);
+    return null;
+  }
+  act(() => renderer!.update(<Replacement />));
+  expect(props.onSignInWithPassword).not.toHaveBeenCalled();
 });

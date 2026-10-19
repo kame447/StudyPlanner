@@ -140,7 +140,7 @@ describe('WeekView schedule occurrence projection', () => {
     ).toHaveLength(0);
   });
 
-  it('shows timetable template occurrences on the hourly timeline as read-only schedule rows', () => {
+  it('shows timetable rows that can open actions while remaining non-draggable', () => {
     let renderer!: ReactTestRenderer;
     const term = timetableTerm();
 
@@ -164,7 +164,11 @@ describe('WeekView schedule occurrence projection', () => {
     const timetableBlock = findTimedBlock(renderer, '情報学演習');
     expect(timetableBlock.type).toBe('span');
     expect(timetableBlock.props.title).toBe('情報学演習 / 13:00-14:30');
-    expect(timetableBlock.props['data-schedule-occurrence-id']).toBeUndefined();
+    expect(timetableBlock.props['data-schedule-occurrence-id']).toBe('timetable:class-1:2026-08-24');
+    expect(timetableBlock.props.tabIndex).toBe(0);
+    expect(timetableBlock.props.onPointerDown).toBeUndefined();
+    expect(timetableBlock.props.onTouchStart).toBeUndefined();
+    expect(timetableBlock.props.onClick).toBeUndefined();
     expect(timetableBlock.props['aria-label']).toContain('時間割');
   });
 

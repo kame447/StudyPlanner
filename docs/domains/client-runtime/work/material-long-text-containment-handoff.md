@@ -1,5 +1,40 @@
 # Material long-text containment and desktop reachability
 
+## Resumed validation — 2026-10-19
+
+PR #741 remains draft. The current local preparation normally merges public
+`52ebec9f` with main `227410c6`, then its documentation-only successor
+`bddcaf7a`, keeping current shared CSS cleanup, startup,
+gesture, persistence, mobile sharding and official container setup. The only
+conflict was the native material spec; its original 30 logical cases plus the
+current main save-rejection case are retained. The independently reviewed
+single-seed fixture from `c5d0aa7e` replaces only the duplicate initial bootstrap;
+its complete post-opening actions, screenshots, bounds, Save/Cancel/live/reload
+assertions and 30-second settings remain unchanged.
+
+Prior results are not current-source acceptance: original four wide-WebKit cases
+failed; single-seed source had 28 first-attempt passes, one flaky case and three
+failures. Filter ABBA did not demonstrate a speed improvement. The existing
+WPE observation branch remains unexecuted (official run count zero); its official
+manual dispatch is unavailable to the current unauthenticated browser/connector.
+No new workflow or local browser workaround is introduced.
+
+Current local checks: 26 related tests across five files passed; the actual
+old/new fixture callbacks through the current Local adapter passed all eight
+structural-equivalence and negative-control probes. Fresh app types and the
+production build (16.70s) passed. The initial standalone probe bundle failed
+because bundling TypeScript into ESM introduced dynamic require; keeping the
+installed TypeScript module external fixed the probe harness without changing
+its assertions or product inputs. Full Core and native results are pending.
+
+Independent source/main-union review is complete. The documentation-only
+successor retains every tested executable input. Next: the existing PR's ordinary CI.
+Completion requires the related original native identities to pass cleanly
+on the published source, plus visual/action/reload readback. Neither a source
+merge nor a passed unit test establishes a native latency fix.
+
+## Historical source-candidate checkpoint — 2026-10-17
+
 Status: local source candidate; new native rendering is unverified. Publication is not approved.
 
 ## Finding and boundary
@@ -320,7 +355,7 @@ execution and rendered-image review. Evidence:
 `laplans-material-detail-contracts-evidence-20261017`.
 
 
-## Local-only PR #741 continuation after Timer release (2026-10-17)
+## Historical local-only PR #741 continuation after Timer release (2026-10-17)
 
 The current public PR remains `fix/timer-material-readability` at
 `5dfcb11f624c13775947e9fd2d14952b7e17ab3d` (tree `4870e76c`). This checkpoint

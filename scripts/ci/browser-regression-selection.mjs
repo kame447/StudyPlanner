@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { runPlaywright, validateShard } from './playwright-shard.mjs';
 
 // Opt in only isolated specs whose imports/runner ownership have been reviewed.
 // Unknown specs and every runtime/shared input keep the full regression selection.
@@ -101,11 +102,7 @@ export function selectFromEvent(root, eventName, event) {
 }
 
 export function playwrightArgs(selection, shard) {
-  if (shard !== undefined && (typeof shard !== 'string'
-    || !/^[1-9][0-9]*\/[1-9][0-9]*$/.test(shard)
-    || BigInt(shard.split('/')[0]) > BigInt(shard.split('/')[1]))) {
-    throw new Error('Invalid BROWSER_REGRESSION_SHARD: expected i/n with 1 <= i <= n');
-  }
+  validateShard(shard, 'BROWSER_REGRESSION_SHARD');
   const args = ['test', '--config=tests/e2e/playwright.config.mjs'];
   if (selection.mode !== 'full' || selection.specs.length !== 0) {
     if (selection.mode !== 'specs' || !selection.specs.length
@@ -139,27 +136,7 @@ export function main(root, command, env = process.env) {
     process.stdout.write(`Browser execution: ${selection.mode}, ${shardArg
       ? `sharded ${shardArg.slice('--shard='.length)}`
       : env.BROWSER_REGRESSION_SHARD !== undefined ? 'unsharded-narrow' : 'unsharded'}\n`);
-    // Playwright permits empty shards even without --pass-with-no-tests.
-    // Prove this leg contains tests before starting any browser or server.
-    if (shardArg) {
-      const listed = spawnSync('./tests/e2e/node_modules/.bin/playwright', [...args, '--list', '--reporter=json'], {
-        cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
-      });
-      if (listed.error) throw listed.error;
-      if (listed.status !== 0) {
-        process.stderr.write(listed.stderr || listed.stdout || 'Browser shard listing failed\n');
-        return listed.status ?? 1;
-      }
-      const report = JSON.parse(listed.stdout);
-      const hasTests = suite => suite.specs?.some(spec => spec.tests?.length > 0) || suite.suites?.some(hasTests);
-      if (!Array.isArray(report.errors) || report.errors.length
-        || !Array.isArray(report.suites) || !report.suites.some(hasTests)) {
-        throw new Error(`Empty or invalid browser shard listing: ${shardArg}`);
-      }
-    }
-    const result = spawnSync('./tests/e2e/node_modules/.bin/playwright', args, { cwd: root, stdio: 'inherit' });
-    if (result.error) throw result.error;
-    return result.status ?? 1;
+    return runPlaywright(root, args);
   }
   throw new Error('Expected select or run');
 }

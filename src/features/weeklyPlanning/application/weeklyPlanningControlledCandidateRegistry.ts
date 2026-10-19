@@ -1,6 +1,7 @@
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import { decodeWeeklyPlanningStableV5QuestionSlot } from '../intake/weeklyPlanningStableV5QuestionSlot';
-import { isWeeklyPlanningQuestionPresentationDirect } from '../intake/weeklyPlanningQuestionPresentation';
+import { isWeeklyPlanningQuestionPresentationControlledDirect } from '../intake/weeklyPlanningQuestionPresentation';
+import { weeklyPlanningStableV5AcceptedFactsForTurn } from '../dialogue/weeklyPlanningStableV5CurrentTurnGrounding';
 import type { PlanningState, WeeklyPlanningMessage, WeeklyPlanningPendingTurn } from '../types';
 import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
@@ -83,8 +84,12 @@ export function registerControlledCandidateDomain(domain: ControlledCandidateDom
     capture(turn) {
       const context = turn.state.lastQuestionContext; const p = context?.presentation;
       if (!p || turn.state.questions.length !== 1 || !context?.topicId
-        || !isWeeklyPlanningQuestionPresentationDirect(p.content) || p.graphRevision !== turn.graph.revision
+        || !isWeeklyPlanningQuestionPresentationControlledDirect(p.content) || p.graphRevision !== turn.graph.revision
         || domain.domainPolicyVersion !== policyVersion || options.sourceAccess() !== 'allowed') return turn.state;
+      // Facts carry the presenting request ID (not the presentation's turn ID): exactly what the
+      // rendered acknowledgement may echo. Never re-run at answer time.
+      if (domain.rejectsCoPresentedFacts({ targetId: context.topicId,
+        facts: weeklyPlanningStableV5AcceptedFactsForTurn(turn.graph, turn.pending.requestId) }) !== false) return turn.state;
       const old = turn.state.c5SelectionLedger;
       const ledger = old === undefined ? { version: 1 as const, ownerId: turn.ownerId, conversationId: turn.conversationId, lastEpoch: 0, consumed: [] }
         : decodeC5Ledger(old, turn.ownerId, turn.conversationId);

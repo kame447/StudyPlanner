@@ -1,6 +1,6 @@
 import type { ControlledCandidateSemanticContribution } from './weeklyPlanningControlledCandidateDomains';
 import { canonicalCandidateSerialization } from './candidateSelection/canonical';
-import { validateWeeklyPlanningSemanticValueV5 } from '../semantic/weeklyPlanningSemanticValidatorV5';
+import { validateWeeklyPlanningSemanticValueWithAvailabilityCorrectionsV5 } from '../semantic/weeklyPlanningAvailabilityCorrectionCompatibilityV5';
 import { resolveWeeklyPlanningQuestionPresentationFreshness } from '../intake/weeklyPlanningQuestionPresentation';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 import { validateWeeklyPlanningFactGraphValueV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
@@ -26,7 +26,8 @@ export async function continueWeeklyPlanningSelectedCandidateTurn(
   const graph = structuredClone(selectedGraph);
   if (!validateWeeklyPlanningFactGraphValueV5(graph).graph) throw new Error('Invalid selected candidate graph.');
   if (semanticContribution && (semanticContribution.canonicalization.status !== 'applied'
-    || !validateWeeklyPlanningSemanticValueV5(semanticContribution.document).document
+    // Same availability-correction compatibility as the response validator (date-domain replacements).
+    || !validateWeeklyPlanningSemanticValueWithAvailabilityCorrectionsV5(semanticContribution.document).document
     || canonicalCandidateSerialization(semanticContribution.canonicalization.graph) !== canonicalCandidateSerialization(graph)))
     throw new Error('Invalid formal candidate contribution.');
   const runtimeSession = getOrCreateWeeklyPlanningStableV5RuntimeSession({ ownerId: input.userId, conversationId: input.conversationId });

@@ -1,7 +1,7 @@
 import { expect, test } from './support/fixed-clock.mjs';
 
-async function seedBookshelf(page) {
-  await page.addInitScript(() => {
+async function seedBookshelf(page, longTextFixture = null) {
+  await page.addInitScript(longTextFixture => {
     if (localStorage.getItem('bookshelf-surface-seeded')) return;
     localStorage.setItem('bookshelf-surface-seeded', 'true');
     const today = new Date().toLocaleDateString('sv-SE');
@@ -119,7 +119,31 @@ async function seedBookshelf(page) {
         ],
       }),
     );
-  });
+    // Complete this opt-in fixture before the app's first real legacy migration.
+    // Keep reloads read-only: the existing seeded guard preserves user edits.
+    if (longTextFixture) {
+      const { name, subject, activity } = longTextFixture;
+      const materials = JSON.parse(localStorage.getItem('studyplanner.studyMaterials.v1'));
+      Object.assign(materials[0], { name, subjectName: subject });
+      localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify(materials));
+      const subjects = JSON.parse(localStorage.getItem('studyplanner.studySubjects.v1'));
+      subjects[0].name = subject;
+      localStorage.setItem('studyplanner.studySubjects.v1', JSON.stringify(subjects));
+      const plans = JSON.parse(localStorage.getItem('studyplanner.plans'));
+      Object.assign(plans[0], { title: activity, subject, materialName: name });
+      localStorage.setItem('studyplanner.plans', JSON.stringify(plans));
+      const actuals = JSON.parse(localStorage.getItem('studyplanner.actuals'));
+      Object.assign(actuals[0], { note: activity, materialName: name });
+      delete actuals[0].materialProgressUpdates;
+      localStorage.setItem('studyplanner.actuals', JSON.stringify(actuals));
+      const key = 'studyplanner:material-detail:v1:bookshelf-e2e-user:bookshelf-e2e-material';
+      const preferences = JSON.parse(localStorage.getItem(key));
+      preferences.structureItems = Array.from({ length: 24 }, (_, index) => ({ id: `long-${index}`, title: `${name}${index + 1}`, startUnit: index * 8, endUnit: (index + 1) * 8 }));
+      localStorage.setItem(key, JSON.stringify(preferences));
+      localStorage.setItem('study-planner-appearance', 'pixel');
+      localStorage.setItem('study-planner-theme-mode', 'light');
+    }
+  }, longTextFixture);
 }
 
 async function openBookshelf(page) {
@@ -631,39 +655,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 108
           ? 'keeps full detail text and cancels unsaved chapter edits'
           : 'saves the last chapter and preserves it after full reload';
         test(`${purpose} at ${percent}%`, async ({ page }, testInfo) => {
-          await seedBookshelf(page);
-          await openBookshelf(page);
-          // Mutate only this already-seeded fixture, avoiding init-script ordering assumptions.
-          await page.evaluate(({ name, subject, activity }) => {
-            const materials = JSON.parse(localStorage.getItem('studyplanner.studyMaterials.v1'));
-            Object.assign(materials[0], { name, subjectName: subject });
-            localStorage.setItem('studyplanner.studyMaterials.v1', JSON.stringify(materials));
-            const subjects = JSON.parse(localStorage.getItem('studyplanner.studySubjects.v1'));
-            subjects[0].name = subject;
-            localStorage.setItem('studyplanner.studySubjects.v1', JSON.stringify(subjects));
-            const plans = JSON.parse(localStorage.getItem('studyplanner.plans'));
-            Object.assign(plans[0], { title: activity, subject, materialName: name });
-            localStorage.setItem('studyplanner.plans', JSON.stringify(plans));
-            // First entry has already migrated plans. Update the same owned
-            // canonical record rather than leaving its displayed title unchanged.
-            const events = JSON.parse(localStorage.getItem('studyplanner.scheduleEvents.v1'));
-            const event = events.find(row => row.userId === plans[0].userId
-              && row.provenance?.legacy.kind === 'plan' && row.provenance.legacy.id === plans[0].id);
-            if (!event?.plan) throw new Error('Expected the seeded material plan to be migrated');
-            Object.assign(event, { title: activity });
-            Object.assign(event.plan, { subject, materialName: name });
-            localStorage.setItem('studyplanner.scheduleEvents.v1', JSON.stringify(events));
-            const actuals = JSON.parse(localStorage.getItem('studyplanner.actuals'));
-            Object.assign(actuals[0], { note: activity, materialName: name });
-            delete actuals[0].materialProgressUpdates;
-            localStorage.setItem('studyplanner.actuals', JSON.stringify(actuals));
-            const key = 'studyplanner:material-detail:v1:bookshelf-e2e-user:bookshelf-e2e-material';
-            const preferences = JSON.parse(localStorage.getItem(key));
-            preferences.structureItems = Array.from({ length: 24 }, (_, index) => ({ id: `long-${index}`, title: `${name}${index + 1}`, startUnit: index * 8, endUnit: (index + 1) * 8 }));
-            localStorage.setItem(key, JSON.stringify(preferences));
-            localStorage.setItem('study-planner-appearance', 'pixel');
-            localStorage.setItem('study-planner-theme-mode', 'light');
-          }, { name: longMaterialName, subject: longMaterialSubject, activity: longMaterialActivity });
+          await seedBookshelf(page, {
+            name: longMaterialName, subject: longMaterialSubject, activity: longMaterialActivity,
+          });
           await openBookshelf(page);
           await page.locator('.bookshelf-featured-card').filter({ hasText: longMaterialName }).click();
           const detail = page.locator('.bookshelf-detail-page');
@@ -752,3 +746,62 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 108
     }
   });
 }
+test('contents save rejection retains edited input and persists a successful retry', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedBookshelf(page); await openBookshelf(page);
+  const key = 'studyplanner:material-detail:v1:bookshelf-e2e-user:bookshelf-e2e-material';
+  const openEditor = async () => {
+    await page.getByText('アルゴリズム問題集', { exact: true }).first().click();
+    await page.getByRole('button', { name: '教材メニューを開く' }).click();
+    await page.getByRole('button', { name: '目次を編集', exact: true }).click();
+  };
+  await openEditor();
+  const editor = page.locator('.bookshelf-structure-editor');
+  const firstTitle = editor.getByLabel('章・節の名前 1', { exact: true });
+  const secondTitle = editor.getByLabel('章・節の名前 2', { exact: true });
+  const before = await page.evaluate(key => localStorage.getItem(key), key);
+  expect(before).not.toBeNull();
+  const expected = JSON.parse(before);
+  expected.structureItems[0].title = '保存を再試行する基礎編';
+  await firstTitle.fill(expected.structureItems[0].title);
+
+  // Fail only this real browser write. Other storage keys and reads stay live.
+  // A failed assertion disposes this test's page/context and its prototype patch.
+  await page.evaluate(key => {
+    const original = Storage.prototype.setItem;
+    window.__contentsSaveFailure = {
+      attempts: 0,
+      restore: () => { Storage.prototype.setItem = original; },
+    };
+    Storage.prototype.setItem = function (name, value) {
+      if (this === localStorage && name === key) {
+        window.__contentsSaveFailure.attempts += 1;
+        throw new DOMException('Fixture contents write rejected', 'QuotaExceededError');
+      }
+      return original.call(this, name, value);
+    };
+  }, key);
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(editor).toBeVisible();
+  await expect(editor.getByRole('alert')).toHaveText('目次を保存できませんでした。入力内容は残っています。もう一度保存してください。');
+  await expect(firstTitle).toHaveValue(expected.structureItems[0].title);
+  await expect(secondTitle).toHaveValue(expected.structureItems[1].title);
+  expect(await page.evaluate(() => window.__contentsSaveFailure.attempts)).toBe(1);
+  expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(before);
+  await page.screenshot({ path: testInfo.outputPath('material-contents-save-rejected.png'), animations: 'disabled', scale: 'css' });
+
+  // Restore the actual Storage API before retry; do not simulate success.
+  await page.evaluate(() => {
+    window.__contentsSaveFailure.restore();
+    delete window.__contentsSaveFailure;
+  });
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(editor).toBeHidden();
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key)).toEqual(expected);
+  await expect(page.getByText(expected.structureItems[0].title, { exact: true })).toBeVisible();
+  await openBookshelf(page); await openEditor();
+  await expect(firstTitle).toHaveValue(expected.structureItems[0].title);
+  await expect(secondTitle).toHaveValue(expected.structureItems[1].title);
+  await expect(editor.getByRole('alert')).toHaveCount(0);
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key)).toEqual(expected);
+});

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import ts from 'typescript';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from './support/startup-ready.mjs';
@@ -7,7 +8,7 @@ import { clickPrimaryNav, seedRegressionUser } from './support/ui-regression.mjs
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(configDir, '../..');
 const srcRoot = path.join(repoRoot, 'src');
-const WEEKLY_HARNESS_URL = 'http://127.0.0.1:4174/?weekly=1';
+const REAL_WEEKLY_URL = 'http://127.0.0.1:4174/real-weekly.html?gate=real-weekly';
 const AUTH_HARNESS_URL = 'http://127.0.0.1:4174/?scenario=auth';
 const TEXT_CONTROL_SELECTOR = [
   'textarea',
@@ -77,7 +78,7 @@ async function expectVisibleTextControlsAtLeast16px(page, rootSelector = 'body')
 }
 
 async function releaseWeeklyGate(page) {
-  const released = await page.evaluate(() => window.__quickEntryHarness.release('weekly'));
+  const released = await page.evaluate(() => window.__realWeeklyRuntime.release());
   expect(released).toBe(true);
 }
 
@@ -160,6 +161,20 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
     ['src/hooks/useStudyStreakNavigation.ts', new Set([
       'if (origin.current.element?.isConnected) origin.current.element.focus({ preventScroll: true });',
     ])],
+    // A keyboard promotion disables the focused promote button; focus moves to the
+    // preview dialog sheet itself (not Save, not a text control). The weekly preview
+    // browser case asserts the dialog keeps focus and further Enter/Space are inert.
+    ['src/components/AiPlanningPreviewDialog.tsx', new Set([
+      'dialogRef.current?.focus({ preventScroll: true });',
+    ])],
+    // The user-opened schedule action ring focuses only its own menuitem buttons
+    // (first enabled on open, Arrow/Tab cycling) and returns focus to the calendar
+    // event that opened it. None of these targets is a text control.
+    ['src/components/ScheduleItemRadialMenu.tsx', new Set([
+      'if (!action.gesture) buttons.current[firstEnabled < 0 ? 0 : firstEnabled]?.focus({ preventScroll: true });',
+      'buttons.current[next]?.focus({ preventScroll: true });',
+      'if (action.anchorElement?.isConnected) action.anchorElement.focus({ preventScroll: true });',
+    ])],
   ]);
   const hasUnexpectedFocus = (fileName, line) => line.includes('.focus(')
     && !allowedFocusFiles.has(fileName) && !allowedFocusStatements.get(fileName)?.has(line.trim());
@@ -183,6 +198,47 @@ test('production source has no input auto-focus escape hatch or viewport zoom lo
   const materialDialogSource = fs.readFileSync(path.join(repoRoot, materialDialogFile), 'utf8');
   expect(materialDialogSource).toMatch(/<summary\b[^>]*\bref=\{catalogSummaryRef\}/);
   expect(materialDialogSource.match(/\bref=\{catalogSummaryRef\}/g)).toHaveLength(1);
+
+  // The preview exception permits only the dialog sheet, never its inputs or Save.
+  const previewDialogFile = 'src/components/AiPlanningPreviewDialog.tsx';
+  for (const statement of [
+    'dialogRef.current?.focus();',
+    'saveRef.current?.focus({ preventScroll: true });',
+    'inputRef.current?.focus({ preventScroll: true });',
+  ]) expect(hasUnexpectedFocus(previewDialogFile, statement)).toBe(true);
+  const previewDialogSource = fs.readFileSync(path.join(repoRoot, previewDialogFile), 'utf8');
+  expect(previewDialogSource.match(/\bref=\{dialogRef\}/g)).toHaveLength(1);
+  expect(previewDialogSource).toMatch(/ref=\{dialogRef\}\s+tabIndex=\{-1\}[\s\S]{0,200}role="dialog"/);
+
+  // The radial menu exception permits only its menuitem buttons and the event origin.
+  const radialMenuFile = 'src/components/ScheduleItemRadialMenu.tsx';
+  for (const statement of [
+    'inputRef.current?.focus({ preventScroll: true });',
+    'action.anchorElement.focus({ preventScroll: true });',
+    'buttons.current[next]?.focus();',
+    'buttons.current[firstEnabled < 0 ? 0 : firstEnabled]?.focus({ preventScroll: true });',
+  ]) expect(hasUnexpectedFocus(radialMenuFile, statement)).toBe(true);
+  const radialMenuSource = fs.readFileSync(path.join(repoRoot, radialMenuFile), 'utf8');
+  expect(radialMenuSource.match(/buttons\.current\[index\] = element/g)).toHaveLength(1);
+  // Bind the focus ref to its actual JSX element, independent of unrelated
+  // attributes between ref and role. A character limit rejects valid additions.
+  const radialTree = ts.createSourceFile(radialMenuFile, radialMenuSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  expect(radialTree.parseDiagnostics).toEqual([]);
+  const radialFocusTargets = [];
+  function inspectRadialFocus(node) {
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const attrs = node.attributes.properties.filter(ts.isJsxAttribute);
+      const ref = attrs.find(attr => attr.name.getText(radialTree) === 'ref');
+      if (ref?.initializer?.getText(radialTree) === '{element => { buttons.current[index] = element; }}') {
+        const role = attrs.find(attr => attr.name.getText(radialTree) === 'role');
+        radialFocusTargets.push({ tag: node.tagName.getText(radialTree), role: role?.initializer?.getText(radialTree) });
+      }
+    }
+    ts.forEachChild(node, inspectRadialFocus);
+  }
+  inspectRadialFocus(radialTree);
+  expect(radialFocusTargets).toEqual([{ tag: 'button', role: '"menuitem"' }]);
+  expect(radialMenuSource).not.toMatch(/<(input|textarea)\b/);
 
   // Delivery failure focuses only its explicit, non-input Back button.
   // Keep the exception tied to that unique button ref, not an entire file.
@@ -290,20 +346,24 @@ test.describe('mobile browser input focus policy', () => {
   });
 
   test('weekly cancellation leaves the composer unfocused while preserving direct user focus', async ({ page }) => {
-    await page.goto(`${WEEKLY_HARNESS_URL}&gate=weekly`);
-    let input = page.getByLabel('週間計画にしたいこと');
+    await page.goto(REAL_WEEKLY_URL);
+    let input = page.locator('.ai-planning-composer textarea');
     await expect(input).toBeVisible();
     await expect(input).not.toBeFocused();
     await expectVisibleTextControlsAtLeast16px(page);
 
     await input.fill('来週の予定');
-    await input.press('Control+Enter');
+    await page.getByRole('button', { name: '送信', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.__realWeeklyRuntime.pending())).toBe(1);
     await page.getByRole('button', { name: '処理をキャンセル' }).click();
     await releaseWeeklyGate(page);
-    await expect.poll(() => page.evaluate(() => window.__quickEntryEvents.filter((event) => event.type === 'ignore-weekly-turn').length)).toBe(1);
+    await expect.poll(() => page.evaluate(() => window.__realWeeklyEvents.filter((event) => event.type === 'real-runtime-complete').length)).toBe(1);
+    await expect(page.locator('.ai-planning-conversation').getByText('テスト応答: 来週の予定', { exact: true })).toHaveCount(0);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
 
-    input = page.getByLabel('週間計画にしたいこと');
+    input = page.locator('.ai-planning-composer textarea');
     await expect(input).toBeVisible();
+    await expect(input).toBeEnabled();
     await expect(input).not.toBeFocused();
     await input.click();
     await expect(input).toBeFocused();

@@ -21,6 +21,16 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Existing linked-Actual write read](work/actual-existing-write-read-handoff.md) — Issue #542; reuse save-attempt existence evidence while retaining transaction rereads and fail-closed deletion handling.
+
+- [Non-spatial data motion geometry](work/nonspatial-data-motion-layout-handoff.md) — skip unused rectangle measurements while preserving motion baselines and reduced feedback.
+
+- [Initial consent legal-page navigation](work/initial-consent-public-navigation-handoff.md) — preserve confirmation state when reading terms or privacy within the existing public-page owner.
+
+- [Material structure save failure](work/material-structure-save-failure-handoff.md) — retain table-of-contents edits and show a retryable error when local storage rejects a save.
+
+- [Owner-return startup history confirmation](work/owner-history-read-confirmation-handoff.md) — Issue #542; reconfirm a returning schedule owner while preserving pending migration sharing and complete-history authority.
+
 - [Desktop ordinary-timer intrinsic face](work/desktop-timer-intrinsic-face-handoff.md) — enlarged clock and remaining-badge containment; latest-main motion integration awaits bounded native acceptance.
 - [Material long-text containment](work/material-long-text-containment-handoff.md) — local wrapping candidate and wide/short-window acceptance definitions; native rendering pending.
 
@@ -34,7 +44,7 @@ Execution tracking:
 
 - [Announcement module failure recovery](work/announcement-load-recovery-handoff.md) — Issue #542; preserve Home, owner-qualified history and bell focus when optional announcement delivery fails.
 
-- [UI request acceptance gaps](work/ui-request-acceptance-handoff.md): No14 same-record subject editing through Day and No10 inner-disc percentage containment; test-only local work, native browser acceptance pending.
+- [UI request acceptance status](work/ui-request-acceptance-handoff.md): No10 percentage containment and No14 same-record subject editing shipped in PR #729; PR #754 rechecked No14. Scoped native evidence, historical checkpoints and remaining device/geometry limits are recorded separately.
 
 - [Bookshelf module failure recovery](work/bookshelf-load-recovery-handoff.md) — Issue #542; retain Home navigation and app/session owners when optional Materials delivery fails.
 
@@ -46,12 +56,16 @@ Execution tracking:
 
 - [Targeted Actual save preparation](work/actual-save-targeted-read-handoff.md) — Issue #542; exact runtime/unit recovery, reconstructed real-SDK regression evidence and combined integration gates.
 
+- [Explicit streak retry confirmation](work/streak-retry-confirmation-handoff.md) — consume a successful forced confirmation per request while preserving normal owner/history validation.
+
 - [Overlapping streak history confirmation](work/streak-inflight-history-handoff.md) — Issue #542; identical unsettled read sharing with preserved mutation/refresh boundaries and controlled SDK-call counts.
 - [Same-document administrator entry](work/admin-entry-navigation-handoff.md) — Issue #542; avoid the My Page entry reload while preserving the existing unsaved-chat leave warning and owner/access boundaries.
 
 - [Month view startup loading](work/month-startup-loading-handoff.md) — Issue #542; defer month code while retaining navigation and add requests during delivery.
 
 - [Contact page startup loading](work/contact-startup-loading-handoff.md) — Issue #542; optional contact form/photo code leaves the initial module graph while return navigation stays synchronous; local measurement and native acceptance are separate.
+
+- [Streak automatic-write retirement](work/streak-commit-retirement-handoff.md) — stop retired hook continuations and transaction callback retries at the committed owner boundary.
 
 - [Study streak preload after Home](work/streak-after-home-preload-handoff.md) — Issue #483; optional detail-module warming behind the existing readiness boundary.
 

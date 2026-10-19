@@ -15,12 +15,20 @@ export function useStudyStreak(userId: string, today: string, repository: StudyS
   const [state, setState] = useState<HistoryState>(() => ({ userId, repository, hint,
     history: repository.peek?.(userId, hint) ?? null, refreshing: true, readError: null }));
   const [request, setRequest] = useState({ revision: 0, force: false });
+  const confirmedRetry = useRef<typeof request | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const lifetime = useRef(0);
+  const pendingController = useRef<AbortController | null>(null);
   const busy = useRef(false);
   const committed = useRef({ userId, today, repository, hint, active });
   useLayoutEffect(() => { committed.current = { userId, today, repository, hint, active }; });
+  // Revoke automatic writes at commit, before a pending read/transaction can
+  // resume in the gap before passive cleanup. Reads still start passively.
+  useLayoutEffect(() => () => {
+    lifetime.current += 1;
+    pendingController.current?.abort();
+  }, [userId, today, repository, hint?.plans, hint?.actuals, hint?.monthEvents, request, active]);
   const matches = (previous: HistoryState) => previous.userId === userId && previous.repository === repository
     && previous.hint?.plans === hint?.plans && previous.hint?.actuals === hint?.actuals && previous.hint?.monthEvents === hint?.monthEvents;
   const matchesInput = matches(state);
@@ -36,6 +44,7 @@ export function useStudyStreak(userId: string, today: string, repository: StudyS
       return;
     }
     const controller = new AbortController();
+    pendingController.current = controller;
     busy.current = true;
     const current = () => committed.current.active && epoch === lifetime.current && !controller.signal.aborted
       && committed.current.userId === userId && committed.current.repository === repository
@@ -49,9 +58,12 @@ export function useStudyStreak(userId: string, today: string, repository: StudyS
     void (async () => {
       let accepted: StudyStreakHistory;
       try {
-        accepted = await repository.read(userId, { hint, today, refresh: request.force });
+        accepted = await repository.read(userId, { hint, today, refresh: request.force && confirmedRetry.current !== request });
         if (!current()) return;
         if (accepted.userId !== userId || !accepted.historyComplete || !Array.isArray(accepted.monthEvents)) throw new Error('学習履歴を確認できませんでした。');
+        // A successful explicit confirmation satisfies this retry only. Later
+        // input changes use normal owner/day/generation validation again.
+        if (request.force) confirmedRetry.current = request;
         setState({ userId, repository, hint, history: accepted, refreshing: true, readError: null });
       } catch (error) {
         if (current()) setState(previous => ({ ...previous, refreshing: false,
@@ -84,7 +96,12 @@ export function useStudyStreak(userId: string, today: string, repository: StudyS
         }
       }
     })().finally(() => { if (epoch === lifetime.current) busy.current = false; });
-    return () => { controller.abort(); lifetime.current += 1; busy.current = false; };
+    return () => {
+      controller.abort();
+      if (pendingController.current === controller) pendingController.current = null;
+      lifetime.current += 1;
+      busy.current = false;
+    };
   }, [userId, today, repository, hint?.plans, hint?.actuals, hint?.monthEvents, request, active]);
 
   useEffect(() => {

@@ -196,6 +196,23 @@ Verified recovery: initial job `112958816536` was canceled during Chromium insta
 
 Permissions/preconditions: the existing repository CI action must be authorized, and the logs must establish a pre-test installation stall. Do not apply this classification to an assertion failure, timeout inside the tested behavior, flaky test result or unknown error. Do not change browser/test/quality guards to manufacture success. No temporary workflow or repository file was introduced, so no cleanup was needed.
 
+### Prebuilt cross-browser setup instead of repeated apt installation
+
+Setup verified on 2026-10-10 in [PR #575](https://github.com/kame447/StudyPlanner/pull/575), head `ba7b3dd7c6433b971a2344ef112bea4ad9fdb420`, [Matrix run 38070641994](https://github.com/kame447/StudyPlanner/actions/runs/38070641994). The cross-browser jobs use the [official Playwright container](https://playwright.dev/docs/ci#via-containers), `mcr.microsoft.com/playwright:v1.64.0-noble`, with non-root UID 1001. The isolated `@playwright/test` install remains necessary and must match the image version. Remove the redundant browser/OS-dependency installation only in jobs that actually use this image; the unchanged visual job still needs its own Chromium installation.
+
+The earlier [mobile job 113959448876](https://github.com/kame447/StudyPlanner/actions/runs/37971528653/job/113959448876) spent 16m52s downloading 116 MB of apt archives; the entire browser/OS-install step took about 17m41s. It eventually started tests, then exhausted the 25-minute job budget partway through. The network/mirror cause remains unknown. In the new mobile job `114267156178`, container initialization took 27s and job start to test start took 58s, including checkout, Node/npm, application dependencies, runner installation and build. This is a historical comparison across different commits/runners, not an identical-source benchmark or a promise of fixed future latency.
+
+All four new containers reached their real browser tests; the Chromium job completed 68 tests with one pre-existing conditional skip and successfully uploaded artifacts and saved the npm cache. Setup success alone is not full acceptance: require the final four project results, aggregate gate, visual and applicable CI results recorded in PR #575. Preserve test selection, assertions, retries, timeouts and failure propagation. New hosted jobs still download/start fresh containers; this is not a persistent shared test machine. No new secret, elevated workflow permission, custom cache service or temporary cleanup workflow is required. Update image and runner pins together and revalidate when upgrading.
+
+
+### PR #575 integration after mobile sharding (2026-10-18; local candidate)
+
+- The active work remains [PR #575](https://github.com/kame447/StudyPlanner/pull/575), branch `ci/prebaked-playwright-matrix`. Its original head `3461cc10` is being normally merged with main `a0648817`; this is the same container-setup task, not a replacement PR. The historical four-leg result above is not acceptance of this newer composition.
+- Restore only the original official `mcr.microsoft.com/playwright:v1.64.0-noble` container, numeric user 1001 and removal of the cross-browser browser/OS install step. Keep the isolated `@playwright/test@1.64.0` installation and manifest checks; the image supplies browsers/system libraries, not the project's test package. Keep the image and runner versions aligned when updating either.
+- Preserve main's 35-minute project budget, three unsharded desktop projects plus two WebKit mobile shards from #760, exact single-spec unsharded dispatch, shard listing preflight, artifact names, permissions, concurrency and fail-closed aggregate. The independent visual job still installs Chromium on its original host.
+- Local verification is limited to related workflow/shard contracts, duplicate-key-rejecting YAML structure, unchanged-main boundary and shell syntax. Current five-leg container startup, non-root checkout/cache/build/artifact permissions and browser execution require fresh authorized CI. No new container capability, host IPC, secret or permission is added. This local candidate is not a measured speed improvement or a fix for timeouts inside test actions.
+- Next: independently review the exact diff; only after publication approval, update the existing PR with a normal merge commit and inspect its actual synthetic checkout, all five cross-browser legs, visual job and aggregate. Keep failed/cancelled prerequisites distinct from application failures and do not replace missing current execution with the historical results.
+
 ## CI follows content changes rather than Ready-for-review metadata
 
 - Observed: PR #672 ran [CI 38687785373](https://github.com/kame447/StudyPlanner/actions/runs/38687785373) and, after becoming Ready, [CI 38691256016](https://github.com/kame447/StudyPlanner/actions/runs/38691256016). Both checked out merge `62fec2de835a14fc3e49f280ed6d313a9d12e7a4` and passed 9,030 tests. Draft PRs already run the same full `verify` job on content events; Ready does not enable extra tests or permissions.
@@ -348,13 +365,13 @@ Publication and execution still require the applicable repository authorization.
 
 ## UI Regression Matrix webkit-mobile job cancelled at its 35-minute limit
 
-- Operation / symptom: `cross-browser-projects (webkit-mobile)` ends `cancelled` after about 35 minutes and the `cross-browser-smoke` aggregate turns red.
-- Known error signature: job duration ≈35.4 min (`timeout-minutes: 35` in `.github/workflows/ui-regression.yml`), `##[error]The operation was canceled.`, no failed test in the executed part (e.g. PR #717 run 39057646772 at `c2865da6`: 345 passed, 0 failed when cancelled).
-- Root cause or strongest current explanation: WebKit mobile emulation is slower than the job limit on current runners; main itself is cancelled the same way (`56a8e522` on 2026-10-16; `a39defd8`, `8261300b`, `332cdaa1`, `e6a18d0d` on 2026-10-17). It is pre-existing and not caused by the PR under review.
-- Safe workaround: confirm zero failed tests in the log and compare with main's latest run of the same job; record both run IDs in the PR. For a specific spec, use the targeted WebKit dispatch described above.
-- Required permissions / preconditions: none to read logs; rerun permission for an optional rerun.
-- What not to do: do not report the job as passed; do not raise the 35-minute limit or remove WebKit coverage to make the aggregate green.
-- Verification / cleanup: PR evidence lists the cancelled job, its executed/failed counts and main's matching cancelled run.
+- Operation / symptom: a `cross-browser-projects (webkit-mobile) (shard N/2)` job ends `cancelled` after about 35 minutes and the `cross-browser-smoke` aggregate turns red.
+- Known error signature: shard duration ≈35 min (`timeout-minutes: 35` in `.github/workflows/ui-regression.yml`), `##[error]The operation was canceled.`, and the shard log's total is never reached.
+- Root cause or strongest current explanation: runner slowness against the job limit. Before [Issue #759](https://github.com/kame447/StudyPlanner/issues/759), the whole WebKit mobile suite ran in one job: PR #743 run 39078814033 at `f87c17ab` and PR #755 run 39078828235 at `4e2f53d8` both stopped after 343 of 448 tests with 0 failures, leaving about 100 tests unexecuted. #759 splits only the full WebKit mobile leg into two Playwright shards with unchanged limits, workers, retries and coverage; the shared wrapper preflight rejects an empty shard listing because Playwright 1.64 otherwise passes it. The other three projects and manual single-spec WebKit dispatch remain unsharded.
+- Safe workaround: a cancelled shard is missing evidence, not a pass. “0 failed before cancellation” says nothing about tests it never reached. Rerun that shard job once on the same commit; merge only after both mobile shards and every other project complete successfully. For a specific spec, the targeted WebKit dispatch above provides diagnostic evidence without replacing the full gate.
+- Required permissions / preconditions: none to read logs; permission to rerun workflow jobs.
+- What not to do: do not merge on a cancelled shard, substitute main's cancellation or a targeted pass for full coverage, rerun repeatedly without new evidence (repeat-action guard), raise the 35-minute limit, drop tests or add `--pass-with-no-tests`. Distinguish a timeout from replacement by a newer run in the same concurrency group.
+- Verification / cleanup: require every project leg and both nonempty mobile shards to pass, with the two shard listing totals summing to the full `--list --project=webkit-mobile` total. If the same commit times out again, stop and investigate shard balance or runner setup instead of treating the partial run as success.
 - Last verified: 2026-10-18
 
 ## bundle-budget fails on main and on every PR (repository-wide overrun)

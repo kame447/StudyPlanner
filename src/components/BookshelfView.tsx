@@ -378,8 +378,11 @@ export function BookshelfView({
     materialId: string,
     nextPreferences: MaterialDetailPreferences,
   ) {
-    saveMaterialDetailPreferences(userId, materialId, nextPreferences);
+    if (!saveMaterialDetailPreferences(userId, materialId, nextPreferences)) {
+      return false;
+    }
     setPreferenceRevision((current) => current + 1);
+    return true;
   }
 
   function setSubjectExpanded(subjectId: string, expanded: boolean) {
@@ -463,10 +466,14 @@ export function BookshelfView({
       setStructureError('章・節の名前を入力するか、不要な項目を削除してください。');
       return;
     }
-    persistPreferences(
+    const saved = persistPreferences(
       structureEditorMaterial.id,
       prepareBookshelfStructurePreferences(structureDraft),
     );
+    if (!saved) {
+      setStructureError('目次を保存できませんでした。入力内容は残っています。もう一度保存してください。');
+      return;
+    }
     setStructureEditorMaterialId(null);
     setStructureDraft(null);
   }
