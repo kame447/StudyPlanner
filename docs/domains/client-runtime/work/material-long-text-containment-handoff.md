@@ -1,5 +1,172 @@
 # Material long-text containment and desktop reachability
 
+## Next diagnostic preparation — 2026-10-19
+
+Status: isolated capture comparison authorized on 2026-10-19; implementation
+continues on `test/wpe-recording-diagnostic-local`, based on main
+`527adbd96074c40a9d18c2fb5b0954939f3b63e7` (tree `e5ecab2e`). The previous
+reviewed config checkpoint is `e7a0021f`. Publication and one manual diagnostic
+block are authorized; main changes, merge, additional blocks and production
+changes are outside this scope. The original specs, observers and ordinary
+regression commands remain unchanged. Issue #776 remains the investigation
+owner; #741 and #797 being merged does not prove a latency repair.
+
+The latest accepted #797 source ran the four original month cases successfully.
+Its mobile 1280px case took 15.571s; an earlier instrumented source took 29.886s.
+These are different runs and application inputs, not an A/B improvement. In the
+separate material shard on tested source `3e7b6024`, both Cancel200 attempts
+failed later in the original contract. Their observed Cancel trials did finish:
+stable checks 5530.695/5465.537ms, native second-frame gaps 3809/3788ms, sampled
+cgroup CPU about 3.91/3.92 cores. Sparse post-focus rectangles agreed. Node loop
+maxima 26.116/22.987ms and zero recorded memory-pressure/throttle deltas do not
+explain those multi-second intervals; they also do not identify rendering versus
+application JavaScript versus recording. Three early timers cover only 304/306ms.
+
+### Candidate comparison
+
+1. Large-area compositing remains plausible, but the DOM does not identify one
+   shared CSS culprit. Month sheets/editors use fixed full-screen overlays with
+   backdrop blur, including a body portal for the editor. The ordinary material
+   structure editor uses a solid modal overlay/card; pixel appearance adds page
+   gradients and layered card frames. Removing several effects would conflate
+   variables and change rendering. The completed footer-filter ABBA already
+   retained roughly 4.0–4.4s stable waits and exposed first-open warmup. It did not
+   establish filter causality and must not be repeated as the next experiment.
+2. Application JavaScript/render work is possible. The observed Cancel trial is
+   before its state-changing click, and inspected projections are memoized; no
+   continuous application render loop has been demonstrated. Process CPU is not
+   a JS profile, and early timers cannot exclude later long or repeated tasks.
+   Chromium CDP profiling does not profile this WPE target. Long-task observer
+   capability has not been established on the exact WPE runtime.
+3. Continuous browser capture is the smallest reversible independent diagnostic
+   treatment. Pinned Playwright 1.64 records video and trace images during passing
+   attempts too; retention happens afterward. Both consumers share one Screencast
+   stream, so video-off alone leaves capture active and is an insufficient test
+   of screenshot-readback cost. The next comparison switches demand for that
+   stream off, without changing the page's visual production inputs.
+
+### One factor, two capture consumers
+
+`playwright.wpe-capture-diagnostic.config.mjs` selects only the existing
+`webkit-mobile` 1920×1080, 200% detail/Cancel case. It does not copy or shorten the
+scenario. The original full focus/trial, Cancel, live-state, full reload, geometry
+and explicit PNG assertions still run under the same 30s deadline and retry 1.
+DPR 3, browser binary, native clock, locale, reduced motion and source stay fixed.
+
+Run exactly one counterbalanced block, in this order:
+
+| Slot | Video demand | Trace continuous images |
+| --- | --- | --- |
+| capture-on-1 | retain-on-failure | true |
+| capture-off-2 | off | false |
+| capture-off-3 | off | false |
+| capture-on-4 | retain-on-failure | true |
+
+The causal factor is **continuous browser screenshot capture**. Two fields must
+change because two consumers keep the same stream alive. This is not a pure
+FFmpeg experiment and cannot distinguish readback, encoding, compositor or their
+interaction with page rendering. In BOTH diagnostic arms, trace mode is `on`
+with DOM snapshots and source capture retained. That common retention choice
+allows successful treatment runs to be audited; it is not the ordinary release
+trace-retention policy. Trace/observer overhead remains and may alter scheduling.
+Explicit application screenshots remain enabled in both arms. No launch flags,
+alternate binary, timeout extension, force click or browser-socket workaround is
+part of this preparation.
+
+After a single build of the frozen input, the intended command for each listed
+slot is the same, with only the slot value changed:
+
+```sh
+CI=1 LAPLANS_CAPTURE_DIAGNOSTIC_SLOT=capture-on-1 \
+  node tests/e2e/node_modules/@playwright/test/cli.js test \
+  --config=tests/e2e/playwright.wpe-capture-diagnostic.config.mjs \
+  --project=webkit-mobile
+```
+
+Use the same native Linux WPE container/host and one worker, sequentially with
+fresh processes/contexts for every slot. Preserve each nonzero exit and both
+attempts; a failed first command must not silently omit the remaining planned
+arms. Do not rerun a slot to get a preferred outcome. Separate artifact paths
+prevent later arms from overwriting prior results. A single block is bounded
+diagnostic evidence, not a statistical reliability or speedup claim.
+
+### Required readback and stopping rule
+
+- Bind source tree, original spec/helper/config hashes, production build and
+  installed runner/WebKit identity before interpreting comparisons. Missing or
+  changed inputs invalidate equivalence.
+- Confirm the executed configuration and trace context: treatment has no
+  recordVideo, video artifact or screencast-frame records; control has capture
+  demand and actual frame records. Action logs, DOM snapshots and original
+  explicit PNGs must remain. Missing trace is unknown, not proof of no capture.
+- Compare first attempts separately from retries: native frame gaps, ordinary
+  trial/stable intervals, WPE ticks, cgroup deltas, Node delay, sampled rectangles,
+  and the full original behavioral outcome. Keep failed/missing endpoints.
+- Concordant shorter frame and stable waits in both treatment slots, with
+  preserved outcomes and reproduced slow controls, would support capture-path
+  cost. A shorter whole-case duration alone is insufficient. Slow treatments
+  despite confirmed capture absence disconfirm capture as the dominant cause.
+- If controls do not reproduce, inputs drift, counters/frames are missing or
+  treatment changes behavior, stop as inconclusive. Do not proceed to a broader
+  CSS change or a new experiment automatically. Positive evidence would justify
+  a separately reviewed rendering/capture investigation, not reducing normal
+  acceptance recording or calling the product fixed.
+
+### Isolated execution checkpoint
+
+The existing UI Regression Matrix now has a default-off Boolean
+`wpe_capture_diagnostic` manual input. When selected, only its diagnostic job
+runs; the ordinary job predicates are preserved behind an exclusion guard. The
+diagnostic has its own non-cancelling concurrency group, the unchanged native
+WPE container/user and one worker. It rejects workflow reruns, a private/wrong
+repository, any ref except `refs/heads/test/wpe-recording-diagnostic-local`,
+spec overrides and context-reuse/debug flags. It uses no secrets,
+AI API, new cache or paid runner. No new workflow is introduced.
+
+The job installs/builds once and invokes the original full case in four fresh
+processes, in the fixed ABBA order above. Collection first requires one identical
+logical test per slot, 30s/retry1 and no result attempts. Source tree and built
+file hashes must stay identical before/after every arm. The partial block record
+is saved before browser work and after each exit. A nonzero original case exit
+does not skip the next arm and cannot turn the diagnostic job green; input drift
+stops as incomplete. Original outcomes and each attempt remain in their own
+reports, traces and logs. No wrapper changes the case timeout or replays a slot.
+
+The diagnostic job has a15-minute cap. The existing automatic QA summary has a
+5-minute cap and no matching PR to update. Planned active wall time is6–12minutes
+excluding the queue, with at most20 allocated standard runner-minutes. The four
+cases can consume up to240seconds of case-body deadlines including retries;
+setup, teardown, trace finalization and packaging are additional. Hitting the
+job cap yields incomplete evidence, not permission to retry or extend it.
+
+Exactly one complete archive is admitted for upload after measuring its size:
+1GiB maximum with1MiB reserved for the upload ZIP envelope, retained7days.
+Symlinks, oversize or missing evidence fail admission; no truncated substitute is
+uploaded. Public standard runner compute is free under the checked GitHub
+billing terms; even fully billed1GiB for7days at USD0.25/GiB-month is at most
+USD0.0625 using a28-day month, within the authorized USD0.10 ceiling. Recheck
+repository visibility and price/runner conditions before dispatch. Do not change
+billing settings or add a cache. Pricing reference:
+https://docs.github.com/en/billing/concepts/product-billing/github-actions.
+
+Local focused evidence:8 existing config probes and8 new orchestration probes
+pass; four new collection-only reports each select the original Cancel200
+identity. YAML parsing and21 source checks, including48 mode combinations,
+preserve ordinary paths and bound the opt-in path. These are not executed or
+skipped browser cases. The orchestration probes include a real child-process
+mock: four distinct PIDs, original argument list, first-arm failure retained,
+remaining arms executed once, partial checkpoints and repeat-block refusal.
+
+Fresh app/Worker typechecks passed locally. The ordinary `npm run verify`
+stopped before unit execution because existing Vite LAN-address discovery raised
+`uv_interface_addresses` errno1; the full suite is unverified. Wrangler also
+reported a nonfatal local log-directory write failure while still generating
+runtime types. No OS restriction or browser socket was bypassed. A separate
+production build passed in14.57s using the existing supported
+`DEV_LAN_HOST=127.0.0.1` manual setting; this is not a full-verify pass. Independent
+final review, publication and the one native block remain pending at this
+checkpoint. The native job retains its ordinary build environment.
+
 ## Current ordinary-PR observation — 2026-10-19
 
 The ordinary run on public `d6815f4b` / actual `af1ddf01` completed all 116

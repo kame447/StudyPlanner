@@ -3,6 +3,11 @@ name: UI Regression Matrix
 on:
   workflow_dispatch:
     inputs:
+      wpe_capture_diagnostic:
+        description: One bounded capture ON/OFF diagnostic block; separate from acceptance
+        required: false
+        default: false
+        type: boolean
       suite:
         description: UI regression suite to run
         required: true
@@ -45,12 +50,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'ui-targeted-webkit' || 'ui-regression' }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.event_name == 'workflow_dispatch' && inputs.wpe_capture_diagnostic && 'ui-wpe-capture-diagnostic' || github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'ui-targeted-webkit' || 'ui-regression' }}-${{ github.ref }}
+  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.wpe_capture_diagnostic) }}
 
 jobs:
   visual-regression:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.spec != '') && (github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'visual') }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.wpe_capture_diagnostic) && (!(github.event_name == 'workflow_dispatch' && inputs.spec != '') && (github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'visual')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -112,7 +117,7 @@ jobs:
 
   cross-browser-projects:
     name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'targeted-webkit' || 'cross-browser-projects' }} (${{ matrix.project }})${{ matrix.shard && format(' (shard {0}/2)', matrix.shard) || '' }}
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.spec != '') || github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser' }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.wpe_capture_diagnostic) && ((github.event_name == 'workflow_dispatch' && inputs.spec != '') || github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser') }}
     runs-on: ubuntu-latest
     # Keep the preinstalled browser versions aligned with @playwright/test below.
     container:
@@ -211,7 +216,7 @@ jobs:
   # A failed, cancelled or skipped project must never become a successful gate.
   cross-browser-smoke:
     name: ${{ github.event_name == 'workflow_dispatch' && inputs.spec != '' && 'targeted-webkit-summary' || 'cross-browser-smoke' }}
-    if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.spec != '') || github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser') }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.wpe_capture_diagnostic) && (always() && ((github.event_name == 'workflow_dispatch' && inputs.spec != '') || github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'cross-browser')) }}
     needs: cross-browser-projects
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -220,3 +225,64 @@ jobs:
         env:
           PROJECT_RESULT: ${{ needs.cross-browser-projects.result }}
         run: test "$PROJECT_RESULT" = success
+
+  wpe-capture-diagnostic:
+    name: wpe-capture-diagnostic (not acceptance)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.wpe_capture_diagnostic }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+      options: --user 1001
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Admit one public diagnostic block
+        env:
+          DIAGNOSTIC_VISIBILITY: ${{ github.event.repository.visibility }}
+          UI_SPEC: ${{ inputs.spec }}
+        run: node --input-type=module -e "import { admitEnvironment } from './scripts/ci/wpe-capture-diagnostic.mjs'; admitEnvironment(process.env)"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Snapshot application manifests before isolated test-runner install
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-capture-manifests.sha256
+
+      - name: Install isolated Playwright test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+
+      - name: Verify application manifests remain unchanged
+        run: sha256sum -c /tmp/studyplanner-capture-manifests.sha256
+
+      - name: Build the one frozen production bundle
+        run: npm run build
+
+      - name: Run the four original contracts in capture ABBA order
+        env:
+          DIAGNOSTIC_VISIBILITY: ${{ github.event.repository.visibility }}
+          UI_SPEC: ${{ inputs.spec }}
+        run: node scripts/ci/wpe-capture-diagnostic.mjs run
+
+      - name: Package complete evidence within the upload budget
+        if: ${{ always() && !cancelled() }}
+        id: capture_artifact
+        run: node scripts/ci/wpe-capture-diagnostic.mjs package
+
+      - name: Upload the bounded diagnostic evidence
+        if: ${{ always() && !cancelled() && steps.capture_artifact.outputs.upload == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: wpe-capture-diagnostic-${{ github.sha }}-${{ github.run_id }}
+          path: artifacts/wpe-capture-diagnostic.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
