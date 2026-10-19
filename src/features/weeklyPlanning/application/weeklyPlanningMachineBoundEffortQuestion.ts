@@ -3,7 +3,8 @@ import {
   isWeeklyPlanningQuestionPresentationDirect,
   resolveWeeklyPlanningQuestionPresentationFreshness,
 } from '../intake/weeklyPlanningQuestionPresentation';
-import { decodeWeeklyPlanningStableV5QuestionSlot } from '../intake/weeklyPlanningStableV5QuestionSlot';
+// Question slot through the audited controlled-candidate seam, not a direct Stable V5 import.
+import { controlledCandidateQuestionCode } from './weeklyPlanningControlledCandidateRegistry';
 import {
   decodeWeeklyPlanningMachineBoundEffortAnswerV5,
   formatWeeklyPlanningMachineBoundEffortAnswerV5,
@@ -30,7 +31,7 @@ export function resolveWeeklyPlanningMachineBoundEffortQuestionV5(params: {
   if (freshness.status !== 'fresh') return null;
   const { questionContext: context, presentation } = freshness;
   if (!isWeeklyPlanningQuestionPresentationDirect(presentation.content)
-    || decodeWeeklyPlanningStableV5QuestionSlot(context.targetSlot) !== 'missing_effort_estimate'
+    || controlledCandidateQuestionCode(params.previousState) !== 'missing_effort_estimate'
     || (context.intent !== 'total_duration' && context.intent !== 'duration_per_unit')
     || typeof context.topicId !== 'string' || context.topicId.length === 0
     || context.estimateForWorkloadFactId !== undefined || context.questionBasis !== undefined

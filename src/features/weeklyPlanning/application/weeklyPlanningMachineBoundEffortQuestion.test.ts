@@ -10,10 +10,12 @@ import {
 import type { WeeklyPlanningSemanticNormalizerInputV5 } from '../semantic/weeklyPlanningSemanticNormalizerV5';
 import type { PlanningState, WeeklyPlanningMessage } from '../types';
 import { buildMachineBoundEffortAnswerOptions } from '../ui/machineBoundEffortAnswerOptions';
+import { decodeWeeklyPlanningStableV5QuestionSlot } from '../intake/weeklyPlanningStableV5QuestionSlot';
+import { controlledCandidateQuestionCode } from './weeklyPlanningControlledCandidateRegistry';
 import {
   resolveWeeklyPlanningMachineBoundEffortQuestionV5,
   verifyWeeklyPlanningMachineBoundEffortAnswerV5,
-} from './weeklyPlanningStableV5MachineBoundAnswer';
+} from './weeklyPlanningMachineBoundEffortQuestion';
 import { executeWeeklyPlanningStableV5SemanticTurnCore } from './weeklyPlanningStableV5SemanticTurnCore';
 
 const UNACCOMPANIED: WeeklyPlanningQuestionPresentationContent = {
@@ -79,6 +81,25 @@ describe('#735 typed machine-bound effort answer contract', () => {
     expect(resolve(questionState({ context: { questionBasis: 'completed_workload_total' } }))).toBeNull();
     expect(resolve(questionState({ content: { ...UNACCOMPANIED, groundingContext: { proposed: 0, contested: 1 } } }))).toBeNull();
     expect(resolve(questionState({ content: { ...UNACCOMPANIED, previewPromotionControl: true } }))).toBeNull();
+  });
+
+  it('reads the question slot through the audited seam with the original decoder semantics', () => {
+    const slots = [
+      'stable_v5:missing_effort_estimate', 'stable_v5: missing_effort_estimate ', 'stable_v5:quantity_role_unresolved',
+      'stable_v5:ambiguous_effort_estimate', 'stable_v5:', 'stable_v5: ', 'missing_effort_estimate',
+      'STABLE_V5:missing_effort_estimate', 'legacy:missing_effort_estimate', '', undefined,
+    ];
+    for (const targetSlot of slots) {
+      const state = { lastQuestionContext: { kind: 'missing', targetSlot } } as PlanningIntakeState;
+      expect(controlledCandidateQuestionCode(state)).toBe(decodeWeeklyPlanningStableV5QuestionSlot(targetSlot));
+      expect(controlledCandidateQuestionCode(state) === 'missing_effort_estimate')
+        .toBe(decodeWeeklyPlanningStableV5QuestionSlot(targetSlot) === 'missing_effort_estimate');
+    }
+    expect(controlledCandidateQuestionCode(undefined)).toBeNull();
+    expect(controlledCandidateQuestionCode({} as PlanningIntakeState)).toBeNull();
+    // Only the two well-formed effort slots bind; every other slot keeps the AI route.
+    expect(slots.filter(targetSlot => resolve(questionState({ context: { targetSlot } })) !== null))
+      .toEqual(['stable_v5:missing_effort_estimate', 'stable_v5: missing_effort_estimate ']);
   });
 
   it('never offers or accepts chips for a D5/C5-captured question', () => {

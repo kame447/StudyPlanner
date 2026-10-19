@@ -1,4 +1,4 @@
-import { resolveWeeklyPlanningMachineBoundEffortQuestionV5 } from '../application/weeklyPlanningStableV5MachineBoundAnswer';
+import { resolveWeeklyPlanningMachineBoundEffortQuestionV5 } from '../application/weeklyPlanningMachineBoundEffortQuestion';
 import {
   formatWeeklyPlanningMachineBoundEffortAnswerV5,
   MACHINE_BOUND_EFFORT_ANSWER_MINUTES_V5,

@@ -23,7 +23,7 @@ import type { ExecuteWeeklyPlanningStableV5RuntimeTurnInput } from './weeklyPlan
 import {
   resolveWeeklyPlanningMachineBoundEffortQuestionV5,
   verifyWeeklyPlanningMachineBoundEffortAnswerV5,
-} from './weeklyPlanningStableV5MachineBoundAnswer';
+} from './weeklyPlanningMachineBoundEffortQuestion';
 import {
   activeStableV5PlanningWindows,
   createStableV5SemanticPublicStateSummary,
