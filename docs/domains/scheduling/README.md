@@ -55,3 +55,7 @@ Firestore Rules は Phase 3 merge 後に repository-owned な WIF workflow か�
 - [Day timetable visibility and occurrence cancellation](work/day-timetable-occurrence-controls-handoff.md)
 - [Narrow canonical schedule projection reads](work/20261013-schedule-projection-reads.md) — Issue #542; local targeted-recovery read reduction, with production frequency and deployed index verification separate.
 - [Class detail, attendance, and associated schedules](work/20261013-class-detail-attendance.md) — active local-only feature; independent attendance evidence and an optional lesson reference on existing canonical schedules.
+
+- [Continuous radial flick selection](work/radial-continuous-flick-handoff.md) — local same-finger selection, gesture ownership and capability-limited haptics; native acceptance pending.
+
+- [Final explicit-date deletion](work/recurring-last-date-delete-handoff.md) — local fix for a deleted final date reappearing after reload; existing storage/IDs retained, focused verification and old-reader evidence recorded.

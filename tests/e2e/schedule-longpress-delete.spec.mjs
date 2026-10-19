@@ -110,7 +110,7 @@ test('day short touch remains a normal tap', async ({ browser }) => {
   await context.close();
 });
 
-test('day stationary hold opens six actions on release and deletion removes only the held item', async ({ browser }) => {
+test('day held ring flick deletes only the selected item on the same touch release', async ({ browser }) => {
   const { context, page, session } = await openDaySchedule(browser);
   const plan = page.locator('.timeline-plan-block').filter({ hasText: '長押し削除確認' });
   const sibling = page.locator('.timeline-plan-block').filter({ hasText: '残る予定' });
@@ -120,23 +120,25 @@ test('day stationary hold opens six actions on release and deletion removes only
   await page.waitForTimeout(300);
 
   const action = page.getByRole('menuitem', { name: '削除', exact: true });
-  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toBeVisible();
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
   await expect(plan).toBeVisible();
   await expect(sibling).toBeVisible();
 
-  await dispatchTouch(session, 'touchEnd', x, y);
   await expect(action).toBeVisible();
   await expect(page.getByRole('menuitem')).toHaveText(['完了', '編集', '複製', '削除', '実績', '移動']);
-
-  await action.click();
+  const destination = await locatorCenter(action);
+  await dispatchTouch(session, 'touchMove', destination.x, destination.y);
+  await expect(action).toHaveAttribute('data-gesture-selected', 'true');
+  await expect(plan).toBeVisible(); // Selecting a direction is not a deletion yet.
+  await dispatchTouch(session, 'touchEnd', destination.x, destination.y);
   await expect(plan).toHaveCount(0);
   await expect(sibling).toBeVisible();
   await expect(page.getByRole('menu')).toHaveCount(0);
   await context.close();
 });
 
-test('day long press then movement hands off to drag and hides delete action', async ({ browser }) => {
+test('day held ring owns movement and cancellation releases scroll without deleting', async ({ browser }) => {
   const { context, page, session } = await openDaySchedule(browser);
   const plan = page.locator('.timeline-plan-block').filter({ hasText: '長押し削除確認' });
   const { x, y } = await locatorCenter(plan);
@@ -146,14 +148,14 @@ test('day long press then movement hands off to drag and hides delete action', a
   await dispatchTouch(session, 'touchStart', x, y);
   await page.waitForTimeout(300);
 
-  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toBeVisible();
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
 
   await dispatchTouch(session, 'touchMove', x, y + 90);
   await page.waitForTimeout(50);
 
-  await expect(page.getByRole('menu')).toHaveCount(0);
-  await expect(page.locator('.schedule-week-drag-overlay')).toBeVisible();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
   await expect
     .poll(() => page.evaluate(() => document.documentElement.classList.contains('is-timeline-drag-interaction-locked')))
     .toBe(true);
@@ -161,6 +163,9 @@ test('day long press then movement hands off to drag and hides delete action', a
   expect(await page.evaluate(() => window.scrollY)).toBe(scrollYBefore);
 
   await dispatchTouch(session, 'touchCancel', x, y + 90);
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(plan).toBeVisible();
+  await expect(page.locator('.timeline-plan-block').filter({ hasText: '残る予定' })).toBeVisible();
   await expect(page.locator('.schedule-week-drag-overlay')).toHaveCount(0);
   await expect
     .poll(() => page.evaluate(() => document.documentElement.classList.contains('is-timeline-drag-interaction-locked')))

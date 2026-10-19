@@ -1,6 +1,7 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { StartupVideo } from './StartupVideo';
+import { resetMotionPreferenceForTests, setMotionPreference } from '../lib/motionPreference';
 
 class MotionPreference extends EventTarget {
   matches = false;
@@ -26,6 +27,7 @@ let media: { muted: boolean; play: ReturnType<typeof vi.fn>; pause: ReturnType<t
 let renderer: ReactTestRenderer | undefined;
 
 beforeEach(() => {
+  resetMotionPreferenceForTests();
   vi.useFakeTimers();
   onComplete.mockClear();
   motion = new MotionPreference();
@@ -43,6 +45,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => renderer?.unmount());
   renderer = undefined;
+  resetMotionPreferenceForTests();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -260,4 +263,66 @@ it('can render with missing optional media-query and visibility APIs', async () 
   expect(video()).toBeDefined();
   act(() => button().props.onClick());
   expectStaticLoading();
+});
+
+it.each(['reduced', 'off'] as const)('plays the intro with saved app UI motion %s while respecting the OS preference', async preference => {
+  vi.stubGlobal('window', { matchMedia: vi.fn(() => motion), localStorage: { getItem: () => preference } });
+  await mount();
+  expect(video()).toBeDefined();
+  expect(media.play).toHaveBeenCalledOnce();
+  expect(onComplete).not.toHaveBeenCalled();
+});
+
+it.each(['reject', 'throw'])('keeps blocked autoplay available for explicit playback after %s', async failure => {
+  const denied = new DOMException('User activation required', 'NotAllowedError');
+  if (failure === 'reject') media.play.mockRejectedValueOnce(denied);
+  else media.play.mockImplementationOnce(() => { throw denied; });
+  await act(async () => { renderer = create(surface('/provided-video.mp4', false), { createNodeMock: node => node.type === 'video' ? media : null }); });
+  const original = video();
+  expect(button().props).toMatchObject({ disabled: false, 'aria-label': '起動アニメーションを再生' });
+  expect(onComplete).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
+  act(() => { vi.advanceTimersByTime(10_000); });
+  expect(video()).toBe(original);
+  expect(onComplete).not.toHaveBeenCalled();
+  const play = button().props.onClick;
+  await act(async () => {
+    play();
+    // It must call play in the activation handler, not in a later effect.
+    expect(media.play).toHaveBeenCalledTimes(2);
+  });
+  expect(video()).toBe(original);
+  expect(button().props.disabled).toBe(true);
+  expect(onComplete).not.toHaveBeenCalled();
+  act(() => video().props.onEnded());
+  expect(onComplete).toHaveBeenCalledExactlyOnceWith('ended');
+});
+
+it('requires an explicit ready skip even when manual playback is still blocked', async () => {
+  media.play.mockRejectedValue(new DOMException('User activation required', 'NotAllowedError'));
+  await mount();
+  const original = video();
+  expect(onComplete).not.toHaveBeenCalled();
+  const play = renderer!.root.findByProps({ 'aria-label': '起動アニメーションを再生' });
+  await act(async () => play.props.onClick());
+  expect(media.play).toHaveBeenCalledTimes(2);
+  expect(video()).toBe(original);
+  expect(onComplete).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
+  const skipButton = renderer!.root.findByProps({ 'aria-label': '起動アニメーションをスキップ' });
+  act(() => skipButton.props.onClick());
+  expect(onComplete).toHaveBeenCalledExactlyOnceWith('skipped');
+  expectStaticLoading();
+});
+
+it('changing app UI motion during playback does not finish the intro, but an OS change does', async () => {
+  const storage = { getItem: () => 'standard', setItem: vi.fn() };
+  vi.stubGlobal('window', { matchMedia: vi.fn(() => motion), localStorage: storage });
+  await mount();
+  act(() => { setMotionPreference('off'); setMotionPreference('reduced'); });
+  expect(video()).toBeDefined();
+  expect(onComplete).not.toHaveBeenCalled();
+  act(() => motion.setReducedMotion(true));
+  expectStaticLoading();
+  expect(onComplete).toHaveBeenCalledExactlyOnceWith('reduced-motion');
 });

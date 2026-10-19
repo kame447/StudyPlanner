@@ -1,3 +1,4 @@
+import { SCHEDULE_RADIAL_GESTURE_START } from '../lib/scheduleRadialGesture';
 import { useEffect, useRef } from 'react';
 
 /** End a gesture when the browser can no longer reliably deliver its release. */
@@ -19,12 +20,14 @@ export function useTimelineDragCancellation(cancelDrag: () => void) {
       if (event.key === 'Escape') cancel();
     };
 
+    window.addEventListener(SCHEDULE_RADIAL_GESTURE_START, cancel);
     window.addEventListener('blur', cancel);
     window.addEventListener('pagehide', cancel);
     window.addEventListener('touchstart', cancelMultitouch, { capture: true, passive: true });
     document.addEventListener('visibilitychange', cancelWhenHidden);
     document.addEventListener('keydown', cancelOnEscape);
     return () => {
+      window.removeEventListener(SCHEDULE_RADIAL_GESTURE_START, cancel);
       window.removeEventListener('blur', cancel);
       window.removeEventListener('pagehide', cancel);
       window.removeEventListener('touchstart', cancelMultitouch, true);
