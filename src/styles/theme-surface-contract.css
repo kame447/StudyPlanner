@@ -614,6 +614,12 @@
   background: color-mix(in srgb, var(--accent) 8%, var(--surface-strong) 92%);
 }
 
+:root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-answer-chips button {
+  border-color: var(--border);
+  background: var(--surface-strong);
+  color: var(--text-primary);
+}
+
 :root[data-theme='dark'] .app-shell.home-app-shell .ai-planning-view .ai-planning-error {
   border-color: var(--notice-error-border);
   background: var(--notice-error-background);

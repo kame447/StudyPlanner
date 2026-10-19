@@ -186,6 +186,7 @@ export function createWeeklyPlanningSemanticPipelineV5(
         userText: input.userText,
         supplementalContext: input.supplementalContext,
         selectedStarterTarget: input.selectedStarterTarget,
+        ...(input.machineBoundAnswer ? { machineBoundAnswer: input.machineBoundAnswer } : {}),
         recentConversation: input.recentConversation,
         publicStateSummary,
         committedGraph: graph,

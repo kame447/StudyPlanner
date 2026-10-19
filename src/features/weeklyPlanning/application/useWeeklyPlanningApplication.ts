@@ -27,6 +27,7 @@ import type {
 import { useWeeklyPlanningState } from '../useWeeklyPlanningState';
 import type { WeeklyPlanningTurnSubmissionResult } from '../weeklyPlanningTurnExecutor';
 import type { WeeklyPlanningSelectedStarterTargetV5 } from '../semantic/weeklyPlanningTurnEvidenceV5';
+import type { WeeklyPlanningMachineBoundEffortAnswerV5 } from '../semantic/weeklyPlanningMachineBoundAnswerV5';
 import {
   cancelWeeklyPlanningControlledTurn,
   clearWeeklyPlanningControlledConversation,
@@ -102,6 +103,7 @@ export interface WeeklyPlanningApplication {
     userText: string,
     supplementalContext?: string,
     selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5,
+    machineBoundAnswer?: WeeklyPlanningMachineBoundEffortAnswerV5,
   ) => Promise<WeeklyPlanningApplicationSubmissionResult>;
   cancelTurn: () => boolean;
   clearConversation: () => boolean;
@@ -303,6 +305,7 @@ export function useWeeklyPlanningApplication({
     userText: string,
     supplementalContext?: string,
     selectedStarterTarget?: WeeklyPlanningSelectedStarterTargetV5,
+    machineBoundAnswer?: WeeklyPlanningMachineBoundEffortAnswerV5,
   ): Promise<WeeklyPlanningApplicationSubmissionResult> {
     const session = controllerSessionRef.current;
     const stateAtStart = getPlanningState();
@@ -333,6 +336,7 @@ export function useWeeklyPlanningApplication({
       userText,
       supplementalContext,
       selectedStarterTarget,
+      ...(machineBoundAnswer ? { machineBoundAnswer } : {}),
       selectedDate,
       plans,
       monthEvents,
@@ -518,7 +522,9 @@ export function useWeeklyPlanningApplication({
     const original = receipt.payload.input;
     void submitWeeklyPlanningApplicationTurn({
       session, userId, ownerId, userText: original.userText, supplementalContext: original.supplementalContext,
-      selectedStarterTarget: original.selectedStarterTarget, selectedDate: original.selectedDate,
+      selectedStarterTarget: original.selectedStarterTarget,
+      ...(original.machineBoundAnswer ? { machineBoundAnswer: original.machineBoundAnswer } : {}),
+      selectedDate: original.selectedDate,
       plans: original.plans, monthEvents: original.monthEvents, actuals: original.actuals,
       studyMaterials: original.studyMaterials, scheduleTemplates: original.scheduleTemplates,
       timetableTermId: original.timetableTermId, timetableTerm: original.timetableTerm, timetableTerms: original.timetableTerms,

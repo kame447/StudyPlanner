@@ -2,6 +2,7 @@ import type { IsolatedWeeklyPlanningTurnInput } from '../../../../src/features/w
 import { validateWeeklyPlanningFactGraphValueV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningFactGraphValidatorV5';
 import type { DurableTurnInput } from './durableTurnJob';
 import { createWeeklyPlanningTurnRequestContext } from '../../../../src/features/weeklyPlanning/application/weeklyPlanningTemporalContext';
+import { decodeWeeklyPlanningMachineBoundEffortAnswerV5 } from '../../../../src/features/weeklyPlanning/semantic/weeklyPlanningMachineBoundAnswerV5';
 
 const record = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 const text = (v: unknown, max: number) => typeof v === 'string' && v.length > 0 && v.length <= max;
@@ -21,7 +22,8 @@ export function decodeDurableTurnInput(value: unknown, ownerId: string): Durable
   if (!only(input, ['previousState', 'messages', 'userText', 'supplementalContext', 'selectedStarterTarget',
     'selectedDate', 'userId', 'plans', 'monthEvents', 'actuals', 'studyMaterials', 'scheduleTemplates',
     'timetableTermId', 'timetableTerm', 'timetableTerms', 'conversationId', 'traceRequestId', 'weekStartsOn',
-    'requestContext', 'inputStateRevision', 'retainedPreviewCount'])
+    'requestContext', 'inputStateRevision', 'retainedPreviewCount', 'machineBoundAnswer'])
+    || (input.machineBoundAnswer !== undefined && !decodeWeeklyPlanningMachineBoundEffortAnswerV5(input.machineBoundAnswer))
     || input.userId !== ownerId || input.conversationId !== value.conversationId
     || input.traceRequestId !== value.requestId || input.inputStateRevision !== value.baseRevision
     || !text(input.userText, 4000) || !date(input.selectedDate) || !record(input.requestContext)
