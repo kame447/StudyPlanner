@@ -53,7 +53,23 @@ export function readD5BridgeRemainingBudget(args) {
   return budget;
 }
 
-export function d5BridgeWorkerSource({ workerPath, digest, expiresAt, runId, remaining }) {
+// Exception text only: never serialize the error object, causes, request data or
+// arbitrary console arguments. Known credentials are removed before truncation.
+export function d5BridgeExceptionMetadata(error, secrets = []) {
+  const sanitize = value => {
+    let text = typeof value === 'string' ? value : '';
+    for (const secret of secrets) if (typeof secret === 'string' && secret.trim()) text = text.split(secret.trim()).join('[redacted]');
+    text = text.replace(/https?:\/\/\S+/g, '[url]').replace(/Bearer\s+\S+/gi, 'Bearer [redacted]');
+    // Payload/header dumps are not useful for a runtime-boundary diagnostic.
+    if (/[{}]|authorization\s*[:=]|api[_-]?key\s*[:=]/i.test(text)) return '[redacted structured error]';
+    return text.replace(/[\r\n\t]+/g, ' ').slice(0, 240);
+  };
+  return { name: /^(?:Error|TypeError|SyntaxError|RangeError|ReferenceError|AbortError|TimeoutError)$/.test(error?.name) ? error.name : 'Error',
+    message: sanitize(error?.message),
+    frame: sanitize(typeof error?.stack === 'string' ? error.stack.split('\n').find(line => /^\s*at\s+/.test(line)) : '') || null };
+}
+
+export function d5BridgeWorkerSource({ workerPath, digest, expiresAt, runId, remaining, diagnostics = false }) {
   assert.ok(remaining && Number.isSafeInteger(remaining.jev) && remaining.jev >= 0 && remaining.jev <= 200
     && Number.isSafeInteger(remaining.luna) && remaining.luna >= 0 && remaining.luna <= 60
     && Number.isFinite(remaining.usd) && remaining.usd > 0 && remaining.usd <= 3, 'Explicit remaining budget required');
@@ -68,11 +84,28 @@ const CAPS = ${JSON.stringify(remaining)};
 const PRICE_BOUNDS = ${JSON.stringify(priceBounds)};
 const RESERVATION_USD = ${D5_BRIDGE_RESERVATION_USD};
 const JEV_MODELS = ${JSON.stringify(PREREGISTERED_PRICING.jev.servedModels)};
+const DIAGNOSTICS = ${diagnostics === true};
+const exceptionMetadata = ${d5BridgeExceptionMetadata.toString()};
 const bridgeEnvironment = ${d5BridgeEnvironment.toString()};
 const upstream = globalThis.fetch.bind(globalThis);
 let counters = { jev: 0, luna: 0, reservedUsd: 0 }; let receipts = []; let busy = false; let tariffViolation = false;
+let exceptions = []; let diagnosticSecrets = [];
+const captureException = error => {
+  if (DIAGNOSTICS && busy && exceptions.length < 4) exceptions.push(exceptionMetadata(error, diagnosticSecrets));
+};
+const originalConsoleError = console.error.bind(console);
+if (DIAGNOSTICS) console.error = (...args) => {
+  // The real Worker deliberately logs redacted classifications. Preserve them
+  // without copying arbitrary console payloads; raw boundary errors below carry
+  // the actual message/frame when available.
+  if (busy && typeof args[0] === 'string' && args[0] === '[AI Proxy] unexpected chat handler failure' && !exceptions.length) {
+    captureException({ name: args[1]?.name, message: 'Worker caught an exception; underlying details redacted by Worker.' });
+  }
+  originalConsoleError(...args);
+};
 const hash = async value => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)))].map(n => n.toString(16).padStart(2, '0')).join('');
 globalThis.fetch = async (input, init) => {
+  try {
   const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
   if (url.hostname === 'identitytoolkit.googleapis.com' && url.pathname === '/v1/accounts:lookup') {
     return Response.json({ users: [{ localId: 'planner-recovery-owner-' + RUN_ID, emailVerified: true }] });
@@ -105,24 +138,43 @@ globalThis.fetch = async (input, init) => {
     if (cost !== null && cost > RESERVATION_USD) { counters.reservedUsd += cost - RESERVATION_USD; tariffViolation = true; throw new Error('Provider exceeded conservative reservation'); }
   } catch (error) { if (tariffViolation || counters.reservedUsd > CAPS.usd) throw error; }
   return response;
+  } catch (error) { captureException(error); throw error; }
 };
 export default { async fetch(request, env, ctx) {
   const token = request.headers.get('Authorization')?.replace(/^Bearer /, '') ?? '';
   if (Date.now() > EXPIRES_AT || await hash(token) !== EXPECTED_DIGEST) return new Response('Not found', { status: 404 });
   if (new URL(request.url).pathname === '/ready') return Response.json({ openRouter: !!env.OPENROUTER_API_KEY?.trim(), openAi: !!env.OPENAI_API_KEY?.trim(), counters });
   if (request.method !== 'POST' || new URL(request.url).pathname !== '/chat/completions' || busy) return new Response('Unavailable', { status: 409 });
-  busy = true; receipts = [];
+  busy = true; receipts = []; exceptions = [];
+  diagnosticSecrets = [token, env.OPENAI_API_KEY, env.OPENROUTER_API_KEY, 'synthetic-fixture-session'];
   try {
     const headers = new Headers(request.headers); headers.set('Authorization', 'Bearer synthetic-fixture-session');
     headers.set('Origin', 'http://127.0.0.1:4174');
     const body = await request.text();
     if (new TextEncoder().encode(body).length > ${D5_BRIDGE_MAX_BODY_BYTES}) return new Response('Too large', { status: 413 });
-    const response = await worker.fetch(new Request('https://d5-synthetic.invalid/chat/completions', { method: 'POST', headers, body }),
-      bridgeEnvironment(env), undefined, ctx);
+    const innerEnv = bridgeEnvironment(env);
+    if (DIAGNOSTICS) innerEnv.AI_QUOTA = { getByName(name) {
+      try {
+        const stub = env.AI_QUOTA.getByName(name);
+        return { async checkAndConsume(input) {
+          try { return await stub.checkAndConsume(input); } catch (error) { captureException(error); throw error; }
+        } };
+      } catch (error) { captureException(error); throw error; }
+    } };
+    let response;
+    try {
+      response = await worker.fetch(new Request('https://d5-synthetic.invalid/chat/completions', { method: 'POST', headers, body }),
+        innerEnv, undefined, ctx);
+    } catch (error) {
+      if (!DIAGNOSTICS) throw error;
+      captureException(error);
+      response = Response.json({ error: 'Unexpected worker error.' }, { status: 500 });
+    }
     const responseHeaders = new Headers(response.headers);
     responseHeaders.set('X-D5-Bridge-Receipts', JSON.stringify({ counters, receipts }));
+    if (DIAGNOSTICS && response.status >= 500) responseHeaders.set('X-D5-Bridge-Exceptions', encodeURIComponent(JSON.stringify(exceptions)));
     return new Response(response.body, { status: response.status, headers: responseHeaders });
-  } finally { busy = false; }
+  } finally { busy = false; diagnosticSecrets = []; }
 } };
 `;
 }
@@ -147,8 +199,9 @@ export async function startD5BrowserBridge({ workerName, evidenceDir, remainingA
   let reservedUsd = 0; let reservedJev = 0; let reservedLuna = 0;
   const receipt = row => appendFile(journal, JSON.stringify({ runId, ...row }) + '\n');
   try {
+    const diagnostics = process.env.JEV_D5_DIAGNOSTICS === '1';
     await writeFile(entry, d5BridgeWorkerSource({ workerPath: join(root, 'workers/ai-proxy/src/worker.ts'),
-      digest: createHash('sha256').update(remoteToken).digest('hex'), expiresAt: Date.now() + 45 * 60_000, runId, remaining }));
+      digest: createHash('sha256').update(remoteToken).digest('hex'), expiresAt: Date.now() + 45 * 60_000, runId, remaining, diagnostics }));
     await writeFile(config, JSON.stringify({ name: workerName, main: 'd5-browser.ts', compatibility_date: '2026-04-10',
       vars: { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100', JEV_CANDIDATE_CHOICE_MODE: 'canary', JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100',
         SEMANTIC_CENSUS_MODE: 'off', ALLOWED_ORIGIN: 'http://127.0.0.1:4174' },
@@ -159,7 +212,7 @@ export async function startD5BrowserBridge({ workerName, evidenceDir, remainingA
       experimental: { disableExperimentalWarning: true, disableDevRegistry: true, watch: false, showInteractiveDevSession: false, enableIpc: false } });
     const ready = await worker.fetch('/ready', { headers: { Authorization: `Bearer ${remoteToken}` }, signal: AbortSignal.timeout(45_000) });
     assert.equal(ready.status, 200); assert.deepEqual(await ready.json(), { openRouter: true, openAi: true, counters: { jev: 0, luna: 0, reservedUsd: 0 } });
-    await receipt({ phase: 'ready', workerName, boundary: 'remote-dev-real-worker;synthetic-firebase;local-repository-not-firestore', remainingBudget: remaining, priceBounds: d5BridgePriceBounds(), paceMs });
+    await receipt({ phase: 'ready', workerName, boundary: 'remote-dev-real-worker;synthetic-firebase;local-repository-not-firestore', diagnosticsEnabled: diagnostics, remainingBudget: remaining, priceBounds: d5BridgePriceBounds(), paceMs });
     server = createServer((request, response) => {
       chain = chain.then(async () => {
         if (request.headers.authorization !== `Bearer ${localToken}` || request.method !== 'POST') { response.writeHead(404); response.end(); return; }
@@ -178,6 +231,9 @@ export async function startD5BrowserBridge({ workerName, evidenceDir, remainingA
         const upstreamResponse = await worker.fetch('/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${remoteToken}`, 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(95_000) });
         const bytes = await upstreamResponse.text();
         const dispatches = JSON.parse(upstreamResponse.headers.get('X-D5-Bridge-Receipts') ?? 'null');
+        if (diagnostics) for (const exception of JSON.parse(decodeURIComponent(upstreamResponse.headers.get('X-D5-Bridge-Exceptions') ?? '[]'))) {
+          await receipt({ seq, phase: 'worker_exception', name: exception.name, message: exception.message, frame: exception.frame });
+        }
         let outcome = 'non_json'; try { const parsed = JSON.parse(bytes); outcome = parsed.status ?? (parsed.content ? 'content' : 'error'); } catch { /* Receipt stays count-only. */ }
         await receipt({ seq, phase: 'completed', schema, purpose: focused ?? payload.purpose, httpStatus: upstreamResponse.status,
           provider: upstreamResponse.headers.get('X-StudyPlanner-AI-Provider'), outcome, latencyMs: Date.now() - lastSend, dispatches });
