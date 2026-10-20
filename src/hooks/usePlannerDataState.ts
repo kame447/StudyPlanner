@@ -36,6 +36,11 @@ import {
 } from '../domain/plannerDataReadAuthority';
 import {
   normalizePlannerTimetableData,
+  sortAndUpsertPlans,
+  upsertActualsById,
+  upsertActualByOccurrenceKey,
+  applyRecurringPlanProjection,
+  applyRecurringActualProjection,
   resolveActualMaterialProgress,
 } from '../domain/plannerDataTransforms';
 import { createId } from '../lib/id';
@@ -512,36 +517,6 @@ export function usePlannerDataState({
     return plans.find((item) => item.id === plan.id) ?? plan;
   }
 
-  function sortAndUpsertPlans(current: Plan[], nextPlans: Plan[]): Plan[] {
-    return sortByDateTime(
-      nextPlans.reduce(
-        (records, nextPlan) => upsertByKey(records, nextPlan, (plan) => plan.id),
-        current,
-      ),
-    );
-  }
-
-  function upsertActualsById(current: Actual[], nextActuals: Actual[]): Actual[] {
-    return nextActuals.reduce(
-      (records, nextActual) => upsertByKey(records, nextActual, (actual) => actual.id),
-      current,
-    );
-  }
-
-  function upsertActualByOccurrenceKey(
-    current: Actual[],
-    nextActual: Actual,
-    removedActualIds: string[] = [],
-  ): Actual[] {
-    const removedIdSet = new Set(removedActualIds);
-
-    return upsertByKey(
-      current.filter((actual) => !removedIdSet.has(actual.id)),
-      nextActual,
-      (actual) => getActualOccurrenceKey(actual),
-    );
-  }
-
   function isScopedRecurringEditCandidate(plan: Plan | null): boolean {
     if (!plan) {
       return false;
@@ -839,30 +814,10 @@ export function usePlannerDataState({
         selectionOperation = selectionState.begin(() => selectionAt(occurrenceDate));
       }
       await plannerRepository.applyRecurringPlanMutation(userId, mutation);
-      const deletedPlanIds = new Set(
-        mutation.planDeletes.map((plan) => plan.id),
-      );
-      const deletedActualIds = new Set(
-        mutation.actualDeletes.map((actual) => actual.id),
-      );
       needsRefresh = Boolean(acknowledgedProjection && plannerDataReadAuthority.hasAcceptedProjectionChanged(acknowledgedProjection));
       if (!needsRefresh) {
-        setPlans((current) =>
-          sortAndUpsertPlans(
-            current.filter((plan) => !deletedPlanIds.has(plan.id)),
-            mutation.planUpserts,
-          ),
-        );
-        setActuals((current) =>
-          upsertActualsById(
-            current.filter(
-              (actual) =>
-                !deletedActualIds.has(actual.id) &&
-                (!actual.planId || !deletedPlanIds.has(actual.planId)),
-            ),
-            mutation.actualUpserts,
-          ),
-        );
+        setPlans(current => applyRecurringPlanProjection(current, mutation));
+        setActuals(current => applyRecurringActualProjection(current, mutation));
       }
 
       if (selectionOperation) selectionState.commit(selectionOperation);
@@ -940,7 +895,7 @@ export function usePlannerDataState({
     }
 
     const nextPlan = createPlanFromDraft(draft, sourcePlan);
-    const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
+    const planOperation = planState.begin(current => sortAndUpsertPlans(current, [nextPlan]));
 
     try {
       await plannerRepository.upsertPlan(nextPlan);
@@ -993,7 +948,7 @@ export function usePlannerDataState({
     // Include the generated ID before publishing its optimistic occurrence.
     // Day cancellation must not race the initial upsert of a newly imported Plan.
     return withDayOccurrenceSourceWrite(`plan:${nextPlan.id}`, async () => {
-      const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
+      const planOperation = planState.begin(current => sortAndUpsertPlans(current, [nextPlan]));
       const selectionOperation = selectionState.begin(() => selectionAt(nextPlan.date));
 
       try {
@@ -1842,7 +1797,7 @@ export function usePlannerDataState({
         dueTime: dueDate ? todo.dueTime ?? null : null,
         updatedAt: new Date().toISOString(),
       };
-      const planOperation = planState.begin(current => sortByDateTime(upsertByKey(current, nextPlan, plan => plan.id)));
+      const planOperation = planState.begin(current => sortAndUpsertPlans(current, [nextPlan]));
       const selectionOperation = selectionState.begin(() => selectionAt(nextPlan.date));
 
       const todoOperation = todoState.begin(current => upsertByKey(current, nextTodo, item => item.id));
