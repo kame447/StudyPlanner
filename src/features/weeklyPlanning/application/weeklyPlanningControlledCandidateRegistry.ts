@@ -115,23 +115,34 @@ export function registerControlledCandidateDomain(domain: ControlledCandidateDom
         lastQuestionContext: { ...state.lastQuestionContext, controlledCandidate: snapshot } };
     },
     async stage(turn) {
-      const frozen = decodeControlledCandidateQuestion(turn.snapshot.intakeState?.lastQuestionContext?.controlledCandidate, turn.ownerId, turn.pending.conversationId);
+      let frozen = decodeControlledCandidateQuestion(turn.snapshot.intakeState?.lastQuestionContext?.controlledCandidate, turn.ownerId, turn.pending.conversationId);
       const ledger = decodeC5Ledger(turn.snapshot.intakeState?.c5SelectionLedger, turn.ownerId, turn.pending.conversationId);
       if (!frozen || frozen.domainId !== domain.domainId || frozen.domainPolicyVersion !== policyVersion
         || domain.domainPolicyVersion !== policyVersion || ledger?.lastEpoch !== frozen.basis.binding.selectionEpoch) return null;
+      if (domain.proposeAnswerPayload) {
+        const payload = domain.proposeAnswerPayload({ target: frozen.basis.binding.target,
+          scope: frozen.basis.binding.scope, sources: frozen.basis.binding.sources,
+          candidates: frozen.basis.candidates, domainData: frozen.domainData }, turn.userText);
+        if (!payload) return null;
+        frozen = freezeControlledCandidateQuestion(domain, { binding: { ...frozen.basis.binding,
+          target: payload.target, scope: payload.scope, sources: payload.sources }, candidates: payload.candidates }, payload.domainData);
+      }
       const basis = { ...frozen.basis, binding: { ...frozen.basis.binding, requestId: turn.pending.requestId, inputRevision: turn.pending.baseRevision } };
       const input = structuredClone(options.inputForTurn(turn));
       if (input.userText !== turn.userText || input.traceRequestId !== turn.pending.requestId || !input.committedGraph
         || input.supplementalContext || input.selectedStarterTarget
         || canonicalCandidateSerialization(input.committedGraph) !== canonicalCandidateSerialization(turn.readCommittedGraph())) return null;
       let selectedCapability: StagedCandidateSelection | undefined;
-      const currentBasis = (expected: CandidateBasis): ReturnType<typeof domain.capture> => domain.capture({
-        ownerId: turn.ownerId, conversationId: turn.pending.conversationId,
-        graph: turn.readCommittedGraph(), state: turn.getState(), messages: turn.getState().messages,
-        question: { ...expected.binding.question, presentedQuestion: boundC5PresentedQuestion(expected.binding.question, turn.getState().messages) ?? undefined },
-        selectionEpoch: frozen.basis.binding.selectionEpoch, domainPolicyVersion: policyVersion,
-        requestContext: options.requestContextForTurn(turn.pending),
-      });
+      const currentBasis = (expected: CandidateBasis): ReturnType<typeof domain.capture> => {
+        const payload = domain.capture({
+          ownerId: turn.ownerId, conversationId: turn.pending.conversationId,
+          graph: turn.readCommittedGraph(), state: turn.getState(), messages: turn.getState().messages,
+          question: { ...expected.binding.question, presentedQuestion: boundC5PresentedQuestion(expected.binding.question, turn.getState().messages) ?? undefined },
+          selectionEpoch: frozen.basis.binding.selectionEpoch, domainPolicyVersion: policyVersion,
+          requestContext: options.requestContextForTurn(turn.pending),
+        });
+        return payload && domain.proposeAnswerPayload ? domain.proposeAnswerPayload(payload, turn.userText) : payload;
+      };
       const observeCurrentBasis = (expected: CandidateBasis) => {
         const graph = turn.readCommittedGraph(); const gates = controlledCandidateTurnGates(turn, graph, frozen.basis.binding);
         const live = currentBasis(expected);
