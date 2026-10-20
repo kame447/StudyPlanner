@@ -314,21 +314,31 @@ const AFFIRMATIVE_EFFORT_ENDING = /^(?:(?:くらい|ぐらい|ほど|前後|程�
 function effortAssertionVariants(assertion: string, labelEnd: number, data: Record<string, unknown>,
   input: WeeklyPlanningStableV5DialogueRenderInput): string[] {
   const workloads = input.planningInformation?.workloads;
-  const target = Array.isArray(workloads) ? workloads.find(workload => isRecord(workload)
-    && typeof data.targetFactId === 'string' && workload.id === data.targetFactId
-    && typeof data.taskId === 'string' && workload.taskId === data.taskId) : null;
-  if (!isRecord(target) || typeof target.amount !== 'number' || !Number.isFinite(target.amount) || target.amount <= 0
-    || typeof target.unitLabel !== 'string' || !target.unitLabel.length) return [assertion];
+  if (!Array.isArray(workloads) || typeof data.targetFactId !== 'string' || typeof data.taskId !== 'string') return [assertion];
+  const taskTotal = data.kind === 'total_duration' && data.targetFactId === data.taskId;
   const quantity = new RegExp(DISPLAY_NUMBER, 'u').exec(assertion.slice(labelEnd));
-  if (!quantity || !EFFORT_SUBJECT_CONNECTOR.test(assertion.slice(labelEnd, labelEnd + quantity.index))
-    || parseJapaneseInteger(quantity[0]) !== target.amount) return [assertion];
+  if (!quantity || !EFFORT_SUBJECT_CONNECTOR.test(assertion.slice(labelEnd, labelEnd + quantity.index))) return [assertion];
+  const amount = parseJapaneseInteger(quantity[0]);
   const numberEnd = labelEnd + quantity.index + quantity[0].length;
   const unitStart = numberEnd + (/^\s*/u.exec(assertion.slice(numberEnd))?.[0].length ?? 0);
-  const unit = normalizeSafetyText(target.unitLabel);
-  if (!assertion.startsWith(unit, unitStart)) return [assertion];
-  const quantityStart = labelEnd + quantity.index; const quantityEnd = unitStart + unit.length;
-  // Only the exact target's typed workload may be display context. Retain the
-  // unmasked variant so a one-unit workload cannot erase its rate denominator.
+  const matches = workloads.flatMap(target => {
+    if (!isRecord(target) || target.taskId !== data.taskId || (!taskTotal && target.id !== data.targetFactId)
+      || typeof target.amount !== 'number' || !Number.isFinite(target.amount) || target.amount <= 0 || target.amount !== amount
+      || typeof target.unitLabel !== 'string' || !target.unitLabel.length) return [];
+    const unit = normalizeSafetyText(target.unitLabel);
+    if (!assertion.startsWith(unit, unitStart)) return [];
+    const quantityEnd = unitStart + unit.length;
+    if (taskTotal) {
+      const total = /全部|合計|全体|総計|トータル/u.exec(assertion.slice(quantityEnd));
+      if (!total || !EFFORT_SUBJECT_CONNECTOR.test(assertion.slice(quantityEnd, quantityEnd + total.index))) return [];
+    }
+    return [quantityEnd];
+  });
+  if (matches.length !== 1) return [assertion];
+  const quantityStart = labelEnd + quantity.index; const quantityEnd = matches[0];
+  // Workload targets require their exact id. Task totals may name exactly one
+  // matching same-task workload; rates cannot borrow this display context.
+  // Keep the original variant so a one-unit target retains its rate denominator.
   return [assertion, assertion.slice(0, quantityStart) + ' '.repeat(quantityEnd - quantityStart) + assertion.slice(quantityEnd)];
 }
 

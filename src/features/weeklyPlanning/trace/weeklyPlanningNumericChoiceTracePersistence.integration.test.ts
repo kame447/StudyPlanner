@@ -29,7 +29,7 @@ function repository() {
   const port: WeeklyPlanningTraceRepository = { async upsertSession() {}, async appendEntries(p) { if (fail) { fail = false; throw new Error('injected append failure'); } writes.push(structuredClone(p)); }, async listSessions() { return []; }, async listSessionsForAdmin() { return []; }, async archiveSessionForAdmin() {}, async getSession() { return null; }, async listEntries() { return []; } };
   return { port, writes, failNext() { fail = true; } };
 }
-async function dispatchAndTrace(oversized = false) {
+async function dispatchAndTrace(oversized = false, effortTarget: 'workload' | 'task' = 'workload') {
   const r = choiceRequest(); const requestId = `${conversationId}:request:choice`;
   const scope = { ...r.context.scope, ...D5_TOP1_SCOPE, futureNumericChoiceSentinel: 'keep-unknown-numeric-sentinel', ...(oversized ? { largeValue: 'あ'.repeat(15000) } : {}) };
   const request = { ...r, context: { ...r.context, scope } }; let serializedBody = '';
@@ -44,8 +44,8 @@ async function dispatchAndTrace(oversized = false) {
   });
   const graph = numericFixture().graph;
   const workload = graph.workloads[0];
-  graph.effortEstimates.push({ id: 'required-effort-ack', taskId: workload.taskId, targetFactId: workload.id,
-    kind: 'total_duration', minutes: 15, unitCode: null, precision: 'exact', createdRevision: graph.revision,
+  graph.effortEstimates.push({ id: 'required-effort-ack', taskId: workload.taskId, targetFactId: effortTarget === 'task' ? workload.taskId : workload.id,
+    kind: 'total_duration', minutes: 15, unitCode: effortTarget === 'task' ? 'minute' : null, precision: 'exact', createdRevision: graph.revision,
     source: { ...workload.source, turnId: requestId, sourceText: '15' } });
   graph.factLifecycles.push({ factId: 'required-effort-ack', status: 'active', createdRevision: graph.revision,
     terminalRevision: null, supersededByFactId: null });
@@ -80,9 +80,9 @@ function prepare(write: ReturnType<typeof repository>['writes'][number]) {
     { token: `wpt_${'d'.repeat(43)}`, epoch: '103' }, { sessionId: 'weekly-trace-323e4567-e89b-52d3-a456-426614174000', logicalConversationId: conversationId }, '2026-10-05T00:00:00.000Z');
 }
 describe('actual Choice request through durable trace gate', () => {
-  it('preserves question/target/scope/menu/hash/epoch and future sentinel through failed append, outbox retry and Worker preparation', async () => {
+  it.each(['workload', 'task'] as const)('preserves question/scope/menu/hash/epoch and %s-target ACK through failed append, outbox retry and Worker preparation', async effortTarget => {
     const h = repository(); h.failNext(); setWeeklyPlanningTraceRepositoryForTests(h.port);
-    const input = await dispatchAndTrace(); await recordWeeklyPlanningStableV5TurnTrace(input);
+    const input = await dispatchAndTrace(false, effortTarget); await recordWeeklyPlanningStableV5TurnTrace(input);
     expect(h.writes).toHaveLength(0); expect(listWeeklyPlanningTraceOutboxItems({ userId, conversationId })).toHaveLength(1);
     resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
     await recordWeeklyPlanningStableV5TurnTrace({ ...input, requestId: `${conversationId}:request:retry`, debugTraceEvents: [] });

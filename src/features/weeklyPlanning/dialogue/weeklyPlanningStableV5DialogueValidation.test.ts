@@ -82,6 +82,53 @@ describe('Stable V5 dialogue renderer validation', () => {
       { groundingAcknowledgement: { factIds: ['window', 'math-work', 'english-work', 'effort'], text: ack } }), renderInput).status).toBe('rendered');
   });
   it.each([
+    '8月20日から26日に、数学20問と英語15ページを進める予定で、英語15ページは全部で45分ですね。',
+    '8月20日から26日に数学20問と英語15ページを進めたいんですね。英語15ページは全部で45分ですね。',
+    '英語の15ページを、合計で45分とします。',
+  ])('accepts truthful task-total ACK with minute unitCode and its own workload context: %s', ack => {
+    const renderInput = naturalEffortInput();
+    const fact = renderInput.currentTurnGrounding!.acceptedFacts.find(fact => fact.kind === 'effort_estimate')!;
+    Object.assign(fact.data, { targetFactId: 'english', unitCode: 'minute', unitLabel: null });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, ack + '数学20問は1問あたり何分かかりますか？',
+      { groundingAcknowledgement: { factIds: ['window', 'math-work', 'english-work', 'effort'], text: ack } }), renderInput).status).toBe('rendered');
+  });
+  it.each([
+    ['英語15ページは全部で45分ですね。', '15問', true],
+    ['英語20問は全部で45分ですね。', '20問', true],
+    ['英語20ページは全部で45分ですね。', '20問', false],
+    ['英語99ページは全部で45分ですね。', 'foreign', false],
+    ['英語15ページは全部で45分ですね。', 'duplicate', false],
+    ['英語15ページは全部で45分ですね。', 'unit-prefix', true],
+  ] as const)('binds task-total display to exactly one matching same-task workload: %s (%s)', (ack, shape, valid) => {
+    const renderInput = naturalEffortInput();
+    const fact = renderInput.currentTurnGrounding!.acceptedFacts.find(fact => fact.kind === 'effort_estimate')!;
+    Object.assign(fact.data, { targetFactId: 'english', unitCode: 'minute', unitLabel: null });
+    const workloads = renderInput.planningInformation!.workloads as Array<Record<string, unknown>>;
+    workloads.push({ id: 'additional', taskId: shape === 'foreign' ? 'math' : 'english',
+      amount: shape === '20問' ? 20 : shape === 'foreign' ? 99 : 15,
+      unitLabel: shape === '15問' || shape === '20問' ? '問' : shape === 'unit-prefix' ? 'ペ' : 'ページ' });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, ack,
+      { groundingAcknowledgement: { factIds: ['effort'], text: ack } }), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+  });
+  it.each(['duration_per_unit', 'session_duration'])('never borrows task workload context for %s effort', kind => {
+    const renderInput = naturalEffortInput('english', kind, 45);
+    const fact = renderInput.currentTurnGrounding!.acceptedFacts.find(fact => fact.kind === 'effort_estimate')!;
+    Object.assign(fact.data, { targetFactId: 'english', unitCode: 'page', unitLabel: 'ページ' });
+    const ack = `英語15ページは1${kind === 'duration_per_unit' ? 'ページ' : '回'}45分ですね。`;
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, ack,
+      { groundingAcknowledgement: { factIds: ['effort'], text: ack } }), renderInput).status).toBe('fallback');
+  });
+  it.each([null, '分'])('treats minute unitCode as total duration with unitLabel %s', unitLabel => {
+    const renderInput = naturalEffortInput();
+    const fact = renderInput.currentTurnGrounding!.acceptedFacts.find(fact => fact.kind === 'effort_estimate')!;
+    Object.assign(fact.data, { targetFactId: 'english', unitCode: 'minute', unitLabel });
+    for (const [ack, valid] of [['英語15ページは全部で45分ですね。', true],
+      ['英語15ページは1ページ45分ですね。', false]] as const) {
+      expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, ack,
+        { groundingAcknowledgement: { factIds: ['effort'], text: ack } }), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+    }
+  });
+  it.each([
     ['数学20問は1問5分ですね！', true],
     ['数学の20問を1問5分で見積もりますね。', true],
     ['数学は20問で、1問あたり5分です。', true],
