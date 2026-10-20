@@ -1,36 +1,22 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   JEV_CONTEXTUAL_CASES,
   JEV_CONTEXTUAL_CORPUS_VERSION,
 } from './jev-contextual-corpus.mjs';
 import { observedLunaUsage, observedTotal } from './jev-contextual-eval-metrics.mjs';
 
-// This is the supported toolchain pin, not evidence of a fresh live-provider evaluation.
-const PINNED_WRANGLER_VERSION = '4.151.1';
+import { loadVerifiedWrangler, PINNED_WRANGLER_VERSION } from './verified-wrangler.mjs';
 
 export async function loadWrangler() {
-  for (const directory of (process.env.PATH ?? '').split(delimiter)) {
-    let executable;
-    try { executable = await realpath(join(directory, 'wrangler')); } catch { continue; }
-    const packageJson = JSON.parse(await readFile(
-      resolve(dirname(executable), '../package.json'),
-      'utf8',
-    ));
-    assert.equal(
-      packageJson.version,
-      PINNED_WRANGLER_VERSION,
-      `Refusing contextual evaluation with Wrangler ${String(packageJson.version)}; expected ${PINNED_WRANGLER_VERSION}.`,
-    );
-    return import(pathToFileURL(
-      resolve(dirname(executable), '../wrangler-dist/cli.js'),
-    ).href);
-  }
-  throw new Error('Put the verified Wrangler 4.151.1 binary on PATH before running this evaluator.');
+  return loadVerifiedWrangler({
+    purpose: 'contextual evaluation',
+    missingMessage: `Put the verified Wrangler ${PINNED_WRANGLER_VERSION} binary on PATH before running this evaluator.`,
+  });
 }
 
 function parseArgs() {
