@@ -88,7 +88,7 @@ function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effort
   const client = createCandidateChoiceClient({ proxyUrl: 'https://choice.fixture', getToken: async () => 'fixture', transport,
     semanticPolicy: { calibrationEvidenceId: 'synthetic-only', maximumConditionChange: 0.01, maximumIndependentMeaning: 0.01 } });
   const choose = vi.fn(client.choose);
-  const ackControl = { fails: true, calls: 0 };
+  const ackControl = { fails: true, calls: 0, unexecutedClaim: false };
   const continueSelectedTurn = vi.fn(async ({ snapshot, graph: selectedGraph, pending }: { snapshot: PlanningState; graph: typeof graph; pending: NonNullable<PlanningState['pendingTurn']> }) => {
     if (options.stale === 'continuation') h.replaceState({ ...h.getState(), intakeState: { ...h.getState().intakeState!,
       lastQuestionContext: { ...h.getState().intakeState!.lastQuestionContext!, actionId: 'replaced-question' } } });
@@ -102,7 +102,7 @@ function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effort
         const prompt = JSON.parse(request.messages.slice(-1)[0].content);
         const text = ackControl.fails ? '教材aは全部で999分です。' : '教材aは全部で15分で見積もります。';
         return JSON.stringify({ actionId: prompt.actionId, actionKind: prompt.applicationDecision.actionKind, questionCode: prompt.applicationDecision.questionCode,
-          groundingAcknowledgement: { factIds: prompt.currentTurnGrounding.acceptedFacts.filter((f: {kind: string}) => f.kind === 'effort_estimate').map((f: {factId: string}) => f.factId), text }, text });
+          groundingAcknowledgement: { factIds: prompt.currentTurnGrounding.acceptedFacts.filter((f: {kind: string}) => f.kind === 'effort_estimate').map((f: {factId: string}) => f.factId), text }, text: text + (ackControl.unexecutedClaim ? 'この計画を作成します。確認してください。' : '') });
       },
     }) });
     return { state: { ...snapshot.intakeState!, questions: [], lastQuestionContext: undefined },
@@ -120,7 +120,9 @@ function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effort
     continueSelectedTurn,
   });
   const present = () => h.submit('計画を相談します', { c5LocalSelection: undefined, candidateDomains: [route],
-    execute: async () => {
+    execute: async ({ pending }) => {
+      if (options.presentingSiblingAck) graph.effortEstimates = graph.effortEstimates.map(fact => fact.id === 'sibling-effort'
+        ? { ...fact, source: { ...fact.source, turnId: pending.requestId } } : fact);
       const result: WeeklyPlanningTurnExecutionResult = { state: { ...createInitialPlanningIntakeState(), questions: ['どのくらいかかりますか？'],
       lastQuestionContext: { kind: 'ambiguity', topicId: 'work-a', targetSlot: 'stable_v5:missing_effort_estimate', intent: measurement } },
       message: 'どのくらいかかりますか？', draftCandidates: [], stableV5Graph: graph,
@@ -128,7 +130,7 @@ function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effort
         groundingContext: { proposed: 0, contested: 0 }, previewPromotionControl: false } };
       if (!options.presentingSiblingAck) return result;
       return renderWeeklyPlanningStableV5AssistantMessageCore({ input: { userId: OWNER, selectedDate: WEEK, plans: [], scheduleTemplates: [],
-        conversationId: h.conversationId, traceRequestId: sibling.source.turnId, userText: '数学の時間は未定。教材bは全部で15分', messages: [], }, result },
+        conversationId: h.conversationId, traceRequestId: pending.requestId, userText: '数学の時間は未定。教材bは全部で15分', messages: [], }, result },
         { getSession: getWeeklyPlanningStableV5RuntimeSession, createRenderer: () => createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
           const prompt = JSON.parse(request.messages.slice(-1)[0].content);
           const fact = prompt.currentTurnGrounding.acceptedFacts.find((f: { kind: string }) => f.kind === 'effort_estimate');
@@ -197,6 +199,22 @@ describe('D5 answer proposal through canonical controller commit', () => {
     await run.present(); await run.answer('15');
     expect(readC5RuntimeGraph(OWNER, run.h.conversationId).effortEstimates).toHaveLength(1);
     expect(run.h.getState().intakeState!.c5SelectionLedger!.consumed).toHaveLength(1);
+  });
+  it('rejects an unexecuted plan claim after a valid effort ACK without graph commit or receipt consumption', async () => {
+    const run = setup({ top1: true, minutes: 15, effortAck: true });
+    await run.present();
+    expect(saveWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK, conversationId: run.h.conversationId,
+      graph: run.graph, planningState: run.h.getState() })).toBe(true);
+    const before = structuredClone(readC5RuntimeGraph(OWNER, run.h.conversationId));
+    run.ackControl.fails = false;
+    run.ackControl.unexecutedClaim = true;
+    await run.answer('15');
+    expect(run.ackControl.calls).toBe(1); // Existing execution-claim rejection is terminal; no extra repair call.
+    expect(run.h.getState().messages.slice(-1)[0]?.content).toContain('今回の内容は計画へ反映していません');
+    expect(run.h.getState().previewCandidates).toEqual([]);
+    expect(readC5RuntimeGraph(OWNER, run.h.conversationId)).toEqual(before);
+    expect(run.h.getState().intakeState!.c5SelectionLedger!.consumed).toEqual([]);
+    expect(loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK })!.graph).toEqual(before);
   });
   it('rebinds the numeric policy revision and preserves the question-time record', async () => {
     const run = setup(); await run.present();

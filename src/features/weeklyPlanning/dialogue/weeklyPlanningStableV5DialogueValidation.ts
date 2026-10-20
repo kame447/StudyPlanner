@@ -370,18 +370,22 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
         || !Array.isArray(labels) || !labels.length || typeof labels[0] !== 'string'
         || normalizeSafetyText(labels[0]) !== targetLabel
         || !labels.every(label => typeof label === 'string' && segment.includes(normalizeSafetyText(label)))) return false;
-      const total = /全部|合計|全体|総計|トータル/u.test(assertion);
+      const totalMarker = /全部|合計|全体|総計|トータル/u.exec(assertion);
+      const total = totalMarker !== null;
       const unit = data.kind === 'session_duration' ? '回' : data.unitLabel;
-      let perUnit = false; let measurementStart = data.kind === 'total_duration'
-        ? assertion.search(/全部|合計|全体|総計|トータル/u) : -1;
+      let perUnit = false; let measurementStart = data.kind === 'total_duration' ? totalMarker?.index ?? -1 : -1;
+      let measurementEnd = measurementStart >= 0 && totalMarker ? measurementStart + totalMarker[0].length : -1;
       if (typeof unit === 'string' && unit.length > 0) {
         const literal = normalizeSafetyText(unit);
         let at = assertion.indexOf(literal);
         while (at >= 0) {
           const denominator = mentions.find(m => m.form === 'bare' && m.span.end <= at
             && assertion.slice(m.span.end, at).trim() === '');
-          const rateSuffix = /^(?:あたり|当たり|につき)/u.test(assertion.slice(at + literal.length));
-          if (denominator ? denominator.minutes === 1 : rateSuffix) { perUnit = true; measurementStart = denominator?.span.start ?? at; }
+          const rateSuffix = /^(?:あたり|当たり|につき)/u.exec(assertion.slice(at + literal.length));
+          if (denominator ? denominator.minutes === 1 : rateSuffix) {
+            perUnit = true; measurementStart = denominator?.span.start ?? at;
+            measurementEnd = at + literal.length + (rateSuffix?.[0].length ?? 0);
+          }
           if (denominator && denominator.minutes !== 1 && (rateSuffix || data.kind !== 'total_duration')) return false;
           at = assertion.indexOf(literal, at + literal.length);
         }
@@ -389,6 +393,11 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
       if (data.kind === 'total_duration' ? !total || perUnit : !perUnit || total) return false;
       const labelEnd = Math.max(...labels.map(label => { const normalized = normalizeSafetyText(label); return segment.lastIndexOf(normalized) + normalized.length; }));
       const subjectLink = segment.slice(labelEnd, measurementStart);
+      // Consume the entire marker→value interval with a short positive connector.
+      // No arbitrary noun, substituted unit, extra number or predicate may hide here.
+      const valueLink = assertion.slice(measurementEnd, duration.span.start);
+      if (measurementEnd < 0 || measurementEnd > duration.span.start
+        || !/^\s*(?:[、,]\s*)?(?:(?:は|で|に|が|を)\s*)?(?:[、,]\s*)?(?:(?:約|およそ|だいたい|大体)\s*)?$/u.test(valueLink)) return false;
       return measurementStart >= labelEnd && /^(?:(?:について|として|に関して)|[\sはがをのにで、,:：「」『』()（）])*$/u.test(subjectLink);
     });
     if (matching.length !== 1) return true;

@@ -1,3 +1,4 @@
+import { decodeWeeklyPlanningStableV5QuestionSlot } from './intake/weeklyPlanningStableV5QuestionSlot';
 import { assertWeeklyPlanningTurnCommitShape } from './application/weeklyPlanningTurnSideEffects';
 import { createDialogueTurnEnvelope } from './dialogue/weeklyPlanningDialogueOrchestrator';
 import type { PlanningIntakeState } from './intake/weeklyPlanningIntakeTypes';
@@ -300,6 +301,7 @@ export async function submitWeeklyPlanningControlledTurn(
   ];
   const captureQuestion = (state: PlanningIntakeState, graph: NonNullable<WeeklyPlanningTurnExecutionResult['stableV5Graph']>, messages: readonly WeeklyPlanningMessage[]) =>
     captureRegisteredCandidateQuestion(candidateRegistry, { state, graph, messages, pending,
+      previousQuestionCode: decodeWeeklyPlanningStableV5QuestionSlot(snapshot.intakeState?.lastQuestionContext?.targetSlot),
       planningState: { ...snapshot, intakeState: state }, ownerId: params.ownerId, conversationId: pending.conversationId });
   let candidateSelected: RegisteredControlledCandidateAdapter | null = null;
   try {

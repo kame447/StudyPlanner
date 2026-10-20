@@ -113,6 +113,26 @@ describe('Stable V5 dialogue renderer validation', () => {
     },
   );
   it.each([
+    ['数学は1問ではなく1ページ5分です。', 'duration_per_unit', 'exact', false],
+    ['数学は1問あたりではなく5分です。', 'duration_per_unit', 'exact', false],
+    ['数学は1問の代わりに1ページ5分です。', 'duration_per_unit', 'exact', false],
+    ['数学は1問と2ページで5分です。', 'duration_per_unit', 'exact', false],
+    ['数学は1問あたり英語では5分です。', 'duration_per_unit', 'exact', false],
+    ['数学は全部ではなく5分です。', 'total_duration', 'exact', false],
+    ['数学は合計の別の値は5分です。', 'total_duration', 'exact', false],
+    ['数学は1問あたり、5分です。', 'duration_per_unit', 'exact', true],
+    ['数学は1問につき5分で計算します。', 'duration_per_unit', 'exact', true],
+    ['数学は1問で5分とします。', 'duration_per_unit', 'exact', true],
+    ['数学は合計で5分です。', 'total_duration', 'exact', true],
+    ['数学は1問あたり約5分とします。', 'duration_per_unit', 'approximate', true],
+  ] as const)('consumes every connector between measurement and value: %s', (text, kind, precision, valid) => {
+    const renderInput = input({ actionKind: 'status', questionCode: null, currentTurnGrounding: { mode: 'required_before_resume', acceptedFacts: [
+      { factId: 'effort', kind: 'effort_estimate', sourceText: '5分', data: { targetLabels: ['数学'], minutes: 5, kind, precision, unitLabel: kind === 'total_duration' ? null : '問' } },
+    ] } });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text,
+      { groundingAcknowledgement: { factIds: ['effort'], text } }), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+  });
+  it.each([
     ['数学は合計10分、英語は1問5分くらいで見積もります。', true],
     ['数学は合計5分、英語は1問10分くらいです。', false],
     ['数学は1問10分、英語は合計5分くらいです。', false],
