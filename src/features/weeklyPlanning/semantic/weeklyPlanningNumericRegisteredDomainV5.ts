@@ -9,6 +9,7 @@ import { captureNumericPendingQuestionDomainV5, isNumericPendingQuestionDomainCu
 import { numericPendingObservationV5, type NumericPendingStateV5 } from './weeklyPlanningNumericPendingChoiceV5';
 import { numericPendingCompleteScopeV5 } from './weeklyPlanningNumericPendingScopeV5';
 import { createFrozenNumericPendingControlledAdapterV5 } from './weeklyPlanningNumericPendingCommitV5';
+import { numericAnswerProposalV5, numericDigitRunsV5 } from './weeklyPlanningNumericAnswerProposalV5';
 
 function measurement(context: ControlledCandidateCaptureContext): NumericPendingStateV5['measurement'] | null {
   const intent = context.state.intakeState?.lastQuestionContext?.intent;
@@ -104,11 +105,31 @@ function answerState(context: ControlledCandidateStageContext, domain: NumericPe
 export function createNumericPendingRegisteredDomainV5(
   domainMinutes: readonly number[],
   domainPolicyVersion: string,
+  options: { readonly candidateSource: 'question_menu' | 'answer_proposal' } = { candidateSource: 'question_menu' },
 ): ControlledCandidateDomain {
+  const answerProposal = options.candidateSource === 'answer_proposal';
   return {
     domainId: 'd5_numeric',
     questionCode: 'missing_effort_estimate',
     domainPolicyVersion,
+    ...(answerProposal ? {
+      proposeAnswerPayload(payload, userText) {
+        const proposal = numericAnswerProposalV5(userText);
+        if (!proposal) return null;
+        const frozen = payload.domainData as unknown as NumericPendingQuestionDomainV5;
+        // Only a question-time placeholder written by this domain's capture may be widened.
+        if (canonicalCandidateSerialization(frozen.domainMinutes) !== canonicalCandidateSerialization(domainMinutes)) return null;
+        const observation = numericPendingObservationV5({ binding: { ...frozen.binding,
+          requestId: frozen.binding.question.presentingTurnId, inputRevision: frozen.binding.question.presentationRevision },
+          measurement: frozen.measurement, perUnit: frozen.perUnit, pendingTargetCount: 1,
+          sourceAccess: 'allowed', intentProvenance: 'validated_current_turn', targetStatus: 'active',
+          questionPresentation: 'fresh', formalEligibility: 'eligible' },
+        proposal.minutes, domainPolicyVersion);
+        return { target: observation.binding.target, scope: observation.binding.scope,
+          sources: observation.binding.sources, candidates: observation.candidates,
+          domainData: { ...frozen, domainMinutes: proposal.minutes } as unknown as CandidateTuple };
+      },
+    } satisfies Pick<ControlledCandidateDomain, 'proposeAnswerPayload'> : {}),
     rejectsCoPresentedFacts({ targetId, facts }) {
       // An acknowledged sibling quantity or estimate would make a bare minute answer
       // ambiguous (an estimate or target switch). The target's own task/components/amount are inherent.
@@ -152,6 +173,21 @@ export function createNumericPendingRegisteredDomainV5(
       }, context.normalizerInput);
       const staged = await tryFrozenNumericPendingChoiceRouteV5(run, port, frozen);
       if (!staged) return null;
+      if (answerProposal) {
+        const minutes = staged.selection.candidate.tuple.minutes;
+        const integers = numericAnswerProposalV5(context.userText)?.sourceIntegers.get(minutes);
+        if (!integers) return null;
+        const values = new Set([minutes, ...integers]);
+        // Range labels are compared by every digit run they contain; over-blocking falls back to Luna.
+        const collides = (value: number | string | null | undefined) => value != null
+          && (typeof value === 'number' ? values.has(value) : numericDigitRunsV5(value).some(n => values.has(n)));
+        const graph = context.readCommittedGraph();
+        const active = new Set(graph.factLifecycles.filter(f => f.status === 'active').map(f => f.factId));
+        if (graph.workloads.some(f => active.has(f.id) && [f.amount, f.rangeStart, f.rangeEnd].some(collides))
+          || graph.effortEstimates.some(f => active.has(f.id) && collides(f.minutes))
+          || graph.availabilityDeclarations.some(f => active.has(f.id) && collides(f.capacityMinutes))
+          || graph.recurrences.some(f => active.has(f.id) && collides(f.count))) return null;
+      }
       const priorState = serializeC5ApplicationState(context.readCurrentState());
       const priorInput = serializeC5ApplicationState(context.normalizerInput);
       const priorLedger = serializeC5ApplicationState(context.readLedger());

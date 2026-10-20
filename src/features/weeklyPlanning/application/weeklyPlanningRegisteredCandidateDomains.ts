@@ -11,12 +11,19 @@ export const D5_DOMAIN_POLICY_VERSION = 'd5-exact-minutes-2026-10-14-v1';
 
 /** A release artifact is required before this domain may consume a live turn. */
 export const D5_CHOICE_CALIBRATION: unknown = null;
+export const D5_ANSWER_PROPOSAL_POLICY_VERSION = 'd5-answer-proposal-2026-10-20-v1';
+export const D5_ANSWER_PROPOSAL_CALIBRATION: unknown = null;
 
 export const TEMPORAL_DATE_CHOICE_CALIBRATION: unknown = null;
 
 export function weeklyPlanningRegisteredCandidateDomains(host: ControlledCandidateDomainHost): ControlledCandidateRegistry {
-  const domain = createNumericPendingRegisteredDomainV5(D5_EXACT_MINUTE_CANDIDATES, D5_DOMAIN_POLICY_VERSION);
-  const options = createControlledCandidateChoiceOptions(domain, D5_CHOICE_CALIBRATION, host);
+  // The fixed menu keeps question-time snapshot validation independent of answer text.
+  const proposalDomain = createNumericPendingRegisteredDomainV5(D5_EXACT_MINUTE_CANDIDATES,
+    D5_ANSWER_PROPOSAL_POLICY_VERSION, { candidateSource: 'answer_proposal' });
+  const proposalOptions = createControlledCandidateChoiceOptions(proposalDomain, D5_ANSWER_PROPOSAL_CALIBRATION, host);
+  const domain = proposalOptions ? proposalDomain
+    : createNumericPendingRegisteredDomainV5(D5_EXACT_MINUTE_CANDIDATES, D5_DOMAIN_POLICY_VERSION);
+  const options = proposalOptions ?? createControlledCandidateChoiceOptions(domain, D5_CHOICE_CALIBRATION, host);
   // Keep the uncalibrated date producer out of startup and the production bundle.
   const dateDomain = TEMPORAL_DATE_CHOICE_CALIBRATION === null
     ? null : createTemporalDateRegisteredDomainV5();
