@@ -2,11 +2,13 @@ import type { CSSProperties } from 'react';
 import { getScheduleOccurrenceColor, scheduleEventWeekStyle } from '../lib/scheduleEventColor';
 import type { WeekSpanningOccurrenceLayout } from '../lib/scheduleOccurrencePresentation';
 import type { Plan } from '../types/domain';
+import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
 
 interface WeekSpanningEventsLaneProps {
   layout: WeekSpanningOccurrenceLayout;
   plans: readonly Plan[];
   onOpenPlan?: (plan: Plan) => void;
+  onOpenOccurrence: (occurrence: ScheduleOccurrence, element: HTMLButtonElement) => void;
 }
 
 function cardStyle(item: WeekSpanningOccurrenceLayout['items'][number]): CSSProperties {
@@ -40,6 +42,7 @@ export function WeekSpanningEventsLane({
   layout,
   plans,
   onOpenPlan,
+  onOpenOccurrence,
 }: WeekSpanningEventsLaneProps) {
   if (layout.items.length === 0) return null;
 
@@ -100,18 +103,28 @@ export function WeekSpanningEventsLane({
           );
         }
 
+        if (!isReadOnlyTimetable) {
+          return (
+            <button
+              {...commonProps}
+              key={occurrence.id}
+              type="button"
+              aria-label={`${occurrence.title}。終日または日を跨ぐ予定。タップまたは長押しで操作`}
+              aria-haspopup="menu"
+              onClick={(event) => onOpenOccurrence(occurrence, event.currentTarget)}
+              onContextMenu={(event) => event.preventDefault()}
+              style={{ ...commonProps.style, cursor: 'pointer' }}
+            >
+              {occurrence.title}
+            </button>
+          );
+        }
+
         return (
           <span
             {...commonProps}
             key={occurrence.id}
-            aria-label={
-              isReadOnlyTimetable
-                ? `${occurrence.title}。終日または日を跨ぐ時間割`
-                : `${occurrence.title}。終日または日を跨ぐ予定。長押しで操作`
-            }
-            onContextMenu={
-              isReadOnlyTimetable ? undefined : (event) => event.preventDefault()
-            }
+            aria-label={`${occurrence.title}。終日または日を跨ぐ時間割`}
           >
             {occurrence.title}
           </span>
