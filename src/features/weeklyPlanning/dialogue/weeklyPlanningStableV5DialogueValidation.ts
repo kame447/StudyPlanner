@@ -307,6 +307,31 @@ function repeatsMostRecentAssistantQuestion(
   return previousText.length > 0 && currentText === previousText;
 }
 
+// Bounded renderer-display grammar, never interpretation of raw user intent.
+const EFFORT_SUBJECT_CONNECTOR = /^(?:(?:について|として|に関して)|[\sはがをのにで、,:：「」『』()（）])*$/u;
+const AFFIRMATIVE_EFFORT_ENDING = /^(?:(?:くらい|ぐらい|ほど|前後|程度)\s*)?(?:です(?:ね|よ)?|でした(?:ね)?|だ(?:ね)?|ね|になります(?:ね)?|とします(?:ね)?|(?:で|と|として)(?:見積もります|見積もりました|計算します|計算しました|反映します|反映しました|設定します|設定しました|扱います|受け取りました|承知しました)(?:ね)?|と見込んでいます|を目安にします)?[\s。、,!「」『』()（）]*$/u;
+
+function effortAssertionVariants(assertion: string, labelEnd: number, data: Record<string, unknown>,
+  input: WeeklyPlanningStableV5DialogueRenderInput): string[] {
+  const workloads = input.planningInformation?.workloads;
+  const target = Array.isArray(workloads) ? workloads.find(workload => isRecord(workload)
+    && typeof data.targetFactId === 'string' && workload.id === data.targetFactId
+    && typeof data.taskId === 'string' && workload.taskId === data.taskId) : null;
+  if (!isRecord(target) || typeof target.amount !== 'number' || !Number.isFinite(target.amount) || target.amount <= 0
+    || typeof target.unitLabel !== 'string' || !target.unitLabel.length) return [assertion];
+  const quantity = new RegExp(DISPLAY_NUMBER, 'u').exec(assertion.slice(labelEnd));
+  if (!quantity || !EFFORT_SUBJECT_CONNECTOR.test(assertion.slice(labelEnd, labelEnd + quantity.index))
+    || parseJapaneseInteger(quantity[0]) !== target.amount) return [assertion];
+  const numberEnd = labelEnd + quantity.index + quantity[0].length;
+  const unitStart = numberEnd + (/^\s*/u.exec(assertion.slice(numberEnd))?.[0].length ?? 0);
+  const unit = normalizeSafetyText(target.unitLabel);
+  if (!assertion.startsWith(unit, unitStart)) return [assertion];
+  const quantityStart = labelEnd + quantity.index; const quantityEnd = unitStart + unit.length;
+  // Only the exact target's typed workload may be display context. Retain the
+  // unmasked variant so a one-unit workload cannot erase its rate denominator.
+  return [assertion, assertion.slice(0, quantityStart) + ' '.repeat(quantityEnd - quantityStart) + assertion.slice(quantityEnd)];
+}
+
 /** Checks visible renderer claims against typed accepted effort; never interprets user intent. */
 function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
   input: WeeklyPlanningStableV5DialogueRenderInput): boolean {
@@ -350,55 +375,56 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
       : [{ label: null, text: visible.slice(boundary.start, boundary.end) }];
   });
   for (const { text: segment, label: targetLabel } of segments) {
-    let assertion = segment;
-    for (const label of opaqueLabels) if (label.length) assertion = assertion.split(label).join(' '.repeat(label.length));
-    assertion = assertion.replace(CLOCK_EXPRESSION, clock => ' '.repeat(clock.length));
-    const mentions = displayQuantityMentions(assertion);
-    if (!mentions) return true;
-    const durations = mentions.filter(m => m.form !== 'bare');
-    if (!durations.length) continue;
-    if (durations.length !== 1) return true;
-    const duration = durations[0];
-    // Only the effort assertion's own ending is checked. A subsequent ordinary
-    // question is outside the ACK; punctuation inside names has already been masked.
-    const ending = assertion.slice(duration.span.end).trim();
-    if (!/^(?:(?:くらい|ぐらい|ほど|前後|程度)\s*)?(?:です|でした|になります|とします|(?:で|と|として)(?:見積もります|見積もりました|計算します|計算しました|反映します|反映しました|設定します|設定しました|扱います|受け取りました|承知しました)|と見込んでいます|を目安にします)?[\s。、,「」『』()（）]*$/u.test(ending)) return true;
+    let display = segment;
+    for (const label of opaqueLabels) if (label.length) display = display.split(label).join(' '.repeat(label.length));
+    display = display.replace(CLOCK_EXPRESSION, clock => ' '.repeat(clock.length));
+    // Non-effort sentences may repeat typed dates/workloads. They cannot assign
+    // an effort, and their bare numbers are not rate denominators or durations.
+    if (!/[0-9０-９〇零一二三四五六七八九十百千万元億兆]\s*(?:時間|分)/u.test(display)) continue;
     const matching = effort.filter(fact => {
       const data = fact.data; const labels = data.targetLabels;
       if (!factIds.includes(fact.factId) || assigned.has(fact.factId)
-        || duration.minutes !== data.minutes || (data.precision === 'approximate') !== duration.approximate
         || !Array.isArray(labels) || !labels.length || typeof labels[0] !== 'string'
         || normalizeSafetyText(labels[0]) !== targetLabel
         || !labels.every(label => typeof label === 'string' && segment.includes(normalizeSafetyText(label)))) return false;
-      const totalMarker = /全部|合計|全体|総計|トータル/u.exec(assertion);
-      const total = totalMarker !== null;
-      const unit = data.kind === 'session_duration' ? '回' : data.unitLabel;
-      let perUnit = false; let measurementStart = data.kind === 'total_duration' ? totalMarker?.index ?? -1 : -1;
-      let measurementEnd = measurementStart >= 0 && totalMarker ? measurementStart + totalMarker[0].length : -1;
-      if (typeof unit === 'string' && unit.length > 0) {
-        const literal = normalizeSafetyText(unit);
-        let at = assertion.indexOf(literal);
-        while (at >= 0) {
-          const denominator = mentions.find(m => m.form === 'bare' && m.span.end <= at
-            && assertion.slice(m.span.end, at).trim() === '');
-          const rateSuffix = /^(?:あたり|当たり|につき)/u.exec(assertion.slice(at + literal.length));
-          if (denominator ? denominator.minutes === 1 : rateSuffix) {
-            perUnit = true; measurementStart = denominator?.span.start ?? at;
-            measurementEnd = at + literal.length + (rateSuffix?.[0].length ?? 0);
-          }
-          if (denominator && denominator.minutes !== 1 && (rateSuffix || data.kind !== 'total_duration')) return false;
-          at = assertion.indexOf(literal, at + literal.length);
-        }
-      }
-      if (data.kind === 'total_duration' ? !total || perUnit : !perUnit || total) return false;
       const labelEnd = Math.max(...labels.map(label => { const normalized = normalizeSafetyText(label); return segment.lastIndexOf(normalized) + normalized.length; }));
-      const subjectLink = segment.slice(labelEnd, measurementStart);
-      // Consume the entire marker→value interval with a short positive connector.
-      // No arbitrary noun, substituted unit, extra number or predicate may hide here.
-      const valueLink = assertion.slice(measurementEnd, duration.span.start);
-      if (measurementEnd < 0 || measurementEnd > duration.span.start
-        || !/^\s*(?:[、,]\s*)?(?:(?:は|で|に|が|を)\s*)?(?:[、,]\s*)?(?:(?:約|およそ|だいたい|大体)\s*)?$/u.test(valueLink)) return false;
-      return measurementStart >= labelEnd && /^(?:(?:について|として|に関して)|[\sはがをのにで、,:：「」『』()（）])*$/u.test(subjectLink);
+      return effortAssertionVariants(display, labelEnd, data, input).some(assertion => {
+        const mentions = displayQuantityMentions(assertion);
+        if (!mentions) return false;
+        const durations = mentions.filter(mention => mention.form !== 'bare');
+        if (durations.length !== 1) return false;
+        const duration = durations[0];
+        if (duration.minutes !== data.minutes || (data.precision === 'approximate') !== duration.approximate
+          || !AFFIRMATIVE_EFFORT_ENDING.test(assertion.slice(duration.span.end).trim())) return false;
+        const totalMarker = /全部|合計|全体|総計|トータル/u.exec(assertion);
+        const total = totalMarker !== null;
+        const unit = data.kind === 'session_duration' ? '回' : data.unitLabel;
+        let perUnit = false; let measurementStart = data.kind === 'total_duration' ? totalMarker?.index ?? -1 : -1;
+        let measurementEnd = measurementStart >= 0 && totalMarker ? measurementStart + totalMarker[0].length : -1;
+        if (typeof unit === 'string' && unit.length > 0) {
+          const literal = normalizeSafetyText(unit);
+          let at = assertion.indexOf(literal);
+          while (at >= 0) {
+            const denominator = mentions.find(m => m.form === 'bare' && m.span.end <= at
+              && assertion.slice(m.span.end, at).trim() === '');
+            const rateSuffix = /^(?:あたり|当たり|につき)/u.exec(assertion.slice(at + literal.length));
+            if (denominator ? denominator.minutes === 1 : rateSuffix) {
+              perUnit = true; measurementStart = denominator?.span.start ?? at;
+              measurementEnd = at + literal.length + (rateSuffix?.[0].length ?? 0);
+            }
+            if (denominator && denominator.minutes !== 1 && (rateSuffix || data.kind !== 'total_duration')) return false;
+            at = assertion.indexOf(literal, at + literal.length);
+          }
+        }
+        if (data.kind === 'total_duration' ? !total || perUnit : !perUnit || total) return false;
+        const subjectLink = assertion.slice(labelEnd, measurementStart);
+        // Consume the entire marker→value interval with a short positive connector.
+        // No arbitrary noun, substituted unit, extra number or predicate may hide here.
+        const valueLink = assertion.slice(measurementEnd, duration.span.start);
+        if (measurementEnd < 0 || measurementEnd > duration.span.start
+          || !/^\s*(?:[、,]\s*)?(?:(?:は|で|に|が|を)\s*)?(?:[、,]\s*)?(?:(?:約|およそ|だいたい|大体)\s*)?$/u.test(valueLink)) return false;
+        return measurementStart >= labelEnd && EFFORT_SUBJECT_CONNECTOR.test(subjectLink);
+      });
     });
     if (matching.length !== 1) return true;
     assigned.add(matching[0].factId);

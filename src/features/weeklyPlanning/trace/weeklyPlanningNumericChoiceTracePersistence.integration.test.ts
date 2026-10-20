@@ -1,4 +1,5 @@
 import { createWeeklyPlanningStableV5CurrentTurnGrounding } from '../dialogue/weeklyPlanningStableV5CurrentTurnGrounding';
+import { createWeeklyPlanningStableV5DialogueProjection } from '../semantic/weeklyPlanningStableV5DialogueProjection';
 import { createWeeklyPlanningStableV5DialogueRendererCore } from '../dialogue/weeklyPlanningStableV5AiDialogueRendererCore';
 import { createWeeklyPlanningAiRenderedDialogueTrace, recordWeeklyPlanningDialogueRendererRequestV5, recordWeeklyPlanningDialogueRendererResponseV5 } from '../dialogue/weeklyPlanningStableV5TurnDialogueTrace';
 import { D5_TOP1_ANSWER_POLICY_VERSION, D5_TOP1_SCOPE } from '../../../../shared/d5AnswerPolicy';
@@ -53,12 +54,12 @@ async function dispatchAndTrace(oversized = false) {
   const fact = currentTurnGrounding.acceptedFacts.find(f => f.kind === 'effort_estimate')!;
   fact.data.futureEffortAckSentinel = 'keep-future-effort-ack';
   const input = { actionId: 'required-ack-action', currentUserMessage: '15', recentConversation: [],
-    planningInformation: null, currentTurnGrounding, actionKind: 'status' as const, questionCode: null,
+    planningInformation: createWeeklyPlanningStableV5DialogueProjection(graph), currentTurnGrounding, actionKind: 'status' as const, questionCode: null,
     requiredLabels: [], fallbackText: '技術的なエラー', previewCount: 0 };
   let actualRendererRequest = '';
   const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
     actualRendererRequest = JSON.stringify(request);
-    const text = `${(fact.data.targetLabels as string[]).join('の')}は全部で15分で見積もります。`;
+    const text = `${(fact.data.targetLabels as string[]).join('の')}${workload.amount}${workload.unitLabel}は全部で15分ですね。`;
     return JSON.stringify({ actionId: input.actionId, actionKind: input.actionKind, questionCode: null,
       groundingAcknowledgement: { factIds: [fact.factId], text }, text });
   } });
@@ -87,11 +88,13 @@ describe('actual Choice request through durable trace gate', () => {
     await recordWeeklyPlanningStableV5TurnTrace({ ...input, requestId: `${conversationId}:request:retry`, debugTraceEvents: [] });
     expect(h.writes).toHaveLength(2); expect(listWeeklyPlanningTraceOutboxItems({ userId, conversationId })).toEqual([]);
     const entry = h.writes[0].entries[0]; expect(entry.kind).toBe('turn_diagnostic');
+    expect(JSON.stringify(entry)).toContain('は全部で15分ですね。');
     const serialized = JSON.stringify(entry);
     for (const marker of ['keep-unknown-numeric-sentinel', 'missing_effort_estimate', 'question-1', 'workload-1', 'sha256:', 'selectionEpoch', 'precision', 'exact', D5_TOP1_ANSWER_POLICY_VERSION, 'one_exact_duration_or_contextual_bare_minutes', 'keep-future-effort-ack', 'targetLabels', 'unitLabel', 'required_before_resume']) expect(serialized).toContain(marker);
     for (const marker of ['auth-secret-never-trace', 'token-never-trace', 'owner-never-trace', 'census-never-trace']) expect(serialized).not.toContain(marker);
     expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
     const prepared = prepare(h.writes[0]); expect(prepared.entries).toHaveLength(1);
+    expect(JSON.stringify(prepared.entries[0])).toContain('は全部で15分ですね。');
     expect(JSON.stringify(prepared.entries[0])).toContain('keep-unknown-numeric-sentinel');
     expect(measureWeeklyPlanningTraceJsonBytes(prepared.entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
   });
