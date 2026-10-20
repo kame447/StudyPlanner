@@ -188,7 +188,7 @@ async function boot(page, mode) {
       if (liveBridge) {
         const response = await fetch(liveBridge.url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${liveBridge.token}` }, body: JSON.stringify(body) });
         const text = await response.text();
-        record.response = { status: response.status, body: JSON.parse(text) };
+        record.response = { status: response.status, body: JSON.parse(text), provider: response.headers.get('X-StudyPlanner-AI-Provider') ?? 'unknown' };
         return route.fulfill({ status: response.status, body: text, headers: { 'Content-Type': 'application/json', 'X-StudyPlanner-AI-Provider': response.headers.get('X-StudyPlanner-AI-Provider') ?? 'unknown' } });
       }
       if (body.decisionContext?.purpose === 'candidate_choice') {
@@ -420,6 +420,76 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await reloadOwned(page);
     expect(await saved(page)).toEqual(committed);
     expect(audit.proxy).toHaveLength(beforeReload);
+    expect(audit.blockedExternal).toEqual([]);
+  });
+}
+
+for (const reply of ['15ページ', '英語は15分', '全部で15分', '15分。あと英語の締切を金曜にして', '15分くらい']) {
+  test(`D5 live negative 1280: ${reply}`, async ({ page }, testInfo) => {
+    test.skip(process.env.JEV_D5_LIVE !== '1', 'Explicit live opt-in only; one fresh conversation per bounded negative');
+    test.setTimeout(turnCompletionOptions().timeout * 2 + 30_000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const audit = await boot(page, 'd5');
+    await submit(page, audit, D5_SETUP);
+    const before = await d5Snapshot(page);
+    await testInfo.attach('d5-negative-capture.json', { body: Buffer.from(JSON.stringify({ reply, before,
+      renderer: audit.proxy.filter(call => call.schema === 'weekly_planning_stable_v5_dialogue_response').at(-1) }, null, 2)), contentType: 'application/json' });
+    expect(before.state.intakeState.lastQuestionContext.controlledCandidate?.domainId).toBe('d5_numeric');
+    expect(before.state.intakeState.lastQuestionContext.controlledCandidate.domainPolicyVersion).toBe(D5_POLICY);
+    expect(before.state.intakeState.c5SelectionLedger.consumed).toEqual([]);
+    const math = before.graph.tasks.find(task => task.title === '数学');
+    const english = before.graph.tasks.find(task => task.title === '英語');
+    const beforeReply = audit.proxy.length;
+    await submit(page, audit, reply);
+    const calls = audit.proxy.slice(beforeReply);
+    const candidateCalls = calls.filter(call => call.body.decisionContext?.purpose === 'candidate_choice');
+    const fallbackCalls = calls.filter(call => call.body.purpose === 'weekly_planning_semantic_normalizer'
+      && call.body.decisionContext?.purpose !== 'candidate_choice');
+    const after = await d5Snapshot(page);
+    const activeIds = new Set(after.graph.factLifecycles.filter(fact => fact.status === 'active').map(fact => fact.factId));
+    const mathEffort = after.graph.effortEstimates.filter(fact => activeIds.has(fact.id) && fact.taskId === math.id);
+    const renderer = calls.filter(call => call.schema === 'weekly_planning_stable_v5_dialogue_response').at(-1);
+    const decision = renderer ? structuredUserPrompt(renderer.body, 'applicationDecision').applicationDecision : null;
+    const questions = after.state.intakeState.questions ?? [];
+    const reasked = questions.length > 0 && decision?.questionCode != null;
+    const englishDeadlines = after.graph.temporalConstraints.filter(fact => activeIds.has(fact.id)
+      && fact.taskId === english.id && fact.kind === 'deadline');
+    const route = { schemas: calls.map(call => call.schema ?? call.body.decisionContext?.purpose),
+      fallbackSemantic: fallbackCalls.map(call => ({ schema: call.schema, provider: call.response?.provider ?? 'unknown' })), questionCode: decision?.questionCode ?? null, reasked,
+      mathEffort, englishDeadlines, questions, consumed: after.state.intakeState.c5SelectionLedger.consumed };
+    // Attach evidence before assertions, preserving a candidate-head false accept.
+    await testInfo.attach('d5-negative-readback.json', { body: Buffer.from(JSON.stringify({ reply, route, after,
+      candidateEvaluations: candidateCalls.map(call => ({ request: call.body.decisionContext.request,
+        evaluation: call.response?.body ?? call.response })), calls }, null, 2)), contentType: 'application/json' });
+    expect(candidateCalls.length).toBeLessThanOrEqual(1);
+    for (const call of candidateCalls) {
+      expect(call.body.decisionContext.request.wholeUtterance).toBe(reply);
+      expect(call.body.decisionContext.request.context.scope.domainPolicyVersion).toBe(D5_POLICY);
+      expect(call.response.status).toBe(200);
+      expect(call.response.body).toMatchObject({ status: 'evaluated', probabilities: expect.any(Array),
+        conditionChange: expect.any(Number), independentMeaning: expect.any(Number) });
+    }
+    expect(after.state.intakeState.c5SelectionLedger.consumed).toEqual([]);
+    expect(mathEffort.some(fact => fact.kind === 'duration_per_unit' && fact.minutes === 15
+      && (reply !== '15分くらい' || fact.precision !== 'approximate'))).toBe(false);
+    expect(fallbackCalls.length).toBeGreaterThan(0);
+    for (const call of fallbackCalls) {
+      const input = structuredUserPrompt(call.body, call.schema === 'weekly_planning_semantic_document_v5' ? 'userText' : 'currentUserText');
+      expect(input.userText ?? input.currentUserText).toBe(reply);
+    }
+    expect(after.state.messages.at(-1).content).not.toMatch(/返信を作れませんでした|今回の内容は計画へ反映していません/);
+    if (reply === '15分くらい') {
+      expect(candidateCalls).toEqual([]);
+      expect(mathEffort.some(fact => fact.minutes === 15 && fact.precision === 'approximate') || (reasked && mathEffort.length === 0)).toBe(true);
+    }
+    if (reply === '15分。あと英語の締切を金曜にして') {
+      // A math-only clarification must not hide the second instruction. Require
+      // the actual English Friday deadline or a visible question about it.
+      const deadlineHandled = englishDeadlines.some(fact => /金曜|2026-08-21|8月21日|8\/21/.test(fact.dateExpression ?? ''));
+      const deadlineReasked = reasked && questions.some(question => /締切|期限|金曜/.test(question));
+      expect(deadlineHandled || deadlineReasked).toBe(true);
+    }
+    expect(await saved(page)).toEqual([]);
     expect(audit.blockedExternal).toEqual([]);
   });
 }

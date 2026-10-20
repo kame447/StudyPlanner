@@ -14,6 +14,8 @@ import { choiceRequest, choiceEvaluation } from '../../../../shared/candidateCho
 import { WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS, measureWeeklyPlanningTraceJsonBytes } from '../../../../shared/weeklyPlanningTraceContract';
 import { prepareWeeklyPlanningTraceServerWrite } from '../../../../workers/ai-proxy/src/weeklyPlanningTracePrivacy';
 import { createCandidateChoiceClient } from '../../../services/ai/candidateChoiceClient';
+import { createControlledCandidateChoiceOptions, type ControlledCandidateDomainHost } from '../application/weeklyPlanningControlledCandidateChoice';
+import { createNumericPendingRegisteredDomainV5 } from '../semantic/weeklyPlanningNumericRegisteredDomainV5';
 import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../testUtils/weeklyPlanningApplicationTestHarness';
 import { recordWeeklyPlanningStableV5DebugTrace, takeWeeklyPlanningStableV5DebugTrace } from './weeklyPlanningStableV5DebugTrace';
 import { recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5TraceRuntimeForTest, resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest } from './weeklyPlanningStableV5TraceRuntime';
@@ -109,22 +111,28 @@ describe('actual Choice request through durable trace gate', () => {
     numeric.graph.factLifecycles.push(...numeric.graph.components.map(fact => ({ factId: fact.id, status: 'active' as const,
       createdRevision: 2, terminalRevision: null, supersededByFactId: null })));
     numeric.input.publicStateSummary = createWeeklyPlanningSemanticPublicStateSummaryV5({ pendingQuestion: pending }, numeric.graph);
-    const scope = numericPendingCompleteScopeV5(numeric.input)!;
+    const scope = numericPendingCompleteScopeV5(numeric.input, D5_TOP1_ANSWER_POLICY_VERSION)!;
     numeric.setState({ ...numeric.state, binding: { ...numeric.state.binding, scope } });
     let wire: any;
-    const client = createCandidateChoiceClient({ proxyUrl: 'https://fixture.invalid', getToken: async () => 'auth-secret-never-trace',
+    const choicePolicy = { ...numeric.port.choicePolicy, rules: numeric.port.choicePolicy.rules.map(rule => ({ ...rule, minimumTopProbability: 0, minimumMargin: 0 })) };
+    const options = createControlledCandidateChoiceOptions(createNumericPendingRegisteredDomainV5([10, 20, 30], D5_TOP1_ANSWER_POLICY_VERSION), {
+      domain: 'd5_numeric', domainPolicyVersion: D5_TOP1_ANSWER_POLICY_VERSION, mode: 'canary', choicePolicy,
       semanticPolicy: { calibrationEvidenceId: 'synthetic-test-only', maximumConditionChange: .01, maximumIndependentMeaning: .01 },
-      transport: async (_url, init) => {
+      maximumChildrenPerMenu: 254, maximumDecisions: 1,
+    }, { semanticObservation: () => ({ client: {}, finish() {} }),
+      choiceServices: { proxyUrl: 'https://fixture.invalid', getToken: async () => 'auth-secret-never-trace', transport: async (_url: RequestInfo | URL, init?: RequestInit) => {
         wire = JSON.parse(String(init?.body)).decisionContext.request;
         return Response.json({ status: 'evaluated', catalogVersion: CANDIDATE_CHOICE_CATALOG_VERSION,
           requestId: wire.requestId, selectionEpoch: wire.selectionEpoch, candidateSetHash: wire.candidateSetHash,
-          nodeId: wire.menu.nodeId, optionId: 'leaf:2', conditionChange: .001, independentMeaning: .001,
+          nodeId: wire.menu.nodeId, optionId: 'leaf:2', conditionChange: .56, independentMeaning: .50,
           probabilities: wire.menu.options.map((option: { id: string }) => ({ optionId: option.id,
-            probability: option.id === 'leaf:2' ? .999 : .001 / (wire.menu.options.length - 1) })) });
-      } });
-    numeric.port.choose = (request, before) => client.choose({ ...request, context: { ...request.context,
+            probability: option.id === 'leaf:2' ? .59 : .41 / (wire.menu.options.length - 1) })) });
+      } } } as unknown as ControlledCandidateDomainHost)!;
+    expect(options).toBeDefined();
+    const choose: typeof numeric.port.choose = (request, before) => options.choose({ ...request, context: { ...request.context,
       question: { ...request.context.question, code: 'missing_effort_estimate' } } }, before);
-    const staged = await tryNumericPendingChoiceRouteV5(new WeeklyPlanningSemanticNormalizerRunV5({ createChatCompletion: async () => { throw new Error('No Luna in trace fixture'); } }, numeric.input), numeric.port);
+    const port = { ...numeric.port, choicePolicy, domainPolicyVersion: D5_TOP1_ANSWER_POLICY_VERSION, choose };
+    const staged = await tryNumericPendingChoiceRouteV5(new WeeklyPlanningSemanticNormalizerRunV5({ createChatCompletion: async () => { throw new Error('No Luna in trace fixture'); } }, numeric.input), port);
     expect(staged?.status).toBe('staged'); expect(wire.context.scope).toEqual(scope);
     expect(wire.menu.options[2].candidate.tuple.scope).toEqual(scope);
     expect(JSON.stringify(wire)).not.toContain('private-numeric-provenance-never-trace');
@@ -141,6 +149,11 @@ describe('actual Choice request through durable trace gate', () => {
       for (const marker of ['山地の教材', '第1章', 'componentChain', 'unitLabel']) expect(JSON.stringify(entry)).toContain(marker);
       for (const privateValue of ['auth-secret-never-trace', 'private-numeric-provenance-never-trace']) expect(JSON.stringify(entry)).not.toContain(privateValue);
       expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+      const diagnostic = entry as typeof h.writes[0]['entries'][0] & { aiInterpreter: { rawResponses: { attempt: string; text: string }[] } };
+      const raw = diagnostic.aiInterpreter.rawResponses.find(response => response.attempt === 'numeric_pending_choice_raw');
+      expect(raw).toBeDefined();
+      expect(JSON.parse(raw!.text)).toMatchObject({ conditionChange: .56, independentMeaning: .50,
+        probabilities: expect.arrayContaining([{ optionId: 'leaf:2', probability: .59 }]) });
     }
     expect(measureWeeklyPlanningTraceJsonBytes(h.writes[0].entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
   });

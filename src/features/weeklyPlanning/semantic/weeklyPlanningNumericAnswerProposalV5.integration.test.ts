@@ -27,14 +27,21 @@ beforeEach(() => {
 });
 afterEach(() => { restore(); vi.restoreAllMocks(); resetWeeklyPlanningStableV5RuntimeSessionsForTest(); });
 
-function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effortAck?: boolean; measurement?: 'total_duration' | 'duration_per_unit'; minutes?: number;
-  mode?: 'none' | 'low_top' | 'extra_meaning' | 'condition_change' | 'tie';
+function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effortAck?: boolean; component?: boolean; measurement?: 'total_duration' | 'duration_per_unit'; minutes?: number;
+  mode?: 'none' | 'low_top' | 'extra_meaning' | 'condition_change' | 'ellipsis_heads' | 'tie';
   collision?: 'estimate' | 'amount' | 'rangeStart' | 'rangeEnd' | 'target' | 'source_integer' | 'inactive' | 'range_label' | 'unrelated_label' | 'capacity' | 'recurrence';
   stale?: 'graph' | 'question' | 'continuation' } = {}) {
   const h = c5ControllerHarness();
   const graph = h.graph;
   graph.workloads = graph.workloads.filter(f => f.id !== 'completed-b');
   graph.effortEstimates = [];
+  if (options.component) {
+    graph.components = [{ id: 'material-a', taskId: graph.workloads[0].taskId, parentComponentId: null, role: 'material',
+      label: '数学問題集', source: graph.workloads[0].source, createdRevision: 1 },
+    { id: 'chapter-a', taskId: graph.workloads[0].taskId, parentComponentId: 'material-a', role: 'chapter',
+      label: '第1章', source: graph.workloads[0].source, createdRevision: 1 }];
+    graph.workloads[0].componentId = 'chapter-a';
+  }
   const sibling = graph.workloads.find(f => f.id === 'work-b')!;
   sibling.amount = 30; sibling.unitCode = 'minute'; sibling.unitLabel = '分';
   if (options.collision === 'target') graph.workloads[0].amount = 15;
@@ -58,7 +65,7 @@ function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effort
       source: sibling.source, createdRevision: 1 }];
     if (options.collision === 'inactive') graph.effortEstimates.push({ ...graph.effortEstimates[0], id: 'old-effort', minutes: 15 });
   }
-  graph.factLifecycles = [...graph.tasks, ...graph.workloads, ...graph.effortEstimates, ...graph.availabilityDeclarations, ...graph.recurrences].map(f => ({
+  graph.factLifecycles = [...graph.tasks, ...graph.components, ...graph.workloads, ...graph.effortEstimates, ...graph.availabilityDeclarations, ...graph.recurrences].map(f => ({
     factId: f.id, status: f.id === 'old-effort' ? 'superseded' : 'active', createdRevision: 1,
     terminalRevision: f.id === 'old-effort' ? 2 : null, supersededByFactId: f.id === 'old-effort' ? 'sibling-effort' : null,
   }));
@@ -71,7 +78,7 @@ function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effort
     const selected = options.mode === 'none' ? 'none' : request.menu.options.find(o => o.kind === 'leaf' && o.candidate.tuple.minutes === (options.minutes ?? 5))!.id;
     const { semanticSufficiency: _sufficiency, ...response } = normalizedChoice(request, selected);
     // With top >= .90 a normalized runner-up is <= .10, so the .80 margin is implied; low_top covers both.
-    const top = options.mode === 'tie' ? 0.5 : options.mode === 'low_top' ? 0.51 : 0.97;
+    const top = options.mode === 'tie' ? 0.5 : options.mode === 'low_top' ? 0.51 : options.mode === 'ellipsis_heads' ? .59 : 0.97;
     const other = request.menu.options.find(o => o.id !== selected)!.id;
     response.probabilities = request.menu.options.map(o => ({ optionId: o.id,
       probability: o.id === selected ? top : options.mode === 'low_top' ? (1 - top) / (request.menu.options.length - 1)
@@ -82,8 +89,8 @@ function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effort
     if (options.stale === 'question') h.replaceState({ ...h.getState(), intakeState: { ...h.getState().intakeState!,
       lastQuestionContext: { ...h.getState().intakeState!.lastQuestionContext!, actionId: 'replaced-question' } } });
     return Response.json({ ...response, status: 'evaluated', catalogVersion: CANDIDATE_CHOICE_CATALOG_VERSION,
-      conditionChange: options.mode === 'condition_change' ? options.top1 ? 0.5 : 0.02 : 0.001,
-      independentMeaning: options.mode === 'extra_meaning' ? options.top1 ? 0.5 : 0.02 : 0.001 });
+      conditionChange: options.mode === 'ellipsis_heads' ? .56 : options.mode === 'condition_change' ? options.top1 ? 0.5 : 0.02 : 0.001,
+      independentMeaning: options.mode === 'ellipsis_heads' ? .50 : options.mode === 'extra_meaning' ? options.top1 ? 0.5 : 0.02 : 0.001 });
   });
   const client = createCandidateChoiceClient({ proxyUrl: 'https://choice.fixture', getToken: async () => 'fixture', transport,
     semanticPolicy: { calibrationEvidenceId: 'synthetic-only', maximumConditionChange: 0.01, maximumIndependentMeaning: 0.01 } });
@@ -123,9 +130,10 @@ function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effort
     execute: async ({ pending }) => {
       if (options.presentingSiblingAck) graph.effortEstimates = graph.effortEstimates.map(fact => fact.id === 'sibling-effort'
         ? { ...fact, source: { ...fact.source, turnId: pending.requestId } } : fact);
-      const result: WeeklyPlanningTurnExecutionResult = { state: { ...createInitialPlanningIntakeState(), questions: ['どのくらいかかりますか？'],
+      const question = options.component ? '数学問題集の第1章は1問あたり何分かかりますか？' : 'どのくらいかかりますか？';
+      const result: WeeklyPlanningTurnExecutionResult = { state: { ...createInitialPlanningIntakeState(), questions: [question],
       lastQuestionContext: { kind: 'ambiguity', topicId: 'work-a', targetSlot: 'stable_v5:missing_effort_estimate', intent: measurement } },
-      message: 'どのくらいかかりますか？', draftCandidates: [], stableV5Graph: graph,
+      message: question, draftCandidates: [], stableV5Graph: graph,
       questionPresentationContent: { responseSource: 'ai', currentTurnGrounding: 'none', selfRepairNotice: false,
         groundingContext: { proposed: 0, contested: 0 }, previewPromotionControl: false } };
       if (!options.presentingSiblingAck) return result;
@@ -158,9 +166,39 @@ describe('D5 answer proposal through canonical controller commit', () => {
     expect(saved.planningState.intakeState!.c5SelectionLedger!.consumed).toHaveLength(1);
     expect(saved.graph.effortEstimates.filter(f => f.id === 'sibling-effort')).toMatchObject([{ minutes: 15 }]);
   });
-  it.each(['none', 'tie', 'extra_meaning', 'condition_change'] as const)('v2 abstains on %s', async mode => {
+  it.each(['none', 'tie'] as const)('v2 abstains on %s', async mode => {
     const run = setup({ top1: true, mode, minutes: 15 }); await run.present(); await run.answer('15');
     expect(run.fallback).toHaveBeenCalledOnce();
+    expect(readC5RuntimeGraph(OWNER, run.h.conversationId)).toEqual(run.graph);
+    expect(run.h.getState().intakeState!.c5SelectionLedger!.consumed).toEqual([]);
+  });
+  it.each(['extra_meaning', 'condition_change', 'ellipsis_heads'] as const)('v2 candidate head accepts despite diagnostic %s scores', async mode => {
+    const run = setup({ top1: true, mode, minutes: 15 }); await run.present(); await run.answer('15');
+    expect(run.choose).toHaveBeenCalledOnce(); expect(run.fallback).not.toHaveBeenCalled();
+    expect(readC5RuntimeGraph(OWNER, run.h.conversationId).effortEstimates).toMatchObject([{ minutes: 15 }]);
+    expect(run.h.getState().intakeState!.c5SelectionLedger!.consumed).toHaveLength(1);
+  });
+  it.each([
+    ['全部で300分', true, 'duration_per_unit'],
+    ['1問5分、英語も30分追加', false, 'duration_per_unit'],
+  ] as const)('mock none preserves scope/compound contrast %s for whole-reply Luna fallback', async (text, component, measurement) => {
+    const run = setup({ top1: true, mode: 'none', component, measurement });
+    await run.present(); await run.answer(text);
+    expect(run.choose).toHaveBeenCalledOnce();
+    const request = run.choose.mock.calls[0][0];
+    expect(request.wholeUtterance).toBe(text);
+    if (component) {
+      expect(request.context.scope.componentChain).toMatchObject([{ label: '数学問題集' }, { label: '第1章' }]);
+      expect(request.context.presentedQuestion).toBe('数学問題集の第1章は1問あたり何分かかりますか？');
+    }
+    expect(run.fallback.mock.calls[0][0]).toMatchObject({ userText: text });
+    expect(readC5RuntimeGraph(OWNER, run.h.conversationId)).toEqual(run.graph);
+    expect(run.h.getState().intakeState!.c5SelectionLedger!.consumed).toEqual([]);
+  });
+  it.each(['わかりません', '保存してください', 'この内容で承認します'])('v2 refusal/approval has no exact proposal or commit: %s', async text => {
+    const run = setup({ top1: true }); await run.present(); await run.answer(text);
+    expect(run.choose).not.toHaveBeenCalled();
+    expect(run.fallback.mock.calls[0][0]).toMatchObject({ userText: text });
     expect(readC5RuntimeGraph(OWNER, run.h.conversationId)).toEqual(run.graph);
     expect(run.h.getState().intakeState!.c5SelectionLedger!.consumed).toEqual([]);
   });
