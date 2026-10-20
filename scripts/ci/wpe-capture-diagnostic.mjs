@@ -7,6 +7,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { captureSlots, captureCase } from '../../tests/e2e/support/wpe-capture-diagnostic.mjs';
 
+export const diagnosticPushBase = '0c0f0071a83ebf2755a9b1689bbad007497b1f86';
 export const artifactLimit = 1024 ** 3;
 const config = 'tests/e2e/playwright.wpe-capture-diagnostic.config.mjs';
 const outputRelative = 'artifacts/wpe-capture-diagnostic';
@@ -22,7 +23,11 @@ function command(root, command, args) {
 }
 export function admitEnvironment(env) {
   assert.equal(env.CI, 'true');
-  assert.equal(env.GITHUB_EVENT_NAME, 'workflow_dispatch');
+  if (env.GITHUB_EVENT_NAME === 'push') {
+    assert.equal(env.DIAGNOSTIC_PUSH_BEFORE, diagnosticPushBase, 'Only the one approved successor push');
+    assert.equal(env.DIAGNOSTIC_PUSH_FORCED, 'false', 'No forced push');
+    assert.equal(env.DIAGNOSTIC_PUSH_DELETED, 'false', 'No deleted branch');
+  } else assert.equal(env.GITHUB_EVENT_NAME, 'workflow_dispatch');
   assert.equal(env.GITHUB_REPOSITORY, 'kame447/StudyPlanner');
   assert.equal(env.GITHUB_REF, 'refs/heads/test/wpe-recording-diagnostic-local', 'Isolated branch only');
   assert.equal(env.DIAGNOSTIC_VISIBILITY, 'public');

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { admitEnvironment, validateCollection, filesUnder, runSlots, artifactLimit,
-  validateBundleSize, packageArtifacts, runBlock } from './wpe-capture-diagnostic.mjs';
+  validateBundleSize, packageArtifacts, runBlock, diagnosticPushBase } from './wpe-capture-diagnostic.mjs';
 import { captureSlots } from '../../tests/e2e/support/wpe-capture-diagnostic.mjs';
 const roots = [];
 const root = () => { const p = fs.mkdtempSync(path.join(os.tmpdir(), 'capture-probe-')); roots.push(p); return p; };
@@ -27,6 +27,16 @@ test('only the approved first manual block on the public repository is admitted'
     { GITHUB_REF: 'refs/heads/main' }, { GITHUB_REF: 'refs/heads/other' },
     { UI_SPEC: 'bookshelf-surface.spec.mjs' }, { PW_TEST_REUSE_CONTEXT: '1' }, { PWTEST_REUSE_CONTEXT: '1' }, { PWDEBUG: '1' }])
     assert.throws(() => admitEnvironment({ ...env, ...change }));
+});
+test('one normal successor push is admitted but replay and scope changes are rejected', () => {
+  const push = { ...env, GITHUB_EVENT_NAME: 'push', DIAGNOSTIC_PUSH_BEFORE: diagnosticPushBase,
+    DIAGNOSTIC_PUSH_FORCED: 'false', DIAGNOSTIC_PUSH_DELETED: 'false' };
+  admitEnvironment(push);
+  for (const change of [{ DIAGNOSTIC_PUSH_BEFORE: 'b'.repeat(40) }, { DIAGNOSTIC_PUSH_BEFORE: undefined },
+    { DIAGNOSTIC_PUSH_FORCED: 'true' }, { DIAGNOSTIC_PUSH_DELETED: 'true' },
+    { GITHUB_EVENT_NAME: 'pull_request' }, { GITHUB_RUN_ATTEMPT: '2' },
+    { GITHUB_REF: 'refs/heads/main' }, { DIAGNOSTIC_VISIBILITY: 'private' }])
+    assert.throws(() => admitEnvironment({ ...push, ...change }));
 });
 test('collection admits only the original full contract and preserved deadline/policy', () => {
   assert.equal(validateCollection(listing(), 'capture-on-1'), 'original-identity');

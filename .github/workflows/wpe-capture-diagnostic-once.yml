@@ -1,0 +1,83 @@
+name: WPE Capture Diagnostic One Shot
+
+# Temporary capability-gap route; remove after the one approved block.
+# Only the immediate normal successor of the published diagnostic may run.
+on:
+  push:
+    branches: [test/wpe-recording-diagnostic-local]
+    paths: [.github/workflows/wpe-capture-diagnostic-once.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-wpe-capture-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  wpe-capture-diagnostic:
+    name: wpe-capture-diagnostic (not acceptance)
+    if: ${{ github.repository == 'kame447/StudyPlanner' && github.event.repository.visibility == 'public' && github.event_name == 'push' && github.ref == 'refs/heads/test/wpe-recording-diagnostic-local' && github.event.before == '0c0f0071a83ebf2755a9b1689bbad007497b1f86' && !github.event.forced && !github.event.deleted && github.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+      options: --user 1001
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Admit one public diagnostic block
+        env:
+          DIAGNOSTIC_VISIBILITY: ${{ github.event.repository.visibility }}
+          UI_SPEC: ''
+          DIAGNOSTIC_PUSH_BEFORE: ${{ github.event.before }}
+          DIAGNOSTIC_PUSH_FORCED: ${{ github.event.forced }}
+          DIAGNOSTIC_PUSH_DELETED: ${{ github.event.deleted }}
+        run: node --input-type=module -e "import { admitEnvironment } from './scripts/ci/wpe-capture-diagnostic.mjs'; admitEnvironment(process.env)"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Snapshot application manifests before isolated test-runner install
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-capture-manifests.sha256
+
+      - name: Install isolated Playwright test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+
+      - name: Verify application manifests remain unchanged
+        run: sha256sum -c /tmp/studyplanner-capture-manifests.sha256
+
+      - name: Build the one frozen production bundle
+        run: npm run build
+
+      - name: Run the four original contracts in capture ABBA order
+        env:
+          DIAGNOSTIC_VISIBILITY: ${{ github.event.repository.visibility }}
+          UI_SPEC: ''
+          DIAGNOSTIC_PUSH_BEFORE: ${{ github.event.before }}
+          DIAGNOSTIC_PUSH_FORCED: ${{ github.event.forced }}
+          DIAGNOSTIC_PUSH_DELETED: ${{ github.event.deleted }}
+        run: node scripts/ci/wpe-capture-diagnostic.mjs run
+
+      - name: Package complete evidence within the upload budget
+        if: ${{ always() && !cancelled() }}
+        id: capture_artifact
+        run: node scripts/ci/wpe-capture-diagnostic.mjs package
+
+      - name: Upload the bounded diagnostic evidence
+        if: ${{ always() && !cancelled() && steps.capture_artifact.outputs.upload == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: wpe-capture-diagnostic-${{ github.sha }}-${{ github.run_id }}
+          path: artifacts/wpe-capture-diagnostic.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7

@@ -112,6 +112,25 @@ diagnostic evidence, not a statistical reliability or speedup claim.
   a separately reviewed rendering/capture investigation, not reducing normal
   acceptance recording or calling the product fixed.
 
+### One-shot execution route preparation (2026-10-20)
+
+The existing diagnostic branch `test/wpe-recording-diagnostic-local` at
+`0c0f0071a83ebf2755a9b1689bbad007497b1f86` is being continued, not replaced.
+Manual dispatch is unavailable through the current connector; cloud CLI and
+browser are unauthenticated. No diagnostic run exists as of this checkpoint.
+A temporary exact-branch push workflow is prepared for review, not published.
+Its exact parent-SHA, non-forced/non-deletion and first-attempt guards admit only
+one normal successor commit. Its unique workflow name avoids the automatic QA
+summary, and existing push workflows do not select this branch. The original
+manual workflow and acceptance configuration remain unchanged. The existing
+15-minute, four-slot, public-repository, no-secret/API, archive-size and retention
+limits remain. Remove the temporary workflow after the terminal result using a
+normal same-branch commit; the changed parent makes cleanup ineligible to rerun.
+Next: independent review of the exact diff and guards, then publication only
+when authorized; read back the resulting run and interpret the original ABBA
+artifacts under the stopping rule above. Never mark the product fixed from this
+isolated diagnostic or silently start a second block.
+
 ### Isolated execution checkpoint
 
 The existing UI Regression Matrix now has a default-off Boolean
