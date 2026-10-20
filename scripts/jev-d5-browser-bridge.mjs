@@ -110,6 +110,7 @@ const createQuotaBinding = ${createD5BridgeQuotaBinding.toString()};
 const quotaBinding = createQuotaBinding(AiQuotaDurableObject);
 const upstream = globalThis.fetch.bind(globalThis);
 let counters = { jev: 0, luna: 0, reservedUsd: 0 }; let receipts = []; let busy = false; let tariffViolation = false;
+let redirectViolation = false;
 let exceptions = []; let diagnosticSecrets = [];
 const captureException = error => {
   if (DIAGNOSTICS && busy && exceptions.length < 4) exceptions.push(exceptionMetadata(error, diagnosticSecrets));
@@ -134,6 +135,7 @@ globalThis.fetch = async (input, init) => {
   const family = url.origin === 'https://openrouter.ai' && url.pathname === '/api/alpha/decisions' ? 'jev'
     : url.origin === 'https://api.openai.com' && url.pathname === '/v1/chat/completions' ? 'luna' : null;
   if (!family) throw new Error('Dev bridge denies non-provider network');
+  if (redirectViolation) throw new Error('Provider redirect stopped this run');
   if (tariffViolation) throw new Error('Provider tariff violation stopped this run');
   const providerBody = typeof init?.body === 'string' ? init.body : await new Request(input, init).clone().text();
   const bodyBytes = new TextEncoder().encode(providerBody).length;
@@ -150,7 +152,12 @@ globalThis.fetch = async (input, init) => {
   const receipt = { family, ordinal: counters[family], phase: 'reserved_before_send', reservedUsd: RESERVATION_USD,
     providerBodyBytes: bodyBytes, model: payload.model, priceBound: family === 'luna' ? PRICE_BOUNDS.luna[payload.model] : PRICE_BOUNDS.jev, startedAt: Date.now() };
   receipts.push(receipt);
-  const response = await upstream(input, { ...init, redirect: 'error' });
+  const response = await upstream(input, { ...init, redirect: 'manual' });
+  if (response.type === 'opaqueredirect' || response.status >= 300 && response.status < 400) {
+    redirectViolation = true;
+    Object.assign(receipt, { phase: 'rejected_redirect', httpStatus: response.status, latencyMs: Date.now() - receipt.startedAt });
+    throw new Error('Dev bridge refuses provider redirect');
+  }
   try {
     const body = await response.clone().json(); const usage = body.usage ?? {};
     const cost = typeof usage.cost === 'number' && Number.isFinite(usage.cost) && usage.cost >= 0 ? usage.cost : null;
@@ -192,7 +199,8 @@ export default { async fetch(request, env, ctx) {
       response = Response.json({ error: 'Unexpected worker error.' }, { status: 500 });
     }
     const responseHeaders = new Headers(response.headers);
-    responseHeaders.set('X-D5-Bridge-Receipts', JSON.stringify({ counters, receipts }));
+    responseHeaders.set('X-D5-Bridge-Receipts', JSON.stringify({ counters, receipts,
+      ...(redirectViolation ? { terminalFailure: 'provider_redirect' } : {}) }));
     if (DIAGNOSTICS && response.status >= 500) responseHeaders.set('X-D5-Bridge-Exceptions', encodeURIComponent(JSON.stringify(exceptions)));
     return new Response(response.body, { status: response.status, headers: responseHeaders });
   } finally { busy = false; diagnosticSecrets = []; }
@@ -218,6 +226,7 @@ export async function startD5BrowserBridge({ workerName, evidenceDir, remainingA
   const journal = join(evidenceDir, `d5-browser-${runId}.jsonl`);
   let worker; let server; let sequence = 0; let lastSend = 0; let chain = Promise.resolve();
   let reservedUsd = 0; let reservedJev = 0; let reservedLuna = 0;
+  let terminalFailure = null;
   const receipt = row => appendFile(journal, JSON.stringify({ runId, ...row }) + '\n');
   try {
     const diagnostics = process.env.JEV_D5_DIAGNOSTICS === '1';
@@ -235,6 +244,7 @@ export async function startD5BrowserBridge({ workerName, evidenceDir, remainingA
     server = createServer((request, response) => {
       chain = chain.then(async () => {
         if (request.headers.authorization !== `Bearer ${localToken}` || request.method !== 'POST') { response.writeHead(404); response.end(); return; }
+        if (terminalFailure) throw new Error('Loopback stopped after terminal provider failure');
         let body = ''; for await (const chunk of request) { body += chunk; if (Buffer.byteLength(body) > D5_BRIDGE_MAX_BODY_BYTES) throw new Error('Oversized loopback request'); }
         const payload = JSON.parse(body); const focused = payload.decisionContext?.purpose;
         const jev = focused ? 1 : 0; const luna = focused === 'candidate_choice' ? 0 : 1;
@@ -250,6 +260,7 @@ export async function startD5BrowserBridge({ workerName, evidenceDir, remainingA
         const upstreamResponse = await worker.fetch('/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${remoteToken}`, 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(95_000) });
         const bytes = await upstreamResponse.text();
         const dispatches = JSON.parse(upstreamResponse.headers.get('X-D5-Bridge-Receipts') ?? 'null');
+        if (dispatches?.terminalFailure) terminalFailure = dispatches.terminalFailure;
         if (diagnostics) for (const exception of JSON.parse(decodeURIComponent(upstreamResponse.headers.get('X-D5-Bridge-Exceptions') ?? '[]'))) {
           await receipt({ seq, phase: 'worker_exception', name: exception.name, message: exception.message, frame: exception.frame });
         }

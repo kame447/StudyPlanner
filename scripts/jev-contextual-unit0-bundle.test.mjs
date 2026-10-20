@@ -71,7 +71,7 @@ it('D5 bridge gates expiry/auth and enforces provider reservations before sends 
     .replace(/^import \{ AiQuotaDurableObject \} from .*;$/m, 'class AiQuotaDurableObject {}')
     .replace('export default {', 'globalThis.bridge = {');
   const context = { crypto: webcrypto, TextEncoder, URL, Request, Response, Headers, Date, Uint8Array,
-    fetch: async (_input, init) => { expect(init.redirect).toBe('error'); sends++; return Response.json({ usage: { cost: .001, input_tokens: 20, output_tokens: 2 } }); } };
+    fetch: async (_input, init) => { expect(init.redirect).toBe('manual'); sends++; return Response.json({ usage: { cost: .001, input_tokens: 20, output_tokens: 2 } }); } };
   runInNewContext(source, context);
   const request = auth => new Request('https://synthetic/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${auth}` }, body: '{}' });
   expect((await context.bridge.fetch(request('wrong'), {})).status).toBe(404); expect(sends).toBe(0);
@@ -132,7 +132,7 @@ it('D5 generated bridge runs a semantic-document request through the real Worker
         const url = new URL(typeof input === 'string' ? input : input.url);
         if (url.href !== 'https://api.openai.com/v1/chat/completions') throw new Error('Offline test refuses all other network');
         if (failureBoundary === 'provider') throw syntheticException();
-        expect(init.redirect).toBe('error');
+        expect(init.redirect).toBe('manual');
         const payload = JSON.parse(init.body); providerRequests.push(payload);
         return Response.json({ model: payload.model, choices: [{ message: { content: '{"offline":true}' } }],
           usage: { prompt_tokens: 40, completion_tokens: 5 } });
@@ -217,6 +217,106 @@ export default { async fetch() {
     expect(await response.json()).toMatchObject({ sameClass: true, reusedSubject: true, separateSubject: true, storedCount: 1,
       outcomes: [{ allowed: true }, { allowed: false, exceededRule: 'synthetic:minute' }, { allowed: true }, { allowed: true }] });
   } finally { await mf.dispose(); }
+});
+
+it('D5 full generated entry runs in native workerd with offline success, refusal and terminal redirects', async () => {
+  const { build } = await import('esbuild');
+  const { Miniflare } = await import('miniflare');
+  const { d5BridgeWorkerSource } = await import('./jev-d5-browser-bridge.mjs');
+  const token = 'native-offline-token';
+  for (const scenario of ['success', 'refuse', 'redirect']) {
+    const bridgeSource = d5BridgeWorkerSource({ workerPath: join(ROOT, 'workers/ai-proxy/src/worker.ts'),
+      digest: createHash('sha256').update(token).digest('hex'), expiresAt: Date.now() + 60_000,
+      runId: 'native-offline', remaining: { jev: 200, luna: 60, usd: 3 }, diagnostics: true })
+      .replace('export default {', 'const bridge = {');
+    // Request construction validates redirect modes in the actual runtime. The
+    // captured upstream never invokes the runtime network fetch, for any URL.
+    const source = `
+let providerSends = 0;
+globalThis.fetch = async (input, init) => {
+  const request = new Request(input, init);
+  if (request.url !== 'https://api.openai.com/v1/chat/completions' || request.redirect !== 'manual') throw new Error('Offline transport refuses unexpected request');
+  providerSends++;
+  if (${JSON.stringify(scenario)} === 'refuse') throw new Error('Offline provider intentionally refused');
+  if (${JSON.stringify(scenario)} === 'redirect') return new Response(null, { status: 302, headers: { Location: 'https://must-never-follow.invalid/' } });
+  const payload = await request.json();
+  return Response.json({ model: payload.model, choices: [{ message: { content: '{"offline":true}' } }], usage: { prompt_tokens: 40, completion_tokens: 5 } });
+};
+${bridgeSource}
+export default { async fetch(request, _env, ctx) {
+  const response = await bridge.fetch(request, { OPENAI_API_KEY: 'dummy-luna', OPENROUTER_API_KEY: 'dummy-jev' }, ctx);
+  const headers = new Headers(response.headers); headers.set('X-Offline-Provider-Sends', String(providerSends));
+  return new Response(response.body, { status: response.status, headers });
+} };
+`;
+    const bundle = await build({ stdin: { contents: source, resolveDir: ROOT, sourcefile: 'd5-native-full-entry.ts', loader: 'ts' },
+      bundle: true, write: false, format: 'esm', platform: 'browser', external: ['cloudflare:workers'] });
+    const mf = new Miniflare({ port: 0, workers: [{ config: { name: `d5-native-full-${scenario}`, compatibilityDate: '2026-04-10',
+      manifest: { mainModule: 'worker.js', modules: { 'worker.js': { type: 'esm', contents: bundle.outputFiles[0].text } } },
+    } }] });
+    const request = () => mf.dispatchFetch('https://offline.invalid/chat/completions', { method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ purpose: 'weekly_planning_semantic_normalizer',
+        messages: [{ role: 'user', content: '8月20日から26日で数学20問と英語15ページを進めたい。英語15ページは全部で45分。数学の時間はまだ決めていません。' }],
+        response_format: { type: 'json_schema', json_schema: { name: 'weekly_planning_semantic_document_v5', strict: true, schema: { type: 'object' } } },
+        max_completion_tokens: 4096 }),
+    });
+    try {
+      const response = await request();
+      expect(response.headers.get('X-Offline-Provider-Sends')).toBe('1');
+      const receipt = JSON.parse(response.headers.get('X-D5-Bridge-Receipts'));
+      expect(receipt.counters).toEqual({ jev: 0, luna: 1, reservedUsd: .05 });
+      if (scenario === 'success') {
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({ content: '{"offline":true}' });
+        expect(receipt.receipts).toMatchObject([{ family: 'luna', phase: 'completed', httpStatus: 200 }]);
+        expect(response.headers.has('X-D5-Bridge-Exceptions')).toBe(false);
+      } else {
+        expect(response.status).toBe(500);
+        const errors = JSON.parse(decodeURIComponent(response.headers.get('X-D5-Bridge-Exceptions')));
+        expect(errors).toMatchObject([{ name: 'Error', message: scenario === 'refuse'
+          ? 'Offline provider intentionally refused' : 'Dev bridge refuses provider redirect' }]);
+        if (scenario === 'redirect') {
+          expect(receipt.terminalFailure).toBe('provider_redirect');
+          expect(receipt.receipts).toMatchObject([{ family: 'luna', phase: 'rejected_redirect', httpStatus: 302 }]);
+          expect(JSON.stringify(receipt)).not.toContain('must-never-follow');
+          const retry = await request();
+          expect(retry.status).toBe(500);
+          expect(retry.headers.get('X-Offline-Provider-Sends')).toBe('1');
+          expect(JSON.parse(retry.headers.get('X-D5-Bridge-Receipts'))).toMatchObject({
+            terminalFailure: 'provider_redirect', counters: { jev: 0, luna: 1, reservedUsd: .05 }, receipts: [],
+          });
+        }
+      }
+    } finally { await mf.dispose(); }
+  }
+}, 15_000);
+
+it('D5 refuses every 3xx and opaque redirect before a fallback or retry can send (offline VM)', async () => {
+  const { runInNewContext } = await import('node:vm');
+  const { webcrypto } = await import('node:crypto');
+  const { d5BridgeWorkerSource } = await import('./jev-d5-browser-bridge.mjs');
+  for (const status of [...Array.from({ length: 100 }, (_, index) => 300 + index), 'opaqueredirect']) {
+    let sends = 0;
+    const source = d5BridgeWorkerSource({ workerPath: '/synthetic-worker.ts', digest: 'a'.repeat(64), expiresAt: 1,
+      runId: 'redirect-offline', remaining: { jev: 200, luna: 60, usd: 3 } })
+      .replace(/^import worker from .*;$/m, 'const worker = {};')
+      .replace(/^import \{ AiQuotaDurableObject \} from .*;$/m, 'class AiQuotaDurableObject {}')
+      .replace('export default {', 'globalThis.bridge = {');
+    const context = { crypto: webcrypto, TextEncoder, URL, Request, Response, Headers, Date, Uint8Array,
+      fetch: async (_input, init) => {
+        expect(init.redirect).toBe('manual'); sends++;
+        const response = new Response(null, { status: typeof status === 'number' ? status : 200 });
+        if (status === 'opaqueredirect') Object.defineProperty(response, 'type', { value: 'opaqueredirect' });
+        return response;
+      } };
+    runInNewContext(source, context);
+    await expect(context.fetch('https://openrouter.ai/api/alpha/decisions', { method: 'POST',
+      body: JSON.stringify({ model: 'typesafe/jev-1.13' }) })).rejects.toThrow('refuses provider redirect');
+    await expect(context.fetch('https://api.openai.com/v1/chat/completions', { method: 'POST',
+      body: JSON.stringify({ model: 'gpt-6-luna', max_completion_tokens: 4096 }) })).rejects.toThrow('stopped this run');
+    expect(sends).toBe(1);
+  }
 });
 
 it('D5 exception diagnostics retain only bounded sanitized metadata', async () => {
