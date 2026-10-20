@@ -1,6 +1,7 @@
 # Week spanning-event keyboard access
 
-Status: local implementation verified; unpublished; native browser acceptance blocked.
+Status: published as draft PR #808; native browser acceptance pending fixture correction.
+PR: https://github.com/kame447/StudyPlanner/pull/808
 Owner: Issue [#780](https://github.com/kame447/StudyPlanner/issues/780), keyboard scope only.
 Branch: `fix/week-spanning-keyboard-main-20261020`.
 Base: `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`.
@@ -52,3 +53,19 @@ Next: run the four browser cases through the supported CI/browser environment,
 review exact-commit results and obtain publication/merge authorization as needed.
 Real iPhone acceptance remains separate and unverified. Do not close #780 on
 keyboard-only verification.
+
+## Published browser feedback
+
+Published head `085349cef2ad150ebb30df2301e4a47c25fa6225` has the same Git tree
+as the verified local candidate. Browser run 39396135586 executed the new cases,
+but all four stopped at missing-card setup: the seed incorrectly used
+`studyplanner.monthEvents.v1`, while the actual gateway reads
+`studyplanner.monthEvents`. Screenshots show the correct week with no event.
+The correction uses the actual gateway key and additionally requires the canonical
+store to contain the seeded event before checking native keys. No production code
+or keyboard assertion is changed. Fresh verification passed: 1,055 files / 10,534 tests, fresh App/Worker types,
+production build 16.39 seconds. Corrected browser CI is pending.
+
+CI and browser-quality passed. Bundle budget fails the same six categories as
+exact base `22e4220` (base run 39366056474, candidate run 39396135566); this is not
+waived or a passing quality gate. Physical iPhone acceptance remains unverified.

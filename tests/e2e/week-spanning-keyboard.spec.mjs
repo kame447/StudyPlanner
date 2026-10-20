@@ -15,7 +15,7 @@ for (const width of [390, 1280]) {
           if (multiDay) event.endDate = '2026-08-20';
           localStorage.setItem('studyplanner.users', JSON.stringify([user]));
           localStorage.setItem('studyplanner.session', user.id);
-          localStorage.setItem('studyplanner.monthEvents.v1', JSON.stringify([event]));
+          localStorage.setItem('studyplanner.monthEvents', JSON.stringify([event]));
           for (const key of ['plans', 'actuals', 'todos.v1', 'studySubjects.v1', 'studyMaterials.v1']) {
             localStorage.setItem(`studyplanner.${key}`, '[]');
           }
@@ -33,6 +33,8 @@ for (const width of [390, 1280]) {
         await page.keyboard.press('Tab');
         await expect(card).toBeFocused();
         const storedBefore = await page.evaluate(() => localStorage.getItem('studyplanner.scheduleEvents.v1'));
+        expect(storedBefore).not.toBeNull();
+        expect(JSON.parse(storedBefore)).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'month-event:major-event', title: 'キーボード行事' })]));
         const menu = page.getByRole('menu', { name: 'キーボード行事の操作', exact: true });
         for (const key of ['Enter', 'Space', 'ContextMenu', 'Shift+F10']) {
           await expect(card).toBeFocused();
