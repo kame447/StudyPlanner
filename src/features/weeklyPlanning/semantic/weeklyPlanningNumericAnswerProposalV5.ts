@@ -4,8 +4,8 @@ export interface NumericAnswerProposalV5 {
 }
 
 const DIGIT_RUN = /[0-9０-９]+/gu;
-// A separator between two digits means the runs are fragments of one value.
-const JOINED_DIGIT_RUNS = /[0-9０-９][.,．，][0-9０-９]/u;
+// A separator between two digits, or a leading decimal point, means the runs are fragments of one value.
+const JOINED_DIGIT_RUNS = /[0-9０-９][.,:/．，：／][0-9０-９]|[.．][0-9０-９]/u;
 
 /** Character classes only: ASCII and full-width digit runs as positive safe integers. */
 export function numericDigitRunsV5(text: string): readonly number[] {

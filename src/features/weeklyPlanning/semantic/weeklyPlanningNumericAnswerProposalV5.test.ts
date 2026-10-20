@@ -14,7 +14,7 @@ describe('uninterpreted numeric answer proposals', () => {
   ])('proposes every bounded expansion in occurrence order: %s', (text, minutes) => {
     expect(numericAnswerProposalV5(text)?.minutes).toEqual(minutes);
   });
-  it.each(['十五分', 'はい', '0', '9007199254740992', '1 2 3 4 5', '0.5時間', '1.5時間', '1,500分', '１．５時間', '２，０００分'])('fails closed without a bounded complete menu: %s', text => {
+  it.each(['十五分', 'はい', '0', '9007199254740992', '1 2 3 4 5', '0.5時間', '1.5時間', '1,500分', '１．５時間', '２，０００分', '1:30です', '１：３０', '.5時間', '1/2時間'])('fails closed without a bounded complete menu: %s', text => {
     expect(numericAnswerProposalV5(text)).toBeNull();
   });
   it('reads digit runs without joining or interpreting separators', () => {
