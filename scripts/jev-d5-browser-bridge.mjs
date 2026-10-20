@@ -14,6 +14,14 @@ import { PREREGISTERED_PRICING, workerRates, callReserveUsd } from './jev-contex
 // short-input contract supplies the tighter bound, also below Luna's threshold.
 export const D5_BRIDGE_MAX_BODY_BYTES = PREREGISTERED_PRICING.jev.maxInputTokensPerCall - PREREGISTERED_PRICING.jev.inputTokenOverheadPerCall;
 export const D5_BRIDGE_RESERVATION_USD = .05;
+export const D5_BRIDGE_REQUEST_TIMEOUT_MS = 95_000;
+
+export function d5BridgeReceiptProvider(httpStatus, dispatches) {
+  if (httpStatus < 200 || httpStatus >= 300 || !Array.isArray(dispatches?.receipts)) return null;
+  const answered = [...dispatches.receipts].reverse().find(receipt => receipt.phase === 'completed'
+    && receipt.httpStatus >= 200 && receipt.httpStatus < 300);
+  return answered?.family === 'luna' ? 'openai' : answered?.family === 'jev' ? 'openrouter' : null;
+}
 export function d5BridgePriceBounds() {
   const inputBound = D5_BRIDGE_MAX_BODY_BYTES + PREREGISTERED_PRICING.jev.inputTokenOverheadPerCall;
   const usage = { promptTokens: inputBound, completionTokens: AI_PROXY_CHAT_REQUEST_LIMITS.maxOutputTokens,
@@ -257,7 +265,7 @@ export async function startD5BrowserBridge({ workerName, evidenceDir, remainingA
           jevPermit: jev, lunaPermit: luna, reservedUsd: reservation, cumulativeReservedUsd: reservedUsd });
         const delay = Math.max(0, lastSend + paceMs - Date.now()); if (delay) await new Promise(resolve => setTimeout(resolve, delay));
         lastSend = Date.now();
-        const upstreamResponse = await worker.fetch('/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${remoteToken}`, 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(95_000) });
+        const upstreamResponse = await worker.fetch('/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${remoteToken}`, 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(D5_BRIDGE_REQUEST_TIMEOUT_MS) });
         const bytes = await upstreamResponse.text();
         const dispatches = JSON.parse(upstreamResponse.headers.get('X-D5-Bridge-Receipts') ?? 'null');
         if (dispatches?.terminalFailure) terminalFailure = dispatches.terminalFailure;
@@ -266,13 +274,14 @@ export async function startD5BrowserBridge({ workerName, evidenceDir, remainingA
         }
         let outcome = 'non_json'; try { const parsed = JSON.parse(bytes); outcome = parsed.status ?? (parsed.content ? 'content' : 'error'); } catch { /* Receipt stays count-only. */ }
         await receipt({ seq, phase: 'completed', schema, purpose: focused ?? payload.purpose, httpStatus: upstreamResponse.status,
-          provider: upstreamResponse.headers.get('X-StudyPlanner-AI-Provider'), outcome, latencyMs: Date.now() - lastSend, dispatches });
+          provider: d5BridgeReceiptProvider(upstreamResponse.status, dispatches), outcome, latencyMs: Date.now() - lastSend, dispatches });
         response.writeHead(upstreamResponse.status, { 'Content-Type': 'application/json', 'X-StudyPlanner-AI-Provider': upstreamResponse.headers.get('X-StudyPlanner-AI-Provider') ?? 'unknown' });
         response.end(bytes);
       }).catch(async error => { await receipt({ phase: 'bridge_error', category: error.name }); if (!response.headersSent) response.writeHead(502, { 'Content-Type': 'application/json' }); response.end(JSON.stringify({ error: 'Bounded dev bridge failed; inspect receipt.' })); });
     });
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
     return { url: `http://127.0.0.1:${server.address().port}/chat/completions`, token: localToken, journal,
+      requestTimeoutMs: D5_BRIDGE_REQUEST_TIMEOUT_MS, paceMs,
       async close() { await new Promise(resolve => server.close(resolve)); await chain; try { await worker.stop(); } finally { await rm(directory, { recursive: true, force: true }); } } };
   } catch (error) {
     if (server) await new Promise(resolve => server.close(resolve));

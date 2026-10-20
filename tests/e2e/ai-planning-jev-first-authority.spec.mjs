@@ -40,6 +40,10 @@ const D5_POLICY = 'd5-answer-proposal-2026-10-21-v2';
 const D5_SETUP = '8月20日から26日で数学20問と英語15ページを進めたい。英語15ページは全部で45分。数学の時間はまだ決めていません。';
 const D5_CORRECTION = 'いや、数学は全部で60分です。';
 let liveBridge;
+const D5_MAX_REQUESTS_PER_TURN = 3;
+const D5_CONNECTED_TURNS = 4;
+const turnCompletionOptions = () => liveBridge
+  ? { timeout: (liveBridge.requestTimeoutMs + liveBridge.paceMs) * D5_MAX_REQUESTS_PER_TURN } : undefined;
 test.beforeAll(async () => {
   if (process.env.JEV_D5_LIVE === '1') {
     const { startD5BrowserBridge } = await import('../../scripts/jev-d5-browser-bridge.mjs');
@@ -268,9 +272,9 @@ async function boot(page, mode) {
 async function submit(page, audit, text) {
   const before = audit.proxy.length;
   await composer(page).fill(text); await page.getByRole('button', { name: '送信', exact: true }).click();
-  await expect.poll(() => audit.proxy.length).toBeGreaterThan(before);
-  await expect(page.getByRole('button', { name: '処理をキャンセル', exact: true })).toHaveCount(0);
-  await expect(composer(page)).toBeEnabled();
+  await expect.poll(() => audit.proxy.length, turnCompletionOptions()).toBeGreaterThan(before);
+  await expect(page.getByRole('button', { name: '処理をキャンセル', exact: true })).toHaveCount(0, turnCompletionOptions());
+  await expect(composer(page)).toBeEnabled(turnCompletionOptions());
 }
 async function openPreview(page) {
   await previewButton(page).click();
@@ -342,7 +346,7 @@ for (const mode of modes) {
 
 for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
   test(`D5 connected ${process.env.JEV_D5_LIVE === '1' ? 'live providers' : 'mock providers'} ${viewport.width}: bare answer, grounded ACK, correction, save and reload`, async ({ page }, testInfo) => {
-    test.setTimeout(liveBridge ? 300_000 : 60_000);
+    test.setTimeout(liveBridge ? turnCompletionOptions().timeout * D5_CONNECTED_TURNS + 30_000 : 60_000);
     await page.setViewportSize(viewport);
     const audit = await boot(page, 'd5');
     await submit(page, audit, D5_SETUP);

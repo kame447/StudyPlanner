@@ -222,7 +222,7 @@ export default { async fetch() {
 it('D5 full generated entry runs in native workerd with offline success, refusal and terminal redirects', async () => {
   const { build } = await import('esbuild');
   const { Miniflare } = await import('miniflare');
-  const { d5BridgeWorkerSource } = await import('./jev-d5-browser-bridge.mjs');
+  const { d5BridgeWorkerSource, d5BridgeReceiptProvider } = await import('./jev-d5-browser-bridge.mjs');
   const token = 'native-offline-token';
   for (const scenario of ['success', 'refuse', 'redirect']) {
     const bridgeSource = d5BridgeWorkerSource({ workerPath: join(ROOT, 'workers/ai-proxy/src/worker.ts'),
@@ -270,6 +270,8 @@ export default { async fetch(request, _env, ctx) {
         expect(response.status).toBe(200);
         expect(await response.json()).toMatchObject({ content: '{"offline":true}' });
         expect(receipt.receipts).toMatchObject([{ family: 'luna', phase: 'completed', httpStatus: 200 }]);
+        expect(response.headers.has('X-StudyPlanner-AI-Provider')).toBe(false);
+        expect(d5BridgeReceiptProvider(response.status, receipt)).toBe('openai');
         expect(response.headers.has('X-D5-Bridge-Exceptions')).toBe(false);
       } else {
         expect(response.status).toBe(500);
@@ -317,6 +319,21 @@ it('D5 refuses every 3xx and opaque redirect before a fallback or retry can send
       body: JSON.stringify({ model: 'gpt-6-luna', max_completion_tokens: 4096 }) })).rejects.toThrow('stopped this run');
     expect(sends).toBe(1);
   }
+});
+
+it('D5 answered-provider evidence comes from successful dispatch receipts, including fallback', async () => {
+  const { d5BridgeReceiptProvider, D5_BRIDGE_REQUEST_TIMEOUT_MS } = await import('./jev-d5-browser-bridge.mjs');
+  expect(D5_BRIDGE_REQUEST_TIMEOUT_MS).toBe(95_000);
+  const completed = (family, httpStatus = 200) => ({ family, httpStatus, phase: 'completed' });
+  expect(d5BridgeReceiptProvider(200, { receipts: [completed('luna')] })).toBe('openai');
+  expect(d5BridgeReceiptProvider(200, { receipts: [completed('jev')] })).toBe('openrouter');
+  expect(d5BridgeReceiptProvider(200, { receipts: [completed('jev'), completed('luna')] })).toBe('openai');
+  expect(d5BridgeReceiptProvider(200, { receipts: [completed('jev', 502), completed('luna')] })).toBe('openai');
+  for (const dispatches of [null, { receipts: [] }, { receipts: [completed('unknown')] },
+    { receipts: [completed('luna', 502)] }, { receipts: [{ family: 'luna', phase: 'reserved_before_send' }] }]) {
+    expect(d5BridgeReceiptProvider(200, dispatches)).toBe(null);
+  }
+  expect(d5BridgeReceiptProvider(500, { receipts: [completed('jev')] })).toBe(null);
 });
 
 it('D5 exception diagnostics retain only bounded sanitized metadata', async () => {
