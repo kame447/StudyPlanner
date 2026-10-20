@@ -14,6 +14,8 @@ Status: current domain entry point
 
 ## Active work
 
+- [Firestore wire codec boundary](work/20261020-firestore-codec-boundary.md): local-only separation of pure value conversion from Worker transport, preserving the existing client facade and wire representations.
+
 - [Material search detail reuse](work/material-search-detail-reuse-handoff.md): Issue #542 / #187 removes a repeated detail request when choosing a successfully enriched result in the same auth session; local-only verification.
 
 - [Material details fallback](work/20261013-material-details-fallback.md): Issue #187 keeps acquired candidates when optional NDL detail enrichment fails; local implementation with provider calls disabled.
