@@ -9,9 +9,6 @@ import {
   useRef,
   useMemo,
   useState,
-  type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
-  type TouchEvent as ReactTouchEvent,
 } from 'react';
 import {
   createScheduleOccurrenceProjection,
@@ -31,7 +28,7 @@ import type { WeekPlanMoveTarget } from '../lib/weekPlanDrag';
 import { sortMonthEvents } from '../lib/monthEvents';
 import { resolveTimetableTermForDate } from '../lib/timetableCalendar';
 import { buildTimetableImportCandidates } from '../lib/timetableImport';
-import { useScheduleItemActionPress } from '../hooks/useScheduleItemActionPress';
+import { createScheduleOccurrenceActionCapture, useScheduleItemActionPress } from '../hooks/useScheduleItemActionPress';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
 import { DailyMaterialShelf } from './DailyMaterialShelf';
 import { DayDetailModal } from './DayDetailModal';
@@ -424,88 +421,6 @@ export function DayView({
     setModalState({ type: 'closed' });
   }
 
-  function resolveScheduleActionTarget(target: EventTarget | null): {
-    element: HTMLElement;
-    occurrence: ScheduleOccurrence;
-  } | null {
-    if (!(target instanceof Element)) return null;
-    const element = target.closest<HTMLElement>('[data-schedule-occurrence-id]');
-    const occurrenceId = element?.dataset.scheduleOccurrenceId;
-    const occurrence = occurrenceId ? dayOccurrenceById.get(occurrenceId) : undefined;
-    return element && occurrence ? { element, occurrence } : null;
-  }
-
-  function handlePointerDownCapture(event: ReactPointerEvent<HTMLElement>) {
-    if (isScheduleActionMenuTarget(event.target)) return;
-    if (event.pointerType === 'touch' || event.button !== 0 || !event.isPrimary) return;
-    const target = resolveScheduleActionTarget(event.target);
-    if (!target || target.occurrence.id === radialActions.armedMove?.occurrenceId) return;
-    scheduleAction.start(
-      target.occurrence.id,
-      target.occurrence,
-      target.occurrence.title,
-      'pointer',
-      target.element,
-      event.clientX,
-      event.clientY,
-      event.pointerId,
-    );
-  }
-
-  function handlePointerMoveCapture(event: ReactPointerEvent<HTMLElement>) {
-    if (isScheduleActionMenuTarget(event.target)) return;
-    if (event.pointerType === 'touch' || !scheduleAction.ownsInput('pointer', event.pointerId)) return;
-    scheduleAction.move(event.clientX, event.clientY);
-  }
-
-  function handlePointerUpCapture(event: ReactPointerEvent<HTMLElement>) {
-    if (isScheduleActionMenuTarget(event.target)) return;
-    if (event.pointerType === 'touch' || !scheduleAction.ownsInput('pointer', event.pointerId)) return;
-    const target = resolveScheduleActionTarget(event.target);
-    if (target) scheduleAction.finish(target.occurrence.id);
-    else scheduleAction.cancel();
-  }
-
-  function handleTouchStartCapture(event: ReactTouchEvent<HTMLElement>) {
-    if (isScheduleActionMenuTarget(event.target)) return;
-    if (event.touches.length !== 1) return;
-    const target = resolveScheduleActionTarget(event.target);
-    const touch = event.touches[0];
-    if (!target || !touch || target.occurrence.id === radialActions.armedMove?.occurrenceId) return;
-    scheduleAction.start(
-      target.occurrence.id,
-      target.occurrence,
-      target.occurrence.title,
-      'touch',
-      target.element,
-      touch.clientX,
-      touch.clientY,
-      touch.identifier,
-    );
-  }
-
-  function handleTouchMoveCapture(event: ReactTouchEvent<HTMLElement>) {
-    if (isScheduleActionMenuTarget(event.target)) return;
-    const touch = event.touches[0];
-    if (touch && scheduleAction.ownsInput('touch', touch.identifier)) scheduleAction.move(touch.clientX, touch.clientY);
-  }
-
-  function handleTouchEndCapture(event: ReactTouchEvent<HTMLElement>) {
-    if (isScheduleActionMenuTarget(event.target)) return;
-    if (!Array.from(event.changedTouches).some(touch => scheduleAction.ownsInput('touch', touch.identifier))) return;
-    const target = resolveScheduleActionTarget(event.target);
-    if (target) scheduleAction.finish(target.occurrence.id);
-    else scheduleAction.cancel();
-  }
-
-  function handleClickCapture(event: ReactMouseEvent<HTMLElement>) {
-    if (isScheduleActionMenuTarget(event.target)) return;
-    swipeNavigation.onClickCapture(event);
-    if (!scheduleAction.shouldSuppressClick() || !resolveScheduleActionTarget(event.target)) return;
-    event.preventDefault();
-    event.stopPropagation();
-  }
-
   function getDeletionPresentation(occurrence: ScheduleOccurrence) {
     const source = occurrence.source.backingKind === 'month-event'
       ? monthEvents.find(event => event.id === occurrence.source.backingId && event.userId === occurrence.ownerId)
@@ -548,6 +463,21 @@ export function DayView({
         setModalState({ type: 'month-event-detail', monthEventId: occurrence.source.backingId, occurrenceId: occurrence.id, record });
       }
     },
+  });
+
+  const {
+    resolveScheduleActionTarget,
+    handlePointerDownCapture,
+    handlePointerMoveCapture,
+    handlePointerUpCapture,
+    handleTouchStartCapture,
+    handleTouchMoveCapture,
+    handleTouchEndCapture,
+    handleClickCapture,
+  } = createScheduleOccurrenceActionCapture({
+    occurrences: dayOccurrenceById, scheduleAction,
+    armedMoveOccurrenceId: radialActions.armedMove?.occurrenceId,
+    onSwipeClickCapture: swipeNavigation.onClickCapture,
   });
 
   return (

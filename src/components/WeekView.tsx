@@ -51,7 +51,7 @@ import {
 } from '../lib/weekViewLayout';
 import { useDataChangeMotion } from '../hooks/useDataChangeMotion';
 import { usePeriodNavigationMotion } from '../hooks/usePeriodNavigationMotion';
-import { useScheduleItemActionPress } from '../hooks/useScheduleItemActionPress';
+import { createScheduleOccurrenceActionCapture, useScheduleItemActionPress } from '../hooks/useScheduleItemActionPress';
 import { useTimelineTouchMoveGuard } from '../hooks/useTimelineTouchMoveGuard';
 import { useTimelineDragCancellation } from '../hooks/useTimelineDragCancellation';
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
@@ -810,91 +810,6 @@ export function WeekView({
     onOpenPlan?.(plan);
   }
 
-  function resolveScheduleActionTarget(target: EventTarget | null): {
-    element: HTMLElement;
-    occurrence: ScheduleOccurrence;
-  } | null {
-    if (!(target instanceof Element)) return null;
-    const element = target.closest<HTMLElement>('[data-schedule-occurrence-id]');
-    const occurrenceId = element?.dataset.scheduleOccurrenceId;
-    const occurrence = occurrenceId ? occurrenceById.get(occurrenceId) : undefined;
-    if (!element || !occurrence) {
-      return null;
-    }
-    return { element, occurrence };
-  }
-
-  function handleActionPointerDownCapture(event: ReactPointerEvent<HTMLElement>) {
-    if (isScheduleActionMenuTarget(event.target)) return;
-    if (event.pointerType === 'touch' || event.button !== 0 || !event.isPrimary) return;
-    const target = resolveScheduleActionTarget(event.target);
-    if (!target || target.occurrence.id === radialActions.armedMove?.occurrenceId) return;
-    scheduleAction.start(
-      target.occurrence.id,
-      target.occurrence,
-      target.occurrence.title,
-      'pointer',
-      target.element,
-      event.clientX,
-      event.clientY,
-      event.pointerId,
-    );
-  }
-
-  function handleActionPointerMoveCapture(event: ReactPointerEvent<HTMLElement>) {
-    if (isScheduleActionMenuTarget(event.target)) return;
-    if (event.pointerType === 'touch' || !scheduleAction.ownsInput('pointer', event.pointerId)) return;
-    scheduleAction.move(event.clientX, event.clientY);
-  }
-
-  function handleActionPointerUpCapture(event: ReactPointerEvent<HTMLElement>) {
-    if (isScheduleActionMenuTarget(event.target)) return;
-    if (event.pointerType === 'touch' || !scheduleAction.ownsInput('pointer', event.pointerId)) return;
-    const target = resolveScheduleActionTarget(event.target);
-    if (target) scheduleAction.finish(target.occurrence.id);
-    else scheduleAction.cancel();
-  }
-
-  function handleActionTouchStartCapture(event: ReactTouchEvent<HTMLElement>) {
-    if (isScheduleActionMenuTarget(event.target)) return;
-    if (event.touches.length !== 1) return;
-    const target = resolveScheduleActionTarget(event.target);
-    const touch = event.touches[0];
-    if (!target || !touch || target.occurrence.id === radialActions.armedMove?.occurrenceId) return;
-    scheduleAction.start(
-      target.occurrence.id,
-      target.occurrence,
-      target.occurrence.title,
-      'touch',
-      target.element,
-      touch.clientX,
-      touch.clientY,
-      touch.identifier,
-    );
-  }
-
-  function handleActionTouchMoveCapture(event: ReactTouchEvent<HTMLElement>) {
-    if (isScheduleActionMenuTarget(event.target)) return;
-    const touch = event.touches[0];
-    if (touch && scheduleAction.ownsInput('touch', touch.identifier)) scheduleAction.move(touch.clientX, touch.clientY);
-  }
-
-  function handleActionTouchEndCapture(event: ReactTouchEvent<HTMLElement>) {
-    if (isScheduleActionMenuTarget(event.target)) return;
-    if (!Array.from(event.changedTouches).some(touch => scheduleAction.ownsInput('touch', touch.identifier))) return;
-    const target = resolveScheduleActionTarget(event.target);
-    if (target) scheduleAction.finish(target.occurrence.id);
-    else scheduleAction.cancel();
-  }
-
-  function handleActionClickCapture(event: ReactMouseEvent<HTMLElement>) {
-    if (isScheduleActionMenuTarget(event.target)) return;
-    swipeNavigation.onClickCapture(event);
-    if (!scheduleAction.shouldSuppressClick() || !resolveScheduleActionTarget(event.target)) return;
-    event.preventDefault();
-    event.stopPropagation();
-  }
-
   async function handleDeleteOccurrence(occurrence: ScheduleOccurrence) {
     if (!onDeletePlan || !onDeleteMonthEvent) {
       throw new Error('予定削除の操作境界を確認できませんでした。');
@@ -959,6 +874,21 @@ export function WeekView({
           document.body,
         )
       : null;
+
+  const {
+    resolveScheduleActionTarget,
+    handlePointerDownCapture: handleActionPointerDownCapture,
+    handlePointerMoveCapture: handleActionPointerMoveCapture,
+    handlePointerUpCapture: handleActionPointerUpCapture,
+    handleTouchStartCapture: handleActionTouchStartCapture,
+    handleTouchMoveCapture: handleActionTouchMoveCapture,
+    handleTouchEndCapture: handleActionTouchEndCapture,
+    handleClickCapture: handleActionClickCapture,
+  } = createScheduleOccurrenceActionCapture({
+    occurrences: occurrenceById, scheduleAction,
+    armedMoveOccurrenceId: radialActions.armedMove?.occurrenceId,
+    onSwipeClickCapture: swipeNavigation.onClickCapture,
+  });
 
   return (
     <>

@@ -265,6 +265,45 @@ describe.each(['day', 'week'] as const)('%s radial wiring', kind => {
   });
 });
 
+for (const kind of ['day', 'week'] as const) {
+  it(`${kind} capture admits only the primary non-touch pointer and preserves pointer identity`, () => {
+    const { section, event } = setup(kind);
+    const pointer = { ...event(), pointerType: 'mouse', button: 0, isPrimary: true, pointerId: 7, clientX: 50, clientY: 50 };
+    act(() => {
+      for (const patch of [{ pointerType: 'touch' }, { button: 2 }, { isPrimary: false }]) {
+        section().props.onPointerDownCapture({ ...pointer, ...patch });
+        vi.advanceTimersByTime(250);
+      }
+    });
+    expect(renderer!.root.findAllByProps({ role: 'menu' })).toHaveLength(0);
+    act(() => {
+      section().props.onPointerDownCapture(pointer);
+      section().props.onPointerMoveCapture({ ...pointer, pointerId: 8, clientX: 200 });
+      section().props.onPointerUpCapture({ ...pointer, pointerId: 8 });
+      vi.advanceTimersByTime(250);
+    });
+    expect(renderer!.root.findAllByProps({ role: 'menu' })).toHaveLength(1);
+  });
+
+  it(`${kind} capture ignores multitouch admission and unrelated touch release`, () => {
+    const { section, event } = setup(kind);
+    const first = { identifier: 7, clientX: 50, clientY: 50 };
+    const second = { identifier: 8, clientX: 200, clientY: 50 };
+    act(() => {
+      section().props.onTouchStartCapture({ ...event(), touches: [first, second] });
+      vi.advanceTimersByTime(250);
+    });
+    expect(renderer!.root.findAllByProps({ role: 'menu' })).toHaveLength(0);
+    act(() => {
+      section().props.onTouchStartCapture({ ...event(), touches: [first] });
+      section().props.onTouchMoveCapture({ ...event(), touches: [second] });
+      section().props.onTouchEndCapture({ ...event(), changedTouches: [second] });
+      vi.advanceTimersByTime(250);
+    });
+    expect(renderer!.root.findAllByProps({ role: 'menu' })).toHaveLength(1);
+  });
+}
+
 describe('week spanning major-event keyboard actions', () => {
   const event = { id: 'all-day', userId: 'owner', date: plan.date, title: '終日行事', startTime: '00:00', endTime: '24:00', repeat: 'none' as const,
     repeatUntil: null, excludedDates: [], memo: '', url: '', checklist: [], locationTags: [], createdAt: '', updatedAt: '' };
