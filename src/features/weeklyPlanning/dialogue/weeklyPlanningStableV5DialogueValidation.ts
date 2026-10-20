@@ -1,3 +1,4 @@
+import { scanNumericQuantityMentionsV5 } from '../semantic/weeklyPlanningNumericAnswerProposalV5';
 import {
   groundedDateExpressionsFromPlanningInformation,
 } from './weeklyPlanningDialogueDateGrounding';
@@ -14,7 +15,7 @@ const EXTERNAL_DESTINATION = /https?:\/\/|www\.|(?<![a-z0-9.-])(?:[a-z0-9](?:[a-
 const APPLICATION_MUTATION_OUTCOME = /(?:保存|作成|登録|追加|削除|承認|反映|確定|適用|スケジュール)(?:を|が|は|も)?(?:しました|されました|いたしました|しています|できました|完了(?:しました|しています)?|済み(?:です|でした)?)/;
 const SENSITIVE_VALUE = /(?:パスワード|暗証番号|秘密情報|APIキー|アクセストークン|口座番号|クレジットカード)/i;
 // Keep malformed separators/precision in the token; never accept only a valid prefix.
-const CLOCK_EXPRESSION = /(?<!\d)(?:午前|午後)?\s*\d+(?:[.．]+\d+)*(?:[:：]+\d{2,}(?:[:：]\d*|[.．]\d+|分|秒|半)*|\s*時(?:\s*(?:\d+(?:[.．]\d+)?\s*(?:分|秒)|半|[:：]\d*|[.．]\d+))*)/g;
+const CLOCK_EXPRESSION = /(?<!\d)(?:午前|午後)?\s*\d+(?:[.．]+\d+)*(?:[:：]+\d{2,}(?:[:：]\d*|[.．]\d+|分|秒|半)*|\s*時(?!間)(?:\s*(?:\d+(?:[.．]\d+)?\s*(?:分|秒)|半|[:：]\d*|[.．]\d+))*)/g;
 const DATE_EXPRESSION = /(?:今日|明日|明後日|今週|来週|週末)|\d{1,2}\s*月\s*\d{1,2}\s*日/g;
 const PREVIEW_COUNT_EXPRESSION = /(\d+)\s*件/g;
 const EXECUTION_VERB = '(?:作ります|作成します|追加します|登録します|保存します|組みます|反映します|入れます|入れました|入れておきます)';
@@ -285,6 +286,42 @@ function repeatsMostRecentAssistantQuestion(
   return previousText.length > 0 && currentText === previousText;
 }
 
+/** Checks visible renderer claims against typed accepted effort; never interprets user intent. */
+function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
+  input: WeeklyPlanningStableV5DialogueRenderInput): boolean {
+  const effort = (input.currentTurnGrounding?.acceptedFacts ?? []).filter(f => f.kind === 'effort_estimate');
+  if (!effort.length) return false;
+  const visible = normalizeSafetyText(text);
+  const assigned = new Set<string>();
+  // This is a renderer display contract: each effort claim has its own visible clause.
+  // Never combine an identity in one clause with a value/precision in another.
+  for (const segment of visible.split(/[。！？!?、,;；・\n]/u).filter(Boolean)) {
+    const mentions = scanNumericQuantityMentionsV5(segment, Number.MAX_SAFE_INTEGER);
+    if (!mentions) return true;
+    const durations = mentions.filter(m => m.form !== 'bare');
+    if (!durations.length) continue;
+    if (durations.length !== 1) return true;
+    const matching = effort.filter(fact => {
+      const labels = fact.data.targetLabels;
+      return Array.isArray(labels) && labels.length > 0
+        && labels.every(label => typeof label === 'string' && segment.includes(normalizeSafetyText(label)));
+    });
+    if (matching.length !== 1) return true;
+    const fact = matching[0]; const data = fact.data; const duration = durations[0];
+    if (!factIds.includes(fact.factId) || assigned.has(fact.factId) || duration.minutes !== data.minutes
+      || (data.precision === 'approximate') !== duration.approximate) return true;
+    const total = /全部|合計|全体|総計|トータル/u.test(segment);
+    const unit = data.kind === 'session_duration' ? '回' : data.unitLabel;
+    const compact = segment.replace(/\s/gu, '');
+    const perUnit = typeof unit === 'string' && unit.length > 0
+      && [`1${unit}`, `一${unit}`, `${unit}あたり`, `${unit}当たり`, `${unit}につき`]
+        .some(marker => compact.includes(normalizeSafetyText(marker)));
+    if (data.kind === 'total_duration' ? !total || perUnit : !perUnit || total) return true;
+    assigned.add(fact.factId);
+  }
+  return effort.some(fact => !assigned.has(fact.factId));
+}
+
 function groundingAcknowledgementMismatch(
   value: unknown,
   text: string,
@@ -329,6 +366,8 @@ function groundingAcknowledgementMismatch(
   ) {
     return true;
   }
+
+  if (effortAcknowledgementMismatch(factIds as string[], acknowledgementText, input)) return true;
 
   if (missesAcknowledgedClockValue({
     factIds: factIds as string[],

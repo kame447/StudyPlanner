@@ -1,3 +1,4 @@
+import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../../shared/d5AnswerPolicy';
 import { isCandidateChoiceDecisionContext, isCandidateChoiceEvaluation, type CandidateChoiceWireRequest } from '../../../shared/candidateChoiceDecision';
 import { getCloudflareAiProxyUrl } from '../../lib/aiConfig';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
@@ -54,7 +55,9 @@ export function createCandidateChoiceClient(options: {
           return {
             nodeId: result.nodeId, requestId: result.requestId, selectionEpoch: result.selectionEpoch,
             candidateSetHash: result.candidateSetHash, optionId: result.optionId, probabilities: result.probabilities,
-            semanticSufficiency: result.conditionChange <= policy.maximumConditionChange && result.independentMeaning <= policy.maximumIndependentMeaning
+            semanticSufficiency: (r.context.question.code === 'missing_effort_estimate' && r.context.scope.domainPolicyVersion === D5_TOP1_ANSWER_POLICY_VERSION
+              ? result.conditionChange < 0.5 && result.independentMeaning < 0.5
+              : result.conditionChange <= policy.maximumConditionChange && result.independentMeaning <= policy.maximumIndependentMeaning)
               ? 'only_candidate_meaning' : 'extra_or_uncertain_meaning',
         };
       } finally { clearTimeout(timer); }

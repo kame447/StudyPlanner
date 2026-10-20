@@ -34,6 +34,18 @@ import {
   createFocusedTemporalScopeRepairMessagesV5,
 } from './weeklyPlanningFocusedTemporalScopeRepairV5';
 
+it('adds ellipsis guidance only to a fresh active pending effort question; other system bytes are unchanged', () => {
+  const base = createWeeklyPlanningSemanticBaseMessagesV5({ userText: '5', publicStateSummary: { graphRevision: 2 } });
+  for (const pendingQuestion of [null, { questionCode: 'quantity_role_unresolved', graphRevision: 2 },
+    { questionCode: 'missing_effort_estimate', graphRevision: 1 }]) {
+    expect(createWeeklyPlanningSemanticBaseMessagesV5({ userText: '5', publicStateSummary: { graphRevision: 2, pendingQuestion } })[0]).toEqual(base[0]);
+  }
+  const active = createWeeklyPlanningSemanticBaseMessagesV5({ userText: '5', publicStateSummary: { graphRevision: 2,
+    pendingQuestion: { questionCode: 'missing_effort_estimate', graphRevision: 2 } } });
+  expect(active[0].content).toContain('omitted-measurement reply');
+  expect(active[0].content).toContain(base[0].content);
+});
+
 const GENERIC_MAX_COMPLETION_TOKENS = SEMANTIC_NORMALIZER_V5_MAX_COMPLETION_TOKENS;
 // Measured sizes with the Issue #152 trust-boundary policy and decision-target
 // sentence: 4,667 B policy, 7,776 B generic system prompt, and 3,109 B

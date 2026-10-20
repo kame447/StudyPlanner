@@ -50,6 +50,49 @@ function response(
 }
 
 describe('Stable V5 dialogue renderer validation', () => {
+  it.each([
+    ['数学は1問5分くらいで見積もります。', 'duration_per_unit', 'approximate', true],
+    ['数学は1問5分で見積もります。', 'duration_per_unit', 'exact', true],
+    ['数学は全部で5分くらいで見積もります。', 'total_duration', 'approximate', true],
+    ['英語は全部で999分です。', 'duration_per_unit', 'approximate', false],
+    ['数学は全部で5分くらいです。', 'duration_per_unit', 'approximate', false],
+    ['数学は1問5分です。', 'duration_per_unit', 'approximate', false],
+    ['数学は1問5分くらいです。', 'total_duration', 'approximate', false],
+    ['数学は1問999分くらいです。', 'duration_per_unit', 'approximate', false],
+  ] as const)('validates visible effort ACK: %s', (text, kind, precision, valid) => {
+    const renderInput = input({ actionKind: 'status', questionCode: null, requiredLabels: [],
+      currentTurnGrounding: { mode: 'required_before_resume', acceptedFacts: [{ factId: 'effort',
+        kind: 'effort_estimate', sourceText: '5分', data: { targetFactId: 'math-work', taskId: 'math',
+          targetLabels: ['数学'], minutes: 5, kind, precision, unitCode: kind === 'total_duration' ? null : 'problem', unitLabel: '問' } }] } });
+    const result = parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text,
+      { groundingAcknowledgement: { factIds: ['effort'], text } }), renderInput);
+    expect(result.status).toBe(valid ? 'rendered' : 'fallback');
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text,
+      { groundingAcknowledgement: null }), renderInput).status).toBe('fallback');
+  });
+  it.each([
+    ['数学は合計10分、英語は1問5分くらいで見積もります。', true],
+    ['数学は合計5分、英語は1問10分くらいです。', false],
+    ['数学は1問10分、英語は合計5分くらいです。', false],
+    ['数学は合計10分くらい、英語は1問5分です。', false],
+    ['数学は合計10分、英語は1問5分くらい。理科は全部で20分。', false],
+  ] as const)('binds each compound ACK claim one-to-one: %s', (text, valid) => {
+    const facts = [
+      { factId: 'math', kind: 'effort_estimate' as const, sourceText: '10分', data: { targetLabels: ['数学'], minutes: 10, kind: 'total_duration', precision: 'exact', unitLabel: '問' } },
+      { factId: 'english', kind: 'effort_estimate' as const, sourceText: '5分くらい', data: { targetLabels: ['英語'], minutes: 5, kind: 'duration_per_unit', precision: 'approximate', unitLabel: '問' } },
+    ];
+    const renderInput = input({ actionKind: 'status', questionCode: null, currentTurnGrounding: { mode: 'required_before_resume', acceptedFacts: facts } });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text,
+      { groundingAcknowledgement: { factIds: ['math', 'english'], text } }), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+  });
+  it.each(['問(大)', '+', '.', '['])('treats custom unit label as literal data: %s', unitLabel => {
+    const text = `数学は${unitLabel}あたり15分で見積もります。`;
+    const renderInput = input({ actionKind: 'status', questionCode: null, currentTurnGrounding: { mode: 'required_before_resume', acceptedFacts: [
+      { factId: 'math', kind: 'effort_estimate', sourceText: '15分', data: { targetLabels: ['数学'], minutes: 15, kind: 'duration_per_unit', precision: 'exact', unitLabel } },
+    ] } });
+    expect(() => parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text,
+      { groundingAcknowledgement: { factIds: ['math'], text } }), renderInput)).not.toThrow();
+  });
   it('accepts grounded explanation wording without requiring deterministic labels', () => {
     const renderInput = input();
     expect(parseWeeklyPlanningStableV5DialogueRendererResponse(

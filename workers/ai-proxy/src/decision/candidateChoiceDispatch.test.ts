@@ -1,3 +1,4 @@
+import { D5_TOP1_SCOPE } from '../../../../shared/d5AnswerPolicy';
 import { describe, expect, it } from 'vitest';
 import { evaluateCandidateChoice } from './candidateChoiceDispatch';
 import { choiceRequest } from '../../../../shared/candidateChoiceFixtures.testUtils';
@@ -89,6 +90,22 @@ describe('generic Choice provider validation and dispatch accounting', () => {
       env: { OPENROUTER_API_KEY: 'fixture', JEV_CANDIDATE_CHOICE_MODE: 'canary', JEV_MODE: 'canary',
         JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' }, transport: async () => Response.json(response()) });
     expect(result).toMatchObject({ status: 'evaluated', acceptanceScope: 'explicit_reference', conditionChange: 0.001, independentMeaning: 0.001 });
+  });
+  it('v2 alone permits composite/converted/contextual answers in all three heads', async () => {
+    const r = choiceRequest();
+    const request = { ...r, context: { ...r.context, scope: { ...r.context.scope, ...D5_TOP1_SCOPE } } };
+    let body: Record<string, unknown> = {};
+    await evaluateCandidateChoice({ firebaseUid: 'fixture-owner', context: { purpose: 'candidate_choice', request },
+      env: { OPENROUTER_API_KEY: 'fixture', JEV_CANDIDATE_CHOICE_MODE: 'canary', JEV_MODE: 'canary',
+        JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' },
+      transport: async (_input, init) => { body = JSON.parse(String(init?.body)); return Response.json(response()); } });
+    const questions = body.questions as Record<string, { instructions: string }>;
+    for (const head of ['candidate', 'condition_change', 'independent_meaning']) {
+      expect(questions[head].instructions).toContain('One exact composite duration');
+      expect(questions[head].instructions).toContain('A bare number may mean minutes');
+      expect(questions[head].instructions).toContain('approximation');
+      expect(questions[head].instructions).toContain('independent extra clauses');
+    }
   });
   it('off/shadow/invalid question expose no provider state', async () => {
     let calls = 0;

@@ -1,3 +1,4 @@
+import { D5_TOP1_SCOPE } from '../../../shared/d5AnswerPolicy';
 import { describe, expect, it, vi } from 'vitest';
 import { choiceEvaluation, choiceRequest } from '../../../shared/candidateChoiceFixtures.testUtils';
 import { createCandidateChoiceClient } from './candidateChoiceClient';
@@ -34,6 +35,19 @@ describe('authenticated generic Choice client', () => {
     const r = choiceRequest();
     const reply = await createCandidateChoiceClient({ semanticPolicy, proxyUrl: 'https://proxy.test', getToken: async () => 'secret', transport: async () => Response.json({ ...choiceEvaluation(r), independentMeaning: 0.8 }) }).choose(r, () => undefined);
     expect(reply).toMatchObject({ semanticSufficiency: 'extra_or_uncertain_meaning' });
+  });
+  it.each([0.499, 0.5, 0.501])('v2 requires strict auxiliary majority at %s; old policy stays inclusive', async score => {
+    const base = choiceRequest();
+    const request = { ...base, context: { ...base.context, scope: { ...base.context.scope, ...D5_TOP1_SCOPE } } };
+    for (const r of [base, request]) {
+      const result = await createCandidateChoiceClient({
+        semanticPolicy: { calibrationEvidenceId: 'test-only', maximumConditionChange: 0.5, maximumIndependentMeaning: 0.5 },
+        proxyUrl: 'https://fixture', getToken: async () => 'fixture',
+        transport: async () => Response.json({ ...choiceEvaluation(r), conditionChange: score, independentMeaning: score }),
+      }).choose(r, () => undefined);
+      expect(result).toMatchObject({ semanticSufficiency: (r === request ? score < .5 : score <= .5)
+        ? 'only_candidate_meaning' : 'extra_or_uncertain_meaning' });
+    }
   });
   it('joins every node and fallback to one scope with unique census request IDs', async () => {
     const turnId = crypto.randomUUID(); const joins: Array<{ version: number; domain: string; turnId: string; requestId: string; stage: string }> = [];

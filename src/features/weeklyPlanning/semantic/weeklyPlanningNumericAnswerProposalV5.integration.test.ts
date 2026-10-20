@@ -1,8 +1,12 @@
+import { renderWeeklyPlanningStableV5AssistantMessageCore } from '../dialogue/weeklyPlanningStableV5TurnDialogueCore';
+import { createWeeklyPlanningStableV5DialogueRendererCore } from '../dialogue/weeklyPlanningStableV5AiDialogueRendererCore';
+import { getWeeklyPlanningStableV5RuntimeSession } from '../application/weeklyPlanningStableV5RuntimeSession';
+import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../../../shared/d5AnswerPolicy';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { c5ControllerHarness, OWNER, WEEK } from '../application/c5LocalSelection/controller.testUtils';
 import { readC5RuntimeGraph } from '../application/c5LocalSelection/controlledCommit';
 import { hydrateWeeklyPlanningStableV5RuntimeSession, resetWeeklyPlanningStableV5RuntimeSessionsForTest } from '../application/weeklyPlanningStableV5RuntimeSession';
-import { loadWeeklyPlanningStableV5PersistedSession } from '../application/weeklyPlanningStableV5SessionStorage';
+import { loadWeeklyPlanningStableV5PersistedSession, saveWeeklyPlanningStableV5PersistedSession } from '../application/weeklyPlanningStableV5SessionStorage';
 import { registerControlledCandidateDomain } from '../application/weeklyPlanningControlledCandidateRegistry';
 import { weeklyPlanningTurnRuntimeGateway } from '../application/weeklyPlanningTurnRuntimeGateway';
 import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
@@ -22,8 +26,8 @@ beforeEach(() => {
 });
 afterEach(() => { restore(); vi.restoreAllMocks(); resetWeeklyPlanningStableV5RuntimeSessionsForTest(); });
 
-function setup(options: { measurement?: 'total_duration' | 'duration_per_unit'; minutes?: number;
-  mode?: 'none' | 'low_top' | 'extra_meaning' | 'condition_change';
+function setup(options: { top1?: boolean; effortAck?: boolean; measurement?: 'total_duration' | 'duration_per_unit'; minutes?: number;
+  mode?: 'none' | 'low_top' | 'extra_meaning' | 'condition_change' | 'tie';
   collision?: 'estimate' | 'amount' | 'rangeStart' | 'rangeEnd' | 'target' | 'source_integer' | 'inactive' | 'range_label' | 'unrelated_label' | 'capacity' | 'recurrence';
   stale?: 'graph' | 'question' | 'continuation' } = {}) {
   const h = c5ControllerHarness();
@@ -66,7 +70,7 @@ function setup(options: { measurement?: 'total_duration' | 'duration_per_unit'; 
     const selected = options.mode === 'none' ? 'none' : request.menu.options.find(o => o.kind === 'leaf' && o.candidate.tuple.minutes === (options.minutes ?? 5))!.id;
     const { semanticSufficiency: _sufficiency, ...response } = normalizedChoice(request, selected);
     // With top >= .90 a normalized runner-up is <= .10, so the .80 margin is implied; low_top covers both.
-    const top = options.mode === 'low_top' ? 0.89 : 0.97;
+    const top = options.mode === 'tie' ? 0.5 : options.mode === 'low_top' ? 0.51 : 0.97;
     const other = request.menu.options.find(o => o.id !== selected)!.id;
     response.probabilities = request.menu.options.map(o => ({ optionId: o.id,
       probability: o.id === selected ? top : options.mode === 'low_top' ? (1 - top) / (request.menu.options.length - 1)
@@ -77,19 +81,33 @@ function setup(options: { measurement?: 'total_duration' | 'duration_per_unit'; 
     if (options.stale === 'question') h.replaceState({ ...h.getState(), intakeState: { ...h.getState().intakeState!,
       lastQuestionContext: { ...h.getState().intakeState!.lastQuestionContext!, actionId: 'replaced-question' } } });
     return Response.json({ ...response, status: 'evaluated', catalogVersion: CANDIDATE_CHOICE_CATALOG_VERSION,
-      conditionChange: options.mode === 'condition_change' ? 0.02 : 0.001,
-      independentMeaning: options.mode === 'extra_meaning' ? 0.02 : 0.001 });
+      conditionChange: options.mode === 'condition_change' ? options.top1 ? 0.5 : 0.02 : 0.001,
+      independentMeaning: options.mode === 'extra_meaning' ? options.top1 ? 0.5 : 0.02 : 0.001 });
   });
   const client = createCandidateChoiceClient({ proxyUrl: 'https://choice.fixture', getToken: async () => 'fixture', transport,
     semanticPolicy: { calibrationEvidenceId: 'synthetic-only', maximumConditionChange: 0.01, maximumIndependentMeaning: 0.01 } });
   const choose = vi.fn(client.choose);
-  const continueSelectedTurn = vi.fn(async ({ snapshot, graph: selectedGraph }: { snapshot: PlanningState; graph: typeof graph }) => {
+  const ackControl = { fails: true, calls: 0 };
+  const continueSelectedTurn = vi.fn(async ({ snapshot, graph: selectedGraph, pending }: { snapshot: PlanningState; graph: typeof graph; pending: NonNullable<PlanningState['pendingTurn']> }) => {
     if (options.stale === 'continuation') h.replaceState({ ...h.getState(), intakeState: { ...h.getState().intakeState!,
       lastQuestionContext: { ...h.getState().intakeState!.lastQuestionContext!, actionId: 'replaced-question' } } });
+    if (options.effortAck) return renderWeeklyPlanningStableV5AssistantMessageCore({
+      input: { userId: OWNER, selectedDate: WEEK, plans: [], scheduleTemplates: [], conversationId: h.conversationId,
+        traceRequestId: pending.requestId, userText: '15', messages: snapshot.messages, previousState: snapshot.intakeState },
+      result: { state: { ...snapshot.intakeState!, questions: [], lastQuestionContext: undefined }, message: '確認', draftCandidates: [], stableV5Graph: selectedGraph },
+    }, { getSession: getWeeklyPlanningStableV5RuntimeSession, createRenderer: () => createWeeklyPlanningStableV5DialogueRendererCore({
+      async createChatCompletion(request) {
+        ackControl.calls++;
+        const prompt = JSON.parse(request.messages.slice(-1)[0].content);
+        const text = ackControl.fails ? '教材aは全部で999分です。' : '教材aは全部で15分で見積もります。';
+        return JSON.stringify({ actionId: prompt.actionId, actionKind: prompt.applicationDecision.actionKind, questionCode: prompt.applicationDecision.questionCode,
+          groundingAcknowledgement: { factIds: prompt.currentTurnGrounding.acceptedFacts.filter((f: {kind: string}) => f.kind === 'effort_estimate').map((f: {factId: string}) => f.factId), text }, text });
+      },
+    }) });
     return { state: { ...snapshot.intakeState!, questions: [], lastQuestionContext: undefined },
       message: '反映しました。', draftCandidates: [], stableV5Graph: selectedGraph, responseSource: 'deterministic_fallback' as const };
   });
-  const domain = createNumericPendingRegisteredDomainV5(D5_EXACT_MINUTE_CANDIDATES, D5_ANSWER_PROPOSAL_POLICY_VERSION,
+  const domain = createNumericPendingRegisteredDomainV5(D5_EXACT_MINUTE_CANDIDATES, options.top1 ? D5_TOP1_ANSWER_POLICY_VERSION : D5_ANSWER_PROPOSAL_POLICY_VERSION,
     { candidateSource: 'answer_proposal' });
   const route = registerControlledCandidateDomain(domain, {
     policy: { id: 'synthetic-only', calibrationEvidenceId: 'synthetic-only', rules: Array.from({ length: 8 }, (_, i) => ({
@@ -109,10 +127,54 @@ function setup(options: { measurement?: 'total_duration' | 'duration_per_unit'; 
   const fallback = vi.fn(async ({ snapshot }: { snapshot: PlanningState }) => ({ state: snapshot.intakeState!,
     message: 'Luna', draftCandidates: [] }));
   const answer = (text: string) => h.submit(text, { c5LocalSelection: undefined, candidateDomains: [route], execute: fallback });
-  return { h, graph, domain, present, answer, choose, transport, fallback, continueSelectedTurn };
+  return { h, graph, domain, present, answer, choose, transport, fallback, continueSelectedTurn, ackControl };
 }
 
 describe('D5 answer proposal through canonical controller commit', () => {
+  it.each([
+    ['15', 15], ['十五分', 15], ['１．５時間', 90], ['1時間30分', 90], ['一時間半', 90],
+  ] as const)('v2 accepts %s at unique top-1 beside a sibling 15, once across reload', async (text, minutes) => {
+    const run = setup({ top1: true, minutes, collision: 'estimate', mode: 'low_top' });
+    await run.present();
+    expect((await run.answer(text)).accepted).toBe(true);
+    expect(run.fallback).not.toHaveBeenCalled();
+    const saved = loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK })!;
+    expect(saved.graph.effortEstimates.filter(f => f.targetFactId === 'work-a')).toMatchObject([{ minutes, kind: 'total_duration' }]);
+    expect(saved.planningState.intakeState!.c5SelectionLedger!.consumed).toHaveLength(1);
+    expect(saved.graph.effortEstimates.filter(f => f.id === 'sibling-effort')).toMatchObject([{ minutes: 15 }]);
+  });
+  it.each(['none', 'tie', 'extra_meaning', 'condition_change'] as const)('v2 abstains on %s', async mode => {
+    const run = setup({ top1: true, mode, minutes: 15 }); await run.present(); await run.answer('15');
+    expect(run.fallback).toHaveBeenCalledOnce();
+    expect(readC5RuntimeGraph(OWNER, run.h.conversationId)).toEqual(run.graph);
+    expect(run.h.getState().intakeState!.c5SelectionLedger!.consumed).toEqual([]);
+  });
+  it.each(['5分くらい', '1.5分', '5〜10分'])('v2 sends unsupported exactness to whole-utterance fallback: %s', async text => {
+    const run = setup({ top1: true }); await run.present(); await run.answer(text);
+    expect(run.choose).not.toHaveBeenCalled();
+    expect(run.fallback.mock.calls[0][0]).toMatchObject({ userText: text });
+  });
+  it.each(['15ページ', '全部で5分', '英語は5分', '5分。別の教材も追加', 'わかりません'])('v2 preserves a model-rejected disconfirming reply: %s', async text => {
+    const run = setup({ top1: true, mode: 'none', measurement: 'duration_per_unit' });
+    await run.present(); await run.answer(text);
+    expect(run.fallback.mock.calls[0][0]).toMatchObject({ userText: text });
+    expect(readC5RuntimeGraph(OWNER, run.h.conversationId)).toEqual(run.graph);
+  });
+  it('required ACK exhausts one repair atomically; reload/retry never consumes a hidden selection', async () => {
+    const run = setup({ top1: true, minutes: 15, effortAck: true }); await run.present();
+    expect(saveWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK, conversationId: run.h.conversationId, graph: run.graph, planningState: run.h.getState() })).toBe(true);
+    await run.answer('15');
+    expect(run.ackControl.calls).toBe(2);
+    expect(run.h.getState().messages.slice(-1)[0].content).toContain('今回の内容は計画へ反映していません');
+    expect(readC5RuntimeGraph(OWNER, run.h.conversationId)).toEqual(run.graph);
+    expect(run.h.getState().intakeState!.c5SelectionLedger!.consumed).toEqual([]);
+    const saved = loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK })!;
+    expect(saved.graph.effortEstimates).toEqual([]);
+    run.ackControl.fails = false;
+    await run.present(); await run.answer('15');
+    expect(readC5RuntimeGraph(OWNER, run.h.conversationId).effortEstimates).toHaveLength(1);
+    expect(run.h.getState().intakeState!.c5SelectionLedger!.consumed).toHaveLength(1);
+  });
   it('rebinds the numeric policy revision and preserves the question-time record', async () => {
     const run = setup(); await run.present();
     const frozen = run.h.getState().intakeState!.lastQuestionContext!.controlledCandidate!;
