@@ -42,6 +42,7 @@ const D5_CORRECTION = 'いや、数学は全部で60分です。';
 let liveBridge;
 const D5_MAX_REQUESTS_PER_TURN = 3;
 const D5_CONNECTED_TURNS = 4;
+const D5_LIVE_MAX_ATTEMPTS_PER_TURN = 2;
 const turnCompletionOptions = () => liveBridge
   ? { timeout: (liveBridge.requestTimeoutMs + liveBridge.paceMs) * D5_MAX_REQUESTS_PER_TURN } : undefined;
 test.beforeAll(async () => {
@@ -113,7 +114,7 @@ const eventMinutes = event => {
   return minutes(event.endTime) - minutes(event.startTime);
 };
 async function boot(page, mode) {
-  const audit = { blockedExternal: [], proxy: [], replacedModules: [] };
+  const audit = { blockedExternal: [], proxy: [], replacedModules: [], live: Boolean(liveBridge && mode.startsWith('d5')) };
   await page.addInitScript(() => sessionStorage.setItem('studyplanner.ai.runtime.v1', JSON.stringify({ provider: 'openai', apiKey: '' })));
   await page.route('**/*', async route => {
     const url = new globalThis.URL(route.request().url());
@@ -270,11 +271,49 @@ async function boot(page, mode) {
 }
 
 async function submit(page, audit, text) {
-  const before = audit.proxy.length;
-  await composer(page).fill(text); await page.getByRole('button', { name: '送信', exact: true }).click();
-  await expect.poll(() => audit.proxy.length, turnCompletionOptions()).toBeGreaterThan(before);
-  await expect(page.getByRole('button', { name: '処理をキャンセル', exact: true })).toHaveCount(0, turnCompletionOptions());
-  await expect(composer(page)).toBeEnabled(turnCompletionOptions());
+  const live = Boolean(liveBridge && audit.live);
+  const preserved = live ? await d5Snapshot(page) : null;
+  const savedBefore = live ? await saved(page) : null;
+  const attempts = live ? D5_LIVE_MAX_ATTEMPTS_PER_TURN : 1;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const before = audit.proxy.length;
+    await composer(page).fill(text); await page.getByRole('button', { name: '送信', exact: true }).click();
+    await expect.poll(() => audit.proxy.length, turnCompletionOptions()).toBeGreaterThan(before);
+    await expect(page.getByRole('button', { name: '処理をキャンセル', exact: true })).toHaveCount(0, turnCompletionOptions());
+    await expect(composer(page)).toBeEnabled(turnCompletionOptions());
+    const calls = audit.proxy.slice(before);
+    if (!live) return { calls };
+    const after = await d5Snapshot(page);
+    const last = after.state.messages.at(-1);
+    // Route/count assertions apply to the completed attempt. Failed attempts
+    // stay in audit.proxy and their dedicated evidence; they are never erased.
+    if (last?.role !== 'assistant' || !last.content.startsWith('返信を作れませんでした。')) return { calls };
+    const providerFailures = calls.filter(call => call.response?.status >= 500 && call.response.status <= 599);
+    const newAssistantMessages = after.state.messages.filter(message => message.role === 'assistant'
+      && !preserved.state.messages.some(previous => previous.id === message.id));
+    const savedAfter = await saved(page);
+    audit.providerFailureCount = (audit.providerFailureCount ?? 0) + 1;
+    await test.info().attach(`d5-provider-failure-${audit.providerFailureCount}.json`, {
+      body: Buffer.from(JSON.stringify({ text, attempt: attempt + 1, providerFailures, calls,
+        preserved, after, savedBefore, savedAfter, newAssistantMessages }, null, 2)), contentType: 'application/json' });
+    await expect(page.locator('.ai-planning-conversation').getByText(last.content, { exact: true }).last()).toBeVisible();
+    expect(after.graph).toEqual(preserved.graph);
+    expect(after.state.previewCandidates).toEqual(preserved.state.previewCandidates);
+    expect(after.state.intakeState?.c5SelectionLedger).toEqual(preserved.state.intakeState?.c5SelectionLedger);
+    expect(savedAfter).toEqual(savedBefore);
+    // Only canonical failure messages may have been added; a stale/new effort ACK
+    // after a failed turn is not a retryable provider failure.
+    for (const message of newAssistantMessages) {
+      expect([
+        '返信を作れませんでした。少し待ってからもう一度送信してください。',
+        '返信を作れませんでした。今回の内容は計画へ反映していません。少し待ってからもう一度送信してください。',
+      ]).toContain(message.content);
+    }
+    expect(newAssistantMessages.length).toBeGreaterThan(0);
+    expect(providerFailures.length, 'A renderer contract failure without a failed provider response must fail, not retry').toBeGreaterThan(0);
+    expect(attempt, 'A second controlled provider failure ends this test; no third submission').toBe(0);
+    // Retry is the same visible user submission, once, under the same conversation.
+  }
 }
 async function openPreview(page) {
   await previewButton(page).click();
@@ -346,7 +385,7 @@ for (const mode of modes) {
 
 for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
   test(`D5 connected ${process.env.JEV_D5_LIVE === '1' ? 'live providers' : 'mock providers'} ${viewport.width}: bare answer, grounded ACK, correction, save and reload`, async ({ page }, testInfo) => {
-    test.setTimeout(liveBridge ? turnCompletionOptions().timeout * D5_CONNECTED_TURNS + 30_000 : 60_000);
+    test.setTimeout(liveBridge ? turnCompletionOptions().timeout * D5_CONNECTED_TURNS * D5_LIVE_MAX_ATTEMPTS_PER_TURN + 30_000 : 60_000);
     await page.setViewportSize(viewport);
     const audit = await boot(page, 'd5');
     await submit(page, audit, D5_SETUP);
@@ -354,9 +393,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await testInfo.attach('d5-capture-state.json', { body: Buffer.from(JSON.stringify({ presented, renderer: audit.proxy.filter(c => c.schema === 'weekly_planning_stable_v5_dialogue_response').at(-1) }, null, 2)), contentType: 'application/json' });
     expect(presented.state.intakeState.lastQuestionContext.controlledCandidate?.domainId).toBe('d5_numeric');
     expect(presented.state.intakeState.lastQuestionContext.actionId).toContain('candidate-question:d5_numeric:');
-    const beforeAnswer = audit.proxy.length;
-    await submit(page, audit, '15');
-    const answerCalls = audit.proxy.slice(beforeAnswer);
+    const { calls: answerCalls } = await submit(page, audit, '15');
     const selected = answerCalls.filter(c => c.body.decisionContext?.purpose === 'candidate_choice');
     expect(selected).toHaveLength(1);
     expect(selected[0].body.decisionContext.request.context.scope.domainPolicyVersion).toBe(D5_POLICY);
@@ -427,7 +464,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
 for (const reply of ['15ページ', '英語は15分', '全部で15分', '15分。あと英語の締切を金曜にして', '15分くらい']) {
   test(`D5 live negative 1280: ${reply}`, async ({ page }, testInfo) => {
     test.skip(process.env.JEV_D5_LIVE !== '1', 'Explicit live opt-in only; one fresh conversation per bounded negative');
-    test.setTimeout(turnCompletionOptions().timeout * 2 + 30_000);
+    test.setTimeout(turnCompletionOptions().timeout * 2 * D5_LIVE_MAX_ATTEMPTS_PER_TURN + 30_000);
     await page.setViewportSize({ width: 1280, height: 900 });
     const audit = await boot(page, 'd5');
     await submit(page, audit, D5_SETUP);
@@ -439,9 +476,7 @@ for (const reply of ['15ページ', '英語は15分', '全部で15分', '15分�
     expect(before.state.intakeState.c5SelectionLedger.consumed).toEqual([]);
     const math = before.graph.tasks.find(task => task.title === '数学');
     const english = before.graph.tasks.find(task => task.title === '英語');
-    const beforeReply = audit.proxy.length;
-    await submit(page, audit, reply);
-    const calls = audit.proxy.slice(beforeReply);
+    const { calls } = await submit(page, audit, reply);
     const candidateCalls = calls.filter(call => call.body.decisionContext?.purpose === 'candidate_choice');
     const fallbackCalls = calls.filter(call => call.body.purpose === 'weekly_planning_semantic_normalizer'
       && call.body.decisionContext?.purpose !== 'candidate_choice');
