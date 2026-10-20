@@ -37,7 +37,7 @@ function initialConditions() {
 }
 
 const D5_POLICY = 'd5-answer-proposal-2026-10-21-v2';
-const D5_SETUP = '8月20日から26日で数学20問と英語15ページを進めたい。英語15ページは全部で45分。数学の時間はまだ決めていません。';
+const D5_SETUP = '8月20日から26日で数学20問と英語15ページを進めたい。英語15ページは全部で45分。';
 const D5_CORRECTION = 'いや、数学は全部で60分です。';
 let liveBridge;
 const D5_MAX_REQUESTS_PER_TURN = 3;
