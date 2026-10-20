@@ -108,7 +108,7 @@ describe('generic Choice provider validation and dispatch accounting', () => {
       expect(questions[head].instructions).toContain('An omitted target, unit or measurement inherits the bound displayed question');
       expect(questions[head].instructions).toContain('Supplying this value is not an additional condition or independent meaning');
     }
-    expect((body.state as { catalogVersion: string }).catalogVersion).toBe('complete-candidate-choice-d5-top1-2026-10-21-v4');
+    expect((body.state as { catalogVersion: string }).catalogVersion).toBe('complete-candidate-choice-d5-top1-2026-10-21-v5');
     expect(D5_TOP1_PROVIDER_CATALOG_VERSION).toBe((body.state as { catalogVersion: string }).catalogVersion);
     expect(result).toMatchObject({ status: 'evaluated', catalogVersion: CANDIDATE_CHOICE_CATALOG_VERSION });
     expect(isCandidateChoiceEvaluation(result, request)).toBe(true);
@@ -149,8 +149,13 @@ describe('generic Choice provider validation and dispatch accounting', () => {
           expect(text).toContain('Judge approximation from the CURRENT USER REPLY (currentUserText) ONLY');
           expect(text).toContain('in context.presentedQuestion does not make the reply approximate');
           expect(text).toContain('is not itself presentation/tuple disagreement, condition change or independent meaning');
-          expect(text).toContain('reply 「15」 or 「15分」 supplies exact 15 minutes');
-          expect(text).toContain('reply 「15分くらい」, 「約15分」, 「15分ほど」, 「15分前後」 or 「15分程度」 expresses approximation and must choose none with both auxiliary heads true');
+          expect(text).toContain('Approximation expressed in currentUserText must choose none with both auxiliary heads true');
+          // Keep held-out browser/live wording and reply examples out of the
+          // catalog prose; the actual question/reply remain in state only.
+          expect(text).not.toContain('1問あたり何分くらいかかりそうですか？');
+          for (const reply of ['15', '15分', '15分くらい', '約15分', '15分ほど', '15分前後', '15分程度']) {
+            expect(text).not.toContain(`「${reply}」`);
+          }
           expect(text).toContain('does not excuse a target, measurement, unit or scope mismatch');
         }
       }
