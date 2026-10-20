@@ -77,6 +77,42 @@ describe('Stable V5 dialogue renderer validation', () => {
       { groundingAcknowledgement: null }), renderInput).status).toBe('fallback');
   });
   it.each([
+    ['数学は1問5分で見積もります。数学は全部で50分として扱います。', true],
+    ['数学は全部で50分です。数学は1問5分で計算します。', true],
+    ['数学は全部で5分です。数学は1問50分です。', false],
+    ['数学は1問5分です。数学は1問5分です。', false],
+  ] as const)('binds multiple measurements on the same target by the complete assertion: %s', (text, valid) => {
+    const renderInput = input({ actionKind: 'status', questionCode: null, currentTurnGrounding: { mode: 'required_before_resume', acceptedFacts: [
+      { factId: 'rate', kind: 'effort_estimate', sourceText: '1問5分', data: { targetLabels: ['数学'], minutes: 5, kind: 'duration_per_unit', precision: 'exact', unitLabel: '問' } },
+      { factId: 'total', kind: 'effort_estimate', sourceText: '全部50分', data: { targetLabels: ['数学'], minutes: 50, kind: 'total_duration', precision: 'exact', unitLabel: null } },
+    ] } });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text,
+      { groundingAcknowledgement: { factIds: ['rate', 'total'], text } }), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+  });
+  it.each([
+    ['で見積もります。', true], ['です。', true], ['として扱います。', true], ['を目安にします。', true],
+    ['ではありません。', false], ['ではないです。', false], ['と見積もりません。', false],
+    ['でよいですか？', false], ['でいいでしょうか。', false], ['で計算しますか', false],
+    ['なら計画できます。', false], ['という見積もりを取り消します。', false],
+  ] as const)('requires an affirmative effort assertion ending: %s', (ending, valid) => {
+    const ack = `数学は1問5分${ending}`;
+    const renderInput = input({ requiredLabels: [], currentTurnGrounding: { mode: 'required_before_resume', acceptedFacts: [
+      { factId: 'rate', kind: 'effort_estimate', sourceText: '1問5分', data: { targetLabels: ['数学'], minutes: 5, kind: 'duration_per_unit', precision: 'exact', unitLabel: '問' } },
+    ] } });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, ack + 'いつ勉強できますか？',
+      { groundingAcknowledgement: { factIds: ['rate'], text: ack } }), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+  });
+  it.each([['なぜ？どうして？理科', '例題！演習。'], ['ではありません？数学', '確認ですか？演習']])(
+    'preserves sentence punctuation and predicate-like words inside opaque labels: %s', (task, component) => {
+      const ack = `「${task}」の「${component}」は1問5分で見積もります。`;
+      const renderInput = input({ requiredLabels: [], currentTurnGrounding: { mode: 'required_before_resume', acceptedFacts: [
+        { factId: 'rate', kind: 'effort_estimate', sourceText: '1問5分', data: { targetLabels: [task, component], minutes: 5, kind: 'duration_per_unit', precision: 'exact', unitLabel: '問' } },
+      ] } });
+      expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, ack,
+        { groundingAcknowledgement: { factIds: ['rate'], text: ack } }), renderInput).status).toBe('rendered');
+    },
+  );
+  it.each([
     ['数学は合計10分、英語は1問5分くらいで見積もります。', true],
     ['数学は合計5分、英語は1問10分くらいです。', false],
     ['数学は1問10分、英語は合計5分くらいです。', false],

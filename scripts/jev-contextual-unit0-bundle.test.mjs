@@ -63,11 +63,11 @@ it('D5 bridge bundles the actual Worker without deploying and refuses implicit l
 it('D5 bridge gates expiry/auth and enforces provider reservations before sends (offline VM)', async () => {
   const { runInNewContext } = await import('node:vm');
   const { webcrypto } = await import('node:crypto');
-  const { d5BridgeWorkerSource } = await import('./jev-d5-browser-bridge.mjs');
+  const { d5BridgeWorkerSource, D5_BRIDGE_MAX_BODY_BYTES } = await import('./jev-d5-browser-bridge.mjs');
   const token = 'offline-token'; let sends = 0;
   const source = d5BridgeWorkerSource({ workerPath: '/synthetic-worker.ts', digest: createHash('sha256').update(token).digest('hex'),
     expiresAt: Date.now() + 60_000, runId: 'offline', remaining: { jev: 200, luna: 60, usd: 3 } })
-    .replace(/^import worker from .*;$/m, `const worker = { async fetch() { return globalThis.fetch('https://openrouter.ai/api/alpha/decisions', { method: 'POST' }); } };`)
+    .replace(/^import worker from .*;$/m, `const worker = { async fetch() { return globalThis.fetch('https://openrouter.ai/api/alpha/decisions', { method: 'POST', body: JSON.stringify({ model: 'typesafe/jev-1.13' }) }); } };`)
     .replace(/^export \{ AiQuotaDurableObject \} from .*;$/m, '')
     .replace('export default {', 'globalThis.bridge = {');
   const context = { crypto: webcrypto, TextEncoder, URL, Request, Response, Headers, Date, Uint8Array,
@@ -75,7 +75,19 @@ it('D5 bridge gates expiry/auth and enforces provider reservations before sends 
   runInNewContext(source, context);
   const request = auth => new Request('https://synthetic/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${auth}` }, body: '{}' });
   expect((await context.bridge.fetch(request('wrong'), {})).status).toBe(404); expect(sends).toBe(0);
-  for (let i = 0; i < 60; i++) expect((await context.bridge.fetch(request(token), {})).status).toBe(200);
+  // These bounds are checked on the actual provider body, before any paid send.
+  await expect(context.fetch('https://api.openai.com/v1/chat/completions', { method: 'POST',
+    body: JSON.stringify({ model: 'gpt-6-luna', max_completion_tokens: 4097 }) })).rejects.toThrow('output');
+  await expect(context.fetch('https://api.openai.com/v1/chat/completions', { method: 'POST',
+    body: JSON.stringify({ model: 'unpriced-model', max_completion_tokens: 4096 }) })).rejects.toThrow('model');
+  await expect(context.fetch('https://openrouter.ai/api/alpha/decisions', { method: 'POST',
+    body: JSON.stringify({ model: 'typesafe/jev-1.13', padding: 'あ'.repeat(20_000) }) })).rejects.toThrow('body');
+  expect(sends).toBe(0);
+  const base = JSON.stringify({ model: 'gpt-6-luna', max_completion_tokens: 4096, padding: '' });
+  const maximumBody = JSON.stringify({ model: 'gpt-6-luna', max_completion_tokens: 4096, padding: 'x'.repeat(D5_BRIDGE_MAX_BODY_BYTES - base.length) });
+  expect(new TextEncoder().encode(maximumBody).length).toBe(D5_BRIDGE_MAX_BODY_BYTES);
+  expect((await context.fetch('https://api.openai.com/v1/chat/completions', { method: 'POST', body: maximumBody })).status).toBe(200);
+  for (let i = 0; i < 59; i++) expect((await context.bridge.fetch(request(token), {})).status).toBe(200);
   await expect(context.bridge.fetch(request(token), {})).rejects.toThrow('budget exhausted');
   expect(sends).toBe(60);
 });
@@ -92,4 +104,16 @@ it('D5 bridge allowlists environment keys and requires explicit remaining unit b
   expect(() => readD5BridgeRemainingBudget([])).toThrow('remaining-jev');
   expect(() => readD5BridgeRemainingBudget(['--remaining-jev', '201', '--remaining-luna', '60', '--remaining-usd', '3'])).toThrow();
   expect(readD5BridgeRemainingBudget(['--remaining-jev', '190', '--remaining-luna', '45', '--remaining-usd', '2.5'])).toEqual({ jev: 190, luna: 45, usd: 2.5 });
+});
+
+it('proves the fixed D5 reservation covers both existing Luna tariffs and the Jev bound', async () => {
+  const { d5BridgePriceBounds, D5_BRIDGE_MAX_BODY_BYTES, D5_BRIDGE_RESERVATION_USD } = await import('./jev-d5-browser-bridge.mjs');
+  const bounds = d5BridgePriceBounds();
+  expect(D5_BRIDGE_MAX_BODY_BYTES).toBe(59_488);
+  expect(bounds.inputBound).toBe(60_000);
+  expect(bounds.maxOutputTokens).toBe(4096);
+  expect(bounds.luna['gpt-6-luna']).toEqual({ pricingVersion: 'openai-public-2026-10-12-v1', maximumUsd: .00955 });
+  expect(bounds.luna['gpt-5.6-luna'].maximumUsd).toBe(.019917);
+  expect(bounds.jev.maximumUsd).toBeCloseTo(.00262, 10);
+  for (const bound of [bounds.jev, ...Object.values(bounds.luna)]) expect(bound.maximumUsd).toBeLessThan(D5_BRIDGE_RESERVATION_USD);
 });

@@ -6,6 +6,30 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { estimateAiRequestCost } from '../workers/ai-proxy/src/aiUsagePricing.ts';
+import { AI_PROXY_CHAT_REQUEST_LIMITS } from '../shared/aiProxyContract.ts';
+import { PREREGISTERED_PRICING, workerRates, callReserveUsd } from './jev-contextual-unit0-budget.mjs';
+
+// One token per UTF-8 byte plus the existing framing allowance; the Jev
+// short-input contract supplies the tighter bound, also below Luna's threshold.
+export const D5_BRIDGE_MAX_BODY_BYTES = PREREGISTERED_PRICING.jev.maxInputTokensPerCall - PREREGISTERED_PRICING.jev.inputTokenOverheadPerCall;
+export const D5_BRIDGE_RESERVATION_USD = .05;
+export function d5BridgePriceBounds() {
+  const inputBound = D5_BRIDGE_MAX_BODY_BYTES + PREREGISTERED_PRICING.jev.inputTokenOverheadPerCall;
+  const usage = { promptTokens: inputBound, completionTokens: AI_PROXY_CHAT_REQUEST_LIMITS.maxOutputTokens,
+    cachedTokens: 0, cacheWriteTokens: inputBound };
+  // Charge every input token at the cache-write upper rate, never a cache discount.
+  const luna = Object.fromEntries(['gpt-6-luna', 'gpt-5.6-luna'].map(model => {
+    const estimate = estimateAiRequestCost({ provider: 'openai', model, operationKind: 'chat_completion', usage });
+    assert.ok(estimate.estimatedCostMicros !== null);
+    // Two rounded tariff terms: two extra microdollars conservatively cover rounding.
+    return [model, { pricingVersion: estimate.pricingVersion, maximumUsd: (estimate.estimatedCostMicros + 2) / 1e6 }];
+  }));
+  const jev = { pricingVersion: PREREGISTERED_PRICING.version, maximumUsd: callReserveUsd(workerRates(PREREGISTERED_PRICING).jev, inputBound) };
+  assert.ok([jev, ...Object.values(luna)].every(bound => bound.maximumUsd <= D5_BRIDGE_RESERVATION_USD));
+  return { inputBound, maximumBodyBytes: D5_BRIDGE_MAX_BODY_BYTES, maxOutputTokens: AI_PROXY_CHAT_REQUEST_LIMITS.maxOutputTokens, jev, luna };
+}
+
 // Browser/controller/persistence bridge, not an evaluation framework. No execution on import.
 // Real: Worker chat ingress, catalogs, provider calls. Synthetic: Firebase session,
 // full-app local repository, fixed browser clock. Remote-dev quota namespace is isolated.
@@ -33,6 +57,7 @@ export function d5BridgeWorkerSource({ workerPath, digest, expiresAt, runId, rem
   assert.ok(remaining && Number.isSafeInteger(remaining.jev) && remaining.jev >= 0 && remaining.jev <= 200
     && Number.isSafeInteger(remaining.luna) && remaining.luna >= 0 && remaining.luna <= 60
     && Number.isFinite(remaining.usd) && remaining.usd > 0 && remaining.usd <= 3, 'Explicit remaining budget required');
+  const priceBounds = d5BridgePriceBounds();
   return `
 import worker from ${JSON.stringify(workerPath)};
 export { AiQuotaDurableObject } from ${JSON.stringify(workerPath)};
@@ -40,9 +65,12 @@ const EXPECTED_DIGEST = ${JSON.stringify(digest)};
 const EXPIRES_AT = ${expiresAt};
 const RUN_ID = ${JSON.stringify(runId)};
 const CAPS = ${JSON.stringify(remaining)};
+const PRICE_BOUNDS = ${JSON.stringify(priceBounds)};
+const RESERVATION_USD = ${D5_BRIDGE_RESERVATION_USD};
+const JEV_MODELS = ${JSON.stringify(PREREGISTERED_PRICING.jev.servedModels)};
 const bridgeEnvironment = ${d5BridgeEnvironment.toString()};
 const upstream = globalThis.fetch.bind(globalThis);
-let counters = { jev: 0, luna: 0, reservedUsd: 0 }; let receipts = []; let busy = false;
+let counters = { jev: 0, luna: 0, reservedUsd: 0 }; let receipts = []; let busy = false; let tariffViolation = false;
 const hash = async value => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)))].map(n => n.toString(16).padStart(2, '0')).join('');
 globalThis.fetch = async (input, init) => {
   const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
@@ -52,14 +80,21 @@ globalThis.fetch = async (input, init) => {
   const family = url.origin === 'https://openrouter.ai' && url.pathname === '/api/alpha/decisions' ? 'jev'
     : url.origin === 'https://api.openai.com' && url.pathname === '/v1/chat/completions' ? 'luna' : null;
   if (!family) throw new Error('Dev bridge denies non-provider network');
-  // Conservative pre-send reservation remains charged even if usage/cost is absent.
-  // At <=256KiB input and <=4096 completion tokens this exceeds the repository's
-  // Luna text price upper bound; Jev actual reported cost is additionally checked.
-  if (counters[family] >= CAPS[family] || counters.reservedUsd + .05 > CAPS.usd + 1e-9) {
+  if (tariffViolation) throw new Error('Provider tariff violation stopped this run');
+  const providerBody = typeof init?.body === 'string' ? init.body : await new Request(input, init).clone().text();
+  const bodyBytes = new TextEncoder().encode(providerBody).length;
+  if (bodyBytes > PRICE_BOUNDS.maximumBodyBytes) throw new Error('Provider body exceeds proven tariff bound');
+  const payload = JSON.parse(providerBody);
+  if (family === 'luna' ? !Object.hasOwn(PRICE_BOUNDS.luna, payload.model)
+    || !Number.isSafeInteger(payload.max_completion_tokens) || payload.max_completion_tokens < 1 || payload.max_completion_tokens > PRICE_BOUNDS.maxOutputTokens
+    : !JEV_MODELS.includes(payload.model)) throw new Error('Provider model/output exceeds proven tariff bound');
+  // A proved maximum remains charged even if usage/cost is absent.
+  if (counters[family] >= CAPS[family] || counters.reservedUsd + RESERVATION_USD > CAPS.usd + 1e-9) {
     throw new Error('Dev bridge provider budget exhausted');
   }
-  counters[family]++; counters.reservedUsd = Math.round((counters.reservedUsd + .05) * 100) / 100;
-  const receipt = { family, ordinal: counters[family], phase: 'reserved_before_send', reservedUsd: .05, startedAt: Date.now() };
+  counters[family]++; counters.reservedUsd = Math.round((counters.reservedUsd + RESERVATION_USD) * 1e6) / 1e6;
+  const receipt = { family, ordinal: counters[family], phase: 'reserved_before_send', reservedUsd: RESERVATION_USD,
+    providerBodyBytes: bodyBytes, model: payload.model, priceBound: family === 'luna' ? PRICE_BOUNDS.luna[payload.model] : PRICE_BOUNDS.jev, startedAt: Date.now() };
   receipts.push(receipt);
   const response = await upstream(input, { ...init, redirect: 'error' });
   try {
@@ -67,8 +102,8 @@ globalThis.fetch = async (input, init) => {
     const cost = typeof usage.cost === 'number' && Number.isFinite(usage.cost) && usage.cost >= 0 ? usage.cost : null;
     Object.assign(receipt, { phase: 'completed', httpStatus: response.status, latencyMs: Date.now() - receipt.startedAt,
       inputTokens: usage.input_tokens ?? usage.prompt_tokens ?? null, outputTokens: usage.output_tokens ?? usage.completion_tokens ?? null, costUsd: cost });
-    if (cost !== null && cost > .05) { counters.reservedUsd += cost - .05; throw new Error('Provider exceeded conservative reservation'); }
-  } catch (error) { if (counters.reservedUsd > CAPS.usd) throw error; }
+    if (cost !== null && cost > RESERVATION_USD) { counters.reservedUsd += cost - RESERVATION_USD; tariffViolation = true; throw new Error('Provider exceeded conservative reservation'); }
+  } catch (error) { if (tariffViolation || counters.reservedUsd > CAPS.usd) throw error; }
   return response;
 };
 export default { async fetch(request, env, ctx) {
@@ -81,7 +116,7 @@ export default { async fetch(request, env, ctx) {
     const headers = new Headers(request.headers); headers.set('Authorization', 'Bearer synthetic-fixture-session');
     headers.set('Origin', 'http://127.0.0.1:4174');
     const body = await request.text();
-    if (new TextEncoder().encode(body).length > 256 * 1024) return new Response('Too large', { status: 413 });
+    if (new TextEncoder().encode(body).length > ${D5_BRIDGE_MAX_BODY_BYTES}) return new Response('Too large', { status: 413 });
     const response = await worker.fetch(new Request('https://d5-synthetic.invalid/chat/completions', { method: 'POST', headers, body }),
       bridgeEnvironment(env), undefined, ctx);
     const responseHeaders = new Headers(response.headers);
@@ -124,14 +159,14 @@ export async function startD5BrowserBridge({ workerName, evidenceDir, remainingA
       experimental: { disableExperimentalWarning: true, disableDevRegistry: true, watch: false, showInteractiveDevSession: false, enableIpc: false } });
     const ready = await worker.fetch('/ready', { headers: { Authorization: `Bearer ${remoteToken}` }, signal: AbortSignal.timeout(45_000) });
     assert.equal(ready.status, 200); assert.deepEqual(await ready.json(), { openRouter: true, openAi: true, counters: { jev: 0, luna: 0, reservedUsd: 0 } });
-    await receipt({ phase: 'ready', workerName, boundary: 'remote-dev-real-worker;synthetic-firebase;local-repository-not-firestore', remainingBudget: remaining, paceMs });
+    await receipt({ phase: 'ready', workerName, boundary: 'remote-dev-real-worker;synthetic-firebase;local-repository-not-firestore', remainingBudget: remaining, priceBounds: d5BridgePriceBounds(), paceMs });
     server = createServer((request, response) => {
       chain = chain.then(async () => {
         if (request.headers.authorization !== `Bearer ${localToken}` || request.method !== 'POST') { response.writeHead(404); response.end(); return; }
-        let body = ''; for await (const chunk of request) { body += chunk; if (Buffer.byteLength(body) > 256 * 1024) throw new Error('Oversized loopback request'); }
+        let body = ''; for await (const chunk of request) { body += chunk; if (Buffer.byteLength(body) > D5_BRIDGE_MAX_BODY_BYTES) throw new Error('Oversized loopback request'); }
         const payload = JSON.parse(body); const focused = payload.decisionContext?.purpose;
         const jev = focused ? 1 : 0; const luna = focused === 'candidate_choice' ? 0 : 1;
-        const reservation = .05 * (jev + luna);
+        const reservation = D5_BRIDGE_RESERVATION_USD * (jev + luna);
         if (reservedJev + jev > remaining.jev || reservedLuna + luna > remaining.luna || reservedUsd + reservation > remaining.usd + 1e-9) throw new Error('Loopback budget exhausted');
         reservedJev += jev; reservedLuna += luna; reservedUsd += reservation;
         const seq = ++sequence; const schema = payload.response_format?.json_schema?.name ?? null;

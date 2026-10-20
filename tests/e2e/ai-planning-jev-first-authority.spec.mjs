@@ -151,6 +151,12 @@ async function boot(page, mode) {
       expect(code.split(marker)).toHaveLength(2);
       return route.fulfill({ response, body: code.replace(marker, `${marker} globalThis.__d5ReadState = getPlanningState;`) });
     });
+    await page.route('**/src/features/weeklyPlanning/application/weeklyPlanningOutcomeObservability.ts*', async route => {
+      const response = await route.fetch(); const code = await response.text();
+      const marker = 'function recordWeeklyPlanningApprovalStarted(params) {';
+      expect(code.split(marker)).toHaveLength(2);
+      return route.fulfill({ response, body: code.replace(marker, `${marker} (globalThis.__d5ApprovalExecutions ??= []).push({ requestId: params.pending.requestId, previewCount: params.previewCount });`) });
+    });
     await page.route('**/src/features/weeklyPlanning/trace/weeklyPlanningStableV5DebugTrace.ts*', async route => {
       const response = await route.fetch(); const code = await response.text();
       const marker = 'function recordWeeklyPlanningStableV5DebugTrace(params) {';
@@ -253,7 +259,9 @@ async function boot(page, mode) {
   await page.goto(URL);
   await expect(page.getByRole('navigation', { name: '主要ナビゲーション' })).toBeVisible();
   await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: 'AI計画', exact: true }).click();
-  await expect(composer(page)).toBeEnabled();
+  // The real lazy AI workspace has a cold Vite dependency waterfall. Scope the
+  // longer readiness budget to opening this workspace, not subsequent turns.
+  await expect(composer(page)).toBeEnabled({ timeout: 30_000 });
   return audit;
 }
 
@@ -379,8 +387,26 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     const writeCountBefore = await page.evaluate(() => window.__plannerRecoveryStorageWrites.filter(w => w.key === 'studyplanner.scheduleEvents.v1').length);
     await dialog.getByRole('button', { name: 'この内容で保存' }).evaluate(button => { button.click(); button.click(); });
     await expect.poll(async () => (await saved(page)).length).toBeGreaterThan(0);
+    await expect(dialog).toHaveCount(0); // The entire sequential approval has finished.
     const committed = await saved(page);
-    expect(await page.evaluate(() => window.__plannerRecoveryStorageWrites.filter(w => w.key === 'studyplanner.scheduleEvents.v1').length)).toBe(writeCountBefore + 1);
+    const approvalEvidence = await page.evaluate(before => ({ executions: globalThis.__d5ApprovalExecutions ?? [],
+      writes: window.__plannerRecoveryStorageWrites.filter(w => w.key === 'studyplanner.scheduleEvents.v1').slice(before).map(w => JSON.parse(w.value)) }), writeCountBefore);
+    await testInfo.attach('d5-approval-writes.json', { body: Buffer.from(JSON.stringify(approvalEvidence)), contentType: 'application/json' });
+    expect(approvalEvidence.executions).toHaveLength(1);
+    expect(approvalEvidence.executions[0].previewCount).toBe(committed.length);
+    // The production local repository persists one new event per approval item.
+    // Every write must add exactly one distinct final event and preserve all prior ones.
+    expect(approvalEvidence.writes).toHaveLength(committed.length);
+    let previous = [];
+    for (const written of approvalEvidence.writes) {
+      expect(written).toHaveLength(previous.length + 1);
+      expect(written.filter(event => previous.some(old => old.id === event.id))).toEqual(previous);
+      const added = written.filter(event => !previous.some(old => old.id === event.id));
+      expect(added).toHaveLength(1);
+      expect(committed.find(event => event.id === added[0].id)).toEqual(added[0]);
+      previous = written;
+    }
+    expect(previous).toEqual(committed);
     await testInfo.attach('d5-saved-readback.json', { body: Buffer.from(JSON.stringify({ correctedAllocation, committed })), contentType: 'application/json' });
     const mathPlans = committed.filter(p => p.title.includes('数学'));
     expect(mathPlans.reduce((sum, plan) => sum + eventMinutes(plan), 0)).toBe(correctedAllocation.math);

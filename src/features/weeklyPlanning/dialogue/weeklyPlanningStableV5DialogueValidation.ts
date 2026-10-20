@@ -325,23 +325,32 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
   if (Array.isArray(tasks)) for (const task of tasks) {
     if (isRecord(task) && typeof task.title === 'string' && task.title.length) taskLabels.add(normalizeSafetyText(task.title));
   }
-  const orderedLabels = [...taskLabels].sort((a, b) => b.length - a.length);
-  const segments = visible.split(/[。！？!?\n]/u).filter(Boolean).flatMap<{ text: string; label: string | null }>(sentence => {
-    const anchors: { at: number; label: string }[] = [];
-    for (let at = 0; at < sentence.length; at++) {
-      const label = orderedLabels.find(label => sentence.startsWith(label, at));
-      if (!label) continue;
-      // A shorter canonical label must not claim an unbound Latin/roman suffix.
-      if (/[A-Za-zⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]/u.test(sentence[at + label.length] ?? '')) continue;
-      anchors.push({ at, label }); at += label.length - 1;
-    }
+  const opaqueLabels = [...new Set([...taskLabels, ...effort.flatMap(fact => Array.isArray(fact.data.targetLabels) ? fact.data.targetLabels : [])
+    .filter((label): label is string => typeof label === 'string').map(normalizeSafetyText)])].sort((a, b) => b.length - a.length);
+  // Locate literal names before punctuation is considered. Their contents are opaque,
+  // including question marks, numbers and words resembling an assertion predicate.
+  const spans: { start: number; end: number; label: string }[] = [];
+  for (let at = 0; at < visible.length; at++) {
+    const label = opaqueLabels.find(label => label.length && visible.startsWith(label, at));
+    if (!label || /[A-Za-zⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]/u.test(visible[at + label.length] ?? '')) continue;
+    spans.push({ start: at, end: at + label.length, label }); at += label.length - 1;
+  }
+  const boundaries: { start: number; end: number }[] = [];
+  let start = 0;
+  for (let at = 0; at < visible.length; at++) {
+    const opaque = spans.find(span => span.start === at);
+    if (opaque) { at = opaque.end - 1; continue; }
+    if (/[。！？!?\n]/u.test(visible[at])) { boundaries.push({ start, end: at + 1 }); start = at + 1; }
+  }
+  if (start < visible.length) boundaries.push({ start, end: visible.length });
+  const segments = boundaries.flatMap<{ label: string | null; text: string }>(boundary => {
+    const anchors = spans.filter(span => span.start >= boundary.start && span.end <= boundary.end && taskLabels.has(span.label));
     return anchors.length ? anchors.map((anchor, i) => ({ label: anchor.label,
-      text: sentence.slice(i === 0 ? 0 : anchor.at, anchors[i + 1]?.at ?? sentence.length) })) : [{ text: sentence, label: null }];
+      text: visible.slice(i === 0 ? boundary.start : anchor.start, anchors[i + 1]?.start ?? boundary.end) }))
+      : [{ label: null, text: visible.slice(boundary.start, boundary.end) }];
   });
   for (const { text: segment, label: targetLabel } of segments) {
     let assertion = segment;
-    const opaqueLabels = effort.flatMap(fact => Array.isArray(fact.data.targetLabels) ? fact.data.targetLabels : [])
-      .filter((label): label is string => typeof label === 'string').map(normalizeSafetyText).sort((a, b) => b.length - a.length);
     for (const label of opaqueLabels) if (label.length) assertion = assertion.split(label).join(' '.repeat(label.length));
     assertion = assertion.replace(CLOCK_EXPRESSION, clock => ' '.repeat(clock.length));
     const mentions = displayQuantityMentions(assertion);
@@ -349,40 +358,41 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
     const durations = mentions.filter(m => m.form !== 'bare');
     if (!durations.length) continue;
     if (durations.length !== 1) return true;
+    const duration = durations[0];
+    // Only the effort assertion's own ending is checked. A subsequent ordinary
+    // question is outside the ACK; punctuation inside names has already been masked.
+    const ending = assertion.slice(duration.span.end).trim();
+    if (!/^(?:(?:くらい|ぐらい|ほど|前後|程度)\s*)?(?:です|でした|になります|とします|(?:で|と|として)(?:見積もります|見積もりました|計算します|計算しました|反映します|反映しました|設定します|設定しました|扱います|受け取りました|承知しました)|と見込んでいます|を目安にします)?[\s。、,「」『』()（）]*$/u.test(ending)) return true;
     const matching = effort.filter(fact => {
-      const labels = fact.data.targetLabels;
-      return Array.isArray(labels) && labels.length > 0 && typeof labels[0] === 'string' && normalizeSafetyText(labels[0]) === targetLabel
-        && labels.every(label => typeof label === 'string' && segment.includes(normalizeSafetyText(label)));
+      const data = fact.data; const labels = data.targetLabels;
+      if (!factIds.includes(fact.factId) || assigned.has(fact.factId)
+        || duration.minutes !== data.minutes || (data.precision === 'approximate') !== duration.approximate
+        || !Array.isArray(labels) || !labels.length || typeof labels[0] !== 'string'
+        || normalizeSafetyText(labels[0]) !== targetLabel
+        || !labels.every(label => typeof label === 'string' && segment.includes(normalizeSafetyText(label)))) return false;
+      const total = /全部|合計|全体|総計|トータル/u.test(assertion);
+      const unit = data.kind === 'session_duration' ? '回' : data.unitLabel;
+      let perUnit = false; let measurementStart = data.kind === 'total_duration'
+        ? assertion.search(/全部|合計|全体|総計|トータル/u) : -1;
+      if (typeof unit === 'string' && unit.length > 0) {
+        const literal = normalizeSafetyText(unit);
+        let at = assertion.indexOf(literal);
+        while (at >= 0) {
+          const denominator = mentions.find(m => m.form === 'bare' && m.span.end <= at
+            && assertion.slice(m.span.end, at).trim() === '');
+          const rateSuffix = /^(?:あたり|当たり|につき)/u.test(assertion.slice(at + literal.length));
+          if (denominator ? denominator.minutes === 1 : rateSuffix) { perUnit = true; measurementStart = denominator?.span.start ?? at; }
+          if (denominator && denominator.minutes !== 1 && (rateSuffix || data.kind !== 'total_duration')) return false;
+          at = assertion.indexOf(literal, at + literal.length);
+        }
+      }
+      if (data.kind === 'total_duration' ? !total || perUnit : !perUnit || total) return false;
+      const labelEnd = Math.max(...labels.map(label => { const normalized = normalizeSafetyText(label); return segment.lastIndexOf(normalized) + normalized.length; }));
+      const subjectLink = segment.slice(labelEnd, measurementStart);
+      return measurementStart >= labelEnd && /^(?:(?:について|として|に関して)|[\sはがをのにで、,:：「」『』()（）])*$/u.test(subjectLink);
     });
     if (matching.length !== 1) return true;
-    const fact = matching[0]; const data = fact.data; const duration = durations[0];
-    if (!factIds.includes(fact.factId) || assigned.has(fact.factId) || duration.minutes !== data.minutes
-      || (data.precision === 'approximate') !== duration.approximate) return true;
-    const total = /全部|合計|全体|総計|トータル/u.test(assertion);
-    const unit = data.kind === 'session_duration' ? '回' : data.unitLabel;
-    let perUnit = false; let measurementStart = data.kind === 'total_duration'
-      ? assertion.search(/全部|合計|全体|総計|トータル/u) : -1;
-    if (typeof unit === 'string' && unit.length > 0) {
-      const literal = normalizeSafetyText(unit);
-      let at = assertion.indexOf(literal);
-      while (at >= 0) {
-        const denominator = mentions.find(m => m.form === 'bare' && m.span.end <= at
-          && segment.slice(m.span.end, at).trim() === '');
-        const rateSuffix = /^(?:あたり|当たり|につき)/u.test(segment.slice(at + literal.length));
-        if (denominator ? denominator.minutes === 1 : rateSuffix) { perUnit = true; measurementStart = denominator?.span.start ?? at; }
-        // An explicit denominator other than one cannot claim the typed per-unit rate.
-        if (denominator && denominator.minutes !== 1 && (rateSuffix || data.kind !== 'total_duration')) return true;
-        at = assertion.indexOf(literal, at + literal.length);
-      }
-    }
-    if (data.kind === 'total_duration' ? !total || perUnit : !perUnit || total) return true;
-    const labels = data.targetLabels as string[];
-    const labelEnd = Math.max(...labels.map(label => { const normalized = normalizeSafetyText(label); return segment.lastIndexOf(normalized) + normalized.length; }));
-    // Bounded display relation: the canonical subject directly governs its measurement.
-    // An arbitrary intervening noun/target cannot borrow that subject's identity.
-    const subjectLink = segment.slice(labelEnd, measurementStart);
-    if (measurementStart < labelEnd || !/^(?:(?:について|として|に関して)|[\sはがをのにで、,:：「」『』()（）])*$/u.test(subjectLink)) return true;
-    assigned.add(fact.factId);
+    assigned.add(matching[0].factId);
   }
   return effort.some(fact => !assigned.has(fact.factId));
 }
