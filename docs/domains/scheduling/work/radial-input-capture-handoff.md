@@ -24,9 +24,9 @@ to preserve its behavior and avoid duplicate changes in this PR diff. Production
 files merged cleanly; the sole test append conflict was resolved by retaining both
 complete, unchanged groups of added tests.
 
-Next: verify the combined tree, publish the authorized draft, and follow native
-browser CI to its terminal result. Independent review remains required for the
-integration resolution. Publication is authorized; no main merge is authorized.
+Next: follow native browser CI on draft #815 to its terminal result. Combined
+verification and independent integration review passed. Publication is authorized;
+no main merge is authorized.
 
 ## Verification checkpoint
 
@@ -57,5 +57,7 @@ integration resolution. Publication is authorized; no main merge is authorized.
 - Combined full verify passed: fresh App/Worker types, 1,055 files / 10,538 tests,
   67 skipped / one todo, production build 13.71 seconds. The same local-only
   environment opt-outs above were used. Native browser CI remains pending.
-- Draft base is #808's branch, not main. Its keyboard changes are a dependency,
-  not duplicate work in this PR. No main merge or base retarget is authorized.
+- Published as draft PR #815. It depends on #808; the base was subsequently
+  retargeted to main for the repository's main-only PR workflow filters. The
+  cumulative PR diff includes that dependency; the radial commit remains isolated
+  to five files relative to corrected #808. No main merge is authorized.
