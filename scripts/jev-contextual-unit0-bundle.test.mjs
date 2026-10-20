@@ -47,3 +47,49 @@ it('writes identical Unit0 bundle bytes and hashes from fresh processes with dif
     }
   } finally { await rm(directory, { recursive: true, force: true }); }
 }, 60_000);
+
+it('D5 bridge bundles the actual Worker without deploying and refuses implicit live execution', async () => {
+  const { d5BridgeWorkerSource, startD5BrowserBridge } = await import('./jev-d5-browser-bridge.mjs');
+  const { build } = await import('esbuild');
+  const source = d5BridgeWorkerSource({ workerPath: join(ROOT, 'workers/ai-proxy/src/worker.ts'), digest: 'a'.repeat(64), expiresAt: 1, runId: 'synthetic', remaining: { jev: 200, luna: 60, usd: 3 } });
+  const bundled = await build({ stdin: { contents: source, resolveDir: ROOT, sourcefile: 'd5-dev-only.ts', loader: 'ts' },
+    bundle: true, write: false, format: 'esm', platform: 'browser', external: ['cloudflare:workers'] });
+  expect(bundled.outputFiles[0].text).toContain('evaluateCandidateChoice');
+  expect(bundled.outputFiles[0].text).toContain('requireFirebaseSession');
+  expect(bundled.outputFiles[0].text).toContain('Dev bridge provider budget exhausted');
+  if (process.env.JEV_D5_LIVE !== '1') await expect(startD5BrowserBridge({ workerName: 'synthetic' })).rejects.toThrow('JEV_D5_LIVE=1');
+});
+
+it('D5 bridge gates expiry/auth and enforces provider reservations before sends (offline VM)', async () => {
+  const { runInNewContext } = await import('node:vm');
+  const { webcrypto } = await import('node:crypto');
+  const { d5BridgeWorkerSource } = await import('./jev-d5-browser-bridge.mjs');
+  const token = 'offline-token'; let sends = 0;
+  const source = d5BridgeWorkerSource({ workerPath: '/synthetic-worker.ts', digest: createHash('sha256').update(token).digest('hex'),
+    expiresAt: Date.now() + 60_000, runId: 'offline', remaining: { jev: 200, luna: 60, usd: 3 } })
+    .replace(/^import worker from .*;$/m, `const worker = { async fetch() { return globalThis.fetch('https://openrouter.ai/api/alpha/decisions', { method: 'POST' }); } };`)
+    .replace(/^export \{ AiQuotaDurableObject \} from .*;$/m, '')
+    .replace('export default {', 'globalThis.bridge = {');
+  const context = { crypto: webcrypto, TextEncoder, URL, Request, Response, Headers, Date, Uint8Array,
+    fetch: async (_input, init) => { expect(init.redirect).toBe('error'); sends++; return Response.json({ usage: { cost: .001, input_tokens: 20, output_tokens: 2 } }); } };
+  runInNewContext(source, context);
+  const request = auth => new Request('https://synthetic/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${auth}` }, body: '{}' });
+  expect((await context.bridge.fetch(request('wrong'), {})).status).toBe(404); expect(sends).toBe(0);
+  for (let i = 0; i < 60; i++) expect((await context.bridge.fetch(request(token), {})).status).toBe(200);
+  await expect(context.bridge.fetch(request(token), {})).rejects.toThrow('budget exhausted');
+  expect(sends).toBe(60);
+});
+
+it('D5 bridge allowlists environment keys and requires explicit remaining unit budgets', async () => {
+  const { d5BridgeEnvironment, readD5BridgeRemainingBudget } = await import('./jev-d5-browser-bridge.mjs');
+  const environment = d5BridgeEnvironment({ OPENROUTER_API_KEY: 'jev-fixture', OPENAI_API_KEY: 'luna-fixture', AI_QUOTA: 'isolated-preview-quota',
+    FIREBASE_SERVICE_ACCOUNT: 'must-not-forward', AI_TURNS: 'production-turn-state', FIRESTORE_DATABASE: 'production', OBSERVABILITY: 'production' });
+  expect(Object.keys(environment).sort()).toEqual(['OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'AI_QUOTA', 'OPENAI_BASE_URL', 'ALLOWED_CHAT_MODELS',
+    'FIREBASE_WEB_API_KEY', 'ALLOWED_ORIGIN', 'SEMANTIC_CENSUS_MODE', 'JEV_MODE', 'JEV_CANARY_PERCENT',
+    'JEV_CANDIDATE_CHOICE_MODE', 'JEV_CANDIDATE_CHOICE_CANARY_PERCENT', 'JEV_FOCUSED_AUTHORIZATION_MODE', 'JEV_FOCUSED_AUTHORIZATION_CANARY_PERCENT',
+    'JEV_FOCUSED_CONTEXTUAL_ANSWER_MODE', 'JEV_FOCUSED_CONTEXTUAL_ANSWER_CANARY_PERCENT'].sort());
+  expect(JSON.stringify(environment)).not.toContain('production');
+  expect(() => readD5BridgeRemainingBudget([])).toThrow('remaining-jev');
+  expect(() => readD5BridgeRemainingBudget(['--remaining-jev', '201', '--remaining-luna', '60', '--remaining-usd', '3'])).toThrow();
+  expect(readD5BridgeRemainingBudget(['--remaining-jev', '190', '--remaining-luna', '45', '--remaining-usd', '2.5'])).toEqual({ jev: 190, luna: 45, usd: 2.5 });
+});

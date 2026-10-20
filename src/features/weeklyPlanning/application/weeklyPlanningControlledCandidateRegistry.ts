@@ -1,3 +1,4 @@
+import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../../../shared/d5AnswerPolicy';
 import type { PlanningIntakeState } from '../intake/weeklyPlanningIntakeTypes';
 import { decodeWeeklyPlanningStableV5QuestionSlot } from '../intake/weeklyPlanningStableV5QuestionSlot';
 import { isWeeklyPlanningQuestionPresentationControlledDirect } from '../intake/weeklyPlanningQuestionPresentation';
@@ -84,7 +85,10 @@ export function registerControlledCandidateDomain(domain: ControlledCandidateDom
     capture(turn) {
       const context = turn.state.lastQuestionContext; const p = context?.presentation;
       if (!p || turn.state.questions.length !== 1 || !context?.topicId
-        || !isWeeklyPlanningQuestionPresentationControlledDirect(p.content) || p.graphRevision !== turn.graph.revision
+        || !(isWeeklyPlanningQuestionPresentationControlledDirect(p.content)
+          || policyVersion === D5_TOP1_ANSWER_POLICY_VERSION && domain.domainId === 'd5_numeric'
+            && p.content.currentTurnGrounding === 'required_before_resume'
+            && isWeeklyPlanningQuestionPresentationControlledDirect({ ...p.content, currentTurnGrounding: 'recommended' })) || p.graphRevision !== turn.graph.revision
         || domain.domainPolicyVersion !== policyVersion || options.sourceAccess() !== 'allowed') return turn.state;
       // Facts carry the presenting request ID (not the presentation's turn ID): exactly what the
       // rendered acknowledgement may echo. Never re-run at answer time.

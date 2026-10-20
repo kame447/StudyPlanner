@@ -1,4 +1,4 @@
-import { scanNumericQuantityMentionsV5 } from '../semantic/weeklyPlanningNumericAnswerProposalV5';
+import { composeDurationMinutes, parseJapaneseInteger } from '../../../services/durationConversion';
 import {
   groundedDateExpressionsFromPlanningInformation,
 } from './weeklyPlanningDialogueDateGrounding';
@@ -7,6 +7,27 @@ import type {
   WeeklyPlanningStableV5DialogueRenderInput,
   WeeklyPlanningStableV5DialogueRenderResult,
 } from './weeklyPlanningStableV5DialogueContracts';
+
+// Display claims are compared to typed graph values, including fractional minutes.
+// D5 candidate eligibility (integer-only, <=1440) is deliberately a separate contract.
+const DISPLAY_NUMBER = '[0-9０-９〇零一二三四五六七八九十百]+(?:[.．][0-9０-９]+)?';
+const DISPLAY_QUANTITY = new RegExp(`(${DISPLAY_NUMBER})(?:時間(?:(半)|(${DISPLAY_NUMBER})分)?|(分))?`, 'gu');
+function displayQuantityMentions(text: string): { minutes: number; form: 'bare' | 'duration'; span: { start: number; end: number }; approximate: boolean }[] | null {
+  if (new RegExp(`(?:${DISPLAY_NUMBER})\\s*(?:[,，:：/／〜～~\\-−–—]|から)\\s*(?:${DISPLAY_NUMBER})`, 'u').test(text)) return null;
+  const result = [];
+  for (const match of text.matchAll(DISPLAY_QUANTITY)) {
+    const start = match.index!; const end = start + match[0].length;
+    if (/[.．千万元億兆\-−–—]/u.test(text[start - 1] ?? '') || /[千万元億兆]/u.test(text[end] ?? '')) return null;
+    const value = parseJapaneseInteger(match[1].normalize('NFKC'));
+    const extra = match[2] ? 30 : match[3] ? parseJapaneseInteger(match[3].normalize('NFKC')) : 0;
+    if (value === null || extra === null) return null;
+    const minutes = match[0].includes('時間') ? composeDurationMinutes(value, extra) : value;
+    if (!Number.isFinite(minutes) || minutes <= 0) return null;
+    result.push({ minutes, span: { start, end }, form: match[0].includes('時間') || match[4] ? 'duration' as const : 'bare' as const,
+      approximate: /くらい|ぐらい|ほど|前後|約|程度|およそ|大体|だいたい/u.test(text) });
+  }
+  return result;
+}
 
 const MAX_RENDERED_TEXT_LENGTH = 800;
 const EXTERNAL_DESTINATION = /https?:\/\/|www\.|(?<![a-z0-9.-])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}(?![a-z0-9.-])/i;
@@ -295,28 +316,72 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
   const assigned = new Set<string>();
   // This is a renderer display contract: each effort claim has its own visible clause.
   // Never combine an identity in one clause with a value/precision in another.
-  for (const segment of visible.split(/[。！？!?、,;；・\n]/u).filter(Boolean)) {
-    const mentions = scanNumericQuantityMentionsV5(segment, Number.MAX_SAFE_INTEGER);
+  const taskLabels = new Set<string>();
+  for (const fact of effort) {
+    const label = Array.isArray(fact.data.targetLabels) ? fact.data.targetLabels[0] : null;
+    if (typeof label === 'string' && label.length) taskLabels.add(normalizeSafetyText(label));
+  }
+  const tasks = input.planningInformation?.tasks;
+  if (Array.isArray(tasks)) for (const task of tasks) {
+    if (isRecord(task) && typeof task.title === 'string' && task.title.length) taskLabels.add(normalizeSafetyText(task.title));
+  }
+  const orderedLabels = [...taskLabels].sort((a, b) => b.length - a.length);
+  const segments = visible.split(/[。！？!?\n]/u).filter(Boolean).flatMap<{ text: string; label: string | null }>(sentence => {
+    const anchors: { at: number; label: string }[] = [];
+    for (let at = 0; at < sentence.length; at++) {
+      const label = orderedLabels.find(label => sentence.startsWith(label, at));
+      if (!label) continue;
+      // A shorter canonical label must not claim an unbound Latin/roman suffix.
+      if (/[A-Za-zⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]/u.test(sentence[at + label.length] ?? '')) continue;
+      anchors.push({ at, label }); at += label.length - 1;
+    }
+    return anchors.length ? anchors.map((anchor, i) => ({ label: anchor.label,
+      text: sentence.slice(i === 0 ? 0 : anchor.at, anchors[i + 1]?.at ?? sentence.length) })) : [{ text: sentence, label: null }];
+  });
+  for (const { text: segment, label: targetLabel } of segments) {
+    let assertion = segment;
+    const opaqueLabels = effort.flatMap(fact => Array.isArray(fact.data.targetLabels) ? fact.data.targetLabels : [])
+      .filter((label): label is string => typeof label === 'string').map(normalizeSafetyText).sort((a, b) => b.length - a.length);
+    for (const label of opaqueLabels) if (label.length) assertion = assertion.split(label).join(' '.repeat(label.length));
+    assertion = assertion.replace(CLOCK_EXPRESSION, clock => ' '.repeat(clock.length));
+    const mentions = displayQuantityMentions(assertion);
     if (!mentions) return true;
     const durations = mentions.filter(m => m.form !== 'bare');
     if (!durations.length) continue;
     if (durations.length !== 1) return true;
     const matching = effort.filter(fact => {
       const labels = fact.data.targetLabels;
-      return Array.isArray(labels) && labels.length > 0
+      return Array.isArray(labels) && labels.length > 0 && typeof labels[0] === 'string' && normalizeSafetyText(labels[0]) === targetLabel
         && labels.every(label => typeof label === 'string' && segment.includes(normalizeSafetyText(label)));
     });
     if (matching.length !== 1) return true;
     const fact = matching[0]; const data = fact.data; const duration = durations[0];
     if (!factIds.includes(fact.factId) || assigned.has(fact.factId) || duration.minutes !== data.minutes
       || (data.precision === 'approximate') !== duration.approximate) return true;
-    const total = /全部|合計|全体|総計|トータル/u.test(segment);
+    const total = /全部|合計|全体|総計|トータル/u.test(assertion);
     const unit = data.kind === 'session_duration' ? '回' : data.unitLabel;
-    const compact = segment.replace(/\s/gu, '');
-    const perUnit = typeof unit === 'string' && unit.length > 0
-      && [`1${unit}`, `一${unit}`, `${unit}あたり`, `${unit}当たり`, `${unit}につき`]
-        .some(marker => compact.includes(normalizeSafetyText(marker)));
+    let perUnit = false; let measurementStart = data.kind === 'total_duration'
+      ? assertion.search(/全部|合計|全体|総計|トータル/u) : -1;
+    if (typeof unit === 'string' && unit.length > 0) {
+      const literal = normalizeSafetyText(unit);
+      let at = assertion.indexOf(literal);
+      while (at >= 0) {
+        const denominator = mentions.find(m => m.form === 'bare' && m.span.end <= at
+          && segment.slice(m.span.end, at).trim() === '');
+        const rateSuffix = /^(?:あたり|当たり|につき)/u.test(segment.slice(at + literal.length));
+        if (denominator ? denominator.minutes === 1 : rateSuffix) { perUnit = true; measurementStart = denominator?.span.start ?? at; }
+        // An explicit denominator other than one cannot claim the typed per-unit rate.
+        if (denominator && denominator.minutes !== 1 && (rateSuffix || data.kind !== 'total_duration')) return true;
+        at = assertion.indexOf(literal, at + literal.length);
+      }
+    }
     if (data.kind === 'total_duration' ? !total || perUnit : !perUnit || total) return true;
+    const labels = data.targetLabels as string[];
+    const labelEnd = Math.max(...labels.map(label => { const normalized = normalizeSafetyText(label); return segment.lastIndexOf(normalized) + normalized.length; }));
+    // Bounded display relation: the canonical subject directly governs its measurement.
+    // An arbitrary intervening noun/target cannot borrow that subject's identity.
+    const subjectLink = segment.slice(labelEnd, measurementStart);
+    if (measurementStart < labelEnd || !/^(?:(?:について|として|に関して)|[\sはがをのにで、,:：「」『』()（）])*$/u.test(subjectLink)) return true;
     assigned.add(fact.factId);
   }
   return effort.some(fact => !assigned.has(fact.factId));
@@ -377,9 +442,39 @@ function groundingAcknowledgementMismatch(
     return true;
   }
 
-  return !normalizeDialogueText(text).startsWith(
-    normalizeDialogueText(acknowledgementText),
-  );
+  const normalizedAck = normalizeDialogueText(acknowledgementText);
+  const normalizedText = normalizeDialogueText(text);
+  if (!normalizedText.startsWith(normalizedAck)) return true;
+  if ((input.currentTurnGrounding?.acceptedFacts ?? []).some(f => f.kind === 'effort_estimate')) {
+    // Effort claims belong to the checked ACK. Its metadata cannot license a
+    // contradictory continuation. Clock questions retain their separate grounding gate.
+    const tail = normalizedText.slice(normalizedAck.length).replace(CLOCK_EXPRESSION, '');
+    const mentions = displayQuantityMentions(tail);
+    if (!mentions || mentions.some(m => m.form !== 'bare')) return true;
+  }
+  return false;
+}
+
+function addsUngroundedDuration(text: string, input: WeeklyPlanningStableV5DialogueRenderInput): boolean {
+  const values = (source: string) => (displayQuantityMentions(normalizeSafetyText(source).replace(CLOCK_EXPRESSION, '')) ?? [])
+    .filter(m => m.form !== 'bare').map(m => m.minutes);
+  const actual = values(text);
+  if (!actual.length) return false;
+  const allowed = new Set([input.currentUserMessage, input.fallbackText, ...input.recentConversation.map(turn => turn.content)].flatMap(values));
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    if (!isRecord(value)) return;
+    for (const [key, entry] of Object.entries(value)) {
+      if (typeof entry === 'number' && Number.isFinite(entry) && /minutes$/i.test(key)) allowed.add(entry);
+      else if (typeof entry === 'string') values(entry).forEach(minutes => allowed.add(minutes));
+      else if (typeof entry === 'object' && entry !== null) visit(entry);
+    }
+    if ((value.unitCode === 'minute' || value.unitCode === 'hour') && typeof value.amount === 'number') {
+      allowed.add(value.amount * (value.unitCode === 'hour' ? 60 : 1));
+    }
+  };
+  visit(input.planningInformation); visit(input.currentTurnGrounding?.acceptedFacts);
+  return actual.some(minutes => !allowed.has(minutes));
 }
 
 function validateRenderedText(
@@ -416,7 +511,8 @@ function validateRenderedText(
     input.planningInformation,
   );
   if (
-    addsUnsupportedExpression(text, groundingInformation, CLOCK_EXPRESSION)
+    addsUngroundedDuration(text, input)
+    || addsUnsupportedExpression(text, groundingInformation, CLOCK_EXPRESSION)
     || addsUnsupportedExpression(
       text,
       groundingInformation,

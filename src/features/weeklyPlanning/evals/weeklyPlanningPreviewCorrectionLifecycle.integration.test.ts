@@ -1,3 +1,8 @@
+import { allocateWeeklyPlanningEffort } from '../semantic/weeklyPlanningEffortAllocation';
+import { createWeeklyPlanningSemanticPipelineV5 } from '../semantic/weeklyPlanningSemanticPipelineV5';
+import type { WeeklyPlanningSemanticDocumentV5 } from '../semantic/weeklyPlanningSemanticDocumentV5';
+import { scheduleWeeklyPlanningStableV5Preview } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
+import { createWeeklyPlanningPlacementGraphViewV5 } from '../semantic/weeklyPlanningPlacementGraphViewV5';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   classifyWeeklyPlanningApprovalAvailability,
@@ -216,4 +221,49 @@ describe('weekly planning preview correction lifecycle', () => {
       reason: 'state_revision_mismatch',
     });
   });
+});
+
+it('recompiles actual per-unit→total and numeric effort corrections before scheduling fresh allocations', async () => {
+  const document: WeeklyPlanningSemanticDocumentV5 = {
+    schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'create_plan',
+    planningWindow: { localId: 'window', kind: 'absolute', value: '2026-08-11', start: '2026-08-11', end: '2026-08-11', sourceText: '8月11日' },
+    tasks: [{ localId: 'math', category: 'study', title: '数学', study: { purpose: 'self_study', contextLabel: null, components: [] },
+      workloads: [{ localId: 'work', quantityRole: 'target', amount: 20, unitCode: 'problem', unitLabel: '問', rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null, sourceText: '数学20問' }],
+      effortEstimates: [{ localId: 'effort', targetLocalId: 'work', kind: 'duration_per_unit', minutes: 5, unitCode: 'problem', precision: 'exact', sourceText: '1問5分' }],
+      temporalConstraints: [], recurrence: [], sourceText: '数学20問を1問5分' }], relations: [], availabilityDeclarations: [], constraintSourceRequests: [], uncertainties: [], corrections: [], decisions: [],
+  };
+  const run = (doc: WeeklyPlanningSemanticDocumentV5, graph: ReturnType<typeof createEmptyWeeklyPlanningFactGraphV5>, turnId: string) =>
+    createWeeklyPlanningSemanticPipelineV5({ normalize: async () => ({ status: 'accepted', document: doc, diagnostics: {
+      schemaVersion: 'weekly-planning-semantic-v5', jsonSchemaName: 'weekly_planning_semantic_document_v5', normalizerVersion: 'weekly-planning-semantic-normalizer-v5',
+      attemptCount: 1, repairAttempted: false, requestBytes: [1], responseLengths: [1], latencyMs: 1, validationErrors: [], providerError: null,
+    } }) }).run({ graph, conversationId: CONVERSATION_ID, turnId, expectedRevision: graph.revision, userText: doc.tasks[0].sourceText,
+      schedulerContext: { ownerId: USER_ID, currentDate: '2026-08-10', planningStartDate: '2026-08-11', planningEndDate: '2026-08-11', timeZone: 'Asia/Tokyo' } });
+  let result = await run(document, createEmptyWeeklyPlanningFactGraphV5(), 'initial-rate');
+  let priorEffort = result.canonicalization!.localToFactId.effort;
+  const taskId = result.canonicalization!.localToFactId.math;
+  const workloadId = result.canonicalization!.localToFactId.work;
+  const schedules = [];
+  for (const minutes of [100, 60, 30]) {
+    if (minutes !== 100) {
+      const correction = { ...document, planningWindow: null, tasks: [{ ...document.tasks[0], existingPublicId: taskId,
+        workloads: [], effortEstimates: [{ localId: 'replacement', targetLocalId: workloadId, kind: 'total_duration' as const,
+          minutes, unitCode: null, precision: 'exact' as const, sourceText: `全部で${minutes}分` }], sourceText: `全部で${minutes}分` }],
+        corrections: [{ localId: 'correction', target: { kind: 'effort_estimate' as const, publicId: priorEffort, localId: null, mention: '数学の時間' },
+          operation: 'modify' as const, replacementLocalId: 'replacement', sourceText: `全部で${minutes}分` }] };
+      result = await run(correction, result.graph, `total-${minutes}`);
+      expect(result.canonicalization?.status, JSON.stringify(result.canonicalization?.errors)).toBe('applied');
+      priorEffort = result.canonicalization!.localToFactId.replacement;
+    }
+    expect(result.scheduler?.status).toBe('ready');
+    const preview = scheduleWeeklyPlanningStableV5Preview({ input: result.scheduler!.input!, graph: createWeeklyPlanningPlacementGraphViewV5(result.graph),
+      plans: [], scheduleTemplates: [], notBefore: { date: '2026-08-10', time: '10:00' } });
+    expect(preview.status).toBe('ready');
+    expect(result.scheduler!.input!.movableWorkItems.reduce((sum, item) => sum + (item.baseEstimatedMinutes ?? 0), 0)).toBe(minutes);
+    expect(preview.candidates.reduce((sum, candidate) => sum + candidate.durationMinutes, 0)).toBe(allocateWeeklyPlanningEffort({ baseEstimateMinutes: minutes }).allocationMinutes);
+    schedules.push(preview.candidates);
+    const active = new Set(result.graph.factLifecycles.filter(f => f.status === 'active').map(f => f.factId));
+    expect(result.graph.effortEstimates.filter(f => active.has(f.id))).toHaveLength(1);
+  }
+  expect(schedules[2]).not.toEqual(schedules[0]);
 });

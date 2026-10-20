@@ -24,14 +24,14 @@ describe('uninterpreted numeric answer proposals', () => {
     expect(numericAnswerProposalV5('1 60')?.sourceIntegers.get(60)).toEqual([1, 60]);
   });
   it.each([
-    ['十五分', [15]], ['１５です', [15]], ['一時間半', [90]], ['1時間30分', [90]],
+    ['十五分', [15]], ['１５です', [15]], ['15分の予定', [15]], ['一時間半', [90]], ['1時間30分', [90]],
     ['１．５時間', [90]], ['0.5時間', [30]], ['数学は1問5分。英語は15分', [1, 5, 15]],
   ])('v2 proposes converted mentions without deciding meaning: %s', (text, minutes) => {
     expect(numericAnswerProposalV5(text as string, true)?.minutes).toEqual(minutes);
   });
   it.each(['5分くらい', '約5分', '5分ほど', '5分前後', '5分程度', '1.5分', '.5時間',
     '1,500分', '1/2時間', '1:30', '5〜10分', '五から十分', '1441分', '99999999999999999999999分',
-    '千五分', '1 2 3 4 5 6 7 8 9'])('v2 has no exact candidate: %s', text => {
+    '千五分', '2分の1時間', '1 2 3 4 5 6 7 8 9'])('v2 has no exact candidate: %s', text => {
     expect(numericAnswerProposalV5(text, true)).toBeNull();
   });
   it('keeps composite spans and whole-clause offsets, with approximation marked', () => {

@@ -49,7 +49,7 @@ const APPROXIMATION = /くらい|ぐらい|ほど|前後|約|程度|およそ|�
 export function scanNumericQuantityMentionsV5(text: string, maximumMinutes = 1440): readonly NumericQuantityMentionV5[] | null {
   // Unsupported numeric shapes cannot be shortened into a supported prefix or suffix.
   if (new RegExp(`(?:${NUMBER})\\s*(?:[,，:：/／〜～~\\-−–—]|から)\\s*(?:${NUMBER})`, 'u').test(text)
-    || /分の/u.test(text)) return null;
+    || new RegExp(`(?:${NUMBER})分の(?:${NUMBER})`, 'u').test(text)) return null;
   const result: NumericQuantityMentionV5[] = [];
   for (const match of text.matchAll(QUANTITY)) {
     const start = match.index!; const end = start + match[0].length;

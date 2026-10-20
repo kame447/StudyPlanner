@@ -1,3 +1,4 @@
+import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExecutionTypes';
 import { renderWeeklyPlanningStableV5AssistantMessageCore } from '../dialogue/weeklyPlanningStableV5TurnDialogueCore';
 import { createWeeklyPlanningStableV5DialogueRendererCore } from '../dialogue/weeklyPlanningStableV5AiDialogueRendererCore';
 import { getWeeklyPlanningStableV5RuntimeSession } from '../application/weeklyPlanningStableV5RuntimeSession';
@@ -26,7 +27,7 @@ beforeEach(() => {
 });
 afterEach(() => { restore(); vi.restoreAllMocks(); resetWeeklyPlanningStableV5RuntimeSessionsForTest(); });
 
-function setup(options: { top1?: boolean; effortAck?: boolean; measurement?: 'total_duration' | 'duration_per_unit'; minutes?: number;
+function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effortAck?: boolean; measurement?: 'total_duration' | 'duration_per_unit'; minutes?: number;
   mode?: 'none' | 'low_top' | 'extra_meaning' | 'condition_change' | 'tie';
   collision?: 'estimate' | 'amount' | 'rangeStart' | 'rangeEnd' | 'target' | 'source_integer' | 'inactive' | 'range_label' | 'unrelated_label' | 'capacity' | 'recurrence';
   stale?: 'graph' | 'question' | 'continuation' } = {}) {
@@ -119,11 +120,23 @@ function setup(options: { top1?: boolean; effortAck?: boolean; measurement?: 'to
     continueSelectedTurn,
   });
   const present = () => h.submit('計画を相談します', { c5LocalSelection: undefined, candidateDomains: [route],
-    execute: async () => ({ state: { ...createInitialPlanningIntakeState(), questions: ['どのくらいかかりますか？'],
+    execute: async () => {
+      const result: WeeklyPlanningTurnExecutionResult = { state: { ...createInitialPlanningIntakeState(), questions: ['どのくらいかかりますか？'],
       lastQuestionContext: { kind: 'ambiguity', topicId: 'work-a', targetSlot: 'stable_v5:missing_effort_estimate', intent: measurement } },
       message: 'どのくらいかかりますか？', draftCandidates: [], stableV5Graph: graph,
       questionPresentationContent: { responseSource: 'ai', currentTurnGrounding: 'none', selfRepairNotice: false,
-        groundingContext: { proposed: 0, contested: 0 }, previewPromotionControl: false } }) });
+        groundingContext: { proposed: 0, contested: 0 }, previewPromotionControl: false } };
+      if (!options.presentingSiblingAck) return result;
+      return renderWeeklyPlanningStableV5AssistantMessageCore({ input: { userId: OWNER, selectedDate: WEEK, plans: [], scheduleTemplates: [],
+        conversationId: h.conversationId, traceRequestId: sibling.source.turnId, userText: '数学の時間は未定。教材bは全部で15分', messages: [], }, result },
+        { getSession: getWeeklyPlanningStableV5RuntimeSession, createRenderer: () => createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
+          const prompt = JSON.parse(request.messages.slice(-1)[0].content);
+          const fact = prompt.currentTurnGrounding.acceptedFacts.find((f: { kind: string }) => f.kind === 'effort_estimate');
+          const ack = '教材bは全部で15分で見積もります。';
+          return JSON.stringify({ actionId: prompt.actionId, actionKind: prompt.applicationDecision.actionKind, questionCode: prompt.applicationDecision.questionCode,
+            groundingAcknowledgement: { factIds: [fact.factId], text: ack }, text: ack + '教材aは全部で何分かかりますか？' });
+        } }) });
+    } });
   const fallback = vi.fn(async ({ snapshot }: { snapshot: PlanningState }) => ({ state: snapshot.intakeState!,
     message: 'Luna', draftCandidates: [] }));
   const answer = (text: string) => h.submit(text, { c5LocalSelection: undefined, candidateDomains: [route], execute: fallback });
@@ -159,6 +172,16 @@ describe('D5 answer proposal through canonical controller commit', () => {
     await run.present(); await run.answer(text);
     expect(run.fallback.mock.calls[0][0]).toMatchObject({ userText: text });
     expect(readC5RuntimeGraph(OWNER, run.h.conversationId)).toEqual(run.graph);
+  });
+  it('captures v2 after an actual required sibling effort ACK, then dispatches and consumes once', async () => {
+    const run = setup({ top1: true, collision: 'estimate', minutes: 15, presentingSiblingAck: true });
+    await run.present();
+    const shown = run.h.getState().intakeState!.lastQuestionContext!;
+    expect(shown.presentation!.content.currentTurnGrounding).toBe('required_before_resume');
+    expect(shown.controlledCandidate?.domainId).toBe('d5_numeric');
+    await run.answer('15');
+    expect(run.choose).toHaveBeenCalledOnce(); expect(run.fallback).not.toHaveBeenCalled();
+    expect(run.h.getState().intakeState!.c5SelectionLedger!.consumed).toHaveLength(1);
   });
   it('required ACK exhausts one repair atomically; reload/retry never consumes a hidden selection', async () => {
     const run = setup({ top1: true, minutes: 15, effortAck: true }); await run.present();
