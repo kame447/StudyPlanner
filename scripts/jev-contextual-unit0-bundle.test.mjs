@@ -68,7 +68,7 @@ it('D5 bridge gates expiry/auth and enforces provider reservations before sends 
   const source = d5BridgeWorkerSource({ workerPath: '/synthetic-worker.ts', digest: createHash('sha256').update(token).digest('hex'),
     expiresAt: Date.now() + 60_000, runId: 'offline', remaining: { jev: 200, luna: 60, usd: 3 } })
     .replace(/^import worker from .*;$/m, `const worker = { async fetch() { return globalThis.fetch('https://openrouter.ai/api/alpha/decisions', { method: 'POST', body: JSON.stringify({ model: 'typesafe/jev-1.13' }) }); } };`)
-    .replace(/^export \{ AiQuotaDurableObject \} from .*;$/m, '')
+    .replace(/^import \{ AiQuotaDurableObject \} from .*;$/m, 'class AiQuotaDurableObject {}')
     .replace('export default {', 'globalThis.bridge = {');
   const context = { crypto: webcrypto, TextEncoder, URL, Request, Response, Headers, Date, Uint8Array,
     fetch: async (_input, init) => { expect(init.redirect).toBe('error'); sends++; return Response.json({ usage: { cost: .001, input_tokens: 20, output_tokens: 2 } }); } };
@@ -116,7 +116,7 @@ it('D5 generated bridge runs a semantic-document request through the real Worker
     const source = d5BridgeWorkerSource({ workerPath: join(ROOT, 'workers/ai-proxy/src/worker.ts'),
       digest: createHash('sha256').update(token).digest('hex'), expiresAt: Date.now() + 60_000,
       runId: 'offline-real-worker', remaining: { jev: 200, luna: 60, usd: 3 }, diagnostics: diagnosticMode });
-    const bundle = await build({ stdin: { contents: source, resolveDir: ROOT, sourcefile: 'd5-offline.ts', loader: 'ts' },
+    const bundle = await build({ stdin: { contents: source + '\nexport { quotaBinding };', resolveDir: ROOT, sourcefile: 'd5-offline.ts', loader: 'ts' },
       bundle: true, write: false, format: 'iife', globalName: 'realBridge', platform: 'browser',
       plugins: [{ name: 'offline-cloudflare-runtime', setup(builder) {
         builder.onResolve({ filter: /^cloudflare:workers$/ }, () => ({ path: join(ROOT, 'workers/ai-proxy/src/cloudflareWorkersVitestStub.ts') }));
@@ -125,7 +125,7 @@ it('D5 generated bridge runs a semantic-document request through the real Worker
     const syntheticException = () => Object.assign(new Error('Quota RPC unavailable: dummy-luna 検証'), {
       stack: 'Error: Quota RPC unavailable: dummy-luna 検証\n    at offlineQuota (quota-fixture.ts:7:3)\n    at anotherFrame (not-retained.ts:1:1)',
     });
-    const context = { crypto: webcrypto, TextEncoder, TextDecoder, URL, Request, Response, Headers, Date, Uint8Array,
+    const context = { crypto: webcrypto, TextEncoder, TextDecoder, URL, Request, Response, Headers, Date, Uint8Array, structuredClone,
       AbortController, AbortSignal, DOMException, setTimeout, clearTimeout,
       console: { error: (...args) => diagnostics.push(args), warn: (...args) => diagnostics.push(args), log() {} },
       fetch: async (input, init) => {
@@ -138,22 +138,8 @@ it('D5 generated bridge runs a semantic-document request through the real Worker
           usage: { prompt_tokens: 40, completion_tokens: 5 } });
       } };
     runInNewContext(bundle.outputFiles[0].text, context);
-    const quotas = new Map(); const quotaChecks = [];
     const env = { OPENROUTER_API_KEY: 'dummy-jev', OPENAI_API_KEY: 'dummy-luna', AI_QUOTA: {
-      getByName(name) {
-        if (failureBoundary === 'namespace') throw syntheticException();
-        quotaChecks.push(name);
-        if (!quotas.has(name)) {
-          const storage = new Map();
-          quotas.set(name, new context.realBridge.AiQuotaDurableObject({ storage: {
-            async get(key) { return storage.get(key); }, async put(key, value) { storage.set(key, value); },
-          } }, {}));
-        }
-        return { async checkAndConsume(input) {
-          if (failureBoundary === 'quota') throw syntheticException();
-          return quotas.get(name).checkAndConsume(input);
-        } };
-      },
+      getByName() { throw new Error('A native/production quota binding must never be used'); },
     } };
     const request = () => new Request('https://offline.invalid/chat/completions', {
       method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -167,7 +153,11 @@ it('D5 generated bridge runs a semantic-document request through the real Worker
     expect({ status: response.status, body: await response.json(), diagnostics }).toEqual({
       status: 200, body: { content: '{"offline":true}', usage: { prompt_tokens: 40, completion_tokens: 5 } }, diagnostics: [],
     });
-    expect(quotaChecks).toEqual(['ip:unknown', 'uid:planner-recovery-owner-offline-real-worker']);
+    const quotaBinding = context.realBridge.quotaBinding;
+    for (const [subject, bucket] of [['ip:unknown', 'ip:minute'],
+      ['uid:planner-recovery-owner-offline-real-worker', 'chat:uid:minute']]) {
+      expect((await quotaBinding.getByName(subject).ctx.storage.get('quota-state'))[bucket].count).toBe(1);
+    }
     expect(providerRequests).toHaveLength(1);
     expect(providerRequests[0]).toMatchObject({ model: 'gpt-6-luna', max_completion_tokens: 4096,
       response_format: { json_schema: { name: 'weekly_planning_semantic_document_v5' } } });
@@ -175,7 +165,12 @@ it('D5 generated bridge runs a semantic-document request through the real Worker
       counters: { jev: 0, luna: 1, reservedUsd: .05 }, receipts: [{ family: 'luna', phase: 'completed', httpStatus: 200 }],
     });
     expect(response.headers.has('X-D5-Bridge-Exceptions')).toBe(false);
-    for (const boundary of ['namespace', 'quota', 'provider']) {
+    const ipQuota = quotaBinding.getByName('ip:unknown'); const checkAndConsume = ipQuota.checkAndConsume;
+    ipQuota.checkAndConsume = async function(input) {
+      if (failureBoundary === 'quota') throw syntheticException();
+      return checkAndConsume.call(this, input);
+    };
+    for (const boundary of ['quota', 'provider']) {
       failureBoundary = boundary;
       const failed = await context.realBridge.default.fetch(request(), env, { waitUntil() {} });
       expect(failed.status).toBe(500);
@@ -187,6 +182,41 @@ it('D5 generated bridge runs a semantic-document request through the real Worker
       else expect(failed.headers.has('X-D5-Bridge-Exceptions')).toBe(false);
     }
   }
+});
+
+it('D5 quota adapter runs the actual class in native workerd with isolated synthetic storage', async () => {
+  const { build } = await import('esbuild');
+  const { Miniflare } = await import('miniflare');
+  const { createD5BridgeQuotaBinding } = await import('./jev-d5-browser-bridge.mjs');
+  const source = `
+import { AiQuotaDurableObject } from ${JSON.stringify(join(ROOT, 'workers/ai-proxy/src/worker.ts'))};
+const binding = (${createD5BridgeQuotaBinding.toString()})(AiQuotaDurableObject);
+globalThis.fetch = () => { throw new Error('Offline test forbids all outbound network'); };
+export default { async fetch() {
+  const first = binding.getByName('uid:first'); const second = binding.getByName('uid:second');
+  const request = windowId => ({ rules: [{ name: 'synthetic:minute', limit: 1, windowId, resetAt: Date.now() + 60_000 }] });
+  const outcomes = [];
+  outcomes.push(await first.checkAndConsume(request('window-a')));
+  outcomes.push(await binding.getByName('uid:first').checkAndConsume(request('window-a')));
+  outcomes.push(await second.checkAndConsume(request('window-a')));
+  outcomes.push(await first.checkAndConsume(request('window-b')));
+  const snapshot = await first.ctx.storage.get('quota-state'); snapshot['synthetic:minute'].count = 999;
+  const storedCount = (await first.ctx.storage.get('quota-state'))['synthetic:minute'].count;
+  return Response.json({ sameClass: Object.getPrototypeOf(first) === AiQuotaDurableObject.prototype,
+    reusedSubject: first === binding.getByName('uid:first'), separateSubject: first !== second, storedCount, outcomes });
+} };
+`;
+  const bundled = await build({ stdin: { contents: source, resolveDir: ROOT, sourcefile: 'd5-native-quota-offline.ts', loader: 'ts' },
+    bundle: true, write: false, format: 'esm', platform: 'browser', external: ['cloudflare:workers'] });
+  const mf = new Miniflare({ port: 0, workers: [{ config: { name: 'd5-native-quota-offline', compatibilityDate: '2026-04-10',
+    manifest: { mainModule: 'worker.js', modules: { 'worker.js': { type: 'esm', contents: bundled.outputFiles[0].text } } } },
+  }] });
+  try {
+    const response = await mf.dispatchFetch('https://offline.invalid/');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ sameClass: true, reusedSubject: true, separateSubject: true, storedCount: 1,
+      outcomes: [{ allowed: true }, { allowed: false, exceededRule: 'synthetic:minute' }, { allowed: true }, { allowed: true }] });
+  } finally { await mf.dispose(); }
 });
 
 it('D5 exception diagnostics retain only bounded sanitized metadata', async () => {
@@ -213,7 +243,7 @@ it('D5 diagnostic mode captures an exception escaping the wrapped Worker without
       digest: createHash('sha256').update(token).digest('hex'), expiresAt: Date.now() + 60_000,
       runId: 'escaping-error', remaining: { jev: 200, luna: 60, usd: 3 }, diagnostics })
       .replace(/^import worker from .*;$/m, `const worker = { async fetch() { throw new TypeError('Synthetic inner Worker failure'); } };`)
-      .replace(/^export \{ AiQuotaDurableObject \} from .*;$/m, '')
+      .replace(/^import \{ AiQuotaDurableObject \} from .*;$/m, 'class AiQuotaDurableObject {}')
       .replace('export default {', 'globalThis.bridge = {');
     const context = { crypto: webcrypto, TextEncoder, URL, Request, Response, Headers, Date, Uint8Array,
       fetch: async () => { throw new Error('All network forbidden'); } };

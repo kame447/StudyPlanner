@@ -32,7 +32,26 @@ export function d5BridgePriceBounds() {
 
 // Browser/controller/persistence bridge, not an evaluation framework. No execution on import.
 // Real: Worker chat ingress, catalogs, provider calls. Synthetic: Firebase session,
-// full-app local repository, fixed browser clock. Remote-dev quota namespace is isolated.
+// full-app local repository, fixed browser clock, in-memory quota storage.
+export const D5_BRIDGE_QUOTA_BOUNDARY = 'quota: real class, synthetic in-memory storage (remote dev cannot host DOs)';
+export function createD5BridgeQuotaBinding(QuotaClass) {
+  const objects = new Map();
+  return { getByName(name) {
+    if (!objects.has(name)) {
+      const values = new Map();
+      const storage = {
+        async get(key) { return structuredClone(values.get(key)); },
+        async put(key, value) { values.set(key, structuredClone(value)); },
+      };
+      // The native DurableObject constructor requires a real DurableObjectState.
+      // Run the unchanged class method over a synthetic context, without native
+      // construction, RPC or any production namespace/storage access.
+      objects.set(name, Object.create(QuotaClass.prototype, { ctx: { value: { storage } } }));
+    }
+    return objects.get(name);
+  } };
+}
+
 export function d5BridgeEnvironment(env) {
   return {
     OPENROUTER_API_KEY: env.OPENROUTER_API_KEY, OPENAI_API_KEY: env.OPENAI_API_KEY, AI_QUOTA: env.AI_QUOTA,
@@ -76,7 +95,7 @@ export function d5BridgeWorkerSource({ workerPath, digest, expiresAt, runId, rem
   const priceBounds = d5BridgePriceBounds();
   return `
 import worker from ${JSON.stringify(workerPath)};
-export { AiQuotaDurableObject } from ${JSON.stringify(workerPath)};
+import { AiQuotaDurableObject } from ${JSON.stringify(workerPath)};
 const EXPECTED_DIGEST = ${JSON.stringify(digest)};
 const EXPIRES_AT = ${expiresAt};
 const RUN_ID = ${JSON.stringify(runId)};
@@ -87,6 +106,8 @@ const JEV_MODELS = ${JSON.stringify(PREREGISTERED_PRICING.jev.servedModels)};
 const DIAGNOSTICS = ${diagnostics === true};
 const exceptionMetadata = ${d5BridgeExceptionMetadata.toString()};
 const bridgeEnvironment = ${d5BridgeEnvironment.toString()};
+const createQuotaBinding = ${createD5BridgeQuotaBinding.toString()};
+const quotaBinding = createQuotaBinding(AiQuotaDurableObject);
 const upstream = globalThis.fetch.bind(globalThis);
 let counters = { jev: 0, luna: 0, reservedUsd: 0 }; let receipts = []; let busy = false; let tariffViolation = false;
 let exceptions = []; let diagnosticSecrets = [];
@@ -152,10 +173,10 @@ export default { async fetch(request, env, ctx) {
     headers.set('Origin', 'http://127.0.0.1:4174');
     const body = await request.text();
     if (new TextEncoder().encode(body).length > ${D5_BRIDGE_MAX_BODY_BYTES}) return new Response('Too large', { status: 413 });
-    const innerEnv = bridgeEnvironment(env);
+    const innerEnv = bridgeEnvironment({ ...env, AI_QUOTA: quotaBinding });
     if (DIAGNOSTICS) innerEnv.AI_QUOTA = { getByName(name) {
       try {
-        const stub = env.AI_QUOTA.getByName(name);
+        const stub = quotaBinding.getByName(name);
         return { async checkAndConsume(input) {
           try { return await stub.checkAndConsume(input); } catch (error) { captureException(error); throw error; }
         } };
@@ -205,14 +226,12 @@ export async function startD5BrowserBridge({ workerName, evidenceDir, remainingA
     await writeFile(config, JSON.stringify({ name: workerName, main: 'd5-browser.ts', compatibility_date: '2026-04-10',
       vars: { JEV_MODE: 'canary', JEV_CANARY_PERCENT: '100', JEV_CANDIDATE_CHOICE_MODE: 'canary', JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100',
         SEMANTIC_CENSUS_MODE: 'off', ALLOWED_ORIGIN: 'http://127.0.0.1:4174' },
-      durable_objects: { bindings: [{ name: 'AI_QUOTA', class_name: 'AiQuotaDurableObject' }] },
-      migrations: [{ tag: 'v1', new_sqlite_classes: ['AiQuotaDurableObject'] }],
     }));
     worker = await unstable_dev(entry, { config, local: false, ip: '127.0.0.1', port: 0, inspect: false, logLevel: 'none',
       experimental: { disableExperimentalWarning: true, disableDevRegistry: true, watch: false, showInteractiveDevSession: false, enableIpc: false } });
     const ready = await worker.fetch('/ready', { headers: { Authorization: `Bearer ${remoteToken}` }, signal: AbortSignal.timeout(45_000) });
     assert.equal(ready.status, 200); assert.deepEqual(await ready.json(), { openRouter: true, openAi: true, counters: { jev: 0, luna: 0, reservedUsd: 0 } });
-    await receipt({ phase: 'ready', workerName, boundary: 'remote-dev-real-worker;synthetic-firebase;local-repository-not-firestore', diagnosticsEnabled: diagnostics, remainingBudget: remaining, priceBounds: d5BridgePriceBounds(), paceMs });
+    await receipt({ phase: 'ready', workerName, boundary: 'remote-dev-real-worker;synthetic-firebase;local-repository-not-firestore', quotaBoundary: D5_BRIDGE_QUOTA_BOUNDARY, diagnosticsEnabled: diagnostics, remainingBudget: remaining, priceBounds: d5BridgePriceBounds(), paceMs });
     server = createServer((request, response) => {
       chain = chain.then(async () => {
         if (request.headers.authorization !== `Bearer ${localToken}` || request.method !== 'POST') { response.writeHead(404); response.end(); return; }
