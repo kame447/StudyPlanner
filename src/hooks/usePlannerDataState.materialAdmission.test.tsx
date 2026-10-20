@@ -132,6 +132,43 @@ async function expectStored(fixture: Awaited<ReturnType<typeof mount>>, owner = 
 }
 
 
+describe('material record preparation compatibility', () => {
+  it('uses admitted identity and retains negative current units without a total', async () => {
+    const fixture = await mount();
+    let saved!: StudyMaterial;
+    await act(async () => {
+      saved = await state.saveStudyMaterial({ userId: 'untrusted-owner', name: '  New book  ',
+        subjectId: MATH.id, subjectName: 'Untrusted subject', currentUnit: -3,
+        estimatedMinutesPerUnit: -2, maxUnitsPerDay: Number.POSITIVE_INFINITY });
+    });
+    expect(saved).toMatchObject({ userId: 'owner', name: 'New book', subjectId: MATH.id,
+      subjectName: MATH.name, color: MATH.color, currentUnit: -3, totalUnits: undefined,
+      estimatedMinutesPerUnit: 0, maxUnitsPerDay: undefined, paceEnabled: false,
+      progressUnit: 'page', aliases: [], status: 'active', studyStatus: 'studying' });
+    expect(saved.id).not.toBe(ONE.id);
+    expect(saved.createdAt).toBe(saved.updatedAt);
+    expect(fixture.saveMaterial).toHaveBeenLastCalledWith(saved);
+    expect(showNotice).toHaveBeenLastCalledWith('教材を追加しました。', 'success');
+  });
+
+  it('preserves catalog fallbacks but clears omitted optional progress and cover fields', async () => {
+    await mount([{ ...ONE, catalogTitle: 'Prior catalog', catalogEntryId: 'entry',
+      progressUnit: 'custom', progressUnitLabel: 'Prior label', coverImageUrl: 'prior-cover' }]);
+    const original = current();
+    let saved!: StudyMaterial;
+    await act(async () => {
+      saved = await state.saveStudyMaterial({ userId: 'owner', name: ' Edited ', subjectId: MATH.id,
+        subjectName: '', catalogTitle: '   ', catalogEntryId: undefined, aliases: [],
+        totalUnits: 5, currentUnit: 20 }, original.id, state.captureStudyMaterialBaseline(original));
+    });
+    expect(saved).toMatchObject({ id: ONE.id, name: 'Edited', catalogTitle: 'Prior catalog',
+      catalogEntryId: 'entry', aliases: [], progressUnit: 'custom', progressUnitLabel: undefined,
+      coverImageUrl: undefined, currentUnit: 5, totalUnits: 5, paceEnabled: false,
+      estimatedMinutesPerUnit: undefined, maxUnitsPerDay: undefined, createdAt: STAMP });
+    expect(showNotice).toHaveBeenLastCalledWith('教材を更新しました。', 'success');
+  });
+});
+
 describe('material study status persistence', () => {
   it('roundtrips completed and studying without archiving, losing progress or study records', async () => {
     const fixture = await mount([ONE], [STANDALONE]);
