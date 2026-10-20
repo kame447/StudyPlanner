@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { BookshelfView } from './BookshelfView';
 import { BookshelfMaterialDetail } from './BookshelfMaterialDetail';
 import { MemoryStorage } from '../repositories/localPersistenceConcurrency.testUtils';
-import { loadMaterialDetailPreferences } from '../lib/bookshelfMaterialDetails';
+import { loadMaterialDetailPreferences } from '../repositories/materialDetailPreferencesRepository';
 import type { StudyMaterial } from '../types/domain';
 let renderer: ReactTestRenderer;
 afterEach(() => { act(() => renderer?.unmount()); vi.unstubAllGlobals(); });
