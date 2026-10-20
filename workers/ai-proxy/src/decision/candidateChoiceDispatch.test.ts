@@ -108,7 +108,7 @@ describe('generic Choice provider validation and dispatch accounting', () => {
       expect(questions[head].instructions).toContain('An omitted target, unit or measurement inherits the bound displayed question');
       expect(questions[head].instructions).toContain('Supplying this value is not an additional condition or independent meaning');
     }
-    expect((body.state as { catalogVersion: string }).catalogVersion).toBe('complete-candidate-choice-d5-top1-2026-10-21-v3');
+    expect((body.state as { catalogVersion: string }).catalogVersion).toBe('complete-candidate-choice-d5-top1-2026-10-21-v4');
     expect(D5_TOP1_PROVIDER_CATALOG_VERSION).toBe((body.state as { catalogVersion: string }).catalogVersion);
     expect(result).toMatchObject({ status: 'evaluated', catalogVersion: CANDIDATE_CHOICE_CATALOG_VERSION });
     expect(isCandidateChoiceEvaluation(result, request)).toBe(true);
@@ -127,6 +127,38 @@ describe('generic Choice provider validation and dispatch accounting', () => {
       }
     }
   });
+  it.each(['15', '15分', '15分くらい', '約15分', '15分ほど', '15分前後', '15分程度'])(
+    'v2 scopes approximation to reply %s while preserving the exact hedged question and complete leaf', async wholeUtterance => {
+      const base = choiceRequest();
+      const presentedQuestion = '英語15ページは全部で45分ですね。数学20問は、1問あたり何分くらいかかりそうですか？';
+      const candidate = { id: 'candidate-1', label: '数学1問あたり15分（正確）',
+        tuple: { targetId: 'workload-1', measurement: 'duration_per_unit', minutes: 15, precision: 'exact', unit: 'problem' } };
+      const request = { ...base, wholeUtterance, context: { ...base.context, presentedQuestion,
+        scope: { ...base.context.scope, ...D5_TOP1_SCOPE, measurement: 'duration_per_unit', unit: 'problem' } },
+        menu: { ...base.menu, options: [{ kind: 'leaf' as const, id: 'leaf:0', candidate }, { kind: 'none' as const, id: 'none' }] } };
+      let body: Record<string, unknown> = {};
+      await evaluateCandidateChoice({ firebaseUid: 'fixture-owner', context: { purpose: 'candidate_choice', request },
+        env: { OPENROUTER_API_KEY: 'fixture', JEV_CANDIDATE_CHOICE_MODE: 'canary', JEV_MODE: 'canary',
+          JEV_CANDIDATE_CHOICE_CANARY_PERCENT: '100', JEV_CANARY_PERCENT: '100' },
+        transport: async (_input, init) => { body = JSON.parse(String(init?.body)); return Response.json(response()); } });
+      // This verifies the provider contract, not semantic scores from this mock.
+      expect(body).toMatchObject({ state: { currentUserText: wholeUtterance, context: request.context } });
+      const questions = body.questions as Record<string, { instructions: string; criteria: Record<string, string> }>;
+      for (const head of ['candidate', 'condition_change', 'independent_meaning']) {
+        for (const text of [questions[head].instructions, ...Object.values(questions[head].criteria)]) {
+          expect(text).toContain('Judge approximation from the CURRENT USER REPLY (currentUserText) ONLY');
+          expect(text).toContain('in context.presentedQuestion does not make the reply approximate');
+          expect(text).toContain('is not itself presentation/tuple disagreement, condition change or independent meaning');
+          expect(text).toContain('reply 「15」 or 「15分」 supplies exact 15 minutes');
+          expect(text).toContain('reply 「15分くらい」, 「約15分」, 「15分ほど」, 「15分前後」 or 「15分程度」 expresses approximation and must choose none with both auxiliary heads true');
+          expect(text).toContain('does not excuse a target, measurement, unit or scope mismatch');
+        }
+      }
+      expect(questions.candidate.criteria['leaf:0']).toContain(JSON.stringify(candidate));
+      for (const text of [questions.candidate.criteria.none, questions.condition_change.criteria.true, questions.independent_meaning.criteria.true]) {
+        expect(text).toContain('approximation expressed in the current user reply');
+      }
+    });
   it.each(CANDIDATE_CHOICE_QUESTION_CODES)('keeps every other catalog and provider version frozen for %s', async code => {
     // Immutable hashes captured at 7f6f2931 BEFORE the v2 criteria edit. The
     // pre-existing c8c32d12 numeric catalog hash above remains unchanged too.
