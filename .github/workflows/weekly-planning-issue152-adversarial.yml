@@ -1,5 +1,8 @@
 name: Issue 152 Adversarial Real API
 
+env:
+  NPM_CONFIG_REGISTRY: https://npm.flatt.tech/
+
 # Real-credential runs are requested explicitly for a reviewed, immutable commit:
 # gh workflow run weekly-planning-issue152-adversarial.yml --ref <branch-containing-this-workflow> \
 #   -f suites=adversarial,stateful -f request_id=<id> -f ref=<full-40-hex-commit-sha>
