@@ -51,6 +51,31 @@ function response(
 
 describe('Stable V5 dialogue renderer validation', () => {
   it.each([
+    ['今回は「15分」という内容も、英語の締切を金曜にする内容も計画に反映されていません。数学は1問あたり15分、という理解でよいですか？', true],
+    ['数学は1問あたり15分ですね。', false],
+    ['数学は1問あたり15分ですか？', true],
+    ['数学は1問あたり15分でよいですか？', true],
+    ['数学は1問あたり15分でしょうか?', true],
+    ['数学は1問あたり15分、計画に反映されていません。', true],
+    ['数学は1問あたり15分、反映していません。', true],
+    ['数学20問（全部で15分）は計画に反映していません。', true],
+    ['数学は1問あたり15分ですね、どうしますか？', false],
+    ['数学20問（全部で15分）でよいですか？', false],
+  ] as const)('distinguishes clarification/nonreflection from positive claims without an active math estimate: %s', (text, valid) => {
+    const renderInput = input({ actionKind: 'question', questionCode: 'missing_effort_estimate', requiredLabels: [],
+      currentUserMessage: '15分。あと英語の締切を金曜にして',
+      planningInformation: { tasks: [{ id: 'math', title: '数学' }, { id: 'english', title: '英語' }],
+        workloads: [{ id: 'math-work', taskId: 'math', amount: 20, unitLabel: '問' }], effortEstimates: [] },
+      currentTurnGrounding: { mode: 'none', acceptedFacts: [] } });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+  });
+  it.each(['数学は1問あたり15分、という理解でよいですか？', '数学は1問あたり15分ですか？',
+    '数学は1問あたり15分でしょうか?', '数学は1問あたり15分、反映していません。'])('keeps the mandatory ACK strict for nonassertions: %s', text => {
+    const renderInput = naturalEffortInput('math', 'duration_per_unit', 15);
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text,
+      { groundingAcknowledgement: { factIds: ['effort'], text } }), renderInput).status).toBe('fallback');
+  });
+  it.each([
     '数学は1問あたり15分ですね。8月20日から26日の数学20問と英語15ページ（全部で45分）をもとに、仮予定の候補を6件用意しました。「この内容で仮予定にする」を選ぶと、仮予定として進められます。',
     '数学は1問あたり15分ですね。8月20日から26日に数学20問、英語15ページ（全部で45分）の仮予定候補を6件用意しました。内容を確認して「この内容で仮予定にする」を選べます。',
   ].flatMap(text => [45, 60].map(minutes => [text.replace('全部で45分', `全部で${minutes}分`), minutes === 45] as const)))('checks the live-14 mandatory ACK and contextual preview body: %s', (text, valid) => {

@@ -312,6 +312,9 @@ function repeatsMostRecentAssistantQuestion(
 const EFFORT_SUBJECT_CONNECTOR = /^(?:(?:について|として|に関して)|[\sはがをのにで、,:：「」『』()（）])*$/u;
 const AFFIRMATIVE_EFFORT_ENDING = /^(?:(?:くらい|ぐらい|ほど|前後|程度)\s*)?(?:です(?:ね|よ)?|でした(?:ね)?|だ(?:ね)?|ね|になります(?:ね)?|とします(?:ね)?|(?:で|と|として)(?:見積もります|見積もりました|計算します|計算しました|反映します|反映しました|設定します|設定しました|扱います|受け取りました|承知しました)(?:ね)?|と見込んでいます|を目安にします)?[\s。、,!「」『』()（）]*$/u;
 const EFFORT_VALUE_CONNECTOR = /^\s*(?:[、,]\s*)?(?:(?:は|で|に|が|を)\s*)?(?:[、,]\s*)?(?:(?:約|およそ|だいたい|大体)\s*)?$/u;
+// Body-only suffixes. Mandatory ACKs still require the affirmative grammar.
+// Match the entire suffix so a prior assertion ("ですね、…ですか?") stays checked.
+const NON_AFFIRMATIVE_EFFORT_ENDING = /^\s*(?:[、,]\s*)?(?:(?:という(?:理解|認識))?(?:ですか|でしょうか|で(?:よい|いい)(?:ですか|でしょうか)|で合っていますか|でよろしいですか)[?？]|(?:[)）]\s*)?(?:として|で|を|は)?(?:計画に)?反映(?:されていません|していません)[。.!！]?)[\s」』)）]*$/u;
 
 function planningRows(input: WeeklyPlanningStableV5DialogueRenderInput, key: string): Record<string, unknown>[] {
   return Array.isArray(input.planningInformation?.[key]) ? (input.planningInformation![key] as unknown[]).filter(isRecord) : [];
@@ -380,6 +383,9 @@ function positiveEffortDisplayTuples(display: string, labelEnd: number, scope: R
       const valueStart = markerEnd + duration.index!, valueEnd = valueStart + duration[0].length;
       if (!EFFORT_VALUE_CONNECTOR.test(assertion.slice(markerEnd, valueStart))) continue;
       const tail = assertion.slice(valueEnd);
+      // Classify a direct clarification/denial before a comma can create an
+      // empty affirmative ending. A following question cannot erase an assertion.
+      if (NON_AFFIRMATIVE_EFFORT_ENDING.test(tail)) continue;
       // A closed parenthetical tuple is a factual premise even with following prose.
       // Otherwise retain the existing affirmative ending/short clause boundary.
       const parenthesis = /^(?:(?:くらい|ぐらい|ほど|前後|程度)\s*)?[)）]/u.exec(tail);

@@ -84,11 +84,12 @@ function prepare(write: ReturnType<typeof repository>['writes'][number]) {
 }
 describe('actual Choice request through durable trace gate', () => {
   it.each([
-    { corrected: false, contextualMinutes: null }, { corrected: true, contextualMinutes: null },
-    { corrected: false, contextualMinutes: 45 }, { corrected: false, contextualMinutes: 60 },
-  ])('persists asymmetric active-fact claim checks: %j', async ({ corrected, contextualMinutes }) => {
+    { corrected: false, contextualMinutes: null, nonReflected: null }, { corrected: true, contextualMinutes: null, nonReflected: null },
+    { corrected: false, contextualMinutes: 45, nonReflected: null }, { corrected: false, contextualMinutes: 60, nonReflected: null },
+    { corrected: false, contextualMinutes: null, nonReflected: 'question' }, { corrected: false, contextualMinutes: null, nonReflected: 'assertion' },
+  ])('persists asymmetric active-fact claim checks: %j', async ({ corrected, contextualMinutes, nonReflected }) => {
     const requestId = 'display-existing-effort';
-    const contextual = contextualMinutes !== null, valid = contextual ? contextualMinutes === 45 : corrected;
+    const contextual = contextualMinutes !== null, valid = nonReflected ? nonReflected === 'question' : contextual ? contextualMinutes === 45 : corrected;
     const graph: WeeklyPlanningFactGraphV5 = numericFixture('duration_per_unit').graph;
     const workload = graph.workloads[0];
     graph.effortEstimates.push({ id: 'old-rate', taskId: workload.taskId, targetFactId: workload.id,
@@ -101,7 +102,7 @@ describe('actual Choice request through durable trace gate', () => {
       graph.effortEstimates.push({ ...graph.effortEstimates[0], id: 'new-total', kind: 'total_duration', minutes: 60, unitCode: null, createdRevision: 3 });
       graph.factLifecycles.push({ factId: 'new-total', status: 'active', createdRevision: 3, terminalRevision: null, supersededByFactId: null });
     }
-    if (contextual) {
+    if (contextual || nonReflected) {
       graph.tasks.push({ ...graph.tasks[0], id: 'english', title: '英語' });
       graph.workloads.push({ ...workload, id: 'english-work', taskId: 'english', amount: 15, unitCode: 'page', unitLabel: 'ページ' });
       graph.effortEstimates.push({ ...graph.effortEstimates[0], id: 'english-effort', taskId: 'english', targetFactId: 'english-work',
@@ -109,15 +110,21 @@ describe('actual Choice request through durable trace gate', () => {
       for (const factId of ['english', 'english-work', 'english-effort']) graph.factLifecycles.push({ factId, status: 'active',
         createdRevision: 2, terminalRevision: null, supersededByFactId: null });
     }
+    if (nonReflected) {
+      graph.effortEstimates = graph.effortEstimates.filter(fact => fact.taskId !== workload.taskId);
+      graph.factLifecycles = graph.factLifecycles.filter(fact => fact.factId !== 'old-rate');
+    }
     const currentTurnGrounding = createWeeklyPlanningStableV5CurrentTurnGrounding({ graph, turnId: requestId,
       actionKind: 'status', previousQuestionCode: null, currentQuestionCode: null });
     expect(currentTurnGrounding.acceptedFacts.filter(fact => fact.kind === 'effort_estimate')).toHaveLength(contextual ? 1 : 0);
-    const input = { actionId: requestId, currentUserMessage: 'いや、数学は全部で60分です。', recentConversation: [],
+    const input = { actionId: requestId, currentUserMessage: nonReflected ? '15分。あと英語の締切を金曜にして' : 'いや、数学は全部で60分です。', recentConversation: [],
       planningInformation: { ...createWeeklyPlanningStableV5DialogueProjection(graph), futureActiveClaimSentinel: 'keep-active-claim-sentinel' },
       currentTurnGrounding, actionKind: 'status' as const, questionCode: null, requiredLabels: [], previewCount: 0,
       fallbackText: '返信を作れませんでした。少し待ってからもう一度送信してください。' };
     const before = structuredClone(graph); let sends = 0; let actualRequest = '';
-    const text = contextual ? `数学は1問あたり15分ですね。数学20問と英語15ページ（全部で${contextualMinutes}分）をもとに確認してください。`
+    const text = nonReflected === 'question' ? '今回は「15分」という内容も、英語の締切を金曜にする内容も計画に反映されていません。数学は1問あたり15分、という理解でよいですか？'
+      : nonReflected === 'assertion' ? '数学は1問あたり15分ですね。'
+      : contextual ? `数学は1問あたり15分ですね。数学20問と英語15ページ（全部で${contextualMinutes}分）をもとに確認してください。`
       : '失礼しました。数学は1問あたり15分ではなく、全部で60分ですね。';
     const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
       sends++; actualRequest = JSON.stringify(request);
@@ -150,7 +157,7 @@ describe('actual Choice request through durable trace gate', () => {
     const prepared = prepare(h.writes[0]);
     for (const entry of [h.writes[0].entries[0], prepared.entries[0]]) {
       expect(JSON.stringify(entry)).toContain('keep-active-claim-sentinel');
-      expect(JSON.stringify(entry)).toContain(contextual ? `英語15ページ（全部で${contextualMinutes}分）` : '1問あたり15分ではなく');
+      expect(JSON.stringify(entry)).toContain(nonReflected ? '数学は1問あたり15分' : contextual ? `英語15ページ（全部で${contextualMinutes}分）` : '1問あたり15分ではなく');
       expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
     }
   });
