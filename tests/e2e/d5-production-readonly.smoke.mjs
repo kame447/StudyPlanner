@@ -3,6 +3,7 @@ import { classifyFirestoreWrite, runProductionSmoke, waitForProductionComposer }
 import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../shared/d5AnswerPolicy.ts';
 import { productionDatabaseFromRequestUrl, readOwnedConversation, observeProductionComposerState, readProductionServerSnapshot, relatedActiveEffortEstimates, productionSmokeReflectedEstimate, consumedD5Request, boundOffRollbackCandidate, classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, productionSmokeExpectation, persistRedactedSmokeEvidence } from './support/d5-production-readonly.mjs';
 import { observeOwnAnswerTrace, observeAnswerCheckpoint, readOwnedStableConversation, observeAnswerStores, isGroundedD5SmokeAck } from './support/d5-production-readonly.mjs';
+import { observeRecomputedD5Preview, observeD5SmokeReload, observedD5RequestRoute, createD5RequestAccounting, recordD5VisibleUsage, d5SendRequestCount } from './support/d5-production-smoke-reload.mjs';
 
 const secret = name => {
   const value = process.env[name]?.trim();
@@ -67,11 +68,13 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     d5Captured: false, d5Consumed: false, lunaFallbackRoute: null, activeEstimate: false, relatedActiveEstimates: [], relatedActiveEstimatesTruncated: false, reflectedEstimate: null, visibleAck: false,
     scheduleReadbackIdentical: false, approvalStartEvents: 0, approvalExecutions: null, scheduleWrites: 0, unclassifiedWrites: 0, firestoreWrites: [],
     answerPhase: { pendingTurnPresent: null, newAssistant: null, receiptConsumed: null, alertPresent: null }, answerStores: null, visibleAckObserved: null, answerTrace: [], answerTraceTruncated: false,
+    recompute: null, reload: { attempted: false }, accounting: createD5RequestAccounting(),
     step: 'target_preflight', failingStep: null, bodyError: null, readbackStep: null, readbackError: null, composerReadiness: 'unobserved', composerWaitPhase: null };
   const observations = new Map();
   const fallbackRequests = new Map();
   const fallbackRequestIds = new Set();
   const candidateRequestIds = new Set();
+  const requestRoutes = new Map();
   const responseTasks = [];
   const observationErrors = [];
   let database;
@@ -84,6 +87,15 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
 
   page.on('request', request => {
     const url = new URL(request.url());
+    let accountingBody;
+    if (request.method() === 'POST' && url.pathname.endsWith('/chat/completions')) {
+      try { accountingBody = request.postDataJSON(); } catch { /* Route remains explicitly unclassified. */ }
+    }
+    const route = observedD5RequestRoute({ url: request.url(), method: request.method(), body: accountingBody });
+    if (route) {
+      requestRoutes.set(request, route);
+      evidence.accounting.observedRequests[route]++;
+    }
     if (url.hostname === 'firestore.googleapis.com') {
       database ??= productionDatabaseFromRequestUrl(request.url());
       const write = classifyFirestoreWrite({ url: request.url(), method: request.method(), postData: request.postData() });
@@ -143,6 +155,12 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
   });
   page.on('response', response => {
     const url = new URL(response.url());
+    if (requestRoutes.get(response.request()) === 'chat_completions_non_candidate') {
+      responseTasks.push((async () => {
+        const result = await response.json();
+        recordD5VisibleUsage(evidence.accounting, result?.usage);
+      })().catch(() => { evidence.accounting.visibleUsage.invalidResponses++; }));
+    }
     const fallbackId = fallbackRequests.get(response.request()) ?? (url.pathname.endsWith('/weekly-planning/turns') ? url.searchParams.get('requestId') : null);
     if (fallbackId === 'direct-semantic' || fallbackRequestIds.has(fallbackId)) {
       responseTasks.push((async () => {
@@ -216,6 +234,13 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     const targetWorkload = pending.graph.workloads.find(w => w.id === target);
     const targetTask = pending.graph.tasks.find(t => t.id === targetWorkload?.taskId);
     if (!targetWorkload || !targetTask?.title.includes('数学')) throw new Error('Setup did not ask the intended math effort question.');
+    const activeSetup = new Set(pending.graph.factLifecycles.filter(row => row.status === 'active').map(row => row.factId));
+    const englishWorkloads = pending.graph.workloads.filter(workload => activeSetup.has(workload.id)
+      && workload.taskId !== targetTask.id && workload.amount === 15 && workload.unitCode === 'page' && workload.quantityRole === 'target');
+    if (englishWorkloads.length !== 1) throw new Error('Setup English workload is not uniquely bound.');
+    const englishWorkload = englishWorkloads[0];
+    const previewTargets = { mathTaskId: targetTask.id, mathWorkloadId: target,
+      englishTaskId: englishWorkload.taskId, englishWorkloadId: englishWorkload.id, expectation: evidence.expectation };
     evidence.step = 'd5_capture';
     const captured = pending.planningState.intakeState.lastQuestionContext.controlledCandidate;
     evidence.d5Captured = captured?.domainId === 'd5_numeric' && captured.domainPolicyVersion === D5_TOP1_ANSWER_POLICY_VERSION
@@ -318,6 +343,38 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     expect(evidence.answerStores?.checkpointsAgree, 'Graph and complete planning state must agree across checkpoints').toBe(true);
     expect(evidence.visibleAckObserved, 'DOM ACK observation runs independently of checkpoint success').toBe(true);
     expect(observationErrors.length, 'Network evidence must be complete').toBe(0);
+    evidence.step = 'recompute';
+    const preReloadOwned = await page.evaluate(readOwnedStableConversation,
+      { owner: identity.uid, weekStartDate: after.weekStartDate, conversationId: after.conversationId });
+    evidence.recompute = observeRecomputedD5Preview(pending, preReloadOwned, previewTargets);
+    expect(evidence.recompute.status, 'Actual persisted fresh preview must use math base300/English45 and the production allocation oracle').toBe('verified');
+    const preReloadChat = await conversation(page, identity.uid);
+    const sendsBeforeReload = d5SendRequestCount(evidence.accounting);
+    evidence.step = 'reload';
+    evidence.reload.attempted = true;
+    try {
+      await page.reload();
+      requireProductionOrigin(page.url());
+      await expect(page.locator('.primary-bottom-nav')).toBeVisible();
+      await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: 'AI計画', exact: true }).click();
+      await readyComposer(page, identity, evidence, 'view_entry');
+    } finally {
+      const [chat, owned, visible] = await Promise.allSettled([
+        conversation(page, identity.uid), page.evaluate(readOwnedStableConversation,
+          { owner: identity.uid, weekStartDate: after.weekStartDate, conversationId: after.conversationId }),
+        page.getByText(answer.content, { exact: true }).isVisible(),
+      ]);
+      Object.assign(evidence.reload, observeD5SmokeReload(preReloadChat, preReloadOwned,
+        chat.status === 'fulfilled' ? chat.value : null, owned.status === 'fulfilled' ? owned.value : null, answer.id));
+      if (visible.status === 'fulfilled') evidence.reload.visibleAck = visible.value && isGroundedD5SmokeAck(answer.content);
+      evidence.reload.noNewSend = d5SendRequestCount(evidence.accounting) === sendsBeforeReload;
+    }
+    evidence.step = 'reload_state';
+    for (const key of ['chatUnchanged', 'ownedUnchanged', 'storesAgree', 'sameAssistant', 'revisionSame', 'receiptSame', 'previewSame', 'estimateSame', 'visibleAck', 'noNewSend']) {
+      expect(evidence.reload[key], `Reload must preserve ${key} without another send`).toBe(true);
+    }
+    for (const key of ['pendingTurnPresent', 'pendingApprovalPresent', 'approvalRecoveryPresent']) expect(evidence.reload[key], `Reload has no ${key}`).toBe(false);
+    await Promise.all(responseTasks);
     dialogueVerified = true;
   }, readback: async () => {
     evidence.step = 'server_snapshot_after';
@@ -344,5 +401,5 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
       if (dialogueVerified && evidence.d5Consumed) evidence.outcome = 'd5_positive_readonly_smoke';
       else if (dialogueVerified && evidence.expectation === 'EXPECT_FALLBACK') evidence.outcome = 'off_rollback_luna_fallback_verified';
     }
-  }, persist: () => persistRedactedSmokeEvidence(testInfo, evidence) });
+  }, persist: async () => { await Promise.all(responseTasks); return persistRedactedSmokeEvidence(testInfo, evidence); } });
 });

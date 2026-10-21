@@ -35,6 +35,7 @@ const STEPS = {
   off_capture: 'OFF capture verification', off_candidate: 'bound OFF candidate verification',
   off_consumption: 'OFF consumption verification', luna_fallback: 'Luna fallback verification',
   network_evidence: 'network evidence verification', server_snapshot_after: 'final server readback',
+  recompute: 'persisted preview recomputation', reload: 'real page reload', reload_state: 'reloaded chat persistence',
   approval_readback: 'approval readback', write_scope: 'Firestore write verification',
 };
 export const redactedSmokeStep = step => Object.hasOwn(STEPS, step) ? step : 'unknown_step';
