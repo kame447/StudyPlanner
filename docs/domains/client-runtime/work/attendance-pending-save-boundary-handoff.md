@@ -1,6 +1,6 @@
 # Attendance pending-save boundary
 
-Status: local candidate; integration verification and publication pending.
+Status: locally verified and independently reviewed; publication pending.
 Base: main `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`.
 Branch: `refactor/attendance-pending-save-boundary`.
 
@@ -42,3 +42,9 @@ This is a defensive API boundary, not a demonstrated ordinary-user incident. Pro
 The callback now captures its render's lifetime and rejects admission after retirement. Retry participates in layout retirement to close the commit-to-passive-loading interval. No new owner state or global abstraction is introduced. Same-scope benign rerenders and successful saves preserve callback validity; refresh, owner/class/repository changes and A→B→A do not revive obsolete callbacks. Loading callbacks cannot save.
 
 Architecture, persistence, state ownership, async lifetime, date/schema compatibility, UI reachability and regression strength were independently audited. Date/schema/UI layout remain unchanged. Six new admission cases passed, including a real local-storage unmount case, loading/ready transitions, A→B→A and valid same-scope reuse. The six related files passed 46 tests before a type-only test annotation correction and extra A→B→A assertions; the final admission file then passed all six cases again (`/tmp/attendance-admission-final.log`). Independent exact guard review found no blocker. Full verification remains required on the final candidate.
+
+## Final local verification receipt
+
+`npm run verify` exited 0 on exact commit `bfe81ccee34dd9688256298d77150f01a3e04cd9`, tree `819beaf55fdd3295f2fd95e90243c5acaee6c1a6`, with no initial tracked or untracked source changes. Fresh app and regenerated Worker typechecks passed; 1,056 test files / 10,539 tests passed (67 skipped, 1 todo retained), production build passed in 13.37 seconds. Log: `/tmp/attendance-full-verify.log`. Same canonical npm-ci dependency seed and lock identity above; standard telemetry-disabled environment, DEV_LAN_HOST=127.0.0.1, isolated Wrangler log `/tmp/attendance-verify-wrangler.log`. Full test run generated `.cache/j1-old-worker` historical-fixture output; no tracked source changed. The historical commit `070d25cbe14796aebb8168ac5425c93e3506df1c` exists locally, and its tests passed rather than being skipped or weakened.
+
+Only this receipt documentation changed after verification. Locally verified, not published or merged. Browser/CI/backend evidence remains separate.
