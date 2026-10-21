@@ -2,14 +2,6 @@ import { createId } from '../lib/id';
 import type { AuthRepository, AuthStorageGateway } from './repositoryContracts';
 import type { User, UserProfileDraft } from '../types/domain';
 
-interface PasswordRecord {
-  email: string;
-  password: string;
-  userId: string;
-}
-
-const PASSWORD_STORAGE_KEY = 'studyplanner.local.passwords';
-
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
@@ -17,30 +9,6 @@ function normalizeEmail(email: string): string {
 function normalizeUsername(username: string, email: string): string {
   const trimmedUsername = username.trim();
   return trimmedUsername || email;
-}
-
-function readPasswordRecords(): PasswordRecord[] {
-  try {
-    const raw = window.localStorage.getItem(PASSWORD_STORAGE_KEY);
-
-    if (!raw) {
-      return [];
-    }
-
-    const parsed = JSON.parse(raw) as Partial<PasswordRecord>[];
-    return parsed.filter(
-      (record): record is PasswordRecord =>
-        typeof record?.email === 'string' &&
-        typeof record?.password === 'string' &&
-        typeof record?.userId === 'string',
-    );
-  } catch {
-    return [];
-  }
-}
-
-function writePasswordRecords(records: PasswordRecord[]): void {
-  window.localStorage.setItem(PASSWORD_STORAGE_KEY, JSON.stringify(records));
 }
 
 function applyUserProfile(user: User, draft: UserProfileDraft): User {
@@ -54,7 +22,7 @@ function applyUserProfile(user: User, draft: UserProfileDraft): User {
 export function createAuthRepository(
   storageGateway: AuthStorageGateway,
 ): AuthRepository {
-  return {
+  const repository: AuthRepository = {
     async signUpWithPassword(email, password, username) {
       const normalizedEmail = normalizeEmail(email);
       const normalizedUsername = normalizeUsername(username, normalizedEmail);
@@ -82,27 +50,17 @@ export function createAuthRepository(
         createdAt: new Date().toISOString(),
       };
 
-      await storageGateway.writeUsers([...users, nextUser]);
-      writePasswordRecords(
-        readPasswordRecords().concat({
-          email: normalizedEmail,
-          password,
-          userId: nextUser.id,
-        }),
-      );
+      await storageGateway.registerUserWithPassword(nextUser, password);
     },
     async signInWithPassword(email, password) {
       const normalizedEmail = normalizeEmail(email);
-      const passwordRecord = readPasswordRecords().find(
-        (record) => record.email === normalizedEmail,
-      );
-
-      if (!passwordRecord || passwordRecord.password !== password) {
+      const passwordUserId = await storageGateway.findPasswordUserId(normalizedEmail, password);
+      if (!passwordUserId) {
         throw new Error('メールアドレスまたはパスワードが一致しません。');
       }
 
       const users = await storageGateway.readUsers();
-      const user = users.find((item) => item.id === passwordRecord.userId);
+      const user = users.find((item) => item.id === passwordUserId);
 
       if (!user) {
         throw new Error('ユーザー情報が見つかりません。');
@@ -145,4 +103,16 @@ export function createAuthRepository(
       await storageGateway.clearSessionUserId();
     },
   };
+
+  // All local reads and writes share the same boundary, including profile edits.
+  // Do not acquire it recursively from a gateway callback.
+  const coordinated = { ...repository };
+  for (const [name, operation] of Object.entries(repository)) {
+    Object.defineProperty(coordinated, name, {
+      value: (...args: unknown[]) => storageGateway.runExclusive(
+        async () => Reflect.apply(operation, repository, args),
+      ),
+    });
+  }
+  return coordinated;
 }
