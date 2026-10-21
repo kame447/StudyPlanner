@@ -1,3 +1,4 @@
+import { withWeeklyPlanningEffortAcknowledgement } from '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { resetWeeklyPlanningStableV5TraceRuntimeForTest } from '../trace/weeklyPlanningStableV5TraceRuntime';
 import { submitWeeklyPlanningApplicationTurn } from '../application/weeklyPlanningTurnApplication';
@@ -64,10 +65,10 @@ beforeEach(() => {
     if (schema === 'weekly_planning_semantic_document_v5') content = calls === 1 ? presentingDocument() : empty;
     else if (schema === 'weekly_planning_stable_v5_dialogue_response') {
       const prompt = JSON.parse(body.messages[1].content);
-      content = { actionId: prompt.actionId, actionKind: prompt.applicationDecision.actionKind,
+      content = withWeeklyPlanningEffortAcknowledgement(prompt, { actionId: prompt.actionId, actionKind: prompt.applicationDecision.actionKind,
         questionCode: prompt.applicationDecision.questionCode, groundingAcknowledgement: null,
         text: prompt.applicationDecision.actionKind !== 'question' ? '承知しました。'
-          : calls === 1 ? '18時から20時に予定が入れられないのは何日ですか？' : 'もう一度伺います。18時から20時に予定が入れられないのは、何日ですか？' };
+          : calls === 1 ? '18時から20時に予定が入れられないのは何日ですか？' : 'もう一度伺います。18時から20時に予定が入れられないのは、何日ですか？' });
     } else throw new Error('Unexpected fixture schema: ' + schema);
     return Response.json({ choices: [{ message: { content: JSON.stringify(content) } }],
       usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
@@ -130,7 +131,7 @@ it('captures the natural first presentation that also grounds same-turn facts', 
   const { services } = configured(request => normalizedChoice(request, 'leaf:2'));
   const h = harness(services);
   const { question } = await h.present();
-  expect(question.presentation?.content).toMatchObject({ currentTurnGrounding: 'recommended', groundingContext: { proposed: 0 } });
+  expect(question.presentation?.content).toMatchObject({ currentTurnGrounding: 'required_before_resume', groundingContext: { proposed: 0 } });
   expect(question.actionId).toMatch(/^candidate-question:availability_date:/);
   expect(question.controlledCandidate).toBeDefined();
 });

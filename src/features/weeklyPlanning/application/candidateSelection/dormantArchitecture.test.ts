@@ -42,6 +42,7 @@ const allowedConsumers = new Set([
   ...numericConsumers,
 ]);
 const testOnlyHelpers = new Set([
+  resolve(repository, 'tests/e2e/harness/d5-top1-dev.js'),
   resolve(repository, 'src/features/weeklyPlanning/application/c5LocalSelection/controller.testUtils.ts'),
   resolve(repository, 'src/features/weeklyPlanning/application/c5LocalSelection/evaluationHarness.testUtils.ts'),
 ]);

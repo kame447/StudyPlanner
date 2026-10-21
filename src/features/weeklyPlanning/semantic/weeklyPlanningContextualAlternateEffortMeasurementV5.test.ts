@@ -123,7 +123,7 @@ function pendingQuestion() {
 }
 
 describe('Stable V5 alternate effort measurement contextual binding', () => {
-  it('keeps an explicit per-unit answer on the machine-selected completed workload', () => {
+  it('leaves an explicit alternate per-unit answer unapplied and keeps the completed-workload question', () => {
     const document = perUnitDocument();
     expect(shouldAttemptWeeklyPlanningContextualAnswerV5({
       document,
@@ -141,15 +141,8 @@ describe('Stable V5 alternate effort measurement contextual binding', () => {
     });
 
     expect(result?.status).toBe('applied');
-    expect(result?.graph.effortEstimates).toEqual([
-      expect.objectContaining({
-        taskId,
-        targetFactId: completedId,
-        kind: 'duration_per_unit',
-        minutes: 8,
-        unitCode: 'page',
-        precision: 'approximate',
-      }),
-    ]);
+    expect(result?.graph.effortEstimates).toEqual([]);
+    expect(result?.graph.workloads).toEqual(graph().workloads);
+    expect(result?.diff).toMatchObject({ added: [], superseded: [], removed: [] });
   });
 });

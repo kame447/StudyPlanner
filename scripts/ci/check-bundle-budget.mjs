@@ -10,25 +10,22 @@ const reportPath = path.join(reportDir, 'bundle-budget.json');
 
 const budgets = {
   javascript: {
-    // Approved #549 → #559 → #558 → #560 → #540 integration on main 4e162408:
-    // 2,263,870 raw / 609,511 gzip, with 28 unchanged chunk families.
-    // Stage attribution: diagnostics +639/+300, deferred DayNotes +3,303/+992,
-    // unplanned start +3,907/+1,165 bytes; paint changes no raw JS.
-    // Same installed dependencies/config; Firebase server-query wrapper adds 148/6.
-    // Bound only aggregate JS growth; preserve both per-chunk and all CSS guards.
-    // Evidence: docs/domains/client-runtime/work/unplanned-study-start-handoff.md.
-    totalRaw: 2_265_000,
-    totalGzip: 610_000,
-    largestRaw: 950_000,
-    largestGzip: 260_000,
+    // Owner decision based on measured main/PR baseline, 2026-10-21 (#305/#826):
+    // main 22e42203 plus PR #826's
+    // measured +18,556 raw / +6,448 gzip bytes, with no added headroom.
+    // Exact written-output baseline c309b457, same dependencies/environment.
+    // History, fingerprints and composition: docs/work/tooling-operations-runbook.md
+    // (bundle-budget section). Reduction remains tracked in #321.
+    totalRaw: 2_614_112,
+    totalGzip: 711_066,
+    largestRaw: 1_047_214,
+    largestGzip: 288_393,
   },
   css: {
-    // Optional dot appearance: +6,724 raw / +1,709 gzip in a selection-only CSS
-    // chunk. Standard initial CSS is byte-identical and requests no dot font.
-    // Explicit feature baseline: add at most 8 KB to aggregate raw only; preserve
-    // every CSS gzip and largest-chunk guard (JS calibration is documented above). See pixel-appearance handoff.
-    totalRaw: 493_000,
-    totalGzip: 85_000,
+    // Same owner decision: PR #826 changes no CSS. Aggregate limits
+    // equal measured main exactly; largest-chunk and appearance guards stay put.
+    totalRaw: 513_954,
+    totalGzip: 89_911,
     largestRaw: 425_000,
     largestGzip: 70_000,
   },

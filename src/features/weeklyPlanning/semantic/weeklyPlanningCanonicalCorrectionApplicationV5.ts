@@ -262,6 +262,21 @@ function rebaseReplacement(params: {
         errors: [`missing-effort-correction-fact:${correction.id}`],
       };
     }
+    const rateTotalReplacement = (target.kind === 'duration_per_unit' && replacement.kind === 'total_duration')
+      || (target.kind === 'total_duration' && replacement.kind === 'duration_per_unit');
+    if (rateTotalReplacement) {
+      // A measurement change cannot borrow the legacy replacement-support
+      // rebinding below to silently widen a component or change the target.
+      if (replacement.targetFactId !== target.targetFactId) errors.push(`effort-correction-target-mismatch:${correction.id}`);
+      const active = activeWeeklyPlanningFactIdsV5(graph);
+      const workloads = graph.workloads.filter(workload => (active === null || active.has(workload.id)) && workload.taskId === target.taskId
+        && [workload.id, workload.taskId, workload.componentId].includes(target.targetFactId));
+      if (replacement.kind === 'total_duration' ? replacement.unitCode !== null && replacement.unitCode !== 'minute'
+        : workloads.length === 0 || workloads.some(workload => workload.unitCode !== replacement.unitCode)) {
+        errors.push(`effort-correction-unit-mismatch:${correction.id}`);
+      }
+      if (errors.length) return { graph, orphanTaskIds, orphanComponentIds, supportFactIds, errors };
+    }
     const orphanError = registerOrphanTask({
       replacementTaskId: replacement.taskId,
       targetTaskId: target.taskId,

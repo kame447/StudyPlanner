@@ -2,6 +2,7 @@ import {
   recordWeeklyPlanningStableV5TurnTrace,
 } from '../trace/weeklyPlanningStableV5TraceRuntime';
 import {
+  recordWeeklyPlanningStableV5DebugTrace,
   takeWeeklyPlanningStableV5DebugTrace,
   type WeeklyPlanningStableV5DebugTraceEvent,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
@@ -17,6 +18,14 @@ import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExe
 import {
   getWeeklyPlanningStableV5RuntimeSession,
 } from './weeklyPlanningStableV5RuntimeSession';
+import type { CandidateChoiceEvaluation } from '../../../../shared/candidateChoiceDecision';
+
+/** Preserve validated provider scores separately from the strict common-gate adapter. */
+export function recordControlledCandidateEvaluation(requestId: string, evaluation: CandidateChoiceEvaluation): void {
+  const rawResponse = JSON.stringify(evaluation);
+  recordWeeklyPlanningStableV5DebugTrace({ requestId, stage: 'semantic_provider_response',
+    data: { attempt: 'numeric_pending_choice_raw', rawResponse, responseLength: rawResponse.length } });
+}
 
 export interface WeeklyPlanningTurnTraceSideEffectServices {
   getRuntimeSession: typeof getWeeklyPlanningStableV5RuntimeSession;

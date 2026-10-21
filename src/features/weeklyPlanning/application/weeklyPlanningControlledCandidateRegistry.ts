@@ -19,6 +19,8 @@ import { decodeControlledCandidateQuestion, freezeControlledCandidateQuestion } 
 export interface ControlledCandidateCaptureTurn {
   ownerId: string; conversationId: string; state: PlanningIntakeState; graph: WeeklyPlanningFactGraphV5;
   messages: readonly WeeklyPlanningMessage[]; planningState: PlanningState; pending: WeeklyPlanningPendingTurn;
+  /** Ephemeral pre-turn machine state; never derived from rendered text. */
+  previousQuestionCode?: string | null;
 }
 export interface ControlledCandidateStageTurn extends ControlledCandidateGateInput {
   ownerId: string; readCommittedGraph(): WeeklyPlanningFactGraphV5;
@@ -83,13 +85,22 @@ export function registerControlledCandidateDomain(domain: ControlledCandidateDom
     domainId: domain.domainId, questionCode: domain.questionCode,
     capture(turn) {
       const context = turn.state.lastQuestionContext; const p = context?.presentation;
+      const presentingFacts = weeklyPlanningStableV5AcceptedFactsForTurn(turn.graph, turn.pending.requestId);
+      // Restore prior recommended eligibility only when mandatory effort ACK is the
+      // sole new requirement. A same-question re-ask was already required before #305.
+      const effortAcknowledgementOnly = turn.previousQuestionCode !== undefined
+        && turn.previousQuestionCode !== domain.questionCode
+        && presentingFacts.some(fact => fact.kind === 'effort_estimate');
       if (!p || turn.state.questions.length !== 1 || !context?.topicId
-        || !isWeeklyPlanningQuestionPresentationControlledDirect(p.content) || p.graphRevision !== turn.graph.revision
+        || !(isWeeklyPlanningQuestionPresentationControlledDirect(p.content)
+          || effortAcknowledgementOnly
+            && p.content.currentTurnGrounding === 'required_before_resume'
+            && isWeeklyPlanningQuestionPresentationControlledDirect({ ...p.content, currentTurnGrounding: 'recommended' })) || p.graphRevision !== turn.graph.revision
         || domain.domainPolicyVersion !== policyVersion || options.sourceAccess() !== 'allowed') return turn.state;
       // Facts carry the presenting request ID (not the presentation's turn ID): exactly what the
       // rendered acknowledgement may echo. Never re-run at answer time.
       if (domain.rejectsCoPresentedFacts({ targetId: context.topicId,
-        facts: weeklyPlanningStableV5AcceptedFactsForTurn(turn.graph, turn.pending.requestId) }) !== false) return turn.state;
+        facts: presentingFacts }) !== false) return turn.state;
       const old = turn.state.c5SelectionLedger;
       const ledger = old === undefined ? { version: 1 as const, ownerId: turn.ownerId, conversationId: turn.conversationId, lastEpoch: 0, consumed: [] }
         : decodeC5Ledger(old, turn.ownerId, turn.conversationId);

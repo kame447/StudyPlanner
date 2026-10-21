@@ -17,7 +17,7 @@ import type {
 import type { WeeklyPlanningSelectedStarterTargetV5 } from './semantic/weeklyPlanningTurnEvidenceV5';
 import type { WeeklyPlanningMachineBoundEffortAnswerV5 } from './semantic/weeklyPlanningMachineBoundAnswerV5';
 import type { C5LocalSelectionOptions } from './application/c5LocalSelection/contracts';
-import { captureRegisteredCandidateQuestion, stageRegisteredCandidateTurn, registerC5CandidateDomain, type ControlledCandidateRegistry, type RegisteredControlledCandidateAdapter } from './application/weeklyPlanningControlledCandidateRegistry';
+import { captureRegisteredCandidateQuestion, controlledCandidateQuestionCode, stageRegisteredCandidateTurn, registerC5CandidateDomain, type ControlledCandidateRegistry, type RegisteredControlledCandidateAdapter } from './application/weeklyPlanningControlledCandidateRegistry';
 import { decodeC5Ledger } from './application/c5LocalSelection/basis';
 import { commitControlledCandidateTurn, hasC5Recovery, readC5RuntimeGraph } from './application/c5LocalSelection/controlledCommit';
 
@@ -300,6 +300,7 @@ export async function submitWeeklyPlanningControlledTurn(
   ];
   const captureQuestion = (state: PlanningIntakeState, graph: NonNullable<WeeklyPlanningTurnExecutionResult['stableV5Graph']>, messages: readonly WeeklyPlanningMessage[]) =>
     captureRegisteredCandidateQuestion(candidateRegistry, { state, graph, messages, pending,
+      previousQuestionCode: controlledCandidateQuestionCode(snapshot.intakeState),
       planningState: { ...snapshot, intakeState: state }, ownerId: params.ownerId, conversationId: pending.conversationId });
   let candidateSelected: RegisteredControlledCandidateAdapter | null = null;
   try {

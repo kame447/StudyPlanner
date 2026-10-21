@@ -374,13 +374,35 @@ Publication and execution still require the applicable repository authorization.
 - Verification / cleanup: require every project leg and both nonempty mobile shards to pass, with the two shard listing totals summing to the full `--list --project=webkit-mobile` total. If the same commit times out again, stop and investigate shard balance or runner setup instead of treating the partial run as success.
 - Last verified: 2026-10-18
 
-## bundle-budget fails on main and on every PR (repository-wide overrun)
+## Bundle-budget history and measured baseline recovery
 
-- Operation / symptom: the UI Quality Automation `bundle-budget` job fails on main and on all PRs.
-- Known error signature: `scripts/ci/check-bundle-budget.mjs` reports violations such as JavaScript totalRaw ≈2.58 MB against the 2,265,000-byte limit; 8 metrics are over on main `a39defd8` (2026-10-17).
-- Root cause or strongest current explanation: accumulated application code, not a dependency update. With the same installed dependencies, controlled historical builds first exceed the JavaScript total limits at `ee815b47` (#566); its predecessor `9f0e0911` is within all limits; other metrics cross later (#610, #634, #653, #674). Analysis: [Issue #321](https://github.com/kame447/StudyPlanner/issues/321).
-- Safe workaround: judge a PR by its own delta against the main baseline artifact of the same run date (e.g. PR #717 `c8c32d12` → `da83eeda`: JS +1,798 B raw / +585 B gzip, CSS ±0) and record it in the PR.
-- Required permissions / preconditions: none.
-- What not to do: do not raise thresholds, weaken the guard or remove features to make it pass; any budget-policy change needs a human decision (#321).
-- Verification / cleanup: return to normal threshold judgement once a reviewed improvement lands on main.
-- Last verified: 2026-10-18
+The UI Quality Automation bundle gate accumulated a repository-wide overrun: main `a39defd8` (2026-10-17) exceeded eight metrics, and the parent reported no successful UI Quality run among the latest60 runs. Controlled historical builds first cross the JS aggregate limits at `ee815b47` (#566, unreadable-checkpoint retention); predecessor `9f0e0911` passes. Other metrics cross later (#610/#634/#653/#674). This is accumulated application growth, not a dependency upgrade. Reduction remains in [Issue #321](https://github.com/kame447/StudyPlanner/issues/321).
+
+Owner decision based on measured main/PR baseline, 2026-10-21 (#305/[PR #826](https://github.com/kame447/StudyPlanner/pull/826)): restore a blocking absolute regression gate by calibrating the six exceeded metrics exactly to the measured main baseline plus the PR's justified increment, with **no extra headroom**. The user approved Jev production rollout; these specific budget values are the owner's decision, not a separate user approval. Neither the checker nor its CI step is disabled. Existing CSS largest-chunk and optional-appearance limits remain unchanged.
+
+Three-stage comparison of actual written output (bytes):
+
+| Source | JS total raw / gzip | Largest JS raw / gzip | CSS total raw / gzip | Previous limits |
+| --- | ---: | ---: | ---: | --- |
+| Last calibration f99a916f | 2263870 / 609511 | 782798 / 221199 | 492097 / 83402 | PASS |
+| Main22e42203 | 2595556 / 704618 | 1029356 / 282169 | 513954 / 89911 | FAIL,6 metrics |
+| PR source c309b457 | 2614112 / 711066 | 1047214 / 288393 | 513954 / 89911 | FAIL,6 metrics |
+
+The last calibration changed `scripts/ci/check-bundle-budget.mjs` atf99a916f for the approved release stack on4e162408, with its history retained in the client-runtime unplanned-study work record. The matched reconstruction exactly reproduces that calibration's JS2263870/609511 bytes. All three source snapshots used the same installed dependency tree, patched Vite6.4.4 lock and Nodev22.23.0 (darwin/arm64), production environment and Vite build invocation. Main/PR configuration is byte-identical; the historical calibration retains its original esbuild configuration, while main/PR include the existing conservative Terser configuration. No new minifier change is adopted: an extra conservative re-minification experiment saved only1061 raw/677 gzip bytes and slightly worsened the largest chunk's gzip; size alone did not establish behavior compatibility.
+
+Evidence fingerprints: lock SHA256 `4d7a9c84d4dcc42dbdd3f50c28c2db87fbd134de6e11310a614e998819ff3ad4`; installed-tree SHA256 `1b140abb073baf04ca0195439e3c4f0f30718539550a523e1b90c7bc203d4883`; environment fingerprint `c2d8f9d9685778c90af70ffd95bb3f48dc911bea57eaa3738cdcdc5e938eefb0`. Main/PR config SHA256 `112120c98210436a0a559f5cbe4bf3742dea034f63c86516628d436389979337`; calibration config SHA256 `041c945f142b1dd2ac55549fd0478353bf9db4ff4c481b719a75c331b4c429f9`. The environment is represented by a digest, not copied credentials. Local evidence under the owning worktree's ignored `.cache/issue305-ci/` includes `summary.json`, `installed-tree.json`, `*-composition.json`, `*-budget.log`, module/output-family deltas and the probe/finalization scripts. Output metrics are measured after Vite finalization; preliminary generateBundle code lengths are not the final asset sizes.
+
+Composition: calibration→main pre-minification rendered-module growth is weekly planning+230547, components+197982, hooks+64091, other app+121476, shared+21384 and vendor+13946 bytes. Those source-attribution values are not exact minified per-module costs; JS chunk families also moved between the instrumented-runtime and runtime-trace chunks. Main→PR's actual written increment is18556 raw/6448 gzip JS bytes, CSS0; its principal source change is effort display validation (+21297 pre-minified rendered bytes). Expanded inspection of all2435 emitted PR module entries and44 written JS assets found no dev registry/enablement, loopback bridge, test/spec/testUtils/fixture or E2E harness leak. Calibration→main CSS net+21857 bytes comes from AdminApp+16400, StudyStreakPage+7779, TimetableView+4686, announcements+4193, schedule actions+3013, AI planning+2614, inquiry+875, week drag+687, appearance+17 and initial CSS−18407.
+
+New absolute limits, with the six changed values equal to the PR's actual output:
+
+| Metric | JS limit (bytes) | CSS limit (bytes) |
+| --- | ---: | ---: |
+| Total raw | 2614112 | 513954 |
+| Total gzip | 711066 | 89911 |
+| Largest raw | 1047214 | 425000 (unchanged) |
+| Largest gzip | 288393 | 70000 (unchanged) |
+
+The optional appearance limits remain stylesheet8000/font512000 bytes. Do not add tolerance, waive a failure, remove features or adopt unsafe transforms to fit these limits. Future growth needs explicit review and attribution; reductions and any broader source/module work stay in #321. Run the normal production build, unchanged blocking checker and boundary contract tests on the exact candidate; the parent owns frozen-HEAD PR/CI verification. Once merged, normal absolute threshold judgment resumes against these limits, replacing the former temporary main-delta workaround.
+
+Local successor verification on base8cf554c7 (which includes the Vite6.4.4 audit repair):8 budget tests pass, including exact raw boundaries/one-byte overflows and unchanged appearance guards; `npm run build` passes (1m24s); `node scripts/ci/check-bundle-budget.mjs` exits0 with no violations. All55 written JS/CSS assets are byte-identical to the measured PR snapshot, and all six changed metrics exactly equal their limits. `git diff --check` passes. The new root report is `.cache/issue305-ci/recalibrated-root-budget.json`; logs are `/private/tmp/jev305-budget-recalibration-{final-tests,build,check}.log`. No app/Worker/minifier behavior, deployment or secrets change. Parent next: commit this budget script/test/runbook checkpoint, run frozen PR #826 gates and continue its separate rollout work. Last verified: 2026-10-21.
