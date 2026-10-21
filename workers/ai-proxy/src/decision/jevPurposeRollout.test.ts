@@ -80,11 +80,11 @@ describe('strict independent purpose configuration', () => {
     }
   });
 
-  it('production enables evaluated Jev-first purposes for all eligible users', () => {
+  it('production keeps evaluated purposes at 100%, routing off and candidate choice at 5%', () => {
     const config = JSON.parse(readFileSync(new URL('../../wrangler.jsonc', import.meta.url), 'utf8'));
     expect(config.vars.JEV_MODE).toBe('canary');
     expect(config.vars.JEV_CANARY_PERCENT).toBe('100');
-    for (const route of routes) {
+    for (const route of routes.filter(route => route.purpose !== 'candidate_choice')) {
       const enabled = route.purpose === 'focused_authorization' || route.purpose === 'focused_contextual_answer' || route.purpose === 'temporal_scope_repair';
       expect(config.vars[`JEV_${route.prefix}_MODE`]).toBe(enabled ? 'canary' : 'off');
       expect(config.vars[`JEV_${route.prefix}_CANARY_PERCENT`]).toBe(enabled ? '100' : '0');
@@ -93,6 +93,13 @@ describe('strict independent purpose configuration', () => {
         expect(route.selected(config.vars, sample)).toBe(enabled);
       }
     }
+    expect(config.vars.JEV_CANDIDATE_CHOICE_MODE).toBe('canary');
+    expect(config.vars.JEV_CANDIDATE_CHOICE_CANARY_PERCENT).toBe('5');
+    expect(resolveJevPurposeRollout(config.vars, 'candidate_choice')).toEqual({ mode: 'canary', canaryPercent: 5 });
+    for (const [sample, selected] of [[0, true], [0.0499, true], [0.05, false], [0.5, false], [0.9999, false]] as const) {
+      expect(jevPurposeCanarySelected(config.vars, 'candidate_choice', sample)).toBe(selected);
+    }
+
   });
 });
 
