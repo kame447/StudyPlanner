@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Pin } from 'lucide-react';
+import { useEditorMutation } from '../hooks/useEditorMutation';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { minutesFromTime, timeFromMinutes } from '../lib/date';
 import { expandPlansForDate, getRecurrenceWeekday } from '../lib/planRecurrence';
@@ -135,12 +136,7 @@ function QuickEntryEditor({
     getRecurrenceWeekday(selectedDate),
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const submissionInFlightRef = useRef(false);
-  const mountedRef = useRef(false);
-  useLayoutEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
+  const beginMutation = useEditorMutation();
   const isSupportedRepeatKind = isSupportedQuickEntryRepeatKind(repeatKind);
   const actualEndTime = calculateEndTime(actualStartTime, estimatedMinutes);
   const dayPlans = useMemo(
@@ -394,11 +390,12 @@ function QuickEntryEditor({
   }
 
   async function handleSaveLinkedActual(plan: Plan) {
-    if (!mountedRef.current || submissionInFlightRef.current || hasUnavailableMaterial || !actualEndTime || !title.trim()) {
+    if (hasUnavailableMaterial || !actualEndTime || !title.trim()) {
       return;
     }
 
-    submissionInFlightRef.current = true;
+    const operation = beginMutation();
+    if (!operation) return;
     setIsSubmitting(true);
     try {
       await onSaveLinkedActual(plan, {
@@ -413,23 +410,21 @@ function QuickEntryEditor({
         note: memo.trim(),
         ...getSelectedMaterialFields(),
       });
-      if (mountedRef.current) onClose();
+      if (operation.isCurrent()) onClose();
     } finally {
-      if (mountedRef.current) {
-        submissionInFlightRef.current = false;
-        setIsSubmitting(false);
-      }
+      if (operation.finish()) setIsSubmitting(false);
     }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!mountedRef.current || submissionInFlightRef.current || !canSave) {
+    if (!canSave) {
       return;
     }
 
-    submissionInFlightRef.current = true;
+    const operation = beginMutation();
+    if (!operation) return;
     setIsSubmitting(true);
     try {
       if (entryKind === 'actual') {
@@ -483,12 +478,9 @@ function QuickEntryEditor({
           pinned: todoPinned,
         });
       }
-      if (mountedRef.current) onClose();
+      if (operation.isCurrent()) onClose();
     } finally {
-      if (mountedRef.current) {
-        submissionInFlightRef.current = false;
-        setIsSubmitting(false);
-      }
+      if (operation.finish()) setIsSubmitting(false);
     }
   }
 
