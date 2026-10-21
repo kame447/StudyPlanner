@@ -55,7 +55,7 @@ export function createAuthRepository(
     async signInWithPassword(email, password) {
       const normalizedEmail = normalizeEmail(email);
       const passwordUserId = await storageGateway.findPasswordUserId(normalizedEmail, password);
-      if (!passwordUserId) {
+      if (passwordUserId === null) {
         throw new Error('メールアドレスまたはパスワードが一致しません。');
       }
 
