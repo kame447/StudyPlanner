@@ -29,13 +29,16 @@ describe('production Firestore write scope', () => {
   });
   it('detects nested approval-item writes and mixed allowed/forbidden batches', () => {
     const nested = { delete: `${name('weekly_planning_approval_operations')}/weekly_planning_approval_items/PRIVATE_CHILD` };
-    expect(classify(form(writes(update('weekly_planning_trace_entries'), nested)))).toEqual({
+    expect(classify(form(writes(update('profiles'), nested)))).toEqual({
       transport: 'write_channel', classification: 'forbidden',
-      collections: ['weekly_planning_approval_items', 'weekly_planning_approval_operations', 'weekly_planning_trace_entries'],
+      collections: ['profiles', 'weekly_planning_approval_items', 'weekly_planning_approval_operations'],
     });
   });
-  it.each(['profiles', 'weekly_planning_trace_sessions', 'weekly_planning_trace_entries'])('records explicitly allowed root %s writes, never silently discards them', collection => {
+  it.each(['profiles'])('records explicitly allowed root %s writes, never silently discards them', collection => {
     expect(classify(form(writes(update(collection))))).toEqual({ transport: 'write_channel', classification: 'allowed', collections: [collection] });
+  });
+  it.each(['weekly_planning_trace_sessions', 'weekly_planning_trace_entries'])('fails direct writes to production-denied %s', collection => {
+    expect(classify(form(writes(update(collection))))).toEqual({ transport: 'write_channel', classification: 'unclassified', collections: [collection] });
   });
   it('rejects unknown collections, nested children under an allowed root, and malformed mutations', () => {
     for (const write of [update('PRIVATE_UNKNOWN_COLLECTION'),
@@ -65,6 +68,26 @@ describe('production Firestore write scope', () => {
     }
     expect(classify(null, `${channel}&RID=rpc`, 'GET').classification).toBe('protocol');
     expect(classify(null, `${channel}&TYPE=terminate`, 'GET').classification).toBe('protocol');
+  });
+  it('accepts an authenticated SDK handshake without exporting the opaque headers', () => {
+    const headers = new URLSearchParams({ headers: 'Authorization: Bearer PRIVATE_AUTH_TOKEN\r\nX-Goog-AppCheck: PRIVATE_APP_CHECK\r\n' });
+    const observed = classify(`${headers}&${form({ database })}`);
+    expect(observed).toEqual({ transport: 'write_channel', classification: 'protocol', collections: [] });
+    const evidence = redactedSmokeEvidence({ firestoreWrites: [observed] });
+    expect(JSON.stringify(evidence)).not.toMatch(/PRIVATE_|Authorization|AppCheck|Bearer|headers/u);
+  });
+  it('still inspects every mutation after authenticated handshake headers, including mixed batches', () => {
+    const headers = new URLSearchParams({ headers: 'Authorization: Bearer PRIVATE_AUTH_TOKEN' });
+    const observed = classify(`${headers}&${form({ database }, writes(update('profiles'), update('plans')))}`);
+    expect(observed).toEqual({ transport: 'write_channel', classification: 'forbidden', collections: ['plans', 'profiles'] });
+    expect(JSON.stringify(observed)).not.toMatch(/PRIVATE_|headers|Bearer/u);
+  });
+  it('does not let opaque headers bypass unknown fields, malformed messages or duplicate metadata', () => {
+    const headers = new URLSearchParams({ headers: 'PRIVATE_AUTH_TOKEN' });
+    for (const body of [`${headers}&${form({ database })}&opaque=PRIVATE_PAYLOAD`,
+      `${headers}&count=1&req0___data__=not-json`, `${headers}&${headers}&${form({ database })}`]) {
+      expect(classify(body).classification).toBe('unclassified');
+    }
   });
   it('inspects every message in a WebChannel batch after its handshake', () => {
     expect(classify(form({ database }, writes(update('plans')))).classification).toBe('forbidden');

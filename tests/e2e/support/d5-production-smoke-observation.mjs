@@ -48,9 +48,11 @@ const PROTECTED_COLLECTIONS = new Set([
   'schedule_templates', 'timetable_terms', 'timetable_periods', 'study_rest_days', 'class_attendance',
 ]);
 // Root collections only. Auth may initialize/normalize a profile (firebaseAuthRepository.ts:ensureProfile).
-// The trace repository writes diagnostic sessions/entries, never schedules (weeklyPlanningTraceRepository.ts).
-const ALLOWED_COLLECTIONS = new Set(['profiles', 'weekly_planning_trace_sessions', 'weekly_planning_trace_entries']);
-const KNOWN_COLLECTIONS = new Set([...PROTECTED_COLLECTIONS, ...ALLOWED_COLLECTIONS]);
+const ALLOWED_COLLECTIONS = new Set(['profiles']);
+// Production uses remote/noop traces; direct trace writes are denied by Rules and fail classification.
+// Retain only their public collection names for the redacted failure evidence.
+const KNOWN_COLLECTIONS = new Set([...PROTECTED_COLLECTIONS, ...ALLOWED_COLLECTIONS,
+  'weekly_planning_trace_sessions', 'weekly_planning_trace_entries']);
 export function redactedWriteObservation(value) {
   return {
     transport: ['write_channel', 'commit', 'batch_write', 'rest'].includes(value?.transport) ? value.transport : 'unknown',
@@ -112,9 +114,10 @@ export function classifyFirestoreWrite({ url: rawUrl, method, postData }) {
         const form = new URLSearchParams(postData);
         const count = form.get('count');
         const messages = [...form.entries()].filter(([key]) => /^req\d+___data__$/u.test(key));
+        // encodeInitMessageHeaders puts credentials in this opaque form field. Never read/export its value.
         if (!/^\d+$/u.test(count ?? '') || Number(count) !== messages.length
           || new Set(form.keys()).size !== [...form.keys()].length
-          || [...form.keys()].some(key => !['count', 'ofs'].includes(key) && !/^req\d+___data__$/u.test(key))) return unknown();
+          || [...form.keys()].some(key => !['count', 'ofs', 'headers'].includes(key) && !/^req\d+___data__$/u.test(key))) return unknown();
         for (let i = 0; i < messages.length; i++) {
           const data = form.get(`req${i}___data__`);
           if (data === null) { malformed = true; continue; }
