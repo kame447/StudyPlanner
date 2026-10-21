@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { classifyFirestoreWrite, runProductionSmoke, waitForProductionComposer } from './support/d5-production-smoke-observation.mjs';
 import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../shared/d5AnswerPolicy.ts';
 import { productionDatabaseFromRequestUrl, readOwnedConversation, observeProductionComposerState, readProductionServerSnapshot, relatedActiveEffortEstimates, productionSmokeReflectedEstimate, consumedD5Request, boundOffRollbackCandidate, classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, productionSmokeExpectation, persistRedactedSmokeEvidence } from './support/d5-production-readonly.mjs';
-import { observeOwnAnswerTrace, observeAnswerCheckpoint } from './support/d5-production-readonly.mjs';
+import { observeOwnAnswerTrace, observeAnswerCheckpoint, readOwnedStableConversation, observeAnswerStores, isGroundedD5SmokeAck } from './support/d5-production-readonly.mjs';
 
 const secret = name => {
   const value = process.env[name]?.trim();
@@ -66,7 +66,7 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
   const evidence = { productionOrigin: classifyProductionOrigin(baseURL), frontendIdentity: 'unverified', expectation: productionSmokeExpectation(), outcome: 'incomplete', candidateChoice: [],
     d5Captured: false, d5Consumed: false, lunaFallbackRoute: null, activeEstimate: false, relatedActiveEstimates: [], relatedActiveEstimatesTruncated: false, reflectedEstimate: null, visibleAck: false,
     scheduleReadbackIdentical: false, approvalStartEvents: 0, approvalExecutions: null, scheduleWrites: 0, unclassifiedWrites: 0, firestoreWrites: [],
-    answerPhase: { pendingTurnPresent: null, newAssistant: null, receiptConsumed: null, alertPresent: null }, answerTrace: [], answerTraceTruncated: false,
+    answerPhase: { pendingTurnPresent: null, newAssistant: null, receiptConsumed: null, alertPresent: null }, answerStores: null, visibleAckObserved: null, answerTrace: [], answerTraceTruncated: false,
     step: 'target_preflight', failingStep: null, bodyError: null, readbackStep: null, readbackError: null, composerReadiness: 'unobserved', composerWaitPhase: null };
   const observations = new Map();
   const fallbackRequests = new Map();
@@ -223,6 +223,7 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
       && captured.basis.binding.target.id === target;
     const consumedBefore = pending.planningState.intakeState.c5SelectionLedger?.consumed.length ?? 0;
     const oldMessages = new Set(pending.planningState.messages.map(message => message.id));
+    const beforeAnswerIndex = await page.evaluate(owner => localStorage.getItem(`studyplanner.aiPlanning.chats.v1.${owner}`), identity.uid);
     evidence.step = 'answer_turn';
     try {
       await send(page, '15', identity, evidence);
@@ -233,8 +234,13 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
       }).toBe(true);
     } finally {
       // Failure observations must not overwrite the primary timeout or convert unread state into false.
-      const [checkpoint, alert] = await Promise.allSettled([
+      const [checkpoint, alert, owned, indexChanged, visibleTexts] = await Promise.allSettled([
         conversation(page, identity.uid), page.locator('.ai-planning-error[role="alert"]').isVisible(),
+        page.evaluate(readOwnedStableConversation, { owner: identity.uid, weekStartDate: pending.weekStartDate, conversationId: pending.conversationId }),
+        // Serialized metadata change, not access to React's in-memory index reference.
+        page.evaluate(({ owner, before }) => localStorage.getItem(`studyplanner.aiPlanning.chats.v1.${owner}`) !== before,
+          { owner: identity.uid, before: beforeAnswerIndex }),
+        page.locator('.ai-planning-message-row.assistant .ai-planning-bubble:visible').allTextContents(),
       ]);
       if (checkpoint.status === 'fulfilled') {
         const snapshot = checkpoint.value;
@@ -244,6 +250,17 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
         Object.assign(evidence.answerPhase, observeAnswerCheckpoint(snapshot, oldMessages, receipt));
       }
       if (alert.status === 'fulfilled') evidence.answerPhase.alertPresent = alert.value;
+      evidence.answerStores = observeAnswerStores(checkpoint.status === 'fulfilled' ? checkpoint.value : null,
+        owned.status === 'fulfilled' ? owned.value : null, oldMessages);
+      const ownedSnapshot = owned.status === 'fulfilled' ? owned.value : null;
+      if (ownedSnapshot) {
+        const receipts = ownedSnapshot.planningState.intakeState?.c5SelectionLedger?.consumed;
+        evidence.answerStores.owned.receiptConsumed = Array.isArray(receipts) && receipts.length === consumedBefore ? false
+          : Array.isArray(receipts) && [...observations.values()].some(({ request: r }) => consumedD5Request(ownedSnapshot, r, identity.uid, target)) ? true : null;
+      }
+      evidence.answerStores.chat.receiptConsumed = evidence.answerPhase.receiptConsumed;
+      if (indexChanged.status === 'fulfilled') evidence.answerStores.chatIndexChanged = indexChanged.value;
+      if (visibleTexts.status === 'fulfilled') evidence.visibleAckObserved = visibleTexts.value.some(isGroundedD5SmokeAck);
     }
     await Promise.all(responseTasks);
     evidence.step = 'answer_state';
@@ -258,8 +275,7 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     evidence.activeEstimate = evidence.reflectedEstimate !== null;
     const answer = after.planningState.messages.filter(message => message.role === 'assistant' && !oldMessages.has(message.id)).at(-1);
     // Synthetic setup only: the visible ACK must name math, 15 minutes and per-problem scope.
-    evidence.visibleAck = typeof answer?.content === 'string' && /数学/u.test(answer.content)
-      && /(?:1|１|一)問(?:あたり)?[^。！？\n]{0,20}(?:15|１５|十五)分/u.test(answer.content)
+    evidence.visibleAck = isGroundedD5SmokeAck(answer?.content)
       && await page.getByText(answer.content, { exact: true }).isVisible();
     const observed = [...observations.values()];
     evidence.d5Consumed = consumed.length === consumedBefore + 1 && observed.some(({ request: r, row, evaluated }) =>
@@ -298,6 +314,9 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
         'OFF rollback drill: captured D5 unavailable/off; Luna route/ACK verified. No D5 consumption.' });
     }
     evidence.step = 'network_evidence';
+    expect(evidence.answerStores?.replyStores, 'Committed assistant must survive in both owned and chat checkpoints').toBe('both');
+    expect(evidence.answerStores?.checkpointsAgree, 'Graph and complete planning state must agree across checkpoints').toBe(true);
+    expect(evidence.visibleAckObserved, 'DOM ACK observation runs independently of checkpoint success').toBe(true);
     expect(observationErrors.length, 'Network evidence must be complete').toBe(0);
     dialogueVerified = true;
   }, readback: async () => {

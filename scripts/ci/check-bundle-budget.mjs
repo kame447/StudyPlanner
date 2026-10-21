@@ -22,7 +22,8 @@ const budgets = {
     // Owner decision based on measured commit-rejection fallback increment, 2026-10-21 (#305 rejection fallback)
     // Base 8568c8aa -> guarded fallback: +2425/+608 aggregate raw/gzip,
     // +2425/+572 largest raw/gzip, including the audited checkpoint facade; no headroom.
-    totalRaw: 2_616_972,
+    // Owner decision: measured same-chat ownership fix adds +148 aggregate raw bytes (#305), no headroom.
+    totalRaw: 2_617_120,
     totalGzip: 711_893,
     largestRaw: 1_050_074,
     largestGzip: 289_210,
