@@ -453,6 +453,73 @@ for (const mode of modes) {
   });
 }
 
+// Exactly two bounded provider probes; the same assertions run with mock
+// providers by default. Each Playwright context starts a fresh conversation.
+for (const reply of ['十五分', '１５']) {
+  test(`D5 positive variant ${process.env.JEV_D5_LIVE === '1' ? 'live providers' : 'mock providers'}: ${reply}`, async ({ page }, testInfo) => {
+    test.setTimeout(liveBridge ? turnCompletionOptions().timeout * 2 * D5_LIVE_MAX_ATTEMPTS_PER_TURN + 30_000 : 60_000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const audit = await boot(page, 'd5');
+    await submit(page, audit, D5_SETUP);
+    const presented = await d5Snapshot(page);
+    await testInfo.attach('d5-variant-capture.json', { body: Buffer.from(JSON.stringify({ reply, presented, calls: audit.proxy }, null, 2)), contentType: 'application/json' });
+    expect(presented.state.intakeState.lastQuestionContext.controlledCandidate?.domainId).toBe('d5_numeric');
+    expect(presented.state.intakeState.lastQuestionContext.actionId).toContain('candidate-question:d5_numeric:');
+    expect(presented.state.intakeState.c5SelectionLedger.consumed).toEqual([]);
+    const targets = capturedD5Tasks(presented, audit);
+    const { calls } = await submit(page, audit, reply);
+    const snapshot = await d5Snapshot(page);
+    const candidates = calls.filter(call => call.body.decisionContext?.purpose === 'candidate_choice');
+    const rendererResponse = snapshot.events.filter(event => event.stage === 'dialogue_renderer_response').at(-1);
+    const rendererRequest = snapshot.events.filter(event => event.stage === 'dialogue_renderer_request'
+      && event.data.input.actionId === rendererResponse?.data.actionId).at(-1);
+    // Preserve abstention/fallback evidence before requiring D5 acceptance.
+    await testInfo.attach('d5-variant-readback.json', { body: Buffer.from(JSON.stringify({ reply, targets, calls, allCalls: audit.proxy, snapshot,
+      rendererRequest, rendererResponse }, null, 2)), contentType: 'application/json' });
+    expect(candidates).toHaveLength(1);
+    const request = candidates[0].body.decisionContext.request;
+    expect(request.wholeUtterance).toBe(reply);
+    expect(request.context.question.code).toBe('missing_effort_estimate');
+    expect(request.context.scope.domainPolicyVersion).toBe(D5_POLICY);
+    expect(request.context.target).toEqual({ kind: 'workload', id: targets.mathWorkload.id });
+    const leaves = request.menu.options.filter(option => option.kind === 'leaf' && option.candidate.tuple.minutes === 15);
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0].candidate.tuple).toMatchObject({ targetId: targets.mathWorkload.id,
+      measurement: 'duration_per_unit', minutes: 15, precision: 'exact', valueUnit: 'minute', perUnit: 'problem' });
+    const evaluation = candidates[0].response?.body ?? candidates[0].response;
+    expect(evaluation).toMatchObject({ status: 'evaluated', optionId: leaves[0].id });
+    expect(calls.filter(call => call.body.purpose === 'weekly_planning_semantic_normalizer')).toEqual(candidates);
+    expect(calls.every(call => call.body.decisionContext?.purpose === 'candidate_choice'
+      || call.body.purpose === 'weekly_planning_renderer')).toBe(true);
+    expect(snapshot.state.intakeState.c5SelectionLedger.consumed).toHaveLength(1);
+    expect(snapshot.state.intakeState.c5SelectionLedger.consumed).toMatchObject([
+      { candidateSetHash: request.candidateSetHash, candidateId: leaves[0].candidate.id },
+    ]);
+    const active = new Set(snapshot.graph.factLifecycles.filter(fact => fact.status === 'active').map(fact => fact.factId));
+    const efforts = snapshot.graph.effortEstimates.filter(fact => active.has(fact.id) && fact.taskId === targets.math.id);
+    expect(efforts).toHaveLength(1);
+    expect(efforts[0]).toMatchObject({ targetFactId: targets.mathWorkload.id, kind: 'duration_per_unit',
+      minutes: 15, unitCode: 'problem', precision: 'exact' });
+    expect(rendererResponse?.data.status).toBe('rendered');
+    const grounding = rendererRequest.data.input.currentTurnGrounding;
+    expect(grounding.mode).toBe('required_before_resume');
+    expect(grounding.acceptedFacts.filter(fact => fact.kind === 'effort_estimate')).toMatchObject([
+      { factId: efforts[0].id, data: { taskId: targets.math.id, targetFactId: targets.mathWorkload.id,
+        kind: 'duration_per_unit', minutes: 15, precision: 'exact', unitCode: 'problem' } },
+    ]);
+    const rendered = JSON.parse(rendererResponse.data.rawResponse);
+    expect(rendered.groundingAcknowledgement.factIds).toContain(efforts[0].id);
+    expect(rendered.groundingAcknowledgement.text.trim().length).toBeGreaterThan(0);
+    const message = snapshot.state.messages.at(-1);
+    expect(message.role).toBe('assistant');
+    expect(message.content).toBe(rendered.text.trim());
+    expect(message.content.startsWith(rendered.groundingAcknowledgement.text.trim())).toBe(true);
+    await expect(page.locator('.ai-planning-conversation').getByText(message.content, { exact: true }).last()).toBeVisible();
+    expect(await saved(page)).toEqual([]);
+    expect(audit.blockedExternal).toEqual([]);
+  });
+}
+
 for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
   test(`D5 connected ${process.env.JEV_D5_LIVE === '1' ? 'live providers' : 'mock providers'} ${viewport.width}: bare answer, grounded ACK, correction, save and reload`, async ({ page }, testInfo) => {
     test.setTimeout(liveBridge ? turnCompletionOptions().timeout * D5_CONNECTED_TURNS * D5_LIVE_MAX_ATTEMPTS_PER_TURN + 30_000 : 60_000);
