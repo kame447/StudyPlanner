@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { classifyFirestoreWrite, runProductionSmoke, classifyComposerReadiness, waitForProductionComposer, D5_UI_TURN_WAIT_MS, D5_UI_TEST_TIMEOUT_MS } from '../tests/e2e/support/d5-production-smoke-observation.mjs';
-import { persistRedactedSmokeEvidence, redactedSmokeEvidence, observeProductionComposerState } from '../tests/e2e/support/d5-production-readonly.mjs';
+import { persistRedactedSmokeEvidence, redactedSmokeEvidence, observeProductionComposerState, relatedActiveEffortEstimates } from '../tests/e2e/support/d5-production-readonly.mjs';
 
 const database = 'projects/fixture/databases/(default)';
 const documents = `${database}/documents`;
@@ -253,5 +253,62 @@ describe('bounded production composer readiness', () => {
       snapshot.ownerId = 'FOREIGN_OWNER';
       expect(classifyComposerReadiness(observeProductionComposerState(owner))).toBe('unreadable');
     } finally { vi.unstubAllGlobals(); }
+  });
+});
+
+
+describe('bounded active-effort diagnostics without widening the estimate oracle', () => {
+  const graph = () => ({ tasks: [{ id: 'PRIVATE_MATH_TASK' }, { id: 'PRIVATE_ENGLISH_TASK' }],
+    components: [{ id: 'PRIVATE_COMPONENT', taskId: 'PRIVATE_MATH_TASK' }],
+    workloads: [{ id: 'PRIVATE_QUESTION', taskId: 'PRIVATE_MATH_TASK' }, { id: 'PRIVATE_OTHER_WORKLOAD', taskId: 'PRIVATE_MATH_TASK' },
+      { id: 'PRIVATE_ENGLISH_WORKLOAD', taskId: 'PRIVATE_ENGLISH_TASK' }],
+    effortEstimates: [], factLifecycles: [] });
+  const scope = { mathTaskId: 'PRIVATE_MATH_TASK', questionTopicId: 'PRIVATE_QUESTION' };
+  function add(graph, target, overrides = {}, active = true) {
+    const id = `PRIVATE_ESTIMATE_${graph.effortEstimates.length}`;
+    graph.effortEstimates.push({ id, taskId: scope.mathTaskId, targetFactId: target, kind: 'duration_per_unit', minutes: 15,
+      unitCode: 'problem', precision: 'exact', source: { sourceText: 'PRIVATE_USER_TEXT', turnId: 'PRIVATE_TURN' }, ...overrides });
+    graph.factLifecycles.push({ factId: id, status: active ? 'active' : 'superseded' });
+  }
+  it('distinguishes question/workload/task/component and cross-task targets; omits unrelated and inactive facts', () => {
+    const value = graph();
+    add(value, 'PRIVATE_QUESTION'); add(value, 'PRIVATE_OTHER_WORKLOAD'); add(value, 'PRIVATE_MATH_TASK'); add(value, 'PRIVATE_COMPONENT');
+    add(value, 'PRIVATE_ENGLISH_WORKLOAD');
+    add(value, 'PRIVATE_QUESTION', { taskId: 'PRIVATE_ENGLISH_TASK' });
+    add(value, 'PRIVATE_ENGLISH_WORKLOAD', { taskId: 'PRIVATE_ENGLISH_TASK' });
+    add(value, 'PRIVATE_QUESTION', { minutes: 99 }, false);
+    const projected = relatedActiveEffortEstimates(value, scope);
+    expect(projected.estimates.map(row => row.targetRelation)).toEqual(['question_topic', 'same_task_workload', 'same_task', 'same_task', 'other_task', 'other_task']);
+    expect(projected.estimates.every(row => row.minutes === 15)).toBe(true);
+    expect(projected.truncated).toBe(false);
+    expect(JSON.stringify(projected)).not.toContain('PRIVATE_');
+  });
+  it.each(['exact', 'approximate', 'unspecified'])('keeps %s precision visible without treating it as exact', precision => {
+    const value = graph(); add(value, 'PRIVATE_QUESTION', { precision });
+    expect(relatedActiveEffortEstimates(value, scope).estimates[0]).toEqual({
+      kind: 'duration_per_unit', minutes: 15, unitCode: 'problem', precision, targetRelation: 'question_topic',
+    });
+  });
+  it('preserves different kinds, numeric values and null units for diagnosis', () => {
+    const value = graph(); add(value, 'PRIVATE_QUESTION', { kind: 'total_duration', minutes: 300, unitCode: null });
+    add(value, 'PRIVATE_QUESTION', { kind: 'session_duration', minutes: 15.5, unitCode: 'session' });
+    expect(relatedActiveEffortEstimates(value, scope).estimates).toMatchObject([
+      { kind: 'total_duration', minutes: 300, unitCode: null }, { kind: 'session_duration', minutes: 15.5, unitCode: 'session' },
+    ]);
+  });
+  it('redacts arbitrary strings/ids/text even in known diagnostic fields, and rejects invalid numbers', () => {
+    const rows = [NaN, Infinity, -1, 1_000_001, 'PRIVATE_NUMBER'].map(minutes => ({
+      kind: 'PRIVATE_KIND', minutes, unitCode: 'PRIVATE_UNIT', precision: 'PRIVATE_PRECISION', targetRelation: 'PRIVATE_ID', text: 'PRIVATE_USER_TEXT',
+    }));
+    const exported = redactedSmokeEvidence({ relatedActiveEstimates: rows });
+    expect(exported.relatedActiveEstimates.every(row => row.minutes === null && row.kind === 'unknown')).toBe(true);
+    expect(JSON.stringify(exported)).not.toContain('PRIVATE_');
+  });
+  it('bounds both direct projection and final export, marking truncation instead of silently losing scope', () => {
+    const value = graph(); for (let index = 0; index < 65; index++) add(value, 'PRIVATE_QUESTION');
+    const projected = relatedActiveEffortEstimates(value, scope);
+    expect(projected.estimates).toHaveLength(64); expect(projected.truncated).toBe(true);
+    const exported = redactedSmokeEvidence({ relatedActiveEstimates: Array(65).fill(projected.estimates[0]) });
+    expect(exported.relatedActiveEstimates).toHaveLength(64); expect(exported.relatedActiveEstimatesTruncated).toBe(true);
   });
 });

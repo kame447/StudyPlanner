@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { classifyFirestoreWrite, runProductionSmoke, waitForProductionComposer } from './support/d5-production-smoke-observation.mjs';
 import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../shared/d5AnswerPolicy.ts';
-import { productionDatabaseFromRequestUrl, readOwnedConversation, observeProductionComposerState, readProductionServerSnapshot, consumedD5Request, boundOffRollbackCandidate, classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, productionSmokeExpectation, persistRedactedSmokeEvidence } from './support/d5-production-readonly.mjs';
+import { productionDatabaseFromRequestUrl, readOwnedConversation, observeProductionComposerState, readProductionServerSnapshot, relatedActiveEffortEstimates, consumedD5Request, boundOffRollbackCandidate, classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, productionSmokeExpectation, persistRedactedSmokeEvidence } from './support/d5-production-readonly.mjs';
 
 const secret = name => {
   const value = process.env[name]?.trim();
@@ -63,7 +63,7 @@ async function send(page, text, identity, evidence) {
 
 test('explicit production D5 smoke preserves all schedules and never approves', async ({ page, baseURL }, testInfo) => {
   const evidence = { productionOrigin: classifyProductionOrigin(baseURL), frontendIdentity: 'unverified', expectation: productionSmokeExpectation(), outcome: 'incomplete', candidateChoice: [],
-    d5Captured: false, d5Consumed: false, lunaFallbackRoute: null, activeEstimate: false, reflectedEstimate: null, visibleAck: false,
+    d5Captured: false, d5Consumed: false, lunaFallbackRoute: null, activeEstimate: false, relatedActiveEstimates: [], relatedActiveEstimatesTruncated: false, reflectedEstimate: null, visibleAck: false,
     scheduleReadbackIdentical: false, approvalStartEvents: 0, approvalExecutions: null, scheduleWrites: 0, unclassifiedWrites: 0, firestoreWrites: [],
     step: 'target_preflight', failingStep: null, bodyError: null, readbackStep: null, readbackError: null, composerReadiness: 'unobserved', composerWaitPhase: null };
   const observations = new Map();
@@ -229,6 +229,9 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     expect(after.planningState.approvalRecovery == null, 'No approval execution/recovery').toBe(true);
     const consumed = after.planningState.intakeState.c5SelectionLedger?.consumed ?? [];
     const active = new Set(after.graph.factLifecycles.filter(fact => fact.status === 'active').map(fact => fact.factId));
+    const related = relatedActiveEffortEstimates(after.graph, { mathTaskId: targetTask.id, questionTopicId: target });
+    evidence.relatedActiveEstimates = related.estimates;
+    evidence.relatedActiveEstimatesTruncated = related.truncated;
     evidence.activeEstimate = after.graph.effortEstimates.some(estimate => active.has(estimate.id)
       && estimate.targetFactId === target && estimate.kind === 'duration_per_unit' && estimate.minutes === 15
       && estimate.unitCode === 'problem' && estimate.precision === 'exact');

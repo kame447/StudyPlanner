@@ -146,6 +146,36 @@ export function observeProductionComposerState(owner) {
     listening: Boolean(document.querySelector('button[aria-label="音声入力を停止"][aria-pressed="true"]')) };
 }
 
+const EFFORT_KINDS = ['total_duration', 'duration_per_unit', 'session_duration'];
+const EFFORT_UNITS = ['minute', 'hour', 'page', 'problem', 'word', 'lesson', 'chapter', 'section', 'exam_year', 'mock_exam', 'session', 'custom'];
+const EFFORT_PRECISIONS = ['exact', 'approximate', 'unspecified'];
+const EFFORT_TARGET_RELATIONS = ['question_topic', 'same_task_workload', 'same_task', 'other_task'];
+const MAX_RELATED_ESTIMATES = 64;
+export function redactedRelatedEffortEstimate(value) {
+  return { kind: EFFORT_KINDS.includes(value?.kind) ? value.kind : 'unknown',
+    minutes: typeof value?.minutes === 'number' && Number.isFinite(value.minutes) && value.minutes > 0 && value.minutes <= 1_000_000 ? value.minutes : null,
+    unitCode: value?.unitCode === null ? null : EFFORT_UNITS.includes(value?.unitCode) ? value.unitCode : 'unknown',
+    precision: EFFORT_PRECISIONS.includes(value?.precision) ? value.precision : 'unknown',
+    targetRelation: EFFORT_TARGET_RELATIONS.includes(value?.targetRelation) ? value.targetRelation : 'unknown' };
+}
+/** Diagnostics only. This projection never authorizes an answer or changes the strict estimate oracle. */
+export function relatedActiveEffortEstimates(graph, { mathTaskId, questionTopicId }) {
+  const active = new Set(graph.factLifecycles.filter(fact => fact.status === 'active').map(fact => fact.factId));
+  const workloadIds = new Set(graph.workloads.filter(workload => workload.taskId === mathTaskId).map(workload => workload.id));
+  const componentIds = new Set(graph.components.filter(component => component.taskId === mathTaskId).map(component => component.id));
+  const related = graph.effortEstimates.filter(estimate => active.has(estimate.id)
+    && (estimate.taskId === mathTaskId || estimate.targetFactId === questionTopicId || estimate.targetFactId === mathTaskId
+      || workloadIds.has(estimate.targetFactId) || componentIds.has(estimate.targetFactId)));
+  return { truncated: related.length > MAX_RELATED_ESTIMATES,
+    estimates: related.slice(0, MAX_RELATED_ESTIMATES).map(estimate => redactedRelatedEffortEstimate({
+      kind: estimate.kind, minutes: estimate.minutes, unitCode: estimate.unitCode, precision: estimate.precision,
+      targetRelation: estimate.taskId !== mathTaskId ? 'other_task'
+        : estimate.targetFactId === questionTopicId ? 'question_topic'
+          : workloadIds.has(estimate.targetFactId) ? 'same_task_workload'
+            : estimate.targetFactId === mathTaskId || componentIds.has(estimate.targetFactId) ? 'same_task' : 'other_task',
+    })) };
+}
+
 /** Export only bounded machine/test outcomes, never raw diagnostics or arbitrary strings. */
 export function redactedSmokeEvidence(value) {
   const oneOf = (input, allowed, fallback = null) => allowed.includes(input) ? input : fallback;
@@ -172,6 +202,10 @@ export function redactedSmokeEvidence(value) {
     d5Captured: boolean(value.d5Captured), d5Consumed: boolean(value.d5Consumed),
     lunaFallbackRoute: oneOf(value.lunaFallbackRoute, ['completed_direct_semantic_normalizer', 'completed_durable_semantic_normalizer']),
     activeEstimate: boolean(value.activeEstimate),
+    relatedActiveEstimates: (Array.isArray(value.relatedActiveEstimates) ? value.relatedActiveEstimates : [])
+      .slice(0, MAX_RELATED_ESTIMATES).map(redactedRelatedEffortEstimate),
+    relatedActiveEstimatesTruncated: value.relatedActiveEstimatesTruncated === true
+      || Array.isArray(value.relatedActiveEstimates) && value.relatedActiveEstimates.length > MAX_RELATED_ESTIMATES,
     reflectedEstimate: value.reflectedEstimate?.minutes === 15 && value.reflectedEstimate.measurement === 'duration_per_unit'
       && value.reflectedEstimate.unit === 'problem' && value.reflectedEstimate.precision === 'exact'
       ? { minutes: 15, measurement: 'duration_per_unit', unit: 'problem', precision: 'exact' } : null,
