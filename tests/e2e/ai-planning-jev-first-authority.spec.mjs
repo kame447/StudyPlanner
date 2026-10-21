@@ -91,8 +91,27 @@ async function d5Snapshot(page) {
     return { state, openSubmissions: globalThis.__d5OpenSubmissions ?? 0, events: globalThis.__d5DebugEvents ?? [], devRegistry: globalThis.__d5DevRegistry ?? null, graph: conversationId ? getWeeklyPlanningStableV5RuntimeSession(conversationId)?.graph : null };
   }, root);
 }
-async function allocationOracle(page, graph) {
-  return page.evaluate(async ({ rootPath, graph }) => {
+function capturedD5Tasks(snapshot, audit) {
+  const question = snapshot.state.intakeState.lastQuestionContext;
+  const targetId = question.topicId;
+  expect(question.controlledCandidate.basis.binding.target).toEqual({ kind: 'workload', id: targetId });
+  const active = new Set(snapshot.graph.factLifecycles.filter(fact => fact.status === 'active').map(fact => fact.factId));
+  const mathWorkloads = snapshot.graph.workloads.filter(workload => active.has(workload.id) && workload.id === targetId);
+  expect(mathWorkloads).toHaveLength(1);
+  const mathWorkload = mathWorkloads[0];
+  expect(mathWorkload).toMatchObject({ amount: 20, unitCode: 'problem' });
+  const math = snapshot.graph.tasks.find(task => active.has(task.id) && task.id === mathWorkload.taskId);
+  expect(math).toBeTruthy();
+  const englishWorkloads = snapshot.graph.workloads.filter(workload => active.has(workload.id)
+    && workload.taskId !== math.id && workload.quantityRole === 'target' && workload.amount === 15 && workload.unitCode === 'page');
+  expect(englishWorkloads).toHaveLength(1);
+  const english = snapshot.graph.tasks.find(task => active.has(task.id) && task.id === englishWorkloads[0].taskId);
+  expect(english).toBeTruthy();
+  audit.d5TargetId = mathWorkload.id;
+  return { math, mathWorkload, english, englishWorkload: englishWorkloads[0] };
+}
+async function allocationOracle(page, graph, targets) {
+  return page.evaluate(async ({ rootPath, graph, mathTaskId, englishTaskId }) => {
     const at = path => `/@fs${rootPath}/src/features/weeklyPlanning/semantic/${path}.ts`;
     const { createWeeklyPlanningActiveSchedulerGraphViewV5 } = await import(at('weeklyPlanningActiveSchedulerGraphViewV5'));
     const { compileGenericSchedulerInput } = await import(at('weeklyPlanningGenericSchedulerInput'));
@@ -105,9 +124,21 @@ async function allocationOracle(page, graph) {
     const preview = scheduleWeeklyPlanningStableV5Preview({ input: compiled.input, graph: createWeeklyPlanningPlacementGraphViewV5(active),
       plans: [], scheduleTemplates: [], notBefore: { date: '2026-08-19', time: '10:00' } });
     if (preview.status !== 'ready') throw new Error('Fresh-graph oracle placement failed');
-    const sum = title => preview.candidates.filter(c => c.title.includes(title)).reduce((total, c) => total + c.durationMinutes, 0);
-    return { math: sum('数学'), english: sum('英語') };
-  }, { rootPath: root, graph });
+    const sum = taskId => preview.candidates.filter(candidate => candidate.stableV5Metadata?.taskId === taskId)
+      .reduce((total, candidate) => total + candidate.durationMinutes, 0);
+    return { math: sum(mathTaskId), english: sum(englishTaskId) };
+  }, { rootPath: root, graph, mathTaskId: targets.math.id, englishTaskId: targets.english.id });
+}
+async function savedTaskMapping(page, events, blocks) {
+  return page.evaluate(async ({ rootPath, events, blocks }) => {
+    const { parseWeeklyPlanningPlanSourceId } = await import(`/@fs${rootPath}/src/features/weeklyPlanning/planning/weeklyPlanningPlanProvenance.ts`);
+    return events.map(event => {
+      const identity = parseWeeklyPlanningPlanSourceId(event.provenance?.sourceId);
+      const block = identity && blocks.find(block => block.id === identity.sourceDraftBlockId);
+      if (!block?.behaviorMetadata?.taskRef) throw new Error(`Saved event has no formal preview/task reference: ${event.id}`);
+      return { eventId: event.id, planId: event.provenance.legacy.id, sourceDraftBlockId: block.id, taskId: block.behaviorMetadata.taskRef };
+    });
+  }, { rootPath: root, events, blocks });
 }
 const eventMinutes = event => {
   const minutes = value => { const [h, m] = value.split(':').map(Number); return h * 60 + m; };
@@ -217,8 +248,9 @@ async function boot(page, mode) {
         else if (input.userText === D5_CORRECTION || input.userText === '15') {
           if (input.userText === '15' && mode === 'd5 retry') return route.fulfill({ status: 502, json: { error: 'Synthetic Luna outage' } });
           const state = input.publicStateSummary;
-          const task = state.tasks.find(t => t.title === '数学');
-          const workload = state.workloads.find(w => w.taskPublicId === task.publicId && w.quantityRole === 'target');
+          const workload = state.workloads.find(w => w.publicId === (audit.d5TargetId ?? state.pendingQuestion?.targetFactId));
+          expect(workload).toBeTruthy();
+          const task = state.tasks.find(t => t.publicId === workload.taskPublicId);
           const old = state.effortEstimates.find(e => e.taskPublicId === task.publicId);
           content = delta('update_plan');
           content.tasks = [{ ...d5InitialConditions().tasks[0], localId: 'corrected-task', existingPublicId: task.publicId,
@@ -393,22 +425,25 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await testInfo.attach('d5-capture-state.json', { body: Buffer.from(JSON.stringify({ presented, renderer: audit.proxy.filter(c => c.schema === 'weekly_planning_stable_v5_dialogue_response').at(-1) }, null, 2)), contentType: 'application/json' });
     expect(presented.state.intakeState.lastQuestionContext.controlledCandidate?.domainId).toBe('d5_numeric');
     expect(presented.state.intakeState.lastQuestionContext.actionId).toContain('candidate-question:d5_numeric:');
+    const targets = capturedD5Tasks(presented, audit);
     const { calls: answerCalls } = await submit(page, audit, '15');
     const selected = answerCalls.filter(c => c.body.decisionContext?.purpose === 'candidate_choice');
     expect(selected).toHaveLength(1);
     expect(selected[0].body.decisionContext.request.context.scope.domainPolicyVersion).toBe(D5_POLICY);
+    expect(selected[0].body.decisionContext.request.context.target.id).toBe(targets.mathWorkload.id);
     expect(selected[0].body.decisionContext.request.menu.options.some(o => o.kind === 'leaf' && o.candidate.tuple.minutes === 15)).toBe(true);
     expect(answerCalls.filter(c => c.body.purpose === 'weekly_planning_semantic_normalizer')).toEqual(selected);
     expect(answerCalls.every(c => c.body.decisionContext?.purpose === 'candidate_choice' || c.body.purpose === 'weekly_planning_renderer')).toBe(true);
     let snapshot = await d5Snapshot(page);
     expect(snapshot.state.intakeState.c5SelectionLedger.consumed).toHaveLength(1);
-    const mathTask = snapshot.graph.tasks.find(t => t.title === '数学');
+    const mathTask = targets.math;
     const active = graph => new Set(graph.factLifecycles.filter(f => f.status === 'active').map(f => f.factId));
-    expect(snapshot.graph.effortEstimates.filter(e => active(snapshot.graph).has(e.id) && e.taskId === mathTask.id)).toMatchObject([{ minutes: 15 }]);
+    const initialMathEfforts = snapshot.graph.effortEstimates.filter(e => active(snapshot.graph).has(e.id) && e.taskId === mathTask.id);
+    expect(initialMathEfforts).toMatchObject([{ targetFactId: targets.mathWorkload.id, kind: 'duration_per_unit', minutes: 15, unitCode: 'problem' }]);
     expect(snapshot.state.messages.at(-1).content).toMatch(/数学.*15分/);
     expect(snapshot.state.messages.at(-1).content).not.toContain('保存しました');
     await page.screenshot({ path: testInfo.outputPath('d5-grounded-ack.png'), fullPage: true });
-    const oldAllocation = await allocationOracle(page, snapshot.graph);
+    const oldAllocation = await allocationOracle(page, snapshot.graph, targets);
     const englishBefore = snapshot.graph.effortEstimates.filter(e => active(snapshot.graph).has(e.id) && e.taskId !== mathTask.id);
     expect(englishBefore).toMatchObject([{ kind: 'total_duration', minutes: 45 }]);
     await submit(page, audit, D5_CORRECTION);
@@ -417,7 +452,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     expect(snapshot.graph.effortEstimates.filter(e => active(snapshot.graph).has(e.id) && e.taskId === mathTask.id)).toMatchObject([{ kind: 'total_duration', minutes: 60 }]);
     expect(snapshot.state.messages.at(-1).content).toMatch(/数学.*全部で60分/);
     expect(snapshot.graph.effortEstimates.filter(e => active(snapshot.graph).has(e.id) && e.taskId !== mathTask.id)).toEqual(englishBefore);
-    const correctedAllocation = await allocationOracle(page, snapshot.graph);
+    const correctedAllocation = await allocationOracle(page, snapshot.graph, targets);
     expect(correctedAllocation.math).not.toBe(oldAllocation.math);
     expect(correctedAllocation.english).toBe(oldAllocation.english);
     await submit(page, audit, AUTHORIZATION);
@@ -425,8 +460,18 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await page.screenshot({ path: testInfo.outputPath('d5-corrected-preview.png'), fullPage: true });
     expect(await saved(page)).toEqual([]);
     await dialog.getByRole('button', { name: 'この内容で仮予定にする' }).click();
+    const approve = dialog.getByRole('button', { name: 'この内容で保存' });
+    await expect(approve).toBeEnabled();
+    const draftBlocks = (await d5Snapshot(page)).state.draftBlocks;
+    const mathBlocks = draftBlocks.filter(block => block.behaviorMetadata?.taskRef === mathTask.id);
+    expect(mathBlocks.length).toBeGreaterThan(0);
+    const correctedMathEffort = snapshot.graph.effortEstimates.find(e => active(snapshot.graph).has(e.id) && e.taskId === mathTask.id);
+    for (const block of mathBlocks) {
+      expect(block.behaviorMetadata.sourceFactRefs).toContain(correctedMathEffort.id);
+      for (const old of initialMathEfforts) expect(block.behaviorMetadata.sourceFactRefs).not.toContain(old.id);
+    }
     const writeCountBefore = await page.evaluate(() => window.__plannerRecoveryStorageWrites.filter(w => w.key === 'studyplanner.scheduleEvents.v1').length);
-    await dialog.getByRole('button', { name: 'この内容で保存' }).evaluate(button => { button.click(); button.click(); });
+    await approve.evaluate(button => { button.click(); button.click(); });
     await expect.poll(async () => (await saved(page)).length).toBeGreaterThan(0);
     await expect(dialog).toHaveCount(0); // The entire sequential approval has finished.
     const committed = await saved(page);
@@ -448,10 +493,12 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       previous = written;
     }
     expect(previous).toEqual(committed);
-    await testInfo.attach('d5-saved-readback.json', { body: Buffer.from(JSON.stringify({ correctedAllocation, committed })), contentType: 'application/json' });
-    const mathPlans = committed.filter(p => p.title.includes('数学'));
+    const taskMapping = await savedTaskMapping(page, committed, draftBlocks);
+    await testInfo.attach('d5-saved-readback.json', { body: Buffer.from(JSON.stringify({ targets, correctedAllocation, draftBlocks, taskMapping, committed })), contentType: 'application/json' });
+    const plansFor = taskId => committed.filter(event => taskMapping.some(mapping => mapping.eventId === event.id && mapping.taskId === taskId));
+    const mathPlans = plansFor(mathTask.id);
     expect(mathPlans.reduce((sum, plan) => sum + eventMinutes(plan), 0)).toBe(correctedAllocation.math);
-    expect(committed.filter(p => p.title.includes('英語')).reduce((sum, plan) => sum + eventMinutes(plan), 0)).toBe(oldAllocation.english);
+    expect(plansFor(targets.english.id).reduce((sum, plan) => sum + eventMinutes(plan), 0)).toBe(oldAllocation.english);
     expect(new Set(committed.map(p => p.id)).size).toBe(committed.length);
     const beforeReload = audit.proxy.length;
     await reloadOwned(page);
@@ -474,8 +521,7 @@ for (const reply of ['15ページ', '英語は15分', '全部で15分', '15分�
     expect(before.state.intakeState.lastQuestionContext.controlledCandidate?.domainId).toBe('d5_numeric');
     expect(before.state.intakeState.lastQuestionContext.controlledCandidate.domainPolicyVersion).toBe(D5_POLICY);
     expect(before.state.intakeState.c5SelectionLedger.consumed).toEqual([]);
-    const math = before.graph.tasks.find(task => task.title === '数学');
-    const english = before.graph.tasks.find(task => task.title === '英語');
+    const { math, english } = capturedD5Tasks(before, audit);
     const { calls } = await submit(page, audit, reply);
     const candidateCalls = calls.filter(call => call.body.decisionContext?.purpose === 'candidate_choice');
     const fallbackCalls = calls.filter(call => call.body.purpose === 'weekly_planning_semantic_normalizer'
@@ -534,6 +580,7 @@ test('D5 mock cancelled late choice cannot restore stale effort', async ({ page 
   test.setTimeout(90_000);
   const audit = await boot(page, 'd5');
   await submit(page, audit, D5_SETUP);
+  const targets = capturedD5Tasks(await d5Snapshot(page), audit);
   audit.holdNextCandidate = true;
   await composer(page).fill('15'); await page.getByRole('button', { name: '送信', exact: true }).click();
   await expect.poll(() => Boolean(audit.releaseCandidate)).toBe(true);
@@ -549,7 +596,7 @@ test('D5 mock cancelled late choice cannot restore stale effort', async ({ page 
   await expect.poll(async () => (await d5Snapshot(page)).openSubmissions).toBe(0);
   const after = await d5Snapshot(page);
   const active = new Set(after.graph.factLifecycles.filter(f => f.status === 'active').map(f => f.factId));
-  const math = after.graph.tasks.find(t => t.title === '数学');
+  const math = after.graph.tasks.find(task => task.id === targets.math.id);
   expect(after.graph.effortEstimates.filter(e => active.has(e.id) && e.taskId === math.id)).toMatchObject([{ kind: 'total_duration', minutes: 60 }]);
   expect(after.graph).toEqual(corrected.graph);
   expect(after.state.intakeState.c5SelectionLedger.consumed).toEqual([]);
@@ -560,6 +607,7 @@ test('D5 mock renderer error then retry keeps effort atomic without duplicates',
   test.skip(Boolean(liveBridge), 'Mock renderer outage, no live fault sends'); test.setTimeout(90_000);
   const audit = await boot(page, 'd5'); await submit(page, audit, D5_SETUP);
   const before = await d5Snapshot(page);
+  const targets = capturedD5Tasks(before, audit);
   audit.failRendererAttempts = 2;
   await submit(page, audit, '15');
   const failed = await d5Snapshot(page);
@@ -569,7 +617,7 @@ test('D5 mock renderer error then retry keeps effort atomic without duplicates',
   await submit(page, audit, '15');
   const retried = await d5Snapshot(page);
   const ids = new Set(retried.graph.factLifecycles.filter(f => f.status === 'active').map(f => f.factId));
-  const math = retried.graph.tasks.find(t => t.title === '数学');
+  const math = retried.graph.tasks.find(task => task.id === targets.math.id);
   expect(retried.graph.effortEstimates.filter(e => ids.has(e.id) && e.taskId === math.id)).toMatchObject([{ minutes: 15 }]);
   expect(await saved(page)).toEqual([]);
   const callsBeforeReload = audit.proxy.length; await reloadOwned(page);
