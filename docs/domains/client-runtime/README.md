@@ -21,6 +21,8 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Class-schedule commit lifetime](work/class-schedule-commit-lifetime-handoff.md) — retire old schedule-save completion before it can dismiss a replacement attendance form.
+
 - [Existing linked-Actual write read](work/actual-existing-write-read-handoff.md) — Issue #542; reuse save-attempt existence evidence while retaining transaction rereads and fail-closed deletion handling.
 
 - [Non-spatial data motion geometry](work/nonspatial-data-motion-layout-handoff.md) — skip unused rectangle measurements while preserving motion baselines and reduced feedback.
