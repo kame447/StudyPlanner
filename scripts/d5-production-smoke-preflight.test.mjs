@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildSync } from 'esbuild';
-import { productionDatabaseFromRequestUrl, readProductionServerSnapshot, classifyProductionOrigin, verifyFrontendIdentity, persistRedactedSmokeEvidence } from '../tests/e2e/support/d5-production-readonly.mjs';
+import { productionDatabaseFromRequestUrl, readProductionServerSnapshot, classifyProductionOrigin, verifyFrontendIdentity, productionSmokeExpectation, persistRedactedSmokeEvidence } from '../tests/e2e/support/d5-production-readonly.mjs';
 
 const database = 'projects/smoke-fixture/databases/(default)';
 const prefix = `${database}/documents`;
@@ -45,13 +45,13 @@ const configCode = buildSync({ stdin: {
 }, bundle: true, platform: 'node', format: 'cjs', write: false,
   plugins: undefined, external: ['@playwright/test'],
 }).outputFiles[0].text;
-function loadConfig(base, sha) {
+function loadConfig(base, sha, flags = {}) {
   if (arguments.length === 1) sha = 'a'.repeat(40);
   vi.stubEnv('STUDYPLANNER_LIVE_BASE_URL', base);
   vi.stubEnv('EXPECTED_FRONTEND_SHA', sha);
   vi.stubEnv('D5_PRODUCTION_SMOKE', '1');
-  vi.stubEnv('EXPECT_JEV', '0');
-  vi.stubEnv('EXPECT_FALLBACK', '0');
+  vi.stubEnv('EXPECT_JEV', flags.EXPECT_JEV);
+  vi.stubEnv('EXPECT_FALLBACK', flags.EXPECT_FALLBACK);
   const module = { exports: {} };
   const nativeRequire = createRequire(import.meta.url);
   const require = name => name === '@playwright/test'
@@ -98,6 +98,29 @@ describe('D5 production target and identity guard', () => {
     expect(verifyFrontendIdentity('a'.repeat(40), 'a'.repeat(40))).toBe('match');
     expect(() => verifyFrontendIdentity('a'.repeat(40), 'b'.repeat(40))).toThrow('frontend_identity_mismatch');
     expect(() => verifyFrontendIdentity('a'.repeat(40), '')).toThrow('frontend_identity_mismatch');
+  });
+});
+
+describe('D5 production verification modes', () => {
+  it.each([
+    [{}, 'EXPECT_JEV'],
+    [{ EXPECT_JEV: '1', EXPECT_FALLBACK: '0' }, 'EXPECT_JEV'],
+    [{ EXPECT_FALLBACK: '1' }, 'EXPECT_FALLBACK'],
+    [{ EXPECT_JEV: '0', EXPECT_FALLBACK: '1' }, 'EXPECT_FALLBACK'],
+  ])('selects one verification contract for %j', (flags, expectation) => {
+    expect(productionSmokeExpectation(flags)).toBe(expectation);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    expect(loadConfig('https://laplance.com', 'a'.repeat(40), flags).retries).toBe(0);
+  });
+  it.each([
+    { EXPECT_JEV: '1', EXPECT_FALLBACK: '1' },
+    { EXPECT_JEV: '0', EXPECT_FALLBACK: '0' },
+    { EXPECT_JEV: 'invalid' },
+    { EXPECT_FALLBACK: 'invalid' },
+  ])('rejects an ambiguous or invalid contract before browser execution: %j', flags => {
+    expect(() => productionSmokeExpectation(flags)).toThrow();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    expect(() => loadConfig('https://laplance.com', 'a'.repeat(40), flags)).toThrow();
   });
 });
 

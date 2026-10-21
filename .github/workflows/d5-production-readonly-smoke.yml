@@ -3,14 +3,14 @@ name: D5 Production Read-only Smoke
 on:
   workflow_dispatch:
     inputs:
-      expect_jev:
-        description: 'Require Jev (true for the 100% stage); 5% cohort always requires it'
-        type: boolean
-        default: false
-      expect_fallback:
-        description: 'Require bound D5 capture/request + unavailable/off + Luna ACK (OFF rollback drill)'
-        type: boolean
-        default: false
+      expectation:
+        description: 'EXPECT_JEV: all eligible D5 uses Jev; EXPECT_FALLBACK: pinned OFF rollback drill'
+        type: choice
+        options:
+          - EXPECT_JEV
+          - EXPECT_FALLBACK
+        default: EXPECT_JEV
+        required: true
       expected_frontend_sha:
         description: 'Full deployed frontend SHA; verify Pages production deployment via Cloudflare readback before dispatch'
         type: string
@@ -34,8 +34,8 @@ jobs:
     environment: live-account-verification
     env:
       D5_PRODUCTION_SMOKE: '1'
-      EXPECT_JEV: ${{ inputs.expect_jev && '1' || '0' }}
-      EXPECT_FALLBACK: ${{ inputs.expect_fallback && '1' || '0' }}
+      EXPECT_JEV: ${{ inputs.expectation == 'EXPECT_JEV' && '1' || '0' }}
+      EXPECT_FALLBACK: ${{ inputs.expectation == 'EXPECT_FALLBACK' && '1' || '0' }}
       EXPECTED_FRONTEND_SHA: ${{ inputs.expected_frontend_sha }}
       D5_SMOKE_WEEK_START: ${{ inputs.test_week_start }}
       STUDYPLANNER_LIVE_BASE_URL: ${{ secrets.STUDYPLANNER_LIVE_BASE_URL }}

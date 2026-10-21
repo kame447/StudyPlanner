@@ -9,13 +9,13 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
 describe('D5 production release isolation', () => {
-  it('changes exactly the two stage-1 Worker vars versus c309b457, and no other config', () => {
+  it('changes exactly the two enabled-release Worker vars versus c309b457, and no other config', () => {
     const current = read('workers/ai-proxy/wrangler.jsonc');
     const vars = JSON.parse(current).vars;
     expect(vars.JEV_CANDIDATE_CHOICE_MODE).toBe('canary');
-    expect(vars.JEV_CANDIDATE_CHOICE_CANARY_PERCENT).toBe('5');
+    expect(vars.JEV_CANDIDATE_CHOICE_CANARY_PERCENT).toBe('100');
     const restored = current.replace('"JEV_CANDIDATE_CHOICE_MODE": "canary"', '"JEV_CANDIDATE_CHOICE_MODE": "off"')
-      .replace('"JEV_CANDIDATE_CHOICE_CANARY_PERCENT": "5"', '"JEV_CANDIDATE_CHOICE_CANARY_PERCENT": "0"');
+      .replace('"JEV_CANDIDATE_CHOICE_CANARY_PERCENT": "100"', '"JEV_CANDIDATE_CHOICE_CANARY_PERCENT": "0"');
     // Frozen SHA-256 of c309b457456de7ec966665f610e00791daa7cbf2:workers/ai-proxy/wrangler.jsonc.
     // Pin the complete bytes, including all other vars, bindings, migrations and triggers;
     // CI's shallow checkout need not contain historical Git objects.
@@ -38,7 +38,8 @@ describe('D5 production release isolation', () => {
     expect(workflow).toContain('--config=tests/e2e/playwright.d5-production.config.mjs d5-production-readonly.smoke.mjs');
     expect(dedicated).toContain("process.env.D5_PRODUCTION_SMOKE !== '1'");
     expect(dedicated).toContain('retries: 0');
-    expect(dedicated).toContain("process.env.EXPECT_JEV === '1' && process.env.EXPECT_FALLBACK === '1'");
+    expect(dedicated).toContain('productionSmokeExpectation()');
+    expect(workflow).toContain('default: EXPECT_JEV');
     expect(workflow).toContain('EXPECT_FALLBACK:');
     expect(workflow).toContain('expected_frontend_sha:');
     expect(workflow).toContain('EXPECTED_FRONTEND_SHA:');
@@ -46,7 +47,8 @@ describe('D5 production release isolation', () => {
     expect(dedicated).toContain('requireProductionOrigin(raw)');
     expect(dedicated).toContain('verifyFrontendIdentity(process.env.EXPECTED_FRONTEND_SHA)');
     const spec = read('tests/e2e/d5-production-readonly.smoke.mjs');
-    expect(spec).toContain("jevPurposeCanarySample('candidate_choice', identity.uid)");
+    expect(spec).toContain("evidence.expectation === 'EXPECT_JEV'");
+    expect(spec).not.toMatch(/inCohort5|jevPurposeCanarySample|Out of .*cohort/u);
     expect(spec).toContain('await persistRedactedSmokeEvidence(testInfo, evidence)');
     expect(spec).not.toMatch(/page\.route\(|route\.fulfill|page\.addInitScript|timeoutMs:|devD5Domains/u);
   });

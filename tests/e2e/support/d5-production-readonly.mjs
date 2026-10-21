@@ -14,6 +14,15 @@ export function requireProductionOrigin(raw) {
   if (classifyProductionOrigin(raw) !== 'production') throw new Error('non_production: D5 production smoke target rejected.');
 }
 
+/** Default to enabled-release verification; an OFF drill must be explicitly selected. */
+export function productionSmokeExpectation(env = process.env) {
+  const fallback = env.EXPECT_FALLBACK ?? '0';
+  const jev = env.EXPECT_JEV ?? (fallback === '1' ? '0' : '1');
+  if (![jev, fallback].every(flag => ['0', '1'].includes(flag))) throw new Error('EXPECT_JEV and EXPECT_FALLBACK must be 0 or 1.');
+  if (jev === fallback) throw new Error('Select exactly one of EXPECT_JEV and EXPECT_FALLBACK.');
+  return fallback === '1' ? 'EXPECT_FALLBACK' : 'EXPECT_JEV';
+}
+
 /** No frontend commit asset/meta exists in this app. Null means external Pages readback is required.
  * If a served identifier is supplied, mismatch can never be treated as missing evidence.
  */
@@ -125,7 +134,7 @@ export function redactedSmokeEvidence(value) {
   return {
     productionOrigin: oneOf(value.productionOrigin, ['production', 'non_production'], 'unverified'),
     frontendIdentity: oneOf(value.frontendIdentity, ['match', 'frontend_identity_mismatch', 'out_of_band_pages_readback_required'], 'unverified'),
-    inCohort5: boolean(value.inCohort5),
+    expectation: oneOf(value.expectation, ['EXPECT_JEV', 'EXPECT_FALLBACK']),
     outcome: oneOf(value.outcome, ['incomplete', 'non_production', 'd5_consumed_pending_verification',
       'fallback_no_d5_positive_claim', 'd5_positive_readonly_smoke', 'off_rollback_luna_fallback_verified'], 'incomplete'),
     candidateChoice: (Array.isArray(value.candidateChoice) ? value.candidateChoice : []).map(row => ({

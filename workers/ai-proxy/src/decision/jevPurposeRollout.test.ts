@@ -80,7 +80,7 @@ describe('strict independent purpose configuration', () => {
     }
   });
 
-  it('production keeps evaluated purposes at 100%, routing off and candidate choice at 5%', () => {
+  it('production selects all eligible candidate choices and evaluated purposes, keeping routing off', () => {
     const config = JSON.parse(readFileSync(new URL('../../wrangler.jsonc', import.meta.url), 'utf8'));
     expect(config.vars.JEV_MODE).toBe('canary');
     expect(config.vars.JEV_CANARY_PERCENT).toBe('100');
@@ -94,10 +94,13 @@ describe('strict independent purpose configuration', () => {
       }
     }
     expect(config.vars.JEV_CANDIDATE_CHOICE_MODE).toBe('canary');
-    expect(config.vars.JEV_CANDIDATE_CHOICE_CANARY_PERCENT).toBe('5');
-    expect(resolveJevPurposeRollout(config.vars, 'candidate_choice')).toEqual({ mode: 'canary', canaryPercent: 5 });
-    for (const [sample, selected] of [[0, true], [0.0499, true], [0.05, false], [0.5, false], [0.9999, false]] as const) {
-      expect(jevPurposeCanarySelected(config.vars, 'candidate_choice', sample)).toBe(selected);
+    expect(config.vars.JEV_CANDIDATE_CHOICE_CANARY_PERCENT).toBe('100');
+    expect(resolveJevPurposeRollout(config.vars, 'candidate_choice')).toEqual({ mode: 'canary', canaryPercent: 100 });
+    for (const sample of [0, 0.0499, 0.05, 0.5, 0.9999]) {
+      expect(jevPurposeCanarySelected(config.vars, 'candidate_choice', sample)).toBe(true);
+    }
+    for (const sample of [undefined, NaN, Infinity, -Infinity, -0.01, 1, 1.01]) {
+      expect(jevPurposeCanarySelected(config.vars, 'candidate_choice', sample)).toBe(false);
     }
 
   });

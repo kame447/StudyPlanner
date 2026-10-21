@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { jevPurposeCanarySample } from '../../workers/ai-proxy/src/decision/jevPurposeRollout.ts';
 import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../shared/d5AnswerPolicy.ts';
-import { productionDatabaseFromRequestUrl, readOwnedConversation, readProductionServerSnapshot, consumedD5Request, boundOffRollbackCandidate, classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, persistRedactedSmokeEvidence } from './support/d5-production-readonly.mjs';
+import { productionDatabaseFromRequestUrl, readOwnedConversation, readProductionServerSnapshot, consumedD5Request, boundOffRollbackCandidate, classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, productionSmokeExpectation, persistRedactedSmokeEvidence } from './support/d5-production-readonly.mjs';
 
 const secret = name => {
   const value = process.env[name]?.trim();
@@ -54,7 +53,7 @@ async function send(page, text) {
 }
 
 test('explicit production D5 smoke preserves all schedules and never approves', async ({ page, baseURL }, testInfo) => {
-  const evidence = { productionOrigin: classifyProductionOrigin(baseURL), frontendIdentity: 'unverified', inCohort5: null, outcome: 'incomplete', candidateChoice: [],
+  const evidence = { productionOrigin: classifyProductionOrigin(baseURL), frontendIdentity: 'unverified', expectation: productionSmokeExpectation(), outcome: 'incomplete', candidateChoice: [],
     d5Captured: false, d5Consumed: false, lunaFallbackRoute: null, activeEstimate: false, reflectedEstimate: null, visibleAck: false,
     scheduleReadbackIdentical: false, approvalStartEvents: 0, approvalExecutions: null, scheduleWrites: 0 };
   const observations = new Map();
@@ -164,8 +163,6 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     evidence.frontendIdentity = verifyFrontendIdentity(process.env.EXPECTED_FRONTEND_SHA);
     console.log(JSON.stringify({ frontendIdentity: evidence.frontendIdentity }));
     identity = await signIn(page);
-    evidence.inCohort5 = jevPurposeCanarySample('candidate_choice', identity.uid) < 0.05;
-    console.log(JSON.stringify({ inCohort5: evidence.inCohort5 })); // Boolean only, never UID/hash.
     await expect.poll(() => typeof database === 'string').toBe(true);
     if (!/^projects\/[^/]+\/databases\/[^/]+$/u.test(database)) throw new Error('Missing production database identity.');
     before = await serverSnapshot(page, identity, database);
@@ -228,9 +225,7 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     evidence.d5Consumed = consumed.length === consumedBefore + 1 && observed.some(({ request: r, row, evaluated }) =>
       evaluated && row.v2 && row.selected15 && consumedD5Request(after, r, identity.uid, target));
     evidence.outcome = evidence.d5Consumed ? 'd5_consumed_pending_verification' : 'fallback_no_d5_positive_claim';
-    const expectFallback = process.env.EXPECT_FALLBACK === '1';
-    const mustUseJev = !expectFallback && (evidence.inCohort5 || process.env.EXPECT_JEV === '1');
-    if (mustUseJev) {
+    if (evidence.expectation === 'EXPECT_JEV') {
       expect(observed.length, 'Exactly one candidate attempt; no silent retries').toBe(1);
       expect(observed.every(({ row, evaluated }) => evaluated && row.provider === 'openrouter'
         && row.status === 'evaluated' && row.v2 && row.question === 'missing_effort_estimate')).toBe(true);
@@ -238,23 +233,19 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
       expect(evidence.activeEstimate, 'Active math per-problem exact 15-minute estimate').toBe(true);
       expect(evidence.visibleAck, 'Visible grounded math ACK').toBe(true);
     } else {
-      if (expectFallback) {
-        expect(evidence.d5Captured, 'OFF drill requires real bound D5 capture by the new frontend').toBe(true);
-        expect(observed.length, 'OFF drill requires exactly one eligible candidate request').toBe(1);
-        expect(boundOffRollbackCandidate(captured, observed, { owner: identity.uid, conversationId: pending.conversationId,
-          target, policyVersion: D5_TOP1_ANSWER_POLICY_VERSION }),
-        'Bound candidate request must receive unavailable/off with no Jev evaluation').toBe(true);
-        expect(consumedBefore, 'Fresh OFF drill starts with no consumed selections').toBe(0);
-        expect(consumed.length, 'OFF drill cannot consume any candidate selection').toBe(0);
-        expect(evidence.lunaFallbackRoute != null, 'Existing Luna semantic route must complete on the 15 answer').toBe(true);
-      }
-      expect(evidence.d5Consumed, 'Fallback connectivity only; no D5 positive claim').toBe(false);
-      expect(observed.length, 'Fallback must not hide multiple attempts').toBeLessThanOrEqual(1);
+      expect(evidence.d5Captured, 'OFF drill requires real bound D5 capture by the new frontend').toBe(true);
+      expect(observed.length, 'OFF drill requires exactly one eligible candidate request').toBe(1);
+      expect(boundOffRollbackCandidate(captured, observed, { owner: identity.uid, conversationId: pending.conversationId,
+        target, policyVersion: D5_TOP1_ANSWER_POLICY_VERSION }),
+      'Bound candidate request must receive unavailable/off with no Jev evaluation').toBe(true);
+      expect(consumedBefore, 'Fresh OFF drill starts with no consumed selections').toBe(0);
+      expect(consumed.length, 'OFF drill cannot consume any candidate selection').toBe(0);
+      expect(evidence.lunaFallbackRoute != null, 'Existing Luna semantic route must complete on the 15 answer').toBe(true);
+      expect(evidence.d5Consumed, 'OFF drill cannot claim D5 consumption').toBe(false);
       expect(evidence.activeEstimate, 'Luna fallback must still reflect the answer').toBe(true);
       expect(evidence.visibleAck, 'Luna fallback ACK').toBe(true);
-      testInfo.annotations.push({ type: 'fallback', description: expectFallback
-        ? 'OFF rollback drill: captured D5 unavailable/off; Luna route/ACK verified. No D5 consumption.'
-        : 'Out of 5% cohort; Luna connectivity only. D5 NOT verified.' });
+      testInfo.annotations.push({ type: 'fallback', description:
+        'OFF rollback drill: captured D5 unavailable/off; Luna route/ACK verified. No D5 consumption.' });
     }
     expect(observationErrors.length, 'Network evidence must be complete').toBe(0);
     dialogueVerified = true;
@@ -283,7 +274,7 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
         expect(evidence.scheduleWrites, 'No Firestore write attempts, including save-and-cleanup').toBe(0);
         requireProductionOrigin(page.url());
         if (dialogueVerified && evidence.d5Consumed) evidence.outcome = 'd5_positive_readonly_smoke';
-        else if (dialogueVerified && process.env.EXPECT_FALLBACK === '1') evidence.outcome = 'off_rollback_luna_fallback_verified';
+        else if (dialogueVerified && evidence.expectation === 'EXPECT_FALLBACK') evidence.outcome = 'off_rollback_luna_fallback_verified';
       }
     } finally {
       await persistRedactedSmokeEvidence(testInfo, evidence);
