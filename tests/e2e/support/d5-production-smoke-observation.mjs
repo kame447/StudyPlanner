@@ -1,4 +1,31 @@
 // All exported diagnostics are bounded enums. Never copy request/error text into evidence.
+// UI observation only: provider request90s (openAiCompatibleClient/durableTurnProvider),
+// plus durable poll HTTP20s and maximum poll backoff10s (weeklyPlanningDurableTurnClient).
+// A timeout means observation incomplete, not that the durable14min execution deadline elapsed.
+export const D5_UI_TURN_WAIT_MS = 90_000 + 20_000 + 10_000;
+export const D5_UI_TEST_TIMEOUT_MS = 2 * D5_UI_TURN_WAIT_MS + 180_000; // Two turns + existing setup/readback budget.
+const COMPOSER_READINESS = ['ready', 'busy_turn', 'pending_approval', 'approval_recovery', 'chat_initialization',
+  'listening', 'local_interaction_busy', 'not_present', 'unreadable', 'unobserved'];
+export const redactedComposerReadiness = value => COMPOSER_READINESS.includes(value) ? value : 'unreadable';
+export function classifyComposerReadiness(state) {
+  if (!state?.present) return 'not_present';
+  if (!state.readable) return 'unreadable';
+  if (state.approvalRecovery) return 'approval_recovery';
+  if (state.pendingApproval) return 'pending_approval';
+  if (state.busyTurn) return 'busy_turn';
+  if (state.initializationBlocked) return 'chat_initialization';
+  if (state.listening) return 'listening';
+  return state.disabled ? 'local_interaction_busy' : 'ready';
+}
+export async function waitForProductionComposer({ observe, wait, evidence, phase }) {
+  evidence.composerWaitPhase = ['view_entry', 'before_send', 'after_send'].includes(phase) ? phase : 'unknown';
+  await wait(async () => {
+    try { evidence.composerReadiness = classifyComposerReadiness(await observe()); }
+    catch { evidence.composerReadiness = 'unreadable'; }
+    return evidence.composerReadiness === 'ready';
+  }, D5_UI_TURN_WAIT_MS);
+}
+
 const STEPS = {
   target_preflight: 'production target verification', login: 'test-account login',
   server_snapshot_before: 'initial server readback', fresh_conversation: 'fresh conversation setup',
@@ -52,11 +79,13 @@ const ALLOWED_COLLECTIONS = new Set(['profiles']);
 // Production uses remote/noop traces; direct trace writes are denied by Rules and fail classification.
 // Retain only their public collection names for the redacted failure evidence.
 const KNOWN_COLLECTIONS = new Set([...PROTECTED_COLLECTIONS, ...ALLOWED_COLLECTIONS,
-  'weekly_planning_trace_sessions', 'weekly_planning_trace_entries']);
+  'weekly_planning_trace_sessions', 'weekly_planning_trace_entries', 'user_planning_contexts']);
 export function redactedWriteObservation(value) {
   return {
     transport: ['write_channel', 'commit', 'batch_write', 'rest'].includes(value?.transport) ? value.transport : 'unknown',
     classification: ['protocol', 'allowed', 'forbidden', 'unclassified'].includes(value?.classification) ? value.classification : 'unclassified',
+    operationKinds: [...new Set((Array.isArray(value?.operationKinds) ? value.operationKinds : [])
+      .map(kind => ['update', 'delete', 'transform', 'verify', 'empty'].includes(kind) ? kind : 'unknown'))].sort(),
     collections: [...new Set((Array.isArray(value?.collections) ? value.collections : [])
       .map(name => KNOWN_COLLECTIONS.has(name) ? name : 'unknown_collection'))].sort(),
   };
@@ -73,16 +102,18 @@ export function classifyFirestoreWrite({ url: rawUrl, method, postData }) {
     && !/:runQuery$|:batchGet$|:runAggregationQuery$/u.test(url.pathname);
   if (!channel && !commit && !batch && !rest) return null;
   const transport = channel ? 'write_channel' : commit ? 'commit' : batch ? 'batch_write' : 'rest';
-  const result = (classification, collections = []) => redactedWriteObservation({ transport, classification, collections });
+  const operationKinds = [];
+  const result = (classification, collections = []) => redactedWriteObservation({ transport, classification, collections, operationKinds });
   const unknown = (collections = []) => result('unclassified', collections);
   const targets = [];
+  const verifiedTargets = [];
   let malformed = false;
-  const target = name => {
+  const target = (name, destination = targets) => {
     if (typeof name !== 'string') { malformed = true; return; }
     const match = name.match(/^projects\/[^/]+\/databases\/[^/]+\/documents\/(.+)$/u);
     const parts = match?.[1].split('/');
     if (!parts || parts.length < 2 || parts.length % 2 || parts.some(part => !part)) { malformed = true; return; }
-    targets.push(parts.filter((_, index) => index % 2 === 0));
+    destination.push(parts.filter((_, index) => index % 2 === 0));
   };
   const envelope = message => {
     if (!message || typeof message !== 'object' || Array.isArray(message)
@@ -92,13 +123,28 @@ export function classifyFirestoreWrite({ url: rawUrl, method, postData }) {
     if (Array.isArray(message.writes) && message.writes.length) {
       for (const write of message.writes) {
         if (!write || typeof write !== 'object') { malformed = true; continue; }
-        const actions = ['update', 'delete', 'transform'].filter(key => Object.hasOwn(write, key));
+        const actions = ['update', 'delete', 'transform', 'verify'].filter(key => Object.hasOwn(write, key));
         if (actions.length !== 1 || Object.keys(write).some(key => ![
-          'update', 'delete', 'transform', 'updateMask', 'updateTransforms', 'currentDocument',
+          'update', 'delete', 'transform', 'verify', 'updateMask', 'updateTransforms', 'currentDocument',
         ].includes(key))) { malformed = true; continue; }
-        target(actions[0] === 'update' ? write.update?.name : actions[0] === 'delete' ? write.delete : write.transform?.document);
+        operationKinds.push(actions[0]);
+        if (actions[0] === 'verify') {
+          // SDK Transaction.commit emits VerifyMutation for reads without a mutation.
+          // No masks/transforms may smuggle an operation into a verify-only entry.
+          const condition = write.currentDocument;
+          if (!commit || Object.keys(write).some(key => !['verify', 'currentDocument'].includes(key))
+            || condition !== undefined && (!condition || typeof condition !== 'object' || Array.isArray(condition)
+              || Object.keys(condition).length !== 1 || !(typeof condition.exists === 'boolean'
+                || typeof condition.updateTime === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/u.test(condition.updateTime)
+                  && Number.isFinite(Date.parse(condition.updateTime))))) { malformed = true; continue; }
+          target(write.verify, verifiedTargets);
+        } else target(actions[0] === 'update' ? write.update?.name : actions[0] === 'delete' ? write.delete : write.transform?.document);
       }
       return;
+    }
+    if (Array.isArray(message.writes) && message.writes.length === 0 && commit) {
+      operationKinds.push('empty');
+      return; // SDK commit of a transaction with no reads/mutations.
     }
     // Handshake/token-only/empty-drain messages contain no mutation. SDK PersistentWriteStream.ra/ea.
     const handshake = typeof message.database === 'string' && /^projects\/[^/]+\/databases\/[^/]+$/u.test(message.database);
@@ -125,6 +171,7 @@ export function classifyFirestoreWrite({ url: rawUrl, method, postData }) {
         }
       } else return unknown();
     } else {
+      operationKinds.push(method === 'DELETE' ? 'delete' : 'update');
       const resource = decodeURIComponent(url.pathname.replace(/^\/v1\//u, ''));
       if (method === 'POST') {
         const body = JSON.parse(postData);
@@ -133,9 +180,9 @@ export function classifyFirestoreWrite({ url: rawUrl, method, postData }) {
         if (body.name !== undefined) target(body.name);
       } else target(resource);
     }
-  } catch { return unknown(targets.flat()); }
-  const collections = targets.flat();
-  if (collections.some(name => PROTECTED_COLLECTIONS.has(name))) return result('forbidden', collections);
+  } catch { return unknown([...targets.flat(), ...verifiedTargets.flat()]); }
+  const collections = [...targets.flat(), ...verifiedTargets.flat()];
+  if (targets.flat().some(name => PROTECTED_COLLECTIONS.has(name))) return result('forbidden', collections);
   if (malformed || targets.some(path => path.length !== 1 || !ALLOWED_COLLECTIONS.has(path[0]))) return unknown(collections);
   return result(targets.length ? 'allowed' : 'protocol', collections);
 }

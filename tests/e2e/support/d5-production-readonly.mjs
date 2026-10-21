@@ -1,6 +1,42 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { boundedSmokeError, redactedSmokeStep, redactedWriteObservation } from './d5-production-smoke-observation.mjs';
+import { boundedSmokeError, redactedSmokeStep, redactedWriteObservation, redactedComposerReadiness } from './d5-production-smoke-observation.mjs';
+import { CONTROLLED_CANDIDATE_COMMIT_REJECTIONS } from '../../../shared/controlledCandidateCommit.ts';
+
+const rejectionFromCode = code => CONTROLLED_CANDIDATE_COMMIT_REJECTIONS.find(reason => code === `candidate_commit_${reason}`) ?? null;
+const traceOutcomes = ['discarded_commit_rejected', 'discarded_stale', 'failed', 'revision_pending', 'needs_scope', 'draft_ready', 'idle',
+  'stable_v5_normalization_rejected', 'stable_v5_provider_failure', 'stable_v5_canonicalization_rejected'];
+const traceErrors = ['commit_rejected', 'stale_async_result_discarded', 'stable_v5_required_effort_ack_failed',
+  ...CONTROLLED_CANDIDATE_COMMIT_REJECTIONS.map(reason => `candidate_commit_${reason}`)];
+const redactedAnswerTrace = row => ({
+  outcome: traceOutcomes.includes(row?.outcome) ? row.outcome : null,
+  errorCode: traceErrors.includes(row?.errorCode) ? row.errorCode : null,
+  rejectionReason: CONTROLLED_CANDIDATE_COMMIT_REJECTIONS.includes(row?.rejectionReason) ? row.rejectionReason : null,
+  fallback: ['luna_scheduled', 'none'].includes(row?.fallback) ? row.fallback : null,
+});
+
+/** Match only this synthetic answer's observed request identities. Never export a trace body or identifier. */
+export function observeOwnAnswerTrace(body, requestIds) {
+  if (!Array.isArray(body?.entries) || !(requestIds instanceof Set)) return [];
+  return body.entries.filter(entry => entry?.kind === 'turn_diagnostic' && typeof entry.requestId === 'string' && requestIds.has(entry.requestId))
+    .map(entry => {
+      const [branch, fallback] = typeof entry.decision?.reason === 'string' ? entry.decision.reason.split(':') : [];
+      const reason = rejectionFromCode(branch);
+      return redactedAnswerTrace({ outcome: entry.diagnostics?.outcome, errorCode: entry.diagnostics?.error?.type,
+        rejectionReason: reason ?? rejectionFromCode(entry.diagnostics?.error?.type), fallback: reason ? fallback : null });
+    });
+}
+
+/** Null means unread/unavailable, rather than an inferred negative result after a failed wait. */
+export function observeAnswerCheckpoint(snapshot, oldMessageIds, receiptConsumed = null) {
+  const state = snapshot?.planningState;
+  const messages = state?.messages;
+  const count = Array.isArray(messages) && oldMessageIds instanceof Set
+    ? messages.filter(message => message?.role === 'assistant' && typeof message.id === 'string' && !oldMessageIds.has(message.id)).length : null;
+  return { pendingTurnPresent: state && Array.isArray(messages) ? state.pendingTurn != null : null,
+    newAssistant: count === null ? null : count === 0 ? 'none' : count === 1 ? 'one' : 'multiple',
+    receiptConsumed: typeof receiptConsumed === 'boolean' ? receiptConsumed : null };
+}
 
 // Canonical public production route (README.md); Worker CORS origins also include previews/dev.
 const PRODUCTION_ORIGINS = new Set(['https://laplance.com']);
@@ -127,6 +163,68 @@ export function boundOffRollbackCandidate(captured, observed, { owner, conversat
       && option.candidate.tuple.perUnit === 'problem' && option.candidate.tuple.precision === 'exact'));
 }
 
+/** Same-page observation of actual UI/owned checkpoint booleans; no text, ids or React internals exported. */
+export function observeProductionComposerState(owner) {
+  const input = document.querySelector('.ai-planning-composer textarea');
+  let state = null;
+  let readable = true;
+  try {
+    const index = JSON.parse(localStorage.getItem(`studyplanner.aiPlanning.chats.v1.${owner}`) ?? 'null');
+    const snapshot = index ? JSON.parse(localStorage.getItem(`studyplanner.aiPlanning.chat.v1.${owner}.${index.activeChatId}`) ?? 'null') : null;
+    if (snapshot && (snapshot.ownerId !== owner || snapshot.version !== 'studyplanner-weekly-planning-stable-v5-session-v1' || !snapshot.planningState)) readable = false;
+    else state = snapshot?.planningState;
+  } catch { readable = false; }
+  return { present: Boolean(input), disabled: input?.disabled !== false, readable,
+    busyTurn: Boolean(state?.pendingTurn || document.querySelector('[role="status"][aria-label="AIが回答を作成中"]')
+      || document.querySelector('button[aria-label="処理をキャンセル"]')),
+    pendingApproval: Boolean(state?.pendingApproval), approvalRecovery: Boolean(state?.approvalRecovery),
+    initializationBlocked: Boolean(document.querySelector('button[aria-label="読み込めないチャットを残して新規作成"]')),
+    listening: Boolean(document.querySelector('button[aria-label="音声入力を停止"][aria-pressed="true"]')) };
+}
+
+const EFFORT_KINDS = ['total_duration', 'duration_per_unit', 'session_duration'];
+const EFFORT_UNITS = ['minute', 'hour', 'page', 'problem', 'word', 'lesson', 'chapter', 'section', 'exam_year', 'mock_exam', 'session', 'custom'];
+const EFFORT_PRECISIONS = ['exact', 'approximate', 'unspecified'];
+const EFFORT_TARGET_RELATIONS = ['question_topic', 'same_task_workload', 'same_task', 'other_task'];
+const MAX_RELATED_ESTIMATES = 64;
+export function redactedRelatedEffortEstimate(value) {
+  return { kind: EFFORT_KINDS.includes(value?.kind) ? value.kind : 'unknown',
+    minutes: typeof value?.minutes === 'number' && Number.isFinite(value.minutes) && value.minutes > 0 && value.minutes <= 1_000_000 ? value.minutes : null,
+    unitCode: value?.unitCode === null ? null : EFFORT_UNITS.includes(value?.unitCode) ? value.unitCode : 'unknown',
+    precision: EFFORT_PRECISIONS.includes(value?.precision) ? value.precision : 'unknown',
+    targetRelation: EFFORT_TARGET_RELATIONS.includes(value?.targetRelation) ? value.targetRelation : 'unknown' };
+}
+/** Test oracle only: D5 promises exact; the approved OFF/Luna drill also permits unspecified precision. */
+export function productionSmokeReflectedEstimate(graph, { questionTopicId, expectation }) {
+  if (!['EXPECT_JEV', 'EXPECT_FALLBACK'].includes(expectation)) return null;
+  const active = new Set(graph.factLifecycles.filter(fact => fact.status === 'active').map(fact => fact.factId));
+  const perUnit = graph.effortEstimates.filter(estimate => active.has(estimate.id)
+    && estimate.targetFactId === questionTopicId && estimate.kind === 'duration_per_unit');
+  // Count every active per-unit fact on this target, even one with a conflicting unit/value.
+  if (expectation === 'EXPECT_FALLBACK' && perUnit.length !== 1) return null;
+  const estimate = perUnit.find(estimate => estimate.minutes === 15 && estimate.unitCode === 'problem'
+    && (estimate.precision === 'exact' || expectation === 'EXPECT_FALLBACK' && estimate.precision === 'unspecified'));
+  return estimate ? { minutes: 15, measurement: 'duration_per_unit', unit: 'problem', precision: estimate.precision } : null;
+}
+
+/** Diagnostics only. This projection never authorizes an answer or changes the strict estimate oracle. */
+export function relatedActiveEffortEstimates(graph, { mathTaskId, questionTopicId }) {
+  const active = new Set(graph.factLifecycles.filter(fact => fact.status === 'active').map(fact => fact.factId));
+  const workloadIds = new Set(graph.workloads.filter(workload => workload.taskId === mathTaskId).map(workload => workload.id));
+  const componentIds = new Set(graph.components.filter(component => component.taskId === mathTaskId).map(component => component.id));
+  const related = graph.effortEstimates.filter(estimate => active.has(estimate.id)
+    && (estimate.taskId === mathTaskId || estimate.targetFactId === questionTopicId || estimate.targetFactId === mathTaskId
+      || workloadIds.has(estimate.targetFactId) || componentIds.has(estimate.targetFactId)));
+  return { truncated: related.length > MAX_RELATED_ESTIMATES,
+    estimates: related.slice(0, MAX_RELATED_ESTIMATES).map(estimate => redactedRelatedEffortEstimate({
+      kind: estimate.kind, minutes: estimate.minutes, unitCode: estimate.unitCode, precision: estimate.precision,
+      targetRelation: estimate.taskId !== mathTaskId ? 'other_task'
+        : estimate.targetFactId === questionTopicId ? 'question_topic'
+          : workloadIds.has(estimate.targetFactId) ? 'same_task_workload'
+            : estimate.targetFactId === mathTaskId || componentIds.has(estimate.targetFactId) ? 'same_task' : 'other_task',
+    })) };
+}
+
 /** Export only bounded machine/test outcomes, never raw diagnostics or arbitrary strings. */
 export function redactedSmokeEvidence(value) {
   const oneOf = (input, allowed, fallback = null) => allowed.includes(input) ? input : fallback;
@@ -136,6 +234,13 @@ export function redactedSmokeEvidence(value) {
     productionOrigin: oneOf(value.productionOrigin, ['production', 'non_production'], 'unverified'),
     frontendIdentity: oneOf(value.frontendIdentity, ['match', 'frontend_identity_mismatch', 'out_of_band_pages_readback_required'], 'unverified'),
     expectation: oneOf(value.expectation, ['EXPECT_JEV', 'EXPECT_FALLBACK']),
+    composerReadiness: redactedComposerReadiness(value.composerReadiness),
+    composerWaitPhase: oneOf(value.composerWaitPhase, ['view_entry', 'before_send', 'after_send']),
+    answerPhase: { pendingTurnPresent: boolean(value.answerPhase?.pendingTurnPresent),
+      newAssistant: oneOf(value.answerPhase?.newAssistant, ['none', 'one', 'multiple']),
+      receiptConsumed: boolean(value.answerPhase?.receiptConsumed), alertPresent: boolean(value.answerPhase?.alertPresent) },
+    answerTrace: (Array.isArray(value.answerTrace) ? value.answerTrace : []).slice(0, 16).map(redactedAnswerTrace),
+    answerTraceTruncated: value.answerTraceTruncated === true || Array.isArray(value.answerTrace) && value.answerTrace.length > 16,
     outcome: oneOf(value.outcome, ['incomplete', 'non_production', 'd5_consumed_pending_verification',
       'fallback_no_d5_positive_claim', 'd5_positive_readonly_smoke', 'off_rollback_luna_fallback_verified'], 'incomplete'),
     candidateChoice: (Array.isArray(value.candidateChoice) ? value.candidateChoice : []).map(row => ({
@@ -151,9 +256,13 @@ export function redactedSmokeEvidence(value) {
     d5Captured: boolean(value.d5Captured), d5Consumed: boolean(value.d5Consumed),
     lunaFallbackRoute: oneOf(value.lunaFallbackRoute, ['completed_direct_semantic_normalizer', 'completed_durable_semantic_normalizer']),
     activeEstimate: boolean(value.activeEstimate),
+    relatedActiveEstimates: (Array.isArray(value.relatedActiveEstimates) ? value.relatedActiveEstimates : [])
+      .slice(0, MAX_RELATED_ESTIMATES).map(redactedRelatedEffortEstimate),
+    relatedActiveEstimatesTruncated: value.relatedActiveEstimatesTruncated === true
+      || Array.isArray(value.relatedActiveEstimates) && value.relatedActiveEstimates.length > MAX_RELATED_ESTIMATES,
     reflectedEstimate: value.reflectedEstimate?.minutes === 15 && value.reflectedEstimate.measurement === 'duration_per_unit'
-      && value.reflectedEstimate.unit === 'problem' && value.reflectedEstimate.precision === 'exact'
-      ? { minutes: 15, measurement: 'duration_per_unit', unit: 'problem', precision: 'exact' } : null,
+      && value.reflectedEstimate.unit === 'problem' && ['exact', 'unspecified'].includes(value.reflectedEstimate.precision)
+      ? { minutes: 15, measurement: 'duration_per_unit', unit: 'problem', precision: value.reflectedEstimate.precision } : null,
     visibleAck: boolean(value.visibleAck), scheduleReadbackIdentical: boolean(value.scheduleReadbackIdentical),
     approvalStartEvents: count(value.approvalStartEvents), approvalExecutions: oneOf(value.approvalExecutions, [0, 'changed']),
     scheduleWrites: count(value.scheduleWrites), unclassifiedWrites: count(value.unclassifiedWrites),

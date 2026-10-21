@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { classifyFirestoreWrite, runProductionSmoke } from './support/d5-production-smoke-observation.mjs';
+import { classifyFirestoreWrite, runProductionSmoke, waitForProductionComposer } from './support/d5-production-smoke-observation.mjs';
 import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../shared/d5AnswerPolicy.ts';
-import { productionDatabaseFromRequestUrl, readOwnedConversation, readProductionServerSnapshot, consumedD5Request, boundOffRollbackCandidate, classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, productionSmokeExpectation, persistRedactedSmokeEvidence } from './support/d5-production-readonly.mjs';
+import { productionDatabaseFromRequestUrl, readOwnedConversation, observeProductionComposerState, readProductionServerSnapshot, relatedActiveEffortEstimates, productionSmokeReflectedEstimate, consumedD5Request, boundOffRollbackCandidate, classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, productionSmokeExpectation, persistRedactedSmokeEvidence } from './support/d5-production-readonly.mjs';
+import { observeOwnAnswerTrace, observeAnswerCheckpoint } from './support/d5-production-readonly.mjs';
 
 const secret = name => {
   const value = process.env[name]?.trim();
@@ -47,20 +48,30 @@ const serverSnapshot = (page, identity, database) => {
   return page.evaluate(readProductionServerSnapshot, { ...identity, database });
 };
 
-async function send(page, text) {
+async function readyComposer(page, identity, evidence, phase) {
+  requireProductionOrigin(page.url());
+  await waitForProductionComposer({ evidence, phase,
+    observe: () => page.evaluate(observeProductionComposerState, identity.uid),
+    wait: (check, timeout) => expect.poll(check, { timeout, message: 'Bounded AI turn UI readiness; see composerReadiness evidence' }).toBe(true),
+  });
+}
+async function send(page, text, identity, evidence) {
+  await readyComposer(page, identity, evidence, 'before_send');
   await composer(page).fill(text);
   await page.getByRole('button', { name: '送信', exact: true }).click();
-  await expect(composer(page)).toBeEnabled();
+  await readyComposer(page, identity, evidence, 'after_send');
 }
 
 test('explicit production D5 smoke preserves all schedules and never approves', async ({ page, baseURL }, testInfo) => {
   const evidence = { productionOrigin: classifyProductionOrigin(baseURL), frontendIdentity: 'unverified', expectation: productionSmokeExpectation(), outcome: 'incomplete', candidateChoice: [],
-    d5Captured: false, d5Consumed: false, lunaFallbackRoute: null, activeEstimate: false, reflectedEstimate: null, visibleAck: false,
+    d5Captured: false, d5Consumed: false, lunaFallbackRoute: null, activeEstimate: false, relatedActiveEstimates: [], relatedActiveEstimatesTruncated: false, reflectedEstimate: null, visibleAck: false,
     scheduleReadbackIdentical: false, approvalStartEvents: 0, approvalExecutions: null, scheduleWrites: 0, unclassifiedWrites: 0, firestoreWrites: [],
-    step: 'target_preflight', failingStep: null, bodyError: null, readbackStep: null, readbackError: null };
+    answerPhase: { pendingTurnPresent: null, newAssistant: null, receiptConsumed: null, alertPresent: null }, answerTrace: [], answerTraceTruncated: false,
+    step: 'target_preflight', failingStep: null, bodyError: null, readbackStep: null, readbackError: null, composerReadiness: 'unobserved', composerWaitPhase: null };
   const observations = new Map();
   const fallbackRequests = new Map();
   const fallbackRequestIds = new Set();
+  const candidateRequestIds = new Set();
   const responseTasks = [];
   const observationErrors = [];
   let database;
@@ -84,6 +95,10 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     }
     if (request.method() === 'POST' && /weekly-planning-trace|observability/u.test(url.pathname)) {
       try {
+        const observed = observeOwnAnswerTrace(request.postDataJSON(), candidateRequestIds);
+        const combined = [...evidence.answerTrace, ...observed];
+        evidence.answerTraceTruncated ||= combined.length > 16;
+        evidence.answerTrace = combined.slice(0, 16);
         const countStarts = value => {
           if (!value || typeof value !== 'object') return 0;
           return (value.eventType === 'approval_started' ? 1 : 0)
@@ -115,6 +130,7 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
       return;
     }
     const r = body.decisionContext.request;
+    if (typeof r?.requestId === 'string') candidateRequestIds.add(r.requestId);
     const row = { route: 'candidate_choice', provider: null, status: 'pending', selection: 'pending', selected15: false,
       v2: r?.context?.scope?.domainPolicyVersion === D5_TOP1_ANSWER_POLICY_VERSION,
       question: r?.context?.question?.code, optionCount: r?.menu?.options?.length };
@@ -173,11 +189,11 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     approvalBefore = await approvalLedger();
     evidence.step = 'fresh_conversation';
     await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: 'AI計画', exact: true }).click();
-    await expect(composer(page)).toBeEnabled();
+    await readyComposer(page, identity, evidence, 'view_entry');
     const previousConversationId = (await conversation(page, identity.uid))?.conversationId;
     await page.getByRole('button', { name: 'チャット一覧を開く' }).click();
     await page.getByRole('button', { name: '新しいチャット', exact: true }).click();
-    await expect(composer(page)).toBeEnabled();
+    await readyComposer(page, identity, evidence, 'view_entry');
     const start = secret('D5_SMOKE_WEEK_START');
     if (!/^\d{4}-\d{2}-\d{2}$/u.test(start) || !Number.isFinite(Date.parse(`${start}T00:00:00Z`))
       || new Date(`${start}T00:00:00Z`).toISOString().slice(0, 10) !== start
@@ -186,7 +202,7 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     end.setUTCDate(end.getUTCDate() + 6);
     const endDate = end.toISOString().slice(0, 10);
     evidence.step = 'setup_question';
-    await send(page, `${start}から${endDate}で数学20問と英語15ページを進めたい。英語15ページは全部で45分。`);
+    await send(page, `${start}から${endDate}で数学20問と英語15ページを進めたい。英語15ページは全部で45分。`, identity, evidence);
     await expect.poll(async () => {
       const snapshot = await conversation(page, identity.uid);
       const question = snapshot?.planningState?.intakeState?.lastQuestionContext;
@@ -208,23 +224,38 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     const consumedBefore = pending.planningState.intakeState.c5SelectionLedger?.consumed.length ?? 0;
     const oldMessages = new Set(pending.planningState.messages.map(message => message.id));
     evidence.step = 'answer_turn';
-    await send(page, '15');
-    await expect.poll(async () => {
-      const snapshot = await conversation(page, identity.uid);
-      return snapshot?.planningState?.pendingTurn == null && snapshot?.planningState?.messages
-        .some(message => message.role === 'assistant' && !oldMessages.has(message.id));
-    }).toBe(true);
+    try {
+      await send(page, '15', identity, evidence);
+      await expect.poll(async () => {
+        const snapshot = await conversation(page, identity.uid);
+        return snapshot?.planningState?.pendingTurn == null && snapshot?.planningState?.messages
+          .some(message => message.role === 'assistant' && !oldMessages.has(message.id));
+      }).toBe(true);
+    } finally {
+      // Failure observations must not overwrite the primary timeout or convert unread state into false.
+      const [checkpoint, alert] = await Promise.allSettled([
+        conversation(page, identity.uid), page.locator('.ai-planning-error[role="alert"]').isVisible(),
+      ]);
+      if (checkpoint.status === 'fulfilled') {
+        const snapshot = checkpoint.value;
+        const consumed = snapshot?.planningState?.intakeState?.c5SelectionLedger?.consumed;
+        const receipt = Array.isArray(consumed) && consumed.length === consumedBefore ? false
+          : Array.isArray(consumed) && [...observations.values()].some(({ request: r }) => consumedD5Request(snapshot, r, identity.uid, target)) ? true : null;
+        Object.assign(evidence.answerPhase, observeAnswerCheckpoint(snapshot, oldMessages, receipt));
+      }
+      if (alert.status === 'fulfilled') evidence.answerPhase.alertPresent = alert.value;
+    }
     await Promise.all(responseTasks);
     evidence.step = 'answer_state';
     const after = await conversation(page, identity.uid);
     expect(after.planningState.pendingApproval == null, 'No pending approval').toBe(true);
     expect(after.planningState.approvalRecovery == null, 'No approval execution/recovery').toBe(true);
     const consumed = after.planningState.intakeState.c5SelectionLedger?.consumed ?? [];
-    const active = new Set(after.graph.factLifecycles.filter(fact => fact.status === 'active').map(fact => fact.factId));
-    evidence.activeEstimate = after.graph.effortEstimates.some(estimate => active.has(estimate.id)
-      && estimate.targetFactId === target && estimate.kind === 'duration_per_unit' && estimate.minutes === 15
-      && estimate.unitCode === 'problem' && estimate.precision === 'exact');
-    evidence.reflectedEstimate = evidence.activeEstimate ? { minutes: 15, measurement: 'duration_per_unit', unit: 'problem', precision: 'exact' } : null;
+    const related = relatedActiveEffortEstimates(after.graph, { mathTaskId: targetTask.id, questionTopicId: target });
+    evidence.relatedActiveEstimates = related.estimates;
+    evidence.relatedActiveEstimatesTruncated = related.truncated;
+    evidence.reflectedEstimate = productionSmokeReflectedEstimate(after.graph, { questionTopicId: target, expectation: evidence.expectation });
+    evidence.activeEstimate = evidence.reflectedEstimate !== null;
     const answer = after.planningState.messages.filter(message => message.role === 'assistant' && !oldMessages.has(message.id)).at(-1);
     // Synthetic setup only: the visible ACK must name math, 15 minutes and per-problem scope.
     evidence.visibleAck = typeof answer?.content === 'string' && /数学/u.test(answer.content)
@@ -260,7 +291,7 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
       expect(evidence.lunaFallbackRoute != null, 'Existing Luna semantic route must complete on the 15 answer').toBe(true);
       expect(evidence.d5Consumed, 'OFF drill cannot claim D5 consumption').toBe(false);
       evidence.step = 'active_estimate';
-      expect(evidence.activeEstimate, 'Luna fallback must still reflect the answer').toBe(true);
+      expect(evidence.activeEstimate, 'Exactly one bound non-approximate Luna 15-minute per-problem estimate').toBe(true);
       evidence.step = 'visible_ack';
       expect(evidence.visibleAck, 'Luna fallback ACK').toBe(true);
       testInfo.annotations.push({ type: 'fallback', description:

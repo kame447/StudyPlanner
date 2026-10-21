@@ -23,6 +23,8 @@ import { listWeeklyPlanningTraceOutboxItems } from './weeklyPlanningTraceOutbox'
 import { setWeeklyPlanningTraceRepositoryForTests } from './weeklyPlanningTraceRepository';
 import type { WeeklyPlanningTraceEntry, WeeklyPlanningTraceRepository, WeeklyPlanningTraceSession } from './weeklyPlanningTraceTypes';
 import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
+import { recordDiscardedWeeklyPlanningApplicationTurn } from '../application/weeklyPlanningTurnTraceSideEffects';
+import { createInitialPlanningIntakeState } from '../intake/weeklyPlanningIntakeReducer';
 const userId = 'numeric-choice-owner'; const conversationId = 'weekly-conversation-323e4567-e89b-52d3-a456-426614174000';
 let restore: () => void;
 beforeEach(() => { restore = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage); resetWeeklyPlanningStableV5TraceRuntimeForTest(); });
@@ -88,6 +90,33 @@ function prepare(write: ReturnType<typeof repository>['writes'][number]) {
     { token: `wpt_${'d'.repeat(43)}`, epoch: '103' }, { sessionId: 'weekly-trace-323e4567-e89b-52d3-a456-426614174000', logicalConversationId: conversationId }, '2026-10-05T00:00:00.000Z');
 }
 describe('actual Choice request through durable trace gate', () => {
+  it.each([false, true])('persists bounded controlled rejection through append failure/outbox/Worker (oversized=%s)', async oversized => {
+    const h = repository(); h.failNext(); setWeeklyPlanningTraceRepositoryForTests(h.port);
+    const input = await dispatchAndTrace(oversized);
+    await recordDiscardedWeeklyPlanningApplicationTurn({ ownerId: userId,
+      pending: { conversationId, requestId: input.requestId, turnId: 'rejected-turn', weekStartDate: '2026-10-05', baseRevision: 2, startedAt: '2026-10-05T00:00:00.000Z' },
+      userText: input.userText, reason: 'commit_rejected', result: { state: createInitialPlanningIntakeState(), message: 'uncommitted ACK',
+        draftCandidates: [], dialogueRendererTrace: input.dialogueRendererTrace, candidateCommitRejectionReason: 'authorization_intent_changed', candidateCommitFallback: 'luna_scheduled' },
+    }, { getRuntimeSession: () => null, recordTurnTrace: trace => recordWeeklyPlanningStableV5TurnTrace({ ...trace,
+      debugTraceEvents: [...input.debugTraceEvents, ...(trace.debugTraceEvents ?? [])] }) });
+    expect(h.writes).toHaveLength(0);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId, conversationId })).toHaveLength(1);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace({ ...input, requestId: `${conversationId}:request:after-rejection`, debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId, conversationId })).toEqual([]);
+    const entry = h.writes[0].entries[0];
+    expect(entry.kind).toBe('turn_diagnostic');
+    if (entry.kind !== 'turn_diagnostic') throw new Error('missing diagnostic');
+    expect(entry.diagnostics.outcome).toBe('discarded_commit_rejected');
+    expect(entry.diagnostics.error?.type).toBe('candidate_commit_authorization_intent_changed');
+    expect(entry.decision.reason).toBe('candidate_commit_authorization_intent_changed:luna_scheduled');
+    expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const server = prepare(h.writes[0]).entries[0];
+    expect(JSON.stringify(server)).toContain('candidate_commit_authorization_intent_changed');
+    expect(JSON.stringify(server)).toContain('keep-unknown-numeric-sentinel');
+    expect(measureWeeklyPlanningTraceJsonBytes(server)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    if (oversized) expect(JSON.stringify(entry)).toContain('truncat');
+  });
   it.each([
     { corrected: false, contextualMinutes: null, nonReflected: null, shortSubject: null }, { corrected: true, contextualMinutes: null, nonReflected: null, shortSubject: null },
     { corrected: false, contextualMinutes: 45, nonReflected: null, shortSubject: null }, { corrected: false, contextualMinutes: 60, nonReflected: null, shortSubject: null },

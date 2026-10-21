@@ -32,6 +32,7 @@ export interface RegisteredControlledCandidateDomain {
   stage(turn: ControlledCandidateStageTurn): Promise<RegisteredControlledCandidateAdapter | null>;
 }
 export interface RegisteredControlledCandidateAdapter extends Omit<ControlledCandidateAdapter, 'semanticContribution' | 'branch'> {
+  sourceAccess(): 'allowed' | 'denied' | 'unknown';
   readonly branch: 'c5_local_selection' | 'd5_pending_selection' | 'temporal_date_selection';
   readonly semanticContribution: ControlledCandidateSemanticContribution | null;
   continueSelectedTurn(turn: { snapshot: PlanningState; pending: WeeklyPlanningPendingTurn; userText: string }): Promise<WeeklyPlanningTurnExecutionResult>;
@@ -72,6 +73,7 @@ export function registerC5CandidateDomain(options: C5LocalSelectionOptions): Reg
       const input = { ...turn, options, getGraph: turn.readCommittedGraph };
       const selected = await selectC5Turn(input);
       return selected ? { selected, branch: 'c5_local_selection', semanticContribution: null,
+        sourceAccess: options.sourceAccess,
         prepare: () => prepareC5TurnCommit(input, selected),
         continueSelectedTurn: next => options.continueSelectedTurn({ ...next, graph: structuredClone(selected.graph) }),
       } : null;
@@ -195,7 +197,7 @@ export function registerControlledCandidateDomain(domain: ControlledCandidateDom
         || adapter.semanticContribution.canonicalization.status !== 'applied'
         || canonicalCandidateSerialization(adapter.semanticContribution.canonicalization.graph) !== canonicalCandidateSerialization(adapter.selected.graph)) return null;
       selectedCapability = adapter.selected.selection;
-      return { ...adapter, prepare: () => current() ? adapter.prepare() : null,
+      return { ...adapter, sourceAccess: options.sourceAccess, prepare: () => current() ? adapter.prepare() : null,
         continueSelectedTurn: next => options.continueSelectedTurn({ ...next, graph: structuredClone(adapter.selected.graph), semanticContribution: adapter.semanticContribution }) };
     },
   };
