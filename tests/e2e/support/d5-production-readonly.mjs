@@ -1,0 +1,90 @@
+/** Production SDK requests use either a database query parameter or a REST path. */
+export function productionDatabaseFromRequestUrl(raw) {
+  const url = new URL(raw);
+  if (url.protocol !== 'https:' || url.hostname !== 'firestore.googleapis.com') return null;
+  const database = url.searchParams.get('database')
+    ?? url.pathname.match(/\/(projects\/[^/]+\/databases\/[^/]+)(?:\/|:|$)/u)?.[1];
+  return typeof database === 'string' && /^projects\/[^/]+\/databases\/[^/]+$/u.test(database) ? database : null;
+}
+
+/** Self-contained so Playwright serializes this read-only function into the same Page. */
+export function readOwnedConversation(owner) {
+  const index = JSON.parse(localStorage.getItem(`studyplanner.aiPlanning.chats.v1.${owner}`) ?? 'null');
+  if (!index) return null;
+  const snapshot = JSON.parse(localStorage.getItem(`studyplanner.aiPlanning.chat.v1.${owner}.${index.activeChatId}`) ?? 'null');
+  if (!snapshot) return null;
+  if (snapshot.ownerId !== owner || snapshot.version !== 'studyplanner-weekly-planning-stable-v5-session-v1'
+    || !snapshot.graph || !snapshot.planningState || !Array.isArray(snapshot.graph.factLifecycles)) {
+    throw new Error('Owned conversation checkpoint is incomplete.');
+  }
+  return snapshot;
+}
+
+/** Correlate the actual canonical receipt key, selected candidate ID and manifest hash. */
+export function consumedD5Request(snapshot, request, owner, target) {
+  const selected = request.menu.options.find(option => option.kind === 'leaf'
+    && option.candidate.tuple.minutes === 15 && option.candidate.tuple.measurement === 'duration_per_unit'
+    && option.candidate.tuple.perUnit === 'problem' && option.candidate.tuple.precision === 'exact');
+  const ledger = snapshot.planningState.intakeState?.c5SelectionLedger;
+  return Boolean(selected && request.context.target.id === target && snapshot.ownerId === owner
+    && ledger?.ownerId === owner && ledger.conversationId === snapshot.conversationId
+    && ledger.consumed.some(receipt => receipt.requestKey === JSON.stringify([owner, snapshot.conversationId, request.requestId])
+      && receipt.candidateSetHash === request.candidateSetHash && receipt.candidateId === selected.candidate.id));
+}
+
+/** Full owned reads; operations own item SUBCOLLECTIONS, never a root items query.
+ * Self-contained for page.evaluate. Missing/denied/malformed responses fail closed.
+ */
+export async function readProductionServerSnapshot({ uid, idToken, database }) {
+  if (!/^projects\/[^/]+\/databases\/[^/]+$/u.test(database)) throw new Error('Invalid production database.');
+  const prefix = `${database}/documents`;
+  const rows = {};
+  const query = async (parent, collectionId) => {
+    const response = await fetch(`https://firestore.googleapis.com/v1/${parent}:runQuery`, {
+      method: 'POST', headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ structuredQuery: { from: [{ collectionId }],
+        where: { fieldFilter: { field: { fieldPath: 'userId' }, op: 'EQUAL', value: { stringValue: uid } } } } }),
+    });
+    if (!response.ok) throw new Error(`Read-only ${collectionId} server read unavailable (HTTP ${response.status}).`);
+    const result = await response.json();
+    if (!Array.isArray(result) || result.length === 0 || result.some(row => !row || row.error
+      || row.skippedResults > 0 || (!row.document && typeof row.readTime !== 'string'))) {
+      throw new Error('Incomplete server readback.');
+    }
+    const documents = result.filter(row => row.document).map(row => row.document);
+    const seen = new Set();
+    for (const doc of documents) {
+      if (typeof doc.name !== 'string' || !doc.name.startsWith(`${parent}/${collectionId}/`)
+        || doc.name.slice(`${parent}/${collectionId}/`.length).includes('/') || seen.has(doc.name)
+        || doc.fields?.userId?.stringValue !== uid) throw new Error('Unexpected server document scope.');
+      seen.add(doc.name);
+    }
+    return documents.sort((a, b) => a.name.localeCompare(b.name));
+  };
+  for (const name of ['schedule_events', 'plans', 'month_events', 'weekly_planning_approval_operations']) {
+    rows[name] = await query(prefix, name);
+  }
+  rows.weekly_planning_approval_items = [];
+  for (const operation of rows.weekly_planning_approval_operations) {
+    rows.weekly_planning_approval_items.push(...await query(operation.name, 'weekly_planning_approval_items'));
+  }
+  rows.weekly_planning_approval_items.sort((a, b) => a.name.localeCompare(b.name));
+  return rows;
+}
+
+/** The OFF drill must exercise the enabled client, not accidentally pass with no D5 attempt. */
+export function boundOffRollbackCandidate(captured, observed, { owner, conversationId, target, policyVersion }) {
+  const binding = captured?.basis?.binding;
+  if (captured?.domainId !== 'd5_numeric' || captured.domainPolicyVersion !== policyVersion
+    || binding?.ownerId !== owner || binding.conversationId !== conversationId || binding.target.id !== target
+    || observed.length !== 1) return false;
+  const { request: r, row, evaluated } = observed[0];
+  return Boolean(r && row.v2 && row.status === 'unavailable' && row.off && row.provider == null && !evaluated
+    && r.wholeUtterance === '15' && r.context.question.code === 'missing_effort_estimate'
+    && r.context.scope.domainPolicyVersion === policyVersion && r.context.question.id === binding.question.id
+    && r.context.target.id === target && r.selectionEpoch === binding.selectionEpoch
+    && r.menu.kind === 'leaves' && r.menu.depth === 0
+    && r.menu.options.some(option => option.kind === 'leaf' && option.candidate.tuple.targetId === target
+      && option.candidate.tuple.minutes === 15 && option.candidate.tuple.measurement === 'duration_per_unit'
+      && option.candidate.tuple.perUnit === 'problem' && option.candidate.tuple.precision === 'exact'));
+}
