@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { productionDatabaseFromRequestUrl, readProductionServerSnapshot } from '../tests/e2e/support/d5-production-readonly.mjs';
+import { createRequire } from 'node:module';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { buildSync } from 'esbuild';
+import { productionDatabaseFromRequestUrl, readProductionServerSnapshot, classifyProductionOrigin, verifyFrontendIdentity, persistRedactedSmokeEvidence } from '../tests/e2e/support/d5-production-readonly.mjs';
 
 const database = 'projects/smoke-fixture/databases/(default)';
 const prefix = `${database}/documents`;
@@ -30,7 +35,114 @@ function server(mode = 'complete') {
   }));
   return requests;
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+
+const configFile = new URL('../tests/e2e/playwright.d5-production.config.mjs', import.meta.url);
+// Execute the actual config offline; only the runner's defineConfig/devices exports are inert stubs.
+const configCode = buildSync({ stdin: {
+  contents: readFileSync(configFile, 'utf8').replaceAll('import.meta.url', JSON.stringify(configFile.href)),
+  resolveDir: new URL('../tests/e2e/', import.meta.url).pathname, loader: 'js',
+}, bundle: true, platform: 'node', format: 'cjs', write: false,
+  plugins: undefined, external: ['@playwright/test'],
+}).outputFiles[0].text;
+function loadConfig(base, sha) {
+  if (arguments.length === 1) sha = 'a'.repeat(40);
+  vi.stubEnv('STUDYPLANNER_LIVE_BASE_URL', base);
+  vi.stubEnv('EXPECTED_FRONTEND_SHA', sha);
+  vi.stubEnv('D5_PRODUCTION_SMOKE', '1');
+  vi.stubEnv('EXPECT_JEV', '0');
+  vi.stubEnv('EXPECT_FALLBACK', '0');
+  const module = { exports: {} };
+  const nativeRequire = createRequire(import.meta.url);
+  const require = name => name === '@playwright/test'
+    ? { defineConfig: config => config, devices: { 'Desktop Chrome': {} } } : nativeRequire(name);
+  new Function('require', 'module', 'exports', configCode)(require, module, module.exports);
+  return module.exports.default;
+}
+
+describe('D5 production target and identity guard', () => {
+  it.each([
+    ['https://laplance.com', 'production'],
+    ['https://laplance.com:443/path?ignored=value', 'production'],
+    ['https://branch.studyplannner.pages.dev', 'non_production'],
+    ['https://studyplannner.pages.dev', 'non_production'],
+    ['https://localhost', 'non_production'],
+    ['http://localhost:5173', 'non_production'],
+    ['http://laplance.com', 'non_production'],
+    ['https://laplance.com:8443', 'non_production'],
+    ['https://laplance.com.evil.invalid', 'non_production'],
+    ['https://user:secret@laplance.com', 'non_production'],
+    ['not-a-url', 'non_production'],
+  ])('classifies the configured origin without network access (%s)', (url, expected) => {
+    expect(classifyProductionOrigin(url)).toBe(expected);
+  });
+  it('actual config accepts only canonical origin and logs classification without URL/SHA', () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const config = loadConfig('https://laplance.com/path?private=value');
+    expect(config.use.baseURL).toBe('https://laplance.com');
+    expect(config.preserveOutput).toBe('always');
+    expect(log.mock.calls).toEqual([[JSON.stringify({ productionOrigin: 'production' })]]);
+  });
+  it.each(['https://branch.studyplannner.pages.dev', 'https://localhost', 'http://laplance.com', 'not-a-url'])('actual config fails non-production before executing or echoing %s', url => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    expect(() => loadConfig(url)).toThrow('non_production');
+    expect(log.mock.calls).toEqual([[JSON.stringify({ productionOrigin: 'non_production' })]]);
+  });
+  it('requires a full expected frontend SHA even when no in-app build identifier exists', () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    expect(() => loadConfig('https://laplance.com', undefined)).toThrow('EXPECTED_FRONTEND_SHA');
+    expect(() => loadConfig('https://laplance.com', 'short-sha')).toThrow('EXPECTED_FRONTEND_SHA');
+    expect(verifyFrontendIdentity('a'.repeat(40))).toBe('out_of_band_pages_readback_required');
+  });
+  it('rejects observed identity mismatch; only an exact served SHA can be reported as match', () => {
+    expect(verifyFrontendIdentity('a'.repeat(40), 'a'.repeat(40))).toBe('match');
+    expect(() => verifyFrontendIdentity('a'.repeat(40), 'b'.repeat(40))).toThrow('frontend_identity_mismatch');
+    expect(() => verifyFrontendIdentity('a'.repeat(40), '')).toThrow('frontend_identity_mismatch');
+  });
+});
+
+describe('D5 redacted evidence persistence', () => {
+  it.each(['pass', 'fail'])('writes an uploadable, redacted JSON file from the %s finally path', async outcome => {
+    const directory = await mkdtemp(join(tmpdir(), 'd5-smoke-evidence-'));
+    const output = join(directory, 'test-output', 'redacted-d5-production-evidence.json');
+    const attach = vi.fn();
+    const evidence = { productionOrigin: 'production', frontendIdentity: 'out_of_band_pages_readback_required',
+      outcome: outcome === 'pass' ? 'd5_positive_readonly_smoke' : 'fallback_no_d5_positive_claim',
+      candidateChoice: [{ route: 'candidate_choice', provider: 'openrouter', status: 'evaluated', selection: 'leaf',
+        selected15: true, v2: true, question: 'missing_effort_estimate', optionCount: 2,
+        uid: 'PRIVATE_UID_SENTINEL', url: 'https://PRIVATE_URL_SENTINEL.invalid', token: 'PRIVATE_SECRET_SENTINEL' }],
+      uid: 'PRIVATE_UID_SENTINEL', url: 'https://PRIVATE_URL_SENTINEL.invalid', secret: 'PRIVATE_SECRET_SENTINEL',
+      reflectedEstimate: { minutes: 15, measurement: 'duration_per_unit', unit: 'problem', precision: 'exact', raw: 'PRIVATE_SECRET_SENTINEL' },
+      scheduleReadbackIdentical: outcome === 'pass', approvalExecutions: 0, scheduleWrites: 0 };
+    try {
+      try {
+        if (outcome === 'fail') throw new Error('fixture assertion failure');
+      } finally {
+        await persistRedactedSmokeEvidence({ outputPath: name => { expect(name).toBe('redacted-d5-production-evidence.json'); return output; }, attach }, evidence);
+      }
+    } catch (error) { expect(error.message).toBe('fixture assertion failure'); }
+    try {
+      const bytes = await readFile(output, 'utf8');
+      expect(JSON.parse(bytes).outcome).toBe(evidence.outcome);
+      expect(bytes).not.toMatch(/https?:|PRIVATE_UID_SENTINEL|PRIVATE_URL_SENTINEL|PRIVATE_SECRET_SENTINEL/u);
+      expect(attach).toHaveBeenCalledWith('redacted-d5-production-evidence', { path: output, contentType: 'application/json' });
+      const workflow = readFileSync(new URL('../.github/workflows/d5-production-readonly-smoke.yml', import.meta.url), 'utf8');
+      expect(workflow).toContain('artifacts/d5-production-smoke/**/redacted-d5-production-evidence*.json');
+      expect(workflow).toContain('if-no-files-found: error');
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+  it('retains the JSON even if reporter attachment fails, and rejects arbitrary strings in known fields', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'd5-smoke-evidence-'));
+    const output = join(directory, 'redacted-d5-production-evidence.json');
+    try {
+      await expect(persistRedactedSmokeEvidence({ outputPath: () => output, attach: async () => { throw new Error('reporter failed'); } }, {
+        productionOrigin: 'https://PRIVATE_URL_SENTINEL.invalid', frontendIdentity: 'PRIVATE_SECRET_SENTINEL', outcome: 'PRIVATE_UID_SENTINEL',
+        candidateChoice: [{ provider: 'PRIVATE_UID_SENTINEL', status: 'PRIVATE_SECRET_SENTINEL', question: 'https://PRIVATE_URL_SENTINEL.invalid' }],
+      })).rejects.toThrow('reporter failed');
+      expect(await readFile(output, 'utf8')).not.toMatch(/https?:|PRIVATE_UID_SENTINEL|PRIVATE_URL_SENTINEL|PRIVATE_SECRET_SENTINEL/u);
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+});
 
 describe('D5 production smoke offline preflight', () => {
   it('derives the exact database from real SDK Listen/Write query shapes and REST paths', () => {

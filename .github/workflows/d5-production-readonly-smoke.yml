@@ -11,6 +11,10 @@ on:
         description: 'Require bound D5 capture/request + unavailable/off + Luna ACK (OFF rollback drill)'
         type: boolean
         default: false
+      expected_frontend_sha:
+        description: 'Full deployed frontend SHA; verify Pages production deployment via Cloudflare readback before dispatch'
+        type: string
+        required: true
       test_week_start:
         description: 'Explicit isolated future test week start (YYYY-MM-DD)'
         type: string
@@ -32,6 +36,7 @@ jobs:
       D5_PRODUCTION_SMOKE: '1'
       EXPECT_JEV: ${{ inputs.expect_jev && '1' || '0' }}
       EXPECT_FALLBACK: ${{ inputs.expect_fallback && '1' || '0' }}
+      EXPECTED_FRONTEND_SHA: ${{ inputs.expected_frontend_sha }}
       D5_SMOKE_WEEK_START: ${{ inputs.test_week_start }}
       STUDYPLANNER_LIVE_BASE_URL: ${{ secrets.STUDYPLANNER_LIVE_BASE_URL }}
       STUDYPLANNER_LIVE_EMAIL: ${{ secrets.STUDYPLANNER_LIVE_EMAIL }}
@@ -57,5 +62,5 @@ jobs:
         with:
           name: d5-production-redacted-evidence
           path: artifacts/d5-production-smoke/**/redacted-d5-production-evidence*.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7

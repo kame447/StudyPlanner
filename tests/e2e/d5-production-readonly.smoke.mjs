@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { jevPurposeCanarySample } from '../../workers/ai-proxy/src/decision/jevPurposeRollout.ts';
 import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../shared/d5AnswerPolicy.ts';
-import { productionDatabaseFromRequestUrl, readOwnedConversation, readProductionServerSnapshot, consumedD5Request, boundOffRollbackCandidate } from './support/d5-production-readonly.mjs';
+import { productionDatabaseFromRequestUrl, readOwnedConversation, readProductionServerSnapshot, consumedD5Request, boundOffRollbackCandidate, classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, persistRedactedSmokeEvidence } from './support/d5-production-readonly.mjs';
 
 const secret = name => {
   const value = process.env[name]?.trim();
@@ -10,10 +10,14 @@ const secret = name => {
 };
 const composer = page => page.locator('.ai-planning-composer textarea');
 
-const conversation = (page, uid) => page.evaluate(readOwnedConversation, uid);
+const conversation = (page, uid) => {
+  requireProductionOrigin(page.url());
+  return page.evaluate(readOwnedConversation, uid);
+};
 
 async function signIn(page) {
   await page.goto('/');
+  requireProductionOrigin(page.url());
   await expect.poll(async () => await page.getByRole('heading', { name: '限定公開キー' }).isVisible()
     || await page.getByRole('tab', { name: 'ログイン', exact: true }).isVisible()).toBe(true);
   if (await page.getByRole('heading', { name: '限定公開キー' }).isVisible()) {
@@ -21,6 +25,7 @@ async function signIn(page) {
     await page.getByRole('button', { name: 'キーを確認して進む' }).click();
   }
   await page.getByRole('tab', { name: 'ログイン', exact: true }).click();
+  requireProductionOrigin(page.url());
   await page.getByLabel('メールアドレス').fill(secret('STUDYPLANNER_LIVE_EMAIL'));
   await page.getByLabel('パスワード', { exact: true }).fill(secret('STUDYPLANNER_LIVE_PASSWORD'));
   // Fresh, normal test-account login, not an extracted profile or an impersonated session.
@@ -33,10 +38,14 @@ async function signIn(page) {
   if (typeof uid !== 'string' || typeof idToken !== 'string') throw new Error('Missing signed-in test identity.');
   // Onboarding is an operator prerequisite; this smoke never consents or changes preferences.
   await expect(page.locator('.primary-bottom-nav')).toBeVisible();
+  requireProductionOrigin(page.url());
   return { uid, idToken };
 }
 
-const serverSnapshot = (page, identity, database) => page.evaluate(readProductionServerSnapshot, { ...identity, database });
+const serverSnapshot = (page, identity, database) => {
+  requireProductionOrigin(page.url());
+  return page.evaluate(readProductionServerSnapshot, { ...identity, database });
+};
 
 async function send(page, text) {
   await composer(page).fill(text);
@@ -44,8 +53,8 @@ async function send(page, text) {
   await expect(composer(page)).toBeEnabled();
 }
 
-test('explicit production D5 smoke preserves all schedules and never approves', async ({ page }, testInfo) => {
-  const evidence = { inCohort5: null, outcome: 'incomplete', candidateChoice: [],
+test('explicit production D5 smoke preserves all schedules and never approves', async ({ page, baseURL }, testInfo) => {
+  const evidence = { productionOrigin: classifyProductionOrigin(baseURL), frontendIdentity: 'unverified', inCohort5: null, outcome: 'incomplete', candidateChoice: [],
     d5Captured: false, d5Consumed: false, lunaFallbackRoute: null, activeEstimate: false, reflectedEstimate: null, visibleAck: false,
     scheduleReadbackIdentical: false, approvalStartEvents: 0, approvalExecutions: null, scheduleWrites: 0 };
   const observations = new Map();
@@ -150,6 +159,10 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
   });
 
   try {
+    console.log(JSON.stringify({ productionOrigin: evidence.productionOrigin }));
+    requireProductionOrigin(baseURL);
+    evidence.frontendIdentity = verifyFrontendIdentity(process.env.EXPECTED_FRONTEND_SHA);
+    console.log(JSON.stringify({ frontendIdentity: evidence.frontendIdentity }));
     identity = await signIn(page);
     evidence.inCohort5 = jevPurposeCanarySample('candidate_choice', identity.uid) < 0.05;
     console.log(JSON.stringify({ inCohort5: evidence.inCohort5 })); // Boolean only, never UID/hash.
@@ -246,9 +259,18 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     expect(observationErrors.length, 'Network evidence must be complete').toBe(0);
     dialogueVerified = true;
   } finally {
+    if (classifyProductionOrigin(page.url()) !== 'production') {
+      evidence.productionOrigin = 'non_production';
+      evidence.outcome = 'non_production';
+    }
     // Always preserve redacted evidence, including failed/none/timeout attempts.
     try {
       if (before && identity && database) {
+        evidence.productionOrigin = classifyProductionOrigin(page.url());
+        if (evidence.productionOrigin !== 'production') {
+          evidence.outcome = 'non_production';
+          throw new Error('non_production: browser left the production origin.');
+        }
         const after = await serverSnapshot(page, identity, database);
         evidence.scheduleReadbackIdentical = JSON.stringify(before) === JSON.stringify(after);
         const ledgersIdentical = await approvalLedger() === approvalBefore
@@ -259,13 +281,12 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
         expect(evidence.approvalExecutions, 'No approval executions').toBe(0);
         expect(evidence.approvalStartEvents, 'No observed approval-start diagnostic').toBe(0);
         expect(evidence.scheduleWrites, 'No Firestore write attempts, including save-and-cleanup').toBe(0);
+        requireProductionOrigin(page.url());
         if (dialogueVerified && evidence.d5Consumed) evidence.outcome = 'd5_positive_readonly_smoke';
         else if (dialogueVerified && process.env.EXPECT_FALLBACK === '1') evidence.outcome = 'off_rollback_luna_fallback_verified';
       }
     } finally {
-      await testInfo.attach('redacted-d5-production-evidence', {
-        body: Buffer.from(JSON.stringify(evidence, null, 2)), contentType: 'application/json',
-      });
+      await persistRedactedSmokeEvidence(testInfo, evidence);
     }
   }
 });

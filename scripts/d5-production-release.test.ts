@@ -40,8 +40,14 @@ describe('D5 production release isolation', () => {
     expect(dedicated).toContain('retries: 0');
     expect(dedicated).toContain("process.env.EXPECT_JEV === '1' && process.env.EXPECT_FALLBACK === '1'");
     expect(workflow).toContain('EXPECT_FALLBACK:');
+    expect(workflow).toContain('expected_frontend_sha:');
+    expect(workflow).toContain('EXPECTED_FRONTEND_SHA:');
+    expect(workflow).toContain('if-no-files-found: error');
+    expect(dedicated).toContain('requireProductionOrigin(raw)');
+    expect(dedicated).toContain('verifyFrontendIdentity(process.env.EXPECTED_FRONTEND_SHA)');
     const spec = read('tests/e2e/d5-production-readonly.smoke.mjs');
     expect(spec).toContain("jevPurposeCanarySample('candidate_choice', identity.uid)");
+    expect(spec).toContain('await persistRedactedSmokeEvidence(testInfo, evidence)');
     expect(spec).not.toMatch(/page\.route\(|route\.fulfill|page\.addInitScript|timeoutMs:|devD5Domains/u);
   });
 

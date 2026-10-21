@@ -1,3 +1,31 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+
+// Canonical public production route (README.md); Worker CORS origins also include previews/dev.
+const PRODUCTION_ORIGINS = new Set(['https://laplance.com']);
+export function classifyProductionOrigin(raw) {
+  try {
+    const url = new URL(raw);
+    return url.username === '' && url.password === '' && PRODUCTION_ORIGINS.has(url.origin)
+      ? 'production' : 'non_production';
+  } catch { return 'non_production'; }
+}
+export function requireProductionOrigin(raw) {
+  if (classifyProductionOrigin(raw) !== 'production') throw new Error('non_production: D5 production smoke target rejected.');
+}
+
+/** No frontend commit asset/meta exists in this app. Null means external Pages readback is required.
+ * If a served identifier is supplied, mismatch can never be treated as missing evidence.
+ */
+export function verifyFrontendIdentity(expectedSha, servedSha = null) {
+  if (typeof expectedSha !== 'string' || !/^[0-9a-f]{40}$/u.test(expectedSha)) {
+    throw new Error('EXPECTED_FRONTEND_SHA must be a full lowercase 40-hex commit SHA.');
+  }
+  if (servedSha === null) return 'out_of_band_pages_readback_required';
+  if (servedSha !== expectedSha) throw new Error('frontend_identity_mismatch');
+  return 'match';
+}
+
 /** Production SDK requests use either a database query parameter or a REST path. */
 export function productionDatabaseFromRequestUrl(raw) {
   const url = new URL(raw);
@@ -87,4 +115,46 @@ export function boundOffRollbackCandidate(captured, observed, { owner, conversat
     && r.menu.options.some(option => option.kind === 'leaf' && option.candidate.tuple.targetId === target
       && option.candidate.tuple.minutes === 15 && option.candidate.tuple.measurement === 'duration_per_unit'
       && option.candidate.tuple.perUnit === 'problem' && option.candidate.tuple.precision === 'exact'));
+}
+
+/** Export only bounded machine/test outcomes, never raw diagnostics or arbitrary strings. */
+export function redactedSmokeEvidence(value) {
+  const oneOf = (input, allowed, fallback = null) => allowed.includes(input) ? input : fallback;
+  const boolean = input => typeof input === 'boolean' ? input : null;
+  const count = input => Number.isSafeInteger(input) && input >= 0 && input <= 10000 ? input : null;
+  return {
+    productionOrigin: oneOf(value.productionOrigin, ['production', 'non_production'], 'unverified'),
+    frontendIdentity: oneOf(value.frontendIdentity, ['match', 'frontend_identity_mismatch', 'out_of_band_pages_readback_required'], 'unverified'),
+    inCohort5: boolean(value.inCohort5),
+    outcome: oneOf(value.outcome, ['incomplete', 'non_production', 'd5_consumed_pending_verification',
+      'fallback_no_d5_positive_claim', 'd5_positive_readonly_smoke', 'off_rollback_luna_fallback_verified'], 'incomplete'),
+    candidateChoice: (Array.isArray(value.candidateChoice) ? value.candidateChoice : []).map(row => ({
+      route: 'candidate_choice', provider: oneOf(row.provider, ['openrouter', 'openai']),
+      status: typeof row.status === 'string' && /^http_[1-5][0-9]{2}_fallback$/u.test(row.status) ? row.status
+        : oneOf(row.status, ['pending', 'evaluated', 'unavailable', 'network_or_timeout_fallback'], 'unknown'),
+      selection: oneOf(row.selection, ['pending', 'none', 'leaf', 'unavailable_or_invalid'], 'unknown'),
+      selected15: boolean(row.selected15), v2: boolean(row.v2),
+      question: oneOf(row.question, ['missing_effort_estimate'], 'other'),
+      optionCount: Number.isSafeInteger(row.optionCount) && row.optionCount >= 2 && row.optionCount <= 255 ? row.optionCount : null,
+      off: boolean(row.off),
+    })),
+    d5Captured: boolean(value.d5Captured), d5Consumed: boolean(value.d5Consumed),
+    lunaFallbackRoute: oneOf(value.lunaFallbackRoute, ['completed_direct_semantic_normalizer', 'completed_durable_semantic_normalizer']),
+    activeEstimate: boolean(value.activeEstimate),
+    reflectedEstimate: value.reflectedEstimate?.minutes === 15 && value.reflectedEstimate.measurement === 'duration_per_unit'
+      && value.reflectedEstimate.unit === 'problem' && value.reflectedEstimate.precision === 'exact'
+      ? { minutes: 15, measurement: 'duration_per_unit', unit: 'problem', precision: 'exact' } : null,
+    visibleAck: boolean(value.visibleAck), scheduleReadbackIdentical: boolean(value.scheduleReadbackIdentical),
+    approvalStartEvents: count(value.approvalStartEvents), approvalExecutions: oneOf(value.approvalExecutions, [0, 'changed']),
+    scheduleWrites: count(value.scheduleWrites),
+  };
+}
+
+/** Body-only attachments are not files with Playwright's list reporter + tracing off. */
+export async function persistRedactedSmokeEvidence(testInfo, evidence) {
+  const output = testInfo.outputPath('redacted-d5-production-evidence.json');
+  await mkdir(dirname(output), { recursive: true });
+  await writeFile(output, JSON.stringify(redactedSmokeEvidence(evidence), null, 2), 'utf8');
+  await testInfo.attach('redacted-d5-production-evidence', { path: output, contentType: 'application/json' });
+  return output;
 }
