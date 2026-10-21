@@ -1,6 +1,6 @@
 # Local mutation compensation boundary
 
-Status: independently reviewed local candidate; full integration verification and publication pending.
+Status: locally verified and independently reviewed; publication pending.
 Base: `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`.
 Branch: `refactor/local-mutation-compensation-boundary`.
 
@@ -35,3 +35,7 @@ Exit 0: 7 files / 71 tests passed, including 6 new helper cases. Log `/tmp/compe
 Node 24.19.0 / Vitest 3.2.7; current-main dependencies reused from fresh calendar-domain-refactor-work npm-ci seed. Lockfile SHA-256: `ea546daa78b887f737da4cfb1884b8f14f7b39ce4baa639e7baa04d5bfb6c693`. Full types/suite/build remain a final exact-content gate, coordinated by the integration owner. Browser, production backend and physical-device validation are not claimed. Publication remains unapproved.
 
 Independent source review compared both removed bodies to the new helper and found no blocker: synchronous apply invocation, awaited rollback, original thrown value, compensation-failure priority and all fifteen call sites are unchanged.
+
+## Final local verification
+
+`npm run verify` exited 0 on exact commit `a762fba867a4c44d46bbbf3a4710577a491727f5`, tree `5a42362ff81c218b3b353b728b2337ecc25138b6`, initially clean. Fresh app/Worker typechecks, 1,055 files / 10,534 tests passed (67 skipped, 1 todo retained), production build passed in 13.12 seconds. Log `/tmp/compensation-full-verify.log`; standard telemetry-disabled environment, DEV_LAN_HOST=127.0.0.1, isolated Wrangler log `/tmp/compensation-verify-wrangler.log`. Same dependency identity above. Tests produced `.cache/j1-old-worker` historical-fixture output but no tracked source changes. Only this verification receipt changed afterward. A second historical-hotspot reviewer independently confirmed byte-identical helper bodies against both original adapters and no source blocker. No publication, merge or browser/backend acceptance claimed.
