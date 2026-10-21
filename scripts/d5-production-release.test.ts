@@ -9,6 +9,15 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
 describe('D5 production release isolation', () => {
+  it('pins the public canonical production URL while keeping test-account credentials secret', () => {
+    const workflow = read('.github/workflows/d5-production-readonly-smoke.yml');
+    expect(workflow).toMatch(/^\s+STUDYPLANNER_LIVE_BASE_URL: 'https:\/\/laplance\.com'\s*$/mu);
+    expect(workflow).not.toContain('secrets.STUDYPLANNER_LIVE_BASE_URL');
+    for (const name of ['EMAIL', 'PASSWORD', 'ACCESS_KEY']) {
+      expect(workflow).toContain(`STUDYPLANNER_LIVE_${name}: \${{ secrets.STUDYPLANNER_LIVE_${name} }}`);
+    }
+  });
+
   it('changes exactly the two enabled-release Worker vars versus c309b457, and no other config', () => {
     const current = read('workers/ai-proxy/wrangler.jsonc');
     const vars = JSON.parse(current).vars;

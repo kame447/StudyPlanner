@@ -38,7 +38,7 @@ jobs:
       EXPECT_FALLBACK: ${{ inputs.expectation == 'EXPECT_FALLBACK' && '1' || '0' }}
       EXPECTED_FRONTEND_SHA: ${{ inputs.expected_frontend_sha }}
       D5_SMOKE_WEEK_START: ${{ inputs.test_week_start }}
-      STUDYPLANNER_LIVE_BASE_URL: ${{ secrets.STUDYPLANNER_LIVE_BASE_URL }}
+      STUDYPLANNER_LIVE_BASE_URL: 'https://laplance.com'
       STUDYPLANNER_LIVE_EMAIL: ${{ secrets.STUDYPLANNER_LIVE_EMAIL }}
       STUDYPLANNER_LIVE_PASSWORD: ${{ secrets.STUDYPLANNER_LIVE_PASSWORD }}
       STUDYPLANNER_LIVE_ACCESS_KEY: ${{ secrets.STUDYPLANNER_LIVE_ACCESS_KEY }}
