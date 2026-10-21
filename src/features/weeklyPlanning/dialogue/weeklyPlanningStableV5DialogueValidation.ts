@@ -484,9 +484,21 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
   if (Array.isArray(tasks)) for (const task of tasks) {
     if (isRecord(task) && typeof task.title === 'string' && task.title.length) taskLabels.add(normalizeSafetyText(task.title));
   }
+  // Display-only aliases: exact literal prefixes at an existing の boundary.
+  // Never infer a subject from user text or choose between shared task prefixes.
+  const taskSubjects = new Map([...taskLabels].map(label => [label, label]));
+  for (const title of taskLabels) {
+    for (let at = title.indexOf('の'); at >= 0; at = title.indexOf('の', at + 1)) {
+      const prefix = title.slice(0, at);
+      const owners = [...taskLabels].filter(label => label === prefix || label.startsWith(`${prefix}の`));
+      const duplicateTasks = planningRows(input, 'tasks').filter(task => typeof task.title === 'string'
+        && normalizeSafetyText(task.title) === title).length > 1;
+      if (prefix.length && owners.length === 1 && !duplicateTasks) taskSubjects.set(prefix, title);
+    }
+  }
   const components = Array.isArray(input.planningInformation?.components) ? input.planningInformation!.components.filter(isRecord) : [];
   const componentLabels = components.flatMap(component => typeof component.label === 'string' ? [normalizeSafetyText(component.label)] : []);
-  const opaqueLabels = [...new Set([...taskLabels, ...effort.flatMap(fact => Array.isArray(fact.data.targetLabels) ? fact.data.targetLabels : [])
+  const opaqueLabels = [...new Set([...taskSubjects.keys(), ...effort.flatMap(fact => Array.isArray(fact.data.targetLabels) ? fact.data.targetLabels : [])
     .filter((label): label is string => typeof label === 'string').map(normalizeSafetyText), ...(!required ? componentLabels : [])])].sort((a, b) => b.length - a.length);
   // Locate literal names before punctuation is considered. Their contents are opaque,
   // including question marks, numbers and words resembling an assertion predicate.
@@ -505,13 +517,24 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
   }
   if (start < visible.length) boundaries.push({ start, end: visible.length });
   const segments = boundaries.flatMap<{ label: string | null; text: string }>(boundary => {
-    let anchors = spans.filter(span => span.start >= boundary.start && span.end <= boundary.end && taskLabels.has(span.label));
+    let anchors = spans.filter(span => span.start >= boundary.start && span.end <= boundary.end && taskSubjects.has(span.label));
     if (!required && !anchors.length) anchors = spans.filter(span => span.start >= boundary.start && span.end <= boundary.end && componentLabels.includes(span.label));
     return anchors.length ? anchors.map((anchor, i) => ({ label: anchor.label,
       text: visible.slice(i === 0 ? boundary.start : anchor.start, anchors[i + 1]?.start ?? boundary.end) }))
       : [{ label: null, text: visible.slice(boundary.start, boundary.end) }];
   });
   for (const { text: segment, label: targetLabel } of segments) {
+    // Keep canonical scope labels for fact comparison, but consume the actual
+    // displayed subject's length. Component/ancestor labels remain mandatory.
+    const displayedTargetLabels = (labels: string[]): string[] | null => {
+      const normalized = labels.map(normalizeSafetyText);
+      if (targetLabel !== null && taskSubjects.get(targetLabel) === normalized[0]
+        && normalized.slice(1).every(label => segment.includes(label))) return [targetLabel, ...normalized.slice(1)];
+      if (!required && normalized[1] === targetLabel && componentLabels.filter(label => label === targetLabel).length === 1) {
+        return normalized.filter(label => segment.includes(label));
+      }
+      return null;
+    };
     let display = segment;
     for (const label of opaqueLabels) if (label.length) display = display.split(label).join(' '.repeat(label.length));
     display = display.replace(CLOCK_EXPRESSION, clock => ' '.repeat(clock.length));
@@ -522,12 +545,9 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
       const claims = scopes.flatMap(scope => {
         const labels = scope.targetLabels;
         if (!Array.isArray(labels) || !labels.length || !labels.every(label => typeof label === 'string')) return [];
-        const fullTarget = normalizeSafetyText(labels[0]) === targetLabel && labels.every(label => segment.includes(normalizeSafetyText(label)));
-        const componentTarget = typeof labels[1] === 'string' && normalizeSafetyText(labels[1]) === targetLabel
-          && componentLabels.filter(label => label === targetLabel).length === 1;
-        if (!fullTarget && !componentTarget) return [];
-        const labelEnd = Math.max(...labels.filter(label => segment.includes(normalizeSafetyText(label)))
-          .map(label => segment.lastIndexOf(normalizeSafetyText(label)) + normalizeSafetyText(label).length));
+        const displayedLabels = displayedTargetLabels(labels);
+        if (!displayedLabels) return [];
+        const labelEnd = Math.max(...displayedLabels.map(label => segment.lastIndexOf(label) + label.length));
         return positiveEffortDisplayTuples(display, labelEnd, scope, input).map(tuple => ({ scope, tuple }));
       });
       // Unrecognized prose abstains. A recognized tuple must have active proof;
@@ -541,14 +561,9 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
       const data = fact.data; const labels = data.targetLabels;
       if ((required && (!factIds.includes(fact.factId) || assigned.has(fact.factId)))
         || !Array.isArray(labels) || !labels.length || !labels.every(label => typeof label === 'string')) return false;
-      const fullTarget = normalizeSafetyText(labels[0]) === targetLabel && labels.every(label => segment.includes(normalizeSafetyText(label)));
-      // Without a task name, only the exact nearest target component's unique
-      // literal name can bind a status claim. An ancestor cannot stand in for it.
-      const componentTarget = !required && typeof labels[1] === 'string' && normalizeSafetyText(labels[1]) === targetLabel
-        && componentLabels.filter(label => label === targetLabel).length === 1;
-      if (!fullTarget && !componentTarget) return false;
-      const labelEnd = Math.max(...labels.filter(label => segment.includes(normalizeSafetyText(label)))
-        .map(label => { const normalized = normalizeSafetyText(label); return segment.lastIndexOf(normalized) + normalized.length; }));
+      const displayedLabels = displayedTargetLabels(labels);
+      if (!displayedLabels) return false;
+      const labelEnd = Math.max(...displayedLabels.map(label => segment.lastIndexOf(label) + label.length));
       return effortAssertionVariants(display, labelEnd, data, input).some(assertion => {
         assertion = withoutNegatedEffortContrast(assertion, labelEnd, data, input);
         const mentions = displayQuantityMentions(assertion);

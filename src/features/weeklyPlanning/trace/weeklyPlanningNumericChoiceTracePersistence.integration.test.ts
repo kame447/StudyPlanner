@@ -32,7 +32,7 @@ function repository() {
   const port: WeeklyPlanningTraceRepository = { async upsertSession() {}, async appendEntries(p) { if (fail) { fail = false; throw new Error('injected append failure'); } writes.push(structuredClone(p)); }, async listSessions() { return []; }, async listSessionsForAdmin() { return []; }, async archiveSessionForAdmin() {}, async getSession() { return null; }, async listEntries() { return []; } };
   return { port, writes, failNext() { fail = true; } };
 }
-async function dispatchAndTrace(oversized = false, effortTarget: 'workload' | 'task' = 'workload') {
+async function dispatchAndTrace(oversized = false, effortTarget: 'workload' | 'task' = 'workload', shortenedSubject = false) {
   const r = choiceRequest(); const requestId = `${conversationId}:request:choice`;
   const scope = { ...r.context.scope, ...D5_TOP1_SCOPE, futureNumericChoiceSentinel: 'keep-unknown-numeric-sentinel', ...(oversized ? { largeValue: 'あ'.repeat(15000) } : {}) };
   const request = { ...r, context: { ...r.context, scope } }; let serializedBody = '';
@@ -46,6 +46,7 @@ async function dispatchAndTrace(oversized = false, effortTarget: 'workload' | 't
       request: { purpose: 'weekly_planning_semantic_normalizer', messages: [{ role: 'user', content: wholeUtterance }], candidateChoiceRequest: { ...candidateChoiceRequest, token: 'token-never-trace', ownerId: 'owner-never-trace', semanticCensus: 'census-never-trace' } } } });
   });
   const graph = numericFixture().graph;
+  if (shortenedSubject) graph.tasks[0].title = '数学の問題演習';
   const workload = graph.workloads[0];
   graph.effortEstimates.push({ id: 'required-effort-ack', taskId: workload.taskId, targetFactId: effortTarget === 'task' ? workload.taskId : workload.id,
     kind: 'total_duration', minutes: 15, unitCode: effortTarget === 'task' ? 'minute' : null, precision: 'exact', createdRevision: graph.revision,
@@ -62,7 +63,7 @@ async function dispatchAndTrace(oversized = false, effortTarget: 'workload' | 't
   let actualRendererRequest = '';
   const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
     actualRendererRequest = JSON.stringify(request);
-    const text = `${(fact.data.targetLabels as string[]).join('の')}${workload.amount}${workload.unitLabel}は全部で15分ですね。`;
+    const text = `${shortenedSubject ? '数学' : (fact.data.targetLabels as string[]).join('の')}${workload.amount}${workload.unitLabel}は全部で15分ですね。`;
     return JSON.stringify({ actionId: input.actionId, actionKind: input.actionKind, questionCode: null,
       groundingAcknowledgement: { factIds: [fact.factId], text }, text });
   } });
@@ -70,6 +71,10 @@ async function dispatchAndTrace(oversized = false, effortTarget: 'workload' | 't
   const rendered = await renderer.render(input);
   expect(rendered.status).toBe('rendered');
   expect(actualRendererRequest).toContain('keep-future-effort-ack');
+  if (shortenedSubject) {
+    expect(actualRendererRequest).toContain('数学の問題演習');
+    expect(rendered.status === 'rendered' && rendered.text).toContain(`数学${workload.amount}${workload.unitLabel}は全部で15分ですね。`);
+  }
   recordWeeklyPlanningDialogueRendererResponseV5({ requestId, actionId: input.actionId, rendered, selfRepairNotice: null });
   if (rendered.status !== 'rendered') throw new Error('ACK fixture failed');
   const dialogueRendererTrace = createWeeklyPlanningAiRenderedDialogueTrace({ actionId: input.actionId, actionKind: 'status', questionCode: null, renderInput: input, rendered, finalMessage: rendered.text });
@@ -84,12 +89,14 @@ function prepare(write: ReturnType<typeof repository>['writes'][number]) {
 }
 describe('actual Choice request through durable trace gate', () => {
   it.each([
-    { corrected: false, contextualMinutes: null, nonReflected: null }, { corrected: true, contextualMinutes: null, nonReflected: null },
-    { corrected: false, contextualMinutes: 45, nonReflected: null }, { corrected: false, contextualMinutes: 60, nonReflected: null },
-    { corrected: false, contextualMinutes: null, nonReflected: 'question' }, { corrected: false, contextualMinutes: null, nonReflected: 'assertion' },
-  ])('persists asymmetric active-fact claim checks: %j', async ({ corrected, contextualMinutes, nonReflected }) => {
+    { corrected: false, contextualMinutes: null, nonReflected: null, shortSubject: null }, { corrected: true, contextualMinutes: null, nonReflected: null, shortSubject: null },
+    { corrected: false, contextualMinutes: 45, nonReflected: null, shortSubject: null }, { corrected: false, contextualMinutes: 60, nonReflected: null, shortSubject: null },
+    { corrected: false, contextualMinutes: null, nonReflected: 'question', shortSubject: null }, { corrected: false, contextualMinutes: null, nonReflected: 'assertion', shortSubject: null },
+    ...(['absent', 'exact', 'approximate'] as const).map(shortSubject => ({ corrected: false, contextualMinutes: null, nonReflected: null, shortSubject })),
+  ])('persists asymmetric active-fact claim checks: %j', async ({ corrected, contextualMinutes, nonReflected, shortSubject }) => {
     const requestId = 'display-existing-effort';
-    const contextual = contextualMinutes !== null, valid = nonReflected ? nonReflected === 'question' : contextual ? contextualMinutes === 45 : corrected;
+    const contextual = contextualMinutes !== null, valid = shortSubject ? shortSubject === 'approximate'
+      : nonReflected ? nonReflected === 'question' : contextual ? contextualMinutes === 45 : corrected;
     const graph: WeeklyPlanningFactGraphV5 = numericFixture('duration_per_unit').graph;
     const workload = graph.workloads[0];
     graph.effortEstimates.push({ id: 'old-rate', taskId: workload.taskId, targetFactId: workload.id,
@@ -102,7 +109,7 @@ describe('actual Choice request through durable trace gate', () => {
       graph.effortEstimates.push({ ...graph.effortEstimates[0], id: 'new-total', kind: 'total_duration', minutes: 60, unitCode: null, createdRevision: 3 });
       graph.factLifecycles.push({ factId: 'new-total', status: 'active', createdRevision: 3, terminalRevision: null, supersededByFactId: null });
     }
-    if (contextual || nonReflected) {
+    if (contextual || nonReflected || shortSubject) {
       graph.tasks.push({ ...graph.tasks[0], id: 'english', title: '英語' });
       graph.workloads.push({ ...workload, id: 'english-work', taskId: 'english', amount: 15, unitCode: 'page', unitLabel: 'ページ' });
       graph.effortEstimates.push({ ...graph.effortEstimates[0], id: 'english-effort', taskId: 'english', targetFactId: 'english-work',
@@ -110,19 +117,24 @@ describe('actual Choice request through durable trace gate', () => {
       for (const factId of ['english', 'english-work', 'english-effort']) graph.factLifecycles.push({ factId, status: 'active',
         createdRevision: 2, terminalRevision: null, supersededByFactId: null });
     }
-    if (nonReflected) {
+    if (shortSubject) {
+      graph.tasks[0].title = '数学の問題演習'; graph.tasks[1].title = '英語のページ学習';
+      if (shortSubject === 'approximate') graph.effortEstimates[0].precision = 'approximate';
+    }
+    if (nonReflected || shortSubject === 'absent') {
       graph.effortEstimates = graph.effortEstimates.filter(fact => fact.taskId !== workload.taskId);
       graph.factLifecycles = graph.factLifecycles.filter(fact => fact.factId !== 'old-rate');
     }
     const currentTurnGrounding = createWeeklyPlanningStableV5CurrentTurnGrounding({ graph, turnId: requestId,
       actionKind: 'status', previousQuestionCode: null, currentQuestionCode: null });
     expect(currentTurnGrounding.acceptedFacts.filter(fact => fact.kind === 'effort_estimate')).toHaveLength(contextual ? 1 : 0);
-    const input = { actionId: requestId, currentUserMessage: nonReflected ? '15分。あと英語の締切を金曜にして' : 'いや、数学は全部で60分です。', recentConversation: [],
+    const input = { actionId: requestId, currentUserMessage: nonReflected || shortSubject ? '15分。あと英語の締切を金曜にして' : 'いや、数学は全部で60分です。', recentConversation: [],
       planningInformation: { ...createWeeklyPlanningStableV5DialogueProjection(graph), futureActiveClaimSentinel: 'keep-active-claim-sentinel' },
       currentTurnGrounding, actionKind: 'status' as const, questionCode: null, requiredLabels: [], previewCount: 0,
       fallbackText: '返信を作れませんでした。少し待ってからもう一度送信してください。' };
     const before = structuredClone(graph); let sends = 0; let actualRequest = '';
-    const text = nonReflected === 'question' ? '今回は「15分」という内容も、英語の締切を金曜にする内容も計画に反映されていません。数学は1問あたり15分、という理解でよいですか？'
+    const text = shortSubject ? '数学は1問15分くらいですね。英語の締切は金曜にしたいとのこと、受け取りました。数学の見積もりは1問15分として考えてよさそうですか？'
+      : nonReflected === 'question' ? '今回は「15分」という内容も、英語の締切を金曜にする内容も計画に反映されていません。数学は1問あたり15分、という理解でよいですか？'
       : nonReflected === 'assertion' ? '数学は1問あたり15分ですね。'
       : contextual ? `数学は1問あたり15分ですね。数学20問と英語15ページ（全部で${contextualMinutes}分）をもとに確認してください。`
       : '失礼しました。数学は1問あたり15分ではなく、全部で60分ですね。';
@@ -157,19 +169,21 @@ describe('actual Choice request through durable trace gate', () => {
     const prepared = prepare(h.writes[0]);
     for (const entry of [h.writes[0].entries[0], prepared.entries[0]]) {
       expect(JSON.stringify(entry)).toContain('keep-active-claim-sentinel');
-      expect(JSON.stringify(entry)).toContain(nonReflected ? '数学は1問あたり15分' : contextual ? `英語15ページ（全部で${contextualMinutes}分）` : '1問あたり15分ではなく');
+      expect(JSON.stringify(entry)).toContain(shortSubject ? '数学は1問15分くらいですね。' : nonReflected ? '数学は1問あたり15分' : contextual ? `英語15ページ（全部で${contextualMinutes}分）` : '1問あたり15分ではなく');
+      if (shortSubject) expect(JSON.stringify(entry)).toContain('数学の問題演習');
       expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
     }
   });
-  it.each(['workload', 'task'] as const)('preserves question/scope/menu/hash/epoch and %s-target ACK through failed append, outbox retry and Worker preparation', async effortTarget => {
+  it.each((['workload', 'task'] as const).flatMap(effortTarget => [false, true].map(shortenedSubject => ({ effortTarget, shortenedSubject }))))('preserves question/scope/menu/hash/epoch and target ACK through failed append, outbox retry and Worker preparation: %j', async ({ effortTarget, shortenedSubject }) => {
     const h = repository(); h.failNext(); setWeeklyPlanningTraceRepositoryForTests(h.port);
-    const input = await dispatchAndTrace(false, effortTarget); await recordWeeklyPlanningStableV5TurnTrace(input);
+    const input = await dispatchAndTrace(false, effortTarget, shortenedSubject); await recordWeeklyPlanningStableV5TurnTrace(input);
     expect(h.writes).toHaveLength(0); expect(listWeeklyPlanningTraceOutboxItems({ userId, conversationId })).toHaveLength(1);
     resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
     await recordWeeklyPlanningStableV5TurnTrace({ ...input, requestId: `${conversationId}:request:retry`, debugTraceEvents: [] });
     expect(h.writes).toHaveLength(2); expect(listWeeklyPlanningTraceOutboxItems({ userId, conversationId })).toEqual([]);
     const entry = h.writes[0].entries[0]; expect(entry.kind).toBe('turn_diagnostic');
     expect(JSON.stringify(entry)).toContain('は全部で15分ですね。');
+    if (shortenedSubject) expect(JSON.stringify(entry)).toContain('数学の問題演習');
     const serialized = JSON.stringify(entry);
     for (const marker of ['keep-unknown-numeric-sentinel', 'missing_effort_estimate', 'question-1', 'workload-1', 'sha256:', 'selectionEpoch', 'precision', 'exact', D5_TOP1_ANSWER_POLICY_VERSION, 'one_exact_duration_or_contextual_bare_minutes', 'keep-future-effort-ack', 'targetLabels', 'unitLabel', 'required_before_resume']) expect(serialized).toContain(marker);
     for (const marker of ['auth-secret-never-trace', 'token-never-trace', 'owner-never-trace', 'census-never-trace']) expect(serialized).not.toContain(marker);

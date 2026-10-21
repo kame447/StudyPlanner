@@ -50,6 +50,116 @@ function response(
 }
 
 describe('Stable V5 dialogue renderer validation', () => {
+  // Literal titles/target references from the live-23 renderer request, without
+  // unrelated material/private provenance. No semantic-provider interpretation.
+  function live23Input(precision: 'exact' | 'approximate' | null = null) {
+    const math = 'wpf_task_198s5jy1qp1dpm', english = 'wpf_task_1w10sw018cjxms';
+    const mathWork = 'wpf_workload_15mzxq21n0vopi', englishWork = 'wpf_workload_pgy14kwqgnbc';
+    return input({ actionKind: 'question', questionCode: 'missing_effort_estimate', requiredLabels: ['数学の問題演習'],
+      currentUserMessage: '15分。あと英語の締切を金曜にして',
+      planningInformation: {
+        revision: 1, planningWindows: [{ id: 'wpf_window_1d16a4x1h8vjvp', kind: 'absolute',
+          value: '2026-08-20/2026-08-26', start: '2026-08-20', end: '2026-08-26' }],
+        tasks: [{ id: math, title: '数学の問題演習', category: 'study' }, { id: english, title: '英語のページ学習', category: 'study' }],
+        components: [], workloads: [
+          { id: mathWork, taskId: math, componentId: null, quantityRole: 'target', amount: 20, unitCode: 'problem', unitLabel: '問' },
+          { id: englishWork, taskId: english, componentId: null, quantityRole: 'target', amount: 15, unitCode: 'page', unitLabel: 'ページ' },
+        ], effortEstimates: [
+          { id: 'wpf_effort_1eby39m1mbrtxq', taskId: english, targetFactId: englishWork,
+            kind: 'total_duration', minutes: 45, unitCode: 'page', precision: 'exact' },
+          ...(precision ? [{ id: 'math-effort', taskId: math, targetFactId: mathWork,
+            kind: 'duration_per_unit', minutes: 15, unitCode: 'problem', precision }] : []),
+        ], temporalConstraints: [], taskDateRules: [],
+      }, currentTurnGrounding: { mode: 'none', acceptedFacts: [] } });
+  }
+  const live23Text = '数学は1問15分くらいですね。英語の締切は金曜にしたいとのこと、受け取りました。数学の見積もりは1問15分として考えてよさそうですか？';
+  it.each([null, 'exact', 'approximate'] as const)('binds the exact live-23 shortened subject before comparing precision=%s', precision => {
+    const renderInput = live23Input(precision);
+    const before = structuredClone(renderInput);
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, live23Text,
+      { groundingAcknowledgement: null }), renderInput).status).toBe(precision === 'approximate' ? 'rendered' : 'fallback');
+    expect(renderInput).toEqual(before);
+  });
+  it('keeps the exact live-21 clarification valid with the live-23 canonical titles and no math estimate', () => {
+    const renderInput = live23Input();
+    const text = '今回は「15分」という内容も、英語の締切を金曜にする内容も計画に反映されていません。数学は1問あたり15分、という理解でよいですか？';
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text), renderInput).status).toBe('rendered');
+  });
+  it('accepts the shortened exact claim only with its matching exact active effort', () => {
+    const renderInput = live23Input('exact');
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput,
+      live23Text.replace('くらい', '')), renderInput).status).toBe('rendered');
+  });
+  it.each([
+    ['数学は1問15分ですね。', false],
+    ['数学の問題演習は1問15分ですね。', false],
+    ['英語15ページ（全部で45分）をもとに確認してください。', true],
+    ['英語15ページ（全部で15分）をもとに確認してください。', false],
+    ['数は1問15分ですね。', true], // Not a literal prefix at a の boundary.
+  ] as const)('checks only full or uniquely shortened task subjects: %s', (text, valid) => {
+    const renderInput = live23Input();
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+  });
+  it.each([
+    ['数学', false, true],
+    ['数学の問題演習', false, false],
+    ['数学の小テスト', false, false],
+    ['数学', true, false],
+    ['数学の問題演習', true, true],
+    ['数学の小テスト', true, false],
+  ] as const)('abstains on ambiguous shortened subjects without hiding full titles: %s required=%s', (title, required, valid) => {
+    const renderInput = live23Input(required ? 'exact' : null);
+    (renderInput.planningInformation!.tasks as unknown[]).push({ id: 'other-math', title: '数学の小テスト' });
+    if (required) renderInput.currentTurnGrounding = { mode: 'required_before_resume', acceptedFacts: [{
+      factId: 'math-effort', kind: 'effort_estimate', sourceText: '15分', data: { taskId: 'wpf_task_198s5jy1qp1dpm',
+        targetFactId: 'wpf_workload_15mzxq21n0vopi', targetLabels: ['数学の問題演習'], kind: 'duration_per_unit',
+        minutes: 15, unitCode: 'problem', unitLabel: '問', precision: 'exact' },
+    }] };
+    // An ambiguous body abstains; a mandatory ACK must bind its actual fact.
+    const text = `${title}は1問15分ですね。`;
+    const result = parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text,
+      required ? { groundingAcknowledgement: { factIds: ['math-effort'], text } } : {}), renderInput);
+    expect(result.status).toBe(valid ? 'rendered' : 'fallback');
+  });
+  it.each(['数学の問題演習', '数学の小テスト'])('does not use a duplicate/shared task title to license a shortened ACK: %s', otherTitle => {
+    const renderInput = naturalEffortInput('math', 'duration_per_unit', 15);
+    const tasks = renderInput.planningInformation!.tasks as Record<string, unknown>[];
+    tasks[0].title = '数学の問題演習'; tasks.push({ id: 'other-math', title: otherTitle });
+    renderInput.currentTurnGrounding!.acceptedFacts.find(fact => fact.kind === 'effort_estimate')!.data.targetLabels = ['数学の問題演習'];
+    const text = '数学は1問15分ですね。';
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text,
+      { groundingAcknowledgement: { factIds: ['effort'], text } }), renderInput).status).toBe('fallback');
+    renderInput.currentTurnGrounding = { mode: 'none', acceptedFacts: [] };
+    renderInput.planningInformation!.effortEstimates = [];
+    // Keep the duration allowlist independent of the ambiguous subject check.
+    renderInput.currentUserMessage = '15分';
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text), renderInput).status).toBe('rendered');
+  });
+  it.each([
+    ['数学の第1章は1問15分ですね。', true],
+    ['数学は1問15分ですね。', false],
+    ['数学の第2章は1問15分ですね。', false],
+  ] as const)('keeps component binding after shortening the task title: %s', (text, valid) => {
+    const renderInput = naturalEffortInput('math', 'duration_per_unit', 15);
+    (renderInput.planningInformation!.tasks as Record<string, unknown>[])[0].title = '数学の問題演習';
+    renderInput.currentTurnGrounding!.acceptedFacts.find(fact => fact.kind === 'effort_estimate')!.data.targetLabels = ['数学の問題演習', '第1章'];
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text,
+      { groundingAcknowledgement: { factIds: ['effort'], text } }), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+  });
+  it.each([
+    ['数学の問題演習', '数学', true],
+    ['数学の問題演習', '数', false],
+    ['数学問題演習', '数学', false],
+    ['数学の問題演習の復習', '数学の問題演習', true],
+    ['数学の問題演習', '数学の問題演習', true],
+  ] as const)('uses the same literal-boundary subject in mandatory ACKs: %s → %s', (title, subject, valid) => {
+    const renderInput = naturalEffortInput('math', 'duration_per_unit', 15);
+    (renderInput.planningInformation!.tasks as Record<string, unknown>[])[0].title = title;
+    renderInput.currentTurnGrounding!.acceptedFacts.find(fact => fact.kind === 'effort_estimate')!.data.targetLabels = [title];
+    const text = `${subject}は1問15分ですね。`;
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text,
+      { groundingAcknowledgement: { factIds: ['effort'], text } }), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+  });
   it.each([
     ['今回は「15分」という内容も、英語の締切を金曜にする内容も計画に反映されていません。数学は1問あたり15分、という理解でよいですか？', true],
     ['数学は1問あたり15分ですね。', false],
