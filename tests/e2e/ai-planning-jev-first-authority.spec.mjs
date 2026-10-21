@@ -302,12 +302,50 @@ async function boot(page, mode) {
   return audit;
 }
 
+function expectFailedD5GraphPreserved(before, after, attemptBefore, failedState) {
+  if (before == null || after == null) {
+    expect(after).toEqual(before);
+    return;
+  }
+  const { appliedTurnKeys: beforeKeys, ...beforeFacts } = before;
+  const { appliedTurnKeys: afterKeys, ...afterFacts } = after;
+  // Includes revision, lifecycles, every fact collection and future graph fields.
+  expect(afterFacts).toEqual(beforeFacts);
+  const conversationId = failedState.intakeState?.c5SelectionLedger?.conversationId;
+  const sequence = failedState.conversationRequestSequence;
+  expect(typeof conversationId).toBe('string');
+  expect(conversationId.length).toBeGreaterThan(0);
+  expect(Number.isSafeInteger(sequence)).toBe(true);
+  expect(sequence).toBe(attemptBefore.state.conversationRequestSequence + 1);
+  const requestId = `${conversationId}:request:${sequence}`;
+  const ownKey = `${conversationId}:${requestId}`;
+  const attemptKeys = attemptBefore.graph.appliedTurnKeys;
+  // Existing keys must survive exactly, including order. No other request key,
+  // duplicate append or lifecycle bookkeeping change is allowed by this exception.
+  expect(afterKeys.slice(0, attemptKeys.length)).toEqual(attemptKeys);
+  const added = afterKeys.slice(attemptKeys.length);
+  expect(added.length).toBeLessThanOrEqual(1);
+  if (added.length) {
+    expect(attemptKeys).not.toContain(ownKey);
+    expect(added).toEqual([ownKey]);
+  }
+  expect(attemptKeys.slice(0, beforeKeys.length)).toEqual(beforeKeys);
+  const earlierAdded = attemptKeys.slice(beforeKeys.length);
+  expect(earlierAdded.length).toBeLessThanOrEqual(1);
+  if (earlierAdded.length) {
+    const earlierOwnKey = `${conversationId}:${conversationId}:request:${attemptBefore.state.conversationRequestSequence}`;
+    expect(beforeKeys).not.toContain(earlierOwnKey);
+    expect(earlierAdded).toEqual([earlierOwnKey]);
+  }
+}
+
 async function submit(page, audit, text) {
   const live = Boolean(liveBridge && audit.live);
   const preserved = live ? await d5Snapshot(page) : null;
   const savedBefore = live ? await saved(page) : null;
   const attempts = live ? D5_LIVE_MAX_ATTEMPTS_PER_TURN : 1;
   for (let attempt = 0; attempt < attempts; attempt++) {
+    const attemptBefore = live && attempt > 0 ? await d5Snapshot(page) : preserved;
     const before = audit.proxy.length;
     await composer(page).fill(text); await page.getByRole('button', { name: '送信', exact: true }).click();
     await expect.poll(() => audit.proxy.length, turnCompletionOptions()).toBeGreaterThan(before);
@@ -327,9 +365,9 @@ async function submit(page, audit, text) {
     audit.providerFailureCount = (audit.providerFailureCount ?? 0) + 1;
     await test.info().attach(`d5-provider-failure-${audit.providerFailureCount}.json`, {
       body: Buffer.from(JSON.stringify({ text, attempt: attempt + 1, providerFailures, calls,
-        preserved, after, savedBefore, savedAfter, newAssistantMessages }, null, 2)), contentType: 'application/json' });
+        preserved, attemptBefore, after, savedBefore, savedAfter, newAssistantMessages }, null, 2)), contentType: 'application/json' });
     await expect(page.locator('.ai-planning-conversation').getByText(last.content, { exact: true }).last()).toBeVisible();
-    expect(after.graph).toEqual(preserved.graph);
+    expectFailedD5GraphPreserved(preserved.graph, after.graph, attemptBefore, after.state);
     expect(after.state.previewCandidates).toEqual(preserved.state.previewCandidates);
     expect(after.state.intakeState?.c5SelectionLedger).toEqual(preserved.state.intakeState?.c5SelectionLedger);
     expect(savedAfter).toEqual(savedBefore);
