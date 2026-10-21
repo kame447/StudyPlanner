@@ -1,6 +1,6 @@
 # Local authentication registration storage
 
-Status: independently reviewed local candidate; full verification and publication pending.
+Status: locally verified and independently reviewed; publication pending.
 Base: `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`.
 Branch: `fix/local-auth-registration-storage`.
 
@@ -32,3 +32,9 @@ Initial related command: `npm run test:run -- src/repositories/localAuthStorageG
 Node24.19.0/Vitest3.2.7; reused fresh current-main npm-ci seed from calendar-domain-refactor-work, matching lockfile SHA-256 `ea546daa78b887f737da4cfb1884b8f14f7b39ce4baa639e7baa04d5bfb6c693`. Full types, all tests and build remain required on final content. Mocked Firebase tests do not establish live backend behavior. No browser/device acceptance claimed. No publication authorized for this new unit.
 
 Independent seven-perspective source review found no remaining blocker. An intermediate candidate reread credentials after capturing recovery snapshots; review identified a transient second-read failure could become an empty password array. The final implementation prepares both serialized payloads from captured raw snapshots before any write. An additional synthetic existing-credential sentinel test proves only one credential read and preserves both identities. This candidate hazard was source-inspected, not a pre-change RED execution or observed production incident. The original two baseline defect characterizations remain separate evidence.
+
+## Final local verification receipt
+
+Final `npm run verify` exited 0 on exact commit `2a0cc8628e6f11c92d6a43578606492d6809156c`, tree `b9d31c702d0361fb75cde57c5df96c255eda74c9`, with initially clean source. Fresh app and regenerated Worker typechecks passed; 1,055 test files / 10,539 tests passed (67 skipped, 1 todo retained); production build passed in 12.36 seconds. Log `/tmp/auth-full-verify.log`. Same canonical installed dependency seed/lock identity above; standard telemetry-disabled environment, DEV_LAN_HOST=127.0.0.1, isolated Wrangler log `/tmp/auth-verify-wrangler.log`. Tests generated `.cache/j1-old-worker` historical-fixture output without tracked source changes. The final null-sentinel equality preserves existing password-record matching rather than newly rejecting falsy string IDs; its focused 11 cases passed before this full run (`/tmp/auth-storage-final-sentinel.log`).
+
+Two independent seven-perspective reviewers found no remaining source blocker. One additionally reproduced 47 related checks independently (`/tmp/calendar-auth-independent.log`). Only this documentation receipt changed after the full verified snapshot. Locally verified, not published/merged or proven on live Firebase/browser/device. The change repairs new bounded local registration failures; it does not claim or migrate existing orphaned local identities.
