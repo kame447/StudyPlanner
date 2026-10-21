@@ -2,6 +2,7 @@ import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExe
 import { renderWeeklyPlanningStableV5AssistantMessageCore } from '../dialogue/weeklyPlanningStableV5TurnDialogueCore';
 import { createWeeklyPlanningStableV5DialogueRendererCore } from '../dialogue/weeklyPlanningStableV5AiDialogueRendererCore';
 import { getWeeklyPlanningStableV5RuntimeSession } from '../application/weeklyPlanningStableV5RuntimeSession';
+import { loadAiPlanningChatIndex, saveAiPlanningChatIndex, saveAiPlanningChatSnapshot } from '../chat/aiPlanningChatStore';
 import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../../../shared/d5AnswerPolicy';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { c5ControllerHarness, OWNER, WEEK } from '../application/c5LocalSelection/controller.testUtils';
@@ -15,11 +16,13 @@ import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '..
 import { createCandidateChoiceClient } from '../../../services/ai/candidateChoiceClient';
 import type { CandidateChoiceRequest } from '../application/candidateSelection/contracts';
 import type { PlanningState } from '../types';
-import { D5_ANSWER_PROPOSAL_POLICY_VERSION, D5_EXACT_MINUTE_CANDIDATES } from '../application/weeklyPlanningRegisteredCandidateDomains';
+import { D5_EXACT_MINUTE_CANDIDATES } from '../application/weeklyPlanningRegisteredCandidateDomains';
 import { createNumericPendingRegisteredDomainV5 } from './weeklyPlanningNumericRegisteredDomainV5';
 import { normalizedChoice } from './weeklyPlanningNumericPendingChoiceV5.testUtils';
 import { CANDIDATE_CHOICE_CATALOG_VERSION } from '../../../../shared/candidateChoiceDecision';
 
+// Historical v1 regressions must not follow the current production release version.
+const LEGACY_PROPOSAL_POLICY_VERSION = 'd5-answer-proposal-2026-10-20-v1';
 let restore: () => void;
 beforeEach(() => {
   resetWeeklyPlanningStableV5RuntimeSessionsForTest();
@@ -115,7 +118,7 @@ function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effort
     return { state: { ...snapshot.intakeState!, questions: [], lastQuestionContext: undefined },
       message: '反映しました。', draftCandidates: [], stableV5Graph: selectedGraph, responseSource: 'deterministic_fallback' as const };
   });
-  const domain = createNumericPendingRegisteredDomainV5(D5_EXACT_MINUTE_CANDIDATES, options.top1 ? D5_TOP1_ANSWER_POLICY_VERSION : D5_ANSWER_PROPOSAL_POLICY_VERSION,
+  const domain = createNumericPendingRegisteredDomainV5(D5_EXACT_MINUTE_CANDIDATES, options.top1 ? D5_TOP1_ANSWER_POLICY_VERSION : LEGACY_PROPOSAL_POLICY_VERSION,
     { candidateSource: 'answer_proposal' });
   const route = registerControlledCandidateDomain(domain, {
     policy: { id: 'synthetic-only', calibrationEvidenceId: 'synthetic-only', rules: Array.from({ length: 8 }, (_, i) => ({
@@ -154,6 +157,49 @@ function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effort
 }
 
 describe('D5 answer proposal through canonical controller commit', () => {
+  it('production smoke reads the real persisted chat graph/ledger and correlates actual request → receipt → consumed selection', async () => {
+    const run = setup({ top1: true, minutes: 15, measurement: 'duration_per_unit' });
+    await run.present();
+    const capturedBefore = run.h.getState().intakeState!.lastQuestionContext!.controlledCandidate;
+    await run.answer('15');
+    const saved = loadWeeklyPlanningStableV5PersistedSession({ ownerId: OWNER, weekStartDate: WEEK })!;
+    const request = run.choose.mock.calls[0][0];
+    const index = loadAiPlanningChatIndex(OWNER);
+    expect(saveAiPlanningChatIndex(OWNER, index)).toBe(true);
+    expect(saveAiPlanningChatSnapshot(OWNER, index.activeChatId, saved)).toBe(true);
+    // The same browser-serializable reader/correlator used by the production smoke.
+    const helperUrl = new URL('../../../../tests/e2e/support/d5-production-readonly.mjs', import.meta.url).href;
+    const { readOwnedConversation, consumedD5Request, boundOffRollbackCandidate } = await import(helperUrl);
+    vi.stubGlobal('localStorage', window.localStorage);
+    try {
+      const observed = readOwnedConversation(OWNER);
+      expect(observed.graph).toEqual(saved.graph);
+      expect(observed.planningState.intakeState.c5SelectionLedger).toEqual(saved.planningState.intakeState!.c5SelectionLedger);
+      expect(observed.graph.effortEstimates).toMatchObject([{ targetFactId: 'work-a', minutes: 15, kind: 'duration_per_unit', unitCode: 'problem' }]);
+      expect(request.context.target.id).toBe('work-a');
+      expect(request.context.scope.domainPolicyVersion).toBe(D5_TOP1_ANSWER_POLICY_VERSION);
+      expect(request.menu.options.filter(option => option.kind === 'leaf').map(option => option.kind === 'leaf' && option.candidate.id)).toEqual(['numeric:0']);
+      expect(consumedD5Request(observed, request, OWNER, 'work-a')).toBe(true);
+      expect(consumedD5Request(observed, { ...request, requestId: 'another-attempt' }, OWNER, 'work-a')).toBe(false);
+      expect(consumedD5Request(observed, { ...request, candidateSetHash: 'another-manifest' }, OWNER, 'work-a')).toBe(false);
+      const wrongCandidate = structuredClone(observed);
+      wrongCandidate.planningState.intakeState.c5SelectionLedger.consumed[0].candidateId = 'different-leaf';
+      expect(consumedD5Request(wrongCandidate, request, OWNER, 'work-a')).toBe(false);
+      expect(consumedD5Request(observed, request, OWNER, 'another-target')).toBe(false);
+      expect(readOwnedConversation('foreign-owner')).toBeNull();
+      const off = [{ request, row: { v2: true, status: 'unavailable', off: true, provider: null }, evaluated: false }];
+      const scope = { owner: OWNER, conversationId: saved.conversationId, target: 'work-a', policyVersion: D5_TOP1_ANSWER_POLICY_VERSION };
+      expect(boundOffRollbackCandidate(capturedBefore, off, scope)).toBe(true);
+      expect(boundOffRollbackCandidate(undefined, off, scope)).toBe(false);
+      expect(boundOffRollbackCandidate(capturedBefore, [], scope)).toBe(false);
+      expect(boundOffRollbackCandidate(capturedBefore, [...off, ...off], scope)).toBe(false);
+      expect(boundOffRollbackCandidate(capturedBefore, [{ ...off[0], evaluated: true }], scope)).toBe(false);
+      expect(boundOffRollbackCandidate(capturedBefore, [{ ...off[0], row: { ...off[0].row, off: false } }], scope)).toBe(false);
+      expect(boundOffRollbackCandidate(capturedBefore, [{ ...off[0], request: { ...request, selectionEpoch: request.selectionEpoch + 1 } }], scope)).toBe(false);
+      expect(boundOffRollbackCandidate(capturedBefore, off, { ...scope, owner: 'foreign-owner' })).toBe(false);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it.each([
     ['15', 15], ['十五分', 15], ['１．５時間', 90], ['1時間30分', 90], ['一時間半', 90],
   ] as const)('v2 accepts %s at unique top-1 beside a sibling 15, once across reload', async (text, minutes) => {
@@ -262,7 +308,7 @@ describe('D5 answer proposal through canonical controller commit', () => {
       sources: frozen.basis.binding.sources, candidates: frozen.basis.candidates, domainData: frozen.domainData }, '1問5分です')!;
     expect(proposal.domainData.domainMinutes).toEqual([1, 60, 5, 300]);
     expect(JSON.parse(proposal.sources.find(s => s.id === 'numeric-domain-policy')!.revision)).toEqual({
-      domainPolicyVersion: D5_ANSWER_PROPOSAL_POLICY_VERSION, domain: [1, 60, 5, 300] });
+      domainPolicyVersion: LEGACY_PROPOSAL_POLICY_VERSION, domain: [1, 60, 5, 300] });
     expect(proposal.sources).not.toEqual(frozen.basis.binding.sources);
     expect(JSON.stringify(frozen)).toBe(before);
   });

@@ -1,0 +1,66 @@
+name: D5 Production Read-only Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      expectation:
+        description: 'EXPECT_JEV: all eligible D5 uses Jev; EXPECT_FALLBACK: pinned OFF rollback drill'
+        type: choice
+        options:
+          - EXPECT_JEV
+          - EXPECT_FALLBACK
+        default: EXPECT_JEV
+        required: true
+      expected_frontend_sha:
+        description: 'Full deployed frontend SHA; verify Pages production deployment via Cloudflare readback before dispatch'
+        type: string
+        required: true
+      test_week_start:
+        description: 'Explicit isolated future test week start (YYYY-MM-DD)'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-account-browser-verification
+  cancel-in-progress: false
+
+jobs:
+  d5-production-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: live-account-verification
+    env:
+      D5_PRODUCTION_SMOKE: '1'
+      EXPECT_JEV: ${{ inputs.expectation == 'EXPECT_JEV' && '1' || '0' }}
+      EXPECT_FALLBACK: ${{ inputs.expectation == 'EXPECT_FALLBACK' && '1' || '0' }}
+      EXPECTED_FRONTEND_SHA: ${{ inputs.expected_frontend_sha }}
+      D5_SMOKE_WEEK_START: ${{ inputs.test_week_start }}
+      STUDYPLANNER_LIVE_BASE_URL: ${{ secrets.STUDYPLANNER_LIVE_BASE_URL }}
+      STUDYPLANNER_LIVE_EMAIL: ${{ secrets.STUDYPLANNER_LIVE_EMAIL }}
+      STUDYPLANNER_LIVE_PASSWORD: ${{ secrets.STUDYPLANNER_LIVE_PASSWORD }}
+      STUDYPLANNER_LIVE_ACCESS_KEY: ${{ secrets.STUDYPLANNER_LIVE_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: Install isolated Playwright runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+      - name: Install Chromium
+        run: ./tests/e2e/node_modules/.bin/playwright install --with-deps chromium
+      - name: Run only the explicitly selected D5 read-only smoke
+        run: ./tests/e2e/node_modules/.bin/playwright test --config=tests/e2e/playwright.d5-production.config.mjs d5-production-readonly.smoke.mjs
+      - name: Preserve redacted evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: d5-production-redacted-evidence
+          path: artifacts/d5-production-smoke/**/redacted-d5-production-evidence*.json
+          if-no-files-found: error
+          retention-days: 7
