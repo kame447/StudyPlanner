@@ -83,11 +83,17 @@ function prepare(write: ReturnType<typeof repository>['writes'][number]) {
     { token: `wpt_${'d'.repeat(43)}`, epoch: '103' }, { sessionId: 'weekly-trace-323e4567-e89b-52d3-a456-426614174000', logicalConversationId: conversationId }, '2026-10-05T00:00:00.000Z');
 }
 describe('actual Choice request through durable trace gate', () => {
-  it.each([false, true])('persists active-fact correction claim validation without newly accepted effort, corrected=%s', async corrected => {
+  it.each([
+    { corrected: false, contextualMinutes: null }, { corrected: true, contextualMinutes: null },
+    { corrected: false, contextualMinutes: 45 }, { corrected: false, contextualMinutes: 60 },
+  ])('persists asymmetric active-fact claim checks: %j', async ({ corrected, contextualMinutes }) => {
+    const requestId = 'display-existing-effort';
+    const contextual = contextualMinutes !== null, valid = contextual ? contextualMinutes === 45 : corrected;
     const graph: WeeklyPlanningFactGraphV5 = numericFixture('duration_per_unit').graph;
     const workload = graph.workloads[0];
     graph.effortEstimates.push({ id: 'old-rate', taskId: workload.taskId, targetFactId: workload.id,
-      kind: 'duration_per_unit', minutes: 15, unitCode: 'problem', precision: 'exact', createdRevision: 2, source: workload.source });
+      kind: 'duration_per_unit', minutes: 15, unitCode: 'problem', precision: 'exact', createdRevision: 2,
+      source: contextual ? { ...workload.source, turnId: requestId } : workload.source });
     graph.factLifecycles.push({ factId: 'old-rate', status: corrected ? 'superseded' : 'active', createdRevision: 2,
       terminalRevision: corrected ? 3 : null, supersededByFactId: corrected ? 'new-total' : null });
     if (corrected) {
@@ -95,25 +101,34 @@ describe('actual Choice request through durable trace gate', () => {
       graph.effortEstimates.push({ ...graph.effortEstimates[0], id: 'new-total', kind: 'total_duration', minutes: 60, unitCode: null, createdRevision: 3 });
       graph.factLifecycles.push({ factId: 'new-total', status: 'active', createdRevision: 3, terminalRevision: null, supersededByFactId: null });
     }
-    const requestId = 'display-existing-effort';
+    if (contextual) {
+      graph.tasks.push({ ...graph.tasks[0], id: 'english', title: '英語' });
+      graph.workloads.push({ ...workload, id: 'english-work', taskId: 'english', amount: 15, unitCode: 'page', unitLabel: 'ページ' });
+      graph.effortEstimates.push({ ...graph.effortEstimates[0], id: 'english-effort', taskId: 'english', targetFactId: 'english-work',
+        kind: 'total_duration', minutes: 45, unitCode: 'minute', source: workload.source });
+      for (const factId of ['english', 'english-work', 'english-effort']) graph.factLifecycles.push({ factId, status: 'active',
+        createdRevision: 2, terminalRevision: null, supersededByFactId: null });
+    }
     const currentTurnGrounding = createWeeklyPlanningStableV5CurrentTurnGrounding({ graph, turnId: requestId,
       actionKind: 'status', previousQuestionCode: null, currentQuestionCode: null });
-    expect(currentTurnGrounding.acceptedFacts.filter(fact => fact.kind === 'effort_estimate')).toEqual([]);
+    expect(currentTurnGrounding.acceptedFacts.filter(fact => fact.kind === 'effort_estimate')).toHaveLength(contextual ? 1 : 0);
     const input = { actionId: requestId, currentUserMessage: 'いや、数学は全部で60分です。', recentConversation: [],
       planningInformation: { ...createWeeklyPlanningStableV5DialogueProjection(graph), futureActiveClaimSentinel: 'keep-active-claim-sentinel' },
       currentTurnGrounding, actionKind: 'status' as const, questionCode: null, requiredLabels: [], previewCount: 0,
       fallbackText: '返信を作れませんでした。少し待ってからもう一度送信してください。' };
     const before = structuredClone(graph); let sends = 0; let actualRequest = '';
-    const text = '失礼しました。数学は1問あたり15分ではなく、全部で60分ですね。';
+    const text = contextual ? `数学は1問あたり15分ですね。数学20問と英語15ページ（全部で${contextualMinutes}分）をもとに確認してください。`
+      : '失礼しました。数学は1問あたり15分ではなく、全部で60分ですね。';
     const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
       sends++; actualRequest = JSON.stringify(request);
-      return JSON.stringify({ actionId: requestId, actionKind: 'status', questionCode: null, groundingAcknowledgement: null, text });
+      return JSON.stringify({ actionId: requestId, actionKind: 'status', questionCode: null,
+        groundingAcknowledgement: contextual ? { factIds: ['old-rate'], text: '数学は1問あたり15分ですね。' } : null, text });
     } });
     recordWeeklyPlanningDialogueRendererRequestV5({ requestId, input });
     const rendered = await renderer.render(input);
-    expect(rendered.status).toBe(corrected ? 'rendered' : 'fallback');
-    expect(sends).toBe(corrected ? 1 : 2);
-    if (!corrected) expect(actualRequest).toContain('planningInformation.effortEstimatesの現在有効な対象');
+    expect(rendered.status).toBe(valid ? 'rendered' : 'fallback');
+    expect(sends).toBe(valid ? 1 : 2);
+    if (!valid) expect(actualRequest).toContain('planningInformation.effortEstimatesの現在有効な対象');
     expect(graph).toEqual(before);
     recordWeeklyPlanningDialogueRendererResponseV5({ requestId, actionId: requestId, rendered, selfRepairNotice: null });
     const finalMessage = rendered.status === 'rendered' ? rendered.text : input.fallbackText;
@@ -122,7 +137,7 @@ describe('actual Choice request through durable trace gate', () => {
       : createWeeklyPlanningFallbackDialogueTrace({ ...traceParams, rendered });
     dialogueRendererTrace.request!.promptContext = JSON.parse(actualRequest);
     const trace = { userId, conversationId, requestId, userText: input.currentUserMessage, assistantMessage: finalMessage,
-      responseSource: corrected ? 'ai' as const : 'deterministic_fallback' as const, outcome: 'discuss', previewCount: 0,
+      responseSource: valid ? 'ai' as const : 'deterministic_fallback' as const, outcome: 'discuss', previewCount: 0,
       dialogueRendererTrace, debugTraceEvents: takeWeeklyPlanningStableV5DebugTrace(requestId) };
     const h = repository(); h.failNext(); setWeeklyPlanningTraceRepositoryForTests(h.port);
     await recordWeeklyPlanningStableV5TurnTrace(trace);
@@ -135,7 +150,7 @@ describe('actual Choice request through durable trace gate', () => {
     const prepared = prepare(h.writes[0]);
     for (const entry of [h.writes[0].entries[0], prepared.entries[0]]) {
       expect(JSON.stringify(entry)).toContain('keep-active-claim-sentinel');
-      expect(JSON.stringify(entry)).toContain('1問あたり15分ではなく');
+      expect(JSON.stringify(entry)).toContain(contextual ? `英語15ページ（全部で${contextualMinutes}分）` : '1問あたり15分ではなく');
       expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
     }
   });

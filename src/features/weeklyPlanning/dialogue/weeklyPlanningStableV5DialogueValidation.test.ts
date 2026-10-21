@@ -50,6 +50,52 @@ function response(
 }
 
 describe('Stable V5 dialogue renderer validation', () => {
+  it.each([
+    '数学は1問あたり15分ですね。8月20日から26日の数学20問と英語15ページ（全部で45分）をもとに、仮予定の候補を6件用意しました。「この内容で仮予定にする」を選ぶと、仮予定として進められます。',
+    '数学は1問あたり15分ですね。8月20日から26日に数学20問、英語15ページ（全部で45分）の仮予定候補を6件用意しました。内容を確認して「この内容で仮予定にする」を選べます。',
+  ].flatMap(text => [45, 60].map(minutes => [text.replace('全部で45分', `全部で${minutes}分`), minutes === 45] as const)))('checks the live-14 mandatory ACK and contextual preview body: %s', (text, valid) => {
+    const renderInput = naturalEffortInput('math', 'duration_per_unit', 15);
+    Object.assign(renderInput, { actionKind: 'preview_ready', questionCode: null, previewCount: 6, requiredLabels: [],
+      currentUserMessage: '15。数学は全部で60分。', recentConversation: [{ role: 'user', content: '英語60分' }], fallbackText: '仮予定の候補を6件用意しました。' });
+    const projection = renderInput.planningInformation!;
+    projection.effortEstimates = [{ ...renderInput.currentTurnGrounding!.acceptedFacts.find(fact => fact.kind === 'effort_estimate')!.data },
+      { id: 'english-effort', taskId: 'english', targetFactId: 'english-work', kind: 'total_duration', minutes: 45, unitCode: 'minute', precision: 'exact' }];
+    (projection.effortEstimates as Record<string, unknown>[])[0].id = 'effort';
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text,
+      { groundingAcknowledgement: { factIds: ['effort'], text: '数学は1問あたり15分ですね。' } }), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+  });
+  it.each([
+    ['数学は全部で60分です。', false],
+    ['数学20問（全部で60分）を確認してください。', false],
+    ['数学は全部で60分ならどうしますか？', true],
+    ['数学は全部で60分ではなく、1問15分ですね。', false],
+  ] as const)('only rejects positively parsed contradictory body claims: %s', (text, valid) => {
+    const renderInput = input({ actionKind: 'status', questionCode: null, requiredLabels: [], currentUserMessage: '数学20問、全部で60分、1問15分',
+      planningInformation: { tasks: [{ id: 'math', title: '数学' }], workloads: [{ id: 'work', taskId: 'math', amount: 20, unitLabel: '問' }], effortEstimates: [] },
+      currentTurnGrounding: { mode: 'none', acceptedFacts: [] } });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+  });
+  it.each([
+    ['英語15ページ（全部で45分）をもとに確認してください。', true],
+    ['英語15ページ（全部で60分）をもとに確認してください。', false],
+    ['英語20ページ（全部で45分）をもとに確認してください。', false],
+    ['英語15問（全部で45分）をもとに確認してください。', false],
+    ['英語は1ページ45分です。', false],
+    ['数学は1ページ15分です。', false],
+    ['英語は全部で45分くらいです。', false],
+    ['英語は全部で45分です。', true],
+    ['数学の案には60分という選択肢もあります。', true],
+    ['英語15ページ（全部で45分）、英語15ページ（全部で60分）です。', false],
+  ] as const)('compares recognized contextual tuples independently of expected values: %s', (text, valid) => {
+    const renderInput = input({ actionKind: 'status', questionCode: null, requiredLabels: [], currentUserMessage: '数学20問、英語15ページ、20ページ、15問、45分、60分、15分',
+      planningInformation: { tasks: [{ id: 'math', title: '数学' }, { id: 'english', title: '英語' }], workloads: [
+        { id: 'math-work', taskId: 'math', amount: 20, unitLabel: '問' }, { id: 'english-work', taskId: 'english', amount: 15, unitLabel: 'ページ' },
+      ], effortEstimates: [
+        { id: 'math-effort', taskId: 'math', targetFactId: 'math-work', kind: 'duration_per_unit', minutes: 15, precision: 'exact' },
+        { id: 'english-effort', taskId: 'english', targetFactId: 'english-work', kind: 'total_duration', minutes: 45, precision: 'exact' },
+      ] }, currentTurnGrounding: { mode: 'none', acceptedFacts: [] } });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+  });
   it.each([false, true])('grounds the live correction recap in active facts, corrected=%s', corrected => {
     const graph = { tasks: [{ id: 'math', title: '数学' }], workloads: [{ id: 'math-work', taskId: 'math', amount: 20, unitCode: 'problem', unitLabel: '問' }],
       effortEstimates: [{ id: 'active-effort', taskId: 'math', targetFactId: 'math-work', kind: corrected ? 'total_duration' : 'duration_per_unit',
@@ -68,14 +114,19 @@ describe('Stable V5 dialogue renderer validation', () => {
     ['数学は全部で60分ですね。', 'duration_per_unit', 15, 'exact', false],
     ['数学は1問あたり15分ではなく、全部で60分ですね。', 'total_duration', 60, 'exact', true],
     ['数学は1問あたり15分くらいではなく、全部で60分ですね。', 'total_duration', 60, 'exact', true],
-    ['数学は1問ではなく1ページ5分です。', 'duration_per_unit', 5, 'exact', false],
-    ['数学は1問あたりではなく5分です。', 'duration_per_unit', 5, 'exact', false],
+    // Outside the mandatory ACK, an unrecognized measurement replacement abstains.
+    // The unchanged mandatory-ACK probes below still reject these exact shapes.
+    ['数学は1問ではなく1ページ5分です。', 'duration_per_unit', 5, 'exact', true],
+    ['数学は1問あたりではなく5分です。', 'duration_per_unit', 5, 'exact', true],
+    ['数学は1問あたり50分ですね。', 'duration_per_unit', 15, 'exact', false],
+    ['数学は1問5分ですね。', 'duration_per_unit', 15, 'exact', false],
+    ['数学は1 問5分ですね。', 'duration_per_unit', 15, 'exact', false],
     ['数学は全部で60分くらいですね。', 'total_duration', 60, 'exact', false],
     ['数学は全部で60分ですね。', 'total_duration', 60, 'approximate', false],
     ['数学は全部で60分くらいですね。', 'total_duration', 60, 'approximate', true],
     ['数学は全部で60分ですね、どうしますか？', 'duration_per_unit', 15, 'exact', false],
   ] as const)('validates every active-fact display assertion without current effort: %s', (text, kind, minutes, precision, valid) => {
-    const renderInput = input({ actionKind: 'status', questionCode: null, requiredLabels: [], currentUserMessage: '数学は全部で60分。1問5分。15分。',
+    const renderInput = input({ actionKind: 'status', questionCode: null, requiredLabels: [], currentUserMessage: '数学は全部で60分。1問5分。15分。50分。',
       planningInformation: { tasks: [{ id: 'math', title: '数学' }], workloads: [{ id: 'work', taskId: 'math', amount: 20, unitLabel: '問' }],
         effortEstimates: [{ id: 'active', taskId: 'math', targetFactId: 'work', kind, minutes, precision }] },
       currentTurnGrounding: { mode: 'none', acceptedFacts: [] } });
@@ -103,7 +154,7 @@ describe('Stable V5 dialogue renderer validation', () => {
     ['第1章は全部で60分です。', false, true],
     ['第1章は全部で999分です。', false, false],
     ['問題集は全部で60分です。', false, false],
-    ['第1章は全部で60分です。', true, false],
+    ['第1章は全部で60分です。', true, true], // Duplicate labels cannot positively bind a body claim.
   ] as const)('binds component status to the exact active scope: %s duplicate=%s', (text, duplicate, valid) => {
     const renderInput = input({ actionKind: 'status', questionCode: null, requiredLabels: [], currentUserMessage: '60分、999分',
       planningInformation: { tasks: [{ id: 'math', title: '数学' }], components: [
@@ -114,6 +165,15 @@ describe('Stable V5 dialogue renderer validation', () => {
       effortEstimates: [{ id: 'effort', taskId: 'math', targetFactId: 'work', kind: 'total_duration', minutes: 60, precision: 'exact' }] },
       currentTurnGrounding: { mode: 'none', acceptedFacts: [] } });
     expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+  });
+  it.each(['work', 'chapter'])('keeps contextual workload evidence within its exact %s scope', targetFactId => {
+    const renderInput = input({ actionKind: 'status', questionCode: null, requiredLabels: [], currentUserMessage: '数学20問は60分か999分',
+      planningInformation: { tasks: [{ id: 'math', title: '数学' }], components: [{ id: 'chapter', taskId: 'math', parentComponentId: null, label: '第1章' }],
+        workloads: [{ id: 'work', taskId: 'math', componentId: 'chapter', amount: 20, unitLabel: '問' }],
+        effortEstimates: [{ id: 'effort', taskId: 'math', targetFactId, kind: 'total_duration', minutes: 60, precision: 'exact' }] },
+      currentTurnGrounding: { mode: 'none', acceptedFacts: [] } });
+    for (const minutes of [60, 999]) expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput,
+      `数学の第1章20問（全部で${minutes}分）をもとに確認してください。`), renderInput).status).toBe(minutes === 60 ? 'rendered' : 'fallback');
   });
   function naturalEffortInput(task = 'english', kind = 'total_duration', minutes = 45) {
     const workloads = [

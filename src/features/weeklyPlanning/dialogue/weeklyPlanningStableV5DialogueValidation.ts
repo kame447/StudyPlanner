@@ -313,30 +313,98 @@ const EFFORT_SUBJECT_CONNECTOR = /^(?:(?:について|として|に関して)|[\
 const AFFIRMATIVE_EFFORT_ENDING = /^(?:(?:くらい|ぐらい|ほど|前後|程度)\s*)?(?:です(?:ね|よ)?|でした(?:ね)?|だ(?:ね)?|ね|になります(?:ね)?|とします(?:ね)?|(?:で|と|として)(?:見積もります|見積もりました|計算します|計算しました|反映します|反映しました|設定します|設定しました|扱います|受け取りました|承知しました)(?:ね)?|と見込んでいます|を目安にします)?[\s。、,!「」『』()（）]*$/u;
 const EFFORT_VALUE_CONNECTOR = /^\s*(?:[、,]\s*)?(?:(?:は|で|に|が|を)\s*)?(?:[、,]\s*)?(?:(?:約|およそ|だいたい|大体)\s*)?$/u;
 
+function planningRows(input: WeeklyPlanningStableV5DialogueRenderInput, key: string): Record<string, unknown>[] {
+  return Array.isArray(input.planningInformation?.[key]) ? (input.planningInformation![key] as unknown[]).filter(isRecord) : [];
+}
+
+function effortDisplayScope(input: WeeklyPlanningStableV5DialogueRenderInput, taskId: unknown, targetFactId: unknown): Record<string, unknown> {
+  const tasks = planningRows(input, 'tasks'), workloads = planningRows(input, 'workloads'), components = planningRows(input, 'components');
+  const workload = workloads.find(row => row.id === targetFactId && row.taskId === taskId);
+  const labels = [tasks.find(row => row.id === taskId)?.title];
+  let componentId = workload?.componentId ?? components.find(row => row.id === targetFactId)?.id;
+  const seen = new Set<unknown>();
+  while (componentId && !seen.has(componentId)) {
+    seen.add(componentId);
+    const component = components.find(row => row.id === componentId && row.taskId === taskId);
+    if (!component) break;
+    labels.push(component.label); componentId = component.parentComponentId;
+  }
+  return { taskId, targetFactId, targetLabels: labels.filter((label): label is string => typeof label === 'string' && label.length > 0),
+    unitLabel: workload?.unitLabel ?? null };
+}
+
 function activeEffortDisplayFacts(input: WeeklyPlanningStableV5DialogueRenderInput): WeeklyPlanningStableV5DialogueGroundingFact[] {
-  const rows = (key: string) => Array.isArray(input.planningInformation?.[key])
-    ? (input.planningInformation![key] as unknown[]).filter(isRecord) : [];
-  const tasks = rows('tasks'), workloads = rows('workloads'), components = rows('components');
-  const facts = rows('effortEstimates').flatMap<WeeklyPlanningStableV5DialogueGroundingFact>(fact => {
+  const facts = planningRows(input, 'effortEstimates').flatMap<WeeklyPlanningStableV5DialogueGroundingFact>(fact => {
     if (typeof fact.id !== 'string' || typeof fact.taskId !== 'string' || typeof fact.targetFactId !== 'string') return [];
-    const workload = workloads.find(workload => workload.id === fact.targetFactId && workload.taskId === fact.taskId);
-    const labels = [tasks.find(task => task.id === fact.taskId)?.title];
-    let componentId = workload?.componentId ?? components.find(component => component.id === fact.targetFactId)?.id;
-    const seen = new Set<unknown>();
-    while (componentId && !seen.has(componentId)) {
-      seen.add(componentId);
-      const component = components.find(component => component.id === componentId && component.taskId === fact.taskId);
-      if (!component) break;
-      labels.push(component.label); componentId = component.parentComponentId;
-    }
-    return [{ factId: fact.id, kind: 'effort_estimate', sourceText: '', data: { ...fact,
-      targetLabels: labels.filter((label): label is string => typeof label === 'string' && label.length > 0),
-      unitLabel: workload?.unitLabel ?? null } }];
+    return [{ factId: fact.id, kind: 'effort_estimate', sourceText: '', data: { ...fact, ...effortDisplayScope(input, fact.taskId, fact.targetFactId) } }];
   });
-  // Current-turn facts are already active typed evidence. Legacy render fixtures
-  // may carry them without the full planning projection; never consult history.
+  // The active projection is authoritative; history never licenses reflection.
   return Array.isArray(input.planningInformation?.effortEstimates) ? facts
     : (input.currentTurnGrounding?.acceptedFacts ?? []).filter(fact => fact.kind === 'effort_estimate');
+}
+
+type EffortDisplayTuple = { kind: string; minutes: number; approximate: boolean; unitLabel: string | null;
+  workloadContext: { amount: number; unitLabel: string } | null; span: { start: number; end: number } };
+
+/** Recognize a bounded displayed tuple before comparing it to any expected value. */
+function positiveEffortDisplayTuples(display: string, labelEnd: number, scope: Record<string, unknown>,
+  input: WeeklyPlanningStableV5DialogueRenderInput): EffortDisplayTuple[] {
+  const assertion = withoutNegatedEffortContrast(display, labelEnd, scope, input);
+  const units = [...new Set([...planningRows(input, 'workloads').map(row => row.unitLabel),
+    ...activeEffortDisplayFacts(input).map(fact => fact.data.unitLabel)].filter((unit): unit is string => typeof unit === 'string' && unit.length > 0)
+    .map(normalizeSafetyText))].sort((a, b) => b.length - a.length);
+  const markers = [{ pattern: /全部|合計|全体|総計|トータル/u, kind: 'total_duration', unitLabel: null as string | null },
+    ...[...units.map(unit => ({ unit, kind: 'duration_per_unit' })), { unit: '回', kind: 'session_duration' }].map(({ unit, kind }) => {
+      const literal = unit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return { pattern: new RegExp(`(?:[1一]\\s*${literal}(?:あたり|当たり|につき)?|${literal}(?:あたり|当たり|につき))`, 'u'), kind, unitLabel: unit };
+    }),
+  ];
+  const tuples: EffortDisplayTuple[] = [];
+  for (const marker of markers) {
+    const match = marker.pattern.exec(assertion.slice(labelEnd));
+    if (!match) continue;
+    const markerStart = labelEnd + match.index, markerEnd = markerStart + match[0].length;
+    const prefix = assertion.slice(labelEnd, markerStart);
+    let workloadContext: EffortDisplayTuple['workloadContext'] = null;
+    if (!EFFORT_SUBJECT_CONNECTOR.test(prefix)) {
+      const quantity = new RegExp(DISPLAY_NUMBER, 'u').exec(prefix);
+      if (!quantity || !EFFORT_SUBJECT_CONNECTOR.test(prefix.slice(0, quantity.index))) continue;
+      const afterQuantity = prefix.slice(quantity.index + quantity[0].length).trimStart();
+      const unit = units.find(unit => afterQuantity.startsWith(unit) && EFFORT_SUBJECT_CONNECTOR.test(afterQuantity.slice(unit.length)));
+      const amount = parseJapaneseInteger(quantity[0]);
+      if (!unit || amount === null || amount <= 0) continue;
+      workloadContext = { amount, unitLabel: unit };
+    }
+    for (const duration of assertion.slice(markerEnd).matchAll(DISPLAY_QUANTITY)) {
+      if (!/時間|分/u.test(duration[0])) continue;
+      const valueStart = markerEnd + duration.index!, valueEnd = valueStart + duration[0].length;
+      if (!EFFORT_VALUE_CONNECTOR.test(assertion.slice(markerEnd, valueStart))) continue;
+      const tail = assertion.slice(valueEnd);
+      // A closed parenthetical tuple is a factual premise even with following prose.
+      // Otherwise retain the existing affirmative ending/short clause boundary.
+      const parenthesis = /^(?:(?:くらい|ぐらい|ほど|前後|程度)\s*)?[)）]/u.exec(tail);
+      const comma = tail.search(/[、,]/u);
+      const ending = parenthesis ? parenthesis[0] : comma >= 0 ? tail.slice(0, comma) : tail;
+      if (!AFFIRMATIVE_EFFORT_ENDING.test(ending)) continue;
+      const values = displayQuantityMentions(assertion.slice(markerStart, valueEnd) + ending);
+      const value = values?.find(value => value.form === 'duration');
+      if (!value || values!.filter(value => value.form === 'duration').length !== 1) continue;
+      tuples.push({ kind: marker.kind, minutes: value.minutes, approximate: value.approximate, unitLabel: marker.unitLabel, workloadContext, span: { start: markerStart, end: valueEnd } });
+    }
+  }
+  return tuples;
+}
+
+function effortTupleMatchesFact(tuple: EffortDisplayTuple, scope: Record<string, unknown>, fact: Record<string, unknown>,
+  input: WeeklyPlanningStableV5DialogueRenderInput): boolean {
+  if (JSON.stringify([scope.taskId, scope.targetFactId, scope.targetLabels]) !== JSON.stringify([fact.taskId, fact.targetFactId, fact.targetLabels])
+    || tuple.kind !== fact.kind || tuple.minutes !== fact.minutes || tuple.approximate !== (fact.precision === 'approximate')
+    || (tuple.kind !== 'total_duration' && tuple.unitLabel !== (fact.kind === 'session_duration' ? '回' : normalizeSafetyText(String(fact.unitLabel))))) return false;
+  if (!tuple.workloadContext) return true;
+  const context = tuple.workloadContext;
+  return planningRows(input, 'workloads').filter(workload => workload.taskId === scope.taskId
+    && [workload.id, workload.componentId, workload.taskId].includes(scope.targetFactId)
+    && workload.amount === context.amount && typeof workload.unitLabel === 'string' && normalizeSafetyText(workload.unitLabel) === context.unitLabel).length === 1;
 }
 
 function withoutNegatedEffortContrast(assertion: string, labelEnd: number, data: Record<string, unknown>,
@@ -394,6 +462,9 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
   const required = mode === 'required_ack';
   const effort = required ? (input.currentTurnGrounding?.acceptedFacts ?? []).filter(f => f.kind === 'effort_estimate') : activeEffortDisplayFacts(input);
   if (required && !effort.length) return false;
+  const scopes = required ? [] : [...effort.map(fact => fact.data),
+    ...planningRows(input, 'tasks').map(task => effortDisplayScope(input, task.id, task.id)),
+    ...['workloads', 'components'].flatMap(key => planningRows(input, key).map(row => effortDisplayScope(input, row.taskId, row.id)))];
   const visible = normalizeSafetyText(text);
   const assigned = new Set<string>();
   // This is a renderer display contract: each effort claim has its own visible clause.
@@ -442,13 +513,23 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
     // an effort, and their bare numbers are not rate denominators or durations.
     if (!/[0-9０-９〇零一二三四五六七八九十百千万元億兆]\s*(?:時間|分)/u.test(display)) continue;
     if (!required) {
-      if (targetLabel === null) continue;
-      const affirmative = [...display.matchAll(DISPLAY_QUANTITY)].some(match => {
-        if (!/時間|分/u.test(match[0])) return false;
-        const ending = display.slice(match.index! + match[0].length).trim();
-        return AFFIRMATIVE_EFFORT_ENDING.test(ending) || AFFIRMATIVE_EFFORT_ENDING.test(ending.split(/[、,]/u)[0]);
+      const claims = scopes.flatMap(scope => {
+        const labels = scope.targetLabels;
+        if (!Array.isArray(labels) || !labels.length || !labels.every(label => typeof label === 'string')) return [];
+        const fullTarget = normalizeSafetyText(labels[0]) === targetLabel && labels.every(label => segment.includes(normalizeSafetyText(label)));
+        const componentTarget = typeof labels[1] === 'string' && normalizeSafetyText(labels[1]) === targetLabel
+          && componentLabels.filter(label => label === targetLabel).length === 1;
+        if (!fullTarget && !componentTarget) return [];
+        const labelEnd = Math.max(...labels.filter(label => segment.includes(normalizeSafetyText(label)))
+          .map(label => segment.lastIndexOf(normalizeSafetyText(label)) + normalizeSafetyText(label).length));
+        return positiveEffortDisplayTuples(display, labelEnd, scope, input).map(tuple => ({ scope, tuple }));
       });
-      if (!affirmative) continue; // A bounded question/conditional is not a reflected-value claim.
+      // Unrecognized prose abstains. A recognized tuple must have active proof;
+      // changing only the expected value can never change whether it is recognized.
+      const spans = new Set(claims.map(({ tuple }) => `${tuple.span.start}:${tuple.span.end}`));
+      for (const span of spans) if (!claims.some(({ scope, tuple }) => `${tuple.span.start}:${tuple.span.end}` === span
+        && effort.some(fact => effortTupleMatchesFact(tuple, scope, fact.data, input)))) return true;
+      continue;
     }
     const matching = effort.filter(fact => {
       const data = fact.data; const labels = data.targetLabels;
@@ -566,13 +647,8 @@ function groundingAcknowledgementMismatch(
   const normalizedAck = normalizeDialogueText(acknowledgementText);
   const normalizedText = normalizeDialogueText(text);
   if (!normalizedText.startsWith(normalizedAck)) return true;
-  if ((input.currentTurnGrounding?.acceptedFacts ?? []).some(f => f.kind === 'effort_estimate')) {
-    // Effort claims belong to the checked ACK. Its metadata cannot license a
-    // contradictory continuation. Clock questions retain their separate grounding gate.
-    const tail = normalizedText.slice(normalizedAck.length).replace(CLOCK_EXPRESSION, '');
-    const mentions = displayQuantityMentions(tail);
-    if (!mentions || mentions.some(m => m.form !== 'bare')) return true;
-  }
+  // The mandatory ACK is strict; the remaining body uses the asymmetric active-fact check.
+
   return false;
 }
 
