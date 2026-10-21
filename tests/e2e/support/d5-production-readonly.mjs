@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { boundedSmokeError, redactedSmokeStep, redactedWriteObservation } from './d5-production-smoke-observation.mjs';
 
 // Canonical public production route (README.md); Worker CORS origins also include previews/dev.
 const PRODUCTION_ORIGINS = new Set(['https://laplance.com']);
@@ -155,7 +156,12 @@ export function redactedSmokeEvidence(value) {
       ? { minutes: 15, measurement: 'duration_per_unit', unit: 'problem', precision: 'exact' } : null,
     visibleAck: boolean(value.visibleAck), scheduleReadbackIdentical: boolean(value.scheduleReadbackIdentical),
     approvalStartEvents: count(value.approvalStartEvents), approvalExecutions: oneOf(value.approvalExecutions, [0, 'changed']),
-    scheduleWrites: count(value.scheduleWrites),
+    scheduleWrites: count(value.scheduleWrites), unclassifiedWrites: count(value.unclassifiedWrites),
+    firestoreWrites: (Array.isArray(value.firestoreWrites) ? value.firestoreWrites : []).map(redactedWriteObservation),
+    failingStep: value.failingStep == null ? null : redactedSmokeStep(value.failingStep),
+    bodyError: boundedSmokeError(value.bodyError, value.failingStep),
+    readbackStep: value.readbackStep == null ? null : redactedSmokeStep(value.readbackStep),
+    readbackError: boundedSmokeError(value.readbackError, value.readbackStep),
   };
 }
 
