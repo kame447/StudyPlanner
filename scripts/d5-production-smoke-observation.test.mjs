@@ -4,6 +4,39 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { classifyFirestoreWrite, runProductionSmoke, classifyComposerReadiness, waitForProductionComposer, D5_UI_TURN_WAIT_MS, D5_UI_TEST_TIMEOUT_MS } from '../tests/e2e/support/d5-production-smoke-observation.mjs';
 import { persistRedactedSmokeEvidence, redactedSmokeEvidence, observeProductionComposerState, relatedActiveEffortEstimates, productionSmokeReflectedEstimate } from '../tests/e2e/support/d5-production-readonly.mjs';
+import { observeOwnAnswerTrace, observeAnswerCheckpoint } from '../tests/e2e/support/d5-production-readonly.mjs';
+import { CONTROLLED_CANDIDATE_COMMIT_REJECTIONS } from '../shared/controlledCandidateCommit.ts';
+
+describe('bounded answer failure observations', () => {
+  it('keeps unread checkpoint/alert/receipt observations unknown', () => {
+    expect(observeAnswerCheckpoint(null, new Set())).toEqual({ pendingTurnPresent: null, newAssistant: null, receiptConsumed: null });
+    expect(observeAnswerCheckpoint({ planningState: {} }, new Set())).toEqual({ pendingTurnPresent: null, newAssistant: null, receiptConsumed: null });
+    expect(redactedSmokeEvidence({}).answerPhase).toEqual({ pendingTurnPresent: null, newAssistant: null, receiptConsumed: null, alertPresent: null });
+  });
+  it.each([0, 1, 2])('observes %s new assistant messages independently of pending state', count => {
+    const observation = observeAnswerCheckpoint({ planningState: { pendingTurn: { private: 'PRIVATE' }, messages: [
+      { id: 'old', role: 'assistant', content: 'PRIVATE' }, ...Array.from({ length: count }, (_, i) => ({ id: String(i), role: 'assistant', content: 'PRIVATE' })),
+    ] } }, new Set(['old']), false);
+    expect(observation).toEqual({ pendingTurnPresent: true, newAssistant: ['none', 'one', 'multiple'][count], receiptConsumed: false });
+    expect(JSON.stringify(redactedSmokeEvidence({ answerPhase: { ...observation, alertPresent: true, secret: 'PRIVATE' } }))).not.toContain('PRIVATE');
+  });
+  it.each(CONTROLLED_CANDIDATE_COMMIT_REJECTIONS)('projects the own answer rejection %s and no trace text/identifiers', reason => {
+    const own = 'PRIVATE_OWN_REQUEST';
+    const rows = observeOwnAnswerTrace({ entries: [{ kind: 'turn_diagnostic', requestId: own,
+      diagnostics: { outcome: 'discarded_commit_rejected', error: { type: `candidate_commit_${reason}`, message: 'PRIVATE_ERROR' } },
+      decision: { reason: `candidate_commit_${reason}:luna_scheduled`, secret: 'PRIVATE' }, userText: 'PRIVATE' },
+    { kind: 'turn_diagnostic', requestId: 'OTHER_ACCOUNT', diagnostics: { outcome: 'failed' } }] }, new Set([own]));
+    expect(rows).toEqual([{ outcome: 'discarded_commit_rejected', errorCode: `candidate_commit_${reason}`, rejectionReason: reason, fallback: 'luna_scheduled' }]);
+    expect(JSON.stringify(redactedSmokeEvidence({ answerTrace: rows }))).not.toContain('PRIVATE');
+  });
+  it('drops unregistered strings, caps trace rows with explicit truncation and cannot match missing identities', () => {
+    expect(observeOwnAnswerTrace({ entries: [{ kind: 'turn_diagnostic', diagnostics: { outcome: 'failed' } }] }, new Set())).toEqual([]);
+    const redacted = redactedSmokeEvidence({ answerTrace: Array.from({ length: 20 }, () => ({ outcome: 'PRIVATE', errorCode: 'PRIVATE', rejectionReason: 'PRIVATE' })) });
+    expect(redacted.answerTrace).toHaveLength(16);
+    expect(redacted.answerTraceTruncated).toBe(true);
+    expect(JSON.stringify(redacted)).not.toContain('PRIVATE');
+  });
+});
 
 const database = 'projects/fixture/databases/(default)';
 const documents = `${database}/documents`;

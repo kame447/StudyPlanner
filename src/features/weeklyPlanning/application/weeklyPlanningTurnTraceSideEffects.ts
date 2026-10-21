@@ -156,6 +156,10 @@ export function recordDiscardedWeeklyPlanningApplicationTurn(params: {
   result: WeeklyPlanningTurnExecutionResult;
   reason: 'stale' | 'commit_rejected';
 }, services: WeeklyPlanningTurnTraceSideEffectServices = defaultTraceServices): Promise<void> | null {
+  if (params.result.candidateCommitRejectionReason) recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.pending.requestId, stage: 'runtime_branch_selected', severity: 'warn',
+    data: { branch: `candidate_commit_${params.result.candidateCommitRejectionReason}:${params.result.candidateCommitFallback ?? 'none'}` },
+  });
   const range = stableV5PlanningRange(params.pending.conversationId, services);
   const dialogueRendererTrace = rendererTraceForPersistence(params.result);
   const debugTraceEvents = debugTraceEventsForPersistence(
@@ -176,7 +180,8 @@ export function recordDiscardedWeeklyPlanningApplicationTurn(params: {
     planningRangeEnd: range.planningRangeEnd,
     errorCode: params.reason === 'stale'
       ? 'stale_async_result_discarded'
-      : 'commit_rejected',
+      : params.result.candidateCommitRejectionReason
+        ? `candidate_commit_${params.result.candidateCommitRejectionReason}` : 'commit_rejected',
   });
 }
 

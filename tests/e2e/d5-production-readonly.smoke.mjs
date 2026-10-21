@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { classifyFirestoreWrite, runProductionSmoke, waitForProductionComposer } from './support/d5-production-smoke-observation.mjs';
 import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../shared/d5AnswerPolicy.ts';
 import { productionDatabaseFromRequestUrl, readOwnedConversation, observeProductionComposerState, readProductionServerSnapshot, relatedActiveEffortEstimates, productionSmokeReflectedEstimate, consumedD5Request, boundOffRollbackCandidate, classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, productionSmokeExpectation, persistRedactedSmokeEvidence } from './support/d5-production-readonly.mjs';
+import { observeOwnAnswerTrace, observeAnswerCheckpoint } from './support/d5-production-readonly.mjs';
 
 const secret = name => {
   const value = process.env[name]?.trim();
@@ -65,10 +66,12 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
   const evidence = { productionOrigin: classifyProductionOrigin(baseURL), frontendIdentity: 'unverified', expectation: productionSmokeExpectation(), outcome: 'incomplete', candidateChoice: [],
     d5Captured: false, d5Consumed: false, lunaFallbackRoute: null, activeEstimate: false, relatedActiveEstimates: [], relatedActiveEstimatesTruncated: false, reflectedEstimate: null, visibleAck: false,
     scheduleReadbackIdentical: false, approvalStartEvents: 0, approvalExecutions: null, scheduleWrites: 0, unclassifiedWrites: 0, firestoreWrites: [],
+    answerPhase: { pendingTurnPresent: null, newAssistant: null, receiptConsumed: null, alertPresent: null }, answerTrace: [], answerTraceTruncated: false,
     step: 'target_preflight', failingStep: null, bodyError: null, readbackStep: null, readbackError: null, composerReadiness: 'unobserved', composerWaitPhase: null };
   const observations = new Map();
   const fallbackRequests = new Map();
   const fallbackRequestIds = new Set();
+  const candidateRequestIds = new Set();
   const responseTasks = [];
   const observationErrors = [];
   let database;
@@ -92,6 +95,10 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     }
     if (request.method() === 'POST' && /weekly-planning-trace|observability/u.test(url.pathname)) {
       try {
+        const observed = observeOwnAnswerTrace(request.postDataJSON(), candidateRequestIds);
+        const combined = [...evidence.answerTrace, ...observed];
+        evidence.answerTraceTruncated ||= combined.length > 16;
+        evidence.answerTrace = combined.slice(0, 16);
         const countStarts = value => {
           if (!value || typeof value !== 'object') return 0;
           return (value.eventType === 'approval_started' ? 1 : 0)
@@ -123,6 +130,7 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
       return;
     }
     const r = body.decisionContext.request;
+    if (typeof r?.requestId === 'string') candidateRequestIds.add(r.requestId);
     const row = { route: 'candidate_choice', provider: null, status: 'pending', selection: 'pending', selected15: false,
       v2: r?.context?.scope?.domainPolicyVersion === D5_TOP1_ANSWER_POLICY_VERSION,
       question: r?.context?.question?.code, optionCount: r?.menu?.options?.length };
@@ -216,12 +224,27 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     const consumedBefore = pending.planningState.intakeState.c5SelectionLedger?.consumed.length ?? 0;
     const oldMessages = new Set(pending.planningState.messages.map(message => message.id));
     evidence.step = 'answer_turn';
-    await send(page, '15', identity, evidence);
-    await expect.poll(async () => {
-      const snapshot = await conversation(page, identity.uid);
-      return snapshot?.planningState?.pendingTurn == null && snapshot?.planningState?.messages
-        .some(message => message.role === 'assistant' && !oldMessages.has(message.id));
-    }).toBe(true);
+    try {
+      await send(page, '15', identity, evidence);
+      await expect.poll(async () => {
+        const snapshot = await conversation(page, identity.uid);
+        return snapshot?.planningState?.pendingTurn == null && snapshot?.planningState?.messages
+          .some(message => message.role === 'assistant' && !oldMessages.has(message.id));
+      }).toBe(true);
+    } finally {
+      // Failure observations must not overwrite the primary timeout or convert unread state into false.
+      const [checkpoint, alert] = await Promise.allSettled([
+        conversation(page, identity.uid), page.locator('.ai-planning-error[role="alert"]').isVisible(),
+      ]);
+      if (checkpoint.status === 'fulfilled') {
+        const snapshot = checkpoint.value;
+        const consumed = snapshot?.planningState?.intakeState?.c5SelectionLedger?.consumed;
+        const receipt = Array.isArray(consumed) && consumed.length === consumedBefore ? false
+          : Array.isArray(consumed) && [...observations.values()].some(({ request: r }) => consumedD5Request(snapshot, r, identity.uid, target)) ? true : null;
+        Object.assign(evidence.answerPhase, observeAnswerCheckpoint(snapshot, oldMessages, receipt));
+      }
+      if (alert.status === 'fulfilled') evidence.answerPhase.alertPresent = alert.value;
+    }
     await Promise.all(responseTasks);
     evidence.step = 'answer_state';
     const after = await conversation(page, identity.uid);

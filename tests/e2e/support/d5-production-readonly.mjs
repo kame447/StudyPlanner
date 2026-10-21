@@ -1,6 +1,42 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { boundedSmokeError, redactedSmokeStep, redactedWriteObservation, redactedComposerReadiness } from './d5-production-smoke-observation.mjs';
+import { CONTROLLED_CANDIDATE_COMMIT_REJECTIONS } from '../../../shared/controlledCandidateCommit.ts';
+
+const rejectionFromCode = code => CONTROLLED_CANDIDATE_COMMIT_REJECTIONS.find(reason => code === `candidate_commit_${reason}`) ?? null;
+const traceOutcomes = ['discarded_commit_rejected', 'discarded_stale', 'failed', 'revision_pending', 'needs_scope', 'draft_ready', 'idle',
+  'stable_v5_normalization_rejected', 'stable_v5_provider_failure', 'stable_v5_canonicalization_rejected'];
+const traceErrors = ['commit_rejected', 'stale_async_result_discarded', 'stable_v5_required_effort_ack_failed',
+  ...CONTROLLED_CANDIDATE_COMMIT_REJECTIONS.map(reason => `candidate_commit_${reason}`)];
+const redactedAnswerTrace = row => ({
+  outcome: traceOutcomes.includes(row?.outcome) ? row.outcome : null,
+  errorCode: traceErrors.includes(row?.errorCode) ? row.errorCode : null,
+  rejectionReason: CONTROLLED_CANDIDATE_COMMIT_REJECTIONS.includes(row?.rejectionReason) ? row.rejectionReason : null,
+  fallback: ['luna_scheduled', 'none'].includes(row?.fallback) ? row.fallback : null,
+});
+
+/** Match only this synthetic answer's observed request identities. Never export a trace body or identifier. */
+export function observeOwnAnswerTrace(body, requestIds) {
+  if (!Array.isArray(body?.entries) || !(requestIds instanceof Set)) return [];
+  return body.entries.filter(entry => entry?.kind === 'turn_diagnostic' && typeof entry.requestId === 'string' && requestIds.has(entry.requestId))
+    .map(entry => {
+      const [branch, fallback] = typeof entry.decision?.reason === 'string' ? entry.decision.reason.split(':') : [];
+      const reason = rejectionFromCode(branch);
+      return redactedAnswerTrace({ outcome: entry.diagnostics?.outcome, errorCode: entry.diagnostics?.error?.type,
+        rejectionReason: reason ?? rejectionFromCode(entry.diagnostics?.error?.type), fallback: reason ? fallback : null });
+    });
+}
+
+/** Null means unread/unavailable, rather than an inferred negative result after a failed wait. */
+export function observeAnswerCheckpoint(snapshot, oldMessageIds, receiptConsumed = null) {
+  const state = snapshot?.planningState;
+  const messages = state?.messages;
+  const count = Array.isArray(messages) && oldMessageIds instanceof Set
+    ? messages.filter(message => message?.role === 'assistant' && typeof message.id === 'string' && !oldMessageIds.has(message.id)).length : null;
+  return { pendingTurnPresent: state && Array.isArray(messages) ? state.pendingTurn != null : null,
+    newAssistant: count === null ? null : count === 0 ? 'none' : count === 1 ? 'one' : 'multiple',
+    receiptConsumed: typeof receiptConsumed === 'boolean' ? receiptConsumed : null };
+}
 
 // Canonical public production route (README.md); Worker CORS origins also include previews/dev.
 const PRODUCTION_ORIGINS = new Set(['https://laplance.com']);
@@ -200,6 +236,11 @@ export function redactedSmokeEvidence(value) {
     expectation: oneOf(value.expectation, ['EXPECT_JEV', 'EXPECT_FALLBACK']),
     composerReadiness: redactedComposerReadiness(value.composerReadiness),
     composerWaitPhase: oneOf(value.composerWaitPhase, ['view_entry', 'before_send', 'after_send']),
+    answerPhase: { pendingTurnPresent: boolean(value.answerPhase?.pendingTurnPresent),
+      newAssistant: oneOf(value.answerPhase?.newAssistant, ['none', 'one', 'multiple']),
+      receiptConsumed: boolean(value.answerPhase?.receiptConsumed), alertPresent: boolean(value.answerPhase?.alertPresent) },
+    answerTrace: (Array.isArray(value.answerTrace) ? value.answerTrace : []).slice(0, 16).map(redactedAnswerTrace),
+    answerTraceTruncated: value.answerTraceTruncated === true || Array.isArray(value.answerTrace) && value.answerTrace.length > 16,
     outcome: oneOf(value.outcome, ['incomplete', 'non_production', 'd5_consumed_pending_verification',
       'fallback_no_d5_positive_claim', 'd5_positive_readonly_smoke', 'off_rollback_luna_fallback_verified'], 'incomplete'),
     candidateChoice: (Array.isArray(value.candidateChoice) ? value.candidateChoice : []).map(row => ({

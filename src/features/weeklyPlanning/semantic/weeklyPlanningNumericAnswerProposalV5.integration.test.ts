@@ -20,6 +20,9 @@ import { D5_EXACT_MINUTE_CANDIDATES } from '../application/weeklyPlanningRegiste
 import { createNumericPendingRegisteredDomainV5 } from './weeklyPlanningNumericRegisteredDomainV5';
 import { normalizedChoice } from './weeklyPlanningNumericPendingChoiceV5.testUtils';
 import { CANDIDATE_CHOICE_CATALOG_VERSION } from '../../../../shared/candidateChoiceDecision';
+import * as rendererFactory from '../dialogue/weeklyPlanningStableV5AiDialogueRenderer';
+import { successfulWeeklyPlanningRendererCompletion } from '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
+import type { ControlledCandidateSemanticContribution } from '../application/weeklyPlanningControlledCandidateDomains';
 
 // Historical v1 regressions must not follow the current production release version.
 const LEGACY_PROPOSAL_POLICY_VERSION = 'd5-answer-proposal-2026-10-20-v1';
@@ -30,7 +33,7 @@ beforeEach(() => {
 });
 afterEach(() => { restore(); vi.restoreAllMocks(); resetWeeklyPlanningStableV5RuntimeSessionsForTest(); });
 
-function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effortAck?: boolean; component?: boolean; measurement?: 'total_duration' | 'duration_per_unit'; minutes?: number;
+function setup(options: { realContinuation?: boolean; initialIntent?: 'not_requested' | 'user_authorized'; top1?: boolean; presentingSiblingAck?: boolean; effortAck?: boolean; component?: boolean; measurement?: 'total_duration' | 'duration_per_unit'; minutes?: number;
   mode?: 'none' | 'low_top' | 'extra_meaning' | 'condition_change' | 'ellipsis_heads' | 'tie';
   collision?: 'estimate' | 'amount' | 'rangeStart' | 'rangeEnd' | 'target' | 'source_integer' | 'inactive' | 'range_label' | 'unrelated_label' | 'capacity' | 'recurrence';
   stale?: 'graph' | 'question' | 'continuation' } = {}) {
@@ -99,9 +102,11 @@ function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effort
     semanticPolicy: { calibrationEvidenceId: 'synthetic-only', maximumConditionChange: 0.01, maximumIndependentMeaning: 0.01 } });
   const choose = vi.fn(client.choose);
   const ackControl = { fails: true, calls: 0, unexecutedClaim: false };
-  const continueSelectedTurn = vi.fn(async ({ snapshot, graph: selectedGraph, pending }: { snapshot: PlanningState; graph: typeof graph; pending: NonNullable<PlanningState['pendingTurn']> }) => {
+  const continueSelectedTurn = vi.fn(async ({ snapshot, graph: selectedGraph, pending, semanticContribution }: { snapshot: PlanningState; graph: typeof graph; pending: NonNullable<PlanningState['pendingTurn']>; semanticContribution?: ControlledCandidateSemanticContribution }) => {
     if (options.stale === 'continuation') h.replaceState({ ...h.getState(), intakeState: { ...h.getState().intakeState!,
       lastQuestionContext: { ...h.getState().intakeState!.lastQuestionContext!, actionId: 'replaced-question' } } });
+    if (options.realContinuation) return weeklyPlanningTurnRuntimeGateway.continueSelectedTurn!({ snapshot, pending, userText: '15',
+      userId: OWNER, selectedDate: WEEK, plans: [], scheduleTemplates: [] }, selectedGraph, semanticContribution);
     if (options.effortAck) return renderWeeklyPlanningStableV5AssistantMessageCore({
       input: { userId: OWNER, selectedDate: WEEK, plans: [], scheduleTemplates: [], conversationId: h.conversationId,
         traceRequestId: pending.requestId, userText: '15', messages: snapshot.messages, previousState: snapshot.intakeState },
@@ -123,7 +128,7 @@ function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effort
   const route = registerControlledCandidateDomain(domain, {
     policy: { id: 'synthetic-only', calibrationEvidenceId: 'synthetic-only', rules: Array.from({ length: 8 }, (_, i) => ({
       menuKind: 'leaves' as const, optionCount: i + 2, depth: 0, minimumTopProbability: 0.90, minimumMargin: 0.80 })) },
-    maximumChildrenPerMenu: 8, maximumDecisions: 1, choose, sourceAccess: () => 'allowed',
+    maximumChildrenPerMenu: 8, maximumDecisions: 1, choose, sourceAccess: () => h.controls.access,
     inputForTurn: turn => weeklyPlanningTurnRuntimeGateway.prepareCandidateInput!({ ...turn, userId: OWNER,
       selectedDate: WEEK, plans: [], scheduleTemplates: [] }).normalizerInput,
     requestContextForTurn: pending => weeklyPlanningTurnRuntimeGateway.candidateRequestContext!(pending, { timeZone: 'Asia/Tokyo' }),
@@ -135,6 +140,7 @@ function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effort
         ? { ...fact, source: { ...fact.source, turnId: pending.requestId } } : fact);
       const question = options.component ? '数学問題集の第1章は1問あたり何分かかりますか？' : 'どのくらいかかりますか？';
       const result: WeeklyPlanningTurnExecutionResult = { state: { ...createInitialPlanningIntakeState(), questions: [question],
+      ...(options.initialIntent ? { draftGenerationIntent: options.initialIntent } : {}),
       lastQuestionContext: { kind: 'ambiguity', topicId: 'work-a', targetSlot: 'stable_v5:missing_effort_estimate', intent: measurement } },
       message: question, draftCandidates: [], stableV5Graph: graph,
       questionPresentationContent: { responseSource: 'ai', currentTurnGrounding: 'none', selfRepairNotice: false,
@@ -157,6 +163,103 @@ function setup(options: { top1?: boolean; presentingSiblingAck?: boolean; effort
 }
 
 describe('D5 answer proposal through canonical controller commit', () => {
+  it.each([false, true])('real continuation/renderer rejects absent optional intent safely to Luna once (wire=%s)', async wire => {
+    vi.stubEnv('VITE_DURABLE_WEEKLY_TURNS', 'enabled');
+    vi.spyOn(rendererFactory, 'createAiWeeklyPlanningStableV5DialogueRenderer').mockImplementation(() =>
+      createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion }));
+    const run = setup({ realContinuation: true, top1: true, minutes: 15, measurement: 'duration_per_unit' });
+    await run.present();
+    if (wire) run.h.replaceState(JSON.parse(JSON.stringify(run.h.getState())));
+    const before = run.h.getState();
+    const graph = readC5RuntimeGraph(OWNER, run.h.conversationId);
+    const answer = await run.answer('15');
+    expect(answer.accepted).toBe(true);
+    expect(run.choose).toHaveBeenCalledTimes(1);
+    expect(run.continueSelectedTurn).toHaveBeenCalledTimes(1);
+    expect(run.fallback).toHaveBeenCalledTimes(1);
+    expect(run.h.getState().messages.slice(before.messages.length).map(message => message.role)).toEqual(['user', 'assistant']);
+    expect(run.h.getState().messages.slice(-1)[0]?.content).toBe('Luna');
+    expect(run.h.getState().intakeState?.c5SelectionLedger?.consumed).toEqual([]);
+    expect(readC5RuntimeGraph(OWNER, run.h.conversationId)).toEqual(graph);
+    expect(run.h.getState().pendingApproval).toBeUndefined();
+    expect(run.h.getState().draftBlocks).toEqual(before.draftBlocks);
+    vi.unstubAllEnvs();
+  });
+  it.each([false, true].flatMap(wire => (['not_requested', 'user_authorized'] as const).map(initialIntent => ({ wire, initialIntent }))))(
+    'real continuation/renderer retains the accepted authorization control ($initialIntent, wire=$wire)', async ({ wire, initialIntent }) => {
+    vi.spyOn(rendererFactory, 'createAiWeeklyPlanningStableV5DialogueRenderer').mockImplementation(() =>
+      createWeeklyPlanningStableV5DialogueRendererCore({ createChatCompletion: successfulWeeklyPlanningRendererCompletion }));
+    const run = setup({ realContinuation: true, initialIntent, top1: true, minutes: 15, measurement: 'duration_per_unit' });
+    await run.present();
+    if (wire) run.h.replaceState(JSON.parse(JSON.stringify(run.h.getState())));
+    expect((await run.answer('15')).accepted).toBe(true);
+    expect(run.fallback).not.toHaveBeenCalled();
+    expect(run.h.getState().intakeState?.c5SelectionLedger?.consumed).toHaveLength(1);
+  });
+  it.each(['owner', 'revision', 'checkpoint', 'permission'] as const)('does not execute Luna over an intervening %s change', async change => {
+    const run = setup({ top1: true, minutes: 15 });
+    await run.present();
+    run.continueSelectedTurn.mockImplementationOnce(async ({ snapshot, graph }) => {
+      if (change === 'owner') run.h.session.ownerId = 'another-owner';
+      if (change === 'revision') run.h.replaceState({ ...run.h.getState(), revision: run.h.getState().revision + 1 });
+      if (change === 'checkpoint') window.localStorage.setItem(`studyplanner.weeklyPlanning.stableV5.${OWNER}.${WEEK}`, 'intervening-checkpoint');
+      if (change === 'permission') run.h.controls.access = 'denied';
+      return { state: { ...snapshot.intakeState!, draftGenerationIntent: 'not_requested' }, message: 'ACK', draftCandidates: [], stableV5Graph: graph };
+    });
+    expect((await run.answer('15')).accepted).toBe(false);
+    expect(run.fallback).not.toHaveBeenCalled();
+    expect(run.h.getState().intakeState?.c5SelectionLedger?.consumed).toEqual([]);
+  });
+  it('clean checkpoint rollback restores exactly one begun turn and executes Luna once', async () => {
+    const run = setup({ top1: true, minutes: 15 });
+    await run.present();
+    const before = run.h.getState();
+    const original = readC5RuntimeGraph(OWNER, run.h.conversationId);
+    const key = `studyplanner.weeklyPlanning.stableV5.${OWNER}.${WEEK}`;
+    const set = window.localStorage.setItem;
+    vi.spyOn(window.localStorage, 'setItem').mockImplementation((name, value) => {
+      if (name === key) throw new Error('injected write failure before mutation');
+      set(name, value);
+    });
+    expect((await run.answer('15')).accepted).toBe(true);
+    expect(run.fallback).toHaveBeenCalledTimes(1);
+    expect(run.h.getState().messages.slice(before.messages.length).map(message => message.role)).toEqual(['user', 'assistant']);
+    expect(run.h.getState().intakeState?.c5SelectionLedger?.consumed).toEqual([]);
+    expect(readC5RuntimeGraph(OWNER, run.h.conversationId)).toEqual(original);
+    expect(run.h.getState().pendingApproval).toBeUndefined();
+  });
+  it('unknown checkpoint readback never executes Luna or repeats the selection', async () => {
+    const run = setup({ top1: true, minutes: 15 });
+    await run.present();
+    const key = `studyplanner.weeklyPlanning.stableV5.${OWNER}.${WEEK}`;
+    const get = window.localStorage.getItem;
+    const set = window.localStorage.setItem;
+    let written = false;
+    vi.spyOn(window.localStorage, 'setItem').mockImplementation((name, value) => { set(name, value); if (name === key) written = true; });
+    vi.spyOn(window.localStorage, 'getItem').mockImplementation(name => {
+      if (name === key && written) throw new Error('injected uncertain readback');
+      return get(name);
+    });
+    const outcome = await run.answer('15');
+    expect(outcome.accepted).toBe(false);
+    expect(outcome.recoveryRequired).toBe(true);
+    expect(run.fallback).not.toHaveBeenCalled();
+    expect(run.choose).toHaveBeenCalledTimes(1);
+  });
+  it('fallback failure follows the existing visible assistant failure path without reselection', async () => {
+    const run = setup({ top1: true, minutes: 15 });
+    await run.present();
+    run.continueSelectedTurn.mockImplementationOnce(async ({ snapshot, graph }) => ({
+      state: { ...snapshot.intakeState!, draftGenerationIntent: 'not_requested' }, message: 'ACK', draftCandidates: [], stableV5Graph: graph,
+    }));
+    run.fallback.mockRejectedValueOnce(new Error('injected Luna failure'));
+    await expect(run.answer('15')).rejects.toThrow('injected Luna failure');
+    expect(run.h.getState().messages.slice(-1)[0]?.role).toBe('assistant');
+    expect(run.h.getState().pendingTurn).toBeUndefined();
+    expect(run.h.getState().intakeState?.c5SelectionLedger?.consumed).toEqual([]);
+    expect(run.choose).toHaveBeenCalledTimes(1);
+    expect(run.fallback).toHaveBeenCalledTimes(1);
+  });
   it('production smoke reads the real persisted chat graph/ledger and correlates actual request → receipt → consumed selection', async () => {
     const run = setup({ top1: true, minutes: 15, measurement: 'duration_per_unit' });
     await run.present();
