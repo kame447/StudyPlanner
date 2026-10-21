@@ -15,7 +15,7 @@ import {
   TimerReset,
 } from 'lucide-react';
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PropsWithChildren } from 'react';
-import { createStudySessionDraft, sessionCrossesLocalDate, type StudySessionRequest, type StudySessionTarget } from '../lib/studySessionTarget';
+import { createStudySessionDraft, type StudySessionRequest, type StudySessionTarget } from '../lib/studySessionTarget';
 import {
   formatDurationDisplay,
   getElapsedMs,
@@ -25,6 +25,7 @@ import {
   resumeTracker,
   type TrackerState,
 } from '../lib/actualTracking';
+import { getStudySessionFinishMeasurement } from '../lib/studySessionFinish';
 import { getEntryDurationMinutes } from '../lib/entryTimeRange';
 import { minutesBetween } from '../lib/date';
 import {
@@ -392,18 +393,17 @@ function StudySessionView({
     if (phaseRef.current !== 'timer' || tracker.anchorMs === null) return;
 
     const finishedAt = Date.now();
-    if (activePomodoro.current) pomodoroCompletedAt.current ??= getPomodoroCompletedAt(tracker, activePomodoro.current, finishedAt);
-    const measuredMs = getElapsedMs(tracker, finishedAt);
-    const finalElapsedMs = Math.max(activePomodoro.current ? getPomodoroProgress(measuredMs, activePomodoro.current).elapsedMs : measuredMs, 1000);
-    const anchorMs = tracker.anchorMs;
-    const storedDurationMs = Math.max(finalElapsedMs, 60_000);
+    const measurement = getStudySessionFinishMeasurement(tracker, finishedAt, activePomodoro.current, pomodoroCompletedAt.current);
+    if (!measurement) return;
+    const { anchorMs, elapsedMs: finalElapsedMs, storedDurationMs } = measurement;
+    pomodoroCompletedAt.current = measurement.pomodoroCompletedAt;
     const draft = createStudySessionDraft(target, anchorMs, storedDurationMs, {
       title: unplannedTitle, subject: unplannedSubject, material,
     });
     const hasNewMeasurement = recordedElapsedMs.current !== finalElapsedMs;
     recordedElapsedMs.current = finalElapsedMs;
     if (target.kind === 'unplanned' && hasNewMeasurement) {
-      setNeedsDateAdjustment(sessionCrossesLocalDate(anchorMs, storedDurationMs) || sessionCrossesLocalDate(anchorMs, (pomodoroCompletedAt.current ?? finishedAt) - anchorMs));
+      setNeedsDateAdjustment(measurement.crossesLocalDate);
     }
 
     setNowMs(finishedAt);
