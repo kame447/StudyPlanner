@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -6,6 +7,90 @@ import { classifyFirestoreWrite, runProductionSmoke, classifyComposerReadiness, 
 import { persistRedactedSmokeEvidence, redactedSmokeEvidence, observeProductionComposerState, relatedActiveEffortEstimates, productionSmokeReflectedEstimate } from '../tests/e2e/support/d5-production-readonly.mjs';
 import { observeOwnAnswerTrace, observeAnswerCheckpoint } from '../tests/e2e/support/d5-production-readonly.mjs';
 import { CONTROLLED_CANDIDATE_COMMIT_REJECTIONS } from '../shared/controlledCandidateCommit.ts';
+import { D5_SMOKE_TRACE_OUTCOMES, observeAnswerStores, readOwnedStableConversation, isGroundedD5SmokeAck } from '../tests/e2e/support/d5-production-readonly.mjs';
+import { createMemoryStorageHarness, installWeeklyPlanningTestStorage } from '../src/features/weeklyPlanning/testUtils/weeklyPlanningApplicationTestHarness';
+import { recordCommittedWeeklyPlanningApplicationTurn, recordDiscardedWeeklyPlanningApplicationTurn, recordFailedWeeklyPlanningApplicationTurn } from '../src/features/weeklyPlanning/application/weeklyPlanningTurnTraceSideEffects';
+import { createInitialPlanningIntakeState } from '../src/features/weeklyPlanning/intake/weeklyPlanningIntakeReducer';
+import { setWeeklyPlanningTraceRepositoryForTests } from '../src/features/weeklyPlanning/trace/weeklyPlanningTraceRepository';
+import { resetWeeklyPlanningStableV5TraceRuntimeForTest } from '../src/features/weeklyPlanning/trace/weeklyPlanningStableV5TraceRuntime';
+import { createRemoteWeeklyPlanningTraceRepository } from '../src/features/weeklyPlanning/trace/weeklyPlanningTraceRemoteRepository';
+
+describe('own answer trace through real lifecycle, diagnostic and wire serialization', () => {
+  const pending = { conversationId: 'weekly-conversation-323e4567-e89b-52d3-a456-426614174000', requestId: 'PRIVATE_REQUEST', turnId: 'PRIVATE_TURN', weekStartDate: '2026-10-19', baseRevision: 2, startedAt: '2026-10-21T00:00:00Z' };
+  let restore, wire;
+  beforeEach(() => {
+    restore = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage);
+    resetWeeklyPlanningStableV5TraceRuntimeForTest(); vi.stubEnv('VITE_WEEKLY_PLANNING_TRACE_ENABLED', 'true');
+    wire = [];
+    setWeeklyPlanningTraceRepositoryForTests(createRemoteWeeklyPlanningTraceRepository({
+      startSession: async () => ({ sessionId: 'weekly-trace-223e4567-e89b-52d3-a456-426614174000', logicalConversationId: pending.conversationId }),
+      append: async payload => { wire.push(JSON.parse(JSON.stringify(payload))); },
+    }));
+  });
+  afterEach(() => { resetWeeklyPlanningStableV5TraceRuntimeForTest(); setWeeklyPlanningTraceRepositoryForTests(undefined); restore(); vi.unstubAllEnvs(); });
+  it.each(['preview', 'stale', 'rejection', 'failure'])('keeps bounded terminal evidence for %s', async kind => {
+    const result = { state: createInitialPlanningIntakeState(), message: 'PRIVATE_ACK', draftCandidates: [] };
+    const base = { ownerId: 'fixture-owner', pending, userText: '15', result };
+    if (kind === 'preview') await recordCommittedWeeklyPlanningApplicationTurn({ ...base, result: { ...result, draftCandidates: [{}] } });
+    if (kind === 'stale') await recordDiscardedWeeklyPlanningApplicationTurn({ ...base, reason: 'stale' });
+    if (kind === 'rejection') await recordDiscardedWeeklyPlanningApplicationTurn({ ...base, reason: 'commit_rejected', result: { ...result, candidateCommitRejectionReason: 'authorization_intent_changed', candidateCommitFallback: 'luna_scheduled' } });
+    if (kind === 'failure') await recordFailedWeeklyPlanningApplicationTurn({ ...base, error: new Error('PRIVATE_ERROR'), assistantMessage: { id: 'PRIVATE_ASSISTANT', role: 'assistant', content: 'PRIVATE_ERROR', createdAt: pending.startedAt } });
+    expect(wire).toHaveLength(1);
+    const observed = observeOwnAnswerTrace(wire[0], new Set([pending.requestId]));
+    const expected = { preview: { outcome: 'preview_ready', errorCode: null }, stale: { outcome: 'discarded_stale', errorCode: 'stale_async_result_discarded' },
+      rejection: { outcome: 'discarded_commit_rejected', errorCode: 'candidate_commit_authorization_intent_changed', rejectionReason: 'authorization_intent_changed', fallback: 'luna_scheduled' },
+      failure: { outcome: 'failed', errorCode: 'Error' } }[kind];
+    expect(observed).toHaveLength(1); expect(observed[0]).toMatchObject(expected);
+    expect(JSON.stringify(redactedSmokeEvidence({ answerTrace: observed }))).not.toContain('PRIVATE_');
+  });
+  it('covers exactly the finite intake/failure/lifecycle outcome union from the owning types', () => {
+    const members = (file, type) => {
+      const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+      const declaration = source.split(`export type ${type} =`)[1].split(';')[0];
+      return [...declaration.matchAll(/'([^']+)'/gu)].map(match => match[1]);
+    };
+    const expected = [...members('../src/features/weeklyPlanning/intake/weeklyPlanningIntakeTypes.ts', 'PlanningIntakeStatus'),
+      ...members('../src/features/weeklyPlanning/weeklyPlanningTurnExecutionTypes.ts', 'WeeklyPlanningTurnFailureCode'),
+      'preview_ready', 'discarded_stale', 'discarded_commit_rejected', 'failed'];
+    expect([...D5_SMOKE_TRACE_OUTCOMES].sort()).toEqual([...new Set(expected)].sort());
+  });
+});
+
+describe('independent owned/chat/DOM observations', () => {
+  const snapshot = (reply = false) => ({ graph: { factLifecycles: [] }, planningState: {
+    messages: [{ id: 'old', role: 'assistant' }, ...(reply ? [{ id: 'new', role: 'assistant' }] : [])], draftBlocks: [], previewCandidates: [] } });
+  it.each([[false, false, 'neither'], [true, false, 'chat_only'], [false, true, 'owned_only'], [true, true, 'both']])('diagnoses chat=%s owned=%s without changing the strict oracle', (chat, owned, expected) => {
+    expect(observeAnswerStores(snapshot(chat), snapshot(owned), new Set(['old'])).replyStores).toBe(expected);
+  });
+  it('keeps unread state unknown, reports preview/approval separately and redacts unknown strings', () => {
+    expect(observeAnswerStores(null, snapshot(true), new Set(['old'])).replyStores).toBe('unread');
+    const value = snapshot(true); value.planningState.previewCandidates = [{}]; value.planningState.pendingApproval = {};
+    const evidence = redactedSmokeEvidence({ answerStores: { ...observeAnswerStores(value, value, new Set(['old'])), chatIndexChanged: true, private: 'PRIVATE' }, visibleAckObserved: true });
+    expect(evidence.answerStores).toMatchObject({ replyStores: 'both', checkpointsAgree: true, chatIndexChanged: true, chat: { preview: 'preview', pendingApprovalPresent: true } });
+    expect(JSON.stringify(evidence)).not.toContain('PRIVATE');
+  });
+  it('validates the independent checkpoint owner/week/conversation before returning it', () => {
+    const value = { ...snapshot(true), ownerId: 'owner', weekStartDate: '2026-10-19', conversationId: 'conversation', version: 'studyplanner-weekly-planning-stable-v5-session-v1' };
+    value.planningState.weekStartDate = value.weekStartDate;
+    const read = { owner: value.ownerId, weekStartDate: value.weekStartDate, conversationId: value.conversationId };
+    vi.stubGlobal('localStorage', { getItem: () => JSON.stringify(value) });
+    try {
+      expect(readOwnedStableConversation(read)).toEqual(value);
+      for (const field of ['owner', 'weekStartDate', 'conversationId']) expect(() => readOwnedStableConversation({ ...read, [field]: 'OTHER' })).toThrow();
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it('recognizes only the visible synthetic math per-problem 15-minute ACK', () => {
+    expect(isGroundedD5SmokeAck('数学は1 問あたり15分で見積もります。')).toBe(true);
+    for (const text of ['英語は1問15分', '数学は全部で15分', '数学は1問14分', null]) expect(isGroundedD5SmokeAck(text)).toBe(false);
+  });
+  it('distinguishes missing, invalid and unregistered codes without exporting them', () => {
+    for (const [input, expected] of [[null, null], [{ private: 'PRIVATE' }, 'invalid_shape'], ['', 'invalid_shape'], ['PRIVATE', 'other_present']]) {
+      const rows = observeOwnAnswerTrace({ entries: [{ kind: 'turn_diagnostic', requestId: 'own', diagnostics: { outcome: input, error: { type: input } } }] }, new Set(['own']));
+      expect(rows[0]).toMatchObject({ outcome: expected, errorCode: expected });
+      expect(JSON.stringify(redactedSmokeEvidence({ answerTrace: rows }))).not.toContain('PRIVATE');
+    }
+  });
+});
 
 describe('bounded answer failure observations', () => {
   it('keeps unread checkpoint/alert/receipt observations unknown', () => {

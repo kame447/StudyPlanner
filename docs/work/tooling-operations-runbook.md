@@ -451,6 +451,10 @@ A normal `npm ci` (including install scripts) used the worktree `.cache/npm-cach
 
 Evidence in the delegated worktree: `.cache/d5-commit-npm-ci.log`, `.cache/d5-commit-clean-build.log`, `.cache/d5-commit-final-typecheck.log`, `.cache/d5-commit-final-verification.log`, `.cache/d5-commit-final-budget-smoke.log`, `.cache/d5-commit-last-tests.log`, and `artifacts/quality-gate/bundle-budget.json`. Parent owns the final frozen commit/PR audit, CI and any production attempt; no deployment or provider/production request was performed here.
 
+### D5 chat ownership: checkpoint metadata must not revoke completion (base d8f8470e)
+
+Owner decision8487 raises only JS totalRaw from2616972 to the measured2617120 (+148 raw bytes), with no extra raw allowance. Other JS limits remain711893/1050074/289210; measured values are711872/1050074/289203. CSS/appearance, checker logic and CI stay unchanged. The same Node22.23.0/darwin-arm64, Vite6.4.4, lock/config and installed dependency tree as the preceding checkpoint produced this38.47s build (`.cache/d5-chat-scope-build.log`). Before the adjustment only totalRaw fails; afterward the checker exits0. The new bytes bind the view operation to its chat session and active chat, so its own metadata checkpoint cannot revoke final reply persistence. Tests retain exact raw-boundary and one-byte overflow rejection. Smoke/test-only changes do not enter the app bundle. Parent owns the frozen-head audit and integration/production verification.
+
 ### Stable V5 production isolation: new caller imports an internal codec
 
 Signature: `weeklyPlanningStableV5ProductionIsolation.test.ts` reports `allows direct Stable V5 imports only through explicitly audited runtime support modules`, for example `application/c5LocalSelection/controlledFallback.ts:../weeklyPlanningStableV5SessionCodec` (#831, run39601297015). Functional tests can pass while this dependency boundary is invalid; a focused green suite that omits the gate is incomplete evidence.

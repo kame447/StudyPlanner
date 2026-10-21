@@ -4,13 +4,19 @@ import { boundedSmokeError, redactedSmokeStep, redactedWriteObservation, redacte
 import { CONTROLLED_CANDIDATE_COMMIT_REJECTIONS } from '../../../shared/controlledCandidateCommit.ts';
 
 const rejectionFromCode = code => CONTROLLED_CANDIDATE_COMMIT_REJECTIONS.find(reason => code === `candidate_commit_${reason}`) ?? null;
-const traceOutcomes = ['discarded_commit_rejected', 'discarded_stale', 'failed', 'revision_pending', 'needs_scope', 'draft_ready', 'idle',
-  'stable_v5_normalization_rejected', 'stable_v5_provider_failure', 'stable_v5_canonicalization_rejected'];
+export const D5_SMOKE_TRACE_OUTCOMES = Object.freeze(['discarded_commit_rejected', 'discarded_stale', 'failed', 'preview_ready',
+  'idle', 'needs_scope', 'range_collected', 'scope_collected', 'needs_exam_info', 'needs_year_range',
+  'needs_progress_clarification', 'needs_unit_rate', 'needs_priority_policy', 'needs_life_constraints', 'draft_ready', 'revision_pending', 'approved',
+  'stable_v5_normalization_rejected', 'stable_v5_provider_failure', 'stable_v5_canonicalization_rejected']);
 const traceErrors = ['commit_rejected', 'stale_async_result_discarded', 'stable_v5_required_effort_ack_failed',
+  'Error', 'TypeError', 'RangeError', 'SyntaxError', 'AbortError', 'TimeoutError', 'WeeklyPlanningControlledSemanticFailure', 'unknown-error',
   ...CONTROLLED_CANDIDATE_COMMIT_REJECTIONS.map(reason => `candidate_commit_${reason}`)];
+const boundedTraceCode = (value, allowed) => value == null ? null
+  : allowed.includes(value) || ['other_present', 'invalid_shape'].includes(value) ? value
+    : typeof value === 'string' && value.length > 0 ? 'other_present' : 'invalid_shape';
 const redactedAnswerTrace = row => ({
-  outcome: traceOutcomes.includes(row?.outcome) ? row.outcome : null,
-  errorCode: traceErrors.includes(row?.errorCode) ? row.errorCode : null,
+  outcome: boundedTraceCode(row?.outcome, D5_SMOKE_TRACE_OUTCOMES),
+  errorCode: boundedTraceCode(row?.errorCode, traceErrors),
   rejectionReason: CONTROLLED_CANDIDATE_COMMIT_REJECTIONS.includes(row?.rejectionReason) ? row.rejectionReason : null,
   fallback: ['luna_scheduled', 'none'].includes(row?.fallback) ? row.fallback : null,
 });
@@ -92,6 +98,44 @@ export function readOwnedConversation(owner) {
     throw new Error('Owned conversation checkpoint is incomplete.');
   }
   return snapshot;
+}
+
+/** Independent diagnostic read of the controlled commit's store. Same pinned owner/week/conversation only. */
+export function readOwnedStableConversation({ owner, weekStartDate, conversationId }) {
+  const snapshot = JSON.parse(localStorage.getItem(`studyplanner.weeklyPlanning.stableV5.${owner}.${weekStartDate}`) ?? 'null');
+  if (!snapshot) return null;
+  if (snapshot.ownerId !== owner || snapshot.weekStartDate !== weekStartDate || snapshot.conversationId !== conversationId
+    || snapshot.version !== 'studyplanner-weekly-planning-stable-v5-session-v1'
+    || !snapshot.graph || !snapshot.planningState || snapshot.planningState.weekStartDate !== weekStartDate
+    || !Array.isArray(snapshot.planningState.messages) || !Array.isArray(snapshot.graph.factLifecycles)) {
+    throw new Error('Owned StableV5 checkpoint scope is incomplete.');
+  }
+  return snapshot;
+}
+
+/** Diagnostic store divergence never authorizes a success or replaces the chat oracle. */
+export function observeAnswerStores(chat, owned, oldMessageIds) {
+  const state = snapshot => {
+    const observation = observeAnswerCheckpoint(snapshot, oldMessageIds);
+    const planning = snapshot?.planningState;
+    const preview = Array.isArray(planning?.previewCandidates) ? planning.previewCandidates.length > 0 : null;
+    const draft = Array.isArray(planning?.draftBlocks) ? planning.draftBlocks.length > 0 : null;
+    return { ...observation, preview: preview === null || draft === null ? 'unread'
+      : preview && draft ? 'both' : preview ? 'preview' : draft ? 'draft' : 'none',
+      pendingApprovalPresent: planning ? planning.pendingApproval != null : null };
+  };
+  const chatState = state(chat), ownedState = state(owned);
+  const hasReply = observation => observation.newAssistant === null ? null : observation.newAssistant !== 'none';
+  const c = hasReply(chatState), o = hasReply(ownedState);
+  return { chat: chatState, owned: ownedState,
+    replyStores: c === null || o === null ? 'unread' : c && o ? 'both' : c ? 'chat_only' : o ? 'owned_only' : 'neither',
+    checkpointsAgree: chat && owned ? JSON.stringify([chat.graph, chat.planningState]) === JSON.stringify([owned.graph, owned.planningState]) : null };
+}
+
+/** Synthetic math ACK oracle; presentation whitespace has no semantic meaning. No text leaves the evidence projection. */
+export function isGroundedD5SmokeAck(text) {
+  const compact = typeof text === 'string' ? text.replace(/\s/gu, '') : '';
+  return /数学/u.test(compact) && /(?:1|１|一)問(?:あたり)?[^。！？\n]{0,20}(?:15|１５|十五)分/u.test(compact);
 }
 
 /** Correlate the actual canonical receipt key, selected candidate ID and manifest hash. */
@@ -230,6 +274,10 @@ export function redactedSmokeEvidence(value) {
   const oneOf = (input, allowed, fallback = null) => allowed.includes(input) ? input : fallback;
   const boolean = input => typeof input === 'boolean' ? input : null;
   const count = input => Number.isSafeInteger(input) && input >= 0 && input <= 10000 ? input : null;
+  const answerStore = input => ({ pendingTurnPresent: boolean(input?.pendingTurnPresent),
+    newAssistant: oneOf(input?.newAssistant, ['none', 'one', 'multiple']),
+    receiptConsumed: boolean(input?.receiptConsumed), preview: oneOf(input?.preview, ['none', 'preview', 'draft', 'both', 'unread'], 'unread'),
+    pendingApprovalPresent: boolean(input?.pendingApprovalPresent) });
   return {
     productionOrigin: oneOf(value.productionOrigin, ['production', 'non_production'], 'unverified'),
     frontendIdentity: oneOf(value.frontendIdentity, ['match', 'frontend_identity_mismatch', 'out_of_band_pages_readback_required'], 'unverified'),
@@ -239,6 +287,10 @@ export function redactedSmokeEvidence(value) {
     answerPhase: { pendingTurnPresent: boolean(value.answerPhase?.pendingTurnPresent),
       newAssistant: oneOf(value.answerPhase?.newAssistant, ['none', 'one', 'multiple']),
       receiptConsumed: boolean(value.answerPhase?.receiptConsumed), alertPresent: boolean(value.answerPhase?.alertPresent) },
+    answerStores: { chat: answerStore(value.answerStores?.chat), owned: answerStore(value.answerStores?.owned),
+      replyStores: oneOf(value.answerStores?.replyStores, ['both', 'chat_only', 'owned_only', 'neither', 'unread'], 'unread'),
+      checkpointsAgree: boolean(value.answerStores?.checkpointsAgree), chatIndexChanged: boolean(value.answerStores?.chatIndexChanged) },
+    visibleAckObserved: boolean(value.visibleAckObserved),
     answerTrace: (Array.isArray(value.answerTrace) ? value.answerTrace : []).slice(0, 16).map(redactedAnswerTrace),
     answerTraceTruncated: value.answerTraceTruncated === true || Array.isArray(value.answerTrace) && value.answerTrace.length > 16,
     outcome: oneOf(value.outcome, ['incomplete', 'non_production', 'd5_consumed_pending_verification',
