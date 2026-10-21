@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { classifyFirestoreWrite, runProductionSmoke } from './support/d5-production-smoke-observation.mjs';
 import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../shared/d5AnswerPolicy.ts';
 import { productionDatabaseFromRequestUrl, readOwnedConversation, readProductionServerSnapshot, consumedD5Request, boundOffRollbackCandidate, classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, productionSmokeExpectation, persistRedactedSmokeEvidence } from './support/d5-production-readonly.mjs';
 
@@ -55,7 +56,8 @@ async function send(page, text) {
 test('explicit production D5 smoke preserves all schedules and never approves', async ({ page, baseURL }, testInfo) => {
   const evidence = { productionOrigin: classifyProductionOrigin(baseURL), frontendIdentity: 'unverified', expectation: productionSmokeExpectation(), outcome: 'incomplete', candidateChoice: [],
     d5Captured: false, d5Consumed: false, lunaFallbackRoute: null, activeEstimate: false, reflectedEstimate: null, visibleAck: false,
-    scheduleReadbackIdentical: false, approvalStartEvents: 0, approvalExecutions: null, scheduleWrites: 0 };
+    scheduleReadbackIdentical: false, approvalStartEvents: 0, approvalExecutions: null, scheduleWrites: 0, unclassifiedWrites: 0, firestoreWrites: [],
+    step: 'target_preflight', failingStep: null, bodyError: null, readbackStep: null, readbackError: null };
   const observations = new Map();
   const fallbackRequests = new Map();
   const fallbackRequestIds = new Set();
@@ -73,11 +75,11 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     const url = new URL(request.url());
     if (url.hostname === 'firestore.googleapis.com') {
       database ??= productionDatabaseFromRequestUrl(request.url());
-      // Conservatively count any write-stream, commit, batchWrite or REST mutation.
-      if (/\/Write\/channel|:commit|:batchWrite/u.test(url.pathname)
-        || ['PATCH', 'DELETE', 'PUT'].includes(request.method())
-        || request.method() === 'POST' && /\/documents\//u.test(url.pathname) && !url.pathname.endsWith(':runQuery')) {
-        evidence.scheduleWrites++;
+      const write = classifyFirestoreWrite({ url: request.url(), method: request.method(), postData: request.postData() });
+      if (write) {
+        evidence.firestoreWrites.push(write);
+        if (write.classification === 'forbidden') evidence.scheduleWrites++;
+        if (write.classification === 'unclassified') evidence.unclassifiedWrites++;
       }
     }
     if (request.method() === 'POST' && /weekly-planning-trace|observability/u.test(url.pathname)) {
@@ -157,16 +159,19 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     })().catch(() => { observationErrors.push('unreadable_candidate_response'); }));
   });
 
-  try {
+  await runProductionSmoke({ evidence, body: async () => {
     console.log(JSON.stringify({ productionOrigin: evidence.productionOrigin }));
     requireProductionOrigin(baseURL);
     evidence.frontendIdentity = verifyFrontendIdentity(process.env.EXPECTED_FRONTEND_SHA);
     console.log(JSON.stringify({ frontendIdentity: evidence.frontendIdentity }));
+    evidence.step = 'login';
     identity = await signIn(page);
     await expect.poll(() => typeof database === 'string').toBe(true);
     if (!/^projects\/[^/]+\/databases\/[^/]+$/u.test(database)) throw new Error('Missing production database identity.');
+    evidence.step = 'server_snapshot_before';
     before = await serverSnapshot(page, identity, database);
     approvalBefore = await approvalLedger();
+    evidence.step = 'fresh_conversation';
     await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: 'AI計画', exact: true }).click();
     await expect(composer(page)).toBeEnabled();
     const previousConversationId = (await conversation(page, identity.uid))?.conversationId;
@@ -180,6 +185,7 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     const end = new Date(`${start}T00:00:00Z`);
     end.setUTCDate(end.getUTCDate() + 6);
     const endDate = end.toISOString().slice(0, 10);
+    evidence.step = 'setup_question';
     await send(page, `${start}から${endDate}で数学20問と英語15ページを進めたい。英語15ページは全部で45分。`);
     await expect.poll(async () => {
       const snapshot = await conversation(page, identity.uid);
@@ -194,12 +200,14 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     const targetWorkload = pending.graph.workloads.find(w => w.id === target);
     const targetTask = pending.graph.tasks.find(t => t.id === targetWorkload?.taskId);
     if (!targetWorkload || !targetTask?.title.includes('数学')) throw new Error('Setup did not ask the intended math effort question.');
+    evidence.step = 'd5_capture';
     const captured = pending.planningState.intakeState.lastQuestionContext.controlledCandidate;
     evidence.d5Captured = captured?.domainId === 'd5_numeric' && captured.domainPolicyVersion === D5_TOP1_ANSWER_POLICY_VERSION
       && captured.basis.binding.ownerId === identity.uid && captured.basis.binding.conversationId === pending.conversationId
       && captured.basis.binding.target.id === target;
     const consumedBefore = pending.planningState.intakeState.c5SelectionLedger?.consumed.length ?? 0;
     const oldMessages = new Set(pending.planningState.messages.map(message => message.id));
+    evidence.step = 'answer_turn';
     await send(page, '15');
     await expect.poll(async () => {
       const snapshot = await conversation(page, identity.uid);
@@ -207,6 +215,7 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
         .some(message => message.role === 'assistant' && !oldMessages.has(message.id));
     }).toBe(true);
     await Promise.all(responseTasks);
+    evidence.step = 'answer_state';
     const after = await conversation(page, identity.uid);
     expect(after.planningState.pendingApproval == null, 'No pending approval').toBe(true);
     expect(after.planningState.approvalRecovery == null, 'No approval execution/recovery').toBe(true);
@@ -226,58 +235,64 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
       evaluated && row.v2 && row.selected15 && consumedD5Request(after, r, identity.uid, target));
     evidence.outcome = evidence.d5Consumed ? 'd5_consumed_pending_verification' : 'fallback_no_d5_positive_claim';
     if (evidence.expectation === 'EXPECT_JEV') {
+      evidence.step = 'jev_evaluation';
       expect(observed.length, 'Exactly one candidate attempt; no silent retries').toBe(1);
       expect(observed.every(({ row, evaluated }) => evaluated && row.provider === 'openrouter'
         && row.status === 'evaluated' && row.v2 && row.question === 'missing_effort_estimate')).toBe(true);
+      evidence.step = 'd5_consumption';
       expect(evidence.d5Consumed, 'D5 must consume the evaluated 15-minute selection').toBe(true);
+      evidence.step = 'active_estimate';
       expect(evidence.activeEstimate, 'Active math per-problem exact 15-minute estimate').toBe(true);
+      evidence.step = 'visible_ack';
       expect(evidence.visibleAck, 'Visible grounded math ACK').toBe(true);
     } else {
+      evidence.step = 'off_capture';
       expect(evidence.d5Captured, 'OFF drill requires real bound D5 capture by the new frontend').toBe(true);
+      evidence.step = 'off_candidate';
       expect(observed.length, 'OFF drill requires exactly one eligible candidate request').toBe(1);
       expect(boundOffRollbackCandidate(captured, observed, { owner: identity.uid, conversationId: pending.conversationId,
         target, policyVersion: D5_TOP1_ANSWER_POLICY_VERSION }),
       'Bound candidate request must receive unavailable/off with no Jev evaluation').toBe(true);
+      evidence.step = 'off_consumption';
       expect(consumedBefore, 'Fresh OFF drill starts with no consumed selections').toBe(0);
       expect(consumed.length, 'OFF drill cannot consume any candidate selection').toBe(0);
+      evidence.step = 'luna_fallback';
       expect(evidence.lunaFallbackRoute != null, 'Existing Luna semantic route must complete on the 15 answer').toBe(true);
       expect(evidence.d5Consumed, 'OFF drill cannot claim D5 consumption').toBe(false);
+      evidence.step = 'active_estimate';
       expect(evidence.activeEstimate, 'Luna fallback must still reflect the answer').toBe(true);
+      evidence.step = 'visible_ack';
       expect(evidence.visibleAck, 'Luna fallback ACK').toBe(true);
       testInfo.annotations.push({ type: 'fallback', description:
         'OFF rollback drill: captured D5 unavailable/off; Luna route/ACK verified. No D5 consumption.' });
     }
+    evidence.step = 'network_evidence';
     expect(observationErrors.length, 'Network evidence must be complete').toBe(0);
     dialogueVerified = true;
-  } finally {
+  }, readback: async () => {
+    evidence.step = 'server_snapshot_after';
     if (classifyProductionOrigin(page.url()) !== 'production') {
       evidence.productionOrigin = 'non_production';
       evidence.outcome = 'non_production';
     }
-    // Always preserve redacted evidence, including failed/none/timeout attempts.
-    try {
-      if (before && identity && database) {
-        evidence.productionOrigin = classifyProductionOrigin(page.url());
-        if (evidence.productionOrigin !== 'production') {
-          evidence.outcome = 'non_production';
-          throw new Error('non_production: browser left the production origin.');
-        }
-        const after = await serverSnapshot(page, identity, database);
-        evidence.scheduleReadbackIdentical = JSON.stringify(before) === JSON.stringify(after);
-        const ledgersIdentical = await approvalLedger() === approvalBefore
-          && JSON.stringify(before.weekly_planning_approval_operations) === JSON.stringify(after.weekly_planning_approval_operations)
-          && JSON.stringify(before.weekly_planning_approval_items) === JSON.stringify(after.weekly_planning_approval_items);
-        evidence.approvalExecutions = ledgersIdentical ? 0 : 'changed';
-        expect(evidence.scheduleReadbackIdentical, 'All owned schedule/event and approval server records unchanged').toBe(true);
-        expect(evidence.approvalExecutions, 'No approval executions').toBe(0);
-        expect(evidence.approvalStartEvents, 'No observed approval-start diagnostic').toBe(0);
-        expect(evidence.scheduleWrites, 'No Firestore write attempts, including save-and-cleanup').toBe(0);
-        requireProductionOrigin(page.url());
-        if (dialogueVerified && evidence.d5Consumed) evidence.outcome = 'd5_positive_readonly_smoke';
-        else if (dialogueVerified && evidence.expectation === 'EXPECT_FALLBACK') evidence.outcome = 'off_rollback_luna_fallback_verified';
-      }
-    } finally {
-      await persistRedactedSmokeEvidence(testInfo, evidence);
+    if (before && identity && database) {
+      requireProductionOrigin(page.url());
+      const after = await serverSnapshot(page, identity, database);
+      evidence.scheduleReadbackIdentical = JSON.stringify(before) === JSON.stringify(after);
+      const ledgersIdentical = await approvalLedger() === approvalBefore
+        && JSON.stringify(before.weekly_planning_approval_operations) === JSON.stringify(after.weekly_planning_approval_operations)
+        && JSON.stringify(before.weekly_planning_approval_items) === JSON.stringify(after.weekly_planning_approval_items);
+      evidence.approvalExecutions = ledgersIdentical ? 0 : 'changed';
+      expect(evidence.scheduleReadbackIdentical, 'All owned schedule/event and approval server records unchanged').toBe(true);
+      evidence.step = 'approval_readback';
+      expect(evidence.approvalExecutions, 'No approval executions').toBe(0);
+      expect(evidence.approvalStartEvents, 'No observed approval-start diagnostic').toBe(0);
+      evidence.step = 'write_scope';
+      expect(evidence.scheduleWrites, 'No schedule/event/approval or other planner-data write attempts').toBe(0);
+      expect(evidence.unclassifiedWrites, 'Every Firestore write must have a classified, explicitly allowed target').toBe(0);
+      requireProductionOrigin(page.url());
+      if (dialogueVerified && evidence.d5Consumed) evidence.outcome = 'd5_positive_readonly_smoke';
+      else if (dialogueVerified && evidence.expectation === 'EXPECT_FALLBACK') evidence.outcome = 'off_rollback_luna_fallback_verified';
     }
-  }
+  }, persist: () => persistRedactedSmokeEvidence(testInfo, evidence) });
 });

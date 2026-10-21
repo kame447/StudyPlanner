@@ -58,7 +58,10 @@ describe('D5 production release isolation', () => {
     const spec = read('tests/e2e/d5-production-readonly.smoke.mjs');
     expect(spec).toContain("evidence.expectation === 'EXPECT_JEV'");
     expect(spec).not.toMatch(/inCohort5|jevPurposeCanarySample|Out of .*cohort/u);
-    expect(spec).toContain('await persistRedactedSmokeEvidence(testInfo, evidence)');
+    expect(spec).toContain('await runProductionSmoke({ evidence, body: async () => {');
+    expect(spec).toContain('persist: () => persistRedactedSmokeEvidence(testInfo, evidence)');
+    expect(spec).toContain('classifyFirestoreWrite({ url: request.url(), method: request.method(), postData: request.postData() })');
+    expect(spec).toContain('expect(evidence.unclassifiedWrites,');
     expect(spec).not.toMatch(/page\.route\(|route\.fulfill|page\.addInitScript|timeoutMs:|devD5Domains/u);
   });
 
