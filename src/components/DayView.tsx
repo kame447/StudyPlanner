@@ -1,5 +1,5 @@
 import { isScheduleActionMenuTarget } from '../lib/scheduleItemActions';
-import { scheduleOccurrenceCoversDate, scheduleOccurrenceTimesForDate } from '../lib/weekViewLayout';
+import { scheduleOccurrenceCoversDate, scheduleOccurrenceTimesForDate } from '../domain/scheduleOccurrence';
 import { entryTimeRangeForDate } from '../lib/entryTimeRange';
 import type { DayTimetableTimeChange } from '../domain/dayTimetableTimeEdit';
 import type { ActualActionTarget } from '../hooks/useActualMutationAdmission';
@@ -211,14 +211,7 @@ export function DayView({
               ...monthEvent,
               date: selectedDate,
               endDate: selectedDate,
-              startTime:
-                occurrence.start.date === selectedDate
-                  ? occurrence.start.time
-                  : '00:00',
-              endTime:
-                occurrence.end.date === selectedDate
-                  ? occurrence.end.time
-                  : '24:00',
+              ...scheduleOccurrenceTimesForDate(occurrence, selectedDate),
               repeat: 'none' as const,
               repeatUntil: null,
               excludedDates: [],

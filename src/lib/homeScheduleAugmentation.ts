@@ -1,4 +1,4 @@
-import { createScheduleOccurrenceProjection, type ScheduleOccurrence } from '../domain/scheduleOccurrence';
+import { createScheduleOccurrenceProjection, scheduleOccurrenceCoversDate, scheduleOccurrenceTimesForDate, type ScheduleOccurrence } from '../domain/scheduleOccurrence';
 import { getScheduleOccurrenceColor, type ScheduleColorPresentation } from './scheduleEventColor';
 import { addDays, startOfWeek } from './date';
 import type { StudyProgressPlan } from './studyProgressPolicy';
@@ -9,14 +9,6 @@ import type {
   ScheduleTemplate,
   TimetableTerm,
 } from '../types/domain';
-
-function occurrenceCoversDate(occurrence: ScheduleOccurrence, date: string): boolean {
-  const dayStart = `${date}T00:00`;
-  const dayEnd = `${addDays(date, 1)}T00:00`;
-  const start = `${occurrence.start.date}T${occurrence.start.time}`;
-  const end = `${occurrence.end.date}T${occurrence.end.time}`;
-  return end > dayStart && start < dayEnd;
-}
 
 function planTypeForOccurrence(occurrence: ScheduleOccurrence): PlanType {
   switch (occurrence.category) {
@@ -40,8 +32,7 @@ function projectOccurrenceAsReadOnlyPlan(
   occurrence: ScheduleOccurrence,
   date: string,
 ): StudyProgressPlan & ScheduleColorPresentation {
-  const startTime = occurrence.start.date === date ? occurrence.start.time : '00:00';
-  const endTime = occurrence.end.date === date ? occurrence.end.time : '24:00';
+  const { startTime, endTime } = scheduleOccurrenceTimesForDate(occurrence, date);
 
   return {
     id: `${occurrence.id}:home:${date}`,
@@ -110,7 +101,7 @@ export function augmentHomePlansWithScheduleOccurrences({
 
     let date = projectionStartDate;
     while (date <= endDate) {
-      if (occurrenceCoversDate(occurrence, date)) {
+      if (scheduleOccurrenceCoversDate(occurrence, date)) {
         syntheticPlans.push(projectOccurrenceAsReadOnlyPlan(occurrence, date));
       }
       date = addDays(date, 1);

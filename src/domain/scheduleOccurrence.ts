@@ -131,6 +131,25 @@ function normalizeMonthEventEndPoint(
     : { date: endDate, time: endTime };
 }
 
+/** Tests a normalized occurrence against a half-open local calendar day. */
+export function scheduleOccurrenceCoversDate(
+  occurrence: ScheduleOccurrence,
+  date: string,
+): boolean {
+  return overlapsProjectionRange(occurrence, date, date);
+}
+
+/** Clips an admitted occurrence to a covered day; does not rewrite its identity. */
+export function scheduleOccurrenceTimesForDate(
+  occurrence: ScheduleOccurrence,
+  date: string,
+): { startTime: string; endTime: string } {
+  return {
+    startTime: occurrence.start.date === date ? occurrence.start.time : '00:00',
+    endTime: occurrence.end.date === date ? occurrence.end.time : '24:00',
+  };
+}
+
 function overlapsProjectionRange(
   occurrence: Pick<ScheduleOccurrence, 'start' | 'end'>,
   startDate: string,
