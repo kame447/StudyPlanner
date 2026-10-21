@@ -436,12 +436,14 @@ Owner decision based on measured commit-rejection fallback increment, 2026-10-21
 
 | JS metric | 8568c8aa limit / prior measured baseline | Final measured / new limit | Exact increment |
 | --- | ---: | ---: | ---: |
-| Total raw | 2614547 | 2616625 | +2078 |
-| Total gzip | 711285 | 711825 | +540 |
-| Largest raw | 1047649 | 1049727 | +2078 |
-| Largest gzip | 288638 | 289153 | +515 |
+| Total raw | 2614547 | 2616872 | +2325 |
+| Total gzip | 711285 | 711866 | +581 |
+| Largest raw | 1047649 | 1049974 | +2325 |
+| Largest gzip | 288638 | 289195 | +557 |
 
 The increment implements graph/checkpoint/reducer/receipt/current-source checks before one ordinary Luna execution after a definitively uncommitted selected-candidate rejection, plus bounded rejection reasons and a scheduled/none diagnostic. It addresses the error-only rejection path found while investigating the production no-reply report; the precise production trigger remains unproven. It is not a general retry of rejected turns. Recovery-unknown, stale owner/view/source or intervening revisions cannot authorize fallback. The shared enum list is used at runtime only by the test-only smoke; application imports are types, so no runtime enum array is added to the production bundle.
+
+Astra's real-persistence probe at95089764 exposed a defect in the new guard: rollback's own load_state save refreshed only savedAt, so byte equality blocked the required fallback. The follow-up validates both checkpoints with the real codec and exact owner/week/conversation, then canonical-compares the original raw envelopes excluding only top-level savedAt. Every other field, including legacy fields stripped by the decoder, remains in the comparison. This adds247 raw/41 gzip aggregate and247 raw/42 gzip largest bytes over95089764; the table includes that final measured increment. Before its recalibration the checker exits1 for exactly those four JS metrics. Existing CSS/appearance limits and checker logic remain unchanged. Source/test/build evidence: `.cache/d5-persist-rollback-{red,focused,verification,typecheck,build,budget-tests}.log`;24 affected files/406 tests and full typecheck pass, final build51.54s uses the same normal-npm-ci dependency tree described below. The checker passes at the exact final limits after this adjustment.
 
 A normal `npm ci` (including install scripts) used the worktree `.cache/npm-cache`, followed by a clean Vite production build. Node22.23.0/darwin-arm64, Vite6.4.4, lock SHA256 `4d7a9c84d4dcc42dbdd3f50c28c2db87fbd134de6e11310a614e998819ff3ad4` and Vite config SHA256 `112120c98210436a0a559f5cbe4bf3742dea034f63c86516628d436389979337` match the prior release environment. The prior measured limits supply the baseline; this checkpoint did not reconstruct a second baseline build. Final CSS remains513954 raw/89911 gzip (largest406102/66585), appearance stylesheet7077/font500340. Before calibration, the checker exits1 for exactly the four JS metrics; afterward it exits0 with zero violations, each JS metric equal to its limit. Contract tests retain exact-boundary/one-byte overflow and CSS/appearance/missing-font detection.
 

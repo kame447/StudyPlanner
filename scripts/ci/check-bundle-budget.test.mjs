@@ -22,12 +22,12 @@ function check({ css = 8_000, font = 512_000, includeFont = true, javascript = [
 describe('production bundle and optional appearance guards', () => {
   it('pins the exact owner-approved guarded rejection fallback increment without changing CSS/appearance guards', () => {
     const result = check(); expect(result.status).toBe(0); expect(result.report.violations).toEqual([]);
-    expect(result.report.budgets.javascript).toEqual({ totalRaw: 2_616_625, totalGzip: 711_825, largestRaw: 1_049_727, largestGzip: 289_153 });
+    expect(result.report.budgets.javascript).toEqual({ totalRaw: 2_616_872, totalGzip: 711_866, largestRaw: 1_049_974, largestGzip: 289_195 });
     expect(result.report.budgets.css).toEqual({ totalRaw: 513_954, totalGzip: 89_911, largestRaw: 425_000, largestGzip: 70_000 });
   });
   it.each([
-    { kind: 'javascript', metric: 'totalRaw', options: { javascript: [1_000_000, 1_000_000, 616_625] } },
-    { kind: 'javascript', metric: 'largestRaw', options: { javascript: [1_049_727] } },
+    { kind: 'javascript', metric: 'totalRaw', options: { javascript: [1_000_000, 1_000_000, 616_872] } },
+    { kind: 'javascript', metric: 'largestRaw', options: { javascript: [1_049_974] } },
     { kind: 'css', metric: 'totalRaw', options: { extraCss: [250_000, 255_954] } },
     { kind: 'css', metric: 'largestRaw', options: { extraCss: [425_000] } },
   ])('blocks one byte over the exact $kind $metric boundary', ({ kind, metric, options }) => {
