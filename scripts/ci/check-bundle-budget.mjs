@@ -16,10 +16,13 @@ const budgets = {
     // Exact written-output baseline c309b457, same dependencies/environment.
     // History, fingerprints and composition: docs/work/tooling-operations-runbook.md
     // (bundle-budget section). Reduction remains tracked in #321.
-    totalRaw: 2_614_112,
-    totalGzip: 711_066,
-    largestRaw: 1_047_214,
-    largestGzip: 288_393,
+    // Owner decision based on measured release increment, 2026-10-21 (#305 release)
+    // f1f347c5 -> 408b151d: +435/+219 aggregate raw/gzip and +435/+245
+    // largest raw/gzip bytes, solely D5 v2 policy data; no added headroom.
+    totalRaw: 2_614_547,
+    totalGzip: 711_285,
+    largestRaw: 1_047_649,
+    largestGzip: 288_638,
   },
   css: {
     // Same owner decision: PR #826 changes no CSS. Aggregate limits
