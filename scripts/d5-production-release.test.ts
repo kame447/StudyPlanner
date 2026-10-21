@@ -62,6 +62,8 @@ describe('D5 production release isolation', () => {
     expect(spec).toContain('persist: () => persistRedactedSmokeEvidence(testInfo, evidence)');
     expect(spec).toContain('classifyFirestoreWrite({ url: request.url(), method: request.method(), postData: request.postData() })');
     expect(spec).toContain('expect(evidence.unclassifiedWrites,');
+    expect(spec).toContain('waitForProductionComposer({ evidence, phase,');
+    expect(spec).not.toContain('await expect(composer(page)).toBeEnabled()');
     expect(spec).not.toMatch(/page\.route\(|route\.fulfill|page\.addInitScript|timeoutMs:|devD5Domains/u);
   });
 

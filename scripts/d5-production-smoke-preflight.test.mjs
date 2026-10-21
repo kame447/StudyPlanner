@@ -81,6 +81,8 @@ describe('D5 production target and identity guard', () => {
     const config = loadConfig('https://laplance.com/path?private=value');
     expect(config.use.baseURL).toBe('https://laplance.com');
     expect(config.preserveOutput).toBe('always');
+    expect(config.timeout).toBe(420_000);
+    expect(config.expect.timeout).toBe(30_000);
     expect(log.mock.calls).toEqual([[JSON.stringify({ productionOrigin: 'production' })]]);
   });
   it.each(['https://branch.studyplannner.pages.dev', 'https://localhost', 'http://laplance.com', 'not-a-url'])('actual config fails non-production before executing or echoing %s', url => {

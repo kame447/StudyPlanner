@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { classifyFirestoreWrite, runProductionSmoke } from './support/d5-production-smoke-observation.mjs';
+import { classifyFirestoreWrite, runProductionSmoke, waitForProductionComposer } from './support/d5-production-smoke-observation.mjs';
 import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../shared/d5AnswerPolicy.ts';
-import { productionDatabaseFromRequestUrl, readOwnedConversation, readProductionServerSnapshot, consumedD5Request, boundOffRollbackCandidate, classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, productionSmokeExpectation, persistRedactedSmokeEvidence } from './support/d5-production-readonly.mjs';
+import { productionDatabaseFromRequestUrl, readOwnedConversation, observeProductionComposerState, readProductionServerSnapshot, consumedD5Request, boundOffRollbackCandidate, classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, productionSmokeExpectation, persistRedactedSmokeEvidence } from './support/d5-production-readonly.mjs';
 
 const secret = name => {
   const value = process.env[name]?.trim();
@@ -47,17 +47,25 @@ const serverSnapshot = (page, identity, database) => {
   return page.evaluate(readProductionServerSnapshot, { ...identity, database });
 };
 
-async function send(page, text) {
+async function readyComposer(page, identity, evidence, phase) {
+  requireProductionOrigin(page.url());
+  await waitForProductionComposer({ evidence, phase,
+    observe: () => page.evaluate(observeProductionComposerState, identity.uid),
+    wait: (check, timeout) => expect.poll(check, { timeout, message: 'Bounded AI turn UI readiness; see composerReadiness evidence' }).toBe(true),
+  });
+}
+async function send(page, text, identity, evidence) {
+  await readyComposer(page, identity, evidence, 'before_send');
   await composer(page).fill(text);
   await page.getByRole('button', { name: '送信', exact: true }).click();
-  await expect(composer(page)).toBeEnabled();
+  await readyComposer(page, identity, evidence, 'after_send');
 }
 
 test('explicit production D5 smoke preserves all schedules and never approves', async ({ page, baseURL }, testInfo) => {
   const evidence = { productionOrigin: classifyProductionOrigin(baseURL), frontendIdentity: 'unverified', expectation: productionSmokeExpectation(), outcome: 'incomplete', candidateChoice: [],
     d5Captured: false, d5Consumed: false, lunaFallbackRoute: null, activeEstimate: false, reflectedEstimate: null, visibleAck: false,
     scheduleReadbackIdentical: false, approvalStartEvents: 0, approvalExecutions: null, scheduleWrites: 0, unclassifiedWrites: 0, firestoreWrites: [],
-    step: 'target_preflight', failingStep: null, bodyError: null, readbackStep: null, readbackError: null };
+    step: 'target_preflight', failingStep: null, bodyError: null, readbackStep: null, readbackError: null, composerReadiness: 'unobserved', composerWaitPhase: null };
   const observations = new Map();
   const fallbackRequests = new Map();
   const fallbackRequestIds = new Set();
@@ -173,11 +181,11 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     approvalBefore = await approvalLedger();
     evidence.step = 'fresh_conversation';
     await page.getByRole('navigation', { name: '主要ナビゲーション' }).getByRole('button', { name: 'AI計画', exact: true }).click();
-    await expect(composer(page)).toBeEnabled();
+    await readyComposer(page, identity, evidence, 'view_entry');
     const previousConversationId = (await conversation(page, identity.uid))?.conversationId;
     await page.getByRole('button', { name: 'チャット一覧を開く' }).click();
     await page.getByRole('button', { name: '新しいチャット', exact: true }).click();
-    await expect(composer(page)).toBeEnabled();
+    await readyComposer(page, identity, evidence, 'view_entry');
     const start = secret('D5_SMOKE_WEEK_START');
     if (!/^\d{4}-\d{2}-\d{2}$/u.test(start) || !Number.isFinite(Date.parse(`${start}T00:00:00Z`))
       || new Date(`${start}T00:00:00Z`).toISOString().slice(0, 10) !== start
@@ -186,7 +194,7 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     end.setUTCDate(end.getUTCDate() + 6);
     const endDate = end.toISOString().slice(0, 10);
     evidence.step = 'setup_question';
-    await send(page, `${start}から${endDate}で数学20問と英語15ページを進めたい。英語15ページは全部で45分。`);
+    await send(page, `${start}から${endDate}で数学20問と英語15ページを進めたい。英語15ページは全部で45分。`, identity, evidence);
     await expect.poll(async () => {
       const snapshot = await conversation(page, identity.uid);
       const question = snapshot?.planningState?.intakeState?.lastQuestionContext;
@@ -208,7 +216,7 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     const consumedBefore = pending.planningState.intakeState.c5SelectionLedger?.consumed.length ?? 0;
     const oldMessages = new Set(pending.planningState.messages.map(message => message.id));
     evidence.step = 'answer_turn';
-    await send(page, '15');
+    await send(page, '15', identity, evidence);
     await expect.poll(async () => {
       const snapshot = await conversation(page, identity.uid);
       return snapshot?.planningState?.pendingTurn == null && snapshot?.planningState?.messages

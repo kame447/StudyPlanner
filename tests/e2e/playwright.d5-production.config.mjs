@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { D5_UI_TEST_TIMEOUT_MS } from './support/d5-production-smoke-observation.mjs';
 import { defineConfig, devices } from '@playwright/test';
 import { classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, productionSmokeExpectation } from './support/d5-production-readonly.mjs';
 
@@ -17,7 +18,7 @@ export default defineConfig({
   testMatch: 'd5-production-readonly.smoke.mjs',
   fullyParallel: false, workers: 1, retries: 0,
   // Runner budgets only. The real production client's 5 s candidate timeout is unchanged.
-  timeout: 180_000, expect: { timeout: 30_000 }, reporter: 'list',
+  timeout: D5_UI_TEST_TIMEOUT_MS, expect: { timeout: 30_000 }, reporter: 'list',
   outputDir: '../../artifacts/d5-production-smoke',
   preserveOutput: 'always',
   use: { baseURL: base.origin, timezoneId: 'Asia/Tokyo',

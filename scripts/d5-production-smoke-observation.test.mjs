@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { classifyFirestoreWrite, runProductionSmoke } from '../tests/e2e/support/d5-production-smoke-observation.mjs';
-import { persistRedactedSmokeEvidence, redactedSmokeEvidence } from '../tests/e2e/support/d5-production-readonly.mjs';
+import { classifyFirestoreWrite, runProductionSmoke, classifyComposerReadiness, waitForProductionComposer, D5_UI_TURN_WAIT_MS, D5_UI_TEST_TIMEOUT_MS } from '../tests/e2e/support/d5-production-smoke-observation.mjs';
+import { persistRedactedSmokeEvidence, redactedSmokeEvidence, observeProductionComposerState } from '../tests/e2e/support/d5-production-readonly.mjs';
 
 const database = 'projects/fixture/databases/(default)';
 const documents = `${database}/documents`;
@@ -19,7 +19,7 @@ const writes = (...entries) => ({ streamToken: 'PRIVATE_STREAM_TOKEN', writes: e
 describe('production Firestore write scope', () => {
   it.each(['schedule_events', 'plans', 'month_events', 'weekly_planning_approval_operations', 'weekly_planning_approval_items', 'actuals'])('rejects a %s mutation and exports collection ids only', collection => {
     const observed = classify(form(writes(update(collection))));
-    expect(observed).toEqual({ transport: 'write_channel', classification: 'forbidden', collections: [collection] });
+    expect(observed).toEqual({ transport: 'write_channel', classification: 'forbidden', operationKinds: ['update'], collections: [collection] });
     expect(JSON.stringify(observed)).not.toMatch(/PRIVATE_|projects|https:/u);
   });
   it.each(['update', 'delete', 'transform'])('finds the actual document target for %s', operation => {
@@ -30,15 +30,15 @@ describe('production Firestore write scope', () => {
   it('detects nested approval-item writes and mixed allowed/forbidden batches', () => {
     const nested = { delete: `${name('weekly_planning_approval_operations')}/weekly_planning_approval_items/PRIVATE_CHILD` };
     expect(classify(form(writes(update('profiles'), nested)))).toEqual({
-      transport: 'write_channel', classification: 'forbidden',
+      transport: 'write_channel', classification: 'forbidden', operationKinds: ['delete', 'update'],
       collections: ['profiles', 'weekly_planning_approval_items', 'weekly_planning_approval_operations'],
     });
   });
   it.each(['profiles'])('records explicitly allowed root %s writes, never silently discards them', collection => {
-    expect(classify(form(writes(update(collection))))).toEqual({ transport: 'write_channel', classification: 'allowed', collections: [collection] });
+    expect(classify(form(writes(update(collection))))).toEqual({ transport: 'write_channel', classification: 'allowed', operationKinds: ['update'], collections: [collection] });
   });
   it.each(['weekly_planning_trace_sessions', 'weekly_planning_trace_entries'])('fails direct writes to production-denied %s', collection => {
-    expect(classify(form(writes(update(collection))))).toEqual({ transport: 'write_channel', classification: 'unclassified', collections: [collection] });
+    expect(classify(form(writes(update(collection))))).toEqual({ transport: 'write_channel', classification: 'unclassified', operationKinds: ['update'], collections: [collection] });
   });
   it('rejects unknown collections, nested children under an allowed root, and malformed mutations', () => {
     for (const write of [update('PRIVATE_UNKNOWN_COLLECTION'),
@@ -52,7 +52,7 @@ describe('production Firestore write scope', () => {
   it.each(['commit', 'batchWrite'])('classifies REST %s JSON bodies including document transforms', rpc => {
     expect(classify(JSON.stringify(writes({ transform: { document: name('schedule_events') } })),
       `https://firestore.googleapis.com/v1/${documents}:${rpc}`)).toEqual({
-      transport: rpc === 'commit' ? 'commit' : 'batch_write', classification: 'forbidden', collections: ['schedule_events'],
+      transport: rpc === 'commit' ? 'commit' : 'batch_write', classification: 'forbidden', operationKinds: ['transform'], collections: ['schedule_events'],
     });
   });
   it.each(['PATCH', 'PUT', 'DELETE'])('rejects a direct REST %s schedule write', method => {
@@ -64,7 +64,7 @@ describe('production Firestore write scope', () => {
   });
   it('distinguishes documented SDK handshake, token-only, poll and empty-drain messages from writes', () => {
     for (const body of [form({ database }), form({ streamToken: 'PRIVATE_TOKEN' }), form(writes()), form()]) {
-      expect(classify(body)).toEqual({ transport: 'write_channel', classification: 'protocol', collections: [] });
+      expect(classify(body)).toEqual({ transport: 'write_channel', classification: 'protocol', operationKinds: [], collections: [] });
     }
     expect(classify(null, `${channel}&RID=rpc`, 'GET').classification).toBe('protocol');
     expect(classify(null, `${channel}&TYPE=terminate`, 'GET').classification).toBe('protocol');
@@ -72,14 +72,14 @@ describe('production Firestore write scope', () => {
   it('accepts an authenticated SDK handshake without exporting the opaque headers', () => {
     const headers = new URLSearchParams({ headers: 'Authorization: Bearer PRIVATE_AUTH_TOKEN\r\nX-Goog-AppCheck: PRIVATE_APP_CHECK\r\n' });
     const observed = classify(`${headers}&${form({ database })}`);
-    expect(observed).toEqual({ transport: 'write_channel', classification: 'protocol', collections: [] });
+    expect(observed).toEqual({ transport: 'write_channel', classification: 'protocol', operationKinds: [], collections: [] });
     const evidence = redactedSmokeEvidence({ firestoreWrites: [observed] });
     expect(JSON.stringify(evidence)).not.toMatch(/PRIVATE_|Authorization|AppCheck|Bearer|headers/u);
   });
   it('still inspects every mutation after authenticated handshake headers, including mixed batches', () => {
     const headers = new URLSearchParams({ headers: 'Authorization: Bearer PRIVATE_AUTH_TOKEN' });
     const observed = classify(`${headers}&${form({ database }, writes(update('profiles'), update('plans')))}`);
-    expect(observed).toEqual({ transport: 'write_channel', classification: 'forbidden', collections: ['plans', 'profiles'] });
+    expect(observed).toEqual({ transport: 'write_channel', classification: 'forbidden', operationKinds: ['update'], collections: ['plans', 'profiles'] });
     expect(JSON.stringify(observed)).not.toMatch(/PRIVATE_|headers|Bearer/u);
   });
   it('does not let opaque headers bypass unknown fields, malformed messages or duplicate metadata', () => {
@@ -96,6 +96,43 @@ describe('production Firestore write scope', () => {
     'count=0&req0___data__=%7B%7D', 'count=1&req1___data__=%7B%7D', 'count=0&opaque=PRIVATE_PAYLOAD',
     'count=0&count=0', JSON.stringify({ writes: 'PRIVATE_PAYLOAD' }), JSON.stringify({ streamToken: 'token', unknownOperation: {} })])('fails closed on unclassifiable Write payload %j', body => {
     expect(classify(body).classification).toBe('unclassified');
+  });
+  it.each(['user_planning_contexts', 'schedule_event_migrations', 'weekly_planning_approval_operations'])('records SDK verify-only Commit for %s as read-only protocol', collection => {
+    const body = { writes: [{ verify: name(collection), currentDocument: { updateTime: '2026-10-21T00:00:00.123456789Z' } }] };
+    expect(classify(JSON.stringify(body), `https://firestore.googleapis.com/v1/${documents}:commit`)).toEqual({
+      transport: 'commit', classification: 'protocol', operationKinds: ['verify'], collections: [collection],
+    });
+  });
+  it('recognizes empty Commit without inventing a target and keeps empty/malformed non-Commit RPCs fail-closed', () => {
+    expect(classify('{"writes":[]}', `https://firestore.googleapis.com/v1/${documents}:commit`)).toEqual({
+      transport: 'commit', classification: 'protocol', operationKinds: ['empty'], collections: [],
+    });
+    expect(classify('{"writes":[]}', `https://firestore.googleapis.com/v1/${documents}:batchWrite`).classification).toBe('unclassified');
+    expect(classify('{}', `https://firestore.googleapis.com/v1/${documents}:commit`).classification).toBe('unclassified');
+  });
+  it('classifies mixed verify/mutations by actual mutation targets, not the verified protected documents', () => {
+    const verify = { verify: name('schedule_events'), currentDocument: { exists: true } };
+    const commit = `https://firestore.googleapis.com/v1/${documents}:commit`;
+    expect(classify(JSON.stringify(writes(verify, update('profiles'))), commit)).toEqual({
+      transport: 'commit', classification: 'allowed', operationKinds: ['update', 'verify'], collections: ['profiles', 'schedule_events'],
+    });
+    expect(classify(JSON.stringify(writes(verify, update('plans'))), commit).classification).toBe('forbidden');
+    expect(classify(JSON.stringify(writes(verify, update('PRIVATE_UNKNOWN'))), commit).classification).toBe('unclassified');
+  });
+  it.each([
+    { verify: 'invalid-target', currentDocument: { exists: true } },
+    { verify: name('plans'), update: update('profiles').update },
+    { verify: name('plans'), updateTransforms: [] },
+    { verify: name('plans'), currentDocument: { unknown: true } },
+    { verify: name('plans'), currentDocument: { updateTime: 'invalid' } },
+    { verify: name('plans'), currentDocument: { exists: true, updateTime: '2026-10-21T00:00:00Z' } },
+  ])('does not mistake a malformed verify for protocol: %j', write => {
+    expect(classify(JSON.stringify(writes(write)), `https://firestore.googleapis.com/v1/${documents}:commit`).classification).toBe('unclassified');
+  });
+  it('does not accept transaction-only verify through Write-channel or batchWrite', () => {
+    const write = { verify: name('plans'), currentDocument: { exists: true } };
+    expect(classify(form(writes(write))).classification).toBe('unclassified');
+    expect(classify(JSON.stringify(writes(write)), `https://firestore.googleapis.com/v1/${documents}:batchWrite`).classification).toBe('unclassified');
   });
   it('does not treat a Listen/runQuery request as a write or scan user fields for fake document references', () => {
     expect(classify(form({ database }), channel.replace('/Write/', '/Listen/'))).toBeNull();
@@ -161,5 +198,60 @@ describe('original smoke failure and finalizer preservation', () => {
     const error = Object.assign(new Error('PRIVATE_TIMEOUT_CONTENT'), { name: 'TimeoutError' });
     await expect(runProductionSmoke({ evidence, body: async () => { throw error; }, readback: async () => {}, persist: async () => {} })).rejects.toBe(error);
     expect(evidence.bodyError.category).toBe('timeout'); expect(evidence.outcome).toBe('non_production');
+  });
+});
+
+
+describe('bounded production composer readiness', () => {
+  const ready = { present: true, readable: true, disabled: false };
+  it.each([
+    [{}, 'not_present'], [ready, 'ready'], [{ ...ready, readable: false }, 'unreadable'],
+    [{ ...ready, busyTurn: true, disabled: true }, 'busy_turn'],
+    [{ ...ready, pendingApproval: true }, 'pending_approval'],
+    [{ ...ready, approvalRecovery: true, busyTurn: true }, 'approval_recovery'],
+    [{ ...ready, initializationBlocked: true }, 'chat_initialization'],
+    [{ ...ready, listening: true }, 'listening'], [{ ...ready, disabled: true }, 'local_interaction_busy'],
+  ])('exports only the bounded readiness reason for %j', (state, reason) => {
+    expect(classifyComposerReadiness(state)).toBe(reason);
+  });
+  it('waits through an in-flight turn without any new submission and uses the documented observation bound', async () => {
+    const evidence = {};
+    const observe = vi.fn().mockResolvedValueOnce({ ...ready, disabled: true, busyTurn: true }).mockResolvedValueOnce(ready);
+    await waitForProductionComposer({ evidence, phase: 'after_send', observe,
+      wait: async (check, timeout) => { expect(timeout).toBe(120_000); expect(await check()).toBe(false); expect(await check()).toBe(true); },
+    });
+    expect(observe).toHaveBeenCalledTimes(2); expect(evidence.composerReadiness).toBe('ready');
+    expect(D5_UI_TEST_TIMEOUT_MS).toBeGreaterThanOrEqual(2 * D5_UI_TURN_WAIT_MS + 180_000);
+  });
+  it('retains bounded busy state on timeout, original error and before/after-send phase', async () => {
+    const error = new Error('PRIVATE_TIMEOUT_TEXT'); const evidence = {};
+    await expect(waitForProductionComposer({ evidence, phase: 'after_send', observe: async () => ({ ...ready, disabled: true, busyTurn: true }),
+      wait: async check => { expect(await check()).toBe(false); throw error; },
+    })).rejects.toBe(error);
+    expect(evidence).toEqual({ composerReadiness: 'busy_turn', composerWaitPhase: 'after_send' });
+    expect(JSON.stringify(redactedSmokeEvidence(evidence))).not.toContain('PRIVATE_');
+  });
+  it('fails closed on unreadable observation, without exporting the exception or an arbitrary phase', async () => {
+    const evidence = {}; const error = new Error('PRIVATE_UID https://PRIVATE_URL');
+    await expect(waitForProductionComposer({ evidence, phase: 'PRIVATE_PHASE', observe: async () => { throw error; },
+      wait: async check => { expect(await check()).toBe(false); throw error; },
+    })).rejects.toBe(error);
+    expect(evidence.composerReadiness).toBe('unreadable');
+    expect(JSON.stringify(redactedSmokeEvidence(evidence))).not.toContain('PRIVATE_');
+  });
+  it('same-page observer reads owned checkpoint/ARIA booleans, never user text or ids', () => {
+    const owner = 'PRIVATE_OWNER';
+    const snapshot = { ownerId: owner, version: 'studyplanner-weekly-planning-stable-v5-session-v1',
+      planningState: { pendingTurn: { requestId: 'PRIVATE_REQUEST' }, approvalRecovery: null } };
+    const getItem = vi.fn(key => key.includes('.chats.') ? JSON.stringify({ activeChatId: 'PRIVATE_CHAT' }) : JSON.stringify(snapshot));
+    vi.stubGlobal('localStorage', { getItem });
+    vi.stubGlobal('document', { querySelector: selector => selector === '.ai-planning-composer textarea' ? { disabled: true, value: 'PRIVATE_USER_TEXT' } : null });
+    try {
+      const observed = observeProductionComposerState(owner);
+      expect(classifyComposerReadiness(observed)).toBe('busy_turn');
+      expect(JSON.stringify(observed)).not.toContain('PRIVATE_');
+      snapshot.ownerId = 'FOREIGN_OWNER';
+      expect(classifyComposerReadiness(observeProductionComposerState(owner))).toBe('unreadable');
+    } finally { vi.unstubAllGlobals(); }
   });
 });

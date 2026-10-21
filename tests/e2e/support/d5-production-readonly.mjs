@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { boundedSmokeError, redactedSmokeStep, redactedWriteObservation } from './d5-production-smoke-observation.mjs';
+import { boundedSmokeError, redactedSmokeStep, redactedWriteObservation, redactedComposerReadiness } from './d5-production-smoke-observation.mjs';
 
 // Canonical public production route (README.md); Worker CORS origins also include previews/dev.
 const PRODUCTION_ORIGINS = new Set(['https://laplance.com']);
@@ -127,6 +127,25 @@ export function boundOffRollbackCandidate(captured, observed, { owner, conversat
       && option.candidate.tuple.perUnit === 'problem' && option.candidate.tuple.precision === 'exact'));
 }
 
+/** Same-page observation of actual UI/owned checkpoint booleans; no text, ids or React internals exported. */
+export function observeProductionComposerState(owner) {
+  const input = document.querySelector('.ai-planning-composer textarea');
+  let state = null;
+  let readable = true;
+  try {
+    const index = JSON.parse(localStorage.getItem(`studyplanner.aiPlanning.chats.v1.${owner}`) ?? 'null');
+    const snapshot = index ? JSON.parse(localStorage.getItem(`studyplanner.aiPlanning.chat.v1.${owner}.${index.activeChatId}`) ?? 'null') : null;
+    if (snapshot && (snapshot.ownerId !== owner || snapshot.version !== 'studyplanner-weekly-planning-stable-v5-session-v1' || !snapshot.planningState)) readable = false;
+    else state = snapshot?.planningState;
+  } catch { readable = false; }
+  return { present: Boolean(input), disabled: input?.disabled !== false, readable,
+    busyTurn: Boolean(state?.pendingTurn || document.querySelector('[role="status"][aria-label="AIが回答を作成中"]')
+      || document.querySelector('button[aria-label="処理をキャンセル"]')),
+    pendingApproval: Boolean(state?.pendingApproval), approvalRecovery: Boolean(state?.approvalRecovery),
+    initializationBlocked: Boolean(document.querySelector('button[aria-label="読み込めないチャットを残して新規作成"]')),
+    listening: Boolean(document.querySelector('button[aria-label="音声入力を停止"][aria-pressed="true"]')) };
+}
+
 /** Export only bounded machine/test outcomes, never raw diagnostics or arbitrary strings. */
 export function redactedSmokeEvidence(value) {
   const oneOf = (input, allowed, fallback = null) => allowed.includes(input) ? input : fallback;
@@ -136,6 +155,8 @@ export function redactedSmokeEvidence(value) {
     productionOrigin: oneOf(value.productionOrigin, ['production', 'non_production'], 'unverified'),
     frontendIdentity: oneOf(value.frontendIdentity, ['match', 'frontend_identity_mismatch', 'out_of_band_pages_readback_required'], 'unverified'),
     expectation: oneOf(value.expectation, ['EXPECT_JEV', 'EXPECT_FALLBACK']),
+    composerReadiness: redactedComposerReadiness(value.composerReadiness),
+    composerWaitPhase: oneOf(value.composerWaitPhase, ['view_entry', 'before_send', 'after_send']),
     outcome: oneOf(value.outcome, ['incomplete', 'non_production', 'd5_consumed_pending_verification',
       'fallback_no_d5_positive_claim', 'd5_positive_readonly_smoke', 'off_rollback_luna_fallback_verified'], 'incomplete'),
     candidateChoice: (Array.isArray(value.candidateChoice) ? value.candidateChoice : []).map(row => ({
