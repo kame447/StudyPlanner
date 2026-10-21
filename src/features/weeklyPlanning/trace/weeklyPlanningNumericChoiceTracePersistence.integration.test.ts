@@ -1,7 +1,7 @@
 import { createWeeklyPlanningStableV5CurrentTurnGrounding } from '../dialogue/weeklyPlanningStableV5CurrentTurnGrounding';
 import { createWeeklyPlanningStableV5DialogueProjection } from '../semantic/weeklyPlanningStableV5DialogueProjection';
 import { createWeeklyPlanningStableV5DialogueRendererCore } from '../dialogue/weeklyPlanningStableV5AiDialogueRendererCore';
-import { createWeeklyPlanningAiRenderedDialogueTrace, recordWeeklyPlanningDialogueRendererRequestV5, recordWeeklyPlanningDialogueRendererResponseV5 } from '../dialogue/weeklyPlanningStableV5TurnDialogueTrace';
+import { createWeeklyPlanningAiRenderedDialogueTrace, createWeeklyPlanningFallbackDialogueTrace, recordWeeklyPlanningDialogueRendererRequestV5, recordWeeklyPlanningDialogueRendererResponseV5 } from '../dialogue/weeklyPlanningStableV5TurnDialogueTrace';
 import { D5_TOP1_ANSWER_POLICY_VERSION, D5_TOP1_SCOPE } from '../../../../shared/d5AnswerPolicy';
 import { numericFixture } from '../semantic/weeklyPlanningNumericPendingChoiceV5.testUtils';
 import { numericPendingCompleteScopeV5 } from '../semantic/weeklyPlanningNumericPendingScopeV5';
@@ -22,6 +22,7 @@ import { recordWeeklyPlanningStableV5TurnTrace, resetWeeklyPlanningStableV5Trace
 import { listWeeklyPlanningTraceOutboxItems } from './weeklyPlanningTraceOutbox';
 import { setWeeklyPlanningTraceRepositoryForTests } from './weeklyPlanningTraceRepository';
 import type { WeeklyPlanningTraceEntry, WeeklyPlanningTraceRepository, WeeklyPlanningTraceSession } from './weeklyPlanningTraceTypes';
+import type { WeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphV5';
 const userId = 'numeric-choice-owner'; const conversationId = 'weekly-conversation-323e4567-e89b-52d3-a456-426614174000';
 let restore: () => void;
 beforeEach(() => { restore = installWeeklyPlanningTestStorage(createMemoryStorageHarness().storage); resetWeeklyPlanningStableV5TraceRuntimeForTest(); });
@@ -82,6 +83,62 @@ function prepare(write: ReturnType<typeof repository>['writes'][number]) {
     { token: `wpt_${'d'.repeat(43)}`, epoch: '103' }, { sessionId: 'weekly-trace-323e4567-e89b-52d3-a456-426614174000', logicalConversationId: conversationId }, '2026-10-05T00:00:00.000Z');
 }
 describe('actual Choice request through durable trace gate', () => {
+  it.each([false, true])('persists active-fact correction claim validation without newly accepted effort, corrected=%s', async corrected => {
+    const graph: WeeklyPlanningFactGraphV5 = numericFixture('duration_per_unit').graph;
+    const workload = graph.workloads[0];
+    graph.effortEstimates.push({ id: 'old-rate', taskId: workload.taskId, targetFactId: workload.id,
+      kind: 'duration_per_unit', minutes: 15, unitCode: 'problem', precision: 'exact', createdRevision: 2, source: workload.source });
+    graph.factLifecycles.push({ factId: 'old-rate', status: corrected ? 'superseded' : 'active', createdRevision: 2,
+      terminalRevision: corrected ? 3 : null, supersededByFactId: corrected ? 'new-total' : null });
+    if (corrected) {
+      graph.revision = 3;
+      graph.effortEstimates.push({ ...graph.effortEstimates[0], id: 'new-total', kind: 'total_duration', minutes: 60, unitCode: null, createdRevision: 3 });
+      graph.factLifecycles.push({ factId: 'new-total', status: 'active', createdRevision: 3, terminalRevision: null, supersededByFactId: null });
+    }
+    const requestId = 'display-existing-effort';
+    const currentTurnGrounding = createWeeklyPlanningStableV5CurrentTurnGrounding({ graph, turnId: requestId,
+      actionKind: 'status', previousQuestionCode: null, currentQuestionCode: null });
+    expect(currentTurnGrounding.acceptedFacts.filter(fact => fact.kind === 'effort_estimate')).toEqual([]);
+    const input = { actionId: requestId, currentUserMessage: 'いや、数学は全部で60分です。', recentConversation: [],
+      planningInformation: { ...createWeeklyPlanningStableV5DialogueProjection(graph), futureActiveClaimSentinel: 'keep-active-claim-sentinel' },
+      currentTurnGrounding, actionKind: 'status' as const, questionCode: null, requiredLabels: [], previewCount: 0,
+      fallbackText: '返信を作れませんでした。少し待ってからもう一度送信してください。' };
+    const before = structuredClone(graph); let sends = 0; let actualRequest = '';
+    const text = '失礼しました。数学は1問あたり15分ではなく、全部で60分ですね。';
+    const renderer = createWeeklyPlanningStableV5DialogueRendererCore({ async createChatCompletion(request) {
+      sends++; actualRequest = JSON.stringify(request);
+      return JSON.stringify({ actionId: requestId, actionKind: 'status', questionCode: null, groundingAcknowledgement: null, text });
+    } });
+    recordWeeklyPlanningDialogueRendererRequestV5({ requestId, input });
+    const rendered = await renderer.render(input);
+    expect(rendered.status).toBe(corrected ? 'rendered' : 'fallback');
+    expect(sends).toBe(corrected ? 1 : 2);
+    if (!corrected) expect(actualRequest).toContain('planningInformation.effortEstimatesの現在有効な対象');
+    expect(graph).toEqual(before);
+    recordWeeklyPlanningDialogueRendererResponseV5({ requestId, actionId: requestId, rendered, selfRepairNotice: null });
+    const finalMessage = rendered.status === 'rendered' ? rendered.text : input.fallbackText;
+    const traceParams = { actionId: requestId, actionKind: 'status' as const, questionCode: null, renderInput: input, finalMessage };
+    const dialogueRendererTrace = rendered.status === 'rendered' ? createWeeklyPlanningAiRenderedDialogueTrace({ ...traceParams, rendered })
+      : createWeeklyPlanningFallbackDialogueTrace({ ...traceParams, rendered });
+    dialogueRendererTrace.request!.promptContext = JSON.parse(actualRequest);
+    const trace = { userId, conversationId, requestId, userText: input.currentUserMessage, assistantMessage: finalMessage,
+      responseSource: corrected ? 'ai' as const : 'deterministic_fallback' as const, outcome: 'discuss', previewCount: 0,
+      dialogueRendererTrace, debugTraceEvents: takeWeeklyPlanningStableV5DebugTrace(requestId) };
+    const h = repository(); h.failNext(); setWeeklyPlanningTraceRepositoryForTests(h.port);
+    await recordWeeklyPlanningStableV5TurnTrace(trace);
+    expect(listWeeklyPlanningTraceOutboxItems({ userId, conversationId })).toHaveLength(1);
+    resetWeeklyPlanningStableV5TraceRuntimeMemoryForTest();
+    await recordWeeklyPlanningStableV5TurnTrace({ ...trace, requestId: 'retry-existing-display', debugTraceEvents: [] });
+    expect(listWeeklyPlanningTraceOutboxItems({ userId, conversationId })).toEqual([]);
+    expect(h.writes).toHaveLength(2);
+    expect(measureWeeklyPlanningTraceJsonBytes(h.writes[0].entries[0])).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.clientDocumentTargetBytes);
+    const prepared = prepare(h.writes[0]);
+    for (const entry of [h.writes[0].entries[0], prepared.entries[0]]) {
+      expect(JSON.stringify(entry)).toContain('keep-active-claim-sentinel');
+      expect(JSON.stringify(entry)).toContain('1問あたり15分ではなく');
+      expect(measureWeeklyPlanningTraceJsonBytes(entry)).toBeLessThanOrEqual(WEEKLY_PLANNING_TRACE_TRANSPORT_LIMITS.maxDocumentBytes);
+    }
+  });
   it.each(['workload', 'task'] as const)('preserves question/scope/menu/hash/epoch and %s-target ACK through failed append, outbox retry and Worker preparation', async effortTarget => {
     const h = repository(); h.failNext(); setWeeklyPlanningTraceRepositoryForTests(h.port);
     const input = await dispatchAndTrace(false, effortTarget); await recordWeeklyPlanningStableV5TurnTrace(input);

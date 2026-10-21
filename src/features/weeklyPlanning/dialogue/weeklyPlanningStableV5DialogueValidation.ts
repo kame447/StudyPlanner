@@ -6,6 +6,7 @@ import type {
   WeeklyPlanningStableV5DialogueFallbackReason,
   WeeklyPlanningStableV5DialogueRenderInput,
   WeeklyPlanningStableV5DialogueRenderResult,
+  WeeklyPlanningStableV5DialogueGroundingFact,
 } from './weeklyPlanningStableV5DialogueContracts';
 
 // Display claims are compared to typed graph values, including fractional minutes.
@@ -310,6 +311,51 @@ function repeatsMostRecentAssistantQuestion(
 // Bounded renderer-display grammar, never interpretation of raw user intent.
 const EFFORT_SUBJECT_CONNECTOR = /^(?:(?:について|として|に関して)|[\sはがをのにで、,:：「」『』()（）])*$/u;
 const AFFIRMATIVE_EFFORT_ENDING = /^(?:(?:くらい|ぐらい|ほど|前後|程度)\s*)?(?:です(?:ね|よ)?|でした(?:ね)?|だ(?:ね)?|ね|になります(?:ね)?|とします(?:ね)?|(?:で|と|として)(?:見積もります|見積もりました|計算します|計算しました|反映します|反映しました|設定します|設定しました|扱います|受け取りました|承知しました)(?:ね)?|と見込んでいます|を目安にします)?[\s。、,!「」『』()（）]*$/u;
+const EFFORT_VALUE_CONNECTOR = /^\s*(?:[、,]\s*)?(?:(?:は|で|に|が|を)\s*)?(?:[、,]\s*)?(?:(?:約|およそ|だいたい|大体)\s*)?$/u;
+
+function activeEffortDisplayFacts(input: WeeklyPlanningStableV5DialogueRenderInput): WeeklyPlanningStableV5DialogueGroundingFact[] {
+  const rows = (key: string) => Array.isArray(input.planningInformation?.[key])
+    ? (input.planningInformation![key] as unknown[]).filter(isRecord) : [];
+  const tasks = rows('tasks'), workloads = rows('workloads'), components = rows('components');
+  const facts = rows('effortEstimates').flatMap<WeeklyPlanningStableV5DialogueGroundingFact>(fact => {
+    if (typeof fact.id !== 'string' || typeof fact.taskId !== 'string' || typeof fact.targetFactId !== 'string') return [];
+    const workload = workloads.find(workload => workload.id === fact.targetFactId && workload.taskId === fact.taskId);
+    const labels = [tasks.find(task => task.id === fact.taskId)?.title];
+    let componentId = workload?.componentId ?? components.find(component => component.id === fact.targetFactId)?.id;
+    const seen = new Set<unknown>();
+    while (componentId && !seen.has(componentId)) {
+      seen.add(componentId);
+      const component = components.find(component => component.id === componentId && component.taskId === fact.taskId);
+      if (!component) break;
+      labels.push(component.label); componentId = component.parentComponentId;
+    }
+    return [{ factId: fact.id, kind: 'effort_estimate', sourceText: '', data: { ...fact,
+      targetLabels: labels.filter((label): label is string => typeof label === 'string' && label.length > 0),
+      unitLabel: workload?.unitLabel ?? null } }];
+  });
+  // Current-turn facts are already active typed evidence. Legacy render fixtures
+  // may carry them without the full planning projection; never consult history.
+  return Array.isArray(input.planningInformation?.effortEstimates) ? facts
+    : (input.currentTurnGrounding?.acceptedFacts ?? []).filter(fact => fact.kind === 'effort_estimate');
+}
+
+function withoutNegatedEffortContrast(assertion: string, labelEnd: number, data: Record<string, unknown>,
+  input: WeeklyPlanningStableV5DialogueRenderInput): string {
+  const workloads = Array.isArray(input.planningInformation?.workloads) ? input.planningInformation!.workloads : [];
+  const units = [...new Set([data.unitLabel, '回', ...workloads.filter(isRecord)
+    .filter(workload => workload.taskId === data.taskId).map(workload => workload.unitLabel)]
+    .filter((unit): unit is string => typeof unit === 'string' && unit.length > 0)
+    .map(unit => normalizeSafetyText(unit).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))];
+  const unit = `(?:${units.join('|')})`;
+  const marker = `(?:(?:全部|合計|全体|総計|トータル)|(?:[1一]\\s*${unit}(?:あたり|当たり|につき)?|${unit}(?:あたり|当たり|につき)))`;
+  const duration = `${DISPLAY_NUMBER}(?:時間(?:半|${DISPLAY_NUMBER}分)?|分)`;
+  const contrast = new RegExp(`${marker}${EFFORT_VALUE_CONNECTOR.source.slice(1, -1)}${duration}(?:くらい|ぐらい|ほど|前後|程度)?\\s*(?:ではなく|じゃなく)(?:て)?\\s*[、,]?`, 'u')
+    .exec(assertion.slice(labelEnd));
+  if (!contrast || !EFFORT_SUBJECT_CONNECTOR.test(assertion.slice(labelEnd, labelEnd + contrast.index))) return assertion;
+  const start = labelEnd + contrast.index; const end = start + contrast[0].length;
+  if (!new RegExp(duration, 'u').test(assertion.slice(end))) return assertion;
+  return assertion.slice(0, start) + ' '.repeat(end - start) + assertion.slice(end);
+}
 
 function effortAssertionVariants(assertion: string, labelEnd: number, data: Record<string, unknown>,
   input: WeeklyPlanningStableV5DialogueRenderInput): string[] {
@@ -344,9 +390,10 @@ function effortAssertionVariants(assertion: string, labelEnd: number, data: Reco
 
 /** Checks visible renderer claims against typed accepted effort; never interprets user intent. */
 function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
-  input: WeeklyPlanningStableV5DialogueRenderInput): boolean {
-  const effort = (input.currentTurnGrounding?.acceptedFacts ?? []).filter(f => f.kind === 'effort_estimate');
-  if (!effort.length) return false;
+  input: WeeklyPlanningStableV5DialogueRenderInput, mode: 'required_ack' | 'active_claims' = 'required_ack'): boolean {
+  const required = mode === 'required_ack';
+  const effort = required ? (input.currentTurnGrounding?.acceptedFacts ?? []).filter(f => f.kind === 'effort_estimate') : activeEffortDisplayFacts(input);
+  if (required && !effort.length) return false;
   const visible = normalizeSafetyText(text);
   const assigned = new Set<string>();
   // This is a renderer display contract: each effort claim has its own visible clause.
@@ -360,8 +407,10 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
   if (Array.isArray(tasks)) for (const task of tasks) {
     if (isRecord(task) && typeof task.title === 'string' && task.title.length) taskLabels.add(normalizeSafetyText(task.title));
   }
+  const components = Array.isArray(input.planningInformation?.components) ? input.planningInformation!.components.filter(isRecord) : [];
+  const componentLabels = components.flatMap(component => typeof component.label === 'string' ? [normalizeSafetyText(component.label)] : []);
   const opaqueLabels = [...new Set([...taskLabels, ...effort.flatMap(fact => Array.isArray(fact.data.targetLabels) ? fact.data.targetLabels : [])
-    .filter((label): label is string => typeof label === 'string').map(normalizeSafetyText)])].sort((a, b) => b.length - a.length);
+    .filter((label): label is string => typeof label === 'string').map(normalizeSafetyText), ...(!required ? componentLabels : [])])].sort((a, b) => b.length - a.length);
   // Locate literal names before punctuation is considered. Their contents are opaque,
   // including question marks, numbers and words resembling an assertion predicate.
   const spans: { start: number; end: number; label: string }[] = [];
@@ -379,7 +428,8 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
   }
   if (start < visible.length) boundaries.push({ start, end: visible.length });
   const segments = boundaries.flatMap<{ label: string | null; text: string }>(boundary => {
-    const anchors = spans.filter(span => span.start >= boundary.start && span.end <= boundary.end && taskLabels.has(span.label));
+    let anchors = spans.filter(span => span.start >= boundary.start && span.end <= boundary.end && taskLabels.has(span.label));
+    if (!required && !anchors.length) anchors = spans.filter(span => span.start >= boundary.start && span.end <= boundary.end && componentLabels.includes(span.label));
     return anchors.length ? anchors.map((anchor, i) => ({ label: anchor.label,
       text: visible.slice(i === 0 ? boundary.start : anchor.start, anchors[i + 1]?.start ?? boundary.end) }))
       : [{ label: null, text: visible.slice(boundary.start, boundary.end) }];
@@ -391,14 +441,29 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
     // Non-effort sentences may repeat typed dates/workloads. They cannot assign
     // an effort, and their bare numbers are not rate denominators or durations.
     if (!/[0-9０-９〇零一二三四五六七八九十百千万元億兆]\s*(?:時間|分)/u.test(display)) continue;
+    if (!required) {
+      if (targetLabel === null) continue;
+      const affirmative = [...display.matchAll(DISPLAY_QUANTITY)].some(match => {
+        if (!/時間|分/u.test(match[0])) return false;
+        const ending = display.slice(match.index! + match[0].length).trim();
+        return AFFIRMATIVE_EFFORT_ENDING.test(ending) || AFFIRMATIVE_EFFORT_ENDING.test(ending.split(/[、,]/u)[0]);
+      });
+      if (!affirmative) continue; // A bounded question/conditional is not a reflected-value claim.
+    }
     const matching = effort.filter(fact => {
       const data = fact.data; const labels = data.targetLabels;
-      if (!factIds.includes(fact.factId) || assigned.has(fact.factId)
-        || !Array.isArray(labels) || !labels.length || typeof labels[0] !== 'string'
-        || normalizeSafetyText(labels[0]) !== targetLabel
-        || !labels.every(label => typeof label === 'string' && segment.includes(normalizeSafetyText(label)))) return false;
-      const labelEnd = Math.max(...labels.map(label => { const normalized = normalizeSafetyText(label); return segment.lastIndexOf(normalized) + normalized.length; }));
+      if ((required && (!factIds.includes(fact.factId) || assigned.has(fact.factId)))
+        || !Array.isArray(labels) || !labels.length || !labels.every(label => typeof label === 'string')) return false;
+      const fullTarget = normalizeSafetyText(labels[0]) === targetLabel && labels.every(label => segment.includes(normalizeSafetyText(label)));
+      // Without a task name, only the exact nearest target component's unique
+      // literal name can bind a status claim. An ancestor cannot stand in for it.
+      const componentTarget = !required && typeof labels[1] === 'string' && normalizeSafetyText(labels[1]) === targetLabel
+        && componentLabels.filter(label => label === targetLabel).length === 1;
+      if (!fullTarget && !componentTarget) return false;
+      const labelEnd = Math.max(...labels.filter(label => segment.includes(normalizeSafetyText(label)))
+        .map(label => { const normalized = normalizeSafetyText(label); return segment.lastIndexOf(normalized) + normalized.length; }));
       return effortAssertionVariants(display, labelEnd, data, input).some(assertion => {
+        assertion = withoutNegatedEffortContrast(assertion, labelEnd, data, input);
         const mentions = displayQuantityMentions(assertion);
         if (!mentions) return false;
         const durations = mentions.filter(mention => mention.form !== 'bare');
@@ -432,14 +497,14 @@ function effortAcknowledgementMismatch(factIds: readonly string[], text: string,
         // No arbitrary noun, substituted unit, extra number or predicate may hide here.
         const valueLink = assertion.slice(measurementEnd, duration.span.start);
         if (measurementEnd < 0 || measurementEnd > duration.span.start
-          || !/^\s*(?:[、,]\s*)?(?:(?:は|で|に|が|を)\s*)?(?:[、,]\s*)?(?:(?:約|およそ|だいたい|大体)\s*)?$/u.test(valueLink)) return false;
+          || !EFFORT_VALUE_CONNECTOR.test(valueLink)) return false;
         return measurementStart >= labelEnd && EFFORT_SUBJECT_CONNECTOR.test(subjectLink);
       });
     });
     if (matching.length !== 1) return true;
     assigned.add(matching[0].factId);
   }
-  return effort.some(fact => !assigned.has(fact.factId));
+  return required && effort.some(fact => !assigned.has(fact.factId));
 }
 
 function groundingAcknowledgementMismatch(
@@ -457,7 +522,8 @@ function groundingAcknowledgementMismatch(
    * against the normal grounding and safety checks below.
    */
   if (mode === 'none') {
-    return value !== undefined && value !== null && !isRecord(value);
+    return value !== undefined && value !== null && (!isRecord(value)
+      || (typeof value.text === 'string' && effortAcknowledgementMismatch([], value.text, input, 'active_claims')));
   }
 
   if (value === undefined || value === null) {
@@ -511,8 +577,11 @@ function groundingAcknowledgementMismatch(
 }
 
 function addsUngroundedDuration(text: string, input: WeeklyPlanningStableV5DialogueRenderInput): boolean {
-  const values = (source: string) => (displayQuantityMentions(normalizeSafetyText(source).replace(CLOCK_EXPRESSION, '')) ?? [])
-    .filter(m => m.form !== 'bare').map(m => m.minutes);
+  const values = (source: string) => {
+    const display = normalizeSafetyText(source).replace(CLOCK_EXPRESSION, '');
+    return (displayQuantityMentions(display) ?? []).filter(m => m.form !== 'bare'
+      && !/^\s*(?:ではなく|じゃなく)/u.test(display.slice(m.span.end))).map(m => m.minutes);
+  };
   const actual = values(text);
   if (!actual.length) return false;
   const allowed = new Set([input.currentUserMessage, input.fallbackText, ...input.recentConversation.map(turn => turn.content)].flatMap(values));
@@ -552,6 +621,7 @@ function validateRenderedText(
   if (repeatsMostRecentAssistantQuestion(text, input)) {
     return 'repeated_question_text';
   }
+  if (effortAcknowledgementMismatch([], text, input, 'active_claims')) return 'grounding_contract_mismatch';
 
   const groundingInformation = JSON.stringify({
     currentUserMessage: input.currentUserMessage,

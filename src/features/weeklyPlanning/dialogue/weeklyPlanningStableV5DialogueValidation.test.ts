@@ -50,6 +50,71 @@ function response(
 }
 
 describe('Stable V5 dialogue renderer validation', () => {
+  it.each([false, true])('grounds the live correction recap in active facts, corrected=%s', corrected => {
+    const graph = { tasks: [{ id: 'math', title: '数学' }], workloads: [{ id: 'math-work', taskId: 'math', amount: 20, unitCode: 'problem', unitLabel: '問' }],
+      effortEstimates: [{ id: 'active-effort', taskId: 'math', targetFactId: 'math-work', kind: corrected ? 'total_duration' : 'duration_per_unit',
+        minutes: corrected ? 60 : 15, unitCode: corrected ? null : 'problem', precision: 'exact' }] };
+    const renderInput = input({ actionKind: 'status', questionCode: null, requiredLabels: [], planningInformation: graph,
+      currentUserMessage: 'いや、数学は全部で60分です。', recentConversation: [{ role: 'assistant', content: '数学は1問あたり15分ですね。' }],
+      currentTurnGrounding: { mode: 'none', acceptedFacts: [] } });
+    const text = '失礼しました。数学は1問あたり15分ではなく、全部で60分ですね。';
+    const before = structuredClone(graph);
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text,
+      { groundingAcknowledgement: { factIds: ['active-effort'], text } }), renderInput).status).toBe(corrected ? 'rendered' : 'fallback');
+    expect(graph).toEqual(before);
+  });
+  it.each([
+    ['数学は1問あたり15分ですね。', 'duration_per_unit', 15, 'exact', true],
+    ['数学は全部で60分ですね。', 'duration_per_unit', 15, 'exact', false],
+    ['数学は1問あたり15分ではなく、全部で60分ですね。', 'total_duration', 60, 'exact', true],
+    ['数学は1問あたり15分くらいではなく、全部で60分ですね。', 'total_duration', 60, 'exact', true],
+    ['数学は1問ではなく1ページ5分です。', 'duration_per_unit', 5, 'exact', false],
+    ['数学は1問あたりではなく5分です。', 'duration_per_unit', 5, 'exact', false],
+    ['数学は全部で60分くらいですね。', 'total_duration', 60, 'exact', false],
+    ['数学は全部で60分ですね。', 'total_duration', 60, 'approximate', false],
+    ['数学は全部で60分くらいですね。', 'total_duration', 60, 'approximate', true],
+    ['数学は全部で60分ですね、どうしますか？', 'duration_per_unit', 15, 'exact', false],
+  ] as const)('validates every active-fact display assertion without current effort: %s', (text, kind, minutes, precision, valid) => {
+    const renderInput = input({ actionKind: 'status', questionCode: null, requiredLabels: [], currentUserMessage: '数学は全部で60分。1問5分。15分。',
+      planningInformation: { tasks: [{ id: 'math', title: '数学' }], workloads: [{ id: 'work', taskId: 'math', amount: 20, unitLabel: '問' }],
+        effortEstimates: [{ id: 'active', taskId: 'math', targetFactId: 'work', kind, minutes, precision }] },
+      currentTurnGrounding: { mode: 'none', acceptedFacts: [] } });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+  });
+  it('does not borrow another task, historical values or stale accepted metadata for active claims', () => {
+    const renderInput = input({ actionKind: 'status', questionCode: null, requiredLabels: [], currentUserMessage: '数学60分、英語45分',
+      planningInformation: { tasks: [{ id: 'math', title: '数学' }, { id: 'english', title: '英語' }], workloads: [],
+        effortEstimates: [{ id: 'math-effort', taskId: 'math', targetFactId: 'math', kind: 'total_duration', minutes: 60, precision: 'exact' },
+          { id: 'english-effort', taskId: 'english', targetFactId: 'english', kind: 'total_duration', minutes: 45, precision: 'exact' }] },
+      recentConversation: [{ role: 'user', content: '英語60分、数学45分' }], currentTurnGrounding: { mode: 'none', acceptedFacts: [] } });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, '数学は全部で45分、英語は全部で60分です。'), renderInput).status).toBe('fallback');
+    renderInput.currentTurnGrounding!.acceptedFacts.push({ factId: 'stale', kind: 'effort_estimate', sourceText: '英語60分',
+      data: { targetLabels: ['英語'], kind: 'total_duration', minutes: 60, precision: 'exact' } });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, '英語は全部で60分ですね。'), renderInput).status).toBe('fallback');
+  });
+  it('checks a truthful correction recap in the mandatory ACK as well as the visible body', () => {
+    const renderInput = naturalEffortInput('math', 'total_duration', 60);
+    const text = '数学は1問あたり15分ではなく、全部で60分ですね。';
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text,
+      { groundingAcknowledgement: { factIds: ['effort'], text } }), renderInput).status).toBe('rendered');
+  });
+  it.each([
+    ['数学の問題集の第1章は全部で60分です。', false, true],
+    ['第1章は全部で60分です。', false, true],
+    ['第1章は全部で999分です。', false, false],
+    ['問題集は全部で60分です。', false, false],
+    ['第1章は全部で60分です。', true, false],
+  ] as const)('binds component status to the exact active scope: %s duplicate=%s', (text, duplicate, valid) => {
+    const renderInput = input({ actionKind: 'status', questionCode: null, requiredLabels: [], currentUserMessage: '60分、999分',
+      planningInformation: { tasks: [{ id: 'math', title: '数学' }], components: [
+        { id: 'book', taskId: 'math', parentComponentId: null, label: '問題集' },
+        { id: 'chapter', taskId: 'math', parentComponentId: 'book', label: '第1章' },
+        ...(duplicate ? [{ id: 'other-chapter', taskId: 'math', parentComponentId: 'book', label: '第1章' }] : []),
+      ], workloads: [{ id: 'work', taskId: 'math', componentId: 'chapter', amount: 20, unitLabel: '問' }],
+      effortEstimates: [{ id: 'effort', taskId: 'math', targetFactId: 'work', kind: 'total_duration', minutes: 60, precision: 'exact' }] },
+      currentTurnGrounding: { mode: 'none', acceptedFacts: [] } });
+    expect(parseWeeklyPlanningStableV5DialogueRendererResponse(response(renderInput, text), renderInput).status).toBe(valid ? 'rendered' : 'fallback');
+  });
   function naturalEffortInput(task = 'english', kind = 'total_duration', minutes = 45) {
     const workloads = [
       { id: 'math-work', taskId: 'math', amount: 20, unitCode: 'problem', unitLabel: '問' },

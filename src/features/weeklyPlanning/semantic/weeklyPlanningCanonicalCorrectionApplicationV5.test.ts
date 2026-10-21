@@ -94,6 +94,54 @@ function activeIds(graph: WeeklyPlanningFactGraphV5): Set<string> {
 }
 
 describe('Stable V5 canonical correction application', () => {
+  it.each([
+    ['duration_per_unit', 'total_duration', null, false, true],
+    ['duration_per_unit', 'total_duration', 'minute', false, true],
+    ['total_duration', 'duration_per_unit', 'problem', false, true],
+    ['duration_per_unit', 'total_duration', 'problem', false, false],
+    ['total_duration', 'duration_per_unit', null, false, false],
+    ['total_duration', 'duration_per_unit', 'page', false, false],
+    ['duration_per_unit', 'total_duration', null, true, false],
+  ] as const)('pins an explicit %s→%s replacement, unit=%s, retarget=%s', (from, to, unitCode, retarget, valid) => {
+    const math = task('math', '数学', 'math-work', 20);
+    Object.assign(math.workloads[0], { unitCode: 'problem', unitLabel: '問' });
+    math.effortEstimates = [{ localId: 'effort', targetLocalId: 'math-work', kind: from, minutes: 15,
+      unitCode: from === 'duration_per_unit' ? 'problem' : null, precision: 'exact', sourceText: '15分' }];
+    const first = canonicalize({ document: document({ tasks: [math] }), conversationId: 'correction-rate-total', turnId: 'before' });
+    const originalGraph = structuredClone(first.graph);
+    const graph = structuredClone(first.graph); graph.revision++;
+    const old = graph.effortEstimates[0];
+    if (retarget) {
+      graph.workloads.push({ ...graph.workloads[0], id: 'new-whole-support' });
+      graph.factLifecycles.push({ factId: 'new-whole-support', status: 'active', createdRevision: graph.revision, terminalRevision: null, supersededByFactId: null });
+    }
+    graph.effortEstimates.push({ ...old, id: 'new-effort', targetFactId: retarget ? 'new-whole-support' : old.targetFactId,
+      kind: to, minutes: 60, unitCode, createdRevision: graph.revision });
+    graph.correctionIntents.push({ id: 'explicit-replace', target: { kind: 'effort_estimate', publicId: old.id, factId: old.id, mention: null },
+      operation: 'replace', replacementFactId: 'new-effort', source: old.source, createdRevision: graph.revision });
+    for (const factId of ['new-effort', 'explicit-replace']) graph.factLifecycles.push({ factId, status: 'active', createdRevision: graph.revision, terminalRevision: null, supersededByFactId: null });
+    const added = [{ kind: 'effort_estimate' as const, id: 'new-effort' }, { kind: 'correction_intent' as const, id: 'explicit-replace' },
+      ...(retarget ? [{ kind: 'workload' as const, id: 'new-whole-support' }] : [])];
+    if (valid) {
+      const independent = { ...graph, correctionIntents: [], factLifecycles: graph.factLifecycles.filter(fact => fact.factId !== 'explicit-replace') };
+      const addition = applyWeeklyPlanningCanonicalCorrectionsV5({ originalGraph, operationKeyPrefix: 'independent-effort', canonicalization: {
+        ...first, graph: independent, diff: { fromRevision: originalGraph.revision, toRevision: graph.revision,
+          added: added.filter(fact => fact.kind !== 'correction_intent'), superseded: [], removed: [] },
+      } });
+      expect(addition.status).toBe('not_applicable');
+      expect(addition.graph.effortEstimates.filter(fact => activeIds(addition.graph).has(fact.id))).toHaveLength(2);
+    }
+    const result = applyWeeklyPlanningCanonicalCorrectionsV5({ originalGraph, operationKeyPrefix: 'rate-total-test',
+      canonicalization: { ...first, graph, diff: { fromRevision: originalGraph.revision, toRevision: graph.revision, added, superseded: [], removed: [] } } });
+    expect(result.status, JSON.stringify(result.errors)).toBe(valid ? 'applied' : 'rejected');
+    expect(first.graph).toEqual(originalGraph);
+    if (valid) {
+      expect(result.graph.effortEstimates.filter(fact => activeIds(result.graph).has(fact.id))).toMatchObject([
+        { id: 'new-effort', targetFactId: old.targetFactId, kind: to, minutes: 60, unitCode },
+      ]);
+      expect(result.graph.factLifecycles.find(entry => entry.factId === old.id)?.status).toBe('superseded');
+    } else expect(result.graph).toEqual(originalGraph);
+  });
   it('replaces a prior-turn workload and removes the duplicate replacement container', () => {
     const first = canonicalize({
       document: document({
