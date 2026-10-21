@@ -104,15 +104,17 @@ export function createAuthRepository(
     },
   };
 
-  // All local reads and writes share the same boundary, including profile edits.
-  // Do not acquire it recursively from a gateway callback.
-  const coordinated = { ...repository };
-  for (const [name, operation] of Object.entries(repository)) {
-    Object.defineProperty(coordinated, name, {
-      value: (...args: unknown[]) => storageGateway.runExclusive(
-        async () => Reflect.apply(operation, repository, args),
-      ),
-    });
-  }
-  return coordinated;
+  // Only shared user-collection writers require serialization. Session revocation
+  // must not wait for a profile write's delayed acknowledgement. Reads and
+  // sign-in retain their existing behavior; registration writes both keys
+  // synchronously from prepared snapshots before yielding.
+  return {
+    ...repository,
+    signUpWithPassword: (...args) => storageGateway.runExclusive(
+      () => repository.signUpWithPassword(...args),
+    ),
+    updateUserProfile: (...args) => storageGateway.runExclusive(
+      () => repository.updateUserProfile(...args),
+    ),
+  };
 }

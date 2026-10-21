@@ -16,7 +16,7 @@ import type {
 import type { RecurringPlanMutation } from '../domain/recurringPlanMutation';
 
 export interface AuthStorageGateway {
-  // Serializes the complete repository operation; callbacks must not reenter.
+  // Serializes a complete user-collection mutation; callbacks must not reenter.
   runExclusive<T>(operation: () => Promise<T>): Promise<T>;
   registerUserWithPassword(user: User, password: string): Promise<void>;
   findPasswordUserId(email: string, password: string): Promise<string | null>;

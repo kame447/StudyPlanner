@@ -1,6 +1,6 @@
 # Local authentication registration storage
 
-Status: locally verified and independently reviewed; publication pending.
+Status: PR #824 published; logout-admission correction under final verification.
 Base: `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`.
 Branch: `fix/local-auth-registration-storage`.
 
@@ -10,14 +10,14 @@ Synthetic MemoryStorage tests on unchanged main confirmed: (1) a rejected passwo
 
 The local fallback is selected only for DEV/loopback/.local when Firebase is disabled. Firebase authentication, fallback eligibility, storage keys and serialized formats are unchanged. Existing local plaintext demo storage is not newly described as secure authentication. No hashing, migration, permission setting or actual account operation is performed. Existing orphaned accounts are not automatically claimed or repaired.
 
-`AuthRepository` remains the application facade. Its injected gateway now owns password matching and combined registration, so credential rows remain adapter-private. All complete local auth operations acquire one non-reentrant queue per exact Storage object, shared across gateway instances. Profile changes, signup, sign-in, sign-out and reads therefore cannot interleave with in-progress compensation within the same module/realm. Direct gateway calls, another wrapper Storage identity, another tab/client, crashes and duplicate module copies remain outside this guarantee.
+`AuthRepository` remains the application facade. Its injected gateway now owns password matching and combined registration, so credential rows remain adapter-private. Complete user-collection mutations (signup and profile updates) acquire one non-reentrant queue per exact Storage object, shared across gateway instances. These writers cannot interleave with in-progress compensation within the same module/realm. Session revocation, sign-in and reads retain their prior independent behavior; registration prepares both payloads and writes/restores synchronously before yielding. Direct gateway calls, another wrapper Storage identity, another tab/client, crashes and duplicate module copies remain outside this guarantee.
 
-Registration snapshots both raw keys before any write, uses the established users-then-passwords order and restores exact original bytes or key absence on failure. Unchanged keys are not rewritten. Recovery attempts both keys even if one restoration fails; recovery failure is explicit and contains no credential bytes. A successful rollback rethrows the original failure. A rejected operation releases the queue for later retry. There is no claim of crash atomicity.
+Registration snapshots both raw keys before any write, uses the established users-then-passwords order and restores exact original bytes or key absence on failure. Unchanged keys are not rewritten. Recovery attempts both keys even if one restoration fails; recovery failure is explicit and contains no credential bytes. A successful rollback rethrows the original failure. A rejected user-collection mutation releases the queue for later retry. There is no claim of crash atomicity.
 
 ## Alternatives and falsifiers
 
 1. Extract a password port only: removes hidden global coupling but does not repair the reproduced partial registration. Insufficient alone.
-2. Same-Storage port plus bounded compensation and serialized complete operations (selected). Any affected Firebase code, changed eligibility/key/format, silent recovery failure, overwritten profile/sibling signup, global-storage access with injection, changed original error after successful recovery, or blocked independent Storage falsifies the design.
+2. Same-Storage port plus bounded compensation and serialized complete user-collection mutations (selected). Any affected Firebase code, changed eligibility/key/format, silent recovery failure, overwritten profile/sibling signup, global-storage access with injection, changed original error after successful recovery, or blocked independent Storage falsifies the design.
 3. Reverse write order: merely changes which orphan remains. Rejected.
 4. New envelope/migration/hash or broad authentication redesign: out of scope and greater compatibility/security impact.
 
@@ -38,3 +38,12 @@ Independent seven-perspective source review found no remaining blocker. An inter
 Final `npm run verify` exited 0 on exact commit `2a0cc8628e6f11c92d6a43578606492d6809156c`, tree `b9d31c702d0361fb75cde57c5df96c255eda74c9`, with initially clean source. Fresh app and regenerated Worker typechecks passed; 1,055 test files / 10,539 tests passed (67 skipped, 1 todo retained); production build passed in 12.36 seconds. Log `/tmp/auth-full-verify.log`. Same canonical installed dependency seed/lock identity above; standard telemetry-disabled environment, DEV_LAN_HOST=127.0.0.1, isolated Wrangler log `/tmp/auth-verify-wrangler.log`. Tests generated `.cache/j1-old-worker` historical-fixture output without tracked source changes. The final null-sentinel equality preserves existing password-record matching rather than newly rejecting falsy string IDs; its focused 11 cases passed before this full run (`/tmp/auth-storage-final-sentinel.log`).
 
 Two independent seven-perspective reviewers found no remaining source blocker. One additionally reproduced 47 related checks independently (`/tmp/calendar-auth-independent.log`). Only this documentation receipt changed after the full verified snapshot. Locally verified, not published/merged or proven on live Firebase/browser/device. The change repairs new bounded local registration failures; it does not claim or migrate existing orphaned local identities.
+
+
+## PR #824 correction: independent logout admission
+
+The original broad facade queue introduced a regression against the existing native contract `Profile save cannot restore the signed-out UI under StrictMode`: while a profile has durably written but its acknowledgement is held, logout must clear the session before that acknowledgement is released. Source inspection identified the risk while CI was running. A synthetic test with the actual local gateway passed against unchanged main22e42203 (`/tmp/auth-signout-main-green.log`) and failed against the originally published local payloadf32fe129 (`/tmp/auth-signout-candidate-red.log`, false rather than true for completed logout). This is a confirmed candidate regression, not an original production defect, and no native result is inferred from the synthetic test.
+
+The correction queues only the two writers of the shared users collection. Sign-in, reads and independent session revocation keep their original behavior; this does not add new session cancellation/arbitration policy. Simply bypassing logout while leaving sign-in queued was rejected because it could defer an earlier sign-in until after logout. Both registration payloads and compensation stay synchronous within the gateway. Signup/profile serialization remains enforced across two gateways over the same Storage.
+
+Five related files /57 tests passed after the runtime correction (`/tmp/auth-signout-fixed-related.log`). A second deferred test additionally proves signup remains pending behind a profile mutation and preserves both records; the final two-case file passed (`/tmp/auth-signout-final-focused.log`). Existing native assertions and harness timing were not weakened or moved. The new final snapshot still requires fresh full verification, independent review and a normal update to the existing draft PR. Shared dependency-audit and bundle-budget blockers are separate and must not be hidden.
