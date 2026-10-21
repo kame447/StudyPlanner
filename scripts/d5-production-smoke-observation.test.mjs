@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { classifyFirestoreWrite, runProductionSmoke, classifyComposerReadiness, waitForProductionComposer, D5_UI_TURN_WAIT_MS, D5_UI_TEST_TIMEOUT_MS } from '../tests/e2e/support/d5-production-smoke-observation.mjs';
-import { persistRedactedSmokeEvidence, redactedSmokeEvidence, observeProductionComposerState, relatedActiveEffortEstimates } from '../tests/e2e/support/d5-production-readonly.mjs';
+import { persistRedactedSmokeEvidence, redactedSmokeEvidence, observeProductionComposerState, relatedActiveEffortEstimates, productionSmokeReflectedEstimate } from '../tests/e2e/support/d5-production-readonly.mjs';
 
 const database = 'projects/fixture/databases/(default)';
 const documents = `${database}/documents`;
@@ -310,5 +310,48 @@ describe('bounded active-effort diagnostics without widening the estimate oracle
     expect(projected.estimates).toHaveLength(64); expect(projected.truncated).toBe(true);
     const exported = redactedSmokeEvidence({ relatedActiveEstimates: Array(65).fill(projected.estimates[0]) });
     expect(exported.relatedActiveEstimates).toHaveLength(64); expect(exported.relatedActiveEstimatesTruncated).toBe(true);
+  });
+});
+
+
+describe('approved OFF precision oracle and unchanged exact D5 oracle', () => {
+  const estimate = (precision = 'exact', overrides = {}) => ({ id: 'PRIVATE_ESTIMATE', targetFactId: 'PRIVATE_QUESTION',
+    kind: 'duration_per_unit', minutes: 15, unitCode: 'problem', precision, ...overrides });
+  const graph = (...effortEstimates) => ({ effortEstimates,
+    factLifecycles: effortEstimates.map(estimate => ({ factId: estimate.id, status: 'active' })) });
+  const oracle = (graph, expectation = 'EXPECT_FALLBACK') => productionSmokeReflectedEstimate(graph, { questionTopicId: 'PRIVATE_QUESTION', expectation });
+  it.each(['exact', 'unspecified'])('OFF accepts a unique bound15/problem estimate with actual precision %s', precision => {
+    expect(oracle(graph(estimate(precision)))).toEqual({ minutes: 15, measurement: 'duration_per_unit', unit: 'problem', precision });
+  });
+  it.each([
+    { precision: 'approximate' }, { precision: 'unknown' }, { targetFactId: 'PRIVATE_OTHER_TARGET' },
+    { minutes: 14 }, { unitCode: 'page' }, { kind: 'total_duration' },
+  ])('OFF still rejects a mismatched estimate: %j', overrides => {
+    expect(oracle(graph(estimate('unspecified', overrides)))).toBeNull();
+  });
+  it.each([
+    {}, { minutes: 14 }, { unitCode: 'page' }, { precision: 'approximate' },
+  ])('OFF rejects duplicate/conflicting active per-unit facts on the target: %j', conflicting => {
+    expect(oracle(graph(estimate('unspecified'), estimate('exact', { id: 'PRIVATE_DUPLICATE', ...conflicting })))).toBeNull();
+  });
+  it('counts active facts only and does not confuse another target with this question', () => {
+    const value = graph(estimate('unspecified'), estimate('exact', { id: 'PRIVATE_SUPERSEDED', minutes: 14 }),
+      estimate('exact', { id: 'PRIVATE_OTHER', targetFactId: 'PRIVATE_OTHER_TARGET' }));
+    value.factLifecycles[1].status = 'superseded';
+    expect(oracle(value)?.precision).toBe('unspecified');
+  });
+  it('Jev continues to require exact precision and the original target/kind/value/unit', () => {
+    expect(oracle(graph(estimate('exact')), 'EXPECT_JEV')?.precision).toBe('exact');
+    expect(oracle(graph(estimate('unspecified')), 'EXPECT_JEV')).toBeNull();
+    expect(oracle(graph(estimate('approximate')), 'EXPECT_JEV')).toBeNull();
+    expect(oracle(graph(estimate('exact', { minutes: 14 })), 'EXPECT_JEV')).toBeNull();
+    expect(oracle(graph(estimate('exact')), 'PRIVATE_MODE')).toBeNull();
+  });
+  it('persists the actual accepted precision rather than rewriting unspecified as exact', () => {
+    const reflectedEstimate = oracle(graph(estimate('unspecified')));
+    const exported = redactedSmokeEvidence({ activeEstimate: true, reflectedEstimate });
+    expect(exported.reflectedEstimate?.precision).toBe('unspecified');
+    expect(JSON.stringify(exported)).not.toContain('PRIVATE_');
+    expect(redactedSmokeEvidence({ reflectedEstimate: { ...reflectedEstimate, precision: 'approximate' } }).reflectedEstimate).toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { classifyFirestoreWrite, runProductionSmoke, waitForProductionComposer } from './support/d5-production-smoke-observation.mjs';
 import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../shared/d5AnswerPolicy.ts';
-import { productionDatabaseFromRequestUrl, readOwnedConversation, observeProductionComposerState, readProductionServerSnapshot, relatedActiveEffortEstimates, consumedD5Request, boundOffRollbackCandidate, classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, productionSmokeExpectation, persistRedactedSmokeEvidence } from './support/d5-production-readonly.mjs';
+import { productionDatabaseFromRequestUrl, readOwnedConversation, observeProductionComposerState, readProductionServerSnapshot, relatedActiveEffortEstimates, productionSmokeReflectedEstimate, consumedD5Request, boundOffRollbackCandidate, classifyProductionOrigin, requireProductionOrigin, verifyFrontendIdentity, productionSmokeExpectation, persistRedactedSmokeEvidence } from './support/d5-production-readonly.mjs';
 
 const secret = name => {
   const value = process.env[name]?.trim();
@@ -228,14 +228,11 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
     expect(after.planningState.pendingApproval == null, 'No pending approval').toBe(true);
     expect(after.planningState.approvalRecovery == null, 'No approval execution/recovery').toBe(true);
     const consumed = after.planningState.intakeState.c5SelectionLedger?.consumed ?? [];
-    const active = new Set(after.graph.factLifecycles.filter(fact => fact.status === 'active').map(fact => fact.factId));
     const related = relatedActiveEffortEstimates(after.graph, { mathTaskId: targetTask.id, questionTopicId: target });
     evidence.relatedActiveEstimates = related.estimates;
     evidence.relatedActiveEstimatesTruncated = related.truncated;
-    evidence.activeEstimate = after.graph.effortEstimates.some(estimate => active.has(estimate.id)
-      && estimate.targetFactId === target && estimate.kind === 'duration_per_unit' && estimate.minutes === 15
-      && estimate.unitCode === 'problem' && estimate.precision === 'exact');
-    evidence.reflectedEstimate = evidence.activeEstimate ? { minutes: 15, measurement: 'duration_per_unit', unit: 'problem', precision: 'exact' } : null;
+    evidence.reflectedEstimate = productionSmokeReflectedEstimate(after.graph, { questionTopicId: target, expectation: evidence.expectation });
+    evidence.activeEstimate = evidence.reflectedEstimate !== null;
     const answer = after.planningState.messages.filter(message => message.role === 'assistant' && !oldMessages.has(message.id)).at(-1);
     // Synthetic setup only: the visible ACK must name math, 15 minutes and per-problem scope.
     evidence.visibleAck = typeof answer?.content === 'string' && /数学/u.test(answer.content)
@@ -271,7 +268,7 @@ test('explicit production D5 smoke preserves all schedules and never approves', 
       expect(evidence.lunaFallbackRoute != null, 'Existing Luna semantic route must complete on the 15 answer').toBe(true);
       expect(evidence.d5Consumed, 'OFF drill cannot claim D5 consumption').toBe(false);
       evidence.step = 'active_estimate';
-      expect(evidence.activeEstimate, 'Luna fallback must still reflect the answer').toBe(true);
+      expect(evidence.activeEstimate, 'Exactly one bound non-approximate Luna 15-minute per-problem estimate').toBe(true);
       evidence.step = 'visible_ack';
       expect(evidence.visibleAck, 'Luna fallback ACK').toBe(true);
       testInfo.annotations.push({ type: 'fallback', description:

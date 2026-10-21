@@ -158,6 +158,19 @@ export function redactedRelatedEffortEstimate(value) {
     precision: EFFORT_PRECISIONS.includes(value?.precision) ? value.precision : 'unknown',
     targetRelation: EFFORT_TARGET_RELATIONS.includes(value?.targetRelation) ? value.targetRelation : 'unknown' };
 }
+/** Test oracle only: D5 promises exact; the approved OFF/Luna drill also permits unspecified precision. */
+export function productionSmokeReflectedEstimate(graph, { questionTopicId, expectation }) {
+  if (!['EXPECT_JEV', 'EXPECT_FALLBACK'].includes(expectation)) return null;
+  const active = new Set(graph.factLifecycles.filter(fact => fact.status === 'active').map(fact => fact.factId));
+  const perUnit = graph.effortEstimates.filter(estimate => active.has(estimate.id)
+    && estimate.targetFactId === questionTopicId && estimate.kind === 'duration_per_unit');
+  // Count every active per-unit fact on this target, even one with a conflicting unit/value.
+  if (expectation === 'EXPECT_FALLBACK' && perUnit.length !== 1) return null;
+  const estimate = perUnit.find(estimate => estimate.minutes === 15 && estimate.unitCode === 'problem'
+    && (estimate.precision === 'exact' || expectation === 'EXPECT_FALLBACK' && estimate.precision === 'unspecified'));
+  return estimate ? { minutes: 15, measurement: 'duration_per_unit', unit: 'problem', precision: estimate.precision } : null;
+}
+
 /** Diagnostics only. This projection never authorizes an answer or changes the strict estimate oracle. */
 export function relatedActiveEffortEstimates(graph, { mathTaskId, questionTopicId }) {
   const active = new Set(graph.factLifecycles.filter(fact => fact.status === 'active').map(fact => fact.factId));
@@ -207,8 +220,8 @@ export function redactedSmokeEvidence(value) {
     relatedActiveEstimatesTruncated: value.relatedActiveEstimatesTruncated === true
       || Array.isArray(value.relatedActiveEstimates) && value.relatedActiveEstimates.length > MAX_RELATED_ESTIMATES,
     reflectedEstimate: value.reflectedEstimate?.minutes === 15 && value.reflectedEstimate.measurement === 'duration_per_unit'
-      && value.reflectedEstimate.unit === 'problem' && value.reflectedEstimate.precision === 'exact'
-      ? { minutes: 15, measurement: 'duration_per_unit', unit: 'problem', precision: 'exact' } : null,
+      && value.reflectedEstimate.unit === 'problem' && ['exact', 'unspecified'].includes(value.reflectedEstimate.precision)
+      ? { minutes: 15, measurement: 'duration_per_unit', unit: 'problem', precision: value.reflectedEstimate.precision } : null,
     visibleAck: boolean(value.visibleAck), scheduleReadbackIdentical: boolean(value.scheduleReadbackIdentical),
     approvalStartEvents: count(value.approvalStartEvents), approvalExecutions: oneOf(value.approvalExecutions, [0, 'changed']),
     scheduleWrites: count(value.scheduleWrites), unclassifiedWrites: count(value.unclassifiedWrites),
