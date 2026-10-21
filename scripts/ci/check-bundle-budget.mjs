@@ -20,12 +20,12 @@ const budgets = {
     // f1f347c5 -> 408b151d: +435/+219 aggregate raw/gzip and +435/+245
     // largest raw/gzip bytes, solely D5 v2 policy data; no added headroom.
     // Owner decision based on measured commit-rejection fallback increment, 2026-10-21 (#305 rejection fallback)
-    // Base 8568c8aa -> guarded fallback: +2325/+581 aggregate raw/gzip,
-    // +2325/+557 largest raw/gzip, including validated rollback metadata; no headroom.
-    totalRaw: 2_616_872,
-    totalGzip: 711_866,
-    largestRaw: 1_049_974,
-    largestGzip: 289_195,
+    // Base 8568c8aa -> guarded fallback: +2425/+608 aggregate raw/gzip,
+    // +2425/+572 largest raw/gzip, including the audited checkpoint facade; no headroom.
+    totalRaw: 2_616_972,
+    totalGzip: 711_893,
+    largestRaw: 1_050_074,
+    largestGzip: 289_210,
   },
   css: {
     // Same owner decision: PR #826 changes no CSS. Aggregate limits
