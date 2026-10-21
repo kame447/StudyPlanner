@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, test } from './support/fixed-clock.mjs';
+import { E2E_TODAY, expect, test } from './support/fixed-clock.mjs';
 
 // Tier A+B: real client/semantic/runtime/application/UI and the existing local
 // repository. Only final Worker responses are stipulated; no real provider or Worker ingress executes.
@@ -546,6 +546,58 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
   });
 }
 
+async function resolvedD5NegativeDates(page, graph) {
+  return page.evaluate(async ({ rootPath, graph, currentDate }) => {
+    const { resolveWeeklyPlanningDateExpressionsV5 } = await import(`/@fs${rootPath}/src/features/weeklyPlanning/semantic/weeklyPlanningResolvedDateExpressionsV5.ts`);
+    const active = new Set(graph.factLifecycles.filter(fact => fact.status === 'active').map(fact => fact.factId));
+    return resolveWeeklyPlanningDateExpressionsV5({ graph: {
+      temporalConstraints: graph.temporalConstraints.filter(fact => active.has(fact.id)),
+      taskDateRules: graph.taskDateRules.filter(fact => active.has(fact.id)),
+    }, currentDate, planningWindow: { startDate: '2026-08-20', endDate: '2026-08-26' } });
+  }, { rootPath: root, graph, currentDate: E2E_TODAY });
+}
+
+function compoundD5Outcome(after, targets, decision, resolvedDates) {
+  const graph = after.graph;
+  const active = new Set(graph.factLifecycles.filter(fact => fact.status === 'active').map(fact => fact.factId));
+  const mathTargets = new Set([targets.math.id, targets.mathWorkload.id]);
+  const englishTargets = new Set([targets.english.id, targets.englishWorkload.id,
+    ...graph.components.filter(fact => fact.taskId === targets.english.id && active.has(fact.id)).map(fact => fact.id)]);
+  const mathFacts = graph.effortEstimates.filter(fact => active.has(fact.id) && fact.taskId === targets.math.id
+    && mathTargets.has(fact.targetFactId) && fact.kind === 'duration_per_unit' && fact.minutes === 15 && fact.unitCode === 'problem' && fact.precision === 'exact');
+  const englishBounds = graph.temporalConstraints.filter(fact => active.has(fact.id) && fact.taskId === targets.english.id
+    && englishTargets.has(fact.targetFactId) && ['deadline', 'latest_end'].includes(fact.kind));
+  const fridayBounds = englishBounds.filter(fact => resolvedDates.facts.some(resolved => resolved.factId === fact.id
+    && resolved.status === 'resolved' && resolved.range?.start === '2026-08-21' && resolved.range.end === '2026-08-21'));
+  const englishDateRules = graph.taskDateRules.filter(fact => active.has(fact.id) && fact.taskId === targets.english.id);
+  const intent = decision?.questionIntent;
+  const target = decision?.questionTarget?.fact;
+  const asking = decision?.actionKind === 'question' && decision.questionCode != null
+    && decision.communication?.askQuestion !== false;
+  const presentedTarget = after.state.intakeState.lastQuestionContext?.topicId;
+  const typedMathQuestion = asking && intent?.kind === 'effort_measurement' && mathTargets.has(intent.targetFactId)
+    && presentedTarget === intent.targetFactId;
+  const typedDeadlineQuestion = asking && intent?.kind === 'resolution_question'
+    && intent.requestedInformation?.includes('applicable_start_or_deadline_date')
+    && target?.taskId === targets.english.id && ['deadline', 'latest_end'].includes(target.kind)
+    && intent.targetFactId === target.id && presentedTarget === target.id;
+  const visible = after.state.messages.at(-1)?.role === 'assistant' ? after.state.messages.at(-1).content : '';
+  const questionSentences = visible.match(/[^。！？!?\n]+[?？]/gu) ?? [];
+  // A preceding denial/mention is not the topic actually asked in a later clause.
+  const questionClauses = questionSentences.map(sentence => ({ sentence,
+    clause: sentence.split(/(?:反映(?:されていません|していません)|未反映(?:です)?|ですね|です)(?:が)?[、,]/u).at(-1) }));
+  const mathQuestions = questionClauses.filter(({ clause }) => clause.includes('数学') && /(?:1問|1問あたり|何分|15分)/u.test(clause)).map(({ sentence }) => sentence);
+  const deadlineQuestions = questionClauses.filter(({ sentence, clause }) => /締切|期限/u.test(clause)
+    && !/反映(?:されていません|していません)|未反映/u.test(clause)
+    && (clause.includes('英語') || (sentence.includes('英語') && !clause.includes('数学')))).map(({ sentence }) => sentence);
+  const math = { preserved: mathFacts.length > 0, facts: mathFacts, typedQuestion: typedMathQuestion, visibleQuestions: mathQuestions,
+    clarified: typedMathQuestion || mathQuestions.length > 0 };
+  const deadline = { preserved: fridayBounds.length > 0, facts: fridayBounds, otherBounds: englishBounds, dateRules: englishDateRules,
+    typedQuestion: typedDeadlineQuestion, visibleQuestions: deadlineQuestions, clarified: typedDeadlineQuestion || deadlineQuestions.length > 0 };
+  return { math, deadline, resolvedDates, bothPreserved: math.preserved && deadline.preserved,
+    bothContributionsHandled: (math.preserved || math.clarified) && (deadline.preserved || deadline.clarified) };
+}
+
 for (const reply of ['15ページ', '英語は15分', '全部で15分', '15分。あと英語の締切を金曜にして', '15分くらい']) {
   test(`D5 live negative 1280: ${reply}`, async ({ page }, testInfo) => {
     test.skip(process.env.JEV_D5_LIVE !== '1', 'Explicit live opt-in only; one fresh conversation per bounded negative');
@@ -559,7 +611,8 @@ for (const reply of ['15ページ', '英語は15分', '全部で15分', '15分�
     expect(before.state.intakeState.lastQuestionContext.controlledCandidate?.domainId).toBe('d5_numeric');
     expect(before.state.intakeState.lastQuestionContext.controlledCandidate.domainPolicyVersion).toBe(D5_POLICY);
     expect(before.state.intakeState.c5SelectionLedger.consumed).toEqual([]);
-    const { math, english } = capturedD5Tasks(before, audit);
+    const targets = capturedD5Tasks(before, audit);
+    const { math, english } = targets;
     const { calls } = await submit(page, audit, reply);
     const candidateCalls = calls.filter(call => call.body.decisionContext?.purpose === 'candidate_choice');
     const fallbackCalls = calls.filter(call => call.body.purpose === 'weekly_planning_semantic_normalizer'
@@ -573,9 +626,11 @@ for (const reply of ['15ページ', '英語は15分', '全部で15分', '15分�
     const reasked = questions.length > 0 && decision?.questionCode != null;
     const englishDeadlines = after.graph.temporalConstraints.filter(fact => activeIds.has(fact.id)
       && fact.taskId === english.id && fact.kind === 'deadline');
+    const compound = reply === '15分。あと英語の締切を金曜にして'
+      ? compoundD5Outcome(after, targets, decision, await resolvedD5NegativeDates(page, after.graph)) : null;
     const route = { schemas: calls.map(call => call.schema ?? call.body.decisionContext?.purpose),
       fallbackSemantic: fallbackCalls.map(call => ({ schema: call.schema, provider: call.response?.provider ?? 'unknown' })), questionCode: decision?.questionCode ?? null, reasked,
-      mathEffort, englishDeadlines, questions, consumed: after.state.intakeState.c5SelectionLedger.consumed };
+      mathEffort, englishDeadlines, questions, compound, consumed: after.state.intakeState.c5SelectionLedger.consumed };
     // Attach evidence before assertions, preserving a candidate-head false accept.
     await testInfo.attach('d5-negative-readback.json', { body: Buffer.from(JSON.stringify({ reply, route, after,
       candidateEvaluations: candidateCalls.map(call => ({ request: call.body.decisionContext.request,
@@ -589,8 +644,10 @@ for (const reply of ['15ページ', '英語は15分', '全部で15分', '15分�
         conditionChange: expect.any(Number), independentMeaning: expect.any(Number) });
     }
     expect(after.state.intakeState.c5SelectionLedger.consumed).toEqual([]);
-    expect(mathEffort.some(fact => fact.kind === 'duration_per_unit' && fact.minutes === 15
-      && (reply !== '15分くらい' || fact.precision !== 'approximate'))).toBe(false);
+    if (reply !== '15分。あと英語の締切を金曜にして') {
+      expect(mathEffort.some(fact => fact.kind === 'duration_per_unit' && fact.minutes === 15
+        && (reply !== '15分くらい' || fact.precision !== 'approximate'))).toBe(false);
+    }
     expect(fallbackCalls.length).toBeGreaterThan(0);
     for (const call of fallbackCalls) {
       const input = structuredUserPrompt(call.body, call.schema === 'weekly_planning_semantic_document_v5' ? 'userText' : 'currentUserText');
@@ -602,11 +659,9 @@ for (const reply of ['15ページ', '英語は15分', '全部で15分', '15分�
       expect(mathEffort.some(fact => fact.minutes === 15 && fact.precision === 'approximate') || (reasked && mathEffort.length === 0)).toBe(true);
     }
     if (reply === '15分。あと英語の締切を金曜にして') {
-      // A math-only clarification must not hide the second instruction. Require
-      // the actual English Friday deadline or a visible question about it.
-      const deadlineHandled = englishDeadlines.some(fact => /金曜|2026-08-21|8月21日|8\/21/.test(fact.dateExpression ?? ''));
-      const deadlineReasked = reasked && questions.some(question => /締切|期限|金曜/.test(question));
-      expect(deadlineHandled || deadlineReasked).toBe(true);
+      // Luna may correctly retain math15 after D5 abstains. Each contribution
+      // must be preserved or genuinely clarified; a denial alone is insufficient.
+      expect(compound.bothContributionsHandled, JSON.stringify(compound)).toBe(true);
     }
     expect(await saved(page)).toEqual([]);
     expect(audit.blockedExternal).toEqual([]);
