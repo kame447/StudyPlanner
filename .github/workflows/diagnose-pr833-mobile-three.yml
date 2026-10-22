@@ -40,104 +40,136 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
-      - name: Derive trace-off diagnostic config and prove the only config change
+      - name: Run bounded same-host recording ABAB comparison
         shell: bash
         run: |
           set -euo pipefail
-          cat > tests/e2e/playwright.trace-off-diagnostic.config.mjs <<'CONFIG'
+          node scripts/ci/check-node-security-version.mjs
+          cat > /tmp/pr833-abab.mjs <<'NODE'
+          import fs from 'node:fs';
+          import os from 'node:os';
+          import net from 'node:net';
+          import { spawnSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
+          import { pathToFileURL } from 'node:url';
+          import path from 'node:path';
           import { isDeepStrictEqual } from 'node:util';
-          import base from './playwright.cross-browser.config.mjs';
-          const control = { ...base, use: { ...base.use, video: 'off' } };
-          const diagnostic = { ...control, use: { ...control.use, trace: 'off' } };
-          const restoredControl = { ...diagnostic, use: { ...diagnostic.use, trace: control.use.trace } };
-          if (!isDeepStrictEqual(restoredControl, control)) throw new Error('Unexpected change versus video-off control');
-          const restored = { ...diagnostic, use: { ...diagnostic.use, video: base.use.video, trace: base.use.trace } };
-          if (!isDeepStrictEqual(restored, base)) throw new Error('Unexpected diagnostic configuration change');
-          if (base.use.video !== 'retain-on-failure' || diagnostic.use.video !== 'off') throw new Error('Unexpected video baseline');
-          if (base.use.trace !== 'retain-on-failure' || diagnostic.use.trace !== 'off') throw new Error('Unexpected trace baseline');
-          export default diagnostic;
-          CONFIG
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          import base from './tests/e2e/playwright.cross-browser.config.mjs';
-          import diagnostic from './tests/e2e/playwright.trace-off-diagnostic.config.mjs';
-          fs.mkdirSync('artifacts', { recursive: true });
-          const proof = { onlyChangedPropertyVersusVideoOffControl: 'use.trace', changedPropertiesVersusOriginal: ['use.video', 'use.trace'],
-            baselineTrace: base.use.trace, diagnosticTrace: diagnostic.use.trace, video: diagnostic.use.video,
-            trace: diagnostic.use.trace, screenshot: diagnostic.use.screenshot, retries: diagnostic.retries, workers: diagnostic.workers };
-          fs.writeFileSync('artifacts/trace-only-config-proof.json', JSON.stringify(proof, null, 2));
-          console.log(proof);
-          NODE
-
-      - name: Collect exactly three cases, then compare trace-off diagnostically
-        shell: bash
-        env:
-          SELECTED_GREP: 'material long text 1920x1080 (saves the last chapter and preserves it after full reload at (100|200)%|keeps full detail text and cancels unsaved chapter edits at 200%)$'
-        run: |
-          set -euo pipefail
-          args=(test --config=tests/e2e/playwright.trace-off-diagnostic.config.mjs --project=webkit-mobile '(^|/)bookshelf-surface\.spec\.mjs$' --grep "$SELECTED_GREP")
-          mkdir -p artifacts
-          ./tests/e2e/node_modules/.bin/playwright "${args[@]}" --list --reporter=json > artifacts/selected-three.json
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const report = JSON.parse(fs.readFileSync('artifacts/selected-three.json', 'utf8'));
-          const found = [];
-          function visit(suites, parents = []) {
-            for (const suite of suites ?? []) {
-              const chain = [...parents, suite.title];
-              for (const spec of suite.specs ?? []) for (const test of spec.tests ?? []) {
-                found.push({ title: spec.title, chain, project: test.projectName, file: spec.file });
+          const root = process.cwd();
+          const out = 'artifacts/abab';
+          fs.mkdirSync(out, { recursive: true });
+          const write = (file, value) => fs.writeFileSync(`${out}/${file}`, JSON.stringify(value, null, 2));
+          const base = (await import(pathToFileURL(path.resolve('tests/e2e/playwright.cross-browser.config.mjs')))).default;
+          const off = { ...base, use: { ...base.use, video: 'off', trace: 'off' } };
+          const restored = { ...off, use: { ...off.use, video: base.use.video, trace: base.use.trace } };
+          if (!isDeepStrictEqual(restored, base) || base.use.video !== 'retain-on-failure' || base.use.trace !== 'retain-on-failure'
+            || base.retries !== 1 || base.workers !== 1 || !base.failOnFlakyTests) throw new Error('Unexpected baseline configuration');
+          fs.writeFileSync('tests/e2e/playwright.abab-off.config.mjs', "import base from './playwright.cross-browser.config.mjs';\nexport default { ...base, use: { ...base.use, video: 'off', trace: 'off' } };\n");
+          const generatedOff = (await import(pathToFileURL(path.resolve('tests/e2e/playwright.abab-off.config.mjs')))).default;
+          if (!isDeepStrictEqual(generatedOff, off)) throw new Error('Generated OFF config differs from reviewed capture-only configuration');
+          const tracked = spawnSync('git', ['ls-files', '-z'], { encoding: 'utf8' });
+          if (tracked.status !== 0) throw new Error('Cannot enumerate source inputs');
+          const files = tracked.stdout.split('\0').filter(Boolean);
+          const snapshot = () => Object.fromEntries(files.map(file => [file, createHash('sha256').update(fs.readFileSync(file)).digest('hex')]));
+          const before = snapshot();
+          write('source-before.json', before);
+          write('host.json', { cpuModels: [...new Set(os.cpus().map(cpu => cpu.model))], logicalCpuCount: os.cpus().length,
+            availableParallelism: os.availableParallelism(), arch: os.arch(), platform: os.platform(), release: os.release(),
+            imageOS: process.env.ImageOS ?? null, imageVersion: process.env.ImageVersion ?? null,
+            node: process.version, playwright: JSON.parse(fs.readFileSync('tests/e2e/node_modules/@playwright/test/package.json')).version,
+            sourceCommit: process.env.GITHUB_SHA, order: ['on1', 'off1', 'on2', 'off2'] });
+          const grep = 'material long text 1920x1080 (saves the last chapter and preserves it after full reload at (100|200)%|keeps full detail text and cancels unsaved chapter edits at 200%)$';
+          const expected = ['saves the last chapter and preserves it after full reload at 100%', 'keeps full detail text and cancels unsaved chapter edits at 200%', 'saves the last chapter and preserves it after full reload at 200%'].sort();
+          function validate(report) {
+            if (report.config.workers !== 1 || report.config.projects.find(project => project.name === 'webkit-mobile')?.retries !== 1) throw new Error('Worker or retry limit changed');
+            const found = [];
+            function visit(suites, parents = []) {
+              for (const suite of suites ?? []) {
+                const chain = [...parents, suite.title];
+                for (const spec of suite.specs ?? []) for (const test of spec.tests ?? []) found.push({ title: spec.title, chain, project: test.projectName, file: spec.file, test });
+                visit(suite.suites, chain);
               }
-              visit(suite.suites, chain);
             }
+            visit(report.suites);
+            if (report.errors?.length || found.length !== 3 || JSON.stringify(found.map(x => x.title).sort()) !== JSON.stringify(expected)
+              || found.some(x => x.project !== 'webkit-mobile' || !x.chain.includes('material long text 1920x1080') || !x.file.endsWith('bookshelf-surface.spec.mjs') || x.test.timeout !== 30000)) throw new Error('Exact-three selection or unchanged execution limits failed');
+            return found;
           }
-          visit(report.suites);
-          const expected = [
-            'saves the last chapter and preserves it after full reload at 100%',
-            'keeps full detail text and cancels unsaved chapter edits at 200%',
-            'saves the last chapter and preserves it after full reload at 200%',
-          ].sort();
-          if (report.errors?.length || found.length !== 3 || JSON.stringify(found.map(x => x.title).sort()) !== JSON.stringify(expected)
-            || found.some(x => x.project !== 'webkit-mobile' || !x.chain.includes('material long text 1920x1080') || !x.file.endsWith('bookshelf-surface.spec.mjs'))) {
-            throw new Error(`Expected exactly the three failed WebKit mobile cases: ${JSON.stringify(found)}`);
+          async function assertPortsFree() {
+            for (const port of [4173, 4174, 4175]) await new Promise((resolve, reject) => {
+              const socket = net.connect({ host: '127.0.0.1', port });
+              socket.once('connect', () => { socket.destroy(); reject(new Error(`Unexpected existing server at port ${port}`)); });
+              socket.once('error', error => { socket.destroy(); error.code === 'ECONNREFUSED' ? resolve() : reject(error); });
+              socket.setTimeout(2000, () => { socket.destroy(); reject(new Error(`Port ownership check timed out: ${port}`)); });
+            });
           }
-          console.log(JSON.stringify(found, null, 2));
+          const generated = ['playwright-cross-browser-results', 'playwright-cross-browser-report', 'playwright-cross-browser-results.json'];
+          const arms = [];
+          let setupFailure = null;
+          try {
+            for (const arm of ['on1', 'off1', 'on2', 'off2']) {
+              const armDir = `${out}/${arm}`;
+              fs.mkdirSync(armDir);
+              const capture = arm.startsWith('on');
+              const args = ['test', `--config=tests/e2e/${capture ? 'playwright.cross-browser.config.mjs' : 'playwright.abab-off.config.mjs'}`, '--project=webkit-mobile', '(^|/)bookshelf-surface\\.spec\\.mjs$', '--grep', grep];
+              const entry = { arm, capture, status: 'not-executed', startedAt: null, endedAt: null, exitCode: null };
+              arms.push(entry);
+              write('summary.json', { arms, setupFailure, complete: false });
+              await assertPortsFree();
+              if (generated.some(name => fs.existsSync(`artifacts/${name}`))) throw new Error('Previous arm output was not isolated');
+              const listed = spawnSync('./tests/e2e/node_modules/.bin/playwright', [...args, '--list', '--reporter=json'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+              fs.writeFileSync(`${armDir}/selected-three.json`, listed.stdout || '');
+              if (listed.status !== 0 || listed.error) throw new Error('Test collection failed');
+              validate(JSON.parse(listed.stdout));
+              fs.writeFileSync(`${armDir}/config-proof.json`, JSON.stringify({ changedProperties: capture ? [] : ['use.video', 'use.trace'], trace: capture ? base.use.trace : 'off', video: capture ? base.use.video : 'off', screenshot: base.use.screenshot, retries: base.retries, workers: base.workers, deepRestorationMatchesBaseline: true }, null, 2));
+              entry.startedAt = new Date().toISOString();
+              entry.status = 'running';
+              write('summary.json', { arms, setupFailure, complete: false });
+              console.log(`ABAB ${arm}: starting exact three tests`);
+              const run = spawnSync(process.execPath, ['scripts/ci/playwright-shard.mjs', ...args], { stdio: 'inherit' });
+              entry.endedAt = new Date().toISOString();
+              entry.exitCode = run.status;
+              entry.signal = run.signal;
+              entry.status = run.status === 0 ? 'passed' : 'failed';
+              for (const name of generated) if (fs.existsSync(`artifacts/${name}`)) fs.renameSync(`artifacts/${name}`, `${armDir}/${name}`);
+              fs.writeFileSync(`${armDir}/exit-status.json`, JSON.stringify(entry, null, 2));
+              if (run.error || run.signal || run.status === null) throw new Error('Test invocation interrupted or could not start');
+              const result = JSON.parse(fs.readFileSync(`${armDir}/playwright-cross-browser-results.json`, 'utf8'));
+              const results = validate(result);
+              if (results.some(x => !x.test.results?.length || x.test.results.some(result => ['skipped', 'interrupted'].includes(result.status)))) throw new Error('Incomplete test execution');
+              console.log(`ABAB ${arm}: exit ${run.status}; ${JSON.stringify(result.stats)}`);
+            }
+          } catch (error) {
+            setupFailure = { message: error.message, arm: arms.at(-1)?.arm ?? null };
+            console.error('ABAB setup/incomplete failure:', error.message);
+          } finally {
+            const after = snapshot();
+            write('source-after.json', after);
+            const sourceUnchanged = isDeepStrictEqual(before, after);
+            const complete = !setupFailure && arms.length === 4 && arms.every(arm => ['passed', 'failed'].includes(arm.status));
+            const success = complete && sourceUnchanged && arms.every(arm => arm.exitCode === 0);
+            write('summary.json', { arms, setupFailure, sourceUnchanged, complete, success });
+            process.exitCode = success ? 0 : 1;
+          }
           NODE
-          node scripts/ci/playwright-shard.mjs "${args[@]}"
+          node /tmp/pr833-abab.mjs
 
-      - name: Upload cross-browser artifacts
+      - name: Upload complete ABAB artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pr833-isolated-three-webkit-mobile-${{ github.sha }}
+          name: pr833-abab-full-${{ github.sha }}
+          path: artifacts/abab/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload compact ABAB diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr833-abab-diagnostics-${{ github.sha }}
           path: |
-            artifacts/playwright-cross-browser-results/
-            artifacts/playwright-cross-browser-report/
-            artifacts/playwright-cross-browser-results.json
-            artifacts/selected-three.json
-            artifacts/trace-only-config-proof.json
-          if-no-files-found: ignore
+            artifacts/abab/*.json
+            artifacts/abab/*/*.json
+            artifacts/abab/**/error-context.md
+          if-no-files-found: warn
           retention-days: 14
-
-      - name: Upload compact cross-browser diagnostics
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: pr833-isolated-three-diagnostics-webkit-mobile-${{ github.sha }}
-          path: |
-            artifacts/playwright-cross-browser-results.json
-            artifacts/selected-three.json
-            artifacts/trace-only-config-proof.json
-            artifacts/playwright-cross-browser-results/**/error-context.md
-          if-no-files-found: ignore
-          retention-days: 14
-
-      - name: Upload compact cross-browser screenshots
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: pr833-isolated-three-images-webkit-mobile-${{ github.sha }}
-          path: artifacts/playwright-cross-browser-results/**/*.png
-          if-no-files-found: ignore
-          retention-days: 14
-
