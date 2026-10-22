@@ -184,6 +184,15 @@ Last verified: 2026-08-29, PR #240.
 - Compatibility: retain the Vitest/Stryker constraints in Issue #328. Do not change runner generations or lower mutation thresholds to get green
 - References: [Issue #382](https://github.com/kame447/StudyPlanner/issues/382), [npm install documentation](https://docs.npmjs.com/cli/v11/commands/npm-install/)
 
+## Mutation job reaches 45 minutes without a final score (#837)
+
+- Evidence: scheduled main run `39071973530` and PR #835 runs `39654784610` / `39847947725` were cancelled at the existing job limit. The last two used the same 761 mutants and 2550 dry-run tests but completed different amounts of work. This predates #835's npm transport change; install/manifest checks succeeded.
+- Classification: harness capacity. Related discovery growth is not proof that every discovered test runs for every mutant; the pinned runner uses per-test coverage selection. Do not exclude transitive tests without coverage evidence.
+- Candidate: concurrency 4, preserving both mutate targets, TypeScript checker, related/per-test selection, thresholds 80/60/50, locked toolchain and 45-minute limit. No new dependency or permission. Built-in event-recorder writes to `reports/stryker/events`; CPU/memory diagnostics share the existing always-uploaded artifact directory. Events from an interrupted run are partial evidence, never a final score.
+- Acceptance: native execution on the final content completes before 45 minutes, emits a complete JSON report (761 mutants on main `82a948ae`), score at least 50, no manifest/tool drift, no timeout surge over the historical 1, and no false kills from shared-fixture races. A fast green alone is insufficient. Check the actual hardware logs and per-mutant statuses. See [Stryker parallel-worker guidance](https://stryker-mutator.io/docs/stryker-js/parallel-workers/).
+- If this candidate fails, investigate resource/fixture contention or use a deterministic partition with complete mutant union and weighted global score. Do not pad the timer or lower detection requirements. Preserve reports; only the launcher's own temporary tool installation is automatically removed.
+- Tracking and final native acceptance: [Issue #837](https://github.com/kame447/StudyPlanner/issues/837).
+
 ## Playwright OS-dependency installation stalls before tests
 
 Last verified: 2026-10-07, PR #524 head `efb8015c`, UI Regression Matrix run `37669944859`.

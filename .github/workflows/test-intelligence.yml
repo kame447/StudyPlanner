@@ -25,6 +25,7 @@ on:
       - 'scripts/ci/locked-test-toolchain.test.mjs'
       - 'scripts/ci/run-locked-mutation-tests.mjs'
       - 'scripts/ci/run-locked-mutation-tests.test.mjs'
+      - 'scripts/ci/mutation-capacity.test.mjs'
   schedule:
     - cron: '37 19 * * 6'
 
@@ -100,6 +101,12 @@ jobs:
         run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
       - name: Snapshot installed locked dependencies
         run: node scripts/ci/locked-test-toolchain.mjs snapshot /tmp/studyplanner-toolchain.json
+      - name: Record mutation runner capacity
+        shell: bash
+        run: |
+          mkdir -p reports/stryker
+          nproc | tee reports/stryker/cpu-count.txt
+          free -m | tee reports/stryker/memory-mb.txt
       - name: Run isolated pinned mutation toolchain
         run: npm run test:mutation:weekly-planning -- "$MUTATION_CONFIG"
       - name: Verify installed locked dependencies did not change
