@@ -1,4 +1,5 @@
 import type { WeeklyPlanningSemanticTurnObservation } from './trace/weeklyPlanningSemanticCensusTypes';
+import type { ControlledCandidateCommitRejection } from '../../../shared/controlledCandidateCommit';
 import type { WeeklyPlanningPreviewConstraintSatisfaction } from './application/weeklyPlanningPreviewConstraintSatisfaction';
 import type { WeeklyPlanningExistingScheduleGrounding } from './dialogue/weeklyPlanningStableV5DialogueContracts';
 import type {
@@ -91,6 +92,9 @@ export type WeeklyPlanningInteractionOutcome = {
 };
 
 export interface WeeklyPlanningTurnExecutionResult {
+  /** Diagnostic evidence on a discarded selected result; never persisted as planning authority. */
+  candidateCommitRejectionReason?: ControlledCandidateCommitRejection;
+  candidateCommitFallback?: 'luna_scheduled' | 'none';
   interactionOutcome?: WeeklyPlanningInteractionOutcome;
   /** Turn-local terminal explanation; grants no event creation or save authority. */
   communicationFacts?: WeeklyPlanningFixedEventCommunicationFacts;

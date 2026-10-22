@@ -223,12 +223,14 @@ export function AiPlanningView({
   const [isChatDrawerOpen, setIsChatDrawerOpen] = useState(false);
   const [chatQuery, setChatQuery] = useState('');
   const chatIndex = application.chat.index;
+  const chatSession = application.chat;
+  const activeChatId = chatIndex.activeChatId;
   const [imageAttachment, setImageAttachment] =
     useState<PendingPlanningImageAttachment | null>(null);
   const [isReadingAttachment, setIsReadingAttachment] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const cancellationGeneration = cancellationEpoch?.current ?? 0;
-  const submission = useRef({ active: false, ownerId: userId, index: chatIndex, token: null as symbol | null, turnStarted: false });
+  const submission = useRef({ active: false, ownerId: userId, chatSession, activeChatId, token: null as symbol | null, turnStarted: false });
   const [isListening, setIsListening] = useState(false);
   const [starterTodos, setStarterTodos] = useState<TodoTask[]>([]);
   const [starterMaterials, setStarterMaterials] = useState<StudyMaterial[]>([]);
@@ -339,12 +341,13 @@ export function AiPlanningView({
   // One operation owns OCR, planner submission, and final chat persistence.
   // Revoke it synchronously on owner/chat changes or unmount. Navigation
   // revokes pre-admission work in the visibility effect below.
+  // Checkpoint metadata publication does not change the active chat's ownership.
   useLayoutEffect(() => {
-    submission.current = { active, ownerId: userId, index: chatIndex, token: null, turnStarted: false };
+    submission.current = { active, ownerId: userId, chatSession, activeChatId, token: null, turnStarted: false };
     setIsSubmitting(false);
     setIsReadingAttachment(false);
     return () => { submission.current.active = false; submission.current.token = null; };
-  }, [userId, chatIndex, cancellationGeneration]);
+  }, [userId, chatSession, activeChatId, cancellationGeneration]);
 
   useLayoutEffect(() => {
     submission.current.active = active;
@@ -359,7 +362,7 @@ export function AiPlanningView({
 
   function ownsSubmissionScope(): boolean {
     return submission.current.active && submission.current.ownerId === userId
-      && submission.current.index === chatIndex
+      && submission.current.chatSession === chatSession && submission.current.activeChatId === activeChatId
       && (cancellationEpoch?.current ?? 0) === cancellationGeneration;
   }
 
@@ -665,7 +668,8 @@ export function AiPlanningView({
     setIsSubmitting(true);
     const ownsRequest = () => ownsSubmissionScope() && submission.current.token === token;
     const ownsCompletion = () => submission.current.token === token
-      && submission.current.ownerId === userId && submission.current.index === chatIndex
+      && submission.current.ownerId === userId && submission.current.chatSession === chatSession
+      && submission.current.activeChatId === activeChatId
       && (cancellationEpoch?.current ?? 0) === cancellationGeneration;
     try {
       setError('');
