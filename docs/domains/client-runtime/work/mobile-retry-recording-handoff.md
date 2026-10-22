@@ -1,13 +1,13 @@
 # Mobile WebKit paint and retry recording
 
-Status: root-paint candidate under native integration verification; not merge-ready.
+Status: original root paint restored after a visual regression; recording-policy scope only, not merge-ready. Issue #805 is not fixed by this PR.
 
 Branch: `fix/mobile-retry-recording`. Base: `82a948ae6dd9f39d6a445d3408b8b8d3ae2664a3`.
-Scope: avoid the obscured root grid while retaining every visible pixel-grid gradient, plus the existing first-retry recording policy for the bookshelf-surface spec. Preserve original screenshots, assertions, timeout, viewport/DPR, retry count, workers and the fail-on-flaky gate.
+Scope: retain the existing first-retry recording policy for the bookshelf-surface spec and the investigation evidence. Production pixel CSS and its unit tests are byte-identical to main. Preserve original screenshots, assertions, timeout, viewport/DPR, retry count, workers and the fail-on-flaky gate.
 
 Node prerequisite: copy only the `.node-version` 22.23.4 pin from unmerged PR #833 so automatic PR CI uses patched Node. This is not the remaining runtime guard or Undici remediation in #833, and does not authorize merging either PR.
 
-Next: verify exact native pixels, repeated unchanged bookshelf/month acceptance and the unchanged bundle budgets on the final published candidate. An isolated pass does not establish normal-CI reliability or a fixed rendering cost.
+Next: verify the restored production paint, original test collection and unchanged bundle budgets on the final published head. Resolve remaining baseline failures through their owning investigations. An isolated pass does not establish normal-CI reliability or a fixed rendering cost.
 
 ## Root-paint continuation
 
@@ -19,24 +19,55 @@ long-term flake rate. Grid removal was diagnostic, not an accepted visual change
 The subsequent finite/strip tile candidate failed exact fractional-geometry
 RGBA comparison in run `39833530306` and is not adopted.
 
-The new candidate leaves the original repeating gradients and their phase on
-the body, shell and settings surfaces. It removes only the root grid behind the
-opaque, viewport-filling body, preserving the root canvas color. The new native
-pixel-grid-paint spec compares original/candidate/original-repeat RGBA in 128
-combinations of 390/1920px, DPR 1.5/3, light/dark, 100/200% root text,
-Home/settings, actual/fractional geometry and top/scrolled. Body opacity and
-viewport coverage, loaded font and unchanged geometry are explicit admissions.
-All comparisons require zero changed pixels; original acceptance remains intact.
+The root-removal candidate `b72e21149323588fa8a9ddf47f083e7c0b57e702`
+failed Matrix `39852846190`. Chromium's classic scrollbar reserves a 15 CSS-pixel
+gutter. At DPR 1.5 the body edge falls on a fractional device pixel, exposing
+the changed root paint. All 128 pixel cases failed coverage admission on both
+attempts; 48 identities also had actual RGBA differences on both attempts,
+while every original-repeat comparison was zero. The first audited sample
+differs only at device column 562 (body right 375 CSS px × 1.5), with 1,155
+changed pixels and maximum channel difference 4/255. This bound applies to
+that sample, not every identity or platform. Actual Windows classic-scrollbar
+and macOS overlay-scrollbar behavior remains unmeasured.
 
-Initial published candidate `135d5339f9d114291c2d1a826311958ec0cd6b12` has native
-CI in progress. Its UI Quality run `39848525088` fails the unchanged budget at
-CSS raw +41/gzip +3 bytes and JS total/largest gzip +16/+7 bytes. These are new
-candidate violations, not baseline exceptions. A smaller root declaration has
-eight focused tests, application and regenerated Worker typechecks, 613-case
-mobile collection (including the original 31 bookshelf cases) and a successful
-production build. Its unchanged checker still fails at CSS raw +3/gzip +5 and
-JS total/largest gzip +7/+7 bytes; no threshold is changed. Native exact-pixel
-and performance success are not yet claimed.
+A complete independent PNG audit of all 96 differing attempts (48 identities,
+retries 0/1) in artifact `12459682931` confirms one changed device-pixel column
+per image: 562 at 390px or 2857 at 1920px, exactly the fractional body boundary.
+Changed-pixel counts range from 203 to 1,266; maximum per-channel difference is
+10/255, not the first sample's 4/255. Changed-row bounds can extend to 1608;
+1,266 is the maximum count of changed rows, not their largest coordinate.
+These are bounds for the retained settled Linux Chromium DPR-1.5 corpus only;
+transitions and other platforms remain outside that proof.
+
+Firefox and WebKit desktop each passed all 128 settled pixel comparisons.
+WebKit mobile shard 2 passed all 31 bookshelf cases on their first attempts,
+including the three known #805 identities, once each. The earlier ordered
+original/grid-none contrast and these narrow-margin successes support further
+paint investigation, not a stable flake rate or a visually safe speed fix.
+Mobile shard 1 was cancelled at the unchanged 35-minute job limit, after 370
+passing stdout entries and three skips, with 77 of 128 pixel cases complete.
+Its missing final JSON is missing evidence. Month and Day 1280px each printed
+one first-attempt pass before cancellation; neither is a proven repair.
+
+The settled comparisons also exclude the real 200 ms body-background fade:
+an earlier Firefox observation had body alpha 250/255 during that transition.
+Removing root paint has no all-transition equivalence proof. The inverse
+candidate, retaining the root while making the body transparent, was rejected
+statically: fixed-body preview scroll locking uses `top: -lockedWindowScrollY`,
+so common-origin grid-phase equivalence is unproved. No inverse native run or
+experimentally observed inverse pixel failure is claimed.
+
+The original root and body backgrounds are therefore restored. The temporary
+128-case pixel spec, its cross-browser inclusion and the added root-ownership
+unit test are removed because their production change is rejected. All original
+regression assertions remain. The extra pixel cases caused the 424/189 shard
+allocation; restoring the original collection removes that added capacity cost
+without changing workers, deadlines, retries, screenshots or the job limit.
+
+The rejected root-removal head's Core verify passed, but UI Quality failed the
+unchanged budget at CSS +3 raw/+5 gzip bytes and JS total/largest gzip +7/+7.
+These were candidate violations, not baseline exceptions. Final restored-head
+build, budget and native acceptance remain required; no threshold is changed.
 
 The month overnight observation admits standard appearance. The pixel-only
 correction therefore cannot directly explain a month-case improvement; #776
