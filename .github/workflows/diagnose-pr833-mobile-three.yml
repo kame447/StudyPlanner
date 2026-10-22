@@ -40,37 +40,42 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
-      - name: Derive video-off diagnostic config and prove the only config change
+      - name: Derive trace-off diagnostic config and prove the only config change
         shell: bash
         run: |
           set -euo pipefail
-          cat > tests/e2e/playwright.video-off-diagnostic.config.mjs <<'CONFIG'
+          cat > tests/e2e/playwright.trace-off-diagnostic.config.mjs <<'CONFIG'
           import { isDeepStrictEqual } from 'node:util';
           import base from './playwright.cross-browser.config.mjs';
-          const diagnostic = { ...base, use: { ...base.use, video: 'off' } };
-          const restored = { ...diagnostic, use: { ...diagnostic.use, video: base.use.video } };
+          const control = { ...base, use: { ...base.use, video: 'off' } };
+          const diagnostic = { ...control, use: { ...control.use, trace: 'off' } };
+          const restoredControl = { ...diagnostic, use: { ...diagnostic.use, trace: control.use.trace } };
+          if (!isDeepStrictEqual(restoredControl, control)) throw new Error('Unexpected change versus video-off control');
+          const restored = { ...diagnostic, use: { ...diagnostic.use, video: base.use.video, trace: base.use.trace } };
           if (!isDeepStrictEqual(restored, base)) throw new Error('Unexpected diagnostic configuration change');
           if (base.use.video !== 'retain-on-failure' || diagnostic.use.video !== 'off') throw new Error('Unexpected video baseline');
+          if (base.use.trace !== 'retain-on-failure' || diagnostic.use.trace !== 'off') throw new Error('Unexpected trace baseline');
           export default diagnostic;
           CONFIG
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import base from './tests/e2e/playwright.cross-browser.config.mjs';
-          import diagnostic from './tests/e2e/playwright.video-off-diagnostic.config.mjs';
+          import diagnostic from './tests/e2e/playwright.trace-off-diagnostic.config.mjs';
           fs.mkdirSync('artifacts', { recursive: true });
-          const proof = { onlyChangedProperty: 'use.video', baseline: base.use.video, diagnostic: diagnostic.use.video,
+          const proof = { onlyChangedPropertyVersusVideoOffControl: 'use.trace', changedPropertiesVersusOriginal: ['use.video', 'use.trace'],
+            baselineTrace: base.use.trace, diagnosticTrace: diagnostic.use.trace, video: diagnostic.use.video,
             trace: diagnostic.use.trace, screenshot: diagnostic.use.screenshot, retries: diagnostic.retries, workers: diagnostic.workers };
-          fs.writeFileSync('artifacts/video-only-config-proof.json', JSON.stringify(proof, null, 2));
+          fs.writeFileSync('artifacts/trace-only-config-proof.json', JSON.stringify(proof, null, 2));
           console.log(proof);
           NODE
 
-      - name: Collect exactly three cases, then compare video-off diagnostically
+      - name: Collect exactly three cases, then compare trace-off diagnostically
         shell: bash
         env:
           SELECTED_GREP: 'material long text 1920x1080 (saves the last chapter and preserves it after full reload at (100|200)%|keeps full detail text and cancels unsaved chapter edits at 200%)$'
         run: |
           set -euo pipefail
-          args=(test --config=tests/e2e/playwright.video-off-diagnostic.config.mjs --project=webkit-mobile '(^|/)bookshelf-surface\.spec\.mjs$' --grep "$SELECTED_GREP")
+          args=(test --config=tests/e2e/playwright.trace-off-diagnostic.config.mjs --project=webkit-mobile '(^|/)bookshelf-surface\.spec\.mjs$' --grep "$SELECTED_GREP")
           mkdir -p artifacts
           ./tests/e2e/node_modules/.bin/playwright "${args[@]}" --list --reporter=json > artifacts/selected-three.json
           node --input-type=module <<'NODE'
@@ -110,7 +115,7 @@ jobs:
             artifacts/playwright-cross-browser-report/
             artifacts/playwright-cross-browser-results.json
             artifacts/selected-three.json
-            artifacts/video-only-config-proof.json
+            artifacts/trace-only-config-proof.json
           if-no-files-found: ignore
           retention-days: 14
 
@@ -122,7 +127,7 @@ jobs:
           path: |
             artifacts/playwright-cross-browser-results.json
             artifacts/selected-three.json
-            artifacts/video-only-config-proof.json
+            artifacts/trace-only-config-proof.json
             artifacts/playwright-cross-browser-results/**/error-context.md
           if-no-files-found: ignore
           retention-days: 14
