@@ -8,6 +8,8 @@ import { createOpenAiCompatibleClient } from '../../../services/ai/openAiCompati
 import { getAiConfig } from '../../../lib/aiConfig';
 import { createSemanticTurnCensusScope, productionSemanticCensusOptions } from '../../productObservability/semanticTurnCensus';
 import type { SemanticCensusMetadata } from '../../../../shared/semanticTurnCensus';
+import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../../../shared/d5AnswerPolicy';
+import { recordControlledCandidateEvaluation } from './weeklyPlanningTurnTraceSideEffects';
 
 export interface ControlledCandidateDomainHost extends Pick<ControlledCandidateDomainOptions, 'inputForTurn' | 'requestContextForTurn' | 'continueSelectedTurn' | 'sourceAccess'> {
   readonly choiceServices?: WeeklyPlanningCandidateChoiceServices;
@@ -29,6 +31,13 @@ export function createControlledCandidateChoiceOptions(domain: ControlledCandida
       host.bindSemanticObservation(observation);
     }
     const client = createCandidateChoiceClient({ ...host.choiceServices, semanticPolicy: artifact.semanticPolicy,
+      ...(domain.domainPolicyVersion === D5_TOP1_ANSWER_POLICY_VERSION ? {
+        onEvaluation(request, evaluation) {
+          if (request.context.question.code !== 'missing_effort_estimate'
+            || request.context.scope.domainPolicyVersion !== D5_TOP1_ANSWER_POLICY_VERSION) return;
+          recordControlledCandidateEvaluation(request.requestId, evaluation);
+        },
+      } : {}),
       semanticCensusObserver: observation.client.semanticCensusObserver });
     return { policy: artifact.choicePolicy, maximumChildrenPerMenu: artifact.maximumChildrenPerMenu,
       maximumDecisions: artifact.maximumDecisions, choose: client.choose,

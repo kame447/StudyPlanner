@@ -1,6 +1,25 @@
 import { largestWeeklyPlanningStableV5Checkpoint, parseWeeklyPlanningStableV5PersistedSession, prepareWeeklyPlanningStableV5Checkpoint, serializeWeeklyPlanningStableV5CheckpointWithMessageCount } from '../weeklyPlanningStableV5SessionCodec';
 import type { PlanningState } from '../../types';
 import type { WeeklyPlanningFactGraphV5 } from '../../semantic/weeklyPlanningFactGraphV5';
+import { serializeC5Value } from './basis';
+
+/** Scoped read-only envelope basis; codec/storage details stay behind the checkpoint boundary. */
+export function createC5CheckpointBasisReader(scope: {
+  ownerId: string; weekStartDate: string; conversationId: string;
+}): () => string | null {
+  const key = `studyplanner.weeklyPlanning.stableV5.${scope.ownerId}.${scope.weekStartDate}`;
+  return () => {
+    const raw = window.localStorage.getItem(key);
+    if (raw === null) return null;
+    const decoded = parseWeeklyPlanningStableV5PersistedSession({ raw, ownerId: scope.ownerId, weekStartDate: scope.weekStartDate });
+    if (!decoded || decoded.conversationId !== scope.conversationId) throw new Error('Invalid fallback checkpoint scope.');
+    // A real rollback dispatch persists the original state again with a new savedAt.
+    // Compare the raw envelope, rather than the decoder's compatibility projection:
+    // only this persistence timestamp may differ; every other field is retained.
+    const { savedAt: _savedAt, ...meaning } = JSON.parse(raw);
+    return serializeC5Value(meaning);
+  };
+}
 
 export interface C5CheckpointWrite {
   status: 'committed' | 'failed' | 'unknown';
