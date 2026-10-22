@@ -111,12 +111,19 @@ describe('C5 actual controller / reducer / runtime / acknowledged storage', () =
     expect(h.getState()).toEqual(before); expect(readC5RuntimeGraph(OWNER, h.conversationId)).toEqual(h.graph); expect([...memory.values]).toEqual(stored);
   });
 
-  it('rolls back known storage failure and retains consumption under quota reduction', async () => {
+  it('rolls back known storage failure before one ordinary reply with no consumption', async () => {
     const h = c5ControllerHarness(); await h.present(); const before = structuredClone(h.getState()); const stored = [...memory.values];
-    const set = vi.spyOn(memory.storage, 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError'); });
-    expect((await h.submit('教材aは1問7分')).accepted).toBe(false); expect(h.getState()).toEqual(before);
+    vi.spyOn(memory.storage, 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError'); });
+    const execute = vi.fn(async () => ({ state: before.intakeState!, message: '通常経路の返答', draftCandidates: [] }));
+    expect((await h.submit('教材aは1問7分', { execute })).accepted).toBe(true);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(h.getState().messages.slice(before.messages.length).map(message => message.role)).toEqual(['user', 'assistant']);
+    expect(h.getState().intakeState!.c5SelectionLedger!.consumed).toEqual([]);
     expect(readC5RuntimeGraph(OWNER, h.conversationId)).toEqual(h.graph); expect([...memory.values]).toEqual(stored);
-    set.mockImplementation((key, value) => { if (JSON.parse(value).planningState.messages.length > 1) throw new Error('QuotaExceededError'); memory.values.set(key, value); });
+  });
+  it('retains consumption under quota reduction', async () => {
+    const h = c5ControllerHarness(); await h.present();
+    vi.spyOn(memory.storage, 'setItem').mockImplementation((key, value) => { if (JSON.parse(value).planningState.messages.length > 1) throw new Error('QuotaExceededError'); memory.values.set(key, value); });
     expect((await h.submit('教材aは1問7分')).accepted).toBe(true);
     expect(reload().planningState.messages.length).toBeLessThanOrEqual(1); expect(reload().planningState.intakeState!.c5SelectionLedger!.consumed).toHaveLength(1);
     expect(resolution(reload().graph, 'work-a').estimatedMinutes).toBe(70);

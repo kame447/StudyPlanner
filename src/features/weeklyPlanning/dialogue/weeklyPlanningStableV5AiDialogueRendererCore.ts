@@ -31,6 +31,8 @@ const GROUNDING_ACK_REPAIR_INSTRUCTION = [
   'mode=required_before_resumeなら、acceptedFactsのうち会話上重要なFactをgroundingAcknowledgementに示し、',
   'そのFactに時刻・日付・数量などユーザーが明示した具体値がある場合はACK本文でもその具体値を落とさず、',
   '最終textをその短いACK本文から始めてからapplicationDecisionの質問へ戻ってください。',
+  'modeにかかわらず、反映済みの所要時間を述べる場合はplanningInformation.effortEstimatesの現在有効な対象・測定種別・値・単位・概数性と一致させてください。',
+  'currentUserMessageやrecentConversationに値があるだけでは反映済みの根拠になりません。旧値の否定と、新しく肯定する値を区別してください。',
 ].join('');
 
 function rendererPromptTraceContext(prompt: {

@@ -76,7 +76,7 @@ export function numericPendingBoundToInputV5(input: WeeklyPlanningSemanticNormal
   // Full workload scope is fixed by machine state, not merely an opaque hash or a label.
   const scope = { taskId: workload.taskId, componentId: workload.componentId, amount: workload.amount, unitCode: workload.unitCode,
     quantityRole: workload.quantityRole, rangeStart: workload.rangeStart, rangeEnd: workload.rangeEnd, perOccurrence: workload.perOccurrence, periodExpression: workload.periodExpression };
-  const complete = numericPendingCompleteScopeV5(input);
+  const complete = numericPendingCompleteScopeV5(input, typeof state.binding.scope.domainPolicyVersion === 'string' ? state.binding.scope.domainPolicyVersion : undefined);
   // Historical dormant PoC fixtures retain their original framing. The registered
   // domain requires its fresh question snapshot and always supplies complete scope.
   const boundScope = canonicalCandidateSerialization(state.binding.scope);

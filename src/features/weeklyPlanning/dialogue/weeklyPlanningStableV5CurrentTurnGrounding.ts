@@ -36,6 +36,20 @@ function groundingFact(
   };
 }
 
+function effortTargetLabels(graph: WeeklyPlanningFactGraphV5, taskId: string, targetId: string): string[] {
+  const labels = [graph.tasks.find(task => task.id === taskId)?.title];
+  const workload = graph.workloads.find(fact => fact.id === targetId);
+  let componentId = workload?.componentId ?? graph.components.find(fact => fact.id === targetId)?.id ?? null;
+  const seen = new Set<string>();
+  while (componentId && !seen.has(componentId)) {
+    seen.add(componentId);
+    const component = graph.components.find(fact => fact.id === componentId);
+    labels.push(component?.label);
+    componentId = component?.parentComponentId ?? null;
+  }
+  return labels.filter((label): label is string => typeof label === 'string' && label.length > 0);
+}
+
 /** Facts accepted by one request; the exact set a recommended acknowledgement may echo. */
 export function weeklyPlanningStableV5AcceptedFactsForTurn(
   graph: WeeklyPlanningFactGraphV5,
@@ -82,6 +96,8 @@ export function weeklyPlanningStableV5AcceptedFactsForTurn(
         minutes: fact.minutes,
         unitCode: fact.unitCode,
         precision: fact.precision,
+        targetLabels: effortTargetLabels(graph, fact.taskId, fact.targetFactId),
+        unitLabel: graph.workloads.find(workload => workload.id === fact.targetFactId)?.unitLabel ?? null,
       })),
     ...currentTurnFacts(graph, graph.temporalConstraints, turnId).map((fact) =>
       groundingFact('temporal_constraint', fact, {
@@ -153,7 +169,7 @@ export function createWeeklyPlanningStableV5CurrentTurnGrounding(params: {
     && params.previousQuestionCode === params.currentQuestionCode;
 
   return {
-    mode: sameQuestionStillPending ? 'required_before_resume' : 'recommended',
+    mode: sameQuestionStillPending || acceptedFacts.some(fact => fact.kind === 'effort_estimate') ? 'required_before_resume' : 'recommended',
     acceptedFacts,
   };
 }

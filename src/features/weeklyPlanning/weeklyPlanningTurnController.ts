@@ -17,9 +17,10 @@ import type {
 import type { WeeklyPlanningSelectedStarterTargetV5 } from './semantic/weeklyPlanningTurnEvidenceV5';
 import type { WeeklyPlanningMachineBoundEffortAnswerV5 } from './semantic/weeklyPlanningMachineBoundAnswerV5';
 import type { C5LocalSelectionOptions } from './application/c5LocalSelection/contracts';
-import { captureRegisteredCandidateQuestion, stageRegisteredCandidateTurn, registerC5CandidateDomain, type ControlledCandidateRegistry, type RegisteredControlledCandidateAdapter } from './application/weeklyPlanningControlledCandidateRegistry';
+import { captureRegisteredCandidateQuestion, controlledCandidateQuestionCode, stageRegisteredCandidateTurn, registerC5CandidateDomain, type ControlledCandidateRegistry, type RegisteredControlledCandidateAdapter } from './application/weeklyPlanningControlledCandidateRegistry';
 import { decodeC5Ledger } from './application/c5LocalSelection/basis';
 import { commitControlledCandidateTurn, hasC5Recovery, readC5RuntimeGraph } from './application/c5LocalSelection/controlledCommit';
+import { captureControlledCandidateFallback } from './application/c5LocalSelection/controlledFallback';
 
 export interface WeeklyPlanningControllerSession {
   ownerId: string;
@@ -298,16 +299,24 @@ export async function submitWeeklyPlanningControlledTurn(
     ...(params.c5LocalSelection ? [registerC5CandidateDomain(params.c5LocalSelection)] : []),
     ...(params.candidateDomains ?? []),
   ];
+  const sequence = params.session.requestSequence;
+  let candidateSelected: RegisteredControlledCandidateAdapter | null = null;
+  const restoreCandidateFallback = candidateRegistry.length ? captureControlledCandidateFallback({
+    ownerId: params.ownerId, snapshot, begun, pending, getState: params.getState, dispatch: params.dispatch,
+    isCurrent: () => params.isActive?.() !== false && params.session.ownerId === params.ownerId
+      && params.session.conversationId === pending.conversationId && params.session.weekStartDate === pending.weekStartDate
+      && params.session.requestSequence === sequence && candidateSelected?.sourceAccess() === 'allowed',
+  }) : null;
   const captureQuestion = (state: PlanningIntakeState, graph: NonNullable<WeeklyPlanningTurnExecutionResult['stableV5Graph']>, messages: readonly WeeklyPlanningMessage[]) =>
     captureRegisteredCandidateQuestion(candidateRegistry, { state, graph, messages, pending,
+      previousQuestionCode: controlledCandidateQuestionCode(snapshot.intakeState),
       planningState: { ...snapshot, intakeState: state }, ownerId: params.ownerId, conversationId: pending.conversationId });
-  let candidateSelected: RegisteredControlledCandidateAdapter | null = null;
   try {
     candidateSelected = !supplementalContext && !params.selectedStarterTarget && !params.machineBoundAnswer
       ? await stageRegisteredCandidateTurn(candidateRegistry, { ownerId: params.ownerId, snapshot, pending, userText,
           getState: params.getState, readCommittedGraph: () => readC5RuntimeGraph(params.ownerId, pending.conversationId) })
       : null;
-    const executionResult = candidateSelected
+    let executionResult = candidateSelected
       ? await candidateSelected.continueSelectedTurn({ snapshot, pending, userText })
       : await params.execute({
       snapshot,
@@ -321,7 +330,7 @@ export async function submitWeeklyPlanningControlledTurn(
     if (executionResult.failure) {
       throw new WeeklyPlanningControlledSemanticFailure(executionResult.failure);
     }
-    const context: WeeklyPlanningControlledResultContext = {
+    let context: WeeklyPlanningControlledResultContext = {
       snapshot,
       pending,
       userText,
@@ -336,11 +345,27 @@ export async function submitWeeklyPlanningControlledTurn(
         assistantMessage, getState: params.getState, dispatch: params.dispatch });
       if (outcome.accepted) {
         await runBestEffort(() => params.onCommittedTurn?.({ ...context, committed: params.getState(), assistantMessage }));
-      } else if (!outcome.recoveryRequired) {
-        await runBestEffort(() => params.discardExecutionResult?.({ ...context, reason: 'commit_rejected' }));
-        params.dispatch({ type: 'cancel_turn', pending });
+        return outcome;
       }
-      return outcome;
+      if (outcome.recoveryRequired) return outcome;
+      const fallbackReady = restoreCandidateFallback?.() === true;
+      await runBestEffort(() => params.discardExecutionResult?.({ ...context,
+        result: { ...executionResult, candidateCommitRejectionReason: outcome.rejectionReason,
+          candidateCommitFallback: fallbackReady ? 'luna_scheduled' : 'none' }, reason: 'commit_rejected' }));
+      // The awaited observer may allow intervening work. Revalidate after it; scheduled is never a completion claim.
+      if (!fallbackReady || !restoreCandidateFallback?.()) {
+        params.dispatch({ type: 'cancel_turn', pending });
+        return outcome;
+      }
+      // Definitive rejection, original graph/checkpoint/ledger, same owner and exactly one begun user turn.
+      // Use ordinary interpretation once; never select again or recursively submit the turn.
+      candidateSelected = null;
+      executionResult = await params.execute({ snapshot, pending, userText,
+        supplementalContext: supplementalContext || undefined, selectedStarterTarget: params.selectedStarterTarget,
+        ...(params.machineBoundAnswer ? { machineBoundAnswer: params.machineBoundAnswer } : {}) });
+      result = executionResult;
+      if (executionResult.failure) throw new WeeklyPlanningControlledSemanticFailure(executionResult.failure);
+      context = { snapshot, pending, userText, result: executionResult };
     }
     if (params.isActive?.() === false || !isSameWeeklyPlanningPendingTurn(params.getState().pendingTurn, pending)) {
       await runBestEffort(() => params.discardExecutionResult?.({ ...context, reason: 'stale' }));

@@ -2,6 +2,7 @@ import {
   recordWeeklyPlanningStableV5TurnTrace,
 } from '../trace/weeklyPlanningStableV5TraceRuntime';
 import {
+  recordWeeklyPlanningStableV5DebugTrace,
   takeWeeklyPlanningStableV5DebugTrace,
   type WeeklyPlanningStableV5DebugTraceEvent,
 } from '../trace/weeklyPlanningStableV5DebugTrace';
@@ -17,6 +18,14 @@ import type { WeeklyPlanningTurnExecutionResult } from '../weeklyPlanningTurnExe
 import {
   getWeeklyPlanningStableV5RuntimeSession,
 } from './weeklyPlanningStableV5RuntimeSession';
+import type { CandidateChoiceEvaluation } from '../../../../shared/candidateChoiceDecision';
+
+/** Preserve validated provider scores separately from the strict common-gate adapter. */
+export function recordControlledCandidateEvaluation(requestId: string, evaluation: CandidateChoiceEvaluation): void {
+  const rawResponse = JSON.stringify(evaluation);
+  recordWeeklyPlanningStableV5DebugTrace({ requestId, stage: 'semantic_provider_response',
+    data: { attempt: 'numeric_pending_choice_raw', rawResponse, responseLength: rawResponse.length } });
+}
 
 export interface WeeklyPlanningTurnTraceSideEffectServices {
   getRuntimeSession: typeof getWeeklyPlanningStableV5RuntimeSession;
@@ -147,6 +156,10 @@ export function recordDiscardedWeeklyPlanningApplicationTurn(params: {
   result: WeeklyPlanningTurnExecutionResult;
   reason: 'stale' | 'commit_rejected';
 }, services: WeeklyPlanningTurnTraceSideEffectServices = defaultTraceServices): Promise<void> | null {
+  if (params.result.candidateCommitRejectionReason) recordWeeklyPlanningStableV5DebugTrace({
+    requestId: params.pending.requestId, stage: 'runtime_branch_selected', severity: 'warn',
+    data: { branch: `candidate_commit_${params.result.candidateCommitRejectionReason}:${params.result.candidateCommitFallback ?? 'none'}` },
+  });
   const range = stableV5PlanningRange(params.pending.conversationId, services);
   const dialogueRendererTrace = rendererTraceForPersistence(params.result);
   const debugTraceEvents = debugTraceEventsForPersistence(
@@ -167,7 +180,8 @@ export function recordDiscardedWeeklyPlanningApplicationTurn(params: {
     planningRangeEnd: range.planningRangeEnd,
     errorCode: params.reason === 'stale'
       ? 'stale_async_result_discarded'
-      : 'commit_rejected',
+      : params.result.candidateCommitRejectionReason
+        ? `candidate_commit_${params.result.candidateCommitRejectionReason}` : 'commit_rejected',
   });
 }
 
