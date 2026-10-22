@@ -111,4 +111,4 @@ Client-first does not imply client-authoritative shared state. Authentication, o
 
 - [Optional delivery native acceptance](work/delivery-acceptance-ci-handoff.md): PR #729 fixture, emitted-asset and browser-transport corrections; native rerun tracked separately.
 
-- [Mobile retry-only recording](work/mobile-retry-recording-handoff.md): bounded CI capture policy; functional and rendering acceptance remain separate.
+- [Mobile WebKit paint and retry recording](work/mobile-retry-recording-handoff.md): obscured root-grid paint and bounded CI capture; exact-pixel and functional acceptance remain separate.

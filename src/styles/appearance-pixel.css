@@ -19,6 +19,8 @@ html[data-appearance='pixel'] *::placeholder {
 }
 
 html[data-appearance='pixel'] {
+  /* Body covers this canvas; avoid rasterizing an obscured second grid. */
+  background: var(--pixel-canvas);
   --pixel-paper: color-mix(in srgb, #fffefa 96%, var(--accent) 4%);
   --pixel-canvas: color-mix(in srgb, #edf2e7 90%, var(--accent) 10%);
   --pixel-edge: color-mix(in srgb, var(--accent-strong) 72%, #29392f 28%);
@@ -49,12 +51,8 @@ html[data-appearance='pixel'][data-theme='dark'] {
   --pixel-button: color-mix(in srgb, var(--accent-strong) 72%, #0f1720 28%);
 }
 
-/* The opaque, viewport-filling body owns the visible grid. Keep the root
-   canvas color without rasterizing a second, completely covered grid. */
-html[data-appearance='pixel'] {
-  background: var(--pixel-canvas) !important;
-}
-/* Keep the original gradient dimensions and phase on every visible surface. */
+/* The opaque, viewport-filling body owns the visible grid. Keep its original
+   gradient dimensions and phase, including on fractional-sized surfaces. */
 html[data-appearance='pixel'] :is(body, .app-shell, .app-settings-page, .app-settings-header, .app-settings-tabs) {
   background: var(--pixel-grid-paper), var(--pixel-canvas) !important;
 }
