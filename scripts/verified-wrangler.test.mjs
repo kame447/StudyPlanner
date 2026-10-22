@@ -43,7 +43,7 @@ describe('verified Wrangler loader boundary', () => {
     const root = fixture(); const first = installation(root, 'first'); const second = installation(root, 'second');
     expect(load(root, [join(root, 'absent'), first.path, second.path])).toEqual({ marker: 'first' });
   });
-  it.each(['4.151.0', '4.151.2', undefined])('fails closed on version %s before importing or trying a later candidate', (version) => {
+  it.each(['4.150.9', '4.151.1', '4.151.2', undefined])('fails closed on version %s before importing or trying a later candidate', (version) => {
     const root = fixture(); const rejected = installation(root, 'rejected', 'temporary', false);
     writeFileSync(join(rejected.pkg, 'package.json'), JSON.stringify({ version }));
     const supported = installation(root, 'supported');

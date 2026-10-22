@@ -4,7 +4,7 @@ import { delimiter, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // Supported toolchain policy, not evidence of a fresh live-provider evaluation.
-export const PINNED_WRANGLER_VERSION = '4.151.1';
+export const PINNED_WRANGLER_VERSION = '4.151.0';
 
 export async function loadVerifiedWrangler({ purpose, missingMessage }) {
   for (const directory of (process.env.PATH ?? '').split(delimiter)) {
