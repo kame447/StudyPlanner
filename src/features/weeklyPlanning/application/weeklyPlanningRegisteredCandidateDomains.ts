@@ -1,3 +1,4 @@
+import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../../../shared/d5AnswerPolicy';
 import type { ControlledCandidateRegistry } from './weeklyPlanningControlledCandidateRegistry';
 import { registerControlledCandidateDomain } from './weeklyPlanningControlledCandidateRegistry';
 import type { ControlledCandidateDomainHost } from './weeklyPlanningControlledCandidateChoice';
@@ -11,8 +12,27 @@ export const D5_DOMAIN_POLICY_VERSION = 'd5-exact-minutes-2026-10-14-v1';
 
 /** A release artifact is required before this domain may consume a live turn. */
 export const D5_CHOICE_CALIBRATION: unknown = null;
-export const D5_ANSWER_PROPOSAL_POLICY_VERSION = 'd5-answer-proposal-2026-10-20-v1';
-export const D5_ANSWER_PROPOSAL_CALIBRATION: unknown = null;
+export const D5_ANSWER_PROPOSAL_POLICY_VERSION = D5_TOP1_ANSWER_POLICY_VERSION;
+/** User-authorized top-1 release policy; not a new holdout/calibration GO claim. */
+export const D5_ANSWER_PROPOSAL_CALIBRATION: unknown = {
+  domain: 'd5_numeric',
+  domainPolicyVersion: D5_TOP1_ANSWER_POLICY_VERSION,
+  mode: 'canary',
+  choicePolicy: {
+    id: 'issue305-d5-top1-v2-production',
+    calibrationEvidenceId: 'issue305-top1-live-2026-10-21',
+    rules: Array.from({ length: 8 }, (_, index) => ({
+      menuKind: 'leaves', optionCount: index + 2, depth: 0,
+      minimumTopProbability: 0, minimumMargin: 0,
+    })),
+  },
+  semanticPolicy: {
+    calibrationEvidenceId: 'issue305-top1-live-2026-10-21',
+    maximumConditionChange: 1, maximumIndependentMeaning: 1,
+  },
+  maximumChildrenPerMenu: 8,
+  maximumDecisions: 1,
+};
 
 export const TEMPORAL_DATE_CHOICE_CALIBRATION: unknown = null;
 

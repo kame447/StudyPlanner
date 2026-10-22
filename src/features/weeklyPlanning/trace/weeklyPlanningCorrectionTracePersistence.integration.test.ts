@@ -1,4 +1,5 @@
 import { createOpenAiCompatibleClient, resetOpenAiCompatibleClientRequestBudgetForTest, type OpenAiCompatibleClient } from '../../../services/ai/openAiCompatibleClient';
+import { createHash } from 'node:crypto';
 import { createWeeklyPlanningSemanticNormalizerV5 } from '../semantic/weeklyPlanningSemanticNormalizerV5';
 import { canonicalizeWeeklyPlanningSemanticDocumentWithLifecycleV5 } from '../semantic/weeklyPlanningSemanticCanonicalizerLifecycleV5';
 import { parseWeeklyPlanningFactGraphV5, serializeWeeklyPlanningFactGraphV5 } from '../semantic/weeklyPlanningFactGraphValidatorV5';
@@ -595,6 +596,17 @@ it('keeps an oversized real accepted-reference turn with explicit partial-eviden
 it.each([false, true])('persists explicit local B/session with pending A/total through retry and Worker (oversized=%s)', async oversized => {
   const turn = await generatedExactReferenceTurn(oversized, true);
   const { entry, stored } = await persistGeneratedExactReference(turn);
+  // Baseline22e42203 full system at transport, then the existing explicit1500B
+  // trace prefix through append/retry/Worker. Full requestBytes remain below.
+  for (const [index, messages] of [turn.requests[1].messages, entry.aiInterpreter.input.requests[1].messages,
+    (stored.aiInterpreter as WeeklyPlanningTraceTurnDiagnosticEntry['aiInterpreter']).input.requests[1].messages].entries()) {
+    const system = messages.find(message => message.role === 'system')!.content;
+    expect(createHash('sha256').update(system).digest('hex')).toBe(index === 0
+      ? '6fd5883202646033dfb7f209ed5529341381f7922de579cb319e24a5c50c9c3c'
+      : '8177d24affeb6bccf24121045bce6dddc344f0af250f58cbcf7c784f85b85046');
+    if (index > 0) expect(system).toContain('…[trace truncated]');
+  }
+  expect(entry.diagnostics.truncation?.fields).toContain('aiInterpreter.input.requests[1].messages[0].content');
   expect(entry.aiInterpreter.input.requests.map(request => request.attempt)).toEqual(turn.attempts);
   entry.aiInterpreter.input.requests.forEach((request, index) => {
     expect(request.requestBytes).toBe(measureWeeklyPlanningTraceJsonBytes(turn.requests[index]));
