@@ -87,31 +87,17 @@ export function WeekSpanningEventsLane({
           title: `${occurrence.title} / ${occurrence.start.date} ${occurrence.start.time} - ${occurrence.end.date} ${occurrence.end.time}`,
         };
 
-        if (plan) {
-          return (
-            <button
-              {...commonProps}
-              key={occurrence.id}
-              type="button"
-              aria-label={`${occurrence.title}。終日または日を跨ぐ予定。タップで編集、長押しで操作`}
-              onClick={() => onOpenPlan?.(plan)}
-              onContextMenu={(event) => event.preventDefault()}
-              style={{ ...commonProps.style, cursor: 'pointer' }}
-            >
-              {occurrence.title}
-            </button>
-          );
-        }
-
         if (!isReadOnlyTimetable) {
           return (
             <button
               {...commonProps}
               key={occurrence.id}
               type="button"
-              aria-label={`${occurrence.title}。終日または日を跨ぐ予定。タップまたは長押しで操作`}
-              aria-haspopup="menu"
-              onClick={(event) => onOpenOccurrence(occurrence, event.currentTarget)}
+              aria-label={`${occurrence.title}。終日または日を跨ぐ予定。${plan ? 'タップで編集、長押しで操作' : 'タップまたは長押しで操作'}`}
+              aria-haspopup={plan ? undefined : 'menu'}
+              onClick={plan
+                ? () => onOpenPlan?.(plan)
+                : (event) => onOpenOccurrence(occurrence, event.currentTarget)}
               onContextMenu={(event) => event.preventDefault()}
               style={{ ...commonProps.style, cursor: 'pointer' }}
             >
