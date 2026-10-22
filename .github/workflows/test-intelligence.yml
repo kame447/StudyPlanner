@@ -26,6 +26,8 @@ on:
       - 'scripts/ci/run-locked-mutation-tests.mjs'
       - 'scripts/ci/run-locked-mutation-tests.test.mjs'
       - 'scripts/ci/mutation-capacity.test.mjs'
+      - 'scripts/ci/prepare-j1-worker-fixture.mjs'
+      - 'scripts/ci/prepare-j1-worker-fixture.test.mjs'
   schedule:
     - cron: '37 19 * * 6'
 
