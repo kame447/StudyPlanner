@@ -32,6 +32,15 @@ Each durable entry should record:
 
 Do not record credentials, secret values, access tokens, private user data, or raw sensitive logs here.
 
+## Full unit-suite jobs need historical Worker source
+
+- Symptom: Test Intelligence coverage fails in `focusedContextualBindingWire.test.ts` with `fatal: not a tree object: 070d25cbe14796aebb8168ac5425c93e3506df1c`, while application and coverage-provider installation and locked-dependency checks pass (PR #835, job 119412057888).
+- Cause: the old/new Worker compatibility regression archives the immutable pre-J1 Worker from Git. A depth-1 checkout omits that historical commit; this is a harness precondition failure, not evidence of a registry or production defect.
+- Repair: use `fetch-depth: 0` with `persist-credentials: false` in jobs running the complete unit suite, matching core CI. The coverage and resumable-command jobs need this history; mutation and audit jobs keep their existing checkout settings.
+- Preconditions and limits: ordinary read-only repository checkout is sufficient. Do not remove, skip or replace the actual historical Worker regression, bypass the registry, or change timeouts or mutation thresholds. This repair does not resolve the separate 45-minute mutation cancellation.
+- Verification: `scripts/ci/test-intelligence-workflow.test.mjs` checks full-suite checkout history and credentials, with shallow/default negative controls. Run it with `workers/ai-proxy/src/decision/focusedContextualBindingWire.test.ts`; parent-owned integration and native coverage must still pass on the published content.
+- Last reviewed: 2026-10-23.
+
 ## Admin Logs: authenticated diagnostic drill-down
 
 Last reviewed: 2026-10-16. The authenticated Admin Logs session listing was observed on the live Pages site. A listed entry count alone was not a successful detail retrieval; an actual mobile failure's cause cannot be inferred from this index.

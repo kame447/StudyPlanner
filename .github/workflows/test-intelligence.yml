@@ -28,6 +28,7 @@ on:
       - 'scripts/ci/mutation-capacity.test.mjs'
       - 'scripts/ci/prepare-j1-worker-fixture.mjs'
       - 'scripts/ci/prepare-j1-worker-fixture.test.mjs'
+      - 'scripts/ci/test-intelligence-workflow.test.mjs'
   schedule:
     - cron: '37 19 * * 6'
 
@@ -46,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
