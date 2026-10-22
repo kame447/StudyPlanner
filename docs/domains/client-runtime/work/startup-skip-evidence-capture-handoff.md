@@ -1,6 +1,7 @@
 # Startup skip evidence capture
 
-Status: local test-only candidate; native browser verification and publication pending.
+Status: native verification passed on the published original head; current-main
+integration verification in progress.
 Branch: `test/startup-skip-capture-order`, based on main `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`.
 Scope: diagnose the ready touch-skip failure observed on PR #801 without changing
 startup product behavior or the separate complete-playback acceptance tests.
@@ -52,13 +53,28 @@ possible race against real playback.
   production build passed in 14.23 seconds. Existing documented telemetry, error
   report, update-banner and Miniflare CF-fetch opt-outs were enabled; no
   network/security escalation was used.
-- Native browser execution of this candidate remains unverified. Existing local
-  browser-startup restrictions are not a passing test result.
+- This original local check did not execute native browsers. Local browser-startup
+  restrictions are not a passing result; the published native evidence is below.
 - No source-string regression is added: it would lock the implementation text
   without exercising playback. The existing actual-browser case is the relevant
   acceptance test, with an exact independent review of unchanged assertions.
 
-Completion requires an authorized native-browser run of
-this exact candidate, including the failing 1280px case and complete-playback
-cases. Keep this separate from #801's dependency correction unless publication
-scope is explicitly approved. No upstream write or main merge has been made.
+## Published native evidence and current-main continuation
+
+Published head `c35ec13dec8632416e25fb796fdb4e5ae70cacd1` passed
+[Browser Regression 39461225910](https://github.com/kame447/StudyPlanner/actions/runs/39461225910)
+and [UI Regression Matrix 39461225553](https://github.com/kame447/StudyPlanner/actions/runs/39461225553).
+WebKit-mobile job `118760894583` passed all 22 startup-video cases on their first
+attempts, including both native touch-skip widths and the complete-playback
+cases. Its UI Quality failure was the six bundle categories from before main's
+budget calibration; that historical failure is not a current integration result.
+The successful native run addresses this candidate's acceptance; it does not
+prove the original trace's unrecorded native ended event.
+
+The authorized cleanup continuation normally merges main
+`82a948ae6dd9f39d6a445d3408b8b8d3ae2664a3` into the same branch. Parent-prepared
+local merge `ab9b7dbd093afde63cb5dac241544a7ac21c4a4a` preserves the startup
+native spec byte-for-byte. Fresh focused/type/native integration evidence is
+still required; prior green checks are bound to the published original head.
+Keep this separate from #801's dependency correction. The coordinator owns
+publication and the final integration gates; no main merge is claimed here.
