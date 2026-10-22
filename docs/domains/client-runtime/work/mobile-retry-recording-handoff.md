@@ -90,3 +90,28 @@ Compatibility verification: the installed Playwright 1.64.0 runner collected all
 Runtime-content HEAD `de81d0cfaa8d3368ae64cc08c16003821b160bda`, tree `6dea96e36868e091f9e44e4d7bbe66697b707850`: `npm run verify` exited 0 on official checksum-verified Node 22.23.4 / npm 10.9.9. Fresh application and regenerated Worker type checks passed; 1,061 test files and 11,118 tests passed (67 skipped, 1 todo); production build passed in 14.89 seconds. Log SHA256: `d6fafe6d3d2409d3d56e042ed64d523f1a3a87f26690be3bca5d6d4fac88bdee`.
 
 Application dependencies were installed from unchanged main manifests using npm ci; isolated Playwright 1.64.0 installation did not mutate those manifests. The only node_modules file modified after the initial inventory was Vitest's generated `.vite` results cache; no package source changed. The generated historical-worker fixture is excluded. Local tests used synthetic data with provider telemetry disabled. Main's installed Undici 7.29.1 remains unpatched here; #833 owns its separate mitigation. Local verification does not replace native browser, Firestore, budget or production gates.
+
+## Month entrance-blur experiment
+
+[Issue #776](https://github.com/kame447/StudyPlanner/issues/776) owns the motion decision.
+Serial test-only ABBA runs [39869068216](https://github.com/kame447/StudyPlanner/actions/runs/39869068216),
+[39869441180](https://github.com/kame447/StudyPlanner/actions/runs/39869441180), and
+[39870053449](https://github.com/kame447/StudyPlanner/actions/runs/39870053449)
+used the same production build per run on `5edc4ede`. All 12 first attempts
+were included: original A passed 2/6; treatment B passed 6/6. Four A retries
+separately passed 1/4. All three settled A/B/A-repeat gates passed exact
+geometry and zero changed RGBA pixels at 1280x900, DPR 3; independent PNG
+decoding confirmed all six pairs.
+
+The contrast supports an entrance-filter cost contribution under these runner
+conditions. Small samples, different hosts and ordered execution limit the
+conclusion; the first host passed both A attempts. E is carryover-sensitive;
+result durations include teardown and do not quantify body-deadline margin.
+These isolated runs do not replace the failed normal Matrix.
+
+Owner decision 2 remains pending: remove only four blur declarations from
+`month-day-sheet-backdrop-in`, retaining static blur 3px while the entrance
+background alpha animates. Entrance motion changes; sampled settled pixels
+match. Exit and panel motion remain unchanged. Day 1280 and Bookshelf #805
+remain unresolved. The temporary diagnostic is removed without adopting any
+production change; Issue #776 tracks the decision and subsequent verification.
