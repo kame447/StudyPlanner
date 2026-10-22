@@ -1,3 +1,4 @@
+import { D5_TOP1_ANSWER_POLICY_VERSION, D5_TOP1_SCOPE } from '../../../../shared/d5AnswerPolicy';
 import type { CandidateTuple } from '../application/candidateSelection';
 import { focusedContextualTargetV5 } from './weeklyPlanningFocusedContextualAnswerV5';
 import { validateWeeklyPlanningFactGraphValueV5 } from './weeklyPlanningFactGraphValidatorV5';
@@ -8,7 +9,7 @@ const bounded = (value: unknown, cap: number): value is string => typeof value =
   && value.trim().length > 0 && new TextEncoder().encode(value).length <= cap;
 
 /** Full semantic scope from typed graph references; never reconstruct ancestry from presentation text. */
-export function numericPendingCompleteScopeV5(input: WeeklyPlanningSemanticNormalizerInputV5): CandidateTuple | null {
+export function numericPendingCompleteScopeV5(input: WeeklyPlanningSemanticNormalizerInputV5, policyVersion?: string): CandidateTuple | null {
   try {
     const target = focusedContextualTargetV5(input);
     const graph = input.committedGraph;
@@ -44,6 +45,7 @@ export function numericPendingCompleteScopeV5(input: WeeklyPlanningSemanticNorma
       unitLabel: workload.unitLabel, quantityRole: workload.quantityRole, rangeStart: workload.rangeStart, rangeEnd: workload.rangeEnd,
       perOccurrence: workload.perOccurrence, periodExpression: workload.periodExpression,
       task: { category: task.category, title: task.title }, componentChain: chain,
-      answerKind: 'one_explicit_exact_positive_integer_minute_value', convertedUnitsAllowed: false, approximateAllowed: false };
+      ...(policyVersion === D5_TOP1_ANSWER_POLICY_VERSION ? D5_TOP1_SCOPE : {
+        answerKind: 'one_explicit_exact_positive_integer_minute_value', convertedUnitsAllowed: false, approximateAllowed: false }) };
   } catch { return null; }
 }

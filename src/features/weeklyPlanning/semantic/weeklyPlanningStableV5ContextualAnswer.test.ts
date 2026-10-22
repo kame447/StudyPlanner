@@ -79,6 +79,7 @@ function graph(params: {
 
 function answerDocument(params: {
   minutes?: number;
+  measurement?: 'total_duration' | 'duration_per_unit';
   quantityRole?: 'target';
   includeAdditionalTask?: boolean;
 }): WeeklyPlanningSemanticDocumentV5 {
@@ -105,9 +106,9 @@ function answerDocument(params: {
       ? [{
           localId: 'answer-effort',
           targetLocalId: 'answer-task',
-          kind: 'total_duration',
+          kind: params.measurement ?? 'duration_per_unit',
           minutes: params.minutes,
-          unitCode: null,
+          unitCode: params.measurement === 'total_duration' ? null : 'page',
           precision: 'exact',
           sourceText: '3時間です',
         }]
@@ -384,7 +385,7 @@ describe('quantity-role questions preserve independent semantic details', () => 
   it('falls through to ordinary canonicalization without changing the declared workload or another task', () => {
     const initial = graph({ quantityRole: 'declared', workloadCount: 2 });
     const before = structuredClone(initial);
-    const document = answerDocument({ minutes: 30 });
+    const document = answerDocument({ minutes: 30, measurement: 'total_duration' });
     Object.assign(document.tasks[0], {
       existingPublicId: 'task-2', title: initial.tasks[1].title,
       study: { purpose: 'unknown', contextLabel: null, components: [] },

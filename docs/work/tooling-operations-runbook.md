@@ -374,13 +374,89 @@ Publication and execution still require the applicable repository authorization.
 - Verification / cleanup: require every project leg and both nonempty mobile shards to pass, with the two shard listing totals summing to the full `--list --project=webkit-mobile` total. If the same commit times out again, stop and investigate shard balance or runner setup instead of treating the partial run as success.
 - Last verified: 2026-10-18
 
-## bundle-budget fails on main and on every PR (repository-wide overrun)
+## Bundle-budget history and measured baseline recovery
 
-- Operation / symptom: the UI Quality Automation `bundle-budget` job fails on main and on all PRs.
-- Known error signature: `scripts/ci/check-bundle-budget.mjs` reports violations such as JavaScript totalRaw ≈2.58 MB against the 2,265,000-byte limit; 8 metrics are over on main `a39defd8` (2026-10-17).
-- Root cause or strongest current explanation: accumulated application code, not a dependency update. With the same installed dependencies, controlled historical builds first exceed the JavaScript total limits at `ee815b47` (#566); its predecessor `9f0e0911` is within all limits; other metrics cross later (#610, #634, #653, #674). Analysis: [Issue #321](https://github.com/kame447/StudyPlanner/issues/321).
-- Safe workaround: judge a PR by its own delta against the main baseline artifact of the same run date (e.g. PR #717 `c8c32d12` → `da83eeda`: JS +1,798 B raw / +585 B gzip, CSS ±0) and record it in the PR.
-- Required permissions / preconditions: none.
-- What not to do: do not raise thresholds, weaken the guard or remove features to make it pass; any budget-policy change needs a human decision (#321).
-- Verification / cleanup: return to normal threshold judgement once a reviewed improvement lands on main.
-- Last verified: 2026-10-18
+The UI Quality Automation bundle gate accumulated a repository-wide overrun: main `a39defd8` (2026-10-17) exceeded eight metrics, and the parent reported no successful UI Quality run among the latest60 runs. Controlled historical builds first cross the JS aggregate limits at `ee815b47` (#566, unreadable-checkpoint retention); predecessor `9f0e0911` passes. Other metrics cross later (#610/#634/#653/#674). This is accumulated application growth, not a dependency upgrade. Reduction remains in [Issue #321](https://github.com/kame447/StudyPlanner/issues/321).
+
+Owner decision based on measured main/PR baseline, 2026-10-21 (#305/[PR #826](https://github.com/kame447/StudyPlanner/pull/826)): restore a blocking absolute regression gate by calibrating the six exceeded metrics exactly to the measured main baseline plus the PR's justified increment, with **no extra headroom**. The user approved Jev production rollout; these specific budget values are the owner's decision, not a separate user approval. Neither the checker nor its CI step is disabled. Existing CSS largest-chunk and optional-appearance limits remain unchanged.
+
+Three-stage comparison of actual written output (bytes):
+
+| Source | JS total raw / gzip | Largest JS raw / gzip | CSS total raw / gzip | Previous limits |
+| --- | ---: | ---: | ---: | --- |
+| Last calibration f99a916f | 2263870 / 609511 | 782798 / 221199 | 492097 / 83402 | PASS |
+| Main22e42203 | 2595556 / 704618 | 1029356 / 282169 | 513954 / 89911 | FAIL,6 metrics |
+| PR source c309b457 | 2614112 / 711066 | 1047214 / 288393 | 513954 / 89911 | FAIL,6 metrics |
+
+The last calibration changed `scripts/ci/check-bundle-budget.mjs` atf99a916f for the approved release stack on4e162408, with its history retained in the client-runtime unplanned-study work record. The matched reconstruction exactly reproduces that calibration's JS2263870/609511 bytes. All three source snapshots used the same installed dependency tree, patched Vite6.4.4 lock and Nodev22.23.0 (darwin/arm64), production environment and Vite build invocation. Main/PR configuration is byte-identical; the historical calibration retains its original esbuild configuration, while main/PR include the existing conservative Terser configuration. No new minifier change is adopted: an extra conservative re-minification experiment saved only1061 raw/677 gzip bytes and slightly worsened the largest chunk's gzip; size alone did not establish behavior compatibility.
+
+Evidence fingerprints: lock SHA256 `4d7a9c84d4dcc42dbdd3f50c28c2db87fbd134de6e11310a614e998819ff3ad4`; installed-tree SHA256 `1b140abb073baf04ca0195439e3c4f0f30718539550a523e1b90c7bc203d4883`; environment fingerprint `c2d8f9d9685778c90af70ffd95bb3f48dc911bea57eaa3738cdcdc5e938eefb0`. Main/PR config SHA256 `112120c98210436a0a559f5cbe4bf3742dea034f63c86516628d436389979337`; calibration config SHA256 `041c945f142b1dd2ac55549fd0478353bf9db4ff4c481b719a75c331b4c429f9`. The environment is represented by a digest, not copied credentials. Local evidence under the owning worktree's ignored `.cache/issue305-ci/` includes `summary.json`, `installed-tree.json`, `*-composition.json`, `*-budget.log`, module/output-family deltas and the probe/finalization scripts. Output metrics are measured after Vite finalization; preliminary generateBundle code lengths are not the final asset sizes.
+
+Composition: calibration→main pre-minification rendered-module growth is weekly planning+230547, components+197982, hooks+64091, other app+121476, shared+21384 and vendor+13946 bytes. Those source-attribution values are not exact minified per-module costs; JS chunk families also moved between the instrumented-runtime and runtime-trace chunks. Main→PR's actual written increment is18556 raw/6448 gzip JS bytes, CSS0; its principal source change is effort display validation (+21297 pre-minified rendered bytes). Expanded inspection of all2435 emitted PR module entries and44 written JS assets found no dev registry/enablement, loopback bridge, test/spec/testUtils/fixture or E2E harness leak. Calibration→main CSS net+21857 bytes comes from AdminApp+16400, StudyStreakPage+7779, TimetableView+4686, announcements+4193, schedule actions+3013, AI planning+2614, inquiry+875, week drag+687, appearance+17 and initial CSS−18407.
+
+New absolute limits, with the six changed values equal to the PR's actual output:
+
+| Metric | JS limit (bytes) | CSS limit (bytes) |
+| --- | ---: | ---: |
+| Total raw | 2614112 | 513954 |
+| Total gzip | 711066 | 89911 |
+| Largest raw | 1047214 | 425000 (unchanged) |
+| Largest gzip | 288393 | 70000 (unchanged) |
+
+The optional appearance limits remain stylesheet8000/font512000 bytes. Do not add tolerance, waive a failure, remove features or adopt unsafe transforms to fit these limits. Future growth needs explicit review and attribution; reductions and any broader source/module work stay in #321. Run the normal production build, unchanged blocking checker and boundary contract tests on the exact candidate; the parent owns frozen-HEAD PR/CI verification. Once merged, normal absolute threshold judgment resumes against these limits, replacing the former temporary main-delta workaround.
+
+Local successor verification on base8cf554c7 (which includes the Vite6.4.4 audit repair):8 budget tests pass, including exact raw boundaries/one-byte overflows and unchanged appearance guards; `npm run build` passes (1m24s); `node scripts/ci/check-bundle-budget.mjs` exits0 with no violations. All55 written JS/CSS assets are byte-identical to the measured PR snapshot, and all six changed metrics exactly equal their limits. `git diff --check` passes. The new root report is `.cache/issue305-ci/recalibrated-root-budget.json`; logs are `/private/tmp/jev305-budget-recalibration-{final-tests,build,check}.log`. No app/Worker/minifier behavior, deployment or secrets change. Parent next: commit this budget script/test/runbook checkpoint, run frozen PR #826 gates and continue its separate rollout work. Last verified: 2026-10-21.
+
+
+### D5 production release: exact second-stage increment (base f1f347c5)
+
+Owner decision based on measured release increment, 2026-10-21 (#305 release): parent7977 authorizes only the release artifact's measured increment over PR #826's calibrated `f1f347c5b206e7a2d032a86f9f91f922c4b47e98`, with no headroom. This succeeds the main/PR baseline limits above; all CSS and appearance limits stay unchanged.
+
+Controlled rebuilds compared f1f347c5 with rebased release `408b151df0f76932484a0944be439ba495e4b468`. `npm ci` used the delegated worktree's `.cache/npm-cache`; both builds used the same physical installed dependency tree (baseline Git archive symlink), Node22.23.0/darwin-arm64, Vite6.4.4, unchanged lock/config, the same environment and `npm run build`. No `.env` files exist in the worktree. Lock SHA256 `4d7a9c84d4dcc42dbdd3f50c28c2db87fbd134de6e11310a614e998819ff3ad4`; Vite config SHA256 `112120c98210436a0a559f5cbe4bf3742dea034f63c86516628d436389979337`; current installed-tree report SHA256 `a3546ed43825c9fba7a97ed2b54491829714701e8835c5b9976a630cfba32d94`; build-relevant environment digest `1f4fe046168b1477536724ae5c5c6bc821f847b9b95017bc74841b7efc86890b`. The digest excludes raw environment values from this record.
+
+| JS metric | f1f347c5 measured/limit | Release measured/new limit | Exact increment |
+| --- | ---: | ---: | ---: |
+| Total raw | 2614112 | 2614547 | +435 |
+| Total gzip | 711066 | 711285 | +219 |
+| Largest raw | 1047214 | 1047649 | +435 |
+| Largest gzip | 288393 | 288638 | +245 |
+
+Baseline checker exits0. Before this adjustment, the release checker exits1 for exactly those four JS increments and no other violation. Every CSS filename and SHA256 is identical between the two builds: actual aggregate513954 raw/89911 gzip, largest406102 raw/66585 gzip. Keep existing CSS limits513954/89911/425000/70000 and appearance stylesheet8000/font512000 unchanged.
+
+Only the main index raw size changes (+435); the other43 JavaScript chunks retain their raw sizes, with44 total on each snapshot. The sole frontend production-source delta installs the D5 v2 policy data and binds registration to its shared version in `weeklyPlanningRegisteredCandidateDomains.ts`; the selector/producer/runtime modules were already bundled. Hash changes in imports produce the remaining gzip differences (aggregate+219 versus index+245). The release's evaluated-only Worker header is not in the frontend import graph. There are no new chunk families, dependencies, minifier transforms or dev seam; all44 built JS files have zero existing dev-enablement markers. No feature was removed and no unrelated metric was adjusted.
+
+The budget contract tests pin the new exact four limits, retain one-byte raw aggregate/largest rejection, and preserve CSS/appearance rejection/missing-font checks. Build logs: `/private/tmp/d5-release-rebased-{baseline-build,build}.log` (1m54s/1m56s). Baseline and pre-adjustment checker logs: `/private/tmp/d5-release-rebased-{baseline-budget,budget-before}.log`. Controlled evidence is in the owning worktree's ignored `.cache/issue305-release/`: `installed-tree.json`, `environment-fingerprint.json`, `baseline-budget.json`, `release-budget-before.json` and `measurement.json`. Parent owns the final frozen-HEAD PR/CI verification and release review; reducing the older repository-wide growth remains #321, not a reason to add tolerance here.
+
+Final verification on `408b151d` plus only the four-file budget/test/runbook/work-record diff: clean install and installed Vite6.4.4 confirmed; app + regenerated Worker runtime types + Worker TypeScript checks pass (`/private/tmp/d5-release-rebased-typecheck.log`). The combined focused suite passes24 files/557 tests, including all8 budget boundary/appearance tests (`/private/tmp/d5-release-rebased-focused-final.log`,42.08s). The blocking checker independently exits0 with zero violations; all four JS measured metrics equal their new limits exactly (`/private/tmp/d5-release-rebased-budget-final.log`, `.cache/issue305-release/release-budget-final.json`). `git diff --check` and smoke/helper/config syntax checks pass. Only the four JS limits, their contract fixtures and documentation changed after the measured build; no application build input changed. No deployment, provider call or production smoke was performed. Last verified:2026-10-21.
+
+
+### D5 controlled rejection: exact guarded-fallback increment (base 8568c8aa)
+
+Owner decision based on measured commit-rejection fallback increment, 2026-10-21 (#305 rejection fallback): parent mail8437 authorizes the four final measured JS limits, with no headroom. These supersede the preceding D5 release limits. CSS, optional appearance limits, checker logic and the blocking CI step remain unchanged.
+
+| JS metric | 8568c8aa limit / prior measured baseline | Final measured / new limit | Exact increment |
+| --- | ---: | ---: | ---: |
+| Total raw | 2614547 | 2616972 | +2425 |
+| Total gzip | 711285 | 711893 | +608 |
+| Largest raw | 1047649 | 1050074 | +2425 |
+| Largest gzip | 288638 | 289210 | +572 |
+
+The increment implements graph/checkpoint/reducer/receipt/current-source checks before one ordinary Luna execution after a definitively uncommitted selected-candidate rejection, plus bounded rejection reasons and a scheduled/none diagnostic. It addresses the error-only rejection path found while investigating the production no-reply report; the precise production trigger remains unproven. It is not a general retry of rejected turns. Recovery-unknown, stale owner/view/source or intervening revisions cannot authorize fallback. The shared enum list is used at runtime only by the test-only smoke; application imports are types, so no runtime enum array is added to the production bundle.
+
+Astra's real-persistence probe at95089764 exposed a defect in the new guard: rollback's own load_state save refreshed only savedAt, so byte equality blocked the required fallback. The follow-up validates both checkpoints with the real codec and exact owner/week/conversation, then canonical-compares the original raw envelopes excluding only top-level savedAt. Every other field, including legacy fields stripped by the decoder, remains in the comparison. This adds247 raw/41 gzip aggregate and247 raw/42 gzip largest bytes over95089764; the table includes that final measured increment. Before its recalibration the checker exits1 for exactly those four JS metrics. Existing CSS/appearance limits and checker logic remain unchanged. Source/test/build evidence: `.cache/d5-persist-rollback-{red,focused,verification,typecheck,build,budget-tests}.log`;24 affected files/406 tests and full typecheck pass, final build51.54s uses the same normal-npm-ci dependency tree described below. The checker passes at the exact final limits after this adjustment.
+
+CI run39601297015 then found an architecture gate failure at982fc0b1: controlledFallback directly imported SessionCodec outside the explicit audited module set. The same scoped read/validation/raw-envelope basis operation now lives in the already audited C5 checkpoint facade; the consumer imports only that narrow operation. No decoder re-export, allowlist change or behavior change is used. This adds100 raw/27 gzip aggregate and100 raw/15 gzip largest bytes over982fc0b1; the table includes it. Source/test/build evidence: `.cache/d5-isolation-facade-{red,focused,verification,typecheck,build,budget-tests}.log`. The previous24-file union plus the required isolation gate passes25 files/407 tests; full typecheck and final build50.96s pass. Only four exact measured JS limits/fixtures change; CSS/appearance/checker logic remain unchanged.
+
+A normal `npm ci` (including install scripts) used the worktree `.cache/npm-cache`, followed by a clean Vite production build. Node22.23.0/darwin-arm64, Vite6.4.4, lock SHA256 `4d7a9c84d4dcc42dbdd3f50c28c2db87fbd134de6e11310a614e998819ff3ad4` and Vite config SHA256 `112120c98210436a0a559f5cbe4bf3742dea034f63c86516628d436389979337` match the prior release environment. The prior measured limits supply the baseline; this checkpoint did not reconstruct a second baseline build. Final CSS remains513954 raw/89911 gzip (largest406102/66585), appearance stylesheet7077/font500340. Before calibration, the checker exits1 for exactly the four JS metrics; afterward it exits0 with zero violations, each JS metric equal to its limit. Contract tests retain exact-boundary/one-byte overflow and CSS/appearance/missing-font detection.
+
+Evidence in the delegated worktree: `.cache/d5-commit-npm-ci.log`, `.cache/d5-commit-clean-build.log`, `.cache/d5-commit-final-typecheck.log`, `.cache/d5-commit-final-verification.log`, `.cache/d5-commit-final-budget-smoke.log`, `.cache/d5-commit-last-tests.log`, and `artifacts/quality-gate/bundle-budget.json`. Parent owns the final frozen commit/PR audit, CI and any production attempt; no deployment or provider/production request was performed here.
+
+### D5 chat ownership: checkpoint metadata must not revoke completion (base d8f8470e)
+
+Owner decision8487 raises only JS totalRaw from2616972 to the measured2617120 (+148 raw bytes), with no extra raw allowance. Other JS limits remain711893/1050074/289210; measured values are711872/1050074/289203. CSS/appearance, checker logic and CI stay unchanged. The same Node22.23.0/darwin-arm64, Vite6.4.4, lock/config and installed dependency tree as the preceding checkpoint produced this38.47s build (`.cache/d5-chat-scope-build.log`). Before the adjustment only totalRaw fails; afterward the checker exits0. The new bytes bind the view operation to its chat session and active chat, so its own metadata checkpoint cannot revoke final reply persistence. Tests retain exact raw-boundary and one-byte overflow rejection. Smoke/test-only changes do not enter the app bundle. Parent owns the frozen-head audit and integration/production verification.
+
+### Stable V5 production isolation: new caller imports an internal codec
+
+Signature: `weeklyPlanningStableV5ProductionIsolation.test.ts` reports `allows direct Stable V5 imports only through explicitly audited runtime support modules`, for example `application/c5LocalSelection/controlledFallback.ts:../weeklyPlanningStableV5SessionCodec` (#831, run39601297015). Functional tests can pass while this dependency boundary is invalid; a focused green suite that omits the gate is incomplete evidence.
+
+Keep storage/codec validation behind the audited module that owns that responsibility. For the C5 envelope this is `application/c5LocalSelection/checkpoint.ts`; expose a scoped read/validation operation rather than a generic decoder or an import alias. Do not expand the allowlist merely to permit a new caller. Include `semantic/weeklyPlanningStableV5ProductionIsolation.test.ts` in the affected verification union, retain real persistence/rollback and negative-state controls, then run typecheck and the production build/budget. No special permission or deployment is needed for this local fix. Remove the caller's direct internal import and confirm the unchanged architecture gate plus the behavior regressions pass; parent-owned CI must still finish on the frozen successor SHA.
