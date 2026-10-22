@@ -153,9 +153,9 @@ function durationReplyDocument(): WeeklyPlanningSemanticDocumentV5 {
       effortEstimates: [{
         localId: 'reply-effort-duration',
         targetLocalId: 'reply-workload-problems',
-        kind: 'total_duration',
+        kind: 'duration_per_unit',
         minutes: 180,
-        unitCode: null,
+        unitCode: 'problem',
         precision: 'exact',
         sourceText: '3時間です',
       }],

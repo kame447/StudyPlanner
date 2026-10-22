@@ -7,6 +7,7 @@ import { bindC5CommitNextLedger, prepareC5TurnCommit } from './selection';
 import { writeC5Checkpoint, type C5CheckpointWrite } from './checkpoint';
 import type { C5LocalSelectionOptions, C5ReducerCommit, C5SelectedTurn } from './contracts';
 import { recordWeeklyPlanningStableV5DebugTrace } from '../../trace/weeklyPlanningStableV5DebugTrace';
+import type { ControlledCandidateCommitRejection } from '../../../../../shared/controlledCandidateCommit';
 
 const recovery = new Map<string, () => WeeklyPlanningTurnSubmissionResult>();
 const scopeKey = (ownerId: string, conversationId: string) => serializeC5Value([ownerId, conversationId]);
@@ -37,14 +38,15 @@ export interface ControlledCandidateTurnInput {
 }
 
 /** Actual runtime + reducer + one envelope, with no await after prepare. No provider/domain default. */
-export function commitControlledCandidateTurn(input: ControlledCandidateTurnInput): WeeklyPlanningTurnSubmissionResult {
-  const fail = (): WeeklyPlanningTurnSubmissionResult => ({ accepted: false, draftCandidates: [] });
+export function commitControlledCandidateTurn(input: ControlledCandidateTurnInput): WeeklyPlanningTurnSubmissionResult & { rejectionReason?: ControlledCandidateCommitRejection } {
+  const fail = (rejectionReason: ControlledCandidateCommitRejection) => ({ accepted: false, draftCandidates: [], rejectionReason });
   const selected = input.selected;
-  if (!input.result.stableV5Graph || serializeC5Value(input.result.stableV5Graph) !== serializeC5Value(selected.graph)
-    || input.result.state.draftGenerationIntent !== input.snapshot.intakeState?.draftGenerationIntent
-    || input.result.state.draftGenerationAuthorizedAtRevision !== input.snapshot.intakeState?.draftGenerationAuthorizedAtRevision) return fail();
+  if (!input.result.stableV5Graph) return fail('missing_graph');
+  if (serializeC5Value(input.result.stableV5Graph) !== serializeC5Value(selected.graph)) return fail('graph_mismatch');
+  if (input.result.state.draftGenerationIntent !== input.snapshot.intakeState?.draftGenerationIntent) return fail('authorization_intent_changed');
+  if (input.result.state.draftGenerationAuthorizedAtRevision !== input.snapshot.intakeState?.draftGenerationAuthorizedAtRevision) return fail('authorization_revision_changed');
   const commit = input.prepare();
-  if (!commit) return fail();
+  if (!commit) return fail('prepare_rejected');
   const bound = bindWeeklyPlanningQuestionPresentation({
       state: { ...input.result.state, c5SelectionLedger: commit.nextLedger,
         ...(input.snapshot.intakeState?.controlledCandidateProtocolVersion === 1 ? { controlledCandidateProtocolVersion: 1 as const } : {}) },
@@ -55,19 +57,19 @@ export function commitControlledCandidateTurn(input: ControlledCandidateTurnInpu
   const state = input.bindNextQuestion?.(bound) ?? bound;
   // A next question may advance the epoch, but does not alter the consumed receipt.
   const reducerCommit = state.c5SelectionLedger ? bindC5CommitNextLedger(commit, state.c5SelectionLedger) : null;
-  if (!reducerCommit) return fail();
+  if (!reducerCommit) return fail('next_ledger_rejected');
   let receipt: ReturnType<typeof finalizeWeeklyPlanningStableV5RuntimeGraphWithReceipt>['receipt'];
   try {
     commitWeeklyPlanningStableV5RuntimeGraph({ ownerId: input.ownerId, conversationId: input.pending.conversationId, graph: selected.graph });
     receipt = finalizeWeeklyPlanningStableV5RuntimeGraphWithReceipt({ ownerId: input.ownerId, conversationId: input.pending.conversationId, requestId: input.pending.requestId }).receipt;
   } catch {
     discardWeeklyPlanningStableV5StagedGraph(input.pending);
-    return fail();
+    return fail('runtime_finalize_rejected');
   }
   const key = scopeKey(input.ownerId, input.pending.conversationId);
-  const unknown = (recover: () => WeeklyPlanningTurnSubmissionResult): WeeklyPlanningTurnSubmissionResult => {
+  const unknown = (recover: () => WeeklyPlanningTurnSubmissionResult): WeeklyPlanningTurnSubmissionResult & { rejectionReason?: ControlledCandidateCommitRejection } => {
     recovery.set(key, recover);
-    return { accepted: false, draftCandidates: [], recoveryRequired: true };
+    return { accepted: false, draftCandidates: [], recoveryRequired: true, rejectionReason: 'recovery_unknown' };
   };
   try {
     input.dispatch({ type: 'commit_turn', pending: input.pending, intakeState: state,
@@ -75,22 +77,22 @@ export function commitControlledCandidateTurn(input: ControlledCandidateTurnInpu
       preservePreviewCandidates: input.result.preserveExistingPreview, c5Commit: reducerCommit });
   } catch { /* Dispatch may commit then throw. Read authoritative state below. */ }
   let graphRolledBack = false;
-  const rollback = (expected: PlanningState): WeeklyPlanningTurnSubmissionResult => {
+  const rollback = (expected: PlanningState, reason: ControlledCandidateCommitRejection): WeeklyPlanningTurnSubmissionResult & { rejectionReason?: ControlledCandidateCommitRejection } => {
     try {
       const live = input.getState();
       if (serializeC5ApplicationState(live) !== serializeC5ApplicationState(expected)
-        && serializeC5ApplicationState(live) !== serializeC5ApplicationState(input.snapshot)) return unknown(() => rollback(expected));
+        && serializeC5ApplicationState(live) !== serializeC5ApplicationState(input.snapshot)) return unknown(() => rollback(expected, reason));
       if (!graphRolledBack) {
-        if (!rollbackWeeklyPlanningStableV5RuntimeGraphFinalize(receipt)) return unknown(() => rollback(expected));
+        if (!rollbackWeeklyPlanningStableV5RuntimeGraphFinalize(receipt)) return unknown(() => rollback(expected, reason));
         graphRolledBack = true;
       }
       if (serializeC5ApplicationState(live) !== serializeC5ApplicationState(input.snapshot)) {
         try { input.dispatch({ type: 'load_state', state: input.snapshot }); } catch { /* Read the actual result. */ }
       }
-      if (serializeC5ApplicationState(input.getState()) !== serializeC5ApplicationState(input.snapshot)) return unknown(() => rollback(expected));
+      if (serializeC5ApplicationState(input.getState()) !== serializeC5ApplicationState(input.snapshot)) return unknown(() => rollback(expected, reason));
       recovery.delete(key);
-      return fail();
-    } catch { return unknown(() => rollback(expected)); }
+      return fail(reason);
+    } catch { return unknown(() => rollback(expected, reason)); }
   };
   let write: C5CheckpointWrite | undefined;
   let committed: PlanningState | undefined;
@@ -102,14 +104,14 @@ export function commitControlledCandidateTurn(input: ControlledCandidateTurnInpu
           && live.revision === input.pending.baseRevision + 2
           && live.messages[live.messages.length - 1]?.id === input.assistantMessage.id
           && serializeC5ApplicationState(live.intakeState ?? null) === serializeC5ApplicationState(state);
-        if (!accepted) return rollback(input.begun);
+        if (!accepted) return rollback(input.begun, 'reducer_rollback');
         committed = live;
       }
       if (!write) write = writeC5Checkpoint({ ownerId: input.ownerId, conversationId: input.pending.conversationId,
         graph: selected.graph, planningState: committed });
       const status = write.recover();
       if (status === 'unknown') return unknown(settle);
-      if (status === 'failed') return rollback(committed);
+      if (status === 'failed') return rollback(committed, 'checkpoint_rollback');
       // A durable receipt does not authorize overwriting intervening runtime work.
       if (serializeC5ApplicationState(input.getState()) !== serializeC5ApplicationState(committed)
         || serializeC5Value(readC5RuntimeGraph(input.ownerId, input.pending.conversationId)) !== serializeC5Value(selected.graph)) return unknown(settle);

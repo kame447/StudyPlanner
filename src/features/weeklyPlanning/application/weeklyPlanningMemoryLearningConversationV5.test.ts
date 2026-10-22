@@ -143,7 +143,7 @@ function durationDocument(minutes: number): WeeklyPlanningSemanticDocumentV5 {
       effortEstimates: [{
         localId: 'answer-effort',
         targetLocalId: 'answer-task',
-        kind: 'total_duration',
+        kind: 'session_duration',
         minutes,
         unitCode: null,
         precision: 'approximate',

@@ -70,7 +70,7 @@ export function captureNumericPendingQuestionDomainV5(params: {
         const resolution = resolveGenericWorkItemEstimate({ workload: fact, workloads: planningWorkloads, estimates: view.effortEstimates });
         return resolution.ambiguous || resolution.estimatedMinutes === null;
       })) return null;
-    const scope = numericPendingCompleteScopeV5(params.input);
+    const scope = numericPendingCompleteScopeV5(params.input, params.domainPolicyVersion);
     if (!scope) return null;
     const { requestId: _request, inputRevision: _inputRevision, ...binding } = state.binding;
     const record: NumericPendingQuestionDomainV5 = {
@@ -118,7 +118,7 @@ export async function tryFrozenNumericPendingChoiceRouteV5(
       // The new shared reader projects this exact bound text. An old reader fails closed,
       // rather than dropping the message and reviving the dormant legacy semantic path.
       const question = { ...state.binding.question, presentedQuestion: shown! };
-      return { ...state, binding: { ...state.binding, scope: numericPendingCompleteScopeV5(input)!, question } };
+      return { ...state, binding: { ...state.binding, scope: numericPendingCompleteScopeV5(input, port.domainPolicyVersion)!, question } };
     },
   };
   return tryNumericPendingChoiceRouteV5(run, guarded);
