@@ -7,7 +7,15 @@ import { build, version as esbuildVersion } from 'esbuild';
 export const J1_COMPATIBILITY_COMMIT = '070d25cbe14796aebb8168ac5425c93e3506df1c';
 const source = 'workers/ai-proxy/src/worker.ts';
 const stub = 'workers/ai-proxy/src/cloudflareWorkersVitestStub.ts';
-const options = { bundle: true, platform: 'node', format: 'esm' };
+// Preserve today's compiler semantics for this immutable fixture independently
+// of future root tsconfig changes. These explicit options are also cache inputs.
+export const J1_WORKER_BUILD_OPTIONS = Object.freeze({
+  bundle: true, platform: 'node', format: 'esm',
+  tsconfigRaw: Object.freeze({ compilerOptions: Object.freeze({
+    target: 'ES2020', useDefineForClassFields: true, jsx: 'react-jsx', strict: true,
+  }) }),
+});
+const options = J1_WORKER_BUILD_OPTIONS;
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const key = sha256(JSON.stringify({
   format: 1, commit: J1_COMPATIBILITY_COMMIT, esbuildVersion,

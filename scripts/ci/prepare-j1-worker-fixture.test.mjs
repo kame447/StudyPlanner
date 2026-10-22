@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { J1_COMPATIBILITY_COMMIT, prepareJ1WorkerFixture } from './prepare-j1-worker-fixture.mjs';
+import { build } from 'esbuild';
+import { J1_COMPATIBILITY_COMMIT, J1_WORKER_BUILD_OPTIONS, prepareJ1WorkerFixture } from './prepare-j1-worker-fixture.mjs';
 
 const roots = [];
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
@@ -22,6 +24,31 @@ function validate(bytes) {
 }
 
 describe('immutable pre-J1 Worker fixture publication', () => {
+  it('matches the current ambient compiler output and ignores later ambient config changes', async () => {
+    const settings = await fixture();
+    const staging = settings.cacheDirectory;
+    execFileSync('tar', ['-x', '-C', staging], { input: execFileSync('git', [
+      'archive', J1_COMPATIBILITY_COMMIT, 'workers/ai-proxy/src', 'shared',
+    ], { cwd: settings.repository, maxBuffer: 32 * 1024 * 1024 }) });
+    const tsconfig = JSON.parse(await fs.readFile(new URL('../../tsconfig.json', import.meta.url), 'utf8'));
+    const configPath = path.join(staging, 'tsconfig.json');
+    await fs.writeFile(configPath, JSON.stringify(tsconfig));
+    const inputs = {
+      entryPoints: [path.join(staging, 'workers/ai-proxy/src/worker.ts')], write: false,
+      alias: { 'cloudflare:workers': path.join(staging, 'workers/ai-proxy/src/cloudflareWorkersVitestStub.ts') },
+    };
+    const ambientOptions = { ...J1_WORKER_BUILD_OPTIONS };
+    delete ambientOptions.tsconfigRaw;
+    const compile = async options => Buffer.from((await build({ ...options, ...inputs })).outputFiles[0].contents);
+    const explicit = await compile(J1_WORKER_BUILD_OPTIONS);
+    expect((await compile(ambientOptions)).equals(explicit)).toBe(true);
+    tsconfig.compilerOptions.useDefineForClassFields = false;
+    await fs.writeFile(configPath, JSON.stringify(tsconfig));
+    // Negative control: the ambient setting really changes this Worker bundle.
+    expect((await compile(ambientOptions)).equals(explicit)).toBe(false);
+    expect((await compile(J1_WORKER_BUILD_OPTIONS)).equals(explicit)).toBe(true);
+  });
+
   it('publishes complete bundles for two concurrent setups and reuses the valid result', async () => {
     const settings = await fixture();
     const results = await Promise.all([0, 1].map(async () => {
