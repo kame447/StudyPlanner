@@ -1,4 +1,5 @@
-import { isCandidateChoiceDecisionContext, isCandidateChoiceEvaluation, type CandidateChoiceWireRequest } from '../../../shared/candidateChoiceDecision';
+import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../../shared/d5AnswerPolicy';
+import { isCandidateChoiceDecisionContext, isCandidateChoiceEvaluation, type CandidateChoiceWireRequest, type CandidateChoiceEvaluation } from '../../../shared/candidateChoiceDecision';
 import { getCloudflareAiProxyUrl } from '../../lib/aiConfig';
 import { getFirebaseAuth } from '../../lib/firebaseClient';
 
@@ -23,6 +24,8 @@ export function createCandidateChoiceClient(options: {
   /** Invocation-local A scope: allocates a unique request per node and tracks it with Luna fallback. */
   semanticCensusObserver?: CandidateChoiceCensusObserver;
   uninterpretedSpans?: CandidateChoiceWireRequest['uninterpretedSpans'];
+  /** Validated raw scores for diagnostics; never part of the strict selection response. */
+  onEvaluation?: (request: CandidateChoiceWireRequest, evaluation: CandidateChoiceEvaluation) => void;
 }) {
   const policy = Object.freeze({ ...options.semanticPolicy });
   if (!policy.calibrationEvidenceId?.trim() || [policy.maximumConditionChange, policy.maximumIndependentMeaning]
@@ -51,10 +54,15 @@ export function createCandidateChoiceClient(options: {
           const result: unknown = await response.json();
           const r = captured.decisionContext.request;
           if (!isCandidateChoiceEvaluation(result, r)) throw new Error('Unavailable or invalid candidate response.');
+          options.onEvaluation?.(structuredClone(r), structuredClone(result));
           return {
             nodeId: result.nodeId, requestId: result.requestId, selectionEpoch: result.selectionEpoch,
             candidateSetHash: result.candidateSetHash, optionId: result.optionId, probabilities: result.probabilities,
-            semanticSufficiency: result.conditionChange <= policy.maximumConditionChange && result.independentMeaning <= policy.maximumIndependentMeaning
+            semanticSufficiency: (r.context.question.code === 'missing_effort_estimate' && r.context.scope.domainPolicyVersion === D5_TOP1_ANSWER_POLICY_VERSION
+              // The common gate still enforces the complete distribution, unique
+              // top-1 and none rejection. Auxiliary heads are diagnostic for v2.
+              ? r.menu.options.some(option => option.kind === 'leaf' && option.id === result.optionId)
+              : result.conditionChange <= policy.maximumConditionChange && result.independentMeaning <= policy.maximumIndependentMeaning)
               ? 'only_candidate_meaning' : 'extra_or_uncertain_meaning',
         };
       } finally { clearTimeout(timer); }

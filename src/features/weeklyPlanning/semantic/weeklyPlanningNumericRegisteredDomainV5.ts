@@ -1,3 +1,4 @@
+import { D5_TOP1_ANSWER_POLICY_VERSION } from '../../../../shared/d5AnswerPolicy';
 import type { CandidateBinding, CandidateTuple } from '../application/candidateSelection/contracts';
 import { canonicalCandidateSerialization } from '../application/candidateSelection/canonical';
 import type { ControlledCandidateDomain, ControlledCandidateCaptureContext, ControlledCandidateStageContext } from '../application/weeklyPlanningControlledCandidateDomains';
@@ -16,7 +17,7 @@ function measurement(context: ControlledCandidateCaptureContext): NumericPending
   return intent === 'total_duration' || intent === 'duration_per_unit' ? intent : null;
 }
 
-function presentingEvidence(context: ControlledCandidateCaptureContext): {
+function presentingEvidence(context: ControlledCandidateCaptureContext, policyVersion: string): {
   input: WeeklyPlanningSemanticNormalizerInputV5;
   state: NumericPendingStateV5;
 } | null {
@@ -40,7 +41,7 @@ function presentingEvidence(context: ControlledCandidateCaptureContext): {
     committedGraph: context.graph,
     publicStateSummary: summary,
   };
-  const scope = numericPendingCompleteScopeV5(input);
+  const scope = numericPendingCompleteScopeV5(input, policyVersion);
   if (!scope) return null;
   // Only typed evidence is snapshotted. Raw source text and provenance stay in the graph.
   const sources: CandidateBinding['sources'] = [{
@@ -108,13 +109,14 @@ export function createNumericPendingRegisteredDomainV5(
   options: { readonly candidateSource: 'question_menu' | 'answer_proposal' } = { candidateSource: 'question_menu' },
 ): ControlledCandidateDomain {
   const answerProposal = options.candidateSource === 'answer_proposal';
+  const top1 = domainPolicyVersion === D5_TOP1_ANSWER_POLICY_VERSION;
   return {
     domainId: 'd5_numeric',
     questionCode: 'missing_effort_estimate',
     domainPolicyVersion,
     ...(answerProposal ? {
       proposeAnswerPayload(payload, userText) {
-        const proposal = numericAnswerProposalV5(userText);
+        const proposal = numericAnswerProposalV5(userText, top1);
         if (!proposal) return null;
         const frozen = payload.domainData as unknown as NumericPendingQuestionDomainV5;
         // Only a question-time placeholder written by this domain's capture may be widened.
@@ -133,10 +135,10 @@ export function createNumericPendingRegisteredDomainV5(
     rejectsCoPresentedFacts({ targetId, facts }) {
       // An acknowledged sibling quantity or estimate would make a bare minute answer
       // ambiguous (an estimate or target switch). The target's own task/components/amount are inherent.
-      return facts.some(fact => fact.kind === 'effort_estimate' || (fact.kind === 'workload' && fact.factId !== targetId));
+      return !top1 && facts.some(fact => fact.kind === 'effort_estimate' || (fact.kind === 'workload' && fact.factId !== targetId));
     },
     capture(context) {
-      const evidence = presentingEvidence(context);
+      const evidence = presentingEvidence(context, domainPolicyVersion);
       if (!evidence) return null;
       const presented = context.question.presentedQuestion;
       if (!presented) return null;
@@ -161,7 +163,7 @@ export function createNumericPendingRegisteredDomainV5(
       const port = {
         domainMinutes: frozen.domainMinutes,
         domainPolicyVersion: frozen.domainPolicyVersion,
-        choicePolicy: context.policy,
+        choicePolicy: top1 ? { ...context.policy, rules: context.policy.rules.map(rule => ({ ...rule, minimumTopProbability: 0, minimumMargin: 0 })) } : context.policy,
         maximumChildrenPerMenu: context.maximumChildrenPerMenu,
         maximumDecisions: context.maximumDecisions,
         readCurrent: () => answerState(context, frozen),
@@ -173,7 +175,7 @@ export function createNumericPendingRegisteredDomainV5(
       }, context.normalizerInput);
       const staged = await tryFrozenNumericPendingChoiceRouteV5(run, port, frozen);
       if (!staged) return null;
-      if (answerProposal) {
+      if (answerProposal && !top1) {
         const minutes = staged.selection.candidate.tuple.minutes;
         const integers = numericAnswerProposalV5(context.userText)?.sourceIntegers.get(minutes);
         if (!integers) return null;
