@@ -1,3 +1,4 @@
+import { withWeeklyPlanningEffortAcknowledgement } from '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { resetWeeklyPlanningStableV5TraceRuntimeForTest } from '../trace/weeklyPlanningStableV5TraceRuntime';
 import { submitWeeklyPlanningApplicationTurn } from '../application/weeklyPlanningTurnApplication';
@@ -51,9 +52,10 @@ beforeEach(() => {
     };
     else if (schema === 'weekly_planning_stable_v5_dialogue_response') {
       const prompt = JSON.parse(body.messages[1].content);
-      content = { actionId: prompt.actionId, actionKind: prompt.applicationDecision.actionKind,
+      content = withWeeklyPlanningEffortAcknowledgement(prompt, { actionId: prompt.actionId, actionKind: prompt.applicationDecision.actionKind,
         questionCode: prompt.applicationDecision.questionCode, groundingAcknowledgement: null,
-        text: prompt.applicationDecision.questionCode === 'missing_schedulable_work' ? '今週は何に取り組みますか？' : '数学の問題は1問に何分かかりますか？' };
+        text: prompt.applicationDecision.actionKind === 'preview_ready' ? `候補を確認してください。${prompt.applicationDecision.previewPromotionControlLabel ?? ''}`
+          : prompt.applicationDecision.questionCode === 'missing_schedulable_work' ? '今週は何に取り組みますか？' : '数学の問題は1問に何分かかりますか？' });
     } else throw new Error('Unexpected fixture schema: ' + schema);
     return Response.json({ choices: [{ message: { content: JSON.stringify(content) } }],
       usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
