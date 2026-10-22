@@ -1,6 +1,12 @@
 import { expect, test } from './support/fixed-clock.mjs';
 import { prepareMaterialObservation, hasMaterialObservation, observeMaterialControl, attachMaterialObservation } from './support/material-pr-observation.mjs';
 
+// Recording is worker-scoped: opt in at file level, not inside a describe.
+// Only the normal mobile matrix enables this; local and zero-retry diagnostics keep capture.
+if (process.env.CI && process.env.UI_RETRY_CAPTURE === '1') {
+  test.use({ trace: 'on-first-retry', video: 'on-first-retry' });
+}
+
 test.afterEach(async ({}, testInfo) => { await attachMaterialObservation(testInfo); });
 
 async function seedBookshelf(page, longTextFixture = null) {
