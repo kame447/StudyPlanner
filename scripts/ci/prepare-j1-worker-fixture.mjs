@@ -44,9 +44,16 @@ export async function prepareJ1WorkerFixture({
 
   const staging = await fs.mkdtemp(path.join(cacheDirectory, '.build-'));
   try {
+    // Stryker's cwd is a nested sandbox: git archive pathspecs would otherwise
+    // be relative to that prefix, even when the historical commit is available.
+    // An explicit Git directory also supports read-only object-store overrides
+    // with no work tree, and prevents archive from inheriting the cwd prefix.
+    const gitDirectory = execFileSync('git', ['rev-parse', '--absolute-git-dir'], {
+      cwd: repository, encoding: 'utf8',
+    }).trim();
     execFileSync('tar', ['-x', '-C', staging], {
       input: execFileSync('git', [
-        'archive', J1_COMPATIBILITY_COMMIT, 'workers/ai-proxy/src', 'shared',
+        `--git-dir=${gitDirectory}`, 'archive', J1_COMPATIBILITY_COMMIT, 'workers/ai-proxy/src', 'shared',
       ], { cwd: repository, maxBuffer: 32 * 1024 * 1024 }),
     });
     const result = await build({

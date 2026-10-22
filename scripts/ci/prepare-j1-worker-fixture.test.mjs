@@ -24,6 +24,29 @@ function validate(bytes) {
 }
 
 describe('immutable pre-J1 Worker fixture publication', () => {
+  it('accepts a read-only Git object directory without requiring a work tree', async () => {
+    const settings = await fixture();
+    const repository = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
+      cwd: settings.repository, encoding: 'utf8',
+    }).trim();
+    const file = await prepareJ1WorkerFixture({ ...settings, repository });
+    validate(await fs.readFile(file));
+    const module = await import(/* @vite-ignore */ pathToFileURL(file).href);
+    expect(module.default.fetch).toBeTypeOf('function');
+  });
+
+  it('archives repository-root paths from a nested sandbox directory', async () => {
+    const settings = await fixture();
+    const file = await prepareJ1WorkerFixture({
+      root: settings.cacheDirectory,
+      repository: settings.cacheDirectory,
+      cacheDirectory: path.join(settings.cacheDirectory, 'bundles'),
+    });
+    validate(await fs.readFile(file));
+    const module = await import(/* @vite-ignore */ pathToFileURL(file).href);
+    expect(module.default.fetch).toBeTypeOf('function');
+  });
+
   it('matches the current ambient compiler output and ignores later ambient config changes', async () => {
     const settings = await fixture();
     const staging = settings.cacheDirectory;
