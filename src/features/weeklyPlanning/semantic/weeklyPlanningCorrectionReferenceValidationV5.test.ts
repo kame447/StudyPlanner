@@ -116,6 +116,15 @@ function repairPayload(errors: string[]): {
 }
 
 describe('Stable V5 correction target reference validation', () => {
+  it.each(['total_duration', 'duration_per_unit'] as const)('allows explicit same-target replace into %s through raw and typed reference validation', kind => {
+    const replacement = documentWithEffortReplacement();
+    Object.assign(replacement.tasks[0].effortEstimates[0], { kind, targetLocalId: 'workload-math',
+      minutes: 60, unitCode: kind === 'total_duration' ? null : 'problem' });
+    const summary = { effortEstimates: [{ publicId: 'wpf_effort_per_unit', targetPublicId: 'workload-math',
+      kind: kind === 'total_duration' ? 'duration_per_unit' : 'total_duration' }] };
+    expect(validateWeeklyPlanningCorrectionTargetReferencesV5(replacement, summary)).toEqual([]);
+    expect(validateWeeklyPlanningRawCorrectionTargetReferencesV5(JSON.stringify(replacement), summary)).toEqual([]);
+  });
   it('rejects mention-only correction targets before Fact Graph canonicalization', () => {
     expect(validateWeeklyPlanningCorrectionTargetReferencesV5(
       documentWithTarget({
