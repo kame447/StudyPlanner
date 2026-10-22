@@ -8,6 +8,11 @@ async function paint(page, original) {
     if (original) root.style.setProperty('background', 'var(--pixel-grid-paper), var(--pixel-canvas)', 'important');
     else root.style.removeProperty('background');
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    // The lazy appearance stylesheet can start body's 200ms background
+    // transition. Sample its settled paint, as the later screenshot does.
+    await Promise.all(document.body.getAnimations()
+      .filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime))
+      .map(animation => animation.finished));
     const selectors = ['html', 'body', '.app-shell', '.app-settings-page', '.app-settings-header', '.app-settings-tabs'];
     const geometry = selectors.flatMap(selector => [...document.querySelectorAll(selector)].map(element => {
       const rect = element.getBoundingClientRect(), style = getComputedStyle(element);
