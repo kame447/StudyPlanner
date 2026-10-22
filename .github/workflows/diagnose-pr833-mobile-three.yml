@@ -40,30 +40,30 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
-      - name: Gate tile pixel equivalence before unchanged mobile cases
+      - name: Observe original three cases with diagnostic-only 60 second budget
         shell: bash
         run: |
           set -euo pipefail
           node scripts/ci/check-node-security-version.mjs
-          node scripts/ci/mobile-grid-tile-gate.mjs
+          node scripts/ci/mobile-three-budget-diagnostic.mjs
 
-      - name: Upload complete tile artifacts
+      - name: Upload complete observation artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pr833-grid-tile-full-${{ github.sha }}
-          path: artifacts/grid-tile/
+          name: pr833-mobile-budget-full-${{ github.sha }}
+          path: artifacts/mobile-budget/
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload compact tile diagnostics
+      - name: Upload compact observation diagnostics
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pr833-grid-tile-diagnostics-${{ github.sha }}
+          name: pr833-mobile-budget-diagnostics-${{ github.sha }}
           path: |
-            artifacts/grid-tile/*.json
-            artifacts/grid-tile/*/*.json
-            artifacts/grid-tile/**/error-context.md
+            artifacts/mobile-budget/*.json
+            artifacts/mobile-budget/*/*.json
+            artifacts/mobile-budget/**/error-context.md
           if-no-files-found: warn
           retention-days: 14
