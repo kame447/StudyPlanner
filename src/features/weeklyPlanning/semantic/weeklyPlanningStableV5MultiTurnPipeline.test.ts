@@ -89,9 +89,9 @@ function durationAnswer(): WeeklyPlanningSemanticDocumentV5 {
       effortEstimates: [{
         localId: 'answer-effort',
         targetLocalId: 'answer-task',
-        kind: 'total_duration',
+        kind: 'duration_per_unit',
         minutes: 180,
-        unitCode: null,
+        unitCode: 'page',
         precision: 'exact',
         sourceText: '3時間です',
       }],

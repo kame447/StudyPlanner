@@ -1,3 +1,22 @@
+interface EffortFixturePrompt {
+  currentTurnGrounding?: { acceptedFacts: readonly { factId: string; kind?: string; data?: Record<string, unknown> }[] } | null;
+}
+
+/** Healthy renderer fixtures acknowledge typed accepted effort; never infer from user prose. */
+export function withWeeklyPlanningEffortAcknowledgement<T extends { text: string }>(prompt: EffortFixturePrompt, response: T) {
+  const facts = prompt.currentTurnGrounding?.acceptedFacts.filter(fact => fact.kind === 'effort_estimate') ?? [];
+  if (!facts.length) return response;
+  const text = facts.map(fact => {
+    const data = fact.data!;
+    const labels = data.targetLabels as string[];
+    if (!labels?.length || typeof data.minutes !== 'number') throw new Error('Missing typed effort fixture grounding');
+    const measurement = data.kind === 'total_duration' ? '全部で'
+      : data.kind === 'session_duration' ? '1回' : `1 ${data.unitLabel}あたり`;
+    return `${labels.join('の')}は${measurement}${data.minutes}分${data.precision === 'approximate' ? 'くらい' : ''}で見積もります。`;
+  }).join('');
+  return { ...response, groundingAcknowledgement: { factIds: facts.map(fact => fact.factId), text }, text: text + response.text };
+}
+
 /**
  * A successful provider response for controller/E2E tests whose subject is
  * typed scheduling state, not provider availability or copywriting. The real
@@ -30,6 +49,8 @@ export async function successfulWeeklyPlanningRendererCompletion(
       acceptedFacts: Array<{
         factId: string;
         sourceText: string;
+        kind?: string;
+        data?: Record<string, unknown>;
       }>;
     };
   };
@@ -59,18 +80,19 @@ export async function successfulWeeklyPlanningRendererCompletion(
       : decision.questionCode === 'missing_schedulable_work'
         ? '今回進めたい範囲を教えてください。'
         : '続けるために必要な条件を教えてください。';
-  const lead = acknowledgementText ?? `「${prompt.currentUserMessage}」について確認しました。`;
+  const hasEffort = grounding?.acceptedFacts.some(fact => fact.kind === 'effort_estimate');
+  const lead = hasEffort ? '' : acknowledgementText ?? `「${prompt.currentUserMessage}」について確認しました。`;
   const text = decision.actionKind === 'preview_ready'
     ? `${lead}候補の内容を確認してください。${decision.previewPromotionControlLabel ?? ''}`
     : decision.actionKind === 'question'
       ? `${lead}${question}`
       : `${lead}続けて相談できます。`;
 
-  return JSON.stringify({
+  return JSON.stringify(withWeeklyPlanningEffortAcknowledgement(prompt, {
     actionId: prompt.actionId,
     actionKind: decision.actionKind,
     questionCode: decision.questionCode,
     groundingAcknowledgement: acknowledgement,
     text,
-  });
+  }));
 }
