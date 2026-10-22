@@ -9,12 +9,6 @@ const artifactsDir = path.join(repoRoot, 'artifacts');
 const isCi = Boolean(process.env.CI);
 const sharedTests = ['**/workspace-load-recovery.spec.mjs', '**/announcement-load-recovery.spec.mjs', '**/admin-entry-navigation.spec.mjs', '**/admin-style-loading.spec.mjs', '**/timetable-class-attendance.spec.mjs', '**/compact-record-forms.spec.mjs', '**/auth-entry-presentation.spec.mjs', '**/auth-interaction.spec.mjs', '**/startup-initial-canvas.spec.mjs', '**/cross-browser-smoke.spec.mjs', '**/home-next-plan-visual.spec.mjs', '**/home-scene-atmosphere.spec.mjs', '**/app-settings-page.spec.mjs', '**/public-page-navigation.spec.mjs', '**/theme-storage-failure.spec.mjs', '**/primary-header-responsive.spec.mjs'];
 
-// Temporary #776 experiment: exact manual selection only, outside normal Matrix.
-if (process.env.UI_EVENT_NAME === 'workflow_dispatch'
-  && process.env.UI_SPEC === 'month-overnight-diagnostic.spec.mjs') {
-  sharedTests.push('**/month-overnight-diagnostic.spec.mjs');
-}
-
 export default defineConfig({
   ...baseConfig,
   testMatch: sharedTests,

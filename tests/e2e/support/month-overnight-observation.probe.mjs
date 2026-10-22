@@ -130,8 +130,7 @@ test('partial delivered events survive without claiming complete frames or zero 
 });
 test('only two original click sites are wrapped and persistence/screenshot order remains', async () => {
   const source = await fs.readFile(new URL('../month-event-range.spec.mjs', import.meta.url), 'utf8');
-  assert.ok(source.includes('await runMonthOvernightJourney(page, testInfo, width)'));
-  const body = await fs.readFile(new URL('./month-overnight-journey.mjs', import.meta.url), 'utf8');
+  const body = source.slice(source.indexOf('test.describe(`overnight month-event persistence'));
   assert.equal((body.match(/observeMonthControl\(/g) ?? []).length, 2);
   assert.equal((body.match(/await page.reload\(\)/g) ?? []).length, 2);
   const ordered = ["await chooseTime(0, '18')", "await chooseTime(1, '09')", 'const [created] = await read()',
