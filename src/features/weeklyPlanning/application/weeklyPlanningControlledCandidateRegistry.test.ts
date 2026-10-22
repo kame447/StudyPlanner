@@ -19,9 +19,12 @@ beforeEach(() => { resetWeeklyPlanningStableV5RuntimeSessionsForTest(); restore 
 afterEach(() => { restore(); vi.restoreAllMocks(); });
 const directContent: WeeklyPlanningQuestionPresentationContent = { responseSource: 'ai', currentTurnGrounding: 'none',
   selfRepairNotice: false, groundingContext: { proposed: 0, contested: 0 }, previewPromotionControl: false };
-function setup(options: { content?: Partial<WeeklyPlanningQuestionPresentationContent>; stampPresentingFacts?: boolean;
+function setup(options: { content?: Partial<WeeklyPlanningQuestionPresentationContent>; stampPresentingFacts?: boolean; stampPresentingEffort?: boolean; previousQuestion?: 'same' | 'different';
   rejectsCoPresentedFacts?: ControlledCandidateDomain['rejectsCoPresentedFacts'] } = {}) {
   const h = c5ControllerHarness(); let access = true;
+  if (options.previousQuestion) h.replaceState({ ...h.getState(), intakeState: { ...createInitialPlanningIntakeState(),
+    lastQuestionContext: { kind: 'ambiguity', targetSlot: options.previousQuestion === 'same'
+      ? 'stable_v5:missing_effort_estimate' : 'stable_v5:missing_availability', topicId: 'work-a' } } });
   const rejectsCoPresentedFacts = vi.fn<ControlledCandidateDomain['rejectsCoPresentedFacts']>(options.rejectsCoPresentedFacts ?? (() => false));
   const stage = vi.fn<ControlledCandidateDomain['stage']>(async context => {
     expect(context.basis.binding.requestId).toBe(context.pending.requestId);
@@ -66,7 +69,9 @@ function setup(options: { content?: Partial<WeeklyPlanningQuestionPresentationCo
     lastQuestionContext: { kind: 'ambiguity' as const, targetSlot: 'stable_v5:missing_effort_estimate', topicId: 'work-a', intent: 'duration_per_unit' } },
     message: '数値の候補を確認します。', draftCandidates: [],
     // Optionally mark one sibling as accepted by this presenting request, as the canonicalizer would.
-    stableV5Graph: options.stampPresentingFacts ? { ...h.graph, workloads: h.graph.workloads.map(fact => fact.id === 'work-b'
+    stableV5Graph: options.stampPresentingEffort ? { ...h.graph, effortEstimates: h.graph.effortEstimates.map(fact => fact.id === 'pace-b'
+      ? { ...fact, source: { ...fact.source, turnId: turn.pending.requestId } } : fact) }
+      : options.stampPresentingFacts ? { ...h.graph, workloads: h.graph.workloads.map(fact => fact.id === 'work-b'
       ? { ...fact, source: { ...fact.source, turnId: turn.pending.requestId } } : fact) } : h.graph,
     questionPresentationContent: { ...directContent, ...options.content,
       groundingContext: { ...directContent.groundingContext, ...options.content?.groundingContext } } }));
@@ -124,6 +129,21 @@ it.each([
   await h.submit('質問を提示してください');
   expect(captured(h)).toBe(expected);
   expect(h.rejectsCoPresentedFacts).toHaveBeenCalledTimes(expected ? 1 : 0);
+});
+it.each([
+  [undefined, true], ['different', true], ['same', false],
+] as const)('restores prior recommended eligibility for an effort-only ACK requirement with previous=%s', async (previousQuestion, expected) => {
+  // This deliberately uses the old/fake policy version, proving parity is not a v2 privilege.
+  const h = setup({ content: { currentTurnGrounding: 'required_before_resume' }, stampPresentingEffort: true, previousQuestion });
+  await h.submit('質問を提示してください');
+  expect(captured(h)).toBe(expected);
+  expect(h.rejectsCoPresentedFacts).toHaveBeenCalledTimes(expected ? 1 : 0);
+});
+it('keeps each domain co-presented veto after effort-only required ACK parity', async () => {
+  const h = setup({ content: { currentTurnGrounding: 'required_before_resume' }, stampPresentingEffort: true, rejectsCoPresentedFacts: () => true });
+  await h.submit('質問を提示してください');
+  expect(captured(h)).toBe(false);
+  expect(h.rejectsCoPresentedFacts).toHaveBeenCalledTimes(1);
 });
 it.each([
   ['rejects co-presented facts', (): boolean => true],

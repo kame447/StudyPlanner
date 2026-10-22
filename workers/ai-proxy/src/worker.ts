@@ -755,7 +755,8 @@ export async function executeAuthenticatedChatRequest(
 
   if (candidateChoice && isCandidateChoiceDecisionContext(payload.decisionContext)) {
     const result = await evaluateCandidateChoice({ context: payload.decisionContext, env, firebaseUid: session.uid, signal: request.signal, recorder: semanticRecorder });
-    return jsonResponse(request, env, 200, { ...result });
+    return jsonResponse(request, env, 200, { ...result },
+      result.status === 'evaluated' ? { 'X-StudyPlanner-AI-Provider': 'openrouter' } : undefined);
   }
 
   if (focusedContext.kind === 'focused_authorization') {

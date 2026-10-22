@@ -1,3 +1,4 @@
+import { withWeeklyPlanningEffortAcknowledgement } from '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
 import type { MonthEvent } from '../../../types/domain';
 import { renderWeeklyPlanningStableV5AssistantMessage } from '../dialogue/weeklyPlanningStableV5TurnDialogue';
 import { boundWeeklyPlanningDialogueRendererTraceForTransport } from '../trace/weeklyPlanningDialogueRendererTrace';
@@ -211,9 +212,9 @@ async function persistDateScopeQuestion(
     expect(payload.applicationDecision.questionIntent).toMatchObject({
       resolutionKind: 'availability_date_scope', requestedInformation: ['availability_date_scope'],
     });
-    return JSON.stringify({ actionId: payload.actionId, actionKind: 'question',
+    return JSON.stringify(withWeeklyPlanningEffortAcknowledgement(payload, { actionId: payload.actionId, actionKind: 'question',
       questionCode: 'availability_outside_planning_window', groundingAcknowledgement: null,
-      text: 'その時間の希望は何日に適用しますか？' });
+      text: 'その時間の希望は何日に適用しますか？' }));
   });
   const rendered = await renderWeeklyPlanningStableV5AssistantMessage({ input, result });
   expect(rendered.responseSource).toBe('ai');
@@ -540,13 +541,13 @@ describe('Stable V5 repair-safe preview integration', () => {
       rendererClientMock.mockImplementationOnce(async request => {
         const payload = JSON.parse(request.messages[request.messages.length - 1].content);
         expect(payload.applicationDecision.existingScheduleGrounding).toEqual(evidence);
-        return JSON.stringify({ actionId: payload.actionId, actionKind: 'preview_ready', questionCode: null,
-          groundingAcknowledgement: null, text: renderedText });
+        return JSON.stringify(withWeeklyPlanningEffortAcknowledgement(payload, { actionId: payload.actionId, actionKind: 'preview_ready', questionCode: null,
+          groundingAcknowledgement: null, text: renderedText }));
       });
       const rendered = await renderWeeklyPlanningStableV5AssistantMessage({ input, result });
       expect(rendererClientMock).toHaveBeenCalledTimes(1);
       expect(rendered.responseSource).toBe('ai');
-      expect(rendered.message).toBe(renderedText);
+      expect(rendered.message).toContain(renderedText);
       const rendererTrace = boundWeeklyPlanningDialogueRendererTraceForTransport(rendered.dialogueRendererTrace!);
       const promptContext = rendererTrace.request!.promptContext as Record<string, unknown>;
       expect(promptContext.existingScheduleGrounding).toEqual(evidence);
@@ -622,8 +623,8 @@ describe('Stable V5 repair-safe preview integration', () => {
             expect(serialized).toContain('future-existing-schedule');
             expect(serialized).toContain('existing-event-grounding');
             const renderer = (persisted as { diagnostics: { dialogueRenderer: typeof rendererTrace } }).diagnostics.dialogueRenderer;
-            expect(renderer.response.renderedText).toBe(renderedText);
-            expect(renderer.decision.finalMessage).toBe(renderedText);
+            expect(renderer.response.renderedText).toBe(rendered.message);
+            expect(renderer.decision.finalMessage).toBe(rendered.message);
             expect(serialized).toContain('2026-08-21');
             if (acceptedWeekdayPreference) {
               const preview = (persisted as { constraintContext: { scheduler: { preview: { representativeCandidates: unknown[] } } } })

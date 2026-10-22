@@ -96,7 +96,7 @@ function durationDocument(): WeeklyPlanningSemanticDocumentV5 {
       localId: 'answer-task', category: 'study', title: '直前の質問対象', study: null,
       workloads: [],
       effortEstimates: [{
-        localId: 'answer-effort', targetLocalId: 'answer-task', kind: 'total_duration',
+        localId: 'answer-effort', targetLocalId: 'answer-task', kind: 'session_duration',
         minutes: 20, unitCode: null, precision: 'approximate', sourceText: '20分くらい',
       }],
       temporalConstraints: [], recurrence: [], sourceText: '20分くらい',
