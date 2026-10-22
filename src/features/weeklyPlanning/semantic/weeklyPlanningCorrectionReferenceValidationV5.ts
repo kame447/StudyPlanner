@@ -80,7 +80,11 @@ function correctionReferenceErrors(params: {
       ? publicEffortKind(params.publicStateSummary, targetPublicId)
       : params.replacementEffortKind(targetLocalId);
     const replacementKind = params.replacementEffortKind(replacementLocalId);
-    if (targetKind && replacementKind && targetKind !== replacementKind) {
+    const rateTotalReplacement = (targetKind === 'duration_per_unit' && replacementKind === 'total_duration')
+      || (targetKind === 'total_duration' && replacementKind === 'duration_per_unit');
+    // Explicit rate↔total replacements proceed to the existing pinned-target
+    // transaction. Independent effort additions still have no supersession authority.
+    if (targetKind && replacementKind && targetKind !== replacementKind && !rateTotalReplacement) {
       errors.push(
         `document.corrections[${index}]:effort-measurement-mismatch:${targetKind}->${replacementKind}`,
       );
@@ -95,8 +99,9 @@ function correctionReferenceErrors(params: {
  * application code must not resolve a correction target from free text.
  *
  * Effort measurements are independent typed facts. Replacing an effort with a
- * different measurement kind (for example per-unit duration -> session
- * duration) would incorrectly erase information that can validly coexist.
+ * session measurement would erase information that can validly coexist. An
+ * explicit rate↔total replacement is allowed; its target/unit remain pinned
+ * and validated by the canonical correction transaction.
  */
 export function validateWeeklyPlanningCorrectionTargetReferencesV5(
   document: WeeklyPlanningSemanticDocumentV5,
