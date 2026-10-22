@@ -2,14 +2,31 @@
 import { expect, test } from './support/fixed-clock.mjs';
 
 const original = 'repeating-linear-gradient(0deg, transparent 0 7px, var(--pixel-grid) 7px 8px), repeating-linear-gradient(90deg, transparent 0 7px, var(--pixel-grid) 7px 8px)';
-const candidate = 'linear-gradient(0deg, transparent 0 7px, var(--pixel-grid) 7px 8px) left bottom / 8px 8px repeat, linear-gradient(90deg, transparent 0 7px, var(--pixel-grid) 7px 8px) left top / 8px 8px repeat';
+const candidate = 'repeating-linear-gradient(0deg, transparent 0 7px, var(--pixel-grid) 7px 8px) left top / 1px 100% repeat, repeating-linear-gradient(90deg, transparent 0 7px, var(--pixel-grid) 7px 8px) left top / 100% 1px repeat';
 const consumers = 'html, body, .app-shell, .app-settings-page, .app-settings-header, .app-settings-tabs';
 
 async function paint(page, value) {
   return page.evaluate(async ({ value, consumers }) => {
     document.documentElement.style.setProperty('--pixel-grid-paper', value);
+    const elements = [...document.querySelectorAll(consumers)];
+    // Flush style so the real CSS transitions exist before waiting. Two frames
+    // alone were insufficient for body's existing 200ms background transition.
+    for (const element of elements) void getComputedStyle(element).backgroundPosition;
+    const pending = elements.flatMap(element => element.getAnimations().filter(animation =>
+      animation instanceof CSSTransition && animation.playState !== 'finished' && animation.playState !== 'idle'));
+    const observed = pending.map(animation => ({ property: animation.transitionProperty,
+      state: animation.playState, endTime: animation.effect.getComputedTiming().endTime }));
+    if (observed.some(item => !Number.isFinite(item.endTime) || item.endTime > 1000))
+      throw new Error('Unexpected unbounded or >1s consumer transition; refusing unsettled pixel comparison');
+    // Do not cancel, finish, disable or fast-forward animations. The unchanged
+    // overall 30s test budget bounds actual completion, including paused clocks.
+    await Promise.all(pending.map(animation => animation.finished));
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    return [...document.querySelectorAll(consumers)].map(element => {
+    if (elements.some(element => element.getAnimations().some(animation =>
+      animation instanceof CSSTransition && animation.playState !== 'finished' && animation.playState !== 'idle')))
+      throw new Error('Consumer transition remains active after settling');
+    (window.__pixelGridTransitionEvidence ??= []).push({ value, observed, settled: true });
+    return elements.map(element => {
       const style = getComputedStyle(element), rect = element.getBoundingClientRect();
       return { tag: element.tagName, class: element.className, rect: [rect.x, rect.y, rect.width, rect.height],
         font: style.fontFamily, fontSize: style.fontSize, origin: style.backgroundOrigin, clip: style.backgroundClip,
@@ -112,12 +129,17 @@ for (const width of [390, 1920]) test.describe(`grid ${width}px`, () => {
             expect(await page.locator('.app-settings-header').evaluate(e => getComputedStyle(e).borderBottomWidth)).toBe('1px');
             if (width === 390) expect(await page.locator('.app-settings-tabs').evaluate(e => getComputedStyle(e).borderBottomWidth)).toBe('1px');
           }
-          const before = await paint(page, original), a = await page.screenshot();
-          const after = await paint(page, candidate), b = await page.screenshot();
+          const before = await paint(page, original);
+          expect(before.every(item => item.paint.position.split(', ').every(position => position === '0% 0%'))).toBe(true);
+          const a = await page.screenshot();
+          const after = await paint(page, candidate);
+          expect(after.every(item => item.paint.position.split(', ').every(position => position === '0% 0%'))).toBe(true);
+          const b = await page.screenshot();
           const restored = await paint(page, original), a2 = await page.screenshot();
           for (const [name, body] of [['original', a], ['candidate', b], ['original-repeat', a2]]) await testInfo.attach(name, { body, contentType: 'image/png' });
           const stability = await difference(page, a, a2), comparison = await difference(page, a, b);
-          await testInfo.attach('pixel-comparison', { body: JSON.stringify({ width, theme, percent, surface, geometry, position, admission, before, after, restored, stability, comparison }), contentType: 'application/json' });
+          const settlements = await page.evaluate(() => window.__pixelGridTransitionEvidence);
+          await testInfo.attach('pixel-comparison', { body: JSON.stringify({ width, theme, percent, surface, geometry, position, admission, settlements, before, after, restored, stability, comparison }), contentType: 'application/json' });
           expect(after.map(({ paint, ...layout }) => layout)).toEqual(before.map(({ paint, ...layout }) => layout)); expect(restored).toEqual(before);
           await page.evaluate(() => document.documentElement.style.removeProperty('--pixel-grid-paper'));
           expect(stability.sameDimensions).toBe(true); expect(stability.changedPixels, 'Original-repeat must be stable').toBe(0);

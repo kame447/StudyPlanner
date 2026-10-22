@@ -22,11 +22,11 @@ const snapshot = () => Object.fromEntries(files.map(file => [file, createHash('s
 const before = snapshot(); write('source-before', before);
 write('host', { cpuModels: [...new Set(os.cpus().map(cpu => cpu.model))], logicalCpuCount: os.cpus().length, availableParallelism: os.availableParallelism(), arch: os.arch(), platform: os.platform(), release: os.release(), node: process.version, playwright: JSON.parse(fs.readFileSync('tests/e2e/node_modules/@playwright/test/package.json')).version, sourceCommit: process.env.GITHUB_SHA ?? null, imageOS: process.env.ImageOS ?? null, imageVersion: process.env.ImageVersion ?? null, configuredContainer: 'mcr.microsoft.com/playwright:v1.64.0-noble' });
 const diagnosticPaths = ['.github/workflows/diagnose-pr833-mobile-three.yml', 'scripts/ci/mobile-grid-diagnostic.mjs', 'tests/e2e/support/grid-diagnostic.mjs', 'scripts/ci/mobile-grid-tile-gate.mjs', 'tests/e2e/playwright.grid-equivalence.config.mjs', 'tests/e2e/pixel-grid-equivalence.diagnostic.mjs'];
-if (before['src/styles/appearance-pixel.css'] !== '18b80f626ad5b9be98d93b68dda8065714b8e28212f8f1d8d741df3ec2b975e1') throw new Error('Unexpected candidate CSS');
+if (before['src/styles/appearance-pixel.css'] !== 'ff0dd75f13ee0d85867b1434b67c3a55de209fdede2e497c13ae9247b02fcef7') throw new Error('Unexpected candidate CSS');
 const frozenManifest = Object.fromEntries(Object.entries(before).filter(([file]) => !diagnosticPaths.includes(file)).map(([file, hash]) => [file, file === 'src/styles/appearance-pixel.css' ? 'e7f261226ee777594a539f064e12104870987894e212ece4be6a4164c40a8aa3' : hash]).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
 const frozenManifestSha256 = createHash('sha256').update(JSON.stringify(frozenManifest)).digest('hex');
 if (frozenManifestSha256 !== 'e78f86e563443d5fc6254350b1140ce46ce021d37dc5131c7ea4f34f7adb2ba0') throw new Error('Unexpected non-treatment source difference from frozen833');
-write('frozen-source-proof', { frozenCommit: '4c1c93ce0dec91fdec30644ee1575e2c9c2ed62d', frozenManifestSha256, originalCssSha256: 'e7f261226ee777594a539f064e12104870987894e212ece4be6a4164c40a8aa3', candidateCssSha256: '18b80f626ad5b9be98d93b68dda8065714b8e28212f8f1d8d741df3ec2b975e1', diagnosticPaths });
+write('frozen-source-proof', { frozenCommit: '4c1c93ce0dec91fdec30644ee1575e2c9c2ed62d', frozenManifestSha256, originalCssSha256: 'e7f261226ee777594a539f064e12104870987894e212ece4be6a4164c40a8aa3', candidateCssSha256: 'ff0dd75f13ee0d85867b1434b67c3a55de209fdede2e497c13ae9247b02fcef7', diagnosticPaths });
 
 write('config-proof', { trace: base.use.trace, video: base.use.video, screenshot: base.use.screenshot, retries: base.retries, workers: base.workers, visualOnlyDelta: 'webkit-mobile testMatch and single project selection', performanceConfigUnchanged: true });
 function collect(report, kind) {
@@ -72,6 +72,7 @@ async function run(kind, args) {
     const proof = attachments.find(a => a.name === 'pixel-comparison');
     if (!proof.body) throw new Error('Missing inline pixel comparison');
     const value = JSON.parse(Buffer.from(proof.body, 'base64').toString());
+    if (value.settlements?.length !== 3 || value.settlements.some(item => item.settled !== true || !Array.isArray(item.observed) || item.observed.some(transition => !Number.isFinite(transition.endTime) || transition.endTime > 1000)) || value.settlements[0].value !== value.settlements[2].value || value.settlements[0].value === value.settlements[1].value) throw new Error('Missing or invalid settled transition evidence');
     if (!value.stability.sameDimensions || value.stability.changedPixels !== 0 || !value.comparison.sameDimensions || value.comparison.changedPixels !== 0) throw new Error('Pixel equality evidence failed');
   }
   return completePass;
