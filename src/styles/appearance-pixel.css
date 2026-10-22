@@ -49,8 +49,12 @@ html[data-appearance='pixel'][data-theme='dark'] {
   --pixel-button: color-mix(in srgb, var(--accent-strong) 72%, #0f1720 28%);
 }
 
-/* One continuous grid inhabits the existing surrounding space. */
-html[data-appearance='pixel'],
+/* The opaque, viewport-filling body owns the visible grid. Keep the root
+   canvas color without rasterizing a second, completely covered grid. */
+html[data-appearance='pixel'] {
+  background: var(--pixel-canvas) !important;
+}
+/* Keep the original gradient dimensions and phase on every visible surface. */
 html[data-appearance='pixel'] :is(body, .app-shell, .app-settings-page, .app-settings-header, .app-settings-tabs) {
   background: var(--pixel-grid-paper), var(--pixel-canvas) !important;
 }

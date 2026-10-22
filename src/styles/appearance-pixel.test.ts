@@ -7,6 +7,25 @@ const css = readFileSync(fileURLToPath(new URL('./appearance-pixel.css', import.
 const root = postcss.parse(css);
 
 describe('pixel paint scope', () => {
+  it('avoids grid rasterization on the canvas hidden by the opaque viewport-filling body', () => {
+    const backgrounds = new Map<string, string>();
+    root.walkRules(rule => {
+      rule.walkDecls('background', declaration => {
+        backgrounds.set(rule.selector, declaration.value);
+      });
+    });
+    expect(backgrounds.get("html[data-appearance='pixel']")).toBe('var(--pixel-canvas)');
+    expect(backgrounds.get("html[data-appearance='pixel'] :is(body, .app-shell, .app-settings-page, .app-settings-header, .app-settings-tabs)"))
+      .toBe('var(--pixel-grid-paper), var(--pixel-canvas)');
+    const base = postcss.parse(readFileSync(fileURLToPath(new URL('./base.css', import.meta.url)), 'utf8'));
+    const body = base.nodes.find(node => node.type === 'rule' && node.selector === 'body');
+    expect(body?.type).toBe('rule');
+    if (body?.type !== 'rule') throw new Error('Missing body canvas owner');
+    expect(body.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ prop: 'margin', value: '0' }),
+      expect.objectContaining({ prop: 'min-height', value: '100vh' }),
+    ]));
+  });
   it('covers the actual secondary surfaces without repainting pinned task colors', () => {
     for (const selector of ['.panel:has(> .day-timeline-header)', '.panel.todo-view', '.learning-report-summary-card',
       '.learning-report-card', '.learning-report-empty', '.learning-report-insight',
