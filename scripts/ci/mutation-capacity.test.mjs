@@ -42,4 +42,10 @@ describe('weekly-planning mutation capacity contract', () => {
     expect(mutationJob).toMatch(/nproc[\s\S]*free -m[\s\S]*npm run test:mutation:weekly-planning -- "\$MUTATION_CONFIG"/);
     expect(workflow).toContain("      - 'scripts/ci/mutation-capacity.test.mjs'");
   });
+
+  it('provides full history for the history-dependent related compatibility suite', () => {
+    const checkout = mutationJob?.split('uses: actions/checkout@v7')[1]?.split('      - uses: actions/setup-node@v7')[0];
+    expect(checkout).toMatch(/^          fetch-depth: 0$/m);
+    expect(checkout).toMatch(/^          persist-credentials: false$/m);
+  });
 });
