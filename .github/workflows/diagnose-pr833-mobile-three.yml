@@ -1,0 +1,112 @@
+name: Diagnose PR833 three mobile cases
+on:
+  push:
+    branches:
+      - diagnose/pr833-mobile-three
+permissions:
+  contents: read
+jobs:
+  isolated-three:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+      options: --user 1001
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Snapshot application manifests before isolated test-runner install
+        shell: bash
+        run: sha256sum package.json package-lock.json > /tmp/studyplanner-manifests.sha256
+
+      - name: Install isolated Playwright test runner
+        run: npm install --prefix tests/e2e --no-save --package-lock=false @playwright/test@1.64.0
+
+      - name: Verify isolated test-runner install did not mutate application manifests
+        shell: bash
+        run: sha256sum -c /tmp/studyplanner-manifests.sha256
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Collect exactly the three failed cases, then run unchanged tests
+        shell: bash
+        env:
+          SELECTED_GREP: 'material long text 1920x1080 (saves the last chapter and preserves it after full reload at (100|200)%|keeps full detail text and cancels unsaved chapter edits at 200%)$'
+        run: |
+          set -euo pipefail
+          args=(test --config=tests/e2e/playwright.cross-browser.config.mjs --project=webkit-mobile '(^|/)bookshelf-surface\.spec\.mjs$' --grep "$SELECTED_GREP")
+          mkdir -p artifacts
+          ./tests/e2e/node_modules/.bin/playwright "${args[@]}" --list --reporter=json > artifacts/selected-three.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const report = JSON.parse(fs.readFileSync('artifacts/selected-three.json', 'utf8'));
+          const found = [];
+          function visit(suites, parents = []) {
+            for (const suite of suites ?? []) {
+              const chain = [...parents, suite.title];
+              for (const spec of suite.specs ?? []) for (const test of spec.tests ?? []) {
+                found.push({ title: spec.title, chain, project: test.projectName, file: spec.file });
+              }
+              visit(suite.suites, chain);
+            }
+          }
+          visit(report.suites);
+          const expected = [
+            'saves the last chapter and preserves it after full reload at 100%',
+            'keeps full detail text and cancels unsaved chapter edits at 200%',
+            'saves the last chapter and preserves it after full reload at 200%',
+          ].sort();
+          if (report.errors?.length || found.length !== 3 || JSON.stringify(found.map(x => x.title).sort()) !== JSON.stringify(expected)
+            || found.some(x => x.project !== 'webkit-mobile' || !x.chain.includes('material long text 1920x1080') || !x.file.endsWith('bookshelf-surface.spec.mjs'))) {
+            throw new Error(`Expected exactly the three failed WebKit mobile cases: ${JSON.stringify(found)}`);
+          }
+          console.log(JSON.stringify(found, null, 2));
+          NODE
+          node scripts/ci/playwright-shard.mjs "${args[@]}"
+
+      - name: Upload cross-browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr833-isolated-three-webkit-mobile-${{ github.sha }}
+          path: |
+            artifacts/playwright-cross-browser-results/
+            artifacts/playwright-cross-browser-report/
+            artifacts/playwright-cross-browser-results.json
+            artifacts/selected-three.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload compact cross-browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr833-isolated-three-diagnostics-webkit-mobile-${{ github.sha }}
+          path: |
+            artifacts/playwright-cross-browser-results.json
+            artifacts/selected-three.json
+            artifacts/playwright-cross-browser-results/**/error-context.md
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload compact cross-browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr833-isolated-three-images-webkit-mobile-${{ github.sha }}
+          path: artifacts/playwright-cross-browser-results/**/*.png
+          if-no-files-found: ignore
+          retention-days: 14
+
