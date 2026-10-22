@@ -36,8 +36,8 @@ html[data-appearance='pixel'] {
     linear-gradient(var(--pixel-edge), var(--pixel-edge)) left 2px bottom 2px / 3px 3px no-repeat,
     linear-gradient(var(--pixel-edge), var(--pixel-edge)) right 2px bottom 2px / 3px 3px no-repeat;
   --pixel-grid-paper:
-    repeating-linear-gradient(0deg, transparent 0 7px, var(--pixel-grid) 7px 8px),
-    repeating-linear-gradient(90deg, transparent 0 7px, var(--pixel-grid) 7px 8px);
+    linear-gradient(0deg, transparent 0 7px, var(--pixel-grid) 7px 8px) left bottom / 8px 8px repeat,
+    linear-gradient(90deg, transparent 0 7px, var(--pixel-grid) 7px 8px) left top / 8px 8px repeat;
 }
 html[data-appearance='pixel'][data-theme='dark'] {
   --pixel-paper: color-mix(in srgb, #17212a 92%, var(--accent) 8%);

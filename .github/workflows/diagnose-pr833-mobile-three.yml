@@ -40,30 +40,30 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
-      - name: Run bounded same-host grid comparison
+      - name: Gate tile pixel equivalence before unchanged mobile cases
         shell: bash
         run: |
           set -euo pipefail
           node scripts/ci/check-node-security-version.mjs
-          node scripts/ci/mobile-grid-diagnostic.mjs
+          node scripts/ci/mobile-grid-tile-gate.mjs
 
-      - name: Upload complete grid artifacts
+      - name: Upload complete tile artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pr833-grid-full-${{ github.sha }}
-          path: artifacts/grid/
+          name: pr833-grid-tile-full-${{ github.sha }}
+          path: artifacts/grid-tile/
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload compact grid diagnostics
+      - name: Upload compact tile diagnostics
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pr833-grid-diagnostics-${{ github.sha }}
+          name: pr833-grid-tile-diagnostics-${{ github.sha }}
           path: |
-            artifacts/grid/*.json
-            artifacts/grid/*/*.json
-            artifacts/grid/**/error-context.md
+            artifacts/grid-tile/*.json
+            artifacts/grid-tile/*/*.json
+            artifacts/grid-tile/**/error-context.md
           if-no-files-found: warn
           retention-days: 14
