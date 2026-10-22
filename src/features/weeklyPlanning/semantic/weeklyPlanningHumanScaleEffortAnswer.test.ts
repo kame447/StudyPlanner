@@ -69,7 +69,7 @@ function graphFor(
   };
 }
 
-function durationAnswer(minutes: number): WeeklyPlanningSemanticDocumentV5 {
+function durationAnswer(minutes: number, measurement: WeeklyPlanningEffortMeasurementV5, unitCode: SemanticWorkloadUnitCodeV5): WeeklyPlanningSemanticDocumentV5 {
   return {
     schemaVersion: WEEKLY_PLANNING_SEMANTIC_SCHEMA_VERSION_V5,
     planningIntent: 'discuss',
@@ -83,9 +83,9 @@ function durationAnswer(minutes: number): WeeklyPlanningSemanticDocumentV5 {
       effortEstimates: [{
         localId: 'answer-effort',
         targetLocalId: 'answer-task',
-        kind: 'total_duration',
+        kind: measurement,
         minutes,
-        unitCode: null,
+        unitCode: measurement === 'total_duration' ? null : unitCode,
         precision: 'approximate',
         sourceText: `${minutes}分くらい`,
       }],
@@ -111,7 +111,7 @@ function answer(
 ) {
   return applyWeeklyPlanningStableV5ContextualAnswer({
     graph: graphFor(unitCode, amount, quantityRole),
-    document: durationAnswer(minutes),
+    document: durationAnswer(minutes, effortMeasurement ?? 'total_duration', unitCode),
     pendingQuestion: {
       actionId: 'question-1',
       questionCode: 'missing_effort_estimate',

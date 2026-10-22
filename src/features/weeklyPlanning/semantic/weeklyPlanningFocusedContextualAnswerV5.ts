@@ -1,3 +1,4 @@
+import { readWeeklyPlanningPendingQuestionV5 } from './weeklyPlanningPendingQuestionV5';
 import type { FocusedContextualTargetBinding } from '../../../../shared/focusedContextualTargetBinding';
 import type {
   ChatMessage,
@@ -331,13 +332,14 @@ export function createFocusedContextualAnswerMessagesV5(
   const target = focusedContextualTargetV5(input);
   if (!target) return [];
   return [
-    { role: 'system', content: FOCUSED_CONTEXTUAL_ANSWER_SYSTEM_PROMPT },
+    { role: 'system', content: FOCUSED_CONTEXTUAL_ANSWER_SYSTEM_PROMPT + (target.questionCode === 'missing_effort_estimate' ? '\nEllipsis inherits pendingQuestion.effortMeasurement and its unit; explicit measurement changes keep their actual kind. Ambiguity => fallback.' : '') },
     {
       role: 'user',
       content: JSON.stringify({
         currentUserText: input.userText,
         pendingQuestion: {
           questionCode: target.questionCode,
+          ...(target.questionCode === 'missing_effort_estimate' ? { effortMeasurement: readWeeklyPlanningPendingQuestionV5(input.publicStateSummary)?.effortMeasurement ?? null } : {}),
           questionBasis: target.questionBasis,
           questionTargetWorkload: workloadPromptView(target),
           ...(boundTarget ? { boundTarget } : {}),
