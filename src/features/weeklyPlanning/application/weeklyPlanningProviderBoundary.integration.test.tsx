@@ -1,3 +1,4 @@
+import { withWeeklyPlanningEffortAcknowledgement } from '../testUtils/__tests__/weeklyPlanningRendererCompletionFixture';
 import { isWeeklyPlanningFactActiveV5 } from '../semantic/weeklyPlanningFactLifecycleV5';
 import { materialIdentityDocument, materialIdentityEffortFixture, MATERIAL_IDENTITY_TEXT } from '../testUtils/__tests__/weeklyPlanningMaterialIdentityFixture';
 import { classifyWeeklyPlanningApprovalAvailability } from './weeklyPlanningApprovalAvailability';
@@ -96,8 +97,8 @@ beforeEach(async () => {
     } else if (schema === 'weekly_planning_stable_v5_dialogue_response') {
       const prompt = JSON.parse(body.messages[body.messages.length - 1].content);
       const decision = prompt.applicationDecision;
-      content = JSON.stringify({ actionId: prompt.actionId, actionKind: decision.actionKind, questionCode: decision.questionCode,
-        groundingAcknowledgement: null, text: decision.recovery ? RECOVERY_TEXT : `内容を確認してください。${decision.previewPromotionControlLabel ?? ''}` });
+      content = JSON.stringify(withWeeklyPlanningEffortAcknowledgement(prompt, { actionId: prompt.actionId, actionKind: decision.actionKind, questionCode: decision.questionCode,
+        groundingAcknowledgement: null, text: decision.recovery ? RECOVERY_TEXT : `内容を確認してください。${decision.previewPromotionControlLabel ?? ''}` }));
     } else if (schema === 'weekly_planning_recovery_verdict') {
       const prompt = JSON.parse(body.messages[body.messages.length - 1].content);
       content = JSON.stringify({ actionId: prompt.actionId, questionMatches: 'yes',

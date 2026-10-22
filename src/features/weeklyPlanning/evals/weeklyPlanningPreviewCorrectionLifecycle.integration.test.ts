@@ -1,3 +1,9 @@
+import { allocateWeeklyPlanningEffort } from '../semantic/weeklyPlanningEffortAllocation';
+import { createWeeklyPlanningSemanticPipelineV5 } from '../semantic/weeklyPlanningSemanticPipelineV5';
+import { createWeeklyPlanningSemanticNormalizerV5 } from '../semantic/weeklyPlanningSemanticNormalizerV5';
+import type { WeeklyPlanningSemanticDocumentV5 } from '../semantic/weeklyPlanningSemanticDocumentV5';
+import { scheduleWeeklyPlanningStableV5Preview } from '../semantic/weeklyPlanningStableV5PreviewScheduler';
+import { createWeeklyPlanningPlacementGraphViewV5 } from '../semantic/weeklyPlanningPlacementGraphViewV5';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   classifyWeeklyPlanningApprovalAvailability,
@@ -216,4 +222,83 @@ describe('weekly planning preview correction lifecycle', () => {
       reason: 'state_revision_mismatch',
     });
   });
+});
+
+it.each(['modify', 'replace'] as const)('recompiles per-unit→total and numeric %s corrections before scheduling fresh allocations', async operation => {
+  const document: WeeklyPlanningSemanticDocumentV5 = {
+    schemaVersion: 'weekly-planning-semantic-v5', planningIntent: 'create_plan',
+    planningWindow: { localId: 'window', kind: 'absolute', value: '2026-08-11', start: '2026-08-11', end: '2026-08-11', sourceText: '8月11日' },
+    tasks: [{ localId: 'math', category: 'study', title: '数学', study: { purpose: 'self_study', contextLabel: null, components: [] },
+      workloads: [{ localId: 'work', quantityRole: 'target', amount: 20, unitCode: 'problem', unitLabel: '問', rangeStart: null, rangeEnd: null,
+        perOccurrence: false, periodExpression: null, sourceText: '数学20問' }],
+      effortEstimates: [{ localId: 'effort', targetLocalId: 'work', kind: 'duration_per_unit', minutes: 5, unitCode: 'problem', precision: 'exact', sourceText: '1問5分' }],
+      temporalConstraints: [], recurrence: [], sourceText: '数学20問を1問5分' }], relations: [], availabilityDeclarations: [], constraintSourceRequests: [], uncertainties: [], corrections: [], decisions: [],
+  };
+  if (operation === 'replace') document.tasks.push({ ...structuredClone(document.tasks[0]), localId: 'english', title: '英語',
+    workloads: [{ ...document.tasks[0].workloads[0], localId: 'english-work', amount: 15, unitCode: 'page', unitLabel: 'ページ', sourceText: '英語15ページ' }],
+    effortEstimates: [{ localId: 'english-effort', targetLocalId: 'english-work', kind: 'total_duration', minutes: 45, unitCode: 'minute', precision: 'exact', sourceText: '全部で45分' }],
+    sourceText: '英語15ページは全部で45分' });
+  let providerCalls = 0;
+  const run = (doc: WeeklyPlanningSemanticDocumentV5, graph: ReturnType<typeof createEmptyWeeklyPlanningFactGraphV5>, turnId: string) =>
+    createWeeklyPlanningSemanticPipelineV5(operation === 'replace' ? createWeeklyPlanningSemanticNormalizerV5({
+      createChatCompletion: async () => { providerCalls++; return JSON.stringify(doc); },
+    }) : { normalize: async () => ({ status: 'accepted', document: doc, diagnostics: {
+      schemaVersion: 'weekly-planning-semantic-v5', jsonSchemaName: 'weekly_planning_semantic_document_v5', normalizerVersion: 'weekly-planning-semantic-normalizer-v5',
+      attemptCount: 1, repairAttempted: false, requestBytes: [1], responseLengths: [1], latencyMs: 1, validationErrors: [], providerError: null,
+    } }) }).run({ graph, conversationId: CONVERSATION_ID, turnId, expectedRevision: graph.revision,
+      userText: [doc.planningWindow?.sourceText, ...doc.tasks.map(task => task.sourceText)].filter(Boolean).join('。'),
+      schedulerContext: { ownerId: USER_ID, currentDate: '2026-08-10', planningStartDate: '2026-08-11', planningEndDate: '2026-08-11', timeZone: 'Asia/Tokyo' } });
+  let result = await run(document, createEmptyWeeklyPlanningFactGraphV5(), 'initial-rate');
+  let priorEffort = result.canonicalization!.localToFactId.effort;
+  const taskId = result.canonicalization!.localToFactId.math;
+  const workloadId = result.canonicalization!.localToFactId.work;
+  const englishBefore = result.graph.effortEstimates.filter(fact => fact.taskId !== taskId);
+  const schedules = [];
+  for (const minutes of [100, 60, 30]) {
+    if (minutes !== 100) {
+      const correction = { ...document, planningIntent: 'update_plan' as const, planningWindow: null, tasks: [{ ...document.tasks[0], existingPublicId: taskId,
+        workloads: [], effortEstimates: [{ localId: 'replacement', targetLocalId: workloadId, kind: 'total_duration' as const,
+          minutes, unitCode: operation === 'replace' ? 'minute' as const : null, precision: 'exact' as const, sourceText: `全部で${minutes}分` }], sourceText: `全部で${minutes}分` }],
+        corrections: [{ localId: 'correction', target: { kind: 'effort_estimate' as const, publicId: priorEffort, localId: null, mention: '数学の時間' },
+          operation, replacementLocalId: 'replacement', sourceText: `全部で${minutes}分` }] };
+      result = await run(correction, result.graph, `total-${minutes}`);
+      expect(result.canonicalization?.status, JSON.stringify(result.canonicalization?.errors)).toBe('applied');
+      priorEffort = result.canonicalization!.localToFactId.replacement;
+    }
+    expect(result.scheduler?.status).toBe('ready');
+    const preview = scheduleWeeklyPlanningStableV5Preview({ input: result.scheduler!.input!, graph: createWeeklyPlanningPlacementGraphViewV5(result.graph),
+      plans: [], scheduleTemplates: [], notBefore: { date: '2026-08-10', time: '10:00' } });
+    expect(preview.status).toBe('ready');
+    expect(result.scheduler!.input!.movableWorkItems.filter(item => item.taskId === taskId).reduce((sum, item) => sum + (item.baseEstimatedMinutes ?? 0), 0)).toBe(minutes);
+    expect(preview.candidates.filter(candidate => (candidate as unknown as { stableV5Metadata: { taskId: string } }).stableV5Metadata.taskId === taskId)
+      .reduce((sum, candidate) => sum + candidate.durationMinutes, 0)).toBe(allocateWeeklyPlanningEffort({ baseEstimateMinutes: minutes }).allocationMinutes);
+    schedules.push(preview.candidates);
+    const active = new Set(result.graph.factLifecycles.filter(f => f.status === 'active').map(f => f.factId));
+    expect(result.graph.effortEstimates.filter(f => active.has(f.id) && f.taskId === taskId)).toHaveLength(1);
+    expect(result.graph.effortEstimates.filter(f => f.taskId !== taskId)).toEqual(englishBefore);
+  }
+  if (operation === 'replace') {
+    const reverse = { ...document, planningIntent: 'update_plan' as const, planningWindow: null,
+      tasks: [{ ...document.tasks[0], existingPublicId: taskId,
+        workloads: [{ ...document.tasks[0].workloads[0], sourceText: '1問3分' }],
+        effortEstimates: [{ localId: 'reverse-rate', targetLocalId: 'work', kind: 'duration_per_unit' as const,
+          minutes: 3, unitCode: 'problem' as const, precision: 'exact' as const, sourceText: '1問3分' }], sourceText: '1問3分' }],
+      corrections: [{ localId: 'reverse-correction', target: { kind: 'effort_estimate' as const, publicId: priorEffort, localId: null, mention: '数学の時間' },
+        operation: 'replace' as const, replacementLocalId: 'reverse-rate', sourceText: '1問3分' }] };
+    result = await run(reverse, result.graph, 'back-to-rate');
+    expect(result.canonicalization?.status, JSON.stringify({ normalization: result.normalization.diagnostics.validationErrors,
+      canonicalization: result.canonicalization?.errors })).toBe('applied');
+    const active = new Set(result.graph.factLifecycles.filter(f => f.status === 'active').map(f => f.factId));
+    expect(result.graph.effortEstimates.filter(f => active.has(f.id) && f.taskId === taskId)).toMatchObject([
+      { targetFactId: workloadId, kind: 'duration_per_unit', minutes: 3, unitCode: 'problem' },
+    ]);
+    expect(result.graph.effortEstimates.filter(f => f.taskId !== taskId)).toEqual(englishBefore);
+    expect(result.scheduler?.status).toBe('ready');
+    const preview = scheduleWeeklyPlanningStableV5Preview({ input: result.scheduler!.input!, graph: createWeeklyPlanningPlacementGraphViewV5(result.graph),
+      plans: [], scheduleTemplates: [], notBefore: { date: '2026-08-10', time: '10:00' } });
+    expect(preview.candidates.filter(candidate => (candidate as unknown as { stableV5Metadata: { taskId: string } }).stableV5Metadata.taskId === taskId)
+      .reduce((sum, candidate) => sum + candidate.durationMinutes, 0)).toBe(allocateWeeklyPlanningEffort({ baseEstimateMinutes: 60 }).allocationMinutes);
+    expect(providerCalls).toBe(4); // No repair may drop either explicit measurement replacement.
+  }
+  expect(schedules[2]).not.toEqual(schedules[0]);
 });
