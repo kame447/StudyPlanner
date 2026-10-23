@@ -1,6 +1,12 @@
 import { expect, test } from './support/fixed-clock.mjs';
 import { prepareMaterialObservation, hasMaterialObservation, observeMaterialControl, attachMaterialObservation } from './support/material-pr-observation.mjs';
 
+// Recording is worker-scoped: opt in at file level, not inside a describe.
+// Only the normal mobile matrix enables this; local and zero-retry diagnostics keep capture.
+if (process.env.CI && process.env.UI_RETRY_CAPTURE === '1') {
+  test.use({ trace: 'on-first-retry', video: 'on-first-retry' });
+}
+
 test.afterEach(async ({}, testInfo) => { await attachMaterialObservation(testInfo); });
 
 async function seedBookshelf(page, longTextFixture = null) {
@@ -662,6 +668,11 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 108
           ? 'keeps full detail text and cancels unsaved chapter edits'
           : 'saves the last chapter and preserves it after full reload';
         test(`${purpose} at ${percent}%`, async ({ page }, testInfo) => {
+          // These three functional journeys exceed 30s on CI; this is not a latency fix (#805).
+          if (testInfo.project.name === 'webkit-mobile' && viewport.width === 1920 && viewport.height === 1080
+            && (contract === 'save-reload' || percent === 200)) {
+            testInfo.setTimeout(60_000);
+          }
           await prepareMaterialObservation(page, testInfo, { viewport, percent, contract });
           await seedBookshelf(page, {
             name: longMaterialName, subject: longMaterialSubject, activity: longMaterialActivity,
@@ -675,7 +686,6 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 108
           await page.evaluate(() => document.fonts.ready);
           expect(await page.evaluate(() => document.fonts.check('16px DotGothic16'))).toBe(true);
           // Each purpose has its own fixture and dynamic 100→200% transition.
-          // Keep the same 30s budget for each independent user contract.
           expect(await page.locator('html').evaluate(element => getComputedStyle(element).fontSize)).toBe('16px');
           const initialFont = await detail.locator('.bookshelf-detail-hero-copy h2')
             .evaluate(element => parseFloat(getComputedStyle(element).fontSize));
