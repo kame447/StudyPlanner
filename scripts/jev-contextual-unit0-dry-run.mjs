@@ -44,7 +44,7 @@ export async function buildMockSets() {
   return { B: make('B', 30), C: make('C', 35) };
 }
 
-const jevResponse = (choice, cost = 0.00001) => Response.json({ model: 'typesafe/jev-1.14',
+const jevResponse = (choice, cost = 0.00001, model = 'typesafe/jev-1.14') => Response.json({ model,
   answers: { contextual_answer: { type: 'choice', choice, confidence: 0.999,
     probabilities: Object.fromEntries(['target', 'remaining', 'completed', 'focused_luna', 'fallback']
       .map((key) => [key, key === choice ? 0.9996 : 0.0001])) },
@@ -83,7 +83,7 @@ const SCENARIOS = {
 };
 export const DRY_RUN_SCENARIOS = Object.keys(SCENARIOS);
 
-function mockFetchFor(scenario, counters) {
+function mockFetchFor(scenario, counters, servedModel) {
   return async (url, init) => {
     const target = String(url);
     assert.ok(typeof init?.body === 'string', 'Mock provider requires a serialized body.');
@@ -91,7 +91,7 @@ function mockFetchFor(scenario, counters) {
     if (target === 'https://openrouter.ai/api/alpha/decisions') {
       counters.jev += 1;
       if (scenario.jevNetworkFailure) throw new TypeError('mock network failure');
-      return jevResponse(scenario.jevChoice ?? 'target', scenario.jevCost);
+      return jevResponse(scenario.jevChoice ?? 'target', scenario.jevCost, servedModel);
     }
     if (target === 'https://api.openai.com/v1/chat/completions') {
       counters.luna += 1;
@@ -139,7 +139,7 @@ export function createInProcessTransport({ bundle, scenario, clock, counters }) 
           const original = globalThis.fetch;
           const info = console.info;
           console.info = () => undefined; // runtime decision logs are not dry-run output
-          globalThis.fetch = mockFetchFor(scenario, counters);
+          globalThis.fetch = mockFetchFor(scenario, counters, bundle.preSend.jev.model);
           try {
             const response = await call('/case', { method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ caseId, arm, budgetRemainingUsd, runState }) });
