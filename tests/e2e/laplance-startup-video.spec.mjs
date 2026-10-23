@@ -112,11 +112,13 @@ for (const width of [390, 1280]) {
     await expect(page.locator('.home-main:visible')).toHaveCount(0);
     expect(await original.evaluate(node => node.isConnected)).toBe(true);
     expect(await media.evaluate(node => node === document.querySelector('video') && !node.ended)).toBe(true);
-    await testInfo.attach(`laplans-ready-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
     await button.tap();
     await expect(page.locator('.home-main')).toBeVisible();
     await expect(page.locator('.splash-screen:visible')).toHaveCount(0);
     await expectUnloaded(media);
+    // Capture evidence after the real tap: the five-second clip keeps playing
+    // while a screenshot is captured and may otherwise remove the skip button.
+    await testInfo.attach(`laplans-after-skip-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
   });
 }
 

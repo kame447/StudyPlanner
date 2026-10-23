@@ -1,11 +1,11 @@
 # Study session finish measurement boundary
 
-Status: active local candidate; full local verification passed, native/integration acceptance pending
+Status: active PR #818; current-main integration verification and native acceptance pending
 Owner: client runtime; related product contract [Issue #190](https://github.com/kame447/StudyPlanner/issues/190)
 
 ## Scope and current checkpoint
 
-Branch `refactor/ui-state-boundaries`, base/verification HEAD `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`. No PR or publication for this candidate.
+Existing branch `refactor/ui-state-boundaries`, [PR #818](https://github.com/kame447/StudyPlanner/pull/818). On 2026-10-23, remote head `4c284e68b6412688afeab020ed6b88e1b7525330` was integrated with main `398ad1143ad36b742ad9cee076466688e42e44d7` without source changes or conflicts. The original implementation remains intact. Focused timer, Pomodoro and session regressions pass (122 tests across five files). Final-content full verification and native CI gates remain separate pending checks; current results will be recorded on the PR. Earlier snapshots below are historical evidence, not verification of this integration.
 
 The finish action previously computed recordable elapsed duration, its separate storage minimum, first finite-Pomodoro completion instant, and local-date classification inside `StudySessionView`. A pure `getStudySessionFinishMeasurement` now owns that temporal projection with an explicit clock input. The component still owns phase admission, React/ref updates, draft creation/edit retention and persistence. This is not a newly discovered production bug or a new completion-accounting policy.
 

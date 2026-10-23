@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { PINNED_WRANGLER_VERSION } from '../verified-wrangler.mjs';
 
 const root = new URL('../../', import.meta.url);
 const require = createRequire(new URL('package.json', root));
@@ -15,8 +16,9 @@ const launchers = [
 describe('Worker toolchain security and launcher pin contract', () => {
   it.each(launchers)('keeps %s on the exact supported toolchain', (launcher) => {
     const source = fs.readFileSync(new URL(`scripts/${launcher}.mjs`, root), 'utf8');
-    expect(source.match(/const PINNED_WRANGLER_VERSION = '([^']+)'/)?.[1]).toBe(pinnedVersion);
-    expect(source).toMatch(/assert\.equal\(\s*packageJson\.version,\s*PINNED_WRANGLER_VERSION/);
+    expect(PINNED_WRANGLER_VERSION).toBe(pinnedVersion);
+    expect(source).toContain("import { loadVerifiedWrangler, PINNED_WRANGLER_VERSION } from './verified-wrangler.mjs'");
+    expect(source).toContain('return loadVerifiedWrangler({');
   });
 
   it('keeps the executable README example aligned with the pin', () => {
@@ -25,8 +27,9 @@ describe('Worker toolchain security and launcher pin contract', () => {
   });
 
   it('uses the patched transport from the real Miniflare installation', () => {
+    expect(manifest.overrides['miniflare@5.20261012.0-beta']).toEqual({ undici: '7.30.1' });
     const miniflareRequire = createRequire(require.resolve('miniflare'));
-    expect(miniflareRequire('undici/package.json').version).toBe('7.29.1');
+    expect(miniflareRequire('undici/package.json').version).toBe('7.30.1');
   });
 
   it('resolves the patched native image dependency from the pinned Miniflare', () => {
@@ -37,11 +40,13 @@ describe('Worker toolchain security and launcher pin contract', () => {
     expect(sharp.versions.rsvg).toBe('2.63.2');
   });
 
-  it('checks the embedded CLI transport as well as the separately audited dependency', () => {
+  it('records the still-unpatched embedded CLI transport separately from the Miniflare mitigation', () => {
     const wranglerPackagePath = require.resolve('wrangler/package.json');
     const installed = JSON.parse(fs.readFileSync(wranglerPackagePath, 'utf8'));
     expect(installed.version).toBe(pinnedVersion);
     const cli = fs.readFileSync(resolve(dirname(wranglerPackagePath), 'wrangler-dist/cli.js'), 'utf8');
+    // This is a known unresolved risk, not a patched-transport assertion.
+    // The scoped Miniflare override cannot rewrite Wrangler's embedded dependency.
     // Published bundle module paths identify the embedded copy that npm audit cannot see.
     const embeddedVersions = [...new Set([...cli.matchAll(/\.pnpm\/undici@([^/]+)\/node_modules\/undici\//g)].map((match) => match[1]))];
     expect(embeddedVersions).toEqual(['7.29.1']);
