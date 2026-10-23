@@ -1,23 +1,17 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-// This is the supported toolchain pin, not evidence of a fresh live-provider evaluation.
-const PINNED_WRANGLER_VERSION = '4.151.0';
+import { loadVerifiedWrangler, PINNED_WRANGLER_VERSION } from './verified-wrangler.mjs';
 
 async function loadWrangler() {
-  for (const directory of (process.env.PATH ?? '').split(delimiter)) {
-    let executable;
-    try { executable = await realpath(join(directory, 'wrangler')); } catch { continue; }
-    const packageJson = JSON.parse(await readFile(resolve(dirname(executable), '../package.json'), 'utf8'));
-    assert.equal(packageJson.version, PINNED_WRANGLER_VERSION,
-      `Refusing remote smoke with Wrangler ${String(packageJson.version)}; expected ${PINNED_WRANGLER_VERSION}.`);
-    return import(pathToFileURL(resolve(dirname(executable), '../wrangler-dist/cli.js')).href);
-  }
-  throw new Error('Run through npm exec --package=wrangler@4.151.0 so Wrangler is available.');
+  return loadVerifiedWrangler({
+    purpose: 'remote smoke',
+    missingMessage: `Run through npm exec --package=wrangler@${PINNED_WRANGLER_VERSION} so Wrangler is available.`,
+  });
 }
 
 async function main() {
