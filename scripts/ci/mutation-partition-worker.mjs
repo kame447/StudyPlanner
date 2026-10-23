@@ -80,6 +80,64 @@ export async function prepareInventory({ root, instrumenter, ts, config, identit
   return { schemaVersion: 1, identity, versions, inputHashes, installedHash: sha256(JSON.stringify(snapshotLockedToolchain(root))), canonicalConfig: config, reporterPlugin: './scripts/ci/mutation-partition-plugin.mjs', policy: detectionPolicy(config), configHash: sha256(fs.readFileSync(path.join(root, 'stryker.config.mjs'))), sources, ranges, full, shards };
 }
 
+// Exercise the real pinned preparation/injector graph, stopping before any
+// instrumenter, checker pool, sandbox initialization or test runner execution.
+export async function probeReporterBootstrap(directory, root) {
+  const requireTool = createRequire(path.join(directory, 'package.json'));
+  const coreRoot = path.dirname(requireTool.resolve('@stryker-mutator/core/package.json'));
+  const core = file => import(pathToFileURL(path.join(coreRoot, 'dist/src', file)).href);
+  const { createInjector } = requireTool('typed-inject');
+  const { PlanKind } = await import(pathToFileURL(requireTool.resolve('@stryker-mutator/api/core')).href);
+  const { coreTokens } = await core('di/index.js');
+  const { PrepareExecutor } = await core('process/1-prepare-executor.js');
+  const { DryRunExecutor } = await core('process/3-dry-run-executor.js');
+  const { ConcurrencyTokenProvider } = await core('concurrent/concurrency-token-provider.js');
+  const { Sandbox } = await core('sandbox/sandbox.js');
+  const { provideLogging, provideLoggingBackend } = await core('logging/index.js');
+  const { calculateMutationTestMetrics } = await import(pathToFileURL(requireTool.resolve('mutation-testing-metrics')).href);
+  fs.mkdirSync(path.join(root, '.cache'), { recursive: true });
+  const output = fs.mkdtempSync(path.join(root, '.cache/mutation-reporter-bootstrap-'));
+  const injector = createInjector();
+  const canonicalConfig = (await import(pathToFileURL(path.join(root, 'stryker.config.mjs')).href)).default;
+  const canonicalBefore = JSON.stringify(canonicalConfig);
+  // ConfigReader shallow-copies JS exports before deep-merging CLI options.
+  // A fresh JSON copy prevents probe paths from mutating the cached main config.
+  const configFile = path.join(output, 'stryker.config.json');
+  write(configFile, canonicalConfig);
+  process.env.MUTATION_TOOLS_DIRECTORY = directory;
+  try {
+    const preparation = provideLogging(await provideLoggingBackend(injector, process.stdout)).provideValue(coreTokens.reporterOverride, undefined);
+    const prepared = await preparation.injectClass(PrepareExecutor).execute({ cliOptions: {
+      configFile,
+      plugins: ['@stryker-mutator/vitest-runner', '@stryker-mutator/typescript-checker', './scripts/ci/mutation-partition-plugin.mjs'],
+      // Keep generated probe output and local npm caches outside discovery.
+      reporters: ['strict-mutation-evidence'], tempDirName: '.cache',
+      jsonReporter: { fileName: path.join(output, 'report.json') }, eventReporter: { baseDir: path.join(output, 'events') },
+    }, targetMutatePatterns: undefined });
+    // These constructors only allocate bookkeeping; execute/init is never called.
+    const dry = prepared.provideClass(coreTokens.concurrencyTokenProvider, ConcurrencyTokenProvider)
+      .provideClass(coreTokens.sandbox, Sandbox).injectClass(DryRunExecutor);
+    check(dry.reporter === prepared.resolve(coreTokens.reporter), 'DryRunExecutor reporter scope differs');
+    const mutant = { id: 'bootstrap', mutatorName: 'BooleanLiteral', replacement: 'false', status: 'Killed', location: { start: { line: 1, column: 15 }, end: { line: 1, column: 19 } }, coveredBy: ['probe'], killedBy: ['probe'] };
+    const report = { schemaVersion: '3', thresholds: { high: 80, low: 60, break: 50 }, files: { 'bootstrap.ts': { source: 'const value = true;\n', mutants: [mutant] } }, testFiles: { 'bootstrap.test.ts': { tests: [{ id: 'probe', name: 'reporter lifecycle probe' }] } } };
+    const reporter = dry.reporter;
+    reporter.onDryRunCompleted({ result: { status: 'complete', tests: [] }, timing: { net: 1, overhead: 1 }, capabilities: { reloadEnvironment: true } });
+    reporter.onMutationTestingPlanReady({ mutantPlans: [{ plan: PlanKind.Run, mutant, netTime: 1, runOptions: { reloadEnvironment: false } }] });
+    reporter.onMutantTested(mutant);
+    reporter.onMutationTestReportReady(report, calculateMutationTestMetrics(report));
+    await reporter.wrapUp();
+    assertReporterComplete(reporterState, 1);
+    check(Object.keys(reporterState.delegates).length === 4 && reporterState.delegates['clear-text'] && reporterState.delegates.json && reporterState.delegates['event-recorder'] && (reporterState.delegates.progress || reporterState.delegates['progress-append-only']), 'Original reporter delegates missing');
+    check(json(path.join(output, 'report.json')).files['bootstrap.ts'].mutants.length === 1, 'Bootstrap JSON delegate did not publish');
+    check(fs.readdirSync(path.join(output, 'events')).length === 4, 'Bootstrap event delegate did not publish all events');
+    check(JSON.stringify(canonicalConfig) === canonicalBefore, 'Bootstrap changed the canonical mutation config');
+    return { prepared: true, dryRunExecutorCreated: true, canonicalConfigUnchanged: true, reporting: structuredClone(reporterState), productTestsExecuted: false, mutationExecuted: false };
+  } finally {
+    try { await injector.dispose(); }
+    finally { fs.rmSync(output, { recursive: true, force: true }); }
+  }
+}
+
 async function main() {
   const [directory, mode, input, shard] = process.argv.slice(2);
   const root = process.cwd();
@@ -111,14 +169,8 @@ async function main() {
     let rejected = false;
     try { assertReporterComplete(observed, 1); } catch { rejected = true; }
     check(rejected, 'Completed-output reporter failure was accepted');
-    process.env.MUTATION_TOOLS_DIRECTORY = directory;
-    const plugin = await import(pathToFileURL(path.join(root, 'scripts/ci/mutation-partition-plugin.mjs')).href);
-    const { createInjector } = requireTool('typed-inject');
-    const injector = createInjector().provideValue('pluginCreator', { create: () => ({ wrapUp() {} }) }).provideValue('options', { thresholds: { break: 50 } });
-    const registered = injector.injectFunction(plugin.strykerPlugins[0].factory);
-    check(typeof registered.wrapUp === 'function' && Object.keys(reporterState.delegates).length === 4, 'Strict reporter plugin binding failed');
-    await injector.dispose();
-    write(path.join(path.dirname(input), 'reporter-negative-control.json'), { outputWritten, caughtUpstream: true, rejected, failures: observed.failures, pluginBound: true });
+    const bootstrap = await probeReporterBootstrap(directory, root);
+    write(path.join(path.dirname(input), 'reporter-negative-control.json'), { outputWritten, caughtUpstream: true, rejected, failures: observed.failures, bootstrap });
     const { Instrumenter } = await import(pathToFileURL(requireTool.resolve('@stryker-mutator/instrumenter')).href);
     const ts = requireTool('typescript');
     const instrumentLogger = { debug() {}, info() {}, warn: console.warn, error: console.error, trace() {}, isDebugEnabled: () => false };
