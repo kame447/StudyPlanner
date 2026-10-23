@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { BOOTSTRAP_SEED, CENSUS_BOOTSTRAP_SEED, EXECUTION_ORDER_SEED, bootstrapReplicates, createXoshiro128StarStar,
   executionOrder, seedWords } from './jev-contextual-unit0-random.mjs';
-import { ConsumptionLedger, PREREGISTERED_LIMITS, PREREGISTERED_PRICING, classifyAttempt, reservePerCallUsd,
+import { ConsumptionLedger, PREREGISTERED_LIMITS, PREREGISTERED_PRICING, CURRENT_JEV_DRY_RUN_PRICING, classifyAttempt, reservePerCallUsd,
   validateLimits } from './jev-contextual-unit0-budget.mjs';
 import { DECISION_RULES, evaluateUnit0, nearestRank } from './jev-contextual-unit0-decision.mjs';
 import { DRY_RUN_LABEL_SOURCE, R2_LABEL_SOURCE, REVIEW_SCHEMA, canonicalJson, createBlindPacket, importBlindReview,
@@ -589,7 +589,7 @@ describe('deployable Worker bundle (offline)', () => {
       return String(url).includes('/decisions') ? jev(init) : luna(init);
     }));
   };
-  const jevChoice = (choice) => () => Response.json({ model: 'typesafe/jev-1.13', answers: { contextual_answer: { type: 'choice', choice,
+  const jevChoice = (choice) => () => Response.json({ model: 'typesafe/jev-1.14', answers: { contextual_answer: { type: 'choice', choice,
     confidence: 0.999, probabilities: Object.fromEntries(['target', 'remaining', 'completed', 'focused_luna', 'fallback'].map((key) => [key, key === choice ? 0.9996 : 0.0001])) },
   condition_change: { type: 'noul', noul: 0.001 }, independent_meaning: { type: 'noul', noul: 0.001 } }, usage: { input_tokens: 1, output_tokens: 1, cost: 0.000001 } });
   const item = (roster) => roster.cases.find((entry) => entry.questionCode === 'quantity_role_unresolved');
@@ -687,8 +687,8 @@ describe('deployable Worker bundle (offline)', () => {
   });
 
   it.each([
-    ['typesafe/jev-1.13', null], ['typesafe/jev-1.13-20260917', null],
-    ['typesafe/jev-1.13-20261231', 'pricing_contract_violated'], ['typesafe/jev-1.14', 'model_or_contract'],
+    ['typesafe/jev-1.14', null], ['typesafe/jev-1.14-20261014', null],
+    ['typesafe/jev-1.13', 'model_or_contract'], ['typesafe/jev-1.14-20261231', 'model_or_contract'],
   ])('accepts only the frozen served Jev IDs: %s', async (servedModel, expected) => {
     const roster = buildRoster(sets, { dryRun: true });
     stub(async () => { const response = await jevChoice('target')(); const body = await response.json(); body.model = servedModel;
@@ -1123,7 +1123,7 @@ describe('stops detected at the final boundary and stopped artifacts (no provide
       return { id, expiresAt, bundleSha256: 'c'.repeat(64), async runCase({ caseId, arm }) { return structuredClone(replay.get(caseId)[arm]); },
         async stop() {} };
     } };
-    const ledger = new ConsumptionLedger(null, { limits: PREREGISTERED_LIMITS, pricing: { ...PREREGISTERED_PRICING, source: 'test' } });
+    const ledger = new ConsumptionLedger(null, { limits: PREREGISTERED_LIMITS, pricing: { ...CURRENT_JEV_DRY_RUN_PRICING, source: 'test' } });
     const result = await runSerialEvaluation({ roster, order, transport, ledger, limits: PREREGISTERED_LIMITS });
     expect(result.pairs.every((pair) => pair.jevFirst && pair.lunaOnly)).toBe(true); // every observation present…
     expect(result).toMatchObject({ status: 'incomplete_HOLD', stopReason: 'pricing_contract_violated' }); // …but the run stopped
@@ -1170,7 +1170,7 @@ describe('a charge above its reservation stops further sends in the same turn (W
     const bundle = await buildWorkerBundle({ cases: workerCases(roster), preSend: preSendFor(DRY_RUN_PRICING), dispatchesPerTurn: 8 });
     ({ module } = await loadBundleInProcess(bundle, { digest: sha256Text('t'), expiresAt: Date.now() + 60_000 }));
   }, 120_000);
-  const jev = (choice, cost) => Response.json({ model: 'typesafe/jev-1.13', answers: { contextual_answer: { type: 'choice', choice,
+  const jev = (choice, cost) => Response.json({ model: 'typesafe/jev-1.14', answers: { contextual_answer: { type: 'choice', choice,
     confidence: 0.999, probabilities: Object.fromEntries(['target', 'remaining', 'completed', 'focused_luna', 'fallback'].map((key) => [key, key === choice ? 0.9996 : 0.0001])) },
   condition_change: { type: 'noul', noul: 0.001 }, independent_meaning: { type: 'noul', noul: 0.001 } }, usage: { input_tokens: 10, output_tokens: 3, cost } });
   const luna = (promptTokens) => Response.json({ model: 'gpt-5.6-luna', service_tier: 'default', choices: [{ message: { content: '{}' } }],
