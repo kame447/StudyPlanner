@@ -21,6 +21,8 @@ Supporting architecture:
 
 Execution tracking:
 
+- [Study-session finish measurement boundary](work/study-session-finish-boundary-handoff.md) — pure temporal projection with preserved Pomodoro/date contracts; integration verification pending.
+
 - [Existing linked-Actual write read](work/actual-existing-write-read-handoff.md) — Issue #542; reuse save-attempt existence evidence while retaining transaction rereads and fail-closed deletion handling.
 
 - [Non-spatial data motion geometry](work/nonspatial-data-motion-layout-handoff.md) — skip unused rectangle measurements while preserving motion baselines and reduced feedback.
