@@ -3,8 +3,8 @@ import type { DecisionEvaluation } from './decisionProvider';
 
 // Update the request ID and the verified response allowlist together on model upgrade.
 export const JEV_MODEL = {
-  request: 'typesafe/jev-1.13',
-  responses: ['typesafe/jev-1.13', 'typesafe/jev-1.13-20260917'] as readonly string[],
+  request: 'typesafe/jev-1.14',
+  responses: ['typesafe/jev-1.14', 'typesafe/jev-1.14-20261014'] as readonly string[],
 } as const;
 export const JEV_CATALOG_VERSION = 'focused-authorization-2026-09-27';
 export const JEV_GATE_VERSION = 'authorization-conservative-v2-tuning81';
@@ -67,7 +67,8 @@ export function gateDecision(result: DecisionEvaluation): DecisionGate {
   return { status: 'accepted', decision: 'create_plan' };
 }
 
-// TypeSafe documents that jev-1.13 does not treat state as hostile. Calling
+// TypeSafe documented that jev-1.13 did not treat state as hostile. Until the
+// jev-1.14 behavior is independently verified, assume the same threat model. Calling
 // conversation fields "untrusted" below is advisory prompt wording, not an
 // injection boundary. Safety comes from deterministic route eligibility and
 // containment: this gate can only request an unsaved draft, never approval/save.
