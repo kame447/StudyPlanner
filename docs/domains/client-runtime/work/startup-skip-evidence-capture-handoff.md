@@ -1,10 +1,10 @@
 # Startup skip evidence capture
 
-Status: native verification passed on the published original head; current-main
-local integration verification passed. Native integration gates remain pending.
+Status: current-main local verification passed. Exact-head native integration
+gates remain pending; historical startup acceptance is not a replacement.
 Branch: `test/startup-skip-capture-order`, PR #809. Original base was
 `22e42203a4df82b5432d4290b7b5ea3a4246b8c9`; the current local integration base is
-`df675184f72b2717f68cd71eb89bb6b2a83a2394`.
+`ae833f7ac4d7af1d09a66da586f96276cdf085f4`.
 Scope: diagnose the ready touch-skip failure observed on PR #801 without changing
 startup product behavior or the separate complete-playback acceptance tests.
 
@@ -118,3 +118,13 @@ publication and the final integration gates; no main merge is claimed here.
   change, publishes only when authorized, and follows all applicable exact-head
   CI/native-browser gates to terminal results. Do not call the PR merge-ready
   based only on the local aggregate or historical original-head browser pass.
+
+## Final integration after the scoped Month allowance
+
+- Existing PR head `7891dfa7548138dc399a92232473deef71e03c54` is integrated with actual main `ae833f7ac4d7af1d09a66da586f96276cdf085f4` after #844 and #845. The startup spec remains byte-identical to the existing PR head; no startup behavior or assertion changes are added.
+- Previous exact-head native evidence passed all 22 startup cases on their first attempts. The prior Matrix failure was the separate Month 1280 case (first-attempt 30-second timeout, retry success), not startup acceptance. The approved Month allowance is supplied by merged #845, not a new timeout change in #809.
+- Earlier local and native records above are historical snapshots. This integrated content requires its own final local verification and applicable native gates; publication/merge are authorized only with those gates satisfied.
+
+- Final integrated local `npm run verify` exited 0 on Node 22.23.4 / npm 10.9.9: fresh application and Worker typechecks, 1,069 passing test files / 11,201 passing tests, 12 skipped files / 67 skipped tests and one todo; production build passed in 14.88 seconds. The unchanged bundle-budget checker passed.
+- The tracked patch was identical before and after verification (SHA-256 `55fa1602e09a007a69d4d6270cfa1b6c975857455d707a15a6aad0ca0beb44e8`). All 19,392 installed dependency files matched the previously verified shared installation; no content mismatches were found. The package manifest and lockfile also matched. Only this documentation receipt was changed after verification.
+- Final verification log SHA-256: `d1282c099c192db427e8a69dce221efedadc7224c71b4f3bcf0bb116f89aaa06`. Native exact-head CI remains required before merge; no new native result or product performance improvement is claimed.
