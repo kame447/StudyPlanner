@@ -125,3 +125,57 @@ background alpha animates. Entrance motion changes; sampled settled pixels
 match. Exit and panel motion remain unchanged. Day 1280 and Bookshelf #805
 remain unresolved. The temporary diagnostic is removed without adopting any
 production change; Issue #776 tracks the decision and subsequent verification.
+
+## Month functional completion budget: current local checkpoint
+
+This checkpoint supersedes the pending owner decision above. PR #845 adopts a
+narrower reduced-motion-only tint entry while retaining the settled 3px blur;
+it does not remove the standard-motion blur interpolation. Its original CSS
+and CSS contract test at `0d7a9b21` remain unchanged. The normal Matrix on that
+head still failed: the overnight 1280px WebKit mobile case exceeded 30 seconds
+on both attempts (32.4/31.4 seconds including runner overhead). The earlier
+controlled observations and isolated passes therefore do not establish a
+latency repair or stable reliability.
+
+The owner approved a 60-second functional completion allowance for only
+`webkit-mobile` / overnight month-event persistence at 1280x900 / `creates,
+edits and reloads a range with an earlier end clock`. The published two-line
+change at `b6f0446ce21581cc2afc149e8f5207a578b9f16f` is retained verbatim.
+It does not change the interactions, stored-value checks, two reloads, final
+range count, screenshot, viewport/DPR, retries or fail-on-flaky policy. No
+other Month case or project receives a larger budget. This is not a measured
+rendering-speed improvement and does not close the performance investigation.
+
+The local integration candidate combines that head with main
+`2ea267f41ba62c154ac83c260e19ad1fff4578a1`, retaining #844's provider-boundary fixture
+coverage and #846's documentation guidance. It adds an actual-callback budget
+scope regression and permits exactly the approved statement in the observation
+probe; all other timer waits, forced/trial actions and skips remain forbidden.
+Before integration the callback test passed 1/1 and the observation probes
+passed 12/12 on official checksum-verified Node 22.23.4 with freshly installed
+application dependencies (242 packages). These focused checks are not a full
+integration or native browser pass. Native Core on published `b6f0446c` passed
+11,200 tests; the standalone observation probe is not invoked by that Core
+suite, so its stale timer prohibition is a separate maintenance defect, not
+a native Core failure. One combined local full verification and the applicable
+native browser gates remain pending. No remote update or merge is claimed here.
+
+Local combined verification completed on 2026-10-23 at integration HEAD
+`a7b0ebae6f036a1a00cefdf160c97936c23aa399` plus the probe, callback regression
+and this checkpoint. `npm run verify` exited 0: fresh non-incremental app and
+regenerated Worker typechecks, 1,069 passing files / 11,201 passing tests and
+production build (13.78 seconds). Twelve skipped files, 67 skipped tests and
+one todo are not passes. Default repository worker settings were used, with
+`DEV_LAN_HOST=127.0.0.1` and Wrangler metrics disabled. Official Node 22.23.4
+archive matched its freshly fetched SHA-256 manifest
+`1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce`;
+npm was 10.9.9. The proposal uses a symlink to the fresh installation's
+`node_modules`; `npm ls --all --json` at that actual installation root passed.
+All 3,034 source inputs and 19,392 installed dependency files matched their
+before/after SHA-256 inventories, excluding generated dependency caches.
+Full-log SHA-256:
+`f05571d819f5cf3425266d71d6234c2cb8bdc0409f741b6ad9f9d0366a15c73e`.
+Independent source/scope/documentation reviews passed. This later proof entry
+is documentation-only. Native browser acceptance for the final published
+content, external-owner coordination and any publication remain outstanding;
+local verification does not replace those gates.

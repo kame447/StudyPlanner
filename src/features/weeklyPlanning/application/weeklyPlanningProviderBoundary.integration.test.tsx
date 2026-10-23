@@ -26,6 +26,7 @@ import { useWeeklyPlanningApplication, type WeeklyPlanningApplication, type UseW
 import { createWeeklyPlanningApprovalMemoryState, createMemoryWeeklyPlanningApprovalPlanRepository } from './weeklyPlanningApprovalMemoryRepository';
 import { resetWeeklyPlanningStableV5RuntimeSessionsForTest } from './weeklyPlanningStableV5RuntimeSession';
 import { weeklyPlanningTurnRuntimeGateway } from './weeklyPlanningTurnRuntimeGateway';
+import * as weeklyPlanningTurnController from '../weeklyPlanningTurnController';
 import { clearWeeklyPlanningSessionRuntime } from '../planning/weeklyPlanningSessionRuntime';
 import { resetUserPlanningContextRuntimeForTestV1 } from '../../userPlanningContext/userPlanningContextSpace';
 import { resetOpenAiCompatibleClientRequestBudgetForTest } from '../../../services/ai/openAiCompatibleClient';
@@ -621,7 +622,21 @@ it('versions an explicit material correction through the real app, invalidates s
 });
 
 
-it('keeps an unrelated required need through simultaneous identity/detail, App checkpoint reload and zero save', async () => {
+// These identities select each named equal-priority need; assert that before answering.
+const MATERIAL_IDENTITY_PENDING_CONVERSATION_ID = 'provider-boundary:required-needs:material';
+const TOTAL_DURATION_PENDING_CONVERSATION_ID = 'provider-boundary:required-needs:effort';
+const UNRELATED_PENDING_CONVERSATION_ID = 'provider-boundary:unrelated';
+it.each([
+  { pendingField: 'material_identity', conversationId: MATERIAL_IDENTITY_PENDING_CONVERSATION_ID },
+  { pendingField: 'total_duration', conversationId: TOTAL_DURATION_PENDING_CONVERSATION_ID },
+  { pendingField: 'unrelated', conversationId: UNRELATED_PENDING_CONVERSATION_ID },
+] as const)('keeps an unrelated required need through simultaneous identity/detail, App checkpoint reload and zero save (pending=$pendingField)', async ({ pendingField, conversationId }) => {
+  const createSession = weeklyPlanningTurnController.createWeeklyPlanningControllerSession;
+  // Own only this fixture's fresh identity; reload keeps its persisted identity.
+  vi.spyOn(weeklyPlanningTurnController, 'createWeeklyPlanningControllerSession').mockImplementation(
+    (ownerId, weekStartDate, restoredConversationId) => createSession(ownerId, weekStartDate,
+      restoredConversationId ?? (ownerId === OWNER && weekStartDate === WEEK ? conversationId : undefined)),
+  );
   const { ref, database, submit, unsaved } = await mount();
   const setupText = `${USER_TEXT}。教材は数学の問題集です。教材名と合計時間と進める範囲は要確認です`;
   const task = responseDocument.tasks[0];
@@ -634,9 +649,17 @@ it('keeps an unrelated required need through simultaneous identity/detail, App c
     { localId: 'unrelated-need', targetLocalId: 'material', field: 'unrelated', reason: '進める範囲を確認', sourceText: '教材名と合計時間と進める範囲は要確認です' },
   ];
   expect((await submit(setupText)).accepted).toBe(true);
+  expect(ref.current!.exportConversationSnapshot()!.conversationId).toBe(conversationId);
   const before = structuredClone(ref.current!.exportConversationSnapshot()!.graph);
   const oldMaterial = before.components.find(fact => fact.role === 'material')!;
   const need = (field: string) => before.uncertainties.find(fact => fact.field === field)!;
+  const pendingQuestion = ref.current!.state.intakeState?.lastQuestionContext;
+  expect(pendingQuestion).toMatchObject({
+    targetSlot: 'stable_v5:semantic_uncertainty', topicId: need(pendingField).id,
+    presentation: { graphRevision: before.revision },
+  });
+  expect(before.uncertainties.find(fact => fact.id === pendingQuestion?.topicId)).toMatchObject({ field: pendingField });
+  expect(isWeeklyPlanningFactActiveV5(before, need(pendingField).id)).toBe(true);
   unsaved(); expect(ref.current!.state.previewCandidates ?? []).toEqual([]);
   const fixture = materialIdentityEffortFixture(); responseDocument = fixture.document;
   responseDocument.tasks[0].existingPublicId = before.tasks[0].id;
