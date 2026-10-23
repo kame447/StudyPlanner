@@ -59,6 +59,13 @@ describe('OpenRouter Decisions contract and gates', () => {
     expect(body).not.toHaveProperty('messages');
   });
 
+  it.each(['typesafe/jev-1.14', 'typesafe/jev-1.14-20261014'])(
+    'accepts only a verified Jev 1.14 release response: %s', async (model) => {
+      expect(await adapter({ ...decisionResponse(), model }).provider.evaluate(state))
+        .toMatchObject({ status: 'evaluated', metadata: { servedModel: model } });
+    },
+  );
+
   it.each([401, 402, 429, 500, 503])('does not retry HTTP %i or retain upstream error text', async (status) => {
     const { provider, fetchMock } = adapter({ error: 'private-upstream-message' }, status);
     const result = await provider.evaluate(state);
@@ -92,7 +99,7 @@ describe('OpenRouter Decisions contract and gates', () => {
     expect(await adapter(value).provider.evaluate(state)).toMatchObject({ status: 'unavailable', reason: 'invalid_response' });
   });
 
-  it.each(['typesafe/jev-latest', 'typesafe/jev-1.14', 'typesafe/jev-1.13-20990101', null])('rejects an unverified model %s', async (model) => {
+  it.each(['typesafe/jev-latest', 'typesafe/jev-1.13', 'typesafe/jev-1.13-20260917', 'typesafe/jev-1.14-20990101', null])('rejects an unverified model %s', async (model) => {
     expect(await adapter({ ...decisionResponse(), model }).provider.evaluate(state))
       .toMatchObject({ status: 'unavailable', reason: 'model_mismatch' });
   });
