@@ -40,30 +40,32 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
-      - name: Observe original three cases with diagnostic-only 60 second budget
+      - name: Verify approved three cases using ordinary configuration
         shell: bash
         run: |
           set -euo pipefail
           node scripts/ci/check-node-security-version.mjs
-          node scripts/ci/mobile-three-budget-diagnostic.mjs
+          node scripts/ci/playwright-shard.mjs test --config=tests/e2e/playwright.cross-browser.config.mjs --project=webkit-mobile --grep 'material long text 1920x1080 (saves the last chapter and preserves it after full reload at (100|200)%|keeps full detail text and cancels unsaved chapter edits at 200%)$'
 
-      - name: Upload complete observation artifacts
+      - name: Upload complete functional test artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pr833-mobile-budget-full-${{ github.sha }}
-          path: artifacts/mobile-budget/
+          name: pr833-mobile-functional-full-${{ github.sha }}
+          path: |
+            artifacts/playwright-cross-browser-results/
+            artifacts/playwright-cross-browser-report/
+            artifacts/playwright-cross-browser-results.json
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload compact observation diagnostics
+      - name: Upload compact functional results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pr833-mobile-budget-diagnostics-${{ github.sha }}
+          name: pr833-mobile-functional-results-${{ github.sha }}
           path: |
-            artifacts/mobile-budget/*.json
-            artifacts/mobile-budget/*/*.json
-            artifacts/mobile-budget/**/error-context.md
+            artifacts/playwright-cross-browser-results.json
+            artifacts/playwright-cross-browser-results/**/error-context.md
           if-no-files-found: warn
           retention-days: 14

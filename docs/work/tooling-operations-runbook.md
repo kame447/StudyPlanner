@@ -32,6 +32,15 @@ Each durable entry should record:
 
 Do not record credentials, secret values, access tokens, private user data, or raw sensitive logs here.
 
+## Full unit-suite jobs need historical Worker source
+
+- Symptom: Test Intelligence coverage fails in `focusedContextualBindingWire.test.ts` with `fatal: not a tree object: 070d25cbe14796aebb8168ac5425c93e3506df1c`, while application and coverage-provider installation and locked-dependency checks pass (PR #835, job 119412057888).
+- Cause: the old/new Worker compatibility regression archives the immutable pre-J1 Worker from Git. A depth-1 checkout omits that historical commit; this is a harness precondition failure, not evidence of a registry or production defect.
+- Repair: use `fetch-depth: 0` with `persist-credentials: false` in jobs running the complete unit suite, matching core CI. The coverage and resumable-command jobs need full history, as does the mutation job for its history-dependent compatibility suite (see the #837 entry); dependency-audit stays shallow.
+- Preconditions and limits: ordinary read-only repository checkout is sufficient. Do not remove, skip or replace the actual historical Worker regression, bypass the registry, or change timeouts or mutation thresholds. This repair does not resolve the separate 45-minute mutation cancellation.
+- Verification: `scripts/ci/test-intelligence-workflow.test.mjs` checks full-suite checkout history and credentials, with shallow/default negative controls. Run it with `workers/ai-proxy/src/decision/focusedContextualBindingWire.test.ts`; parent-owned integration and native coverage must still pass on the published content.
+- Last reviewed: 2026-10-23.
+
 ## Admin Logs: authenticated diagnostic drill-down
 
 Last reviewed: 2026-10-16. The authenticated Admin Logs session listing was observed on the live Pages site. A listed entry count alone was not a successful detail retrieval; an actual mobile failure's cause cannot be inferred from this index.
@@ -183,6 +192,18 @@ Last verified: 2026-08-29, PR #240.
 - Quality: line coverage is executed-code evidence, not proof that assertions detect faults. Read survivors/no-coverage cases, use deliberate fault injection and intermediate-state assertions, and distinguish source-string architecture checks, mock contracts, real browser behavior, real runtime integration, and paid model evaluation
 - Compatibility: retain the Vitest/Stryker constraints in Issue #328. Do not change runner generations or lower mutation thresholds to get green
 - References: [Issue #382](https://github.com/kame447/StudyPlanner/issues/382), [npm install documentation](https://docs.npmjs.com/cli/v11/commands/npm-install/)
+
+## Mutation job reaches 45 minutes without a final score (#837)
+
+- Evidence: scheduled main run `39071973530` and PR #835 runs `39654784610` / `39847947725` were cancelled at the existing job limit. The last two used the same 761 mutants and 2550 dry-run tests but completed different amounts of work. This predates #835's npm transport change; install/manifest checks succeeded.
+- Classification: harness capacity. Related discovery growth is not proof that every discovered test runs for every mutant; the pinned runner uses per-test coverage selection. Do not exclude transitive tests without coverage evidence.
+- Candidate: concurrency 4, preserving both mutate targets, TypeScript checker, related/per-test selection, thresholds 80/60/50, locked toolchain and 45-minute limit. No new dependency or permission. Built-in event-recorder writes to `reports/stryker/events`; CPU/memory diagnostics share the existing always-uploaded artifact directory. Events from an interrupted run are partial evidence, never a final score.
+- History prerequisite: obsolete diagnostic run `39855313439` (artifact `12459957024`) recorded 2550 dry-run entries, of which 2519 succeeded and all 31 `focusedContextualBindingWire.test.ts` cases were Skipped at 0 ms. A file-level beforeAll archive failure can appear as skipped child tests in this runner; “dry run succeeded” alone does not prove those tests ran. Their zero coveredBy entries are missing evidence, not proof they cannot cover mutants. Both coverage and mutation now check out full history (`fetch-depth: 0`, `persist-credentials: false`) so the actual historical-Worker compatibility suite can execute. The dependency-audit job remains shallow.
+- Fixture isolation: the compatibility suite still archives immutable commit `070d25cb` and preserves all 31 assertions. Its helper caches a complete bundle keyed by commit, esbuild version and explicit compiler/build options, validates cached bytes, and publishes atomically from unique staging directories. Warm setups reuse the completed bundle; simultaneous cold misses may build independently before publication. This removes shared partial-output races without excluding tests. Native acceptance must confirm all 31 cases succeed instead of silently skipping; the cache is not an established explanation for the earlier per-mutant slowdown.
+- Sandbox archive paths: full history is necessary but not sufficient. Superseded full-history run `39858164979` still recorded all 31 cases as Skipped because `git archive` interprets its pathspecs relative to cwd; a Stryker sandbox prefix does not exist in the historical tree. The fixture helper resolves `git rev-parse --absolute-git-dir` from the selected repository and passes explicit `--git-dir` to archive root paths. This preserves `JEV_COMPATIBILITY_BASE_REPO` selection, including read-only object stores without a work tree, and is covered by actual nested-directory and Git-directory archive/import regressions. A shallow-history fix alone must not be reported as restored mutation coverage.
+- Acceptance: native execution on the final content completes before 45 minutes, emits a complete JSON report (761 mutants on main `82a948ae`), score at least 50, no manifest/tool drift, no timeout surge over the historical 1, and no false kills from shared-fixture races. A fast green alone is insufficient. Check the actual hardware logs and per-mutant statuses. See [Stryker parallel-worker guidance](https://stryker-mutator.io/docs/stryker-js/parallel-workers/).
+- If this candidate fails, investigate resource/fixture contention or use a deterministic partition with complete mutant union and weighted global score. Do not pad the timer or lower detection requirements. Preserve reports; only the launcher's own temporary tool installation is automatically removed.
+- Tracking and final native acceptance: [Issue #837](https://github.com/kame447/StudyPlanner/issues/837).
 
 ## Playwright OS-dependency installation stalls before tests
 

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { PINNED_WRANGLER_VERSION } from '../verified-wrangler.mjs';
 
 const root = new URL('../../', import.meta.url);
 const require = createRequire(new URL('package.json', root));
@@ -15,8 +16,9 @@ const launchers = [
 describe('Worker toolchain security and launcher pin contract', () => {
   it.each(launchers)('keeps %s on the exact supported toolchain', (launcher) => {
     const source = fs.readFileSync(new URL(`scripts/${launcher}.mjs`, root), 'utf8');
-    expect(source.match(/const PINNED_WRANGLER_VERSION = '([^']+)'/)?.[1]).toBe(pinnedVersion);
-    expect(source).toMatch(/assert\.equal\(\s*packageJson\.version,\s*PINNED_WRANGLER_VERSION/);
+    expect(PINNED_WRANGLER_VERSION).toBe(pinnedVersion);
+    expect(source).toContain("import { loadVerifiedWrangler, PINNED_WRANGLER_VERSION } from './verified-wrangler.mjs'");
+    expect(source).toContain('return loadVerifiedWrangler({');
   });
 
   it('keeps the executable README example aligned with the pin', () => {

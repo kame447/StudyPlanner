@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { boundedSmokeError, redactedSmokeStep, redactedWriteObservation, redactedComposerReadiness } from './d5-production-smoke-observation.mjs';
 import { CONTROLLED_CANDIDATE_COMMIT_REJECTIONS } from '../../../shared/controlledCandidateCommit.ts';
+import { redactedD5ReloadEvidence, redactedD5RecomputeEvidence, redactedD5Accounting } from './d5-production-smoke-reload.mjs';
 
 const rejectionFromCode = code => CONTROLLED_CANDIDATE_COMMIT_REJECTIONS.find(reason => code === `candidate_commit_${reason}`) ?? null;
 export const D5_SMOKE_TRACE_OUTCOMES = Object.freeze(['discarded_commit_rejected', 'discarded_stale', 'failed', 'preview_ready',
@@ -291,6 +292,9 @@ export function redactedSmokeEvidence(value) {
       replyStores: oneOf(value.answerStores?.replyStores, ['both', 'chat_only', 'owned_only', 'neither', 'unread'], 'unread'),
       checkpointsAgree: boolean(value.answerStores?.checkpointsAgree), chatIndexChanged: boolean(value.answerStores?.chatIndexChanged) },
     visibleAckObserved: boolean(value.visibleAckObserved),
+    recompute: redactedD5RecomputeEvidence(value.recompute),
+    reload: redactedD5ReloadEvidence(value.reload),
+    accounting: redactedD5Accounting(value.accounting),
     answerTrace: (Array.isArray(value.answerTrace) ? value.answerTrace : []).slice(0, 16).map(redactedAnswerTrace),
     answerTraceTruncated: value.answerTraceTruncated === true || Array.isArray(value.answerTrace) && value.answerTrace.length > 16,
     outcome: oneOf(value.outcome, ['incomplete', 'non_production', 'd5_consumed_pending_verification',

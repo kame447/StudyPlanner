@@ -1,8 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { build } from 'esbuild';
+import { prepareJ1WorkerFixture } from '../../../../scripts/ci/prepare-j1-worker-fixture.mjs';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../worker';
 import { JEV_MODEL } from './decisionPolicy';
@@ -18,16 +15,7 @@ const lunaBodies: Array<Record<string, unknown>> = [];
 let failJev = false;
 beforeAll(async () => {
   // Actual immutable pre-J1 Worker + shared reader, not a reimplemented validator.
-  const root = process.cwd();
-  // Archive-only verification can point at the integration holder's read-only Git object store.
-  const baselineRepository = process.env.JEV_COMPATIBILITY_BASE_REPO ?? root;
-  const baseline = path.join(root, '.cache/j1-old-worker');
-  fs.mkdirSync(baseline, { recursive: true });
-  execFileSync('tar', ['-x', '-C', baseline], { input: execFileSync('git', ['archive', '070d25cbe14796aebb8168ac5425c93e3506df1c', 'workers/ai-proxy/src', 'shared'], { cwd: baselineRepository, maxBuffer: 32 * 1024 * 1024 }) });
-  const bundle = path.join(baseline, 'worker-bundle.mjs');
-  await build({ entryPoints: [path.join(baseline, 'workers/ai-proxy/src/worker.ts')], outfile: bundle,
-    bundle: true, platform: 'node', format: 'esm',
-    alias: { 'cloudflare:workers': path.join(baseline, 'workers/ai-proxy/src/cloudflareWorkersVitestStub.ts') } });
+  const bundle = await prepareJ1WorkerFixture();
   const moduleUrl = pathToFileURL(bundle).href;
   oldWorker = (await import(/* @vite-ignore */ moduleUrl)).default;
 });
