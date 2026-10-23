@@ -58,3 +58,11 @@ The local candidate also integrates published #845 head `b9629718d1dfcdab02d842b
 - Fresh app/Worker typechecks passed; 1,069 files / 11,210 tests passed; 12 files / 67 tests skipped and 1 todo; production build passed in 14.37 seconds.
 - Log SHA-256: `516fb8a5f0710650896b5ce66058ff1c1f1baf7d9a521ab70062ed2468067755`. Staged tree and tracked working files were unchanged after execution; all 242 installed locked packages still matched, with no missing required packages. This final evidence update is Markdown-only.
 - Publication waits for #845 to land on main and the integration owner to release this branch. Required exact-head CI/browser gates and any merge decision remain pending.
+
+### Native Admin harness repair
+
+Published head `048ec56112e61430ca54a300aebeb923fed8c36f` has the reviewed tree above and actual main `ae833f7a` as its integration parent. Its [Admin run](https://github.com/kame447/StudyPlanner/actions/runs/39971045108) passed 68 cases but failed the announcement-owner case before its behavior assertions: the poll read `.length` from an uninitialized service-stub global. The service loads through a dynamic import, so a visible bell alone is not a readiness guarantee.
+
+The bounded repair changes only that poll to `window.__announcementReads?.length`. Its exact expected count of one, timeout, retry and owner/history assertions remain unchanged. Undefined remains a nonpassing poll result. Non-browser controls using the installed Playwright `expect.poll` verified delayed initialization succeeds only at one, while never-initialized, zero and two calls fail. Local Chromium launch was blocked before case execution; these controls do not establish browser acceptance.
+
+Full `npm run verify` with the same Node/environment passed on tree `137a1a8dd54edf7f45db00874c96c8089e9d9b4e`: fresh app/Worker types, 1,069 files / 11,210 tests passed, 67 skipped / 1 todo, build 15.12 seconds. Tracked content and all 242 installed locked versions remained unchanged; a byte-level dependency digest before that full run was not recorded. Log SHA-256: `76e992b9b1f8111a4477e29b2baf5132437fd1c51a2c24378e3a07869476a3ce`. This evidence update is Markdown-only. Exact successor-head native Admin and other applicable CI remain required before merge.
