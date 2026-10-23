@@ -61,6 +61,7 @@ jobs:
       - name: Run original Day1280 case in A B B A order without weakening gates
         shell: bash
         run: |
+          set +e
           set -uo pipefail
           root="$PWD"
           failed=0
