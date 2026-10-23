@@ -112,3 +112,5 @@ Client-first does not imply client-authoritative shared state. Authentication, o
 - [Optional delivery native acceptance](work/delivery-acceptance-ci-handoff.md): PR #729 fixture, emitted-asset and browser-transport corrections; native rerun tracked separately.
 
 - [Material record preparation](work/material-record-preparation-handoff.md) — pure record construction separated from admitted persistence.
+- [Material preferences boundary](work/material-preferences-boundary-handoff.md) — local behavior-preserving separation of material domain rules from browser persistence.
+- [Mobile WebKit paint investigation and retry recording](work/mobile-retry-recording-handoff.md): bounded retry capture; root-paint candidates rejected, with #805 still unresolved.

@@ -1045,6 +1045,9 @@ export function WeekView({
                   layout={spanningLayout}
                   plans={plans}
                   onOpenPlan={onOpenPlan}
+                  onOpenOccurrence={(occurrence, element) =>
+                    scheduleAction.open(occurrence.id, occurrence, occurrence.title, element)
+                  }
                 />
               ) : null}
 

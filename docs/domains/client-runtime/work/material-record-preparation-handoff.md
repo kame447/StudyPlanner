@@ -64,3 +64,12 @@ dependency, assertion, CI or application behavior changes were needed.
 
 This final update changes documentation only. Integration/publication remains
 owned by the parent; this candidate is not merged and browser/CI was not run.
+
+## Authorized merge continuation (2026-10-23)
+
+- Reused existing PR #813 and branch under the user's explicit merge authorization. Earlier no-publication/no-merge statements above describe historical scope only. Remote head `ef98a57837de09a543cbe54fcb7c4d7df29d2506` and current-main `672c6622a2e0eda497b4a5662a13841c626309a0` inspected; no competing record-preparation implementation or unresolved review threads found. Integration HEAD `98536efca7e0158d094985c4ed13aef7d0ce2131`, tree `cf96b567029703565e838bded7040aafab4445a5`.
+- Current main's #812 auxiliary material-preference persistence separation is independent of this admitted canonical-record preparation. Production merge is clean; the sole conflict is the domain index, resolved by retaining all links. The original preparation expressions exactly match current main after whitespace/result-binding normalization. Admission, identity/time acquisition, persistence, projection publication and failure settlement remain in their original order.
+- Focused four-file command covers pure preparation, material admission, Actual admission and subject read recovery: 169/169 tests pass, exit 0. No timeout/assertion/configuration changes. Exact six-file PR scope retained.
+- Node 22.23.4; shared installation checked against lock: all 242 installed manifest versions match, no required package missing. Lock SHA256 `01cc6c380a2797653d6e9a9dca8e5afe835a2278cb990d21dc6b220ca8aa466f`; installed lock SHA256 `e39a9cc4979b9c10b158be8d619db1c52645b8844b74016152d4514ff6241997`.
+- Next: final serialized integration verification, normal non-force existing-branch publication, exact-head native gates, serialized merge and post-merge readback. Historical failed/cancelled CI is not acceptance. No new Issue/PR/remote branch or deletion.
+- Final `DEV_LAN_HOST=127.0.0.1 CLOUDFLARE_CF_FETCH_ENABLED=false WRANGLER_SEND_METRICS=false DO_NOT_TRACK=1 npm run verify` exits 0 on the integration runtime above: fresh non-incremental app/Worker types, 1,073 files / 11,243 tests pass, 12 files / 67 tests skipped and one todo; production build 16.69s. Existing large-chunk warning remains. No lint script configured. Independent bounded review found no blocker. Only this checkpoint documentation differs from verified runtime; no tracked generated-source drift.
