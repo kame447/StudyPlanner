@@ -1,4 +1,4 @@
-name: Diagnose PR815 Day1280 ABBA
+name: Diagnose PR811 Bookshelf1920 ABBA
 on:
   push:
     branches:
@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 jobs:
-  day1280-abba:
+  bookshelf1920-abba:
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.64.0-noble
@@ -18,12 +18,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: a1a0b0ed9f8ead1af03db2f75465bf0e362a1f06
+          ref: ae833f7ac4d7af1d09a66da586f96276cdf085f4
           path: control
           persist-credentials: false
       - uses: actions/checkout@v7
         with:
-          ref: 4ab467561ab75d4a81a63c28252c6f63f31dc87c
+          ref: ba9672c2043d6b2a1536a71e1020a635db5813cf
           path: candidate
           persist-credentials: false
       - uses: actions/setup-node@v7
@@ -41,7 +41,7 @@ jobs:
             sha256sum control/package.json control/package-lock.json candidate/package.json candidate/package-lock.json
             cmp control/package.json candidate/package.json
             cmp control/package-lock.json candidate/package-lock.json
-            cmp control/tests/e2e/day-timetable-occurrence-controls.spec.mjs candidate/tests/e2e/day-timetable-occurrence-controls.spec.mjs
+            cmp control/tests/e2e/bookshelf-surface.spec.mjs candidate/tests/e2e/bookshelf-surface.spec.mjs
             cmp control/tests/e2e/playwright.cross-browser.config.mjs candidate/tests/e2e/playwright.cross-browser.config.mjs
             cmp control/tests/e2e/support/startup-ready.mjs candidate/tests/e2e/support/startup-ready.mjs
           } | tee observations/identity.txt
@@ -58,7 +58,7 @@ jobs:
             sha256sum -c "$root/observations/$side-manifests.sha256"
             npm run build > "$root/observations/$side-build.log" 2>&1
           done
-      - name: Run original Day1280 case in A B B A order without weakening gates
+      - name: Run original Bookshelf1920 Cancel100 case in A B B A order without weakening gates
         shell: bash
         run: |
           set +e
@@ -71,7 +71,7 @@ jobs:
             cd "$root/$side"
             mkdir -p "$root/observations/$trial"
             { date -u; cat /proc/loadavg; free -m; } > "$root/observations/$trial/conditions.txt"
-            node scripts/ci/playwright-shard.mjs test --config=tests/e2e/playwright.cross-browser.config.mjs --project=webkit-mobile tests/e2e/day-timetable-occurrence-controls.spec.mjs --grep='day visibility and single-occurrence cancellation preserve recorded history at 1280px' 2>&1 | tee "$root/observations/$trial/run.log"
+            node scripts/ci/playwright-shard.mjs test --config=tests/e2e/playwright.cross-browser.config.mjs --project=webkit-mobile tests/e2e/bookshelf-surface.spec.mjs --grep='material long text 1920x1080.*keeps full detail text and cancels unsaved chapter edits at 100%' 2>&1 | tee "$root/observations/$trial/run.log"
             status=${PIPESTATUS[0]}
             printf '%s\n' "$status" > "$root/observations/$trial/exit.txt"
             if [[ "$status" != 0 ]]; then failed=1; fi
@@ -84,7 +84,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pr815-day1280-abba-${{ github.sha }}
+          name: pr811-bookshelf1920-abba-${{ github.sha }}
           path: observations/
           if-no-files-found: error
           retention-days: 14
