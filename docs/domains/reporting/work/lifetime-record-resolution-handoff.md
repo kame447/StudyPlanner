@@ -1,6 +1,6 @@
 # Lifetime record source resolution
 
-Status: narrow correction implemented, independently reviewed and fully verified locally. Not published.
+Status: published in PR #817; current-main integration and exact-head validation in progress. Historical verification below is not a current-head CI pass.
 
 - Owner: report refactoring lane; branch `refactor/report-lifetime-canonical-20261021`, base `22e42203`.
 - Scope: `src/lib/learningReport.ts`, its tests, this checkpoint. No persistence, UI, streak lifecycle, AI, or shared-history changes.
@@ -22,3 +22,11 @@ Status: narrow correction implemented, independently reviewed and fully verified
 - Full `npm run verify` succeeded, exit 0, on exact implementation commit `b22e52c7fce263a0a3da0fa7db44b57a4f58cc17`, with no tracked changes: fresh non-incremental app and Worker checks (including generated Worker types), 1,054 files passed / 12 skipped; 10,533 tests passed / 67 skipped / 1 todo; production build succeeded in 13.55 s. Unit suite duration 80.16 s. Skipped/todo tests are not counted as passing.
 - Full-run environment also disabled optional Wrangler error reports, banner, skills-update prompts and CF fetch. Installed dependency lock hash was unchanged after verification. The suite generated an untracked `.cache/j1-old-worker/worker-bundle.mjs` fixture; no source inputs changed. Existing large-chunk build warning remains non-fatal and outside this correction.
 - Native-browser and GitHub CI results have not been obtained for this candidate. No upstream push, PR, deployment or merge performed. This checkpoint-only follow-up does not alter the verified implementation content.
+
+## Existing PR integration — 2026-10-23
+
+- Reuse PR #817 and `refactor/report-lifetime-canonical-20261021`; published head before integration `5c1172343cb9fc99781b191ccc24ad6b58cc0f9e`. Existing PR/comments and matching issues/branches were checked before resuming; no competing lifetime-total implementation was found.
+- Merge current main `355b870a` additively without conflicts. No implementation changes: the original two-file code/test diff remains SHA-256 `dbbf29b0108b9df41f45395457a712cb079d4ec722f342cf9e0bae20bd33aebb`. Scope remains these two files and this receipt.
+- Current integrated focused verification: five report/study-record/streak/UI files, 52 tests passed on Node 22.23.4. Package lock exactly matches the shared installed dependency checkout.
+- Historical head CI failures are not waived: current main includes the separate shared dependency, mobile allowance and scoped bundle-policy corrections. Fresh integrated full verification passed as recorded below; published-head CI is next and merge remains gated on its results.
+- Exact integration `a81d57491f983a404b535d22fa039622b52c75a0`: `npm run verify` exited 0 with fresh app/Worker types, 1,071 passing files / 12 skipped, 11,226 passing tests / 67 skipped / 1 todo, and production build 16.30 s. Node 22.23.4; all 242 installed package versions match the unchanged lock. This final receipt update changes documentation only. Local verification is not Firestore-emulator or native-browser CI proof.

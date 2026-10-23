@@ -159,6 +159,7 @@ jobs:
           UI_EVENT_NAME: ${{ github.event_name }}
           UI_SPEC: ${{ inputs.spec }}
           UI_PROJECT: ${{ matrix.project }}
+          UI_RETRY_CAPTURE: ${{ matrix.project == 'webkit-mobile' && '1' || '0' }}
           UI_REGRESSION_SHARD: ${{ matrix.shard && format('{0}/2', matrix.shard) || '' }}
         run: |
           set -euo pipefail
