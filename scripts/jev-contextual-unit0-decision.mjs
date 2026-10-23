@@ -24,10 +24,10 @@ const COST_METHOD = 'bound_based_sufficient_condition: Jev-first upper bound vs 
 // this a conservative sufficient gate, reported as bound-based, never as
 // measured spend. Every actual call counts; missing usage or a served tariff
 // outside the frozen contract is unknown. A zero-dispatch arm costs 0.
-function armCost(record, arm) {
+function armCost(record, arm, pricing) {
   let total = 0;
   for (const dispatch of record.dispatches) {
-    const fields = callCostFields(dispatch, PREREGISTERED_PRICING);
+    const fields = callCostFields(dispatch, pricing);
     const value = arm === 'jevFirst' ? fields.providerReportedCostUsd ?? fields.costUpperBoundUsd : fields.costLowerBoundUsd;
     // Complete usage is required even when Jev reported an amount (§19c).
     if (fields.tariffConforms !== true || !fields.usageComplete || value === null) return null;
@@ -146,7 +146,7 @@ const sortedCopy = (values) => Float64Array.from(values).sort();
 const endpoint = (values, rank) => sortedCopy(values)[rank - 1];
 
 export function evaluateUnit0({ roster, pairs, labels, replicates = DECISION_RULES.bootstrapReplicates,
-  seed = BOOTSTRAP_SEED, dryRun = false, runTerminal }) {
+  seed = BOOTSTRAP_SEED, dryRun = false, pricing = PREREGISTERED_PRICING, runTerminal }) {
   assert.ok(runTerminal && ['PASS', 'FAIL', 'UNKNOWN'].includes(runTerminal.status), 'Run terminal validity is a required gate.');
   if (!dryRun) assert.equal(replicates, DECISION_RULES.bootstrapReplicates, 'Replicates are preregistered.');
   assert.ok(pairs instanceof Map && labels instanceof Map);
@@ -159,7 +159,7 @@ export function evaluateUnit0({ roster, pairs, labels, replicates = DECISION_RUL
   if (complete) {
     const rows = new Map(roster.cases.map((item) => {
       const pair = pairs.get(item.id);
-      const costs = { jevFirst: armCost(pair.jevFirst, 'jevFirst'), lunaOnly: armCost(pair.lunaOnly, 'lunaOnly') };
+      const costs = { jevFirst: armCost(pair.jevFirst, 'jevFirst', pricing), lunaOnly: armCost(pair.lunaOnly, 'lunaOnly', pricing) };
       return [item.id, { d1: item.questionCode === DECISION_RULES.d1QuestionCode, stratum: item.stratum,
         delta: pair.lunaOnly.lunaDispatches - pair.jevFirst.lunaDispatches,
         jevProviderCalls: pair.jevFirst.dispatches.filter((d) => d.provider === 'jev').length,
@@ -232,5 +232,5 @@ export function evaluateUnit0({ roster, pairs, labels, replicates = DECISION_RUL
     failing: Object.entries(gates).filter(([, item]) => item.status !== 'PASS').map(([name, item]) => name + ':' + item.status),
     census: 'not_evaluated_here_separate_adoption_condition',
     adoption: 'HOLD', production: 'not_authorized',
-    dryRun, replicates, bootstrapSeed: seed, pricingVersion: PREREGISTERED_PRICING.version, gates, reported };
+    dryRun, replicates, bootstrapSeed: seed, pricingVersion: pricing.version, gates, reported };
 }
