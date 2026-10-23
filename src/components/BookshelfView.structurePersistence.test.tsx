@@ -2,11 +2,8 @@ import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'rea
 import { afterEach, expect, it, vi } from 'vitest';
 import { BookshelfView } from './BookshelfView';
 import { BookshelfMaterialDetail } from './BookshelfMaterialDetail';
-import {
-  getDefaultMaterialDetailPreferences,
-  loadMaterialDetailPreferences,
-  saveMaterialDetailPreferences,
-} from '../lib/bookshelfMaterialDetails';
+import { loadMaterialDetailPreferences, saveMaterialDetailPreferences } from '../repositories/materialDetailPreferencesRepository';
+import { getDefaultMaterialDetailPreferences } from '../lib/bookshelfMaterialDetails';
 import { MemoryStorage } from '../repositories/localPersistenceConcurrency.testUtils';
 import type { StudyMaterial } from '../types/domain';
 

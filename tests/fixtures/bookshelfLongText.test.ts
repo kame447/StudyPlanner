@@ -90,3 +90,45 @@ describe('bookshelf long-text browser fixture', () => {
     expect(read(storage, 'studyplanner.scheduleEventMigrations.v1')).toContainEqual(receipt);
   });
 });
+
+// Invoke the real test callback only up to browser preparation, so the budget
+// selection stays covered without replacing its actions or assertions.
+describe('bookshelf long-text functional budget', () => {
+  it('extends only the three approved large WebKit mobile journeys', async () => {
+    let callback = '';
+    function findCallback(node: ts.Node) {
+      if (ts.isCallExpression(node) && node.expression.getText(spec) === 'test'
+        && node.arguments[0]?.getText(spec) === '`${purpose} at ${percent}%`') {
+        callback = node.arguments[1].getText(spec);
+      }
+      ts.forEachChild(node, findCallback);
+    }
+    findCallback(spec);
+    expect(callback).not.toBe('');
+    const stop = new Error('stop before browser preparation');
+    const extended: string[] = [];
+    for (const project of ['webkit-mobile', 'webkit-desktop', 'chromium-desktop', 'firefox-desktop', 'desktop-light', 'mobile-dark']) {
+      for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 1080 }, { width: 1280, height: 600 }, { width: 390, height: 844 }, { width: 1920, height: 900 }, { width: 1440, height: 1080 }]) {
+        for (const percent of [100, 200]) {
+          for (const contract of ['detail-cancel', 'save-reload']) {
+            const setTimeout = vi.fn();
+            const run = runInNewContext(`(${callback})`, {
+              viewport, percent, contract,
+              prepareMaterialObservation: () => { throw stop; },
+            });
+            await expect(run({ page: {} }, { project: { name: project }, setTimeout })).rejects.toBe(stop);
+            if (setTimeout.mock.calls.length) {
+              expect(setTimeout.mock.calls).toEqual([[60_000]]);
+              extended.push(`${project}/${viewport.width}x${viewport.height}/${contract}/${percent}`);
+            }
+          }
+        }
+      }
+    }
+    expect(extended).toEqual([
+      'webkit-mobile/1920x1080/save-reload/100',
+      'webkit-mobile/1920x1080/detail-cancel/200',
+      'webkit-mobile/1920x1080/save-reload/200',
+    ]);
+  });
+});
