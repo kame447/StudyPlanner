@@ -1,3 +1,4 @@
+import { scheduleOccurrenceCoversDate, scheduleOccurrenceTimesForDate } from '../domain/scheduleOccurrence';
 import { isScheduleActionMenuTarget } from '../lib/scheduleItemActions';
 import { entryTimeRangeForDate } from '../lib/entryTimeRange';
 import {
@@ -45,8 +46,6 @@ import {
 } from '../lib/weekPlanDrag';
 import {
   buildLanes,
-  scheduleOccurrenceCoversDate,
-  scheduleOccurrenceTimesForDate,
   type WeekViewLane,
 } from '../lib/weekViewLayout';
 import { useDataChangeMotion } from '../hooks/useDataChangeMotion';
