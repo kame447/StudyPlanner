@@ -1,13 +1,23 @@
-# Mobile WebKit paint and retry recording
+# Mobile WebKit functional budget and retry recording
 
-Status: original root paint restored after a visual regression; recording-policy scope only, not merge-ready. Issue #805 is not fixed by this PR.
+Status: integrating the owner-approved three-case functional budget into existing PR #836. Rendering latency is not fixed; #805 remains open. Native verification of the combined recording-policy/budget head is pending.
 
-Branch: `fix/mobile-retry-recording`. Base: `82a948ae6dd9f39d6a445d3408b8b8d3ae2664a3`.
-Scope: retain the existing first-retry recording policy for the bookshelf-surface spec and the investigation evidence. Production pixel CSS and its unit tests are byte-identical to main. Preserve original screenshots, assertions, timeout, viewport/DPR, retry count, workers and the fail-on-flaky gate.
+Branch: `fix/mobile-retry-recording`. Integration base: main `72f5192222da2608c5de46557f548f655905ba04`; previous PR head: `88cebf49ff04be9c3b86b002782d17c25fd144e6`.
+Scope: retain the first-retry recording policy and original production paint. Only WebKit mobile's 1920×1080 save/reload at 100%, cancel at 200%, and save/reload at 200% receive a 60-second functional deadline. Other test deadlines, screenshots, actions, assertions, viewport/DPR, retry count, workers and fail-on-flaky are unchanged.
 
-Node prerequisite: copy only the `.node-version` 22.23.4 pin from unmerged PR #833 so automatic PR CI uses patched Node. This is not the remaining runtime guard or Undici remediation in #833, and does not authorize merging either PR.
+PR #833 is now merged and its Node runtime guard and scoped Miniflare transport mitigation are inherited from main. This PR adds no separate Node or dependency change. The documented embedded Wrangler transport limitation remains; this is not full toolchain clearance.
 
-Next: verify the restored production paint, original test collection and unchanged bundle budgets on the final published head. Resolve remaining baseline failures through their owning investigations. An isolated pass does not establish normal-CI reliability or a fixed rendering cost.
+## Approved functional-budget correction (2026-10-23)
+
+The unchanged three functional journeys completed on their first attempts under a diagnostic 60-second limit in [run 39865467903](https://github.com/kame447/StudyPlanner/actions/runs/39865467903). Callback-only monotonic timings were 36.396s, 33.796s and 35.951s; those exclude fixture setup and teardown. This establishes that the functional checks can complete while exceeding the old 30-second whole-test limit, not a performance fix or a product latency guarantee.
+
+The owner approved changing only these three functional deadlines to 60 seconds, separately from speed improvement. `tests/fixtures/bookshelfLongText.test.ts` invokes the real callback up to browser preparation across 144 project/viewport/scale/purpose combinations and checks that exactly these three change. The source-contract test retains recording, retry, worker and global-default safeguards while allowing this one approved test-local setter.
+
+The direct, uninstrumented three-case [run 39908830839](https://github.com/kame447/StudyPlanner/actions/runs/39908830839) also passed all three on their first attempts with a reported 60-second timeout. That run retained normal capture; it is not evidence for this integrated PR's first-retry recording configuration or for all Matrix cases.
+
+Next: verify this combined content, then run the applicable native checks on its exact published head. Keep #805's rendering-cost investigation and #776's motion decision separate; do not infer either is resolved by the functional budget.
+
+The sections below preserve earlier experiments and their then-current limits. Historical 30-second/capture-only and unmerged-#833 statements are not the current integration contract.
 
 ## Root-paint continuation
 

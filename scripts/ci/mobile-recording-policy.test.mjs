@@ -19,7 +19,10 @@ describe('bounded mobile retry recording', () => {
     expect(longText).not.toContain('UI_RETRY_CAPTURE');
     expect(mobile).toContain("...devices['iPhone 13']");
     expect(mobile).not.toMatch(/deviceScaleFactor:|viewport:|screen:|timeout:|retries:|workers:/);
-    expect(bookshelf).not.toMatch(/setTimeout|configure\(|retries:/);
+    expect(bookshelf).not.toMatch(/configure\(|retries:/);
+    // The separately approved functional budget is test-local, never a capture-policy override.
+    expect(bookshelf.match(/setTimeout/g)).toHaveLength(1);
+    expect(bookshelf).toContain('testInfo.setTimeout(60_000);');
     expect(longText).not.toContain('deviceScaleFactor:');
     expect(bookshelf).toContain('deviceScaleFactor: 3');
   });
@@ -39,7 +42,7 @@ describe('bounded mobile retry recording', () => {
     expect(base).toContain('fullyParallel: false');
     expect(crossBrowser).toContain('...baseConfig,');
     expect(crossBrowser).not.toMatch(/\b(?:timeout|retries|failOnFlakyTests|workers)\s*:/);
-    // No test timeout override: Playwright retains its 30-second default.
+    // No global timeout override: the default stays 30s outside three approved journeys.
     expect(base.split('webServer:')[0]).not.toMatch(/\btimeout\s*:/);
   });
 
