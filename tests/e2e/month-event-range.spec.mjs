@@ -563,6 +563,8 @@ for (const width of [390, 1280]) {
     test.use({ viewport: { width, height: 900 }, screen: { width, height: 900 }, reducedMotion: 'reduce' });
     test.afterEach(async ({}, testInfo) => { await attachMonthObservation(testInfo); });
     test('creates, edits and reloads a range with an earlier end clock', async ({ page }, testInfo) => {
+      // Only this Linux/WebKit-sized journey needs the measured slow-host functional budget.
+      if (width === 1280 && testInfo.project.name === 'webkit-mobile') test.setTimeout(60_000);
       await prepareMonthObservation(page, testInfo, {
         viewport: { width, height: 900 }, contract: 'overnight-create-edit-reload',
       });
