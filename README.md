@@ -87,9 +87,10 @@ Issue #246 の planned consultation extension でもこの責任境界を維持�
 
 ## 開発環境
 
-Node.js と npm が必要です。
+Node.js と npm が必要です。開発・CI の基準は [`.node-version`](./.node-version) の Node.js 22.23.4 です。2026-10-21 のセキュリティ修正済みの Node 22.23.4 / 24.22.1 / 26.12.1 以降の同一 major 系列を利用してください。`engines` は既定では警告のみなので、依存インストール前に下記の確認を実行します。`npm run verify` と `npm run build` も実際の実行バージョンを検査します。更新の範囲と未検証点は [Node セキュリティ更新記録](docs/domains/client-runtime/work/node-october-2026-security-handoff.md) を参照してください。
 
 ```bash
+node scripts/ci/check-node-security-version.mjs
 npm install --cache .npm-cache
 npm run dev
 ```
