@@ -220,7 +220,7 @@ function installProvider(choice = 'target', failLuna = false) {
   vi.spyOn(console, 'info').mockImplementation(() => undefined);
   vi.stubGlobal('fetch', vi.fn(async (url, init) => {
     wire.push({ url: String(url), body: JSON.parse(init.body) });
-    if (String(url).includes('/decisions')) return Response.json({ model: 'typesafe/jev-1.13',
+    if (String(url).includes('/decisions')) return Response.json({ model: 'typesafe/jev-1.14',
       answers: { contextual_answer: { type: 'choice', choice, confidence: 0.999,
         probabilities: Object.fromEntries(['target', 'remaining', 'completed', 'focused_luna', 'fallback'].map((key) => [key, key === choice ? 0.9996 : 0.0001])) },
       condition_change: { type: 'noul', noul: 0.001 }, independent_meaning: { type: 'noul', noul: 0.001 } },
