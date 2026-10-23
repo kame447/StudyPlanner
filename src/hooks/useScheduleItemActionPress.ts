@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import {
+  useEffect, useRef, useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type TouchEvent as ReactTouchEvent,
+} from 'react';
+import type { ScheduleOccurrence } from '../domain/scheduleOccurrence';
+import { isScheduleActionMenuTarget } from '../lib/scheduleItemActions';
 import { acquireTimelineDragInteractionLock } from '../lib/timelineDragInteractionLock';
 import { SCHEDULE_RADIAL_GESTURE_START, type ScheduleRadialGesture } from '../lib/scheduleRadialGesture';
 import { SCHEDULE_LONG_PRESS_MS } from '../lib/scheduleGestureTiming';
@@ -324,5 +331,104 @@ export function useScheduleItemActionPress<TItem>() {
     },
     dismiss,
     shouldSuppressClick: () => Date.now() < suppressClickUntilRef.current,
+  };
+}
+
+/** Shared DOM admission for Day/Week; the press controller retains gesture ownership. */
+export function createScheduleOccurrenceActionCapture({
+  occurrences, scheduleAction, armedMoveOccurrenceId, onSwipeClickCapture,
+}: {
+  occurrences: ReadonlyMap<string, ScheduleOccurrence>;
+  scheduleAction: ReturnType<typeof useScheduleItemActionPress<ScheduleOccurrence>>;
+  armedMoveOccurrenceId?: string;
+  onSwipeClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
+}) {
+  function resolveScheduleActionTarget(target: EventTarget | null): {
+    element: HTMLElement;
+    occurrence: ScheduleOccurrence;
+  } | null {
+    if (!(target instanceof Element)) return null;
+    const element = target.closest<HTMLElement>('[data-schedule-occurrence-id]');
+    const occurrenceId = element?.dataset.scheduleOccurrenceId;
+    const occurrence = occurrenceId ? occurrences.get(occurrenceId) : undefined;
+    return element && occurrence ? { element, occurrence } : null;
+  }
+
+  function handlePointerDownCapture(event: ReactPointerEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
+    if (event.pointerType === 'touch' || event.button !== 0 || !event.isPrimary) return;
+    const target = resolveScheduleActionTarget(event.target);
+    if (!target || target.occurrence.id === armedMoveOccurrenceId) return;
+    scheduleAction.start(
+      target.occurrence.id,
+      target.occurrence,
+      target.occurrence.title,
+      'pointer',
+      target.element,
+      event.clientX,
+      event.clientY,
+      event.pointerId,
+    );
+  }
+
+  function handlePointerMoveCapture(event: ReactPointerEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
+    if (event.pointerType === 'touch' || !scheduleAction.ownsInput('pointer', event.pointerId)) return;
+    scheduleAction.move(event.clientX, event.clientY);
+  }
+
+  function handlePointerUpCapture(event: ReactPointerEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
+    if (event.pointerType === 'touch' || !scheduleAction.ownsInput('pointer', event.pointerId)) return;
+    const target = resolveScheduleActionTarget(event.target);
+    if (target) scheduleAction.finish(target.occurrence.id);
+    else scheduleAction.cancel();
+  }
+
+  function handleTouchStartCapture(event: ReactTouchEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
+    if (event.touches.length !== 1) return;
+    const target = resolveScheduleActionTarget(event.target);
+    const touch = event.touches[0];
+    if (!target || !touch || target.occurrence.id === armedMoveOccurrenceId) return;
+    scheduleAction.start(
+      target.occurrence.id,
+      target.occurrence,
+      target.occurrence.title,
+      'touch',
+      target.element,
+      touch.clientX,
+      touch.clientY,
+      touch.identifier,
+    );
+  }
+
+  function handleTouchMoveCapture(event: ReactTouchEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
+    const touch = event.touches[0];
+    if (touch && scheduleAction.ownsInput('touch', touch.identifier)) scheduleAction.move(touch.clientX, touch.clientY);
+  }
+
+  function handleTouchEndCapture(event: ReactTouchEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
+    if (!Array.from(event.changedTouches).some(touch => scheduleAction.ownsInput('touch', touch.identifier))) return;
+    const target = resolveScheduleActionTarget(event.target);
+    if (target) scheduleAction.finish(target.occurrence.id);
+    else scheduleAction.cancel();
+  }
+
+  function handleClickCapture(event: ReactMouseEvent<HTMLElement>) {
+    if (isScheduleActionMenuTarget(event.target)) return;
+    onSwipeClickCapture(event);
+    if (!scheduleAction.shouldSuppressClick() || !resolveScheduleActionTarget(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  return {
+    resolveScheduleActionTarget,
+    handlePointerDownCapture, handlePointerMoveCapture, handlePointerUpCapture,
+    handleTouchStartCapture, handleTouchMoveCapture, handleTouchEndCapture,
+    handleClickCapture,
   };
 }
