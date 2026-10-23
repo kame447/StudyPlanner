@@ -31,8 +31,11 @@ const budgets = {
   css: {
     // Same owner decision: PR #826 changes no CSS. Aggregate limits
     // equal measured main exactly; largest-chunk and appearance guards stay put.
-    totalRaw: 513_954,
-    totalGzip: 89_911,
+    // Owner decision, 2026-10-23 (#841/#842): record-phase scroll inset adds
+    // measured +39 raw / +7 gzip aggregate bytes, with no added headroom.
+    // Largest-chunk and appearance limits remain unchanged.
+    totalRaw: 513_993,
+    totalGzip: 89_918,
     largestRaw: 425_000,
     largestGzip: 70_000,
   },

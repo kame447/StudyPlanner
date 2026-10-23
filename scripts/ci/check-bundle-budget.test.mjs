@@ -23,12 +23,12 @@ describe('production bundle and optional appearance guards', () => {
   it('pins the exact owner-approved chat ownership raw increment without changing other guards', () => {
     const result = check(); expect(result.status).toBe(0); expect(result.report.violations).toEqual([]);
     expect(result.report.budgets.javascript).toEqual({ totalRaw: 2_617_120, totalGzip: 711_893, largestRaw: 1_050_074, largestGzip: 289_210 });
-    expect(result.report.budgets.css).toEqual({ totalRaw: 513_954, totalGzip: 89_911, largestRaw: 425_000, largestGzip: 70_000 });
+    expect(result.report.budgets.css).toEqual({ totalRaw: 513_993, totalGzip: 89_918, largestRaw: 425_000, largestGzip: 70_000 });
   });
   it.each([
     { kind: 'javascript', metric: 'totalRaw', options: { javascript: [1_000_000, 1_000_000, 617_120] } },
     { kind: 'javascript', metric: 'largestRaw', options: { javascript: [1_050_074] } },
-    { kind: 'css', metric: 'totalRaw', options: { extraCss: [250_000, 255_954] } },
+    { kind: 'css', metric: 'totalRaw', options: { extraCss: [250_000, 255_993] } },
     { kind: 'css', metric: 'largestRaw', options: { extraCss: [425_000] } },
   ])('blocks one byte over the exact $kind $metric boundary', ({ kind, metric, options }) => {
     const exact = check(options);
