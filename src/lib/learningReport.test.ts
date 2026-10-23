@@ -51,6 +51,66 @@ function makeActual(overrides: Partial<Actual> = {}): Actual {
   };
 }
 
+describe('lifetime record source resolution', () => {
+  it.each([
+    ['study', 'other', 0],
+    ['other', 'study', 60],
+  ] as const)('uses the occurrence type rather than the %s source type', (type, occurrenceType, minutes) => {
+    const source = makePlan({ type, recurrenceRules: [{
+      id: 'specific-day', kind: 'date', startDate: '2026-08-24', until: null,
+      dates: ['2026-08-24'], weekdays: [], dayType: null, startTime: '09:00',
+      endTime: '10:00', type: occurrenceType, isOverride: true,
+    }] });
+    const input = { referenceDate: '2026-08-24', plans: [source],
+      actuals: [makeActual({ planId: source.id })], subjects: [], materials: [] };
+    const snapshot = JSON.stringify(input);
+    expect(buildLearningReportOverview(input)).toMatchObject({
+      todayMinutes: minutes, weekMinutes: minutes, monthMinutes: minutes, lifetimeMinutes: minutes,
+    });
+    expect(JSON.stringify(input)).toBe(snapshot);
+  });
+
+  it.each(['plan', 'month-event'] as const)('does not let another owner shadow the actual owner’s %s', (sourceKind) => {
+    const source = makePlan({ type: 'other' });
+    const event: MonthEvent = { id: source.id, userId: source.userId, date: source.date,
+      title: 'General event', startTime: '09:00', endTime: '10:00', repeat: 'none',
+      repeatUntil: null, excludedDates: [], url: '', memo: '', checklist: [],
+      locationTags: [], createdAt: timestamp, updatedAt: timestamp };
+    const input = { referenceDate: source.date,
+      plans: sourceKind === 'plan' ? [source, { ...source, userId: 'another-user' }] : [],
+      monthEvents: sourceKind === 'month-event' ? [event, { ...event, userId: 'another-user' }] : [],
+      actuals: [makeActual({ planId: source.id })], subjects: [], materials: [] };
+    const snapshot = JSON.stringify(input);
+    expect(buildLearningReportOverview(input)).toMatchObject({
+      todayMinutes: 0, weekMinutes: 0, monthMinutes: 0, lifetimeMinutes: 0,
+    });
+    expect(JSON.stringify(input)).toBe(snapshot);
+  });
+
+  it('retains recorded excluded occurrences and resolves a plan before a same-ID month event', () => {
+    const source = makePlan({ excludedDates: ['2026-08-24'], type: 'other', recurrenceRules: [{
+      id: 'recorded-day', kind: 'date', startDate: '2026-08-24', until: null,
+      dates: ['2026-08-24'], weekdays: [], dayType: null, startTime: '09:00',
+      endTime: '10:00', type: 'study', isOverride: true,
+    }] });
+    const event: MonthEvent = { id: source.id, userId: source.userId, date: source.date,
+      title: 'General event', startTime: '09:00', endTime: '10:00', repeat: 'none',
+      repeatUntil: null, excludedDates: [], url: '', memo: '', checklist: [],
+      locationTags: [], createdAt: timestamp, updatedAt: timestamp };
+    const actual = makeActual({ planId: source.id });
+    const input = { referenceDate: source.date, plans: [source], monthEvents: [event],
+      actuals: [actual, { ...actual, id: 'superseded', actualEndTime: '09:30', updatedAt: '2026-07-01' },
+        makeActual({ id: 'old-orphan', planId: 'deleted', occurrenceDate: '2016-08-24' })],
+      subjects: [], materials: [] };
+    const snapshot = JSON.stringify(input);
+    expect(buildLearningReportOverview(input)).toMatchObject({
+      todayMinutes: 60, weekMinutes: 60, monthMinutes: 60, lifetimeMinutes: 120,
+      todayPlannedMinutes: 0,
+    });
+    expect(JSON.stringify(input)).toBe(snapshot);
+  });
+});
+
 const subjects: StudySubject[] = [
   {
     id: 'subject-info',
